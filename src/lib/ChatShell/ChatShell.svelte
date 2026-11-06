@@ -16,6 +16,7 @@
     import { shouldAnchorBottom } from '../../ts/chatShell/bottomAnchor'
     import { bindReaderIntent, canHostMove, createReaderIntent } from '../../ts/chatShell/readerIntent'
     import { watchSoftKeyboard } from '../../ts/chatShell/softKeyboard'
+    import { hostIme } from '../../ts/android/hostBridge'
     import { treeView } from '../../ts/process/chatTreeView'
 
     interface Props {
@@ -76,7 +77,7 @@
 
     onMount(() => {
         if (!shell) return
-        return watchSoftKeyboard(shell, window, (open) => { keyboardOpen = open })
+        return watchSoftKeyboard(shell, window, (open) => { keyboardOpen = open }, hostIme())
     })
 
     $effect(() => {

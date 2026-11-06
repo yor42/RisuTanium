@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * The chat header hides while the soft keyboard is open and returns when it closes, unless the scroll rule (C-3) wants
- * it hidden. REAL: `ChatShell.svelte`, `ShellHeader.svelte`, `softKeyboard.ts`, `bottomAnchor.ts`. MOCKED: stores, the
+ * it hidden. REAL: `ChatShell.svelte`, `ShellHeader.svelte`, `softKeyboard.ts`, `bottomAnchor.ts`, `hostBridge.ts`. MOCKED: stores, the
  * composer (a text field plus the hardware callback), the message list (records the bottom anchor) and the sheets.
  */
 import { flushSync, mount, tick, unmount } from 'svelte'
@@ -223,6 +223,89 @@ describe('the header hides while the soft keyboard is open', () => {
         header().querySelector<HTMLButtonElement>('button')!.focus()
         await tick()
         flushSync()
+        expect(hidden()).toBe(false)
+    })
+})
+
+// Device heights: the portrait window, the same window with Gboard open, the lower split-screen window, and the window
+// heights seen while rotating to landscape with the keyboard open.
+const PORTRAIT = 773.7
+const KEYBOARD_VIEWPORT = 485.3
+const SPLIT_WINDOW = 370.7
+
+describe('the header follows the keyboard, not the window size', () => {
+    let imeVisible = false
+
+    beforeEach(() => {
+        Object.defineProperty(HTMLElement.prototype, 'scrollTop', { get: () => scrollTop, set: (value: number) => { scrollTop = value }, configurable: true })
+    })
+    afterEach(() => {
+        Reflect.deleteProperty(HTMLElement.prototype, 'scrollTop')
+        Reflect.deleteProperty(window, '__risuTaniumIme')
+    })
+
+    // The host's separate keyboard object: the shell re-reads it when the visual viewport resizes.
+    function installHost(): void {
+        imeVisible = false
+        Object.defineProperty(window, '__risuTaniumIme', { value: { visible: () => imeVisible, height: () => (imeVisible ? PORTRAIT - KEYBOARD_VIEWPORT : 0) }, configurable: true })
+    }
+
+    function resizeWindow(height: number): void {
+        Object.defineProperty(window, 'innerHeight', { value: height, configurable: true })
+        viewport.resize(height)
+    }
+
+    async function settle(): Promise<void> {
+        await tick()
+        flushSync()
+    }
+
+    test('reproducer: a split-screen entry with the composer focused shrinks both heights and does not hide the header', async () => {
+        await mountShell()
+        resizeWindow(PORTRAIT)
+        field().focus()
+        resizeWindow(SPLIT_WINDOW)
+        await settle()
+        expect(hidden()).toBe(false)
+    })
+
+    test('with the host, split screen with a focused composer and no keyboard keeps the header shown', async () => {
+        installHost()
+        await mountShell()
+        resizeWindow(PORTRAIT)
+        field().focus()
+        resizeWindow(SPLIT_WINDOW)
+        await settle()
+        expect(hidden()).toBe(false)
+    })
+
+    test('with the host, the keyboard hides the header and closing it returns the header after a rotation round trip', async () => {
+        installHost()
+        await mountShell()
+        resizeWindow(PORTRAIT)
+        field().focus()
+        imeVisible = true
+        resizeWindow(KEYBOARD_VIEWPORT)
+        await settle()
+        expect(hidden()).toBe(true)
+        resizeWindow(51)
+        resizeWindow(387)
+        resizeWindow(KEYBOARD_VIEWPORT)
+        await settle()
+        expect(hidden()).toBe(true)
+        imeVisible = false
+        resizeWindow(PORTRAIT)
+        field().blur()
+        await settle()
+        expect(hidden()).toBe(false)
+    })
+
+    test('with the host, a floating keyboard that takes no space from the page leaves the header shown', async () => {
+        installHost()
+        await mountShell()
+        field().focus()
+        viewport.resize(450)
+        await settle()
         expect(hidden()).toBe(false)
     })
 })
