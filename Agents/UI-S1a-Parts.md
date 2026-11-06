@@ -17,3 +17,9 @@ Source: `data-part` attributes in `src/lib/ChatShell/*.svelte` at the local WIP 
 
 Notes: `role="log"` sits on `chat-message-list` while THEME_AUDIT.md places it on `chat-transcript`; both parts exist (the transcript wraps the list). No part carries `data-part-critical` except the protected surfaces (checked by the `criticalParts` scan test).
 
+## Post-merge check (2026-11-06, records batch 60, MC-1091)
+
+- The R22 completion and the R20 load-older re-align are on main as `e7401a1e2` (merge of `uis1a-wip` tip `bafecd737`). The source section above was captured at `42d881e96`. The literal `data-part` names under `src/lib` and `src/ts` are the same set at `42d881e96` and `e7401a1e2` (109 distinct names, `git grep -ohE 'data-part="[a-z0-9-]+"'`, checked by the clerk on 2026-11-06), so R22 and the re-align added and removed no part name.
+- R22 changed attributes and CSS of existing parts (for example `chat-shell` gained a `bind:this`, `chat-message-alts` gained a wheel handler, `chat-header-host` is absolutely positioned, `chat-transcript` takes header padding). Those changes are not listed here.
+- `src/ts/chatShell/loadRealign.ts` is a new module (the re-align); it is not a part.
+- The tables above are not re-derived for this batch.

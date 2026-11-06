@@ -22209,3 +22209,101 @@ Status: DRAFT, not accepted. Entries MC-1069 to MC-1072, to be appended after th
 **Results.** Lane A offered lane B the work package `%TEMP%\risu-b715\b58\uis1\laneB\brief.md` (Note 9 device claims D1 to D7 from a debug APK built in lane B's own worktree `%TEMP%\risu-code-track-uis1c` on branch `uis1a-wip-laneb`, plus PC touch-only, mouse-only, keyboard-only and mixed-input passes); lane B answered "lane B ready" with a sizing plan (`laneB\plan.md`): phone 1 = D1 to D4 and extras, phone 2 = D5 to D7 with 360x740 emulated by `wm size`, ports CDP 9460-9469 and mock 6290-6299. Findings for lane A: Gboard is not installed on either spare Note 9 (the D3 Gboard half is NOT RUN unless the maintainer installs it); both phones use 3-button navigation, so the D2 right-edge gesture needs gesture navigation switched on (lane A allowed it on the spare devices with restore afterwards); haptics are proven through `dumpsys vibrator_manager`.
 
 **Not decided.** Who installs Gboard on a spare Note 9, if wanted.
+
+### MC-1089 — Lane A, 2026-11-06: the character JSON export streams one asset at a time; the Android export asks where to save; a bad image keeps its original bytes (export fixes `b8f8d519a` and `c207fcf69`, phone p10)
+
+- Tag: statements (the maintainer's answers, quoted as the parent recorded them) and results (lane A's device and test reports). Date: 2026-11-06. Sweep ref: none. Exact answer times: UNKNOWN. Related: `MC-175`, `MC-223` (export routes), `MC-091` (the `.risum` split is a new ticket, not decided here), `MC-350` (no device data-safety check is recorded for these fixes).
+
+**What the maintainer said (verbatim answers, as the parent recorded them; the question wording is not in the packet: TODO(evidence)).**
+- JSON fix: "Stream it".
+- Picker: "Picker first".
+- Bad image: "Keep original".
+- Desktop: "Ask where".
+- `.risum`: "Separate ticket".
+- Commit timing: "After phone check".
+
+**Results (lane A; reported, not re-run by the records writer).**
+- `b8f8d519a` (`fix(export)`): Android exports through `downloadFile` ask where to save instead of writing to the hidden app folder.
+- `c207fcf69` (`fix(export)`): the character JSON export streams one asset at a time instead of building the whole card in memory. Files: new `src/ts/cardJsonStream.ts` and its test; `src/ts/characterCards.ts` (JSON goes through the LocalWriter stream); `src/ts/media/compressImage/lossyCompression.ts` (settle-once; falls back to the original bytes with a warning; releases canvas and image); new `tests/lossyCompression.test.ts`; updated export tests. Output reported byte-identical to `JSON.stringify(card,null,4)`.
+- Cause (phone p8, observed): the app was killed after the asset loop, with the renderer at about 2.1 GiB and native memory over 2 GiB.
+- Phone p10 after the fix: the picker opens first and the export completes; app PSS 448 MiB, renderer 423 MiB; the file is 36 MB with 121 data-URI assets.
+- Checks as reported: full suite 29812 passed; `pnpm check` and build green. Command output is not in the packet: TODO(evidence).
+- Committed and pushed to main after p10 passed.
+- GPU question (the maintainer asked it with the sizing request; lane A answered from device inspection): the Note 9 renders on the GPU in both shells (gpu_compositing and rasterization enabled, Skia OpenGL, GPU raster).
+
+**Accepted limitations.** A decode that fires neither load nor error stays pending.
+
+**Not decided.** The `.risum` streaming export is a separate ticket (CHORE-635).
+
+### MC-1090 — Lane A, 2026-11-06: the sidebar close button is covered by the tab row at 360 px; a separate small fix on main; the duplicate X is hidden on wide desktop (`d1edff4b6`)
+
+- Tag: statements (the maintainer's answers) and results (lane B's PC and phone checks; lane A's gates). Date: 2026-11-06. Sweep ref: none. Exact answer times: UNKNOWN. Related: `MC-1087` (independent of UI-S1a), `MC-091`.
+
+**What the maintainer said (verbatim answers, as the parent recorded them).**
+- Scope and gates: "Separate small fix" (its own gates and commit to main, independent of UI-S1a).
+- Duplicate close buttons (X and ←) on wide desktop: "Hide X on desktop".
+
+**Results.**
+- Defect (lane B, PC): at 360x740 the tab row (`relative bottom-6`) covers the sidebar X, so a tap hits the 캐릭터 tab. Lane B's v2 run found the same at 1280.
+- Change, `src/lib/SideBars/Sidebar.svelte` only (`d1edff4b6`, pushed): the X button is `relative z-10 flex self-end`; plus `class:invisible={!$DynamicGUI && !$MobileGUI}`, so it keeps its space; plus the MobileGUI import. The ← in `src/lib/UI/GUI/SideBarArrow.svelte` is the same handle that shows → to open (drawn when `!MobileGUI && sideBarStore && !DynamicGUI`); that file is not changed.
+- Gate 2: r1 [PASS] (`b58\sidebarx\g2\result.md`); r2 [PASS] (`b58\sidebarx\g2r2\result.md`): wherever the X is hidden, the arrow is present (Sidebar renders only in App.svelte's desktop branch, where ChatScreen always draws SideBarArrow).
+- Lane B PC v2 (`b58\sidebarx\result.md`): at 360 the X is hit and closes the sidebar (character, welcome and playground); the tabs still switch. At 1280 the X is invisible and not hit-testable; the ← closes the sidebar; layout delta against base is 0 px. A wide-to-narrow resize makes the X appear.
+- Phone 1 (narrow), real tap: the X closes the sidebar (`b58\uis1\r22\r2\device\result.md`, item 6).
+- Tests: SideBars 904 passed; `pnpm check` 0 errors; build OK. Full suite: 3 failures in two unrelated files, `moduleToggleReload.svelte.test.ts` (90 s timeout under load) and `PromptDiffModal.missingTemplate.svelte.test.ts`. Both pass alone (37/37); recorded as load flakiness, not caused by this change.
+
+**Not decided.** None recorded.
+
+### MC-1091 — Lane A, 2026-11-06: UI-S1a's R22 completion and the R20 load-older re-align are merged to main (`e7401a1e2`), with the maintainer's answers on the shell, header, TalkBack, keyboard, long branch and re-align
+
+- Tag: statements (the maintainer's answers, quoted below) and results (reviewer, coder and device reports; Gate verdicts are the independent reviewers' reads; coder reports are not evidence by themselves). Date: 2026-11-06. Sweep ref: none. Exact answer times: UNKNOWN. Related: `MC-1086` (S1a plan), `MC-1087` (implementation and Gate 2), `MC-1088` (lane B), `MC-516`, `MC-091`, `MC-239` (jsdom sanitizer tests), `MC-058`.
+
+**What the maintainer said (verbatim answers, as the parent recorded them; the question wording is not in the packet: TODO(evidence)).**
+- Shell fix: "Gesture-based fix".
+- Header: "Overlay it".
+- TalkBack: "Focus rule" (OPQ-1(a)).
+- Floating keyboard: "Counts as closed".
+- Long branch: "Accept, ticket it" (a 0.7 s freeze at +100 rows and 1.3 s at +300 rows on the Note 9).
+- Load-older drift: "Fix it in UI-S1a" (a ~300 ms re-align that stops on touch, using the step-hold pattern). Rejected, as recorded: accept-and-ticket; keeping nearby rows out of content-visibility.
+- Row to hold: "First fully started row", option (A): the first row whose top is inside the viewport, else the row straddling the top edge.
+- Final: "Merge and push".
+
+**Results.**
+- Commits on `uis1a-wip`: D1 `e77cc8186`, merge `1cb4515bd`, A `11d6b56f3`, B `994b99704`, C `236d97cb5`, D2 `4fb74e7a5`; remediation 1 `e5102693b`, remediation 2 `e1b2654ec`; merge of main `9275995d3`; rotation fix `c24a6962c`; R20 re-align Stage A `b8fabfcc7`, Stage B `461e1724b`, plan r3 `bafecd737`.
+- Merge: into main as `e7401a1e2` with `--no-ff`, after a fast-forward of the maintainer's `2ae515612` and `4f086365d` (wiki and readme); pushed. Clerk check: the `git diff bafecd737 e7401a1e2` path set named above is empty, so the merged code is the tested snapshot.
+- R22 remediation: Gate 2 r10 [REJECT] (`b58\uis1\r22\g2\result.md`: the panelGesture test expected exactly one host message). Remediation 1 fixed the panelGesture filter, the provisional IME close during rotation, the step hold landing before first paint, the follower honouring an in-flight hold, and the redundant cancel (the coder could not run the PC harness: ports held by lane B). Gate 2 r11 [REJECT] (`b58\uis1\r22\g2r11\result.md`: the `content` and `held` wirings in ShellMessageList were untested; mutants M1 and M2 survived). Remediation 2 added component tests; M1 and M2 killed. Gate 2 r12 [PASS] subject to H rows.
+- Rotation: device phone 1 on `9275995d3` cycled the header in 4 of 12 portrait-to-landscape turns. Investigation (`b58\uis1\r22\rot\result.md`) found two mechanisms in `softKeyboard.ts`: (A) the width change arrives before the host IME false; (B) the first resize comes after the 100 ms settle. Fix `c24a6962c`: remember a recent width change; the no-resize settle lengthened to 300 ms. Gate 2 r13 [APPROVE]. Device phone 1 on `c24a6962c` (`b58\uis1\r22\r3\device\result.md`): 0 cycles in 24 turns.
+- R22 PC harness (`b58\uis1\r22\r1\harness\result.md`): H3, H8, H12 and the shorter H15b at 0 px max over 15 runs (178 to 209 px for one frame before); the longer H15b 0.4 px with no follower RO write; guards H1, H7 and H15 green.
+- Phone 1 on `9275995d3` (`b58\uis1\r22\r2\device\result.md`): PASS plain close 12/12; floating keyboard; on-device step hold with real touch (max 0.07 px over 543 frames; one 200 to 217 ms frame on the shorter step and one 485 to 518 ms on the longer); H4 on both IMEs; cold start; sidebar X. FAIL: rotation (above).
+- R20 drift: it predates R22, appearing on `7b4b548ee`, `4fb74e7a5` and `9275995d3` (`b58\uis1\r22\r2\device\r20ab\result.md`). The ~1100 px figure was a measurement artifact of the anchor choice (`b58\uis1\r22\r20drift\result.md`); the re-measure with the r20d logger showed +272 in one frame (`b58\uis1\r22\r20drift\device\result.md`). Observer-free baseline (`b58\uis1\r22\r20fix\baseline2\result.md`): -394.9 px on row 90, matching the plan logger; the r20d hooks themselves perturb the result. Cause: INFERRED (content-visibility `contain-intrinsic-size: auto 240px` estimates against real row heights of 90.8 and 117.2 px).
+- R20 implementation: Plan r1 G1 [REJECT] (fling pull-back; measurement read point); plan r2 G1 [REJECT], accepted with amendments (wiring tests C12 to C15, mutants M29 to M32); implementation Gate 2 r14 [APPROVE] on `461e1724b`. Device FAIL on that build: zero module writes. Logpoint diagnosis (`b58\uis1\r22\r20fix\device\diag\result.md`): in the slip frame scrollTop is unchanged while every visible row moves -517.6 px; snapshot rows 90 to 92 are no longer visible, so `keptPlace` was false and the window ended. Second bug: the pass-2 guard `scrollTop === placed` fails on float32 (3660.190475463867 against 3660.1904296875). Plan r3: "still" = scrollTop unchanged within 0.1, OR keptPlace; `WRITE_EPSILON` tolerance on the pass-2 guard. G1 r3 [APPROVE]; G2 r15 [APPROVE] subject to device.
+- Stage B deviation, accepted (Gate 2 r14 confirmed): the pass-2 restore rAF is queued before `realign.start()`; with the plan order a full correction put scrollTop back on `placed` and pass 2 wrote a stale value. Plan text amendment: `b58\uis1\r22\r20fix\g2\result.md`.
+- Re-align final on `bafecd737` (`b58\uis1\r22\r20fix\device3\result.md`): held row 0 px at +500 and +1000 ms in 5 of 5 (`461e1724b`: -517.5); 0 screencast frames over 4 px; exactly one module write in the slip frame; window ends on the 300 ms timer; flings show no pull-back. Method: observer-free (single CDP reads at +500 and +1000 ms, and a screencast); the in-page logger is diagnostic only.
+- PC on `bafecd737` (`b58\uis1\r22\r20fix\pc3\result.md`): held row -0.4 px; flings 0 writes (pre-existing drift +707 to +727 px).
+- Final checks on `bafecd737` (as reported): full suite 30662 passed and 24 skipped; `pnpm check` 0 errors; build OK. Command output is not in the packet: TODO(evidence).
+
+**Lane A engineering decisions (orchestrator, not maintainer answers).**
+- A released fling (momentum, inertia) is reader motion. The re-align window ends and never writes against it, so a load during a fling gets no re-align.
+- Gate 1 r2 on the re-align plan accepted with its required test amendments, without another designer round.
+
+**Accepted limitations and deviations.**
+- Load during a fling: no re-align by design; a fling that triggers a load ends +700 to +733 px off on the PC (pre-existing); observed once, cause not separated (CHORE-637).
+- Long-branch mount cap: all rows mount on a long alternative branch (0.7 s at +100 rows, 1.3 s at +300 rows on the Note 9); accepted for UI-S1a (CHORE-636).
+- H14 focus variant and TalkBack's scroll action not run; the focus rule was checked with Samsung Voice Assistant (CHORE-638).
+- Split-screen top-window typing: TODO(evidence), never observed (CHORE-639).
+
+**UNCERTAIN, recorded and not investigated (CHORE-641).**
+- On `bafecd737` both restore passes logged wrote=false, because the position was already set before the tick restore (source not traced).
+- H1 hdrTops reads [-48] on the pc3 run against [0] earlier; its assertion still passes.
+- Why anchoring compensated one shrink frame and not the next.
+
+**Still owed after the merge.** The maintainer accepted S1a with "Merge and push", but the S1a acceptance step "the `nexus` preset listed at S1a acceptance" (`MC-1086`, Stage 6) was NOT done: `colorscheme.nexusHidden.test.ts` and `ColorSchemeSelect.nexusHidden.svelte.test.ts` still guard the hidden preset on main. Which of lane B's D1 to D7 claims map to the device runs above is not re-verified: TODO(evidence).
+
+**Not decided.** S1b sizing; UI-S1 (slices 1 to 4) acceptance; the old-shell retirement batch; stale worktree cleanup (with the maintainer's permission).
+
+### MC-1092 — Lane A, 2026-11-06: incidents in the sidebar, device and records work (recorded; none harmed data)
+
+- Tag: results (incident reports). Date: 2026-11-06. Sweep ref: none. Related: `MC-1088` (lane B), `MC-027` (community code not quoted), `MC-1069` (device runs and approvals).
+- Lane B PC harness opened `discord.com/invite` in a new tab, twice: once during the sidebar check (an exploratory tap on the home page's Discord card); once during R20 fix diagnostics (a tap during dev-server warm-up). Both tabs closed (the second unviewed); no app data was sent. Lane B now blocks discord.com in host-resolver rules and checks the element before any non-scripted tap.
+- The R20 drift investigator wrote and then deleted a stray placeholder file in lane B's device folder.
+- Earlier in this session, already reported to the maintainer (short lines; details are in the session transcript, not in the packet: dates TODO(evidence)): a request reached sv.risuai.xyz during a web-build mock run; the 삭제 확인 toggle changed during a device run; a coder's PowerShell helper `Rd` alias problem; a coder's relative-path write landed in the main checkout (restored, verified identical to HEAD); stray settings taps during device runs; a vite `.vite` cache write.
+- Merge note: before the UI-S1a merge, the main checkout's `src-tauri/gen/android/app/src/main/AndroidManifest.xml` differed from HEAD only in line endings (70 CR, 81 LF). The merge brought in UI-S1a's `VIBRATE` permission; the file is now CRLF (82 of 82). Pre-merge copy: `%TEMP%\risu-b715\b58\uis1\AndroidManifest.pre-merge.xml`.
