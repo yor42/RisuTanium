@@ -2,7 +2,7 @@ import type { BottomFollower } from './bottomAnchor'
 
 // The window of mounted rows is the newest row down to an oldest position. A pin freezes that oldest position while an
 // alternative step swaps the reply chain, so a shorter or longer chain neither mounts older rows above the reader nor
-// unmounts the row the reader is on. The first message counts as position -1: row 0 and the first message are both mounted.
+// unmounts the row the reader is on, within the mount cap below. The first message counts as position -1: row 0 and the first message are both mounted.
 
 // The first mounted row counts down from the fold target when the chat is folded, else from the newest message.
 export function windowStart(foldIndex: number, length: number): number {
@@ -29,6 +29,20 @@ export function pagesForPin(start: number, length: number, loadPages: number, pi
     return pin === -1 ? Math.max(loadPages, length) : Math.max(0, start - pin)
 }
 
+// The most rows a step may add to the newest end of the window and still be held. A longer chain is not frozen: freezing it would
+// mount every row from the pin up in one flush, and that cost grows with the step.
+export const STEP_HOLD_MOUNT_CAP = 50
+
+// The pin as the window should use it: the held pin while the window has grown by no more than the cap since the pin was taken
+// (`startAtPin` is the window's first row then), else null, so the ordinary window renders with the page count unchanged.
+export function heldPin(pin: number | null, startAtPin: number, start: number, cap: number): number | null {
+    return pin !== null && start - startAtPin > cap ? null : pin
+}
+
+// What committing a pin did: `kept` released the pin into a page count that keeps the held window; `newest` and `released` dropped it
+// because the window grew past the cap, `newest` when nobody wrote a page count meanwhile and `released` when someone did.
+export type PinRelease = 'kept' | 'newest' | 'released'
+
 // Moves smaller than this are layout rounding, not a shift to correct.
 const POSITION_EPSILON = 0.5
 
@@ -49,8 +63,12 @@ export interface StepHoldDeps {
     setPin: (pin: number | null) => void
     // The pin for the window as currently mounted, read from state and never from the DOM.
     windowPin: () => number
-    // Releases the held pin: raises or lowers the page count so the window keeps the pinned oldest position, then clears the pin.
-    commitPin: (held: number) => void
+    // Releases the held pin: within the cap it raises or lowers the page count so the window keeps the pinned oldest position, then clears the pin.
+    // Past the cap it clears the pin and leaves the page count alone.
+    commitPin: (held: number) => PinRelease
+    // Puts the view at the newest message and follows it from there, for a step whose window grew past the cap. `focusFrom` is the
+    // stepped row's index when focus was inside that row before the step, else null; focus moves to the newest row only from there.
+    landAtNewest: (focusFrom: number | null) => void
     row: (idx: number) => HTMLElement | null
     // Counts reader-intent events; a changed count means the reader moved the view after the hold started.
     intentSeq: () => number
@@ -106,9 +124,9 @@ export function createStepHold(deps: StepHoldDeps): StepHold {
         deps.cancelFrame(pendingFrame)
         pendingFrame = null
     }
-    function commit(): void {
+    function commit(): PinRelease {
         const held = deps.pin()
-        if (held !== null) deps.commitPin(held)
+        return held !== null ? deps.commitPin(held) : 'kept'
     }
     function topOf(host: HTMLElement, idx: number): number | null {
         const row = deps.row(idx)
@@ -144,6 +162,8 @@ export function createStepHold(deps: StepHoldDeps): StepHold {
             if (tookPin) deps.setPin(deps.windowPin())
             const extent = host.scrollHeight
             const before = topOf(host, idx)
+            // Read before the step: the step may replace the row, and focus then falls back to the body.
+            const focusFrom = deps.row(idx)?.contains(document.activeElement) ? idx : null
             if (!following) reserve(extent)
             await step()
             if (following && mine === generation) {
@@ -162,12 +182,21 @@ export function createStepHold(deps: StepHoldDeps): StepHold {
                 completed = true
                 return
             }
-            commit()
-            if (!following) correct(host, idx, before)
+            // `newest`: the window grew past the cap, so there is no held position; the view lands at the newest message instead.
+            // `released`: someone else wrote a page count meanwhile, so neither the correction nor the landing applies.
+            const release = commit()
+            if (release === 'newest') {
+                // The landing follows the removal of the suppression and the reserved range, so it sees the final layout.
+                // The hold stays in flight until the frame pass, which keeps load older and the re-align from starting.
+                unsuppress()
+                deps.landAtNewest(focusFrom)
+            } else if (release === 'kept' && !following) correct(host, idx, before)
             pendingFrame = deps.requestFrame(() => {
                 pendingFrame = null
                 if (mine !== generation) return
-                if (!following && deps.intentSeq() === intentAtStart) correct(host, idx, before)
+                const unmoved = deps.intentSeq() === intentAtStart
+                if (release === 'newest') { if (unmoved) deps.landAtNewest(null) }
+                else if (release === 'kept' && !following && unmoved) correct(host, idx, before)
                 unsuppress()
                 inFlight = false
                 deps.follower()?.sync()

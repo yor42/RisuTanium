@@ -2,7 +2,7 @@
 // The hold keeps the stepped row where the reader saw it: it measures the row's top before and after the step and moves scrollTop by
 // the difference. The layout is modelled with one number (the row's top) that the step and the frame change.
 import { describe, expect, test, vi } from 'vitest'
-import { createStepHold, firstMessageMounted, pagesForPin, windowEnd, windowPin, windowStart } from './stepHold'
+import { STEP_HOLD_MOUNT_CAP as CAP, createStepHold, firstMessageMounted, heldPin, pagesForPin, windowEnd, windowPin, windowStart, type PinRelease } from './stepHold'
 
 describe('the pinned window helpers', () => {
     test('windowStart is the fold target when folded, else the newest row', () => {
@@ -53,6 +53,25 @@ describe('the pinned window helpers', () => {
     })
 })
 
+describe('the pin is held only while the window has grown by no more than the cap', () => {
+    test.each([
+        { name: 'no growth keeps the pin', pin: 8, startAtPin: 11, start: 11, kept: true },
+        { name: 'growth of exactly the cap keeps the pin', pin: 8, startAtPin: 11, start: 11 + CAP, kept: true },
+        { name: 'growth of one more than the cap drops the pin', pin: 8, startAtPin: 11, start: 11 + CAP + 1, kept: false },
+        { name: 'a step of +300 drops the pin', pin: 8, startAtPin: 11, start: 311, kept: false },
+        { name: 'a shorter chain keeps the pin', pin: 8, startAtPin: 300, start: 11, kept: true },
+        { name: 'the first-message pin follows the same rule over the cap', pin: -1, startAtPin: 5, start: 5 + CAP + 1, kept: false },
+        { name: 'the first-message pin is kept at the cap', pin: -1, startAtPin: 5, start: 5 + CAP, kept: true },
+        { name: 'a folded window that does not move keeps the pin', pin: 50, startAtPin: 100, start: 100, kept: true },
+    ])('$name', ({ pin, startAtPin, start, kept }) => {
+        expect(heldPin(pin, startAtPin, start, CAP)).toBe(kept ? pin : null)
+    })
+    test('no pin stays no pin whatever the growth', () => {
+        expect(heldPin(null, 11, 11 + CAP + 1, CAP)).toBeNull()
+        expect(heldPin(null, 11, 11, CAP)).toBeNull()
+    })
+})
+
 function rectAt(top: number): DOMRect {
     return { x: 0, y: top, top, left: 0, right: 0, bottom: top, width: 0, height: 0, toJSON: () => ({}) }
 }
@@ -80,7 +99,7 @@ function rig(options: RigOptions = {}) {
     // The row's on-screen top is its content offset minus scrollTop, so a correction moves it.
     const layout = { content: 100, row: document.createElement('article') as HTMLElement | null }
     layout.row!.getBoundingClientRect = () => rectAt(layout.content - scrollTop)
-    const state = { pin: null as number | null, windowPin: 8, intents: 0, newest: options.newest ?? 11, following: options.following ?? false, active: options.active ?? true }
+    const state = { pin: null as number | null, release: 'kept' as PinRelease, windowPin: 8,intents: 0, newest: options.newest ?? 11, following: options.following ?? false, active: options.active ?? true }
     const frames = new Map<number, () => void>()
     const cancelled: number[] = []
     let frameId = 0
@@ -88,8 +107,11 @@ function rig(options: RigOptions = {}) {
     const follower = {
         isFollowing: vi.fn(() => state.following),
         release: vi.fn(() => { state.following = false; order.push('release') }),
-        sync: vi.fn(),
+        sync: vi.fn(() => { order.push('sync') }),
     }
+    // Each landing records the focus origin it was given and whether the hold's suppression and reserved range were already gone.
+    const landings: (number | null)[] = []
+    const landingStates: { anchor: string, reserve: string }[] = []
     const hold = createStepHold({
         host: () => host,
         active: () => state.active,
@@ -99,7 +121,12 @@ function rig(options: RigOptions = {}) {
         pin: () => state.pin,
         setPin: (value) => { state.pin = value },
         windowPin: () => state.windowPin,
-        commitPin: (held) => { committed.push(held); state.pin = null },
+        commitPin: (held) => { committed.push(held); state.pin = null; return state.release },
+        landAtNewest: (focusFrom) => {
+            order.push('land')
+            landings.push(focusFrom)
+            landingStates.push({ anchor: host.style.getPropertyValue('overflow-anchor'), reserve: content.style.getPropertyValue('padding-bottom') })
+        },
         row: () => layout.row,
         intentSeq: () => state.intents,
         tick: () => { order.push('tick'); return Promise.resolve() },
@@ -111,7 +138,7 @@ function rig(options: RigOptions = {}) {
     }
     function anchor(): string { return host.style.getPropertyValue('overflow-anchor') }
     function reserve(): string { return content.style.getPropertyValue('padding-bottom') }
-    return { host, hold, layout, state, writes, frames, cancelled, committed, follower, runFrames, anchor, limit, content, order, reserve }
+    return { host, hold, layout, state, writes, frames, cancelled, committed, follower, runFrames, anchor, limit, content, order, reserve, landings, landingStates }
 }
 
 function deferred() {
@@ -401,6 +428,83 @@ describe('a second step while the first is still settling', () => {
         second.finish()
         await later
         expect(r.committed).toEqual([8])
+    })
+})
+
+describe('a step whose window grew past the mount cap', () => {
+    test('the pin is gone after the tick: one landing at the newest row, no correction, and the hold lasts until the frame pass', async () => {
+        const r = rig()
+        r.state.release = 'newest'
+        await r.hold.run(9, () => { r.layout.content = 160 })
+        expect(r.landings).toEqual([null])
+        expect(r.order).toEqual(['tick', 'land'])
+        // The landing follows the removal of the suppression and of the reserved range, so it sees the final layout.
+        expect(r.landingStates).toEqual([{ anchor: '', reserve: '' }])
+        expect(r.writes).toEqual([])
+        expect(r.hold.isInFlight()).toBe(true)
+        r.runFrames()
+        expect(r.landings).toEqual([null, null])
+        expect(r.order).toEqual(['tick', 'land', 'land', 'sync'])
+        expect(r.hold.isInFlight()).toBe(false)
+        expect(r.writes).toEqual([])
+    })
+    test('the frame pass lands again only while the reader has not moved the view', async () => {
+        const r = rig()
+        r.state.release = 'newest'
+        await r.hold.run(9, () => {})
+        r.state.intents += 1
+        r.runFrames()
+        expect(r.landings).toEqual([null])
+        expect(r.hold.isInFlight()).toBe(false)
+        expect(r.follower.sync).toHaveBeenCalledTimes(1)
+    })
+    test('a page count written meanwhile (released) neither corrects nor lands, and the hold still ends', async () => {
+        const r = rig()
+        r.state.release = 'released'
+        await r.hold.run(9, () => { r.layout.content = 160 })
+        r.layout.content = 175
+        r.runFrames()
+        expect(r.writes).toEqual([])
+        expect(r.landings).toEqual([])
+        expect(r.anchor()).toBe('')
+        expect(r.reserve()).toBe('')
+        expect(r.hold.isInFlight()).toBe(false)
+        expect(r.follower.sync).toHaveBeenCalledTimes(1)
+    })
+    test('the landing is told where focus was: the stepped row when it held focus, else nothing', async () => {
+        const r = rig()
+        r.state.release = 'newest'
+        r.host.appendChild(r.layout.row!)
+        r.layout.row!.tabIndex = 0
+        r.layout.row!.focus()
+        await r.hold.run(9, () => {})
+        expect(r.landings[0]).toBe(9)
+        r.runFrames()
+        r.layout.row!.blur()
+        const none = rig()
+        none.state.release = 'newest'
+        await none.hold.run(9, () => {})
+        expect(none.landings[0]).toBeNull()
+    })
+    test('focus on a control inside the stepped row counts as focus in the row', async () => {
+        const r = rig()
+        r.state.release = 'newest'
+        const control = document.createElement('button')
+        r.layout.row!.appendChild(control)
+        r.host.appendChild(r.layout.row!)
+        control.focus()
+        await r.hold.run(9, () => {})
+        expect(r.landings[0]).toBe(9)
+        control.blur()
+    })
+    test('a rejected step lands nowhere and is cleaned up', async () => {
+        const r = rig()
+        r.state.release = 'newest'
+        await expect(r.hold.run(9, () => { throw new Error('step failed') })).rejects.toThrow('step failed')
+        expect(r.landings).toEqual([])
+        expect(r.anchor()).toBe('')
+        expect(r.hold.isInFlight()).toBe(false)
+        expect(r.frames.size).toBe(0)
     })
 })
 
