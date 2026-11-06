@@ -5,7 +5,7 @@
  * before, unchanged. Every export prefers the channel, so a caller never touches both.
  *
  * Messages to the host: `{bridge, method, args}` plus an `id` on a take. Messages from the
- * host: `{event:'gestureInset', value}` and `{id, result, through}` for a take. The host
+ * host: `{event:'gestureInset', value}`, `{event:'ime', visible, height}` and `{id, result, through}` for a take. The host
  * ignores a message it does not understand, so a bad value never throws here either.
  */
 import type { KeepAliveHost } from './keepAliveService'
@@ -31,6 +31,18 @@ declare global {
     }
 }
 
+/** The keyboard as the host reports it: `height` is the space it takes from the page, in CSS px. */
+export interface ImeState {
+    visible: boolean
+    height: number
+}
+
+/** The host's keyboard state: `read` is null until the host has reported one, and `subscribe` returns its unsubscribe. */
+export interface HostIme {
+    read(): ImeState | null
+    subscribe(listener: (state: ImeState) => void): () => void
+}
+
 /** One take of the host's opened-files queue. */
 export interface OpenedFilesTake {
     raw: unknown
@@ -49,12 +61,22 @@ interface PendingTake {
 let bound: HostChannel | null = null
 let detachBound: (() => void) | null = null
 let cachedInset = 0
+let cachedIme: ImeState | null = null
+const imeListeners = new Set<(state: ImeState) => void>()
 let nextTakeId = 1
 let pending: PendingTake[] = []
 
 function send(channel: HostChannel, message: { bridge: string; method: string; args: unknown[]; id?: number }): void {
     // Called as a method: the host object needs its receiver.
     channel.postMessage(JSON.stringify(message))
+}
+
+/** A keyboard state from the host, or null when either field is not what the host sends. */
+function readImeState(visible: unknown, height: unknown): ImeState | null {
+    if (typeof visible !== 'boolean' || typeof height !== 'number' || !Number.isFinite(height) || height < 0) {
+        return null
+    }
+    return { visible, height }
 }
 
 function onHostMessage(event: HostMessageEvent): void {
@@ -75,6 +97,16 @@ function onHostMessage(event: HostMessageEvent): void {
         const value = reply.value
         if (typeof value === 'number' && Number.isFinite(value)) {
             cachedInset = value
+        }
+        return
+    }
+    if (reply.event === 'ime') {
+        const state = readImeState(reply.visible, reply.height)
+        if (state) {
+            cachedIme = state
+            for (const listener of [...imeListeners]) {
+                listener(state)
+            }
         }
         return
     }
@@ -116,6 +148,7 @@ function release(): void {
     bound = null
     detachBound = null
     cachedInset = 0
+    cachedIme = null
     for (const entry of stale) {
         entry.resolve(null)
     }
@@ -138,10 +171,16 @@ function bind(): HostChannel | null {
             bound = channel
             detachBound = attach(channel)
             cachedInset = 0
+            cachedIme = null
             try {
                 send(channel, { bridge: 'gestureInset', method: 'subscribe', args: [] })
             } catch {
                 // The inset stays 0 until the host pushes one.
+            }
+            try {
+                send(channel, { bridge: 'ime', method: 'subscribe', args: [] })
+            } catch {
+                // The keyboard state stays unknown until the host pushes one.
             }
         }
         return channel
@@ -198,6 +237,62 @@ export function gestureInsetLeft(): unknown {
     }
     // Called as a method: the host bridge object needs its receiver.
     return legacy.left()
+}
+
+/** The separate object's answer as a state, or null when it is absent or answers with something else. */
+function readLegacyIme(): ImeState | null {
+    const legacy = window.__risuTaniumIme
+    if (!legacy || typeof legacy.visible !== 'function' || typeof legacy.height !== 'function') {
+        return null
+    }
+    try {
+        // Called as methods: the host bridge object needs its receiver.
+        return readImeState(legacy.visible(), legacy.height())
+    } catch {
+        return null
+    }
+}
+
+/**
+ * The host's keyboard state, or null where the host reports none (the caller then falls back to
+ * the browser's viewport). Over the channel `read` is null until the host's first push, which
+ * is sent on subscribe. On the separate object `read` asks it each time, and `subscribe` re-reads
+ * when the visual viewport resizes: the padding that makes room for the keyboard always resizes
+ * the page.
+ */
+export function hostIme(): HostIme | null {
+    const channel = bind()
+    if (channel) {
+        return {
+            read: () => cachedIme,
+            subscribe: (listener) => {
+                imeListeners.add(listener)
+                return () => {
+                    imeListeners.delete(listener)
+                }
+            },
+        }
+    }
+    const legacy = window.__risuTaniumIme
+    if (!legacy || typeof legacy.visible !== 'function' || typeof legacy.height !== 'function') {
+        return null
+    }
+    return {
+        read: readLegacyIme,
+        subscribe: (listener) => {
+            const target: EventTarget = window.visualViewport ?? window
+            const onResize = (): void => {
+                const state = readLegacyIme()
+                if (state) {
+                    listener(state)
+                }
+            }
+            target.addEventListener('resize', onResize)
+            return () => {
+                target.removeEventListener('resize', onResize)
+            }
+        },
+    }
 }
 
 /** True when the host offers an opened-files queue, through the channel or the separate object. */

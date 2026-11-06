@@ -37,6 +37,7 @@ private fun normalized(origin: String): String = if (origin.endsWith("/")) origi
 // caller without an effect, as a bad value never throws.
 sealed class BridgeCommand {
   object SubscribeGestureInset : BridgeCommand()
+  object SubscribeIme : BridgeCommand()
   data class SetBackground(val red: Int, val green: Int, val blue: Int) : BridgeCommand()
   data class KeepAliveStart(val title: String, val stopLabel: String) : BridgeCommand()
   data class KeepAliveUpdate(val title: String, val stopLabel: String) : BridgeCommand()
@@ -71,6 +72,7 @@ private fun intArg(value: Any?): Int? {
 
 fun toCommand(bridge: String, method: String, args: List<Any?>, id: Any?): BridgeCommand? = when (bridge) {
   "gestureInset" -> if (method == "subscribe" && args.isEmpty()) BridgeCommand.SubscribeGestureInset else null
+  "ime" -> if (method == "subscribe" && args.isEmpty()) BridgeCommand.SubscribeIme else null
   "systemBars" -> systemBarsCommand(method, args)
   "keepAlive" -> keepAliveCommand(method, args)
   "openedFiles" -> openedFilesCommand(method, args, id)
@@ -124,6 +126,17 @@ private fun openedFilesCommand(method: String, args: List<Any?>, id: Any?): Brid
 fun encodeInsetEvent(value: Double): String {
   val finite = if (value.isFinite()) value else 0.0
   return "{\"event\":\"gestureInset\",\"value\":$finite}"
+}
+
+// The space the keyboard takes from the page: only what lies above the bars, which is what the
+// bottom padding gives it. A floating keyboard reports no bottom inset and so reads as closed.
+fun imeSpacePx(imeBottom: Int, barsBottom: Int): Int = maxOf(0, imeBottom - barsBottom)
+
+// The keyboard state pushed to the page. A non-finite or negative height is sent as 0.0, and a
+// height of 0 is never visible.
+fun encodeImeEvent(visible: Boolean, heightDp: Double): String {
+  val finite = if (heightDp.isFinite() && heightDp > 0.0) heightDp else 0.0
+  return "{\"event\":\"ime\",\"visible\":${visible && finite > 0.0},\"height\":$finite}"
 }
 
 // takeJson is the JSON array the take produced, embedded as it is. through is the highest batch
