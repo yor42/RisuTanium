@@ -54,6 +54,7 @@
     import { classifyEdge, EDGE_ZONE_DP } from '../../ts/chatShell/edgeZones'
     import { tickHaptic, readHaptics } from '../../ts/chatShell/haptics'
     import { createMessageKeys } from '../../ts/chatShell/messageKeys'
+    import { asShellFocus } from '../../ts/chatShell/shellFocus'
     import { ACTION_IDS, type ActionId } from '../../ts/chatShell/actionSlots'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
     import { gestureInsetLeft } from '../../ts/android/hostBridge'
@@ -168,7 +169,7 @@
         focusHandover = null
         const active = document.activeElement
         const previousRow = active?.closest<HTMLElement>('article[data-part="chat-message"]')
-        if (!active || active === document.body || (previousRow !== article && previousRow?.dataset.chatIndex === String(idx))) article.focus({ preventScroll: true })
+        if (!active || active === document.body || (previousRow !== article && previousRow?.dataset.chatIndex === String(idx))) asShellFocus(() => article.focus({ preventScroll: true }))
     })
     // A row that replaced a stepped sibling at the same position reserves the sibling's height until its own body has rendered.
     onMount(() => {
@@ -343,7 +344,7 @@
         await removeMessage(mode)
         await tick()
         const active = document.activeElement
-        if (mine && !mine.isConnected && neighbour?.isConnected && (!active || active === document.body || !document.contains(active))) neighbour.focus()
+        if (mine && !mine.isConnected && neighbour?.isConnected && (!active || active === document.body || !document.contains(active))) asShellFocus(() => neighbour.focus())
     }
     function generateAfterUser(): void {
         const now = performance.now()

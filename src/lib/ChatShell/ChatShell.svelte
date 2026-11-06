@@ -13,7 +13,8 @@
     import type ActionSheetComponent from './ActionSheet.svelte'
     import type CustomizeButtonsSheetComponent from './CustomizeButtonsSheet.svelte'
     import type { ActionRequest, CustomizeRequest } from './ShellMessage.svelte'
-    import { createProgrammaticScrollMarker, shouldAnchorBottom } from '../../ts/chatShell/bottomAnchor'
+    import { shouldAnchorBottom } from '../../ts/chatShell/bottomAnchor'
+    import { bindReaderIntent, canHostMove, createReaderIntent } from '../../ts/chatShell/readerIntent'
     import { watchSoftKeyboard } from '../../ts/chatShell/softKeyboard'
     import { treeView } from '../../ts/process/chatTreeView'
 
@@ -60,8 +61,8 @@
     let header = $state<HTMLElement>()
     let list = $state<HTMLElement>()
     let composer = $state<HTMLElement>()
-    let lastScrollTop = 0
-    const scrollMarker = createProgrammaticScrollMarker()
+    // The one source of reader intent for the transcript: the header rule and the follower both read it, never scrollTop.
+    const readerIntent = createReaderIntent({ canMove: (direction) => !!list && canHostMove(list, direction) })
     let olderDistance = 0
     let previousBusy = false
     let seenCloseEpoch = 0
@@ -153,21 +154,29 @@
         return () => { live = false; unsubscribe(); window.removeEventListener('resize', updateRootState); viewport?.removeEventListener('resize', anchor) }
     })
 
-    function scroll(event: Event): void {
+    function scroll(): void {
         messageList?.onScroll?.()
-        const target = event.currentTarget as HTMLElement
-        const movement = lastScrollTop - target.scrollTop
-        lastScrollTop = target.scrollTop
-        // Only the reader's scrolling drives the header; the list's own writes never show or hide it.
-        if (scrollMarker.consume(target.scrollTop)) return
-        if (movement > 0) {
-            olderDistance += movement
-            if (olderDistance >= 24 && !hardwareKeyboardSeen) headerHidden = true
-        } else if (movement < 0) {
-            olderDistance = 0
-            headerHidden = false
-        }
     }
+
+    // Only the reader's input drives the header (C-3): 24 px of travel toward older hides it, any travel toward newer shows it.
+    // Scroll keys do not drive it, and scroll events never do, so the browser's own scrollTop moves leave it alone.
+    onMount(() => {
+        const stop = readerIntent.subscribe((event) => {
+            if (event.source === 'key') return
+            if (event.direction === 'older') {
+                olderDistance += event.distance
+                if (olderDistance >= 24 && !hardwareKeyboardSeen) headerHidden = true
+            } else {
+                olderDistance = 0
+                headerHidden = false
+            }
+        })
+        return stop
+    })
+    $effect(() => {
+        if (!list) return
+        return bindReaderIntent(list, readerIntent)
+    })
 
     function openPersona(element: HTMLElement): void {
         if (surfaceHidden) return
@@ -219,7 +228,7 @@
     </div>
     <main bind:this={list} data-part="chat-transcript" aria-label={language.chatShellMessages} onscroll={scroll}>
         {#if ShellNotices && character?.type === 'character'}<ShellNotices />{/if}
-        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom {scrollMarker} {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
+        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom {readerIntent} {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
     </main>
     {#if ShellFloatingButtons}<ShellFloatingButtons visible={unread && !atBottom} onclick={() => messageList?.scrollToLatestMessage?.()} />{/if}
     <div bind:this={composer} data-part="chat-composer-host">

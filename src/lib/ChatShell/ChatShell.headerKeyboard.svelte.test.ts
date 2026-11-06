@@ -80,6 +80,10 @@ async function mountShell(width = 400): Promise<void> {
         flushSync()
         if (!target.querySelector('header') || !captured.hardware) throw new Error('waiting for the header and composer')
     })
+    // Room above and below the reader, so a wheel in either direction can move the transcript.
+    Object.defineProperty(transcript(), 'scrollHeight', { value: 3000, configurable: true })
+    Object.defineProperty(transcript(), 'clientHeight', { value: 800, configurable: true })
+    scrollTop = 500
 }
 
 const header = () => target.querySelector('header')!
@@ -102,9 +106,9 @@ async function closeKeyboard(): Promise<void> {
 }
 
 let scrollTop = 0
-function scrollTo(top: number): void {
-    scrollTop = top
-    transcript().dispatchEvent(new Event('scroll'))
+// The reader's own input: a negative deltaY pulls toward older messages, a positive one toward newer.
+function wheel(deltaY: number): void {
+    transcript().dispatchEvent(new WheelEvent('wheel', { deltaY, bubbles: true }))
     flushSync()
 }
 
@@ -152,10 +156,9 @@ describe('the header hides while the soft keyboard is open', () => {
         expect(hidden()).toBe(false)
     })
 
-    test('closing the keyboard keeps the hidden state the scroll rule asked for before typing', async () => {
+    test('closing the keyboard keeps the hidden state the reader\'s input asked for before typing', async () => {
         await mountShell()
-        scrollTo(500)
-        scrollTo(300)
+        wheel(-40)
         expect(hidden()).toBe(true)
         await openKeyboard()
         expect(hidden()).toBe(true)
@@ -163,12 +166,11 @@ describe('the header hides while the soft keyboard is open', () => {
         expect(hidden()).toBe(true)
     })
 
-    test('while the keyboard is open a scroll toward newer messages does not show the header, and closing then returns it', async () => {
+    test('while the keyboard is open a wheel toward newer messages does not show the header, and closing then returns it', async () => {
         await mountShell()
-        scrollTo(500)
-        scrollTo(300)
+        wheel(-40)
         await openKeyboard()
-        scrollTo(600)
+        wheel(40)
         expect(hidden()).toBe(true)
         await closeKeyboard()
         expect(hidden()).toBe(false)
@@ -270,11 +272,10 @@ describe('a reader at the newest message keeps the bottom when the header hides 
         expect(withHeaderHide).toBe(anchor.mock.calls.length + 1)
     })
 
-    test('a scroll-rule hide while resting at the newest message requests the bottom anchor once', async () => {
+    test('a reader-input hide while resting at the newest message requests the bottom anchor once', async () => {
         await mountShell()
-        scrollTo(500)
         anchor.mockClear()
-        scrollTo(300)
+        wheel(-40)
         expect(hidden()).toBe(true)
         runFrames()
         expect(anchor).toHaveBeenCalledTimes(1)

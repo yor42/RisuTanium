@@ -10,7 +10,8 @@
     import { getAdditionalChatLoadPages, getInitialChatLoadPages, pagesOnReturn } from '../../ts/chatLoadPages'
     import { chatWindowKey, createChatWindowPolicy } from '../../ts/chatWindowPolicy'
     import { hasMessageEditorDrafts, onDraftsChanged } from '../../ts/localDrafts'
-    import { createBottomFollower, isScrolledToBottom, type BottomFollower, type ProgrammaticScrollMarker } from '../../ts/chatShell/bottomAnchor'
+    import { createBottomFollower, isScrolledToBottom, type BottomFollower } from '../../ts/chatShell/bottomAnchor'
+    import { bindReaderIntent, canHostMove, createReaderIntent, type ReaderIntentSource } from '../../ts/chatShell/readerIntent'
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { language } from '../../lang'
@@ -21,7 +22,8 @@
         host: HTMLElement | undefined
         unread?: boolean
         atBottom?: boolean
-        scrollMarker?: ProgrammaticScrollMarker
+        // The shell's reader-intent source; a list mounted on its own binds one to its host.
+        readerIntent?: ReaderIntentSource
         onStep?: (index: number, expectedId: string | undefined, direction: 'back' | 'forward') => void
         onBranch?: (index: number, expectedId: string | undefined) => void
         getTreeView?: () => TreeView | null
@@ -32,7 +34,7 @@
         onCloseActions?: (request: ActionRequest) => void
         onOpenCustomize?: (request: CustomizeRequest) => void
     }
-    let { character, host, unread = $bindable(false), atBottom = $bindable(true), scrollMarker, onStep, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize }: Props = $props()
+    let { character, host, unread = $bindable(false), atBottom = $bindable(true), readerIntent, onStep, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize }: Props = $props()
     // Rows with a modal layer open (the partial-edit overlays are fixed-position inside the row) leave content-visibility so the layer is not clipped to the row.
     let overlayRows = $state<Record<string, true>>({})
     function setOverlay(key: string, open: boolean): void {
@@ -54,10 +56,6 @@
     let windowResetToken = $state(0)
     let handledResetToken = 0
     let rows = $state<HTMLDivElement>()
-    // Tells the shell that the scroll event following this write is the list's own, not the reader's.
-    function wrote(): void {
-        if (host) scrollMarker?.mark(host.scrollTop)
-    }
     let rebuildEpoch = $state(chatSurface.rebuildEpoch)
     let guiPointer = $state(0)
     let rowPointers = $state<Record<number, number>>({})
@@ -131,7 +129,7 @@
             rebuildEpoch = chatSurface.rebuildEpoch
             guiPointer = chatSurface.heldGui
             rowPointers = chatSurface.heldChat
-            if (hideOwner === chatWindowKey(character.chaId, chat) && hideTop !== null && host) { host.scrollTop = hideTop; wrote() }
+            if (hideOwner === chatWindowKey(character.chaId, chat) && hideTop !== null && host) { host.scrollTop = hideTop; if (!isScrolledToBottom(host)) follower?.release() }
             hideTop = null
         } else if (installed) {
             guiPointer = chatSurface.heldGui
@@ -150,8 +148,12 @@
         loadPages = Math.max(loadPages, messages.length - index + 5)
         void tick().then(() => {
             if (installed && chatSurface.hidden) { ScrollToMessageStore.value = index; return }
-            rows?.querySelector(`[data-chat-index="${Math.max(0, index - 3)}"]`)?.scrollIntoView({ behavior: 'instant', block: 'start' })
-            wrote()
+            const target = rows?.querySelector(`[data-chat-index="${Math.max(0, index - 3)}"]`)
+            if (!target) return
+            target.scrollIntoView({ behavior: 'instant', block: 'start' })
+            // The app moved the reader away from the newest message on purpose; arriving at the bottom re-enters following.
+            follower?.release()
+            follower?.sync()
         })
     })
 
@@ -180,9 +182,17 @@
     let follower: BottomFollower | undefined
     $effect(() => {
         if (!host || !rows) return
-        const made = createBottomFollower(host, rows, () => DBState.db.autoScrollToNewMessage !== false && !(installed && chatSurface.hidden), wrote)
+        const current = host
+        let unbind = () => {}
+        let source = readerIntent
+        if (!source) {
+            const own = createReaderIntent({ canMove: (direction) => canHostMove(current, direction) })
+            unbind = bindReaderIntent(current, own)
+            source = own
+        }
+        const made = createBottomFollower(host, rows, () => DBState.db.autoScrollToNewMessage !== false && !(installed && chatSurface.hidden), source, () => messages.length - 1)
         follower = made
-        return () => { made.dispose(); if (follower === made) follower = undefined }
+        return () => { made.dispose(); unbind(); if (follower === made) follower = undefined }
     })
 
     export function scrollToLatestMessage() {
@@ -190,7 +200,6 @@
         unread = false
         atBottom = true
         rows?.firstElementChild?.scrollIntoView({ behavior: 'instant', block: 'start' })
-        wrote()
         follower?.sync()
         follower?.follow()
     }
@@ -198,7 +207,6 @@
     export function anchorNewestBottom() {
         if (installed && chatSurface.hidden) return
         rows?.firstElementChild?.scrollIntoView({ behavior: 'instant', block: 'end' })
-        wrote()
         follower?.sync()
         follower?.follow()
     }
@@ -217,7 +225,6 @@
         if (!host || (installed && chatSurface.hidden)) return null
         if (!isScrolledToBottom(host)) {
             host.scrollTop = Math.max(0, host.scrollHeight - host.clientHeight)
-            wrote()
         }
         unread = false
         atBottom = true
@@ -246,7 +253,7 @@
         loadPages += getAdditionalChatLoadPages(DBState.db)
         const restore = () => {
             const target = Math.max(0, current.scrollHeight - (pendingBottomDistance ?? 0))
-            if (current.scrollTop !== target) { current.scrollTop = target; wrote() }
+            if (current.scrollTop !== target) current.scrollTop = target
             follower?.sync()
             return target
         }

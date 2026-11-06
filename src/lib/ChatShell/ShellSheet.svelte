@@ -3,6 +3,7 @@
     import { language } from 'src/lang'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
     import { isTopmostShell, makeInert, registerShell, returnFocus, trapTab, watchFocus } from '../Nexus/pattern/patternFocus'
+    import { asShellFocus } from '../../ts/chatShell/shellFocus'
 
     interface Props {
         open: boolean
@@ -113,7 +114,7 @@
             unregisterBack()
             unregisterShell()
             restoreInert()
-            const restored = returnFocus(savedOpener)
+            const restored = asShellFocus(() => returnFocus(savedOpener))
             document.dispatchEvent(new CustomEvent('chat:sheetclosed', { detail: { kind, opener: savedOpener, restored } }))
         }
     })

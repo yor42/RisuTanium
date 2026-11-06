@@ -31,7 +31,7 @@ vi.mock('../../lang', () => ({ language: { loadMore: 'Load more', messageRenderF
 vi.mock('./ShellMessage.svelte', () => ({ default: () => ({}) }))
 
 import ShellMessageList from './ShellMessageList.svelte'
-import { DBState } from '../../ts/stores.svelte'
+import { DBState, ScrollToMessageStore } from '../../ts/stores.svelte'
 import { chatSurface as surface } from '../ChatScreens/chatSurface.svelte'
 
 let app: ReturnType<typeof ShellMessageList> | undefined
@@ -62,6 +62,10 @@ async function show() {
     flushSync()
     await tick()
 }
+// The reader's hands ask for older content; scrollTop moves alone prove nothing.
+function readerPullsOlder(): void {
+    host.dispatchEvent(new WheelEvent('wheel', { deltaY: -40, bubbles: true }))
+}
 beforeEach(() => { vi.stubGlobal('ResizeObserver', FakeObserver); writes.length = 0; top = 200; height = 300; surface.hidden = false })
 afterEach(async () => {
     if (app) await unmount(app)
@@ -81,6 +85,7 @@ describe('message list keeps a bottom reader at the bottom', () => {
     })
     test('a reader who scrolled up is not moved by the end-of-stream height jump', async () => {
         await show()
+        readerPullsOlder()
         top = 120
         app!.onScroll()
         height = 354
@@ -92,6 +97,7 @@ describe('message list keeps a bottom reader at the bottom', () => {
         app!.onScroll()
         height = 354
         fire()
+        readerPullsOlder()
         top = 90
         app!.onScroll()
         height = 420
@@ -116,6 +122,7 @@ describe('message list keeps a bottom reader at the bottom', () => {
         Element.prototype.scrollIntoView = function () { top = 200 }
         try {
             await show()
+            readerPullsOlder()
             top = 100
             app!.onScroll()
             expect(writes).toEqual([])
@@ -132,6 +139,7 @@ describe('message list keeps a bottom reader at the bottom', () => {
     })
     test('without the jump the same start is not followed', async () => {
         await show()
+        readerPullsOlder()
         top = 100
         app!.onScroll()
         height = 354
@@ -143,12 +151,44 @@ describe('message list keeps a bottom reader at the bottom', () => {
         Element.prototype.scrollIntoView = function () { top = 200 }
         try {
             await show()
+            readerPullsOlder()
             top = 100
             app!.onScroll()
             DBState.db.autoScrollToNewMessage = false
             height = 354
             app!.scrollToLatestMessage()
             DBState.db.autoScrollToNewMessage = true
+            fire()
+            expect(writes).toEqual([])
+        } finally {
+            Element.prototype.scrollIntoView = original
+        }
+    })
+    test('a clamp that lowers scrollTop with no gesture behind it keeps following', async () => {
+        await show()
+        host.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+        const tap = new Event('touchstart', { bubbles: true })
+        Object.defineProperty(tap, 'touches', { value: [{ clientX: 50, clientY: 100 }] })
+        host.dispatchEvent(tap)
+        top = 150
+        app!.onScroll()
+        height = 354
+        fire()
+        expect(writes).toEqual([254])
+    })
+    test('T-A5 a ScrollToMessage jump away from the bottom is not pulled back by later growth', async () => {
+        const original = Element.prototype.scrollIntoView
+        Element.prototype.scrollIntoView = function () { top = 60 }
+        try {
+            await show()
+            host.querySelector('[data-part="chat-message-list"]')!.appendChild(Object.assign(document.createElement('div'), { id: 'jump-target' })).setAttribute('data-chat-index', '0')
+            ScrollToMessageStore.value = 3
+            flushSync()
+            await tick()
+            await tick()
+            expect(top).toBe(60)
+            app!.onScroll()
+            height = 354
             fire()
             expect(writes).toEqual([])
         } finally {
