@@ -12,6 +12,7 @@
     import { hasMessageEditorDrafts, onDraftsChanged } from '../../ts/localDrafts'
     import { createBottomFollower, isScrolledToBottom, type BottomFollower } from '../../ts/chatShell/bottomAnchor'
     import { bindReaderIntent, canHostMove, createReaderIntent, type ReaderIntentSource } from '../../ts/chatShell/readerIntent'
+    import { createStepHold, firstMessageMounted, pagesForPin, windowEnd, windowPin, windowStart } from '../../ts/chatShell/stepHold'
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { language } from '../../lang'
@@ -24,7 +25,6 @@
         atBottom?: boolean
         // The shell's reader-intent source; a list mounted on its own binds one to its host.
         readerIntent?: ReaderIntentSource
-        onStep?: (index: number, expectedId: string | undefined, direction: 'back' | 'forward') => void
         onBranch?: (index: number, expectedId: string | undefined) => void
         getTreeView?: () => TreeView | null
         getBusy?: () => boolean
@@ -34,7 +34,7 @@
         onCloseActions?: (request: ActionRequest) => void
         onOpenCustomize?: (request: CustomizeRequest) => void
     }
-    let { character, host, unread = $bindable(false), atBottom = $bindable(true), readerIntent, onStep, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize }: Props = $props()
+    let { character, host, unread = $bindable(false), atBottom = $bindable(true), readerIntent, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize }: Props = $props()
     // Rows with a modal layer open (the partial-edit overlays are fixed-position inside the row) leave content-visibility so the layer is not clipped to the row.
     let overlayRows = $state<Record<string, true>>({})
     function setOverlay(key: string, open: boolean): void {
@@ -75,11 +75,41 @@
         hideTop = host?.scrollTop ?? null
         hideOwner = chatWindowKey(character.chaId, chat)
     }) : () => {}
-    onDestroy(() => { stopDrafts(); stopHiding() })
+    // While an alternative step runs, the oldest mounted position is frozen at this value (-1 is the first message); null means the window follows loadPages.
+    let pin = $state<number | null>(null)
+    // The page count when the pin was taken; a different count at commit time was written by someone else while the window was pinned.
+    let pinnedLoadPages = 0
+    let intentSeq = 0
+    const hold = createStepHold({
+        host: () => host,
+        active: () => !(installed && chatSurface.hidden),
+        follower: () => follower,
+        newestIndex: () => messages.length - 1,
+        pin: () => pin,
+        setPin: (value) => {
+            if (value !== null && pin === null) pinnedLoadPages = loadPages
+            pin = value
+        },
+        windowPin: () => windowPin(windowStart(chatFoldedStateMessageIndex.index, messages.length), loadPages, messages.length),
+        // Releasing the pin keeps the window's oldest position: the same rows stay mounted, so nothing moves under the reader.
+        // A page count written meanwhile (a jump to an older message, load more, a full window for a screenshot) asked for more rows, so the larger count wins.
+        // A longer chain keeps every row from the pin to its newest message mounted, and that count stays after the hold.
+        commitPin: (held) => {
+            const kept = pagesForPin(windowStart(chatFoldedStateMessageIndex.index, messages.length), messages.length, loadPages, held)
+            loadPages = loadPages === pinnedLoadPages ? kept : Math.max(kept, loadPages)
+            pin = null
+        },
+        row: (idx) => rows?.querySelector<HTMLElement>(`article[data-chat-index="${idx}"]`) ?? null,
+        intentSeq: () => intentSeq,
+        tick,
+        requestFrame: (callback) => typeof requestAnimationFrame === 'function' ? requestAnimationFrame(callback) : window.setTimeout(callback, 16),
+        cancelFrame: (id) => { if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id); else window.clearTimeout(id) },
+    })
+    onDestroy(() => { stopDrafts(); stopHiding(); hold.cancel() })
 
     let visibleRows = $derived.by(() => {
-        const start = chatFoldedStateMessageIndex.index >= 0 ? chatFoldedStateMessageIndex.index : messages.length - 1
-        const end = Math.max(0, start - loadPages)
+        const start = windowStart(chatFoldedStateMessageIndex.index, messages.length)
+        const end = windowEnd(start, loadPages, pin)
         const result: { idx: number, message: Message, key: string }[] = []
         for (let i = start; i >= end; i--) {
             const message = messages[i]
@@ -104,9 +134,13 @@
         renderRows = visibleRows
     })
 
+    let heldKey: string | undefined
     $effect.pre(() => {
         const key = chatWindowKey(character.chaId, chat)
         untrack(() => {
+            // A hold pending across a chat change would commit the old chat's pin against the new chat's rows, so it is dropped before the new window renders.
+            if (heldKey !== undefined && key !== heldKey) hold.cancel()
+            heldKey = key
             const next = windowPolicy.onKey(key, loadPages)
             if (next.next !== loadPages) loadPages = next.next
             if (next.lowered) windowResetToken += 1
@@ -169,7 +203,7 @@
         const room = chat?.id ?? null
         const length = messages.length
         const same = room === previousRoom
-        if (!same) { unread = false; atBottom = true; restAtNewest(room) }
+        if (!same) { hold.cancel(); unread = false; atBottom = true; restAtNewest(room) }
         if (same && length > previousLength && messages[length - 1]?.role === 'char' && DBState.db.autoScrollToNewMessage) {
             if (atBottom || DBState.db.alwaysScrollToNewMessage) void tick().then(scrollToLatestMessage)
             else unread = true
@@ -190,9 +224,10 @@
             unbind = bindReaderIntent(current, own)
             source = own
         }
+        const stopIntentCount = source.subscribe(() => { intentSeq += 1 })
         const made = createBottomFollower(host, rows, () => DBState.db.autoScrollToNewMessage !== false && !(installed && chatSurface.hidden), source, () => messages.length - 1)
         follower = made
-        return () => { made.dispose(); unbind(); if (follower === made) follower = undefined }
+        return () => { made.dispose(); stopIntentCount(); unbind(); if (follower === made) follower = undefined }
     })
 
     export function scrollToLatestMessage() {
@@ -247,13 +282,14 @@
     // Older rows mount above the reader: the distance from the bottom is restored explicitly, not left to CSS scroll anchoring.
     let pendingBottomDistance: number | null = null
     function loadOlder(): void {
-        if (!host || pendingBottomDistance !== null) return
+        if (!host || pendingBottomDistance !== null || hold.isInFlight()) return
         const current = host
         pendingBottomDistance = current.scrollHeight - current.scrollTop
         loadPages += getAdditionalChatLoadPages(DBState.db)
         const restore = () => {
             const target = Math.max(0, current.scrollHeight - (pendingBottomDistance ?? 0))
-            if (current.scrollTop !== target) current.scrollTop = target
+            // A step that started after the rows mounted owns the position: a restore from the old bottom distance would undo its correction.
+            if (!hold.isInFlight() && current.scrollTop !== target) current.scrollTop = target
             follower?.sync()
             return target
         }
@@ -294,17 +330,17 @@
                         streaming={chat?.isStreaming === true && row.idx === messages.length - 1 && row.message.role === 'char' && isActiveStreamReply(row.message.chatId)}
                         interrupted={row.message.interrupted === true && !isActiveStreamReply(row.message.chatId)}
                         deferAutoTranslate={chat?.isStreaming === true && row.idx === messages.length - 1 && isActiveStreamReply(row.message.chatId) && DBState.db.autoTranslate === true}
-                        guiRevision={guiPointer + (rowPointers[row.idx] ?? 0)} {onStep} {onBranch} {getTreeView} {getBusy} {onReroll} {unReroll} {onOpenActions} {onCloseActions} {onOpenCustomize} onOverlay={(open) => setOverlay(row.key, open)} />
+                        guiRevision={guiPointer + (rowPointers[row.idx] ?? 0)} stepRow={hold.run} {onBranch} {getTreeView} {getBusy} {onReroll} {unReroll} {onOpenActions} {onCloseActions} {onOpenCustomize} onOverlay={(open) => setOverlay(row.key, open)} />
                     {#snippet failed(_error, reset)}
                         <div data-part="chat-message-failed" role="note">{row.message.data}<p>{language.messageRenderFailed}</p><button onclick={reset}>{language.messageRenderRetry}</button></div>
                     {/snippet}
                 </svelte:boundary>
             </div>
         {/each}
-        {#if chat && messages.length <= loadPages && character.type === 'character'}
+        {#if chat && firstMessageMounted(messages.length, loadPages, pin) && character.type === 'character'}
             <div data-part="chat-first-message">
                 <svelte:boundary onerror={(error) => recordCaughtError('chat.message', error)}>
-                    <ShellMessage idx={-1} message={{ role: 'char', data: firstMessageOf(character, chat) }} name={character.name} img={character.image} character={createSimpleCharacter(character)} firstMessage getTreeView={firstMessageTreeView} onReroll={() => stepFirstMessage(1)} unReroll={() => stepFirstMessage(-1)} {onOpenActions} {onCloseActions} {onOpenCustomize} />
+                    <ShellMessage idx={-1} message={{ role: 'char', data: firstMessageOf(character, chat) }} name={character.name} img={character.image} character={createSimpleCharacter(character)} firstMessage getTreeView={firstMessageTreeView} onReroll={() => stepFirstMessage(1)} unReroll={() => stepFirstMessage(-1)} stepRow={hold.run} {onOpenActions} {onCloseActions} {onOpenCustomize} />
                     {#snippet failed(_error, reset)}<div role="note">{language.messageRenderFailed}<button onclick={reset}>{language.messageRenderRetry}</button></div>{/snippet}
                 </svelte:boundary>
             </div>

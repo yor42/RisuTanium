@@ -19,7 +19,8 @@
     const wheelByList = new WeakMap<Element, WheelSteps>()
     // The row that held focus when it stepped hands the focus to its successor at the same position.
     const FOCUS_HANDOVER_MS = 2000
-    let focusHandover: { idx: number; until: number } | null = null
+    // `control` names the pager or action control that held focus, so the successor focuses the same control when it can.
+    let focusHandover: { idx: number; until: number; control: string | null } | null = null
     // The successor of a stepped row has no rendered body yet; it keeps the predecessor's height until the body arrives or this many milliseconds pass, so the transcript never collapses under the reader.
     const HEIGHT_FLOOR_MS = 1500
     let heightHandover: { idx: number; chatId: string | undefined; height: number; until: number } | null = null
@@ -27,6 +28,15 @@
     function bodyRendered(body: HTMLElement): boolean {
         if (body.querySelector('[role="status"], [style*="animation: spin"]') !== null) return false
         return (body.textContent ?? '').trim() !== '' || body.querySelector('*') !== null
+    }
+    // The control inside the row that has focus, as a selector the successor row can resolve; null when the row itself or nothing in it has focus.
+    function focusedControl(row: HTMLElement): string | null {
+        const active = document.activeElement
+        if (!(active instanceof HTMLElement) || active === row || !row.contains(active)) return null
+        const { step, action } = active.dataset
+        if (step !== undefined && /^\w+$/.test(step)) return `[data-step="${step}"]`
+        if (action !== undefined && /^\w+$/.test(action)) return `[data-action="${action}"]`
+        return null
     }
 </script>
 
@@ -55,6 +65,7 @@
     import { tickHaptic, readHaptics } from '../../ts/chatShell/haptics'
     import { createMessageKeys } from '../../ts/chatShell/messageKeys'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
+    import type { StepRowRunner } from '../../ts/chatShell/stepHold'
     import { ACTION_IDS, type ActionId } from '../../ts/chatShell/actionSlots'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
     import { gestureInsetLeft } from '../../ts/android/hostBridge'
@@ -107,7 +118,8 @@
         guiRevision?: number
         onReroll?: () => void
         unReroll?: () => void
-        onStep?: (index: number, expectedId: string | undefined, direction: 'back' | 'forward') => void
+        // Runs an alternative step for this row inside the list's hold; a row mounted on its own runs the step directly.
+        stepRow?: StepRowRunner
         onBranch?: (index: number, expectedId: string | undefined) => void
         getTreeView?: () => TreeView | null
         getBusy?: () => boolean
@@ -118,7 +130,7 @@
         // Reports whether a modal layer of the row (the partial-edit overlays) is open, so the list can lift the row's containment.
         onOverlay?: (open: boolean) => void
     }
-    let { idx, message, chatId, name, img = '', character = null, firstMessage = false, expectedId, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize, onOverlay,
+    let { idx, message, chatId, name, img = '', character = null, firstMessage = false, expectedId, stepRow, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize, onOverlay,
         isLastMemory = false, messageGenerationInfo, interrupted = message.interrupted === true,
         deferAutoTranslate = false, streaming = false, run = 'single', disabled = false, guiRevision = 0 }: Props = $props()
     let translated = $state(false)
@@ -163,13 +175,18 @@
     let overlayOpen = false
     onMount(() => { queueMicrotask(() => { if (!destroyed) iconMounted = true }) })
     // The row that replaced a focused row at the same position takes the focus unless the user has already moved it somewhere else.
+    // It focuses the control that had it (a pager arrow) when the successor has that control enabled, else the row itself.
     onMount(() => {
         const handover = focusHandover
         if (!handover || handover.idx !== idx || performance.now() > handover.until || !article) return
         focusHandover = null
         const active = document.activeElement
         const previousRow = active?.closest<HTMLElement>('article[data-part="chat-message"]')
-        if (!active || active === document.body || (previousRow !== article && previousRow?.dataset.chatIndex === String(idx))) asShellFocus(() => article.focus({ preventScroll: true }))
+        if (!active || active === document.body || (previousRow !== article && previousRow?.dataset.chatIndex === String(idx))) {
+            const control = handover.control === null ? null : article.querySelector<HTMLElement>(handover.control)
+            const enabled = control !== null && !(control instanceof HTMLButtonElement && control.disabled) && control.getAttribute('aria-disabled') !== 'true'
+            asShellFocus(() => (enabled ? control : article).focus({ preventScroll: true }))
+        }
     })
     // A row that replaced a stepped sibling at the same position reserves the sibling's height until its own body has rendered.
     onMount(() => {
@@ -312,16 +329,25 @@
         } else await requestRemove(owner, chat, target)
     }
     // The first message browses its stored greetings and never generates, and it stops at both ends like the counter does; every other row steps its siblings.
+    // Every step of this row, from the pager, a swipe, the wheel, a key or the sheet, runs inside the list's hold when there is one.
+    async function holdStep(step: () => Promise<void> | void): Promise<void> {
+        if (stepRow) await stepRow(idx, step)
+        else await step()
+    }
     async function browse(direction: 'back' | 'forward'): Promise<void> {
         if (firstMessage) {
-            if (direction === 'back' ? position.index > 1 : position.index < position.count) (direction === 'back' ? unReroll : onReroll)?.()
+            if (direction === 'back' ? position.index > 1 : position.index < position.count) await holdStep(() => (direction === 'back' ? unReroll : onReroll)?.())
             return
         }
-        if (article && article.contains(document.activeElement)) focusHandover = { idx, until: performance.now() + FOCUS_HANDOVER_MS }
+        if (article && article.contains(document.activeElement)) focusHandover = { idx, until: performance.now() + FOCUS_HANDOVER_MS, control: focusedControl(article) }
         const height = article?.getBoundingClientRect().height ?? 0
         if (height > 0) heightHandover = { idx, chatId, height, until: performance.now() + FOCUS_HANDOVER_MS }
-        await stepSibling(source, liveIndex(), chatId, direction, { generate: false })
+        await holdStep(() => stepSibling(source, liveIndex(), chatId, direction, { generate: false }))
         alternatives?.markPageChange()
+    }
+    // The end control brings back a detached continuation; its row stays where it is, so the same hold applies.
+    async function bringBackContinuation(): Promise<void> {
+        await holdStep(() => stepSibling(source, idx + 1, expectedId, 'back', { generate: false }))
     }
     // The reply list is rendered newest first, so the message above a row is the later element.
     function messageRows(): HTMLElement[] {
@@ -645,7 +671,7 @@
     {:else if swipeProgress > 0}<span data-part="chat-swipe-arm" role="status" style:opacity={swipeProgress}>{armed ? language.chatShellReleaseNewReply : language.chatShellNoSavedReplies}</span>{/if}
     {#if userLast && !streaming}<button type="button" data-part="chat-generate-reply" disabled={getBusy?.() === true} onclick={generateAfterUser}>⟳ {language.chatShellGenerateReply}</button>{/if}
     {#if showPager || continuation > 0}
-        <AlternativesRow bind:this={alternatives} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} pager={showPager} browseOnly={!newestCharacter && !firstMessage} {continuation} busy={getBusy?.() ?? false} onwheel={onWheel} onStep={firstMessage ? (direction) => { void browse(direction) } : undefined} />
+        <AlternativesRow bind:this={alternatives} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} pager={showPager} browseOnly={!newestCharacter && !firstMessage} {continuation} busy={getBusy?.() ?? false} onwheel={onWheel} onStep={(direction) => { void browse(direction) }} onEnd={() => { void bringBackContinuation() }} />
     {/if}
     {#if statusMessage}<span data-part="chat-status-row" role="status" aria-live="polite">{statusMessage}</span>{/if}
     {#if idx >= 0 && !streaming && !editor.editMode && !editor.editTranslationMode && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}

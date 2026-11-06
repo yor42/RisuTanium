@@ -252,6 +252,41 @@ describe('a step keeps the transcript where it was while the successor body rend
         await settleBodies()
         expect(row.style.minHeight).toBe('')
     })
+    test('a pager tap on an older row reserves the predecessor height like a swipe does', async () => {
+        stepIdx = 3
+        await show(8)
+        articleAt(3).querySelector<HTMLButtonElement>('[data-step="next"]')!.click()
+        flushSync()
+        expect(articleAt(3).getAttribute('data-chat-id')).toBe('alt2')
+        expect(articleAt(3).style.minHeight).toBe(`${HEADER_PX + BODY_PX}px`)
+    })
+    test('focus on a pager arrow moves to the same arrow of the successor row', async () => {
+        stepIdx = 3
+        await show(8)
+        const next = articleAt(3).querySelector<HTMLButtonElement>('[data-step="next"]')!
+        next.focus()
+        expect(document.activeElement).toBe(next)
+        next.click()
+        flushSync()
+        await tick()
+        const successor = articleAt(3).querySelector<HTMLButtonElement>('[data-step="next"]')
+        expect(successor).not.toBeNull()
+        expect(successor).not.toBe(next)
+        expect(document.activeElement).toBe(successor)
+    })
+    test('when the successor has that arrow disabled the focus falls back to the row itself', async () => {
+        stepIdx = 3
+        shown = 4
+        await show(8)
+        const next = articleAt(3).querySelector<HTMLButtonElement>('[data-step="next"]')!
+        next.focus()
+        next.click()
+        flushSync()
+        await tick()
+        const successor = articleAt(3)
+        expect(successor.querySelector<HTMLButtonElement>('[data-step="next"]')!.disabled).toBe(true)
+        expect(document.activeElement).toBe(successor)
+    })
     test('a step that comes long after the recorded height reserves nothing', async () => {
         await show(2)
         stepSibling.mockImplementation(async (_source: unknown, index: number) => {

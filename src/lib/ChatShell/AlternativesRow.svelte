@@ -17,10 +17,12 @@
         continuation?: number
         // When set, the two arrows report their direction here instead of stepping the reply tree (the first message browses its greetings).
         onStep?: (direction: 'back' | 'forward') => void
+        // When set, the end control reports here instead of stepping the reply tree itself, so the host row can hold its place.
+        onEnd?: () => void
         // The row belongs to its message: a wheel over it is the message's wheel.
         onwheel?: (event: WheelEvent) => void
     }
-    let { idx, expectedId, index, count, firstMessage = false, busy = false, browseOnly = false, pager = true, continuation = 0, onStep, onwheel }: Props = $props()
+    let { idx, expectedId, index, count, firstMessage = false, busy = false, browseOnly = false, pager = true, continuation = 0, onStep, onEnd, onwheel }: Props = $props()
     const source = { closeMenu: () => {} }
     let lastPage = -Infinity
     let lastGenerate = -Infinity
@@ -32,7 +34,8 @@
     // The path ends after the last row: position idx + 1 addresses the end of the path, as the classic screen's end control does.
     function goToEnd(): void {
         lastPage = performance.now()
-        void stepSibling(source, idx + 1, expectedId, 'back', { generate: false })
+        if (onEnd) onEnd()
+        else void stepSibling(source, idx + 1, expectedId, 'back', { generate: false })
     }
     function generate(): void {
         const now = performance.now()

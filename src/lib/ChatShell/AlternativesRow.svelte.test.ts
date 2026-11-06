@@ -8,7 +8,7 @@ vi.mock('../../ts/process/composerActions.svelte', () => ({ stepSibling, regener
 vi.mock('../../lang', () => ({ language: {
     chatShellReplyOf: (index: number, total: number) => `Reply ${index} of ${total}`, chatShellFirstMessageOf: (index: number, total: number) => `First message ${index} of ${total}`, chatShellPreviousReply: 'Previous reply',
     chatShellNextReply: 'Next reply', chatShellFirstReply: 'First reply',
-    chatShellLastReply: 'Last reply', chatShellNewReply: 'New reply',
+    chatShellLastReply: 'Last reply', chatShellNewReply: 'New reply', chatShellEndControl: (count: number) => `Bring back ${count}`,
 } }))
 
 import AlternativesRow from './AlternativesRow.svelte'
@@ -68,6 +68,35 @@ describe('T3 alternatives controls', () => {
         expect(steps).toEqual(['forward', 'back'])
         expect(stepSibling).not.toHaveBeenCalled()
         expect(regenerateNewest).not.toHaveBeenCalled()
+    })
+    test('onStep takes over the arrows of an ordinary reply row too, so the host can hold the row', () => {
+        const steps: string[] = []
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        app = mount(AlternativesRow, { target, props: { idx: 2, expectedId: 'reply', index: 2, count: 3, onStep: (direction: 'back' | 'forward') => steps.push(direction) } })
+        flushSync()
+        target.querySelector<HTMLButtonElement>('[data-step="prev"]')!.click()
+        target.querySelector<HTMLButtonElement>('[data-step="next"]')!.click()
+        expect(steps).toEqual(['back', 'forward'])
+        expect(stepSibling).not.toHaveBeenCalled()
+    })
+    test('onEnd takes over the end control and nothing reaches the reply tree', () => {
+        let ended = 0
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        app = mount(AlternativesRow, { target, props: { idx: 4, expectedId: 'reply', index: 1, count: 1, continuation: 2, onEnd: () => { ended += 1 } } })
+        flushSync()
+        target.querySelector<HTMLButtonElement>('[data-action="endControl"]')!.click()
+        expect(ended).toBe(1)
+        expect(stepSibling).not.toHaveBeenCalled()
+    })
+    test('without onEnd the end control steps the reply tree itself at the position after the last row', () => {
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        app = mount(AlternativesRow, { target, props: { idx: 4, expectedId: 'reply', index: 1, count: 1, continuation: 2 } })
+        flushSync()
+        target.querySelector<HTMLButtonElement>('[data-action="endControl"]')!.click()
+        expect(stepSibling).toHaveBeenCalledWith(expect.anything(), 5, 'reply', 'back', { generate: false })
     })
     test('the counter names are interpolated keys for replies and for the first message', () => {
         expect(show(2, 3).querySelector('[data-part="chat-message-alts"]')!.getAttribute('aria-label')).toBe('Reply 2 of 3')

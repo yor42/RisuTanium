@@ -60,13 +60,14 @@ vi.mock('../../lang', () => ({ language: {
 
 import ShellMessage, { type ActionRequest } from './ShellMessage.svelte'
 import { DBState } from '../../ts/stores.svelte'
+import type { StepRowRunner } from '../../ts/chatShell/stepHold'
 
 const WIDTH = 1024
 let target: HTMLElement
 let app: ReturnType<typeof ShellMessage> | undefined
 let request: ActionRequest | null = null
 
-interface Options { idx?: number; index?: number; count?: number; continuation?: number; role?: Message['role'] }
+interface Options { idx?: number; index?: number; count?: number; continuation?: number; role?: Message['role']; stepRow?: StepRowRunner }
 // Five messages: rows 0..3 are older, row 4 is the newest reply.
 function show(options: Options = {}) {
     const list: Message[] = [
@@ -81,7 +82,7 @@ function show(options: Options = {}) {
     document.body.appendChild(target)
     app = mount(ShellMessage, { target, props: {
         idx, chatId: `a${idx}`, expectedId: `a${idx}`, name: 'Ari', message: DBState.db.characters[0].chats[0].message[idx],
-        getTreeView: () => view, onOpenActions: (opened: ActionRequest) => { request = opened },
+        getTreeView: () => view, onOpenActions: (opened: ActionRequest) => { request = opened }, stepRow: options.stepRow,
     } })
     flushSync()
     return target.querySelector<HTMLElement>('[data-part="chat-message-body"]')!
@@ -212,5 +213,83 @@ describe('the end control of the last row', () => {
         expect(target.querySelector('[data-part="chat-message-alts"] span[aria-live]')?.textContent).toBe('1 / 2')
         expect(target.querySelector('[data-action="newReply"]')).not.toBeNull()
         expect(target.querySelector('[data-action="endControl"]')).not.toBeNull()
+    })
+})
+
+// The list's hold wraps every step of a row. The runner here records the step without running it, so the tests show that nothing
+// reaches the reply tree except through the runner.
+describe('every step of a row runs inside the list hold when the row is given one', () => {
+    function pendingRunner() {
+        const steps: { idx: number; step: () => Promise<void> | void }[] = []
+        const stepRow: StepRowRunner = (idx, step) => { steps.push({ idx, step }); return Promise.resolve() }
+        return { steps, stepRow }
+    }
+    test('a pager tap on an older row goes through the runner with the row index and steps the tree only when the runner runs it', async () => {
+        const { steps, stepRow } = pendingRunner()
+        show({ stepRow })
+        target.querySelector<HTMLButtonElement>('[data-step="next"]')!.click()
+        expect(steps.map((entry) => entry.idx)).toEqual([1])
+        expect(stepSibling).not.toHaveBeenCalled()
+        await steps[0].step()
+        expect(stepSibling).toHaveBeenCalledWith(expect.anything(), 1, 'a1', 'forward', { generate: false })
+    })
+    test('the arrow key, the wheel and the swipe go through the runner as well', () => {
+        const { steps, stepRow } = pendingRunner()
+        const body = show({ stepRow })
+        key('ArrowLeft')
+        wheel(body, 80)
+        pointer(body, 'pointerdown', 100, 0)
+        pointer(body, 'pointermove', 260, 100)
+        pointer(body, 'pointerup', 260, 200)
+        expect(steps.map((entry) => entry.idx)).toEqual([1, 1, 1])
+        expect(stepSibling).not.toHaveBeenCalled()
+    })
+    test('the click of the global reroll hotkey target on the newest reply goes through the runner', () => {
+        const { steps, stepRow } = pendingRunner()
+        show({ idx: 4, index: 1, count: 2, stepRow })
+        target.querySelector<HTMLElement>('.button-icon-reroll')!.click()
+        expect(steps.map((entry) => entry.idx)).toEqual([4])
+        expect(stepSibling).not.toHaveBeenCalled()
+    })
+    test('the end control goes through the runner for its own row and brings back the continuation only when the runner runs it', async () => {
+        const { steps, stepRow } = pendingRunner()
+        show({ idx: 4, index: 1, count: 1, continuation: 2, stepRow })
+        target.querySelector<HTMLButtonElement>('[data-action="endControl"]')!.click()
+        expect(steps.map((entry) => entry.idx)).toEqual([4])
+        expect(stepSibling).not.toHaveBeenCalled()
+        await steps[0].step()
+        expect(stepSibling).toHaveBeenCalledWith(expect.anything(), 5, 'a4', 'back', { generate: false })
+    })
+    test('the first message steps its greetings through the runner with index -1', async () => {
+        const { steps, stepRow } = pendingRunner()
+        const onReroll = vi.fn()
+        const unReroll = vi.fn()
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        app = mount(ShellMessage, { target, props: {
+            idx: -1, name: 'Ari', message: { role: 'char', data: 'Greeting' }, firstMessage: true, stepRow, onReroll, unReroll,
+            getTreeView: () => ({ at: () => ({ index: 2, count: 3 }), continuation: 0 }),
+        } })
+        flushSync()
+        target.querySelector<HTMLButtonElement>('[data-step="next"]')!.click()
+        target.querySelector<HTMLButtonElement>('[data-step="prev"]')!.click()
+        expect(steps.map((entry) => entry.idx)).toEqual([-1, -1])
+        expect(onReroll).not.toHaveBeenCalled()
+        expect(unReroll).not.toHaveBeenCalled()
+        await steps[0].step()
+        await steps[1].step()
+        expect(onReroll).toHaveBeenCalledTimes(1)
+        expect(unReroll).toHaveBeenCalledTimes(1)
+        expect(stepSibling).not.toHaveBeenCalled()
+        // Wheel and arrow key use the same path.
+        wheel(target.querySelector('[data-part="chat-message-body"]')!, 80)
+        key('ArrowLeft')
+        expect(steps.map((entry) => entry.idx)).toEqual([-1, -1, -1, -1])
+    })
+    test('a row that was given no runner steps directly, as a row mounted on its own does', async () => {
+        show()
+        target.querySelector<HTMLButtonElement>('[data-step="next"]')!.click()
+        await Promise.resolve()
+        expect(stepSibling).toHaveBeenCalledWith(expect.anything(), 1, 'a1', 'forward', { generate: false })
     })
 })
