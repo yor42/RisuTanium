@@ -225,6 +225,10 @@ restoration was checked, not assumed.
 
 PowerShell scripts that run one capped phone check and write `result.json`: see [device/README.md](device/README.md).
 
+## `chatshell-cdp/` - chat-shell CDP harness
+
+Desktop Chrome scenarios (phone emulation, CDP) for the chat shell: see [chatshell-cdp/README.md](chatshell-cdp/README.md). `harness.mjs` injects a logger and is DIAGNOSTIC only; acceptance numbers come from the observer-free reads (`nolog.mjs`). Outputs go under the OS temp dir and never into the checkout. Its accept tests are `node chatshell-cdp/tests/lib.accept.mjs` and `node chatshell-cdp/tests/device-kit.accept.mjs` (plain node, not collected by `pnpm test`).
+
 ## `external/` - bounded external workers
 
 The parent uses these tools directly under [subscription-first execution](../../docs/workflow/subscription-first.md), `.claude/workflow-policy.json` and `Agents/Workflow-State.json`. Do not start a Claude relay or comparison investigation. Configuration and synthetic tests do not establish provider authentication, live execution or savings.
