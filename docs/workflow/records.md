@@ -16,7 +16,7 @@ The orchestrator names a record owner and identifies applicable records in the i
 
 The record checker independently verifies the changed claims and pointers against the accepted evidence. Routine supplied-evidence drafting uses the dedicated primary Haiku record-clerk directly, without agy/Codex/OpenRouter preflight. Independent consequential-claim verification occurs once under [routing](routing.md)/[gates](gates.md); governance and actual maintainer decisions stay outside routine clerk authority. A missing record is an administrative blocker, not a new behavior defect. Closing records is incremental claim/diff verification; it does not restart Gate 2 or rerun application tests unless it exposes a substantive defect or invalidates accepted evidence.
 
-When an item that changes user-visible behaviour lands on `main`, the same records pass updates the README's "What's different from upstream" list and its known problems, and `doc-verifier` checks that change (MC-332).
+When an item that changes user-visible behaviour lands on `main`, the same records pass updates the "What's different from upstream" list and its known problems on the wiki page [`docs/wiki/Changes-from-upstream.md`](../wiki/Changes-from-upstream.md), and `doc-verifier` checks that change (MC-332, amended 2026-11-06: the list moved out of the README, which keeps only a pointer to that page).
 
 The item owner records final closure against the accepted snapshot and the changed records, distinguishing optional improvements and unresolved work. Commit/push remains subject to the maintainer's actual authorization. Existing 2026-10-08 handoff backlog stays pending until separately reconciled; adopting this rule does not declare that backlog complete.
 

@@ -2,16 +2,31 @@
 
 > **The authors maintain this page from the records of the project.** The records are the commit history, the roadmap, and the log of upstream merges. The page does not come from a fresh test of every item. Automated tests and reviews check most of the changes below. Many changes were not tried on a real phone or in a long real-world session. "Reported" means that a record says so, but nobody confirmed it independently. Where the records disagree or are thin, the item is left out.
 
+> **How to read the evidence notes.** "Traced in the code" means that someone read the implementation. It does **not** mean that anyone ran the behavior. "Not run" means exactly that. A review approval is not a test run. A test run is not an Android test. An Android test on one phone is not a promise that it works on every device.
+
 RisuTanium is a fork of RisuAI. It stays compatible with upstream. A `.bin` backup moves in both directions. Upstream characters, modules, presets, and plugins keep working. This page is current to **2026-11-02**. The fork merged upstream RisuAI **v2026.10.292** (upstream commit `ea61945f9`, 2026-10-30). A fetch on 2026-11-02 showed no newer commit on upstream `main`.
 
 RisuTanium has **not had a public release**. This page describes what the code on the main branch of the fork does. A release-signed Android build exists only on the own phone of the maintainer. Items marked "on main" are in the code. But the records do not call all of them finished.
+
+To move your data, start with [[Migrating from upstream]].
 
 ## What is the same
 
 - **Backups work in both directions.** A `.bin` from upstream always imports here. A `.bin` made here imports into upstream. Something in your library can be too large for upstream to hold, or can have no upstream equivalent. Then the export warns you first, names the item, and waits for your confirmation before it starts. If you cancel, the export writes nothing.
 - **Your upstream content keeps working:** characters, modules, presets, plugins (see the V2.1 note below), and the integrations that upstream supports.
 - **One exception:** Upstream encrypts full backups that you save on `risuai.xyz`, and only that site can read them. RisuTanium refuses them and imports nothing. See [[Migrating from upstream]] for this, for the routes out, and for the services that the fork removed.
-- **Names:** The app shows the product as "RisuTanium". Upstream is "RisuAI".
+- **Names:** The app shows the product as "RisuTanium". Upstream is "RisuAI". See "Name and version" below for the other differences in naming.
+
+## Name and version
+
+The fork has its own name and its own app-data folder, so it does not overwrite your upstream installation.
+
+- The product name is Risutanium.
+- The identifier of the desktop app is `io.github.yor42.risutanium`. The app data folder is new on purpose.
+- The version follows SemVer and starts at `0.1.0`. The upstream version that this fork is based on is a suffix. For example, the Version line on the home screen shows `0.1.0-up2026.10.294`.
+- The desktop app registers two deep-link schemes: `risutaniumlocal` and `risuailocal`. The second scheme stays so that the open-in-app links from upstream Realm still reach the app.
+- The in-app updater is off until the first release.
+- The CBS version tags report the version of this fork. `{{version}}` returns `0.1.0` and `{{majorversion}}` returns `0`. An upstream card that compares them with a 2026 version behaves differently.
 
 ## Where your API key goes on a web build
 
@@ -34,6 +49,46 @@ What you see:
 
 Limits: A tab that stops saving is still "parked" until you act on it. The records say that the design for several tabs is still under review. [[Settings Backup and Files]] covers the backup screens.
 
+### Storage format
+
+- The first start of this build converts your existing save to a new storage format.
+- If the save is damaged or unreadable, the app shows a recovery screen with choices.
+- If you import a `.bin` at startup or from Settings, the app shows notices before it reloads.
+- The app deletes the old-format files by itself. This happens at the start after the conversion, after the app is quiet. The app is quiet when it is hidden after a save, or when it gets no input for about 30 seconds. The app shows nothing while it deletes.
+- A normal page has no button for manual clean-up. There is no way yet to clear out unused data or assets by hand. The old "Clean Unused Archived Data and Assets" button stays only on pages that fall back to the older storage.
+- The authors traced this in the code. They did not run it.
+
+### Saving across tabs and devices
+
+Two tabs that disagree about which save is newest must not settle it by silently deleting your work.
+
+- A self-hosted Node server refuses a save from a stale tab. It does not overwrite newer data.
+- If another tab or device saves first, the tab that fell behind stops saving and asks what to do.
+- If the tab holds no unsaved edits, it offers Reload or Keep reading. It never reloads by itself.
+- If the tab holds unsaved edits, it offers Reload, which loses the edits. Sometimes it also offers Save mine, which replaces the other change with the version of this tab.
+- The app does not offer Save mine in three cases: you use the Node server, the profile was replaced, or the tab holds characters that are not loaded yet. In these cases, Reload is the only choice.
+- On the Node server, a tab that holds unsaved edits can also choose "Export this tab first, then reload". After you confirm, the app writes a `.bin` of this tab and reloads once. The app does not offer this choice after the profile was replaced.
+- The authors traced this in the code. They did not run it against a real server.
+
+### Characters load when you open them
+
+Opening one character should not need the whole collection in memory.
+
+- The app no longer archives characters automatically after 10 days.
+- At startup, the app leaves characters as small stubs. It loads a character at the time that you open it. Nothing is deleted.
+- Characters with a missing, hidden or duplicated id are the exception. The app loads them at startup.
+- After you move to another character, the loaded character goes back to its stub if you did not edit it. A large character waits for a quiet moment. This does not happen while a plugin that needs every character is on.
+- This behavior is on by default. The app tells you once when it turns on.
+- To turn it off, go to Settings > Advanced Settings > "Archive characters at startup". On the next start, every character loads in full.
+
+### Replies that stream while the app is hidden
+
+- If you hide the app or the page during a reply, the app saves the text so far.
+- When the chat reloads in that state, the message shows "Interrupted — the reply may be incomplete".
+- A reply that finishes while the app is hidden shows no note.
+- The save is best effort. If the system kills the app right away, the save can fail to finish.
+- The authors traced the save-on-hide trigger in the code. The device behavior comes from the commit message.
+
 ### Backups and large files
 
 - The `.bin` export streams. It does not build one giant file in memory. The restore and the CharX import also stream. Browser assets can be as large as 1 GiB where the store streams.
@@ -42,6 +97,49 @@ Limits: A tab that stops saving is still "parked" until you act on it. The recor
 - You can cancel an export on the web. You can cancel large CharX exports.
 - A faster backup format from fork to fork is only a design. It is not shipped.
 
+### Accounts and backup compatibility
+
+Some upstream services are not part of this fork. Read the migration notes before you rely on them.
+
+- This fork has no RisuAccount and no Google Drive backup. The app removed account sign-in, sync and Drive backup. To move data, make a local `.bin` backup.
+- RisuRealm still works. The first time that you use it, the app asks you to accept the Terms of Service and the Privacy Policy of upstream.
+- This fork cannot read a `.bin` that was made while signed in to RisuAccount on `risuai.xyz`.
+- Local backups include every asset, not only `.png` files. The assets include audio, video, WebP, JPEG, font and CSS files.
+- Full `.bin` backups also include the inlay images, video and audio in chat messages. Partial backups do not include them.
+- `.bin` backups stay compatible with upstream. The authors loaded hand-made upstream backups here, exported them again and loaded them in upstream. After they decoded the files, all characters, chats and messages were there. Only the flag for a reply that is still streaming differs, on purpose.
+- That test used single runs on one PC with synthetic files. The authors did not open every character in the interface of upstream.
+- The app reads the newer plugin-index format of upstream and converts it. The app keeps the key-value data of upstream. If a backup has this data, the app writes it back in the upstream format. Otherwise it writes nothing. The values keep their content but not their key order. The authors tested this with hand-made files only, because upstream does not write this data yet.
+- On the Node server, a restore skips a backup asset of about 101 MiB or more. The app first shows a warning that names the asset and asks you to confirm.
+
+### Restoring a backup
+
+- On the web build, Load Backup Locally and Load Internal Backup refuse to run while another tab of the app is open. If the browser cannot make sure that no other tab is open, the app warns you.
+- Both actions also refuse to run while the app writes a reply into a chat.
+- Load Internal Backup is a picker of restore points.
+- When you load a `.bin` from Settings, the app keeps your earlier data as an earlier saved version.
+
+### Large items in a backup
+
+The file format has limits.
+
+- A backup entry cannot hold an item of 4 GiB or more. The app names each such item before it writes a `.bin`. It then asks if it must create the backup without them. If you cancel, the app writes nothing. The final summary repeats the names.
+- The check covers character data. It covers assets only where the app can list file sizes, which is the desktop app. On other platforms, the backup stops with a message when the app reaches an asset that large.
+- The authors traced this in the code. They did not run it against a real backup.
+
+### Exports of characters that are not loaded
+
+- A `.bin` made here writes each character that is not loaded as a small stub. The `.bin` also has a separate entry for the chats of that character. The app does not load the character first.
+- The app still writes the whole character in two cases: the character is in the trash, or its chats name cold-storage data. Cold-storage data is a pointer, an error-text key or archived chats.
+- The authors tested this with 500 synthetic characters on one fast PC, with three runs each. The peak JavaScript heap of the export fell from about 202 MiB to 145 MiB. The file grew from about 43 MB to 94 MB, because the chat entries are not compressed.
+- Upstream opened and re-exported a file in stub form in a single run with synthetic files. The authors did not measure anything on a phone.
+
+### Card and module imports
+
+- If a `.charx`, PNG or module (`.risum`) file is cut short, the app refuses it with a message. The app does not import the card or the module, and it saves nothing.
+- The check looks at the structure of the file. A file with damage inside can still fail partway. Then the assets that the app already saved stay unused.
+- A cut-short `.jpg` card looks the same as a plain image, so the app cannot find it.
+- The authors traced this in the code. They did not run it on real files.
+
 ### Chat alternatives (rerolls and candidate replies)
 
 The app keeps alternatives as sibling branches in a tree. The chat screen shows a counter and buttons for previous and next. Each branch keeps its own memory and script state. SillyTavern swipes import into the tree. A `.bin` that you make for upstream leaves the alternatives out, after it names them. The records list this as on main, with some device checks still owed.
@@ -49,6 +147,12 @@ The app keeps alternatives as sibling branches in a tree. The chat screen shows 
 ### Chats stay separate
 
 A send, its scripts, Lua triggers, lorebook, prompt, persona, summaries, tools, and `/` commands now read and write the chat in which they started. They do not use the chat to which you switched in the meantime. One generation runs at a time for each send. The composer remembers the unsent text of each chat.
+
+A message should stay in the chat where it began. An operation should stop when its target gets deleted.
+
+- The app writes a reply into the chat that the message came from. This includes the memory summaries and the variable writes that come with the reply. It does this even if you switch chats, add a branch or reorder chats while the reply generates.
+- If you delete a chat while something still writes into it, the app warns you. The app deletes the chat that you confirmed, even if the list changed in the meantime.
+- Escape does nothing on a confirm prompt or an input prompt that waits for an answer. Before, Escape answered the prompt with an empty answer. Escape still closes information alerts.
 
 ### Modules
 
@@ -85,6 +189,24 @@ The fork has an Android build. A foreground service keeps work alive and shows a
 - **Keys and models:** `${NAME}` references to environment variables for keys (see [[API Keys from Environment Variables]]). A button to refresh model data. Context and pricing from OpenRouter. Deprecated models are tagged. Claude 5 Opus with adaptive thinking.
 - **Languages:** Spanish and Japanese. A machine drafted the Japanese, and no native speaker reviewed it.
 - **Utility mode:** A first slice (task presets and a run screen), shown on desktop only. It is early.
+
+### Model list
+
+Model catalogs change, so the app does not rely on fixed assumptions about them.
+
+- The app downloads model data, for example the context size, from the public LiteLLM dataset and from provider lists. The app caches the data.
+- The bot settings show a status line and a "Refresh model data" button.
+- The model picker does not offer retired models. A model that you already use gets a tag: "retired", "now uses ..." or "retires" with a date.
+- The authors did not run the download here.
+
+### Character list
+
+- Search covers the name, the shown description, the tags and the creator. It also covers characters that are not loaded. Tags and creator work for single characters, not for groups.
+- The Grid tab sorts by My order, Recent or Name.
+- Under My order, the Grid tab shows folders as tiles. It remembers the open folders on this device.
+- Edit mode can move several characters to the trash at once. It can also group them into a new folder.
+- Long descriptions have a "Show more" link.
+- The authors traced this in the code and in the language strings. They did not run it.
 
 ## Removed or changed features
 
