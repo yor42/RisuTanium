@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { createBottomFollower, isScrolledToBottom, shouldAnchorBottom } from './bottomAnchor'
+import { createBottomFollower, createProgrammaticScrollMarker, isScrolledToBottom, shouldAnchorBottom } from './bottomAnchor'
 
 describe('T bottom anchor decision', () => {
     test('anchors the newest edge when a visible bottom reader gets a shorter viewport', () => {
@@ -195,5 +195,39 @@ describe('bottom follower', () => {
         land(200)
         follower.sync()
         expect(writes).toEqual([])
+    })
+    test('a growth write reports itself to the programmatic-write callback, and no write reports nothing', () => {
+        const { host, grow } = metrics(300, 200)
+        const onWrite = vi.fn()
+        createBottomFollower(host, {} as Element, () => true, onWrite).sync()
+        fire()
+        expect(onWrite).not.toHaveBeenCalled()
+        grow(354)
+        fire()
+        expect(onWrite).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('programmatic scroll marker', () => {
+    test('the scroll event at the written position is the shell\'s own, once', () => {
+        const marker = createProgrammaticScrollMarker()
+        marker.mark(240)
+        expect(marker.consume(240)).toBe(true)
+        expect(marker.consume(240)).toBe(false)
+    })
+    test('a scroll event at another position is the reader\'s and spends the mark', () => {
+        const marker = createProgrammaticScrollMarker()
+        marker.mark(240)
+        expect(marker.consume(260)).toBe(false)
+        expect(marker.consume(240)).toBe(false)
+    })
+    test('without a write nothing is the shell\'s own', () => {
+        expect(createProgrammaticScrollMarker().consume(0)).toBe(false)
+    })
+    test('the latest of several writes before one event is the one matched', () => {
+        const marker = createProgrammaticScrollMarker()
+        marker.mark(100)
+        marker.mark(150)
+        expect(marker.consume(150)).toBe(true)
     })
 })

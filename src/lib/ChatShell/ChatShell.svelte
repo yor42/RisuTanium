@@ -13,7 +13,7 @@
     import type ActionSheetComponent from './ActionSheet.svelte'
     import type CustomizeButtonsSheetComponent from './CustomizeButtonsSheet.svelte'
     import type { ActionRequest, CustomizeRequest } from './ShellMessage.svelte'
-    import { shouldAnchorBottom } from '../../ts/chatShell/bottomAnchor'
+    import { createProgrammaticScrollMarker, shouldAnchorBottom } from '../../ts/chatShell/bottomAnchor'
     import { watchSoftKeyboard } from '../../ts/chatShell/softKeyboard'
     import { treeView } from '../../ts/process/chatTreeView'
 
@@ -61,6 +61,7 @@
     let list = $state<HTMLElement>()
     let composer = $state<HTMLElement>()
     let lastScrollTop = 0
+    const scrollMarker = createProgrammaticScrollMarker()
     let olderDistance = 0
     let previousBusy = false
     let seenCloseEpoch = 0
@@ -157,6 +158,8 @@
         const target = event.currentTarget as HTMLElement
         const movement = lastScrollTop - target.scrollTop
         lastScrollTop = target.scrollTop
+        // Only the reader's scrolling drives the header; the list's own writes never show or hide it.
+        if (scrollMarker.consume(target.scrollTop)) return
         if (movement > 0) {
             olderDistance += movement
             if (olderDistance >= 24 && !hardwareKeyboardSeen) headerHidden = true
@@ -216,7 +219,7 @@
     </div>
     <main bind:this={list} data-part="chat-transcript" aria-label={language.chatShellMessages} onscroll={scroll}>
         {#if ShellNotices && character?.type === 'character'}<ShellNotices />{/if}
-        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
+        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom {scrollMarker} {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
     </main>
     {#if ShellFloatingButtons}<ShellFloatingButtons visible={unread && !atBottom} onclick={() => messageList?.scrollToLatestMessage?.()} />{/if}
     <div bind:this={composer} data-part="chat-composer-host">
