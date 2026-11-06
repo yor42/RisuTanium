@@ -2,6 +2,7 @@
     import {
     CharEmotion,
     DynamicGUI,
+    MobileGUI,
     botMakerMode,
     selectedCharID,
     settingsOpen,
@@ -297,8 +298,10 @@
     }
   }}
 >
+  <!-- Where SideBarArrow draws its close handle (wide desktop), the X is hidden but keeps its space so the layout below does not move. -->
   <button
-    class="flex w-full justify-end text-textcolor hover:text-textcolor2"
+    class="relative z-10 flex self-end text-textcolor hover:text-textcolor2"
+    class:invisible={!$DynamicGUI && !$MobileGUI}
     aria-label={language.closeSidebar}
     title={language.closeSidebar}
     onclick={async () => {
