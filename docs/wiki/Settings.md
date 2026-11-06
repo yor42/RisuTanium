@@ -1,57 +1,63 @@
 # Settings
 
-Open Settings from the gear/menu icon in the main app chrome. On a wide window (700px or more) the sidebar and the page content sit side by side; below that width, opening Settings shows the sidebar menu first, and picking an entry replaces it with that page (a back arrow / the close button returns to the menu). This narrow-layout split is separate from **Mobile GUI** mode, which forces the same side-by-side-vs-stacked split regardless of width.
+To open Settings, click the gear or menu icon in the main frame of the app.
+
+On a wide window (700px or more), the sidebar and the page content sit side by side. On a narrower window, Settings first shows the sidebar menu. When you pick an entry, its page replaces the menu. A back arrow or the close button returns you to the menu. This narrow-layout split is separate from **Mobile GUI** mode. **Mobile GUI** mode forces the same choice between side by side and stacked, at any width.
 <!-- src/lib/Setting/Settings.svelte:28,35,193 -->
 
 ## Menu, in order
 
-The sidebar shows these entries top to bottom. Each maps to a child page:
+The sidebar shows these entries from top to bottom. Each entry opens a child page:
 
-1. **Chat Bot** — [[Settings Chat Bot]]
-2. **Persona** — [[Settings Persona]]
-3. **Other Bots** — [[Settings Other Bots]]
-4. **Display & Audio** — [[Settings Display]]
-5. **Language** — [[Settings Language]]
-6. **Accessibility** — [[Settings Accessibility]]
-7. **Modules** — see [[Modules]]
-8. **Plugin** — [[Settings Plugins]]
-9. **Backup & Files** — [[Settings Backup and Files]]
-10. **Hotkey** — [[Settings Hotkeys]] (this page's content only renders when the window is 768px wide or more)
-11. **Advanced Settings** — [[Settings Advanced]]
-12. Any plugin-defined menu entries a loaded plugin has registered
-13. **Easy Panel** — see below, shown only with **Enable Risuai Pro Tools** on
+1. **Chat Bot**: [[Settings Chat Bot]]
+2. **Persona**: [[Settings Persona]]
+3. **Other Bots**: [[Settings Other Bots]]
+4. **Display & Audio**: [[Settings Display]]
+5. **Language**: [[Settings Language]]
+6. **Accessibility**: [[Settings Accessibility]]
+7. **Modules**: see [[Modules]]
+8. **Plugin**: [[Settings Plugins]]
+9. **Backup & Files**: [[Settings Backup and Files]]
+10. **Hotkey**: [[Settings Hotkeys]]. The content of this page renders only when the window is 768px wide or wider.
+11. **Advanced Settings**: [[Settings Advanced]]
+12. Menu entries that loaded plugins registered.
+13. **Easy Panel**: see below. The menu shows it only when **Enable Risuai Pro Tools** is on.
 
 <!-- src/lib/Setting/Settings.svelte:41-184 -->
 
 ### Lite mode
 
-Lite is a build-time option (`VITE_RISU_LITE`), not a setting you can toggle in the app. On a Lite build, only **Language**, **Backup & Files** and **Hotkey** remain in the menu; everything else, including plugin-defined entries and Easy Panel, is hidden.
+Lite is an option that you set when you build the app (`VITE_RISU_LITE`). You cannot turn it on or off in the app. In a Lite build, the menu keeps only **Language**, **Backup & Files**, and **Hotkey**. The build hides everything else, including the entries of plugins and Easy Panel.
 <!-- src/lib/Setting/Settings.svelte:41,89,117,136,185; src/ts/lite.ts -->
 
-### (?) help icons, the flask icon and the warning-triangle icon
+### (?) help icons, the flask icon, and the warning-triangle icon
 
-On the data-driven pages (currently Advanced Settings, plus the same shared renderer used elsewhere), each control can carry a **(?)** help icon that opens a popup with more explanation text. A flask icon next to a control marks it as experimental — this is a label only, and does not by itself decide whether the control is visible. Whether an experimental-flagged control is visible depends on that control's own separate condition. A warning-triangle icon replaces the (?) icon on controls that are unrecommended to change; those controls are also grouped behind a **Show Unrecommended** toggle so they are hidden until you turn that on.
+Some pages get their controls from data. Advanced Settings is one such page now. The same shared renderer is used on other pages. On these pages, a control can have a **(?)** help icon. The icon opens a popup with more explanation.
+
+A flask icon next to a control marks the control as experimental. The icon is only a label. It does not decide whether the control is visible. A separate condition of the control decides that.
+
+A warning-triangle icon replaces the (?) icon on controls that you are not advised to change. The page groups these controls behind a **Show Unrecommended** toggle. They stay hidden until you turn that toggle on.
 <!-- src/ts/setting/utils.ts:17-22,64-67; src/lib/Others/Help.svelte:2 -->
 
 ### Use Legacy GUI
 
-**Use Legacy GUI** (on the Display & Audio page) changes how sub-sectioned pages present their sections. With it off (default), a page like Chat Bot or Other Bots shows its sections as a row of tabs, one open at a time. With it on, the same sections are shown as individually collapsible, stacked accordion panels, each starting collapsed.
+**Use Legacy GUI** is on the Display & Audio page. It changes how pages with sub-sections show their sections. By default it is off. Then a page such as Chat Bot or Other Bots shows its sections as a row of tabs, and one tab is open at a time. When it is on, the page shows the same sections as stacked accordion panels. You can collapse each panel on its own, and each panel starts collapsed.
 <!-- src/ts/storage/database.svelte.ts:1076; src/lib/Setting/Pages/BotSettings.svelte:113; src/lib/Setting/Pages/OtherBotSettings.svelte:25 -->
 
 ---
 
 ## Modules
 
-The Modules page (see [[Modules]] for what a module contains) lists your installed modules, sorted by name for display only — this display sort does not change the order modules are stored or merged in. Each row has:
+The Modules page lists your installed modules. For more about what a module contains, see [[Modules]]. The list is sorted by name for display only. The sort does not change the order in which the app stores or merges modules. Each row has these controls:
 
-| Control | Does |
+| Control | What it does |
 |---|---|
-| Globe icon | Toggles the module on/off globally (adds/removes it from the list of always-enabled modules). Shown tinted if the module would already apply through namespace integration without being explicitly enabled. |
-| Export icon | Choose CharX (current format) or legacy RisuM export. Disabled for MCP modules. |
-| Edit (pencil) icon | Opens the module editor for that module. Disabled for MCP modules. |
-| Delete (trash) icon | Confirms, then removes the module (and un-enables it first if it was globally enabled). |
-| "+" | Creates a new, blank module and opens the editor on it immediately. |
-| Character-conversion toggle | Swaps the row's icon set for a single "convert to character" button. |
+| Globe icon | Turns the module on or off globally. It adds the module to the list of always-enabled modules, or removes it from the list. The icon has a tint if the module already applies through namespace integration without an explicit enable. |
+| Export icon | Lets you choose an export in CharX (the current format) or in the legacy RisuM format. It is disabled for MCP modules. |
+| Edit (pencil) icon | Opens the module editor for that module. It is disabled for MCP modules. |
+| Delete (trash) icon | Asks you to accept, then removes the module. If the module was globally enabled, the app first turns it off. |
+| "+" | Creates a new, blank module and opens the editor on it at once. |
+| Character-conversion toggle | Replaces the icon set of the row with one "convert to character" button. |
 | MCP import icon | Imports a module from an MCP source. |
 | Filesystem import icon | Imports a module file from disk. |
 
@@ -59,14 +65,14 @@ The Modules page (see [[Modules]] for what a module contains) lists your install
 
 ## Easy Panel
 
-Easy Panel is a separate overlay, not a page in the sidebar's own content area — it opens on top of Settings when you click its menu entry, and only appears in the menu at all when **Enable Risuai Pro Tools** is on.
+Easy Panel is a separate overlay. It is not a page in the content area of the sidebar. It opens on top of Settings when you click its menu entry. The menu shows the entry only when **Enable Risuai Pro Tools** is on.
 
-If the underlying requirements aren't already met (separate parameters enabled, matching model/preset flags set), Easy Panel shows a requirements banner with a single **Run** button in place of the **Models** tab; clicking it sets all five required flags at once. The banner only replaces the **Models** tab: the other tabs show their content whether or not the requirements are met. The four tabs are:
+Easy Panel has requirements: separate parameters on, and matching flags for the model and the preset. If the app does not meet these requirements, Easy Panel shows a banner with one **Run** button in place of the **Models** tab. When you click **Run**, the app sets all five required flags at once. The banner replaces only the **Models** tab. The other tabs show their content whether or not the app meets the requirements. Easy Panel has four tabs:
 
-- **Models** — pickers for the main model, submodel, and four separate models (Long-Term Memory, Translator, Emotion Image, Others).
-- **Parameters** — either a per-model override editor, or a per-category (Long-Term Memory / Translator / Emotion Image / Others) editor, depending on the Settings tab below.
-- **Custom Models** — the same custom-model editor as Advanced Settings' Custom Models section.
-- **Settings** — one checkbox that switches the Parameters tab between per-model and per-category mode.
+- **Models**: Pickers for the main model, the submodel, and four separate models (Long-Term Memory, Translator, Emotion Image, and Others).
+- **Parameters**: An editor for overrides per model, or an editor per category (Long-Term Memory, Translator, Emotion Image, and Others). The Settings tab decides which editor the page shows.
+- **Custom Models**: The same custom-model editor as in the Custom Models section of Advanced Settings.
+- **Settings**: One checkbox. It switches the Parameters tab between the per-model mode and the per-category mode.
 
 <!-- src/lib/Others/ProTools/EasyPanel.svelte:21-147 -->
 
@@ -74,9 +80,9 @@ If the underlying requirements aren't already met (separate parameters enabled, 
 
 ## Pages that are not in the menu
 
-A few pages exist in the app's code but have no menu entry that opens them, so they cannot currently be reached through the sidebar:
+The code of the app has a few pages that no menu entry opens. You cannot reach these pages through the sidebar now:
 
-- **Global Lorebook** — an editor for a global lorebook entry list.
-- **Global Regex** — an editor for `db.globalscript`, a regex-entry list. Stated neutrally: this is not the regex list applied to chats. The list that actually runs during chat is the preset's **Regex Script**, found on **Chat Bot → Others** — see [[Settings Chat Bot]].
+- **Global Lorebook**: An editor for a global list of lorebook entries.
+- **Global Regex**: An editor for `db.globalscript`, a list of regex entries. This is not the regex list that the app applies to chats. The list that runs during chat is the **Regex Script** of the preset. You find it at **Chat Bot → Others**. See [[Settings Chat Bot]].
 
 <!-- src/lib/Setting/Settings.svelte:196-234 (no branch reachable from any menu button for these); src/lib/Setting/Pages/GlobalRegex.svelte:11 -->

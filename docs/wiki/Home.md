@@ -1,6 +1,6 @@
-# Welcome to the RisuAI wiki!
+# Welcome to the RisuAI wiki
 
-These pages were rewritten for this fork against the current source, starting from the upstream RisuAI wiki (kwaroran/RisuAI). Fork-specific behavior is noted inline where it applies.
+This wiki is for this fork of RisuAI. The authors rewrote the pages against the current source code. They started from the upstream RisuAI wiki (kwaroran/RisuAI). Where the fork behaves differently from upstream, the page says so.
 
 New to RisuAI? Start here:
   - [[RisuAI Basics]]

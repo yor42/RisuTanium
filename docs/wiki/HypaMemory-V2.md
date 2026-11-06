@@ -1,46 +1,46 @@
 # HypaMemory V2
 
-HypaMemory V2 is a [[Long Term Memory]] system. It summarizes old messages in token-sized chunks and keeps every summary. Each request, it builds a memory block from two parts: the earliest summaries, and summary paragraphs retrieved by embedding similarity to the latest messages. It is the predecessor of [[HypaMemory V3]], and its data can be converted to V3.
+HypaMemory V2 is a [[Long Term Memory]] system. It summarizes old messages in chunks of a set token size, and it keeps every summary. On each request, it builds a memory block from two parts: the earliest summaries, and summary paragraphs that the app retrieves by embedding similarity to the latest messages. It is the predecessor of [[HypaMemory V3]]. You can convert its data to V3.
 
 ## Enabling
 
-1. **Settings → Other Bots → Long Term Memory → Type → HypaMemory V2**. Selecting it sets the model to distilbart.
-2. Pick an **Embedding** model in the same section (see [[Embedding models|Long Term Memory#embedding-models]]).
-3. Turn on the character's memory toggle in the chat toggles. With V2 on it reads **Toggle HypaMemory**.
+1. Go to **Settings → Other Bots → Long Term Memory → Type → HypaMemory V2**. When you select it, the app sets the model to distilbart.
+2. In the same section, pick an **Embedding** model. See [[Embedding models|Long Term Memory#embedding-models]].
+3. In the chat toggles, turn on the memory toggle of the character. With V2 on, it reads **Toggle HypaMemory**.
    <!-- src/lib/SideBars/Toggles.svelte:192-194,207-209; src/lang/en.ts:1486 -->
-   **Fork difference:** upstream labels the toggle **Toggle SupaMemory** with V2 on; here it is **Toggle HypaMemory**. The toggle also shows when the memory model is none but V2 is on.
+   **Fork difference:** With V2 on, upstream labels the toggle **Toggle SupaMemory**. Here it is **Toggle HypaMemory**. The toggle also appears when the memory model is none and V2 is on.
 
 ## Settings
 
-- **SupaMemory Model**: the summarizer. The options are the same as for [[SupaMemory]]: **distilbart-cnn-6-6 (Free/Local)**, **OpenAI 3.5 Turbo Instruct** (needs the **SupaMemory OpenAI Key**, at most 600 output tokens) and **Auxiliary Model**.
-- **Summarization Prompt**: blank uses a built-in "summarize the ongoing role story and remove redundancy" instruction. For the Auxiliary Model, a prompt starting with `<|im_start|>` is parsed as ChatML, with `{{slot}}` replaced by the chat text. Any other prompt is sent as a system message after the chat text. distilbart ignores the prompt. This is the same stored prompt as the SupaMemory Prompt.
-- **Chunk Size** (default 3000, minimum 100): the maximum number of tokens of messages summarized into one summary.
-- **Allocated Tokens** (default 3000, minimum 100): the token budget for the memory block.
+- **SupaMemory Model**: The summarizer. The options are the same as for [[SupaMemory]]: **distilbart-cnn-6-6 (Free/Local)**, **OpenAI 3.5 Turbo Instruct** (needs the **SupaMemory OpenAI Key**, at most 600 output tokens), and **Auxiliary Model**.
+- **Summarization Prompt**: If you leave it blank, the app uses a built-in instruction, "summarize the ongoing role story and remove redundancy". For the Auxiliary Model, the app parses a prompt that starts with `<|im_start|>` as ChatML, and replaces `{{slot}}` with the chat text. The app sends any other prompt as a system message after the chat text. distilbart ignores the prompt. This is the same stored prompt as the SupaMemory Prompt.
+- **Chunk Size** (default 3000, minimum 100): The maximum number of tokens of messages that the app summarizes into one summary.
+- **Allocated Tokens** (default 3000, minimum 100): The token budget for the memory block.
 
 ## How it works
 
-This runs on every request while the toggle is on.
+While the toggle is on, this process runs on every request.
 
-1. **Budget.** V2 counts the prompt including the reserved response length (**Max Response**), as [[SupaMemory]] does, and adds **Allocated Tokens** as a placeholder for the memory block. It then compares the result with Max Context.
+1. **Budget.** V2 counts the prompt including the reserved length of the response (**Max Response**), as [[SupaMemory]] does. It adds **Allocated Tokens** as a placeholder for the memory block. Then it compares the result with Max Context.
    <!-- src/ts/process/memory/hypav2.ts:391-393; src/ts/process/index.svelte.ts:1057 -->
-   **Fork difference:** upstream subtracts Max Response from the count first.
-2. **Clean up.** A summary is discarded, together with its paragraphs, only if a message it covers is gone from both the chat's full message list and the prompt, for example because that message was deleted. Hidden messages, and messages before an "all before" reset, do not invalidate a summary. A summary whose only covered entries have no message ID is never discarded. A stored empty memo is read back as no memo when the data loads.
+   **Fork difference:** Upstream first subtracts Max Response from the count.
+2. **Clean up.** The app discards a summary, together with its paragraphs, only in one case. A message that the summary covers is gone from both the full message list of the chat and the prompt. For example, someone deleted that message. Hidden messages do not make a summary invalid. Messages before an "all before" reset do not make a summary invalid either. The app never discards a summary whose covered entries all have no message ID. When the data loads, the app reads a stored empty memo as no memo.
    <!-- src/ts/process/memory/hypav2.ts:291-326,338-356 -->
-   **Fork difference:** the discard rule and the null-memo handling.
-3. **Resume.** The resume point is the latest position in the history of any message covered by any summary. Messages up to it are already summarized and are removed from the history. Entries without a message ID (the first message, example turns) count toward the resume point only when the first of them is something the summarizer would not skip.
+   **Fork difference:** The discard rule and the handling of a null memo.
+3. **Resume.** The resume point is the latest position in the history of any message that any summary covers. The messages up to that point are already summarized. The app removes them from the history. Entries without a message ID (the first message and example turns) count toward the resume point only in one case. The first of them must be something that the summarizer does not skip.
    <!-- src/ts/process/memory/hypaResume.ts:28-62; src/ts/process/memory/hypav2.ts:402-416 -->
-   **Fork difference:** upstream resumes after the last message of the last summary.
-4. **Summarize while over budget.** Starting at the resume point, messages are collected until the next one would exceed **Chunk Size**. The last 4 messages are never summarized. Example turns (`example_user` / `example_assistant`), new-chat markers and blank messages are skipped, not collected (their tokens are still counted off the total once a round succeeds). <!-- src/ts/process/memory/hypaResume.ts:7-15; src/ts/process/memory/hypav2.ts:455-461 --> **Fork difference:** upstream skipped the first entry of the history and blank messages. The collected messages are sent as `role: text` lines, and the result becomes a new summary. It is also split at blank lines into paragraphs for retrieval. This repeats until the prompt fits. It stops with an error if nothing can be collected:
-   - *"… can't summarize last 4 messages …"* when only the protected last messages remain. Increase Max Context.
-   - *"Message tokens (…) exceeds chunk size (…)"* when a single message is larger than Chunk Size. Increase Chunk Size.
-   - A summarization call may fail up to 3 times in a row before V2 gives up with *"Summarization failed multiple times"*. Each retry takes the same batch of messages again, so nothing is skipped. A failure to resolve the SupaMemory OpenAI Key (a secret reference that cannot be resolved) stops at once with no retries.
+   **Fork difference:** Upstream resumes after the last message of the last summary.
+4. **Summarize while over budget.** The app starts at the resume point and collects messages until the next message exceeds **Chunk Size**. The app never summarizes the last 4 messages. The app skips example turns (`example_user` / `example_assistant`), new-chat markers, and blank messages. It does not collect them. After a round succeeds, the app still subtracts their tokens from the total. <!-- src/ts/process/memory/hypaResume.ts:7-15; src/ts/process/memory/hypav2.ts:455-461 --> **Fork difference:** Upstream skipped the first entry of the history and blank messages. The app sends the collected messages as `role: text` lines. The result becomes a new summary. The app also splits the summary at blank lines into paragraphs for retrieval. The app repeats this until the prompt fits. It stops with an error if it can collect nothing:
+   - *"… can't summarize last 4 messages …"*: Only the protected last messages remain. Increase Max Context.
+   - *"Message tokens (…) exceeds chunk size (…)"*: A single message is larger than Chunk Size. Increase Chunk Size.
+   - A summarization call can fail up to 3 times in a row. After that, V2 gives up with *"Summarization failed multiple times"*. Each retry takes the same batch of messages again, so the app skips nothing. If the app cannot resolve the SupaMemory OpenAI Key (a secret reference that does not resolve), it stops at once with no retries.
      <!-- src/ts/process/memory/hypav2.ts:67-78,513-535 -->
-     **Fork difference:** the retry of the same batch.
+     **Fork difference:** The retry of the same batch.
 5. **Build the memory block.**
-   - **Past Events Summary**: summaries are taken **starting from the newest** and going back, until the next one would exceed half of Allocated Tokens. The ones taken are then shown in chronological order.
+   - **Past Events Summary**: The app takes summaries **starting from the newest** and goes back. It stops before the summary that exceeds half of Allocated Tokens. Then it shows the summaries that it took in chronological order.
      <!-- src/ts/process/memory/hypav2.ts:588-603 -->
-     **Fork difference:** upstream adds the oldest summaries first.
-   - **Past Events Details**: every paragraph of every summary is scored against the last three messages. The weights are 1 for the newest, ½ and ⅓ for the others, and the scores are summed. Paragraphs are added in score order until the next one would exceed what is left of Allocated Tokens. They can include paragraphs of summaries already shown in the first part.
+     **Fork difference:** Upstream adds the oldest summaries first.
+   - **Past Events Details**: The app scores every paragraph of every summary against the last three messages. The weights are 1 for the newest message, ½ for the one before it, and ⅓ for the third. The app adds up the scores. It adds paragraphs in the order of their scores. It stops before the paragraph that exceeds what is left of Allocated Tokens. These paragraphs can include paragraphs of summaries that the first part already shows.
 6. **Insert** one system message at the start of the remaining history:
 
 ```
@@ -50,18 +50,18 @@ This runs on every request while the toggle is on.
 </Past Events Details>
 ```
 
-Embedding runs on every request once summaries exist. New paragraphs are embedded once and cached, and the three query messages are embedded each time.
+Once summaries exist, embedding runs on every request. The app embeds new paragraphs one time and caches them. It embeds the three query messages each time.
 
 ## Data
 
-Stored per chat:
+The app stores this data for each chat:
 
-- The summaries, each with its text, the messages it covers, and the last of those messages. The resume point is worked out from all the covered messages of all summaries, not from that last one alone (see How it works).
+- The summaries. Each summary has its text, the messages that it covers, and the last of those messages. The app works out the resume point from all the covered messages of all summaries, not from that last message alone. See How it works.
   <!-- src/ts/process/memory/hypaResume.ts:28-62; src/ts/process/memory/hypav2.ts:557-562 -->
 
-- The retrieval paragraphs, each with its text and a link back to the summary it came from.
-- An internal counter used to number new summaries.
+- The retrieval paragraphs. Each paragraph has its text and a link back to the summary that it came from.
+- An internal counter that numbers new summaries.
 
-**Hypa V2 Modal** opens a viewer where you can edit the text of every paragraph (**Chunks**) and every summary (**Summarized**). Find it in the character settings, or in the chat menu if **Show Menu Hypa Modal** is on in Accessibility settings. Editing a summary does not update the paragraphs that were split from it.
+**Hypa V2 Modal** opens a viewer. In it, you can edit the text of every paragraph (**Chunks**) and every summary (**Summarized**). You find it in the character settings. If **Show Menu Hypa Modal** is on in the Accessibility settings, you also find it in the chat menu. If you edit a summary, the app does not update the paragraphs that it split from that summary.
 
-Data in the old V2 format is migrated automatically the next time V2 runs, and current V2 data can be converted to V3 from the Hypa V3 Modal. See [[Conversion paths|Long Term Memory#conversion-paths]].
+The app migrates data in the old V2 format automatically the next time V2 runs. You can convert current V2 data to V3 in the Hypa V3 Modal. See [[Conversion paths|Long Term Memory#conversion-paths]].

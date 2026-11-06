@@ -1,59 +1,59 @@
 # CBS: Assets and Media
 
-Part of [[Curly-Brased-Syntaxes]]. These functions embed a character's additional assets, emotion images, background music, or profile pictures. Most of them only make sense when *displayed* in the chat window — during prompt building for the AI request they still resolve (to a URL/base64 path, an HTML tag, or empty string), so avoid using the HTML-producing ones inside text that gets sent to the model.
+This page belongs to [[Curly-Brased-Syntaxes]]. The functions on this page embed the additional assets, emotion images, background music, or profile pictures of a character. Most of them make sense only when the chat window *displays* them. When the app builds the prompt for the AI request, these functions still resolve to a URL or base64 path, an HTML tag, or an empty string. Do not use the functions that produce HTML inside text that the app sends to the model.
 
-All asset-name lookups are case-insensitive and, if no additional asset matches the given name exactly, the client falls back to a fuzzy match (Levenshtein distance against file names with the extension stripped) as long as the distance is within the **Asset Max Difference** setting; otherwise the function returns an empty string. <!-- src/ts/parser/parser.svelte.ts:553-566,627-657 -->
+Lookups of asset names are case-insensitive. If no additional asset matches the given name exactly, the client uses a fuzzy match. The fuzzy match compares the name with the file names without extensions, using the Levenshtein distance. The client accepts a match only when the distance is within the **Asset Max Difference** setting. If no asset matches, the function returns an empty string. <!-- src/ts/parser/parser.svelte.ts:553-566,627-657 -->
 
-When **Hide All Images** is enabled in settings, every function in this section that would normally emit an image, video, or background element instead returns an empty string. <!-- src/ts/parser/parser.svelte.ts:507,528-530 -->
+When **Hide All Images** is on, every function in this section that normally emits an image, video, or background element returns an empty string. <!-- src/ts/parser/parser.svelte.ts:507,528-530 -->
 
 ## Additional assets
 
 | Syntax | Output | Notes |
 |---|---|---|
-| `{{asset::name}}` | `<img>` (or `<video>` if the asset's extension is a video type) | Generic "display this asset" tag. <!-- src/ts/cbs.ts:2263-2268 --> |
-| `{{img::name}}` | Unstyled `<img>` | <!-- src/ts/cbs.ts:2319-2324 --> |
-| `{{image::name}}` | `<img>` wrapped in a `.risu-inlay-image` div | <!-- src/ts/cbs.ts:2312-2317 --> |
+| `{{asset::name}}` | `<img>`, or `<video>` if the extension of the asset is a video type | The generic tag that displays an asset. <!-- src/ts/cbs.ts:2263-2268 --> |
+| `{{img::name}}` | `<img>` without styling | <!-- src/ts/cbs.ts:2319-2324 --> |
+| `{{image::name}}` | `<img>` inside a `.risu-inlay-image` div | <!-- src/ts/cbs.ts:2312-2317 --> |
 | `{{video::name}}` | `<video controls autoplay loop>` | <!-- src/ts/cbs.ts:2298-2303 --> |
-| `{{video-img::name}}` | `<video autoplay muted loop>` (no controls, used like an animated image) | <!-- src/ts/cbs.ts:2305-2310 --> |
+| `{{video-img::name}}` | `<video autoplay muted loop>`. It has no controls. Use it like an animated image. | <!-- src/ts/cbs.ts:2305-2310 --> |
 | `{{audio::name}}` | `<audio controls autoplay loop>` | <!-- src/ts/cbs.ts:2277-2282 --> |
-| `{{bg::name}}` | Background element; only renders when the app is rendering the character's background image, otherwise resolves to nothing | <!-- src/ts/parser/parser.svelte.ts:595-599 -->|
-| `{{bgm::name}}` | Hidden control div (`risu-ctrl="bgm___auto___<url>"`) that the player picks up to start background music | <!-- src/ts/cbs.ts:2291-2296 --> |
-| `{{path::name}}` / `{{raw::name}}` | The resolved file path/URL itself, with no markup | <!-- src/ts/cbs.ts:2326-2331 --> |
-| `{{emotion::name}}` | `<img>` sourced from the character's **emotion images** (a separate namespace from additional assets) | <!-- src/ts/cbs.ts:2270-2275 --> |
+| `{{bg::name}}` | A background element. It renders only while the app renders the background image of the character. At other times, it resolves to nothing. | <!-- src/ts/parser/parser.svelte.ts:595-599 -->|
+| `{{bgm::name}}` | A hidden control div (`risu-ctrl="bgm___auto___<url>"`). The player reads it and starts background music. | <!-- src/ts/cbs.ts:2291-2296 --> |
+| `{{path::name}}` / `{{raw::name}}` | The resolved file path or URL, without markup. | <!-- src/ts/cbs.ts:2326-2331 --> |
+| `{{emotion::name}}` | `<img>` with a source from the **emotion images** of the character. Emotion images are a separate namespace from additional assets. | <!-- src/ts/cbs.ts:2270-2275 --> |
 
-These tags (plus `{{source::...}}`, covered under **Profile pictures** below) are all resolved together in a dedicated asset pass, separate from the general CBS function lookup. <!-- src/ts/parser/parser.svelte.ts:408,523 -->
+The app resolves these tags in one dedicated asset pass. It also resolves `{{source::...}}` in this pass. See **Profile pictures** below. The pass is separate from the general lookup of CBS functions. <!-- src/ts/parser/parser.svelte.ts:408,523 -->
 
 ### Asset name resolution and module/character collisions
 
-When both a module and the active character ship an asset with the same name, the character's own asset always wins. The module's asset is only added if the name is not already claimed by the character. <!-- src/ts/parser/parser.svelte.ts:470-484 -->
+Sometimes a module and the active character both provide an asset with the same name. In that case, the asset of the character always wins. The app adds the asset of the module only if the character has not claimed that name. <!-- src/ts/parser/parser.svelte.ts:470-484 -->
 
 ## Inlay assets
 
-Inlays are assets attached directly to a chat message (e.g., pasted images) rather than to the character:
+Inlays are assets that belong to a chat message, for example pasted images. They do not belong to the character.
 
 | Syntax | Behavior |
 |---|---|
-| `{{inlay::id}}` | Unstyled inlay; **not** sent to the model |
-| `{{inlayed::id}}` | Styled (wrapped in `.risu-inlay-image`) inlay; **not** sent to the model |
-| `{{inlayeddata::id}}` | Styled inlay that **is** sent to the model |
+| `{{inlay::id}}` | An inlay without styling. The app does **not** send it to the model. |
+| `{{inlayed::id}}` | A styled inlay, inside `.risu-inlay-image`. The app does **not** send it to the model. |
+| `{{inlayeddata::id}}` | A styled inlay that the app **does** send to the model. |
 
 <!-- src/ts/cbs.ts:2333-2338,2340-2345,2347-2352 -->
 
-Inlays are resolved in their own pass after the main CBS pass. Image inlays become `<img>`, video inlays become `<video>`, and audio inlays become `<audio>`, each pointing at a blob URL cached per inlay id. <!-- src/ts/parser/parser.svelte.ts:694-729 -->
+The app resolves inlays in their own pass, after the main CBS pass. Image inlays become `<img>`, video inlays become `<video>`, and audio inlays become `<audio>`. Each tag points to a blob URL. The app caches that URL for each inlay id. <!-- src/ts/parser/parser.svelte.ts:694-729 -->
 
 ## Profile pictures
 
-`{{source::user}}` and `{{source::char}}` return the raw source URL/data of the user's persona icon or the character's avatar image respectively (any other argument is not recognized). This is resolved as a placeholder that's substituted only at the very end of asset processing, after everything else has resolved. <!-- src/ts/cbs.ts:2354-2359; src/ts/parser/parser.svelte.ts:541-551,612-622 -->
+`{{source::user}}` returns the raw source URL or data of the persona icon of the user. `{{source::char}}` returns the same for the avatar image of the character. The app does not recognize any other argument. The app resolves this as a placeholder. It substitutes the placeholder at the very end of asset processing, after the app resolves everything else. <!-- src/ts/cbs.ts:2354-2359; src/ts/parser/parser.svelte.ts:541-551,612-622 -->
 
 ## Character/module asset listings
 
 | Syntax | Returns |
 |---|---|
-| `{{emotionlist}}` | JSON array of the current character's emotion-image names |
-| `{{assetlist}}` | JSON array of the current character's additional-asset names (empty for groups) |
-| `{{chardisplayasset}}` | JSON array of additional-asset names, filtered by the assets excluded in the character's asset list, only when **Insert Asset Prompt** is enabled |
-| `{{moduleassetlist::namespace}}` (alias `{{module_assetlist}}`) | JSON array of asset names for the module with the given namespace |
+| `{{emotionlist}}` | A JSON array of the emotion-image names of the current character. |
+| `{{assetlist}}` | A JSON array of the additional-asset names of the current character. The array is empty for groups. |
+| `{{chardisplayasset}}` | A JSON array of additional-asset names. The array leaves out the assets that the asset list of the character excludes. The function returns it only when **Insert Asset Prompt** is on. |
+| `{{moduleassetlist::namespace}}` (alias `{{module_assetlist}}`) | A JSON array of the asset names of the module that has the given namespace. |
 
 <!-- src/ts/cbs.ts:1316-1329,1331-1344,1477-1497,1607-1622 -->
 
-See also [[CBS-Functions]] for `{{moduleenabled}}`.
+For `{{moduleenabled}}`, see [[CBS-Functions]].

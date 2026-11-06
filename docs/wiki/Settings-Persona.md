@@ -1,33 +1,41 @@
 # Settings: Persona
 
-Part of [[Settings]]. Open **Settings → Persona**.
+This page belongs to [[Settings]]. To open it, go to **Settings → Persona**.
+
+A persona is the identity that you use in chat. It has a name, a portrait, and a description.
 
 ## Persona list
 
-A grid of persona avatars. Click one to switch to it. Drag to reorder — dragging rewrites the stored order and re-resolves which persona is selected by a stable id (a persona dragged for the first time is given one if it doesn't already have one).
+The list shows the avatar of each persona in a grid. Click an avatar to switch to that persona. Drag an avatar to change the order.
+
+When you drag, the app saves the new order. The app then finds the selected persona again by its stable id. If a persona has no id, the app gives it one the first time you drag it.
 <!-- src/lib/Setting/Pages/PersonaSettings.svelte:21-56,72-85 -->
 
-**"+"** opens a menu to create a new persona or import one.
+Click **+** to open a menu. In the menu, you can create a new persona or import one.
 <!-- src/lib/Setting/Pages/PersonaSettings.svelte:87-102 -->
 
 ## Selected persona
 
-| Control | Default | Does |
+These controls change the persona that you selected in the list.
+
+| Control | Default | What it does |
 |---|---|---|
-| Portrait (click to change) | empty | Opens the image picker for this persona's icon. |
-| Name | "User" | Free text; shown as your name in chat. |
-| Note | empty | Only shown when **Persona Note** is on (**Settings → Advanced Settings → Persona Note**). A free-text field alongside the persona. |
-| Description | empty | Free-text persona description. |
-| Large Portrait | off | Checkbox. When on, switches this persona's portrait to a larger display size wherever the app shows persona portraits. |
+| Portrait (click to change) | empty | Opens the image picker for the icon of this persona. |
+| Name | "User" | Holds free text. Chat shows this text as your name. |
+| Note | empty | Holds free text. When **Persona Note** is on, this field appears. To turn it on, go to **Settings → Advanced Settings → Persona Note**. |
+| Description | empty | Holds a free-text description of the persona. |
+| Large Portrait | off | A checkbox. When you turn it on, the app shows the portrait of this persona at a larger size wherever it shows persona portraits. |
 
 <!-- src/lib/Setting/Pages/PersonaSettings.svelte:120-158; Note gate: src/lib/Setting/Pages/PersonaSettings.svelte:136, src/ts/storage/database.svelte.ts (personaNote field) -->
 
-## Export / Import / Remove
+## Export, import, and remove
 
-| Control | Does |
+| Control | What it does |
 |---|---|
-| Export | Downloads the selected persona. |
-| Import | Loads a persona from a file exported this way, adding it as a new persona. |
-| Remove | Confirms first, then deletes the selected persona and switches to the first remaining one. Disabled while only one persona exists — you cannot remove your last persona. |
+| Export | Downloads the selected persona as a file. |
+| Import | Reads a persona from a file that you exported with **Export**. The app adds it as a new persona. |
+| Remove | Shows a prompt first. After you accept, it deletes the selected persona and switches to the first persona that remains. |
+
+You cannot remove your last persona. **Remove** is disabled while only one persona exists.
 
 <!-- src/lib/Setting/Pages/PersonaSettings.svelte:142-157 -->

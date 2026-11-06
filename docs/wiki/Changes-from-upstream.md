@@ -1,223 +1,223 @@
 # What changed from upstream RisuAI
 
-> **This page is maintained from the project's own records** (commit history, the roadmap and the upstream-merge log), not from a fresh test of every item. Most changes below are checked by automated tests and review; many have not been tried on a real phone or in a long real-world session. "Reported" means a record says so but it has not been confirmed independently. Where the records disagree or are thin, the item is left out.
+> **The authors maintain this page from the records of the project.** The records are the commit history, the roadmap, and the log of upstream merges. The page does not come from a fresh test of every item. Automated tests and reviews check most of the changes below. Many changes were not tried on a real phone or in a long real-world session. "Reported" means that a record says so, but nobody confirmed it independently. Where the records disagree or are thin, the item is left out.
 
-RisuTanium is a fork of RisuAI. It stays compatible with upstream: a `.bin` backup moves both ways, and upstream characters, modules, presets and plugins keep working. This page is current to **2026-11-02**. It has merged upstream RisuAI **v2026.10.292** (upstream commit `ea61945f9`, 2026-10-30); a fetch on 2026-11-02 showed no newer upstream `main` commit.
+RisuTanium is a fork of RisuAI. It stays compatible with upstream. A `.bin` backup moves in both directions. Upstream characters, modules, presets, and plugins keep working. This page is current to **2026-11-02**. The fork merged upstream RisuAI **v2026.10.292** (upstream commit `ea61945f9`, 2026-10-30). A fetch on 2026-11-02 showed no newer commit on upstream `main`.
 
-RisuTanium has **not had a public release**. This page describes what the code on the fork's main branch does. A release-signed Android build exists only on the maintainer's own phone. Items marked "on main" are in the code but not all are called finished in the project's records.
+RisuTanium has **not had a public release**. This page describes what the code on the main branch of the fork does. A release-signed Android build exists only on the own phone of the maintainer. Items marked "on main" are in the code. But the records do not call all of them finished.
 
 ## What is the same
 
-- **Backups work both ways.** A `.bin` from upstream always imports here. A `.bin` made here imports into upstream. If something in your library is too large for upstream to hold, or has no upstream equivalent, the export warns you first, names it, and waits for your confirmation before it starts. Cancelling writes nothing.
-- **Your upstream content keeps working:** characters, modules, presets, plugins (see the V2.1 note below) and the integrations upstream supports.
-- **One exception:** full backups saved on `risuai.xyz` are encrypted by upstream, and only that site can read them. RisuTanium refuses them and imports nothing. See [[Migrating from upstream]] for this, for the routes out, and for the services that were removed.
-- **Names:** the product is shown as "RisuTanium". Upstream is "RisuAI".
+- **Backups work in both directions.** A `.bin` from upstream always imports here. A `.bin` made here imports into upstream. Something in your library can be too large for upstream to hold, or can have no upstream equivalent. Then the export warns you first, names the item, and waits for your confirmation before it starts. If you cancel, the export writes nothing.
+- **Your upstream content keeps working:** characters, modules, presets, plugins (see the V2.1 note below), and the integrations that upstream supports.
+- **One exception:** Upstream encrypts full backups that you save on `risuai.xyz`, and only that site can read them. RisuTanium refuses them and imports nothing. See [[Migrating from upstream]] for this, for the routes out, and for the services that the fork removed.
+- **Names:** The app shows the product as "RisuTanium". Upstream is "RisuAI".
 
 ## Where your API key goes on a web build
 
-On a static web build of RisuTanium (not the desktop app, not Android, and not the Node server), requests to AI providers (other than localhost addresses, which a web build refuses anyway) go through upstream RisuAI's proxy at `sv.risuai.xyz` (`/proxy2`), the same as upstream's own hosted build. Your API key travels with the request, so it passes through upstream's server. The desktop app and Android send requests directly from the device. The Node server uses its own `/proxy2`. The maintainer decided on 2026-11-02 to document this and change nothing. The code has a plain-fetch setting that skips the proxy; no toggle for it was found in the settings screens (not fully checked).
+This applies to a static web build of RisuTanium. It does not apply to the desktop app, to Android, or to the Node server. On the static web build, requests to AI providers go through the proxy of upstream RisuAI at `sv.risuai.xyz` (`/proxy2`). This is the same as the own hosted build of upstream. Requests to localhost addresses are the exception, which a web build refuses anyway. Your API key travels with the request, so it passes through the server of upstream. The desktop app and Android send requests directly from the device. The Node server uses its own `/proxy2`. On 2026-11-02, the maintainer decided to document this and to change nothing. The code has a plain-fetch setting that skips the proxy. The authors found no toggle for it in the settings screens (they did not check this fully).
 
 ## Rewritten systems
 
 ### Saving and storage
 
-Upstream keeps your library as one large saved database. RisuTanium writes it as many small pieces (characters, chats, modules, assets) and keeps most characters as lightweight placeholders until you open them. This matters for big libraries, where one huge file used to be slow, memory-hungry and risky.
+Upstream keeps your library as one large saved database. RisuTanium writes it as many small pieces (characters, chats, modules, assets). It keeps most characters as lightweight placeholders until you open them. This matters for big libraries. For those, one huge file used to be slow, hungry for memory, and risky.
 
 What you see:
 
 - A recovery screen at startup if a save is damaged, and a list of earlier saved versions to restore from ("Load Internal Backup").
-- A visible indicator when a browser tab has stopped saving, and a message naming exactly which items could not be saved, instead of silent loss.
-- Older saves convert automatically. A malformed older save is refused, or offered without the broken parts, rather than crashing.
-- Web, desktop and Node server all share one storage contract. The OPFS switch is gone; an OPFS profile is copied back into the browser's IndexedDB at startup. Desktop save files are replaced through a temporary file, so a crash mid-save does not leave a half-written file.
-- The Node server checks revisions before writing, so two clients cannot silently overwrite each other.
-- Saving yields to the interface during long saves, and on Android a hidden page keeps saving.
+- A visible indicator when a browser tab has stopped saving. A message names exactly which items the app could not save. Before, the loss was silent.
+- Older saves convert automatically. The app refuses a malformed older save, or offers it without the broken parts. It does not crash.
+- Web, desktop, and Node server all share one storage contract. The OPFS switch is gone. At startup, the app copies an OPFS profile back into the IndexedDB of the browser. The desktop app replaces save files through a temporary file. So a crash in the middle of a save does not leave a half-written file.
+- The Node server checks revisions before it writes. So two clients cannot silently overwrite each other.
+- Saving yields to the interface during long saves. On Android, a hidden page keeps saving.
 
-Limits: a tab that stops saving is still "parked" until you act on it; the records say the multi-tab design is still under review. [[Settings Backup and Files]] covers the backup screens.
+Limits: A tab that stops saving is still "parked" until you act on it. The records say that the design for several tabs is still under review. [[Settings Backup and Files]] covers the backup screens.
 
 ### Backups and large files
 
-- `.bin` export streams instead of building one giant file in memory. Restore and CharX import also stream. Browser assets can be as large as 1 GiB where the store streams.
-- A cut-short backup is refused before anything is written. A restore is refused while another import, export or save is running, or while other tabs are open.
-- Backups carry every piece they reference, all plugin storage and inlays. Local backup files are named with the export date.
-- Export can be cancelled on web, and large CharX exports are cancellable.
-- A faster fork-to-fork backup format is a design only and is not shipped.
+- The `.bin` export streams. It does not build one giant file in memory. The restore and the CharX import also stream. Browser assets can be as large as 1 GiB where the store streams.
+- The app refuses a cut-short backup before it writes anything. The app refuses a restore while another import, export, or save runs, or while other tabs are open.
+- Backups carry every piece that they reference, all plugin storage, and inlays. The names of local backup files include the date of the export.
+- You can cancel an export on the web. You can cancel large CharX exports.
+- A faster backup format from fork to fork is only a design. It is not shipped.
 
 ### Chat alternatives (rerolls and candidate replies)
 
-Alternatives are kept as sibling branches in a tree, with a counter and previous/next buttons on the chat screen. Each branch keeps its own memory and script state. SillyTavern swipes import into the tree. A `.bin` made for upstream leaves the alternatives out after naming them. Records list this as on main with some device checks still owed.
+The app keeps alternatives as sibling branches in a tree. The chat screen shows a counter and buttons for previous and next. Each branch keeps its own memory and script state. SillyTavern swipes import into the tree. A `.bin` that you make for upstream leaves the alternatives out, after it names them. The records list this as on main, with some device checks still owed.
 
 ### Chats stay separate
 
-A send, its scripts, Lua triggers, lorebook, prompt, persona, summaries, tools and `/` commands now read and write the chat they started in, not whichever chat you switched to meanwhile. One generation runs at a time per send, and the composer remembers each chat's unsent text.
+A send, its scripts, Lua triggers, lorebook, prompt, persona, summaries, tools, and `/` commands now read and write the chat in which they started. They do not use the chat to which you switched in the meantime. One generation runs at a time for each send. The composer remembers the unsent text of each chat.
 
 ### Modules
 
-Modules that no character uses load as lightweight stubs and are read only when a chat, export or screen needs them. With 100+ modules this lowers memory use and speeds boot. Features that need modules (translator, suggestions, HypaV3, subtitles) wait for the chat's modules. A synthetic 169-module test on a phone passed on a small number of runs; it is not called complete.
+Modules that no character uses load as lightweight stubs. The app reads them only when a chat, export, or screen needs them. With 100 or more modules, this lowers memory use and speeds up the boot. Features that need modules wait for the modules of the chat. These features are the translator, suggestions, HypaV3, and subtitles. A synthetic test with 169 modules on a phone passed on a small number of runs. The records do not call it complete.
 
 ### Plugins
 
-- V2.1 plugin execution is retired. Existing V2.1 plugin entries stay untouched in your database and `.bin`; V3 plugins are unaffected.
-- V3 permission choices are scoped to script and permission. A plugin needs the `db` permission for character, chat and database APIs and cannot read another plugin's saved arguments. Plugin network requests go through a destination policy.
-- New: export a plugin's script as `.js`, and import several plugin or module files at once.
-- Merged from upstream: V3 plugins are now all unloaded on reload (before, about half stayed running with stale scripts).
+- The fork retired the execution of V2.1 plugins. Existing V2.1 plugin entries stay untouched in your database and `.bin`. V3 plugins are not affected.
+- V3 permission choices have the scope of script and permission. A plugin needs the `db` permission for the APIs of characters, chats, and the database. It cannot read the saved arguments of another plugin. Plugin network requests go through a policy for destinations.
+- New: You can export the script of a plugin as `.js`. You can import several plugin or module files at once.
+- Merged from upstream: The app now unloads all V3 plugins on a reload. Before, about half stayed running with stale scripts.
 
 ### Speed and rendering
 
-- The character list and Grid view show only what is near the screen; avatars load as they come into view.
-- Returning from Settings no longer rebuilds the chat twice. A 100 ms page poll was replaced by event handling. Rerolls copy only new messages. Context trimming counts tokens only as far as needed.
-- Toggling a module that changes nothing visible no longer rebuilds the chat.
+- The character list and the Grid view show only what is near the screen. Avatars load as they come into view.
+- A return from Settings no longer rebuilds the chat two times. The fork replaced a page poll of 100 ms with event handling. Rerolls copy only new messages. The trimming of context counts tokens only as far as needed.
+- If you toggle a module that changes nothing visible, the chat no longer rebuilds.
 
-These are descriptive measurements on specific machines, not a promise of a frame rate on every device.
+These are descriptive measurements on specific machines. They are not a promise of a frame rate on every device.
 
 ### Security
 
-- The Node server needs a password, with rules for tokens and request sizes. Desktop and Android check native network destinations, trim permissions, and ask before installing Python or starting a module's stdio command.
-- Imported presets cannot redirect stored API keys. Several unsafe HTML sinks were closed.
+- The Node server needs a password, with rules for tokens and request sizes. Desktop and Android check native network destinations and trim permissions. They ask before they install Python or start the stdio command of a module.
+- Imported presets cannot redirect stored API keys. The fork closed several unsafe HTML sinks.
 
 ### Android
 
-The fork has an Android build: a foreground service keeps work alive and shows a "Generating a reply..." notification with Stop. A reply finished while the app is hidden is saved. Other apps can open cards, modules, presets and `.bin` files in it. Only the maintainer's own phone has a signed build; there is no public Android release.
+The fork has an Android build. A foreground service keeps work alive and shows a "Generating a reply..." notification with Stop. The app saves a reply that finishes while the app is hidden. Other apps can open cards, modules, presets, and `.bin` files in it. Only the own phone of the maintainer has a signed build. There is no public Android release.
 
 ## New features
 
-- **Import:** Backyard `.byaf` characters, YAML cards, and chats from SillyTavern `.jsonl`, Chub, Ooba, Agnai, Kobold Lite and Character.AI (tested on synthetic files only). SillyTavern lorebooks keep secondary keys, disabled entries, probability, position and depth. SillyTavern presets import in Settings and Playground.
-- **Characters and lists:** Grid follows the sidebar order, with folders, bulk edit, drag and merge, sorting, and search over descriptions, tags and creator. "Empty trash" button. "Copy as card" in the message menu.
-- **Keys and models:** `${NAME}` environment-variable references for keys (see [[API Keys from Environment Variables]]); refresh-model-data button, context and pricing from OpenRouter, deprecated models tagged; Claude 5 Opus with adaptive thinking.
-- **Languages:** Spanish and Japanese (the Japanese is machine-drafted, with no native review).
-- **Utility mode:** a first slice (task presets and a run screen), shown on desktop only. It is early.
+- **Import:** Backyard `.byaf` characters, YAML cards, and chats from SillyTavern `.jsonl`, Chub, Ooba, Agnai, Kobold Lite, and Character.AI (tested on synthetic files only). SillyTavern lorebooks keep secondary keys, disabled entries, probability, position, and depth. SillyTavern presets import in Settings and in the Playground.
+- **Characters and lists:** Grid follows the order of the sidebar. It has folders, bulk edit, drag and merge, sorting, and a search over descriptions, tags, and creator. An "Empty trash" button. "Copy as card" in the message menu.
+- **Keys and models:** `${NAME}` references to environment variables for keys (see [[API Keys from Environment Variables]]). A button to refresh model data. Context and pricing from OpenRouter. Deprecated models are tagged. Claude 5 Opus with adaptive thinking.
+- **Languages:** Spanish and Japanese. A machine drafted the Japanese, and no native speaker reviewed it.
+- **Utility mode:** A first slice (task presets and a run screen), shown on desktop only. It is early.
 
 ## Removed or changed features
 
-Details and routes are on [[Migrating from upstream]].
+For details and routes, see [[Migrating from upstream]].
 
 | Gone | Notes |
 |---|---|
-| RisuAccount sign-in, sync, hub and Kei | RisuRealm stays; local `.bin` is the only restore |
+| RisuAccount sign-in, sync, hub, and Kei | RisuRealm stays. Local `.bin` is the only restore. |
 | Google Drive backup | Local `.bin` only |
-| Multiuser chat | `Message.name` is kept |
-| V2.1 plugin execution | Data kept, nothing runs |
-| Global Lorebook and Global Regex settings pages | Pages retired |
-| Picture-in-picture keep-alive | A stored `pip` setting reads as `off` |
-| OPFS storage switch | See Saving and storage |
-| Desktop auto-updater | Off until the fork has its own releases |
+| Multiuser chat | The fork keeps `Message.name`. |
+| Execution of V2.1 plugins | The data stays. Nothing runs. |
+| The settings pages Global Lorebook and Global Regex | The pages are retired. |
+| Picture-in-picture keep-alive | A stored `pip` setting reads as `off`. |
+| OPFS storage switch | See Saving and storage. |
+| Desktop auto-updater | Off until the fork has its own releases. |
 
 ## Bugs fixed
 
-Upstream links appear only where the records name one. Fixes are on main; most are verified by tests, not on a device.
+Links to upstream appear only where the records name one. The fixes are on main. Tests verify most of them. Most were not verified on a device.
 
 ### Saving and data safety
 
-- Edits to a character you had not selected were not saved.
-- Two characters sharing one id could lose a saved block. Both are now kept, and the app says so.
-- An unloadable character list could be written. Saving now pauses and names what cannot be saved.
-- Edits made while the first save was still encoding are kept.
-- A save with an oversize body, or a full disk, now stops with a clear message instead of retrying forever (follows upstream's Node write-error change).
-- Pages hiding or closing now save pending edits; finished replies save while hidden.
-- Auto-reload between tabs no longer destroys local drafts, and a cancelled reload no longer stops saving.
-- Preset renames and images were silently discarded; fixed. A corruption prompt could wipe a lorebook; fixed.
-- Saving or switching with an out-of-range preset id no longer throws: the working settings are kept as a new "New Preset". Applying a loadout no longer adds an empty entry ([upstream #1387](https://github.com/kwaroran/Risuai/pull/1387), the remaining small gaps after the reported scenario was fixed). Checked by tests.
+- Edits to a character that you had not selected were not saved.
+- Two characters that shared one id could lose a saved block. The app now keeps both and says so.
+- The app could write an unloadable character list. Saving now pauses and names what it cannot save.
+- The app keeps edits that you make while the first save is still encoding.
+- A save with an oversize body, or a full disk, now stops with a clear message. Before, it retried forever. This follows the change of upstream for Node write errors.
+- When a page hides or closes, it now saves pending edits. Finished replies save while the page is hidden.
+- An automatic reload between tabs no longer destroys local drafts. A cancelled reload no longer stops saving.
+- The app silently discarded the renames and images of presets. This is fixed. A corruption prompt could wipe a lorebook. This is fixed.
+- A save or a switch with a preset id that is out of range no longer throws. The app keeps the working settings as a new "New Preset". Applying a loadout no longer adds an empty entry ([upstream #1387](https://github.com/kwaroran/Risuai/pull/1387), the small remaining gaps after the fix of the reported scenario). Tests check this.
 - A read failure in older archive storage never overwrites or deletes data.
-- A stuck module no longer blocks character and chat saves.
-- The Node server's password is now saved before it is accepted.
-- On Android, a card opened during a restore could be lost and a second `.bin` dropped; fixed.
-- An empty or missing persona selection is repaired at load. The record calls this "upstream-latent".
+- A stuck module no longer blocks the saves of characters and chats.
+- The Node server now saves its password before it accepts it.
+- On Android, a card that you opened during a restore could be lost, and a second `.bin` was dropped. This is fixed.
+- The app repairs an empty or missing selection of the persona at load. The record calls this "upstream-latent".
 
-### Backup, import and export
+### Backup, import, and export
 
-- A restore no longer runs while other work is writing or other tabs are open.
+- A restore no longer runs while other work writes or other tabs are open.
 - A local backup now includes assets that are not `.png` ([upstream #1582](https://github.com/kwaroran/Risuai/pull/1582), reported fixed).
-- CharX files with zip signature bytes inside assets import whole ([upstream #1217](https://github.com/kwaroran/Risuai/pull/1217), reported fixed).
+- CharX files with bytes of the zip signature inside assets import whole ([upstream #1217](https://github.com/kwaroran/Risuai/pull/1217), reported fixed).
 - "Save Backup Locally" no longer fails on a null `byteLength` ([upstream #1013](https://github.com/kwaroran/Risuai/issues/1013), reported fixed).
 - A failed module export or Realm share no longer reports success or posts a partial card.
-- Cut-short or damaged CharX and PNG files are refused before anything is saved.
-- A multi-file import tries every file and lists failures.
-- Malformed or nameless cards are refused with a message before saving.
-- Chat import now works for characters saved before chat folders ([upstream #994](https://github.com/kwaroran/Risuai/pull/994), reported fixed).
+- The app refuses cut-short or damaged CharX and PNG files before it saves anything.
+- A multi-file import tries every file and lists the failures.
+- The app refuses malformed or nameless cards with a message before it saves.
+- The import of chats now works for characters that someone saved before chat folders existed ([upstream #994](https://github.com/kwaroran/Risuai/pull/994), reported fixed).
 - A character whose id collides with an upstream data block gets a new id.
-- On the web build, the notices after an export, a backup, the bug-report settings export and the translation cache export say the download started, not that it was saved, because the browser may still ask whether to keep the file ([upstream #843](https://github.com/kwaroran/Risuai/issues/843), reported on Firefox on iOS; iOS was not tried here). The desktop and Android apps keep the "saved" wording. Checked by tests; the wording of the translation-JSON notice is English only.
+- On the web build, the notices after an export, a backup, the export of settings for a bug report, and the export of the translation cache now say that the download started. They no longer say that the file was saved, because the browser can still ask whether to keep the file ([upstream #843](https://github.com/kwaroran/Risuai/issues/843), reported on Firefox on iOS. Nobody tried iOS here). The desktop and Android apps keep the wording "saved". Tests check this. The wording of the notice for the translation JSON is English only.
 
 ### Chat
 
-- Delete removed the wrong message in some cases; it now removes the one clicked, with "only this one" or "this and everything after".
-- Switching chats kept the previous chat's messages; fixed. Each chat keeps its own reroll history.
+- Delete removed the wrong message in some cases. It now removes the message you clicked, with the choice "only this one" or "this and everything after".
+- Switching chats kept the messages of the previous chat. This is fixed. Each chat keeps its own history of rerolls.
 - A chat could splice into the wrong chat at index -1 ([upstream #1352](https://github.com/kwaroran/Risuai/pull/1352), reported fixed).
-- A chat whose alternate first message no longer exists uses the default instead of failing; the same applies to a missing list of alternate first messages ([upstream #1353](https://github.com/kwaroran/Risuai/pull/1353), reported fixed with two low-risk unguarded reads remaining).
+- A chat whose alternate first message no longer exists uses the default instead of failing. The same applies to a missing list of alternate first messages ([upstream #1353](https://github.com/kwaroran/Risuai/pull/1353), reported fixed, with two unguarded reads of low risk remaining).
 - A message that fails to display shows its text and keeps Edit.
-- Stop before the first byte is silent, and Stop cancels a native stream.
-- Back closes dialogs, settings and panels on mobile.
-- Prompt-template runs now send trigger start and history-end text.
+- A Stop before the first byte is silent. A Stop cancels a native stream.
+- Back closes dialogs, settings, and panels on mobile.
+- Runs of prompt templates now send the start text and the history-end text of triggers.
 
-### Lua, triggers and lorebook
+### Lua, triggers, and lorebook
 
 - Lua loads from the app instead of `unpkg.com`, so Lua works offline.
-- Each trigger write applies to its own chat. Nested trigger runs are capped.
+- Each trigger write applies to its own chat. Nested trigger runs have a cap.
 - Regex lorebook keys such as `/dragon/i` now activate ([upstream #1532](https://github.com/kwaroran/Risuai/pull/1532), merged from upstream). Invalid regex keys match nothing.
-- Lorebook scan depth beyond the chat length scans every message (the record notes upstream has this too).
-- A Lua-written lorebook entry no longer disappears in onStart/onOutput ([upstream #1041](https://github.com/kwaroran/Risuai/issues/1041), [#1042](https://github.com/kwaroran/Risuai/pull/1042), reported fixed).
-- Full Word Matching missed a key that was followed or preceded by punctuation, quotes, a line break, full-width punctuation or markup such as `*Alice*` ([upstream #340](https://github.com/kwaroran/Risuai/issues/340)). A key now matches in those cases, and a key with spaces matches as a whole phrase. Korean, Japanese and Chinese letters still count as word letters, so matching inside a word of those scripts is unchanged. An empty key never matches in this mode. Checked by tests.
-- **New, RisuTanium only: "SillyTavern-style Word Boundaries"**, a per-lorebook option next to Full Word Matching. It is off by default. When it is on, only English letters, digits and `_` count as word letters, so a key can match inside a longer word in another language (for example a key inside a Korean word). Module lorebook entries follow the character option; modules have no setting of their own. The option is saved in `.bin` backups. It is written into a character card (as the `risu_fullWordAsciiBoundary` extension) only when it is on, and a card that has it turns the option on when imported. Upstream has no such option. Two paths can still leave a stale copy of the extension in a card's stored extensions, which an upstream card export would then write: switching a lorebook to global settings and back, and importing a card that lacks the scan fields. This was traced in the code, not run.
-- Deleting a lorebook folder now removes everything inside it, nested folders included; before, the contents stayed stored and were exported ([upstream #1667](https://github.com/kwaroran/Risuai/pull/1667)). Drag and drop is available only while no entry is open in that list. Deleting a folder in a list that is not the character's own is not written back. Checked by tests.
+- A lorebook scan depth beyond the chat length scans every message. The record notes that upstream does this too.
+- A lorebook entry that Lua wrote no longer disappears in onStart or onOutput ([upstream #1041](https://github.com/kwaroran/Risuai/issues/1041), [#1042](https://github.com/kwaroran/Risuai/pull/1042), reported fixed).
+- Full Word Matching missed a key that punctuation, quotes, a line break, full-width punctuation, or markup such as `*Alice*` followed or preceded ([upstream #340](https://github.com/kwaroran/Risuai/issues/340)). A key now matches in those cases. A key with spaces matches as a whole phrase. Korean, Japanese, and Chinese letters still count as word letters, so matching inside a word of those scripts is unchanged. An empty key never matches in this mode. Tests check this.
+- **New, RisuTanium only: "SillyTavern-style Word Boundaries".** This is an option for each lorebook, next to Full Word Matching. It is off by default. When it is on, only English letters, digits, and `_` count as word letters. So a key can match inside a longer word in another language, for example a key inside a Korean word. Module lorebook entries follow the option of the character. Modules have no setting of their own. The app saves the option in `.bin` backups. The app writes it into a character card (as the `risu_fullWordAsciiBoundary` extension) only when it is on. A card that has it turns the option on when you import the card. Upstream has no such option. Two paths can still leave a stale copy of the extension in the stored extensions of a card. An upstream card export would then write it. The first path is to switch a lorebook to global settings and back. The second path is to import a card that lacks the scan fields. The authors traced this in the code. They did not run it.
+- Deleting a lorebook folder now removes everything inside it, including nested folders. Before, the contents stayed stored and were exported ([upstream #1667](https://github.com/kwaroran/Risuai/pull/1667)). Drag and drop is available only while no entry is open in that list. A deletion of a folder in a list that is not the own list of the character is not written back. Tests check this.
 
-- Lua `setFullChat` dropped message details (generation info, prompt info, speaker, name, the disabled and comment flags) even on messages the script had not changed. Upstream: [issue #1564](https://github.com/kwaroran/Risuai/issues/1564), [PR #1611](https://github.com/kwaroran/Risuai/pull/1611). A message with the same position, role and text now keeps every field. On main since 2026-11-02, checked by tests.
-- **New, RisuTanium only:** Lua `getFullChat`, `getChat` and `getRecentChats` now return each message's read-only `chatId` (present only when the message has one), and `setFullChat` matches your entries to existing messages by that id first. A message the script edited, moved or gave a new role therefore keeps its fields and its alternatives. A script cannot create ids, and scripts that never send ids behave as before. Upstream RisuAI does not have this. See [[Lua API Reference]].
+- Lua `setFullChat` dropped message details (generation info, prompt info, speaker, name, and the flags for disabled and comment), even on messages that the script had not changed. Upstream: [issue #1564](https://github.com/kwaroran/Risuai/issues/1564), [PR #1611](https://github.com/kwaroran/Risuai/pull/1611). A message with the same position, role, and text now keeps every field. On main since 2026-11-02. Tests check this.
+- **New, RisuTanium only:** Lua `getFullChat`, `getChat`, and `getRecentChats` now return the read-only `chatId` of each message (present only when the message has one). `setFullChat` matches your entries to existing messages by that id first. So a message that the script edited, moved, or gave a new role keeps its fields and its alternatives. A script cannot create ids. Scripts that never send ids behave as before. Upstream RisuAI does not have this. See [[Lua API Reference]].
 
 ### Plugins
 
-- A plugin write to the plugin list could delete plugins; updates now keep saved settings.
-- A plugin unloaded during a permission prompt no longer registers hooks afterwards.
-- A V3 `addProvider` AbortSignal failed to clone ([upstream #1273](https://github.com/kwaroran/Risuai/pull/1273), reported fixed).
+- A plugin write to the plugin list could delete plugins. Updates now keep saved settings.
+- A plugin that was unloaded during a permission prompt no longer registers hooks afterward.
+- The AbortSignal of a V3 `addProvider` failed to clone ([upstream #1273](https://github.com/kwaroran/Risuai/pull/1273), reported fixed).
 
-### Providers, streaming and memory
+### Providers, streaming, and memory
 
 - Ollama showed only the last token ([upstream #1362](https://github.com/kwaroran/Risuai/pull/1362), reported fixed).
 - Gemini no longer sends `role: 'function'`.
-- HypaV3 re-roll Apply is re-enabled after an edit, and a HypaV3 `SystemMessageOrderError` was fixed ([upstream #1051](https://github.com/kwaroran/Risuai/issues/1051), reported fixed).
-- SupaMemory, HypaV2 and HypaV3 resume points, retries and hidden-message summaries were corrected. Reset SupaMemory data now asks first.
-- Hugging Face speech was repaired, and Stop now covers all text-to-speech voices.
-- With auto-translate on, text-to-speech now speaks the language you see instead of the original ([upstream #200](https://github.com/kwaroran/Risuai/issues/200)). Auto speech translates the whole reply in one translator request per spoken run (each continue part pays one request), then speaks it. The speaker button speaks the translation already shown in the bubble and makes no request. If the translation fails, the original text is spoken; translator error replies and AI-translator request failures show an alert as the translator does elsewhere. Stopping the reply, deleting the chat or deleting the reply ends the wait without speaking. Checked by tests with a mocked translator; the live check of one request per reply was not run.
-- With auto-translate on, the reply that is still streaming shows its raw text and is translated once when the stream ends, instead of being translated again and again while it streams ([upstream #1426](https://github.com/kwaroran/Risuai/issues/1426), [#1495](https://github.com/kwaroran/Risuai/pull/1495)). Only the chat list decides this; messages shown elsewhere (bookmarks and other views) behave as before. With auto-translate off nothing changes. Checked by tests.
-- A reply with several `<Thoughts>` blocks, as the Gemini streaming tool loop writes, kept only the text after the last block. The pattern is no longer greedy where messages are assembled and in the chat parser (which also feeds the translator and memory summaries) ([upstream #1327](https://github.com/kwaroran/Risuai/issues/1327)). A diagnostic test reproduced the loss with the real tool-loop output before the fix; it is kept as a guard.
-- Streamed Anthropic and Gemini replies could save broken text. A character split across two network chunks, such as Korean text or an emoji, turned into a replacement character (`�`) and stayed in the saved chat. Each stream is now decoded as one continuous stream. Upstream: [issue #1647](https://github.com/kwaroran/Risuai/issues/1647), [PR #1658](https://github.com/kwaroran/Risuai/pull/1658); Gemini had the same problem with no upstream number. On main since 2026-11-02, checked by tests that split a 3-byte character and an emoji across chunks; not tried against a live provider here.
-- Local Ollama replies had the same split-character problem, inside the Ollama library's own stream reader. The local request is now wrapped so a Korean character or an emoji is never cut between chunks. The Ollama cloud path is unchanged and has no test of its own. On main since 2026-11-02, checked by tests; not tried against a live Ollama server here.
-- Tauri timeouts: reported fixed for [upstream #1689](https://github.com/kwaroran/Risuai/issues/1689) and [#1694](https://github.com/kwaroran/Risuai/pull/1694); the Rust side was not re-read.
+- The Apply button of the HypaV3 re-roll is enabled again after an edit. A HypaV3 `SystemMessageOrderError` is fixed ([upstream #1051](https://github.com/kwaroran/Risuai/issues/1051), reported fixed).
+- The authors corrected the resume points, retries, and summaries of hidden messages in SupaMemory, HypaV2, and HypaV3. Reset SupaMemory data now asks first.
+- The authors repaired Hugging Face speech. Stop now covers all text-to-speech voices.
+- With auto-translate on, text-to-speech now speaks the language you see instead of the original ([upstream #200](https://github.com/kwaroran/Risuai/issues/200)). Auto speech translates the whole reply in one translator request for each spoken run. (Each continue part pays one request.) Then it speaks the translation. The speaker button speaks the translation that the bubble already shows, and it makes no request. If the translation fails, the app speaks the original text. Translator error replies and failures of AI-translator requests show an alert, as the translator does elsewhere. If you stop the reply, delete the chat, or delete the reply, the wait ends without speech. Tests with a mocked translator check this. Nobody ran the live check of one request for each reply.
+- With auto-translate on, a reply that still streams shows its raw text. The app translates it one time when the stream ends. Before, it translated the reply again and again while it streamed ([upstream #1426](https://github.com/kwaroran/Risuai/issues/1426), [#1495](https://github.com/kwaroran/Risuai/pull/1495)). Only the chat list decides this. Messages that other views show (bookmarks and others) behave as before. With auto-translate off, nothing changes. Tests check this.
+- A reply with several `<Thoughts>` blocks, as the Gemini streaming tool loop writes it, kept only the text after the last block. The pattern is no longer greedy where the app assembles messages and in the chat parser. The chat parser also feeds the translator and the memory summaries ([upstream #1327](https://github.com/kwaroran/Risuai/issues/1327)). A diagnostic test reproduced the loss with the real output of the tool loop before the fix. The authors kept it as a guard.
+- Streamed Anthropic and Gemini replies could save broken text. A character that was split across two network chunks, such as Korean text or an emoji, turned into a replacement character (`�`) and stayed in the saved chat. The app now decodes each stream as one continuous stream. Upstream: [issue #1647](https://github.com/kwaroran/Risuai/issues/1647), [PR #1658](https://github.com/kwaroran/Risuai/pull/1658). Gemini had the same problem, with no upstream number. On main since 2026-11-02. Tests that split a 3-byte character and an emoji across chunks check this. Nobody tried it against a live provider here.
+- Local Ollama replies had the same problem with split characters, inside the own stream reader of the Ollama library. The app now wraps the local request. So a Korean character or an emoji is never cut between chunks. The Ollama cloud path is unchanged and has no test of its own. On main since 2026-11-02. Tests check this. Nobody tried it against a live Ollama server here.
+- Tauri timeouts: Reported fixed for [upstream #1689](https://github.com/kwaroran/Risuai/issues/1689) and [#1694](https://github.com/kwaroran/Risuai/pull/1694). Nobody read the Rust side again.
 
 ### Found fixed in the review of old upstream issues (#1 to #702)
 
-A review of upstream issues and unmerged pull requests numbered #1 to #702 checked whether each reported problem still applies here. These came back as already fixed, by reading the code only (nothing was run):
+A review of upstream issues and unmerged pull requests with the numbers #1 to #702 checked whether each reported problem still applies here. These came back as already fixed. The authors only read the code. They ran nothing:
 
 - Trigger scripts were left out of an exported character card ([upstream #248](https://github.com/kwaroran/Risuai/issues/248), reported fixed).
-- Loading a local backup decoded and re-stored data wrongly ([upstream #475](https://github.com/kwaroran/Risuai/issues/475), reported fixed because the restore code was rewritten).
+- The loading of a local backup decoded and stored data wrongly again ([upstream #475](https://github.com/kwaroran/Risuai/issues/475), reported fixed, because the authors rewrote the restore code).
 - A save error "body stream already read" ([upstream #658](https://github.com/kwaroran/Risuai/issues/658), reported fixed).
-- Deleting the first preset overwrote the shifted one ([upstream #184](https://github.com/kwaroran/Risuai/issues/184), reported fixed).
-- A regex script with a missing flag threw an error ([upstream #205](https://github.com/kwaroran/Risuai/issues/205), reported fixed; a missing input or output pattern was not checked).
-- In group chats, `{{char}}` showed the room name ([upstream #190](https://github.com/kwaroran/Risuai/issues/190), reported fixed; callers were assumed to pass the speaking character).
+- Deleting the first preset overwrote the preset that shifted into its place ([upstream #184](https://github.com/kwaroran/Risuai/issues/184), reported fixed).
+- A regex script with a missing flag threw an error ([upstream #205](https://github.com/kwaroran/Risuai/issues/205), reported fixed. Nobody checked a missing input pattern or output pattern).
+- In group chats, `{{char}}` showed the name of the room ([upstream #190](https://github.com/kwaroran/Risuai/issues/190), reported fixed. The authors assumed that callers pass the character that speaks).
 - Kobold requests left out `max_length` ([upstream #175](https://github.com/kwaroran/Risuai/issues/175), reported fixed).
 
-Two reports did not hold in this fork: that backup data is sent to the upstream hub for a validity check ([#698](https://github.com/kwaroran/Risuai/issues/698); the backup code makes no network calls), and that one API key is sent to another model's proxy ([#185](https://github.com/kwaroran/Risuai/issues/185); keys are kept per provider). See "Where your API key goes on a web build" above for the web-build proxy.
+Two reports did not hold in this fork. The first said that the app sends backup data to the upstream hub for a validity check ([#698](https://github.com/kwaroran/Risuai/issues/698)). The backup code makes no network calls. The second said that the app sends one API key to the proxy of another model ([#185](https://github.com/kwaroran/Risuai/issues/185)). The app keeps keys for each provider. For the proxy of the web build, see "Where your API key goes on a web build" above.
 
 ### Android and desktop
 
-- A boot hang on Android is fixed, and file pickers settle on cancel.
-- A reply finishing while the app is hidden is received, and its notification clears.
-- Android exports and previews read assets in bounded pieces rather than whole files.
-- Tauri `install_python` no longer panics on failure and reports pip errors honestly.
+- A boot hang on Android is fixed. File pickers settle when you cancel.
+- The app receives a reply that finishes while the app is hidden, and its notification clears.
+- Android exports and previews read assets in bounded pieces. They no longer read whole files.
+- Tauri `install_python` no longer panics on failure, and it reports pip errors honestly.
 
 ### Interface
 
 - Dialogs no longer let keys or focus reach the page behind them.
-- Optional checkboxes missing from a settings page no longer write `false` on mount.
+- Optional checkboxes that are missing from a settings page no longer write `false` on mount.
 - Card background and CSS no longer flicker while modules load the first time.
-- On/off toggles are now real native checkboxes named by their label, so screen readers and the keyboard can reach them, and a focus ring shows for keyboard focus only ([upstream #209](https://github.com/kwaroran/Risuai/issues/209)). Mouse and touch rendering is meant to be unchanged. Checked by tests in a simulated browser; not tried with a real screen reader.
-- On browsers without the compression streams (Safari older than 16.4 was reported), saving checked for them in a way that threw before the fallback could load. The checks now use a type test, so those browsers take the fallback ([upstream #662](https://github.com/kwaroran/Risuai/issues/662)). Checked by tests that remove the browser features; not tried on an old iPhone.
-- Many hard-coded alerts were moved into language files. Much of the interface is still English-only in other locales.
+- On/off toggles are now real native checkboxes with the name of their label. So screen readers and the keyboard can reach them. A focus ring shows only for keyboard focus ([upstream #209](https://github.com/kwaroran/Risuai/issues/209)). The rendering for mouse and touch is meant to be unchanged. Tests in a simulated browser check this. Nobody tried it with a real screen reader.
+- Some browsers lack the compression streams (Safari older than 16.4 was reported). On those browsers, the check for them in the saving code threw an error before the fallback could load. The checks now use a type test, so those browsers take the fallback ([upstream #662](https://github.com/kwaroran/Risuai/issues/662)). Tests that remove the browser features check this. Nobody tried it on an old iPhone.
+- The authors moved many hard-coded alerts into language files. Much of the interface is still English-only in other locales.
 
 ## Planned, not shipped
 
-No fix planned from the upstream-issue reviews is still waiting. Also planned, not shipped: the new interface design (a hidden colour preset is all that exists), a new long-term memory engine (research only), and a fork-to-fork backup format.
+No fix that the reviews of upstream issues planned is still waiting. These are also planned but not shipped: the new design of the interface (only a hidden color preset exists), a new engine for long-term memory (research only), and a backup format from fork to fork.
 
 ## Appendix: area to ticket IDs
 
-For people following the project's records. IDs are the fork's own.
+This appendix is for people who follow the records of the project. The IDs are the own IDs of the fork.
 
 | Area | Tickets |
 |---|---|

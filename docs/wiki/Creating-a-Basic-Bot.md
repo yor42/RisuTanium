@@ -1,34 +1,39 @@
 # Creating a Basic Bot
 
-This guide makes a simple character from scratch. It assumes you have already picked a model and entered an API key (see [[RisuAI Basics]]).
+This guide shows how to make a simple character from scratch. Before you start, pick a model and enter an API key. See [[RisuAI Basics]].
 
 ## 1. Create the character
 
-Click **+** in the character list and choose **Create from Scratch**. A new, empty character is selected, and its settings sidebar opens on the Basic page.
+1. Click **+** in the character list.
+2. Choose **Create from Scratch**.
+
+The app creates an empty character and selects it. The settings sidebar opens on the Basic page.
 
 <!-- src/ts/characters.ts:684-736,876-908 -->
 
 ## 2. Fill in the Basic page
 
-- **Name** (the box at the top): what the character is called. `{{char}}` in any text is replaced with it.
-- **Description**: everything the model should know about the character, such as appearance, personality, background, and how they speak. This is the most important field. It is sent with every message, so its length (shown in tokens under the box) counts against **Max Context**.
-- **First Message**: the character's opening message. It strongly shapes the style and length of later replies, so write it the way you want the character to write.
+The Basic page has three fields that matter most:
 
-That is enough to start chatting. Type a message in the chat and send it.
+- **Name** (the box at the top): The name of the character. The app replaces `{{char}}` in any text with this name.
+- **Description**: Everything that the model must know about the character. Write the appearance, personality, background, and manner of speech here. This is the most important field. The app sends it with every message, so its length counts against **Max Context**. The app shows the length in tokens under the box.
+- **First Message**: The opening message of the character. It strongly shapes the style and length of later replies. Write it the way you want the character to write.
 
-Use `{{user}}` for your persona's name and `{{char}}` for the character's name, so the text still works if either changes. See [[Curly Brased Syntaxes]].
+These three fields are enough to start. Type a message in the chat and send it.
+
+Use `{{user}}` for the name of your persona and `{{char}}` for the name of the character. If either name changes, the text still works. See [[Curly Brased Syntaxes]].
 
 <!-- src/lib/SideBars/CharConfig.svelte:266-345 -->
 
 ### Author's Note
 
-The **Author's Note** on the same page belongs to the current chat, not the character. Use it for things that apply right now, like the current scene, or how you want the next replies to go. It has a strong effect, and it is not exported with the character.
+The **Author's Note** is on the same page. It belongs to the current chat, not to the character. Use it for things that apply right now, for example the current scene or the direction that you want for the next replies. It has a strong effect on replies. The app does not export it with the character.
 
 ## 3. Optional: more fields
 
-These are on the **Advanced Settings** page (activity icon):
+The **Advanced Settings** page (activity icon) has these fields:
 
-- **Example Message**: sample conversations that show how the character talks. Start each one with `<START>`:
+- **Example Message**: Sample conversations that show how the character talks. Start each sample with `<START>`:
 
   ```
   <START>
@@ -36,27 +41,34 @@ These are on the **Advanced Settings** page (activity icon):
   {{char}}: Oh, hello! I didn't see you there.
   ```
 
-- **Alternative First Messages**: extra opening messages. At the start of a chat, arrows on the first message switch between them.
-- **Creator's Comment**: a note for people who use your character. It is shown above the first message and is not sent to the model.
-- **System Prompt**: replaces the main prompt for this character. Use `{{original}}` to include the normal main prompt. It is not used when a [[Prompt Template]] is on.
+- **Alternative First Messages**: Extra opening messages. At the start of a chat, use the arrows on the first message to switch between them.
+- **Creator's Comment**: A note for the people who use your character. The app shows it above the first message. The app does not send it to the model.
+- **System Prompt**: Replaces the main prompt for this character. Use `{{original}}` to keep the normal main prompt inside it. If a [[Prompt Template]] is on, the app does not use this field.
 
-**Personality** and **Scenario** fields exist for compatibility with other apps, but they are hidden unless **Show Unrecommended Settings** (**Settings → Advanced Settings**) is on, or they already contain text. Put that information in the Description instead.
+The **Personality** and **Scenario** fields exist so that the app works with other apps. The app shows them in two cases: **Show Unrecommended Settings** is on, or the fields already contain text. Otherwise the app hides them. To turn on **Show Unrecommended Settings**, go to **Settings → Advanced Settings**. Put this information in the Description instead.
 
-Other features you can add later: a [[Lorebook]] for facts that only matter when mentioned, [[emotion images|Additional Character Screen]], a [[TTS]] voice, and [[Regex Script]] or [[Trigger Script]].
+You can add more features later:
+
+- A [[Lorebook]], for facts that the model needs only after someone mentions them.
+- [[Emotion images|Additional Character Screen]].
+- A [[TTS]] voice.
+- A [[Regex Script]] or a [[Trigger Script]].
 
 <!-- src/lib/SideBars/CharConfig.svelte:1054-1284; src/lang/en.ts:105-116 -->
 
 ## 4. Set a character icon
 
-On the **Character Display** page (smile icon), open **Character Icon** and upload an image.
+1. Open the **Character Display** page (smile icon).
+2. Open **Character Icon**.
+3. Upload an image.
 
 ## 5. Export and share
 
-On the share page (share icon), **Export Character** saves the character as a file. You can choose:
+Open the share page (share icon). Click **Export Character** to save the character as a file. You can choose one of these formats:
 
-- **Character Card V3**, in the format **CHARX**, **CHARX-JPEG**, **PNG** or **JSON**.
-- **Character Card V2**, the older PNG format that more apps can read.
+- **Character Card V3**, in the format **CHARX**, **CHARX-JPEG**, **PNG**, or **JSON**.
+- **Character Card V2**, the older PNG format. More apps can read it.
 
-**Share to RisuRealm** publishes it to RisuRealm instead. If you have not already accepted upstream RisuAI's Terms of Service and Privacy Policy, it asks for that agreement first.
+Click **Share to RisuRealm** to publish the character to RisuRealm instead. If you did not accept the Terms of Service and the Privacy Policy of upstream RisuAI before, the app asks you to accept them first.
 
 <!-- src/lib/Others/AlertComp.svelte:740-810; src/ts/characterCards.ts:689-717 -->
