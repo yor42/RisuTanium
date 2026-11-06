@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, untrack } from 'svelte'
+    import { onMount } from 'svelte'
     import '../../styles/chat-tokens.css'
     import { DBState, selIdState } from '../../ts/stores.svelte'
     import { language } from '../../lang'
@@ -70,16 +70,9 @@
     let inputMode = $state<'touch' | 'hover'>('touch')
     // The wide layout never hides the header; a hardware keyboard keeps it shown (ShellHeader applies that rule to the attribute).
     let headerHiddenNow = $derived((headerHidden || keyboardOpen) && layout !== 'wide')
-    let headerCoveredBefore = false
-
-    // The header takes its row out of the flow, so the transcript grows or shrinks by its height; a reader resting at the
-    // newest message keeps the bottom across that change.
-    $effect(() => {
-        const covered = headerHiddenNow && !hardwareKeyboardSeen
-        if (covered === headerCoveredBefore) return
-        headerCoveredBefore = covered
-        if (untrack(() => atBottom && !surfaceHidden)) requestAnimationFrame(() => messageList?.anchorNewestBottom?.())
-    })
+    // Reported by the header itself, so the scroll padding agrees with what the reader sees (hardware keyboard, focus, wide layout).
+    // The header floats over the transcript, so showing or hiding it never changes the transcript's geometry.
+    let headerConcealed = $state(false)
 
     onMount(() => {
         if (!shell) return
@@ -222,9 +215,9 @@
 
 </script>
 
-<div bind:this={shell} class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" style={customStyle}>
+<div bind:this={shell} class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" data-header-concealed={headerConcealed ? '' : undefined} style={customStyle}>
     <div bind:this={header} data-part="chat-header-host">
-        {#if ShellHeader}<ShellHeader name={character?.name ?? ''} hidden={headerHiddenNow} {hardwareKeyboardSeen} onpersona={openPersona} />{/if}
+        {#if ShellHeader}<ShellHeader name={character?.name ?? ''} hidden={headerHiddenNow} {hardwareKeyboardSeen} onpersona={openPersona} onconcealed={(concealed) => headerConcealed = concealed} />{/if}
     </div>
     <main bind:this={list} data-part="chat-transcript" aria-label={language.chatShellMessages} onscroll={scroll}>
         {#if ShellNotices && character?.type === 'character'}<ShellNotices />{/if}
@@ -242,6 +235,8 @@
 
 <style>
     [data-part="chat-shell"] { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: transparent; color: var(--nexus-text); }
-    [data-part="chat-header-host"], [data-part="chat-composer-host"] { flex: none; }
-    [data-part="chat-transcript"] { flex: 1; min-height: 0; overflow-y: auto; }
+    [data-part="chat-composer-host"] { flex: none; }
+    [data-part="chat-header-host"] { position: absolute; inset: 0 0 auto 0; z-index: 1; pointer-events: none; }
+    [data-part="chat-transcript"] { flex: 1; min-height: 0; overflow-y: auto; padding-top: var(--header-height); scroll-padding-top: var(--header-height); }
+    [data-part="chat-shell"][data-header-concealed] [data-part="chat-transcript"] { scroll-padding-top: 0; }
 </style>

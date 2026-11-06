@@ -34,4 +34,28 @@ describe('ShellHeader hide rules', () => {
         await unmount(app)
         target.remove()
     })
+
+    test('onconcealed reports every change of the concealed expression', async () => {
+        const { default: ShellHeader } = await import('./ShellHeader.svelte')
+        const state = $state({ hidden: false, hardwareKeyboardSeen: false })
+        const seen: boolean[] = []
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const app = mount(ShellHeader, { target, props: { name: 'Seraphina', get hidden() { return state.hidden }, get hardwareKeyboardSeen() { return state.hardwareKeyboardSeen }, onpersona: vi.fn(), onconcealed: (concealed: boolean) => { seen.push(concealed) } } })
+        flushSync()
+        expect(seen).toEqual([false])
+        state.hidden = true
+        flushSync()
+        expect(seen).toEqual([false, true])
+        state.hardwareKeyboardSeen = true
+        flushSync()
+        expect(seen).toEqual([false, true, false])
+        state.hardwareKeyboardSeen = false
+        flushSync()
+        target.querySelector('button')?.focus()
+        flushSync()
+        expect(seen).toEqual([false, true, false, true, false])
+        await unmount(app)
+        target.remove()
+    })
 })

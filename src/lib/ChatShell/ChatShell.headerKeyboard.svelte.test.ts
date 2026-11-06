@@ -227,7 +227,55 @@ describe('the header hides while the soft keyboard is open', () => {
     })
 })
 
-describe('a reader at the newest message keeps the bottom when the header hides or shows', () => {
+describe('the shell reports the header concealed state for the scroll padding', () => {
+    beforeEach(() => {
+        Object.defineProperty(HTMLElement.prototype, 'scrollTop', { get: () => scrollTop, set: (value: number) => { scrollTop = value }, configurable: true })
+    })
+    afterEach(() => {
+        Reflect.deleteProperty(HTMLElement.prototype, 'scrollTop')
+    })
+    const concealed = () => target.querySelector('[data-part="chat-shell"]')!.hasAttribute('data-header-concealed')
+
+    test('the attribute follows the hidden flag and the hidden flag alone', async () => {
+        await mountShell()
+        expect(concealed()).toBe(false)
+        wheel(-40)
+        expect(concealed()).toBe(true)
+        wheel(40)
+        expect(concealed()).toBe(false)
+    })
+
+    test('a hardware keyboard shows the header, so the attribute is absent while the hidden flag is set', async () => {
+        await mountShell()
+        captured.hardware!(true)
+        flushSync()
+        await openKeyboard()
+        expect(hidden()).toBe(false)
+        expect(concealed()).toBe(false)
+        captured.hardware!(false)
+        flushSync()
+        expect(concealed()).toBe(true)
+    })
+
+    test('focus inside the header shows it, so the attribute is absent', async () => {
+        await mountShell()
+        await openKeyboard()
+        expect(concealed()).toBe(true)
+        header().querySelector<HTMLButtonElement>('button')!.focus()
+        await tick()
+        flushSync()
+        expect(concealed()).toBe(false)
+    })
+
+    test('the wide layout never conceals the header', async () => {
+        await mountShell(1000)
+        await openKeyboard()
+        wheel(-40)
+        expect(concealed()).toBe(false)
+    })
+})
+
+describe('the floating header never changes the transcript geometry, so toggling it does not anchor', () => {
     beforeEach(() => {
         Object.defineProperty(HTMLElement.prototype, 'scrollTop', { get: () => scrollTop, set: (value: number) => { scrollTop = value }, configurable: true })
     })
@@ -235,48 +283,33 @@ describe('a reader at the newest message keeps the bottom when the header hides 
         Reflect.deleteProperty(HTMLElement.prototype, 'scrollTop')
     })
 
-    test('showing the header again when the keyboard closes requests the bottom anchor, though the viewport grew', async () => {
+    test('showing the header again when the keyboard closes does not request the bottom anchor', async () => {
         await mountShell()
         await openKeyboard()
         runFrames()
         anchor.mockClear()
         await closeKeyboard()
         runFrames()
-        expect(anchor).toHaveBeenCalledTimes(1)
+        expect(hidden()).toBe(false)
+        expect(anchor).not.toHaveBeenCalled()
     })
 
-    test('hiding the header for the keyboard requests the bottom anchor', async () => {
-        await mountShell()
-        field().focus()
-        anchor.mockClear()
-        viewport.height = KEYBOARD_HEIGHT
-        // The viewport shrink itself is announced by the resize event; this asserts the header's own request by
-        // comparing against the same shrink without a focused text field.
-        viewport.dispatchEvent(new Event('resize'))
-        await tick()
-        flushSync()
-        runFrames()
-        const withHeaderHide = anchor.mock.calls.length
-        viewport.height = 800
-        field().blur()
-        viewport.dispatchEvent(new Event('resize'))
-        await tick()
-        flushSync()
-        runFrames()
-        anchor.mockClear()
-        viewport.height = KEYBOARD_HEIGHT
-        viewport.dispatchEvent(new Event('resize'))
-        await tick()
-        flushSync()
-        runFrames()
-        expect(withHeaderHide).toBe(anchor.mock.calls.length + 1)
-    })
-
-    test('a reader-input hide while resting at the newest message requests the bottom anchor once', async () => {
+    test('a reader-input hide and show while resting at the newest message do not request the bottom anchor', async () => {
         await mountShell()
         anchor.mockClear()
         wheel(-40)
         expect(hidden()).toBe(true)
+        runFrames()
+        wheel(40)
+        expect(hidden()).toBe(false)
+        runFrames()
+        expect(anchor).not.toHaveBeenCalled()
+    })
+
+    test('the keyboard resize itself still anchors a reader at the newest message', async () => {
+        await mountShell()
+        anchor.mockClear()
+        await openKeyboard()
         runFrames()
         expect(anchor).toHaveBeenCalledTimes(1)
     })
