@@ -92,6 +92,14 @@ class FakeObserver {
     disconnect(): void {}
 }
 
+// Callbacks of the observers that watch the rows element, so a test can fire the follower's size-change callback by hand.
+const rowsObservers: (() => void)[] = []
+class CapturingObserver {
+    constructor(private readonly callback: () => void) {}
+    observe(element: Element): void { if (element.matches('[data-part="chat-message-list"]')) rowsObservers.push(this.callback) }
+    disconnect(): void {}
+}
+
 function activeChat(): Chat { return character.chats[character.chatPage] }
 // A chat of `length` messages m0.. where position `at` has a sibling chain of `siblingLength` records (alt0, alt1, ...) that departs from m{at-1}.
 function seedChat(chat: Chat, length: number, at: number, siblingLength: number): void {
@@ -320,6 +328,42 @@ describe('the transcript anchoring is suppressed on the real host for the length
         // The new chat renders through its own window; the old chat's pin never makes it mount the rows between.
         expect([...seen].filter((index) => index < 96)).toEqual([])
         expect(anchorValue()).toBe('')
+    })
+})
+
+describe('the list wires the hold to its rows element and to the bottom follower', () => {
+    function rowsElement(): HTMLElement { return host.querySelector<HTMLElement>('[data-part="chat-message-list"]')! }
+    test('the scroll range is reserved on the rows element for the length of a step, and removed after it', async () => {
+        seedChat(character.chats[0], 12, 9, 2)
+        await show()
+        let release: () => void = () => {}
+        stepGate = new Promise<void>((resolve) => { release = resolve })
+        tapNext(9)
+        expect(rowsElement().style.getPropertyValue('padding-bottom')).toBe('1000px')
+        release()
+        await settle()
+        expect(rowsElement().style.getPropertyValue('padding-bottom')).toBe('')
+    })
+    test('a size change of the rows during a hold on the newest row writes no scroll position; the hold end applies it', async () => {
+        rowsObservers.length = 0
+        vi.stubGlobal('ResizeObserver', CapturingObserver)
+        seedChat(character.chats[0], 12, 11, 1)
+        await show()
+        expect(rowsObservers.length).toBeGreaterThan(0)
+        // The reader is back at the bottom, so the follower is following when the step starts on the newest row.
+        top = 900
+        app!.onScroll()
+        let release: () => void = () => {}
+        stepGate = new Promise<void>((resolve) => { release = resolve })
+        tapNext(11)
+        expect(anchorValue()).toBe('none')
+        writes.length = 0
+        height = 1300
+        for (const callback of rowsObservers) callback()
+        expect(writes).toEqual([])
+        release()
+        await settle()
+        expect(writes).toEqual([1200])
     })
 })
 
