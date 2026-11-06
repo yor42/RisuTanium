@@ -115,8 +115,9 @@ describe('message list keeps a bottom reader at the bottom', () => {
         const original = Element.prototype.scrollIntoView
         Element.prototype.scrollIntoView = function () { top = 200 }
         try {
-            top = 100
             await show()
+            top = 100
+            app!.onScroll()
             expect(writes).toEqual([])
             height = 354
             app!.scrollToLatestMessage()
@@ -130,8 +131,8 @@ describe('message list keeps a bottom reader at the bottom', () => {
         }
     })
     test('without the jump the same start is not followed', async () => {
-        top = 100
         await show()
+        top = 100
         app!.onScroll()
         height = 354
         fire()
@@ -141,8 +142,9 @@ describe('message list keeps a bottom reader at the bottom', () => {
         const original = Element.prototype.scrollIntoView
         Element.prototype.scrollIntoView = function () { top = 200 }
         try {
-            top = 100
             await show()
+            top = 100
+            app!.onScroll()
             DBState.db.autoScrollToNewMessage = false
             height = 354
             app!.scrollToLatestMessage()

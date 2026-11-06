@@ -10,7 +10,7 @@
     import { getAdditionalChatLoadPages, getInitialChatLoadPages, pagesOnReturn } from '../../ts/chatLoadPages'
     import { chatWindowKey, createChatWindowPolicy } from '../../ts/chatWindowPolicy'
     import { hasMessageEditorDrafts, onDraftsChanged } from '../../ts/localDrafts'
-    import { createBottomFollower, type BottomFollower } from '../../ts/chatShell/bottomAnchor'
+    import { createBottomFollower, isScrolledToBottom, type BottomFollower } from '../../ts/chatShell/bottomAnchor'
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { language } from '../../lang'
@@ -153,7 +153,7 @@
         if (installed && chatSurface.hidden) return
         if (windowResetToken === handledResetToken) return
         handledResetToken = windowResetToken
-        if (host) host.scrollTop = 0
+        restAtNewest(room())
     })
 
     $effect(() => {
@@ -161,7 +161,7 @@
         const room = chat?.id ?? null
         const length = messages.length
         const same = room === previousRoom
-        if (!same) { unread = false; atBottom = true }
+        if (!same) { unread = false; atBottom = true; restAtNewest(room) }
         if (same && length > previousLength && messages[length - 1]?.role === 'char' && DBState.db.autoScrollToNewMessage) {
             if (atBottom || DBState.db.alwaysScrollToNewMessage) void tick().then(scrollToLatestMessage)
             else unread = true
@@ -195,10 +195,65 @@
         follower?.follow()
     }
 
+    function room(): string | null {
+        return untrack(() => chat?.id ?? null)
+    }
+
+    // The scroller is a normal-direction scroller: scrollTop 0 is the oldest loaded row and the newest rests at the maximum.
+    // Opening a chat or resetting its window rests the reader at the newest message whatever the auto-scroll setting says;
+    // the setting only governs following later growth. The second pass after a frame covers row heights that settle late,
+    // and is skipped once the position is no longer the one this function wrote.
+    let destroyed = false
+    onDestroy(() => { destroyed = true })
+    function placeAtNewest(): number | null {
+        if (!host || (installed && chatSurface.hidden)) return null
+        if (!isScrolledToBottom(host)) host.scrollTop = Math.max(0, host.scrollHeight - host.clientHeight)
+        unread = false
+        atBottom = true
+        follower?.sync()
+        follower?.follow()
+        return host.scrollTop
+    }
+    function restAtNewest(forRoom: string | null): void {
+        void tick().then(() => {
+            if (destroyed || room() !== forRoom) return
+            const placed = placeAtNewest()
+            if (placed === null || typeof requestAnimationFrame === 'undefined') return
+            requestAnimationFrame(() => {
+                if (destroyed || room() !== forRoom || !host || host.scrollTop !== placed) return
+                placeAtNewest()
+            })
+        })
+    }
+
+    // Older rows mount above the reader: the distance from the bottom is restored explicitly, not left to CSS scroll anchoring.
+    let pendingBottomDistance: number | null = null
+    function loadOlder(): void {
+        if (!host || pendingBottomDistance !== null) return
+        const current = host
+        pendingBottomDistance = current.scrollHeight - current.scrollTop
+        loadPages += getAdditionalChatLoadPages(DBState.db)
+        const restore = () => {
+            const target = Math.max(0, current.scrollHeight - (pendingBottomDistance ?? 0))
+            if (current.scrollTop !== target) current.scrollTop = target
+            follower?.sync()
+            return target
+        }
+        void tick().then(() => {
+            if (destroyed) { pendingBottomDistance = null; return }
+            const placed = restore()
+            if (typeof requestAnimationFrame === 'undefined') { pendingBottomDistance = null; return }
+            requestAnimationFrame(() => {
+                if (!destroyed && current.scrollTop === placed) restore()
+                pendingBottomDistance = null
+            })
+        })
+    }
+
     export function onScroll() {
         if (!host || (installed && chatSurface.hidden)) return
         follower?.sync()
-        if (host.scrollHeight - host.clientHeight + host.scrollTop < 100 && messages.length > loadPages) loadPages += getAdditionalChatLoadPages(DBState.db)
+        if (host.scrollTop < 100 && messages.length > loadPages) loadOlder()
         const newest = rows?.firstElementChild
         atBottom = !newest || newest.getBoundingClientRect().top <= host.getBoundingClientRect().bottom + 100
         if (atBottom) unread = false
