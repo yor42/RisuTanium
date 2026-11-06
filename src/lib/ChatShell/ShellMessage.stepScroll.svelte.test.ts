@@ -71,6 +71,8 @@ vi.mock('../../lang', () => ({ language: {
     chatShellEndControl: (count: number) => `Bring back ${count}`,
 } }))
 
+import DOMPurify from 'dompurify'
+import chatBodySource from '../ChatScreens/ChatBody.svelte?raw'
 import ShellMessageList from './ShellMessageList.svelte'
 import { DBState } from '../../ts/stores.svelte'
 
@@ -228,6 +230,25 @@ describe('a step keeps the transcript where it was while the successor body rend
         await tick()
         expect(row.style.minHeight).toBe(`${HEADER_PX + BODY_PX}px`)
         row.querySelector('[role="status"]')!.remove()
+        await settleBodies()
+        expect(row.style.minHeight).toBe('')
+    })
+    test('the real translation spinner of ChatBody keeps the reservation, the translated text releases it', async () => {
+        await show(2)
+        pressStep(1)
+        const row = articleAt(1)
+        const reserved = `${HEADER_PX + BODY_PX}px`
+        expect(row.style.minHeight).toBe(reserved)
+        const literal = /const SPINNER_HTML = `([^`]*)`/.exec(chatBodySource)
+        expect(literal).not.toBeNull()
+        const bodyRoot = row.querySelector<HTMLElement>('[data-part="chat-message-body"]')!
+        const spinner = document.createElement('div')
+        spinner.innerHTML = DOMPurify.sanitize(literal![1], { ADD_TAGS: ['style'] })
+        bodyRoot.appendChild(spinner)
+        expect(spinner.querySelector('[style*="animation"]')).not.toBeNull()
+        await tick()
+        expect(row.style.minHeight).toBe(reserved)
+        spinner.remove()
         await settleBodies()
         expect(row.style.minHeight).toBe('')
     })

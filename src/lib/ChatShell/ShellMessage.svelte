@@ -23,9 +23,9 @@
     // The successor of a stepped row has no rendered body yet; it keeps the predecessor's height until the body arrives or this many milliseconds pass, so the transcript never collapses under the reader.
     const HEIGHT_FLOOR_MS = 1500
     let heightHandover: { idx: number; chatId: string | undefined; height: number; until: number } | null = null
-    // The pending body is empty or a loading indicator; anything else is the rendered message.
+    // The pending body is empty or one of ChatBody's loading indicators (the parse placeholder with role="status", the translation spinner with its animated element); anything else is the rendered message.
     function bodyRendered(body: HTMLElement): boolean {
-        if (body.querySelector('[role="status"]') !== null) return false
+        if (body.querySelector('[role="status"], [style*="animation: spin"]') !== null) return false
         return (body.textContent ?? '').trim() !== '' || body.querySelector('*') !== null
     }
 </script>
