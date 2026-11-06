@@ -135,4 +135,32 @@ describe('T10 swipe gesture', () => {
         const shifted = createWheelSteps(1, 3)
         expect(shifted({ dx: 0, dy: 40, shiftKey: true, time: 0 })).toBe('stepPrev')
     })
+    it('one continuous gesture steps once although the position is moved between its events', () => {
+        const wheel = createWheelSteps(0, 4)
+        const events: string[] = []
+        for (let i = 0; i < 20; i++) {
+            events.push(wheel({ dx: -15, dy: 0, time: i * 20 }))
+            wheel.set(i === 0 ? 0 : 1, 4)
+        }
+        expect(events.filter((event) => event === 'stepNext')).toHaveLength(1)
+        expect(events.filter((event) => event !== 'none' && event !== 'stepNext')).toEqual([])
+    })
+    it('after the position is moved the 450 ms lock still holds and a gap of 160 ms ends the gesture', () => {
+        const wheel = createWheelSteps(0, 4)
+        expect(wheel({ dx: -50, dy: 0, time: 1000 })).toBe('stepNext')
+        wheel.set(1, 4)
+        expect(wheel({ dx: -50, dy: 0, time: 1200 })).toBe('none')
+        wheel.set(1, 4)
+        expect(wheel({ dx: -50, dy: 0, time: 1440 })).toBe('none')
+        wheel.set(1, 4)
+        expect(wheel({ dx: -50, dy: 0, time: 1460 })).toBe('stepNext')
+    })
+    it('a position set to the last alternative never steps past it, and a single alternative never steps', () => {
+        const wheel = createWheelSteps(0, 4)
+        wheel.set(3, 4)
+        expect(wheel({ dx: -80, dy: 0, time: 0 })).toBe('none')
+        wheel.set(0, 1)
+        expect(wheel({ dx: -80, dy: 0, time: 1000 })).toBe('none')
+        expect(wheel({ dx: 80, dy: 0, time: 2000 })).toBe('none')
+    })
 })

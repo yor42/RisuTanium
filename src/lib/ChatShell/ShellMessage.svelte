@@ -15,6 +15,11 @@
         opener: HTMLElement | null
         onchange: () => void
     }
+    // A step swaps the shown alternative, which mounts a new row under a new key: the wheel gesture and lock state belong to the list, not to the row that happened to receive the first event.
+    const wheelByList = new WeakMap<Element, WheelSteps>()
+    // The row that held focus when it stepped hands the focus to its successor at the same position.
+    const FOCUS_HANDOVER_MS = 2000
+    let focusHandover: { idx: number; until: number } | null = null
 </script>
 
 <script lang="ts">
@@ -37,7 +42,7 @@
     import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopDelete.svelte'
     import type { CopyOutcome } from '../../ts/chatCopy'
     import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, type CardReport } from '../../ts/chatCard'
-    import { createSwipeGesture, createWheelSteps, ARM_HOLD_MS, RUBBER_BAND_PX, type SwipeResult } from '../../ts/chatShell/swipeGesture'
+    import { createSwipeGesture, createWheelSteps, ARM_HOLD_MS, RUBBER_BAND_PX, type SwipeResult, type WheelSteps } from '../../ts/chatShell/swipeGesture'
     import { classifyEdge, EDGE_ZONE_DP } from '../../ts/chatShell/edgeZones'
     import { tickHaptic, readHaptics } from '../../ts/chatShell/haptics'
     import { createMessageKeys } from '../../ts/chatShell/messageKeys'
@@ -123,7 +128,7 @@
     let alternatives = $state<ReturnType<typeof AlternativesRow>>()
     let speaking = $state(false)
     let swipe = $state<ReturnType<typeof createSwipeGesture> | null>(null)
-    let wheel = createWheelSteps(0, 1)
+    const ownWheel = createWheelSteps(0, 1)
     let pointerType = ''
     let pointerStart = { x: 0, y: 0 }
     let longPressTimer: ReturnType<typeof setTimeout> | undefined
@@ -148,6 +153,15 @@
     let hostedRequest: ActionRequest | null = null
     let overlayOpen = false
     onMount(() => { queueMicrotask(() => { if (!destroyed) iconMounted = true }) })
+    // The row that replaced a focused row at the same position takes the focus unless the user has already moved it somewhere else.
+    onMount(() => {
+        const handover = focusHandover
+        if (!handover || handover.idx !== idx || performance.now() > handover.until || !article) return
+        focusHandover = null
+        const active = document.activeElement
+        const previousRow = active?.closest<HTMLElement>('article[data-part="chat-message"]')
+        if (!active || active === document.body || (previousRow !== article && previousRow?.dataset.chatIndex === String(idx))) article.focus({ preventScroll: true })
+    })
     // A modal layer of the row (the partial-edit overlays are position: fixed inside the row) must not be clipped by the row's own containment, so the list is told while one is open.
     $effect(() => {
         const partialEditOn = DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit
@@ -206,7 +220,6 @@
     let actions = $derived(ACTION_IDS.filter((id) => id !== 'deleteAfter').filter((id) => idx >= 0 || id === 'copy' || id === 'selectText' || id === 'stepPrev' || id === 'stepNext' || id === 'customizeButtons').filter((id) => id !== 'readAloud' || canSpeak).filter((id) => id !== 'translate' || DBState.db.translator !== '').filter((id) => id !== 'newReply' || newestCharacter).filter((id) => !['stepPrev', 'stepNext'].includes(id) || showPager).filter((id) => id !== 'branch' || onBranch !== undefined))
     let sheetActions = $derived<SheetAction[]>([...actions, 'copyCard', ...(idx >= 0 ? ['hideAbove', 'deleteAfter'] as SheetAction[] : []), ...(idx >= 0 && !streaming && DBState.db.translatorType === 'llm' ? ['retranslate', 'editTranslation'] as SheetAction[] : []), ...(idx >= 0 && !streaming && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit) ? ['partialEdit'] as SheetAction[] : [])])
     let unavailable = $derived(ACTION_IDS.filter((id) => streaming && ['edit', 'translate', 'readAloud', 'branch', 'newReply'].includes(id) || stopDeletePending && (id === 'delete' || id === 'deleteAfter') || getBusy?.() === true && ['stepPrev', 'stepNext', 'newReply'].includes(id)))
-    $effect(() => { wheel = createWheelSteps(position.index - 1, showPager ? position.count : 1) })
     const source = { closeMenu: () => {} }
     function liveIndex(): number { return chatId ? (chat?.message.findIndex((item) => item.chatId === chatId) ?? idx) : idx }
     // The hosting shell shows the sheet outside the transcript; the request keeps every action on this row's live index.
@@ -276,6 +289,7 @@
             if (direction === 'back' ? position.index > 1 : position.index < position.count) (direction === 'back' ? unReroll : onReroll)?.()
             return
         }
+        if (article && article.contains(document.activeElement)) focusHandover = { idx, until: performance.now() + FOCUS_HANDOVER_MS }
         await stepSibling(source, liveIndex(), chatId, direction, { generate: false })
         alternatives?.markPageChange()
     }
@@ -455,8 +469,16 @@
         const factor = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--chat-motion'))
         return SPRING_DEFAULT_MS * (Number.isFinite(factor) ? Math.min(10, Math.max(0, factor)) : 1)
     }
+    // The body and the alternatives row both belong to the message; they are siblings, so one event reaches exactly one of them.
     function onWheel(event: WheelEvent): void {
         if (!showPager) return
+        const host = article?.closest('[data-part="chat-message-list"]') ?? null
+        let wheel = host ? wheelByList.get(host) : undefined
+        if (!wheel) {
+            wheel = host ? createWheelSteps(0, 1) : ownWheel
+            if (host) wheelByList.set(host, wheel)
+        }
+        wheel.set(position.index - 1, position.count)
         const result = wheel({ dx: event.deltaX, dy: event.deltaY, time: event.timeStamp, shiftKey: event.shiftKey })
         if (result === 'stepPrev' || result === 'stepNext') { event.preventDefault(); void act(result === 'stepPrev' ? 'stepPrev' : 'stepNext') }
     }
@@ -593,7 +615,7 @@
     {:else if swipeProgress > 0}<span data-part="chat-swipe-arm" role="status" style:opacity={swipeProgress}>{armed ? language.chatShellReleaseNewReply : language.chatShellNoSavedReplies}</span>{/if}
     {#if userLast && !streaming}<button type="button" data-part="chat-generate-reply" disabled={getBusy?.() === true} onclick={generateAfterUser}>⟳ {language.chatShellGenerateReply}</button>{/if}
     {#if showPager || continuation > 0}
-        <AlternativesRow bind:this={alternatives} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} pager={showPager} browseOnly={!newestCharacter && !firstMessage} {continuation} busy={getBusy?.() ?? false} onStep={firstMessage ? (direction) => { void browse(direction) } : undefined} />
+        <AlternativesRow bind:this={alternatives} {idx} {expectedId} index={position.index} count={position.count} {firstMessage} pager={showPager} browseOnly={!newestCharacter && !firstMessage} {continuation} busy={getBusy?.() ?? false} onwheel={onWheel} onStep={firstMessage ? (direction) => { void browse(direction) } : undefined} />
     {/if}
     {#if statusMessage}<span data-part="chat-status-row" role="status" aria-live="polite">{statusMessage}</span>{/if}
     {#if idx >= 0 && !streaming && !editor.editMode && !editor.editTranslationMode && (DBState.db.enableBlockPartialEdit || DBState.db.enableDragPartialEdit)}

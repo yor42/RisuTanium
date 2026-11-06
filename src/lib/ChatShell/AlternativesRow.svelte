@@ -17,8 +17,10 @@
         continuation?: number
         // When set, the two arrows report their direction here instead of stepping the reply tree (the first message browses its greetings).
         onStep?: (direction: 'back' | 'forward') => void
+        // The row belongs to its message: a wheel over it is the message's wheel.
+        onwheel?: (event: WheelEvent) => void
     }
-    let { idx, expectedId, index, count, firstMessage = false, busy = false, browseOnly = false, pager = true, continuation = 0, onStep }: Props = $props()
+    let { idx, expectedId, index, count, firstMessage = false, busy = false, browseOnly = false, pager = true, continuation = 0, onStep, onwheel }: Props = $props()
     const source = { closeMenu: () => {} }
     let lastPage = -Infinity
     let lastGenerate = -Infinity
@@ -47,7 +49,7 @@
 </script>
 
 {#if pager}
-<div data-part="chat-message-alts" role="group" aria-label={counterName}>
+<div data-part="chat-message-alts" role="group" aria-label={counterName} {onwheel}>
     <button type="button" data-step="prev" class:button-icon-unreroll={hotkeys} aria-label={language.chatShellPreviousReply} aria-disabled={index <= 1} title={index <= 1 ? language.chatShellFirstReply : language.chatShellPreviousReply} disabled={busy || index <= 1} onclick={() => step('back')}>‹</button>
     <span aria-live="polite">{firstMessage ? language.chatShellFirstMessageOf(index, count) : `${index} / ${count}`}</span>
     <button type="button" data-step="next" class:button-icon-reroll={hotkeys && !atEnd} aria-label={language.chatShellNextReply} aria-disabled={atEnd} title={atEnd ? language.chatShellLastReply : language.chatShellNextReply} disabled={busy || atEnd} onclick={() => step('forward')}>›</button>

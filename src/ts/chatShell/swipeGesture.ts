@@ -122,13 +122,20 @@ export function createSwipeGesture(options: SwipeOptions) {
 }
 
 export interface WheelSample { dx: number; dy: number; time: number; shiftKey?: boolean }
-export function createWheelSteps(index: number, count: number) {
+export interface WheelSteps {
+    (sample: WheelSample): SwipeEvent
+    // Moves the position the next step is measured from; the gesture and the lock are not touched, so they survive an index or count change.
+    set(index: number, count: number): void
+}
+export function createWheelSteps(initialIndex: number, initialCount: number): WheelSteps {
+    let index = initialIndex
+    let count = initialCount
     let dx = 0
     let dy = 0
     let last = -Infinity
     let lock = -Infinity
     let done = false
-    return (sample: WheelSample): SwipeEvent => {
+    const step = (sample: WheelSample): SwipeEvent => {
         if (sample.time - last > WHEEL_GAP_MS) { dx = 0; dy = 0; done = false }
         last = sample.time
         dx += sample.shiftKey && sample.dx === 0 ? sample.dy : sample.dx
@@ -140,4 +147,5 @@ export function createWheelSteps(index: number, count: number) {
         if (dx < 0 && index < count - 1) { index++; return 'stepNext' }
         return 'none'
     }
+    return Object.assign(step, { set(nextIndex: number, nextCount: number): void { index = nextIndex; count = nextCount } })
 }
