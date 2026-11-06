@@ -82,9 +82,11 @@
         opener: HTMLElement | null
         target: { owner: ToggleOwner, chat: Chat } | null
         onclose: () => void
+        // The star of a text row to open at: its Favourites copy takes the initial focus and the outline. Anything else leaves the title as the initial focus.
+        openAt?: FavouriteRef | null
     }
 
-    let { open, opener, target, onclose }: Props = $props()
+    let { open, opener, target, onclose, openAt = null }: Props = $props()
 
     const FLASH_SHOWN_MS = 1500
     const SEARCH_DEBOUNCE_MS = 120
@@ -156,6 +158,8 @@
     let favourites = $derived(currentFavourites())
     // Only a star whose source is in use and still has the key shows; the others stay in the store, in place.
     let favRows = $derived(filtering ? [] : favouriteRows(sources, favourites.items))
+    // The uid of the Favourites copy this opening is aimed at; null when it is not aimed at one.
+    let openedAt = $state<string | null>(null)
 
     const isStarred = (ref: FavouriteRef): boolean => favourites.items.some((known) => sameRef(known, ref))
 
@@ -230,6 +234,9 @@
                 defaultOpen = defaultOpenSections({ sources }, valueOf)
                 groupOpen = {}
             }
+            const at = opening ? openAt : null
+            const aimed = at ? favRows.find((entry) => sameRef(entry.ref, at) && (entry.row.kind === 'text' || entry.row.kind === 'textarea')) : undefined
+            openedAt = aimed?.row.uid ?? null
         })
     })
 
@@ -429,6 +436,7 @@
         menuOpen={menuUid === item.uid}
         editing={editing?.uid === item.uid}
         {draft}
+        openedAt={openedAt === item.uid}
         starred={isStarred(ref)}
         inFavourites={entry !== null}
         canMoveUp={index > 0}
@@ -476,11 +484,11 @@
     {/each}
 {/snippet}
 
-<ShellSheet {open} kind="sheet" mode={typeof window !== 'undefined' && window.innerWidth >= 900 ? 'side' : 'tall'} label={language.chatShellTogglesTitle} {opener} inertOutside innerescape={innerEscape} bind:layer {onclose}>
+<ShellSheet {open} kind="sheet" mode="side" label={language.chatShellTogglesTitle} {opener} inertOutside innerescape={innerEscape} bind:layer {onclose}>
     {#if session}
         <div data-part="toggles-panel-body">
             <div data-part="toggles-titlebar">
-                <h2 tabindex="-1" data-sheet-initial data-part="toggles-title">{language.chatShellTogglesTitle}</h2>
+                <h2 tabindex="-1" data-sheet-initial={openedAt === null ? '' : undefined} data-part="toggles-title">{language.chatShellTogglesTitle}</h2>
                 <span data-part="toggles-scope">{scopeOn ? language.chatShellThisChat : language.chatShellScopeAll}</span>
                 <button type="button" data-part="toggles-close" aria-label={language.chatShellTogglesClose} onclick={onclose}>×</button>
             </div>

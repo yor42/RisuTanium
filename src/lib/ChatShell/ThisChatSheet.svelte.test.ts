@@ -518,3 +518,30 @@ describe('Escape in the note field', () => {
         expect(onclose).toHaveBeenCalledTimes(1)
     })
 })
+
+describe('side mode follows a resize', () => {
+    const originalWidth = window.innerWidth
+    const setWidth = (width: number) => {
+        Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width })
+        window.dispatchEvent(new Event('resize'))
+    }
+    afterEach(() => setWidth(originalWidth))
+
+    test('W1: mounted narrow and opened after the window was widened, the layer is in side mode', async () => {
+        view.open = false
+        setWidth(600)
+        await show()
+        setWidth(1280)
+        view.open = true
+        flushSync()
+        await tick()
+        expect(document.querySelector('[data-part="chat-sheet-layer"]')!.getAttribute('data-mode')).toBe('side')
+        expect(document.querySelector('[data-part="chat-sheet"]')!.getAttribute('data-mode')).toBe('side')
+    })
+
+    test('a narrow window gets side mode too; the stylesheet renders it as tall there', async () => {
+        setWidth(600)
+        await show()
+        expect(document.querySelector('[data-part="chat-sheet-layer"]')!.getAttribute('data-mode')).toBe('side')
+    })
+})

@@ -298,7 +298,7 @@
     }
 </script>
 
-<ShellSheet {open} kind="sheet" mode={typeof window !== 'undefined' && window.innerWidth >= 900 ? 'side' : 'tall'} label={language.chatShellThisChat} {opener} {background} innerescape={innerEscape} bind:layer {onclose}>
+<ShellSheet {open} kind="sheet" mode="side" label={language.chatShellThisChat} {opener} {background} innerescape={innerEscape} bind:layer {onclose}>
     {#if session}
         <div data-part="this-chat-body">
             <div data-part="this-chat-title-block">

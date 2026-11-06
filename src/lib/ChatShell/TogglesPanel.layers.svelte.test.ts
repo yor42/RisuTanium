@@ -38,8 +38,8 @@ vi.mock('../ChatScreens/chatSurface.svelte', () => {
 vi.mock('./ShellMessageList.svelte', () => ({ default: () => ({}) }))
 vi.mock('./ShellComposer.svelte', () => ({ default: () => ({}) }))
 // The + menu is stood in for by its props: ChatShell hands it the Toggles handler and the summary, and the test calls them.
-const plus = vi.hoisted(() => ({ props: undefined as undefined | { ontoggles?: () => void, togglesSummary?: () => string | null } }))
-vi.mock('./PlusSheet.svelte', () => ({ default: (_anchor: unknown, props: { ontoggles?: () => void, togglesSummary?: () => string | null }) => { plus.props = props; return {} } }))
+const plus = vi.hoisted(() => ({ props: undefined as undefined | { ontoggles?: (row?: { s: string, k: string }) => void, togglesSummary?: () => string | null } }))
+vi.mock('./PlusSheet.svelte', () => ({ default: (_anchor: unknown, props: { ontoggles?: (row?: { s: string, k: string }) => void, togglesSummary?: () => string | null }) => { plus.props = props; return {} } }))
 vi.mock('./ShellNotices.svelte', () => ({ default: () => ({}) }))
 vi.mock('./ShellFloatingButtons.svelte', () => ({ default: () => ({}) }))
 vi.mock('./ActionSheet.svelte', () => ({ default: () => ({}) }))
@@ -81,6 +81,8 @@ vi.mock('src/lang', () => languageMock)
 import ChatShell from './ChatShell.svelte'
 import { DBState, selIdState } from '../../ts/stores.svelte'
 import { resetTogglePanelSession } from '../../ts/chatShell/togglePanel'
+import { FAVOURITES_KEY } from '../../ts/chatShell/toggleFavourites'
+import { syncFavourites } from '../../ts/chatShell/toggleFavouritesStore.svelte'
 import { chatSurface } from '../ChatScreens/chatSurface.svelte'
 
 type OwnerFixture = { chats: { id: string }[], chatPage: number }
@@ -158,6 +160,8 @@ afterEach(async () => {
     target?.remove()
     document.body.replaceChildren()
     resetBackHandlersForTests()
+    localStorage.removeItem(FAVOURITES_KEY)
+    syncFavourites()
 })
 
 describe('the panel opened from the This-chat sheet (S13)', () => {
@@ -365,5 +369,57 @@ describe('the panel opened from the + menu (nothing under it)', () => {
             expect(layers()).toHaveLength(0)
         })
         expect(inertCount()).toBe(0)
+    })
+})
+
+describe('the panel opened at a row (R1)', () => {
+    const favouriteText = () => target.querySelector<HTMLElement>('[data-part="toggles-favourites"] [data-part="toggle-row"][data-key="say"] [data-part="toggle-text-button"]')
+
+    async function waitForHandler(): Promise<void> {
+        await vi.waitFor(() => {
+            flushSync()
+            expect(plus.props?.ontoggles).toBeTypeOf('function')
+        }, { timeout: 15000 })
+    }
+
+    async function openWith(row?: { s: string, k: string }): Promise<void> {
+        await waitForHandler()
+        const before = layers().length
+        if (row) plus.props!.ontoggles!(row)
+        else plus.props!.ontoggles!()
+        await vi.waitFor(() => {
+            flushSync()
+            expect(layers()).toHaveLength(before + 1)
+        })
+    }
+
+    test('L1: the star handed by the + menu reaches the panel and focuses that row text button', async () => {
+        localStorage.setItem(FAVOURITES_KEY, JSON.stringify({ v: 1, items: [{ s: 'character:char-a', k: 'say' }] }))
+        syncFavourites()
+        await show()
+        await openWith({ s: 'character:char-a', k: 'say' })
+        expect(favouriteText()).not.toBeNull()
+        expect(document.activeElement).toBe(favouriteText())
+        expect(target.querySelectorAll('[data-opened-at]')).toHaveLength(1)
+    })
+
+    test('L2: Back from the panel, then an opening with no star or from the summary row, focuses the title', async () => {
+        localStorage.setItem(FAVOURITES_KEY, JSON.stringify({ v: 1, items: [{ s: 'character:char-a', k: 'say' }] }))
+        syncFavourites()
+        await show()
+        await openWith({ s: 'character:char-a', k: 'say' })
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(layers()).toHaveLength(0)
+        await openWith()
+        expect(document.activeElement).toBe(target.querySelector('[data-part="toggles-title"]'))
+        expect(target.querySelectorAll('[data-opened-at]')).toHaveLength(0)
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(layers()).toHaveLength(0)
+        await openSheet()
+        await openPanel()
+        expect(document.activeElement).toBe(target.querySelector('[data-part="toggles-title"]'))
+        expect(target.querySelectorAll('[data-opened-at]')).toHaveLength(0)
     })
 })

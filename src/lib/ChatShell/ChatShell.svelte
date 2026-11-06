@@ -11,6 +11,7 @@
     import type ChatDeleteConfirmComponent from './ChatDeleteConfirm.svelte'
     import type TogglesPanelComponent from './TogglesPanel.svelte'
     import type { PatternAnswer } from '../Nexus/pattern/patternWarning'
+    import type { FavouriteRef } from '../../ts/chatShell/toggleFavourites'
     import type { Chat, character as Character, groupChat } from '../../ts/storage/database.svelte'
     import type PlusSheetComponent from './PlusSheet.svelte'
     import type ShellNoticesComponent from './ShellNotices.svelte'
@@ -85,6 +86,8 @@
     let togglesOpen = $state(false)
     let togglesOpener = $state<HTMLElement | null>(null)
     let togglesTarget = $state.raw<{ owner: Character | groupChat, chat: Chat } | null>(null)
+    // The star whose row the panel opens at; null for every opening that is not a text chip.
+    let togglesAt = $state.raw<FavouriteRef | null>(null)
     // Opened from the This-chat sheet it stacks above it; closing the sheet takes it along.
     let togglesOverSheet = false
     let plusOpen = $state(false)
@@ -281,12 +284,13 @@
         list?.focus({ preventScroll: true })
     }
 
-    function openToggles(element: HTMLElement | null, overSheet: boolean): void {
+    function openToggles(element: HTMLElement | null, overSheet: boolean, at: FavouriteRef | null = null): void {
         if (surfaceHidden) return
         const chat = character?.chats?.[character.chatPage]
         if (!character || !chat) return
         togglesOpener = element
         togglesOverSheet = overSheet
+        togglesAt = at
         togglesTarget = { owner: character, chat }
         togglesOpen = true
     }
@@ -389,10 +393,10 @@
     </div>
     {#if ActionSheet}<ActionSheet open={actionOpen} opener={actionRequest?.opener ?? null} anchor={actionRequest?.anchor} available={actionOpen ? actionRequest?.available() ?? [] : []} disabled={actionOpen ? actionRequest?.disabled() ?? [] : []} generating={actionOpen && actionRequest?.generating() === true} background={sheetBackground} onaction={(id) => actionRequest?.run(id)} onclose={() => actionOpen = false} />{/if}
     {#if CustomizeButtonsSheet}<CustomizeButtonsSheet open={customizeOpen} opener={customizeRequest?.opener ?? null} background={sheetBackground} onchange={() => customizeRequest?.onchange()} onclose={() => customizeOpen = false} />{/if}
-    {#if PlusSheet}<PlusSheet open={plusOpen} {opener} background={[header, list, composer].filter((element): element is HTMLElement => !!element)} onclose={() => plusOpen = false} onstickers={() => stickersOpen = !stickersOpen} onchatlist={() => openChatList = true} onmodules={() => openModuleList = true} ontoggles={togglesModule ? () => openToggles(opener, false) : undefined} {togglesSummary} />{/if}
+    {#if PlusSheet}<PlusSheet open={plusOpen} {opener} background={[header, list, composer].filter((element): element is HTMLElement => !!element)} onclose={() => plusOpen = false} onstickers={() => stickersOpen = !stickersOpen} onchatlist={() => openChatList = true} onmodules={() => openModuleList = true} ontoggles={togglesModule ? (row) => openToggles(opener, false, row ?? null) : undefined} {togglesSummary} />{/if}
     {#if ThisChatSheet}<ThisChatSheet open={thisChatOpen} {opener} background={sheetBackground} target={thisChatTarget} bind:layer={sheetLayer} {confirmDelete} onpersona={openPersonaFromSheet} {togglesSummary} ontoggles={togglesModule ? (element) => openToggles(element, true) : undefined} onmodules={() => openModuleList = true} onremoved={afterChatDeleted} onclose={closeThisChat} />{/if}
     {#if PersonaSheet}<PersonaSheet open={personaOpen} opener={personaOpener} inertOutside={personaOverSheet} background={sheetBackground} onclose={() => { personaOpen = false; personaOverSheet = false }} />{/if}
-    {#if TogglesPanel}<TogglesPanel open={togglesOpen} opener={togglesOpener} target={togglesTarget} onclose={closeToggles} />{/if}
+    {#if TogglesPanel}<TogglesPanel open={togglesOpen} opener={togglesOpener} target={togglesTarget} openAt={togglesAt} onclose={closeToggles} />{/if}
     {#if ChatDeleteConfirm && deleteRequest}<ChatDeleteConfirm chat={deleteRequest.chat} busy={deleteRequest.busy} trigger={deleteRequest.trigger} background={confirmBackground} onanswer={(answer: PatternAnswer) => void settleDelete(answer === 'confirm')} />{/if}
 </div>
 

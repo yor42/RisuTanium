@@ -16,7 +16,7 @@
     import PluginDefinedIcon from '../Others/PluginDefinedIcon.svelte'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
     import { buildPanelModel, isOn, selectedIndex, toggleVarKey, valueRowsOf } from '../../ts/chatShell/togglePanel'
-    import { favouriteRows, type FavouriteRow } from '../../ts/chatShell/toggleFavourites'
+    import { favouriteRows, type FavouriteRef, type FavouriteRow } from '../../ts/chatShell/toggleFavourites'
     import { currentFavourites, syncFavourites } from '../../ts/chatShell/toggleFavouritesStore.svelte'
     import ShellSheet from './ShellSheet.svelte'
 
@@ -28,8 +28,8 @@
         onstickers: () => void
         onchatlist: () => void
         onmodules: () => void
-        // The Toggles item, last in the menu: absent unless the shell can open the toggles panel.
-        ontoggles?: () => void
+        // The Toggles item, last in the menu: absent unless the shell can open the toggles panel. A text chip passes its star so the panel opens at that row; the item and More pass nothing.
+        ontoggles?: (row?: FavouriteRef) => void
         togglesSummary?: () => string | null
     }
     let { open, opener, background, onclose, onstickers, onchatlist, onmodules, ontoggles, togglesSummary }: Props = $props()
@@ -222,7 +222,7 @@
 </script>
 
 {#snippet togglesItem(initial: boolean)}
-    <button data-part="chat-sheet-item" data-kind="button" data-item="toggles" role="menuitem" data-sheet-initial={initial ? '' : undefined} onclick={() => { if (ontoggles) activate(ontoggles) }}><span>{language.chatShellTogglesTitle}</span><span data-part="chat-sheet-item-value">{open ? togglesSummary?.() ?? '' : ''}</span></button>
+    <button data-part="chat-sheet-item" data-kind="button" data-item="toggles" role="menuitem" data-sheet-initial={initial ? '' : undefined} onclick={() => { if (ontoggles) activate(() => ontoggles()) }}><span>{language.chatShellTogglesTitle}</span><span data-part="chat-sheet-item-value">{open ? togglesSummary?.() ?? '' : ''}</span></button>
 {/snippet}
 
 <ShellSheet {open} kind="menu" mode={typeof window !== 'undefined' && window.innerWidth >= 900 ? 'wide-menu' : chipsLead ? 'tall' : 'bottom'} label={language.chatShellMoreActions} {opener} {background} {onclose} innerescape={innerEscape}>
@@ -248,11 +248,11 @@
                         {:else if entry.row.kind === 'select'}
                             <button data-part="plus-chip" data-kind="select" data-uid={entry.row.uid} data-key={entry.row.key} role="menuitem" aria-haspopup="menu" onclick={() => { void openPicker(entry) }}><span data-part="plus-chip-label">{entry.row.label}: {entry.row.options[selectedIndex(chipValue(entry), entry.row.options)] ?? ''}</span><span aria-hidden="true">▾</span></button>
                         {:else}
-                            <button data-part="plus-chip" data-kind={entry.row.kind} data-uid={entry.row.uid} data-key={entry.row.key} role="menuitem" aria-haspopup="dialog" onclick={() => { if (ontoggles) activate(ontoggles) }}><span data-part="plus-chip-label">{entry.row.label}</span><span aria-hidden="true">✎</span></button>
+                            <button data-part="plus-chip" data-kind={entry.row.kind} data-uid={entry.row.uid} data-key={entry.row.key} role="menuitem" aria-haspopup="dialog" onclick={() => { if (ontoggles) activate(() => ontoggles({ s: entry.ref.s, k: entry.ref.k })) }}><span data-part="plus-chip-label">{entry.row.label}</span><span aria-hidden="true">✎</span></button>
                         {/if}
                     {/each}
                     {#if chipRows.length > MAX_CHIPS}
-                        <button data-part="plus-chip-more" role="menuitem" onclick={() => { if (ontoggles) activate(ontoggles) }}><span data-part="plus-chip-label">{language.chatShellTogglesMore}</span><span aria-hidden="true">›</span></button>
+                        <button data-part="plus-chip-more" role="menuitem" onclick={() => { if (ontoggles) activate(() => ontoggles()) }}><span data-part="plus-chip-label">{language.chatShellTogglesMore}</span><span aria-hidden="true">›</span></button>
                     {/if}
                 </div>
             </div>
