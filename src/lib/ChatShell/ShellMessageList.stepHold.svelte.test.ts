@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 // An alternative step swaps the reply chain from one row on. The list pins the oldest mounted position for the duration of the step,
-// so a shorter chain mounts no older rows above the reader, a longer one keeps the first message mounted, and the transcript's native
+// so, within the mount cap, a shorter chain mounts no older rows above the reader, a longer one keeps the first message mounted, and the transcript's native
 // anchoring is suppressed while the hold owns the position. The branches come from the real chat tree (switchTo), as the real stepper makes them.
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import type { character as Character, Chat, ChatAlt, Message } from '../../ts/storage/database.svelte'
 import type { TreeView } from '../../ts/process/chatTreeView'
 import { siblingsAt, switchTo } from '../../ts/process/chatTree'
+import { STEP_HOLD_MOUNT_CAP as CAP } from '../../ts/chatShell/stepHold'
 
 const stepSibling = vi.hoisted(() => vi.fn())
 const regenerateNewest = vi.hoisted(() => vi.fn())
@@ -82,7 +83,7 @@ const writes: number[] = []
 const frames = new Map<number, () => void>()
 let frameId = 0
 let stepGate: Promise<void> | null = null
-// The stepped row (index 9) sits at content pixels from the top of the scroll content; fterStep models the layout change the step causes.
+// The stepped row (index 9) sits at content pixels from the top of the scroll content; afterStep models the layout change the step causes.
 const layout = { content: 100, afterStep: null as (() => void) | null }
 const character = $state({ chaId: 'c', type: 'character', name: 'Ari', image: '', chatPage: 0, alternateGreetings: ['Second'],
     chats: [{ id: 'room', message: [] as Message[], alt: [] as ChatAlt[] }, { id: 'other', message: [] as Message[] }] }) as unknown as Character
@@ -449,6 +450,188 @@ describe('a load older that is still settling when a step starts', () => {
         release()
         await settle()
         expect(mountedIndexes()[0]).toBe(8)
+    })
+})
+
+// A step that grows the window by more than the cap is not held: the ordinary window renders, so the long pinned window never mounts.
+// seedChat(12, 9, n) grows the newest position by n - 3.
+describe('the mount cap of a step onto a longer chain', () => {
+    // jsdom has no scrollIntoView; a chain ending in a reply scrolls the newest row into view and a jump scrolls its target.
+    beforeEach(() => {
+        Object.defineProperty(Element.prototype, 'scrollIntoView', { value: vi.fn(), configurable: true, writable: true })
+    })
+    afterEach(() => {
+        delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+    })
+    test('growth over the cap mounts only the ordinary window, during the step and after the hold', async () => {
+        seedChat(character.chats[0], 12, 9, CAP + 4)
+        await show()
+        const seen = watchMounts()
+        tapNext(9)
+        await tick()
+        flushSync()
+        expect(character.chats[0].message.length).toBe(CAP + 13)
+        expect(mountedIndexes()).toEqual([CAP + 9, CAP + 10, CAP + 11, CAP + 12])
+        await settle()
+        expect(mountedIndexes()).toEqual([CAP + 9, CAP + 10, CAP + 11, CAP + 12])
+        // A row mounted for one flush is the freeze the cap exists to avoid, even if it is gone again.
+        expect([...seen].filter((index) => index < CAP + 9)).toEqual([])
+    })
+    test('growth of exactly the cap still holds the stepped row with every row from the pin up mounted', async () => {
+        seedChat(character.chats[0], 12, 9, CAP + 3)
+        await show()
+        tapNext(9)
+        await settle()
+        expect(mountedIndexes()).toEqual(Array.from({ length: CAP + 4 }, (_, i) => 8 + i))
+        expect(writes).toEqual([])
+    })
+    test('over the cap in a short chat unmounts the first message from the first render of the new chain', async () => {
+        DBState.db.chatLoadInitialPages = 8
+        seedChat(character.chats[0], 6, 3, CAP + 4)
+        await show()
+        const first = host.querySelector('[data-part="chat-first-message"]')
+        expect(first).not.toBeNull()
+        // The flush inside the step is the first render of the new chain, while the pin is still held; a first message the template let through here is mounted for that flush even if it is gone afterwards.
+        let connectedDuringStep: boolean | null = null
+        layout.afterStep = () => { flushSync(); connectedDuringStep = first!.isConnected }
+        tapNext(3)
+        await tick()
+        flushSync()
+        expect(connectedDuringStep).toBe(false)
+        expect(character.chats[0].message.length).toBe(CAP + 7)
+        expect(first!.isConnected).toBe(false)
+        await settle()
+        expect(host.querySelector('[data-part="chat-first-message"]')).toBeNull()
+        expect(mountedIndexes()).toEqual(Array.from({ length: 9 }, (_, i) => CAP - 2 + i))
+    })
+    test('a jump to an older message that raises the page count during an over-cap step keeps its rows mounted', async () => {
+        seedChat(character.chats[0], 12, 9, CAP + 4)
+        await show()
+        // The jump is requested after the chain swapped, so the raised count is sized for the new chain.
+        layout.afterStep = () => { ScrollToMessageStore.value = 2 }
+        tapNext(9)
+        await settle()
+        expect(mountedIndexes().slice(0, 2)).toEqual([-1, 0])
+        expect(writes).toEqual([])
+    })
+    test('a very large page count is reused over the cap and keeps the whole chat and the first message mounted', async () => {
+        DBState.db.chatLoadInitialPages = 2 * CAP + 20
+        seedChat(character.chats[0], 12, 9, CAP + 4)
+        await show()
+        tapNext(9)
+        await settle()
+        expect(mountedIndexes()).toEqual(Array.from({ length: CAP + 14 }, (_, i) => i - 1))
+        expect(host.querySelector('[data-part="chat-first-message"]')).not.toBeNull()
+        expect(writes).toEqual([900])
+    })
+})
+
+// A step past the cap drops the pin, so the ordinary window renders and the view lands at the newest row: nothing of the old position is left to hold.
+describe('the landing after a step past the mount cap', () => {
+    // A row that held focus when its test ended stays the document's active element after it is removed; the next test starts from the body.
+    function dropFocus(): void { if (document.activeElement instanceof HTMLElement) document.activeElement.blur() }
+    beforeEach(() => {
+        dropFocus()
+        Object.defineProperty(Element.prototype, 'scrollIntoView', { value: vi.fn(), configurable: true, writable: true })
+    })
+    afterEach(() => {
+        delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+    })
+    function newestArticle(): HTMLElement { return articleAt(character.chats[0].message.length - 1) }
+    test('the view is written to the bottom once and a later scroll at the bottom mounts nothing', async () => {
+        seedChat(character.chats[0], 12, 9, CAP + 4)
+        await show()
+        tapNext(9)
+        await settle()
+        expect(writes).toEqual([900])
+        const seen = watchMounts()
+        app!.onScroll()
+        await settle()
+        expect([...seen]).toEqual([])
+        expect(writes).toEqual([900])
+    })
+    test('without focus in the row nothing is focused', async () => {
+        seedChat(character.chats[0], 12, 9, CAP + 4)
+        await show()
+        tapNext(9)
+        await settle()
+        expect(document.activeElement).toBe(document.body)
+    })
+    test('a row of the ordinary window that the step moved is not corrected: the landing is the only write', async () => {
+        DBState.db.chatLoadInitialPages = CAP + 3
+        seedChat(character.chats[0], 12, 9, CAP + 4)
+        await show()
+        layout.afterStep = () => { layout.content = 160 }
+        tapNext(9)
+        await settle()
+        expect(writes).toEqual([900])
+        expect(mountedIndexes()).toEqual(Array.from({ length: CAP + 4 }, (_, i) => 9 + i))
+    })
+    test('a load older that is still settling writes nothing, and the landing starts no load of its own', async () => {
+        seedChat(character.chats[0], 12, 9, CAP + 4)
+        await show()
+        top = 50
+        app!.onScroll()
+        await tick()
+        flushSync()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+        flushSync()
+        expect(mountedIndexes()[0]).toBe(5)
+        tapNext(9)
+        writes.length = 0
+        height = 1300
+        runFramesFirstOnly()
+        expect(writes).toEqual([])
+        await settle()
+        expect(writes.length).toBeGreaterThan(0)
+        expect(writes.every((value) => value === 1200)).toBe(true)
+        // The page count the load older raised (3 to 6) is reused, not grown again by the landing.
+        expect(mountedIndexes()[0]).toBe(CAP + 12 - 6)
+        const seen = watchMounts()
+        app!.onScroll()
+        await settle()
+        expect([...seen]).toEqual([])
+        expect(mountedIndexes()[0]).toBe(CAP + 12 - 6)
+    })
+    test('growth after the landing is followed', async () => {
+        rowsObservers.length = 0
+        vi.stubGlobal('ResizeObserver', CapturingObserver)
+        seedChat(character.chats[0], 12, 9, CAP + 4)
+        await show()
+        tapNext(9)
+        await settle()
+        expect(writes).toEqual([900])
+        writes.length = 0
+        height = 1300
+        for (const callback of rowsObservers) callback()
+        expect(writes).toEqual([1200])
+    })
+    test('a page count written before the chain swapped leaves the reader where it was: neither correction nor landing', async () => {
+        seedChat(character.chats[0], 12, 9, CAP + 4)
+        await show()
+        let release: () => void = () => {}
+        stepGate = new Promise<void>((resolve) => { release = resolve })
+        tapNext(9)
+        ScrollToMessageStore.value = 2
+        flushSync()
+        release()
+        await settle()
+        expect(writes).toEqual([])
+        // The raised count (15) was sized for the old chain, so the ordinary window of the new one starts at its newest row minus that count.
+        expect(mountedIndexes()[0]).toBe(CAP + 12 - 15)
+    })
+    // Last in the file: a step from a focused control leaves the row's focus handover pending for two seconds, and the next
+    // mount of the same row index would take focus from the body; later tests must not start with that focus.
+    test('focus that was on the stepped row moves to the newest article', async () => {
+        seedChat(character.chats[0], 12, 9, CAP + 4)
+        await show()
+        const control = articleAt(9).querySelector<HTMLButtonElement>('[data-step="next"]')!
+        control.focus()
+        expect(document.activeElement).toBe(control)
+        control.click()
+        flushSync()
+        await settle()
+        expect(document.activeElement).toBe(newestArticle())
     })
 })
 

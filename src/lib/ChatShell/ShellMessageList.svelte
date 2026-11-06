@@ -13,8 +13,9 @@
     import { createBottomFollower, isScrolledToBottom, type BottomFollower } from '../../ts/chatShell/bottomAnchor'
     import { bindReaderIntent, canHostMove, createReaderIntent, type ReaderIntentSource } from '../../ts/chatShell/readerIntent'
     import { WRITE_EPSILON, createLoadRealign } from '../../ts/chatShell/loadRealign'
-    import { createStepHold, firstMessageMounted, pagesForPin, windowEnd, windowPin, windowStart, type StepRowRunner } from '../../ts/chatShell/stepHold'
+    import { STEP_HOLD_MOUNT_CAP, createStepHold, firstMessageMounted, heldPin, pagesForPin, windowEnd, windowPin, windowStart, type PinRelease, type StepRowRunner } from '../../ts/chatShell/stepHold'
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
+    import { asShellFocus } from '../../ts/chatShell/shellFocus'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { language } from '../../lang'
     import ShellMessage, { type ActionRequest, type CustomizeRequest } from './ShellMessage.svelte'
@@ -81,6 +82,9 @@
     let pin = $state<number | null>(null)
     // The page count when the pin was taken; a different count at commit time was written by someone else while the window was pinned.
     let pinnedLoadPages = 0
+    // The window's first row when the pin was taken; growth past the mount cap since then ends the hold of the pinned window.
+    // It is written only together with `pin`, whose change re-evaluates every reader, so it is held in a plain object that Svelte does not track.
+    const pinned = { start: 0 }
     let intentSeq = 0
     const requestFrame = (callback: () => void): number => typeof requestAnimationFrame === 'function' ? requestAnimationFrame(callback) : window.setTimeout(callback, 16)
     const cancelFrame = (id: number): void => { if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id); else window.clearTimeout(id) }
@@ -92,17 +96,37 @@
         newestIndex: () => messages.length - 1,
         pin: () => pin,
         setPin: (value) => {
-            if (value !== null && pin === null) pinnedLoadPages = loadPages
+            if (value !== null && pin === null) {
+                pinnedLoadPages = loadPages
+                pinned.start = windowStart(chatFoldedStateMessageIndex.index, messages.length)
+            }
             pin = value
         },
         windowPin: () => windowPin(windowStart(chatFoldedStateMessageIndex.index, messages.length), loadPages, messages.length),
         // Releasing the pin keeps the window's oldest position: the same rows stay mounted, so nothing moves under the reader.
         // A page count written meanwhile (a jump to an older message, load more, a full window for a screenshot) asked for more rows, so the larger count wins.
         // A longer chain keeps every row from the pin to its newest message mounted, and that count stays after the hold.
-        commitPin: (held) => {
-            const kept = pagesForPin(windowStart(chatFoldedStateMessageIndex.index, messages.length), messages.length, loadPages, held)
+        // Past the mount cap the pin is dropped and the page count stays as it was: the ordinary window is already what renders.
+        commitPin: (held): PinRelease => {
+            const start = windowStart(chatFoldedStateMessageIndex.index, messages.length)
+            if (heldPin(held, pinned.start, start, STEP_HOLD_MOUNT_CAP) === null) {
+                pin = null
+                return loadPages === pinnedLoadPages ? 'newest' : 'released'
+            }
+            const kept = pagesForPin(start, messages.length, loadPages, held)
             loadPages = loadPages === pinnedLoadPages ? kept : Math.max(kept, loadPages)
             pin = null
+            return 'kept'
+        },
+        landAtNewest: (focusFrom) => {
+            placeAtNewest()
+            if (focusFrom === null) return
+            // Focus follows the view only from the row the reader stepped: a reader who moved focus elsewhere meanwhile keeps it.
+            // The newest row is the first article in document order, and the shell-focus mark keeps the follower from reading this as the reader leaving.
+            const active = document.activeElement
+            const stranded = !active || active === document.body || !active.isConnected || active.closest<HTMLElement>('article[data-part="chat-message"]')?.dataset.chatIndex === String(focusFrom)
+            const newest = rows?.querySelector<HTMLElement>('article[data-part="chat-message"]')
+            if (stranded && newest) asShellFocus(() => newest.focus({ preventScroll: true }))
         },
         row: (idx) => rows?.querySelector<HTMLElement>(`article[data-chat-index="${idx}"]`) ?? null,
         intentSeq: () => intentSeq,
@@ -139,7 +163,7 @@
 
     let visibleRows = $derived.by(() => {
         const start = windowStart(chatFoldedStateMessageIndex.index, messages.length)
-        const end = windowEnd(start, loadPages, pin)
+        const end = windowEnd(start, loadPages, heldPin(pin, pinned.start, start, STEP_HOLD_MOUNT_CAP))
         const result: { idx: number, message: Message, key: string }[] = []
         for (let i = start; i >= end; i--) {
             const message = messages[i]
@@ -376,7 +400,7 @@
                 </svelte:boundary>
             </div>
         {/each}
-        {#if chat && firstMessageMounted(messages.length, loadPages, pin) && character.type === 'character'}
+        {#if chat && firstMessageMounted(messages.length, loadPages, heldPin(pin, pinned.start, windowStart(chatFoldedStateMessageIndex.index, messages.length), STEP_HOLD_MOUNT_CAP)) && character.type === 'character'}
             <div data-part="chat-first-message">
                 <svelte:boundary onerror={(error) => recordCaughtError('chat.message', error)}>
                     <ShellMessage idx={-1} message={{ role: 'char', data: firstMessageOf(character, chat) }} name={character.name} img={character.image} character={createSimpleCharacter(character)} firstMessage getTreeView={firstMessageTreeView} onReroll={() => stepFirstMessage(1)} unReroll={() => stepFirstMessage(-1)} stepRow={runStep} {onOpenActions} {onCloseActions} {onOpenCustomize} />
