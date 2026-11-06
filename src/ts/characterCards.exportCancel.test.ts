@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 /**
- * The Cancel of a web character-card export (PNG and CharX). The real `exportCharacterCard`, `LocalWriter`,
+ * The Cancel of a web character-card export (PNG, CharX and JSON). The real `exportCharacterCard`, `LocalWriter`,
  * `openWebExportWriter`, `pngChunk` and `CharXWriter` run; the vendored download helper (`streamSaver`) is replaced by
  * a stream writer that can stop taking writes, which is what a browser that ended its download early looks like to the
  * page. This proves what the page does, not what a browser does with the download.
@@ -243,6 +243,7 @@ vi.mock('src/ts/globalApi.svelte', async (importOriginal) => ({
 //#endregion
 
 import { exportCharacterCard } from 'src/ts/characterCards'
+import { readImage } from 'src/ts/globalApi.svelte'
 import { busyKinds } from 'src/ts/process/memory/busyActions'
 import { alertStore } from 'src/ts/stores.svelte'
 import type { alertData } from 'src/ts/alert'
@@ -429,12 +430,45 @@ describe('guards', () => {
         expect(shown.filter((value) => value.msg === language.successExport)).toEqual([])
     })
 
-    test('(G) a JSON card export keeps its dialogs: nothing stalls, no Cancel is offered', async () => {
-        const character = syntheticCharacter()
-        expect(await exportCharacterCard(character, 'json', { spec: 'v3' })).toBe(true)
+    test('(N) a web JSON card export offers Cancel in its waits, closes the file and reports the download once', async () => {
+        expect(await exportCharacterCard(syntheticCharacter(), 'json', { spec: 'v3' })).toBe(true)
 
-        expect(shown.filter((value) => value.onCancel !== undefined)).toEqual([])
-        expect(shown.filter((value) => value.type === 'progress').length).toBeGreaterThan(0)
+        expect(shown.filter((value) => value.onCancel !== undefined).length).toBeGreaterThan(0)
+        expect(shown.filter((value) => value.type === 'progress')).toEqual([])
+        expect(world.closes).toBe(1)
+        expect(world.aborts).toBe(0)
+        expect(shown.filter((value) => value.msg === language.exportDownloadStarted)).toHaveLength(1)
+        expect(shown.filter((value) => value.msg === language.successExport)).toEqual([])
+    })
+
+    test('(R) cancelling a web JSON card export during the second asset read reads no further asset, aborts once and tells of the cut-off file', async () => {
+        const reads: string[] = []
+        let cancelOffered = ''
+        vi.mocked(readImage).mockImplementation(async (key: string) => {
+            reads.push(key)
+            if (key === 'assets/a2') {
+                cancelOffered = typeof (get(alertStore) as alertData).onCancel
+                ;(get(alertStore) as alertData).onCancel?.()
+            }
+            return world.png
+        })
+        let result = true
+        try {
+            result = await exportCharacterCard(syntheticCharacter(), 'json', { spec: 'v3' })
+        }
+        finally {
+            vi.mocked(readImage).mockImplementation(async () => world.png)
+        }
+
+        expect(cancelOffered).toBe('function')
+        expect(result).toBe(false)
+        expect(reads.filter((key) => key.startsWith('assets/'))).toEqual(['assets/a1', 'assets/a2'])
+        expect(world.errors).toEqual([])
+        expect(world.aborts).toBe(1)
+        expect(world.closes).toBe(0)
+        expect((get(alertStore) as alertData).msg).toBe(language.exportCancelledFileIncomplete)
+        expect(shown.filter((value) => value.msg === language.exportCancelledFileIncomplete)).toHaveLength(1)
+        expect(shown.filter((value) => value.msg === language.successExport || value.msg === language.exportDownloadStarted)).toEqual([])
     })
 
     test('(R) a failure after the stream opened aborts the stream once and adds the incomplete-file sentence to the one error', async () => {

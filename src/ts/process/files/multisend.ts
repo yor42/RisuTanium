@@ -5,6 +5,7 @@ import { createSendSubject, registerWork, type OriginHint, type RunSubject } fro
 import type { ComposerDraftKey } from '../composerDrafts.svelte';
 import { downloadFile } from 'src/ts/globalApi.svelte';
 import { isTauri } from "src/ts/platform"
+import { isAndroidTransport } from "src/ts/storage/tauriByteTransport"
 import { HypaProcesser } from '../memory/hypamemory';
 import { BufferToText as BufferToText, selectMultipleFileObjects } from 'src/ts/util';
 import { isInlayRefusal, postInlayAsset } from './inlays';
@@ -107,7 +108,7 @@ async function sendPofileEntries(arg:sendFileArg, subject:RunSubject, hint:Origi
             note = ''
             speaker = ''
             msgId = ''
-            if(isTauri){
+            if(isTauri && !isAndroidTransport()){
                 await downloadFile('translated.po', result)
             }
             continue

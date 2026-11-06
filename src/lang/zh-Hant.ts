@@ -1204,6 +1204,7 @@ export const languageChineseTraditional = {
     "removeGroup": "刪除群組",
     "exportCharacter": "匯出角色",
     "successExport": "匯出成功，檔案已下載至您的下載資料夾",
+    "successExportChosenLocation": "匯出成功，檔案已儲存至您選擇的位置",
     "exportDownloadStarted": "已開始下載。瀏覽器會將檔案儲存到下載資料夾，並可能先要求您確認或保留該檔案。",
     "exportHeldInMemory": "此瀏覽器無法在匯出的同時邊產生邊儲存，因此會先將匯出內容保存在記憶體中，待完成後再下載。體積非常大的匯出可能會失敗。",
     "exportHelperNotResponding": "下載輔助程式沒有回應，因此會先將匯出內容保存在記憶體中，待完成後再下載。體積非常大的匯出可能會失敗。",

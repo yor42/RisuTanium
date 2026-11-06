@@ -1,6 +1,6 @@
 import { get, writable } from "svelte/store";
 import { saveImage, type character, type Chat, type folder, type groupChat, defaultSdDataFunc, type loreBook, getDatabase, getCurrentChat, getCharacterByIndex, setCharacterByIndex } from "./storage/database.svelte";
-import { alertAddCharacter, alertConfirm, alertError, alertNormal, alertSelect, alertStore, alertWait } from "./alert";
+import { alertAddCharacter, alertClear, alertConfirm, alertError, alertNormal, alertSelect, alertStore, alertWait } from "./alert";
 import { language } from "../lang";
 import { downloadNotice } from "./exportNotice";
 import { checkNullish, findCharacterbyId, findCharacterIndexbyId, getUserName, readPickedFileBytes, selectMultipleFileObjects, selectSingleFile, selectSingleFileObject } from "./util";
@@ -414,8 +414,12 @@ export async function exportChat(page:number){
                 folders: folders
             }), 'utf-8')
     
-            await downloadFile(`${char.name}_${date}_chat`.replace(/[<>:"/\\|?*\.\,]/g, "") + '.json', stringl)
-    
+            const saved = await downloadFile(`${char.name}_${date}_chat`.replace(/[<>:"/\\|?*\.\,]/g, "") + '.json', stringl)
+            if(!saved){
+                alertClear()
+                return
+            }
+
         }
         else if(mode === '2'){
 
@@ -486,7 +490,11 @@ export async function exportChat(page:number){
             `
 
 
-            await downloadFile(`${char.name}_${date}_chat`.replace(/[<>:"/\\|?*\.\,]/g, "") + '.html', Buffer.from(doc, 'utf-8'))
+            const saved = await downloadFile(`${char.name}_${date}_chat`.replace(/[<>:"/\\|?*\.\,]/g, "") + '.html', Buffer.from(doc, 'utf-8'))
+            if(!saved){
+                alertClear()
+                return
+            }
         }
         else if(mode === '3'){
             //create a html table
@@ -544,7 +552,11 @@ export async function exportChat(page:number){
                 stringl = `--${char.name}\n${char.firstMessage}\n\n` + stringl
             }
 
-            await downloadFile(`${char.name}_${date}_chat`.replace(/[<>:"/\\|?*\.\,]/g, "") + '.txt', Buffer.from(stringl, 'utf-8'))
+            const saved = await downloadFile(`${char.name}_${date}_chat`.replace(/[<>:"/\\|?*\.\,]/g, "") + '.txt', Buffer.from(stringl, 'utf-8'))
+            if(!saved){
+                alertClear()
+                return
+            }
 
         }
         alertNormal(downloadNotice(language.successExport))
@@ -821,7 +833,10 @@ export async function exportAllChats() {
             data: allChats,
             folders: allFolders
         }), 'utf-8')
-        await downloadFile(`${char.name}_all_chats_${date}`.replace(/[<>:"/\\|?*.,]/g, "") + '.json', stringl)
+        const saved = await downloadFile(`${char.name}_all_chats_${date}`.replace(/[<>:"/\\|?*.,]/g, "") + '.json', stringl)
+        if(!saved){
+            return
+        }
         alertNormal(downloadNotice(language.successExport))
     } catch (error) {
         alertError(error)

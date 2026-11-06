@@ -125,10 +125,13 @@
                 }
 
                 const preset = presets[DBState.db.translatorPresetId];
-                await downloadFile(
+                const saved = await downloadFile(
                     getTranslatorPresetDownloadName(preset.name),
                     await encodeTranslatorPresetFile(preset)
                 );
+                if (!saved) {
+                    return;
+                }
                 alertNormal(downloadNotice(language.successExport));
             } catch (error) {
                 alertError(`${error}`);

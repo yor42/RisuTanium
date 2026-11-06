@@ -1289,6 +1289,7 @@ export const languageEnglish = {
     removeGroup: "Remove Group",
     exportCharacter: "Export Character",
     successExport: "Successfuly exported and downloaded to your download directory",
+    successExportChosenLocation: "Successfully exported and saved to the location you chose.",
     exportDownloadStarted: "Download started. Your browser saves the file to your downloads and may first ask you to confirm or keep it.",
     exportHeldInMemory: "This browser cannot save the export as it is made, so it is held in memory until it is finished and then downloaded. A very large export may fail.",
     exportHelperNotResponding: "The download helper did not respond, so the export is held in memory until it is finished and then downloaded. A very large export may fail.",

@@ -460,10 +460,10 @@ describe('exportOffersCancel', () => {
         expect(exportOffersCancel({ ...base, type: 'json' })).toBe(false)
     })
 
-    test('(N) the web offers Cancel for every file export but JSON, large asset or not', () => {
+    test('(N) the web offers Cancel for every file export, JSON included, large asset or not', () => {
         expect(exportOffersCancel({ ...base, tauri: false, largeAssetCount: 0 })).toBe(true)
         expect(exportOffersCancel({ ...base, tauri: false, type: 'png', largeAssetCount: 0 })).toBe(true)
-        expect(exportOffersCancel({ ...base, tauri: false, type: 'json' })).toBe(false)
+        expect(exportOffersCancel({ ...base, tauri: false, type: 'json' })).toBe(true)
     })
 
     test('(N) a writer that is not a LocalWriter gets no Cancel', () => {

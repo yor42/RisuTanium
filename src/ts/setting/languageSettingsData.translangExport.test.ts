@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
     alertSelect: vi.fn(),
     alertNormal: vi.fn(),
+    alertClear: vi.fn(),
     downloadFile: vi.fn(),
     exportLLMCacheAsJSON: vi.fn(),
 }))
@@ -31,6 +32,7 @@ vi.mock(import('src/ts/util'), () => ({
 vi.mock(import('src/ts/alert'), () => ({
     alertSelect: mocks.alertSelect,
     alertNormal: mocks.alertNormal,
+    alertClear: mocks.alertClear,
     alertConfirm: vi.fn(),
     alertError: vi.fn(),
     alertWait: vi.fn(),
@@ -77,6 +79,8 @@ beforeEach(() => {
     mocks.alertSelect.mockReset()
     mocks.alertNormal.mockReset()
     mocks.downloadFile.mockReset()
+    mocks.downloadFile.mockResolvedValue(true)
+    mocks.alertClear.mockReset()
     mocks.exportLLMCacheAsJSON.mockReset()
     platformBox.isTauri = false
 })
@@ -104,6 +108,15 @@ describe('the translation-cache export notice', () => {
         const { language } = await import('src/lang')
         expect(mocks.alertNormal).toHaveBeenCalledWith(language.exportTranslationCacheSuccess)
         expect(mocks.alertNormal).not.toHaveBeenCalledWith(language.exportDownloadStarted)
+    })
+
+    test('regression reproducer: a cancelled picker clears the wait dialog and shows no completion notice', async () => {
+        mocks.downloadFile.mockResolvedValue(false)
+        mocks.exportLLMCacheAsJSON.mockResolvedValue({ a: 'b' })
+        await exportCache()
+        expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+        expect(mocks.alertClear).toHaveBeenCalledTimes(1)
+        expect(mocks.alertNormal).not.toHaveBeenCalled()
     })
 })
 
@@ -168,6 +181,17 @@ describe('continuing an existing translation through the UI-language setting', (
         const bytes = mocks.downloadFile.mock.calls[0][1] as Uint8Array
         const downloaded = JSON.parse(new TextDecoder().decode(bytes)) as typeof languageEnglish
         expect(downloaded.settingsPage.unknown).toBe(languageJapanese.settingsPage.unknown)
+    })
+
+    test('regression reproducer: a cancelled picker shows no downloaded notice and still switches the language to en', async () => {
+        mocks.downloadFile.mockResolvedValue(false)
+        const ctx = { db: { language: 'ko' } }
+        mocks.alertSelect.mockResolvedValue('0')
+        await onChange('translang', ctx)
+
+        expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
+        expect(mocks.alertNormal).not.toHaveBeenCalled()
+        expect(ctx.db.language).toBe('en')
     })
 
     test('compatibility guard: choosing Korean downloads the Korean language JSON', async () => {

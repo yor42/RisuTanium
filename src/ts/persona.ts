@@ -1,6 +1,6 @@
 import { getDatabase, saveImage, setDatabase } from "./storage/database.svelte"
 import { selectSingleFile, selectSingleFileObject, sleep } from "./util"
-import { alertError, alertNormal, alertStore } from "./alert"
+import { alertClear, alertError, alertNormal, alertStore } from "./alert"
 import { AppendableBuffer, downloadFile, pickedAssetLimitBytes, readImage, saveAssetFromBlob } from "./globalApi.svelte"
 import { reportRefusedAssets } from "./storage/pickedAssetLimit"
 import { language } from "src/lang"
@@ -108,7 +108,11 @@ export async function exportUserPersona() {
     })
 
     await sleep(10)
-    await downloadFile(`${db.username.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.png`, img)
+    const saved = await downloadFile(`${db.username.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.png`, img)
+    if(!saved){
+        alertClear()
+        return
+    }
 
     alertNormal(downloadNotice(language.successExport))
 }

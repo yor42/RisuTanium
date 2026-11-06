@@ -11,7 +11,7 @@ import { changeLanguage, language } from 'src/lang';
 import { downloadNotice } from 'src/ts/exportNotice';
 import { languageEnglish } from 'src/lang/en';
 import { sleep } from '../util';
-import { alertNormal, alertSelect, alertConfirm, alertError, alertWait } from '../alert';
+import { alertNormal, alertSelect, alertConfirm, alertError, alertWait, alertClear } from '../alert';
 import { downloadFile } from '../globalApi.svelte';
 import { selectFileByDom } from '../util';
 import { exportLLMCacheAsJSON, importLLMCacheFromJSON, clearLLMCache } from '../translator/translator';
@@ -57,17 +57,21 @@ export const languageSettingsItems: SettingItem[] = [
                     const langs = ['de', 'ko', 'cn', 'vi', 'zh-Hant', 'es', 'ja'];
                     const lang = parseInt(await alertSelect(langs));
                     changeLanguage(langs[lang]);
-                    downloadFile(
+                    const saved = await downloadFile(
                         'lang.json',
                         new TextEncoder().encode(JSON.stringify(language, null, 4)),
                     );
-                    alertNormal(language.alerts.translationJsonDownloaded);
+                    if (saved) {
+                        alertNormal(language.alerts.translationJsonDownloaded);
+                    }
                 } else {
-                    downloadFile(
+                    const saved = await downloadFile(
                         'lang.json',
                         new TextEncoder().encode(JSON.stringify(languageEnglish, null, 4)),
                     );
-                    alertNormal(language.alerts.translationJsonDownloaded);
+                    if (saved) {
+                        alertNormal(language.alerts.translationJsonDownloaded);
+                    }
                 }
 
                 ctx.db.language = 'en';
@@ -285,7 +289,11 @@ export const languageSettingsItems: SettingItem[] = [
                         return;
                     }
                     const json = JSON.stringify(cache, null, 2);
-                    await downloadFile('translation_cache.json', new TextEncoder().encode(json));
+                    const saved = await downloadFile('translation_cache.json', new TextEncoder().encode(json));
+                    if (!saved) {
+                        alertClear();
+                        return;
+                    }
                     alertNormal(downloadNotice(language.exportTranslationCacheSuccess));
                 } catch (e: any) {
                     alertError(e.message);

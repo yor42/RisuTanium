@@ -24,7 +24,7 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     AppendableBuffer: class {},
-    downloadFile: vi.fn(async () => {}),
+    downloadFile: vi.fn(async () => true),
     readImage: vi.fn(async () => new Uint8Array([1])),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 vi.mock(import('src/ts/util'), () => ({

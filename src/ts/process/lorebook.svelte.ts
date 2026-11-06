@@ -905,7 +905,10 @@ export async function exportLoreBook(mode:'global'|'local'){
             data: lore
         }), 'utf-8')
 
-        await downloadFile(`lorebook_export.json`, stringl)
+        const saved = await downloadFile(`lorebook_export.json`, stringl)
+        if(!saved){
+            return
+        }
 
         alertNormal(downloadNotice(language.successExport))
     } catch (error) {

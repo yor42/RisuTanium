@@ -1159,6 +1159,7 @@ export const languageGerman = {
     "removeGroup": "Gruppe entfernen",
     "exportCharacter": "Charakter exportieren",
     "successExport": "Erfolgreich exportiert und in Ihrem Download-Verzeichnis gespeichert",
+    "successExportChosenLocation": "Erfolgreich exportiert und am von Ihnen gewählten Speicherort gespeichert",
     "exportDownloadStarted": "Download gestartet. Ihr Browser speichert die Datei in Ihren Downloads und fragt möglicherweise zuerst, ob Sie sie bestätigen oder behalten möchten.",
     "exportHeldInMemory": "Dieser Browser kann den Export nicht schon während der Erstellung speichern. Er wird daher im Arbeitsspeicher gehalten, bis er fertig ist, und erst dann heruntergeladen. Ein sehr großer Export kann fehlschlagen.",
     "exportHelperNotResponding": "Der Download-Helfer hat nicht geantwortet. Der Export wird daher im Arbeitsspeicher gehalten, bis er fertig ist, und erst dann heruntergeladen. Ein sehr großer Export kann fehlschlagen.",

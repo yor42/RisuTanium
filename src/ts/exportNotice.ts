@@ -1,5 +1,6 @@
 import { language } from "../lang";
 import { isTauri } from "./platform";
+import { isAndroidTransport } from "./storage/tauriByteTransport";
 
 /**
  * The success notice that follows a file export. A browser only starts the download and may still ask the
@@ -7,6 +8,9 @@ import { isTauri } from "./platform";
  * and keeps the saved wording. Both texts are read at call time so a language switch applies.
  */
 export function downloadNotice(savedText: string, startedText: string = language.exportDownloadStarted): string {
+    if (isTauri && isAndroidTransport() && savedText === language.successExport) {
+        return language.successExportChosenLocation
+    }
     return isTauri ? savedText : startedText
 }
 

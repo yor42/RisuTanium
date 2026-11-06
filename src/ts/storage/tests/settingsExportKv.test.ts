@@ -21,7 +21,7 @@ import 'src/ts/polyfill'
 
 const { liveDb, downloadFileMock } = vi.hoisted(() => ({
     liveDb: { value: {} as Record<string, unknown> },
-    downloadFileMock: vi.fn(async (_name: string, _bytes: Uint8Array) => {}),
+    downloadFileMock: vi.fn(async (_name: string, _bytes: Uint8Array) => true),
 }))
 
 vi.mock(import('src/ts/storage/database.svelte'), () => ({

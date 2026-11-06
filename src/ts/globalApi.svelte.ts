@@ -1,9 +1,8 @@
 import {
-    BaseDirectory,
     exists,
     mkdir
 } from "@tauri-apps/plugin-fs"
-import { readUserFile, writeUserFile } from "./storage/tauriUserFile"
+import { readUserFile } from "./storage/tauriUserFile"
 import { changeFullscreen, checkNullish, sleep, sleepForever } from "./util"
 import { markAppInitiatedReload } from "./reloadGuard"
 import { openUrlOnWeb } from "./openUrlWeb"
@@ -102,37 +101,7 @@ interface fetchLog {
 
 let fetchLog: fetchLog[] = []
 
-export async function downloadFile(name: string, dat: Uint8Array | ArrayBuffer | string) {
-    if (typeof (dat) === 'string') {
-        dat = Buffer.from(dat, 'utf-8')
-    }
-    const data = new Uint8Array(dat)
-    const downloadURL = (data: string, fileName: string) => {
-        const a = document.createElement('a')
-        a.href = data
-        a.download = fileName
-        document.body.appendChild(a)
-        a.style.display = 'none'
-        a.click()
-        a.remove()
-    }
-
-    if (isTauri) {
-        await writeUserFile(name, data, BaseDirectory.Download)
-    }
-    else {
-        const blob = new Blob([data], { type: 'application/octet-stream' })
-        const url = URL.createObjectURL(blob)
-
-        downloadURL(url, name)
-
-        setTimeout(() => {
-            URL.revokeObjectURL(url)
-        }, 10000)
-
-
-    }
-}
+export { downloadFile } from "./downloadFile"
 
 type FileCacheEntry = {
     status: 'loading' | 'done' | 'missing'

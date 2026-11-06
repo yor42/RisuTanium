@@ -1159,6 +1159,7 @@ export const languageKorean = {
     "removeGroup": "그룹 삭제",
     "exportCharacter": "캐릭터 내보내기",
     "successExport": "성공적으로 내보내어 다운로드 경로에 다운로드했습니다.",
+    "successExportChosenLocation": "성공적으로 내보내어 선택하신 위치에 저장했습니다.",
     "exportDownloadStarted": "다운로드가 시작되었습니다. 브라우저가 파일을 다운로드 폴더에 저장하며, 먼저 확인 또는 보관 여부를 물을 수 있습니다.",
     "exportHeldInMemory": "이 브라우저는 내보내기를 만드는 도중에 저장할 수 없어서, 완료될 때까지 메모리에 보관했다가 다운로드합니다. 매우 큰 내보내기는 실패할 수 있습니다.",
     "exportHelperNotResponding": "다운로드 도우미가 응답하지 않아, 내보내기를 완료될 때까지 메모리에 보관했다가 다운로드합니다. 매우 큰 내보내기는 실패할 수 있습니다.",

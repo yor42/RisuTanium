@@ -2454,7 +2454,13 @@ export async function downloadPreset(id:number, type:'json'|'risupreset'|'return
     pres.textgenWebUIBlockingURL=  ''
 
     if(type === 'json'){
-        downloadFile(pres.name + "_preset.json", Buffer.from(JSON.stringify(pres, null, 2)))
+        const saved = await downloadFile(pres.name + "_preset.json", Buffer.from(JSON.stringify(pres, null, 2)))
+        if(!saved){
+            return {
+                data: pres,
+                buf: null
+            }
+        }
     }
     else if(type === 'risupreset' || type === 'return'){
         const buf = fflate.compressSync(encodeMsgpack({
@@ -2469,7 +2475,13 @@ export async function downloadPreset(id:number, type:'json'|'risupreset'|'return
         const buf2 = await encodeRPack(buf)
 
         if(type === 'risupreset'){
-            downloadFile(pres.name + "_preset.risup", buf2)
+            const saved = await downloadFile(pres.name + "_preset.risup", buf2)
+            if(!saved){
+                return {
+                    data: pres,
+                    buf: null
+                }
+            }
         }
         else{
             return {

@@ -10,14 +10,19 @@
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
-const spies = vi.hoisted(() => ({ storeSet: vi.fn() }))
+const spies = vi.hoisted(() => ({
+    storeSet: vi.fn(),
+    clear: vi.fn(),
+    normal: vi.fn(),
+    download: vi.fn(),
+}))
 
 vi.mock(import('src/ts/alert'), () => ({
-    alertClear: vi.fn(),
+    alertClear: spies.clear,
     alertConfirm: vi.fn(),
     alertError: vi.fn(),
     alertModuleSelect: vi.fn(),
-    alertNormal: vi.fn(),
+    alertNormal: spies.normal,
     alertStore: { set: spies.storeSet, update: vi.fn(), subscribe: vi.fn() },
     alertWait: vi.fn(),
 }) as unknown as typeof import('src/ts/alert'))
@@ -34,7 +39,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
         append(b: Buffer) { this.parts.push(b) }
         get buffer() { return Buffer.concat(this.parts) }
     },
-    downloadFile: vi.fn(async () => {}),
+    downloadFile: spies.download,
     forageStorage: {},
     LocalWriter: class {},
     readImage: vi.fn(async () => new Uint8Array([1])),
@@ -90,7 +95,13 @@ async function waitTexts(): Promise<string[]> {
         .map((value) => value.msg)
 }
 
-beforeEach(() => spies.storeSet.mockReset())
+beforeEach(() => {
+    spies.storeSet.mockReset()
+    spies.clear.mockReset()
+    spies.normal.mockReset()
+    spies.download.mockReset()
+    spies.download.mockResolvedValue(true)
+})
 afterEach(() => changeLanguage('en'))
 
 describe('exportModuleLegacy asset wait text', () => {
@@ -108,5 +119,36 @@ describe('exportModuleLegacy asset wait text', () => {
             fillLang(languageKorean.alerts.addingAssets, { completed: 0, total: 2 }),
             fillLang(languageKorean.alerts.addingAssets, { completed: 1, total: 2 }),
         ])
+    })
+})
+
+describe('exportModuleLegacy save result', () => {
+    test('regression reproducer: a cancelled picker clears the wait dialog and shows no success notice', async () => {
+        spies.download.mockResolvedValue(false)
+
+        await exportModuleLegacy(twoAssetModule)
+
+        expect(spies.download).toHaveBeenCalledTimes(1)
+        const waitCalls = spies.storeSet.mock.invocationCallOrder
+        expect(waitCalls.length).toBeGreaterThan(0)
+        expect(spies.clear).toHaveBeenCalledTimes(1)
+        expect(spies.clear.mock.invocationCallOrder[0]).toBeGreaterThan(Math.max(...waitCalls))
+        expect(spies.normal).not.toHaveBeenCalled()
+    })
+
+    test('regression reproducer: a cancelled picker clears the wait dialog even when alertEnd is false', async () => {
+        spies.download.mockResolvedValue(false)
+
+        await exportModuleLegacy(twoAssetModule, { alertEnd: false })
+
+        expect(spies.clear).toHaveBeenCalledTimes(1)
+        expect(spies.normal).not.toHaveBeenCalled()
+    })
+
+    test('guard: a saved export shows the success notice once and does not clear', async () => {
+        await exportModuleLegacy(twoAssetModule)
+
+        expect(spies.normal).toHaveBeenCalledTimes(1)
+        expect(spies.clear).not.toHaveBeenCalled()
     })
 })
