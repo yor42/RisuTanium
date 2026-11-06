@@ -22296,7 +22296,7 @@ Status: DRAFT, not accepted. Entries MC-1069 to MC-1072, to be appended after th
 - H1 hdrTops reads [-48] on the pc3 run against [0] earlier; its assertion still passes.
 - Why anchoring compensated one shrink frame and not the next.
 
-**Still owed after the merge.** The maintainer accepted S1a with "Merge and push", but the S1a acceptance step "the `nexus` preset listed at S1a acceptance" (`MC-1086`, Stage 6) was NOT done: `colorscheme.nexusHidden.test.ts` and `ColorSchemeSelect.nexusHidden.svelte.test.ts` still guard the hidden preset on main. Which of lane B's D1 to D7 claims map to the device runs above is not re-verified: TODO(evidence).
+**Stage 6 and device claims.** The `nexus` preset listing (`MC-1086`, Stage 6) is in the merge: `8f0187d40` ("UI-S1a Stage 6, the nexus colour-scheme preset is listed in the picker") is an ancestor of `e7401a1e2`; the two guarding tests keep their historical `nexusHidden` file names and now assert the listed preset. Which of lane B's D1 to D7 claims map to the device runs above is not re-verified: TODO(evidence).
 
 **Not decided.** S1b sizing; UI-S1 (slices 1 to 4) acceptance; the old-shell retirement batch; stale worktree cleanup (with the maintainer's permission).
 
