@@ -1,11 +1,11 @@
 import { language } from "src/lang"
 import { downloadNotice } from "src/ts/exportNotice"
 import { fillLang } from "src/lang/fill"
-import { alertClear, alertConfirm, alertModuleSelect, alertNormal, alertStore, alertWait } from "../alert"
+import { alertClear, alertConfirm, alertError, alertModuleSelect, alertNormal, alertStore, alertWait } from "../alert"
 import { getCurrentCharacter, getDatabase, setCurrentCharacter, setDatabase, type customscript, type loreBook, type triggerscript } from "../storage/database.svelte"
 import type { RunSubject } from "./chatOrigin"
 import { ASSET_PIECE_SAVE_MIN_BYTES } from "../assetHash"
-import { AppendableBuffer, AssetSourceChangedError, downloadFile, forageStorage, LocalWriter, readImage, saveAsset, saveAssetFromPieces, VirtualWriter } from "../globalApi.svelte"
+import { AppendableBuffer, AssetSourceChangedError, forageStorage, LocalWriter, readImage, saveAsset, saveAssetFromPieces, VirtualWriter } from "../globalApi.svelte"
 import { checkPersonaBinded, selectFileByDom, sleep } from "../util"
 import { v4 } from "uuid"
 import { convertExternalLorebook } from "./lorebook.svelte"
@@ -16,8 +16,12 @@ import {get} from "svelte/store"
 import { untrack } from "svelte"
 import { moduleChangeNeedsReload, type ModuleReloadBase } from "./moduleReloadNeed"
 import { convertCharacterToModule, convertModuleToCharacter } from "../interchangeability"
-import { exportCharacterCard, importCharacterFile, preflightCardExport } from "../characterCards"
-import { appStoreOrNull, listModuleAssets, preflightExport, refuseExport } from "../drive/exportPreflight"
+import { exportCharacterCard, exportOffersCancel, importCharacterFile, preflightCardExport } from "../characterCards"
+import { appStoreOrNull, listModuleAssets, preflightExport, refuseExport, type ExportAssetEntry } from "../drive/exportPreflight"
+import { ExportCancelToken, ExportCancelledError, createExportWaitGate, type ExportWaitGate } from "../exportCancel"
+import { exportFileState, withFileIncompleteSentence } from "../exportWriters"
+import { isTauri } from "../platform"
+import { risumFileName, streamRisum } from "../risumStream"
 import { moduleListOf, moduleRefIdsOf } from "./moduleRefList"
 import { bumpModuleGui } from "./moduleGuiBump"
 import { ModuleRefusal } from "./moduleRefusal"
@@ -104,68 +108,138 @@ export async function exportModuleLegacy(module:RisuModule, arg:{
 } = {}){
     const alertEnd = arg.alertEnd ?? true
     const saveData = arg.saveData ?? true
-    const apb = new AppendableBuffer()
-    const writeLength = (len:number) => {
-        const lenbuf = Buffer.alloc(4)
-        lenbuf.writeUInt32LE(len, 0)
-        apb.append(lenbuf)
-    }
-    const writeByte = (byte:number) => {
-        //byte is 0-255
-        const buf = Buffer.alloc(1)
-        buf.writeUInt8(byte, 0)
-        apb.append(buf)
-    }
 
+    // The asset list and the module copy come from one snapshot, taken before any await, so an edit made while the
+    // size check or the save dialog is open cannot leave the records and the main block describing different assets.
     const entries = listModuleAssets(module)
+    const snapshot = snapshotModuleForRisum(module)
     if(entries.length > 0 && await refuseExport(await preflightExport(entries, 'risum', appStoreOrNull))){
         return null
     }
-    module = safeStructuredClone(module)
-    module.assets ??= []
-    module.assets = module.assets.map((asset) => {
+
+    if(!saveData){
+        // The bytes for a CharX `module.risum`: no writer, no Cancel and no busy entry.
+        const apb = new AppendableBuffer()
+        await streamRisum(
+            await encodeRisumMainBlock(snapshot),
+            entries.length,
+            (index) => encodeRisumRecordBody(entries[index].key, () => showRisumAssetWait(entries[index].index, entries.length)),
+            (chunk) => { apb.append(chunk) },
+        )
+        if(alertEnd){
+            alertNormal(downloadNotice(language.successExport))
+        }
+        return apb.buffer
+    }
+    // The value is never the file: it is not kept alive, and the caller (`ModuleSettings`) ignores it.
+    return withBusy('export', () => writeRisumFile(snapshot, entries, alertEnd))
+}
+
+/** The module as the main block describes it: a copy whose asset keys are blanked, because the records carry the bytes. */
+function snapshotModuleForRisum(module:RisuModule):RisuModule{
+    const copy = safeStructuredClone(module)
+    copy.assets = (copy.assets ?? []).map((asset) => {
         return [asset[0], '', asset[2]] as [string,string,string]
     })
+    return copy
+}
 
-    const mainbuf = await encodeRPack(Buffer.from(JSON.stringify({
-        module: module,
+function encodeRisumMainBlock(snapshot:RisuModule){
+    return encodeRPack(Buffer.from(JSON.stringify({
+        module: snapshot,
         type: 'risuModule'
     }, null, 2), 'utf-8'))
+}
 
-    writeByte(111) //magic number
-    writeByte(0) //version
-    writeLength(mainbuf.length)
-    apb.append(mainbuf)
+function showRisumAssetWait(completed:number, total:number){
+    alertStore.set({
+        type: 'wait',
+        msg: fillLang(language.alerts.addingAssets, { completed, total })
+    })
+}
 
-    for(const entry of entries){
-        writeByte(1) //mark as asset
-        alertStore.set({
-            type: 'wait',
-            msg: fillLang(language.alerts.addingAssets, { completed: entry.index, total: entries.length })
-        })
-        let rData = await readImage(entry.key)
-        if(!rData){
-            rData = new Uint8Array(0) //blank buffer
+/** One record body: the asset read, compressed and RPack-encoded. An asset that cannot be read becomes a blank record. */
+async function encodeRisumRecordBody(key:string, showWait:() => void):Promise<Uint8Array>{
+    showWait()
+    const rData = await readImage(key)
+    return await encodeRPack(await compressImage(rData || new Uint8Array(0)))
+}
+
+/**
+ * Writes the .risum to a file the person picks, record by record. Resolves `null` in every outcome, and never rejects:
+ * a cancel, a dismissed dialog and a failure are each handled here, because the caller has no catch.
+ *
+ * Order, after the size check: the save dialog (before any asset is read and before the main block is built), the main
+ * block, the records, the terminator, `close()`, then the success notice. A failed or cancelled run writes nothing more
+ * and does not close the file, so a truncated file lacks its terminator and this fork's `scanRisum` refuses it.
+ *
+ * On plain-HTTP self-hosted web the streaming save helper opens a popup that needs a fresh user gesture. Nothing is
+ * awaited between the end of the size check and the writer's `init`, to keep the gesture alive; if it has lapsed the
+ * writer falls back to a whole-file in-memory Blob, so that route does not bound memory.
+ */
+async function writeRisumFile(snapshot:RisuModule, entries:ExportAssetEntry[], alertEnd:boolean):Promise<null>{
+    let cancel: ExportCancelToken | undefined
+    let gate: ExportWaitGate | undefined
+    let localWriter: LocalWriter | undefined
+    try{
+        if(exportOffersCancel({writer: undefined, type: 'risum', tauri: isTauri, largeAssetCount: 0, assetCount: entries.length})){
+            cancel = new ExportCancelToken()
+            gate = createExportWaitGate(cancel, true)
+            // The picker or the writer's first writes can stall before any asset progress is shown.
+            gate.wait(language.alerts.writingPng)
         }
-        let encoded = await encodeRPack(Buffer.from(await compressImage(rData)))
-        writeLength(encoded.length)
-        apb.append(encoded)
-    }
-
-    writeByte(0) //end of file
-
-    if(saveData){
-        const saved = await downloadFile(module.name + '.risum', apb.buffer)
-        if(!saved){
+        const writer = new LocalWriter()
+        localWriter = writer
+        if(!(await writer.init('RisuM File', ['risum'], risumFileName(snapshot.name), cancel))){
+            //the person dismissed the save dialog: nothing was exported, so nothing is said
+            gate?.clear()
+            return null
+        }
+        const showWait = (index:number) => {
+            if(cancel && gate){
+                cancel.throwIfCancelled()
+                gate.wait(fillLang(language.alerts.addingAssets, { completed: index, total: entries.length }))
+            }
+            else{
+                showRisumAssetWait(index, entries.length)
+            }
+        }
+        await streamRisum(
+            await encodeRisumMainBlock(snapshot),
+            entries.length,
+            (index) => encodeRisumRecordBody(entries[index].key, () => showWait(entries[index].index)),
+            (chunk) => writer.write(chunk),
+        )
+        await writer.close()
+        if(alertEnd){
+            // A Tauri build writes to the location the person picked, so the default "download directory" text would be false.
+            alertNormal(isTauri ? language.successExportChosenLocation : downloadNotice(language.successExport))
+        }
+        else if(gate){
+            //the Cancel dialog must not stay on screen after a finished export that posts no notice; nothing else is shown between the close and this line
             alertClear()
-            return apb.buffer
         }
+        return null
     }
-    if(alertEnd){
-        alertNormal(downloadNotice(language.successExport))
+    catch(e){
+        if(cancel && (cancel.cancelled || e instanceof ExportCancelledError)){
+            // The person's choice, not a failure. The notice is posted before this resolves so the caller's next dialog waits for it.
+            if(exportFileState(localWriter?.writer) === 'kept'){
+                alertNormal(language.exportCancelledFileIncomplete)
+            }
+            return null
+        }
+        if(localWriter){
+            //A failed export gives up on its file; the abort is not awaited because it may stay pending behind a write the browser never takes.
+            localWriter.abort(e)
+            if(exportFileState(localWriter.writer) === 'kept'){
+                alertError(withFileIncompleteSentence(e))
+                return null
+            }
+        }
+        alertError(e)
+        return null
     }
-
-    return apb.buffer
 }
 
 const RISUM_MAGIC = 111

@@ -30,6 +30,8 @@ const world = vi.hoisted(() => ({
     aborts: 0,
     releases: [] as Array<() => void>,
     errors: [] as string[],
+    // the order of the stream opening and of the asset reads
+    order: [] as string[],
 }))
 
 const streamBox = vi.hoisted(() => ({
@@ -184,6 +186,12 @@ vi.mock(import('src/ts/process/files/inlays'), () => ({
     reencodeImage: vi.fn(async (d: unknown) => d),
 }) as unknown as typeof import('src/ts/process/files/inlays'))
 
+// The real table is fetched from a URL, which this file answers with a placeholder image; a fixed invertible byte map stands in (3 is added after multiplying by 7; 183 is 7 inverted mod 256).
+vi.mock(import('src/ts/rpack/rpack_js'), () => ({
+    encodeRPack: vi.fn(async (data: Uint8Array) => Uint8Array.from(data, (b) => (b * 7 + 3) & 0xff)),
+    decodeRPack: vi.fn(async (data: Uint8Array) => Uint8Array.from(data, (b) => ((b - 3 + 256) * 183) & 0xff)),
+}) as unknown as typeof import('src/ts/rpack/rpack_js'))
+
 vi.mock(import('src/ts/storage/dbChangeEffects.svelte'), () => ({
     registerDbChangeEffects: vi.fn(),
 }) as unknown as typeof import('src/ts/storage/dbChangeEffects.svelte'))
@@ -234,7 +242,7 @@ vi.mock(import('src/ts/storage/store/appStore'), async () => {
 
 //#endregion
 
-import { exportModule, type RisuModule } from 'src/ts/process/modules'
+import { exportModule, exportModuleLegacy, readModule, type RisuModule } from 'src/ts/process/modules'
 import { busyKinds } from 'src/ts/process/memory/busyActions'
 import { alertStore } from 'src/ts/stores.svelte'
 import type { alertData } from 'src/ts/alert'
@@ -256,6 +264,14 @@ function syntheticModule(): RisuModule {
     }
 }
 
+/** A byte store map that records every key it is asked for, so the order of reads against the stream opening is visible. */
+class ReadLogMap extends Map<string, Uint8Array> {
+    get(key: string): Uint8Array | undefined {
+        world.order.push(`read ${key}`)
+        return super.get(key)
+    }
+}
+
 let shown: alertData[] = []
 let unsubscribe: () => void = () => { }
 const realFetch = globalThis.fetch
@@ -263,7 +279,8 @@ const realFetch = globalThis.fetch
 beforeEach(() => {
     platformBox.isTauri = false
     world.png = syntheticPng()
-    world.files = new Map([1, 2, 3].map((n) => [`assets/a${n}`, syntheticPng()] as [string, Uint8Array]))
+    world.order = []
+    world.files = new ReadLogMap([1, 2, 3].map((n) => [`assets/a${n}`, syntheticPng()] as [string, Uint8Array]))
     world.stallAfter = Number.POSITIVE_INFINITY
     world.writes = []
     world.closes = 0
@@ -271,8 +288,8 @@ beforeEach(() => {
     world.releases = []
     world.errors = []
     streamBox.useBlobFallback = false
-    streamBox.createWriteStream = vi.fn((_filename: string) => ({
-        ready: Promise.resolve(),
+    streamBox.createWriteStream = vi.fn((filename: string) => ({
+        ready: (world.order.push(`open ${filename}`), Promise.resolve()),
         writable: {
             getWriter: () => ({
                 write: (data: Uint8Array) => {
@@ -360,5 +377,74 @@ describe('guards', () => {
         await exportModule(syntheticModule())
 
         expect(shown.filter((value) => value.onCancel !== undefined)).toEqual([])
+    })
+})
+
+describe('a .risum export on the web', () => {
+    const concatenated = () => Buffer.concat(world.writes)
+
+    test('(R) the download stream opens before any record is read, and every asset is read after it', async () => {
+        await exportModuleLegacy(syntheticModule(), { alertEnd: false })
+
+        const openAt = world.order.indexOf('open Synthetic Module.risum')
+        expect(openAt).toBeGreaterThan(-1)
+        for (const key of ['assets/a1', 'assets/a2', 'assets/a3']) {
+            expect(world.order.lastIndexOf(`read ${key}`), key).toBeGreaterThan(openAt)
+        }
+        expect(world.closes).toBe(1)
+        expect(world.errors).toEqual([])
+    })
+
+    test('(R) a stalled write shows a Cancel, and pressing it gives the incomplete notice once, aborts the stream and does not close it', async () => {
+        world.stallAfter = 2
+        const done = exportModuleLegacy(syntheticModule())
+        try {
+            await vi.waitFor(() => expect(world.writes.length).toBe(3))
+            const dialog = get(alertStore) as alertData
+            expect(dialog.type).toBe('wait')
+            expect(dialog.onCancel).toBeTypeOf('function')
+            dialog.onCancel?.()
+            world.releases.forEach((release) => release())
+            expect(await done).toBeNull()
+        } finally {
+            world.releases.forEach((release) => release())
+            await done
+        }
+
+        expect(shown.filter((value) => value.msg === language.exportCancelledFileIncomplete)).toHaveLength(1)
+        expect(shown.filter((value) => value.msg === language.successExport || value.msg === language.exportDownloadStarted)).toEqual([])
+        expect(world.errors).toEqual([])
+        expect(world.aborts).toBe(1)
+        expect(world.closes).toBe(0)
+        expect(busyKinds()).not.toContain('export')
+    })
+
+    test('(N) a finished export with alertEnd false leaves no wait dialog on screen', async () => {
+        await exportModuleLegacy(syntheticModule(), { alertEnd: false })
+
+        expect((get(alertStore) as alertData).type).not.toBe('wait')
+        expect(shown.some((value) => value.type === 'wait' && value.onCancel !== undefined)).toBe(true)
+    })
+
+    test('(N) the written stream reads back through the real readModule with every asset', async () => {
+        await exportModuleLegacy(syntheticModule(), { alertEnd: false })
+
+        expect(concatenated().length).toBeGreaterThan(0)
+        const module = await readModule(concatenated())
+        expect((module.assets ?? []).map((asset) => asset[0])).toEqual(['asset1', 'asset2', 'asset3'])
+        for (const asset of module.assets ?? []) {
+            expect(world.files.get(asset[1])).toEqual(syntheticPng())
+        }
+    })
+
+    test('(N) a missing asset becomes a blank record that readModule accepts with an empty asset', async () => {
+        world.files.delete('assets/a2')
+        await exportModuleLegacy(syntheticModule(), { alertEnd: false })
+
+        expect(world.errors).toEqual([])
+        expect(concatenated().length).toBeGreaterThan(0)
+        const module = await readModule(concatenated())
+        expect((module.assets ?? []).map((asset) => asset[0])).toEqual(['asset1', 'asset2', 'asset3'])
+        expect(world.files.get((module.assets ?? [])[1][1])?.length).toBe(0)
     })
 })
