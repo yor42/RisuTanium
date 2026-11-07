@@ -41,7 +41,9 @@ const MESSAGE_ROW_SELECTOR = 'article[data-part="chat-message"][data-chat-index]
 // Arriving at the bottom (a position read) re-enters following.
 // While `held` is true an alternative-step hold owns the position: the follower neither writes nor re-enters following from
 // the transient layout the step leaves behind. A size change it skipped is applied by the first `sync` after the hold ends.
-export function createBottomFollower(host: HTMLElement, content: Element, canFollow: () => boolean, intent: ReaderIntentSource, newestIndex: () => number, held: () => boolean = () => false): BottomFollower {
+// While `newestMounted` is false the mounted rows end above the newest message, so their bottom is not the conversation's bottom:
+// the follower neither writes scrollTop nor enters following, and a skipped size change is dropped.
+export function createBottomFollower(host: HTMLElement, content: Element, canFollow: () => boolean, intent: ReaderIntentSource, newestIndex: () => number, held: () => boolean = () => false, newestMounted: () => boolean = () => true): BottomFollower {
     let following = isScrolledToBottom(host)
     let skippedResize = false
     const stopIntent = intent.subscribe((event) => { if (event.direction === 'older') following = false })
@@ -73,7 +75,7 @@ export function createBottomFollower(host: HTMLElement, content: Element, canFol
         if (target - host.scrollTop > BOTTOM_EPSILON) host.scrollTop = target
     }
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
-        if (!following || !canFollow()) return
+        if (!following || !canFollow() || !newestMounted()) return
         if (held()) { skippedResize = true; return }
         toBottom()
     })
@@ -81,14 +83,14 @@ export function createBottomFollower(host: HTMLElement, content: Element, canFol
     return {
         sync: () => {
             if (held()) return
-            if (isScrolledToBottom(host)) following = true
+            if (isScrolledToBottom(host) && newestMounted()) following = true
             if (skippedResize) {
                 skippedResize = false
-                if (following && canFollow()) toBottom()
+                if (following && canFollow() && newestMounted()) toBottom()
             }
         },
         follow: () => {
-            if (!canFollow()) return
+            if (!canFollow() || !newestMounted()) return
             following = true
         },
         release: () => { following = false },
