@@ -55,6 +55,8 @@
     let moreOpen = $state(false);
     let newMenuButton = $state<HTMLButtonElement>();
     let moreButton = $state<HTMLButtonElement>();
+    // Unset by Svelte when the toggle unmounts (Recent, search results), so a gone toggle is never focused.
+    let editOrderButton = $state<HTMLButtonElement>();
 
     function closeOverlay() {
         if (!get(DynamicGUI) || get(sideBarClosing)) {
@@ -187,6 +189,18 @@
         placeFolder: (folder, before) => canReorder() && owner !== undefined && placeFolder(owner, folder, before),
     } : null);
 
+    // The move buttons exist only in the mode, so ending it removes a focused one and focus drops to the body. The toggle stays
+    // mounted through the Done exit; the other exits hand focus back to it only when nothing else holds it, and never to a
+    // toggle that is gone or sits in a sidebar that is closing.
+    async function leaveEditOrder() {
+        reorder = null;
+        await tick();
+        const active = document.activeElement;
+        if ((active === null || active === document.body) && editOrderButton?.isConnected && !$sideBarClosing && $sideBarStore) {
+            editOrderButton.focus({ preventScroll: true });
+        }
+    }
+
     function toggleReorder() {
         reorder = reorder ? null : { selId: selIdState.selId };
     }
@@ -222,7 +236,7 @@
         return registerBackHandler(backCloseHandler({
             isOpen: () => reorder !== null,
             snapshot: () => reorder !== null,
-            close: () => { reorder = null; },
+            close: () => { void leaveEditOrder(); },
         }));
     });
 
@@ -480,7 +494,7 @@
         } else if (reorder) {
             // Reached only with focus inside the sidebar; with focus elsewhere the overlay closes, which ends the mode too.
             event.preventDefault();
-            reorder = null;
+            void leaveEditOrder();
         }
     }
 
@@ -540,6 +554,7 @@
                 {#if orderAvailable}
                     <button
                         type="button"
+                        bind:this={editOrderButton}
                         data-part="sidebar-edit-order"
                         class="rounded-md border border-darkborderc bg-darkbutton px-2 py-1 text-textcolor hover:bg-selected cursor-pointer"
                         aria-pressed={reorder !== null}

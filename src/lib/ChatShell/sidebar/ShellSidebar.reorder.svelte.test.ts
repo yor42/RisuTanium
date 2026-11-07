@@ -16,7 +16,7 @@
  * MOCKED: the stores module, `characters` (spies), `changeChatTo`, the alert module, the save mark, the animation frame queue,
  * pointer capture and the scroller's rectangle. `placeChat`/`placeFolder` are spied and still run for real.
  */
-import { flushSync, mount, unmount } from 'svelte'
+import { flushSync, mount, tick, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Chat, ChatFolder, Database } from '../../../ts/storage/database.svelte'
@@ -552,6 +552,97 @@ describe('TR8: a switch ends the mode', () => {
         expect(indicator()).toBeNull()
         expect(frames.size).toBe(0)
         expect(mocks.mark).not.toHaveBeenCalled()
+    })
+})
+
+describe('focus after leaving Edit order', () => {
+    // The move buttons exist only in the mode, so leaving it removes the focused control; the toggle stays mounted and takes the focus.
+    test('Escape on a focused move button leaves focus on the toggle', async () => {
+        install(character('a', [chat('p'), chat('q')]))
+        selectedCharID.set(0)
+        render()
+        enterMode()
+        const button = part(0, 'chat-move-down')
+        button.focus()
+        expect(document.activeElement).toBe(button)
+        const focusSpy = vi.spyOn(HTMLElement.prototype, 'focus')
+        const toggleEl = toggle()
+        escape(button)
+        await tick()
+        const toggleCalls = focusSpy.mock.calls.filter((_, index) => focusSpy.mock.contexts[index] === toggleEl)
+        focusSpy.mockRestore()
+        expect(button.isConnected).toBe(false)
+        expect(toggle().getAttribute('aria-pressed')).toBe('false')
+        expect(document.activeElement).toBe(toggle())
+        // The refocus must not scroll the sidebar list.
+        expect(toggleCalls).toEqual([[{ preventScroll: true }]])
+    })
+
+    test('Back with focus already on the body when the helper runs (Back blurs first) leaves focus on the toggle', async () => {
+        install(character('a', [chat('p'), chat('q')]))
+        selectedCharID.set(0)
+        render()
+        enterMode()
+        const button = part(1, 'chat-move-up')
+        button.focus()
+        expect(dispatchBack()).toBe(true)
+        await tick()
+        expect(button.isConnected).toBe(false)
+        expect(toggle().getAttribute('aria-pressed')).toBe('false')
+        expect(document.activeElement).toBe(toggle())
+    })
+
+    test('guard: the Done click keeps focus on the toggle', async () => {
+        install(character('a', [chat('p'), chat('q')]))
+        selectedCharID.set(0)
+        render()
+        enterMode()
+        toggle().focus()
+        toggle().click()
+        await tick()
+        expect(toggle().getAttribute('aria-pressed')).toBe('false')
+        expect(document.activeElement).toBe(toggle())
+    })
+
+    test('guard: focus that is elsewhere at exit is not moved', async () => {
+        install(character('a', [chat('p'), chat('q')]))
+        selectedCharID.set(0)
+        render()
+        enterMode()
+        // Back blurs the focused field before it closes, so the Escape path is the one that can leave focus elsewhere.
+        const select = sortSelect()
+        select.focus()
+        expect(document.activeElement).toBe(select)
+        escape(select)
+        await tick()
+        expect(toggle().getAttribute('aria-pressed')).toBe('false')
+        expect(document.activeElement).toBe(select)
+    })
+
+    test('the toggle being gone at exit throws nothing and focuses nothing hidden', async () => {
+        install(character('a', [chat('p'), chat('q')]))
+        selectedCharID.set(0)
+        render()
+        enterMode()
+        part(0, 'chat-move-down').focus()
+        chooseSort('recent')
+        await tick()
+        expect(maybeToggle()).toBeNull()
+        expect(dispatchBack()).toBe(false)
+        expect(document.activeElement).toBe(document.body)
+    })
+
+    test('a sidebar that is closing does not take the focus back', async () => {
+        install(character('a', [chat('p'), chat('q')]))
+        selectedCharID.set(0)
+        render()
+        enterMode()
+        const button = part(0, 'chat-move-down')
+        button.focus()
+        sideBarClosing.set(true)
+        escape(button)
+        await tick()
+        expect(document.activeElement).toBe(document.body)
     })
 })
 
