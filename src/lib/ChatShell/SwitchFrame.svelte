@@ -14,7 +14,10 @@
     let loading = $derived(switchTarget.phase === 'loading')
     let skeleton = $state(false)
     let root = $state<HTMLElement>()
-    // Not reactive: set by focus events, read when the frame goes. A removed element fires no focusout.
+    // Not reactive: set by focus events, read when the frame goes. Chromium reports focus loss with a focusout (no
+    // relatedTarget) while a focused node is being removed, before the effect cleanup runs, so the flag alone cannot say that
+    // the frame went with focus: leave() restores focus itself when the frame is gone after such a focusout, and the cleanup
+    // still serves engines that fire none. Both paths run restoreFocus, which acts only while focus is on the body.
     let holdsFocus = false
 
     // The skeleton is for switches that take long enough to be noticed; a quick one shows only the named, focusable frame.
@@ -41,6 +44,15 @@
         if (!active || active === document.body) transcript?.focus({ preventScroll: true })
     }
 
+    function leave(event: FocusEvent): void {
+        holdsFocus = false
+        if (event.relatedTarget) return
+        const frame = event.currentTarget as HTMLElement
+        void tick().then(() => {
+            if (!frame.isConnected) void restoreFocus()
+        })
+    }
+
     function retry(): void {
         root?.focus({ preventScroll: true })
         void retrySwitch()
@@ -48,7 +60,7 @@
 </script>
 
 {#if pending}
-    <div bind:this={root} data-part="chat-switch-frame" tabindex="-1" role="group" aria-label={loading ? language.chatShellLoadingChat : language.chatShellLoadFailed} aria-busy={loading} onfocusin={() => holdsFocus = true} onfocusout={() => holdsFocus = false}>
+    <div bind:this={root} data-part="chat-switch-frame" tabindex="-1" role="group" aria-label={loading ? language.chatShellLoadingChat : language.chatShellLoadFailed} aria-busy={loading} onfocusin={() => holdsFocus = true} onfocusout={leave}>
         {#if loading}
             {#if skeleton}
                 <div data-part="chat-switch-skeleton" aria-hidden="true"><span></span><span></span><span></span></div>

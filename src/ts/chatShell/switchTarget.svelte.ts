@@ -1,7 +1,7 @@
 import { get } from 'svelte/store'
 import { language } from 'src/lang'
 import { alertNormal } from '../alert'
-import { changeChar, type ChangeCharOutcome } from '../characters'
+import { changeChar, supersedeChangeChar, type ChangeCharOutcome } from '../characters'
 import { doingChat } from '../process/index.svelte'
 import type { ColdRestoreFailure } from '../process/coldCharacterRestore'
 import type { Database } from '../storage/database.svelte'
@@ -136,6 +136,19 @@ export function retrySwitch(): Promise<ChangeCharOutcome> | undefined {
         return undefined
     }
     return switchCharacter(target)
+}
+
+/**
+ * Drops a loading or failed switch for good: the restore still running is
+ * superseded, so it cannot select the abandoned character when it lands.
+ * Does nothing when idle.
+ */
+export function abandonPendingSwitch(): void {
+    if(switchTarget.phase === 'idle'){
+        return
+    }
+    supersedeChangeChar()
+    clearPending()
 }
 
 /** Gives up the pending switch. The selection never moved while it was pending. */

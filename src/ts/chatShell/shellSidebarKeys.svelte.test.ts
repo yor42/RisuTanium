@@ -32,6 +32,16 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 })
 
 const changeChatToMock = vi.hoisted(() => vi.fn())
+// When set, openChatOf answers with it instead of opening: the outcomes the key handler cannot reach by itself.
+const forcedOutcome = vi.hoisted(() => ({ value: null as null | 'not-selected' | 'missing' }))
+
+vi.mock('./chatOpen', async (original) => {
+    const actual = await original<typeof import('./chatOpen')>()
+    return {
+        ...actual,
+        openChatOf: (...args: Parameters<typeof actual.openChatOf>) => forcedOutcome.value ?? actual.openChatOf(...args),
+    }
+})
 
 vi.mock(import('src/ts/globalApi.svelte'), async () => {
     const { DBState, selIdState } = await import('src/ts/stores.svelte')
@@ -43,9 +53,24 @@ vi.mock(import('src/ts/globalApi.svelte'), async () => {
     } as unknown as typeof import('src/ts/globalApi.svelte')
 })
 
+// The pending-switch state is real; what it imports for switching and alerting is not needed here.
+const supersedeMock = vi.hoisted(() => vi.fn())
+
+vi.mock(import('src/ts/characters'), () => ({
+    changeChar: vi.fn(async () => 'selected'),
+    supersedeChangeChar: supersedeMock,
+}) as unknown as typeof import('src/ts/characters'))
+vi.mock(import('src/ts/alert'), () => ({
+    alertNormal: vi.fn(),
+}) as unknown as typeof import('src/ts/alert'))
+vi.mock(import('src/ts/process/index.svelte'), () => ({
+    doingChat: writable(false),
+}) as unknown as typeof import('src/ts/process/index.svelte'))
+
 import { DBState, alertStore, selectedCharID, selIdState } from 'src/ts/stores.svelte'
 import { recordKeyEventBlocked } from '../keyEventBlocked'
 import { registerShell } from '../../lib/Nexus/pattern/patternFocus'
+import { clearPending, switchTarget } from './switchTarget.svelte'
 import { installShellSidebarKeys } from './shellSidebarKeys'
 
 type Entry = Database['characters'][number]
@@ -73,13 +98,17 @@ let teardown: (() => void) | undefined
 
 beforeEach(() => {
     changeChatToMock.mockReset()
+    supersedeMock.mockReset()
+    forcedOutcome.value = null
     localStorage.clear()
     alertStore.set({ type: 'none', msg: '' })
     selectedCharID.set(-1)
+    clearPending()
     teardown = installShellSidebarKeys()
 })
 
 afterEach(() => {
+    clearPending()
     teardown?.()
     teardown = undefined
     document.body.innerHTML = ''
@@ -141,6 +170,61 @@ describe('Alt+Up / Alt+Down', () => {
         install([owner('a', [chat('one', 1), chat('two', 2)])])
         press('ArrowDown')
         expect(changeChatToMock).not.toHaveBeenCalled()
+    })
+})
+
+describe.each(['failed', 'loading'] as const)('a pending switch in phase %s', (phase) => {
+    function ready(chatPage: number): Entry {
+        localStorage.setItem('risuChatShell.chatSort', 'manual')
+        const [a, b] = install([
+            owner('a', [chat('one', 1), chat('two', 2), chat('three', 3)], chatPage),
+            owner('b', [chat('b1', 1)]),
+        ])
+        selectedCharID.set(0)
+        // The state a running switch leaves; the restore still running is covered with the real changeChar in characters.quietSwitch.
+        switchTarget.target = b
+        switchTarget.phase = phase
+        return a
+    }
+
+    test('Alt+Down opens the neighbouring chat of the selected character and abandons the pending switch', () => {
+        const a = ready(0)
+        press('ArrowDown')
+        expect(a.chatPage).toBe(1)
+        expect(switchTarget.phase).toBe('idle')
+        expect(switchTarget.target).toBeNull()
+        expect(supersedeMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('Alt+Up opens the neighbouring chat of the selected character and abandons the pending switch', () => {
+        const a = ready(2)
+        press('ArrowUp')
+        expect(a.chatPage).toBe(1)
+        expect(switchTarget.phase).toBe('idle')
+        expect(switchTarget.target).toBeNull()
+        expect(supersedeMock).toHaveBeenCalledTimes(1)
+    })
+
+    // Compatibility guard: an open that did not happen leaves the switch to its own endings.
+    test.each(['not-selected', 'missing'] as const)('an open refused as %s keeps the pending switch', (outcome) => {
+        const a = ready(0)
+        forcedOutcome.value = outcome
+        press('ArrowDown')
+        expect(a.chatPage).toBe(0)
+        expect(switchTarget.phase).toBe(phase)
+        expect(switchTarget.target).not.toBeNull()
+        expect(supersedeMock).not.toHaveBeenCalled()
+    })
+
+    // Compatibility guard: a key that opens nothing leaves the switch to its own endings.
+    test('at the end of the list nothing opens and the pending switch stays', () => {
+        const a = ready(2)
+        press('ArrowDown')
+        expect(a.chatPage).toBe(2)
+        expect(changeChatToMock).not.toHaveBeenCalled()
+        expect(switchTarget.phase).toBe(phase)
+        expect(switchTarget.target).not.toBeNull()
+        expect(supersedeMock).not.toHaveBeenCalled()
     })
 })
 
