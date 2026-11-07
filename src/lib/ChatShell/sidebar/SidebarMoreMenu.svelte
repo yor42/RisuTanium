@@ -1,6 +1,9 @@
 <script lang="ts">
-    import { ArrowLeft, BookmarkCheckIcon, SettingsIcon, ShellIcon, SplitIcon, WrenchIcon } from "@lucide/svelte";
+    import { untrack } from "svelte";
+    import { ArrowLeft, BookmarkCheckIcon, LayoutPanelLeftIcon, SettingsIcon, ShellIcon, SplitIcon, WrenchIcon } from "@lucide/svelte";
     import { language } from "src/lang";
+    import { openStudio, selectedStudioCharacterId } from "src/ts/studio/studioScreen.svelte";
+    import { studioEligible } from "src/ts/studio/studioSwitch.svelte";
     import {
         DBState,
         PlaygroundStore,
@@ -20,12 +23,15 @@
         onclose: () => void;
         // Called after an action that opens a page-level dialog, so an overlay sidebar steps aside.
         afterAction: () => void;
+        // Where More opens. A link-out from Studio opens it on Character settings.
+        startView?: 'menu' | 'settings';
     }
 
-    let { reseter, onclose, afterAction }: Props = $props();
+    let { reseter, onclose, afterAction, startView = 'menu' }: Props = $props();
 
     // 'menu' is the list; the other two are the old tab bar's character settings and developer tool.
-    let view = $state<'menu' | 'settings' | 'dev'>('menu');
+    // The prop only seeds the view when More opens; later navigation inside More is the view's own.
+    let view = $state<'menu' | 'settings' | 'dev'>(untrack(() => startView));
 
     function back() {
         if (view === 'menu') {
@@ -33,6 +39,15 @@
             return;
         }
         view = 'menu';
+    }
+
+    // More closes first. Its row goes away with it, so Back returns focus to the sidebar's More button.
+    function openInStudio(event: MouseEvent & { currentTarget: HTMLButtonElement }) {
+        const chaId = selectedStudioCharacterId();
+        if (chaId === null) return;
+        const opener = { element: event.currentTarget, selector: '[data-part="sidebar-more"]' };
+        onclose();
+        openStudio({ owner: { type: 'character', id: chaId }, from: 'chat' }, opener);
     }
 
     function openPlayground() {
@@ -58,6 +73,12 @@
                 <SettingsIcon size={18} />
                 <span>{language.chatShellCharacterSettings}</span>
             </button>
+            {#if studioEligible()}
+                <button class={itemClass} data-part="more-studio" onclick={openInStudio}>
+                    <LayoutPanelLeftIcon size={18} />
+                    <span>{language.studioOpenIn}</span>
+                </button>
+            {/if}
             <button class={itemClass} onclick={openPlayground}>
                 <ShellIcon size={18} />
                 <span>{language.playground.playground}</span>
@@ -86,7 +107,7 @@
     {:else}
         <div data-part="more-subview" class="flex-1 overflow-y-auto overflow-x-hidden p-2">
             {#if view === 'settings'}
-                <CharConfig />
+                <CharConfig studioEntry={false} />
             {:else}
                 <DevTool />
             {/if}

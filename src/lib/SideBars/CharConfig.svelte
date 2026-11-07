@@ -41,6 +41,14 @@
     import Toggles from "./Toggles.svelte";
     import { convertCharacterToModule } from "src/ts/interchangeability";
     import { writeLiveCharacter } from "src/ts/liveCharacterWrite";
+    import StudioEntryRow from "../Studio/StudioEntryRow.svelte";
+
+    interface Props {
+        // The Studio row sits at the top; a host that already offers Studio itself passes false.
+        studioEntry?: boolean;
+    }
+
+    let { studioEntry = true }: Props = $props();
 
     let iconRemoveMode = $state(false)
     let viewSubMenu = $state(0)
@@ -269,6 +277,10 @@
     }
 
 </script>
+
+{#if studioEntry}
+    <StudioEntryRow />
+{/if}
 
 {#if licensed !== 'private' && !$MobileGUI}
     <div class="flex mb-2" class:gap-2={iconButtonSize === 24} class:gap-1={iconButtonSize < 24}>

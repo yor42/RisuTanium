@@ -5,6 +5,7 @@ import { ANSWER_GUARD_MS, pageCovered } from "./alertPrompts"
 import { recordKeyEventBlocked, setLiveKeysBlockedReader } from "./keyEventBlocked"
 import { changeToPreset as changeToPreset2, getDatabase, type Database } from "./storage/database.svelte"
 import { alertStore, DBState, loadoutModalStore, MobileGUIStack, MobileSideBar, openPersonaList, openPresetList, OpenRealmStore, PlaygroundStore, QuickSettings, SafeModeStore, selectedCharID, settingsOpen } from "./stores.svelte"
+import { studioOpen } from "./studio/studioOpen"
 import { language } from "src/lang"
 import { fillLang } from "src/lang/fill"
 import { updateTextThemeAndCSS } from "./gui/colorscheme"
@@ -142,7 +143,7 @@ export function initHotkey(){
         // A chat shortcut is consumed but does nothing while Settings is open.
         const chatAct = (name: string, action: () => void) => {
             act(() => {
-                if(chatHotkeyMayAct(name, get(settingsOpen))){
+                if(chatHotkeyMayAct(name, get(settingsOpen) || get(studioOpen))){
                     action()
                 }
             })

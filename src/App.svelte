@@ -12,6 +12,7 @@
     import Settings from './lib/Setting/Settings.svelte';
     import SettingsSurface from './lib/SettingsShell/SettingsSurface.svelte';
     import { installSettingsOrigin } from './ts/settingsShell/settingsOrigin';
+    import { studioOpen } from './ts/studio/studioOpen';
     import { showRealmInfoStore } from './ts/characterCards';
     import { getDatabase, setDatabase } from './ts/storage/database.svelte';
     import { importDroppedFile } from './ts/dropImport';
@@ -48,6 +49,8 @@
   
     let didFirstSetup: boolean  = $derived(DBState.db?.didFirstSetup)
     let gridOpen = $state(false)
+    // Settings and Studio each replace the sidebar and grid and hide the still-mounted chat surface.
+    const covered = $derived($settingsOpen || $studioOpen)
     let aprilFools = $state(new Date().getMonth() === 3 && new Date().getDate() === 1)
     let aprilFoolsPage = $state(0)
     let keepingSessionAlive = $state(false)
@@ -63,6 +66,22 @@
 
     const markAppInternalDrag = (e:DragEvent) => {
         e.dataTransfer?.setData(RISU_APP_INTERNAL_DRAG_TYPE, 'true')
+    }
+
+    // A chunk that cannot load (offline, rotated after a deploy) must not leave Studio open with the chat
+    // hidden and no screen: the visit is closed and the failure reported. The handler uses only App's static
+    // flag: the subscription installed when the visit opened resets the visit state once the flag goes false, so
+    // the Studio state module is never imported here. A stale rejection only closes a visit whose chunk is also
+    // failing, because it is the same URL with the same outcome.
+    const loadStudioScreen = async () => {
+        try {
+            return await import('./lib/Studio/StudioScreen.svelte')
+        } catch (error) {
+            studioOpen.set(false)
+            const { alertError } = await import('./ts/alert')
+            alertError(error instanceof Error ? error : String(error))
+            throw error
+        }
     }
 
 </script>
@@ -223,13 +242,19 @@
     {:else}
         {#if $settingsOpen}
             <SettingsSurface />
+        {:else if $studioOpen}
+            {#await loadStudioScreen() then studioModule}
+                <studioModule.default />
+            {:catch}
+                <!-- loadStudioScreen has already closed Studio and reported the failure. -->
+            {/await}
         {/if}
         {#if gridOpen}
-            {#if !$settingsOpen}
+            {#if !covered}
                 <GridChars endGrid={() => {gridOpen = false}} />
             {/if}
         {:else}
-            {#if !$settingsOpen}
+            {#if !covered}
                 {#if (!$DynamicGUI)}
                     <Sidebar openGrid={() => {gridOpen = true}} hidden={!$sideBarStore} />
                 {:else}
@@ -242,8 +267,8 @@
                     </div>
                 {/if}
             {/if}
-            <!-- The chat stays mounted while Settings is open; display:contents keeps its layout as a direct flex child of main. -->
-            <div data-chat-surface style:display={$settingsOpen ? 'none' : 'contents'} inert={$settingsOpen}>
+            <!-- The chat stays mounted while Settings or Studio is open; display:contents keeps its layout as a direct flex child of main. -->
+            <div data-chat-surface style:display={covered ? 'none' : 'contents'} inert={covered}>
                 {#key chatSurface.remountEpoch}
                     <ChatScreen />
                 {/key}
