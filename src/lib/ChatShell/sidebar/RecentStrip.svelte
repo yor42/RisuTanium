@@ -34,13 +34,47 @@
         const name = entry.name || language.settingsPage.unnamed;
         return entry.type === 'group' ? language.chatShellGroupName(name) : name;
     }
+
+    let stripEl: HTMLDivElement | undefined = $state();
+    // Focus on an avatar follows its character across a replace or reorder of the strip, and
+    // focus that went elsewhere is never taken back. Svelte moves and removes avatar nodes while it
+    // reconciles, which drops focus to the body. Plain variable: it only hands the captured id from
+    // the capture to the refocus in the same flush, and must not schedule either effect itself.
+    let refocusChaId: string | null = null;
+
+    $effect.pre(() => {
+        void shown;
+        const active = document.activeElement;
+        const avatar = active instanceof HTMLElement && stripEl?.contains(active) ? active.closest<HTMLElement>('[data-part="strip-avatar"]') : null;
+        refocusChaId = avatar?.dataset.chaId ?? null;
+    });
+
+    $effect(() => {
+        void shown;
+        const chaId = refocusChaId;
+        refocusChaId = null;
+        if (chaId === null || !stripEl) {
+            return;
+        }
+        const active = document.activeElement;
+        if (active && active !== document.body) {
+            return;
+        }
+        for (const button of stripEl.querySelectorAll<HTMLElement>('[data-part="strip-avatar"]')) {
+            if (button.dataset.chaId === chaId) {
+                button.focus({ preventScroll: true });
+                return;
+            }
+        }
+    });
 </script>
 
-<div data-part="chat-sidebar-strip" role="group" aria-label={language.chatShellRecentCharacters} class="flex items-start gap-1 w-full">
+<div bind:this={stripEl} data-part="chat-sidebar-strip" role="group" aria-label={language.chatShellRecentCharacters} class="flex items-start gap-1 w-full">
     {#each shown as entry (entry)}
         {@const label = labelOf(entry)}
         <button
             data-part="strip-avatar"
+            data-cha-id={entry.chaId}
             class="flex flex-col items-center gap-0.5 w-11 min-w-11 cursor-pointer text-textcolor hover:text-textcolor2"
             aria-label={label}
             title={label}
