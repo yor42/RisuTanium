@@ -1,7 +1,10 @@
 <script lang="ts">
     import { tick } from 'svelte'
+    import { get } from 'svelte/store'
     import { language } from '../../lang'
-    import { backToPrevious, retrySwitch, switchTarget } from '../../ts/chatShell/switchTarget.svelte'
+    import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
+    import { abandonPendingSwitch, backToPrevious, retrySwitch, switchTarget } from '../../ts/chatShell/switchTarget.svelte'
+    import { sideBarStore } from '../../ts/stores.svelte'
 
     interface Props {
         /** Where focus goes when the frame goes away while it held focus. */
@@ -36,6 +39,20 @@
             holdsFocus = false
             void restoreFocus()
         }
+    })
+
+    // Back cancels the pending switch and the user stays on the previous chat. The handler registers when a switch starts (or
+    // when the frame mounts already pending), so overlays opened later answer Back first, and it declines while the sidebar is
+    // open so the sidebar closes first. The close supersedes the held restore, so it cannot select the abandoned target when it
+    // lands. The effect reads only `pending`, so a loading -> failed change keeps the registration and its place in the order;
+    // the three callbacks run only on a press.
+    $effect(() => {
+        if (!pending) return
+        return registerBackHandler(backCloseHandler({
+            isOpen: () => switchTarget.phase !== 'idle' && !get(sideBarStore),
+            snapshot: () => switchTarget.phase,
+            close: () => abandonPendingSwitch(),
+        }))
     })
 
     async function restoreFocus(): Promise<void> {
