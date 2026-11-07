@@ -3,8 +3,10 @@
     import { get } from "svelte/store";
     import { ChevronDownIcon, EllipsisIcon, HomeIcon, SettingsIcon } from "@lucide/svelte";
     import { language } from "src/lang";
-    import { DBState, DynamicGUI, OpenRealmStore, PlaygroundStore, selIdState, selectedCharID, settingsOpen, sideBarClosing } from "src/ts/stores.svelte";
+    import { DBState, DynamicGUI, OpenRealmStore, PlaygroundStore, selIdState, selectedCharID, settingsOpen, sideBarClosing, sideBarStore } from "src/ts/stores.svelte";
     import { alertConfirm } from "src/ts/alert";
+    import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
+    import { createDebouncedValue } from "src/ts/gui/characterSearch.svelte";
     import { createNewChat, exportAllChats, exportChat, importChat, removeChatConfirmed } from "src/ts/characters";
     import type { Chat, ChatFolder, Database } from "src/ts/storage/database.svelte";
     import { openChatOf, selectedOwner } from "../../../ts/chatShell/chatOpen";
@@ -16,11 +18,14 @@
     import { installShellSidebarKeys } from "../../../ts/chatShell/shellSidebarKeys";
     import { createFolder, deleteFolder, duplicateChat, moveChat, renameChat, renameFolder, setFolderColor, type ListEditing, type MenuTarget } from "../../../ts/chatShell/chatListEdits";
     import { isArchivedChat } from "../../../ts/chatShell/chatListModel";
+    import { placeChat, placeFolder, type ChatOrdering } from "../../../ts/chatShell/chatOrder";
+    import { searchSidebar } from "../../../ts/chatShell/chatSearch";
     import type { PatternAnswer } from "../../Nexus/pattern/patternWarning";
     import ChatDeleteConfirm from "../ChatDeleteConfirm.svelte";
     import RecentStrip from "./RecentStrip.svelte";
     import ShellChatList from "./ShellChatList.svelte";
     import ShellRowMenu from "./ShellRowMenu.svelte";
+    import ShellSidebarSearch from "./ShellSidebarSearch.svelte";
     import SidebarMoreMenu from "./SidebarMoreMenu.svelte";
 
     type Entry = Database['characters'][number];
@@ -122,6 +127,106 @@
 
     // A switch to a group or home removes the panel itself; nothing it had open may outlive it.
     onDestroy(cancelPending);
+
+    // Search: the field's text, the same text once typing has paused, and what that finds. The results replace the chat list and
+    // are derived live, so a chat created while they show appears in them without typing again. A selection change empties the
+    // field, which also drops the landed text and any timer still running for it.
+    let query = $state('');
+    const landed = createDebouncedValue(() => query, 150);
+    const results = $derived(landed.value.trim() ? searchSidebar(DBState.db.characters, owner, sort, landed.value.trim()) : null);
+
+    $effect(() => {
+        void selIdState.selId;
+        untrack(() => { query = ''; });
+    });
+
+    // Registered only while there is text to clear: the handler then sits above the overlay panel's own Back hook, which registers once at mount, so the first Back clears the text and the second closes the panel.
+    const searching = $derived(query !== '');
+    $effect(() => {
+        // The text survives a panel close, so the handler must also stop while the panel is hidden: a hidden field must not take the press that belongs to the chat.
+        if (!searching || !$sideBarStore || $sideBarClosing) {
+            return;
+        }
+        return registerBackHandler(backCloseHandler({
+            isOpen: () => query !== '',
+            snapshot: () => query,
+            close: () => { query = ''; },
+        }));
+    });
+
+    // Enter opens the first result of the text typed now, not of the landed text, so it works inside the typing pause.
+    function openFirstResult(event: KeyboardEvent) {
+        const found = searchSidebar(DBState.db.characters, owner, sort, query.trim());
+        if (found.characters.length > 0) {
+            pickCharacter(found.characters[0], event);
+        } else if (found.chats.length > 0) {
+            openRow(found.chats[0], event);
+        }
+    }
+
+    // Edit order: the mode belongs to the selection it was entered under and to My order. Every move re-checks `editable` when
+    // it runs, so a press or drop that races a switch or a sort change writes nothing.
+    let reorder = $state.raw<{ selId: number } | null>(null);
+    // Whether this view offers Edit order at all: under My order, and not while search results replace the list.
+    const orderAvailable = $derived(sort === 'manual' && results === null);
+
+    // Typing a search ends the mode; the results that follow keep it off through `orderAvailable`.
+    $effect(() => {
+        if (query !== '') {
+            untrack(() => { reorder = null; });
+        }
+    });
+    const editable = $derived(reorder !== null && reorder.selId === selIdState.selId && orderAvailable);
+
+    function canReorder(): boolean {
+        return editable;
+    }
+
+    const ordering = $derived<ChatOrdering | null>(editable ? {
+        placeChat: (chat, before) => canReorder() && owner !== undefined && placeChat(owner, chat, before),
+        placeFolder: (folder, before) => canReorder() && owner !== undefined && placeFolder(owner, folder, before),
+    } : null);
+
+    function toggleReorder() {
+        reorder = reorder ? null : { selId: selIdState.selId };
+    }
+
+    $effect(() => {
+        const selId = selIdState.selId;
+        untrack(() => {
+            if (reorder && reorder.selId !== selId) {
+                reorder = null;
+            }
+        });
+    });
+
+    $effect(() => {
+        if (!orderAvailable) {
+            untrack(() => { reorder = null; });
+        }
+    });
+
+    // The swipe close and the mount close never set `sideBarClosing`, so the store that shows the panel is read too.
+    $effect(() => {
+        if ($sideBarClosing || !$sideBarStore) {
+            untrack(() => { reorder = null; });
+        }
+    });
+
+    // Registered only while the mode is on, for the same reason as the search handler: it must outrank the overlay panel's Back hook.
+    const modeOn = $derived(reorder !== null);
+    $effect(() => {
+        if (!modeOn) {
+            return;
+        }
+        return registerBackHandler(backCloseHandler({
+            isOpen: () => reorder !== null,
+            snapshot: () => reorder !== null,
+            close: () => { reorder = null; },
+        }));
+    });
+
+    onDestroy(() => { reorder = null; });
 
     function openMenu(target: MenuTarget) {
         begin("menu");
@@ -300,7 +405,7 @@
         }
     }
 
-    function pickCharacter(entry: Entry, event: MouseEvent) {
+    function pickCharacter(entry: Entry, event: MouseEvent | KeyboardEvent) {
         if (refuseSwitchWhileWriting()) {
             return;
         }
@@ -317,7 +422,7 @@
 
     // A row opens its chat through the character selected now: a row drawn for the previous character that is
     // activated before the list redraws finds its owner no longer selected and opens nothing.
-    function openRow(chat: Chat, event: MouseEvent) {
+    function openRow(chat: Chat, event: MouseEvent | KeyboardEvent) {
         const target = owner;
         if (!target || openChatOf(target, chat) !== 'opened') {
             return;
@@ -341,7 +446,7 @@
     function goHome() {
         reseter();
         // Going home leaves any loading or failed switch behind; a restore still running must not select its character later.
-        // Dropped before the selection moves: the selection watcher would otherwise idle the phase first and skip the supersede.
+        // Abandoned explicitly, before the selection moves: the pending switch is superseded and cleared here, not left to the selection watcher.
         abandonPendingSwitch();
         selectedCharID.set(-1);
         PlaygroundStore.set(0);
@@ -372,6 +477,10 @@
             event.preventDefault();
             newMenuOpen = false;
             newMenuButton?.focus();
+        } else if (reorder) {
+            // Reached only with focus inside the sidebar; with focus elsewhere the overlay closes, which ends the mode too.
+            event.preventDefault();
+            reorder = null;
         }
     }
 
@@ -428,14 +537,33 @@
                     <option value="manual">{language.chatShellSortManual}</option>
                 </select>
                 <span id="{uid}-sort-help" class="text-xs text-textcolor2">{language.chatShellOnThisDevice}</span>
+                {#if orderAvailable}
+                    <button
+                        type="button"
+                        data-part="sidebar-edit-order"
+                        class="rounded-md border border-darkborderc bg-darkbutton px-2 py-1 text-textcolor hover:bg-selected cursor-pointer"
+                        aria-pressed={reorder !== null}
+                        onclick={toggleReorder}
+                    >{reorder !== null ? language.chatShellDoneEditing : language.chatShellEditOrder}</button>
+                {/if}
             </div>
         </div>
     {/if}
-    <div data-part="chat-sidebar-list" class="min-h-0 flex-1 overflow-hidden">
-        {#if owner}
-            <ShellChatList {owner} {sort} {editing} onopen={openRow} />
-        {/if}
-    </div>
+    <ShellSidebarSearch
+        bind:query
+        {results}
+        docked={layout === 'docked'}
+        onpickcharacter={pickCharacter}
+        onpickchat={openRow}
+        onsubmit={openFirstResult}
+    />
+    {#if !results}
+        <div data-part="chat-sidebar-list" class="min-h-0 flex-1 overflow-hidden">
+            {#if owner}
+                <ShellChatList {owner} {sort} {editing} {ordering} onopen={openRow} />
+            {/if}
+        </div>
+    {/if}
     <div data-part="chat-sidebar-footer" class="flex gap-1 border-t border-darkborderc pt-2">
         <button data-part="sidebar-home" class={footerClass} onclick={goHome}>
             <HomeIcon size={20} />

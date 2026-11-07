@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onDestroy, tick, untrack } from "svelte";
-    import { EllipsisIcon } from "@lucide/svelte";
+    import { ChevronDownIcon, ChevronUpIcon, EllipsisIcon, GripVerticalIcon } from "@lucide/svelte";
     import { language } from "src/lang";
     import type { Chat } from "src/ts/storage/database.svelte";
     import { DBState } from "src/ts/stores.svelte";
@@ -24,9 +24,16 @@
         // The sidebar's editing state: the row reads it and reports menu and rename events.
         editing: ListEditing;
         onopen: (chat: Chat, event: MouseEvent) => void;
+        // Edit order: the handle and the Up/Down buttons replace the menu button. `first`/`last` are the group's edges.
+        reordering?: boolean;
+        dragging?: boolean;
+        first?: boolean;
+        last?: boolean;
+        onstep?: (dir: 'up' | 'down') => void;
+        onhandle?: (event: PointerEvent) => void;
     }
 
-    let { chat, chaId, index, open, tabbable, level, posinset, setsize, editing, onopen }: Props = $props();
+    let { chat, chaId, index, open, tabbable, level, posinset, setsize, editing, onopen, reordering = false, dragging = false, first = false, last = false, onstep, onhandle }: Props = $props();
 
     // A row only reads what the chat already holds: an archived chat shows a placeholder and is never loaded here.
     const archived = $derived(isArchivedChat(chat));
@@ -143,7 +150,8 @@
 <div
     data-part="chat-row-host"
     data-ring={ring ? "" : undefined}
-    class="relative rounded-md {ring ? 'ring-2 ring-darkborderc' : ''}"
+    data-dragging={dragging ? "" : undefined}
+    class="relative rounded-md {ring ? 'ring-2 ring-darkborderc' : ''} {dragging ? 'opacity-60' : ''}"
     style:height="{ROW_HEIGHT}px"
 >
     {#if renaming}
@@ -169,7 +177,7 @@
             role="treeitem"
             data-part="chat-row"
             data-index={index}
-            class="flex h-full w-full select-none flex-col justify-center gap-0.5 rounded-md pe-10 text-start text-textcolor hover:bg-selected cursor-pointer"
+            class="flex h-full w-full select-none flex-col justify-center gap-0.5 rounded-md {reordering ? 'pe-28' : 'pe-10'} text-start text-textcolor hover:bg-selected cursor-pointer"
             class:bg-selected={open}
             style:padding-inline-start={level === 2 ? "1.5rem" : "0.5rem"}
             tabindex={tabbable ? 0 : -1}
@@ -199,18 +207,57 @@
                 {/if}
             </span>
         </button>
-        <button
-            bind:this={menuButton}
-            type="button"
-            data-part="chat-row-menu"
-            class="absolute end-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer"
-            tabindex="-1"
-            aria-label={language.chatShellRowMenu(name)}
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onclick={() => openMenu(menuButton)}
-        >
-            <EllipsisIcon size={18} />
-        </button>
+        {#if reordering}
+            <!-- Siblings of the row button, never inside it: the list's arrow keys rove only over [data-index]. -->
+            <div class="absolute end-1 top-1/2 flex -translate-y-1/2 items-center">
+                <button
+                    type="button"
+                    data-part="chat-move-up"
+                    class="flex size-8 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer {first ? 'opacity-40' : ''}"
+                    tabindex={tabbable ? 0 : -1}
+                    aria-label="{language.chatShellMoveUp} {name}"
+                    aria-disabled={first ? "true" : undefined}
+                    onclick={() => onstep?.("up")}
+                >
+                    <ChevronUpIcon size={18} />
+                </button>
+                <button
+                    type="button"
+                    data-part="chat-move-down"
+                    class="flex size-8 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer {last ? 'opacity-40' : ''}"
+                    tabindex={tabbable ? 0 : -1}
+                    aria-label="{language.chatShellMoveDown} {name}"
+                    aria-disabled={last ? "true" : undefined}
+                    onclick={() => onstep?.("down")}
+                >
+                    <ChevronDownIcon size={18} />
+                </button>
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <span
+                    data-part="chat-drag-handle"
+                    aria-hidden="true"
+                    data-panel-gesture="off"
+                    class="flex size-8 items-center justify-center rounded-md text-textcolor2 cursor-grab"
+                    style:touch-action="none"
+                    onpointerdown={onhandle}
+                >
+                    <GripVerticalIcon size={18} />
+                </span>
+            </div>
+        {:else}
+            <button
+                bind:this={menuButton}
+                type="button"
+                data-part="chat-row-menu"
+                class="absolute end-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer"
+                tabindex="-1"
+                aria-label={language.chatShellRowMenu(name)}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onclick={() => openMenu(menuButton)}
+            >
+                <EllipsisIcon size={18} />
+            </button>
+        {/if}
     {/if}
 </div>

@@ -59,6 +59,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
         selIdState,
         DynamicGUI: writable(false),
         sideBarClosing: writable(false),
+        sideBarStore: writable(true),
         settingsOpen: writable(false),
         PlaygroundStore: writable(0),
         OpenRealmStore: writable(false),
@@ -302,7 +303,7 @@ describe.each(['failed', 'loading'] as const)('a pending switch in phase %s and 
 
     test('going home abandons the pending switch before the selection moves', () => {
         setup()
-        // The selection watcher idles the phase as soon as the selection changes, so the supersede has to come first.
+        // Going home abandons the switch explicitly before the selection moves; the call order is what this pins, not a need of the selection watcher.
         const order: string[] = []
         mocks.supersede.mockImplementation(() => { order.push(`supersede at selection ${get(selectedCharID)}`) })
         target.querySelector<HTMLElement>('[data-part="sidebar-home"]')!.click()

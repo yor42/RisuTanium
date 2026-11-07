@@ -1,10 +1,12 @@
 <script lang="ts">
-    import { flushSync, tick, untrack } from "svelte";
-    import { ChevronDownIcon, ChevronRightIcon, EllipsisIcon } from "@lucide/svelte";
+    import { flushSync, onDestroy, tick, untrack } from "svelte";
+    import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon, EllipsisIcon, GripVerticalIcon } from "@lucide/svelte";
     import { language } from "src/lang";
     import type { Chat, ChatFolder, Database } from "src/ts/storage/database.svelte";
     import { ROW_HEIGHT, chatListItems, windowRange } from "../../../ts/chatShell/chatListModel";
     import { createHold, setFolderFolded, type ListEditing } from "../../../ts/chatShell/chatListEdits";
+    import { indicatorGap, isFolderItem, siblingDropTarget, siblingEdges, stepTarget, type ChatOrdering } from "../../../ts/chatShell/chatOrder";
+    import { startDragSession, type DragSession } from "../../../ts/chatShell/dragSession";
     import type { ChatSort } from "../../../ts/chatShell/deviceSettings";
     import ShellChatRow from "./ShellChatRow.svelte";
 
@@ -18,9 +20,11 @@
         editing: ListEditing;
         // Opens a chat of `owner`; the caller resolves which character is selected now.
         onopen: (chat: Chat, event: MouseEvent) => void;
+        // Present only while Edit order is on for this owner: it shows the handles and buttons and takes the moves.
+        ordering?: ChatOrdering | null;
     }
 
-    let { owner, sort, editing, onopen }: Props = $props();
+    let { owner, sort, editing, onopen, ordering = null }: Props = $props();
 
     // Used until the first layout gives the real height.
     const FALLBACK_VIEWPORT = 640;
@@ -52,6 +56,99 @@
         const wanted = focusIndex >= 0 ? Math.min(focusIndex, items.length - 1) : Math.max(openIndex, 0);
         return wanted >= range.start && wanted < range.end ? wanted : range.start;
     });
+
+    // The first and last of each group, for the inert edge buttons; only needed while the mode is on.
+    const edges = $derived(ordering ? siblingEdges(items) : null);
+
+    // The drag in progress and the drop it would make. The indicator and the dragged row render from these alone, so a row
+    // that is recycled and mounted again still shows as dragged.
+    let drag = $state.raw<{ item: Chat | ChatFolder } | null>(null);
+    let dropTarget = $state.raw<{ before: Chat | ChatFolder | null } | null>(null);
+    let session: DragSession | null = null;
+    let announcement = $state("");
+    const indicatorTop = $derived(drag && dropTarget ? indicatorGap(items, drag.item, dropTarget) * ROW_HEIGHT : null);
+
+    function pointDrag(clientY: number, dragged: Chat | ChatFolder) {
+        if (!scroller) {
+            return;
+        }
+        scrollTop = scroller.scrollTop;
+        const rect = scroller.getBoundingClientRect();
+        dropTarget = siblingDropTarget(items, dragged, clientY - rect.top + scroller.scrollTop);
+    }
+
+    function commitDrop(dragged: Chat | ChatFolder, before: Chat | ChatFolder | null) {
+        if (!ordering) {
+            return;
+        }
+        if (isFolderItem(dragged)) {
+            ordering.placeFolder(dragged, before as ChatFolder | null);
+        } else {
+            ordering.placeChat(dragged, before as Chat | null);
+        }
+    }
+
+    function startDrag(event: PointerEvent, dragged: Chat | ChatFolder) {
+        if (!ordering || !scroller || session || (event.pointerType === "mouse" && event.button !== 0)) {
+            return;
+        }
+        event.preventDefault();
+        drag = { item: dragged };
+        dropTarget = null;
+        session = startDragSession(scroller, event, {
+            onpoint: (clientY) => pointDrag(clientY, dragged),
+            onend: (kind) => {
+                const landing = dropTarget;
+                drag = null;
+                dropTarget = null;
+                session = null;
+                if (kind === "commit" && landing) {
+                    commitDrop(dragged, landing.before);
+                }
+            },
+        });
+        pointDrag(event.clientY, dragged);
+    }
+
+    // A drag never outlives the mode, the owner or the list.
+    $effect(() => {
+        if (!ordering) {
+            untrack(() => session?.abort());
+        }
+    });
+    $effect(() => {
+        void owner;
+        untrack(() => session?.abort());
+    });
+    onDestroy(() => session?.abort());
+
+    function stepMove(item: Chat | ChatFolder, dir: "up" | "down") {
+        if (!ordering) {
+            return;
+        }
+        let landed = false;
+        if (isFolderItem(item)) {
+            const step = stepTarget(items, item, dir);
+            landed = step !== null && ordering.placeFolder(item, step.before);
+        } else {
+            const step = stepTarget(items, item, dir);
+            landed = step !== null && ordering.placeChat(item, step.before);
+        }
+        if (!landed) {
+            return;
+        }
+        const index = items.findIndex((entry) => (entry.kind === "folder" ? entry.folder === item : entry.chat === item));
+        if (index === -1) {
+            return;
+        }
+        const moved = items[index];
+        announcement = language.chatShellMovedTo(item.name || language.settingsPage.unnamed, moved.posinset, moved.setsize);
+        // The row may be outside the mounted window after a long move; it is mounted again before it is focused.
+        focusIndex = index;
+        reveal(index);
+        flushSync();
+        scroller?.querySelector<HTMLElement>(`[data-index="${index}"]`)?.parentElement?.querySelector<HTMLElement>(`[data-part="chat-move-${dir}"]`)?.focus();
+    }
 
     // A switch to another character starts the new list at the top with the tab stop on its open chat.
     $effect(() => {
@@ -258,7 +355,7 @@
     bind:this={scroller}
     bind:clientHeight={viewport}
     data-part="chat-list-scroller"
-    class="h-full overflow-y-auto"
+    class="relative h-full overflow-y-auto"
     onscroll={() => { scrollTop = scroller?.scrollTop ?? 0 }}
 >
     <!-- Focus lives on the rows (roving tab stop); the tree only routes their keys. -->
@@ -271,7 +368,8 @@
                 <div
                     data-part="chat-folder-host"
                     data-ring={ringFolder === item.folder ? "" : undefined}
-                    class="relative rounded-md {ringFolder === item.folder ? 'ring-2 ring-darkborderc' : ''}"
+                    data-dragging={drag?.item === item.folder ? "" : undefined}
+                    class="relative rounded-md {ringFolder === item.folder ? 'ring-2 ring-darkborderc' : ''} {drag?.item === item.folder ? 'opacity-60' : ''}"
                     style:height="{ROW_HEIGHT}px"
                 >
                     {#if editing.renamingFolder === item.folder}
@@ -292,7 +390,7 @@
                             role="treeitem"
                             data-part="chat-folder"
                             data-index={entry.index}
-                            class="flex h-full w-full select-none items-center gap-2 rounded-md ps-2 pe-10 text-start text-textcolor hover:bg-selected cursor-pointer {folderColorClass[item.folder.color ?? ''] ?? ''}"
+                            class="flex h-full w-full select-none items-center gap-2 rounded-md ps-2 {ordering ? 'pe-28' : 'pe-10'} text-start text-textcolor hover:bg-selected cursor-pointer {folderColorClass[item.folder.color ?? ''] ?? ''}"
                             tabindex={entry.index === stop ? 0 : -1}
                             aria-level={item.level}
                             aria-posinset={item.posinset}
@@ -315,18 +413,57 @@
                             <span data-part="chat-folder-name" class="grow truncate font-medium">{item.folder.name || language.settingsPage.unnamed}</span>
                             <span class="shrink-0 text-xs text-textcolor2">{item.count}</span>
                         </button>
-                        <button
-                            type="button"
-                            data-part="chat-folder-menu"
-                            class="absolute end-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer"
-                            tabindex="-1"
-                            aria-label={language.chatShellFolderMenu(item.folder.name || language.settingsPage.unnamed)}
-                            aria-haspopup="menu"
-                            aria-expanded={editing.menu?.kind === "folder" && editing.menu.folder === item.folder}
-                            onclick={(event) => editing.openFolderMenu(item.folder, event.currentTarget)}
-                        >
-                            <EllipsisIcon size={18} />
-                        </button>
+                        {#if ordering}
+                            {@const edge = edges?.get(item.folder)}
+                            <div class="absolute end-1 top-1/2 flex -translate-y-1/2 items-center">
+                                <button
+                                    type="button"
+                                    data-part="chat-move-up"
+                                    class="flex size-8 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer {edge?.first ? 'opacity-40' : ''}"
+                                    tabindex={entry.index === stop ? 0 : -1}
+                                    aria-label="{language.chatShellMoveUp} {item.folder.name || language.settingsPage.unnamed}"
+                                    aria-disabled={edge?.first ? "true" : undefined}
+                                    onclick={() => stepMove(item.folder, "up")}
+                                >
+                                    <ChevronUpIcon size={18} />
+                                </button>
+                                <button
+                                    type="button"
+                                    data-part="chat-move-down"
+                                    class="flex size-8 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer {edge?.last ? 'opacity-40' : ''}"
+                                    tabindex={entry.index === stop ? 0 : -1}
+                                    aria-label="{language.chatShellMoveDown} {item.folder.name || language.settingsPage.unnamed}"
+                                    aria-disabled={edge?.last ? "true" : undefined}
+                                    onclick={() => stepMove(item.folder, "down")}
+                                >
+                                    <ChevronDownIcon size={18} />
+                                </button>
+                                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                                <span
+                                    data-part="chat-drag-handle"
+                                    aria-hidden="true"
+                                    data-panel-gesture="off"
+                                    class="flex size-8 items-center justify-center rounded-md text-textcolor2 cursor-grab"
+                                    style:touch-action="none"
+                                    onpointerdown={(event) => startDrag(event, item.folder)}
+                                >
+                                    <GripVerticalIcon size={18} />
+                                </span>
+                            </div>
+                        {:else}
+                            <button
+                                type="button"
+                                data-part="chat-folder-menu"
+                                class="absolute end-1 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer"
+                                tabindex="-1"
+                                aria-label={language.chatShellFolderMenu(item.folder.name || language.settingsPage.unnamed)}
+                                aria-haspopup="menu"
+                                aria-expanded={editing.menu?.kind === "folder" && editing.menu.folder === item.folder}
+                                onclick={(event) => editing.openFolderMenu(item.folder, event.currentTarget)}
+                            >
+                                <EllipsisIcon size={18} />
+                            </button>
+                        {/if}
                     {/if}
                 </div>            {:else}
                 <ShellChatRow
@@ -340,9 +477,24 @@
                     setsize={item.setsize}
                     {editing}
                     {onopen}
+                    reordering={ordering !== null}
+                    dragging={drag?.item === item.chat}
+                    first={edges?.get(item.chat)?.first ?? false}
+                    last={edges?.get(item.chat)?.last ?? false}
+                    onstep={(dir) => stepMove(item.chat, dir)}
+                    onhandle={(event) => startDrag(event, item.chat)}
                 />
             {/if}
         {/each}
         <div role="presentation" style:height="{(items.length - range.end) * ROW_HEIGHT}px"></div>
     </div>
+    {#if indicatorTop !== null}
+        <div
+            data-part="chat-drop-indicator"
+            aria-hidden="true"
+            class="pointer-events-none absolute inset-x-0 h-0.5 -translate-y-1/2 bg-selected"
+            style:top="{indicatorTop}px"
+        ></div>
+    {/if}
+    <div data-part="chat-order-status" class="sr-only" role="status" aria-live="polite">{announcement}</div>
 </div>
