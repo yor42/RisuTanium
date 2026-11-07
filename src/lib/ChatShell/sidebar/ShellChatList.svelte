@@ -3,7 +3,7 @@
     import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon, EllipsisIcon, GripVerticalIcon } from "@lucide/svelte";
     import { language } from "src/lang";
     import type { Chat, ChatFolder, Database } from "src/ts/storage/database.svelte";
-    import { ROW_HEIGHT, chatListItems, windowRange } from "../../../ts/chatShell/chatListModel";
+    import { ROW_HEIGHT, chatListItems, windowIncluding, windowRange } from "../../../ts/chatShell/chatListModel";
     import { createHold, setFolderFolded, type ListEditing } from "../../../ts/chatShell/chatListEdits";
     import { indicatorGap, isFolderItem, siblingDropTarget, siblingEdges, stepTarget, type ChatOrdering } from "../../../ts/chatShell/chatOrder";
     import { startDragSession, type DragSession } from "../../../ts/chatShell/dragSession";
@@ -47,7 +47,18 @@
     let focusIndex = $state(-1);
 
     const items = $derived(chatListItems(owner, sort));
-    const range = $derived(windowRange(items.length, scrollTop, viewport || FALLBACK_VIEWPORT));
+    // The row whose name field is open, or -1. It stays mounted so a viewport change (the soft keyboard) does not unmount
+    // the focused field, whose blur would commit the unchanged name.
+    const editIndex = $derived.by(() => {
+        if (editing.renamingChat) {
+            return items.findIndex((item) => item.kind === "chat" && item.chat === editing.renamingChat);
+        }
+        if (editing.renamingFolder) {
+            return items.findIndex((item) => item.kind === "folder" && item.folder === editing.renamingFolder);
+        }
+        return -1;
+    });
+    const range = $derived(windowIncluding(windowRange(items.length, scrollTop, viewport || FALLBACK_VIEWPORT), editIndex));
     const visible = $derived(items.slice(range.start, range.end).map((item, offset) => ({ item, index: range.start + offset })));
     const openChat = $derived(owner.chats?.[owner.chatPage]);
     const openIndex = $derived(items.findIndex((item) => item.kind === "chat" && item.chat === openChat));
