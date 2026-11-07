@@ -22743,3 +22743,120 @@ CHORE-649 (log 376 to 417, full entry in section 3.2):
 **Results.** The CHORE-647 record closes as not-a-defect (records), on the investigation (`b61\c647\result.md`, deep-investigator, log 354 and 358) and the lane B device read (`b61\c647\device\result.md`; wording as checked in `device-claims.md` 8: all four D0 chats present, nothing lost). The clerk has not checked the reports' full text: TODO(evidence).
 
 **Not decided.** Nothing further recorded.
+
+### MC-1119 — Lane A, 2026-11-07: UI-S3 Studio sizing answers, DD adoption, S3a Gate 1 outcome and start of S3a
+
+- Tag: decisions (AskUserQuestion answers, labels as logged in the lane S3 decisions log) and statements (one free-text answer, verbatim). Date: 2026-11-07 (answers and start); 2026-11-08 (worktree move). Exact times: UNKNOWN. Sweep ref: none. Related: `MC-890` (UI overhaul queue, amended by MC-1115), `MC-1115` (lane A leads the UI), `MC-1086` (UI-S1 sizing defaults, cited in the lane S3 log), `MC-1004` (default for a setter that does not exist yet, cited in the lane S3 log).
+
+**What the maintainer said (AskUserQuestion, labels verbatim as logged in the lane S3 decisions log, answers 1 to 9).**
+- 1. "What should the first Gate 1 plan cover?": "S3a only (Recommended)". As logged: Studio switch, tokens, screen mount, three layouts, Back, read-only owner tree and search; items link out to classic editors; no stored-data change.
+- 2. "May Studio edit a character that is not the currently selected one?": "Selected only (Recommended)". As logged: UI-S3 Studio edits only the selected character; Home-origin opening waits for UI-S4.
+- 3. "Where does the Studio screen mount, and how is it entered first?": "Sibling of Settings (Recommended)". As logged: app-level screen like Settings, opened by an "Open in Studio" entry next to More > Character settings and from the chat sheet; Character settings stays classic; spec deep-link params apply.
+- 4. "Who can turn Studio on?": "Any theme (Recommended)". As logged: own device-local switch, default off, labelled "On this device", characters only (groups with slice-4 forms), no theme restriction.
+- 5. "G20 ... Ship the spec's degraded modes first?": "Degraded first (Recommended)". As logged: search covers the open character, its modules, presets and this chat; the DD-101 cross-character switch is deferred; "changed elsewhere" uses only today's peer events; each full feature is its own later ticket.
+- 6. "Should restore points and history also survive an app reload?": "Survive reloads (Recommended)". As logged: kept on this device with a size cap, oldest evicted first, hidden behind a banner if the store cannot be written. DD-099 and DD-100 decide restore-point and history behaviour beyond cross-reload persistence (the reduced question in the sizing check, as logged).
+- 7. "Plugin code in Studio (O-3)": "Read-only first (Recommended)". As logged: shows plugin code with lint, Apply hidden; editing and hot reload later as its own ticket.
+- 8. "How should UI-S3 schedule CHORE-320/321/325/327?": "Keep, unscheduled (Recommended)". As logged: they stay in UI-S3; 320 and 321 get a design pass before the slice-4 asset stage, duplicate checks on demand by name, size or hash, never at tree open; 327 after the core; 325 held until the maintainer defines it.
+- 9. After Gate 1, "Under a classic or custom theme ... Studio has no way in. What should S3a do?": "Add classic entry (Recommended)". As logged: one gated "Open in Studio" row at the top of classic Character settings (CharConfig), shown only while the Studio switch is on, hidden inside More; stage 2b runs.
+- Free-text answer (verbatim, as logged in the lane A coordination note for UI-S3): "I already told the subsession to build the code. if that conflicts with UI-S2, you might want to tell UI-S3 session about it."
+- Start (as logged, 2026-11-07, lane S3): "Start S3a" (S3a implementation approved).
+
+**Deferred and held scope (as logged in the lane S3 decisions log).** DD-101 cross-character switch deferred (answer 5; degraded modes first). DD-099 and DD-100 decide restore-point and history behaviour beyond cross-reload persistence (answer 6). Held for later batches: CHORE-568 placement (default absent = off, MC-1004), CHORE-570a syntax, and the other items held for later sizing.
+
+**Results (as logged; lane S3 and lane A claims, not checked by the clerk).**
+- Sizing workflow `wf_c5e2f3d6-1f1`; sizing check ACCEPT-WITH-CORRECTIONS, with the corrections applied before the questions were asked.
+- S3a Gate 1 (workflow `wf_6764fae0-9a9`): round 1 plan-r1 REJECT twice (adversarial and source). Round 2 plan-r2: adversarial EDITORIAL (4 editorial), source EDITORIAL (0 substantive); Gate 1 accepted at round 2. Round 3 delta (Beta GUI dropped, device-local helper proposal, Nexus untouched, shared-file list), workflow `wf_54ced71b-ff3`: plan-r3 is the accepted implementation plan; `g1-r3-adv.md` EDITORIAL (0 substantive), `g1-r3-src.md` PASS.
+- Early Gate 2 (stages 0a to 5, before part B), workflow `wf_7526bf6a-bc3`: `g2e-contract.md` and `g2e-behaviour.md` EDITORIAL; `g2e-tests.md` REJECT with one substantive finding (createOwnerSource reactive path untested); consolidated in `g2e-consolidated.md`; remediation `s3a-g2r1` harvested. The combined Gate 2 after part B is still owed.
+- 2026-11-08: S3a moved onto main `f02093cd5` (UI-S2 batch 1) in worktree `risu-code-track-s3a2` (branch `s3a2-wip`), by patch plus untracked copy, hash-identical; lane S3 reports 95 files and 1,555 tests pass (lane S3 claim; output TODO(evidence)). Old worktree `risu-code-track-s3a` left untouched. Part B dispatched as `s3a-partb`.
+
+**Not decided.** CHORE-568 placement (default absent = off, MC-1004), CHORE-570a syntax, and the other held items are not decided. Groups stay out of the first slice (answer 4, with slice-4 forms). The combined final Gate 2 for S3a is owed after part B.
+
+### MC-1120 — Lane A, 2026-11-07 to 2026-11-08: UI-S2 sizing and batch 1 answers; batch 1 commit, merge and push
+
+- Tag: decisions (AskUserQuestion answers, labels as logged; approval label as logged). Date: 2026-11-07 (sizing answers); 2026-11-08 (batch 1 approval). Exact times: UNKNOWN. Sweep ref: none. Related: `MC-890` (queue rule, amended by MC-1115), `MC-1115` (lane A leads the UI), `MC-1069` (approvals and parallel options), `MC-1004` (default for a setter that does not exist yet), `MC-1086` (UI-S1 sizing).
+
+**What the maintainer said (labels as logged in the batch 61 decisions log and the UI-S2 sizing record).**
+- Track order: "Two tracks (Recommended)".
+- Switch: "Own switch (Recommended)" (a separate device-local row, "New Settings screen (preview)").
+- Beta Mobile GUI and Lite: "Yes, keep old for now (Recommended)" (legacy Settings stays for the Beta Mobile GUI and every Lite build in A1; lane B's Beta GUI drop sizing must decide Lite's home, as logged).
+- Plan items P3 to P8 (one view at a time; opening page; rows stay put; Back label; Escape order; look): "Accept all (Recommended)" (as logged). The individual labels for P1 and P2: TODO(evidence).
+- Batch 1 approval (2026-11-08, as logged): "Commit, merge, push (Recommended)".
+
+**Orchestrator decisions (as logged in the batch 61 decisions log, line 462; not maintainer answers).** Q4: keep numeric `SettingsMenuIndex` with a mapping. Q5: the UI-S2 batch owns the toast host and undo helper (CHORE-572) and the task-flow component, and UI-S3 consumes them (orchestrator assignment to UI-S2; no maintainer answer is claimed here). Q6 to Q10 are deferred to their batches.
+
+**Batch 1 start (as logged).** Worktree `risu-code-track-s2a1` (`s2a1-wip`, at 2907ea930), dispatch `b61-s2a1`, workflow `wf_91e07879-f3a`.
+
+**Results (as logged; lane A claims unless marked).**
+- Plan-r2 Gate 1 PASS (r1 had two REJECTs; r2 accepted by the orchestrator).
+- Batch 1 commit `23bfa5900`, merge `f02093cd5`, pushed on the maintainer's approval above.
+- Trial12 (first full run) FAIL: two App tests (`App.bootScreen`, `App.keepChat`) lacked the SettingsShell stub and stores. A test-only patch (`b61\s2\rem2\diff.patch`) was applied; independent review PASS (`wf_284e2f58-1fd`). Trial12b on the patched tree: test 32,896 passed / 24 skipped (run-full-tests, 4 workers), check 0 errors, build ok (lane A, as logged; output TODO(evidence)).
+- Gate 2 PASS (logic and UI, round 2; commit-body claim for `23bfa5900`). Round 1 found phone scroll memory lost on an index round trip, fixed by keeping the memory in the shell.
+- Lane B and lane S3 told to rebase onto `f02093cd5`.
+
+**Not decided.** Device checks owed: lane B S2 device items D1 to D4 and the PC pass (briefed 2026-11-08), including the 200% system font (D3) (commit body: "Device checks, including 200% system font, are still owed"). Not pinned (commit body): the destroy-time guard (quick reopen is covered elsewhere). Editorial (not counted): the page `h2` focus target has `outline-none`, so no focus ring after a phone drill-in. Closeout not asked.
+
+### MC-1121 — Lane A, 2026-11-07: perf brief candidates, all seven chosen (CHORE-664 to CHORE-670)
+
+- Tag: decisions (multiSelect answer, as logged; the option labels are as logged in the batch 61 log) and results (verification of the perf brief). Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1069` (candidates as options), `MC-773` (UI-S1 shell as default, cited by candidate 7), `MC-1101` (CHORE-636 Note 9 measurement lineage), `MC-1078`.
+
+**What the maintainer said (as logged, log 487 to 489).** The maintainer chose all seven candidates from the perf brief verification. Option labels: "Chat-scene measurement" (CHORE-664); "TransitionImage fixes" (CHORE-665); "Streaming hygiene" (CHORE-666); "Android renderer-loss" (CHORE-667); "Portrait decode tier" (CHORE-668); "Render cache bounds" (CHORE-669); "Legacy list interim fix" (CHORE-670). The multiSelect answer text itself: TODO(evidence) (the log says "all 7"). Ticket titles are in the Roadmap rows.
+
+**Results (as logged; the verification report `perf\result.md` is not opened by the clerk).** Verification ran in a separate session (as logged: `local_9b9b2af6`). Default chat list is the legacy `Chats.svelte` (shell flag off by default) and carries the per-chunk cost (Report 19 lineage); the emotion full-resolution decode is "likely", not measured; no evidence for a native migration (not measured). All timings are i9-13900KF Node or jsdom best case (never a Note 9 or frame-budget claim).
+
+**Not decided.** CHORE-670 starts the next block after CHORE-620 to CHORE-669 (log 489). Image-quality product call for CHORE-668 (candidates.md section 5). Note 9 leg of CHORE-664 and CHORE-667 device work belongs to lane B (candidates.md).
+
+### MC-1122 — Lane A, 2026-11-07: load-quiet full test runs (CHORE-662): maintainer answers, the merge approval and the stage 4 pointer
+
+- Tag: decisions (answers in `answers.md`, lines 2 to 11, as logged by the maintainer; the merge approval as logged). Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-694` ("one named owner runs full checks", unchanged by answer 4), `MC-1069`, `MC-1117` (filing of CHORE-662), `MC-1121`.
+
+**What the maintainer said (`answers.md`, lines 2 to 11, verbatim).**
+- "Flaky rule: RECOVERED-ALONE only when the failure is a timeout AND the file is on a named flake list; otherwise it blocks."
+- "Worker cap: default 8 after one measured run at 4 and 8; drop to 4 if 8 is not reliable."
+- "Lock scope: only full suites started through the new helper."
+- "Lock wait: 30 min, then BLOCKED with holder PID and start time."
+- "Run record: scratch only, cited by path."
+- "MC-694 unchanged: one named owner runs full checks."
+- "Ticket ID: CHORE-662"
+- "Plan-r2 Q1 (2026-11-07): PASS-RECOVERED exits 3."
+- "Plan-r2 Q2: hook timeouts (Hook timed out in, module or suite level) count as timeouts."
+- "Plan-r2 Q3: flake list seeded with src/ts/process/tests/moduleToggleReload.svelte.test.ts and src/ts/storage/tests/store2/productionBootUi.test.ts; changes only via reviewed edit citing a helper record."
+- Merge approval (as logged, 2026-11-07): "Merge and push (Recommended)".
+
+**Results (as logged).**
+- Lane B's Gate 1 round 2 and implementation: `2cc43ff21` (lane B commit; first Gate 2 run 35 tests and 31 of 31 mutants; a missing lock test was added, 37 tests; Gate 2 r1 EDITORIAL). Scope amended with `fixtures/*.json` and `reporter.test.mjs` (orchestrator amendment, `answers.md` line 12, not a maintainer answer). Merged as `0cd823386` and pushed. Lane A re-ran the 37 tests (as logged; output TODO(evidence)).
+- Commit body claim (`2cc43ff21`): machine-wide lock with stale-holder detection (PID plus start time); 30 min wait then BLOCKED; 8 workers default, 4 fallback; a failed file reruns alone once; recovery counts only for a test or hook timeout in a flake-list file, exits 3, never 0; a scratch record per run. Lock, classifier and reporter have tests with captured vitest fixtures; no app code or vitest configuration changes.
+- Stage 3 (one measured run at 4 and one at 8): TODO(evidence), no result in any source read.
+- Stage 4 (this entry and the `docs/workflow/gates.md` line 31 pointer): owed until applied.
+
+**Not decided.** The brief worker cap `--maxWorkers=4` (log 493) is a lane A dispatch rule, not a maintainer answer, and is not recorded here as a decision (ledger row 4955). Stale lock detection for `.claude/scripts/workflow-control.mjs` is an unfiled candidate, not decided. The measured default for the worker cap waits for stage 3 (TODO(evidence)).
+
+### MC-1123 — Lane A, 2026-11-07: CHORE-650 and CHORE-651 answers, approvals and merges
+
+- Tag: decisions (AskUserQuestion answers, labels as logged) and results (merges). Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1069` (approvals and outward actions), `MC-1102` (commit, merge and push approvals), `MC-1093` (CHORE-635 to CHORE-640 scope), `MC-350` (data safety, not engaged: no stored data or strings change in either fix, as logged in commit bodies).
+
+**What the maintainer said (labels as logged).**
+- CHORE-650 (after the M5 follow-up): "Commit, merge, push (Recommended)".
+- CHORE-651 Gate 1 questions (log 461, as logged): Q1 "Accept, record it (Recommended)"; Q2 "Save typed name (Recommended)"; Q3 "Yes, unchanged (Recommended)".
+- CHORE-651 device read (A7) on phone 2 (AskUserQuestion, as logged, log 461): "Yes, send it now (Recommended)".
+- CHORE-651 approval after A8 (as logged): "Commit, merge, push (Recommended)".
+
+**Results (as logged; lane A and lane B claims).**
+- CHORE-650: M5 follow-up PASS (`m5-check.md`; a preventScroll focus-spy test kills M5; editorial: the spy's mockRestore is not in a finally). Commit `39fb30f18` (commit body read by the clerk: Gate 2 EDITORIAL; mutants 5 of 6 killed, one equivalent). Merge `2907ea930`, pushed. Trial10 (c73d82f06 plus c650): test 32,745 passed / 24 skipped, exit 0; check 0 errors (2 warnings, 1 file); build ok; Monaco patched (as logged). Lane B PC recheck at 2907ea930: PASS (`laneb\c650\result.md`, lane B device claim; empty-search Escape with a docked sidebar is the existing AS3 behaviour).
+- CHORE-651: Gate 1 r1 PASS. Worktree `risu-code-track-c651` (c651-wip at c73d82f06), dispatch `b61-c651`, Gate 1 workflow `wf_823ff9e0-47a`. Lane B A7 read (`laneb\c651-a7\result.md`): base build 5 of 5 failed; the shrink is confirmed (chat list 34 px, input height 445); lane B read the ordering as REFUTED (blur with the input still connected; rows 6 and 7 removed 1.9 to 4.4 ms later). Lane A stopped the implementation at Gate 2 and ran a deep-investigator adjudication (`a7-adjudication.md`, workflow `wf_7153a7ba-d1a`), recorded as CONSISTENT (the batch removes the field row first; Svelte removes tail rows in index order; blur inside row 5 `remove()`). Gate 2 r1 PASS (`g2-r1.md`, no findings; M1 to M7 killed per coder). Trial11 (b52e7731c plus c651): test 32,754 passed / 30 skipped, one suite failed (createToSafeHtml beforeAll import timeout under load; passes alone 2 of 2 and 6 of 6); check 0 errors; build ok. Lane B A8 (`laneb\c651-a8\result.md`, debug APK sha starts 3685f1b1, as logged): PASS 18 of 18 (lane B device claim; decisive read: blur only at Enter, inside the remove of the chat-row-editing div). Merge `b3fe311dd` (commit `d15a3d74c`), pushed.
+- Accepted limitation (commit body): the 34 px list leaves the typed field about 1 px clipped; accepted for now.
+
+**Not decided.** Closeout of CHORE-650 and CHORE-651 (not asked). The A7 disagreement between lane B (REFUTED) and the lane A adjudication (CONSISTENT) is recorded as logged; the parent owns that ruling.
+
+### MC-1124 — Lane A, 2026-11-07: lane B sizing answers (CHORE-654, CHORE-655, CHORE-656, CHORE-662)
+
+- Tag: decisions (four sizing answers, paraphrased in the log; the exact option labels are TODO(evidence)). Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1116` (delegation of the four tickets to lane B), `MC-1117` (filing of CHORE-656 and CHORE-662), `MC-175` (upstream compatibility; not assessed), `MC-1122` (CHORE-662 answers).
+
+**What the maintainer said (as logged; paraphrase, labels TODO(evidence)).**
+- t1 (CHORE-655, Beta Mobile GUI): drop the Beta GUI now; Lite moves to the classic layout. The `betaMobileGUI` key is kept unread (as logged).
+- t2 (CHORE-656, orphaned asset store): diagnostic only.
+- t3 (CHORE-654, K12 stale-park export): wording only.
+- t4 (CHORE-662, load-quiet full runs): machine-wide full-run lock (answers in `MC-1122`).
+
+**Results (as logged).** Lane B Gate 1 (log 483): CHORE-655 plan-r3 ACCEPT (3 stages; edits App.svelte, hotkey.ts, stores, bootstrap, the Settings files, chatSurface, CharConfig and ShellHeader; deletes `src/lib/Mobile/*`). CHORE-656 plan-r2 EDITORIAL (diagnostic only, store2 sweep measure). CHORE-662 plan-r2 EDITORIAL. CHORE-654 designer rerun; its plan-r2 Gate 1 r2 EDITORIAL (the non-locale part may start from `b3fe311dd`; `en.ts` and the locale files wait for the UI-S2 batch 1 release, now on main as `f02093cd5`). Lane A ordering (as logged): UI-S2 batch 1 first, then CHORE-655 and UI-S3a in series, because CHORE-655 edits `App.svelte` and `hotkey.ts`, shared with UI-S2. `settingsShellSwitch` reads `MobileGUI`: keep an inert export or adjust at integration (as logged).
+
+**Not decided.** Whether dropping the upstream Beta Mobile GUI touches the upstream compatibility rules (`MC-175`): TODO(evidence). Which features are superseded and which merge into the UI overhaul (CHORE-655 sizing): the log does not list them. Lite's home is for the CHORE-655 sizing to decide (as logged).
