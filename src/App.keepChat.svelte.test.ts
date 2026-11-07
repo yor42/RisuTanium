@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
 
 /**
- * `App.svelte` keeps the chat screen mounted while Settings is open (desktop layout) and
- * rebuilds nothing else about the chat. The sidebar and the Settings page still come and go; the
- * mobile layout is unchanged.
+ * `App.svelte` keeps the chat screen mounted while Settings is open and rebuilds nothing else
+ * about the chat. The sidebar and the Settings page still come and go.
  *
  * MOCKED: every child component of the app, as in `App.bootScreen.svelte.test.ts`. `ChatScreen`,
  * `Sidebar` and `Settings` are counting stand-ins (`App.keepChatCountingStub.svelte`) that record
@@ -38,9 +37,6 @@ vi.mock('./lib/UI/Realm/RealmFrame.svelte', stub)
 vi.mock('./lib/Others/SavePopupIcon.svelte', stub)
 vi.mock('./lib/Setting/botpreset.svelte', stub)
 vi.mock('./lib/Setting/listedPersona.svelte', stub)
-vi.mock('./lib/Mobile/MobileHeader.svelte', stub)
-vi.mock('./lib/Mobile/MobileBody.svelte', stub)
-vi.mock('./lib/Mobile/MobileFooter.svelte', stub)
 vi.mock('./lib/Setting/Pages/CustomGUISettingMenu.svelte', stub)
 vi.mock('./lib/Others/HypaV3Modal.svelte', stub)
 vi.mock('./lib/Others/HypaV3Progress.svelte', stub)
@@ -91,7 +87,7 @@ vi.mock('./ts/dropImport', () => ({ importDroppedFile: async () => { } }))
 vi.mock('./ts/keepAliveAudio', () => ({ createKeepAliveAudio: () => ({}) }))
 vi.mock('./ts/storage/tauriByteTransport', () => ({ isAndroidTransport: () => false }))
 
-import { MobileGUI, settingsOpen } from './ts/stores.svelte'
+import { settingsOpen } from './ts/stores.svelte'
 import { resetBootScreenForTests } from './ts/storage/store2/ui/bootScreen.svelte'
 import { chatSurface, resetChatSurfaceForTests } from './lib/ChatScreens/chatSurface.svelte'
 import { resetStubCounts, stubCount } from './App.keepChatCountingStub.svelte'
@@ -120,7 +116,6 @@ afterEach(async () => {
     changeLanguage('en')
     resetBootScreenForTests()
     ;(settingsOpen as unknown as { set(value: boolean): void }).set(false)
-    ;(MobileGUI as unknown as { set(value: boolean): void }).set(false)
     vi.useRealTimers()
     vi.unstubAllEnvs()
 })
@@ -212,17 +207,5 @@ describe('App keeps the chat screen mounted while Settings is open', () => {
         await tick()
         flushSync()
         expect(stubCount('chat')).toEqual({ mounts: 2, destroys: 1 })
-    })
-
-    test('guard: with the mobile layout Settings replaces the shell, the chat is not kept and the surface never hides', async () => {
-        ;(MobileGUI as unknown as { set(value: boolean): void }).set(true)
-        const root = await showApp()
-
-        setSettingsOpen(true)
-
-        expect(stubCount('settings').mounts).toBe(1)
-        expect(root.querySelector('[data-chat-surface]')).toBeNull()
-        expect(stubCount('chat').mounts).toBe(0)
-        expect(chatSurface.hidden).toBe(false)
     })
 })

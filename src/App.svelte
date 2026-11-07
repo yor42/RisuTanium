@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { DynamicGUI, settingsOpen, sideBarStore, ShowRealmFrameStore, openPresetList, openPersonaList, MobileGUI, CustomGUISettingMenuStore, loadedStore, alertStore, LoadingStatusState, bookmarkListOpen, popupStore, easyPanelStore, popUpEditorStore, loadoutModalStore, irisStore, customSideBarConfigDialogStore } from './ts/stores.svelte';
+    import { DynamicGUI, settingsOpen, sideBarStore, ShowRealmFrameStore, openPresetList, openPersonaList, CustomGUISettingMenuStore, loadedStore, alertStore, LoadingStatusState, bookmarkListOpen, popupStore, easyPanelStore, popUpEditorStore, loadoutModalStore, irisStore, customSideBarConfigDialogStore } from './ts/stores.svelte';
     import Sidebar from './lib/SideBars/Sidebar.svelte';
     import { DBState } from './ts/stores.svelte';
     import ChatScreen from './lib/ChatScreens/ChatScreen.svelte';
@@ -9,7 +9,6 @@
     import GridChars from './lib/Others/GridCatalog.svelte';
     import WelcomeRisu from './lib/Others/WelcomeRisu.svelte';
     import BookmarkList from './lib/Others/BookmarkList.svelte';
-    import Settings from './lib/Setting/Settings.svelte';
     import SettingsSurface from './lib/SettingsShell/SettingsSurface.svelte';
     import { installSettingsOrigin } from './ts/settingsShell/settingsOrigin';
     import { studioOpen } from './ts/studio/studioOpen';
@@ -20,9 +19,6 @@
     import SavePopupIconComp from './lib/Others/SavePopupIcon.svelte';
     import Botpreset from './lib/Setting/botpreset.svelte';
     import ListedPersona from './lib/Setting/listedPersona.svelte';
-    import MobileHeader from './lib/Mobile/MobileHeader.svelte';
-    import MobileBody from './lib/Mobile/MobileBody.svelte';
-    import MobileFooter from './lib/Mobile/MobileFooter.svelte';
     import CustomGUISettingMenu from './lib/Setting/Pages/CustomGUISettingMenu.svelte';
     import { ArrowUpIcon, GlobeIcon, PlusIcon } from '@lucide/svelte';
     import { hypaV3ModalOpen, hypaV3ProgressStore } from "./ts/stores.svelte";
@@ -231,14 +227,6 @@
         <CustomGUISettingMenu />
     {:else if !didFirstSetup}
         <WelcomeRisu />
-    {:else if $settingsOpen && $MobileGUI}
-        <Settings />
-    {:else if $MobileGUI}
-        <div class="w-full h-full flex flex-col">
-            <MobileHeader />
-            <MobileBody />
-            <MobileFooter />
-        </div>
     {:else}
         {#if $settingsOpen}
             <SettingsSurface />

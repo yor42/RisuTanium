@@ -2,8 +2,7 @@
 
 /**
  * Coverage for `RealmMain.svelte`'s browse view gated on upstream-service
- * acceptance (T-C2m, T-C15 half), on both the desktop and the mobile
- * landing layout. Compare `RealmMain.hubStates.svelte.test.ts`, which covers
+ * acceptance (T-C2m, T-C15 half). Compare `RealmMain.hubStates.svelte.test.ts`, which covers
  * the five populated/offline/pending/failed/empty states once accepted;
  * this file covers the placeholder itself: no request at mount, no request
  * from any control while it shows, no request from an `online` event,
@@ -12,7 +11,7 @@
  *
  * Mocks follow `RealmMain.hubStates.svelte.test.ts`'s own precedent:
  * `src/ts/characterCards` so no network fetch fires, `src/ts/stores.svelte`
- * for a controllable `MobileGUI`/`selIdState` and a real `alertStore`, and
+ * for a controllable `selIdState` and a real `alertStore`, and
  * `./RealmHubIcon.svelte`/`./RealmPopUp.svelte` stubbed. Unlike that file,
  * `src/ts/alert` keeps its real exports (only `alertInput` is overridden).
  * `src/ts/upstreamAgreement`'s own `askUpstreamAgreement` is exercised for
@@ -86,7 +85,7 @@ vi.mock('./RealmPopUp.svelte', () => ({
 //#endregion
 
 import RealmMain from './RealmMain.svelte'
-import { MobileGUI, alertStore } from 'src/ts/stores.svelte'
+import { alertStore } from 'src/ts/stores.svelte'
 
 const mountedTargets: HTMLElement[] = []
 const mountedInstances: unknown[] = []
@@ -182,7 +181,6 @@ afterEach(async () => {
     }
     mountedTargets.splice(0).forEach((t) => t.remove())
     document.body.replaceChildren()
-    MobileGUI.set(false)
     localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
     resetUpstreamAgreementForTests()
     alertStore.set({ type: 'none', msg: '' } as never)
@@ -326,104 +324,6 @@ describe('RealmMain.svelte desktop: the placeholder before acceptance', () => {
         await waitFor(() => get(alertStore).type === 'tos', 'the agreement prompt')
         alertStore.set({ type: 'none', msg: UPSTREAM_AGREEMENT_ACCEPT } as never)
         await settle()
-        expect(hubMock.getRisuHub).toHaveBeenCalledTimes(1)
-    })
-})
-
-describe('RealmMain.svelte mobile: the placeholder before acceptance', () => {
-    beforeEach(() => {
-        MobileGUI.set(true)
-    })
-
-    test('without acceptance, the placeholder shows and getRisuHub is never called', async () => {
-        const target = mountRealmMain()
-        await settle()
-
-        expect(placeholder(target)).toBeTruthy()
-        expect(hubMock.getRisuHub).not.toHaveBeenCalled()
-    })
-
-    test('clicking every present control (sort cycle, SFW/NSFW, pager, search) makes no request and posts no prompt', async () => {
-        const target = mountRealmMain()
-        await settle()
-        expect(placeholder(target)).toBeTruthy()
-
-        // Sort first, while it still starts at its 'recommended' default:
-        // the search button below also resets sort to '' whenever sort is
-        // 'recommended' or 'random' at the moment it is clicked, so clicking
-        // search first would silently invalidate the label lookups that
-        // follow it. Each click cycles to the next sort and relabels the same
-        // button with the new current sort's name: recommended -> recent ->
-        // trending -> downloads, ending off both 'recommended' and 'random'
-        // so the pager below renders.
-        const recommended = findByText(target, language.recommended)
-        expect(recommended).toBeTruthy()
-        recommended!.click()
-        await settle()
-        expect(hubMock.getRisuHub).not.toHaveBeenCalled()
-
-        const recent = findByText(target, language.recent)
-        expect(recent).toBeTruthy()
-        recent!.click()
-        await settle()
-        expect(hubMock.getRisuHub).not.toHaveBeenCalled()
-
-        const trending = findByText(target, language.trending)
-        expect(trending).toBeTruthy()
-        trending!.click()
-        await settle()
-        expect(hubMock.getRisuHub).not.toHaveBeenCalled()
-
-        const nsfw = findByText(target, 'SFW')
-        expect(nsfw).toBeTruthy()
-        nsfw!.click()
-        await settle()
-        expect(hubMock.getRisuHub).not.toHaveBeenCalled()
-
-        const { left, right } = pagerArrows(target)
-        expect(left).toBeTruthy()
-        expect(right).toBeTruthy()
-        left!.click()
-        await settle()
-        expect(hubMock.getRisuHub).not.toHaveBeenCalled()
-        right!.click()
-        await settle()
-        expect(hubMock.getRisuHub).not.toHaveBeenCalled()
-
-        // Sort is already off 'recommended'/'random' (downloads), so this
-        // click cannot silently reset it.
-        const search = searchButton(target)
-        expect(search).toBeTruthy()
-        search.click()
-        await settle()
-        expect(hubMock.getRisuHub).not.toHaveBeenCalled()
-
-        expect(get(alertStore).type).not.toBe('tos')
-    })
-
-    test('an online event while the placeholder shows makes no request and posts no prompt', async () => {
-        const target = mountRealmMain()
-        await settle()
-        expect(placeholder(target)).toBeTruthy()
-
-        window.dispatchEvent(new Event('online'))
-        await settle()
-        expect(hubMock.getRisuHub).not.toHaveBeenCalled()
-        expect(get(alertStore).type).not.toBe('tos')
-    })
-
-    test('acceptance granted elsewhere loads the view exactly once', async () => {
-        const target = mountRealmMain()
-        await settle()
-        expect(placeholder(target)).toBeTruthy()
-
-        const accepted = askUpstreamAgreement()
-        await waitFor(() => get(alertStore).type === 'tos', 'the agreement prompt')
-        alertStore.set({ type: 'none', msg: UPSTREAM_AGREEMENT_ACCEPT } as never)
-        await expect(accepted).resolves.toBe(true)
-        await settle()
-
-        expect(placeholder(target)).toBeNull()
         expect(hubMock.getRisuHub).toHaveBeenCalledTimes(1)
     })
 })

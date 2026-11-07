@@ -1,21 +1,17 @@
 // @vitest-environment happy-dom
 
 /**
- * `MobileCharacters.svelte`: the simple list of 200 characters mounts only the rows near its
- * scroll viewport, is the one scroller of its screen, has one control per row, and follows a
- * search to the top.
+ * `CharacterSimpleList.svelte`: a row is keyed by the character it shows, not by its position in
+ * `db.characters`. The position the list returns to after the trash view was open therefore
+ * names the same character when the trash view removed a character from an earlier slot.
  *
- * Fixture size: 200 characters in a happy-dom document that is 768 px high. Counts for 1000 and
- * 2000 characters live in the `charlist-window-count` harness.
+ * Test labels: `(R)` is a reproducer: it fails on the index-keyed list with an assertion about the
+ * defect (the list comes back at another character).
  *
- * Test labels: `(R)` is a reproducer: it fails on the commit before the windowed lists with an
- * assertion about the defect (every row mounted, a button inside a button, a divider above the
- * first shown row). `(F)` is a feature test: it asserts the list container, which does not exist
- * before. `(G)` is a guard that may pass before and after.
- *
- * MOCKED: the module set of `MobileCharacters.search.svelte.test.ts` (same directory), with
- * `changeChar` a bare spy. The container's height and scroll position are faked on
- * `HTMLElement.prototype`, as in `MobileBody.window.svelte.test.ts`. Nothing here writes to storage.
+ * MOCKED: the module set of `CharacterSimpleList.trash.svelte.test.ts` (same directory), with `changeChar`
+ * a bare spy; geometry is faked as in `CharacterSimpleList.window.svelte.test.ts`. The permanent delete
+ * is the splice `removeChar(..., 'permanent')` performs on `db.characters`. Nothing here writes to
+ * storage.
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
@@ -104,10 +100,8 @@ vi.mock(import('../../ts/stores.svelte'), () => {
     return {
         DBState: state,
         selectedCharID: writable(-1),
-        MobileGUIStack: writable([]),
         CharEmotion: writable(new Map()),
         OpenRealmStore: writable({ isOpen: false }),
-        MobileSearch: writable(''),
         alertStore: writable({ type: 'none', msg: '' }),
         selIdState: { state: -1 },
         SettingsMenuIndex: writable(0),
@@ -147,29 +141,31 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 
 //#endregion
 
-import { DBState, MobileSearch } from '../../ts/stores.svelte'
-import MobileCharacters from './MobileCharacters.svelte'
+import { DBState } from '../../ts/stores.svelte'
+import { language } from '../../lang'
+import CharacterSimpleList from './CharacterSimpleList.svelte'
 
 //#region fixtures and helpers
 
 type CharacterFixture = Database['characters'][number]
 
-const COUNT = 200
-const MOST_MOUNTED = 60
+const GONE = 1_700_000_000_000
 const VIEWPORT = 600
+const ROW = 73
+const LIVE = 40
 
-/** Character `i` is the `COUNT - i`-th row: the list is most recent first. */
-function makeCharacters(count = COUNT): CharacterFixture[] {
-    return Array.from({ length: count }, (_, i) => ({
-        chaId: `id-${i}`,
-        name: `Character ${i}`,
+function makeCharacter(chaId: string, name: string, extra: Record<string, unknown> = {}): CharacterFixture {
+    return {
+        chaId,
+        name,
         type: 'character',
         image: '',
         creatorNotes: '',
         chatPage: 0,
-        lastInteraction: i + 1,
-        chats: [{ id: `id-${i}-chat`, message: [], note: '', name: '', localLore: [] }],
-    })) as unknown as CharacterFixture[]
+        lastInteraction: 0,
+        chats: [{ id: `${chaId}-chat`, message: [], note: '', name: '', localLore: [] }],
+        ...extra,
+    } as unknown as CharacterFixture
 }
 
 function buildDb(characters: CharacterFixture[]): Database {
@@ -187,6 +183,20 @@ function buildDb(characters: CharacterFixture[]): Database {
     } as unknown as Database
 }
 
+/**
+ * One trashed character at slot 0, then LIVE live ones. Character `i` has the interaction `i + 1`,
+ * so the list shows `Character LIVE-1` first and `Character 0` last.
+ */
+function fixture(): CharacterFixture[] {
+    return [
+        makeCharacter('gone', 'Gone', { trashTime: GONE }),
+        ...Array.from({ length: LIVE }, (_, i) => makeCharacter(`id-${i}`, `Character ${i}`, { lastInteraction: i + 1 })),
+    ]
+}
+
+/** The name the list shows at row `ordinal`, counted from the top. */
+const nameAtRow = (ordinal: number): string => `Character ${LIVE - 1 - ordinal}`
+
 async function settle(): Promise<void> {
     for (let i = 0; i < 6; i++) {
         flushSync()
@@ -198,19 +208,6 @@ async function settle(): Promise<void> {
 async function settleFrame(): Promise<void> {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     await settle()
-}
-
-async function withMounted(props: { hideTrash?: boolean; search?: string; endGrid?: () => void }, body: (target: HTMLElement) => void | Promise<void>): Promise<void> {
-    const target = document.createElement('div')
-    document.body.appendChild(target)
-    const app = mount(MobileCharacters, { target, props: props as never }) as Record<string, unknown>
-    try {
-        await settle()
-        await body(target)
-    } finally {
-        await unmount(app as never)
-        target.remove()
-    }
 }
 
 let restoreGeometry: () => void = () => {}
@@ -257,12 +254,27 @@ async function scrollAndSettle(root: ParentNode, top: number): Promise<void> {
     await settleFrame()
 }
 
+async function withMounted(props: { trashEntry?: boolean }, body: (target: HTMLElement) => void | Promise<void>): Promise<void> {
+    const target = document.createElement('div')
+    document.body.appendChild(target)
+    const app = mount(CharacterSimpleList, { target, props }) as Record<string, unknown>
+    try {
+        await settle()
+        await body(target)
+    } finally {
+        await unmount(app as never)
+        target.remove()
+    }
+}
+
+function buttonWith(root: HTMLElement, text: string): HTMLButtonElement | undefined {
+    return Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.includes(text))
+}
+
 const rowNames = (root: ParentNode): string[] => Array.from(root.querySelectorAll('div.flex-1 > span:first-child')).map((s) => s.textContent?.trim() ?? '')
-const rowButtons = (root: ParentNode): HTMLButtonElement[] => Array.from(root.querySelectorAll<HTMLButtonElement>('button')).filter((b) => b.querySelector('div.flex-1 > span:first-child'))
 
 beforeEach(() => {
     changeCharSpy.mockClear()
-    MobileSearch.set('')
     vi.stubGlobal('ResizeObserver', undefined)
     restoreGeometry = installGeometry()
 })
@@ -275,90 +287,26 @@ afterEach(() => {
 
 //#endregion
 
-describe('MobileCharacters: a bounded window of 200 rows', { timeout: 60_000 }, () => {
-    test('(R) mounts a bounded number of rows, most recent first', async () => {
-        DBState.db = buildDb(makeCharacters())
-        await withMounted({}, (target) => {
-            const names = rowNames(target)
-            expect(names.length).toBeGreaterThan(0)
-            expect(names.length).toBeLessThan(MOST_MOUNTED)
-            expect(names[0]).toBe('Character 199')
-        })
-    })
+describe('CharacterSimpleList returns to the same character after the trash view', { timeout: 60_000 }, () => {
+    test('(R) a permanent delete of an earlier slot in the trash view leaves the list at the same top row', async () => {
+        DBState.db = buildDb(fixture())
+        await withMounted({ trashEntry: true }, async (target) => {
+            await scrollAndSettle(target, 20 * ROW)
+            expect(scrollerOf(target).scrollTop).toBe(20 * ROW)
 
-    test('(R) a row has one button, with no button inside it', async () => {
-        DBState.db = buildDb(makeCharacters(5))
-        await withMounted({}, (target) => {
-            expect(rowButtons(target).length).toBe(5)
-            expect(target.querySelector('button button')).toBeNull()
-        })
-    })
-
-    test('(F) the list container is the only scroller of the component', async () => {
-        DBState.db = buildDb(makeCharacters(30))
-        await withMounted({}, (target) => {
-            expect(target.querySelectorAll('.overflow-y-auto').length).toBe(1)
-            expect(scrollerOf(target)).toBe(target.querySelector('.overflow-y-auto'))
-        })
-    })
-
-    test('(R) the first row that is shown has no divider above it, whatever its place in the whole list', async () => {
-        DBState.db = buildDb(makeCharacters())
-        await withMounted({ search: 'Character 5' }, (target) => {
-            const buttons = rowButtons(target)
-            expect(buttons.length).toBeGreaterThan(2)
-            // Character 195 is the fifth row of the unfiltered list and the first match.
-            expect(buttons[0].textContent).toContain('Character 195')
-            expect(buttons[0].classList.contains('border-t')).toBe(false)
-            expect(buttons[1].classList.contains('border-t')).toBe(true)
-        })
-    })
-
-    test('(F) rows say where they are in the list', async () => {
-        DBState.db = buildDb(makeCharacters())
-        await withMounted({}, (target) => {
-            const first = target.querySelector('[role="listitem"]')!
-            expect(first.getAttribute('aria-setsize')).toBe(String(COUNT))
-            expect(first.getAttribute('aria-posinset')).toBe('1')
-        })
-    })
-
-    test('(F) a row far down is reached by scrolling and opens its own character', async () => {
-        DBState.db = buildDb(makeCharacters())
-        const endGrid = vi.fn()
-        await withMounted({ endGrid }, async (target) => {
-            expect(rowNames(target)).not.toContain('Character 50')
-            // Character 50 is row 150: 149 rows of 73 px above it.
-            await scrollAndSettle(target, 149 * 73)
-            expect(rowNames(target)).toContain('Character 50')
-            expect(rowNames(target).length).toBeLessThan(MOST_MOUNTED)
-
-            const row = rowButtons(target).find((b) => b.textContent?.includes('Character 50'))!
-            row.click()
-            expect(changeCharSpy.mock.calls).toEqual([[50]])
-            expect(endGrid).toHaveBeenCalledTimes(1)
-        })
-    })
-
-    test('(F) a new search scrolls to the top', async () => {
-        DBState.db = buildDb(makeCharacters())
-        const props = $state({ search: '' })
-        await withMounted(props, async (target) => {
-            await scrollAndSettle(target, 149 * 73)
-            expect(scrollerOf(target).scrollTop).toBeGreaterThan(0)
-
-            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-            try {
-                props.search = 'Character 5'
-                flushSync()
-                vi.advanceTimersByTime(150)
-            } finally {
-                vi.useRealTimers()
-            }
+            buttonWith(target, `${language.trash} (1)`)!.click()
+            await settle()
+            // The trashed character at slot 0 goes: every live character moves one slot down.
+            DBState.db.characters.splice(0, 1)
+            await settle()
+            buttonWith(target, language.settingsPage.back)!.click()
+            await settleFrame()
             await settleFrame()
 
-            expect(scrollerOf(target).scrollTop).toBe(0)
-            expect(rowNames(target)[0]).toBe('Character 195')
+            const top = scrollerOf(target).scrollTop
+            expect(top % ROW).toBe(0)
+            expect(nameAtRow(top / ROW)).toBe(nameAtRow(20))
+            expect(rowNames(target)).toContain(nameAtRow(20))
         })
     })
 })

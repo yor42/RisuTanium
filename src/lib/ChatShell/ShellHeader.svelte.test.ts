@@ -5,9 +5,7 @@ import { describe, expect, test, vi } from 'vitest'
 
 const mobile = writable(false)
 const sidebar = writable(0)
-const closeChat = vi.fn()
 vi.mock('../../ts/stores.svelte', () => ({ MobileGUI: mobile, MobileSideBar: sidebar }))
-vi.mock('../Mobile/mobileBack', () => ({ closeShellChat: closeChat }))
 vi.mock('../../lang', () => ({ language: { chatShellBack: 'Back', chatShellChoosePersona: 'Choose persona', chatShellThisChat: 'This chat' } }))
 
 describe('ShellHeader menu button', () => {
@@ -46,7 +44,7 @@ describe('ShellHeader menu button', () => {
 })
 
 describe('ShellHeader hide rules', () => {
-    test('hidden state yields to keyboard use and focus, and MobileGUI arrow closes chat', async () => {
+    test('hidden state yields to keyboard use and focus', async () => {
         const { default: ShellHeader } = await import('./ShellHeader.svelte')
         const state = $state({ hidden: true, hardwareKeyboardSeen: false })
         const target = document.createElement('div')
@@ -63,9 +61,6 @@ describe('ShellHeader hide rules', () => {
         button?.focus()
         flushSync()
         expect(header?.hasAttribute('data-hidden')).toBe(false)
-        mobile.set(true)
-        button?.click()
-        expect(closeChat).toHaveBeenCalledTimes(1)
         await unmount(app)
         target.remove()
     })

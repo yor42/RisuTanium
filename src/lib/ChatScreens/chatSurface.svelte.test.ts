@@ -22,7 +22,7 @@ vi.mock('../../ts/stores.svelte', () => ({
 
 //#endregion
 
-import { MobileGUI, ReloadChatPointer, ReloadGUIPointer, settingsOpen } from '../../ts/stores.svelte'
+import { ReloadChatPointer, ReloadGUIPointer, settingsOpen } from '../../ts/stores.svelte'
 import { noteTopLevelChange, resetTopLevelChangesForTests } from '../../ts/storage/topLevelChanges'
 import { changeLanguage } from '../../lang'
 import { studioOpen } from '../../ts/studio/studioOpen'
@@ -53,7 +53,6 @@ beforeEach(() => {
     resetTopLevelChangesForTests()
     settingsOpen.set(false)
     studioOpen.set(false)
-    MobileGUI.set(false)
     ReloadGUIPointer.set(0)
     ReloadChatPointer.set({})
     installChatSurface()
@@ -214,14 +213,6 @@ describe('release decision', () => {
 
         expect(chatSurface.remountEpoch).toBe(0)
     })
-
-    test('SEAM MobileGUI never hides the surface', async () => {
-        MobileGUI.set(true)
-        settingsOpen.set(true)
-        await settle()
-
-        expect(chatSurface.hidden).toBe(false)
-    })
 })
 
 describe('hiding hook', () => {
@@ -237,7 +228,7 @@ describe('hiding hook', () => {
         expect(seen).toEqual([false])
     })
 
-    test('SEAM U2 a reopen while hidden, a MobileGUI open, an unregistered callback and a reset surface call nothing', async () => {
+    test('SEAM U2 a reopen while hidden, an unregistered callback and a reset surface call nothing', async () => {
         let calls = 0
         const unregister = onSurfaceHiding(() => { calls += 1 })
 
@@ -250,14 +241,6 @@ describe('hiding hook', () => {
         expect(calls).toBe(1)
         settingsOpen.set(false)
         await settle()
-
-        MobileGUI.set(true)
-        settingsOpen.set(true)
-        await settle()
-        expect(calls).toBe(1)
-        settingsOpen.set(false)
-        await settle()
-        MobileGUI.set(false)
 
         unregister()
         settingsOpen.set(true)
@@ -372,13 +355,6 @@ describe('Studio covers the surface like Settings', () => {
         studioOpen.set(true)
         await settle()
         expect(calls).toBe(1)
-    })
-
-    test('2h the Beta Mobile GUI never hides the surface for Studio either', async () => {
-        MobileGUI.set(true)
-        studioOpen.set(true)
-        await settle()
-        expect(chatSurface.hidden).toBe(false)
     })
 })
 

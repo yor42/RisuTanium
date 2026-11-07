@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 /**
- * Studio is unavailable while the Beta Mobile GUI is on: no row in More, the open is refused with no
- * state change, and a visit that is open closes when the Beta Mobile GUI turns on. The sheet's row
- * is covered in its own file; App's desktop mount is covered in App.studioMount.svelte.test.ts, and the
- * mobile layout case here pins that App mounts no Studio under the Beta Mobile GUI.
+ * Studio is unavailable while the `MobileGUI` store is true: no row in More, the open is refused with
+ * no state change, and an open visit closes when it turns true. The sheet's row is covered in its own
+ * file; App's mount is covered in App.studioMount.svelte.test.ts.
  */
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -64,7 +63,6 @@ vi.mock('@lucide/svelte', async (importOriginal) => {
 })
 vi.mock('../SideBars/Sidebar.svelte', () => countingStub('sidebar')())
 vi.mock('../ChatScreens/ChatScreen.svelte', () => countingStub('chat')())
-vi.mock('../Mobile/MobileBody.svelte', () => countingStub('mobileBody')())
 vi.mock('./StudioScreen.svelte', () => countingStub('studio')())
 vi.mock('../Setting/Settings.svelte', stub)
 vi.mock('../SettingsShell/SettingsShell.svelte', stub)
@@ -77,8 +75,6 @@ vi.mock('../UI/Realm/RealmFrame.svelte', stub)
 vi.mock('../Others/SavePopupIcon.svelte', stub)
 vi.mock('../Setting/botpreset.svelte', stub)
 vi.mock('../Setting/listedPersona.svelte', stub)
-vi.mock('../Mobile/MobileHeader.svelte', stub)
-vi.mock('../Mobile/MobileFooter.svelte', stub)
 vi.mock('../Setting/Pages/CustomGUISettingMenu.svelte', stub)
 vi.mock('../Others/HypaV3Modal.svelte', stub)
 vi.mock('../Others/HypaV3Progress.svelte', stub)
@@ -108,7 +104,7 @@ import SidebarMoreMenu from '../ChatShell/sidebar/SidebarMoreMenu.svelte'
 import { openStudio, resetStudioScreenForTests, studioScreen } from '../../ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from '../../ts/studio/studioSwitch.svelte'
 import { studioOpen } from '../../ts/studio/studioOpen'
-import { resetStubCounts, stubCount } from '../../App.keepChatCountingStub.svelte'
+import { resetStubCounts } from '../../App.keepChatCountingStub.svelte'
 import { resetChatSurfaceForTests } from '../ChatScreens/chatSurface.svelte'
 
 const target = { owner: { type: 'character', id: 'char' }, from: 'chat' } as const
@@ -141,25 +137,6 @@ afterEach(async () => {
 })
 
 describe('2p Studio under the Beta Mobile GUI', () => {
-    test('App mounts no Studio under the Beta Mobile GUI even if the flag is set; the mobile layout shows', async () => {
-        MobileGUI.set(true)
-        studioOpen.set(true)
-        const { default: App } = await import('../../App.svelte')
-        host = document.createElement('div')
-        document.body.appendChild(host)
-        app = mount(App, { target: host, props: {} })
-        flushSync()
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-            await new Promise<void>((resolve) => setTimeout(resolve, 0))
-            await tick()
-            flushSync()
-        }
-        expect(stubCount('mobileBody').mounts).toBe(1)
-        expect(stubCount('studio').mounts).toBe(0)
-        expect(host.querySelector('[data-stub="studio"]')).toBeNull()
-        expect(host.querySelector('[data-chat-surface]')).toBeNull()
-    })
-
     test('More shows no Studio row while the Beta Mobile GUI is on', () => {
         MobileGUI.set(true)
         host = document.createElement('div')

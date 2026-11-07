@@ -14,7 +14,7 @@ vi.mock(import('../../ts/stores.svelte'), () => ({
     settingsOpen: writable(true),
 }) as unknown as typeof import('../../ts/stores.svelte'))
 
-import { MobileGUI, SettingsMenuIndex, settingsOpen } from '../../ts/stores.svelte'
+import { SettingsMenuIndex, settingsOpen } from '../../ts/stores.svelte'
 import { settingsBackClose } from './settingsBack'
 import { isReturnToChat, openSettingsForFix, resetSettingsRouteForTests } from './settingsRoute'
 
@@ -26,7 +26,6 @@ const originalWidth = window.innerWidth
 
 beforeEach(() => {
     resetSettingsRouteForTests()
-    MobileGUI.set(false)
     SettingsMenuIndex.set(-1)
     settingsOpen.set(true)
 })
@@ -37,13 +36,10 @@ afterEach(() => {
 
 describe('settingsBackClose', () => {
     test.each([
-        ['Beta Mobile GUI overlay (no X exists)', true, 500, 3, false, 3],
-        ['Beta Mobile GUI overlay at the list', true, 500, -1, false, -1],
-        ['wide layout with a page open', false, 1000, 3, false, 3],
-        ['narrow list view', false, 500, -1, false, -1],
-        ['narrow detail view goes back to the list', false, 500, 3, true, -1],
-    ])('(G) %s', (_name, mobileGui, width, index, stillOpen, indexAfter) => {
-        MobileGUI.set(mobileGui)
+        ['wide layout with a page open', 1000, 3, false, 3],
+        ['narrow list view', 500, -1, false, -1],
+        ['narrow detail view goes back to the list', 500, 3, true, -1],
+    ])('(G) %s', (_name, width, index, stillOpen, indexAfter) => {
         setWidth(width)
         SettingsMenuIndex.set(index)
         settingsBackClose()

@@ -1127,6 +1127,7 @@ export interface Database{
     falLoraScale: number
     moduleIntergration: string
     customCSS: string
+    // Upstream setting with no reader here; kept so a .bin round trip carries it unchanged.
     betaMobileGUI:boolean
     jsonSchemaEnabled:boolean
     jsonSchema:string

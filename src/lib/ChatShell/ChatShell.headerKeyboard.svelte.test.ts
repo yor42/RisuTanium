@@ -25,7 +25,6 @@ vi.mock('../ChatScreens/chatSurface.svelte', () => ({ chatSurface: { hidden: fal
 vi.mock('../../ts/parser/parser.svelte', () => ({ hasher: (value: string) => value, risuChatParser: (value: string) => value, assetRegex: /{{asset:[^}]+}}/g }))
 vi.mock('../../ts/parser/chatML', () => ({ parseChatML: () => [] }))
 vi.mock('../../lang', () => ({ language: { chatShellMessages: 'Messages', chatShellBack: 'Back', chatShellChoosePersona: 'Choose persona', chatShellThisChat: 'This chat' } }))
-vi.mock('../Mobile/mobileBack', () => ({ closeShellChat: vi.fn() }))
 vi.mock('./ShellComposer.svelte', () => ({ default: (anchor: Comment, props: { onhardwarechange: (seen: boolean) => void }) => {
     captured.hardware = props.onhardwarechange
     const field = document.createElement('textarea')

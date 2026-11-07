@@ -17,7 +17,7 @@
  * windowed lists, so on the earlier base each one fails because the windowed list is missing.
  * The defects the windowing removes (every row mounted, an observer per card, a nested scroller)
  * are asserted as reproducers through the screens in `GridCatalog.window.svelte.test.ts`,
- * `CharacterTrashList.window.svelte.test.ts` and the two files in `src/lib/Mobile`.
+ * `CharacterTrashList.window.svelte.test.ts` and `CharacterSimpleList.window.svelte.test.ts`.
  */
 import { createRawSnippet, flushSync, mount, unmount, type Snippet } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'

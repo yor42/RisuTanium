@@ -4,7 +4,6 @@ import { writable } from 'svelte/store'
 import { describe, expect, test, vi } from 'vitest'
 
 vi.mock('../../ts/stores.svelte', () => ({ MobileGUI: writable(false), DynamicGUI: writable(false), sideBarStore: writable(false), sideBarClosing: writable(false) }))
-vi.mock('../Mobile/mobileBack', () => ({ closeShellChat: vi.fn() }))
 vi.mock('../../lang', () => ({ language: { chatShellBack: 'Back', chatShellThisChat: 'This chat' } }))
 
 /**

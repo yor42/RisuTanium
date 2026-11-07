@@ -1,21 +1,20 @@
 // @vitest-environment happy-dom
 
 /**
- * `MobileCharacters.svelte`: a row is keyed by the character it shows, not by its position in
- * `db.characters`. The position the list returns to after the trash view was open therefore
- * names the same character when the trash view removed a character from an earlier slot.
+ * `CharacterSimpleList.svelte` never lists or selects the two system characters
+ * kept in `db.characters`: the Playground's `'§playground'` utility bot and a
+ * stray `'§temp'` copy left by an upstream multiuser save. Both are skipped
+ * with the trash hidden and shown, whatever the search text, trashed or not.
+ * An ordinary character that merely shares the name 'assistant' is listed like
+ * any other, and a row still selects its own `db.characters` index.
  *
- * Test labels: `(R)` is a reproducer: it fails on the index-keyed list with an assertion about the
- * defect (the list comes back at another character).
- *
- * MOCKED: the module set of `MobileCharacters.trash.svelte.test.ts` (same directory), with `changeChar`
- * a bare spy; geometry is faked as in `MobileCharacters.window.svelte.test.ts`. The permanent delete
- * is the splice `removeChar(..., 'permanent')` performs on `db.characters`. Nothing here writes to
+ * MOCKED: the module set of `GridCatalog.hiddenCharacters.svelte.test.ts`
+ * (`src/lib/Others`), with `changeChar` a bare spy. Nothing here writes to
  * storage.
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from '../../ts/storage/database.svelte'
 import type { RisuEnvironmentLabel } from '../../ts/platform'
 
@@ -100,10 +99,8 @@ vi.mock(import('../../ts/stores.svelte'), () => {
     return {
         DBState: state,
         selectedCharID: writable(-1),
-        MobileGUIStack: writable([]),
         CharEmotion: writable(new Map()),
         OpenRealmStore: writable({ isOpen: false }),
-        MobileSearch: writable(''),
         alertStore: writable({ type: 'none', msg: '' }),
         selIdState: { state: -1 },
         SettingsMenuIndex: writable(0),
@@ -143,18 +140,17 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 
 //#endregion
 
-import { DBState, MobileSearch } from '../../ts/stores.svelte'
-import { language } from '../../lang'
-import MobileCharacters from './MobileCharacters.svelte'
+import { DBState } from '../../ts/stores.svelte'
+import CharacterSimpleList from './CharacterSimpleList.svelte'
 
 //#region fixtures and helpers
 
 type CharacterFixture = Database['characters'][number]
 
-const GONE = 1_700_000_000_000
-const VIEWPORT = 600
-const ROW = 73
-const LIVE = 40
+const ALICE = 0
+const PLAYGROUND = 1
+const TEMP = 2
+const NAMED_ASSISTANT = 3
 
 function makeCharacter(chaId: string, name: string, extra: Record<string, unknown> = {}): CharacterFixture {
     return {
@@ -168,6 +164,16 @@ function makeCharacter(chaId: string, name: string, extra: Record<string, unknow
         chats: [{ id: `${chaId}-chat`, message: [], note: '', name: '', localLore: [] }],
         ...extra,
     } as unknown as CharacterFixture
+}
+
+/** [Alice, the Playground, a stray temp copy, an ordinary character named 'assistant']. */
+function standardCharacters(): CharacterFixture[] {
+    return [
+        makeCharacter('alice-id', 'Alice'),
+        makeCharacter('§playground', 'assistant', { utilityBot: true }),
+        makeCharacter('§temp', 'Temp Copy'),
+        makeCharacter('named-assistant-id', 'assistant'),
+    ]
 }
 
 function buildDb(characters: CharacterFixture[]): Database {
@@ -185,81 +191,18 @@ function buildDb(characters: CharacterFixture[]): Database {
     } as unknown as Database
 }
 
-/**
- * One trashed character at slot 0, then LIVE live ones. Character `i` has the interaction `i + 1`,
- * so the list shows `Character LIVE-1` first and `Character 0` last.
- */
-function fixture(): CharacterFixture[] {
-    return [
-        makeCharacter('gone', 'Gone', { trashTime: GONE }),
-        ...Array.from({ length: LIVE }, (_, i) => makeCharacter(`id-${i}`, `Character ${i}`, { lastInteraction: i + 1 })),
-    ]
-}
-
-/** The name the list shows at row `ordinal`, counted from the top. */
-const nameAtRow = (ordinal: number): string => `Character ${LIVE - 1 - ordinal}`
-
 async function settle(): Promise<void> {
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 4; i++) {
         flushSync()
         await Promise.resolve()
     }
     flushSync()
 }
 
-async function settleFrame(): Promise<void> {
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-    await settle()
-}
-
-let restoreGeometry: () => void = () => {}
-
-/** A container height of `VIEWPORT` and a scroll position clamped to the list's total, for every element. */
-function installGeometry(): () => void {
-    const tops = new WeakMap<Element, number>()
-    const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
-    const scrollTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTop')
-    Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => VIEWPORT })
-    Object.defineProperty(HTMLElement.prototype, 'scrollTop', {
-        configurable: true,
-        get(this: HTMLElement) {
-            return tops.get(this) ?? 0
-        },
-        set(this: HTMLElement, value: number) {
-            const total = Number(this.getAttribute('data-charlist-total') ?? Number.POSITIVE_INFINITY)
-            tops.set(this, Math.max(0, Math.min(value, Math.max(0, total - VIEWPORT))))
-        },
-    })
-    return () => {
-        for (const [name, descriptor] of [['clientHeight', clientHeight], ['scrollTop', scrollTop]] as const) {
-            if (descriptor) {
-                Object.defineProperty(HTMLElement.prototype, name, descriptor)
-            } else {
-                delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name]
-            }
-        }
-    }
-}
-
-function scrollerOf(root: ParentNode): HTMLElement {
-    const el = root.querySelector<HTMLElement>('[role="list"][data-charlist-total]')
-    if (!el) {
-        throw new Error('no windowed list in this DOM')
-    }
-    return el
-}
-
-async function scrollAndSettle(root: ParentNode, top: number): Promise<void> {
-    const el = scrollerOf(root)
-    el.scrollTop = top
-    el.dispatchEvent(new Event('scroll'))
-    await settleFrame()
-}
-
-async function withMounted(props: { trashEntry?: boolean }, body: (target: HTMLElement) => void | Promise<void>): Promise<void> {
+async function withMounted(props: { hideTrash?: boolean; search?: string }, body: (target: HTMLElement) => void | Promise<void>): Promise<void> {
     const target = document.createElement('div')
     document.body.appendChild(target)
-    const app = mount(MobileCharacters, { target, props }) as Record<string, unknown>
+    const app = mount(CharacterSimpleList, { target, props }) as Record<string, unknown>
     try {
         await settle()
         await body(target)
@@ -269,47 +212,98 @@ async function withMounted(props: { trashEntry?: boolean }, body: (target: HTMLE
     }
 }
 
-function buttonWith(root: HTMLElement, text: string): HTMLButtonElement | undefined {
-    return Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.includes(text))
+/** One entry per list row, in display order: the row's name and the index it hands to `changeChar` when clicked. */
+function rows(root: HTMLElement): { name: string; index: number }[] {
+    const result: { name: string; index: number }[] = []
+    const names = Array.from(root.querySelectorAll('div.flex-1 > span:first-child'))
+    for (const nameSpan of names) {
+        const row = nameSpan.closest('button') as HTMLButtonElement
+        changeCharSpy.mockClear()
+        row.click()
+        result.push({
+            name: nameSpan.textContent?.trim() ?? '',
+            index: changeCharSpy.mock.calls[0]?.[0] as number,
+        })
+    }
+    return result
 }
 
-const rowNames = (root: ParentNode): string[] => Array.from(root.querySelectorAll('div.flex-1 > span:first-child')).map((s) => s.textContent?.trim() ?? '')
+function trashAll(indices: number[]): void {
+    for (const index of indices) {
+        DBState.db.characters[index].trashTime = Date.now() - 1000
+    }
+}
 
 beforeEach(() => {
     changeCharSpy.mockClear()
-    MobileSearch.set('')
-    vi.stubGlobal('ResizeObserver', undefined)
-    restoreGeometry = installGeometry()
-})
-
-afterEach(() => {
-    vi.unstubAllGlobals()
-    vi.useRealTimers()
-    restoreGeometry()
 })
 
 //#endregion
 
-describe('MobileCharacters returns to the same character after the trash view', { timeout: 60_000 }, () => {
-    test('(R) a permanent delete of an earlier slot in the trash view leaves the list at the same top row', async () => {
-        DBState.db = buildDb(fixture())
-        await withMounted({ trashEntry: true }, async (target) => {
-            await scrollAndSettle(target, 20 * ROW)
-            expect(scrollerOf(target).scrollTop).toBe(20 * ROW)
+describe('CharacterSimpleList skips the Playground and stray temp characters', { timeout: 60_000 }, () => {
+    test.each([
+        ['hidden', true],
+        ['shown', false],
+    ] as const)('with the trash %s, Alice and the ordinary "assistant" are listed and neither system character is', async (_label, hideTrash) => {
+        DBState.db = buildDb(standardCharacters())
 
-            buttonWith(target, `${language.trash} (1)`)!.click()
-            await settle()
-            // The trashed character at slot 0 goes: every live character moves one slot down.
-            DBState.db.characters.splice(0, 1)
-            await settle()
-            buttonWith(target, language.settingsPage.back)!.click()
-            await settleFrame()
-            await settleFrame()
+        await withMounted({ hideTrash }, (target) => {
+            expect(rows(target)).toEqual([
+                { name: 'Alice', index: ALICE },
+                { name: 'assistant', index: NAMED_ASSISTANT },
+            ])
+        })
+    })
 
-            const top = scrollerOf(target).scrollTop
-            expect(top % ROW).toBe(0)
-            expect(nameAtRow(top / ROW)).toBe(nameAtRow(20))
-            expect(rowNames(target)).toContain(nameAtRow(20))
+    test('with the trash shown, trashed system characters are not listed and the trashed ordinary character is', async () => {
+        DBState.db = buildDb(standardCharacters())
+        trashAll([PLAYGROUND, TEMP, NAMED_ASSISTANT])
+
+        await withMounted({ hideTrash: false }, (target) => {
+            expect(rows(target)).toEqual([
+                { name: 'Alice', index: ALICE },
+                { name: 'assistant', index: NAMED_ASSISTANT },
+            ])
+        })
+    })
+
+    // Guard: passes with and without the filter; hiding the trash already
+    // drops every trashed character.
+    test('guard: with the trash hidden, trashed characters of every kind are not listed', async () => {
+        DBState.db = buildDb(standardCharacters())
+        trashAll([PLAYGROUND, TEMP, NAMED_ASSISTANT])
+
+        await withMounted({ hideTrash: true }, (target) => {
+            expect(rows(target)).toEqual([{ name: 'Alice', index: ALICE }])
+        })
+    })
+
+    test('searching "assistant" lists only the ordinary character, and clicking it selects its own index', async () => {
+        DBState.db = buildDb(standardCharacters())
+
+        await withMounted({ hideTrash: true, search: 'assistant' }, (target) => {
+            expect(rows(target)).toEqual([{ name: 'assistant', index: NAMED_ASSISTANT }])
+        })
+    })
+
+    test("searching the stray copy's own name lists nothing", async () => {
+        DBState.db = buildDb(standardCharacters())
+
+        await withMounted({ hideTrash: false, search: 'temp copy' }, (target) => {
+            expect(rows(target)).toEqual([])
+        })
+    })
+
+    // Guard: passes with and without the filter; an ordinary character named
+    // 'assistant' is never mistaken for the Playground.
+    test('guard: an ordinary character named "assistant" is listed and selects its own index', async () => {
+        DBState.db = buildDb([makeCharacter('alice-id', 'Alice'), makeCharacter('named-assistant-id', 'assistant')])
+
+        await withMounted({ hideTrash: true }, (target) => {
+            expect(rows(target)).toEqual([
+                { name: 'Alice', index: 0 },
+                { name: 'assistant', index: 1 },
+            ])
         })
     })
 })

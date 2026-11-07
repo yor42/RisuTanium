@@ -1,17 +1,16 @@
 <script lang="ts">
     import { DBState } from 'src/ts/stores.svelte';
     import { addCharacter, changeChar } from "src/ts/characters";
-    import { MobileSearch } from "src/ts/stores.svelte";
     import { ArrowLeft, MessageSquareIcon, PlusIcon, TrashIcon } from "@lucide/svelte";
     import { coldStubChatCount } from "src/ts/process/coldCharacter";
     import { language } from "src/lang";
     import { createCharacterSearch, type CharacterSearch } from "src/ts/gui/characterSearch.svelte";
     import { slotKeys } from "src/ts/gui/characterSearch";
-    import CharacterTrashList from "../Others/CharacterTrashList.svelte";
-    import CharacterWindow from "../Others/CharacterWindow.svelte";
-    import CharListAvatar from "../Others/CharListAvatar.svelte";
-    import { SIMPLE_ROW_FALLBACK_PX, listRows, type ScrollAnchor } from "../Others/charListRows";
-    import { compareRecent } from "../Others/charListOrder";
+    import CharacterTrashList from "./CharacterTrashList.svelte";
+    import CharacterWindow from "./CharacterWindow.svelte";
+    import CharListAvatar from "./CharListAvatar.svelte";
+    import { SIMPLE_ROW_FALLBACK_PX, listRows, type ScrollAnchor } from "./charListRows";
+    import { compareRecent } from "./charListOrder";
 
     interface Props {
         endGrid?: () => void;
@@ -21,7 +20,7 @@
         // list embedded in GridCatalog, which has its own Trash tab.
         trashEntry?: boolean;
         // The search result of the screen that embeds this list. Without it the
-        // list searches by `search`, else by the mobile header's search box.
+        // list searches by `search`, else shows every character.
         results?: CharacterSearch;
         // What a tap on a row does with the character's slot. Without it the row opens the
         // character and leaves the screen, as it always did.
@@ -31,15 +30,15 @@
     const agoFormatter = new Intl.RelativeTimeFormat(navigator.languages, { style: 'short' });
 
     let {endGrid = () => {}, search, hideTrash = true, trashEntry = false, results, onpick}: Props = $props();
-    // Local on purpose: the swipe gestures move through MobileGUIStack, so the
-    // trash view must not be a stack value. Leaving the screen resets it.
+    // Local on purpose: the trash view is not navigation state. Leaving the
+    // screen resets it.
     let trashOpen = $state(false);
     // Fixed for the component's life: the effect inside createCharacterSearch
     // can only be created during initialisation, and an embedding screen never
     // swaps its result. The result's properties are getters, so reading them in
     // the template follows later queries.
     // svelte-ignore state_referenced_locally
-    const found = results ?? createCharacterSearch(() => search ?? $MobileSearch);
+    const found = results ?? createCharacterSearch(() => search ?? '');
 
     // The list is unmounted while the trash view is open, so what it needs to come back to the
     // same row is kept here: the row measurements (the saved position only means the same row

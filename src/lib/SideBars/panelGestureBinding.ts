@@ -189,7 +189,7 @@ function closeOverlay() {
 /**
  * Installs the overlay's swipe triggers and the Android Back hook, and returns the cleanup.
  * Meant to live exactly as long as the phone overlay's backdrop: nothing is installed in the
- * wide layout, in MobileGUI, or while a full-page screen replaces the sidebar.
+ * wide layout or while a full-page screen replaces the sidebar.
  *
  * Only a passive `touchstart` is permanent. Move, end and cancel listeners exist for one
  * stroke, on both the touch target (a removed node keeps receiving its own events) and the

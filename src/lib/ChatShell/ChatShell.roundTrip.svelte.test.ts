@@ -214,7 +214,7 @@ vi.mock('src/lib/Setting/Pages/Module/ModuleChatMenu.svelte', () => ({ default: 
 //#endregion
 
 import ChatScreen from 'src/lib/ChatScreens/ChatScreen.svelte'
-import { DBState, selectedCharID, MobileGUI } from 'src/ts/stores.svelte'
+import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { setShellEnabled } from 'src/ts/chatShell/shellSwitch.svelte'
 import { doingChat } from 'src/ts/process/index.svelte'
 import { deleteNow } from 'src/ts/process/messageActions.svelte'
@@ -336,7 +336,6 @@ beforeEach(() => {
 
 afterEach(async () => {
     await closeScreen()
-    MobileGUI.set(false)
     selectedCharID.set(-1)
 })
 
@@ -418,10 +417,8 @@ describe('guard: opening Settings between a flip', () => {
         expect(composerDrafts.peek(KEY).messageInput).toBe('typed before settings')
 
         // Settings opens: the chat screen unmounts while the switch is flipped there.
-        MobileGUI.set(true)
         await closeScreen()
         setShellEnabled(true)
-        MobileGUI.set(false)
 
         mountScreen()
         await until(() => newInput() !== null, 'the new composer')
@@ -436,10 +433,8 @@ describe('guard: opening Settings between a flip', () => {
         await until(() => newInput() !== null, 'the new composer')
         type(newInput()!, 'typed in the new shell')
 
-        MobileGUI.set(true)
         await closeScreen()
         setShellEnabled(false)
-        MobileGUI.set(false)
 
         mountScreen()
         await until(() => oldInput() !== null, 'the old composer')

@@ -15,7 +15,6 @@ const MCP_DIR = 'src/ts/process/mcp/risuaccess'
 
 const GUARDED_FILES: GuardedFile[] = [
     { file: 'src/App.svelte', allow: [] },
-    { file: 'src/lib/Mobile/MobileHeader.svelte', allow: [] },
     { file: 'src/ts/process/index.svelte.ts', allow: [] },
     { file: 'src/ts/characters.ts', allow: [] },
     { file: 'src/ts/cbs.ts', allow: [] },

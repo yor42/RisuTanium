@@ -1,6 +1,6 @@
 import { tick } from 'svelte'
 import { get } from 'svelte/store'
-import { MobileGUI, ReloadChatPointer, ReloadGUIPointer, settingsOpen } from '../../ts/stores.svelte'
+import { ReloadChatPointer, ReloadGUIPointer, settingsOpen } from '../../ts/stores.svelte'
 import { topLevelChangeCount } from '../../ts/storage/topLevelChanges'
 import { language } from '../../lang'
 import { studioOpen } from '../../ts/studio/studioOpen'
@@ -66,7 +66,7 @@ function onSettingsOpened(){
     if(focused instanceof HTMLElement && focused.closest('[data-chat-surface]')){
         focused.blur()
     }
-    if(!chatSurface.hidden && !get(MobileGUI)){
+    if(!chatSurface.hidden){
         // A reopen before the release keeps the first baseline.
         missedSignal = false
         changesAtHide = topLevelChangeCount()

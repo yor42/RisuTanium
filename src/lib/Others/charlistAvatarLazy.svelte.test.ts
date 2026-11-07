@@ -706,7 +706,7 @@ describe('v1: every mounted row or tile requests its own avatar, per layout', ()
         await teardown(target, app)
     })
 
-    test('simple layout (MobileCharacters.svelte, GridCatalog default selected=3): every mounted row requests its own avatar and no observer watches a row', async () => {
+    test('simple layout (CharacterSimpleList.svelte, GridCatalog default selected=3): every mounted row requests its own avatar and no observer watches a row', async () => {
         DBState.db = buildDb(V_N, 0)
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog() // defaults to selected=3 (simple)
@@ -824,7 +824,7 @@ describe('v4: no IntersectionObserver global means every avatar still resolves (
     })
 })
 
-describe('v5 (new): MobileCharacters inside GridCatalog has one scroll root', () => {
+describe('v5 (new): CharacterSimpleList inside GridCatalog has one scroll root', () => {
     test('the simple tab is a single overflow-y-auto container: the screen around it does not scroll', async () => {
         DBState.db = buildDb(V_N, 0)
         getFileSrcSpy.mockClear()
@@ -942,7 +942,7 @@ describe('v11: a throwing IntersectionObserver constructor must fail open', () =
     // `nearViewport(node, options)` calls `getOrCreateEntry` (which does
     // `new IO(...)`) synchronously, inline in the action's setup -- i.e.
     // inline in the effect Svelte runs to mount that `{#each}` item. There is
-    // no error boundary anywhere in `GridCatalog`/`MobileCharacters`/
+    // no error boundary anywhere in `GridCatalog`/`CharacterSimpleList`/
     // `Sidebar`/`AlertComp`, so `nearViewport.svelte.ts` itself must catch a
     // throwing constructor for every avatar to keep resolving.
 
@@ -1226,7 +1226,7 @@ describe('v12: remounted tiles resolve on their own', () => {
 // "everything visible immediately" fake `charlistAvatarLookups.svelte.test.ts`
 // uses. The other six call sites (`GridCatalog.svelte`'s list and trash
 // rows, `Sidebar.svelte`'s folder and folder-member rows, AlertComp's own
-// selectChar dialog, `MobileCharacters.svelte`) are NOT covered here: each
+// selectChar dialog, `CharacterSimpleList.svelte`) are NOT covered here: each
 // would need its own fixture (a trashed-character DB, a
 // folder DB, an AlertComp mount, a mobile-layout mount) PLUS this file's own
 // margin-band bookkeeping threaded through it, which is disproportionate to

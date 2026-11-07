@@ -26,8 +26,7 @@ export function setSettingsShellEnabled(value: boolean): void {
 
 /**
  * True when Settings should open as the new screen: the switch is on and the build is neither the Beta
- * Mobile GUI nor Lite. Lite always runs the Beta Mobile GUI, but the rule is repeated here so it does not
- * depend on boot order.
+ * Mobile GUI nor Lite.
  */
 export function settingsShellEligible(): boolean {
     return settingsShellSwitch.enabled && !get(MobileGUI) && !get(isLite)
