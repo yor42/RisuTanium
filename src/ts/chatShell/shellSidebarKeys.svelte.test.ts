@@ -8,13 +8,15 @@
  *   follows the sort this device chose.
  * - It does nothing while typing (text field or select), with a registered shell open, with an alert
  *   other than a toast, for a consumed or blocked key event, or with extra modifiers.
+ * - Ctrl+K (Cmd+K) opens the sidebar and, once it has drawn, focuses the search field; it is inert from a text field or select,
+ *   with a registered shell open, with an alert other than a toast, for a consumed or blocked key event and with Alt or Shift.
  * - Teardown removes the listener.
  *
- * MOCKED: the stores module (selection mirror, alert store) and `changeChatTo` (writes the selected
+ * MOCKED: the stores module (selection mirror, alert store, the sidebar's open flags) and `changeChatTo` (writes the selected
  * slot like the real one). Everything else is real.
  */
-import { flushSync } from 'svelte'
-import { writable } from 'svelte/store'
+import { flushSync, tick } from 'svelte'
+import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Chat, Database } from '../storage/database.svelte'
 
@@ -27,6 +29,8 @@ vi.mock(import('src/ts/stores.svelte'), () => {
         DBState: state,
         selectedCharID,
         selIdState,
+        sideBarStore: writable(false),
+        sideBarClosing: writable(false),
         alertStore: writable({ type: 'none', msg: '' }),
     } as unknown as typeof import('src/ts/stores.svelte')
 })
@@ -67,7 +71,7 @@ vi.mock(import('src/ts/process/index.svelte'), () => ({
     doingChat: writable(false),
 }) as unknown as typeof import('src/ts/process/index.svelte'))
 
-import { DBState, alertStore, selectedCharID, selIdState } from 'src/ts/stores.svelte'
+import { DBState, alertStore, selectedCharID, selIdState, sideBarClosing, sideBarStore } from 'src/ts/stores.svelte'
 import { recordKeyEventBlocked } from '../keyEventBlocked'
 import { registerShell } from '../../lib/Nexus/pattern/patternFocus'
 import { clearPending, switchTarget } from './switchTarget.svelte'
@@ -102,6 +106,8 @@ beforeEach(() => {
     forcedOutcome.value = null
     localStorage.clear()
     alertStore.set({ type: 'none', msg: '' })
+    sideBarStore.set(false)
+    sideBarClosing.set(false)
     selectedCharID.set(-1)
     clearPending()
     teardown = installShellSidebarKeys()
@@ -345,5 +351,148 @@ describe('TC6 guards', () => {
         teardown = undefined
         press('ArrowDown')
         expect(changeChatToMock).not.toHaveBeenCalled()
+    })
+})
+
+describe('Ctrl+K', () => {
+    function search(): HTMLInputElement {
+        const input = document.createElement('input')
+        input.dataset.part = 'chat-sidebar-search-field'
+        input.type = 'text'
+        document.body.append(input)
+        return input
+    }
+
+    function ctrlK(init: KeyboardEventInit = {}, target: EventTarget = window): KeyboardEvent {
+        const event = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true, ...init })
+        target.dispatchEvent(event)
+        return event
+    }
+
+    test('diagnostic: the sidebar flags are writable stores starting closed', () => {
+        expect(get(sideBarStore)).toBe(false)
+        sideBarStore.set(true)
+        expect(get(sideBarStore)).toBe(true)
+    })
+
+    // The width never reaches the module, so these are the same case run at three window widths; the per-layout evidence is a PC-lane claim.
+    test.each([360, 960, 1280])('TS4: Ctrl+K with the window %i px wide opens the closed sidebar and focuses the field after the next tick', async (width) => {
+        vi.stubGlobal('innerWidth', width)
+        const field = search()
+        sideBarClosing.set(true)
+        const event = ctrlK()
+        expect(event.defaultPrevented).toBe(true)
+        expect(get(sideBarStore)).toBe(true)
+        expect(get(sideBarClosing)).toBe(false)
+        // The field only exists once the panel has drawn, so the focus waits a tick.
+        expect(document.activeElement).not.toBe(field)
+        await tick()
+        expect(document.activeElement).toBe(field)
+        vi.unstubAllGlobals()
+    })
+
+    test('TS4: Cmd+K does the same, and a non-Latin layout is found by the physical key', async () => {
+        const field = search()
+        ctrlK({ ctrlKey: false, metaKey: true })
+        await tick()
+        expect(get(sideBarStore)).toBe(true)
+        expect(document.activeElement).toBe(field)
+
+        sideBarStore.set(false)
+        field.blur()
+        const hangul = ctrlK({ key: 'ㅏ', code: 'KeyK' })
+        await tick()
+        expect(hangul.defaultPrevented).toBe(true)
+        expect(get(sideBarStore)).toBe(true)
+        expect(document.activeElement).toBe(field)
+    })
+
+    test('TS4: a Latin key on the K position (another layout) is not Ctrl+K', () => {
+        search()
+        const event = ctrlK({ key: 'x', code: 'KeyK' })
+        expect(event.defaultPrevented).toBe(false)
+        expect(get(sideBarStore)).toBe(false)
+    })
+
+    test.each([
+        ['Alt', { altKey: true }],
+        ['Shift', { shiftKey: true }],
+        ['no Ctrl or Cmd', { ctrlKey: false }],
+        ['another key', { key: 'j' }],
+    ] as const)('TS4: %s makes it inert', (_name, init) => {
+        search()
+        const event = ctrlK(init)
+        expect(event.defaultPrevented).toBe(false)
+        expect(get(sideBarStore)).toBe(false)
+    })
+
+    test.each(['textarea', 'select'] as const)('TS4: a %s keeps Ctrl+K', (tag) => {
+        search()
+        const control = document.createElement(tag)
+        document.body.append(control)
+        control.focus()
+        const event = ctrlK({}, control)
+        expect(event.defaultPrevented).toBe(false)
+        expect(get(sideBarStore)).toBe(false)
+    })
+
+    test('TS4: a text input keeps Ctrl+K, the search field included', () => {
+        const field = search()
+        field.focus()
+        const event = ctrlK({}, field)
+        expect(event.defaultPrevented).toBe(false)
+        expect(get(sideBarStore)).toBe(false)
+    })
+
+    test('TS4: an open registered shell takes the key', () => {
+        search()
+        const unregister = registerShell({})
+        try {
+            ctrlK()
+            expect(get(sideBarStore)).toBe(false)
+        } finally {
+            unregister()
+        }
+        ctrlK()
+        expect(get(sideBarStore)).toBe(true)
+    })
+
+    test("TS4: an alert other than 'none' or a toast takes the key", () => {
+        search()
+        alertStore.set({ type: 'ask', msg: 'x' })
+        ctrlK()
+        expect(get(sideBarStore)).toBe(false)
+        alertStore.set({ type: 'toast', msg: 'x' })
+        ctrlK()
+        expect(get(sideBarStore)).toBe(true)
+    })
+
+    test('TS4: a key event another handler consumed, or recorded as blocked, is left alone', () => {
+        search()
+        const early = (event: Event) => event.preventDefault()
+        document.addEventListener('keydown', early)
+        try {
+            ctrlK({}, document.body)
+        } finally {
+            document.removeEventListener('keydown', early)
+        }
+        expect(get(sideBarStore)).toBe(false)
+
+        const guard = (event: Event) => recordKeyEventBlocked(event as KeyboardEvent, true)
+        window.addEventListener('keydown', guard, true)
+        try {
+            ctrlK()
+        } finally {
+            window.removeEventListener('keydown', guard, true)
+        }
+        expect(get(sideBarStore)).toBe(false)
+    })
+
+    test('TS4: after teardown Ctrl+K does nothing', () => {
+        search()
+        teardown?.()
+        teardown = undefined
+        ctrlK()
+        expect(get(sideBarStore)).toBe(false)
     })
 })

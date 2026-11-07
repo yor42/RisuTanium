@@ -56,6 +56,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
         selIdState,
         DynamicGUI: writable(false),
         sideBarClosing: writable(false),
+        sideBarStore: writable(true),
         settingsOpen: writable(false),
         PlaygroundStore: writable(0),
         OpenRealmStore: writable(false),
