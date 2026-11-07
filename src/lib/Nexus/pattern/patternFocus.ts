@@ -134,6 +134,11 @@ export function registerShell(token: object): () => void {
     }
 }
 
+/** Whether any shell is open. A layout change that mounts a modal surface must not open it over one. */
+export function hasOpenShell(): boolean {
+    return openShells.length > 0
+}
+
 export function isTopmostShell(token: object): boolean {
     return openShells[openShells.length - 1] === token
 }

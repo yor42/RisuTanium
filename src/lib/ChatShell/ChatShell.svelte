@@ -17,6 +17,8 @@
     import type ShellNoticesComponent from './ShellNotices.svelte'
     import type ShellFloatingButtonsComponent from './ShellFloatingButtons.svelte'
     import type ShellMessageListComponent from './ShellMessageList.svelte'
+    import type SwitchFrameComponent from './SwitchFrame.svelte'
+    import type { SwitchTargetState } from '../../ts/chatShell/switchTarget.svelte'
     import type ActionSheetComponent from './ActionSheet.svelte'
     import type CustomizeButtonsSheetComponent from './CustomizeButtonsSheet.svelte'
     import type { ActionRequest, CustomizeRequest } from './ShellMessage.svelte'
@@ -46,6 +48,9 @@
     let ShellNotices: typeof ShellNoticesComponent | null = $state(null)
     let ShellFloatingButtons: typeof ShellFloatingButtonsComponent | null = $state(null)
     let ShellMessageList: typeof ShellMessageListComponent | null = $state(null)
+    // The switch frame and the pending-switch state load after the shell is up; neither holds the first paint back.
+    let SwitchFrame: typeof SwitchFrameComponent | null = $state(null)
+    let switchState: SwitchTargetState | null = $state.raw(null)
     let ActionSheet: typeof ActionSheetComponent | null = $state(null)
     let CustomizeButtonsSheet: typeof CustomizeButtonsSheetComponent | null = $state(null)
     let composerActions: typeof import('../../ts/process/composerActions.svelte') | null = null
@@ -66,6 +71,19 @@
     let busy = $state(false)
 
     let character = $derived(DBState.db.characters[selIdState.selId])
+    // While a switch is pending or failed the header names the character being switched to; the chat shown stays unchanged underneath.
+    let switchPending = $derived(!!switchState && switchState.phase !== 'idle')
+    let headerName = $derived(switchPending ? switchState?.target?.name ?? '' : character?.name ?? '')
+    let shownChat = $derived(character?.chats?.[character.chatPage])
+    let shownChatName = $derived(shownChat?.name ?? '')
+    let headerChatName = $derived(switchPending ? '' : shownChatName)
+    // The title and the announcement follow the chat shown; the base title returns when the shell goes away.
+    const baseTitle = typeof document !== 'undefined' ? document.title : ''
+    let announcement = $state('')
+    let fade = $state<'a' | 'b' | undefined>(undefined)
+    // Plain variables on purpose: the effect below must depend on the shown chat only.
+    let announcedFrom: { chat: Chat | undefined } | null = null
+    let fadeFlip = false
     let headerHidden = $state(false)
     let hardwareKeyboardSeen = $state(false)
     // The header hides while the soft keyboard is open; the scroll rule (headerHidden) keeps its own state underneath, so
@@ -116,6 +134,30 @@
     })
 
     $effect(() => {
+        const name = shownChatName
+        document.title = name ? (baseTitle ? `${name} · ${baseTitle}` : name) : baseTitle
+        return () => { document.title = baseTitle }
+    })
+
+    // A shown-chat change after mount is announced and fades the transcript in; the first run only records the chat.
+    $effect(() => {
+        const chat = shownChat
+        const previous = announcedFrom
+        announcedFrom = { chat }
+        if (!previous || previous.chat === chat || !chat) return
+        announcement = language.chatShellChatOpened(chat.name ?? '')
+        fadeFlip = !fadeFlip
+        fade = fadeAllowed() ? (fadeFlip ? 'a' : 'b') : undefined
+    })
+
+    // The fade is an animation: reduced motion (the OS setting or the app's `rm` class) and low power switch it off, so the attribute that starts it is never set.
+    function fadeAllowed(): boolean {
+        const root = document.documentElement
+        if (root.classList.contains('rm') || root.classList.contains('nexus-low-power') || root.hasAttribute('data-low-power')) return false
+        return !(typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+    }
+
+    $effect(() => {
         if (!surface) return
         surfaceHidden = surface.hidden
         const epoch = surface.closeEpoch
@@ -161,6 +203,11 @@
             ThisChatSheet = sheetModule.default
             ChatDeleteConfirm = confirmModule.default
         }).catch((error) => console.error('The This-chat sheet did not load:', error))
+        void Promise.all([import('./SwitchFrame.svelte'), import('../../ts/chatShell/switchTarget.svelte')]).then(([frameModule, targetModule]) => {
+            if (!live) return
+            switchState = targetModule.switchTarget
+            SwitchFrame = frameModule.default
+        }).catch((error) => console.error('The switch frame did not load:', error))
         void import('./TogglesPanel.svelte').then((panelModule) => {
             if (!live) return
             togglesModule = panelModule
@@ -380,14 +427,16 @@
 
 <div bind:this={shell} class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" data-header-concealed={headerConcealed ? '' : undefined} style={customStyle}>
     <div bind:this={header} data-part="chat-header-host">
-        {#if ShellHeader}<ShellHeader name={character?.name ?? ''} hidden={headerHiddenNow} {hardwareKeyboardSeen} onthischat={openThisChat} onconcealed={(concealed) => headerConcealed = concealed} />{/if}
+        {#if ShellHeader}<ShellHeader name={headerName} chatName={headerChatName} hidden={headerHiddenNow} {hardwareKeyboardSeen} onthischat={openThisChat} onconcealed={(concealed) => headerConcealed = concealed} />{/if}
     </div>
-    <main bind:this={list} data-part="chat-transcript" tabindex="-1" aria-label={language.chatShellMessages} onscroll={scroll}>
+    <main bind:this={list} data-part="chat-transcript" tabindex="-1" aria-label={language.chatShellMessages} data-fade={fade} inert={switchPending ? true : undefined} onscroll={scroll}>
         {#if ShellNotices && character?.type === 'character'}<ShellNotices />{/if}
         {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom {readerIntent} {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
     </main>
+    {#if SwitchFrame}<SwitchFrame transcript={list} />{/if}
+    <div data-part="chat-announcer" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
     {#if ShellFloatingButtons}<ShellFloatingButtons visible={unread && !atBottom} onclick={() => messageList?.scrollToLatestMessage?.()} />{/if}
-    <div bind:this={composer} data-part="chat-composer-host">
+    <div bind:this={composer} data-part="chat-composer-host" inert={switchPending ? true : undefined}>
         {#if SendFailureCard && sendFailure}<SendFailureCard failure={sendFailure} onfix={fixSendFailure} onretry={retryShownSendFailure} />{/if}
         {#if ShellComposer}<ShellComposer onplus={openPlus} onpersona={openPersona} bind:stickersOpen onhardwarechange={(seen) => { hardwareKeyboardSeen = seen; if (seen) headerHidden = false }} />{/if}
     </div>
@@ -406,4 +455,9 @@
     [data-part="chat-header-host"] { position: absolute; inset: 0 0 auto 0; z-index: 1; pointer-events: none; }
     [data-part="chat-transcript"] { flex: 1; min-height: 0; overflow-y: auto; padding-top: var(--header-height); scroll-padding-top: var(--header-height); }
     [data-part="chat-shell"][data-header-concealed] [data-part="chat-transcript"] { scroll-padding-top: 0; }
+    [data-part="chat-announcer"] { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+    [data-part="chat-transcript"][data-fade="a"] { animation: chat-switch-fade-a var(--chat-dur-fast) var(--chat-ease-out); }
+    [data-part="chat-transcript"][data-fade="b"] { animation: chat-switch-fade-b var(--chat-dur-fast) var(--chat-ease-out); }
+    @keyframes chat-switch-fade-a { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes chat-switch-fade-b { from { opacity: 0; } to { opacity: 1; } }
 </style>

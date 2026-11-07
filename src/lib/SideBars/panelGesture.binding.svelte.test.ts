@@ -54,6 +54,7 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
 
 vi.mock('./SidebarRail.svelte', () => ({ default: () => {} }))
+vi.mock('../ChatShell/sidebar/ShellSidebar.svelte', () => ({ default: () => {} }))
 vi.mock('./CharConfig.svelte', () => ({ default: () => {} }))
 vi.mock('./DevTool.svelte', () => ({ default: () => {} }))
 vi.mock('./SideChatList.svelte', () => ({ default: () => {} }))

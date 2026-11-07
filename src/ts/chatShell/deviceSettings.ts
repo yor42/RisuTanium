@@ -19,3 +19,25 @@ export function writeEnterMode(mode: EnterMode): void {
         // The current session can continue when device storage is unavailable.
     }
 }
+
+export type ChatSort = 'recent' | 'manual'
+
+const CHAT_SORT_KEY = 'risuChatShell.chatSort'
+
+/** The chat-list order this device uses. An absent, unknown or unreadable value reads as 'recent' and is never rewritten. */
+export function readChatSort(): ChatSort {
+    try {
+        const stored = localStorage.getItem(CHAT_SORT_KEY)
+        return stored === 'recent' || stored === 'manual' ? stored : 'recent'
+    } catch {
+        return 'recent'
+    }
+}
+
+export function writeChatSort(sort: ChatSort): void {
+    try {
+        localStorage.setItem(CHAT_SORT_KEY, sort)
+    } catch {
+        // The current session can continue when device storage is unavailable.
+    }
+}

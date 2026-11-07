@@ -52,6 +52,7 @@ vi.mock('../../ts/caughtErrors', () => ({ recordCaughtError: vi.fn() }))
 vi.mock('../../ts/characters', () => ({ exportChat: vi.fn(), removeChatConfirmed: vi.fn(async () => false) }))
 const languageMock = vi.hoisted(() => {
     const fns: Record<string, unknown> = {
+        chatShellChatOpened: (chat: string) => ('Opened ' + chat),
         chatShellChatStats: (n: number, time: string) => `stats:${n}:${time}`,
         chatShellDeleteChatConfirm: (name: string, n: number) => `confirm:${name}:${n}`,
         asPersona: (name: string) => `as ${name}`,

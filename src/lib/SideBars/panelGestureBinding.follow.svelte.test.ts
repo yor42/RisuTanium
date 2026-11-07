@@ -61,6 +61,7 @@ vi.mock('./DevTool.svelte', () => ({ default: () => {} }))
 vi.mock('./SideChatList.svelte', () => ({ default: () => {} }))
 vi.mock('../Others/QuickSettingsGUI.svelte', () => ({ default: () => {} }))
 vi.mock('../Others/PluginDefinedIcon.svelte', () => ({ default: () => {} }))
+vi.mock('../ChatShell/sidebar/ShellSidebar.svelte', () => ({ default: () => {} }))
 
 import { DBState, DynamicGUI, sideBarClosing, sideBarStore } from '../../ts/stores.svelte'
 import * as shellSwitchModule from '../../ts/chatShell/shellSwitch.svelte'

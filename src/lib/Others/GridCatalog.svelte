@@ -40,6 +40,8 @@
     import { tileKeyAt, type GridGeometry } from "./gridTarget";
     import { registerBackHandler } from "../../ts/backHandlers";
     import { pageCovered } from "../../ts/alertPrompts";
+    import { shellEligible } from "../../ts/chatShell/shellSwitch.svelte";
+    import { refuseSwitchWhileWriting, switchCharacter } from "../../ts/chatShell/switchTarget.svelte";
     import { recordCaughtError } from "../../ts/caughtErrors";
     interface Props {
         endGrid?: any;
@@ -149,7 +151,18 @@
     }
     // Picking an entry opens the character and leaves the screen, as the
     // simple list does.
+    // In the new shell the switch is quiet and a failed restore ends in the chat frame; a reply being
+    // written refuses it, and the grid stays open so the notice is read where the tap was.
     function pick(index: number) {
+        if (shellEligible()) {
+            if (refuseSwitchWhileWriting()) {
+                return
+            }
+            const entry = DBState.db.characters[index]
+            endGrid()
+            void switchCharacter(entry)
+            return
+        }
         changeChar(index)
         endGrid()
     }
@@ -1616,7 +1629,7 @@
             </div>
         {:else if selected === 3}
             <div class="flex-1 min-h-0 flex flex-col">
-                <MobileCharacters endGrid={endGrid} hideTrash={true} results={found} />
+                <MobileCharacters endGrid={endGrid} hideTrash={true} results={found} onpick={pick} />
             </div>
         {/if}
     </div>

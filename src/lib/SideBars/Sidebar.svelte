@@ -41,6 +41,9 @@
     import { panelFollowView, panelGestureAttachment } from "./panelGestureBinding";
     import { followPanelWidth, WIDE_LAYOUT_MIN_PX } from "./panelGesture";
     import { shellEligible } from "../../ts/chatShell/shellSwitch.svelte";
+    import { takeOverlayReturnFocus } from "../../ts/chatShell/overlayFocus";
+    import { hasOpenShell } from "../Nexus/pattern/patternFocus";
+    import ShellSidebar from "../ChatShell/sidebar/ShellSidebar.svelte";
   let sideBarMode = $state(0);
   let editMode = $state(false);
   let menuMode = $state(0);
@@ -63,14 +66,29 @@
 
   sideBarClosing.set(false)
 
+  // Shell mode: the new chat shell is the active surface, so the panel holds the shell sidebar and
+  // there is no rail. Its overlay layouts (the window flag) are modal; the docked layout is not.
+  // With the shell not eligible none of this applies and the sidebar is the old one.
+  const WIDE_OVERLAY_PX = 360;
+  const DOCKED_PX = 280;
   // Follow-the-finger overlay: only in the narrow overlay layout while the new chat shell is the
   // active surface. Everywhere else the panel keeps its width keyframes and the old behaviour.
-  const RAIL_WIDTH_PX = 80;
   const FOLLOW_EASE = 'cubic-bezier(0.2, 0, 0, 1)';
   let viewportWidth = $state(window.innerWidth);
   let panelEl: HTMLDivElement | undefined = $state();
-  const followMode = $derived($DynamicGUI && viewportWidth < WIDE_LAYOUT_MIN_PX && shellEligible());
-  const followModal = $derived(followMode && $sideBarStore && !hidden);
+  const shellMode = $derived(shellEligible());
+  const shellOverlay = $derived(shellMode && $DynamicGUI);
+  const shellDocked = $derived(shellMode && !$DynamicGUI);
+  const followMode = $derived(shellOverlay && viewportWidth < WIDE_LAYOUT_MIN_PX);
+  const overlayModal = $derived(shellOverlay && $sideBarStore && !hidden);
+
+  // A resize that mounts this overlay while a sheet or panel is open must not open the sidebar
+  // over it: a second modal would take focus from the sheet and inert its host. It mounts closed.
+  // The layout at mount is exactly what decides this, so the one-time read is intended.
+  // svelte-ignore state_referenced_locally
+  if (shellOverlay && $sideBarStore && hasOpenShell()) {
+    sideBarStore.set(false);
+  }
   const followDriven = $derived(followMode && $panelFollowView.phase !== 'idle');
   const followEnter = $derived(followMode && !$sideBarClosing && !followDriven && !$panelFollowView.entered);
   const followExit = $derived(followMode && $sideBarClosing && !followDriven);
@@ -90,9 +108,13 @@
   const railStyle = $derived(followDriven ? `${followTransform()} ${followTransition()} animation: none;` : undefined);
   const panelStyle = $derived(
     followMode
-      ? `width: ${Math.max(followWidth - RAIL_WIDTH_PX, 0)}px; min-width: 0;` +
+      ? `width: ${followWidth}px; min-width: 0;` +
           (followDriven ? ` ${followTransform()} ${followTransition()} animation: none;` : '')
-      : undefined,
+      : shellOverlay
+        ? `--sidebar-size: ${WIDE_OVERLAY_PX}px; width: ${WIDE_OVERLAY_PX}px; min-width: 0;`
+        : shellDocked
+          ? `--sidebar-size: ${DOCKED_PX}px; width: ${DOCKED_PX}px; min-width: ${DOCKED_PX}px;`
+          : undefined,
   );
   const backdropStyle = $derived(
     followMode
@@ -114,7 +136,7 @@
   }
 
   function onWindowKeydown(e: KeyboardEvent) {
-    if (followModal && e.key === 'Escape' && !e.defaultPrevented) {
+    if (overlayModal && e.key === 'Escape' && !e.defaultPrevented) {
       e.preventDefault();
       closeFollowPanel();
     }
@@ -122,18 +144,20 @@
 
   function onWindowMouseup(e: MouseEvent) {
     // The mouse's back button (button 3) closes the modal panel like Esc.
-    if (followModal && e.button === 3) {
+    if (overlayModal && e.button === 3) {
       e.preventDefault();
       closeFollowPanel();
     }
   }
 
   // While the panel is a modal overlay the rest of the page is inert, focus moves into the
-  // panel, and it returns to the opener when the modal ends.
+  // panel, and it returns when the modal ends: to the element a keyboard switch named, else the opener.
   $effect(() => {
-    if (!followModal || !panelEl) {
+    if (!overlayModal || !panelEl) {
       return;
     }
+    // A name left from an earlier overlay does not apply to this one.
+    takeOverlayReturnFocus();
     const panel = panelEl;
     const active = document.activeElement;
     const opener = active instanceof HTMLElement && active !== document.body ? active : null;
@@ -150,6 +174,13 @@
       for (const element of inerted) {
         element.removeAttribute('inert');
       }
+      const named = takeOverlayReturnFocus()?.() ?? null;
+      if (named?.isConnected && !named.closest('[inert]')) {
+        named.focus();
+        if (document.activeElement === named) {
+          return;
+        }
+      }
       if (opener?.isConnected) {
         opener.focus();
       }
@@ -157,7 +188,9 @@
   });
 </script>
 <svelte:window bind:innerWidth={viewportWidth} onkeydown={onWindowKeydown} onmouseup={onWindowMouseup} />
-{#if DBState.db.menuSideBar}
+{#if shellMode}
+<!-- No rail in shell mode: the panel below holds the shell sidebar. -->
+{:else if DBState.db.menuSideBar}
 <div
   data-rail-root
   class="h-full w-20 min-w-20 flex-col items-center bg-bgcolor text-textcolor shadow-lg relative rs-sidebar"
@@ -380,23 +413,23 @@
 <div
   data-panel-surface
   bind:this={panelEl}
-  role={followModal ? 'dialog' : undefined}
-  aria-label={followModal ? language.chatShellSidebar : undefined}
-  tabindex={followModal ? -1 : undefined}
+  role={overlayModal ? 'dialog' : undefined}
+  aria-label={overlayModal ? language.chatShellSidebar : undefined}
+  tabindex={overlayModal ? -1 : undefined}
   style={panelStyle}
   class="setting-area h-full flex-col overflow-y-auto overflow-x-hidden bg-darkbg py-6 text-textcolor max-h-full"
   class:follow-in={followEnter}
   class:follow-out={followExit}
   class:risu-sidebar={!$sideBarClosing && !followMode}
-  class:w-96={$sideBarSize === 0}
-  class:w-110={$sideBarSize === 1}
-  class:w-124={$sideBarSize === 2}
-  class:w-138={$sideBarSize === 3}
+  class:w-96={!shellMode && $sideBarSize === 0}
+  class:w-110={!shellMode && $sideBarSize === 1}
+  class:w-124={!shellMode && $sideBarSize === 2}
+  class:w-138={!shellMode && $sideBarSize === 3}
   class:risu-sidebar-close={$sideBarClosing && !followMode}
-  class:min-w-96={!$DynamicGUI && $sideBarSize === 0}
-  class:min-w-110={!$DynamicGUI && $sideBarSize === 1}
-  class:min-w-124={!$DynamicGUI && $sideBarSize === 2}
-  class:min-w-138={!$DynamicGUI && $sideBarSize === 3}
+  class:min-w-96={!shellMode && !$DynamicGUI && $sideBarSize === 0}
+  class:min-w-110={!shellMode && !$DynamicGUI && $sideBarSize === 1}
+  class:min-w-124={!shellMode && !$DynamicGUI && $sideBarSize === 2}
+  class:min-w-138={!shellMode && !$DynamicGUI && $sideBarSize === 3}
   class:px-2={$DynamicGUI}
   class:px-4={!$DynamicGUI}
   class:dynamic-sidebar={$DynamicGUI}
@@ -409,6 +442,7 @@
     }
   }}
 >
+  {#if !shellDocked}
   <!-- Where SideBarArrow draws its close handle (wide desktop), the X is hidden but keeps its space so the layout below does not move. -->
   <button
     class="relative z-10 flex self-end text-textcolor hover:text-textcolor2"
@@ -424,7 +458,10 @@
   >
     <XIcon size={18} />
   </button>
-  {#if sideBarMode === 0}
+  {/if}
+  {#if shellMode}
+    <ShellSidebar {openGrid} {reseter} />
+  {:else if sideBarMode === 0}
     {#if $selectedCharID < 0 || $settingsOpen}
       <div>
         <h1 class="text-xl">{language.sidebarWelcome}</h1>
