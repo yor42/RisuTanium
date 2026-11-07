@@ -1278,7 +1278,9 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     await ensureGestureForWriter(session)
     const writer = new LocalWriter()
     session.writer = writer
-    const r = await writer.init(undefined, undefined, localBackupFileName(new Date(), true), session.cancel)
+    // Computed once: the name reported in the outcome is the one the writer was asked for, also across midnight.
+    const suggestedName = localBackupFileName(new Date(), true)
+    const r = await writer.init(undefined, undefined, suggestedName, session.cancel)
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
@@ -1395,10 +1397,10 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         }
         message += `\n\n${language.partialBackupInlaysNotIncluded}`
         alertMd(message)
-        return { status: 'saved', notices: [message], omitted, inlays: null }
+        return { status: 'saved', notices: [message], omitted, inlays: null, suggestedName }
     }
     alertNormal(`${downloadNotice('Success')}\n\n${language.partialBackupInlaysNotIncluded}`)
-    return { status: 'saved', notices: [], omitted, inlays: null }
+    return { status: 'saved', notices: [], omitted, inlays: null, suggestedName }
 }
 
 /** Re-exported so every existing importer keeps working; the constant and its rationale live in `restoreLock.ts`. */

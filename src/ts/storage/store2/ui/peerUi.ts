@@ -28,6 +28,9 @@ import type { SaveFailureClass } from '../saveFailure'
  *  - 'export-first' is shown only when the page can export; without the seam an unsaved tab has Reload (and Save mine
  *    where it is offered).
  *  - Technical text of a failed save goes to the alert's sub-message, never into the sentence the person reads.
+ *  - The Node wording names a restore route only when a file exists or the export button is shown, names a file only
+ *    after a saved automatic export, and never says an automatic export is saved: the stream closing is not a finished
+ *    download.
  *  - Nothing here sets the language: a parked page already runs in the database's language.
  */
 
@@ -39,7 +42,7 @@ import type { SaveFailureClass } from '../saveFailure'
  * writer's closable notice saying so is already on screen, which `decide` waits out before it asks.
  */
 export type PeerExportResult =
-    | { status: 'saved', notices: string[] }
+    | { status: 'saved', notices: string[], suggestedName?: string }
     | { status: 'declined' | 'failed' }
 
 export interface PeerUiOptions {
@@ -128,17 +131,30 @@ function blockedText(blocked: PeerParkPrompt['blocked']): string {
 }
 
 /** `exportShown`: whether 'Export this tab first' is among the buttons, so the wording never names a button that is not there. */
-function titleOf(prompt: PeerParkPrompt, exportShown: boolean): string {
+function titleOf(prompt: PeerParkPrompt, exportShown: boolean, fileName: string | null): string {
     const text = language.store2Boot
     const title = prompt.reason === 'replaced' ? text.peerReplacedTitle : text.peerCommitTitle
     switch (prompt.saveMineUnavailable) {
         case 'node': {
             const base = `${title} ${text.peerNoSaveNode} ${exportShown ? text.peerNodeReloadDrops : text.peerNodeReloadDropsOnly}`
+            let node = base
             switch (prompt.autoExport) {
-                case 'saved': return `${base} ${text.peerAutoExportSaved}`
-                case 'not-finished': return `${base} ${text.peerAutoExportNotFinished}`
-                case undefined: return base
+                case 'saved':
+                    node = `${base} ${text.peerAutoExportSaved}`
+                    if (fileName !== null) {
+                        node = `${node} ${text.peerAutoExportFileName.replace('{name}', () => fileName)}`
+                    }
+                    break
+                case 'not-finished':
+                    node = `${base} ${text.peerAutoExportNotFinished}`
+                    break
+                case undefined:
+                    break
             }
+            if (exportShown || prompt.autoExport === 'saved') {
+                node = `${node} ${text.peerRestoreFromBin.replace('{page}', () => language.backupAndFiles).replace('{button}', () => language.loadBackupLocal)}`
+            }
+            return node
         }
         case 'replaced': return `${title} ${text.peerNoSaveReplaced}`
         case 'carries': return `${title} ${blockedText(prompt.blocked)}`
@@ -157,11 +173,13 @@ function labelOf(offer: PeerOffer): string {
 
 export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
     const exportAvailable = options.exportAvailable ?? false
+    /** The name the last automatic export offered the browser; shown only with a saved automatic export. */
+    let autoExportName: string | null = null
 
     async function decide(prompt: PeerParkPrompt): Promise<PeerOffer> {
         await untilClear()
         const displayed = prompt.offers.filter((offer) => offer !== 'export-first' || exportAvailable)
-        const index = await alertSelect(displayed.map(labelOf), titleOf(prompt, displayed.includes('export-first')))
+        const index = await alertSelect(displayed.map(labelOf), titleOf(prompt, displayed.includes('export-first'), autoExportName))
         return displayed[Number(index)] ?? 'reload'
     }
 
@@ -246,7 +264,12 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         if (options.exportThisTab === undefined) {
             throw new Error('The export is not available in this build.')
         }
-        return (await options.exportThisTab(manifestKey)).status
+        autoExportName = null
+        const result = await options.exportThisTab(manifestKey)
+        if (result.status === 'saved' && result.suggestedName !== undefined) {
+            autoExportName = cleanNames([result.suggestedName])[0] ?? null
+        }
+        return result.status
     }
 
     /**

@@ -144,9 +144,11 @@ export interface ExportFacts {
  * it ran is `declined` with cause `export-cancelled`, which also carries the file state: `kept` when a download stream
  * had opened, so the browser may hold an incomplete file and the person was told so; `untouched` otherwise.
  * `failed`: the export threw; the person was told, `cause` is what was thrown and `file` what became of the file.
+ * `suggestedName`, when present on `saved`, is the name the export asked the writer for; the browser or the save
+ * dialog may store the file under another one.
  */
 export type ExportOutcome =
-    | { status: 'saved', notices: string[], omitted: ExportOmitted, inlays: InlayExportResult | null }
+    | { status: 'saved', notices: string[], omitted: ExportOmitted, inlays: InlayExportResult | null, suggestedName?: string }
     | { status: 'declined', cause: Exclude<ExportDeclinedCause, 'export-cancelled'> }
     | { status: 'declined', cause: 'export-cancelled', file: 'untouched' | 'kept' }
     | { status: 'failed', cause: unknown, file: ExportFile }
