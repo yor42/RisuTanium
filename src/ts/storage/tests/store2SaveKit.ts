@@ -12,7 +12,7 @@ import {
 import { assembleDatabase, encodeDatabase, previousFrom, type EncodedTree, type ListDerivation } from 'src/ts/storage/store2/codec'
 import { createCommitter, IMPORT_REPLACES_BASE, type Committer } from 'src/ts/storage/store2/commit'
 import { classifyCommitRead, firstCommitKey } from 'src/ts/storage/store2/commitKey'
-import { freshOwnerId } from 'src/ts/storage/store2/owner'
+import { freshOwnerId, type Staging } from 'src/ts/storage/store2/owner'
 import { createResidency, type Residency } from 'src/ts/storage/store2/residency'
 import { previousOfTree } from 'src/ts/storage/store2/previousOfTree'
 import { createSaveEncoder, type SaveEncoder } from 'src/ts/storage/store2/saveEncoder'
@@ -21,6 +21,7 @@ import {
     encodeUnit, readUnit, UNIT_TYPE, type CommitKey, type KeyEnv, type Manifest,
 } from 'src/ts/storage/store2/format'
 import type { Store2SaveContext } from 'src/ts/storage/store2/saveActive'
+import type { MarkerOwnerProbe } from 'src/ts/storage/store2/abandonedMarker'
 import type { IdleNetOptions, PeerLiveState, PeerOffer, PeerParkPrompt, Store2PeerHandler } from 'src/ts/storage/store2/saveLoop'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { AppStoreKind } from 'src/ts/storage/store/appStore'
@@ -221,6 +222,14 @@ export interface PeerDouble extends Store2PeerHandler {
     notSaved: Array<{ moduleId: string, moduleName: string }>
     /** The `requestReload` each `parkedClean` call was given, in call order. */
     requests: Array<() => Promise<'clean' | 'dirty' | 'moved'>>
+    /** Each foreign-marker question, in call order. */
+    foreignAsked: Staging[]
+    /** The answers to the foreign-marker questions, shifted when the call is made; an empty queue answers 'wait'. An `Error` entry rejects the call after the hold. */
+    foreignAnswers: Array<'wait' | 'clear' | Error>
+    /** While set, the foreign-marker question waits for it, as the real one waits for the person. */
+    foreignHold: Promise<void> | null
+    /** Called synchronously inside each foreign-marker question, before anything is awaited. */
+    onForeignAsk?: (marker: Staging) => void
     /** Mirrors the real prompt's Reload press: the live read, the loop's check, the live read again, then the reload. */
     pressReload(index?: number): Promise<void>
 }
@@ -246,6 +255,21 @@ export function createPeerDouble(answer: PeerOffer = 'reload'): PeerDouble {
         editedStillBlocked: [],
         notSaved: [],
         requests: [],
+        foreignAsked: [],
+        foreignAnswers: [],
+        foreignHold: null,
+        async foreignMarker(marker) {
+            double.foreignAsked.push(marker)
+            const answer = double.foreignAnswers.shift() ?? 'wait'
+            double.onForeignAsk?.(marker)
+            if (double.foreignHold !== null) {
+                await double.foreignHold
+            }
+            if (answer instanceof Error) {
+                throw answer
+            }
+            return answer
+        },
         async pressReload(index = 0) {
             const live = double.live[index]
             const before = live()
@@ -498,6 +522,8 @@ export interface DispatchedBoot {
     result: Store2BootResult
     notices: Store2BootNotice[]
     peer: PeerDouble
+    /** How many times the boot UI's foreign-marker question was asked. */
+    foreignMarkerAsked: number
 }
 
 /**
@@ -506,11 +532,12 @@ export interface DispatchedBoot {
  * raises. The dispatch loads in the caller's own module graph on first use. Backups, the main file and the legacy cold
  * units are all absent. Mocked storage here says nothing about a native backend.
  */
-export async function bootThroughDispatch(backend: Store2Backend, options: { lists?: ListDerivation, env?: KeyEnv, kind?: AppStoreKind, flagged?: 'continue' | 'decline' } = {}): Promise<DispatchedBoot> {
+export async function bootThroughDispatch(backend: Store2Backend, options: { lists?: ListDerivation, env?: KeyEnv, kind?: AppStoreKind, flagged?: 'continue' | 'decline', markerOwnerProbe?: (kind: AppStoreKind) => MarkerOwnerProbe | null, maxRounds?: number } = {}): Promise<DispatchedBoot> {
     const { dispatchStore2Boot } = await import('src/ts/storage/store2/bootDispatch')
     const { createMemoryByteStore } = await import('src/ts/process/files/tests/memoryByteStore')
     const notices: Store2BootNotice[] = []
     const peer = createPeerDouble()
+    let foreignMarkerAsked = 0
     const ui: Store2BootUi = {
         notice: (notice) => { notices.push(notice) },
         blocked: async () => { },
@@ -521,7 +548,10 @@ export async function bootThroughDispatch(backend: Store2Backend, options: { lis
         confirmFromBackup: async () => 'decline',
         confirmIncomplete: async () => false,
         confirmFlaggedOpen: async () => options.flagged ?? 'decline',
-        foreignMarker: async () => 'wait',
+        foreignMarker: async () => {
+            foreignMarkerAsked += 1
+            return 'wait'
+        },
         recovery: async () => { },
         peer,
     }
@@ -530,6 +560,6 @@ export async function bootThroughDispatch(backend: Store2Backend, options: { lis
         upstreamMainFile: async () => false,
         readColdStorageItem: async () => ({ status: 'missing' }),
         listBackupTimes: async () => [],
-    }, { ui, kind: options.kind ?? 'indexeddb', backend: async () => backend, keyEnv: options.env, lists: options.lists ?? fakeLists })
-    return { result, notices, peer }
+    }, { ui, kind: options.kind ?? 'indexeddb', backend: async () => backend, keyEnv: options.env, lists: options.lists ?? fakeLists, markerOwnerProbe: options.markerOwnerProbe, maxRounds: options.maxRounds })
+    return { result, notices, peer, foreignMarkerAsked }
 }

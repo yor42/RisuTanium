@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, test, vi } from 'vitest'
+import type { AppStoreKind } from './ts/storage/store/appStore'
+import type { MarkerOwnerProbe } from './ts/storage/store2/abandonedMarker'
 
 /**
  * `src/main.ts` registers the store2 boot dispatch before it starts the boot. The test imports the real entry module
@@ -21,6 +23,7 @@ const seen = vi.hoisted(() => ({
 vi.mock('./ts/polyfill', () => ({}))
 vi.mock('core-js/actual', () => ({}))
 vi.mock('./ts/storage/database.svelte', () => ({}))
+vi.mock('./ts/globalApi.svelte', () => ({ holdsOwnTabPresence: () => true }))
 vi.mock('./App.svelte', () => ({ default: {} }))
 vi.mock('./ts/bootstrap', () => ({
     loadData: () => {
@@ -75,7 +78,25 @@ describe('new behaviour: the entry module registers the store2 boot', () => {
         const result = await boot?.(env as unknown as Parameters<NonNullable<typeof boot>>[0])
         expect(result).toEqual({ kind: 'stopped' })
         expect(seen.dispatch).toHaveBeenCalledTimes(1)
-        expect(seen.dispatch).toHaveBeenCalledWith(env, { ui: seen.ui, importBackup: expect.any(Function) })
+        expect(seen.dispatch).toHaveBeenCalledWith(env, {
+            ui: seen.ui,
+            markerOwnerProbe: expect.any(Function),
+            importBackup: expect.any(Function),
+        })
+    })
+
+    test('new behaviour: the marker-owner probe maps each host kind, and a page without navigator.locks gets no proof instead of a throw', async () => {
+        const active = await loadEntry()
+        await active.getStore2Boot()?.({} as unknown as Parameters<NonNullable<ReturnType<typeof active.getStore2Boot>>>[0])
+        const deps = seen.dispatch.mock.calls[0][1] as { markerOwnerProbe: (kind: AppStoreKind) => MarkerOwnerProbe | null }
+        const marker = { owner: 'other-page', prefix: 'bulk-prefix', startedAt: 1, label: 'bulk' } as Parameters<MarkerOwnerProbe>[0]
+        expect(navigator.locks).toBeUndefined()
+        expect(deps.markerOwnerProbe('tauri')).toBeNull()
+        expect(deps.markerOwnerProbe('opfs-transitional')).toBeNull()
+        const web = deps.markerOwnerProbe('indexeddb')
+        expect(web).not.toBeNull()
+        expect(await web?.(marker)).toBe('unknown')
+        expect(await deps.markerOwnerProbe('node')?.(marker)).toBe('unknown')
     })
 
     test('new behaviour: the dispatch is given the .bin file flow, which loads the backup code only when an import runs and hands it the target', async () => {

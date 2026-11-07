@@ -114,6 +114,12 @@ export interface StorageTabLocks {
      */
     locksSupported: boolean
     /**
+     * Whether this tab holds its own shared presence lock right now. False without Web Locks, after the presence
+     * request was rejected, and while an exclusive attempt has released the hold. A tab that does not hold it cannot
+     * read a lock snapshot as proof about other tabs.
+     */
+    holdsOwnPresence(): boolean
+    /**
      * Attempts to acquire the same lock in EXCLUSIVE mode, for a storage-backend
      * migration. Resolves to a release function once granted, or
      * `null` if it couldn't be granted within `timeoutMs`
@@ -445,6 +451,7 @@ export function createStorageTabLocks(locks: LockManager | undefined, writeLock:
     return {
         tabPresenceLockAcquired,
         locksSupported: locks !== undefined,
+        holdsOwnPresence: () => releaseOwnSharedPresenceLock !== null,
         acquireExclusiveStorageMigrationLock,
         recordStorageEpoch() {
             try {

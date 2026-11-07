@@ -1432,6 +1432,9 @@ export const tabPresenceLockAcquired: Promise<void> = storageTabLocks.tabPresenc
  */
 export const locksSupported = storageTabLocks.locksSupported
 
+/** Whether this tab holds its own shared presence lock right now; see `storageTabLocks.ts`'s `holdsOwnPresence`. */
+export const holdsOwnTabPresence = storageTabLocks.holdsOwnPresence
+
 /**
  * Attempts to acquire the storage tab lock in EXCLUSIVE mode, for a
  * storage-backend migration. See `storageTabLocks.ts`'s
