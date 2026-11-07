@@ -19013,6 +19013,7 @@ Both phones were handed back to lane A on 2026-10-28 (phone 2 after item 9d, pho
   - `MC-516` item 1 ("the UI overhaul starts once the save and data-loss tickets and CHORE-205's memory work are done") and its note "Nothing here authorizes UI application code" stand for everything except the additive S0 above. This entry is the amendment record.
   - Per the handoff, the design snapshot is `19834f4` in the old repository (902 new files and 4 modified, about 75 MB; the engine copy left untracked), and the curated import was committed to `main` as `2b6a28822` (227 files under `docs/design`, list `ui-audit\import\paths.txt`). The handoff lists follow-ups, not yet done: a `DESIGN_PHILOSOPHY.md:76` correction and a `docs/design/README.md` state page (doc-writer then doc-verifier), and an old-repository tag `design-parked-2026-10-28` that needs the maintainer's OK because it is their repository.
   - Nothing here authorizes UI application code, a commit or a push.
+- Amended 2026-11-07 by MC-1115: decision 1's clauses "UI work runs as gated batches in lane A's single queue" and "no separate UI session" are amended: lane A keeps the UI lead, and a fresh session may take one disjoint UI stage (UI-S3 Studio) in its own worktree. Decisions 2, 3, 4 and 5 are unchanged.
 
 ### MC-891 — Lane A, 2026-10-30: UI import open items (the validator keeps its layout and is verified, `AUDIT_RESPONSE.md` and `research/` imported, stills skipped, pattern and motion CSS imported as frozen reference)
 
@@ -22307,3 +22308,438 @@ Status: DRAFT, not accepted. Entries MC-1069 to MC-1072, to be appended after th
 - The R20 drift investigator wrote and then deleted a stray placeholder file in lane B's device folder.
 - Earlier in this session, already reported to the maintainer (short lines; details are in the session transcript, not in the packet: dates TODO(evidence)): a request reached sv.risuai.xyz during a web-build mock run; the 삭제 확인 toggle changed during a device run; a coder's PowerShell helper `Rd` alias problem; a coder's relative-path write landed in the main checkout (restored, verified identical to HEAD); stray settings taps during device runs; a vite `.vite` cache write.
 - Merge note: before the UI-S1a merge, the main checkout's `src-tauri/gen/android/app/src/main/AndroidManifest.xml` differed from HEAD only in line endings (70 CR, 81 LF). The merge brought in UI-S1a's `VIBRATE` permission; the file is now CRLF (82 of 82). Pre-merge copy: `%TEMP%\risu-b715\b58\uis1\AndroidManifest.pre-merge.xml`.
+
+### MC-1093 — Lane A, 2026-11-06: CHORE-635, CHORE-636 and CHORE-640 scope answers, and the CHORE-412 closeout
+
+- Tag: statements (the maintainer's AskUserQuestion answers, verbatim labels as logged) and results (none in this entry). Date: 2026-11-06. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1089` (the `.risum` split), `MC-1091` (CHORE-636, CHORE-637 to CHORE-639), `MC-791` (item 2, native cancel), `MC-1069`.
+
+**What the maintainer said (AskUserQuestion, labels verbatim).**
+- CHORE-636, a landing above the cap: "Newest message (Recommended)". Land at the newest message of the new branch; reuse the normal window and load-older; branches under the cap behave as today.
+- CHORE-636, cap size: "About +50, tuned on Note 9 (Recommended)". The exact number is set from a Note 9 measurement during implementation. Acceptance: the 300-row case no longer freezes; a step costs roughly 100 to 250 ms.
+- CHORE-635, native Cancel: "Cancel if any asset (Recommended)". Desktop and Android show Cancel for any `.risum` with at least one asset. A cancel leaves a partial file with the existing incomplete-file notice. Extends `MC-791` item 2.
+- CHORE-640 scope: "PC + device kit (Recommended)". The newest PC harness (`r22\r20fix\pc3`) and the observer-free device kit (`r22\r20fix\device3`) become Stage 2 under `Agents/Tools/chatshell-cdp/device/`. The adb serial and port are parameters with no default serial. Lane B runs one smoke on a spare Note 9.
+- CHORE-412 closeout: "Close at S1-S3b (Recommended)". Mark COMPLETE once its record fixes are applied. Finer granularity and engine change #14 become a new ticket only if wanted.
+
+**Results.** Not in this entry. The shipped commits are in the Roadmap section.
+
+**Not decided.** Whether the README keeps any row for CHORE-412, 414, 415 or 633: deferred to the wiki move (see `MC-1095`). Closeout answers for CHORE-413, 414, 415, 632 and 633 are not in the log: TODO(evidence).
+
+### MC-1094 — Lane A, 2026-11-06: UI-S1b sizing answers (split, data, confirmations)
+
+- Tag: statements. Date: 2026-11-06. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1086` (UI-S1 sizing), `MC-774` (fork-only data in `.bin`), `MC-091`, `MC-350`.
+
+**What the maintainer said (AskUserQuestion, labels verbatim).**
+- Split: "Three batches (Recommended)". Batch 1: This-chat sheet, toggles and engine tickets CHORE-563 to CHORE-566. Batch 2: recent-characters strip and sidebar switching. Batch 3: groups and long chats. Background generation (SLICE2 2.2) and full SLICE4 (scrubber, in-chat search, persisted anchor and height cache) become later tickets.
+- CHORE-565: "Copy; memory per branch (Recommended)". Replace-by-copy on scope switch. Chat-level memory is parked per branch, like the existing branch memory. The designer sizes the `chatTree.ts` cost first.
+- Fork data: "Leave-out table; favs local (Recommended)". CHORE-565 chat fields go into one shared per-key `.bin` leave-out table with a named warning (`MC-774`). CHORE-566 favourites stay device-local. `Message.interrupted` and `Chat.supaMemoryCoveredId` are fixed in the same stage if a synthetic-export decode confirms the gap.
+- CHORE-563 pre-send: "Block + failed card (Recommended)". Do not send, keep the draft, show the failed-reply card with a fix link (a Settings deep link to be built).
+- CHORE-563 failed state: "Session only (Recommended)". No stored data.
+- CHORE-564: "Empty = inherit (Recommended)". Keep the fall-through and document it. No stored change.
+- Groups: "Old shell for now (Recommended)". CHORE-569 and SLICE3 are deferred. Group identity data is decided when groups are planned.
+- Confirmations: "Accept all four (Recommended)". (1) Long chats mount at most 100 messages (60 under low power, which counts as off until CHORE-585). (2) Fix CHORE-168 in S1b. (3) CHORE-570 reset = off / first option / empty; may change with UI-S3 author defaults. (4) CHORE-564, 570 and 586 store nothing new in S1b; Roadmap rows corrected.
+
+**Results.** Not in this entry. Batch 1 shipped (section 3).
+
+**Not decided.** Groups (CHORE-569, SLICE3). Which Settings deep link wording is used (the S1b plan answers it: TODO(evidence)).
+
+### MC-1095 — Lane A, 2026-11-06: governance: the `/wiki/` protection lifted, the README points to the wiki, wiki tone, and the track cap
+
+- Tag: statements (the maintainer's chat messages, verbatim, and AskUserQuestion answers). Date: 2026-11-06. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-332` (differences list), `MC-1069` (parallel options), `MC-011`, `MC-027`.
+
+**What the maintainer said (verbatim).**
+- Earlier message, verbatim: "I realized that list of difference is rapidly growing, so I think it would be a better idea to move the list out of readme into the dedicated wiki page. I think small redirection to said wiki page woule be more than enough on readme." No item was selected for a README line. The README entries for CHORE-412, 414, 415 and 633 are deferred to the wiki move. Which entries go on the wiki page is not decided.
+- Chat message, verbatim: "can you update the ruleset so 'update readme' to point that wiki page instead?"
+- Chat message, verbatim: "/wiki/ protection was imposed when there was a separate dedicated session for the wiki. and since that session is retired, you may lift that restriction too."
+- Tone, chat message, verbatim: "note for both future agents and future self: readme is where the joke lives. keep wiki plain english". Earlier AskUserQuestion answer on the wiki tone: "Plain English (as drafted)".
+- Track cap, AskUserQuestion: "Raise to 4 until Sat 11:00 (Recommended)".
+
+**Results (as logged; the parent applied these edits uncommitted on 2026-11-06, and they are in commit `39b8c1512` per its body).**
+- `AGENTS.md` drops `docs/wiki/**` from the protected list. `docs/workflow/project-reference.md` says `docs/wiki` is ordinary documentation. `docs/workflow/records.md` MC-332 rule targets `docs/wiki/Changes-from-upstream.md`, and the README keeps a pointer. `.claude/agents/doc-writer.md` no longer says `docs/wiki` belongs to another session.
+- `.claude/workflow-policy.json`: `maxImplementationTracks` 2 changed to 4 (file reads `"maxImplementationTracks": 4` at r1 check time). Restore to 2 at the next handoff (the 2026-11-07 answer "Keep 4 for now" says to restore 2 at the next handoff; see MC-1098).
+
+**Not decided.** The wiki's list contents. Whether `docs/wiki` should also drop the wiki session rules in other files (TODO(evidence): not checked by the clerk).
+
+### MC-1096 — Lane A, 2026-11-06: CHORE-128 `.rtb` design pass request and the Q1 to Q8 answers
+
+- Tag: statements. Date: 2026-11-06. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-687` (archiver contract, items 1 and 5), `MC-686` (CHORE-205 L3 gate), `MC-774`, `MC-350`, `MC-175`, `MC-223`, `MC-091`.
+
+**What the maintainer said (verbatim request).** "can we launch design/sizing pass on .rtb fork only backup? I'd like to see if there is any blocker on its implementation."
+
+**Answers (AskUserQuestion, labels verbatim, after `c128\sizing-packet-r2.md`; no hard blockers).**
+- Q1, MC-686 L3 gate: "Gate met, start now (Recommended)".
+- Q2, encryption timing: "Plain first, both before release (Recommended)". The envelope is reserved in the format. Whole-file sealed encryption is lane A's design input; the archiver cannot list an encrypted file.
+- Q3, crypto dependencies: "Argon2 WASM + JS fallback (Recommended)". Argon2id WASM (e.g. hash-wasm); WebCrypto AES-GCM; pure-JS AES-GCM (e.g. @noble/ciphers) on plain HTTP. Licence and size to be checked before adding.
+- Q4, boot and recovery restore target: "Yes, in first restore release (Recommended)".
+- Q5, newer-data warning: "Backup time vs last save (Recommended)". Lineage is recorded in the file for later.
+- Q6, folder snapshots: "Keep last N, auto-prune (Recommended)". The default N is asked when the folder stage is designed.
+- Q7, export when the page cannot save: "Export saved state, notice (Recommended)". Refuse on read-only and non-store2 pages, and point to `.bin`.
+- Q8, partial restore leftovers: "Leave them, say so (Recommended)".
+
+**Results.** Section 3 (CHORE-128 row).
+
+**Not decided.** Folder mode (the first release is single file; see `MC-1100`). MC-686 gate note: CHORE-205 is COMPLETE (`MC-1083`) with S5 and J1 not built (as logged).
+
+### MC-1097 — Lane A, 2026-11-06: UI-S1b batch 1 product questions (PQ1 to PQ9, Q-EF1)
+
+- Tag: statements. Date: 2026-11-06. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1086`, `MC-1087`, `MC-091`, `MC-058`. Plan: `s1b\b1\plan-r3.md` (Gate 1 PASS at r3, all EDITORIAL), as logged.
+
+**What the maintainer said (AskUserQuestion, labels verbatim).**
+- PQ1, sidebar scope switch off: "Discard, 10 s Undo (Recommended)". Deletes the chat's own toggle values, including upstream imports and MVP data. Undo is refused with a notice if the chat changed, closed or was archived. On copies only current keys. No script state touched.
+- PQ8, sole-chat Delete in This-chat sheet: "Disabled, show reason (Recommended)".
+- PQ9, dropped note or rename write: "Show an error notice (Recommended)" (`chatShellEditNotSaved` through the existing error alert).
+- PQ3, Continue and New reply gated too: "Yes, same check (Recommended)".
+- PQ4, key-missing rows: "Listed providers only (Recommended)" (stage-D D2 rows; never block with `presetChain` or a non-blank fallback model).
+- PQ5, card placement: "Above composer, no dismiss (Recommended)".
+- PQ2, hide names: "Keep in name row (Recommended)" (cluster later with F).
+- PQ6, Q-EF1 Out list: "Defer all (Recommended)" (accepted limitations).
+- PQ7, prompt favourites: "Follow active preset (Recommended)" (prompt slot).
+
+**Orchestrator decision (not a maintainer answer).** Review split as plan-r3: adversarial review of the resolver diff; `liveCharacterWrite.ts` and `restoreChatScope` also to an opus-reviewer, named contract dirty tracking. "plan-r3 size overrun (23 KB) accepted."
+
+**Not decided.** Nothing recorded.
+
+### MC-1098 — Lane A, 2026-11-07 morning: parallel UI start, track cap, repair of shared node_modules, and the stage choices
+
+- Tag: statements (AskUserQuestion answers, labels verbatim as logged). Date: 2026-11-07 (06:35 and earlier that morning). Exact times: 06:35 for the parallel question; others UNKNOWN. Sweep ref: none. Related: `MC-1069` (parallel options), `MC-1088` (lane B), `MC-1087` (Monaco patch context), `MC-1095` (track cap).
+
+**What the maintainer said.**
+- Parallel UI work, multiSelect: "Lane B device checks", "S1b batch 2 sizing (Recommended)", "S1b batch 3 sizing", "Toggles follow-ups (code)". Each runs unasked up to Gate 2, then asks before any commit.
+- Track cap after 11:00: "Keep 4 for now" (restore 2 at the next handoff).
+- node_modules: "Repair now (Recommended)".
+- S1b batch 1: "Commit, merge, push (Recommended)" (commit `b0ccf588a`, merge `ba5ce5d9c`, pushed).
+- `.rtb` stages, as logged: "S1+S2 format libraries", "S3+S4 store2 seams". The question wording is TODO(evidence); the log lists the labels only.
+
+**Results.** Batch 1 merged to main (`ba5ce5d9c`, pushed). Commit approval for the `.rtb` stages is in `MC-1102`.
+
+**Not decided.** Nothing recorded.
+
+### MC-1099 — Lane A, 2026-11-07: CHORE-128 S1+S2 and S3+S4 plan questions; the M6 check and the Explorer tool
+
+- Tag: statements. Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1096`, `MC-687` (items 1 and 5), `MC-1100`.
+
+**What the maintainer said (AskUserQuestion, labels verbatim).**
+- Q-A (plan `s12` r2e), "Newer version": "'Newer version' (Recommended)". A damaged central directory with a readable manifest that says rtb > 1 is reported as newer through a bounded manifest probe. Limits: unreachable end records count as damaged; the walk stops at the first unparsable record; a mimetype-prefix change gives "not an .rtb".
+- OQ1 (plan `s34` r2e), "Omit and name it (Recommended)": an absent type 26 or 25 unit, while current still names the exported manifest, is omitted with reason "damaged" and named, as the boot does.
+- M6 7-Zip: "Install via winget". Lane A ran `winget install 7zip.7zip` on this PC (7-Zip 26.05 at `C:\Program Files\7-Zip\7z.exe`, as logged).
+- The O3 second row (type 25 `chatAlt`) was settled from source by the S3+S4 plan: the boot drops and flags type 25 `chatAlt`, so O3 stands as answered (types 26 and 25), without narrowing.
+
+**Not decided.** Nothing recorded.
+
+### MC-1100 — Lane A, 2026-11-07: CHORE-128 S0 open questions (O1, O3, O4, O6, O7, O9)
+
+- Tag: statements. Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-687`, `MC-774`, `MC-1096`, `MC-1099`. Escalation: `b61-c128-s0-esc` (three rejects, as logged).
+
+**What the maintainer said (AskUserQuestion, labels verbatim).**
+- O1: "Committed time, show both (Recommended)". When `unsavedExcluded` is set, the newer-data warning compares `committedAt` and shows both times.
+- O3: "Omit only safe kinds (Recommended)". A damaged type 26 (taskPreset) unit or the N5 chunk is omitted and named. Any other damaged unit fails the export.
+- O4: "Don't carry it (Recommended)". `upstreamServicesAgreement` is not carried.
+- O6: "No, single file first (Recommended)". No folder mode in the first release.
+- O9: "Defer carry; v1 names it (Recommended)" (advisor option E). The first release does not restore unknown optional rows and names them in the notice. The r4 carry design (A2.10) is kept as a deferred S5 design input. A later ticket adds the carry when a v2 writer is planned. `MC-687` item 5 stands as intent, recorded as deferred. No `store2` change now.
+- O7: "Clear it (Recommended)". A v1-known side section that is absent from the file (and not in omitted), or carried at a higher v, clears the target's store.
+- Not asked (moot under E, S5-only): O5 (64 MiB notice) and O8 (carried row vs device row at export).
+
+**Not decided.** O5 and O8 (moot until S5).
+
+### MC-1101 — Lane A, 2026-11-07: CHORE-636 Stage 0 and Stage 4 answers
+
+- Tag: statements and results (device result as logged). Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1091` (CHORE-636 accepted for UI-S1a), `MC-1093` (cap size answer).
+
+**What the maintainer said (AskUserQuestion, labels verbatim).**
+- Cap, after Stage 0 (`c636\stage0\result.md`; "+24 already 280 ms next handler"): "Keep 50; ticket fixed cost (Recommended)". `STEP_HOLD_MOUNT_CAP` stays 50. Stage 3 needs no tuning edit. A new ticket for the fixed per-step cost (about 150 to 175 ms projected intercept; INFERRED).
+- D4, long to short after load-older (306 rows; handler 364 ms and freeze 456 ms; plan Open item 2): "Fold into fixed-cost ticket (Recommended)". Recorded as a known CHORE-636 limit.
+- Stage 4 device result (`laneb\c636-dev\result.md`): "Accept; file a ticket (Recommended)". CHORE-636 is accepted as built. New ticket for the fixed per-step cost (under-cap mount at +24 to +50, and prev after load-older). Cap stays +50.
+
+**Results (as logged, lane B device claim, phone 1, debug APK, WebView 156.0.8078.47; the clerk did not open the report).** D1 +306 next 202 ms (was 1318) PASS; D3 +52 212 ms PASS; D2 position PASS; D2 handler +50 380 ms (Stage 0: 383) and D4 after load-older at growth 306 368 ms (Stage 0: 364) over 250 ms (plan Open item 2, accepted as a known limit). Method note: a buffered Event Timing read fails on a long-lived page; use the pre-installed observer or reload per series.
+
+**Not decided.** The fixed-cost ticket number: TODO(evidence). The log gives none, and CHORE-650 and CHORE-651 are now allocated to other defects (log 439, 451); the parent or the maintainer assigns it (section 7 item 1). Closeout of CHORE-636 is not asked: TODO(evidence).
+
+### MC-1102 — Lane A, 2026-11-06 to 07: commit, merge and push approvals
+
+- Tag: statements (AskUserQuestion answers and the log's paraphrases of them). Date: 2026-11-06 to 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1069` (every commit, push and merge is asked), `MC-1098`.
+
+**What the maintainer said (labels as logged; "as logged" = the log's paraphrase, not the verbatim AskUserQuestion string).**
+- CHORE-640 A5 fix: "Commit, merge, push (Recommended)" (commit `a03c0c3a9`, merge `0d9dec81b`, pushed).
+- UI-S1b toggles follow-ups: "Commit, merge, push (Recommended)" (commit `4dec6d583`, merge `a7c04e193`, pushed).
+- CHORE-128 `.rtb` S1+S2 and S3+S4: "Commit, merge, push (Recommended)" (commits `17ee08dde` and `3ee916866`, merges `3adba35d0` and `5508e3fba`, pushed; main `5508e3fba` at that time).
+- CHORE-128 M6 harness (`31a95e2eb`): committed and pushed "after maintainer approval via AskUserQuestion"; the label is TODO(evidence).
+- UI-S1b batch 3 (`c9216a76d`, merge `32734d4ae`, pushed `31a95e2eb..32734d4ae`): "after maintainer approval via AskUserQuestion"; label TODO(evidence).
+- UI-S1b batch 2a (`56d5f6bf7`, merge `a91b74a6a`, pushed `32734d4ae..a91b74a6a`): "after maintainer approval via AskUserQuestion"; label TODO(evidence).
+- AS12 fix (`f2a24d2a0`, merge `10bf05a51`), CHORE-128 S1c golden 4 (`8129019cf`, merge `0d43c973f`), CHORE-643 (`23a449dcf`, merge `1e133736f`): as logged (log 350, 2026-11-07), "commit/merge/push"; pushed `a91b74a6a..1e133736f`.
+- CHORE-644 (`0646eae8a`, merge `416723423`): as logged (log 356), "commit/merge/push"; 4 files equal to trial4; pushed.
+- CHORE-646 (`07d290d82`, merge `0ee884868`): as logged (log 372), "commit/merge/push"; 4 files equal to trial5; pushed `416723423..0ee884868`.
+- CHORE-648 (`695d3231b`, merge `9ee828ead`): as logged (log 398-399), "commit now, merge later; then merge and push despite 1 load failure (Chat.draftRestoreMarker, green alone x2 and in trial6 full)". The 1 load failure is an accepted limitation as logged. Pushed.
+- CHORE-649 (`8bd237bcc`, merge `7e90d1e6a`): as logged (log 411), "commit, merge, push". Blobs equal to trial8; pushed.
+- UI-S1b batch 2b (`27ae63835`, merge `c73d82f06`): as logged (log 427), "commit, merge, push", plus deletion of the empty untracked main file `src/ts/storage/tests/store2/codecChatOrder.test.ts` (0 B, 16:49, an agent leak; maintainer answer as logged). Merged tree equal to trial9; pushed.
+- CHORE-634 (`eee0fad3e`, merge `da7aa0b51`): the merge approval is only implied (log 394: lane B merges after maintainer approval). Label TODO(evidence).
+
+**Results.** Each merge is in `git log` (section 0.3). Pushes are as logged by the orchestrator; the clerk did not run `git ls-remote`.
+
+**Not decided.** Nothing recorded.
+
+### MC-1103 — Lane A, 2026-11-07: user-level pnpm config (machine setting, not repository)
+
+- Tag: statements and results. Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1098` (node_modules repair), `MC-1087`, `MC-027` (no secrets).
+
+**What the maintainer said (AskUserQuestion).** "Set user pnpm config (Recommended)".
+
+**Results (as logged).** The trace (`pnpm-trace\result.md`, verified against the agent transcript by lane A) found that a `pnpm vitest run` in a mutant tree rewrote shared `node_modules` at 22:08Z without patches (the Monaco patch was lost). Lane A applied `pnpm config set verify-deps-before-run false --location global` and read back `verifyDepsBeforeRun false`. Revert: `pnpm config delete verify-deps-before-run --location global`. The Monaco link still showed `_patch__` at that point. Later full runs on the same tree reported Monaco patched (see `MC-1104` onward).
+
+**Not decided.** Nothing recorded. Prevention rule in lane B's briefs: `node vitest.mjs` in scratch copies (as logged).
+
+### MC-1104 — Lane A, 2026-11-07: UI-S1b batch 2 product answers (B2 Q1 to Q5, B3 PQ1 to PQ3)
+
+- Tag: statements. Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1086`, `MC-1094`, `MC-1097`, `MC-091`, `MC-1087`. Cited: `SLICE2_SPEC.md` as logged.
+
+**What the maintainer said (AskUserQuestion, labels verbatim).**
+- B2 Q1: "All of section 1" (strip; header with New chat; folders-first two-line rows with a draft mark; windowed list; row menu; switch rules; row keys; Alt+Up/Down; PLUS search, Ctrl+K, sort and reorder). The per-device sort key is the one stored key (`MC-1086` Q7).
+- B2 Q2: "Replace with new panel (Recommended)" ("All characters" opens GridCatalog; settings, playground, plugin items, dev tool, bookmarks and branches are reachable from the panel; the old shell keeps the rail).
+- B2 Q3: "Refuse with a reason (Recommended)" (new shell only; the old shell and hotkey callers keep a silent no-op; chat switches still work).
+- B2 Q4: "Not in batch 2 (Recommended)" (every switch opens at the newest message; no `ShellMessageList` edit).
+- B2 Q5: "Show with a group icon (Recommended)" (a tap opens the old shell).
+- B3 PQ1: "Sliding window (Recommended)".
+- B3 PQ2: "Reuse new-message button (Recommended)", with no start-of-chat line.
+- B3 PQ3: "Yes to all four (Recommended)": (i) new shell only; (ii) clamp load settings to 100 at read; (iii) hold up to 150, trims to 100 on commit; (iv) screenshot = mounted rows.
+- Packet checker corrections to apply in the plans: batch 2 `check-packet.md` item 4 and batch 3 `check-packet.md` item 3 (editorial), as logged.
+
+**Results.** See section 3 (UI-S1b row).
+
+**Not decided.** Groups (`MC-1094`).
+
+### MC-1105 — Lane A, 2026-11-07: UI-S1b batch 3 open question OQ1 and the start of code
+
+- Tag: statements. Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1104`, `MC-1087`.
+
+**What the maintainer said (AskUserQuestion, labels verbatim).**
+- OQ1, an editor open while reading past the cap: "Pause loading until closed (Recommended)". This is option (c): nothing unmounts while an editor is open; load older and load newer stop at the cap until it closes; a commit with an editor open keeps up to 150 until the next slide after close.
+- "Start batch 3 code (Recommended)". Worktree `risu-code-track-b3` (branch `s1b3-wip` at `a7c04e193`).
+
+**Results.** Batch 3 merged as `32734d4ae` (see `MC-1102`). Gate 2 and full checks: section 3 and section 4.
+
+**Not decided.** Nothing recorded.
+
+### MC-1106 — Lane A, 2026-11-07: UI-S1b batch 2 advisor questions A, B and C, and the start of batch 2a
+
+- Tag: statements. Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: `s1b\b2\esc-advisor.md`. Related: `MC-1104`, `MC-1087` (escalation pattern), `MC-1105`.
+
+**What the maintainer said (AskUserQuestion, labels verbatim).**
+- A (group "Other characters" in search): "Leave that group out (Recommended)". No 'Other characters' chats group in search; the `switchCharacter` chat option, TS2a and M75 are not built.
+- B (selection change during a pending delete confirm, rename, reorder or search): "Cancel it on switch (Recommended)". A selection change cancels a pending delete confirm (it resolves no), inline rename, reorder mode and clears the search text.
+- C (batch 2 delivery): "Two commits (Recommended)". 2a = A, B, C, D, E (rows, sort, Alt+arrows, D, E); 2b = R (reorder) + S (search and Ctrl+K) after 2a lands. The batch is COMPLETE after both.
+- "Start batch 2a code (Recommended)" (after Gate 1 r4 PASS, EDITORIAL). Worktree `risu-code-track-b2a` (branch `s1b2a-wip` at `a7c04e193`); amendment a1 checked first.
+
+**Orchestrator note (advisor, as logged).** Three consecutive Gate 1 REJECTs. Senior-advisor: the mechanism is sound (seam `chatOpen.ts`); the r4 local fix applies. Advisor recommended the cancel-on-switch rule, OQ1 (b), and two gated commits.
+
+**Not decided.** Nothing recorded.
+
+### MC-1107 — Lane A, 2026-11-07: UI-S1b batch 2a, sidebar closed by narrowing
+
+- Tag: statements. Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: `w1e57q7m4` (Gate 2 escalation). Related: `MC-1106`, `MC-1087`, `MC-1091`.
+
+**What the maintainer said (AskUserQuestion).** A sidebar closed by narrowing "stays closed" when the window widens again: "Stay closed (Recommended)" (the amendment's default, as built).
+
+**Results (as logged).** Gate 2 round 4 EDITORIAL (counts as a pass); S1 closed; amendment a2 is a records item. The commit body of `56d5f6bf7` records "One closed by narrowing stays closed when the window widens again." Lane B's LB-T3 finding (sheet focus and the old left sidebar overlay) was folded into 2a as amendment a1: acceptance "narrowing across the overlay breakpoint with a sheet open does not move focus out of the sheet."
+
+**Not decided.** Amendment a2 wording (records item, TODO(evidence): the clerk did not open the amendment file).
+
+### MC-1108 — Lane A, 2026-11-07: lane B takes ultracode and a wider chain; MC-1078 is kept as PASS
+
+- Tag: statements. Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1088` (lane B), `MC-1078` (Note 9 check of the streamed-fetch port `aa1c1781c`), `MC-1069`.
+
+**What the maintainer said.**
+- Lane B gets ultracode (lane B's weekly quota was at 7%). Choice, AskUserQuestion, multiSelect, all four items for lane B: (1) the batch 3 and CHORE-482 device run; (2) the M6 Android file manager; (3) the owed device checks (S1b batch 1, CHORE-635 A10, CHORE-638, CHORE-639); (4) the CHORE-634 code ticket. The items are as logged (paraphrased list); the option labels are TODO(evidence).
+- MC-1078 added to lane B's chain: "Yes, add it (Recommended)".
+- Lane B takes the 2a device claims DB1 to DB6 after MC-1078 on phone 2, plus the PC-B13 toggles-panel cases and the AS12 failed-load path on its PC track. The answer's label is TODO(evidence) (logged as "Maintainer (AskUserQuestion): append the 2a device claims to lane B").
+- MC-1078 (11-07): "keep the PASS, no rerun" (as logged). The log's earlier "Workflow-State owed" line was stale: MC-1078 was already PASS on 2026-11-06 (`laneb-mc1078\result.md`, phone 1).
+
+**Results.** Lane B: DB1 to DB6 PASS on phone 2 (`laneb\s1b2a\dev\result.md`, APK sha `6e5a9cca`, see the ledger). Lane B: PC-B13 toggles row and search PASS 24/24; AS12 failed-load PASS items (`laneb\s1b2a\pc\result.md`). M6 Android CLOSED (`laneb\m6-android\result.md`). Batch 3 + CHORE-482 device run: B3-1 to B3-6 PASS with qualifications (`laneb\b3-chore482\result.md`).
+
+**Not decided.** Nothing recorded.
+
+### MC-1109 — Lane A, 2026-11-07: CHORE-634 answers (Node and web restore, plain-HTTP web, weak proof)
+
+- Tag: statements. Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1069`, `MC-1087`, `MC-091`, `MC-350` (data safety), `MC-774`.
+
+**What the maintainer said (as logged; the lane-B relay `laneb\c634\answers.md` holds the wording; the clerk did not open it).**
+- B1: Node asks Wait or Clear once per marker, Wait by default. N7r: refusals are counted and kept quiet while the question is up. N6: Node at boot and restore unchanged. New: plain-HTTP web without Web Locks also gets Wait or Clear, superseding N5's "stall stays". Both side items were chosen.
+- C1: a weak Web Locks proof counts as no proof, so ask.
+- C2: web without proof behaves like Node at boot and restore.
+
+**Results.** Gate 1 r1 REJECT, r2 and r3 EDITORIAL, r4 EDITORIAL. Implementation in 3 stages. Merged as `eee0fad3e` (fix) and `da7aa0b51` (merge). The commit body records "Gate 2 accepted (r3)" and "PC live-kill diagnostic LB-D1 passed on secure web, plain-HTTP web and the Node host" (command output: TODO(evidence)). Full vitest (1516 files / 32183 tests) and svelte-check (0 errors) are recorded in that body "on the 32734d4ae base" (a commit-body claim; output not in packet). Candidate from lane B (LB-D1, log 395): see K12 in section 3.3.
+
+**Not decided.** Device check of the marker prompt on a phone (TODO(evidence): not in the log).
+
+### MC-1110 — Lane A, 2026-11-07: CHORE-643 and CHORE-644 approvals; CHORE-643 scope; CHORE-645 follow-up; the CHORE-642 reservation
+
+- Tag: statements. Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1108`, `MC-1087`, `MC-1069`.
+
+**What the maintainer said.**
+- Approved both (the log's paraphrase, AskUserQuestion, log 334): CHORE-643 arm gate compares the tap's `event.timeStamp`; CHORE-644 header stuck hidden after rename. CHORE-642 stays reserved for the marker leak; the next free was then CHORE-645 (as logged).
+- CHORE-643 scope (log 336, maintainer): new shell only. Legacy alert and consent guards (AlertComp `consentPaused`, `hotkey.ts`, `bootScreen.svelte.ts`, `alertPrompts` `guardUntil`) go to follow-up CHORE-645, recorded and not scheduled (as logged).
+- CHORE-642 reservation: the log says "relaying the maintainer's choice made by AskUserQuestion in the CHORE-634 session". The question and answer text are TODO(evidence).
+
+**Results.**
+- CHORE-643 (lane A gates, as logged): Gate 1 r1 REJECT (M3 variant survives; bounded; log 336), r2 PASS (the commit body says "Gate 1 PASS at round 2"; the r2 verdict is a commit-body claim and the report is not opened). Gate 2 r1 APPROVE, mutants 9/9, harvested (log 348). Trial3 (`a91b74a6a` plus AS12, S1c and CHORE-643, run alone): pnpm test 0 (32,438 passed), check 0, build 0, Monaco patched (log 348). Merge `1e133736f`, approval as logged in MC-1102.
+- CHORE-643 phone check at `416723423` (lane B device claim, phone 2, log 364): PASS. 4/4 early taps ignored, including one with event.timeStamp 5.5 ms before the arm and handler lag +147 to +254 ms; 2/2 late taps delete. Earlier (log 332, owed-a settle at `32734d4ae`): the arm window PASS on the handler clock with a caveat, 5/6 clicks event.timeStamp 2 to 140 ms before the arm callback (candidate defect, fixed by this ticket). Owed-a first read (`laneb\owed-a\result.md`): arm window not demonstrated.
+- CHORE-644 (lane A gates, as logged): D0 (`c644\d0\result.md`, phone 2): P1 CONFIRMED x3. Gate 1 r1 EDITORIAL; plan-r1 ACCEPTED (log 337). Gate 2 r1 APPROVE (mutants 7/8, M5 equivalent; log 351); commit body: 7 killed, 1 equivalent. Trial4 (`1e133736f` plus CHORE-644): test 0 (32,442), check 0, build 0 (log 356). Merge `416723423`.
+- CHORE-644 phone check at `416723423` (lane B device claim, phone 2, log 364): D1 PASS x2 (no state_unsafe_mutation, header visible, SideBarArrow works). This answers the lane B side note on the sidebar toggle after the error (log 342) as reported; not independently checked.
+- Candidate for records (log 351): other focus-handler writers (note textarea flushNote) are shared-cause candidates. Not yet a ticket.
+
+**Not decided.** CHORE-645 scheduling (not scheduled; log 336). CHORE-642 reservation answer text (TODO(evidence)).
+
+### MC-1111 — Lane A, 2026-11-07: AS12 drop of a failed or loading switch on open, create, duplicate and Alt+arrow
+
+- Tag: statements and results. Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: `s1b\b2\as12\` (investigation and refute). Related: `MC-1104`, `MC-1106`, `MC-1087`, `MC-091`.
+
+**What the maintainer said (AskUserQuestion, labels verbatim).** The question was whether to drop the failed or loading switch when the user opens, creates or duplicates a chat of the still-selected character, or presses Alt+arrow: "Yes, drop it (Recommended)". This matches the O1 rule (same as Back).
+
+**Investigation (as logged, `s1b\b2\as12\result.md`, refuted-and-agreed in `as12-ver\result.md`).** F1 as planned. F2 DEFECT: `SwitchFrame`'s `onfocusout` clears `holdsFocus` because Chromium fires a bubbling focusout while the focused node is removed, so the cleanup restore never runs and focus falls to BODY (4/4 runs in Chrome 156, Svelte 5.57.3 order; jsdom misses it; the SwitchFrame comment that a removed element fires no focusout is wrong). O1: a plan gap. Side result: M29b and M66 are killed at HEAD by `switchTarget.svelte.test.ts`.
+
+**Orchestrator decision (not a maintainer answer).** The AS12 fix worktree `risu-code-track-as12` (branch `as12fix-wip` from `a91b74a6a`). Round 1 Gate 2 REJECT x2 (untested negative branches; a dropped LOADING switch still completes). Remediation 1 needed `characters.ts` and `switchTarget.svelte.ts`, granted as an amendment "since it stays inside the maintainer's O1 rule (failed or loading). Fold in goHome during a loading switch as a shared cause (MC-091)."
+
+**Results.**
+- Gate 2 r2 both APPROVE; mutants 23/24 (survivor equivalent). Merge `10bf05a51` (commit `f2a24d2a0`); approval as logged (MC-1102, log 350).
+- Side note from the fix: `latestChangeChar` doc comment is stale; fix at the next `characters.ts` touch (log 340, as logged).
+- Lane B PC device at `416723423` (`b61\laneb\416723423\as12\result-pc.md`, lane B device claim, log 362; desktop Chrome 156, not Android WebView; reading as checked by `device-claims.md` 3): 24 of 24 drop runs PASS with no flags (failed and loading, 6 paths, at 960 and 1280 px). Focus after a failed load stays on Retry (960) or on the strip avatar (1280), not on the frame root, so the 2a "frame root" wording FAILs as worded. The 1280 loading Alt+arrow BODY observation has no verdict in the report; the log classed it as read 2. Two reads were flagged for judgment: (1) failed-load focus Retry at 960, strip avatar at 1280; the 2a "frame root" wording was previously ruled a misreading; (2) loading Alt+Up/Down at 1280: focus avatar goes to BODY when the superseded restore lands.
+- Investigation of those reads (log 366, `b61\as12focus\trace.md` and `verify.md` partly): read 1 is as designed (docked has no resolver); the 2a "frame root" wording is to be reworded in records. Read 2 is real: the RecentStrip identity key, the cold restore slot replace and the lastInteraction move-to-front drop docked keyboard focus to BODY (also a warm switch to the 3rd or 4th avatar, jsdom); a chaId-only key is refuted. Read 2 led to CHORE-648 (MC-1112). `verify.md` is PARTLY (as logged).
+- Lane B phone 2 at `416723423` (log 364; Wi-Fi off, synthetic data, per `device-claims.md` 4): AS12 touch paths PASS (row, New chat, Duplicate, Home, each during loading and failed). Touch paths only: the keyboard Alt+arrow paths were not run on the phone (PC only).
+
+**Not decided.** Open item CHORE-646 (see `MC-1112`) and CHORE-648 (see `MC-1112`).
+
+### MC-1112 — Lane A, 2026-11-07: CHORE-646 to CHORE-649 ticket answers; CHORE-647 investigation and closure
+
+- Tag: statements and results. Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1111`, `MC-091`, `MC-350` (durability), `MC-1069`.
+
+**What the maintainer said.**
+- CHORE-646: a ticket, sized and planned after AS12 is on main (log 346 and 360, a paraphrase). Maintainer answers at Gate 1 (log 360, as logged): Q1 "keep switch on slot shift (compare entry)"; Q2 "deletion-to-home drops loading switch".
+- CHORE-647: investigate chats lost across reload on phone 2 now, read-only (log 346, as logged; a paraphrase). Workflow `w5mdshlet`: flush-path and error-path traces with a deep-investigator challenge.
+- CHORE-648 (log 366, as logged): "CHORE-648 = ticket and run now (A: RecentStrip refocus; B: abandoned switch does not bump lastInteraction, only on land; B after CHORE-646 merges)".
+- CHORE-649 (log 376, as logged): "Back cancels the loading switch, stay on previous chat -> CHORE-649".
+- CHORE-649 Gate 1 answers (log 381 to 384, as logged): PQ1 failed frame: Back acts like the Back-to-previous button (yes). PQ2 Beta Mobile GUI: first Back cancels and keeps the chat, second goes Home (yes); a >1024 px tablet edge was accepted. PQ3 desktop Escape: out of scope (no). held=2: "likely inlayCleanup walk after permanent delete" (an inference; no change).
+- Next free IDs given by the orchestrator at each step (log 346: CHORE-648; log 366: CHORE-649; log 376: CHORE-650). The log 376 value is superseded: CHORE-650 was later allocated to the Esc/Back focus defect (log 439) and CHORE-651 to the rename defect (log 451).
+
+**Results.**
+
+CHORE-646 (ticket from the AS12 round-2 open item): bare `selectedCharID.set(-1)` during a loading switch (home hotkey, More to Playground, PlusSheet Utility, `mobileBack`, deletion paths) still lets the restore land. Designer idea: supersede from the `switchCharacter` watcher (trade-off: an index shift from deleting another character would abandon the switch). Ownership: the new tests went to new files (`switchTarget.watcherSupersede`, `characters.watcherSupersede`) because 2b stage R holds mock-only grants on `switchTarget.svelte.test.ts` and `characters.quietSwitch.svelte.test.ts` (log 360). Follow-up owned by 2b: stale goHome comments in `ShellSidebar.svelte` and the `ShellSidebar.clearPending` test (log 360, as logged; status TODO(evidence)).
+- Gate 1 r1 opus EDITORIAL, plan-r1 ACCEPTED (log 360).
+- Gate 2 r1 opus EDITORIAL (ST5 does not test the `??` null branch; mutant E1 survives). Mutants 9 killed, X1 equivalent, X2 unkillable as expected (log 368). Fix: the ST5 test (`b61-c646-st5`) closed E1 before commit (log 368). The commit body reports 10 killed, 1 equivalent, 1 not reachable after the fix (commit-body claim).
+- Coder incident (log 368): a scratch step rewrote main `switchTarget.svelte.ts` with identical bytes; `git status` was clean on verification. Recorded for the guard-misses-shell-writes pattern (see ledger row 4935).
+- trial5 (`416723423` plus CHORE-646 incl. ST5): check 0, build 0. Full test run 1: only `globalApi.saveClean` beforeAll timeout (10 s), which passes alone 12/12. Run 2 (concurrent agents, 534 s): saveClean passed; 3 timeouts and 2 hook-timeout files (PlusSheet.chips, TogglesPanel.layers, exportChatTargetModules N1/N7, moduleToggleReload R1A), all of which passed in run 1. Isolated rerun of every failed file plus chatShell and watcherSupersede: 47 files / 727 tests pass (log 370). Every test passed in at least one full run and in isolation: load-related.
+- Approval and push: as logged in MC-1102 (log 372).
+- Device (lane B, log 376, `b61\laneb\0ee884868\c646\`, lane B device claim; report status PARTIAL): PC 8/8 PASS (Ctrl+H x2, classic rail x2, classic grid x2, keep x2; an unexplained held=2 in the PC keep runs). Phone 2: More to Playground PASS 2/2; keep PASS in one run only (the trash move did not shift the index: a limitation); PlusSheet Utility NOT RUN (not offered on Android; desktop transport only); mobile Back FAIL 2/2 (+1 diagnostic): Back does nothing during a loading frame and the switch lands. The Back failure became CHORE-649.
+
+CHORE-647 (log 346, 354, 358):
+- Investigation (`b61\c647\result.md`, deep-investigator over two traces, as logged): the loss premise is most likely an observation error (the post-reload read was character "" not H15 Alt Greetings; both had a sole Chat 1). Both offered mechanisms were refuted by source and timing (an explicit `markCharacterForSave` 32.5 s before reload; the idle net; `set()` throws before mutating). Status UNDETERMINED until one read-only device read. If real: N3 save-loop stall after freeze would be high-severity MC-350.
+- Device read (lane B, `b61\c647\device\result.md`, log 358, lane B device claim): H15 Alt Greetings held C644D0R1, New Chat 2 to 4 and Chat 1; all four D0 chats were present (the report's words: "all four D0 chats present (nothing was lost)"). The four disposable chats were then deleted by name, with owner and dialog text checked; Chat 1 was untouched. The phrase "NOTHING LOST, observation error confirmed" is the log's wording (log 358), not the report's. The observation-error conclusion comes from the investigation (`b61\c647\result.md`), not from the device report (`device-claims.md` 8). CHORE-647 closed as not-a-defect (records) by the orchestrator (log 358); the maintainer confirmed the closure on 2026-11-07 (MC-1118).
+- New lane B rule from this: the owner name (sidebar h2) is read in every chat create, verify and restore (log 354; `laneb\rules.md`).
+- The closure rests on a lane B device read and lane A's log. The clerk has not checked the investigation report or the device report's full text (TODO(evidence)); `device-claims.md` checked the device report's wording (corrected above). The maintainer's confirmation is in MC-1118 (log 447).
+
+CHORE-648 (log 366 to 404; full entry in section 3.2):
+- Gate 1 r1 opus EDITORIAL, plan-r1 ACCEPTED (F1 base `0ee884868`; F2 the abandoned bump WAS saved via the backstop, which corrects sizing B3; F3 port R1/R3; F4 `preventScroll`; F5 group stub) (log 374). Records idea from this: a shared focus-preserving helper for keyed each moves (CharacterWindow, SidebarRail, RecentStrip) (log 374).
+- Gate 2 r1 PASS, opus EDITORIAL (`g2-r1.md`); E1 to E3 comment and label fixes applied by the parent (log 392).
+- trial7 (`da7aa0b51` plus `c648`): test 1 fail / 32,566 pass, check 0 errors, build ok (log 399). The one failure, `Chat.draftRestoreMarker`, was green alone twice and in trial6 full; the maintainer accepted it and asked for commit now, merge later, then merge and push (log 398-399).
+- Device, PC 1280 docked, `9ee828ead` (`b61\laneb\c648\result.md`, lane B device claim, log 403-404): (a) to (e) PASS; (f) diagnostic (click focus, no focus-visible). Pre-fix `da7aa0b51` (a) drops focus to BODY; verify.md UNCERTAIN (log 403). (d) abandoned switch: strip order and lastInteraction unchanged, selection stays (log 404): a report claim, with the consequential check owed at records closeout.
+- Phone: none in the log (TODO(evidence)).
+
+CHORE-649 (log 376 to 417, full entry in section 3.2):
+- Maintainer answers: see "What the maintainer said" above.
+- Gate 1 r1 EDITORIAL (`g1-r1.md`) (log 380).
+- Gate 2 r1 PASS, both EDITORIAL (`g2-r1-1.md`, `g2-r1-2.md`); mutants 10 of 11 killed; X5 (register at mount) survived; M3 killed only by a mock artefact (log 387 to 388).
+- X5 test added; x5-check REJECT: `ChatShell.switchPresentation` fails in every `src/lib/ChatShell` directory run with the new effect (green alone). Fix dispatch `b61-c649-fix` (`wf_130ece17-257`) (log 393).
+- Root cause (log 407): a test race. The `switchPresentation` settle ended before the lazily imported SwitchFrame loaded once it imported `backHandlers`. Fix: pre-import SwitchFrame in `mountShell`, plus mock hygiene. `fix-check-r1` PASS (log 406).
+- trial8 (`9ee828ead` plus `c649`): test 32,576 pass, check 0 errors, build ok (log 411). Approval: "commit, merge, push" (log 411; see MC-1102).
+- Phone 2 at `7e90d1e6a` (debug APK, classic layout; `b61\laneb\c649\result.md`, lane B device claim, log 415; report status PARTIAL): back1, back2 and backsb2 (second attempt) PASS; backsb1 sent one Back only; failed-frame Back PASS by expected outcome (the Back-to-previous button comparison was not run); no quit toast; H15 stays selected. A7 Beta Mobile GUI UNOBSERVED: that layout picks cold characters without SwitchFrame, so it is unreachable there (log 416). Candidate for records: Beta Mobile GUI cold pick gives no loading feedback (log 417; section 3.3).
+- Commit-body claim (8bd237bcc): Beta Mobile GUI first Back cancels the switch; Gate 2 PASS round 1; mutants 10 of 11 killed before the test that kills the eleventh.
+
+**Not decided.** The CHORE-647 closure confirmation is no longer open (MC-1118, log 447). CHORE-645 scheduling. A7 Beta Mobile GUI device observation (TODO(evidence)). The held=2 explanation is an inference (log 384).
+
+### MC-1113 — Lane A, 2026-11-07: UI-S1b batch 2b product answers (reorder and search)
+
+- Tag: statements. Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: `s1b\b2\2b\` (folder named in the packet's Gate 1 history, as logged), `wu3st8odu` (Gate 1 r3 REJECT, as logged). Related: `MC-1104`, `MC-1106`, `MC-1094`, `MC-091`, `MC-1086` (Q7).
+
+**What the maintainer said (AskUserQuestion, labels verbatim).**
+- PQ1: "save each move (Recommended)".
+- PQ2: "drags stay within their group" ("Move to folder" is the only route to change folders; "removes S1 and departs from the old sidebar"; labels as logged).
+- Veto-able defaults, "all kept": closing the sidebar leaves Edit order; Esc aborts only the drag; the drop indicator shows at the self-adjacent gaps; Enter opens the first result within the debounce (a departure from `SLICE2_SPEC:45`).
+- 2026-11-07, clamped drop line: "pin at edge" (kept default; log 330).
+
+**Orchestrator arbitration (as logged; not a maintainer answer).** Gate 1 r4 opus REJECT (S1 Recent must leave Edit order; bounded, no product decision); SUB EDITORIAL; advisor escalation done (log 328). Gate 1 r5 opus EDITORIAL and adversarial EDITORIAL: plan-r5 ACCEPTED (log 331). Coder leaves Edit order when search results land (E3/E1); fold E1 `bubbles: true`, E2 M143 killer wording, SUB E2 `afterEach` resets persisted sort. Implementation waited for AS12 on main, then N1/N3 re-run at B_AS12 (log 352: N1 ok, N3 = the six listed files; worktree `risu-code-track-s1b2b` at `1e133736f`).
+
+**Results.**
+- 2b stage R (log 378): opus EDITORIAL and adversarial EDITORIAL, PASS; mutants 44 killed, 3 survive (M97 unreachable, M125 and M126 redundant); the 11 planned mutants unrun and untested guards were folded into stage S. Harvested R (17 files).
+- 2b stage S and combined Gate 2 (log 419 to 420): stage gate r1 EDITORIAL; combined Gate 2 r1 REJECT (UI), r2 REJECT x2, r3 EDITORIAL x2 (`g2-r3-1.md`, `g2-r3-2.md`): two consecutive substantive rejects, passed at round 3, no escalation needed. Mutants stage S 36 of 37 killed (X1c equivalent). The commit body adds "hidden search text taking a Back press" as the r2 reject subject (commit-body claim).
+- Carried editorials to closeout (log 421): the `$sideBarClosing` term of the search Back guard is unpinned; a test name overclaims; docked Esc keeps the mode; DynamicGUI remount; en.ts placement. Device-only items carried as owed: Ctrl+K under Hangul IME; docked focus in a real browser.
+- Locale relay check PASS (`loc\check.md`, log 422 to 423).
+- trial9 (`7e90d1e6a` plus 2b): test 32,739 pass, check 0 errors, build ok (log 425).
+- Approval: "commit, merge, push" and deletion of the empty untracked main file (log 426; see MC-1102). Merged; tree equal to trial; pushed (log 427). `27ae63835` merge `c73d82f06`.
+- 2b device (c73d82f06; log 434 to 435; reports `laneb\s1b2b\result-pc.md` and `result-dev.md`, checked by `device-claims.md` 9, not by the clerk): PC 22 of 22 PASS at 1280x800, docked and forced-overlay (DynamicGUI), with Back SIMULATED (`window.__risuTaniumBack`) and IME SIMULATED (CDP); not run: autoscroll, blur and Alt+Tab, 360 px. Phone 2 (debug APK sha 28d00068) 4 of 4 PASS: touch drag of chats and folders, long-press menu in and out of Edit order, Back layering IME, then query, then sidebar, order after relaunch; not exercised: held-drag indicator clamp, AR4, AR6, AR7, AR8. Esc leaving Edit order ends focus on BODY: defect, CHORE-650 (log 439). Rename of the lower disposable rows failed twice: CHORE-651 (log 440, 450).
+- Commit-body claim (`27ae63835`): combined Gate 2 passed at round 3; "pnpm test, pnpm check and pnpm build pass on 7e90d1e6a plus this change"; stored data: only the order of a character's chats and chat folders changes; no field added; `folderId` never written; no format change or migration.
+
+**Not decided.** Device-only 2b items: Ctrl+K under a real Hangul IME (only simulated so far); docked focus in a real browser (the PC report says it ran in desktop Chrome; closure for the parent to confirm). Groups (`MC-1094`).
+
+### MC-1114 — Lane A, 2026-11-07: CHORE-128 M6 shell zip: keep the writer cap at 1,024 and amend the archiver contract
+
+- Tag: statements and results. Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: `w78dzb41c` (isolation), `ver\result.md` (refuting check), `scan\result.md` (name lengths). Related: `MC-687` (item 1, the archiver contract; spec line 96), `MC-1099`, `MC-1096`, `MC-1100`.
+
+**What the maintainer said (AskUserQuestion, bold in the log).** "**keep the writer cap at 1,024 and amend the archiver contract (spec:96, MC-687 item 1)**". The label and question wording are as logged; the log's bold marks the answer.
+
+**Results (as logged; the clerk did not open the reports).**
+- Cause (`iso\result.md`, refuted-and-agreed in `ver\result.md`): the Windows shell zip folder (zipfldr) lists 0 items for the whole archive when any entry name is 260 UTF-8 bytes or more in total. A single component of 257 bytes or more drops only that entry. 7z, tar and .NET pass at every length tested.
+- Real names (`scan\result.md`, `Backup_partial.bin`, 517 assets, 0 inlays): every `a/` name is 70 bytes; `u/` and `s/` names are 31 bytes or less; `i/` is capped at 98 bytes by construction. No name exceeds 256 bytes. Limit: hash-style keys only; long or non-ASCII user file names are unmeasured.
+- Fixture `m6-explorer.rtb` (coder `fixd\result.md`, Gate 2 PASS in `rev2\result.md`), harvested with apply (applied without acceptance; CRLF kept). Explorer check (`explorer\result.md`): `m6-explorer` lists 6 of 6; sentinel and zero list 0; the control lists 1. Byte-exact extraction for all 6 only into a short destination; from a 66-character prefix the 256-byte entry is skipped silently, even with LongPathsEnabled.
+- Maintainer answer, as logged (log 188; the word "only" is in the answer): "Explorer lists everything only when every name is 256 bytes or less." Results, not the answer (`explorer\result.md`, `iso\result.md`): extraction is bound by the Windows path limit (destination path plus entry name under 260 characters). Real names measured so far are 98 bytes or less.
+- Android (phone 1, Samsung My Files only, `laneb\m6-android\result.md`, lane B device claim): `m6-explorer` extracts 6 of 6 byte-exact; sentinel and zero lose only the 1,024-byte-name entry. With PC and Android parts done, M6 is CLOSED, with macOS TODO(evidence) per plan-r2e:182. CHORE-128 S1c golden 4 is unblocked.
+- Harness commit `31a95e2eb` (pushed) after approval; see `MC-1102` for the label TODO.
+
+**Not decided.** Hashed fallback for names over 256 bytes is a format change and needs a designer plan and Gate 1 (as logged, only if a real name exceeds 256).
+
+### MC-1115 — Lane A, 2026-11-07: UI overhaul lead (A leads; a second UI track; lane B takes device checks and major issues)
+
+- Tag: statements (the maintainer's chat message, verbatim, and the AskUserQuestion answer). Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-890` (the single-queue rule this amends), `MC-1069` (parallel options), `MC-1095` (track cap), `MC-1098`.
+- Scratch status: governance-affecting. The clerk drafts this text only; the parent applies it after verifying the amendment wording against the MC-890 source (section 1.1).
+
+**What the maintainer said.**
+- Chat message, verbatim: "UI overhaul is still WIP, so I think we should focus on it outside of major issues. or maybe we could let lane B(or other parallel session) take lead on the UI overhaul?"
+- AskUserQuestion answer, label verbatim: "A leads, 2nd UI track (Recommended)". As logged, the answer means: lane A keeps the UI lead and starts UI-S2 sizing; a fresh session takes one disjoint stage (UI-S3 Studio) in its own worktree; lane B stays on device checks and major issues.
+- As logged: "Amends the MC-890 single-queue rule (record as an MC in batch 61/62)."
+- Changed clauses of `MC-890` (named in r3 from the MC-890 text, lines 19004 to 19016): decision 1 says "UI work runs as gated batches in lane A's single queue" and "no separate UI session". Those two clauses are amended: lane A keeps the UI lead, and a fresh session may take one disjoint UI stage (UI-S3 Studio) in its own worktree. Decisions 2 to 5 are unchanged.
+
+**Results (as logged).** Correction logged at the same time (log 432): CHORE-635, 636 and 640 were offered as next work from the stale Workflow-State queue although they had merged; sizing run `wf_c2bbefae-afa` stopped, nothing overwritten. The Workflow-State queue in section 6 is corrected in r2.
+
+**Not decided.** Whether the fresh UI-S3 session's track is authorised beyond this answer (TODO(evidence): the log gives the choice, not a start instruction). The changed MC-890 clauses are named above; the parent confirms the pointer text when applying section 1.1.
+
+### MC-1116 — Lane A, 2026-11-07: batch 61 candidate answers (UX): restore last character, New chat and the overlay, K12 stale-park export, and the upstream Beta Mobile GUI drop
+
+- Tag: statements (AskUserQuestion answers as logged; one free-text answer quoted verbatim). Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1069` (parallel options and filing), `MC-1112` (CHORE-649 and the Beta Mobile GUI cold pick), `MC-1113` (2b), `MC-175` (upstream compatibility; not assessed here), `MC-091`.
+
+**What the maintainer said (log 443 to 444, as logged).**
+- UX candidates, filed as logged: "Restore last character"; "New chat keeps overlay"; "K12 stale-park export". The AskUserQuestion option wording is TODO(evidence).
+- Instead of the separate Beta GUI cold-pick ticket, verbatim (free-text answer, as logged): "Dropping beta mobile GUI and merging existing feature to UI overhaul - beta GUI is from upstream and features are likely superseded by UI overhaul(sizings and confirmation needed)".
+- Later delegation answer (log 453 to 455, as logged; this is the only MC home for it): the chat quote, verbatim, was "Lane B is idle - can we delegate some of the tickets to it? such as beta mobile UI?". The maintainer's multiSelect answer picked "Drop Beta Mobile GUI (Recommended), Orphaned asset store, K12 stale-park export, Load-quiet full runs" (labels as logged). Result: lane B holds CHORE-655, CHORE-656, CHORE-654 and CHORE-662 in its own worktrees; lane A integrates and owns records. Lane B otherwise keeps device checks and major issues. No new MC number is used; ledger rows are unchanged by this answer.
+
+**Orchestrator notes (as logged; not maintainer answers).** "New chat keeps overlay" was filed with the spec check the log asked for: `docs/design/chat/SLICE2_SPEC.md` is silent on whether New chat closes the narrow overlay (line 65 covers row taps only; New chat appears at lines 13 and 137 as a sidebar item and a string key). The Beta GUI cold-pick feedback (log 417) is folded into the drop ticket.
+
+**Results.** Tickets in section 3.2: CHORE-652 (restore last character), CHORE-653 (New chat and the overlay), CHORE-654 (K12 stale-park export) and CHORE-655 (drop the upstream Beta Mobile GUI). No results in this entry.
+
+**Not decided.** Which features of the upstream Beta Mobile GUI are superseded and which merge into the UI overhaul: sizing and the maintainer's confirmation are needed first (the quoted words). Whether dropping an upstream GUI touches the upstream-compatibility rules (`MC-175`): not assessed, TODO(evidence). Whether New chat closes the overlay: the maintainer decides before CHORE-653 is sized (section 7 item 14). Restore-last-character scope: sizing.
+
+### MC-1117 — Lane A, 2026-11-07: batch 61 candidate answers (code health and test infrastructure)
+
+- Tag: statements (AskUserQuestion answers, labels as logged). Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1111` (AS12 focus), `MC-1112` (CHORE-644 and CHORE-646 context), `MC-1113` (2b), `MC-1069`, `MC-091`.
+
+**What the maintainer said (log 445 to 446, as logged).** Code health: file "Orphaned asset store"; file "createNewChat / flushNote"; file "alertError teardown"; file "Focus-listener audit". Test infrastructure: file "Golden O1 CRC hardening"; file "PromptDiffModal flake"; file "Load-quiet full runs".
+
+**Filing (orchestrator mapping, as logged; the numbers are this packet's).** CHORE-656 orphaned asset store. CHORE-657 createNewChat mark and flushNote shared cause, with the optional explicit mark (log 354) and the other focus-handler writers (log 351) folded in. CHORE-658 alertError teardown second error. CHORE-659 raw focus-listener audit with one shared focus-preserving helper (log 374). CHORE-660 golden O1 CRC hardening. CHORE-661 PromptDiffModal flake. CHORE-662 load-quiet full runs.
+
+**Results.** No results in this entry. Rows in section 3.2.
+
+**Not decided.** Sizing and order of the eleven tickets (CHORE-652 to CHORE-662): not in the log.
+
+### MC-1118 — Lane A, 2026-11-07: CHORE-647 closure confirmed
+
+- Tag: decisions (AskUserQuestion answer, label as logged). Date: 2026-11-07. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-350` (data safety), `MC-1112` (CHORE-647 investigation and device read), `MC-1069`.
+
+**What the maintainer said (log 447, as logged).** "CHORE-647: Confirm closed (Recommended)".
+
+**Results.** The CHORE-647 record closes as not-a-defect (records), on the investigation (`b61\c647\result.md`, deep-investigator, log 354 and 358) and the lane B device read (`b61\c647\device\result.md`; wording as checked in `device-claims.md` 8: all four D0 chats present, nothing lost). The clerk has not checked the reports' full text: TODO(evidence).
+
+**Not decided.** Nothing further recorded.
