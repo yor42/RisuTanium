@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy, tick, untrack } from 'svelte'
+    import { flushSync, onDestroy, tick, untrack } from 'svelte'
     import { get } from 'svelte/store'
     import type { character as Character, Message } from '../../ts/storage/database.svelte'
     import type { TreeView } from '../../ts/process/chatTreeView'
@@ -12,8 +12,9 @@
     import { hasMessageEditorDrafts, onDraftsChanged } from '../../ts/localDrafts'
     import { createBottomFollower, isScrolledToBottom, type BottomFollower } from '../../ts/chatShell/bottomAnchor'
     import { bindReaderIntent, canHostMove, createReaderIntent, type ReaderIntentSource } from '../../ts/chatShell/readerIntent'
-    import { WRITE_EPSILON, createLoadRealign } from '../../ts/chatShell/loadRealign'
-    import { STEP_HOLD_MOUNT_CAP, createStepHold, firstMessageMounted, heldPin, pagesForPin, windowEnd, windowPin, windowStart, type PinRelease, type StepRowRunner } from '../../ts/chatShell/stepHold'
+    import { WRITE_EPSILON, createLoadRealign, viewportTopRow } from '../../ts/chatShell/loadRealign'
+    import { STEP_HOLD_MOUNT_CAP, createStepHold, heldPin, pagesForPin, type PinRelease, type StepRowRunner } from '../../ts/chatShell/stepHold'
+    import { afterAppend, foldLoadMorePages, jumpOnlyGrows, jumpWindow,mountCap, newestWindow, normalizeBottom, shellInitialPages, shellPages, shellWindow, slideNewer, slideOlder, trimHeld } from '../../ts/chatShell/mountWindow'
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
     import { recordCaughtError } from '../../ts/caughtErrors'
@@ -54,7 +55,14 @@
         if (chat) chat.fmIndex = nextFirstMessageIndex(character, chat, step)
     }
     let messages = $derived(chat?.message ?? [])
-    let loadPages = $state(getInitialChatLoadPages(DBState.db))
+    // At most this many articles are mounted, the first message included; the page-size settings are read clamped to it and never written.
+    const CAP = mountCap(false)
+    const initialPages = (): number => shellInitialPages(getInitialChatLoadPages(DBState.db), CAP)
+    let loadPages = $state(initialPages())
+    // The absolute newest mounted index while the window is slid off the newest message; null means the window tracks the newest message.
+    let bottom = $state<number | null>(null)
+    // A reply arrived while the reader was away from the newest message. `unread` is this flag, or a window that does not mount the newest message.
+    let replyUnread = $state(false)
     let windowResetToken = $state(0)
     let handledResetToken = 0
     let rows = $state<HTMLDivElement>()
@@ -65,10 +73,10 @@
     let previousRoom: string | null = null
     let hideTop: number | null = null
     let hideOwner: string | null = null
-    let initialPagesAtHide = getInitialChatLoadPages(DBState.db)
+    let initialPagesAtHide = initialPages()
     let wasHidden = false
     const installed = isChatSurfaceInstalled()
-    const windowPolicy = createChatWindowPolicy({ initial: () => getInitialChatLoadPages(DBState.db), editorsOpen: hasMessageEditorDrafts })
+    const windowPolicy = createChatWindowPolicy({ initial: initialPages, editorsOpen: hasMessageEditorDrafts })
     const stopDrafts = onDraftsChanged(() => {
         const restored = windowPolicy.onDraftsChanged()
         if (restored !== null) loadPages = restored
@@ -85,6 +93,8 @@
     // The window's first row when the pin was taken; growth past the mount cap since then ends the hold of the pinned window.
     // It is written only together with `pin`, whose change re-evaluates every reader, so it is held in a plain object that Svelte does not track.
     const pinned = { start: 0 }
+    // The mounted window: the one source of the first row, last row, first-message presence and pin for every reader below.
+    let win = $derived(shellWindow({ fold: chatFoldedStateMessageIndex.index, length: messages.length, bottom, pages: loadPages, pin, pinnedStart: pinned.start, holdCap: STEP_HOLD_MOUNT_CAP }))
     let intentSeq = 0
     const requestFrame = (callback: () => void): number => typeof requestAnimationFrame === 'function' ? requestAnimationFrame(callback) : window.setTimeout(callback, 16)
     const cancelFrame = (id: number): void => { if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id); else window.clearTimeout(id) }
@@ -98,24 +108,32 @@
         setPin: (value) => {
             if (value !== null && pin === null) {
                 pinnedLoadPages = loadPages
-                pinned.start = windowStart(chatFoldedStateMessageIndex.index, messages.length)
+                pinned.start = win.start
             }
             pin = value
         },
-        windowPin: () => windowPin(windowStart(chatFoldedStateMessageIndex.index, messages.length), loadPages, messages.length),
+        windowPin: () => win.windowPin,
         // Releasing the pin keeps the window's oldest position: the same rows stay mounted, so nothing moves under the reader.
         // A page count written meanwhile (a jump to an older message, load more, a full window for a screenshot) asked for more rows, so the larger count wins.
         // A longer chain keeps every row from the pin to its newest message mounted, and that count stays after the hold.
         // Past the mount cap the pin is dropped and the page count stays as it was: the ordinary window is already what renders.
+        // A kept window above the mount cap is trimmed back to it by unmounting off-screen rows, the newest first; the trim is rendered before returning,
+        // because the caller corrects the stepped row's top right after the commit.
         commitPin: (held): PinRelease => {
-            const start = windowStart(chatFoldedStateMessageIndex.index, messages.length)
+            const start = win.start
             if (heldPin(held, pinned.start, start, STEP_HOLD_MOUNT_CAP) === null) {
                 pin = null
                 return loadPages === pinnedLoadPages ? 'newest' : 'released'
             }
             const kept = pagesForPin(start, messages.length, loadPages, held)
-            loadPages = loadPages === pinnedLoadPages ? kept : Math.max(kept, loadPages)
+            const pages = loadPages === pinnedLoadPages ? kept : Math.max(kept, loadPages)
+            const folded = chatFoldedStateMessageIndex.index >= 0
+            const counts = host ? offscreenCounts(host) : { newer: 0, older: 0 }
+            const trimmed = trimHeld({ start, pages, length: messages.length, cap: CAP, offscreenNewer: folded ? 0 : counts.newer, offscreenOlder: counts.older, editorsOpen: hasMessageEditorDrafts() })
+            loadPages = trimmed.pages
+            if (!folded) bottom = trimmed.bottom
             pin = null
+            if (trimmed.trimmedNewer > 0 || trimmed.trimmedOlder > 0) flushSync()
             return 'kept'
         },
         landAtNewest: (focusFrom) => {
@@ -162,10 +180,8 @@
     onDestroy(() => { stopDrafts(); stopHiding(); hold.cancel(); realign.cancel() })
 
     let visibleRows = $derived.by(() => {
-        const start = windowStart(chatFoldedStateMessageIndex.index, messages.length)
-        const end = windowEnd(start, loadPages, heldPin(pin, pinned.start, start, STEP_HOLD_MOUNT_CAP))
         const result: { idx: number, message: Message, key: string }[] = []
-        for (let i = start; i >= end; i--) {
+        for (let i = win.start; i >= win.end; i--) {
             const message = messages[i]
             if (message) result.push({ idx: i, message, key: message.chatId ?? `${chat?.id ?? character.chaId}:${i}` })
         }
@@ -193,7 +209,8 @@
         const key = chatWindowKey(character.chaId, chat)
         untrack(() => {
             // A hold pending across a chat change would commit the old chat's pin against the new chat's rows, so it is dropped before the new window renders.
-            if (heldKey !== undefined && key !== heldKey) { hold.cancel(); realign.cancel() }
+            // The other chat opens at its newest message, so a window slid in this chat is not carried over.
+            if (heldKey !== undefined && key !== heldKey) { hold.cancel(); realign.cancel(); bottom = null }
             heldKey = key
             const next = windowPolicy.onKey(key, loadPages)
             if (next.next !== loadPages) loadPages = next.next
@@ -204,13 +221,14 @@
     $effect(() => {
         if (installed && chatSurface.hidden) {
             wasHidden = true
-            initialPagesAtHide = untrack(() => getInitialChatLoadPages(DBState.db))
+            initialPagesAtHide = untrack(initialPages)
             return
         }
         if (wasHidden) {
             wasHidden = false
-            const next = pagesOnReturn(loadPages, initialPagesAtHide, getInitialChatLoadPages(DBState.db))
-            if (next.next !== loadPages) loadPages = next.next
+            const next = pagesOnReturn(loadPages, initialPagesAtHide, initialPages())
+            // A changed page size replaces the window, so a slid window goes back to the newest message with it.
+            if (next.next !== loadPages) { loadPages = next.next; bottom = null }
             if (next.lowered) windowResetToken += 1
         }
         if (installed && chatSurface.rebuildEpoch !== rebuildEpoch) {
@@ -233,7 +251,14 @@
         const index = ScrollToMessageStore.value
         if (index < 0) return
         ScrollToMessageStore.value = -1
-        loadPages = Math.max(loadPages, messages.length - index + 5)
+        // A target far from the newest message slides the window around it instead of mounting every row between.
+        // While an editor is open nothing unmounts, so a window the jump would slide stays where it is and the target scrolls only when it is already mounted.
+        const folded = chatFoldedStateMessageIndex.index >= 0
+        const jumped = jumpWindow(index, messages.length, loadPages, CAP)
+        if (!hasMessageEditorDrafts() || jumpOnlyGrows(win.slid, folded, jumped, loadPages)) {
+            loadPages = jumped.pages
+            if (!folded) bottom = jumped.bottom
+        }
         void tick().then(() => {
             if (installed && chatSurface.hidden) { ScrollToMessageStore.value = index; return }
             const target = rows?.querySelector(`[data-chat-index="${Math.max(0, index - 3)}"]`)
@@ -258,10 +283,10 @@
         const room = chat?.id ?? null
         const length = messages.length
         const same = room === previousRoom
-        if (!same) { unread = false; atBottom = true; restAtNewest(room) }
+        if (!same) { replyUnread = false; atBottom = true; restAtNewest(room) }
         if (same && length > previousLength && messages[length - 1]?.role === 'char' && DBState.db.autoScrollToNewMessage) {
             if (atBottom || DBState.db.alwaysScrollToNewMessage) void tick().then(scrollToLatestMessage)
-            else unread = true
+            else replyUnread = true
         }
         previousLength = length
         previousRoom = room
@@ -269,6 +294,30 @@
 
     // A reader resting at the bottom stays there while the newest row reaches its final height (a reroll swaps the streaming body for the final one and adds the alternatives row after the scroll ran).
     let follower: BottomFollower | undefined
+
+    // A message appended while the reader is not following never unmounts a mounted row: the window grows to the cap, then freezes with the newest message unmounted.
+    // The first run and the first run after a chat switch only record the length, so opening a chat is not an append; the key-change effect has already reset the window.
+    // A step hold owns the window until its commit, so a length change during one is only recorded.
+    let appendSeen: { room: string | null, length: number } | null = null
+    $effect.pre(() => {
+        const room = chat?.id ?? null
+        const length = messages.length
+        untrack(() => {
+            bottom = normalizeBottom(bottom, length)
+            if (appendSeen !== null && appendSeen.room === room && length > appendSeen.length && !hold.isInFlight() && pin === null) {
+                const next = afterAppend({ fold: chatFoldedStateMessageIndex.index, previousLength: appendSeen.length, length, bottom, pages: loadPages, following: follower ? follower.isFollowing() : true, cap: CAP })
+                if (next.pages !== loadPages) loadPages = next.pages
+                if (next.bottom !== bottom) bottom = next.bottom
+            }
+            appendSeen = { room, length }
+        })
+    })
+    // A window that does not mount the newest message shows the new-message button and is never at the bottom of the conversation.
+    $effect.pre(() => {
+        const slid = win.slid
+        unread = replyUnread || slid
+        if (slid) atBottom = false
+    })
     $effect(() => {
         if (!host || !rows) return
         const current = host
@@ -280,14 +329,23 @@
             source = own
         }
         const stopIntentCount = source.subscribe(() => { intentSeq += 1 })
-        const made = createBottomFollower(host, rows, () => DBState.db.autoScrollToNewMessage !== false && !(installed && chatSurface.hidden), source, () => messages.length - 1, () => hold.isInFlight())
+        const made = createBottomFollower(host, rows, () => DBState.db.autoScrollToNewMessage !== false && !(installed && chatSurface.hidden), source, () => messages.length - 1, () => hold.isInFlight(), () => !win.slid)
         follower = made
         return () => { made.dispose(); stopIntentCount(); unbind(); if (follower === made) follower = undefined }
     })
 
     export function scrollToLatestMessage() {
         if (installed && chatSurface.hidden) return
-        unread = false
+        // Rebuilding a slid window unmounts rows, which an open editor forbids; the new-message button stays until the editor closes.
+        if (win.slid && hasMessageEditorDrafts()) return
+        replyUnread = false
+        // A slid window is rebuilt around the newest messages first, so the cut lands on a mounted newest row.
+        if (win.slid) {
+            const fresh = newestWindow(initialPages(), CAP)
+            bottom = fresh.bottom
+            loadPages = fresh.pages
+            flushSync()
+        }
         atBottom = true
         realign.cancel()
         rows?.firstElementChild?.scrollIntoView({ behavior: 'instant', block: 'start' })
@@ -297,6 +355,8 @@
 
     export function anchorNewestBottom() {
         if (installed && chatSurface.hidden) return
+        // The keyboard anchors the newest message to the bottom; with it unmounted there is nothing to anchor.
+        if (win.slid) return
         realign.cancel()
         rows?.firstElementChild?.scrollIntoView({ behavior: 'instant', block: 'end' })
         follower?.sync()
@@ -318,7 +378,7 @@
         if (!isScrolledToBottom(host)) {
             host.scrollTop = Math.max(0, host.scrollHeight - host.clientHeight)
         }
-        unread = false
+        replyUnread = false
         atBottom = true
         follower?.sync()
         follower?.follow()
@@ -338,11 +398,41 @@
 
     // Older rows mount above the reader: the distance from the bottom is restored explicitly, not left to CSS scroll anchoring.
     let pendingBottomDistance: number | null = null
+    // Mounted articles that lie wholly below or above the viewport; the window can unmount them without the reader seeing it.
+    function offscreenCounts(scroller: HTMLElement): { newer: number, older: number } {
+        const viewport = scroller.getBoundingClientRect()
+        let newer = 0
+        let older = 0
+        for (const row of rows?.querySelectorAll<HTMLElement>('article[data-part="chat-message"]') ?? []) {
+            const box = row.getBoundingClientRect()
+            if (box.top >= viewport.bottom) newer += 1
+            else if (box.bottom <= viewport.top) older += 1
+        }
+        return { newer, older }
+    }
+    // The height the newest `count` mounted rows (from `start` down) take in the scroll content, measured on their containers.
+    function heightOfNewest(start: number, count: number): number {
+        let sum = 0
+        for (const row of rows?.querySelectorAll<HTMLElement>('article[data-part="chat-message"]') ?? []) {
+            if (Number(row.dataset.chatIndex) <= start - count) continue
+            const box = row.closest<HTMLElement>('[data-part="chat-message-container"]') ?? row
+            sum += box.getBoundingClientRect().height
+        }
+        return sum
+    }
     function loadOlder(): void {
-        if (!host || pendingBottomDistance !== null || hold.isInFlight()) return
+        if (!host || pendingBottomDistance !== null || newerPending || hold.isInFlight()) return
         const current = host
-        pendingBottomDistance = current.scrollHeight - current.scrollTop
-        loadPages += getAdditionalChatLoadPages(DBState.db)
+        const folded = chatFoldedStateMessageIndex.index >= 0
+        const start = win.start
+        // A window slides only off the newest end; under a fold the first row is the fold target and stays.
+        const slide = slideOlder({ bottom, pages: loadPages }, { start, length: messages.length, additional: shellPages(getAdditionalChatLoadPages(DBState.db), CAP), cap: CAP, offscreenNewer: folded ? 0 : offscreenCounts(current).newer, editorsOpen: hasMessageEditorDrafts() })
+        // At the cap with nothing to unmount (an editor is open) the window stays as it is.
+        if (slide.pages === loadPages && slide.trimmedNewer === 0) return
+        // The unmounted newest rows leave the scroll content below the reader, so the restored distance from the bottom shrinks by their height.
+        pendingBottomDistance = current.scrollHeight - current.scrollTop - (slide.trimmedNewer > 0 ? heightOfNewest(start, slide.trimmedNewer) : 0)
+        loadPages = slide.pages
+        if (!folded) bottom = slide.bottom
         const restore = () => {
             const target = Math.max(0, current.scrollHeight - (pendingBottomDistance ?? 0))
             // A step that started after the rows mounted owns the position: a restore from the old bottom distance would undo its correction.
@@ -367,13 +457,52 @@
         })
     }
 
+    // Reading forward in a slid window: newer rows mount below and the oldest off-screen rows unmount. The viewport-top row's offset is
+    // held (the unmounted rows sit above it), by a correction after the rows render and once more in the next frame; a reader's
+    // input since the slide ends the corrections, so they never write against the reader.
+    let newerPending = false
+    function loadNewer(): void {
+        if (!host || !rows || !win.slid || newerPending || pendingBottomDistance !== null || hold.isInFlight()) return
+        const current = host
+        if (current.scrollHeight - current.scrollTop - current.clientHeight > 100) return
+        realign.cancel()
+        const held = viewportTopRow(current, rows)
+        if (!held) return
+        const start = win.start
+        const slide = slideNewer({ bottom, pages: loadPages }, { start, length: messages.length, additional: shellPages(getAdditionalChatLoadPages(DBState.db), CAP), cap: CAP, offscreenOlder: offscreenCounts(current).older, editorsOpen: hasMessageEditorDrafts() })
+        // At the cap with nothing to unmount (an editor is open) the window stays as it is.
+        if (slide.pages === loadPages && slide.bottom === bottom) return
+        const offset = held.getBoundingClientRect().top - current.getBoundingClientRect().top
+        const seen = intentSeq
+        newerPending = true
+        loadPages = slide.pages
+        bottom = slide.bottom
+        const correct = () => {
+            if (!held.isConnected || intentSeq !== seen || hold.isInFlight()) return
+            const delta = held.getBoundingClientRect().top - current.getBoundingClientRect().top - offset
+            if (Math.abs(delta) > WRITE_EPSILON) current.scrollTop += delta
+            follower?.sync()
+        }
+        void tick().then(() => {
+            if (destroyed) { newerPending = false; return }
+            correct()
+            if (typeof requestAnimationFrame === 'undefined') { newerPending = false; return }
+            requestAnimationFrame(() => {
+                if (!destroyed) correct()
+                newerPending = false
+            })
+        })
+    }
+
     export function onScroll() {
         if (!host || (installed && chatSurface.hidden)) return
         follower?.sync()
-        if (host.scrollTop < 100 && messages.length > loadPages) loadOlder()
+        if (host.scrollTop < 100 && win.hasOlder) loadOlder()
+        else loadNewer()
         const newest = rows?.firstElementChild
-        atBottom = !newest || newest.getBoundingClientRect().top <= host.getBoundingClientRect().bottom + 100
-        if (atBottom) unread = false
+        // The bottom of a slid window's rows is not the bottom of the conversation.
+        atBottom = !win.slid && (!newest || newest.getBoundingClientRect().top <= host.getBoundingClientRect().bottom + 100)
+        if (atBottom) replyUnread = false
     }
 </script>
 
@@ -400,7 +529,7 @@
                 </svelte:boundary>
             </div>
         {/each}
-        {#if chat && firstMessageMounted(messages.length, loadPages, heldPin(pin, pinned.start, windowStart(chatFoldedStateMessageIndex.index, messages.length), STEP_HOLD_MOUNT_CAP)) && character.type === 'character'}
+        {#if chat && win.firstMounted && character.type === 'character'}
             <div data-part="chat-first-message">
                 <svelte:boundary onerror={(error) => recordCaughtError('chat.message', error)}>
                     <ShellMessage idx={-1} message={{ role: 'char', data: firstMessageOf(character, chat) }} name={character.name} img={character.image} character={createSimpleCharacter(character)} firstMessage getTreeView={firstMessageTreeView} onReroll={() => stepFirstMessage(1)} unReroll={() => stepFirstMessage(-1)} stepRow={runStep} {onOpenActions} {onCloseActions} {onOpenCustomize} />
@@ -410,7 +539,7 @@
         {/if}
     {/key}
     {#if chatFoldedStateMessageIndex.index !== -1}
-        <button data-part="chat-load-more" onclick={() => { loadPages += chatFoldedStateMessageIndex.index + 1; chatFoldedState.data = null }}>{language.loadMore}</button>
+        <button data-part="chat-load-more" onclick={() => { loadPages = foldLoadMorePages(loadPages, chatFoldedStateMessageIndex.index, CAP, hasMessageEditorDrafts()); chatFoldedState.data = null }}>{language.loadMore}</button>
     {/if}
 </div>
 

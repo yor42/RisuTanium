@@ -238,6 +238,62 @@ describe('bottom follower', () => {
         fire()
         expect(writes).toEqual([])
     })
+    describe('while the newest message is not mounted', () => {
+        function windowed(host: HTMLElement, held: () => boolean = () => false) {
+            const state = { mounted: true }
+            const intent = fakeIntent()
+            return { state, follower: createBottomFollower(host, {} as Element, () => true, intent.source, newest, held, () => state.mounted) }
+        }
+        test('T7: a size change at the bottom of the mounted rows writes nothing until the newest message is mounted', () => {
+            const { host, writes, grow } = liveHost(300, 200)
+            const { state, follower } = windowed(host)
+            expect(follower.isFollowing()).toBe(true)
+            state.mounted = false
+            grow(354)
+            fire()
+            expect(writes).toEqual([])
+            state.mounted = true
+            fire()
+            expect(writes).toEqual([254])
+        })
+        test('T7: reaching the bottom of the mounted rows does not enter following', () => {
+            const { host, land } = liveHost(300, 120)
+            const { state, follower } = windowed(host)
+            expect(follower.isFollowing()).toBe(false)
+            land(200)
+            state.mounted = false
+            follower.sync()
+            expect(follower.isFollowing()).toBe(false)
+            state.mounted = true
+            follower.sync()
+            expect(follower.isFollowing()).toBe(true)
+        })
+        test('T7: a size change skipped during a hold is not applied while the newest message is unmounted', () => {
+            const { host, writes, grow } = liveHost(300, 200)
+            const hold = { held: false }
+            const { state, follower } = windowed(host, () => hold.held)
+            hold.held = true
+            grow(354)
+            fire()
+            hold.held = false
+            state.mounted = false
+            follower.sync()
+            expect(writes).toEqual([])
+            state.mounted = true
+            follower.sync()
+            expect(writes).toEqual([])
+        })
+        test('T7: follow has no effect until the newest message is mounted', () => {
+            const { host } = liveHost(300, 120)
+            const { state, follower } = windowed(host)
+            state.mounted = false
+            follower.follow()
+            expect(follower.isFollowing()).toBe(false)
+            state.mounted = true
+            follower.follow()
+            expect(follower.isFollowing()).toBe(true)
+        })
+    })
     test('after dispose an older intent changes nothing', () => {
         const { host } = liveHost(300, 200)
         const { follower, intent } = follow(host)
