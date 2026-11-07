@@ -13,6 +13,7 @@ import { previewMayStart, renderPromptResult, runPreview } from "./process/previ
 import { isEnterActivatedControl, shouldYieldToFocusedControl } from "./hotkeyYield"
 import { changeChar } from "./characters"
 import { isHiddenSystemCharacter } from "./hiddenCharacters"
+import { settingsShellEscape } from "./settingsShell/settingsNavigation"
 
 // Shortcuts that act on the chat screen. Settings keeps the chat mounted but hidden, so
 // these must not reach its buttons while Settings is open.
@@ -401,7 +402,10 @@ export function initHotkey(){
                 alertClear()
             }
             if(get(settingsOpen)){
-                settingsOpen.set(false)
+                // A mounted Settings shell closes through its own step; without one Escape closes outright.
+                if(!settingsShellEscape()){
+                    settingsOpen.set(false)
+                }
             }
             ev.preventDefault()
         }

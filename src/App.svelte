@@ -10,6 +10,8 @@
     import WelcomeRisu from './lib/Others/WelcomeRisu.svelte';
     import BookmarkList from './lib/Others/BookmarkList.svelte';
     import Settings from './lib/Setting/Settings.svelte';
+    import SettingsSurface from './lib/SettingsShell/SettingsSurface.svelte';
+    import { installSettingsOrigin } from './ts/settingsShell/settingsOrigin';
     import { showRealmInfoStore } from './ts/characterCards';
     import { getDatabase, setDatabase } from './ts/storage/database.svelte';
     import { importDroppedFile } from './ts/dropImport';
@@ -40,6 +42,7 @@
     import { chatSurface, installChatSurface } from './lib/ChatScreens/chatSurface.svelte';
 
     installChatSurface()
+    installSettingsOrigin()
 
 
   
@@ -219,7 +222,7 @@
         </div>
     {:else}
         {#if $settingsOpen}
-            <Settings />
+            <SettingsSurface />
         {/if}
         {#if gridOpen}
             {#if !$settingsOpen}
