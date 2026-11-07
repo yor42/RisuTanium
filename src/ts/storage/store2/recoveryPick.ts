@@ -6,7 +6,7 @@ import { classifyCommitRead, nextCommitKey } from './commitKey'
 import {
     assetRefKey, decodeFrame, defaultKeyEnv, encodeUnit, keyOfTail, newStagedKey, newStagedManifestKey, parseStore2Key,
     readUnit, refOfFrame, refsOf, REFS_TABLE, splitHashStems, UNIT_TYPE,
-    type AssetList, type CommitKey, type InlayList, type KeyEnv, type Manifest, type Ref, type RefTarget, type SnapshotPointer, type UnitBody, type UnitType,
+    type AssetList, type CommitKey, type InlayList, type KeyEnv, type Manifest, type Ref, type RefRow, type RefTarget, type SnapshotPointer, type UnitBody, type UnitType,
 } from './format'
 import { INLAY_META_PREFIX, encodeInlayId } from '../../process/files/inlayKeys'
 import { STORE2_PREFIX } from '../store/keyRules'
@@ -541,22 +541,36 @@ function substitute(node: unknown, segments: readonly string[], index: number, s
     return node
 }
 
+/** A reference position holds something other than a `[tail, bytes, crc, ...]` tuple; it is data of a shape the rewrite refuses to guess at. */
+export class RefElementError extends TypeError {
+    constructor(readonly path: string) {
+        super(`The reference position ${path} holds a tuple that is not [string, number, number, ...].`)
+        this.name = 'RefElementError'
+    }
+}
+
 /**
  * A copy of `body` whose every `ref` tuple names its replacement: the tail, size
  * and checksum change and every element after the checksum (a list version, a
  * chunk's message count, a field a newer writer added) is carried over. Every
- * other field, unknown ones included, is copied unchanged.
+ * other field, unknown ones included, is copied unchanged. `table` limits the rows that are visited (the `.rtb` restore
+ * passes its own walk table); a tuple at a visited row must have a string, a number and a number first, or the rewrite
+ * stops with a `RefElementError` before any replacement is looked up.
  */
-function withReplacedRefs<T extends UnitBody>(type: UnitType, body: T, replaced: ReadonlyMap<string, Ref>): T {
+export function withReplacedRefs<T extends UnitBody>(type: UnitType, body: T, replaced: ReadonlyMap<string, Ref>, table: readonly RefRow[] = REFS_TABLE): T {
     const copy = structuredClone(body)
-    for (const row of REFS_TABLE) {
+    for (const row of table) {
         if (row.type !== type || row.mode !== 'ref') {
             continue
         }
         substitute(copy, row.path.split('.'), 0, (tuple) => {
-            const ref = replaced.get(String(tuple[0]))
+            const [tail, bytes, crc] = tuple
+            if (tuple.length < 3 || typeof tail !== 'string' || typeof bytes !== 'number' || typeof crc !== 'number') {
+                throw new RefElementError(row.path)
+            }
+            const ref = replaced.get(tail)
             if (ref === undefined) {
-                throw new TypeError(`No replacement exists for ${String(tuple[0])}.`)
+                throw new TypeError(`No replacement exists for ${tail}.`)
             }
             return [ref[0], ref[1], ref[2], ...tuple.slice(3)]
         })
