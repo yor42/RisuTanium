@@ -52,6 +52,13 @@ export const accessibilitySettingsItems: SettingItem[] = [
         keywords: ['chat', 'screen', 'preview', 'device']
     },
     {
+        id: 'acc.settingsShellPreview',
+        type: 'custom',
+        componentId: 'SettingsShellPreviewToggle',
+        labelKey: 'settingsShellPreviewLabel',
+        keywords: ['settings', 'screen', 'preview', 'device']
+    },
+    {
         id: 'acc.fixedChatTextarea',
         type: 'check',
         labelKey: 'fixedChatTextarea',

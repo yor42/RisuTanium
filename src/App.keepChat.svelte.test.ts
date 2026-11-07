@@ -28,6 +28,7 @@ vi.mock('@lucide/svelte', () => {
 vi.mock('./lib/SideBars/Sidebar.svelte', () => countingStub('sidebar')())
 vi.mock('./lib/ChatScreens/ChatScreen.svelte', () => countingStub('chat')())
 vi.mock('./lib/Setting/Settings.svelte', () => countingStub('settings')())
+vi.mock('./lib/SettingsShell/SettingsShell.svelte', stub)
 vi.mock('./lib/Others/AlertComp.svelte', stub)
 vi.mock('./lib/UI/Realm/RealmPopUp.svelte', stub)
 vi.mock('./lib/Others/GridCatalog.svelte', stub)
@@ -56,6 +57,8 @@ vi.mock('./ts/stores.svelte', async () => {
     return {
         DynamicGUI: writable(false),
         settingsOpen: writable(false),
+        SettingsMenuIndex: writable(-1),
+        selIdState: { selId: -1 },
         sideBarStore: writable(false),
         ShowRealmFrameStore: writable(false),
         openPresetList: writable(false),
