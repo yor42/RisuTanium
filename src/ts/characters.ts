@@ -18,7 +18,7 @@ import { translateHTML } from "./translator/translator";
 import { doingChat } from "./process/index.svelte";
 import { importCharacter } from "./characterCards";
 import { PngChunk } from "./pngChunk";
-import { findChaIdHolders, restoreColdCharacter } from "./process/coldCharacterRestore";
+import { findChaIdHolders, restoreColdCharacter, type ColdRestoreFailure } from "./process/coldCharacterRestore";
 import { getAvatarThumbSrc, isThumbEligible, THUMB_ABORTED, type ThumbAborted, type ThumbRequestOptions } from "./media/avatarThumb";
 import { markCharacterForSave } from "./storage/characterSaveMarks";
 import { applyCharacterDefaults } from "./storage/characterDefaults";
@@ -26,6 +26,8 @@ import { createSendSubject, hasWorkIn, originOf, stopWorkIn } from "./process/ch
 import { beginBusy } from "./process/memory/busyActions";
 import { queueInlayCleanupForChat, queueInlayCleanupForCharacters } from "./process/files/inlayCleanup";
 import { escapeHtmlText } from "./htmlEscape";
+import { keepChatPageOf, openChatOf } from "./chatShell/chatOpen";
+import { chatRecency } from "./chatShell/chatListModel";
 import { isHiddenSystemCharacter } from "./hiddenCharacters";
 import { chatNameFromFile, detectJsonChatFormat, readAgnaiChat, readCaiTurnsChat, readDumperChats, readKoboldChat, readMorseChats, readOobaChat, readTavernJsonl, tavernMessageName, type CaiChatsResult, type ChatImportResult } from "./chatImport";
 
@@ -1459,6 +1461,9 @@ export async function trashCharacters(picked: { characters: readonly (character 
 /** A caller's own confirmation for `removeChatConfirmed`: it gets the chat and the advisory working flag. */
 export type ChatRemovalConfirm = (request: { chat: Chat, busy: boolean }) => Promise<boolean>
 
+/** What a list's delete may change besides the removal; see `removeChatConfirmed`. */
+export type ChatRemovalOptions = { keepCurrent?: boolean }
+
 /**
  * A chat list's delete button. Asks for confirmation -- with a warning line
  * when something is writing into the chat -- and then deletes the chat the
@@ -1473,8 +1478,15 @@ export type ChatRemovalConfirm = (request: { chat: Chat, busy: boolean }) => Pro
  * confirmation. It gets the chat and the same advisory working flag, and everything
  * after its answer is unchanged: the chat is still found again by reference, so
  * the confirmation may stay open while the list changes.
+ *
+ * `options.keepCurrent` is for a list that must not disturb the chat on screen. Without it the removal opens the first
+ * chat on the selected character, which is the old lists' behaviour. With it the removal never calls `changeChatTo`
+ * for a chat that stays open: deleting another chat only moves `chatPage` to the open chat's new index (no reload),
+ * and deleting the open chat (or a `chatPage` that points past the end) opens the most recent remaining chat. Where
+ * `owner` is no longer the selected character the page is moved on `owner` alone and nothing is opened. All of it
+ * happens in the same synchronous stretch as the splice.
  */
-export async function removeChatConfirmed(owner: character | groupChat, chat: Chat, confirm?: ChatRemovalConfirm): Promise<boolean> {
+export async function removeChatConfirmed(owner: character | groupChat, chat: Chat, confirm?: ChatRemovalConfirm, options?: ChatRemovalOptions): Promise<boolean> {
     if(owner.chats.length === 1){
         alertError(language.errors.onlyOneChat)
         return false
@@ -1486,6 +1498,9 @@ export async function removeChatConfirmed(owner: character | groupChat, chat: Ch
         : await alertConfirm(language.removeConfirm + chat.name + (busy ? '\n' + language.removeChatWhileWorking : ''))
     if(!conf || owner.chats.length <= 1 || owner.chats.indexOf(chat) === -1){
         return false
+    }
+    if(options?.keepCurrent){
+        return removeKeepingCurrent(owner, chat)
     }
     changeChatTo(0)
     const index = owner.chats.indexOf(chat)
@@ -1501,6 +1516,54 @@ export async function removeChatConfirmed(owner: character | groupChat, chat: Ch
     // The removal reaches the save only through this mark when the owner is not the selected character.
     markCharacterForSave(owner.chaId)
     queueInlayCleanupForChat(chat)
+    return true
+}
+
+/**
+ * The removal of `removeChatConfirmed` with `keepCurrent`. The chat to show afterwards is chosen from the list as it is
+ * now, the work in the chat is stopped, the splice and the page move follow with nothing awaited between them, and the
+ * owner is marked. The chat on screen is never reloaded: `chatPage` is pointed at it by identity, and only a removed
+ * open chat (or a page past the end) opens another chat, through the one open seam and only on the selected owner.
+ */
+function removeKeepingCurrent(owner: character | groupChat, chat: Chat): boolean {
+    const index = owner.chats.indexOf(chat)
+    if(index === -1){
+        return false
+    }
+    const open: Chat | undefined = owner.chats[owner.chatPage]
+    const openGone = open === undefined || open === chat
+    let landing: Chat | undefined = open
+    if(openGone){
+        landing = undefined
+        let best = -Infinity
+        for(const candidate of owner.chats){
+            if(candidate === chat){
+                continue
+            }
+            const recency = chatRecency(candidate)
+            if(landing === undefined || recency > best){
+                landing = candidate
+                best = recency
+            }
+        }
+    }
+    if(landing === undefined){
+        return false
+    }
+    if(owner.chaId && chat.id){
+        stopWorkIn({ chaId: owner.chaId, chatId: chat.id })
+    }
+    const chats = owner.chats
+    chats.splice(index, 1)
+    owner.chats = chats
+    // The removal reaches the save only through this mark when the owner is not the selected character.
+    markCharacterForSave(owner.chaId)
+    queueInlayCleanupForChat(chat)
+    if(!openGone){
+        keepChatPageOf(owner, landing)
+    }else if(openChatOf(owner, landing) === 'not-selected'){
+        keepChatPageOf(owner, landing)
+    }
     return true
 }
 
@@ -1627,15 +1690,26 @@ function alertGroupMembersNotLoaded(names: string[]){
  */
 let latestChangeChar = 0
 
+/**
+ * What a `changeChar` call ended as. Only `selected` moved the selection.
+ * `busy`: a reply is being written. `superseded`: a later call started.
+ * `gone`: the character was no longer in the list when it was due to be
+ * selected. `failed`: an archived character could not be restored; with
+ * `quiet` the caller reports it from `reason`.
+ */
+export type ChangeCharOutcome = 'selected' | 'busy' | 'superseded' | 'gone' | { failed: ColdRestoreFailure }
+
 export async function changeChar(index: number, arg:{
     reseter?:()=>any,
     /** Selects without changing the character's last interaction time. */
     keepInteraction?: boolean,
-} = {}) {
+    /** Shows no alert for a refused restore of an archived character; the outcome carries the reason. */
+    quiet?: boolean,
+} = {}): Promise<ChangeCharOutcome> {
     const reseter = arg.reseter ?? (() => {})
     const updateInteraction = !arg.keepInteraction
     if(get(doingChat)){
-      return
+      return 'busy'
     }
     const callId = ++latestChangeChar
     reseter();
@@ -1645,13 +1719,18 @@ export async function changeChar(index: number, arg:{
         // the character list may have changed meanwhile; it tells the user
         // when it fails. Selecting is skipped when a later call has started
         // or a chat began generating during the read.
-        const outcome = await restoreColdCharacter(clicked)
+        const outcome = arg.quiet
+            ? await restoreColdCharacter(clicked, { quiet: true })
+            : await restoreColdCharacter(clicked)
+        if(outcome.status === 'refused'){
+            return { failed: outcome.reason }
+        }
         if(outcome.status !== 'restored'){
-            return
+            return 'gone'
         }
         const restoredIndex = DBState.db.characters.indexOf(outcome.character)
         if(restoredIndex === -1){
-            return
+            return 'gone'
         }
         if(outcome.installedHere){
             characterFormatUpdate(restoredIndex, {
@@ -1662,37 +1741,44 @@ export async function changeChar(index: number, arg:{
         if(outcome.character.type === 'group'){
             failedMembers = await restoreGroupMembers(outcome.character)
         }
-        if(callId !== latestChangeChar || get(doingChat)){
-            return
+        if(callId !== latestChangeChar){
+            return 'superseded'
+        }
+        if(get(doingChat)){
+            return 'busy'
         }
         const selectedIndex = DBState.db.characters.indexOf(outcome.character)
         if(selectedIndex === -1){
-            return
+            return 'gone'
         }
         alertGroupMembersNotLoaded(failedMembers)
         selectedCharID.set(selectedIndex);
-        return
+        return 'selected'
     }
     if(clicked?.type === 'group' && archivedMemberIds(clicked).length > 0){
         // Members are restored before the group is selected; the group is
         // formatted and its interaction bumped once they are in memory.
         const failedMembers = await restoreGroupMembers(clicked)
-        if(callId !== latestChangeChar || get(doingChat)){
-            return
+        if(callId !== latestChangeChar){
+            return 'superseded'
+        }
+        if(get(doingChat)){
+            return 'busy'
         }
         const groupIndex = DBState.db.characters.indexOf(clicked)
         if(groupIndex === -1){
-            return
+            return 'gone'
         }
         alertGroupMembersNotLoaded(failedMembers)
         characterFormatUpdate(groupIndex, {
           updateInteraction,
         });
         selectedCharID.set(groupIndex);
-        return
+        return 'selected'
     }
     characterFormatUpdate(index, {
       updateInteraction,
     });
     selectedCharID.set(index);
+    return 'selected'
 }

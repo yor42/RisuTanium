@@ -23,11 +23,14 @@
         // The search result of the screen that embeds this list. Without it the
         // list searches by `search`, else by the mobile header's search box.
         results?: CharacterSearch;
+        // What a tap on a row does with the character's slot. Without it the row opens the
+        // character and leaves the screen, as it always did.
+        onpick?: (index: number) => void;
     }
 
     const agoFormatter = new Intl.RelativeTimeFormat(navigator.languages, { style: 'short' });
 
-    let {endGrid = () => {}, search, hideTrash = true, trashEntry = false, results}: Props = $props();
+    let {endGrid = () => {}, search, hideTrash = true, trashEntry = false, results, onpick}: Props = $props();
     // Local on purpose: the swipe gestures move through MobileGUIStack, so the
     // trash view must not be a stack value. Leaving the screen resets it.
     let trashOpen = $state(false);
@@ -123,6 +126,10 @@
         {@const chats = coldStubChatCount(c)}
         {@const agoText = makeAgoText(entry.interaction)}
         <button class="flex p-2 border-t-darkborderc gap-2 w-full" class:border-t={position !== 1} onclick={() => {
+            if (onpick) {
+                onpick(index)
+                return
+            }
             changeChar(index)
             endGrid()
         }}>

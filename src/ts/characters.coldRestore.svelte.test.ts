@@ -556,7 +556,7 @@ describe('changeChar on an archived character -- the list changes during the rea
         DBState.db.characters.splice(0, 1)
         pending[0].resolve(ok(fullCharacter('member', 'restored description')))
 
-        await expect(done).resolves.toBeUndefined()
+        await expect(done).resolves.toBe('selected')
         expect(chaIds()).toEqual(['member'])
         expect(slot(0).coldstorage).toBeUndefined()
         expect(slot(0).desc).toBe('restored description')
@@ -573,7 +573,7 @@ describe('changeChar on an archived character -- the list changes during the rea
         DBState.db.characters.splice(0, 2)
         pending[0].resolve(ok(fullCharacter('member', 'restored description')))
 
-        await expect(done).resolves.toBeUndefined()
+        await expect(done).resolves.toBe('selected')
         expect(chaIds()).toEqual(['member'])
         expect(slot(0).desc).toBe('restored description')
         expect(get(selectedCharID)).toBe(0)
@@ -588,7 +588,7 @@ describe('changeChar on an archived character -- the list changes during the rea
         DBState.db.characters.splice(1, 1)
         pending[0].resolve(ok(fullCharacter('member', 'restored description')))
 
-        await expect(done).resolves.toBeUndefined()
+        await expect(done).resolves.toBe('gone')
         expect(chaIds()).toEqual(['x'])
         expect(slot(0).desc).toBe('x description')
         expect(vi.mocked(alertError)).not.toHaveBeenCalled()
@@ -605,7 +605,7 @@ describe('changeChar on an archived character -- the list changes during the rea
         DBState.db.characters[1] = warmCharacter('replacement')
         pending[0].resolve(ok(fullCharacter('member', 'restored description')))
 
-        await expect(done).resolves.toBeUndefined()
+        await expect(done).resolves.toBe('gone')
         expect(chaIds()).toEqual(['x', 'replacement'])
         expect(slot(1).desc).toBe('replacement description')
         expect(vi.mocked(alertError)).not.toHaveBeenCalled()

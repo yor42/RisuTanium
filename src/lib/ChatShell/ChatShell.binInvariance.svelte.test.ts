@@ -401,6 +401,16 @@ describe('compatibility guard: the new shell leaves the .bin in the upstream sha
         expect(decodedText).not.toContain('risuChatShell')
     })
 
+    test('TB4b: the device-local chat sort travels in no export', async () => {
+        localStorage.setItem('risuChatShell.chatSort', 'manual')
+        const db = buildDatabase(buildChat())
+        const entry = await exportEntry(db)
+        const text = new TextDecoder('latin1').decode(entry)
+        const decodedText = JSON.stringify(await decodeRisuSave(entry, { strict: true }))
+        expect(text).not.toContain('chatSort')
+        expect(decodedText).not.toContain('chatSort')
+    })
+
     test('the committed golden files still hash to the values recorded in their README', () => {
         const readme = fs.readFileSync(path.join(GOLDEN_DIR, 'README.md'), 'utf8')
         const recorded = [...readme.matchAll(/^([0-9A-F]{64})\s+(\S+\.bin) \((\d+) bytes\)$/gm)]

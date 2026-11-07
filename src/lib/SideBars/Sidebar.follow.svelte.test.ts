@@ -62,6 +62,7 @@ vi.mock('./DevTool.svelte', () => ({ default: () => {} }))
 vi.mock('./SideChatList.svelte', () => ({ default: () => {} }))
 vi.mock('../Others/QuickSettingsGUI.svelte', () => ({ default: () => {} }))
 vi.mock('../Others/PluginDefinedIcon.svelte', () => ({ default: () => {} }))
+vi.mock('../ChatShell/sidebar/ShellSidebar.svelte', () => ({ default: () => {} }))
 
 import { DBState, DynamicGUI, sideBarClosing, sideBarStore } from '../../ts/stores.svelte'
 import * as shellSwitchModule from '../../ts/chatShell/shellSwitch.svelte'
@@ -140,7 +141,7 @@ describe('modal semantics while overlaid', () => {
         openPanel()
         expect(panel().getAttribute('role')).toBe('dialog')
         expect(panel().hasAttribute('aria-modal')).toBe(false)
-        expect(container.querySelector('[data-rail-root]')?.hasAttribute('inert')).toBe(false)
+        expect(container.querySelector('[data-rail-root]')).toBeNull()
         expect(panel().getAttribute('aria-label')).toBe(language.chatShellSidebar)
         expect(chat.hasAttribute('inert')).toBe(true)
         expect(container.hasAttribute('inert')).toBe(false)
@@ -180,8 +181,9 @@ describe('modal semantics while overlaid', () => {
         expect(panel().classList.contains('risu-sidebar')).toBe(true)
     })
 
-    test('the wide layout is docked: no dialog and nothing inert', () => {
-        setViewport(1000)
+    test('the docked layout is not modal: no dialog and nothing inert', () => {
+        setViewport(1280)
+        DynamicGUI.set(false)
         mountSidebar()
         openPanel()
         expect(panel().hasAttribute('role')).toBe(false)
@@ -198,7 +200,7 @@ describe('close paths', () => {
         expect(get(sideBarClosing)).toBe(true)
         expect(panel().classList.contains('follow-out')).toBe(true)
         expect(panel().classList.contains('risu-sidebar-close')).toBe(false)
-        expect(railRoot().classList.contains('risu-sub-sidebar-close')).toBe(false)
+        expect(railRoot()).toBeNull()
     })
 
     test('the end of the exit animation finishes the close', () => {
@@ -259,12 +261,12 @@ describe('the panel follows progress', () => {
         flushSync()
     }
 
-    test('the panel and the rail translate together; the backdrop opacity runs from 0 to 0.5', () => {
+    test('the panel translates with the finger and there is no rail; the backdrop opacity runs from 0 to 0.5', () => {
         mountSidebar()
         openPanel()
         drive(0)
         expect(panel().style.transform).toBe('translateX(-340px)')
-        expect(railRoot().style.transform).toBe('translateX(-340px)')
+        expect(railRoot()).toBeNull()
         expect(backdrop().style.opacity).toBe('0')
         drive(0.5)
         expect(panel().style.transform).toBe('translateX(-170px)')
@@ -284,12 +286,12 @@ describe('the panel follows progress', () => {
         expect(panel().classList.contains('follow-out')).toBe(false)
     })
 
-    test('no blur anywhere on the panel, the rail or the backdrop', () => {
+    test('no blur anywhere on the panel or the backdrop', () => {
         mountSidebar()
         openPanel()
         for (const progress of [0, 0.4, 1]) {
             drive(progress)
-            for (const element of [panel(), railRoot(), backdrop()]) {
+            for (const element of [panel(), backdrop()]) {
                 const style = element.getAttribute('style') ?? ''
                 expect(style).not.toMatch(/blur|backdrop-filter/)
             }
@@ -306,16 +308,16 @@ describe('the panel follows progress', () => {
         expect(backdrop().style.opacity).toBe('0.5')
     })
 
-    test('the panel is min(85vw, 360px) wide including the rail', () => {
+    test('the panel is min(85vw, 360px) wide', () => {
         mountSidebar()
         openPanel()
-        // 85% of 400 is 340; the 80 px rail leaves 260 for the panel.
-        expect(panel().style.width).toBe('260px')
+        // 85% of 400 is 340; there is no rail to subtract in shell mode.
+        expect(panel().style.width).toBe('340px')
         expect(panel().style.minWidth).toMatch(/^0(px)?$/)
         setViewport(800)
         window.dispatchEvent(new Event('resize'))
         flushSync()
-        expect(panel().style.width).toBe('280px')
+        expect(panel().style.width).toBe('360px')
     })
 
     test('after a drag left the panel open the button entrance does not replay', () => {
