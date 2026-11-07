@@ -1684,9 +1684,10 @@ function alertGroupMembersNotLoaded(names: string[]){
 }
 
 /**
- * Counts the `changeChar` calls that got past the `doingChat` guard. Only the
- * most recent one may select a character, so a slow restore of an archived
- * character cannot override a later choice.
+ * Counts the `changeChar` calls that got past the `doingChat` guard plus each
+ * `supersedeChangeChar()`. Only a call still holding the latest number may
+ * select a character, so a slow restore of an archived character cannot
+ * override a later choice or a selection move that ended its switch.
  */
 let latestChangeChar = 0
 
