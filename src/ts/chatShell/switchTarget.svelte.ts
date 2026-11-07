@@ -93,14 +93,28 @@ export async function switchCharacter(entry: Entry): Promise<ChangeCharOutcome> 
     const mine = seq
     switchTarget.target = entry
     switchTarget.phase = 'loading'
+    // The character selected when the switch started, if any.
+    const from = DBState.db.characters[get(selectedCharID)] ?? null
     let initial = true
-    const stop = selectedCharID.subscribe(() => {
+    const stop = selectedCharID.subscribe((value) => {
         if(initial){
             initial = false
             return
         }
-        // Any later selection change, ours included, ends this switch.
+        // A move to another character, or to none, ends this switch and
+        // supersedes its restore, so the restore cannot select the target
+        // after the user has left. The restore's own landing reaches here too;
+        // superseding then is inert because the call has already passed its
+        // check. A re-index of the character selected at the start (same
+        // entry, new slot) keeps the switch: the restore resolves its slot
+        // again when it lands. The `mine === seq` check also covers a store
+        // that queues subscriber calls, where an already unsubscribed watcher
+        // can still run.
         if(mine === seq){
+            if(from !== null && DBState.db.characters[value] === from){
+                return
+            }
+            supersedeChangeChar()
             clearPending()
         }
     })
