@@ -12,3 +12,7 @@ Agents/Tools/chatshell-cdp/** text eol=lf
 *.snap text eol=lf
 # pnpm applies patches byte-exact; an autocrlf checkout must not turn them into CRLF.
 patches/*.patch -text
+# The .rtb goldens are frozen bytes: binary files are never converted, and the refs list is LF in every checkout.
+src/ts/drive/tests/rtbGoldens/*.rtb binary
+src/ts/drive/tests/rtbGoldens/*.rtbseg binary
+src/ts/drive/tests/rtbGoldens/*.json text eol=lf
