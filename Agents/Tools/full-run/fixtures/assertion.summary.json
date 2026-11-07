@@ -1,0 +1,23 @@
+{
+ "schema": 1,
+ "vitestVersion": "4.1.12",
+ "reason": "failed",
+ "unhandled": [],
+ "modules": [
+  {
+   "file": "<ROOT>/target.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [],
+   "suites": [],
+   "tests": [
+    {
+     "name": "a",
+     "state": "failed",
+     "errors": [
+      "expected 1 to be 2 // Object.is equality"
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,173 @@
+{
+ "schema": 1,
+ "vitestVersion": "4.1.12",
+ "reason": "failed",
+ "unhandled": [],
+ "modules": [
+  {
+   "file": "<ROOT>/f01.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [],
+   "suites": [],
+   "tests": [
+    {
+     "name": "t",
+     "state": "failed",
+     "errors": [
+      "Test timed out in 50ms.\nIf this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\"."
+     ]
+    }
+   ]
+  },
+  {
+   "file": "<ROOT>/f02.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [],
+   "suites": [],
+   "tests": [
+    {
+     "name": "t",
+     "state": "failed",
+     "errors": [
+      "Test timed out in 50ms.\nIf this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\"."
+     ]
+    }
+   ]
+  },
+  {
+   "file": "<ROOT>/f03.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [],
+   "suites": [],
+   "tests": [
+    {
+     "name": "t",
+     "state": "failed",
+     "errors": [
+      "Test timed out in 50ms.\nIf this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\"."
+     ]
+    }
+   ]
+  },
+  {
+   "file": "<ROOT>/f04.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [],
+   "suites": [],
+   "tests": [
+    {
+     "name": "t",
+     "state": "failed",
+     "errors": [
+      "Test timed out in 50ms.\nIf this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\"."
+     ]
+    }
+   ]
+  },
+  {
+   "file": "<ROOT>/f05.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [],
+   "suites": [],
+   "tests": [
+    {
+     "name": "t",
+     "state": "failed",
+     "errors": [
+      "Test timed out in 50ms.\nIf this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\"."
+     ]
+    }
+   ]
+  },
+  {
+   "file": "<ROOT>/f06.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [],
+   "suites": [],
+   "tests": [
+    {
+     "name": "t",
+     "state": "failed",
+     "errors": [
+      "Test timed out in 50ms.\nIf this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\"."
+     ]
+    }
+   ]
+  },
+  {
+   "file": "<ROOT>/f07.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [],
+   "suites": [],
+   "tests": [
+    {
+     "name": "t",
+     "state": "failed",
+     "errors": [
+      "Test timed out in 50ms.\nIf this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\"."
+     ]
+    }
+   ]
+  },
+  {
+   "file": "<ROOT>/f08.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [],
+   "suites": [],
+   "tests": [
+    {
+     "name": "t",
+     "state": "failed",
+     "errors": [
+      "Test timed out in 50ms.\nIf this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\"."
+     ]
+    }
+   ]
+  },
+  {
+   "file": "<ROOT>/f09.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [],
+   "suites": [],
+   "tests": [
+    {
+     "name": "t",
+     "state": "failed",
+     "errors": [
+      "Test timed out in 50ms.\nIf this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\"."
+     ]
+    }
+   ]
+  },
+  {
+   "file": "<ROOT>/f10.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [],
+   "suites": [],
+   "tests": [
+    {
+     "name": "t",
+     "state": "failed",
+     "errors": [
+      "Test timed out in 50ms.\nIf this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\"."
+     ]
+    }
+   ]
+  },
+  {
+   "file": "<ROOT>/f11.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [],
+   "suites": [],
+   "tests": [
+    {
+     "name": "t",
+     "state": "failed",
+     "errors": [
+      "Test timed out in 50ms.\nIf this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\"."
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,16 @@
+{
+  "files": [
+    {
+      "path": "src/ts/process/tests/moduleToggleReload.svelte.test.ts",
+      "reason": "Timeout under machine load; passes alone.",
+      "evidence": "CHORE-634 merge run vitest.txt (timed out in the full run, 55 s alone)",
+      "added": "2026-11-07"
+    },
+    {
+      "path": "src/ts/storage/tests/store2/productionBootUi.test.ts",
+      "reason": "Timeout under machine load; passes alone.",
+      "evidence": "CHORE-214 (Agents/Live-State.md)",
+      "added": "2026-11-07"
+    }
+  ]
+}
