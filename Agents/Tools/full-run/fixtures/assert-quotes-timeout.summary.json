@@ -1,0 +1,23 @@
+{
+ "schema": 1,
+ "vitestVersion": "4.1.12",
+ "reason": "failed",
+ "unhandled": [],
+ "modules": [
+  {
+   "file": "<ROOT>/target.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [],
+   "suites": [],
+   "tests": [
+    {
+     "name": "q",
+     "state": "failed",
+     "errors": [
+      "expected 'x' to be 'Test timed out in 5ms.' // Object.is equality"
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,21 @@
+{
+ "schema": 1,
+ "vitestVersion": "4.1.12",
+ "reason": "passed",
+ "unhandled": [],
+ "modules": [
+  {
+   "file": "<ROOT>/target.spec.mjs",
+   "state": "skipped",
+   "moduleErrors": [],
+   "suites": [],
+   "tests": [
+    {
+     "name": "s",
+     "state": "skipped",
+     "errors": []
+    }
+   ]
+  }
+ ]
+}

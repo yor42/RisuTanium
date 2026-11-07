@@ -1,0 +1,31 @@
+{
+ "schema": 1,
+ "vitestVersion": "4.1.12",
+ "reason": "failed",
+ "unhandled": [],
+ "modules": [
+  {
+   "file": "<ROOT>/target.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [],
+   "suites": [
+    {
+     "name": "d",
+     "state": "failed",
+     "errors": [
+      "suite teardown broke"
+     ]
+    }
+   ],
+   "tests": [
+    {
+     "name": "d > t",
+     "state": "failed",
+     "errors": [
+      "Test timed out in 50ms.\nIf this is a long-running test, pass a timeout value as the last argument or configure it globally with \"testTimeout\"."
+     ]
+    }
+   ]
+  }
+ ]
+}

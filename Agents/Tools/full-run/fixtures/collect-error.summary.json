@@ -1,0 +1,17 @@
+{
+ "schema": 1,
+ "vitestVersion": "4.1.12",
+ "reason": "failed",
+ "unhandled": [],
+ "modules": [
+  {
+   "file": "<ROOT>/target.spec.mjs",
+   "state": "failed",
+   "moduleErrors": [
+    "Cannot find module './does-not-exist.mjs' imported from <ROOT>/target.spec.mjs"
+   ],
+   "suites": [],
+   "tests": []
+  }
+ ]
+}

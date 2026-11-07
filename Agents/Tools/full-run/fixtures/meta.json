@@ -1,0 +1,138 @@
+{
+  "schema": 1,
+  "vitestVersion": "4.1.12",
+  "nodeVersion": "v24.19.0",
+  "cases": {
+    "all-pass": {
+      "exitCode": 0,
+      "files": [
+        "target.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "test-timeout": {
+      "exitCode": 1,
+      "files": [
+        "target.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "assertion": {
+      "exitCode": 1,
+      "files": [
+        "target.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "assert-quotes-timeout": {
+      "exitCode": 1,
+      "files": [
+        "target.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "collect-error": {
+      "exitCode": 1,
+      "files": [
+        "target.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "describe-hook-timeout": {
+      "exitCode": 1,
+      "files": [
+        "target.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "top-hook-timeout": {
+      "exitCode": 1,
+      "files": [
+        "target.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "mixed-timeout-assertion": {
+      "exitCode": 1,
+      "files": [
+        "target.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "unhandled-after-pass": {
+      "exitCode": 1,
+      "files": [
+        "target.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "top-afterall-plus-timeout": {
+      "exitCode": 1,
+      "files": [
+        "target.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "describe-afterall-plus-timeout": {
+      "exitCode": 1,
+      "files": [
+        "target.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "throw-empty-object": {
+      "exitCode": 1,
+      "files": [
+        "target.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "two-failed-files": {
+      "exitCode": 1,
+      "files": [
+        "a.spec.mjs",
+        "b.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "mass-11-timeouts": {
+      "exitCode": 1,
+      "files": [
+        "f01.spec.mjs",
+        "f02.spec.mjs",
+        "f03.spec.mjs",
+        "f04.spec.mjs",
+        "f05.spec.mjs",
+        "f06.spec.mjs",
+        "f07.spec.mjs",
+        "f08.spec.mjs",
+        "f09.spec.mjs",
+        "f10.spec.mjs",
+        "f11.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "rerun-pass": {
+      "exitCode": 0,
+      "files": [
+        "target.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run target.spec.mjs --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "rerun-zero-tests": {
+      "exitCode": 0,
+      "files": [
+        "target.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run target.spec.mjs --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    },
+    "rerun-two-files": {
+      "exitCode": 0,
+      "files": [
+        "x1.spec.mjs",
+        "x2.spec.mjs"
+      ],
+      "command": "node <REPO>/node_modules/vitest/vitest.mjs run spec --root <ROOT> --config <ROOT>/vitest.config.mjs --maxWorkers=2 --reporter=default --reporter=<REPO>/Agents/Tools/full-run/fullrun-reporter.mjs"
+    }
+  }
+}
