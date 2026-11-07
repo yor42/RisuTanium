@@ -234,6 +234,23 @@ describe('S4 delete confirm', () => {
         await vi.waitFor(() => expect(owner().chats).toHaveLength(1))
     })
 
+    test('a tap made before the confirm armed stays ignored when its handler runs after the arm delay', async () => {
+        await show()
+        await openSheet()
+        await openConfirm()
+        const tappedAt = performance.now()
+        const primary = confirmLayer()!.querySelector<HTMLElement>('[data-part="pattern-warn-primary"]')!
+        await new Promise((resolve) => setTimeout(resolve, 320))
+        const early = new MouseEvent('click', { bubbles: true, cancelable: true })
+        Object.defineProperty(early, 'timeStamp', { value: tappedAt + 10 })
+        primary.dispatchEvent(early)
+        await settle()
+        expect(confirmLayer()).not.toBeNull()
+        expect(owner().chats).toHaveLength(2)
+        primary.click()
+        await vi.waitFor(() => expect(owner().chats).toHaveLength(1))
+    })
+
     test('Escape closes the confirm, keeps the sheet open and returns focus to Delete', async () => {
         await show()
         await openSheet()

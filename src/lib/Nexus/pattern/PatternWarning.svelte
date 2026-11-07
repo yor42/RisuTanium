@@ -36,18 +36,25 @@
     let acknowledged = $state(false)
     let primary = $state<HTMLButtonElement>()
 
-    // The primary of a danger sheet ignores input for the arm delay after opening.
+    // The primary of a danger sheet ignores input for the arm delay after opening. A tap counts by its own event time:
+    // under input lag the click of a tap made before arming can be dispatched after the timer fired. The timer stays as
+    // a second condition, so a click stamped on another clock origin is never accepted earlier than the timer allows.
+    // A sheet that is not danger has no threshold.
     let armed = false
+    let armAt = -Infinity
     let answered = false
     $effect(() => {
         answered = false
         const element = primary
         if (def.severity !== 'danger' || !element) {
             armed = true
+            armAt = -Infinity
             return
         }
         armed = false
-        const timer = setTimeout(() => (armed = true), armDelayMs(element))
+        const delay = armDelayMs(element)
+        armAt = performance.now() + delay
+        const timer = setTimeout(() => (armed = true), delay)
         return () => clearTimeout(timer)
     })
 
@@ -59,8 +66,8 @@
 
     const gated = $derived(!!def.ack && !acknowledged)
 
-    function onPrimary() {
-        if (gated || !armed) return
+    function onPrimary(event: MouseEvent) {
+        if (gated || !armed || event.timeStamp < armAt) return
         answer('confirm')
     }
 
