@@ -1694,7 +1694,7 @@ let latestChangeChar = 0
 /**
  * Supersedes any `changeChar` still waiting on a restore: when it lands it
  * ends as `superseded` and selects nothing. The restored character stays in
- * memory.
+ * memory and its last interaction is unchanged.
  */
 export function supersedeChangeChar(): void {
     latestChangeChar++
@@ -1728,7 +1728,8 @@ export async function changeChar(index: number, arg:{
         // The restore finds the clicked placeholder again after its read, so
         // the character list may have changed meanwhile; it tells the user
         // when it fails. Selecting is skipped when a later call has started
-        // or a chat began generating during the read.
+        // or a chat began generating during the read. The last interaction is
+        // set only when the character is selected.
         const outcome = arg.quiet
             ? await restoreColdCharacter(clicked, { quiet: true })
             : await restoreColdCharacter(clicked)
@@ -1743,9 +1744,7 @@ export async function changeChar(index: number, arg:{
             return 'gone'
         }
         if(outcome.installedHere){
-            characterFormatUpdate(restoredIndex, {
-              updateInteraction,
-            });
+            characterFormatUpdate(restoredIndex);
         }
         let failedMembers: string[] = []
         if(outcome.character.type === 'group'){
@@ -1762,6 +1761,9 @@ export async function changeChar(index: number, arg:{
             return 'gone'
         }
         alertGroupMembersNotLoaded(failedMembers)
+        if(updateInteraction){
+            DBState.db.characters[selectedIndex].lastInteraction = Date.now()
+        }
         selectedCharID.set(selectedIndex);
         return 'selected'
     }

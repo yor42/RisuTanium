@@ -151,8 +151,9 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { doingChat } from 'src/ts/process/index.svelte'
 import { buildColdStub } from 'src/ts/process/coldCharacter'
-import { changeChar, characterFormatUpdate } from './characters'
+import { changeChar, characterFormatUpdate, supersedeChangeChar } from './characters'
 import { restoreColdCharacterByChaId } from 'src/ts/process/coldMemberRestore'
+import { recentCharacters } from 'src/ts/chatShell/recentCharacters'
 
 //#region fixtures
 
@@ -184,6 +185,25 @@ function installDb(characters: CharacterFixture[]): void {
 function lastInteractionOf(index: number): number | undefined {
     return (DBState.db.characters[index] as unknown as character).lastInteraction
 }
+
+function stubOf(chaId: string): CharacterFixture {
+    return buildColdStub(fullCharacter(chaId), `unit-${chaId}`, []) as unknown as CharacterFixture
+}
+
+function slot(index: number): character {
+    return DBState.db.characters[index] as unknown as character
+}
+
+// The archived character's unit read, held open until the test releases it.
+function holdRead(unit: character): () => void {
+    let release!: () => void
+    readColdStorageItemMock.mockImplementation(() => new Promise((resolve) => {
+        release = () => resolve({ status: 'ok', value: { character: unit } })
+    }))
+    return () => release()
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 let consoleErrorSpy: MockInstance<typeof console.error>
 
@@ -282,5 +302,131 @@ describe('changeChar and lastInteraction', () => {
         await changeChar(0)
 
         expect(lastInteractionOf(0)).toBeGreaterThanOrEqual(before)
+    })
+})
+
+describe('an abandoned switch is not a use', () => {
+    test('a restore superseded by supersedeChangeChar leaves lastInteraction as it was', async () => {
+        installDb([fullCharacter('here') as unknown as CharacterFixture, stubOf('away')])
+        const release = holdRead(fullCharacter('away'))
+        const pending = changeChar(1, { quiet: true })
+        await settle()
+        supersedeChangeChar()
+        release()
+
+        expect(await pending).toBe('superseded')
+        expect(slot(1).coldstorage).toBeUndefined()
+        expect(lastInteractionOf(1)).toBe(LONG_AGO)
+        expect(get(selectedCharID)).toBe(-1)
+    })
+
+    test('a restore superseded by a later switch stays behind the character that was opened', async () => {
+        installDb([fullCharacter('later') as unknown as CharacterFixture, stubOf('away')])
+        const release = holdRead(fullCharacter('away'))
+        const pending = changeChar(1, { quiet: true })
+        await settle()
+        const before = Date.now()
+
+        expect(await changeChar(0, { quiet: true })).toBe('selected')
+        release()
+
+        expect(await pending).toBe('superseded')
+        expect(lastInteractionOf(0)).toBeGreaterThanOrEqual(before)
+        expect(lastInteractionOf(1)).toBe(LONG_AGO)
+        expect(recentCharacters(DBState.db.characters)[0]).toBe(slot(0))
+    })
+
+    test('a restore that lands while a reply is being written ends busy and leaves lastInteraction as it was', async () => {
+        installDb([fullCharacter('here') as unknown as CharacterFixture, stubOf('away')])
+        const release = holdRead(fullCharacter('away'))
+        const pending = changeChar(1, { quiet: true })
+        await settle()
+        doingChat.set(true)
+        release()
+
+        expect(await pending).toBe('busy')
+        expect(lastInteractionOf(1)).toBe(LONG_AGO)
+    })
+
+    test('an archived group superseded while its members are restored leaves lastInteraction as it was', async () => {
+        const group = {
+            type: 'group', name: 'team name', image: '', chaId: 'team', chatPage: 0, firstMsgIndex: -1, lastInteraction: LONG_AGO,
+            characters: ['member'], characterTalks: [0.5], characterActive: [true], globalLore: [],
+            chats: [{ id: 'team-chat', message: [], note: '', name: 'Chat 1', localLore: [] }],
+        }
+        const groupStub = buildColdStub(group as never, 'unit-team', []) as unknown as CharacterFixture
+        installDb([fullCharacter('here') as unknown as CharacterFixture, groupStub, stubOf('member')])
+        readColdStorageItemMock.mockImplementation((key: string) => {
+            if (key === 'unit-team') {
+                return Promise.resolve({ status: 'ok', value: { character: group } })
+            }
+            // The member's read supersedes the group's switch before it can land.
+            supersedeChangeChar()
+            return Promise.resolve({ status: 'ok', value: { character: fullCharacter('member') } })
+        })
+
+        expect(await changeChar(1, { quiet: true })).toBe('superseded')
+        expect(slot(1).coldstorage).toBeUndefined()
+        expect(slot(2).coldstorage).toBeUndefined()
+        expect(lastInteractionOf(1)).toBe(LONG_AGO)
+        expect(get(selectedCharID)).toBe(-1)
+    })
+
+    test('guard: a superseded restore is still format-updated', async () => {
+        installDb([fullCharacter('here') as unknown as CharacterFixture, stubOf('away')])
+        const unit = fullCharacter('away') as unknown as Record<string, unknown>
+        delete unit.tags
+        delete unit.alternateGreetings
+        const release = holdRead(unit as unknown as character)
+        const pending = changeChar(1, { quiet: true })
+        await settle()
+        supersedeChangeChar()
+        release()
+
+        expect(await pending).toBe('superseded')
+        expect(slot(1).tags).toEqual([])
+        expect(slot(1).alternateGreetings).toEqual([])
+    })
+})
+
+describe('a switch that lands is a use', () => {
+    test('guard: a landed restore is bumped before the selection names it', async () => {
+        installDb([fullCharacter('here') as unknown as CharacterFixture, stubOf('away')])
+        readColdStorageItemMock.mockResolvedValue({ status: 'ok', value: { character: fullCharacter('away') } })
+        const seen: Array<number | undefined> = []
+        const stop = selectedCharID.subscribe((id) => { if (id === 1) seen.push(lastInteractionOf(1)) })
+        const before = Date.now()
+        try {
+            expect(await changeChar(1)).toBe('selected')
+        } finally {
+            stop()
+        }
+
+        expect(seen.length).toBe(1)
+        expect(seen[0]).toBeGreaterThanOrEqual(before)
+    })
+
+    test('guard: a second pick of the same archived character joins its restore and, landing, is bumped', async () => {
+        installDb([fullCharacter('here') as unknown as CharacterFixture, stubOf('away')])
+        const release = holdRead(fullCharacter('away'))
+        const first = changeChar(1, { quiet: true })
+        await settle()
+        const second = changeChar(1, { quiet: true })
+        await settle()
+        expect(readColdStorageItemMock).toHaveBeenCalledTimes(1)
+        const before = Date.now()
+        release()
+
+        expect(await first).toBe('superseded')
+        expect(await second).toBe('selected')
+        expect(lastInteractionOf(1)).toBeGreaterThanOrEqual(before)
+    })
+
+    test('guard: keepInteraction on a landed restore leaves lastInteraction as it was', async () => {
+        installDb([fullCharacter('here') as unknown as CharacterFixture, stubOf('away')])
+        readColdStorageItemMock.mockResolvedValue({ status: 'ok', value: { character: fullCharacter('away') } })
+
+        expect(await changeChar(1, { keepInteraction: true })).toBe('selected')
+        expect(lastInteractionOf(1)).toBe(LONG_AGO)
     })
 })
