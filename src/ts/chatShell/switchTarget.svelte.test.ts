@@ -31,9 +31,11 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 })
 
 const changeCharMock = vi.hoisted(() => vi.fn())
+const supersedeMock = vi.hoisted(() => vi.fn())
 
 vi.mock(import('src/ts/characters'), () => ({
     changeChar: changeCharMock,
+    supersedeChangeChar: supersedeMock,
 }) as unknown as typeof import('src/ts/characters'))
 
 vi.mock(import('src/ts/alert'), () => ({
@@ -50,7 +52,7 @@ import { alertNormal, alertError } from 'src/ts/alert'
 import { doingChat } from 'src/ts/process/index.svelte'
 import { language } from 'src/lang'
 import { resolveSwitchFocus } from './overlayFocus'
-import { switchTarget, switchCharacter, retrySwitch, backToPrevious, clearPending, refuseSwitchWhileWriting } from './switchTarget.svelte'
+import { switchTarget, switchCharacter, retrySwitch, backToPrevious, abandonPendingSwitch, clearPending, refuseSwitchWhileWriting } from './switchTarget.svelte'
 
 type Entry = Database['characters'][number]
 
@@ -87,6 +89,7 @@ function holdChangeChar(): Deferred[] {
 
 beforeEach(() => {
     changeCharMock.mockReset()
+    supersedeMock.mockReset()
     vi.mocked(alertNormal).mockClear()
     vi.mocked(alertError).mockClear()
     doingChat.set(false)
@@ -204,6 +207,39 @@ describe('pending switch state', () => {
         expect(switchTarget.reason).toBeNull()
         expect(selIdState.selId).toBe(2)
         expect(get(selectedCharID)).toBe(2)
+    })
+
+    test.each(['loading', 'failed'] as const)('abandonPendingSwitch ends a %s switch, supersedes the running restore and keeps the selection', async (phase) => {
+        const [, s] = install([warm('a'), stub('s')])
+        selectedCharID.set(0)
+        const calls = holdChangeChar()
+
+        const run = switchCharacter(s)
+        if (phase === 'failed') {
+            calls[0].resolve({ failed: 'missing' })
+            await run
+        }
+        expect(switchTarget.phase).toBe(phase)
+
+        abandonPendingSwitch()
+
+        expect(supersedeMock).toHaveBeenCalledTimes(1)
+        expect(switchTarget.phase).toBe('idle')
+        expect(switchTarget.target).toBeNull()
+        expect(switchTarget.reason).toBeNull()
+        expect(get(selectedCharID)).toBe(0)
+
+        // The outcome of the abandoned switch never revives it.
+        calls[0].resolve({ failed: 'missing' })
+        await run
+        expect(switchTarget.phase).toBe('idle')
+    })
+
+    test('abandonPendingSwitch does nothing while idle', () => {
+        install([warm('a')])
+        abandonPendingSwitch()
+        expect(supersedeMock).not.toHaveBeenCalled()
+        expect(switchTarget.phase).toBe('idle')
     })
 
     test('TA7: a newer switch clears the older one, and the older outcome never revives it', async () => {

@@ -1691,6 +1691,15 @@ function alertGroupMembersNotLoaded(names: string[]){
 let latestChangeChar = 0
 
 /**
+ * Supersedes any `changeChar` still waiting on a restore: when it lands it
+ * ends as `superseded` and selects nothing. The restored character stays in
+ * memory.
+ */
+export function supersedeChangeChar(): void {
+    latestChangeChar++
+}
+
+/**
  * What a `changeChar` call ended as. Only `selected` moved the selection.
  * `busy`: a reply is being written. `superseded`: a later call started.
  * `gone`: the character was no longer in the list when it was due to be

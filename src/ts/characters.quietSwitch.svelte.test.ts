@@ -56,6 +56,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
         CharEmotion: writable({}),
         MobileGUIStack: writable([]),
         OpenRealmStore: writable(null),
+        alertStore: writable({ type: 'none', msg: '' }),
     } as unknown as typeof import('src/ts/stores.svelte')
 })
 
@@ -161,7 +162,10 @@ import { DBState, selectedCharID, selIdState } from 'src/ts/stores.svelte'
 import { doingChat } from 'src/ts/process/index.svelte'
 import { alertError, alertNormal } from 'src/ts/alert'
 import { buildColdStub } from 'src/ts/process/coldCharacter'
-import { changeChar } from './characters'
+import { changeChar, supersedeChangeChar } from './characters'
+import { changeChatTo } from 'src/ts/globalApi.svelte'
+import { abandonPendingSwitch, clearPending, switchCharacter, switchTarget } from './chatShell/switchTarget.svelte'
+import { installShellSidebarKeys } from './chatShell/shellSidebarKeys'
 
 //#region fixtures and helpers
 
@@ -330,5 +334,119 @@ describe('changeChar quiet and outcomes', () => {
         expect(get(selectedCharID)).toBe(1)
         expect(await changeChar(0)).toBe('selected')
         expect(get(selectedCharID)).toBe(0)
+    })
+
+    test('supersedeChangeChar: a restore still in flight ends superseded and selects nothing', async () => {
+        installDb([warmCharacter('a'), forkStub('slow', 'unit-slow')])
+        selectedCharID.set(0)
+        const pending = holdReads()
+
+        const call = changeChar(1, { quiet: true })
+        await tick()
+        supersedeChangeChar()
+        pending[0].resolve(ok(fullCharacter('slow')))
+        const outcome = await call
+
+        expect(outcome).toBe('superseded')
+        expect(get(selectedCharID)).toBe(0)
+    })
+})
+
+function warmWithChats(chaId: string): CharacterFixture {
+    const owner = fullCharacter(chaId)
+    owner.chats = ['one', 'two', 'three'].map((name, i) => ({ id: `${chaId}-${i}`, message: [], note: '', name, localLore: [] })) as unknown as character['chats']
+    return owner as unknown as CharacterFixture
+}
+
+function pressAlt(key: 'ArrowUp' | 'ArrowDown'): void {
+    window.dispatchEvent(new KeyboardEvent('keydown', { key, altKey: true, bubbles: true, cancelable: true }))
+}
+
+describe('a loading character switch dropped by the user while its restore is still running', () => {
+    let teardown: (() => void) | undefined
+
+    beforeEach(() => {
+        localStorage.clear()
+        localStorage.setItem('risuChatShell.chatSort', 'manual')
+        vi.mocked(changeChatTo).mockClear()
+        clearPending()
+        teardown = installShellSidebarKeys()
+    })
+
+    afterEach(() => {
+        teardown?.()
+        teardown = undefined
+        clearPending()
+    })
+
+    test('Alt+Down opens the neighbouring chat and the restore, once it lands, selects nothing', async () => {
+        installDb([warmWithChats('a'), forkStub('b', 'unit-b')])
+        selectedCharID.set(0)
+        const pending = holdReads()
+
+        const run = switchCharacter(DBState.db.characters[1])
+        expect(switchTarget.phase).toBe('loading')
+        await tick()
+        expect(pending.length).toBe(1)
+
+        pressAlt('ArrowDown')
+        expect(changeChatTo).toHaveBeenCalledWith(1)
+        expect(switchTarget.phase).toBe('idle')
+        expect(switchTarget.target).toBeNull()
+        expect(get(selectedCharID)).toBe(0)
+
+        pending[0].resolve(ok(fullCharacter('b')))
+        const outcome = await run
+        await tick()
+
+        expect(outcome).toBe('superseded')
+        expect(get(selectedCharID)).toBe(0)
+        expect(switchTarget.phase).toBe('idle')
+        expect(switchTarget.target).toBeNull()
+    })
+
+    test('abandonPendingSwitch alone also keeps the selection where it was', async () => {
+        installDb([warmWithChats('a'), forkStub('b', 'unit-b')])
+        selectedCharID.set(0)
+        const pending = holdReads()
+
+        const run = switchCharacter(DBState.db.characters[1])
+        await tick()
+        abandonPendingSwitch()
+        pending[0].resolve(ok(fullCharacter('b')))
+
+        expect(await run).toBe('superseded')
+        expect(get(selectedCharID)).toBe(0)
+        expect(switchTarget.phase).toBe('idle')
+    })
+
+    test('control: a newer switch to a warm character supersedes the running restore', async () => {
+        installDb([warmWithChats('a'), forkStub('b', 'unit-b'), warmWithChats('c')])
+        selectedCharID.set(0)
+        const pending = holdReads()
+
+        const run = switchCharacter(DBState.db.characters[1])
+        await tick()
+        await switchCharacter(DBState.db.characters[2])
+        expect(get(selectedCharID)).toBe(2)
+        pending[0].resolve(ok(fullCharacter('b')))
+
+        expect(await run).toBe('superseded')
+        expect(get(selectedCharID)).toBe(2)
+    })
+
+    test('with nothing pending, abandonPendingSwitch leaves a running restore alone', async () => {
+        installDb([warmWithChats('a'), forkStub('b', 'unit-b')])
+        selectedCharID.set(0)
+        const pending = holdReads()
+
+        const call = changeChar(1, { quiet: true })
+        await tick()
+        expect(switchTarget.phase).toBe('idle')
+        abandonPendingSwitch()
+        pending[0].resolve(ok(fullCharacter('b')))
+
+        expect(await call).toBe('selected')
+        expect(get(selectedCharID)).toBe(1)
     })
 })

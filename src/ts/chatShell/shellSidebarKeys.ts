@@ -5,6 +5,7 @@ import { hasOpenShell } from '../../lib/Nexus/pattern/patternFocus'
 import { adjacentChat, chatListItems } from './chatListModel'
 import { openChatOf, selectedOwner } from './chatOpen'
 import { readChatSort } from './deviceSettings'
+import { abandonPendingSwitch } from './switchTarget.svelte'
 
 /**
  * Alt+Up and Alt+Down open the neighbouring chat of the selected character in
@@ -49,7 +50,11 @@ function onKeydown(event: KeyboardEvent): void {
         return
     }
     event.preventDefault()
-    openChatOf(owner, next)
+    // Opening a chat of the character that is still selected drops a loading or failed switch to another one for good:
+    // the restore still running is superseded, so it cannot move the selection later.
+    if (openChatOf(owner, next) === 'opened') {
+        abandonPendingSwitch()
+    }
 }
 
 /** Registers the shortcuts on the window; returns the function that removes them. */

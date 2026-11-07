@@ -9,7 +9,7 @@
     import type { Chat, ChatFolder, Database } from "src/ts/storage/database.svelte";
     import { openChatOf, selectedOwner } from "../../../ts/chatShell/chatOpen";
     import { recentCharacters } from "../../../ts/chatShell/recentCharacters";
-    import { refuseSwitchWhileWriting, switchCharacter, switchTarget } from "../../../ts/chatShell/switchTarget.svelte";
+    import { abandonPendingSwitch, refuseSwitchWhileWriting, switchCharacter, switchTarget } from "../../../ts/chatShell/switchTarget.svelte";
     import { readChatSort, writeChatSort, type ChatSort } from "../../../ts/chatShell/deviceSettings";
     import { resolveSwitchFocus, setOverlayReturnFocus } from "../../../ts/chatShell/overlayFocus";
     import { WIDE_LAYOUT_MIN_PX } from "../../SideBars/panelGesture";
@@ -209,7 +209,12 @@
         if (current?.kind !== "chat" || !owner) {
             return;
         }
-        if (duplicateChat(owner.chaId, current.chat) && get(DynamicGUI)) {
+        if (!duplicateChat(owner.chaId, current.chat)) {
+            return;
+        }
+        // The copy opens in the character that is still selected, which drops a loading or failed switch to another one for good.
+        abandonPendingSwitch();
+        if (get(DynamicGUI)) {
             // A click with no pointer detail is a keyboard activation: focus then follows the opened copy.
             if (event.detail === 0) {
                 setOverlayReturnFocus(() => resolveSwitchFocus(switchTarget.phase));
@@ -289,7 +294,10 @@
             return;
         }
         createNewChat(target);
-        openChatOf(target, target.chats[0]);
+        // Opening a chat of the character that is still selected drops a loading or failed switch to another one for good.
+        if (openChatOf(target, target.chats[0]) === 'opened') {
+            abandonPendingSwitch();
+        }
     }
 
     function pickCharacter(entry: Entry, event: MouseEvent) {
@@ -314,6 +322,8 @@
         if (!target || openChatOf(target, chat) !== 'opened') {
             return;
         }
+        // The row belongs to the selected character, so a loading or failed switch to another one is dropped for good.
+        abandonPendingSwitch();
         if (get(DynamicGUI)) {
             // A click with no pointer detail is a keyboard activation: focus then follows the open chat.
             if (event.detail === 0) {
@@ -330,6 +340,9 @@
 
     function goHome() {
         reseter();
+        // Going home leaves any loading or failed switch behind; a restore still running must not select its character later.
+        // Dropped before the selection moves: the selection watcher would otherwise idle the phase first and skip the supersede.
+        abandonPendingSwitch();
         selectedCharID.set(-1);
         PlaygroundStore.set(0);
         OpenRealmStore.set(false);

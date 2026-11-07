@@ -266,6 +266,166 @@ describe('SwitchFrame', () => {
     })
 })
 
+/**
+ * Chromium fires a bubbling focusout (relatedTarget null) at the focused element while a node that contains it is being
+ * removed, before the node leaves the document. jsdom does not; this restores that, as the repository's other focus tests do.
+ */
+function emulateChromiumFocusoutOnRemoval(): () => void {
+    const originalRemove = Element.prototype.remove
+    const originalRemoveChild = Node.prototype.removeChild
+    const report = (node: Node) => {
+        const active = document.activeElement
+        if (active && active !== document.body && node.contains(active)) {
+            active.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }))
+        }
+    }
+    Element.prototype.remove = function (this: Element) { report(this); return originalRemove.call(this) }
+    Node.prototype.removeChild = function <T extends Node>(this: Node, child: T): T { report(child); return originalRemoveChild.call(this, child) as T }
+    return () => { Element.prototype.remove = originalRemove; Node.prototype.removeChild = originalRemoveChild }
+}
+
+async function settleFocus(): Promise<void> {
+    flushSync()
+    await tick()
+    await tick()
+}
+
+describe('focus when the switch frame goes while it holds focus', () => {
+    // Compatibility guard: an engine that fires no focusout on removal is served by the effect cleanup.
+    test('Back to previous, with no focusout on removal, returns focus to the transcript', async () => {
+        const { target, app } = await mountShell()
+        pending.target = { name: 'Mira' }
+        pending.phase = 'failed'
+        flushSync()
+        const back = target.querySelector<HTMLElement>('[data-part="chat-switch-back"]')!
+        back.focus()
+        expect(document.activeElement).toBe(back)
+        back.click()
+        await settleFocus()
+        expect(document.activeElement).toBe(target.querySelector('[data-part="chat-transcript"]'))
+        await unmount(app)
+    })
+
+    test('Back to previous returns focus to the transcript when the browser fires focusout as the focused Back button is removed', async () => {
+        const restore = emulateChromiumFocusoutOnRemoval()
+        try {
+            const { target, app } = await mountShell()
+            pending.target = { name: 'Mira' }
+            pending.phase = 'failed'
+            flushSync()
+            const back = target.querySelector<HTMLElement>('[data-part="chat-switch-back"]')!
+            back.focus()
+            expect(document.activeElement).toBe(back)
+            back.click()
+            await settleFocus()
+            expect(target.querySelector('[data-part="chat-switch-frame"]')).toBeNull()
+            expect(document.activeElement).toBe(target.querySelector('[data-part="chat-transcript"]'))
+            await unmount(app)
+        } finally {
+            restore()
+        }
+    })
+
+    test('a switch that succeeds while the frame root holds focus ends on the transcript when the browser fires focusout on removal', async () => {
+        const restore = emulateChromiumFocusoutOnRemoval()
+        try {
+            const { target, app } = await mountShell()
+            pending.target = { name: 'Mira' }
+            pending.phase = 'loading'
+            flushSync()
+            target.querySelector<HTMLElement>('[data-part="chat-switch-frame"]')!.focus()
+            pending.phase = 'idle'
+            pending.target = null
+            await settleFocus()
+            expect(document.activeElement).toBe(target.querySelector('[data-part="chat-transcript"]'))
+            await unmount(app)
+        } finally {
+            restore()
+        }
+    })
+
+    test('a focusout with no related target while the frame stays mounted does not move focus to the transcript', async () => {
+        const { target, app } = await mountShell()
+        pending.target = { name: 'Mira' }
+        pending.phase = 'failed'
+        flushSync()
+        const retry = target.querySelector<HTMLElement>('[data-part="chat-switch-retry"]')!
+        retry.focus()
+        retry.blur()
+        expect(document.activeElement).toBe(document.body)
+        retry.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }))
+        await settleFocus()
+        expect(target.querySelector('[data-part="chat-switch-frame"]')).not.toBeNull()
+        expect(document.activeElement).not.toBe(target.querySelector('[data-part="chat-transcript"]'))
+        await unmount(app)
+    })
+
+    test('focus that left the frame for nowhere earlier is not pulled to the transcript when the frame goes later', async () => {
+        const { target, app } = await mountShell()
+        pending.target = { name: 'Mira' }
+        pending.phase = 'failed'
+        flushSync()
+        const retry = target.querySelector<HTMLElement>('[data-part="chat-switch-retry"]')!
+        retry.focus()
+        retry.blur()
+        await settleFocus()
+        expect(target.querySelector('[data-part="chat-switch-frame"]')).not.toBeNull()
+        pending.phase = 'idle'
+        pending.target = null
+        await settleFocus()
+        expect(target.querySelector('[data-part="chat-switch-frame"]')).toBeNull()
+        expect(document.activeElement).toBe(document.body)
+        await unmount(app)
+    })
+
+    test('focus that moved to a real control after a focusout with no related target is left there when the frame goes', async () => {
+        const restore = emulateChromiumFocusoutOnRemoval()
+        try {
+            const { target, app } = await mountShell()
+            const outside = document.createElement('button')
+            document.body.appendChild(outside)
+            pending.target = { name: 'Mira' }
+            pending.phase = 'failed'
+            flushSync()
+            const retry = target.querySelector<HTMLElement>('[data-part="chat-switch-retry"]')!
+            retry.focus()
+            retry.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }))
+            outside.focus()
+            pending.phase = 'idle'
+            pending.target = null
+            await settleFocus()
+            expect(target.querySelector('[data-part="chat-switch-frame"]')).toBeNull()
+            expect(document.activeElement).toBe(outside)
+            await unmount(app)
+            outside.remove()
+        } finally {
+            restore()
+        }
+    })
+
+    test('focus that moved to another control before the frame went is left there', async () => {
+        const restore = emulateChromiumFocusoutOnRemoval()
+        try {
+            const { target, app } = await mountShell()
+            const outside = document.createElement('button')
+            document.body.appendChild(outside)
+            pending.target = { name: 'Mira' }
+            pending.phase = 'failed'
+            flushSync()
+            target.querySelector<HTMLElement>('[data-part="chat-switch-retry"]')!.focus()
+            outside.focus()
+            pending.phase = 'idle'
+            pending.target = null
+            await settleFocus()
+            expect(document.activeElement).toBe(outside)
+            await unmount(app)
+            outside.remove()
+        } finally {
+            restore()
+        }
+    })
+})
+
 describe('fade under reduced motion', () => {
     // TE5: the shell starts the fade only when motion is allowed, so a reduced-motion or low-power switch never sets the attribute.
     type Setting = { name: string, on: () => void, off: () => void }
