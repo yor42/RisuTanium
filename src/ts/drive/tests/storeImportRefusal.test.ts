@@ -25,6 +25,8 @@ const world = vi.hoisted(() => ({
     classified: null as unknown,
     outcome: null as unknown,
     ready: null as unknown,
+    active: null as unknown,
+    abandoned: [] as Array<{ owner: string, prefix: string }>,
 }))
 
 const inert = vi.hoisted(() => (): Record<string, unknown> => new Proxy({}, {
@@ -47,7 +49,7 @@ vi.mock('src/ts/drive/restoreReplace', inert)
 vi.mock('src/ts/storage/store2/commitKey', () => ({ classifyCommitRead: () => world.classified }))
 vi.mock('src/ts/storage/store2/bootActive', () => ({ getStore2BootSession: () => world.session }))
 vi.mock('src/ts/storage/store2/lists', inert)
-vi.mock('src/ts/storage/store2/saveActive', inert)
+vi.mock('src/ts/storage/store2/saveActive', () => ({ getActiveStore2Save: () => world.active }))
 vi.mock('src/ts/storage/risuSave', inert)
 vi.mock('src/ts/storage/bootBlockLoad', inert)
 vi.mock('src/ts/storage/store2/ui/bootText', inert)
@@ -72,13 +74,18 @@ beforeEach(() => {
     world.session = null
     world.classified = null
     world.outcome = null
+    world.active = null
+    world.abandoned = []
     vi.spyOn(console, 'error').mockImplementation(() => { })
 })
 
 const committerWith = (readCommit: () => Promise<unknown>) => ({
     owner: 'this-page',
     readCommit,
-    abandonClear: async () => ({ status: 'cleared' }),
+    abandonClear: async (_read: unknown, owner: string, prefix: string) => {
+        world.abandoned.push({ owner, prefix })
+        return { status: 'cleared' }
+    },
     commit: async (_read: unknown, request: { build: (context: unknown) => unknown }) => request.build({}),
 })
 
@@ -231,5 +238,33 @@ describe('checkStore2Import names the cause of each refusal (new behaviour)', ()
         world.classified = { status: 'parsed', value: { current: {}, staging: { owner: 'this-page' } } }
         expect(await checkStore2Import()).toEqual({ kind: 'ready', target: { committer: session.committer, backend: session.backend } })
         expect(world.errors).toEqual([])
+    })
+
+    describe('a foreign marker is cleared only when the probe proves its owner gone', () => {
+        const foreign = { status: 'parsed', value: { current: {}, staging: { owner: 'other-page', prefix: 'pfx-other', label: 'bulk' } } }
+
+        test('a gone owner is ready and the marker is cleared by its owner and prefix (regression)', async () => {
+            const session = sessionWith(readsNothing)
+            world.session = session
+            world.classified = foreign
+            world.active = { markerOwnerProbe: async () => 'gone' }
+            expect(await checkStore2Import()).toEqual({ kind: 'ready', target: { committer: session.committer, backend: session.backend } })
+            expect(world.abandoned).toEqual([{ owner: 'other-page', prefix: 'pfx-other' }])
+            expect(world.errors).toEqual([])
+        })
+
+        test.each([
+            ['alive', { markerOwnerProbe: async () => 'alive' }],
+            ['unknown (Node and web without Web Locks)', { markerOwnerProbe: async () => 'unknown' }],
+            ['no probe (Tauri)', { markerOwnerProbe: null }],
+            ['no active save context', null],
+        ])('%s keeps the foreign-marker refusal and clears nothing (guard)', async (_label, active) => {
+            world.session = sessionWith(readsNothing)
+            world.classified = foreign
+            world.active = active
+            expect(await checkStore2Import()).toEqual({ kind: 'refused', cause: 'foreign-marker' })
+            expect(world.abandoned).toEqual([])
+            expect(world.errors).toEqual(['language.store2RestoreBulkMarker'])
+        })
     })
 })

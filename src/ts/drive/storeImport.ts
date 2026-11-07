@@ -8,6 +8,7 @@ import { Store2StalePageError } from '../storage/store2/backend/errors'
 import type { Store2Backend, Store2Read } from '../storage/store2/backend/types'
 import { getStore2BootSession } from '../storage/store2/bootActive'
 import { Store2BulkAbortError, type Committer } from '../storage/store2/commit'
+import { clearAbandonedMarker } from '../storage/store2/abandonedMarker'
 import { classifyCommitRead } from '../storage/store2/commitKey'
 import { createListDerivation } from '../storage/store2/lists'
 import { importLegacyTree, type ImportOutcome, type ImportSource, type RepairSummary } from '../storage/store2/legacy/importTree'
@@ -154,8 +155,13 @@ export async function checkStore2Import(): Promise<Store2ImportCheck> {
                 return { kind: 'refused', cause: 'no-current-manifest' }
             }
             if (classified.value.staging !== null && classified.value.staging.owner !== committer.owner) {
-                alertError(language.store2RestoreBulkMarker)
-                return { kind: 'refused', cause: 'foreign-marker' }
+                // A marker whose owner the probe proves gone is cleared here; any other answer keeps the refusal.
+                const outcome = await clearAbandonedMarker(committer, read, getActiveStore2Save()?.markerOwnerProbe ?? null)
+                const status = outcome.result?.status
+                if (status !== 'cleared' && status !== 'nothing') {
+                    alertError(language.store2RestoreBulkMarker)
+                    return { kind: 'refused', cause: 'foreign-marker' }
+                }
             }
             return { kind: 'ready', target: { committer, backend } }
     }

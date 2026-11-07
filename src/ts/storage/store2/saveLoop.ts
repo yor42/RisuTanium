@@ -10,6 +10,8 @@ import { isModuleStub } from '../moduleStub'
 import { isColdStub, SharedChaIdStubError, StubRefusedError } from './codec'
 import { namesManifest, type AbandonResult, type CommitResult, type Committer } from './commit'
 import { classifyCommitRead } from './commitKey'
+import { clearAbandonedMarker, type MarkerLiveness, type MarkerOwnerProbe } from './abandonedMarker'
+import type { Staging } from './owner'
 import type { CommitKey } from './format'
 import type { Store2SaveContext } from './saveActive'
 import { createSaveEncoder, type SavePassRequest, type SavePlan } from './saveEncoder'
@@ -123,6 +125,13 @@ export interface Store2PeerHandler {
      * The export's own dialogs still show. A throw counts as a failed automatic export. Absent, none runs.
      */
     autoExport?(manifestKey: string): Promise<'saved' | 'declined' | 'failed'>
+    /**
+     * A bulk marker of another owner stands over the commit key and no proof about its owner is available on this page.
+     * Asked at most once per marker per page load, once the quiet retries have failed; nothing holds the write lock while
+     * it is open. 'clear' is consent to clear that marker only. Any other answer, a rejection and a throw count as 'wait'.
+     * Absent, nothing is asked.
+     */
+    foreignMarker?(marker: Staging): Promise<'wait' | 'clear'>
     reload(): void
 }
 
@@ -157,10 +166,11 @@ export class Store2NotFlushedError extends Error {
 /**
  * A commit refused for a reason the loop cannot resolve by retrying quietly: a refusal that points at the code, or a
  * run of retries that does not end (a peer's marker that stands, a conflict that keeps landing first), reported once the
- * quiet retries are spent.
+ * quiet retries are spent. `prompted` marks a refusal the person is being asked about through the peer handler's own
+ * question, so its report must not cover that question.
  */
 export class Store2CommitRefusedError extends Error {
-    constructor(readonly reason: string, detail: string) {
+    constructor(readonly reason: string, detail: string, readonly prompted: boolean = false) {
         super(`The commit was refused (${reason}): ${detail}`)
         this.name = 'Store2CommitRefusedError'
     }
@@ -434,6 +444,12 @@ interface PassRun {
     moduleRefusal: StubRefusedError | null
     /** The pass's request asked for module scope, so a clean save proves no module stub blocks it. */
     moduleScope: boolean
+    /** The pass cleared a foreign marker (a probe proved its owner gone); its retry is quiet. */
+    foreignCleared: boolean
+    /** The foreign marker the pass judged and left standing; null for no marker, an own marker or a cleared one. */
+    standingMarker: Staging | null
+    /** The probe's answer for `standingMarker`; null when it is null or no probe answered. */
+    standingLiveness: MarkerLiveness | null
 }
 
 /** The failures that name the page's own state as stale for good: only a reload ends them. */
@@ -488,6 +504,24 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
 
     let savetrys = 0
     let retries = 0
+    /** Foreign markers (owner and prefix, compared on both) the person was already asked about in this page load. */
+    const askedMarkers: Array<{ owner: string, prefix: string }> = []
+    /** Foreign markers the person agreed to clear; the loop's probe answers 'gone' for exactly these. */
+    const consentedMarkers: Array<{ owner: string, prefix: string }> = []
+    /** The marker whose question is up and unanswered; reports for a standing foreign marker are prompted meanwhile. */
+    let foreignAsking: { owner: string, prefix: string } | null = null
+    const sameMarker = (a: { owner: string, prefix: string }, b: { owner: string, prefix: string }): boolean => a.owner === b.owner && a.prefix === b.prefix
+    /**
+     * The probe the loop judges a foreign marker with, read from the context at each judgement: consent for that exact
+     * marker reads as proof of its owner's absence, and any other marker keeps the host's own answer. No host probe
+     * (Tauri) gives none, so nothing is cleared and nothing is asked.
+     */
+    function loopProbeOf(): MarkerOwnerProbe | null {
+        const contextProbe = context.markerOwnerProbe ?? null
+        return contextProbe === null
+            ? null
+            : async (marker) => consentedMarkers.some((entry) => sameMarker(entry, marker)) ? 'gone' : contextProbe(marker)
+    }
     /** The module id whose edited-stub prompt was asked; cleared by a pass that took module scope and saved cleanly, so a later edit asks again. */
     let editedAnnounced: string | null = null
     /** The module id whose not-saved notice was told; cleared like `editedAnnounced`. */
@@ -1047,24 +1081,6 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     }
 
     /**
-     * Clears the bulk marker on `read` when this page load set it; a foreign marker stands and keeps the data marked.
-     * Answers what the clear came to, or `null` when no clear ran or it threw.
-     */
-    async function clearOwnMarker(read: Store2Read): Promise<AbandonResult | null> {
-        const classified = classifyCommitRead(read)
-        const staging = classified.status === 'parsed' ? classified.value.staging : null
-        if (staging === null || staging.owner !== committer.owner) {
-            return null
-        }
-        try {
-            return await committer.abandonClear(read, staging.owner, staging.prefix)
-        } catch (error) {
-            console.error(error)
-            return null
-        }
-    }
-
-    /**
      * One try, while stopped, at removing this page load's own bulk marker so that no marker stands on the commit key for
      * peers. A fresh read decides: no own marker means done. The retry ends on `cleared`, `nothing` or `refused` (or a
      * clear a newer page refuses, which never succeeds here); a throw, `failed`, `unknown` or `conflict` is tried again.
@@ -1221,13 +1237,23 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             activeGaps?.committed()
         }
         if (result.status === 'refused' && result.reason === 'marker-present') {
-            // A marker of this page load that an earlier bulk could not clear would refuse every later bulk.
+            // A marker of this page load that an earlier bulk could not clear would refuse every later bulk, and so would a
+            // dead page's marker; a foreign marker is cleared only when the host's probe proves its owner gone, or the person chose Clear for that marker.
             if (MEASURE) {
                 activeGaps?.pause()
             }
-            const cleared = await clearOwnMarker(read)
+            const judgedMarker = await clearAbandonedMarker(committer, read, loopProbeOf())
             if (MEASURE) {
                 activeGaps?.resume()
+            }
+            const cleared = judgedMarker.result
+            if (judgedMarker.marker !== null && !judgedMarker.own) {
+                if (cleared?.status === 'cleared') {
+                    run.foreignCleared = true
+                } else if (cleared?.status !== 'nothing') {
+                    run.standingMarker = judgedMarker.marker
+                    run.standingLiveness = judgedMarker.liveness
+                }
             }
             // A clear refused because a newer page owns the generation never succeeds on this page: it is replaced, not retried.
             if ((cleared?.status === 'failed' || cleared?.status === 'unknown') && cleared.cause instanceof Store2StalePageError) {
@@ -1296,6 +1322,45 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     }
 
     /**
+     * Asks the person about a standing foreign marker that no probe could vouch for: once per marker per page load, one
+     * question on screen at a time, never awaited and never under the write lock. 'clear' records consent for that exact
+     * marker and requests a pass; any other answer, a rejection and a synchronous throw leave the marker standing, and
+     * the marker stays recorded as asked.
+     */
+    function askForeignMarker(marker: Staging): void {
+        const ask = context.peer.foreignMarker
+        if (ask === undefined || foreignAsking !== null || askedMarkers.some((entry) => sameMarker(entry, marker))) {
+            return
+        }
+        const entry = { owner: marker.owner, prefix: marker.prefix }
+        askedMarkers.push(entry)
+        foreignAsking = entry
+        const settle = (): void => {
+            if (foreignAsking === entry) {
+                foreignAsking = null
+            }
+        }
+        try {
+            ask.call(context.peer, marker).then(
+                (answer) => {
+                    settle()
+                    if (answer === 'clear') {
+                        consentedMarkers.push(entry)
+                        port.requestPass()
+                    }
+                },
+                (error) => {
+                    console.error(error)
+                    settle()
+                },
+            )
+        } catch (error) {
+            console.error(error)
+            settle()
+        }
+    }
+
+    /**
      * A back-off after a pass or a peer read. `rearmWait` ends it on a save request and keeps that request for the wait
      * after the pass; without it the back-off is the plain timed sleep. The delay is computed by the caller, once.
      */
@@ -1312,7 +1377,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
 
     /** Runs one pass; resolves `true` when it was a tick cut at a yield (nothing written or counted), `false` otherwise. */
     async function pass(tick: boolean, netChaId: string | null = null): Promise<boolean> {
-        const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleScope: false }
+        const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleScope: false, foreignCleared: false, standingMarker: null, standingLiveness: null }
         let cut = false
         if (!tick) {
             port.beginIteration()
@@ -1337,6 +1402,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     }
                     break
                 case 'retry':
+                    if (run.foreignCleared) {
+                        // The retry a foreign clear causes is not a failed save: the quiet budget starts over.
+                        retries = 0
+                    }
                     retries += 1
                     foldBack(run.snapshot)
                     if (retries <= QUIET_RETRIES) {
@@ -1345,7 +1414,14 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     }
                     // A run of retries that does not end is a failed save: the person is told and the attempts are counted.
                     savetrys += 1
-                    const refusedDelay = port.reportFailure(new Store2CommitRefusedError(outcome.reason, outcome.detail), savetrys)
+                    if (run.standingMarker !== null && run.standingLiveness === 'unknown') {
+                        askForeignMarker(run.standingMarker)
+                    }
+                    // While a question is up, every refusal that names a standing foreign marker is prompted, so a report never covers it.
+                    const refusedDelay = port.reportFailure(
+                        new Store2CommitRefusedError(outcome.reason, outcome.detail, run.standingMarker !== null && foreignAsking !== null),
+                        savetrys,
+                    )
                     await backOff(refusedDelay)
                     break
                 case 'deferred': {

@@ -1,4 +1,5 @@
 import type { RisuModule } from '../../process/modules'
+import type { MarkerOwnerProbe } from './abandonedMarker'
 import type { ListDerivation, PreviousEncoding } from './codec'
 import type { KeyEnv } from './format'
 import type { SaveEncoder } from './saveEncoder'
@@ -35,6 +36,11 @@ export interface Store2SaveContext {
     lists: ListDerivation
     env?: KeyEnv
     peer: Store2PeerHandler
+    /**
+     * Whether the owner of a foreign bulk marker is gone, for the host this session runs on. Absent or null: no foreign
+     * marker is ever cleared silently (Tauri).
+     */
+    markerOwnerProbe?: MarkerOwnerProbe | null
     /**
      * Loads the stub of `chaId` that shares its id with another character; true when it is resident afterwards. It runs
      * while the loop holds the write lock, so it must not take `dbWriteLock` or wait for a commit.

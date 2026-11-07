@@ -13,11 +13,12 @@ import { createResidency } from './residency'
 import { registerResidency } from './residencyActive'
 import { residentModuleHandlesOf, residentSetOf } from './residencyPolicy'
 import { moduleStubOf } from './moduleStubMatch'
+import { clearAbandonedMarker, type MarkerOwnerProbe } from './abandonedMarker'
 import { assembleCharacter, assembleDatabase, assembleModule, CodecAssembleError, stubFromEntry, type ListDerivation } from './codec'
 import { createListDerivation } from './lists/derive'
 import { defaultKeyEnv, type KeyEnv } from './format'
 import { firstLifeGrant, type FirstLifeLabel, type GrantResult } from './firstLife'
-import type { Staging } from './owner'
+import { isOwnMarker, type Staging } from './owner'
 import { previousOfTree } from './previousOfTree'
 import { probeNumberedBackups, seedStore2Profile } from './bootSeed'
 import { setStore2BootSession, type BlockedReason, type Store2BootEnv, type Store2BootNotice, type Store2BootResult, type Store2LegacyReadOnlyReason } from './bootActive'
@@ -130,6 +131,8 @@ export interface Store2DispatchDeps {
     resolve?: ResolveOptions
     /** The page's file flow for a `.bin` import (`loadBackupAtBoot`); absent, no import is offered. */
     importBackup?: (target: BootImportTarget) => Promise<BootImportEnd>
+    /** The probe of a foreign bulk marker's owner for the session's kind; absent or null gives the loop none. */
+    markerOwnerProbe?: (kind: AppStoreKind) => MarkerOwnerProbe | null
 }
 
 /** The state a round hands the next: open a new session and classify again. */
@@ -345,6 +348,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             lists,
             env: keyEnv,
             peer: ui.peer,
+            markerOwnerProbe: deps.markerOwnerProbe?.(session.kind) ?? null,
             loadStub: loadStubsOf,
             loadModuleStub: loadModuleStubsOf,
         }
@@ -653,7 +657,24 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         return stop('foreign-clear-failed', 'The standing marker could not be cleared.')
     }
 
-    async function round(session: Store2Session): Promise<Round> {
+    /**
+     * Row 5 over a standing marker that is not this session's: the bound probe may prove its owner gone, and only then is
+     * the marker cleared. True when it was cleared, was already gone, or the key kept changing, so the next round reads the key again. Nothing is ever asked.
+     */
+    async function clearGoneForeignMarker(session: Store2Session): Promise<boolean> {
+        const staging = session.commit?.status === 'parsed' ? session.commit.value.staging : null
+        const read = session.commitRead
+        const committer = session.committer
+        const probe = deps.markerOwnerProbe?.(session.kind) ?? null
+        if (staging === null || read === null || committer === null || probe === null || isOwnMarker(session.ownerId, staging)) {
+            return false
+        }
+        const outcome = await clearAbandonedMarker(committer, read, probe)
+        const status = outcome.result?.status
+        return status === 'cleared' || status === 'nothing' || status === 'conflict'
+    }
+
+    async function round(session: Store2Session, roundLeft: boolean): Promise<Round> {
         const decision = session.decision
         // The decisions that carry a `reason`: a blocked classification (row 1 or none) and a read-only session.
         if ('reason' in decision) {
@@ -676,6 +697,10 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 const tree = session.tree
                 if (tree === null || tree.status !== 'ok') {
                     return stop('tree-unreadable', 'The boot decision names a tree that was not read.')
+                }
+                // The last round never clears: a reclassification needs a round to read the key again.
+                if (roundLeft && await clearGoneForeignMarker(session)) {
+                    return RECLASSIFY
                 }
                 return openStored(session, tree.manifestKey, { fence: decision.fence })
             }
@@ -727,7 +752,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             reflushAttempts: deps.reflushAttempts,
         })
         setStore2BootSession(session)
-        const outcome = await round(session)
+        const outcome = await round(session, number < rounds)
         if (outcome.kind !== 'reclassify') {
             return outcome
         }

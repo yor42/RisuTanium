@@ -15,7 +15,7 @@ import { moduleStubOf } from '../../store2/moduleStubMatch'
 import { buildColdStub } from '../../../process/coldCharacter'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from '../../moduleStub'
 import { createSaveEncoder } from '../../store2/saveEncoder'
-import { backedOffWait, blockedOf, isSaveLoopStopped, runStore2SaveLoop, stubNamesOf, type Store2LoopPort, type UnsavableCharacter } from '../../store2/saveLoop'
+import { backedOffWait, blockedOf, isSaveLoopStopped, runStore2SaveLoop, Store2CommitRefusedError, stubNamesOf, type Store2LoopPort, type UnsavableCharacter } from '../../store2/saveLoop'
 import type { Database, character } from '../../database.svelte'
 import type { toSaveType } from '../../risuSave'
 import { until } from '../saveLoopWorld'
@@ -765,6 +765,343 @@ describe('new behaviour: result mapping', () => {
             expect(loop.state.saved).toBe(0)
             await until(() => loop.reloadFlag.state, 'the owed whole pass after the fold-back', 4000)
             healthy(loop)
+        })
+
+        test('a foreign marker whose owner the host proves gone is cleared and the bulk lands with no report', async () => {
+            const db = clone(buildSmall(BULK_ROWS))
+            const kit = await startStore2({ db, kind: 'indexeddb' })
+            await leaveMarker(kit, createCommitter(kit.memory, { owner: 'peer-page' }))
+            const asked: string[] = []
+            kit.context.markerOwnerProbe = async (marker) => {
+                asked.push(marker.owner)
+                return 'gone'
+            }
+            const loop = runLoop(kit, db)
+            editEverything(db, loop)
+            await savedBy(loop)
+            expect((await kit.commitKey()).staging).toBeNull()
+            expect((await kit.saved()).characters[0]).toMatchObject({ personality: expect.stringContaining('edited') })
+            expect(asked).toEqual(['peer-page'])
+            expect(loop.failures).toEqual([])
+            healthy(loop)
+        })
+
+        test('a foreign marker whose owner may be alive stays: the refusal is reported and the data stays marked', async () => {
+            const db = clone(buildSmall(BULK_ROWS))
+            const kit = await startStore2({ db, kind: 'indexeddb' })
+            await leaveMarker(kit, createCommitter(kit.memory, { owner: 'peer-page' }))
+            kit.context.markerOwnerProbe = async () => 'alive'
+            const loop = runLoop(kit, db)
+            editEverything(db, loop)
+            await until(() => loop.failures.length >= 1, 'the report', 8000)
+            expect((loop.failures[0].error as Error).name).toBe('Store2CommitRefusedError')
+            expect((await kit.commitKey()).staging?.owner).toBe('peer-page')
+            expect(loop.state.saved).toBe(0)
+            await until(() => loop.reloadFlag.state, 'the owed whole pass after the fold-back', 4000)
+            healthy(loop)
+        })
+
+        test('a peer that dies after the reports began: the next refusal clears its marker and the save lands with one report', async () => {
+            const db = clone(buildSmall(BULK_ROWS))
+            const kit = await startStore2({ db, kind: 'indexeddb' })
+            await leaveMarker(kit, createCommitter(kit.memory, { owner: 'peer-page' }))
+            const loop = runLoop(kit, db)
+            kit.context.markerOwnerProbe = async () => (loop.failures.length >= 1 ? 'gone' : 'alive')
+            editEverything(db, loop)
+            await savedBy(loop)
+            expect((await kit.commitKey()).staging).toBeNull()
+            expect(loop.failures.length).toBe(1)
+            healthy(loop)
+        })
+
+        test('an own marker whose clears keep failing reports as before on every host: the probe is never asked', async () => {
+            const db = clone(buildSmall(BULK_ROWS))
+            let armed = false
+            let armedCasCommits = 0
+            const kit = await startStore2({
+                db,
+                kind: 'node',
+                hooks: {
+                    before: (name) => {
+                        if (armed && name === 'casCommit') {
+                            armedCasCommits += 1
+                            if (armedCasCommits <= 3) {
+                                throw new Store2BackendFailureError('down')
+                            }
+                        }
+                    },
+                },
+            })
+            await leaveMarker(kit, kit.committer)
+            let probed = 0
+            kit.context.markerOwnerProbe = async () => {
+                probed += 1
+                return 'unknown'
+            }
+            armed = true
+            const loop = runLoop(kit, db)
+            editEverything(db, loop)
+            await savedBy(loop)
+            expect((await kit.commitKey()).staging).toBeNull()
+            expect(probed).toBe(0)
+            expect(loop.failures.length).toBe(2)
+            healthy(loop)
+        })
+
+        const isPrompted = (failure: { error: unknown }): boolean => (failure.error as Store2CommitRefusedError).prompted === true
+
+        /** A page that no host probe can vouch for (Node, or web with no Web Locks proof) over a dead page's bulk marker. */
+        async function unprovenWorld(kind: 'node' | 'indexeddb', answers: Array<'wait' | 'clear' | Error>, held: boolean) {
+            const db = clone(buildSmall(BULK_ROWS))
+            const peer = createPeerDouble()
+            peer.foreignAnswers.push(...answers)
+            let releaseHold: () => void = () => {}
+            if (held) {
+                peer.foreignHold = new Promise<void>((resolve) => { releaseHold = resolve })
+            }
+            const kit = await startStore2({ db, kind, peer })
+            await leaveMarker(kit, createCommitter(kit.memory, { owner: 'peer-page' }))
+            kit.context.markerOwnerProbe = async () => 'unknown'
+            const loop = runLoop(kit, db)
+            return { db, kit, peer, loop, releaseHold }
+        }
+
+        test.each(['node', 'indexeddb'] as const)('new behaviour: on %s with no proof, the question is asked after the quiet retries and Clear lets the save land', async (kind) => {
+            const world = await unprovenWorld(kind, ['clear'], false)
+            const marker = (await world.kit.commitKey()).staging
+            const baseline = world.loop.merges
+            const mergesAtAsk: number[] = []
+            world.peer.onForeignAsk = () => { mergesAtAsk.push(world.loop.merges - baseline) }
+            editEverything(world.db, world.loop)
+            await savedBy(world.loop)
+            expect(world.peer.foreignAsked).toHaveLength(1)
+            expect(world.peer.foreignAsked[0]).toMatchObject({ owner: 'peer-page', prefix: marker?.prefix, label: 'bulk' })
+            expect(mergesAtAsk).toEqual([3])
+            expect(world.loop.failures).toHaveLength(1)
+            expect(isPrompted(world.loop.failures[0])).toBe(true)
+            expect((await world.kit.commitKey()).staging).toBeNull()
+            expect((await world.kit.saved()).characters[0]).toMatchObject({ personality: expect.stringContaining('edited') })
+            healthy(world.loop)
+        })
+
+        test.each(['node', 'indexeddb'] as const)('new behaviour: on %s Wait keeps the marker, the question covers every report while up and is never asked again', async (kind) => {
+            const world = await unprovenWorld(kind, ['wait'], true)
+            editEverything(world.db, world.loop)
+            await until(() => world.loop.failures.length >= 7, 'seven reports while the question is up', 8000)
+            expect(world.loop.failures.slice(0, 7).every(isPrompted)).toBe(true)
+            expect(world.loop.failures.slice(0, 7).map((failure) => failure.attempts)).toEqual([1, 2, 3, 4, 5, 6, 7])
+            world.releaseHold()
+            // A report computed in the pass that was running at the release may still be prompted; the last two are not.
+            await until(() => world.loop.failures.length >= 10, 'reports after the question settled', 8000)
+            expect(world.loop.failures.slice(-2).some(isPrompted)).toBe(false)
+            expect(world.peer.foreignAsked).toHaveLength(1)
+            expect((await world.kit.commitKey()).staging?.owner).toBe('peer-page')
+            expect(world.loop.state.saved).toBe(0)
+            await until(() => world.loop.reloadFlag.state, 'the owed whole pass after the fold-back', 4000)
+            healthy(world.loop)
+        })
+
+        test('new behaviour: a rejected question counts as Wait: the marker stands and later reports are unprompted', async () => {
+            const world = await unprovenWorld('node', [new Error('select failed')], true)
+            editEverything(world.db, world.loop)
+            await until(() => world.loop.failures.length >= 3, 'reports while the question is up', 8000)
+            expect(world.loop.failures.slice(0, 3).every(isPrompted)).toBe(true)
+            world.releaseHold()
+            await until(() => world.loop.failures.length >= 6, 'reports after the question settled', 8000)
+            expect(world.loop.failures.slice(-2).some(isPrompted)).toBe(false)
+            expect(world.peer.foreignAsked).toHaveLength(1)
+            expect((await world.kit.commitKey()).staging?.owner).toBe('peer-page')
+            expect(world.loop.state.saved).toBe(0)
+            healthy(world.loop)
+        })
+
+        test('new behaviour: a question that throws synchronously counts as Wait and is not asked again', async () => {
+            const world = await unprovenWorld('node', [], false)
+            let calls = 0
+            world.peer.foreignMarker = (): Promise<'wait' | 'clear'> => {
+                calls += 1
+                throw new Error('select threw')
+            }
+            editEverything(world.db, world.loop)
+            await until(() => world.loop.failures.length >= 4, 'the reports', 8000)
+            expect(calls).toBe(1)
+            expect(world.loop.failures.some(isPrompted)).toBe(false)
+            expect((await world.kit.commitKey()).staging?.owner).toBe('peer-page')
+            healthy(world.loop)
+        })
+
+        test.each([
+            ['tauri with no probe', 'tauri', null],
+            ['indexeddb with an alive owner', 'indexeddb', 'alive'],
+        ] as const)('guard: %s asks nothing and clears nothing', async (_name, kind, answer) => {
+            const db = clone(buildSmall(BULK_ROWS))
+            const peer = createPeerDouble()
+            peer.foreignAnswers.push('clear')
+            const kit = await startStore2({ db, kind, peer })
+            await leaveMarker(kit, createCommitter(kit.memory, { owner: 'peer-page' }))
+            if (answer !== null) {
+                kit.context.markerOwnerProbe = async () => answer
+            }
+            const loop = runLoop(kit, db)
+            editEverything(db, loop)
+            await until(() => loop.failures.length >= 3, 'the reports', 8000)
+            expect(peer.foreignAsked).toHaveLength(0)
+            expect((await kit.commitKey()).staging?.owner).toBe('peer-page')
+            expect(loop.failures.some(isPrompted)).toBe(false)
+            healthy(loop)
+        })
+
+        test('guard: an owner proven gone whose clears keep failing asks nothing and reports unprompted', async () => {
+            const db = clone(buildSmall(BULK_ROWS))
+            const peer = createPeerDouble()
+            peer.foreignAnswers.push('clear')
+            let armed = false
+            const kit = await startStore2({
+                db,
+                kind: 'indexeddb',
+                peer,
+                hooks: {
+                    before: (name) => {
+                        if (armed && name === 'casCommit') {
+                            throw new Store2BackendFailureError('down')
+                        }
+                    },
+                },
+            })
+            await leaveMarker(kit, createCommitter(kit.memory, { owner: 'peer-page' }))
+            kit.context.markerOwnerProbe = async () => 'gone'
+            armed = true
+            const loop = runLoop(kit, db)
+            editEverything(db, loop)
+            await until(() => loop.failures.length >= 3, 'the reports', 8000)
+            expect(peer.foreignAsked).toHaveLength(0)
+            expect(loop.failures.some(isPrompted)).toBe(false)
+            armed = false
+            expect((await kit.commitKey()).staging?.owner).toBe('peer-page')
+            healthy(loop)
+        })
+
+        test.each(['peer-page', 'peer-page-2'])('new behaviour: a new marker (owner %s) after a settled question is asked about anew and not cleared on the old consent', async (secondOwner) => {
+            const world = await unprovenWorld('node', ['clear', 'wait'], false)
+            editEverything(world.db, world.loop)
+            await savedBy(world.loop)
+            await leaveMarker(world.kit, createCommitter(world.kit.memory, { owner: secondOwner }))
+            const second = (await world.kit.commitKey()).staging
+            editEverything(world.db, world.loop)
+            await until(() => world.peer.foreignAsked.length >= 2, 'the second question', 8000)
+            expect(world.peer.foreignAsked[1]).toMatchObject({ owner: secondOwner, prefix: second?.prefix })
+            await until(() => world.loop.failures.some((failure) => !isPrompted(failure)), 'an unprompted report after Wait', 8000)
+            expect((await world.kit.commitKey()).staging).toMatchObject({ owner: secondOwner, prefix: second?.prefix })
+            expect(world.peer.foreignAsked).toHaveLength(2)
+            healthy(world.loop)
+        })
+
+        test('guard: an own marker on Node is cleared silently and nothing is asked', async () => {
+            const db = clone(buildSmall(BULK_ROWS))
+            const peer = createPeerDouble()
+            peer.foreignAnswers.push('clear')
+            const kit = await startStore2({ db, kind: 'node', peer })
+            await leaveMarker(kit, kit.committer)
+            kit.context.markerOwnerProbe = async () => 'unknown'
+            const loop = runLoop(kit, db)
+            editEverything(db, loop)
+            await savedBy(loop)
+            expect(peer.foreignAsked).toHaveLength(0)
+            expect(loop.failures).toEqual([])
+            healthy(loop)
+        })
+
+        test('guard: an own marker on Node whose clears keep failing is reported unprompted and nothing is asked', async () => {
+            const db = clone(buildSmall(BULK_ROWS))
+            const peer = createPeerDouble()
+            peer.foreignAnswers.push('clear')
+            let armed = false
+            let armedCasCommits = 0
+            const kit = await startStore2({
+                db,
+                kind: 'node',
+                peer,
+                hooks: {
+                    before: (name) => {
+                        if (armed && name === 'casCommit') {
+                            armedCasCommits += 1
+                            if (armedCasCommits <= 3) {
+                                throw new Store2BackendFailureError('down')
+                            }
+                        }
+                    },
+                },
+            })
+            await leaveMarker(kit, kit.committer)
+            kit.context.markerOwnerProbe = async () => 'unknown'
+            armed = true
+            const loop = runLoop(kit, db)
+            editEverything(db, loop)
+            await savedBy(loop)
+            expect(peer.foreignAsked).toHaveLength(0)
+            expect(loop.failures.some(isPrompted)).toBe(false)
+            expect(loop.failures.length).toBe(2)
+            expect((await kit.commitKey()).staging).toBeNull()
+            healthy(loop)
+        })
+
+        test('new behaviour: one question is on screen at a time; a new marker waits until it is answered and its refusals are prompted meanwhile', async () => {
+            const world = await unprovenWorld('node', ['wait', 'wait'], true)
+            let releaseSleeps: () => void = () => {}
+            world.peer.onForeignAsk = () => {
+                if (world.peer.foreignAsked.length === 1) {
+                    releaseSleeps = world.loop.holdSleeps()
+                }
+            }
+            editEverything(world.db, world.loop)
+            await until(() => world.peer.foreignAsked.length >= 1, 'the first question', 8000)
+            const first = (await world.kit.commitKey()).staging
+            const peerCommitter = createCommitter(world.kit.memory, { owner: 'peer-page' })
+            await peerCommitter.abandonClear(await peerCommitter.readCommit(), 'peer-page', first?.prefix ?? '')
+            await leaveMarker(world.kit, createCommitter(world.kit.memory, { owner: 'peer-page-2' }))
+            const second = (await world.kit.commitKey()).staging
+            const before = world.loop.failures.length
+            releaseSleeps()
+            await until(() => world.loop.failures.length >= before + 3, 'three reports over the second marker', 8000)
+            expect(world.peer.foreignAsked).toHaveLength(1)
+            expect(world.loop.failures.slice(before, before + 3).every(isPrompted)).toBe(true)
+            world.releaseHold()
+            await until(() => world.peer.foreignAsked.length >= 2, 'the second question', 8000)
+            expect(world.peer.foreignAsked[1]).toMatchObject({ owner: 'peer-page-2', prefix: second?.prefix })
+            healthy(world.loop)
+        })
+
+        test('new behaviour: a refusal that names no standing marker is unprompted even while a question is still up', async () => {
+            const db = clone(buildSmall(BULK_ROWS))
+            const peer = createPeerDouble()
+            peer.foreignAnswers.push('wait')
+            peer.foreignHold = new Promise<void>(() => {})
+            const kit = await startStore2({ db, kind: 'node', peer })
+            await leaveMarker(kit, createCommitter(kit.memory, { owner: 'peer-page' }))
+            kit.context.markerOwnerProbe = async () => 'unknown'
+            // Once the peer's marker is gone, every commit is abandoned as lost, which the loop reports as a refusal naming no marker.
+            let lost = false
+            const real = kit.committer
+            kit.context.session = {
+                ...kit.context.session,
+                committer: {
+                    ...real,
+                    commit: async (read, request) => lost
+                        ? ({ status: 'abandoned', reason: 'marker-lost', cleared: null }) as CommitResult
+                        : real.commit(read, request),
+                },
+            }
+            const loop = runLoop(kit, db)
+            editEverything(db, loop)
+            await until(() => peer.foreignAsked.length >= 1, 'the question', 8000)
+            const marker = (await kit.commitKey()).staging
+            const peerCommitter = createCommitter(kit.memory, { owner: 'peer-page' })
+            await peerCommitter.abandonClear(await peerCommitter.readCommit(), 'peer-page', marker?.prefix ?? '')
+            const before = loop.failures.length
+            lost = true
+            await until(() => loop.failures.length >= before + 2, 'refusals over no marker', 8000)
+            expect(loop.failures.slice(before, before + 2).some(isPrompted)).toBe(false)
+            expect(peer.foreignAsked).toHaveLength(1)
         })
     })
 

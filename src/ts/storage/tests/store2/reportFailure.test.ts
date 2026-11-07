@@ -86,6 +86,18 @@ describe('a commit the store refused', () => {
     })
 })
 
+describe('a commit refusal the person is being asked about', () => {
+    const error = new Store2CommitRefusedError('marker-present', 'a marker stands', true)
+
+    test.each([1, 4, 5, 8])('attempt %i: no toast, no alert, no raw error, so the question is never covered', (attempts) => {
+        expect(describeSaveFailure(error, attempts, false)).toEqual({ toast: null, alert: null, showRaw: false, waitMs: 1000 })
+    })
+
+    test('it is still recorded as a refused commit', () => {
+        expect(saveFailureClassOf(error, false)).toBe('commit-refused')
+    })
+})
+
 describe('a failure without a wording of its own', () => {
     test('the first failure is the retrying toast and the error is shown as it is only once the attempts run out', () => {
         const error = new Error('held by more than one character')

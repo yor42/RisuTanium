@@ -53,6 +53,8 @@ import type { alertData } from 'src/ts/alert'
 import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from 'src/ts/alertPrompts'
 import { alertStore } from 'src/ts/stores.svelte'
 import type { ParkCheck, PeerLiveState, PeerOffer, PeerParkPrompt } from 'src/ts/storage/store2/saveLoop'
+import type { Staging } from 'src/ts/storage/store2/owner'
+import { formatTime } from 'src/ts/storage/store2/ui/bootText'
 import { acknowledged, createPeerUi, type PeerExportResult } from 'src/ts/storage/store2/ui/peerUi'
 
 /**
@@ -573,6 +575,40 @@ describe('moduleNotSaved: one toast that names the module', () => {
             text().moduleNotSaved.replaceAll('{name}', () => `${'n'.repeat(39)}…`),
             text().moduleNotSaved.replaceAll('{name}', () => 'a$&b'),
         ])
+    })
+})
+
+describe('foreignMarker: the existing foreign-marker question, Wait first', () => {
+    const marker: Staging = { owner: 'peer-page', prefix: 'prefix-1', startedAt: 1_700_000_000_000, label: 'bulk' }
+
+    test('new behaviour: the title carries the operation and start time, and the buttons are Wait then Clear', async () => {
+        const { ui } = newUi()
+        void ui.foreignMarker?.(marker)
+        await waitForSelect()
+        expect(selectParts()).toEqual({
+            title: `${text().foreignTitle} ${text().foreignBody(text().foreignOpBulk, formatTime(marker.startedAt))}`,
+            labels: [text().foreignWait, text().foreignClear],
+        })
+    })
+
+    test.each([['0', 'wait'], ['1', 'clear'], ['7', 'wait']] as const)('new behaviour: the answer %s maps to %s', async (pressed, expected) => {
+        const { ui } = newUi()
+        const answer = ui.foreignMarker?.(marker)
+        await waitForSelect()
+        await sleep(ANSWER_GUARD_MS + 40)
+        alertStore.set({ type: 'none', msg: pressed })
+        await expect(answer).resolves.toBe(expected)
+    })
+
+    test('new behaviour: it waits for a holding alert to be acknowledged before it asks', async () => {
+        const { ui } = newUi()
+        alertStore.set({ type: 'error', msg: 'the save failed' })
+        void ui.foreignMarker?.(marker)
+        await sleep(40)
+        expect(shown()).toEqual({ type: 'error', msg: 'the save failed' })
+        alertStore.set({ type: 'none', msg: '' })
+        await waitForSelect()
+        expect(selectParts().labels).toEqual([text().foreignWait, text().foreignClear])
     })
 })
 

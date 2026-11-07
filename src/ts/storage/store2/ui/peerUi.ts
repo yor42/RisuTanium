@@ -5,6 +5,8 @@ import { alertStore } from 'src/ts/stores.svelte'
 import { get } from 'svelte/store'
 import { Store2CommitRefusedError, Store2NotFlushedError, type ParkCheck, type PeerLiveState, type PeerOffer, type PeerParkPrompt, type Store2PeerHandler } from '../saveLoop'
 import { StubRefusedError } from '../codec'
+import type { Staging } from '../owner'
+import { foreignMarkerScreen } from './bootText'
 import type { SaveFailureClass } from '../saveFailure'
 
 /**
@@ -261,6 +263,19 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         }
     }
 
+    /**
+     * The existing foreign-marker question, Wait first. Only the Clear button gives 'clear'; an index with no button or
+     * any other key reads as 'wait'. Select prompts ignore Escape.
+     */
+    async function askForeignMarker(marker: Staging): Promise<'wait' | 'clear'> {
+        await untilClear()
+        const question = foreignMarkerScreen(marker)
+        const buttons = question.model.buttons
+        const index = await alertSelect(buttons.map((button) => button.label), `${question.model.title} ${question.model.paragraphs.join(' ')}`)
+        const pressed = buttons[Number(index)]
+        return pressed !== undefined && pressed.key === 'foreignClear' && question.answers[pressed.key] === 'clear' ? 'clear' : 'wait'
+    }
+
     return {
         parkedClean: (prompt, live, requestReload) => {
             askClean(prompt, live, requestReload).catch((error: unknown) => console.error(error))
@@ -276,6 +291,7 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         decide,
         exportThisTab,
         autoExport,
+        foreignMarker: askForeignMarker,
         reload: options.reload,
     }
 }
@@ -330,6 +346,10 @@ export function describeSaveFailure(error: unknown, attempts: number, storageFul
             showRaw: false,
             waitMs: 1000,
         }
+    }
+    if (error instanceof Store2CommitRefusedError && error.prompted) {
+        // The person is asked through the peer handler's own question, so a report never covers it.
+        return { toast: null, alert: null, showRaw: false, waitMs: 1000 }
     }
     if (error instanceof Store2CommitRefusedError) {
         return {
