@@ -19,7 +19,7 @@ export const BLOCK_TYPE_CHARACTER_WITH_CHAT = 2
 /** The bytes a block-format file starts with: `RISUSAVE` and the format version 1. */
 export const FILE_HEADER_V1: Uint8Array = new TextEncoder().encode('RISUSAVE\x01')
 
-const crc32Table = (() => {
+export const crc32Table = (() => {
     const table = new Uint32Array(256)
     for (let n = 0; n < 256; n++) {
         let c = n
