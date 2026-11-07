@@ -26,8 +26,9 @@ const pending = $state<Pending>({ target: null, phase: 'idle', reason: null })
 const retrySwitch = vi.fn(() => undefined)
 const backToPrevious = vi.fn(() => { pending.phase = 'idle'; pending.target = null })
 
-vi.mock('../../ts/stores.svelte', () => ({ DBState: state, selIdState: selection }))
-vi.mock('../../ts/chatShell/switchTarget.svelte', () => ({ switchTarget: pending, retrySwitch: () => retrySwitch(), backToPrevious: () => backToPrevious() }))
+vi.mock('../../ts/stores.svelte', () => ({ DBState: state, selIdState: selection, sideBarStore: writable(false) }))
+vi.mock('../../ts/chatShell/switchTarget.svelte', () => ({ switchTarget: pending, retrySwitch: () => retrySwitch(), backToPrevious: () => backToPrevious(), abandonPendingSwitch: vi.fn() }))
+vi.mock('../../ts/backHandlers', () => ({ registerBackHandler: () => () => undefined, backCloseHandler: () => () => false }))
 vi.mock('../../ts/process/index.svelte', () => ({ doingChat: writable(false), chatProcessStage: writable(0) }))
 vi.mock('../ChatScreens/chatSurface.svelte', () => ({ chatSurface: { hidden: false, closeEpoch: 0 } }))
 vi.mock('../../ts/process/chatTreeView', () => ({ treeView: () => null }))
@@ -72,6 +73,8 @@ async function settle(): Promise<void> {
 
 async function mountShell() {
     const { default: ChatShell } = await import('./ChatShell.svelte')
+    // The shell loads the frame lazily; loading it first means the settle below cannot end before the frame is available.
+    await import('./SwitchFrame.svelte')
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(ChatShell, { target })
