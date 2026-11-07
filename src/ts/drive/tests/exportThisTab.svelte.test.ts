@@ -239,6 +239,7 @@ vi.mock(import('src/ts/storage/store/appStore'), async () => {
 //#endregion
 
 import { exportThisTabBackup } from 'src/ts/drive/backuplocal'
+import { openWebExportWriter } from 'src/ts/exportWriters'
 import { LocalWriter } from 'src/ts/globalApi.svelte'
 import { busyKinds } from 'src/ts/process/memory/busyActions'
 import { alertError } from 'src/ts/alert'
@@ -344,6 +345,50 @@ describe('exportThisTabBackup', () => {
 
         expect(outcome.status).toBe('failed')
         expect(busyKinds()).not.toContain('backupSave')
+    })
+})
+
+/**
+ * The saved outcome reports the name the export asked the writer for. A missing profile image takes the reported
+ * return (a notice is shown); the plain return is the one with an empty report. Each variant holds its own fake clock
+ * (the date only) and restores it.
+ */
+describe.each([
+    ['plain return', false],
+    ['reported return, a missing profile image', true],
+] as const)('exportThisTabBackup suggestedName: %s', (_variant, profileMissing) => {
+    beforeEach(() => {
+        if (profileMissing) {
+            world.files.delete('assets/profile.png')
+        }
+        vi.mocked(openWebExportWriter).mockClear()
+        vi.useFakeTimers({ toFake: ['Date'] })
+        vi.setSystemTime(new Date(2026, 9, 10, 23, 30))
+    })
+
+    afterEach(() => {
+        vi.useRealTimers()
+    })
+
+    test('regression reproducer: the outcome carries the local-partial name the writer was asked for', async () => {
+        const outcome = await exportThisTabBackup()
+
+        expect(outcome).toMatchObject({ status: 'saved', suggestedName: 'local-partial-20261010.bin' })
+        expect(outcome.status === 'saved' && outcome.notices.length > 0).toBe(profileMissing)
+        expect(vi.mocked(openWebExportWriter)).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(openWebExportWriter).mock.calls[0][0]).toBe('local-partial-20261010.bin')
+    })
+
+    test('compatibility guard: a clock that passes midnight while the writer opens does not change the reported name', async () => {
+        vi.mocked(openWebExportWriter).mockImplementationOnce(async (_filename: string) => {
+            vi.setSystemTime(new Date(2026, 9, 11, 0, 0, 1))
+            return { write: async (_data: Uint8Array) => { }, close: async () => { } }
+        })
+
+        const outcome = await exportThisTabBackup()
+
+        expect(outcome).toMatchObject({ status: 'saved', suggestedName: 'local-partial-20261010.bin' })
+        expect(vi.mocked(openWebExportWriter).mock.calls[0][0]).toBe('local-partial-20261010.bin')
     })
 })
 

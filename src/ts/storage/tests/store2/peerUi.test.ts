@@ -746,35 +746,153 @@ describe('autoExport: the same export without the blocking hand-off', () => {
 
 describe('decide: the Node wording says what Reload drops and what the automatic export did', () => {
     const node = (fields: Partial<PeerParkPrompt> = {}) => prompt({ offers: ['reload', 'export-first'], saveMineUnavailable: 'node', ...fields })
+    const restore = () => text().peerRestoreFromBin.replace('{page}', () => language.backupAndFiles).replace('{button}', () => language.loadBackupLocal)
+    const savedExport = (suggestedName?: string) => async (_manifestKey: string): Promise<PeerExportResult> =>
+        suggestedName === undefined ? { status: 'saved', notices: [] } : { status: 'saved', notices: [], suggestedName }
+    const base = () => `${text().peerCommitTitle} ${text().peerNoSaveNode} ${text().peerNodeReloadDrops}`
+    const SAVED_OR_DOWNLOADED = /\b(is|was|were|has been|have been) (saved|downloaded)\b/i
 
-    test('new behaviour: with the export shown the title says Reload drops the changes and Export keeps them without other images, assets and inlays', async () => {
+    test('reproducer: with the export shown the title says what Reload drops, what Export makes and how to restore it from Settings', async () => {
         const { ui } = newUi({ exportAvailable: true })
         void ui.decide(node())
         await waitForSelect()
-        const { title } = selectParts()
-        expect(title).toBe(`${text().peerCommitTitle} ${text().peerNoSaveNode} ${text().peerNodeReloadDrops}`)
+        const { title, labels } = selectParts()
+        expect(title).toContain(language.backupAndFiles)
+        expect(title).toContain(language.loadBackupLocal)
+        expect(title).toBe(`${base()} ${restore()}`)
         expect(text().peerNodeReloadDrops).toMatch(/Reload drops this tab's unsaved changes/)
-        expect(text().peerNodeReloadDrops).toMatch(/Export this tab first keeps them in a file without other images, assets and inlays/)
+        expect(text().peerNodeReloadDrops).toMatch(/makes a \.bin backup of this tab, including those changes but without other images, assets and inlays/)
+        expect(text().peerRestoreFromBin).toMatch(/replaces all your saved data/)
+        expect(labels).toEqual([text().peerReload, text().peerExportFirst])
     })
 
-    test('new behaviour: a saved automatic export adds the line that the file was handed to the browser and the download must be checked before Reload', async () => {
+    /** A peer UI whose export ends as `exportThisTab` says, with the export button shown unless told otherwise. */
+    const exporting = (exportThisTab: (manifestKey: string) => Promise<PeerExportResult>, exportAvailable = true) =>
+        createPeerUi({ reload: vi.fn(), exportAvailable, exportThisTab })
+
+    test('reproducer: a saved automatic export names the offered file, hands it to the browser and adds the restore route', async () => {
+        const ui = exporting(savedExport('local-partial-20261010.bin'))
+        await ui.autoExport?.('m')
+        void ui.decide(node({ autoExport: 'saved' }))
+        await waitForSelect()
+        const { title, labels } = selectParts()
+        expect(title).toContain('local-partial-20261010.bin')
+        expect(title).toBe(`${base()} ${text().peerAutoExportSaved} ${text().peerAutoExportFileName.replace('{name}', () => 'local-partial-20261010.bin')} ${restore()}`)
+        expect(text().peerAutoExportSaved).toMatch(/handed to your browser/)
+        expect(text().peerAutoExportSaved).toMatch(/before you press Reload/)
+        expect(labels).toEqual([text().peerReload, text().peerExportFirst])
+    })
+
+    test('compatibility guard: no sentence of the saved title or of the five Node texts says a file is saved or downloaded', async () => {
+        const ui = exporting(savedExport('local-partial-20261010.bin'))
+        await ui.autoExport?.('m')
+        void ui.decide(node({ autoExport: 'saved' }))
+        await waitForSelect()
+        const { title } = selectParts()
+        const values = [text().peerNodeReloadDrops, text().peerAutoExportSaved, text().peerAutoExportNotFinished, text().peerAutoExportFileName, text().peerRestoreFromBin]
+        for (const value of [title, ...values]) {
+            expect(value).not.toMatch(SAVED_OR_DOWNLOADED)
+        }
+    })
+
+    test('compatibility guard: a saved automatic export with no known name has no name sentence and no placeholder or undefined', async () => {
         const { ui } = newUi({ exportAvailable: true })
         void ui.decide(node({ autoExport: 'saved' }))
         await waitForSelect()
         const { title, labels } = selectParts()
-        expect(title).toBe(`${text().peerCommitTitle} ${text().peerNoSaveNode} ${text().peerNodeReloadDrops} ${text().peerAutoExportSaved}`)
-        expect(text().peerAutoExportSaved).toMatch(/handed to your browser/)
-        expect(text().peerAutoExportSaved).toMatch(/without other images, assets and inlays/)
-        expect(text().peerAutoExportSaved).toMatch(/arrived and has finished before you press Reload/)
+        expect(title).toBe(`${base()} ${text().peerAutoExportSaved} ${restore()}`)
+        expect(title).not.toMatch(/[{}]|undefined/)
         expect(labels).toEqual([text().peerReload, text().peerExportFirst])
     })
 
-    test('new behaviour: an automatic export that did not finish adds the did-not-finish line, not the saved one, and keeps both buttons', async () => {
+    test('compatibility guard: a hostile name keeps the two buttons and shows $& and bars literally', async () => {
+        const ui = exporting(savedExport('a$&||b\u200b.bin'))
+        await ui.autoExport?.('m')
+        void ui.decide(node({ autoExport: 'saved' }))
+        await waitForSelect()
+        const { title, labels } = selectParts()
+        expect(labels).toEqual([text().peerReload, text().peerExportFirst])
+        expect(title).toContain('a$&|b.bin')
+    })
+
+    test('compatibility guard: a later saved export without a name does not show the name of the earlier one', async () => {
+        const results: PeerExportResult[] = [
+            { status: 'saved', notices: [], suggestedName: 'A.bin' },
+            { status: 'saved', notices: [] },
+        ]
+        const ui = exporting(async () => results.shift() ?? { status: 'failed' })
+        await ui.autoExport?.('m')
+        await ui.autoExport?.('m')
+        void ui.decide(node({ autoExport: 'saved' }))
+        await waitForSelect()
+        expect(selectParts().title).not.toContain('A.bin')
+    })
+
+    test('reproducer: an automatic export that did not finish adds the restore route and no saved sentence', async () => {
+        const { ui } = newUi({ exportAvailable: true })
+        void ui.decide(node({ autoExport: 'not-finished' }))
+        await waitForSelect()
+        const { title } = selectParts()
+        expect(title).toContain(language.loadBackupLocal)
+        expect(title).not.toContain(text().peerAutoExportSaved)
+    })
+
+    test('compatibility guard: a busy skip after an earlier saved export (no new call) shows neither its name nor the saved sentence', async () => {
+        const ui = exporting(savedExport('A.bin'))
+        await ui.autoExport?.('m')
+        void ui.decide(node({ autoExport: 'not-finished' }))
+        await waitForSelect()
+        const { title } = selectParts()
+        expect(title).not.toContain('A.bin')
+        expect(title).not.toContain(text().peerAutoExportSaved)
+        expect(title).not.toContain(text().peerAutoExportFileName.replace('{name}', () => 'A.bin'))
+    })
+
+    test('compatibility guard: with no export shown and no file the title is exactly the Reload-drops-only title', async () => {
+        const { ui } = newUi()
+        void ui.decide(node({ offers: ['reload'] }))
+        await waitForSelect()
+        const { title } = selectParts()
+        expect(title).toBe(`${text().peerCommitTitle} ${text().peerNoSaveNode} ${text().peerNodeReloadDropsOnly}`)
+    })
+
+    test('compatibility guard: a saved automatic export names the restore route even when the export button is not shown', async () => {
+        const ui = exporting(savedExport(), false)
+        await ui.autoExport?.('m')
+        void ui.decide(node({ offers: ['reload'], autoExport: 'saved' }))
+        await waitForSelect()
+        expect(selectParts().title).toContain(restore())
+    })
+
+    test('compatibility guard: a not-finished export with no export button shown does not name the restore route', async () => {
+        const ui = exporting(savedExport(), false)
+        void ui.decide(node({ offers: ['reload'], autoExport: 'not-finished' }))
+        await waitForSelect()
+        expect(selectParts().title).not.toContain(restore())
+    })
+
+    test('reproducer: the restore route and its labels follow the language', async () => {
+        try {
+            changeLanguage('ko')
+            const { ui } = newUi({ exportAvailable: true })
+            void ui.decide(node())
+            await waitForSelect()
+            const { title } = selectParts()
+            expect(title).toContain('백업 & 파일')
+            expect(title).toContain(language.loadBackupLocal)
+            expect(title).not.toContain('Backup & Files')
+            expect(title).not.toContain('Load Backup Locally')
+        } finally {
+            changeLanguage('en')
+        }
+    })
+
+    test('new behaviour: an automatic export that did not finish says no complete backup was made, adds the restore route and keeps both buttons', async () => {
         const { ui } = newUi({ exportAvailable: true })
         void ui.decide(node({ autoExport: 'not-finished' }))
         await waitForSelect()
         const { title, labels } = selectParts()
-        expect(title).toBe(`${text().peerCommitTitle} ${text().peerNoSaveNode} ${text().peerNodeReloadDrops} ${text().peerAutoExportNotFinished}`)
+        expect(title).toBe(`${base()} ${text().peerAutoExportNotFinished} ${restore()}`)
         expect(title).not.toContain(text().peerAutoExportSaved)
         expect(labels).toEqual([text().peerReload, text().peerExportFirst])
     })

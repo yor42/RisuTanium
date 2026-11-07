@@ -536,6 +536,15 @@ describe('the in-session peer port', () => {
         await expect(ui.peer.autoExport?.('manifest')).resolves.toBe('failed')
     })
 
+    test('reproducer: the offered file name of a saved automatic export reaches the prompt title', async () => {
+        exportThisTabBackup.mockResolvedValueOnce({ status: 'saved', notices: [], suggestedName: 'local-partial-20261010.bin' } as never)
+        const ui = createProductionBootUi({ reload: vi.fn(), browserLanguage: 'en-US' })
+        await expect(ui.peer.autoExport?.('manifest')).resolves.toBe('saved')
+        void ui.peer.decide({ reason: 'peer-commit', unsaved: true, offers: ['reload', 'export-first'], saveMineUnavailable: 'node', autoExport: 'saved' })
+        await vi.waitFor(() => expect(getAlert().type).toBe('select'))
+        expect(getAlert().msg).toContain('local-partial-20261010.bin')
+    })
+
     test('the page reload is the port\'s reload', () => {
         const reload = vi.fn()
         const ui = createProductionBootUi({ reload, browserLanguage: 'ko-KR' })
