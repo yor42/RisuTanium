@@ -137,19 +137,21 @@ describe('watchSoftKeyboard', () => {
             expect(changes).toHaveBeenCalledTimes(2)
         })
 
-        test('focus leaving the text field closes it while the viewport is still short', () => {
+        test('focus leaving the text field closes it while the viewport is still short', async () => {
             const changes = setup()
             field.focus()
             viewport.resize(450)
             field.blur()
+            await Promise.resolve()
             expect(changes).toHaveBeenLastCalledWith(false)
         })
 
-        test('focus moving to a text field outside the shell closes it', () => {
+        test('focus moving to a text field outside the shell closes it', async () => {
             const changes = setup()
             field.focus()
             viewport.resize(450)
             outside.focus()
+            await Promise.resolve()
             expect(changes).toHaveBeenLastCalledWith(false)
         })
 
@@ -356,13 +358,14 @@ describe('watchSoftKeyboard', () => {
             expect(changes).toHaveBeenLastCalledWith(false)
         })
 
-        test('focus leaving the field closes at once even while a host close is waiting', () => {
+        test('focus leaving the field closes at once even while a host close is waiting', async () => {
             const ime = new HostImeStub()
             const changes = setup(ime, PORTRAIT)
             field.focus()
             ime.report(true, PORTRAIT - GBOARD_VIEWPORT)
             ime.report(false, 0)
             outside.focus()
+            await Promise.resolve()
             expect(changes).toHaveBeenLastCalledWith(false)
             expect(changes).toHaveBeenCalledTimes(2)
         })
@@ -417,16 +420,77 @@ describe('watchSoftKeyboard', () => {
             expect(changes).toHaveBeenCalledWith(true)
         })
 
-        test('a visible keyboard with focus outside the shell does not count', () => {
+        test('a visible keyboard with focus outside the shell does not count', async () => {
             const ime = new HostImeStub()
             const changes = setup(ime)
             outside.focus()
             ime.report(true, 288)
             expect(changes).not.toHaveBeenCalled()
             field.focus()
+            await Promise.resolve()
             expect(changes).toHaveBeenLastCalledWith(true)
             outside.focus()
+            await Promise.resolve()
             expect(changes).toHaveBeenLastCalledWith(false)
+        })
+
+        test('a focus change is never reported inside the focus event that caused it', async () => {
+            const ime = new HostImeStub()
+            let inside = false
+            const seen: Array<{ open: boolean, inside: boolean }> = []
+            viewport = new ViewportStub()
+            Object.defineProperty(window, 'visualViewport', { value: viewport, configurable: true })
+            setWindowHeight(PORTRAIT)
+            root = document.createElement('div')
+            field = document.createElement('textarea')
+            outside = document.createElement('textarea')
+            root.append(field)
+            document.body.append(root, outside)
+            stop = watchSoftKeyboard(root, window, (open) => { seen.push({ open, inside }) }, ime)
+
+            field.focus()
+            await Promise.resolve()
+            ime.report(true, PORTRAIT - GBOARD_VIEWPORT)
+            expect(seen).toEqual([{ open: true, inside: false }])
+            inside = true
+            field.blur()
+            inside = false
+            await Promise.resolve()
+            expect(seen).toEqual([{ open: true, inside: false }, { open: false, inside: false }])
+
+            outside.focus()
+            await Promise.resolve()
+            inside = true
+            field.focus()
+            inside = false
+            await Promise.resolve()
+            expect(seen).toEqual([{ open: true, inside: false }, { open: false, inside: false }, { open: true, inside: false }])
+        })
+
+        test('several focus changes in one task are reported once, from the final focus', async () => {
+            const ime = new HostImeStub()
+            const changes = setup(ime, PORTRAIT)
+            outside.focus()
+            ime.report(true, PORTRAIT - GBOARD_VIEWPORT)
+            field.focus()
+            outside.focus()
+            field.focus()
+            await Promise.resolve()
+            expect(changes).toHaveBeenCalledTimes(1)
+            expect(changes).toHaveBeenLastCalledWith(true)
+        })
+
+        test('after dispose, a focus change still waiting to be reported is dropped', async () => {
+            const ime = new HostImeStub()
+            const changes = setup(ime, PORTRAIT)
+            field.focus()
+            ime.report(true, PORTRAIT - GBOARD_VIEWPORT)
+            expect(changes).toHaveBeenCalledTimes(1)
+            outside.focus()
+            stop()
+            const countAtStop = changes.mock.calls.length
+            await Promise.resolve()
+            expect(changes.mock.calls.length).toBe(countAtStop)
         })
 
         test('it works where the browser offers no visual viewport', () => {
