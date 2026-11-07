@@ -107,6 +107,71 @@ describe('the action', () => {
     })
 })
 
+describe('the orphan measurement action', () => {
+    test('reproducer: orphans measures on the session, logs the report once, returns it, and writes nothing', async () => {
+        const { session, store } = await openReadySession()
+        const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+        const handle = installSweepDryRunMeasure({ session, store: async () => store, loadResident: async () => resident }, {})
+
+        const report = await handle.orphans()
+
+        expect(report.status).toBe('done')
+        expect(log).toHaveBeenCalledTimes(1)
+        expect(store.writes).toEqual([])
+        expect(store.deletes).toEqual([])
+    })
+
+    test('reproducer: an orphans call made while another is in progress joins it and loads the resident sources once', async () => {
+        const { session, store } = await openReadySession()
+        vi.spyOn(console, 'log').mockImplementation(() => {})
+        let loads = 0
+        const handle = installSweepDryRunMeasure({
+            session,
+            store: async () => store,
+            loadResident: async () => { loads++; return resident },
+        }, {})
+
+        const [first, second] = await Promise.all([handle.orphans(), handle.orphans()])
+
+        expect(second).toBe(first)
+        expect(loads).toBe(1)
+    })
+
+    test('guard: orphans and run have independent join guards', async () => {
+        const { session, store } = await openReadySession()
+        vi.spyOn(console, 'log').mockImplementation(() => {})
+        const handle = installSweepDryRunMeasure({ session, store: async () => store, loadResident: async () => resident }, {})
+
+        const [orphans, run] = await Promise.all([handle.orphans(), handle.run()])
+
+        expect(orphans).not.toBe(run)
+    })
+
+    test('reproducer: measureBytes false is forwarded: no size is read and bytes stay null', async () => {
+        const { session, store } = await openReadySession()
+        vi.spyOn(console, 'log').mockImplementation(() => {})
+        store.files.set('assets/stray.png', new Uint8Array(9))
+        const handle = installSweepDryRunMeasure({ session, store: async () => store, loadResident: async () => resident }, {})
+
+        const report = await handle.orphans({ measureBytes: false })
+
+        expect(report.status).toBe('done')
+        expect(report.status === 'done' ? report.bytesSource : 'refused').toBeNull()
+        expect(report.status === 'done' ? report.notInHead : null).toMatchObject({ count: 1, bytes: null })
+        expect(store.reads).toEqual([])
+    })
+
+    test('reproducer: the session kind reaches the report', async () => {
+        const { session, store } = await openReadySession()
+        vi.spyOn(console, 'log').mockImplementation(() => {})
+        const handle = installSweepDryRunMeasure({ session, store: async () => store, loadResident: async () => resident }, {})
+
+        const report = await handle.orphans()
+
+        expect(report.status === 'done' ? report.storeKind : 'refused').toBe('indexeddb')
+    })
+})
+
 describe('the install point is compiled out when MEASURE is false', () => {
     const noStore: MaintenanceEnv = { store: async () => createMemoryByteStore(), listBackupTimes: async () => [] }
     const neverTrigger = () => ({ arm: () => {}, stop: () => {} })
@@ -128,6 +193,7 @@ describe('the install point is compiled out when MEASURE is false', () => {
         await settle()
 
         expect(handleOn(globalThis)).toBeUndefined()
+        expect((handleOn(globalThis) as { orphans?: unknown } | undefined)?.orphans).toBeUndefined()
     })
 
     test('guard: a page that is not a store2 page gets no action either way', async () => {
