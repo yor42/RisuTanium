@@ -166,6 +166,25 @@ export function windowRange(
 }
 
 /**
+ * `range` extended, contiguously, to also hold row `keep` (the row being edited), so a field in it is not unmounted
+ * while the window moves. The range is returned as it is when `keep` is negative or already inside, and when
+ * reaching `keep` would take more than `max` rows: the rows in view are never given up for it.
+ */
+export function windowIncluding(
+    range: { start: number; end: number },
+    keep: number,
+    max: number = MAX_MOUNTED_ROWS,
+): { start: number; end: number } {
+    if (keep < 0 || (keep >= range.start && keep < range.end)) {
+        return range
+    }
+    if (keep >= range.end) {
+        return keep + 1 - range.start <= max ? { start: range.start, end: keep + 1 } : range
+    }
+    return range.end - keep <= max ? { start: keep, end: range.end } : range
+}
+
+/**
  * The chat next to `current` in the listed order, skipping folder headers and
  * folded-away chats; no wrap. A `current` that is not listed goes to the first
  * listed chat for `1` and the last for `-1`. Undefined when there is none.

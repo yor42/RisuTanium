@@ -21,6 +21,7 @@ import {
     isArchivedChat,
     previewLine,
     rowTime,
+    windowIncluding,
     windowRange,
 } from './chatListModel'
 
@@ -163,6 +164,50 @@ describe('windowRange', () => {
         expect(tail.start).toBeLessThan(1000)
         expect(windowRange(0, 0, 500)).toEqual({ start: 0, end: 0 })
         expect(windowRange(3, 0, 500)).toEqual({ start: 0, end: 3 })
+    })
+})
+
+describe('windowIncluding', () => {
+    test('keep -1 or a row already inside the window returns the same range', () => {
+        const range = { start: 3, end: 10 }
+        expect(windowIncluding(range, -1)).toBe(range)
+        expect(windowIncluding(range, 3)).toBe(range)
+        expect(windowIncluding(range, 9)).toBe(range)
+    })
+
+    test('a row past the end extends the end to include it, when that fits the cap', () => {
+        expect(windowIncluding({ start: 0, end: 5 }, 5)).toEqual({ start: 0, end: 6 })
+        expect(windowIncluding({ start: 0, end: 5 }, 12)).toEqual({ start: 0, end: 13 })
+        expect(windowIncluding({ start: 0, end: 5 }, 39)).toEqual({ start: 0, end: 40 })
+    })
+
+    test('a row before the start extends the start to include it, when that fits the cap', () => {
+        expect(windowIncluding({ start: 6, end: 21 }, 2)).toEqual({ start: 2, end: 21 })
+        expect(windowIncluding({ start: 40, end: 80 }, 40)).toEqual({ start: 40, end: 80 })
+        expect(windowIncluding({ start: 41, end: 80 }, 40)).toEqual({ start: 40, end: 80 })
+    })
+
+    test('a row too far to fit the cap leaves the range as it is, on each side', () => {
+        const below = { start: 0, end: 15 }
+        expect(windowIncluding(below, 60)).toBe(below)
+        expect(windowIncluding(below, 40)).toBe(below)
+        const above = { start: 56, end: 71 }
+        expect(windowIncluding(above, 5)).toBe(above)
+        expect(windowIncluding(above, 30)).toBe(above)
+        const custom = { start: 0, end: 4 }
+        expect(windowIncluding(custom, 10, 8)).toBe(custom)
+        expect(windowIncluding(custom, 7, 8)).toEqual({ start: 0, end: 8 })
+    })
+
+    test('the result never spans more than the cap', () => {
+        for (const keep of [-1, 0, 5, 20, 39, 40, 41, 60, 99]) {
+            for (const range of [{ start: 0, end: 5 }, { start: 10, end: 30 }, { start: 56, end: 71 }, { start: 60, end: 100 }]) {
+                const result = windowIncluding(range, keep)
+                expect(result.end - result.start).toBeLessThanOrEqual(MAX_MOUNTED_ROWS)
+                expect(result.start).toBeLessThanOrEqual(range.start)
+                expect(result.end).toBeGreaterThanOrEqual(range.end)
+            }
+        }
     })
 })
 
