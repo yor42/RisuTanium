@@ -25,6 +25,7 @@ vi.mock('../../ts/stores.svelte', () => ({
 import { MobileGUI, ReloadChatPointer, ReloadGUIPointer, settingsOpen } from '../../ts/stores.svelte'
 import { noteTopLevelChange, resetTopLevelChangesForTests } from '../../ts/storage/topLevelChanges'
 import { changeLanguage } from '../../lang'
+import { studioOpen } from '../../ts/studio/studioOpen'
 import { chatSurface, installChatSurface, isChatSurfaceInstalled, onSurfaceHiding, resetChatSurfaceForTests } from './chatSurface.svelte'
 
 let stopTeardownStandIn: (() => void) | null = null
@@ -51,6 +52,7 @@ beforeEach(() => {
     resetChatSurfaceForTests()
     resetTopLevelChangesForTests()
     settingsOpen.set(false)
+    studioOpen.set(false)
     MobileGUI.set(false)
     ReloadGUIPointer.set(0)
     ReloadChatPointer.set({})
@@ -62,6 +64,7 @@ afterEach(() => {
     stopTeardownStandIn = null
     resetChatSurfaceForTests()
     settingsOpen.set(false)
+    studioOpen.set(false)
     changeLanguage('en')
 })
 
@@ -304,6 +307,78 @@ describe('hiding hook', () => {
         await settle()
         expect(chatSurface.rebuildEpoch).toBe(1)
         expect(chatSurface.closeEpoch).toBe(2)
+    })
+})
+
+describe('Studio covers the surface like Settings', () => {
+    test('2h an open Studio hides the surface with one close bump and an idle close releases without a rebuild', async () => {
+        studioOpen.set(true)
+        await settle()
+        expect(chatSurface.hidden).toBe(true)
+        expect(chatSurface.closeEpoch).toBe(1)
+
+        studioOpen.set(false)
+        await settle()
+        expect(chatSurface.hidden).toBe(false)
+        expect(chatSurface.rebuildEpoch).toBe(0)
+        expect(chatSurface.closeEpoch).toBe(1)
+    })
+
+    test('2h a reload signal missed while Studio was open rebuilds once on return', async () => {
+        studioOpen.set(true)
+        await settle()
+        ReloadGUIPointer.update((value) => value + 1)
+        expect(chatSurface.heldGui).toBe(0)
+        studioOpen.set(false)
+        await settle()
+
+        expect(chatSurface.rebuildEpoch).toBe(1)
+        expect(chatSurface.heldGui).toBe(1)
+        expect(chatSurface.hidden).toBe(false)
+    })
+
+    test('2h Settings opened over Studio and closed again keeps the surface hidden until Studio closes', async () => {
+        studioOpen.set(true)
+        await settle()
+        settingsOpen.set(true)
+        await settle()
+        expect(chatSurface.closeEpoch).toBe(1)
+        settingsOpen.set(false)
+        await settle()
+        expect(chatSurface.hidden).toBe(true)
+
+        studioOpen.set(false)
+        await settle()
+        expect(chatSurface.hidden).toBe(false)
+        expect(chatSurface.rebuildEpoch).toBe(0)
+    })
+
+    test('2h Studio closing as Settings opens does not release the surface', async () => {
+        studioOpen.set(true)
+        await settle()
+        settingsOpen.set(true)
+        studioOpen.set(false)
+        await settle()
+        expect(chatSurface.hidden).toBe(true)
+
+        settingsOpen.set(false)
+        await settle()
+        expect(chatSurface.hidden).toBe(false)
+    })
+
+    test('2h the hiding hook runs once when Studio opens over a visible chat', async () => {
+        let calls = 0
+        onSurfaceHiding(() => { calls += 1 })
+        studioOpen.set(true)
+        await settle()
+        expect(calls).toBe(1)
+    })
+
+    test('2h the Beta Mobile GUI never hides the surface for Studio either', async () => {
+        MobileGUI.set(true)
+        studioOpen.set(true)
+        await settle()
+        expect(chatSurface.hidden).toBe(false)
     })
 })
 

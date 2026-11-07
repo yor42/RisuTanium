@@ -29,6 +29,7 @@ import NullableTextColorToggle from 'src/lib/Setting/Pages/Display/NullableTextC
 import NotificationToggle from 'src/lib/Setting/Pages/Display/NotificationToggle.svelte';
 import ChatShellPreviewToggle from 'src/lib/Setting/Pages/Display/ChatShellPreviewToggle.svelte';
 import SettingsShellPreviewToggle from 'src/lib/Setting/Pages/Display/SettingsShellPreviewToggle.svelte';
+import StudioSwitchToggle from 'src/lib/Setting/Pages/Display/StudioSwitchToggle.svelte';
 
 /**
  * Registry of custom components.
@@ -49,6 +50,7 @@ export const customComponents: Record<string, Component<any>> = {
     'NotificationToggle': NotificationToggle,
     'ChatShellPreviewToggle': ChatShellPreviewToggle,
     'SettingsShellPreviewToggle': SettingsShellPreviewToggle,
+    'StudioSwitchToggle': StudioSwitchToggle,
     // Add more as we migrate complex settings
 } as const;
 

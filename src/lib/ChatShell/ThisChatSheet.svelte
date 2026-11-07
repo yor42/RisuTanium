@@ -4,6 +4,8 @@
     import { DBState, additionalChatMenu, hypaV3ModalOpen, settingsOpen } from '../../ts/stores.svelte'
     import type { Chat, character, groupChat } from '../../ts/storage/database.svelte'
     import { alertError, showHypaV2Alert } from '../../ts/alert'
+    import { openStudio } from '../../ts/studio/studioScreen.svelte'
+    import { studioEligible } from '../../ts/studio/studioSwitch.svelte'
     import { exportChat, removeChatConfirmed } from '../../ts/characters'
     import { effectiveJailbreak, effectiveMemory, writeChatJailbreak, writeChatMemory } from '../../ts/parser/chatToggleScope'
     import { chatStats, normalizeChatName, promptHasJailbreakToggle, relativeTime, setChatHideNames, writeChatName, writeChatNote } from '../../ts/chatShell/thisChatEdits'
@@ -195,6 +197,14 @@
         void tick().then(action)
     }
 
+    // Studio opens on the character's basic info after the sheet has closed; Back returns focus to whatever opened the sheet.
+    function openInStudio(): void {
+        if (!session) return
+        const chaId = session.owner.chaId
+        const origin = opener
+        leave(() => { openStudio({ owner: { type: 'character', id: chaId }, kind: 'basic', from: 'chat' }, { element: origin }) })
+    }
+
     let stats = $derived.by(() => {
         void edits
         if (!session) return ''
@@ -325,6 +335,9 @@
                     <span>{language.modules}</span>
                     <span data-part="this-chat-value">{moduleCount}</span>
                 </button>
+                {#if studioEligible()}
+                    <button type="button" data-part="this-chat-studio" data-kind="button" onclick={openInStudio}>{language.studioOpenIn}</button>
+                {/if}
                 <label data-part="this-chat-row">
                     <span>{language.chatShellHideNames}</span>
                     <input type="checkbox" role="switch" data-part="this-chat-hide-names" checked={hideNamesOn} onchange={(event) => setHideNames(event.currentTarget.checked)} />

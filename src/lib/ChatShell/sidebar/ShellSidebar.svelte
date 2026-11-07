@@ -27,6 +27,7 @@
     import ShellRowMenu from "./ShellRowMenu.svelte";
     import ShellSidebarSearch from "./ShellSidebarSearch.svelte";
     import SidebarMoreMenu from "./SidebarMoreMenu.svelte";
+    import { classicLinks } from "../../../ts/studio/classicLinks.svelte";
 
     type Entry = Database['characters'][number];
 
@@ -55,6 +56,28 @@
     let moreOpen = $state(false);
     let newMenuButton = $state<HTMLButtonElement>();
     let moreButton = $state<HTMLButtonElement>();
+    // A link-out from Studio opens More at Character settings; a normal open starts at the menu.
+    let moreStartView = $state<'menu' | 'settings'>('menu');
+    // Consumes the single-shot Studio request, and clears it so it cannot open More twice.
+    $effect(() => {
+        const requested = classicLinks.request !== null;
+        const open = moreOpen;
+        untrack(() => {
+            if (requested) {
+                classicLinks.request = null;
+                if (open) {
+                    // Already open: remount it so it starts on the requested view.
+                    moreOpen = false;
+                    void tick().then(() => { moreStartView = 'settings'; moreOpen = true; });
+                } else {
+                    moreStartView = 'settings';
+                    moreOpen = true;
+                }
+            } else if (!open) {
+                moreStartView = 'menu';
+            }
+        });
+    });
     // Unset by Svelte when the toggle unmounts (Recent, search results), so a gone toggle is never focused.
     let editOrderButton = $state<HTMLButtonElement>();
 
@@ -600,7 +623,7 @@
         </button>
     </div>
     {#if moreOpen}
-        <SidebarMoreMenu {reseter} onclose={() => { moreOpen = false; moreButton?.focus(); }} afterAction={afterMoreAction} />
+        <SidebarMoreMenu {reseter} startView={moreStartView} onclose={() => { moreOpen = false; moreButton?.focus(); }} afterAction={afterMoreAction} />
     {/if}
 </div>
 

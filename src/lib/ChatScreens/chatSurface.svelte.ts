@@ -3,6 +3,7 @@ import { get } from 'svelte/store'
 import { MobileGUI, ReloadChatPointer, ReloadGUIPointer, settingsOpen } from '../../ts/stores.svelte'
 import { topLevelChangeCount } from '../../ts/storage/topLevelChanges'
 import { language } from '../../lang'
+import { studioOpen } from '../../ts/studio/studioOpen'
 
 /**
  * Shared state of the chat surface that App keeps mounted while Settings is open.
@@ -11,8 +12,9 @@ import { language } from '../../lang'
  * mounts a chat component without App sees the surface as never hidden and never
  * closed, exactly as before the surface existed.
  *
- * - `hidden`: Settings is open over a kept-mounted chat. It turns false only after the
- *   Settings teardown has flushed, so work that teardown triggers lands first.
+ * - `hidden`: Settings or Studio is open over a kept-mounted chat. It turns false only after the
+ *   page's teardown has flushed, so work that teardown triggers lands first. Switching from one
+ *   page to the other keeps the surface hidden throughout.
  * - `closeEpoch`: bumps whenever Settings opens; transient chat UI (menus, editors)
  *   closes on each bump.
  * - `rebuildEpoch`: bumps once on a return that must rebuild the rows, before `hidden`
@@ -86,7 +88,7 @@ async function onSettingsClosed(){
     const thisVisit = visit
     await tick()
     // A reopen during the flush owns the next release.
-    if(visit !== thisVisit || get(settingsOpen) || !chatSurface.hidden){
+    if(visit !== thisVisit || get(settingsOpen) || get(studioOpen) || !chatSurface.hidden){
         return
     }
     // One decision per return, after every event the Settings teardown raised.
@@ -113,7 +115,11 @@ export function installChatSurface(){
         return
     }
     let previous = false
-    const stopSettings = settingsOpen.subscribe((open) => {
+    let settingsIsOpen = false
+    let studioIsOpen = false
+    // The surface is covered while either page is open; only a change of the combined state is a hide or a release.
+    const followCovered = () => {
+        const open = settingsIsOpen || studioIsOpen
         if(open === previous){
             return
         }
@@ -124,7 +130,19 @@ export function installChatSurface(){
         else{
             void onSettingsClosed()
         }
+    }
+    const stopSettingsFlag = settingsOpen.subscribe((open) => {
+        settingsIsOpen = open
+        followCovered()
     })
+    const stopStudioFlag = studioOpen.subscribe((open) => {
+        studioIsOpen = open
+        followCovered()
+    })
+    const stopSettings = () => {
+        stopSettingsFlag()
+        stopStudioFlag()
+    }
     const stopGui = ReloadGUIPointer.subscribe((value) => {
         if(chatSurface.hidden){
             missedSignal = true

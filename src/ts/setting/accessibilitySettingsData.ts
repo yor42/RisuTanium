@@ -59,6 +59,13 @@ export const accessibilitySettingsItems: SettingItem[] = [
         keywords: ['settings', 'screen', 'preview', 'device']
     },
     {
+        id: 'acc.studio',
+        type: 'custom',
+        componentId: 'StudioSwitchToggle',
+        labelKey: 'studioSwitchLabel',
+        keywords: ['studio', 'character', 'editor', 'preview']
+    },
+    {
         id: 'acc.fixedChatTextarea',
         type: 'check',
         labelKey: 'fixedChatTextarea',
