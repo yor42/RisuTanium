@@ -13,6 +13,7 @@ import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const stub = vi.hoisted(() => () => ({ default: () => { } }))
+const transport = vi.hoisted(() => ({ android: false }))
 
 vi.mock('@lucide/svelte', () => {
     const icon = () => { }
@@ -44,6 +45,7 @@ vi.mock('./lib/Others/CustomSidebarConfig.svelte', stub)
 
 vi.mock('./ts/stores.svelte', async () => {
     const { writable } = await import('svelte/store')
+    const LoadingStatusState = $state({ text: 'Checking Files...' })
     return {
         DynamicGUI: writable(false),
         settingsOpen: writable(false),
@@ -57,7 +59,7 @@ vi.mock('./ts/stores.svelte', async () => {
         CustomGUISettingMenuStore: writable(false),
         loadedStore: writable(false),
         alertStore: writable({ type: 'none', msg: '' }),
-        LoadingStatusState: { text: 'Checking Files...' },
+        LoadingStatusState,
         bookmarkListOpen: writable(false),
         popupStore: { children: null },
         easyPanelStore: { open: false },
@@ -77,10 +79,10 @@ vi.mock('./ts/characterCards', async () => {
 vi.mock('./ts/storage/database.svelte', () => ({ getDatabase: () => ({}), setDatabase: () => { } }))
 vi.mock('./ts/dropImport', () => ({ importDroppedFile: async () => { } }))
 vi.mock('./ts/keepAliveAudio', () => ({ createKeepAliveAudio: () => ({}) }))
-vi.mock('./ts/storage/tauriByteTransport', () => ({ isAndroidTransport: () => false }))
+vi.mock('./ts/storage/tauriByteTransport', () => ({ isAndroidTransport: () => transport.android }))
 
-import { loadedStore } from './ts/stores.svelte'
-import { askBootScreen, resetBootScreenForTests } from './ts/storage/store2/ui/bootScreen.svelte'
+import { loadedStore, LoadingStatusState } from './ts/stores.svelte'
+import { askBootScreen, clearBootScreen, resetBootScreenForTests } from './ts/storage/store2/ui/bootScreen.svelte'
 
 let mountedApp: Record<string, unknown> | null = null
 let target: HTMLElement | null = null
@@ -89,6 +91,8 @@ beforeEach(() => {
     vi.stubEnv('VITE_RISU_LEGAL_CONFIGURED', 'TRUE')
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date(2026, 5, 15))
+    LoadingStatusState.text = 'Checking Files...'
+    transport.android = false
 })
 
 afterEach(async () => {
@@ -144,18 +148,66 @@ describe('App shows the boot screen in the right place', () => {
     test('the boot screen is shown in place of the loading screen while the database is not loaded', async () => {
         const root = await showApp({ bootScreen: true })
         expect(root.querySelector('h1')?.textContent).toBe('A boot question')
-        expect(root.textContent).not.toContain('Loading...')
+        expect(root.querySelector('[role=progressbar]')).toBeNull()
     })
 
-    test('guard: with no boot screen the loading screen is shown', async () => {
+    test('with no boot screen the startup screen shows the step for the loading text', async () => {
         const root = await showApp({})
-        expect(root.textContent).toContain('Loading...')
+        const bar = root.querySelector('[role=progressbar]')
+        expect(bar?.getAttribute('aria-valuetext')).toBe('Step 1 of 7: Opening storage')
+        expect(root.textContent).toContain('1 / 7')
+        expect(root.textContent).not.toContain('Loading...')
         expect(root.querySelector('h1')).toBeNull()
+    })
+
+    test('the step follows the loading text', async () => {
+        const root = await showApp({})
+        LoadingStatusState.text = 'Reading Save File...'
+        flushSync()
+        expect(root.querySelector('[role=progressbar]')?.getAttribute('aria-valuetext')).toBe('Step 2 of 7: Reading your save')
+    })
+
+    test('text the mapping does not know keeps the step before it', async () => {
+        const root = await showApp({})
+        LoadingStatusState.text = 'Decoding Save File...'
+        flushSync()
+        LoadingStatusState.text = 'Something new'
+        flushSync()
+        expect(root.querySelector('[role=progressbar]')?.getAttribute('aria-valuetext')).toBe('Step 3 of 7: Preparing your library')
+    })
+
+    test('a boot question replaces the bar, and the bar returns at the current step when it clears', async () => {
+        const root = await showApp({ bootScreen: true })
+        LoadingStatusState.text = 'Reading Save File...'
+        clearBootScreen()
+        flushSync()
+        expect(root.querySelector('h1')).toBeNull()
+        expect(root.querySelector('[role=progressbar]')?.getAttribute('aria-valuetext')).toBe('Step 2 of 7: Reading your save')
+    })
+
+    test('low power follows the Android transport', async () => {
+        transport.android = true
+        const android = await showApp({})
+        expect(android.querySelector('.nexus-low-power')).not.toBeNull()
+        expect(android.querySelector('[role=progressbar]')?.hasAttribute('data-low-power')).toBe(true)
+        await unmount(mountedApp as never)
+        android.remove()
+        mountedApp = null
+        transport.android = false
+        const other = await showApp({})
+        expect(other.querySelector('.nexus-low-power')).toBeNull()
+        expect(other.querySelector('[role=progressbar]')?.hasAttribute('data-low-power')).toBe(false)
     })
 
     test('once the database is loaded a screen that is still set no longer covers the app', async () => {
         const root = await showApp({ bootScreen: true, loaded: true })
         expect(root.textContent).not.toContain('A boot question')
+        expect(root.querySelector('[role=progressbar]')).toBeNull()
+    })
+
+    test('guard: once the database is loaded the startup screen is gone', async () => {
+        const root = await showApp({ loaded: true })
+        expect(root.querySelector('[role=progressbar]')).toBeNull()
     })
 
     test('the legal notice still comes first: with it unconfigured the boot screen is not shown over it', async () => {
