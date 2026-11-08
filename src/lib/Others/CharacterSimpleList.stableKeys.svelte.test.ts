@@ -2,16 +2,15 @@
 
 /**
  * `CharacterSimpleList.svelte`: a row is keyed by the character it shows, not by its position in
- * `db.characters`. The position the list returns to after the trash view was open therefore
- * names the same character when the trash view removed a character from an earlier slot.
+ * `db.characters`. `CharacterWindow` follows focus by that key (`data-charlist-key`), so a removal
+ * from an earlier slot must leave every other row's key on its own character.
  *
- * Test labels: `(R)` is a reproducer: it fails on the index-keyed list with an assertion about the
- * defect (the list comes back at another character).
+ * Test labels: `(G)` is a compatibility guard: it passes on the keyed list and fails on an
+ * index-keyed one (mutant: `key: String(i)` in `sorted`).
  *
  * MOCKED: the module set of `CharacterSimpleList.trash.svelte.test.ts` (same directory), with `changeChar`
- * a bare spy; geometry is faked as in `CharacterSimpleList.window.svelte.test.ts`. The permanent delete
- * is the splice `removeChar(..., 'permanent')` performs on `db.characters`. Nothing here writes to
- * storage.
+ * a bare spy. The permanent delete is the splice `removeChar(..., 'permanent')` performs on
+ * `db.characters`. Nothing here writes to storage.
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
@@ -142,7 +141,6 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 //#endregion
 
 import { DBState } from '../../ts/stores.svelte'
-import { language } from '../../lang'
 import CharacterSimpleList from './CharacterSimpleList.svelte'
 
 //#region fixtures and helpers
@@ -150,8 +148,6 @@ import CharacterSimpleList from './CharacterSimpleList.svelte'
 type CharacterFixture = Database['characters'][number]
 
 const GONE = 1_700_000_000_000
-const VIEWPORT = 600
-const ROW = 73
 const LIVE = 40
 
 function makeCharacter(chaId: string, name: string, extra: Record<string, unknown> = {}): CharacterFixture {
@@ -194,9 +190,6 @@ function fixture(): CharacterFixture[] {
     ]
 }
 
-/** The name the list shows at row `ordinal`, counted from the top. */
-const nameAtRow = (ordinal: number): string => `Character ${LIVE - 1 - ordinal}`
-
 async function settle(): Promise<void> {
     for (let i = 0; i < 6; i++) {
         flushSync()
@@ -205,56 +198,7 @@ async function settle(): Promise<void> {
     flushSync()
 }
 
-async function settleFrame(): Promise<void> {
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-    await settle()
-}
-
-let restoreGeometry: () => void = () => {}
-
-/** A container height of `VIEWPORT` and a scroll position clamped to the list's total, for every element. */
-function installGeometry(): () => void {
-    const tops = new WeakMap<Element, number>()
-    const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight')
-    const scrollTop = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollTop')
-    Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => VIEWPORT })
-    Object.defineProperty(HTMLElement.prototype, 'scrollTop', {
-        configurable: true,
-        get(this: HTMLElement) {
-            return tops.get(this) ?? 0
-        },
-        set(this: HTMLElement, value: number) {
-            const total = Number(this.getAttribute('data-charlist-total') ?? Number.POSITIVE_INFINITY)
-            tops.set(this, Math.max(0, Math.min(value, Math.max(0, total - VIEWPORT))))
-        },
-    })
-    return () => {
-        for (const [name, descriptor] of [['clientHeight', clientHeight], ['scrollTop', scrollTop]] as const) {
-            if (descriptor) {
-                Object.defineProperty(HTMLElement.prototype, name, descriptor)
-            } else {
-                delete (HTMLElement.prototype as unknown as Record<string, unknown>)[name]
-            }
-        }
-    }
-}
-
-function scrollerOf(root: ParentNode): HTMLElement {
-    const el = root.querySelector<HTMLElement>('[role="list"][data-charlist-total]')
-    if (!el) {
-        throw new Error('no windowed list in this DOM')
-    }
-    return el
-}
-
-async function scrollAndSettle(root: ParentNode, top: number): Promise<void> {
-    const el = scrollerOf(root)
-    el.scrollTop = top
-    el.dispatchEvent(new Event('scroll'))
-    await settleFrame()
-}
-
-async function withMounted(props: { trashEntry?: boolean }, body: (target: HTMLElement) => void | Promise<void>): Promise<void> {
+async function withMounted(props: Record<string, never>, body: (target: HTMLElement) => void | Promise<void>): Promise<void> {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(CharacterSimpleList, { target, props }) as Record<string, unknown>
@@ -267,46 +211,36 @@ async function withMounted(props: { trashEntry?: boolean }, body: (target: HTMLE
     }
 }
 
-function buttonWith(root: HTMLElement, text: string): HTMLButtonElement | undefined {
-    return Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.includes(text))
+/** The `data-charlist-key` of the row showing `name`, or null when no rendered row shows it. */
+function keyOfRowShowing(root: ParentNode, name: string): string | null {
+    const label = Array.from(root.querySelectorAll('div.flex-1 > span:first-child')).find((s) => s.textContent?.trim() === name)
+    return label?.closest('[data-charlist-key]')?.getAttribute('data-charlist-key') ?? null
 }
-
-const rowNames = (root: ParentNode): string[] => Array.from(root.querySelectorAll('div.flex-1 > span:first-child')).map((s) => s.textContent?.trim() ?? '')
 
 beforeEach(() => {
     changeCharSpy.mockClear()
     vi.stubGlobal('ResizeObserver', undefined)
-    restoreGeometry = installGeometry()
 })
 
 afterEach(() => {
     vi.unstubAllGlobals()
-    vi.useRealTimers()
-    restoreGeometry()
 })
 
 //#endregion
 
-describe('CharacterSimpleList returns to the same character after the trash view', { timeout: 60_000 }, () => {
-    test('(R) a permanent delete of an earlier slot in the trash view leaves the list at the same top row', async () => {
+describe('CharacterSimpleList keeps a row on its character', { timeout: 60_000 }, () => {
+    test('(G) a row keeps its key on its character when an earlier slot is deleted', async () => {
         DBState.db = buildDb(fixture())
-        await withMounted({ trashEntry: true }, async (target) => {
-            await scrollAndSettle(target, 20 * ROW)
-            expect(scrollerOf(target).scrollTop).toBe(20 * ROW)
+        await withMounted({}, async (target) => {
+            const shown = `Character ${LIVE - 1}`
+            const before = keyOfRowShowing(target, shown)
+            expect(before).not.toBeNull()
 
-            buttonWith(target, `${language.trash} (1)`)!.click()
-            await settle()
             // The trashed character at slot 0 goes: every live character moves one slot down.
             DBState.db.characters.splice(0, 1)
             await settle()
-            buttonWith(target, language.settingsPage.back)!.click()
-            await settleFrame()
-            await settleFrame()
 
-            const top = scrollerOf(target).scrollTop
-            expect(top % ROW).toBe(0)
-            expect(nameAtRow(top / ROW)).toBe(nameAtRow(20))
-            expect(rowNames(target)).toContain(nameAtRow(20))
+            expect(keyOfRowShowing(target, shown)).toBe(before)
         })
     })
 })

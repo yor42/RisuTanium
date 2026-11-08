@@ -841,7 +841,6 @@ export const languageEnglish = {
         moduleIntergration:
             "You can enable modules by putting the module namespace in the module intergartion sections. if you want to enable multiple modules, you can seperate them by comma. for example, `module1,module2,module3`. This is for advanced users, who wants to vary the use of modules by presets.",
         customCSS: "Custom CSS for styling. you can also disable/enable it by pressing (Ctrl + .) if something goes wrong.",
-        betaMobileGUI: "If enabled, it will use beta mobile GUI on small (less than 800px) screens. Requires refresh.",
         enableScrollToActiveChar: "If enabled, pressing the hotkey scrolls the sidebar to the currently active character. Folders will be opened automatically if closed.",
         unrecommended: "This is a unrecommended setting. It is not recommended to use this setting.",
         jsonSchema:
@@ -2010,7 +2009,6 @@ export const languageEnglish = {
     promptConvertion: "Prompt Conversion",
     convertionStep1: "Select all related files for the prompt (Context, Instruct and Sampler JSON is supported)",
     customCSS: "Custom CSS",
-    betaMobileGUI: "Beta Mobile GUI",
     enableScrollToActiveChar: "Enable Scroll to Active Character",
     menu: "Menu",
     jsonSchema: "JSON Schema",

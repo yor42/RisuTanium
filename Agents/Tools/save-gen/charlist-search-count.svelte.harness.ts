@@ -7,7 +7,7 @@
  *
  *   - hiddenCalls: calls to `isHiddenSystemCharacter` during the burst. Every
  *     pass over `db.characters` (the header count, the layout's own filter,
- *     MobileCharacters' sort pass, the search index) calls it once per slot, so
+ *     CharacterSimpleList's sort pass, the search index) calls it once per slot, so
  *     the count is a proxy for the number of full scans, not a timing.
  *   - domAdded / domRemoved: elements inserted into and removed from the mounted
  *     tree during the burst (a subtree counts every element in it), i.e. DOM
@@ -130,10 +130,8 @@ vi.mock(import('../../../src/ts/stores.svelte'), () => {
     return {
         DBState: state,
         selectedCharID: writable(-1),
-        MobileGUIStack: writable([]),
         CharEmotion: writable(new Map()),
         OpenRealmStore: writable({ isOpen: false }),
-        MobileSearch: writable(''),
         alertStore: writable({ type: 'none', msg: '' }),
         selIdState: { state: -1 },
         SettingsMenuIndex: writable(0),

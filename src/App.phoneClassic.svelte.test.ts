@@ -12,7 +12,9 @@
  * application's stores are plain writables. `chatSurface.svelte.ts` is real and installed by
  * `App.svelte` itself.
  *
- * All three tests are guards: they pass with or without the removal of the Beta Mobile GUI.
+ * Tests 1 and 2 are guards: they pass with or without the removal of the Beta Mobile GUI.
+ * Test 3 depends on the removal: it fails if App reads `MobileGUI` again, because a true store
+ * would take a layout that never mounts the sidebar.
  */
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
