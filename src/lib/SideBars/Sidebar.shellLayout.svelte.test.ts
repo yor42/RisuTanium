@@ -67,6 +67,9 @@ vi.mock('../ChatShell/sidebar/ShellSidebar.svelte', () => ({ default: () => {} }
 import { DBState, DynamicGUI, sideBarClosing, sideBarStore } from '../../ts/stores.svelte'
 import * as shellSwitchModule from '../../ts/chatShell/shellSwitch.svelte'
 import { resetBackHandlersForTests } from '../../ts/backHandlers'
+import { createToastHost, type ToastClock, type ToastHost } from '../../ts/toast/toastHost.svelte'
+import { modalLayerCount } from '../Nexus/pattern/modalLayers.svelte'
+import ToastHostView from '../Nexus/pattern/ToastHost.svelte'
 import { panelFollowView } from './panelGestureBinding'
 import Sidebar from './Sidebar.svelte'
 
@@ -80,6 +83,41 @@ let page: HTMLElement
 let container: HTMLElement
 let chat: HTMLElement
 let opener: HTMLButtonElement
+let toastClock: ReturnType<typeof fakeToastClock>
+let toastTestHost: ToastHost
+let toastTargets: HTMLElement[] = []
+
+function fakeToastClock(): ToastClock & { advance(ms: number): void } {
+    let time = 0
+    let nextKey = 1
+    const timers = new Map<number, { at: number, run: () => void }>()
+    return {
+        now: () => time,
+        after(ms, run) {
+            const key = nextKey++
+            timers.set(key, { at: time + ms, run })
+            return () => { timers.delete(key) }
+        },
+        advance(ms) {
+            const target = time + ms
+            for (;;) {
+                let next: [number, { at: number, run: () => void }] | null = null
+                for (const entry of timers) {
+                    if (entry[1].at <= target && (next === null || entry[1].at < next[1].at)) {
+                        next = entry
+                    }
+                }
+                if (next === null) {
+                    break
+                }
+                timers.delete(next[0])
+                time = next[1].at
+                next[1].run()
+            }
+            time = target
+        },
+    }
+}
 
 function setViewport(width: number) {
     Object.defineProperty(window, 'innerWidth', { value: width, configurable: true, writable: true })
@@ -129,7 +167,11 @@ afterEach(() => {
     mounted = []
     flushSync()
     page.remove()
+    for (const node of toastTargets.splice(0)) {
+        node.remove()
+    }
     resetBackHandlersForTests()
+    expect(modalLayerCount()).toBe(0)
     vi.restoreAllMocks()
 })
 
@@ -203,6 +245,60 @@ describe('the wide overlay (900 to 1024 px)', () => {
         sideBarStore.set(false)
         flushSync()
         expect(document.activeElement).toBe(opener)
+    })
+})
+
+describe('the toast pause', () => {
+    function mountToastView() {
+        // Outside the page element, as in the app, where the stack is not among the siblings the panel makes inert.
+        const toastTarget = document.createElement('div')
+        document.body.append(toastTarget)
+        toastTargets.push(toastTarget)
+        mounted.push(mount(ToastHostView, { target: toastTarget, props: { host: toastTestHost } }))
+        flushSync()
+    }
+
+    beforeEach(() => {
+        toastClock = fakeToastClock()
+        toastTestHost = createToastHost({ clock: toastClock })
+    })
+
+    test('SB1: an open modal sidebar overlay holds the toast timer at 960 and at 400, and the timer resumes with the remaining time', () => {
+        for (const width of [960, 400]) {
+            layout(width)
+            mountSidebar()
+            mountToastView()
+            toastTestHost.postUndo({ text: 'Removed', actionLabel: 'Undo', action: { id: 'a', run: () => ({ ok: true, text: 'Restored' }), failedText: 'FAILED' } })
+            toastClock.advance(3000)
+            openPanel()
+            toastClock.advance(10_000)
+            expect(toastTestHost.visible).toHaveLength(1)
+            sideBarStore.set(false)
+            flushSync()
+            toastClock.advance(2999)
+            expect(toastTestHost.visible).toHaveLength(1)
+            toastClock.advance(1)
+            expect(toastTestHost.visible).toHaveLength(0)
+            for (const app of mounted) {
+                unmount(app)
+            }
+            mounted = []
+            flushSync()
+            expect(modalLayerCount()).toBe(0)
+        }
+    })
+
+    test('SB2: the docked panel is not a modal layer, so the toast expires on time', () => {
+        layout(1280)
+        mountSidebar()
+        mountToastView()
+        toastTestHost.postUndo({ text: 'Removed', actionLabel: 'Undo', action: { id: 'a', run: () => ({ ok: true, text: 'Restored' }), failedText: 'FAILED' } })
+        openPanel()
+        expect(modalLayerCount()).toBe(0)
+        toastClock.advance(5999)
+        expect(toastTestHost.visible).toHaveLength(1)
+        toastClock.advance(1)
+        expect(toastTestHost.visible).toHaveLength(0)
     })
 })
 

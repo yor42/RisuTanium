@@ -3,6 +3,8 @@
  * focus rescue. Everything here takes the elements it works on, so none of it reads the page.
  */
 
+import { holdModalLayer } from './modalLayers.svelte'
+
 const FOCUSABLE = [
     'a[href]',
     'area[href]',
@@ -125,10 +127,15 @@ export function watchFocus(root: HTMLElement, fallback: HTMLElement, isActive: (
 
 const openShells: object[] = []
 
-/** Records an opened shell. Only the most recently opened one acts on keys. Returns the unregister function. */
+/**
+ * Records an opened shell. Only the most recently opened one acts on keys. An open shell also holds a modal layer,
+ * which pauses the toast timers. Returns the unregister function.
+ */
 export function registerShell(token: object): () => void {
     openShells.push(token)
+    const releaseLayer = holdModalLayer()
     return () => {
+        releaseLayer()
         const index = openShells.indexOf(token)
         if (index >= 0) openShells.splice(index, 1)
     }
