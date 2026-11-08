@@ -79,7 +79,7 @@ export const languageVietnamese = {
     settingsShellPageLanguage: "Ngôn ngữ",
     settingsShellPagePersonas: "Persona",
     settingsShellPageExtensions: "Tiện ích mở rộng",
-    settingsShellPageData: "Dữ liệu & sao lưu",
+    settingsShellPageData: "Sao lưu & Tệp",
     settingsShellPageShortcuts: "Phím tắt",
     settingsShellPageAdvanced: "Nâng cao",
     settingsShellViewChatBot: "Bot trò chuyện",

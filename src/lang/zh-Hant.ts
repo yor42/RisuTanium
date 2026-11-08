@@ -79,7 +79,7 @@ export const languageChineseTraditional = {
     "settingsShellPageLanguage": "語言",
     "settingsShellPagePersonas": "人設",
     "settingsShellPageExtensions": "擴充功能",
-    "settingsShellPageData": "資料與備份",
+    "settingsShellPageData": "備份 & 檔案",
     "settingsShellPageShortcuts": "快速鍵",
     "settingsShellPageAdvanced": "進階",
     "settingsShellViewChatBot": "聊天 Bot",

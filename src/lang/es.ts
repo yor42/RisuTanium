@@ -79,7 +79,7 @@ export const languageSpanish = {
     settingsShellPageLanguage: "Idioma",
     settingsShellPagePersonas: "Personas",
     settingsShellPageExtensions: "Extensiones",
-    settingsShellPageData: "Datos y copia de seguridad",
+    settingsShellPageData: "Respaldo y Archivos",
     settingsShellPageShortcuts: "Atajos",
     settingsShellPageAdvanced: "Avanzado",
     settingsShellViewChatBot: "Chat Bot",

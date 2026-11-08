@@ -79,7 +79,7 @@ export const languageGerman = {
     "settingsShellPageLanguage": "Sprache",
     "settingsShellPagePersonas": "Personas",
     "settingsShellPageExtensions": "Erweiterungen",
-    "settingsShellPageData": "Daten & Backup",
+    "settingsShellPageData": "Backup & Dateien",
     "settingsShellPageShortcuts": "Tastenkürzel",
     "settingsShellPageAdvanced": "Erweitert",
     "settingsShellViewChatBot": "Chat Bot",

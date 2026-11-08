@@ -63,7 +63,7 @@
 <main class="flex flex-col grow min-w-0 min-h-0 bg-bgcolor text-textcolor" class:settings-shell-drill={phone} data-part="settings-page">
     {#if page}
         <div class="px-4 pt-4 shrink-0">
-            <h2 class="text-xl font-semibold outline-none" tabindex="-1" bind:this={heading} data-part="settings-page-heading">{settingsLabel(page.labelKey)}</h2>
+            <h2 class="text-xl font-semibold outline-none rounded-sm focus-visible:ring-2 focus-visible:ring-textcolor2" tabindex="-1" bind:this={heading} data-part="settings-page-heading">{settingsLabel(page.labelKey)}</h2>
             {#if page.views.length > 1}
                 <div class="flex flex-wrap gap-2 mt-3" role="group" aria-label={language.settingsShellViews}>
                     {#each page.views as view (view.id)}

@@ -14,10 +14,25 @@ const NO_CAPTURE: OpenCapture = { origin: { kind: 'none' }, fromFix: false, open
 
 let captured: OpenCapture = NO_CAPTURE
 let stopWatching: (() => void) | null = null
+let leftThisTurn: HTMLElement | null = null
 
+function noteFocusLeft(event: FocusEvent): void {
+    const target = event.target
+    if (!(target instanceof HTMLElement) || target === document.body) return
+    leftThisTurn = target
+    queueMicrotask(() => {
+        if (leftThisTurn === target) leftThisTurn = null
+    })
+}
+
+/**
+ * Another `settingsOpen` subscriber (the chat surface) may blur the focused element before this one reads
+ * `document.activeElement`. The element that lost focus earlier in the same synchronous run is then still the
+ * opener. A record older than the current microtask is never used, and a focused element always wins.
+ */
 function captureOpen(): OpenCapture {
     const active = document.activeElement
-    const opener = active instanceof HTMLElement && active !== document.body ? active : null
+    const opener = active instanceof HTMLElement && active !== document.body ? active : leftThisTurn
     const character = selIdState.selId >= 0 ? DBState.db.characters?.[selIdState.selId] : undefined
     return {
         origin: character ? { kind: 'chat', name: character.name } : { kind: 'none' },
@@ -34,10 +49,16 @@ function captureOpen(): OpenCapture {
 export function installSettingsOrigin(): void {
     if (stopWatching) return
     let wasOpen = false
-    stopWatching = settingsOpen.subscribe((open) => {
+    document.addEventListener('focusout', noteFocusLeft, true)
+    const stopStore = settingsOpen.subscribe((open) => {
         if (open && !wasOpen) captured = captureOpen()
         wasOpen = open
     })
+    stopWatching = () => {
+        stopStore()
+        document.removeEventListener('focusout', noteFocusLeft, true)
+        leftThisTurn = null
+    }
 }
 
 /** Where the current (or last) Settings open came from. */
