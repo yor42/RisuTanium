@@ -1,6 +1,7 @@
 /**
- * The render cache and the two display rules of `ChatBody`. Labels: G = guard. The symbols are new, so on the base the
- * file fails at import; the evidence of each row is a named mutant of the rule it pins.
+ * The render cache and the two display rules of `ChatBody`. Labels: G = guard, R = reproducer (fails on the base before
+ * the char budget, by assertion, since it imports only existing symbols). The evidence of each row is a named mutant
+ * of the rule it pins.
  */
 import { beforeEach, describe, expect, test } from 'vitest'
 import {
@@ -105,6 +106,138 @@ describe('G T18 the cache returns an entry only for the input that produced it',
         expect(lookup(slotFp(1))).toEqual({ kind: 'none' })
         expect(lookup(slotFp(0)).kind).toBe('html')
         expect(lookup(slotFp(RENDER_CACHE_CAPACITY)).kind).toBe('html')
+    })
+})
+
+// Literals equal to RENDER_CACHE_CHAR_BUDGET (4,000,000) and RENDER_CACHE_ENTRY_CHAR_LIMIT (1,000,000) on purpose: the
+// sizes stay exact edges even if a constant is edited. The default fingerprint source is 'src' (3 chars), so an entry of
+// size S carries a value of S - 3 chars. Slots are read once at the end: a hit reorders the entries.
+describe('char budget of the render cache', () => {
+    const chunks = new Map<number, string>()
+    const ch = (n: number): string => {
+        let s = chunks.get(n)
+        if(s === undefined){
+            s = 'x'.repeat(n)
+            chunks.set(n, s)
+        }
+        return s
+    }
+    const put = (slot: string, size: number, scope = SCOPE): void => record(fp({ slot, scope }), ch(size - 3))
+    const kindOf = (slot: string, scope = SCOPE): string => lookup(fp({ slot, scope })).kind
+    const kindsOf = (slots: string[]): string[] => slots.map((slot) => kindOf(slot))
+    const names = (prefix: string, n: number): string[] => Array.from({ length: n }, (_, i) => prefix + i)
+
+    test('R1: past the budget the oldest entries go; exactly at the budget nothing goes', () => {
+        const slots = names('s', 10)
+        for(const slot of slots){
+            put(slot, 500_000)
+        }
+        expect(kindsOf(slots)).toEqual(['none', 'none', ...Array(8).fill('html')])
+    })
+
+    test('R2: one insert evicts as many oldest entries as it needs', () => {
+        const small = names('k', 5)
+        const big = names('b', 4)
+        for(const slot of small){
+            put(slot, 200_000)
+        }
+        for(const slot of big.slice(0, 3)){
+            put(slot, 1_000_000)
+        }
+        put(big[3], 1_000_000)
+        expect(kindsOf(small)).toEqual(Array(5).fill('none'))
+        expect(kindsOf(big)).toEqual(Array(4).fill('html'))
+    })
+
+    test('R3: an entry over the per-entry limit is stored nowhere, evicts nothing and drops its slot\'s older entry', () => {
+        const small = ['a', 'b', 'c']
+        for(const slot of small){
+            put(slot, 100)
+        }
+        put('X', 1_000_003)
+        put('X2', 1_000_000)
+        record(fp({ slot: 'Y' }), 'old')
+        record(fp({ slot: 'Y' }), ch(1_000_000))
+        expect(kindOf('X')).toBe('none')
+        expect(kindOf('X2')).toBe('html')
+        expect(kindOf('Y')).toBe('none')
+        expect(kindsOf(small)).toEqual(Array(3).fill('html'))
+    })
+
+    test('R4: a replaced entry stops counting its old size', () => {
+        record(fp({ slot: 'P' }), 'p')
+        for(let i = 0; i < 10; i++){
+            put('A', 900_000)
+        }
+        const big = names('b', 3)
+        for(const slot of big){
+            put(slot, 1_000_000)
+        }
+        put('C', 99_997)
+        expect(kindOf('P')).toBe('none')
+        expect(kindsOf(['A', ...big, 'C'])).toEqual(Array(5).fill('html'))
+    })
+
+    test('R5: a new scope starts the total from zero', () => {
+        const other = scopeOf('a', 'cB', 0)
+        for(const slot of names('s', 4)){
+            put(slot, 1_000_000)
+        }
+        const slots = names('s', 5)
+        for(const slot of slots){
+            put(slot, 1_000_000, other)
+        }
+        expect(slots.map((slot) => kindOf(slot, other))).toEqual(['none', ...Array(4).fill('html')])
+    })
+
+    test('R6: clearing the cache starts the total from zero', () => {
+        for(const slot of names('s', 4)){
+            put(slot, 1_000_000)
+        }
+        clearChatBodyRenderCache()
+        const slots = names('s', 5)
+        for(const slot of slots){
+            put(slot, 1_000_000)
+        }
+        expect(kindsOf(slots)).toEqual(['none', ...Array(4).fill('html')])
+    })
+
+    test('R7: an awaiting entry counts its source', () => {
+        const slots = names('w', 5)
+        for(const slot of slots){
+            record(fp({ slot, source: ch(1_000_000) }), AWAITING)
+        }
+        expect(slots.map((slot) => lookup(fp({ slot, source: ch(1_000_000) })).kind))
+            .toEqual(['none', ...Array(4).fill('awaiting')])
+    })
+
+    test('G1: an awaiting entry replaced by its html counts source plus html once', () => {
+        record(fp({ slot: 'T', source: ch(600_000) }), AWAITING)
+        record(fp({ slot: 'T', source: ch(600_000) }), ch(400_000))
+        const rest = names('u', 3)
+        for(const slot of rest){
+            put(slot, 1_000_000)
+        }
+        expect(lookup(fp({ slot: 'T', source: ch(600_000) })).kind).toBe('html')
+        expect(kindsOf(rest)).toEqual(Array(3).fill('html'))
+    })
+
+    test('G2: an oversized entry in a new scope still drops the older scope\'s entries', () => {
+        const other = scopeOf('a', 'cB', 0)
+        record(fp({ slot: 'a' }), 'a')
+        put('big', 1_000_003, other)
+        expect(kindOf('a')).toBe('none')
+    })
+
+    test('R8: a hit keeps its entry young under the budget path', () => {
+        const slots = names('h', 4)
+        for(const slot of slots){
+            put(slot, 1_000_000)
+        }
+        expect(kindOf('h0')).toBe('html')
+        record(fp({ slot: 'n' }), 'n')
+        expect(kindOf('h1')).toBe('none')
+        expect(kindsOf(['h0', 'h2', 'h3', 'n'])).toEqual(Array(4).fill('html'))
     })
 })
 
