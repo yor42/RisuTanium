@@ -22860,3 +22860,203 @@ CHORE-649 (log 376 to 417, full entry in section 3.2):
 **Results (as logged).** Lane B Gate 1 (log 483): CHORE-655 plan-r3 ACCEPT (3 stages; edits App.svelte, hotkey.ts, stores, bootstrap, the Settings files, chatSurface, CharConfig and ShellHeader; deletes `src/lib/Mobile/*`). CHORE-656 plan-r2 EDITORIAL (diagnostic only, store2 sweep measure). CHORE-662 plan-r2 EDITORIAL. CHORE-654 designer rerun; its plan-r2 Gate 1 r2 EDITORIAL (the non-locale part may start from `b3fe311dd`; `en.ts` and the locale files wait for the UI-S2 batch 1 release, now on main as `f02093cd5`). Lane A ordering (as logged): UI-S2 batch 1 first, then CHORE-655 and UI-S3a in series, because CHORE-655 edits `App.svelte` and `hotkey.ts`, shared with UI-S2. `settingsShellSwitch` reads `MobileGUI`: keep an inert export or adjust at integration (as logged).
 
 **Not decided.** Whether dropping the upstream Beta Mobile GUI touches the upstream compatibility rules (`MC-175`): TODO(evidence). Which features are superseded and which merge into the UI overhaul (CHORE-655 sizing): the log does not list them. Lite's home is for the CHORE-655 sizing to decide (as logged).
+
+### MC-1125 — Lane A, 2026-11-08: lane A ticket selection (four options)
+
+- Tag: decisions (AskUserQuestion multiSelect answer, as logged; option labels TODO(evidence)). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1069` (parallel tickets as options), `MC-1115` (lane A leads the UI), `MC-890` (queue rule, amended by MC-1115), `MC-1120` (UI-S2 batch 2 sizing).
+
+**What the maintainer said (as logged, decisions log line 530, verbatim).** "Maintainer chose all four lane A options: size UI-S4 Home; CHORE-584 visibleModes; UI-S2 batch 2; CHORE-672 Studio open perf (coordinate with S3 session)."
+
+**Results (as logged; sizing packets read by the clerk in `b63\lanea\`, lane A claims).**
+- UI-S4 Home sizing r2 (`uis4-sizing-r2.md`, read-only at e719de8e2): refuted premises stated there (Trash is a field on the character record, not a new store; the purge is `isTrashPurgeDue` with a 3-day constant in `src/ts/storage/trashPurge.ts`; shipped Home is `src/lib/UI/MainMenu.svelte`; `visibleModes` absent from `src`). Verdict in the packet's own header: EDITORIAL on the critique. Gate 1 later passed for stage A only (see the Roadmap).
+- CHORE-584 sizing r2 (`c584-sizing-r2.md`): profile-wide `visibleModes` and `hideUnusedModes`; normalisation at load; reassigning setter; no `.bin` allowlist (`backuplocal.ts` `exportCopyOf`).
+- UI-S2 batch 2 sizing r2 (`s2b2-sizing-r2.md`): batch 2 = B1 (Display) then A2 (search and locators), two stages, one worktree.
+- CHORE-672 sizing r2 (`c672-sizing-r2.md`): the brief's 285 ms is the kind-row tap, not the Studio open (open measured 128 ms, debug APK); the 200 ms figure is a lane brief threshold, not an MC decision; S0 release measurement first.
+
+**Not decided.** Nothing in this entry is a product decision beyond the selection itself. The sizing questions are in MC-1126.
+
+### MC-1126 — Lane A, 2026-11-08: six sizing answers (UI-S4 Trash copy and Home design pass, CHORE-584 controls and .bin root, UI-S2 batch 2 search and reset)
+
+- Tag: decisions (AskUserQuestion answers, text as logged in the decisions log line 536; exact option labels TODO(evidence)). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-774` (`.bin` decision, clarified here for CHORE-584), `MC-175`, `MC-223` (`.bin` compatibility), `MC-350` (live Android data), `MC-892` item 5 (Trash 30 days), `MC-1004` (default named for CHORE-584), `MC-1120` (UI-S2 sizing), `MC-1069`.
+
+**What the maintainer said (as logged, decisions log line 536; six answers).**
+1. UI-S4 Trash copy: "state plainly that other versions may remove sooner" (the 30-day Trash copy must say that an upstream or older fork build purges at 3 days).
+2. UI-S4 Home persona list and first-run empty states: "short design pass stage after Home shell".
+3. CHORE-584 Settings mode controls: "ship now with 'Home applies this when it arrives' note".
+4. CHORE-584 fields in the `.bin` root: "travel in the .bin root (MC-774 clarification, no warning line)".
+5. UI-S2 batch 2 search: "phased (settings, help text, pages, views, sections; named things later, DS-007 end state)".
+6. UI-S2 batch 2 reset: "dot now, reset button after CHORE-572 merges".
+
+**Clarification recorded for MC-774 (item 4).** The `.bin` root carry for CHORE-584 is not a leave-out. Its two fields ride the root like other scalar Database fields, so no CHORE-562 leave-out entry and no warning line are needed. MC-774's warning applies only where data is left out. This entry is the MC record that the CHORE-584 Gate 2 opus review asks for (EDITORIAL item 1 in `c584-g2-r1-opus.md`: the MC record for the `.bin` root decision is owed before Gate 2 cites it).
+
+**Results (as logged; lane A claims).** Gate 1 passed for UI-S4 stage A (`trash-plan-r1`), CHORE-584 (`c584-plan-r2`) and UI-S2 batch 2 (`s2b2-plan-r3`), each EDITORIAL or PASS per the decisions log line 546. The Trash stage A and CHORE-584 stage work that followed are in the Roadmap and ledger.
+
+**Not decided.** The product question behind answer 3 is settled as stated. CHORE-672 had no maintainer question ("no maintainer question; S0 measure on release APK first", decisions log line 536, lane A reading). Option labels for answers 1, 2, 5 and 6 are TODO(evidence).
+
+### MC-1127 — Lane A and lane B, 2026-11-08: lane B ticket selection and UI-S3 next steps
+
+- Tag: decisions (AskUserQuestion answers, labels as logged in decisions log line 509; the exact labels are quoted from that line). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1115` (lane B delegation), `MC-1119` (UI-S3 sizing), `MC-1069`.
+
+**What the maintainer said (as logged, decisions log line 509).**
+- UI-S3 next: "S3d-2A + S3e-A now (Recommended)" and "Size S3b" (implementation waits for CHORE-572).
+- Lane B: "CHORE-572 toast/undo (Recommended)", "Perf CHORE-664 + 665", "CHORE-655 follow-ups".
+
+**Results (as logged).** CHORE-655 follow-ups filed as CHORE-673 (trashEntry branch), CHORE-674 (unused betaMobileGUI keys) and CHORE-675 (Sidebar test gap), per the decisions log line 509. Both sessions briefed. CHORE-672 was filed from the S3a device result (see MC-1135). CHORE-673 to 675 titles conflict with the batch brief wording ("Beta GUI locale deletions"); the commit subject of `09a7f9e95` is "chore(ui): Beta Mobile GUI follow-ups (CHORE-673, CHORE-674, CHORE-675)" (`git log`). The per-ticket titles here are the decisions log titles (TODO(evidence) for the batch brief wording).
+
+**Not decided.** The S3b implementation approval is recorded in MC-1137. The S3e-A2 checker and S3b persistence decisions are in MC-1133 and MC-1134.
+
+### MC-1128 — Lane B relayed CHORE-572 answers: API check, scope, lifetime and placement (2026-11-08)
+
+- Tag: decisions (AskUserQuestion answers, relayed by lane B; labels as logged in the decisions log lines 517, 522 and 524). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-058` (caller-owned strings), `MC-1127`, `MC-1129`.
+
+**What the maintainer said (as relayed).**
+- Scope and host (lane B `t5-toast\answers.md`, relayed decisions log line 517): new consumers only; legacy alertToast and the Back quit toast stay; 23-site migration is a later ticket (T4). Errors (including save-failure toasts) and warnings sticky until dismissed with role=alert; info, success and undo polite. Theme colours from `src/styles.css`. Up to 3 visible; undo 6 s; info and success 5 s; timers pause on hover or focus; numbers are host config; an undo toast is never evicted by a plain toast. No global Alt+Z now. No persistence in the host. Locale strings owned by the caller.
+- Plan answers (relayed, log line 522): Q1 "a thrown or rejected undo shows a polite refusal with the caller's failedText, a fresh 5 s timer, and logs the error" (as logged); Q2 full non-evictable stack, a new undo toast evicts the oldest undo toast (its record stays in Studio History); Q3 no "how long undo lasts" line on the Settings undo toast.
+- API check answers (log line 524): "Yes, both get Undo (Recommended)" (legacy Settings gains Undo); "Reserve a slot for Undo (Recommended)"; "Stack sits above quit toast (Recommended)"; "Pause while keyboard user tabs (Recommended)".
+
+**Results (as logged).** API check `wf_3a8e6ee5-b0e` ACCEPT-WITH-CHANGES x2 (log line 524); eight changes sent to lane B for `api-r2` and `plan-r2`. Committed `ab51b36b7` on `c572-wip-laneb` (parent `7251e3dfc`; maintainer 'Commit only', log line 556); merged `eef369da6` (trial20). Commit verified by `git log` (subject "feat(ui): toast and undo host, sidebar item undo (CHORE-572)").
+
+**Not decided.** Device checks DV (lane B) are owed; see MC-1129 and the Roadmap. Migration of the 23 legacy sites is a later ticket (T4).
+
+### MC-1129 — Lane A and lane B, 2026-11-08: CHORE-572 gate-1 open items O1 to O5 and L2
+
+- Tag: decisions (AskUserQuestion answers, as logged in the decisions log line 532; labels TODO(evidence)). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1128`, `MC-1137`, `MC-1138`.
+
+**What the maintainer said (as logged, decisions log line 532).** "O5 host rules accepted in full (stack-wide holds, tap counts as focus, focus hold persists while hidden, 10 s undo timeout, 5rem clearance above the quit toast, Dismiss = uiCommon.close)"; "L2 legacy focus after Delete accepted (same-index Delete > previous > Add Item)"; "O1 accepted for now via lane B (inertOutside: toasts visible and inert, timers run; revisit at T4; DV6)"; "O4 en copy accepted"; O2 confirmed by lane A (s3a2 clean at 4e794e5bd, merged via c612b8421).
+
+**Records owed from O3 (not MC decisions; the parent applies them to the owning design records).** D5 and A2 supersede DD-223 and DD-234; S3b owns DD-196; an evicted Settings undo is lost; tap-focus rule. Owner and exact target: TODO(evidence).
+
+**Results (as logged).** Gate 1 r2 EDITORIAL (`b61\laneb\t5-toast\gate1-r2.md`, not reopened by the clerk).
+
+**Not decided.** DV6 (inert-outside toasts) device result is owed; "revisit at T4".
+
+### MC-1130 — Lane B relayed CHORE-664 answers (2026-11-08)
+
+- Tag: decisions (relayed answers, labels as logged in `t6-perf\answers.md`, a binding file read by the clerk; decisions log line 517). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1121` (perf candidates), `MC-773` (UI-S1 shell default), `MC-1101`, `MC-1078`.
+
+**What the maintainer said (as relayed, `t6-perf\answers.md`).**
+- Q664-1: the chat-shell toggle (`risuChatShell.enabled`) is OFF on the maintainer's daily MVP; the legacy chat list is the primary leg; the chat shell is reported secondarily.
+- Q664-2: no thresholds; CHORE-664 reports numbers only and proposes thresholds for later approval.
+- Q664-3: the emotion-swap decode-memory sub-run stays with CHORE-668; CHORE-664 builds the shared memory sampler.
+
+**Results (as logged; lane B claims read by the clerk: `laneb\t6-perf\m664\result.md`).** Stage 0 tools `d61fbf90e` (commit-only approval; merged in `7251e3dfc`). PC leg PARTIAL (`result-pc.md`, the fixture import blocked at the Settings route; no PC numbers). Phone leg PARTIAL: release APK of `e719de8e2` (test-key re-signed measurement build), arm P only, 1 warm-up plus 2 runs (N30: 1), legacy list mounted rows 30 to 75 only. Numbers are for this device, build and fixture only (Note 9, synthetic fixture); no threshold claim.
+
+**Not decided.** PC leg, shell leg, arms T and F, S-C at 2 and 100 KB, and M0 to M2 are NOT RUN (per `m664\result.md`). No threshold proposed. The MVP toggle state is Q664-1.
+
+### MC-1131 — S3 session relayed answers 10 to 12 (2026-11-08)
+
+- Tag: decisions (AskUserQuestion answers, verbatim labels as recorded in the S3 session `decisions.md` items 10 to 12; relayed by the S3 session, relayed to lane A at decisions log line 515). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1119` (UI-S3 sizing answers, DD-099, DD-100).
+
+**What the maintainer said (verbatim labels, S3 `decisions.md`).**
+- 10. "S3b Studio: how long should History, the restore point and the deleted-items list last? ..." -> "All persist (Recommended)": all three stay on this device across visits and reloads under one size cap, oldest evicted first; closing Studio clears nothing (amends DD-100's "until Studio closes" for the deleted list).
+- 11. "S3b scope: G19 ... Move it and module editing to S3c, beside the module host?" -> "Move to S3c (Recommended)": S3b edits no modules or scripts; G19 moves to S3c with the module host; classic ModuleSettings unchanged (scope change accepted).
+- 12. "S3e-A macro list: where should macro descriptions come from in this batch?" -> "English now, KO later (Recommended)": registry English description plus a derived usage line; KO/EN table waits for slice-3 stage C through the translator; no locale keys in S3e-A.
+
+**Results (as logged).** S3b lifetime (answer 10) is applied by the S3b Gate 1 plan r6 (see MC-1137). S3e-A macro text (answer 12) implemented in S3e-A, which has no locale keys. Gate verdicts are in the Roadmap.
+
+**Not decided.** Translator work for the KO macro text waits for slice-3 stage C (MC-058).
+
+### MC-1132 — S3 session relayed answers 13 to 15: S3b save chip and tab rules (2026-11-08)
+
+- Tag: decisions (AskUserQuestion answers, verbatim labels from S3 `decisions.md` items 13 to 15; relayed to lane A at decisions log line 519). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1131`, `MC-1133` (item 19 amends item 13's wording), `MC-1134`, `MC-058`.
+
+**What the maintainer said (verbatim labels, S3 `decisions.md`).**
+- 13. "S3b Studio save chip: when an edit has had no confirmed save and no failure signal for 30 seconds, what should the chip show? ..." -> "Not saved · Retry (Recommended)": after 30 s of page time the chip shows "저장 안 됨 · 다시 시도", sticky until Retry; never claims success.
+- 14. "S3b, chats with no unique id: deleting a first message ... What should Studio do?" -> "Allow, short notice (Recommended)": delete works; undo restores the message but the default first message shows again, with a short notice; restore point restores the first-message lists and leaves fmIndex; such a chat gets a read-only note form with a reason.
+- 15. "S3b 'changed elsewhere' ... page-level chip?" -> "Show page-level chip (Recommended)": shown on any peer save until this tab's next confirmed save; no buttons of its own; the existing peer prompt keeps Reload / Save mine.
+
+**Results (as logged).** S3b Gate 1 plan r1 to r6 carries these (see the Roadmap for gate verdicts). Item 13 wording is amended by MC-1133 item 19.
+
+**Not decided.** Nothing further.
+
+### MC-1133 — S3 session relayed answers 16 to 19: checker split, fence rule, tab persistence, chip wording (2026-11-08)
+
+- Tag: decisions (AskUserQuestion answers, verbatim labels from S3 `decisions.md` items 16 to 19; relayed to lane A at decisions log line 528). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1131` to `MC-1134`, `MC-1119`, `MC-892`.
+
+**What the maintainer said (verbatim labels, S3 `decisions.md`).**
+- 16. "S3e-A: the CBS problem checker caused both Gate 1 rejections ... How should S3e-A proceed?" -> "Split checker out (Recommended)": S3e-A = macro list, token service, `<START>` splitters now; the CBS checker becomes its own follow-up batch S3e-A2 (own plan and gates) before slice-3 stage C. Scope change. S3e-A2 is tracked as a UI-S3 batch on the Roadmap row, with no CHORE number.
+- 17. "S3e-A paste splitter: ... Which lines count as fences?" -> "Strict fences (Recommended)": opening fence = line starting (after spaces) with 3+ backticks and no other backtick; closing = a line of only 3+ backticks; unclosed runs to the end.
+- 18. "S3b history with two tabs editing the same character ..." -> "One tab persists (Recommended)": history persists from one tab at a time per character; a second tab keeps memory-only history and says so; no merge algorithm.
+- 19. "S3b save chip after 30 s with no confirmation ... Which wording?" -> "Not confirmed (Recommended)": "저장 확인 안 됨 · 다시 시도" (amends item 13's wording).
+
+**Results (as logged).** S3e-A Gate 2 EDITORIAL (both lenses; S3 session claim) after test-only remediation g2r1 (S3 `decisions.md` lines 113 to 116). S3e-A2 is not started. Lane A flagged the AGENTS.md byte-store rule for the S3b IndexedDB store (see MC-1139).
+
+**Not decided.** The CBS checker design is for S3e-A2. Candidate, unnumbered, needs the maintainer's word before numbering: `cbs.ts` registers `time` twice (advisor note, S3e-A `ea/advisor.md`: `:610` dead, `:1688` live; recorded as a candidate only).
+
+### MC-1134 — S3 session relayed answers 20 and 21: S3b history without Web Locks and save-chip ceiling (2026-11-08)
+
+- Tag: decisions (AskUserQuestion answers, verbatim labels from S3 `decisions.md` items 20 and 21; relayed to lane A at decisions log line 534). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1132`, `MC-1133`, `MC-1137`, `MC-350`, `MC-058`.
+
+**What the maintainer said (verbatim labels, S3 `decisions.md`).**
+- 20. "S3b history on pages without Web Locks ..." -> "Memory-only + banner (Recommended)": memory-only history with the banner "이 페이지에서는 기록을 저장할 수 없습니다 (보안 연결 아님)".
+- 21. "S3b save chip ceiling ... after 120 s of passes with no commit at all?" -> "Yes, 120 s ceiling (Recommended)".
+
+**Results (as logged).** Lane A accepted the advisor reading for the S3b IndexedDB store, with the S3b Gate 1 opus lens as the deciding check (MC-1139). S3b Gate 1 accepted at plan r6 (log line 548).
+
+**Not decided.** The S3b persisted store is the last stage; its reload-survival and unreadable-record (copy-aside) device runs are owed (TODO(evidence), owner S3 session or lane B).
+
+### MC-1135 — Lane B device results and maintainer answers: S2 batch 1 and S3a (2026-11-08)
+
+- Tag: decisions (AskUserQuestion answers, labels as logged in decisions log lines 503 and 504) and results (lane B device claims, not re-run by the clerk). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1120` (UI-S2 batch 1), `MC-1119` (UI-S3a), `MC-1135` is the only record of these answers.
+
+**What the maintainer said (as logged).**
+- S2 batch 1 device (lane B `laneb\s2-dev\result.md`, commit `f02093cd5`): D2 FAIL, fix chosen: "File and fix now (Recommended)" = CHORE-671. D1 (legacy sidebar reopens; quit toast on Back 4): "Check it in CHORE-671 (Recommended)". h2 focus ring: "Yes, fold it in (Recommended)".
+- S3a device (lane B `laneb\s3a-dev\result.md`, commit `c612b8421`, debug APK): N1 FAIL against the 200 ms target (285 ms max). Chosen: "File a perf ticket (Recommended)" = CHORE-672 (unscheduled at the time). O6 (Data & backup label vs Backup heading): "Fold into CHORE-671 (Recommended)".
+
+**Results (lane B claims; not independently checked by the clerk).** S2 batch 1 phone D1 PASS (with the deviation above), D2 FAIL then D2 fix PASS, D3 (200% system font) PASS, D4 PASS; PC PASS. S3a: N1 FAIL (285 ms max), N2 PARTIAL, N3, N4 and B6-U1 PASS; write watch inconclusive.
+
+**Not decided.** The S2 batch 1 PC and phone result files are lane B claims; the PC pass for batch 1 is recorded as "PC PASS" in the log (no independent check).
+
+### MC-1136 — Maintainer approval: clear-and-install release APK on phone 2 (synthetic profile), 2026-11-08
+
+- Tag: decisions (maintainer instruction as logged, decisions log line 538; option label TODO(evidence)). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1121`, `MC-1130`, `MC-1127`, `MC-1135`, `MC-1082` (MVP is `a3b5d706e`; not changed here), `MC-350` (not engaged on the phone 2 test profile).
+
+**What the maintainer said (as logged).** "clear-and-install release APK on phone 2 (synthetic profile) for CHORE-672 S0 and CHORE-664 phone leg."
+
+**Results (as logged; lane B claims read by the clerk).** CHORE-672 S0 (`laneb\c672-s0\result.md`): unsigned release APK re-signed with the persistent TEST key (release key not touched), fresh install on phone 2 at 2026-11-08 11:47:59 (empty profile); synthetic profile built through the app UI (2000 lore entries, 5 modules); Wi-Fi off. The CHORE-664 phone leg used the same device with `e719de8e2` measurement build, test-key signed, and no clear requested (its result).
+
+**Not decided.** The MVP (`MC-1082`, `a3b5d706e`) is unchanged; this approval is for the phone 2 test device only and does not replace the maintainer's daily-use MVP.
+
+### MC-1137 — Maintainer approval: S3b implementation after CHORE-572 (2026-11-08)
+
+- Tag: decisions (AskUserQuestion answer, label as logged in decisions log line 548). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1119` (S3b sizing), `MC-1127` ("Size S3b"), `MC-1128`, `MC-1131` to `MC-1134`.
+
+**What the maintainer said (as logged, decisions log line 548).** "Go after CHORE-572 (Recommended)" for S3b implementation (lane A relayed it; S3 `decisions.md` line 120).
+
+**Results (as logged).** S3b Gate 1 accepted at plan r6 (opus r4 EDITORIAL; adversarial r5 PASS, after senior-advisor escalation; S3 `decisions.md` lines 118 to 119). CHORE-572 was merged first (`eef369da6`, trial20), so S3b1 started on `06bcd6774` in worktree `risu-code-track-s3b` (branch `s3b-wip`), with two serial coders (part a pure model and store; part b service and saveOnHide). O6 (DD-196 view-in-Studio toast) stays with S3f; S3b touches no toast host file.
+
+**Not decided.** S3b Gate 2 is owed; the persisted store (IndexedDB) is the last stage and needs an opus-reviewer Gate 2 (S3 session `b/advisor.md`, lane A acceptance).
+
+### MC-1138 — Commit, merge and push approvals with hashes, 2026-11-08
+
+- Tag: decisions (AskUserQuestion approvals, labels as logged; each merge or commit hash checked against git by the clerk). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1069` (approval for every commit, push and merge), `MC-1102`, `MC-1123`, `MC-1120`, `MC-1122`, `MC-1068`.
+
+**What the maintainer approved (labels as logged; hash verified with `git rev-parse` or `git log`).**
+- Records batch 62: "Commit and push (Recommended)" -> `832437edb` (`docs(records): batch 62, the UI-S2 and UI-S3 answers, perf tickets and the full-run rule`), pushed (log line 499).
+- UI-S3a: "Merge and push (Recommended)" -> merge `c612b8421` of `4e794e5bd` (`feat(studio): read-only Studio screen behind a per-device switch (UI-S3a)`), pushed (log line 501; the S3 session committed `4e794e5bd` on `s3a2-wip` on its own approval).
+- CHORE-656: "Merge and push (Recommended)" -> merge `6f0fe3f6b` of `d854a6e0f` (log line 505).
+- CHORE-654: maintainer approved the lane B commit `e677a217b` there; "Merge and push (Recommended)" -> merge `50724df9f` (log line 507).
+- CHORE-655: `e984e6b89` commit-only (log line 510); "Merge and push (Recommended)" -> merge `5c3782402` (log line 513).
+- CHORE-671: "Commit, merge, push (Recommended)" -> commit `af271b781`, merge `e719de8e2` (log line 521).
+- Lane B commits, commit-only approved (log line 538): CHORE-665 `e5c4ef235`; CHORE-673, 674, 675 `09a7f9e95`; CHORE-664 stage 0 tools `d61fbf90e`. S3d-2A `681f4f7ef` (committed on `s3d2a-wip`, log line 540). S3e-A `4855800f5` (committed on `s3ea-wip`, log line 544).
+- Trial18 (`e719de8e2` plus CHORE-665, 673 to 675, and 664 stage 0): "Merge and push (Recommended)" -> merges `2d6df482f` (`e5c4ef235`), `9ce30c61e` (`09a7f9e95`), `7251e3dfc` (`d61fbf90e`); mismatch 0; pushed (log line 552).
+- CHORE-672: commit `e6aecc273` (log line 556, approved there). CHORE-584 stage 1: commit `8255a8500` (log line 556, approved there). CHORE-572: "Commit only", `ab51b36b7` on `c572-wip-laneb` (log line 556).
+- Trial19 (`7251e3dfc` plus `681f4f7ef` and `4855800f5`): "Merge and push (Recommended)" -> merges `00abfec91` (S3d-2A) and `fa588a1e6` (S3e-A); mismatch 0; pushed (log line 558).
+- Trial20 (`fa588a1e6` plus `ab51b36b7`, `e6aecc273`, `8255a8500`): "Merge and push (Recommended)" -> merges `eef369da6` (CHORE-572), `688bef447` (CHORE-672), `06bcd6774` (CHORE-584 stage 1); mismatch 0; pushed (log line 560).
+- CHORE-584 stage 2: "Commit (Recommended)" -> `ce63218fc` on `c584-wip` (log line 564). Not merged (git: not an ancestor of `main`).
+- UI-S4 stage A (Trash 30 days): commit `435cdaadf` (`feat(trash): keep trashed characters 30 days (UI-S4 stage A)`) exists in git and is not an ancestor of `main`. The approval for this commit is not in the supplied log: TODO(evidence).
+
+**Main progression (git-checked hashes; order as logged).** `e719de8e2` (CHORE-671) -> `2d6df482f` / `9ce30c61e` / `7251e3dfc` -> `00abfec91` / `fa588a1e6` -> `eef369da6` / `688bef447` / `06bcd6774`. Earlier in this batch: `832437edb` -> `c612b8421` -> `6f0fe3f6b` -> `50724df9f` -> `5c3782402` -> `e719de8e2`. Checked at records time: `main` is at `06bcd6774`.
+
+**Not decided.** No merge, push or commit is approved for CHORE-584 stage 2 (`ce63218fc`) or UI-S4 stage A (`435cdaadf`) beyond what is recorded above; their merge approvals are owed.
+
+### MC-1139 — Orchestrator rulings recorded for the records (not maintainer answers), 2026-11-08
+
+- Tag: statements (orchestrator rulings under routine arbitration; not maintainer decisions; recorded so that the rule source is traceable). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-892` item 5, `MC-1120` (UI-S2 batch 2 DS items), `MC-058`, `MC-1069`. The maintainer may override any item here.
+
+**Orchestrator rulings (as logged).**
+1. DS-015 (UI-S2 batch 2 search retry): the amended filler-word rule widens DS-015's literal "finds nothing" retry trigger, so that "enter to send" lands on `acc.sendWithEnter` (within DS-015's intent that filler words are ignored). Source: decisions log line 554; amendment `s2b2-plan-r3-amend1.md`, Gate 1 delta PASS; applied as `b63-s2b2-rem1` (log line 556).
+2. MC-892 item 5 interpretation (CHORE-172): "CHORE-172 folds in" means the 30-day constant replaces the 3-day purge; the CHORE-172 Trash-fling jank stays a device diagnostic (decisions log line 546). Records owed (Trash documentation, see the Roadmap).
+3. S3b IndexedDB store: the advisor reading (dedicated IndexedDB store; the byte-store rule covers profile data; precedents `risuThumb`, `DPoPDB`; copy-aside for unreadable records is MC-350) is accepted by lane A, with the S3b Gate 1 opus lens as the deciding check. The opus lens agrees (`b/g1-r1-opus.md`; S3 `decisions.md` line 102 and decisions log line 534). No maintainer decision was needed (MC-1139 records the orchestrator reading only).
+
+**Not decided.** Items 1 to 3 are not maintainer decisions and must not be cited as maintainer answers. Any future product consequence goes to the maintainer.
