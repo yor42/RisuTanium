@@ -84,6 +84,11 @@ const writes: number[] = []
 const frames = new Map<number, () => void>()
 let frameId = 0
 const scrolledTo: string[] = []
+// Every rect read, classified when it happens: a read of an element inside a message container (not the container itself) forces that row's layout,
+// and `index` names the article the read belongs to.
+const CONTAINER = '[data-part="chat-message-container"]'
+const reads: { inContainer: boolean, index: string | null }[] = []
+const grown = { index: null as number | null, by: 0 }
 const character = $state({ chaId: 'c', type: 'character', name: 'Ari', image: '', chatPage: 0, alternateGreetings: ['Second'],
     chats: [{ id: 'room', message: [] as Message[], alt: [] as ChatAlt[] }, { id: 'other', message: [] as Message[], alt: [] as ChatAlt[] }] }) as unknown as Character
 
@@ -115,7 +120,8 @@ const view: TreeView = {
     continuation: 0,
 }
 
-function rowHeight(index: number): number { return index < 0 ? 100 : index % 2 === 0 ? 90 : 117 }
+function rowHeight(index: number): number { return (index < 0 ? 100 : index % 2 === 0 ? 90 : 117) + (index === grown.index ? grown.by : 0) }
+function inContainerReads(except?: string): number { return reads.filter((read) => read.inContainer && read.index !== except).length }
 function mountedIndexes(): number[] {
     return [...host.querySelectorAll<HTMLElement>('article[data-part="chat-message"]')].map((row) => Number(row.dataset.chatIndex)).sort((a, b) => a - b)
 }
@@ -200,7 +206,9 @@ beforeEach(() => {
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
         value: function (this: HTMLElement) { scrolledTo.push(this.dataset.chatIndex ?? '') }, configurable: true, writable: true,
     })
+    reads.length = 0; grown.index = null; grown.by = 0
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        reads.push({ inContainer: !this.matches(CONTAINER) && this.closest(CONTAINER) !== null, index: this.closest<HTMLElement>('article[data-chat-index]')?.dataset.chatIndex ?? null })
         if (this === host) return rect(0, hostHeight)
         const index = modelIndexOf(this)
         return index === null ? rect(0, 0) : rect(rowTop(index), rowHeight(index))
@@ -397,6 +405,90 @@ describe('an open message editor blocks unmounting', () => {
         ScrollToMessageStore.value = 100
         await settle()
         expect(mountedIndexes()).toEqual(kept)
+    })
+})
+
+describe('classifying off-screen rows reads no row content', () => {
+    test('R1: a read-back below the cap reads no element inside a row container and restores the bottom distance', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        const distance = contentHeight() - 50
+        reads.length = 0
+        top = 50
+        app!.onScroll()
+        expect(inContainerReads()).toBe(0)
+        await settle()
+        expect(mountedIndexes()).toHaveLength(46)
+        expect(Math.abs(contentHeight() - top - distance)).toBeLessThanOrEqual(0.5)
+    })
+    test('R2: a read-back at the cap reads no element inside a row container and unmounts the 15 newest rows', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        for (let load = 0; load < 5; load++) await readBack()
+        expect(mountedIndexes()).toHaveLength(100)
+        expect(articleAt(-1)).toBeNull()
+        const before = mountedIndexes()
+        reads.length = 0
+        top = 50
+        app!.onScroll()
+        expect(inContainerReads()).toBe(0)
+        await settle()
+        expect(mountedIndexes()).toHaveLength(100)
+        expect(articleAt(999)).toBeNull()
+        expect(before.filter((index) => articleAt(index) === null)).toEqual(before.slice(-15))
+    })
+    test('R3: a step hold that commits a kept window reads no row content but the stepped row', async () => {
+        seedChat(activeChat(), 60, 10, 100)
+        await show(60, 15)
+        top = layoutTop(10) - 100
+        reads.length = 0
+        tapNext(10)
+        await tick()
+        await settle(false)
+        runFrames()
+        await settle()
+        expect(activeChat().message).toHaveLength(110)
+        expect(mountedIndexes().length).toBeGreaterThan(50)
+        expect(mountedIndexes().length).toBeLessThanOrEqual(100)
+        expect(inContainerReads('10')).toBe(0)
+    })
+    test('G2b: a stream chunk that grows the newest row between load-older and its restore lands at the old distance from the bottom', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        const distance = contentHeight() - 50
+        top = 50
+        app!.onScroll()
+        grown.index = 999
+        grown.by = 200
+        await settle()
+        expect(mountedIndexes()).toHaveLength(46)
+        expect(Math.abs(contentHeight() - top - distance)).toBeLessThanOrEqual(0.5)
+    })
+    test('G3: further scroll events while a restore is pending start no second load', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        top = 50
+        app!.onScroll()
+        app!.onScroll()
+        await settle()
+        expect(mountedIndexes()).toHaveLength(46)
+    })
+    test('G5: a read-back keeps the mounted article nodes below the cap and drops exactly the 15 newest at the cap', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        const held = new Map(mountedIndexes().map((index) => [index, articleAt(index)!]))
+        await readBack()
+        for (const [index, node] of held) {
+            expect(node.isConnected).toBe(true)
+            expect(articleAt(index)).toBe(node)
+        }
+        for (let load = 0; load < 4; load++) await readBack()
+        const full = new Map(mountedIndexes().map((index) => [index, articleAt(index)!]))
+        expect(full.size).toBe(100)
+        await readBack()
+        const gone = [...full].filter(([, node]) => !node.isConnected).map(([index]) => index)
+        expect(gone).toEqual([...full.keys()].slice(-15))
+        for (const [index, node] of full) if (!gone.includes(index)) expect(articleAt(index)).toBe(node)
     })
 })
 
