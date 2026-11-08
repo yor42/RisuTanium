@@ -2,6 +2,7 @@
 // switch read the selected character's id and eligibility only.) It hands plain readers to the pure owner model
 // and never writes: no database write, no save mark, no module load. A module slot is passed as the app holds
 // it; the model reads a stub through its marker and reference fields only.
+import { getContext, setContext } from 'svelte'
 import { fromStore } from 'svelte/store'
 import { DBState, ReloadGUIPointer, selIdState } from '../stores.svelte'
 import { moduleListOf } from '../process/moduleRefList'
@@ -78,4 +79,23 @@ export function createOwnerSource(chaId: () => string): { readonly current: Owne
     return {
         get current() { return snapshot },
     }
+}
+
+export type OwnerSource = ReturnType<typeof createOwnerSource>
+
+const OWNER_SOURCE_CONTEXT = Symbol('studio-owner-source')
+
+/**
+ * Creates the source of a Studio screen and offers it to every pane below it, so the tree, the detail and the
+ * search read one snapshot instead of building one model each.
+ */
+export function provideOwnerSource(chaId: () => string): OwnerSource {
+    const source = createOwnerSource(chaId)
+    setContext(OWNER_SOURCE_CONTEXT, source)
+    return source
+}
+
+/** The source the screen above provides; a pane mounted alone gets a source of its own. */
+export function ownerSourceFor(chaId: () => string): OwnerSource {
+    return getContext<OwnerSource | undefined>(OWNER_SOURCE_CONTEXT) ?? createOwnerSource(chaId)
 }

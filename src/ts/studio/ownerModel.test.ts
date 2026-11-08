@@ -290,3 +290,100 @@ describe('3j a stub is never asked for a body key', () => {
         expect(model.modules[0].kinds().find((node) => node.kind === 'scripts')?.items()[0].mode).toBe('lua')
     })
 })
+
+describe('3i itemsUpTo and itemById agree with items()', () => {
+    const moduleLore = (count: number) => Array.from({ length: count }, (_, index) => ({
+        key: `k${index}`, secondkey: '', insertorder: 1, comment: `c${index}`, content: 'b', mode: 'normal' as const, alwaysActive: false, selective: false,
+    }))
+    const moduleRegex = (count: number) => Array.from({ length: count }, (_, index) => ({
+        comment: `r${index}`, in: '', out: '', type: 'editinput' as const,
+    }))
+    const model = buildOwnerModel(makeInput({
+        character: makeCharacter({
+            globalLore: [...loreEntries(4), { comment: 'Folder', key: 'folder', mode: 'folder' }, ...loreEntries(2, 'tail')],
+            customscript: regexEntries(3),
+            triggerscript: v2Scripts,
+            customModuleToggle: 'combat=Combat',
+            backgroundHTML: '<div></div>',
+            additionalAssets: [['a', 'p', 'png']],
+            chats: [makeChat({ id: 'c1', name: 'Chat', localLore: loreEntries(2, 'chat') })],
+        }),
+        modules: [
+            residentModule('m:1/x', { lorebook: moduleLore(3), regex: moduleRegex(2), assets: toAssetList([['a', 'p', 'png'], ['b', 'q', 'png']]) }),
+            residentModule('dup', { lorebook: moduleLore(2) }),
+            residentModule('dup', { lorebook: moduleLore(1), regex: moduleRegex(1) }),
+            residentModule('empty'),
+        ],
+        enabledModules: ['m:1/x', 'dup', 'empty'],
+        presets: [makePreset('Main', { regex: regexEntries(2), toggles: 't=T' }), makePreset('Other')],
+        activePreset: 0,
+        plugins: [makePlugin('plain'), makePlugin('plain')],
+    }))
+
+    test('every kind of every owner: itemsUpTo(k) is the first k items of items(), and itemById finds each item', () => {
+        let kindsChecked = 0
+        let listedItems = 0
+        for (const owner of model.owners) {
+            for (const node of owner.kinds()) {
+                const all = node.items()
+                for (const end of [0, 1, all.length, all.length + 5]) {
+                    expect(node.itemsUpTo(end)).toEqual({ items: all.slice(0, end), total: all.length })
+                }
+                for (const item of all) expect(node.itemById(item.id)).toEqual(item)
+                kindsChecked += 1
+                listedItems += all.length
+            }
+        }
+        // The ids with a colon, a slash and a row suffix are part of the walk.
+        expect(model.owners.map((owner) => owner.id)).toEqual(expect.arrayContaining(['m:1/x', 'dup', 'dup#2']))
+        expect(kindsChecked).toBeGreaterThan(20)
+        expect(listedItems).toBeGreaterThan(20)
+    })
+
+    test('an id that items() does not produce finds nothing', () => {
+        const lore = model.character.kinds().find((node) => node.kind === 'lore')
+        const regex = model.character.kinds().find((node) => node.kind === 'regex')
+        expect(lore?.itemById('cha-1/lore:0')?.name).toBe('lore 0')
+        const rejected = [
+            'cha-1/lore:7', 'cha-1/lore:-1', 'cha-1/lore:+1', 'cha-1/lore:01', 'cha-1/lore:1.0', 'cha-1/lore:1e0', 'cha-1/lore: 1',
+            'cha-1/lore:', 'cha-1/lore', 'cha-1/regex:0', 'other/lore:0', 'lore:0', '',
+        ]
+        for (const id of rejected) expect(lore?.itemById(id), id).toBeUndefined()
+        expect(regex?.itemById('cha-1/regex:2')?.name).toBe('regex 2')
+        expect(regex?.itemById('cha-1/regex:3')).toBeUndefined()
+    })
+
+    test('a list is read only as far as the items asked for', () => {
+        const reads: number[] = []
+        const counting = Array.from({ length: 50 }, (_, index) => ({
+            get comment() {
+                reads.push(index)
+                return `r${index}`
+            },
+        }))
+        const loreReads: number[] = []
+        const countingLore = Array.from({ length: 50 }, (_, index) => ({
+            get comment() {
+                loreReads.push(index)
+                return `l${index}`
+            },
+            key: `k${index}`,
+            mode: 'normal',
+        }))
+        const counted = buildOwnerModel(makeInput({ character: makeCharacter({ customscript: counting, globalLore: countingLore }) }))
+        const regex = counted.character.kinds().find((node) => node.kind === 'regex')
+        const lore = counted.character.kinds().find((node) => node.kind === 'lore')
+        expect(reads).toEqual([])
+        expect(loreReads).toEqual([])
+
+        expect(regex?.itemsUpTo(3).items.map((item) => item.name)).toEqual(['r0', 'r1', 'r2'])
+        expect(reads).toEqual([0, 1, 2])
+        expect(regex?.itemById('cha-1/regex:40')?.name).toBe('r40')
+        expect(reads).toEqual([0, 1, 2, 40])
+
+        expect(lore?.itemsUpTo(2).items.map((item) => item.name)).toEqual(['l0', 'l1'])
+        expect(loreReads).toEqual([0, 1])
+        expect(lore?.itemById('cha-1/lore:49')?.name).toBe('l49')
+        expect(loreReads).toEqual([0, 1, 49])
+    })
+})

@@ -3,6 +3,7 @@
     import '../../styles/studio-tokens.css'
     import { language } from '../../lang'
     import { dispatchBack } from '../../ts/backHandlers'
+    import { provideOwnerSource } from '../../ts/studio/ownerSource.svelte'
     import { studioLayoutOf } from '../../ts/studio/studioLayout'
     import { closeStudioSearch, installStudioBack } from '../../ts/studio/studioBack.svelte'
     import { setStudioLayout, setStudioNotice, showStudioList, studioScreen } from '../../ts/studio/studioScreen.svelte'
@@ -24,6 +25,9 @@
     let root: HTMLElement | undefined = $state()
 
     installStudioBack()
+
+    // The panes below read this one model, so a phone pane swap does not build another.
+    provideOwnerSource(() => studioScreen.chaId)
 
     // On open, focus moves into Studio so Esc and Ctrl+K reach the root handler without a click first.
     // Focus that is already inside Studio is left alone.

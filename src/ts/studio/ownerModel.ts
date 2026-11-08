@@ -106,6 +106,13 @@ export interface KindNode {
     folderCount: number
     /** Builds the item list on demand; reads the entries' names. */
     items(): StudioItem[]
+    /**
+     * The first `end` items, reading only those entries' names, and the live length of the list (folder rows
+     * included). Equals `items().slice(0, end)` and `items().length`.
+     */
+    itemsUpTo(end: number): { items: StudioItem[], total: number }
+    /** The item with this id, reading only that entry; undefined unless `items()` would list exactly that id. */
+    itemById(id: string): StudioItem | undefined
 }
 
 export interface OwnerNode {
@@ -164,6 +171,50 @@ function countFolders(list: readonly LoreLike[]): number {
     return folders
 }
 
+/** The list index an item id names, or undefined unless the id is `<ownerId>/<kind>:<canonical decimal index>`. */
+function indexOfItemId(owner: { id: string }, kind: StudioKind, id: string): number | undefined {
+    const prefix = `${owner.id}/${kind}:`
+    if (!id.startsWith(prefix)) return undefined
+    const digits = id.slice(prefix.length)
+    return /^(0|[1-9][0-9]*)$/.test(digits) ? Number(digits) : undefined
+}
+
+/** `itemsUpTo` and `itemById` of a kind whose list is built whole by `items`. */
+function overItems(items: () => StudioItem[], owner: { id: string }, kind: StudioKind): Pick<KindNode, 'itemsUpTo' | 'itemById'> {
+    return {
+        itemsUpTo: (end) => {
+            const all = items()
+            return { items: all.slice(0, Math.max(0, end)), total: all.length }
+        },
+        itemById: (id) => {
+            if (indexOfItemId(owner, kind, id) === undefined) return undefined
+            return items().find((candidate) => candidate.id === id)
+        },
+    }
+}
+
+/** `items`, `itemsUpTo` and `itemById` of a kind whose entries each build one item by index. */
+function overEntries<T>(
+    owner: { id: string },
+    kind: StudioKind,
+    source: readonly T[],
+    build: (entry: T, index: number) => StudioItem,
+): Pick<KindNode, 'items' | 'itemsUpTo' | 'itemById'> {
+    return {
+        items: () => source.map(build),
+        itemsUpTo: (end) => {
+            const shown = Math.min(Math.max(0, end), source.length)
+            const items: StudioItem[] = []
+            for (let index = 0; index < shown; index++) items.push(build(source[index], index))
+            return { items, total: source.length }
+        },
+        itemById: (id) => {
+            const index = indexOfItemId(owner, kind, id)
+            return index === undefined || index >= source.length ? undefined : build(source[index], index)
+        },
+    }
+}
+
 function loreKind(owner: { key: string, id: string }, list: readonly LoreLike[] | undefined): KindNode {
     const source = list ?? []
     const folderCount = countFolders(source)
@@ -171,7 +222,7 @@ function loreKind(owner: { key: string, id: string }, list: readonly LoreLike[] 
         kind: 'lore',
         count: source.length - folderCount,
         folderCount,
-        items: () => source.map((entry, index) => ({
+        ...overEntries(owner, 'lore', source, (entry, index) => ({
             id: itemId(owner.id, 'lore', index),
             ownerKey: owner.key,
             kind: 'lore' as const,
@@ -188,7 +239,7 @@ function regexKind(owner: { key: string, id: string }, list: readonly RegexLike[
         kind: 'regex',
         count: source.length,
         folderCount: 0,
-        items: () => source.map((entry, index) => ({
+        ...overEntries(owner, 'regex', source, (entry, index) => ({
             id: itemId(owner.id, 'regex', index),
             ownerKey: owner.key,
             kind: 'regex' as const,
@@ -201,25 +252,29 @@ function regexKind(owner: { key: string, id: string }, list: readonly RegexLike[
 
 function scriptsKind(owner: { key: string, id: string }, list: readonly ScriptListEntry[] | undefined): KindNode {
     const mode = scriptModeOf(list)
+    const items = (): StudioItem[] => mode === 'empty' ? [] : [{
+        id: itemId(owner.id, 'scripts', 0), ownerKey: owner.key, kind: 'scripts', index: 0, name: '', folder: false, mode,
+    }]
     return {
         kind: 'scripts',
         count: mode === 'empty' ? 0 : 1,
         folderCount: 0,
-        items: () => mode === 'empty' ? [] : [{
-            id: itemId(owner.id, 'scripts', 0), ownerKey: owner.key, kind: 'scripts', index: 0, name: '', folder: false, mode,
-        }],
+        items,
+        ...overItems(items, owner, 'scripts'),
     }
 }
 
 /** A kind with one item when `present`, none otherwise. */
 function singleKind(owner: { key: string, id: string }, kind: StudioKind, present: boolean): KindNode {
+    const items = (): StudioItem[] => present
+        ? [{ id: itemId(owner.id, kind, 0), ownerKey: owner.key, kind, index: 0, name: '', folder: false }]
+        : []
     return {
         kind,
         count: present ? 1 : 0,
         folderCount: 0,
-        items: () => present
-            ? [{ id: itemId(owner.id, kind, 0), ownerKey: owner.key, kind, index: 0, name: '', folder: false }]
-            : [],
+        items,
+        ...overItems(items, owner, kind),
     }
 }
 
@@ -232,11 +287,13 @@ function listLength(list: readonly unknown[] | undefined): number {
 }
 
 function assetKind(owner: { key: string, id: string }, count: number): KindNode {
+    const items = (): StudioItem[] => count === 0 ? [] : [{ id: itemId(owner.id, 'display', 0), ownerKey: owner.key, kind: 'display', index: 0, name: '', folder: false }]
     return {
         kind: 'display',
         count,
         folderCount: 0,
-        items: () => count === 0 ? [] : [{ id: itemId(owner.id, 'display', 0), ownerKey: owner.key, kind: 'display', index: 0, name: '', folder: false }],
+        items,
+        ...overItems(items, owner, 'display'),
     }
 }
 
