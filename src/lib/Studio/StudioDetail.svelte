@@ -3,9 +3,13 @@
     import { language } from '../../lang'
     import { classicDestinationOf, openInClassicEditor } from '../../ts/studio/classicLinks.svelte'
     import { itemSectionsOf, type TextField } from '../../ts/studio/itemText'
+    import { currentVisitAck } from '../../ts/studio/history/studioHistoryService.svelte'
     import { ownerSourceFor, readTextSources } from '../../ts/studio/ownerSource.svelte'
     import { applyStudioTarget, clearStudioSelection, studioScreen } from '../../ts/studio/studioScreen.svelte'
+    import StudioChatNoteForm from './StudioChatNoteForm.svelte'
+    import StudioCharacterForm from './StudioCharacterForm.svelte'
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
+    import StudioStatusChip from './StudioStatusChip.svelte'
     import type { StudioItem } from '../../ts/studio/ownerModel'
     import { ownerRoleLabelOf } from './StudioTree.svelte'
     import { badgeLabelOf, itemLabelOf, kindLabelOf, noticeTextOf, tagLabelOf } from './TreeRow.svelte'
@@ -38,6 +42,11 @@
     const item = $derived(selectedItemOf())
     const roleLabel = $derived(owner ? ownerRoleLabelOf(owner.type) : null)
     const destination = $derived(owner && !owner.restricted ? classicDestinationOf(owner.type, kindNode?.kind ?? null) : null)
+    // The live forms: the character's basic info, and the chat owner's own screen. Neither exists for a private or
+    // not-loaded owner; the forms re-check privacy themselves at every render.
+    const characterFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'basic')
+    const chatFormLive = $derived(owner?.type === 'chat' && !owner.restricted && !owner.stub && studioScreen.selectedKind === null)
+    const formLive = $derived(characterFormLive || chatFormLive)
 
     // A selected owner the model no longer has (the chat page moved, a module was removed) leaves the detail
     // empty; the selection is dropped and the notice says so.
@@ -132,7 +141,17 @@
                     <p data-part="studio-detail-truncated" class="text-sm text-textcolor2">{language.studioTruncated(DETAIL_TEXT_LIMIT)}</p>
                 {/if}
             {/if}
-            <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{language.studioReadOnlyNote}</p>
+            {#if formLive}
+                <StudioStatusChip ack={currentVisitAck()} />
+                <!-- A new visit clears the selection first, so its form is built again over its own ack. -->
+                {#if characterFormLive}
+                    <StudioCharacterForm chaId={studioScreen.chaId} />
+                {:else if owner}
+                    <StudioChatNoteForm chaId={studioScreen.chaId} chatId={owner.id} />
+                {/if}
+            {:else}
+                <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{language.studioReadOnlyNote}</p>
+            {/if}
             {#if destination}
                 <div>
                     <button type="button" data-part="studio-detail-classic" class="min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer" onclick={openClassic}>

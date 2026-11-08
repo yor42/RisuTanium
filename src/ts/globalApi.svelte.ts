@@ -1243,6 +1243,13 @@ let saveLoopUnsaved: (() => boolean) | null = null
 let requestSaveNowImpl: (() => void) | null = null
 /** How many characters the store2 loop's passes cannot encode now; 0 on a page without a store2 loop. */
 let unsavableCharacterCount = 0
+/** Which characters those are, replaced whole at each store2 pass; empty on a page without a store2 loop. */
+let unsavableCharacterIds: ReadonlySet<string> = new Set()
+
+/** True while the store2 loop reports the character as unsavable; always false on the legacy loop. */
+export function isCharacterUnsavable(chaId: string): boolean {
+    return unsavableCharacterIds.has(chaId)
+}
 
 /**
  * Asks the save loop to save what is marked without waiting out the debounce.
@@ -2160,6 +2167,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         },
         unsavable(current, newly) {
             unsavableCharacterCount = current.length
+            unsavableCharacterIds = new Set(current.map((entry) => entry.chaId))
             for (const entry of newly) {
                 console.error(entry.cause)
                 const label = unsavableCharacterLabel(entry.chaId)

@@ -4,6 +4,7 @@ import { describe, expect, test, vi } from 'vitest'
 vi.mock('src/ts/globalApi.svelte', () => ({ requestSaveNow: vi.fn(), requestNetSweep: vi.fn(), hasUnsavedSaveMarks: vi.fn(() => false) }))
 
 import { flushBeforeLeaving, flushPageBeforeLeaving, installSaveOnHide, type FlushDeps, type SaveOnHideDeps } from 'src/ts/process/saveOnHide'
+import { registerLeaveFlush, startSaveOnHide } from 'src/ts/process/saveOnHide'
 import { hasUnsavedSaveMarks, requestNetSweep, requestSaveNow } from 'src/ts/globalApi.svelte'
 import { beginInFlight, resetInFlightForTest } from 'src/ts/process/inFlightWork'
 import type { InFlightKind } from 'src/ts/process/inFlightWork'
@@ -313,5 +314,137 @@ describe('the page flush wiring used by the Back press', () => {
         end()
 
         expect(requestSaveNow).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('T-LF1: the leave registry joins the one leave rule', () => {
+    function leaveDeps(overrides: Partial<SaveOnHideDeps> = {}) {
+        const doc = new EventTarget() as EventTarget & { visibilityState: 'visible' | 'hidden' }
+        doc.visibilityState = 'hidden'
+        const win = new EventTarget()
+        const calls: string[] = []
+        const deps: SaveOnHideDeps = {
+            doc: doc as unknown as SaveOnHideDeps['doc'],
+            win: win as unknown as SaveOnHideDeps['win'],
+            kinds: () => [],
+            streams: () => [],
+            unsaved: () => false,
+            mark: vi.fn((chaId: string | undefined) => { calls.push(`mark:${chaId}`) }),
+            saveNow: vi.fn(() => { calls.push('saveNow') }),
+            sweepNet: vi.fn(() => { calls.push('sweepNet') }),
+            ...overrides,
+        }
+        return { doc, win, deps, calls }
+    }
+
+    function quietPage() {
+        resetInFlightForTest()
+        vi.mocked(requestSaveNow).mockClear()
+        vi.mocked(hasUnsavedSaveMarks).mockReturnValue(false)
+    }
+
+    test('(a) a leaveFlush dep runs once on a hide and once on pagehide', () => {
+        const leaveFlush = vi.fn()
+        const { doc, win, deps } = leaveDeps({ leaveFlush })
+        const uninstall = installSaveOnHide(deps)
+
+        doc.dispatchEvent(new Event('visibilitychange'))
+        expect(leaveFlush).toHaveBeenCalledTimes(1)
+        win.dispatchEvent(new Event('pagehide'))
+        expect(leaveFlush).toHaveBeenCalledTimes(2)
+        uninstall()
+    })
+
+    test('(b) the page flush (the Back route) runs a registered function once', () => {
+        quietPage()
+        const registered = vi.fn()
+        const remove = registerLeaveFlush(registered)
+        try {
+            flushPageBeforeLeaving()
+            expect(registered).toHaveBeenCalledTimes(1)
+        } finally {
+            remove()
+        }
+    })
+
+    test('(c) the page\'s own listeners run a registered function on both events and stop at uninstall', () => {
+        quietPage()
+        const doc = new EventTarget() as EventTarget & { visibilityState: 'visible' | 'hidden' }
+        doc.visibilityState = 'hidden'
+        const win = new EventTarget()
+        vi.stubGlobal('document', doc)
+        vi.stubGlobal('window', win)
+        const registered = vi.fn()
+        const remove = registerLeaveFlush(registered)
+        try {
+            const uninstall = startSaveOnHide()
+            doc.dispatchEvent(new Event('visibilitychange'))
+            win.dispatchEvent(new Event('pagehide'))
+            expect(registered).toHaveBeenCalledTimes(2)
+            uninstall()
+            doc.dispatchEvent(new Event('visibilitychange'))
+            win.dispatchEvent(new Event('pagehide'))
+            expect(registered).toHaveBeenCalledTimes(2)
+        } finally {
+            remove()
+            vi.unstubAllGlobals()
+        }
+    })
+
+    test('(d) a throwing leaveFlush member is logged once and never stops the profile save of a dirty page', () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+        try {
+            const failure = new Error('leave flush failed')
+            const { deps } = leaveDeps({ unsaved: () => true, leaveFlush: () => { throw failure } })
+
+            expect(() => flushBeforeLeaving(deps)).not.toThrow()
+
+            expect(deps.saveNow).toHaveBeenCalledTimes(1)
+            expect(error).toHaveBeenCalledTimes(1)
+            expect(error).toHaveBeenCalledWith(failure)
+        } finally {
+            error.mockRestore()
+        }
+    })
+
+    test('(e) a registered function that throws never stops the next one', () => {
+        quietPage()
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+        const second = vi.fn()
+        const removeFirst = registerLeaveFlush(() => { throw new Error('first failed') })
+        const removeSecond = registerLeaveFlush(second)
+        try {
+            flushPageBeforeLeaving()
+            expect(second).toHaveBeenCalledTimes(1)
+            expect(error).toHaveBeenCalledTimes(1)
+        } finally {
+            removeFirst()
+            removeSecond()
+            error.mockRestore()
+        }
+    })
+
+    test('(f) with a chat in flight the order is the sweep, the leave flush, the stream marks, then the save', () => {
+        const { deps, calls } = leaveDeps({
+            kinds: () => ['chat'],
+            streams: () => [{ chaId: 'solo', replyChatId: 'r1' }],
+        })
+
+        flushBeforeLeaving({ ...deps, leaveFlush: () => { calls.push('leaveFlush') } })
+
+        expect(calls).toEqual(['sweepNet', 'leaveFlush', 'mark:solo', 'mark:undefined', 'saveNow'])
+    })
+
+    test('(g) a clean page with no chat runs the function and still requests no save (guard)', () => {
+        quietPage()
+        const registered = vi.fn()
+        const remove = registerLeaveFlush(registered)
+        try {
+            flushPageBeforeLeaving()
+            expect(registered).toHaveBeenCalledTimes(1)
+            expect(requestSaveNow).not.toHaveBeenCalled()
+        } finally {
+            remove()
+        }
     })
 })

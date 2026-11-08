@@ -5,9 +5,11 @@ import { studioEligible } from './studioSwitch.svelte'
 import { studioOpen } from './studioOpen'
 import { clearClassicLinkRequest } from './classicLinks.svelte'
 import { resolveStudioTarget, type StudioNotice } from './resolveTarget'
-import type { OwnerModel, StudioKind } from './ownerModel'
+import { ownerKeyOf, type OwnerModel, type StudioKind } from './ownerModel'
 import type { StudioLayout } from './studioLayout'
 import type { StudioFrom, StudioTarget } from './studioTarget'
+import { createPageSession } from './history/historyModel'
+import { characterOwnerKey, chatOwnerKey, type OwnerKey } from './history/ownerPhase'
 
 /**
  * Where a visit started. Back returns focus to `element` while it is still in the page, else to the first
@@ -25,9 +27,13 @@ export interface StudioOpener {
  *
  * - `open` mirrors the `studioOpen` flag that App, the chat surface and the hotkeys follow.
  * - `chaId` is the character the visit is bound to; the visit ends when the selection moves away from it.
+ * - `visitId` names the visit; every `openStudio` that is accepted gives a new one, unique across page loads,
+ *   because a stored restore point compares it to tell a new visit from the one that made the point.
  * - `pickedInVisit` is set only by choosing an item from the list, never by the entry, so Back from a
  *   direct entry goes straight to the origin.
  * - `detailShown` is false while the list is the phone screen.
+ * - `historyOpen` shows the History panel of the selected owner; `restoreSheetOpen` shows the restore sheet over
+ *   it. The sheet closes with the panel, with the visit and when the selected owner changes.
  * - `targetPending` is true from the open until a pane that has the model places the target.
  * - The selection, the expanded rows, the extra pages and "hide empty kinds" live here, not in the tree, so a
  *   phone layout that unmounts the tree keeps them for the visit.
@@ -35,6 +41,7 @@ export interface StudioOpener {
 export const studioScreen = $state({
     open: false,
     chaId: '',
+    visitId: '',
     target: {} as StudioTarget,
     from: undefined as StudioFrom | undefined,
     opener: null as StudioOpener | null,
@@ -43,6 +50,8 @@ export const studioScreen = $state({
     detailShown: false,
     drawerOpen: false,
     searchOpen: false,
+    historyOpen: false,
+    restoreSheetOpen: false,
     notice: null as string | null,
     targetPending: false,
     selectedOwnerKey: null as string | null,
@@ -54,6 +63,14 @@ export const studioScreen = $state({
 })
 
 let stopWatchers: (() => void) | null = null
+let visitSession: string | null = null
+let visitCounter = 0
+
+function nextVisitId(): string {
+    visitSession ??= createPageSession((bytes) => crypto.getRandomValues(bytes))
+    visitCounter += 1
+    return `${visitSession}:${visitCounter}`
+}
 
 /** The chaId of the selected character, or null when nothing usable is selected. */
 export function selectedStudioCharacterId(): string | null {
@@ -65,6 +82,8 @@ function resetVisitState(): void {
     studioScreen.detailShown = false
     studioScreen.drawerOpen = false
     studioScreen.searchOpen = false
+    studioScreen.historyOpen = false
+    studioScreen.restoreSheetOpen = false
     studioScreen.notice = null
     studioScreen.targetPending = false
     studioScreen.selectedOwnerKey = null
@@ -118,6 +137,7 @@ export function openStudio(target: StudioTarget, opener: StudioOpener | null): b
     resetVisitState()
     studioScreen.targetPending = true
     studioScreen.chaId = chaId
+    studioScreen.visitId = nextVisitId()
     studioScreen.target = target
     studioScreen.from = target.from
     studioScreen.opener = opener
@@ -172,8 +192,40 @@ export const groupRowId = (group: string): string => `g:${group}`
 export const ownerRowId = (ownerKey: string): string => `o:${ownerKey}`
 export const kindRowId = (ownerKey: string, kind: StudioKind): string => `k:${ownerKey}/${kind}`
 
-/** Shows an item, a kind or an owner in the detail without leaving the list (no phone navigation). */
+/**
+ * The history owner of the selected owner: the bound character, or the chat of its current page. Null for every
+ * other selection (modules, presets, plugins, another character) and for no selection. Whether that chat has a
+ * unique id is checked where the history is read.
+ */
+export function selectedHistoryOwner(): OwnerKey | null {
+    const key = studioScreen.selectedOwnerKey
+    const chaId = studioScreen.chaId
+    if (key === null || chaId === '') return null
+    if (key === ownerKeyOf('character', chaId)) return characterOwnerKey(chaId)
+    const chatPrefix = ownerKeyOf('chat', '')
+    if (key.startsWith(chatPrefix) && key.length > chatPrefix.length) return chatOwnerKey(chaId, key.slice(chatPrefix.length))
+    return null
+}
+
+/**
+ * Opens or closes the History panel. Closing it also closes the restore sheet, which only exists under the panel.
+ */
+export function setStudioHistoryOpen(open: boolean): void {
+    studioScreen.historyOpen = open
+    if (!open) studioScreen.restoreSheetOpen = false
+}
+
+/** Opens or closes the restore sheet. It opens only while the History panel is open. */
+export function setStudioRestoreSheetOpen(open: boolean): void {
+    studioScreen.restoreSheetOpen = open && studioScreen.historyOpen
+}
+
+/**
+ * Shows an item, a kind or an owner in the detail without leaving the list (no phone navigation). Moving to a
+ * different owner closes the restore sheet, so the content it was opened over cannot change behind it.
+ */
 export function setStudioSelection(ownerKey: string, kind: StudioKind | null, itemId: string | null): void {
+    if (studioScreen.selectedOwnerKey !== ownerKey) studioScreen.restoreSheetOpen = false
     studioScreen.selectedOwnerKey = ownerKey
     studioScreen.selectedKind = kind
     studioScreen.selectedItemId = itemId
@@ -181,6 +233,7 @@ export function setStudioSelection(ownerKey: string, kind: StudioKind | null, it
 
 /** Drops the selection, for an owner that no longer exists in the model; `notice` says why the detail emptied. */
 export function clearStudioSelection(notice: string): void {
+    studioScreen.restoreSheetOpen = false
     studioScreen.selectedOwnerKey = null
     studioScreen.selectedKind = null
     studioScreen.selectedItemId = null
@@ -244,6 +297,7 @@ export function resetStudioScreenForTests(): void {
     studioOpen.set(false)
     studioScreen.open = false
     studioScreen.chaId = ''
+    studioScreen.visitId = ''
     studioScreen.target = {}
     studioScreen.from = undefined
     studioScreen.opener = null

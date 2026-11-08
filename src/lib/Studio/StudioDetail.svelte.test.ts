@@ -56,7 +56,14 @@ vi.mock('../../lang', async () => {
     return { language: helpers.studioLanguageMock() }
 })
 
-import { openStudio, resetStudioScreenForTests, studioScreen } from '../../ts/studio/studioScreen.svelte'
+import type { SaveAck } from '../../ts/studio/edit/saveAck.svelte'
+import type { OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
+import {
+    resetStudioHistoryAccessorForTests,
+    setStudioHistoryServiceForTests,
+    setStudioVisitAckForTests,
+} from '../../ts/studio/history/studioHistoryService.svelte'
+import { closeStudio, openStudio, resetStudioScreenForTests, studioScreen } from '../../ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from '../../ts/studio/studioSwitch.svelte'
 import { studioOpen } from '../../ts/studio/studioOpen'
 import StudioDetail from './StudioDetail.svelte'
@@ -87,6 +94,31 @@ const part = (name: string) => document.querySelector<HTMLElement>(`[data-part="
 const loreItem = (index: number) => `cha-1/lore:${index}`
 const loreTarget = (index: number) => ({ owner: { type: 'character', id: 'cha-1' }, kind: 'lore', item: loreItem(index), from: 'chat' }) as const
 
+// The history service and the visit's ack are stand-ins here: this suite is about what the detail mounts, and the
+// forms have their own suite over the real service.
+const history = {
+    useOwner: [] as string[],
+    setAck: [] as [string, unknown][],
+    closeOpenStep: [] as string[],
+}
+const stubAck = { display: 'saved', canRetry: () => false, retry: () => false, noteEdit: () => {}, dispose: () => {} } as unknown as SaveAck
+
+function installHistoryStub(): void {
+    history.useOwner = []
+    history.setAck = []
+    history.closeOpenStep = []
+    setStudioHistoryServiceForTests({
+        useOwner: (owner: string) => { history.useOwner.push(owner) },
+        setAck: (chaId: string, ack: unknown) => { history.setAck.push([chaId, ack]) },
+        closeOpenStep: (owner: string) => { history.closeOpenStep.push(owner) },
+        view: (owner: string) => ({
+            ownerKey: owner, phase: 'ready', banner: null, restricted: false, editable: true, persisted: true,
+            done: [], undone: [], deleted: [], restore: null,
+        }),
+    } as unknown as OwnerHistoryService)
+    setStudioVisitAckForTests(stubAck)
+}
+
 beforeEach(() => {
     localStorage.clear()
     resetStudioScreenForTests()
@@ -96,6 +128,7 @@ beforeEach(() => {
     SettingsMenuIndex.set(-1)
     selection.selId = 0
     setStudioEnabled(true)
+    installHistoryStub()
     ;(window as unknown as { __studioProbe?: number }).__studioProbe = undefined
 })
 
@@ -104,6 +137,7 @@ afterEach(async () => {
     app = undefined
     host?.remove()
     host = undefined
+    resetStudioHistoryAccessorForTests()
     resetStudioScreenForTests()
     setStudioEnabled(false)
     localStorage.clear()
@@ -190,7 +224,8 @@ describe('4d text of each kind of the bound character', () => {
         show()
         const shown = part('studio-detail-text')?.textContent ?? ''
         for (const piece of expected) expect(shown).toContain(piece)
-        expect(part('studio-detail-readonly')).not.toBeNull()
+        // The basic info has a live form, so the read-only note does not apply to it.
+        expect(part('studio-detail-readonly') !== null).toBe(kind !== 'basic')
         expect(part('studio-detail-classic')).not.toBeNull()
     })
 
@@ -405,6 +440,109 @@ describe('4e link-outs from the detail', () => {
         expect(get(SettingsMenuIndex)).toBe(14)
         expect(get(settingsOpen)).toBe(true)
         expect(get(studioOpen)).toBe(false)
+    })
+})
+
+describe('the live forms and the save chip in the detail', () => {
+    const basicTarget = ownerItem('character', 'cha-1', 'basic', 'cha-1/basic:0')
+
+    test('the basic info of the character mounts its form and the chip, and drops the read-only note', () => {
+        setDb()
+        openStudio(basicTarget, null)
+        show()
+        flushSync()
+        expect(part('studio-character-form')).not.toBeNull()
+        expect(part('studio-chat-note-form')).toBeNull()
+        expect(part('studio-chip-text')?.textContent).toBe('studioChipSaved')
+        expect(part('studio-detail-readonly')).toBeNull()
+        expect(part('studio-detail-classic')).not.toBeNull()
+        expect(history.useOwner).toEqual(['character:cha-1'])
+        expect(history.setAck).toEqual([['cha-1', stubAck]])
+    })
+
+    test('other kinds of the character and the bare character keep the read-only note and have no form', () => {
+        setDb({ globalLore: [loreBody('Castle', 'LORE-BODY')] })
+        openStudio(loreTarget(0), null)
+        show()
+        flushSync()
+        expect(part('studio-character-form')).toBeNull()
+        expect(part('studio-chat-note-form')).toBeNull()
+        expect(part('studio-chip')).toBeNull()
+        expect(part('studio-detail-readonly')).not.toBeNull()
+        expect(history.useOwner).toEqual([])
+    })
+
+    test('the chat owner mounts the note form and the chip; a kind of the chat does not', async () => {
+        setDb({ chats: [makeChat({ id: 'chat-1', name: 'First chat', localLore: [chatLore('CHAT-LORE-BODY')] })] })
+        openStudio({ owner: { type: 'chat', id: 'chat-1' }, from: 'chat' }, null)
+        show()
+        flushSync()
+        expect(part('studio-chat-note-form')).not.toBeNull()
+        expect(part('studio-character-form')).toBeNull()
+        expect(part('studio-chip')).not.toBeNull()
+        expect(part('studio-detail-readonly')).toBeNull()
+        expect(history.useOwner).toEqual(['chat:cha-1/chat-1'])
+        await unmount(app!)
+        app = undefined
+        host?.remove()
+        openStudio(ownerItem('chat', 'chat-1', 'lore', 'chat-1/lore:0'), null)
+        show()
+        flushSync()
+        expect(part('studio-chat-note-form')).toBeNull()
+        expect(part('studio-chip')).toBeNull()
+        expect(part('studio-detail-readonly')).not.toBeNull()
+    })
+
+    test('a private character gets no form, no chip and no history owner', () => {
+        setDb({ license: 'private' })
+        openStudio(basicTarget, null)
+        show()
+        flushSync()
+        expect(part('studio-character-form')).toBeNull()
+        expect(part('studio-chat-note-form')).toBeNull()
+        expect(part('studio-chip')).toBeNull()
+        expect(history.useOwner).toEqual([])
+    })
+
+    test('a module owner gets no form even on its basic-looking kinds', () => {
+        setDb({}, true)
+        openStudio({ owner: { type: 'module', id: 'res' }, from: 'chat' }, null)
+        show()
+        flushSync()
+        expect(part('studio-character-form')).toBeNull()
+        expect(part('studio-chat-note-form')).toBeNull()
+        expect(part('studio-chip')).toBeNull()
+    })
+
+    test('a second open while Studio is open starts a new visit: the form is built again and the ack is handed over again', () => {
+        setDb()
+        openStudio(basicTarget, null)
+        show()
+        flushSync()
+        const first = part('studio-character-form')
+        const firstVisit = studioScreen.visitId
+        expect(first).not.toBeNull()
+
+        expect(openStudio(basicTarget, null)).toBe(true)
+        flushSync()
+        expect(studioScreen.visitId).not.toBe(firstVisit)
+        const second = part('studio-character-form')
+        expect(second).not.toBeNull()
+        expect(second).not.toBe(first)
+        expect(history.closeOpenStep).toContain('character:cha-1')
+        expect(history.setAck.map(([, ack]) => ack)).toEqual([stubAck, null, stubAck])
+    })
+
+    test('closing the visit closes the open step and releases the ack', () => {
+        setDb()
+        openStudio(basicTarget, null)
+        show()
+        flushSync()
+        expect(history.closeOpenStep).toEqual([])
+        closeStudio()
+        flushSync()
+        expect(history.closeOpenStep).toContain('character:cha-1')
+        expect(history.setAck.at(-1)).toEqual(['cha-1', null])
     })
 })
 
