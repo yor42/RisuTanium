@@ -62,13 +62,19 @@ const tauriRecovery = [
     'Checking Files...', 'Reading Save File...', 'Reading Backup Files...', backupText, 'Checking Update...',
     'Listing Stored Files...',
 ]
-const tauriStore2 = ['Checking Files...', 'Checking Update...', 'Listing Stored Files...']
+const tauriStore2 = ['Checking Files...', 'Reading Save File...', 'Decoding Save File...', 'Checking Update...', 'Listing Stored Files...']
+// A page whose store2 backend is unavailable writes the save text before the dispatch answers, then runs the legacy boot.
+const tauriReadOnly = ['Checking Files...', 'Reading Save File...', 'Reading Save File...', 'Decoding Save File...', 'Checking Update...', 'Listing Stored Files...']
+const webReadOnly = ['Checking Service Worker...', 'Reading Save File...', 'Loading Local Save File...', 'Decoding Local Save File...', 'Listing Stored Files...']
 const webNormal = [
     'Checking Service Worker...', 'Loading Local Save File...', 'Archiving characters 1/3',
     'Decoding Local Save File...', 'Listing Stored Files...', 'Loading Plugins...', 'Checking For Format Update...',
     'Updating States...',
 ]
-const webStore2 = ['Checking Service Worker...', 'Listing Stored Files...', 'Loading Plugins...', 'Updating States...']
+const webStore2 = [
+    'Checking Service Worker...', 'Reading Save File...', 'Decoding Save File...', 'Listing Stored Files...',
+    'Loading Plugins...', 'Checking For Format Update...', 'Updating States...',
+]
 const webRecovery = [
     'Checking Service Worker...', 'Loading Local Save File...', 'Decoding Local Save File...', backupText,
     'Listing Stored Files...',
@@ -76,7 +82,7 @@ const webRecovery = [
 
 describe('legacy boot text order', () => {
     test('reproducer: the step never decreases over any real text order on either platform', () => {
-        for (const texts of [tauriNormal, tauriRecovery, tauriStore2, webNormal, webStore2, webRecovery]) {
+        for (const texts of [tauriNormal, tauriRecovery, tauriStore2, tauriReadOnly, webNormal, webStore2, webReadOnly, webRecovery]) {
             let previous = -1
             for (const step of stepsOf(texts)) {
                 const index = bootSteps.indexOf(step)
@@ -107,14 +113,16 @@ describe('legacy boot text order', () => {
         }
         expect(recovery.filter(progress => progress.recovering).length).toBe(2)
 
-        expect(stepsOf(tauriStore2)).toEqual(['storage', 'app', 'files'])
+        expect(stepsOf(tauriStore2)).toEqual(['storage', 'save', 'library', 'app', 'files'])
+        expect(stepsOf(tauriReadOnly)).toEqual(['storage', 'save', 'save', 'library', 'app', 'files'])
     })
 
     test('reproducer: web orders map to exact steps, with the service worker check in the storage step', () => {
         expect(stepsOf(webNormal)).toEqual([
             'storage', 'save', 'library', 'library', 'files', 'plugins', 'finish', 'finish',
         ])
-        expect(stepsOf(webStore2)).toEqual(['storage', 'files', 'plugins', 'finish'])
+        expect(stepsOf(webStore2)).toEqual(['storage', 'save', 'library', 'files', 'plugins', 'finish', 'finish'])
+        expect(stepsOf(webReadOnly)).toEqual(['storage', 'save', 'save', 'library', 'files'])
         expect(stepsOf(webRecovery)).toEqual(['storage', 'save', 'library', 'library', 'files'])
         expect(walk(webRecovery)[3].recovering).toBe(true)
     })

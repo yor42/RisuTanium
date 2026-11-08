@@ -651,6 +651,8 @@ function legacyReadOnlyReasonOf(boot: Store2BootOutcome): Store2LegacyReadOnlyRe
  * Asks the registered store2 boot what this page's profile is, before the legacy boot opens its archive session or
  * reads anything. The environment is the page's own store and the questions the dispatch cannot answer itself (whether a
  * main file exists, the numbered backups, the old cold units); the numbered-backup listing never prunes.
+ * Reports the save step once a dispatch is registered: the dispatch reads and assembles the profile, and answers any
+ * conversion or recovery question, while that text is up.
  */
 async function runStore2Boot(): Promise<Store2BootOutcome> {
     const boot = getStore2Boot()
@@ -658,6 +660,8 @@ async function runStore2Boot(): Promise<Store2BootOutcome> {
         return { kind: 'unregistered' }
     }
     const store = await getAppStore()
+    // The save step marks the dispatch entry exactly. It is a text only: no await or yield follows it, so it adds no latency, and an unregistered page returned above without it.
+    LoadingStatusState.text = "Reading Save File..."
     let result: Store2BootResult
     try {
         result = await boot({ store, upstreamMainFile: () => store.has(LEGACY_MAIN_FILE_KEY), listBackupTimes, readColdStorageItem: readColdUnitForConversion })
@@ -682,8 +686,10 @@ async function readColdUnitForConversion(key: string) {
 /**
  * Installs the open store2 profile: no archive session ever existed, so none is noted as capable and no pass committed.
  * The repairs the legacy boot makes to a decoded tree apply to the assembled one the same way.
+ * Reports the library step: the repairs, the install and the notices the caller posts after it run under that text.
  */
 async function installStore2Profile(boot: Extract<Store2BootResult, { kind: 'store2' }>, repairs: BootRepairs) {
+    LoadingStatusState.text = "Decoding Save File..."
     noteBootArchiveSession(false)
     noteBootPassCommitted(false)
     await repairBootTree(boot.database, repairs)

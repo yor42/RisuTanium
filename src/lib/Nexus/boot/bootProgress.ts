@@ -1,6 +1,8 @@
 // What the startup screen shows. Boot is split into seven steps. A platform that has no work for a step skips
-// it (the web build has no `app` step, store2 paths skip the save and library steps), but the step only moves
-// forward on every platform's text order, so the bar never jumps backwards and never pretends to know how
+// it (the web build has no `app` step). The store2 boot shows the save step while its dispatch reads and assembles
+// the profile, and the library step while the assembled profile is repaired and installed. A step whose work ends
+// without a rendering opportunity is passed over without painting, but the step only moves forward on every
+// platform's text order, so the bar never jumps backwards and never pretends to know how
 // long a step takes: it shows which step is running
 // and, when a step reports counts, how far through that step it is.
 import type { BrandStatus } from '../brand/brandStatus'

@@ -26,6 +26,7 @@ import type { FlaggedItem } from 'src/ts/storage/store2/leafFallback'
 import { buildSmall, fakeLists } from 'src/ts/storage/tests/store2/codecFixtures'
 import { createClock, seedTree, testEnv, createPeerDouble } from 'src/ts/storage/tests/store2SaveKit'
 import type { Database } from 'src/ts/storage/database.svelte'
+import { bootSteps, createLegacyBootTracker, type BootStep } from 'src/lib/Nexus/boot/bootProgress'
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -42,6 +43,9 @@ const archive = vi.hoisted(() => ({
     ran: 0,
     store: null as null | { write(key: string, bytes: Uint8Array, condition: 'unconditional'): Promise<unknown> },
 }))
+
+/** The boot texts in the order written, with `dispatch` (the registered dispatch was entered) and `install` (setDatabase ran) between them. */
+const bootText = vi.hoisted(() => ({ current: '', log: [] as string[] }))
 
 const getDbBackupsMock = vi.hoisted(() => vi.fn(async (): Promise<number[]> => []))
 const buildAssetKeepSetMock = vi.hoisted(() => vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })))
@@ -112,7 +116,14 @@ vi.mock(import('src/ts/update'), () => ({
 vi.mock(import('src/ts/stores.svelte'), () => ({
     // The database the boot installed, so the id repair of the boot tail acts on the installed characters.
     DBState: { get db() { return dbState.current } },
-    LoadingStatusState: { text: '' },
+    // Every assignment is logged, duplicates included, so the order of the boot texts is observable.
+    LoadingStatusState: {
+        get text() { return bootText.current },
+        set text(value: string) {
+            bootText.current = value
+            bootText.log.push(`text:${value}`)
+        },
+    },
     MobileGUI: writable(false),
     botMakerMode: writable(false),
     selectedCharID: writable(-1),
@@ -435,13 +446,16 @@ async function boot(options: BootOptions): Promise<Boot> {
     if (options.unregistered !== true) {
         const { registerStore2Boot } = await import('src/ts/storage/store2/bootActive')
         const { dispatchStore2Boot } = await import('src/ts/storage/store2/bootDispatch')
-        registerStore2Boot((env) => dispatchStore2Boot(env, {
-            ui,
-            kind: options.kind,
-            backend: options.injectBackend === true ? async () => backend : undefined,
-            keyEnv: testEnv(createClock(), 9001),
-            lists: options.lists ?? fakeLists,
-        }))
+        registerStore2Boot((env) => {
+            bootText.log.push('dispatch')
+            return dispatchStore2Boot(env, {
+                ui,
+                kind: options.kind,
+                backend: options.injectBackend === true ? async () => backend : undefined,
+                keyEnv: testEnv(createClock(), 9001),
+                lists: options.lists ?? fakeLists,
+            })
+        })
     }
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
@@ -463,6 +477,36 @@ function acknowledgeNotices(alertStore: ReturnType<typeof writable<{ type: strin
         }
     })
     return seen
+}
+
+/** The texts the boot wrote, in order, duplicates included. */
+function writtenTexts(): string[] {
+    return bootText.log.filter(entry => entry.startsWith('text:')).map(entry => entry.slice('text:'.length))
+}
+
+/** The text that was current when the marker was logged (the last text written before it). */
+function textAt(marker: 'dispatch' | 'install'): string | null {
+    const at = bootText.log.indexOf(marker)
+    if (at < 0) {
+        return null
+    }
+    const before = bootText.log.slice(0, at).filter(entry => entry.startsWith('text:'))
+    return before.length === 0 ? null : before[before.length - 1].slice('text:'.length)
+}
+
+/** The steps the real screen tracker reads from the texts, in order. */
+function trackedSteps(texts: readonly string[]): BootStep[] {
+    const tracker = createLegacyBootTracker()
+    return texts.map(text => tracker.read(text).step)
+}
+
+function expectNeverDecreasing(steps: readonly BootStep[]): void {
+    let previous = -1
+    for (const step of steps) {
+        const index = bootSteps.indexOf(step)
+        expect(index).toBeGreaterThanOrEqual(previous)
+        previous = index
+    }
 }
 
 async function settle(): Promise<void> {
@@ -491,7 +535,12 @@ beforeEach(() => {
     readColdStorageItemMock.mockClear()
     dbState.current = baseDb()
     setDatabaseMock.mockClear()
-    setDatabaseMock.mockImplementation((data: Record<string, unknown>) => { dbState.current = { ...dbState.baseline(), ...data } })
+    bootText.current = ''
+    bootText.log.length = 0
+    setDatabaseMock.mockImplementation((data: Record<string, unknown>) => {
+        bootText.log.push('install')
+        dbState.current = { ...dbState.baseline(), ...data }
+    })
     getDatabaseMock.mockClear()
     getDatabaseMock.mockImplementation(() => dbState.current)
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })))
@@ -567,6 +616,18 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         expect(await getPageBlockOwner()).toBeNull()
         const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
         expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'backend-unavailable' })
+    })
+
+    test.each([[false], [true]])('B4 guard: a legacy-readonly page never moves the boot step back (Tauri: %s)', async (tauri) => {
+        const store = legacyStore()
+        const { loadData } = await boot({ kind: tauri ? 'tauri' : 'node', store, tauri })
+
+        await loadData()
+        await settle()
+
+        const texts = writtenTexts()
+        expect(texts.length).toBeGreaterThan(2)
+        expectNeverDecreasing(trackedSteps(texts))
     })
 
     test('a Tauri page whose store2 backend is unavailable: the legacy profile loads, the 21 numbered backups all stand, and nothing is written but the owner id', async () => {
@@ -668,6 +729,28 @@ describe('loadData(): a normal store2 profile', () => {
         const { getPageBlockOwner } = await import('src/ts/storage/pageBlockOwner')
         expect(await getPageBlockOwner()).toBeNull()
         expect(saveDbMock, 'the save loop starts through saveDb after the install').toHaveBeenCalled()
+    })
+
+    test.each([[false], [true]])('B1 reproducer: the save text marks the dispatch entry, the library text marks the install, and the steps never go back (Tauri: %s)', async (tauri) => {
+        const { loadData, alertStore } = await storeTwoRig(tauri)
+        acknowledgeNotices(alertStore)
+
+        await loadData()
+        await settle()
+
+        const first = tauri ? 'Checking Files...' : 'Checking Service Worker...'
+        const middle = tauri ? ['Checking Update...', 'Listing Stored Files...'] : ['Listing Stored Files...']
+        expect(writtenTexts()).toEqual([
+            first, 'Reading Save File...', 'Decoding Save File...', ...middle,
+            'Loading Plugins...', 'Checking For Format Update...', 'Updating States...',
+        ])
+        expect(textAt('dispatch')).toBe('Reading Save File...')
+        expect(textAt('install')).toBe('Decoding Save File...')
+        const steps = trackedSteps(writtenTexts())
+        expect(steps).toEqual(tauri
+            ? ['storage', 'save', 'library', 'app', 'files', 'plugins', 'finish', 'finish']
+            : ['storage', 'save', 'library', 'files', 'plugins', 'finish', 'finish'])
+        expectNeverDecreasing(steps)
     })
 })
 
@@ -815,6 +898,54 @@ describe('loadData(): a boot the dispatch stops', () => {
         expect(getDbBackupsMock).not.toHaveBeenCalled()
         expect(backupTimesOf(store)).toHaveLength(21)
         expect(saveDbMock).not.toHaveBeenCalled()
+    })
+})
+
+describe('loadData(): the boot step texts when the dispatch does not hand a profile back', () => {
+    test.each([[false], [true]])('B2 reproducer: a dispatch that stops stays at the save step, and the library text is never written (Tauri: %s)', async (tauri) => {
+        const store = legacyStore()
+        const { loadData, ui } = await boot({ kind: tauri ? 'tauri' : 'indexeddb', store, injectBackend: true, tauri })
+        ui.convertAnswer = false
+
+        await loadData()
+        await settle()
+
+        const texts = writtenTexts()
+        expect(texts[texts.length - 1]).toBe('Reading Save File...')
+        expect(texts).not.toContain('Decoding Save File...')
+        expect(textAt('dispatch')).toBe('Reading Save File...')
+        expect(bootText.log).not.toContain('install')
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+        const steps = trackedSteps(texts)
+        expect(steps[steps.length - 1]).toBe('save')
+        expectNeverDecreasing(steps)
+    })
+
+    test('a dispatch that rejects stays at the save step, writes no library text, and reports the error through the unchanged path (guard)', async () => {
+        const { loadData, loadedStore, alertStore } = await boot({ kind: 'indexeddb', unregistered: true })
+        const { registerStore2Boot } = await import('src/ts/storage/store2/bootActive')
+        const { getBootScreen } = await import('src/ts/storage/store2/ui/bootScreen.svelte')
+        registerStore2Boot(async () => {
+            throw new Error('the dispatch rejected')
+        })
+        const shown: string[] = []
+        alertStore.subscribe((value) => {
+            if (value.type !== 'none') {
+                shown.push(value.msg)
+                queueMicrotask(() => alertStore.set({ type: 'none', msg: '' }))
+            }
+        })
+
+        await loadData().catch(() => { })
+        await settle()
+
+        const texts = writtenTexts()
+        expect(texts[texts.length - 1]).toBe('Reading Save File...')
+        expect(texts).not.toContain('Decoding Save File...')
+        expect(get(loadedStore)).toBe(false)
+        expect(shown.join('\n')).toContain('the dispatch rejected')
+        expect(getBootScreen()).toBeNull()
+        expect(setDatabaseMock).not.toHaveBeenCalled()
     })
 })
 
@@ -1027,5 +1158,20 @@ describe('loadData(): a page that registered no dispatch boots the legacy profil
         expect(getActiveStore2Save()).toBeNull()
         const installed = setDatabaseMock.mock.calls[0][0] as { characters: { coldstorage?: unknown }[] }
         expect(installed.characters.some(character => character.coldstorage !== undefined)).toBe(false)
+    })
+
+    test.each([[false], [true]])('B3 guard: the text order is the legacy order, with the save text written once (Tauri: %s)', async (tauri) => {
+        const store = legacyStore()
+        const { loadData } = await boot({ kind: tauri ? 'tauri' : 'indexeddb', store, tauri, unregistered: true })
+
+        await loadData()
+        await settle()
+
+        const texts = writtenTexts()
+        expect(texts).toEqual(tauri
+            ? ['Checking Files...', 'Reading Save File...', 'Decoding Save File...', 'Checking Update...', 'Listing Stored Files...', 'Loading Plugins...', 'Checking For Format Update...', 'Updating States...']
+            : ['Checking Service Worker...', 'Loading Local Save File...'])
+        expect(texts.filter(text => text === 'Reading Save File...').length).toBeLessThanOrEqual(1)
+        expect(bootText.log).not.toContain('dispatch')
     })
 })
