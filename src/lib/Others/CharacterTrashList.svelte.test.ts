@@ -2,14 +2,14 @@
 
 /**
  * `CharacterTrashList.svelte`: the trash header (description and Empty trash)
- * and the trashed rows shared by GridCatalog's Trash tab and the mobile trash
- * view. It lists exactly the characters of the search result it is given,
+ * and the trashed rows shared by GridCatalog's Trash tab and the simple list's
+ * trash view. It lists exactly the characters of the search result it is given,
  * restores and deletes the row's own character, and hands Empty trash the rows on
  * screen at the click. Which rows are mounted for a long list is covered by
  * `CharacterTrashList.window.svelte.test.ts`.
  *
- * MOCKED: the module set of `MobileCharacters.trash.svelte.test.ts`
- * (`src/lib/Mobile`); the search result is a plain object with the three
+ * MOCKED: the module set of `CharacterSimpleList.trash.svelte.test.ts`
+ * (same directory); the search result is a plain object with the three
  * properties the list reads. Nothing here writes to storage.
  */
 import { flushSync, mount, unmount } from 'svelte'

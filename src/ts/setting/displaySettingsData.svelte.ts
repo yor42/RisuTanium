@@ -348,7 +348,6 @@ export const displayOtherSettingsItems: SettingItem[] = [
         },
         keywords: ['quote', 'single', 'trailing'],
     },
-    { id: 'display.betaMobileGUI', type: 'check', labelKey: 'betaMobileGUI', helpKey: 'betaMobileGUI', bindKey: 'betaMobileGUI', keywords: ['beta', 'mobile', 'gui'] },
     { id: 'display.menuSideBar', type: 'check', labelKey: 'menuSideBar', bindKey: 'menuSideBar', keywords: ['menu', 'sidebar'] },
     { id: 'display.notification', type: 'custom', componentId: 'NotificationToggle', keywords: ['notification'] },
     {

@@ -7,7 +7,7 @@
     import OtherBotSettings from "./Pages/OtherBotSettings.svelte";
     import PluginSettings from "./Pages/PluginSettings.svelte";
     import AdvancedSettings from "./Pages/AdvancedSettings.svelte";
-    import { additionalSettingsMenu, easyPanelStore, MobileGUI, SettingsMenuIndex, settingsOpen } from "src/ts/stores.svelte";
+    import { additionalSettingsMenu, easyPanelStore, SettingsMenuIndex, settingsOpen } from "src/ts/stores.svelte";
     import { DBState } from "src/ts/stores.svelte";
     import LanguageSettings from "./Pages/LanguageSettings.svelte";
     import AccessibilitySettings from "./Pages/AccessibilitySettings.svelte";
@@ -22,8 +22,8 @@
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
     import { settingsBackClose } from "./settingsBack";
 
-    // Only the overlay answers Back: the embedded page in the mobile shell is mounted while
-    // settingsOpen is false and is closed by the shell handler. The effect reads only the gate.
+    // Only an open overlay answers Back, so nothing registers while settingsOpen is false.
+    // The effect reads only the gate.
     $effect(() => {
         if(!$settingsOpen){
             return
@@ -35,17 +35,17 @@
         }))
     })
 
-    if(window.innerWidth >= 900 && $SettingsMenuIndex === -1 && !$MobileGUI){
+    // Lite hides the Chat bot page this would select, so Lite opens on the menu.
+    if(window.innerWidth >= 900 && $SettingsMenuIndex === -1 && !$isLite){
         $SettingsMenuIndex = 1
     }
 
 </script>
-<div class="h-full w-full flex justify-center rs-setting-cont" class:bg-bgcolor={$MobileGUI} class:setting-bg={!$MobileGUI}>
+<div class="h-full w-full flex justify-center rs-setting-cont setting-bg">
     <div class="h-full max-w-(--breakpoint-lg) w-full flex relative rs-setting-cont-2">
-        {#if (window.innerWidth >= 700 && !$MobileGUI) || $SettingsMenuIndex === -1}
-            <div class="flex h-full flex-col p-4 pt-8 gap-2 overflow-y-auto relative rs-setting-cont-3 shrink-0"
-                class:w-full={window.innerWidth < 700 || $MobileGUI}
-                class:bg-darkbg={!$MobileGUI} class:bg-bgcolor={$MobileGUI}
+        {#if window.innerWidth >= 700 || $SettingsMenuIndex === -1}
+            <div class="flex h-full flex-col p-4 pt-8 gap-2 overflow-y-auto relative rs-setting-cont-3 shrink-0 bg-darkbg"
+                class:w-full={window.innerWidth < 700}
             >
                 
                 {#if !$isLite}
@@ -185,12 +185,12 @@
                     {/if}
                 {/if}
                 <SettingsLegalLinks />
-                {#if window.innerWidth < 700 && !$MobileGUI}
+                {#if window.innerWidth < 700}
                     <button class="absolute top-2 right-2 hover:text-green-500 text-textcolor" onclick={settingsBackClose}> <CircleXIcon size={DBState.db.settingsCloseButtonSize} /> </button>
                 {/if}
             </div>
         {/if}
-        {#if (window.innerWidth >= 700 && !$MobileGUI) || $SettingsMenuIndex !== -1}
+        {#if window.innerWidth >= 700 || $SettingsMenuIndex !== -1}
             {#key $SettingsMenuIndex}
                 <div class="grow py-6 px-4 bg-bgcolor flex flex-col text-textcolor overflow-y-auto relative rs-setting-cont-4 min-w-0">
                     {#if $SettingsMenuIndex === 0}
@@ -224,11 +224,9 @@
                     {/if}
             </div>
             {/key}
-            {#if !$MobileGUI}
-                <button class="absolute top-2 right-2 hover:text-green-500 text-textcolor" onclick={settingsBackClose}>
-                    <CircleXIcon size={DBState.db.settingsCloseButtonSize} />
-                </button>
-            {/if}
+            <button class="absolute top-2 right-2 hover:text-green-500 text-textcolor" onclick={settingsBackClose}>
+                <CircleXIcon size={DBState.db.settingsCloseButtonSize} />
+            </button>
         {/if}
     </div>
 </div>

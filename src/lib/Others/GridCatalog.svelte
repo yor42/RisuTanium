@@ -11,7 +11,7 @@
     import Button from "../UI/GUI/Button.svelte";
     import { language } from "src/lang";
     import { parseMultilangString } from "src/ts/util";
-    import MobileCharacters from "../Mobile/MobileCharacters.svelte";
+    import CharacterSimpleList from "./CharacterSimpleList.svelte";
     import CharacterTrashList from "./CharacterTrashList.svelte";
     import CharacterDescription from "./CharacterDescription.svelte";
     import CharacterWindow from "./CharacterWindow.svelte";
@@ -1629,7 +1629,7 @@
             </div>
         {:else if selected === 3}
             <div class="flex-1 min-h-0 flex flex-col">
-                <MobileCharacters endGrid={endGrid} hideTrash={true} results={found} onpick={pick} />
+                <CharacterSimpleList endGrid={endGrid} hideTrash={true} results={found} onpick={pick} />
             </div>
         {/if}
     </div>

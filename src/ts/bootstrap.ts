@@ -8,7 +8,7 @@ import { setDatabase, defaultSdDataFunc, getDatabase, type Database } from "./st
 import { repairBotPresetsId } from "./storage/botPresetRepair";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
-import { MobileGUI, botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState, alertStore } from "./stores.svelte";
+import { botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState, alertStore } from "./stores.svelte";
 import { loadPlugins } from "./plugins/plugins.svelte";
 import { alertError, alertMd, alertStaleAccountNotice, alertNormal, alertNormalWait, alertSelect, waitAlert, alertConfirm, alertInput, alertToast } from "./alert";
 import { handleWindowError } from "./windowErrorGuard";
@@ -40,7 +40,6 @@ import { updateGuisize } from "./gui/guisize";
 import { repairModuleListLorebooks } from "./process/moduleLorebookRepair";
 import { startCharacterPutBack } from "./process/memory/characterPutBack";
 import { noteBootArchiveSession, noteBootPassCommitted } from "./process/memory/bootArchiveState";
-import { initMobileGesture } from "./hotkey";
 import { moduleUpdate } from "./process/modules";
 import { repairDatabaseIds } from "./process/chatIds";
 import { repairCharacterTree, repairPersonas } from "./storage/characterTreeRepair";
@@ -580,10 +579,6 @@ export async function loadData() {
             }
             if (db.botSettingAtStart) {
                 botMakerMode.set(true)
-            }
-            if ((db.betaMobileGUI && window.innerWidth <= 800) || import.meta.env.VITE_RISU_LITE === 'TRUE') {
-                initMobileGesture()
-                MobileGUI.set(true)
             }
             loadedStore.set(true)
             selectedCharID.set(-1)

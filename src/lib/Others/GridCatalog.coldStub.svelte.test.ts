@@ -8,7 +8,7 @@
  * coldCharacter.ts`) carries the fields the lists read, so:
  * - `GridCatalog.svelte` (list and trash layouts) shows its description, and
  *   its grid layout shows the group icon for an archived group;
- * - `MobileCharacters.svelte` shows the chat count of the full character (not
+ * - `CharacterSimpleList.svelte` shows the chat count of the full character (not
  *   the dummy chat's 1), sorts it by the character's `lastInteraction`, and
  *   hides or lists it by its `trashTime`;
  * - the select-character dialog in `AlertComp.svelte` leaves an archived
@@ -161,7 +161,7 @@ import { DBState, alertStore } from '../../ts/stores.svelte'
 import { language } from '../../lang'
 import { buildColdStub } from '../../ts/process/coldCharacter'
 import GridCatalog from './GridCatalog.svelte'
-import MobileCharacters from '../Mobile/MobileCharacters.svelte'
+import CharacterSimpleList from './CharacterSimpleList.svelte'
 import AlertComp from './AlertComp.svelte'
 
 //#region fixtures and helpers
@@ -257,7 +257,7 @@ async function settle(): Promise<void> {
     flushSync()
 }
 
-async function withMounted<T>(component: typeof GridCatalog | typeof MobileCharacters | typeof AlertComp, props: Record<string, unknown>, body: (target: HTMLElement) => T | Promise<T>): Promise<T> {
+async function withMounted<T>(component: typeof GridCatalog | typeof CharacterSimpleList | typeof AlertComp, props: Record<string, unknown>, body: (target: HTMLElement) => T | Promise<T>): Promise<T> {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(component as never, { target, props }) as Record<string, unknown>
@@ -316,11 +316,11 @@ function listHeadings(root: HTMLElement): string[] {
 
 //#endregion
 
-describe('MobileCharacters -- archived characters', { timeout: 60_000 }, () => {
+describe('CharacterSimpleList -- archived characters', { timeout: 60_000 }, () => {
     test('shows the chat count of the full character for a stub built here', async () => {
         DBState.db = buildDb([forkStub(fullCharacter('a', 'Stubby', { chats: makeChats(7) }))])
 
-        await withMounted(MobileCharacters, {}, (target) => {
+        await withMounted(CharacterSimpleList, {}, (target) => {
             expect(mobileChatCount(target, 'Stubby')).toBe('7')
         })
     })
@@ -328,7 +328,7 @@ describe('MobileCharacters -- archived characters', { timeout: 60_000 }, () => {
     test('guard: shows chats.length for a full character', async () => {
         DBState.db = buildDb([full(fullCharacter('a', 'Warm', { chats: makeChats(3) }))])
 
-        await withMounted(MobileCharacters, {}, (target) => {
+        await withMounted(CharacterSimpleList, {}, (target) => {
             expect(mobileChatCount(target, 'Warm')).toBe('3')
         })
     })
@@ -336,7 +336,7 @@ describe('MobileCharacters -- archived characters', { timeout: 60_000 }, () => {
     test('guard: shows 1 for an upstream-made stub', async () => {
         DBState.db = buildDb([upstreamStub('a', 'Old Stub')])
 
-        await withMounted(MobileCharacters, {}, (target) => {
+        await withMounted(CharacterSimpleList, {}, (target) => {
             expect(mobileChatCount(target, 'Old Stub')).toBe('1')
         })
     })
@@ -348,7 +348,7 @@ describe('MobileCharacters -- archived characters', { timeout: 60_000 }, () => {
             forkStub(fullCharacter('cold', 'Cold Newer', { lastInteraction: now - 2 * HOUR })),
         ])
 
-        await withMounted(MobileCharacters, {}, (target) => {
+        await withMounted(CharacterSimpleList, {}, (target) => {
             expect(mobileRowNames(target)).toEqual(['Cold Newer', 'Warm Older'])
             expect(mobileRow(target, 'Cold Newer').textContent).not.toContain('Unknown')
         })
@@ -361,7 +361,7 @@ describe('MobileCharacters -- archived characters', { timeout: 60_000 }, () => {
             full(fullCharacter('warm', 'Warm', { lastInteraction: now - 5 * DAY })),
         ])
 
-        await withMounted(MobileCharacters, {}, (target) => {
+        await withMounted(CharacterSimpleList, {}, (target) => {
             expect(mobileRowNames(target)).toEqual(['Warm', 'Old Stub'])
             expect(mobileRow(target, 'Old Stub').textContent).toContain('Unknown')
         })
@@ -373,10 +373,10 @@ describe('MobileCharacters -- archived characters', { timeout: 60_000 }, () => {
             full(fullCharacter('kept', 'Kept')),
         ])
 
-        await withMounted(MobileCharacters, { hideTrash: true }, (target) => {
+        await withMounted(CharacterSimpleList, { hideTrash: true }, (target) => {
             expect(mobileRowNames(target)).toEqual(['Kept'])
         })
-        await withMounted(MobileCharacters, { hideTrash: false }, (target) => {
+        await withMounted(CharacterSimpleList, { hideTrash: false }, (target) => {
             expect(mobileRowNames(target).sort()).toEqual(['Kept', 'Trashed Stub'])
         })
     })
@@ -387,7 +387,7 @@ describe('MobileCharacters -- archived characters', { timeout: 60_000 }, () => {
             full(fullCharacter('kept', 'Kept')),
         ])
 
-        await withMounted(MobileCharacters, { hideTrash: true }, (target) => {
+        await withMounted(CharacterSimpleList, { hideTrash: true }, (target) => {
             expect(mobileRowNames(target)).toEqual(['Kept'])
         })
     })

@@ -4,7 +4,7 @@ import { escapeActionFor } from "./alertEscape"
 import { ANSWER_GUARD_MS, pageCovered } from "./alertPrompts"
 import { recordKeyEventBlocked, setLiveKeysBlockedReader } from "./keyEventBlocked"
 import { changeToPreset as changeToPreset2, getDatabase, type Database } from "./storage/database.svelte"
-import { alertStore, DBState, loadoutModalStore, MobileGUIStack, MobileSideBar, openPersonaList, openPresetList, OpenRealmStore, PlaygroundStore, QuickSettings, SafeModeStore, selectedCharID, settingsOpen } from "./stores.svelte"
+import { alertStore, DBState, loadoutModalStore, openPersonaList, openPresetList, OpenRealmStore, PlaygroundStore, QuickSettings, SafeModeStore, selectedCharID, settingsOpen } from "./stores.svelte"
 import { studioOpen } from "./studio/studioOpen"
 import { language } from "src/lang"
 import { fillLang } from "src/lang/fill"
@@ -533,75 +533,6 @@ function focusQuery(query:string){
     let ele = document.querySelector(query) as HTMLElement
     if(ele){
         ele.focus()
-    }
-}
-
-
-
-export function initMobileGesture(){
-    let pressingPointers = new Map<number, {x:number, y:number}>()
-
-    const onTouchStart = (ev: TouchEvent) => {
-        for(const touch of ev.changedTouches){
-            const ele = touch.target as HTMLElement
-            // A control's own touch is never a swipe; the other touches of the event still are.
-            if(ele.tagName === 'BUTTON' || ele.tagName === 'INPUT' || ele.tagName === 'SELECT' || ele.tagName === 'TEXTAREA'){
-                continue
-            }
-            pressingPointers.set(touch.identifier, {x: touch.clientX, y: touch.clientY})
-        }
-    }
-    const onTouchCancel = (ev: TouchEvent) => {
-        for(const touch of ev.changedTouches){
-            pressingPointers.delete(touch.identifier)
-        }
-    }
-    const onTouchEnd = (ev: TouchEvent) => {
-        for(const touch of ev.changedTouches){
-            const d = pressingPointers.get(touch.identifier)
-            if(!d){
-                continue
-            }
-            const moveX = touch.clientX - d.x
-            const moveY = touch.clientY - d.y
-            pressingPointers.delete(touch.identifier)
-            
-            if(moveX > 50 && Math.abs(moveY) < Math.abs(moveX)){
-                if(get(selectedCharID) === -1){
-                    if(get(MobileGUIStack) > 0){
-                        MobileGUIStack.update(v => v - 1)
-                    }
-                }
-                else{
-                    if(get(MobileSideBar) > 0){
-                        MobileSideBar.update(v => v - 1)
-                    }
-                }
-            }
-            else if(moveX < -50 && Math.abs(moveY) < Math.abs(moveX)){
-                if(get(selectedCharID) === -1){
-                    if(get(MobileGUIStack) < 2){
-                        MobileGUIStack.update(v => v + 1)
-                    }
-                }
-                else{
-                    if(get(MobileSideBar) < 3){
-                        MobileSideBar.update(v => v + 1)
-                    }
-                }
-            }
-        }
-    }
-
-    document.addEventListener('touchstart', onTouchStart, {passive: true})
-    document.addEventListener('touchend', onTouchEnd, {passive: true})
-    document.addEventListener('touchcancel', onTouchCancel, {passive: true})
-
-    return () => {
-        document.removeEventListener('touchstart', onTouchStart)
-        document.removeEventListener('touchend', onTouchEnd)
-        document.removeEventListener('touchcancel', onTouchCancel)
-        pressingPointers.clear()
     }
 }
 

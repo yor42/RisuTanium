@@ -7,7 +7,7 @@ import { checkNullish, findCharacterbyId, findCharacterIndexbyId, getUserName, r
 import { reportRefusedAssets, splitByAssetLimit, warnRefusedAssets } from "./storage/pickedAssetLimit";
 import { v4 as uuidv4, v4 } from 'uuid';
 import { getImageType } from "./media";
-import { CharEmotion, DBState, MobileGUIStack, OpenRealmStore, selectedCharID } from "./stores.svelte";
+import { CharEmotion, DBState, OpenRealmStore, selectedCharID } from "./stores.svelte";
 import { AppendableBuffer, changeChatTo, checkCharOrder, downloadFile, getFileSrc, pickedAssetLimitBytes, requiresFullEncoderReload } from "./globalApi.svelte";
 import { updateInlayScreen } from "./process/inlayScreen";
 import { firstMessageOf } from "./process/firstMessage";
@@ -1593,13 +1593,11 @@ export function restoreCharacterFromTrash(identifier: string | character | group
 export async function addCharacter(arg:{
     reseter?:()=>any,
 } = {}){
-    MobileGUIStack.set(100)
     const reseter = arg.reseter ?? (() => {})
     const r = await alertAddCharacter()
     if(r === 'importFromRealm'){
         selectedCharID.set(-1)
         OpenRealmStore.set(true)
-        MobileGUIStack.set(0)
         return
     }
     reseter();
@@ -1614,14 +1612,12 @@ export async function addCharacter(arg:{
             await importCharacter()
             break
         default:
-            MobileGUIStack.set(1)
             return
     }
     let db = getDatabase()
     if(db.characters[db.characters.length-1]){
         changeChar(db.characters.length-1)
     }
-    MobileGUIStack.set(1)
 }
 
 /**

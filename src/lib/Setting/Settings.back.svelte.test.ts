@@ -2,7 +2,7 @@
 
 /**
  * Android Back on the Settings overlay does what its X does, and the overlay answers Back only
- * while `settingsOpen` is true (the embedded page of the mobile shell must not). (R) = regression
+ * while `settingsOpen` is true (a mounted Settings page that is not open must not). (R) = regression
  * reproducer: fails on a base without the Back handler (the store does not change and the quit
  * warning shows); (G) = guard that may pass before and after. The reproducers import only modules
  * that exist on the pre-fix base.
@@ -45,7 +45,7 @@ vi.mock('./Pages/HotkeySettings.svelte', () => ({ default: () => {} }))
 vi.mock('./SettingsLegalLinks.svelte', () => ({ default: () => {} }))
 vi.mock('../Others/PluginDefinedIcon.svelte', () => ({ default: () => {} }))
 
-import { DBState, MobileGUI, SettingsMenuIndex, settingsOpen } from '../../ts/stores.svelte'
+import { DBState, SettingsMenuIndex, settingsOpen } from '../../ts/stores.svelte'
 import { installBackGuard, registerBackHandler, resetBackHandlersForTests } from '../../ts/backHandlers'
 import Settings from './Settings.svelte'
 
@@ -99,7 +99,6 @@ beforeEach(() => {
     resetBackHandlersForTests()
     installBackGuard({ showToast })
     DBState.db = { settingsCloseButtonSize: 24 } as unknown as Database
-    MobileGUI.set(false)
     SettingsMenuIndex.set(-1)
     settingsOpen.set(true)
     setWidth(500)
@@ -133,23 +132,12 @@ describe('Settings overlay Back', () => {
         expect(showToast).toHaveBeenCalledTimes(1)
     })
 
-    test('(R) the Beta Mobile GUI overlay has no X and closes on Back as Escape does', () => {
-        MobileGUI.set(true)
-        SettingsMenuIndex.set(3)
-        const { target } = mountSettings()
-        expect(target.querySelector('button.absolute.top-2.right-2')).toBeNull()
-        expect(pressBack()).toBe(true)
-        expect(get(settingsOpen)).toBe(false)
-        expect(showToast).not.toHaveBeenCalled()
-    })
-
     test.each([
-        ['narrow list view', 500, false, -1],
-        ['narrow detail view', 500, false, 3],
-        ['wide layout', 800, false, 3],
-    ])('(G) Back from the %s leaves the stores as its X does', (_name, width, mobileGui, index) => {
+        ['narrow list view', 500, -1],
+        ['narrow detail view', 500, 3],
+        ['wide layout', 800, 3],
+    ])('(G) Back from the %s leaves the stores as its X does', (_name, width, index) => {
         setWidth(width)
-        MobileGUI.set(mobileGui)
         SettingsMenuIndex.set(index)
         const first = mountSettings()
         closeButton(first.target).click()
@@ -181,8 +169,7 @@ describe('Settings overlay Back', () => {
         expect(showToast).toHaveBeenCalledTimes(2)
     })
 
-    test('(G) the embedded page (settingsOpen false) registers nothing', () => {
-        MobileGUI.set(true)
+    test('(G) a mounted Settings page that is not open (settingsOpen false) registers nothing', () => {
         settingsOpen.set(false)
         SettingsMenuIndex.set(3)
         mountSettings()
@@ -192,7 +179,6 @@ describe('Settings overlay Back', () => {
     })
 
     test('(R) Settings registers when it opens, so it answers before a surface registered while it was closed', () => {
-        MobileGUI.set(true)
         settingsOpen.set(false)
         mountSettings()
         const other = { open: true }

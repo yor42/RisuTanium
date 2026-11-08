@@ -18,8 +18,7 @@ export function isReturnToChat(): boolean {
 
 /**
  * True when Settings was closed after a Fix route and the chat has not taken the focus yet. The failed-send card
- * moves focus to Try again and clears it, whether it was mounted all along or mounts afterwards (the Beta Mobile
- * GUI replaces the chat while Settings is open).
+ * moves focus to Try again and clears it, whether it was mounted all along or mounts afterwards.
  */
 export const fixPending = writable(false)
 

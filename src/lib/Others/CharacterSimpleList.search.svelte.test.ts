@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
 
 /**
- * What `MobileCharacters.svelte` lists for a search: the shared character
+ * What `CharacterSimpleList.svelte` lists for a search: the shared character
  * search decides the matches (name, description, tags and creator, every word
  * of the query, normalised), the list keeps its own order, and the trash stays
- * shown or hidden by `hideTrash` alone. A typed query reaches the list only
- * after the debounce; a query given at mount applies at once.
+ * shown or hidden by `hideTrash` alone. A query typed after mount reaches the
+ * list only after the debounce; a query given at mount applies at once.
  *
- * MOCKED: the module set of `MobileCharacters.hiddenCharacters.svelte.test.ts`
+ * MOCKED: the module set of `CharacterSimpleList.hiddenCharacters.svelte.test.ts`
  * (same directory), with `changeChar` a bare spy and the clock faked for
  * `setTimeout`/`clearTimeout` only. Nothing here writes to storage.
  */
@@ -98,10 +98,8 @@ vi.mock(import('../../ts/stores.svelte'), () => {
     return {
         DBState: state,
         selectedCharID: writable(-1),
-        MobileGUIStack: writable([]),
         CharEmotion: writable(new Map()),
         OpenRealmStore: writable({ isOpen: false }),
-        MobileSearch: writable(''),
         alertStore: writable({ type: 'none', msg: '' }),
         selIdState: { state: -1 },
         SettingsMenuIndex: writable(0),
@@ -141,9 +139,9 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 
 //#endregion
 
-import { DBState, MobileSearch } from '../../ts/stores.svelte'
+import { DBState } from '../../ts/stores.svelte'
 import { language } from '../../lang'
-import MobileCharacters from './MobileCharacters.svelte'
+import CharacterSimpleList from './CharacterSimpleList.svelte'
 
 //#region fixtures and helpers
 
@@ -186,15 +184,28 @@ async function settle(): Promise<void> {
     flushSync()
 }
 
+let mountedProps: { search?: string } | undefined
+
+/** Types into the search box of the mounted list: its `search` prop changes after mount. */
+function typeQuery(query: string): void {
+    if (!mountedProps) {
+        throw new Error('no list is mounted')
+    }
+    mountedProps.search = query
+}
+
 async function withMounted(props: { hideTrash?: boolean; search?: string }, body: (target: HTMLElement) => void | Promise<void>): Promise<void> {
     const target = document.createElement('div')
     document.body.appendChild(target)
-    const app = mount(MobileCharacters, { target, props }) as Record<string, unknown>
+    const reactiveProps = $state({ ...props, search: props.search })
+    mountedProps = reactiveProps
+    const app = mount(CharacterSimpleList, { target, props: reactiveProps }) as Record<string, unknown>
     try {
         await settle()
         await body(target)
     } finally {
         await unmount(app as never)
+        mountedProps = undefined
         target.remove()
     }
 }
@@ -227,7 +238,6 @@ async function pastDebounce(): Promise<void> {
 
 beforeEach(() => {
     changeCharSpy.mockClear()
-    MobileSearch.set('')
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 })
 
@@ -237,7 +247,7 @@ afterEach(() => {
 
 //#endregion
 
-describe('MobileCharacters search: what a query matches', { timeout: 60_000 }, () => {
+describe('CharacterSimpleList search: what a query matches', { timeout: 60_000 }, () => {
     test('a word only the description has lists the character', async () => {
         DBState.db = buildDb([
             makeCharacter('a', 'Ann', { creatorNotes: 'keeper of a tall dragon' }),
@@ -263,9 +273,9 @@ describe('MobileCharacters search: what a query matches', { timeout: 60_000 }, (
         })
     })
 
-    // Intended change, not a guard: the old mobile search matched the
-    // placeholder shown for a nameless character, so the query "unnamed" found
-    // it. The search now looks at the stored name only.
+    // Intended change, not a guard: the old search matched the placeholder
+    // shown for a nameless character, so the query "unnamed" found it. The
+    // search looks at the stored name only.
     test('intended change: the placeholder shown for a nameless character is not searchable', async () => {
         DBState.db = buildDb([makeCharacter('a', ''), makeCharacter('b', 'Bob')])
 
@@ -282,27 +292,15 @@ describe('MobileCharacters search: what a query matches', { timeout: 60_000 }, (
             expect(rowNames(target).sort()).toEqual([language.settingsPage.unnamed, 'Bob'].sort())
         })
     })
-
-    test('the search box of the mobile header (the MobileSearch store) is the query when no search prop is given', async () => {
-        DBState.db = buildDb([
-            makeCharacter('a', 'Ann', { creatorNotes: 'keeper of a tall dragon' }),
-            makeCharacter('b', 'Bob'),
-        ])
-        MobileSearch.set('dragon')
-
-        await withMounted({}, (target) => {
-            expect(rowNames(target)).toEqual(['Ann'])
-        })
-    })
 })
 
-describe('MobileCharacters search: debounce', { timeout: 60_000 }, () => {
-    test('a query typed into the header reaches the list only after the debounce window', async () => {
+describe('CharacterSimpleList search: debounce', { timeout: 60_000 }, () => {
+    test('a query typed into the search box reaches the list only after the debounce window', async () => {
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
 
         await withMounted({}, async (target) => {
             expect(rowNames(target)).toEqual(['Ann', 'Bob'].sort())
-            MobileSearch.set('bo')
+            typeQuery('bo')
             await settle()
             expect(rowNames(target).sort()).toEqual(['Ann', 'Bob'])
             await pastDebounce()
@@ -315,7 +313,7 @@ describe('MobileCharacters search: debounce', { timeout: 60_000 }, () => {
 
         await withMounted({}, async (target) => {
             for (const key of ['a', 'an', 'ann']) {
-                MobileSearch.set(key)
+                typeQuery(key)
                 await settle()
                 vi.advanceTimersByTime(100)
                 await settle()
@@ -330,14 +328,14 @@ describe('MobileCharacters search: debounce', { timeout: 60_000 }, () => {
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
 
         await withMounted({}, async (target) => {
-            MobileSearch.set('bo')
+            typeQuery('bo')
             await settle()
             await pastDebounce()
             expect(rowNames(target)).toEqual(['Bob'])
 
-            MobileSearch.set('ann')
+            typeQuery('ann')
             await settle()
-            MobileSearch.set('')
+            typeQuery('')
             await settle()
             expect(rowNames(target).sort()).toEqual(['Ann', 'Bob'])
             vi.advanceTimersByTime(1000)
@@ -350,7 +348,7 @@ describe('MobileCharacters search: debounce', { timeout: 60_000 }, () => {
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
 
         await withMounted({}, async () => {
-            MobileSearch.set('bo')
+            typeQuery('bo')
             await settle()
             expect(vi.getTimerCount()).toBeGreaterThan(0)
         })
@@ -358,7 +356,7 @@ describe('MobileCharacters search: debounce', { timeout: 60_000 }, () => {
     })
 })
 
-describe('MobileCharacters search: trash and order', { timeout: 60_000 }, () => {
+describe('CharacterSimpleList search: trash and order', { timeout: 60_000 }, () => {
     // Guard: passes before and after; with the trash shown, a query narrows the
     // trashed rows too.
     test('guard: with the trash shown, the query narrows live and trashed rows alike', async () => {
@@ -410,7 +408,7 @@ describe('MobileCharacters search: trash and order', { timeout: 60_000 }, () => 
     })
 })
 
-describe('MobileCharacters search: the list follows the database', { timeout: 60_000 }, () => {
+describe('CharacterSimpleList search: the list follows the database', { timeout: 60_000 }, () => {
     // Guard: passes before and after.
     test('guard: renaming a listed character updates its row and its searchability', async () => {
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
@@ -430,7 +428,7 @@ describe('MobileCharacters search: the list follows the database', { timeout: 60
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Anna')])
 
         await withMounted({ hideTrash: true }, async (target) => {
-            MobileSearch.set('ann')
+            typeQuery('ann')
             await settle()
             await pastDebounce()
             expect(rowNames(target).sort()).toEqual(['Ann', 'Anna'])

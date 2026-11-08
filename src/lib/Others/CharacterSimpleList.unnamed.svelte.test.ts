@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
 
 /**
- * `MobileCharacters.svelte` words the last-interaction text of a character that has never
- * been interacted with in the active UI language's "Unknown".
+ * `CharacterSimpleList.svelte` lists a character that has no name under the active UI language's
+ * "Unnamed" text, and a named character under its own name.
  *
- * MOCKED: the module set of `MobileCharacters.unnamed.svelte.test.ts`. Nothing here writes
- * to storage. Titles beginning "guard:" pin behaviour that must be preserved before and
- * after the change; titles beginning "regression reproducer:" fail against the version that
- * prints the fixed English text under every language.
+ * MOCKED: the module set of `CharacterSimpleList.hiddenCharacters.svelte.test.ts`, with
+ * `changeChar` a bare spy. Nothing here writes to storage. Titles beginning "guard:" pin
+ * behaviour that must be preserved before and after the change; every other test is a
+ * regression reproducer for the behaviour it names.
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
@@ -25,6 +25,10 @@ vi.mock('localforage', () => ({
             removeItem: vi.fn(async () => {}),
         }),
     },
+}))
+
+const { changeCharSpy } = vi.hoisted(() => ({
+    changeCharSpy: vi.fn(),
 }))
 
 vi.mock(
@@ -92,10 +96,8 @@ vi.mock(import('../../ts/stores.svelte'), () => {
     return {
         DBState: state,
         selectedCharID: writable(-1),
-        MobileGUIStack: writable([]),
         CharEmotion: writable(new Map()),
         OpenRealmStore: writable({ isOpen: false }),
-        MobileSearch: writable(''),
         alertStore: writable({ type: 'none', msg: '' }),
         selIdState: { state: -1 },
         SettingsMenuIndex: writable(0),
@@ -121,7 +123,7 @@ vi.mock(import('../../ts/characters'), async (importOriginal) => {
     const actual = await importOriginal()
     return {
         ...actual,
-        changeChar: vi.fn(),
+        changeChar: changeCharSpy,
     }
 })
 
@@ -136,10 +138,15 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 //#endregion
 
 import { changeLanguage } from 'src/lang'
-import { languageEnglish } from 'src/lang/en'
-import { languageKorean } from 'src/lang/ko'
 import { DBState } from '../../ts/stores.svelte'
-import MobileCharacters from './MobileCharacters.svelte'
+import CharacterSimpleList from './CharacterSimpleList.svelte'
+
+function makeCharacter(chaId: string, name: string): Database['characters'][number] {
+    return {
+        chaId, name, type: 'character', image: '', creatorNotes: '', chatPage: 0, lastInteraction: 0,
+        chats: [{ id: `${chaId}-chat`, message: [], note: '', name: '', localLore: [] }],
+    } as unknown as Database['characters'][number]
+}
 
 async function settle(): Promise<void> {
     for (let i = 0; i < 4; i++) {
@@ -149,22 +156,18 @@ async function settle(): Promise<void> {
     flushSync()
 }
 
-/** The last-interaction texts of one character per `lastInteraction` entry. */
-async function agoTexts(lastInteractions: number[]): Promise<string[]> {
-    const characters = lastInteractions.map((lastInteraction, i) => ({
-        chaId: 'id' + i, name: 'Char' + i, type: 'character', image: '', creatorNotes: '', chatPage: 0, lastInteraction,
-        chats: [{ id: `id${i}-chat`, message: [], note: '', name: '', localLore: [] }],
-    })) as unknown as Database['characters']
+async function rowNames(names: string[]): Promise<string[]> {
+    const characters = names.map((n, i) => makeCharacter('id' + i, n))
     DBState.db = {
         formatversion: 5, botPresetsId: 0, botPresets: [], modules: [], loadouts: [], plugins: [],
         pluginCustomStorage: {}, characterOrder: characters.map((c) => c.chaId), characters, hideAllImages: false,
     } as unknown as Database
     const target = document.createElement('div')
     document.body.appendChild(target)
-    const app = mount(MobileCharacters, { target, props: {} }) as Record<string, unknown>
+    const app = mount(CharacterSimpleList, { target, props: {} }) as Record<string, unknown>
     try {
         await settle()
-        return Array.from(target.querySelectorAll('div.text-sm > span:last-child')).map((s) => s.textContent?.trim() ?? '')
+        return Array.from(target.querySelectorAll('div.flex-1 > span:first-child')).map((s) => s.textContent?.trim() ?? '')
     } finally {
         await unmount(app as never)
         target.remove()
@@ -175,14 +178,17 @@ afterEach(() => {
     changeLanguage('en')
 })
 
-describe('MobileCharacters last-interaction text of a never-used character', { timeout: 60_000 }, () => {
-    test('guard: English words it "Unknown"', async () => {
-        expect(await agoTexts([0])).toEqual(['Unknown'])
+describe('CharacterSimpleList row names', { timeout: 60_000 }, () => {
+    test('guard: a named character is listed under its own name', async () => {
+        expect(await rowNames(['Alice'])).toEqual(['Alice'])
     })
 
-    test('regression reproducer: Korean words it with the Korean "unknown" locale value', async () => {
+    test('guard: English lists a nameless character as "Unnamed"', async () => {
+        expect(await rowNames([''])).toEqual(['Unnamed'])
+    })
+
+    test('regression reproducer: Korean lists a nameless character in Korean', async () => {
         changeLanguage('ko')
-        expect(languageKorean.settingsPage.unknown).not.toBe(languageEnglish.settingsPage.unknown)
-        expect(await agoTexts([0])).toEqual([languageKorean.settingsPage.unknown])
+        expect(await rowNames([''])).toEqual(['이름 없음'])
     })
 })

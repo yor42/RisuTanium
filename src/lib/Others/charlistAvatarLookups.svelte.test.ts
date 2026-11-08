@@ -6,7 +6,7 @@
  * re-render of an unrelated part of the list.
  *
  * This file mounts the REAL `GridCatalog.svelte` (and therefore the REAL
- * `MobileCharacters.svelte` and `BarIcon.svelte`) with Svelte's `mount()`
+ * `CharacterSimpleList.svelte` and `BarIcon.svelte`) with Svelte's `mount()`
  * into happy-dom, drives it exactly like a user would (click the real
  * layout buttons, type into the real search input, mutate `DBState.db`
  * directly the way the rest of the app does), and counts calls to a spy
@@ -47,7 +47,7 @@
  *
  * NOT mocked: `src/ts/characters`'s `getCharImage` (real), `src/ts/media/
  * avatarThumb`'s `isThumbEligible` (real), `src/lang`, `src/ts/util.ts`,
- * `GridCatalog.svelte`, `MobileCharacters.svelte`, `BarIcon.svelte`,
+ * `GridCatalog.svelte`, `CharacterSimpleList.svelte`, `BarIcon.svelte`,
  * `TextInput.svelte`, `Button.svelte`, the lucide icon components, and
  * everything else `characters.ts` drags in transitively (a one-time ~13-17s
  * Vite transform cost; only the first test below pays it).
@@ -124,7 +124,7 @@ vi.mock(
 )
 
 // `getDatabase()` returns the same `DBState.db` the tests set directly --
-// unlike GridCatalog/MobileCharacters, which never call it, Sidebar.svelte's
+// unlike GridCatalog/CharacterSimpleList, which never call it, Sidebar.svelte's
 // own `$effect` calls `getCharacterIndexObject()` (`src/ts/util.ts`), which
 // calls `getDatabase()` unconditionally.
 // A version that throws (as some other harnesses in this repo use, since
@@ -322,7 +322,7 @@ function buildDb(nonTrashed: number, trashed: number): Database {
             image: `assets/${i}.png`,
             creatorNotes: '',
             chatPage: 0,
-            // Unique per character, so MobileCharacters's primary sort key
+            // Unique per character, so CharacterSimpleList's primary sort key
             // (interaction, descending) never ties -- renaming a character
             // never changes its sort position, regardless of the new name.
             lastInteraction: i,
@@ -759,7 +759,7 @@ describe.sequential('list layout: avatar lookups (AV-1 regression, GridCatalog.s
     })
 })
 
-describe.sequential('simple layout: avatar lookups (AV-1 regression, MobileCharacters.svelte)', () => {
+describe.sequential('simple layout: avatar lookups (AV-1 regression, CharacterSimpleList.svelte)', () => {
     let target: HTMLElement
     let app: Record<string, unknown>
     let restoreViewport: () => void
@@ -884,7 +884,7 @@ describe('T12: getAvatarThumbSrc is wired into every list site', () => {
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog()
         await settle(target)
-        // The default tab (simple/`MobileCharacters.svelte`) already resolved
+        // The default tab (simple/`CharacterSimpleList.svelte`) already resolved
         // every one of these same locs before the switch below; clear so the
         // assertion below can only be satisfied by the GRID tab's own calls. The style cache is
         // emptied too, or the tab would paint from it and look nothing up.
@@ -985,7 +985,7 @@ describe('T12: getAvatarThumbSrc is wired into every list site', () => {
         await teardown(target, app)
     })
 
-    test("simple layout (MobileCharacters.svelte): the spy receives every visible character's loc", async () => {
+    test("simple layout (CharacterSimpleList.svelte): the spy receives every visible character's loc", async () => {
         DBState.db = buildDb(5, 0) // GridCatalog defaults to selected=3 (simple)
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog()
@@ -1004,7 +1004,7 @@ describe('T12: getAvatarThumbSrc is wired into every list site', () => {
         getFileSrcSpy.mockClear()
         const { target, app } = mountGridCatalog()
         await settle(target)
-        // The default tab (simple/`MobileCharacters.svelte`) already resolved
+        // The default tab (simple/`CharacterSimpleList.svelte`) already resolved
         // every one of these same locs before the switch below; clear so the
         // assertion below can only be satisfied by the LIST tab's own calls (style cache emptied as above).
         avatarThumbSpy.mockClear()
