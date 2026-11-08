@@ -3,7 +3,9 @@
     import { LayoutGridIcon } from '@lucide/svelte'
     import { language } from 'src/lang'
     import MainMenu from '../MainMenu.svelte'
+    import HomeEmptyHero from './HomeEmptyHero.svelte'
     import HomeModeSwitcher from './HomeModeSwitcher.svelte'
+    import HomePersonaChip from './HomePersonaChip.svelte'
     import { homeView, openHomeLibrary, showHomeLanding } from './homeView.svelte'
 
     // Every creation starts at the landing: a selection change, the language remount and a return
@@ -42,6 +44,9 @@
         {language.character}
     </button>
     <HomeModeSwitcher />
+    <!-- Roleplay content: while Roleplay is the only built mode (BUILT_HOME_MODES) the landing is Roleplay. -->
+    <HomePersonaChip />
+    <HomeEmptyHero />
 {/snippet}
 
 {#if homeView.view === 'library' && LibraryScreen}
