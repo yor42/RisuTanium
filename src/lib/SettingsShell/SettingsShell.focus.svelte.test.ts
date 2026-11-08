@@ -21,6 +21,8 @@ vi.mock(import('../../ts/stores.svelte'), () => {
         additionalSettingsMenu: menu,
         easyPanelStore: { open: false },
         MobileGUI: writable(false),
+        ReloadGUIPointer: writable(0),
+        ReloadChatPointer: writable({}),
         SettingsMenuIndex: writable(-1),
         settingsOpen: writable(false),
         selIdState: { selId: -1 },
@@ -53,6 +55,7 @@ import { installSettingsOrigin, resetSettingsOriginForTests } from '../../ts/set
 import { setShellBackHandler } from '../../ts/settingsShell/settingsNavigation'
 import { fixPending, resetSettingsRouteForTests } from '../Setting/settingsRoute'
 import Host from './SettingsShell.testHost.svelte'
+import { installChatSurface, resetChatSurfaceForTests } from '../ChatScreens/chatSurface.svelte'
 
 const mounted: Array<ReturnType<typeof mount>> = []
 const originalWidth = window.innerWidth
@@ -111,6 +114,7 @@ afterEach(() => {
     resetBackHandlersForTests()
     resetSettingsRouteForTests()
     resetSettingsOriginForTests()
+    resetChatSurfaceForTests()
     setShellBackHandler(null)
     setSettingsShellEnabled(false)
     Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: originalWidth })
@@ -174,6 +178,52 @@ describe('T9 opener focus', () => {
     })
 
     test('(rule i) after the Fix route the failed-send card keeps focus: Try again, never the Fix button', async () => {
+        mountHost(true)
+        const fix = document.querySelector<HTMLButtonElement>('[data-action="fix"]')!
+        const retry = document.querySelector<HTMLButtonElement>('[data-action="retry"]')!
+        const landed: Element[] = []
+        const record = (event: Event): void => { if (event.target instanceof Element) landed.push(event.target) }
+        document.addEventListener('focusin', record)
+        try {
+            fix.focus()
+            fix.click()
+            await settle()
+            expect(get(settingsOpen)).toBe(true)
+            landed.length = 0
+            pressBack()
+            expect(get(settingsOpen)).toBe(false)
+            await settle()
+            expect(get(fixPending)).toBe(false)
+            expect(document.activeElement).toBe(retry)
+            expect(landed).not.toContain(fix)
+        } finally {
+            document.removeEventListener('focusin', record)
+        }
+    })
+})
+
+describe('opener focus with the chat surface subscribed before the origin recorder (App order)', () => {
+    function installInAppOrder(): void {
+        resetSettingsOriginForTests()
+        resetChatSurfaceForTests()
+        installChatSurface()
+        installSettingsOrigin()
+    }
+
+    test('an opener inside the chat surface gets focus back although the surface blurred it on open (T2)', async () => {
+        installInAppOrder()
+        mountHost()
+        const opener = byId('host-header')
+        opener.focus()
+        settingsOpen.set(true)
+        await settle()
+        settingsOpen.set(false)
+        await settle()
+        expect(document.activeElement).toBe(opener)
+    })
+
+    test('after the Fix route the failed-send card keeps focus and the Fix button is never focused (T6)', async () => {
+        installInAppOrder()
         mountHost(true)
         const fix = document.querySelector<HTMLButtonElement>('[data-action="fix"]')!
         const retry = document.querySelector<HTMLButtonElement>('[data-action="retry"]')!

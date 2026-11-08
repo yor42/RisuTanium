@@ -79,7 +79,7 @@ export const languageJapanese = {
     settingsShellPageLanguage: "言語",
     settingsShellPagePersonas: "ペルソナ",
     settingsShellPageExtensions: "拡張機能",
-    settingsShellPageData: "データとバックアップ",
+    settingsShellPageData: "バックアップとファイル",
     settingsShellPageShortcuts: "ショートカット",
     settingsShellPageAdvanced: "高度",
     settingsShellViewChatBot: "チャットボット",

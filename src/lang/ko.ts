@@ -79,7 +79,7 @@ export const languageKorean = {
     settingsShellPageLanguage: "언어",
     settingsShellPagePersonas: "페르소나",
     settingsShellPageExtensions: "확장",
-    settingsShellPageData: "데이터·백업",
+    settingsShellPageData: "백업 & 파일",
     settingsShellPageShortcuts: "단축키",
     settingsShellPageAdvanced: "고급",
     settingsShellViewChatBot: "챗봇",

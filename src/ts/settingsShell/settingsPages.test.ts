@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'vitest'
 import { firstIndexOf, orderedPages, pageForIndex, settingsLabel } from './settingsPages'
+import { languageEnglish } from '../../lang/en'
+import { languageKorean } from '../../lang/ko'
+import { languageSpanish } from '../../lang/es'
+import { languageGerman } from '../../lang/de'
+import { languageChinese } from '../../lang/cn'
+import { languageJapanese } from '../../lang/ja'
+import { languageVietnamese } from '../../lang/vi'
+import { languageChineseTraditional } from '../../lang/zh-Hant'
 
 // Every literal index the writers use (Fix route 1, HypaV3 2, modules 14, prompt template 13, Ctrl+S and the
 // legacy menu entries), and the page and view each one must show.
@@ -59,4 +67,18 @@ describe('Settings index order', () => {
             expect(page.views.length, page.id).toBeGreaterThan(0)
         }
     })
+
+    test.each([
+        ['en', languageEnglish],
+        ['ko', languageKorean],
+        ['es', languageSpanish],
+        ['de', languageGerman],
+        ['cn', languageChinese],
+        ['ja', languageJapanese],
+        ['vi', languageVietnamese],
+        ['zh-Hant', languageChineseTraditional],
+    ] as Array<[string, { settingsShellPageData: string, backupAndFiles: string }]>)(
+        'the Data page label reads like the Backup & Files heading in %s', (_locale, strings) => {
+            expect(strings.settingsShellPageData).toBe(strings.backupAndFiles)
+        })
 })

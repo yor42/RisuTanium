@@ -8,10 +8,15 @@ vi.mock('../stores.svelte', async () => {
         SettingsMenuIndex: writable(-1),
         DBState: { db: { characters: [] } },
         selIdState: { selId: -1 },
+        MobileGUI: writable(false),
+        ReloadGUIPointer: writable(0),
+        ReloadChatPointer: writable({}),
     }
 })
 
 import { DBState, SettingsMenuIndex, selIdState, settingsOpen } from '../stores.svelte'
+import { tick } from 'svelte'
+import { installChatSurface, resetChatSurfaceForTests } from '../../lib/ChatScreens/chatSurface.svelte'
 
 const db = DBState as unknown as { db: { characters: Array<{ name: string }> } }
 const selection = selIdState
@@ -42,6 +47,7 @@ afterEach(() => {
     document.body.replaceChildren()
     resetSettingsRouteForTests()
     resetSettingsOriginForTests()
+    resetChatSurfaceForTests()
 })
 
 describe('settings origin', () => {
@@ -141,5 +147,78 @@ describe('restoreOpenerFocus', () => {
         settingsOpen.set(false)
         restoreOpenerFocus()
         expect(document.activeElement).not.toBe(opener)
+    })
+})
+
+function surfaceWithHeaderButton(): { surface: HTMLDivElement, header: HTMLButtonElement } {
+    const surface = document.createElement('div')
+    surface.setAttribute('data-chat-surface', '')
+    const header = document.createElement('button')
+    header.setAttribute('data-part', 'chat-header-menu')
+    surface.append(header)
+    document.body.append(surface)
+    return { surface, header }
+}
+
+/** Opens and closes Settings the way App does: the surface goes inert while open and is released on close. */
+async function openAndCloseLikeApp(surface: HTMLElement): Promise<void> {
+    settingsOpen.set(true)
+    surface.setAttribute('inert', '')
+    settingsOpen.set(false)
+    surface.removeAttribute('inert')
+    await tick()
+    restoreOpenerFocus()
+}
+
+describe('an opener blurred by the chat surface when Settings opens', () => {
+    test('with the chat surface subscribed first, the This chat button gets focus back (T1)', async () => {
+        resetSettingsOriginForTests()
+        installChatSurface()
+        installSettingsOrigin()
+        const { surface, header } = surfaceWithHeaderButton()
+        header.focus()
+        settingsOpen.set(true)
+        surface.setAttribute('inert', '')
+        expect(document.activeElement).toBe(document.body)
+        settingsOpen.set(false)
+        surface.removeAttribute('inert')
+        await tick()
+        restoreOpenerFocus()
+        expect(document.activeElement).toBe(header)
+    })
+
+    test('with the origin recorder subscribed first the result is the same (T5)', async () => {
+        resetSettingsOriginForTests()
+        installSettingsOrigin()
+        installChatSurface()
+        const { surface, header } = surfaceWithHeaderButton()
+        header.focus()
+        await openAndCloseLikeApp(surface)
+        expect(document.activeElement).toBe(header)
+    })
+
+    test('an element that lost focus in an earlier turn is not the opener (T3)', async () => {
+        resetSettingsOriginForTests()
+        installChatSurface()
+        installSettingsOrigin()
+        const { surface, header } = surfaceWithHeaderButton()
+        header.focus()
+        header.blur()
+        await Promise.resolve()
+        await openAndCloseLikeApp(surface)
+        expect(document.activeElement).toBe(document.body)
+    })
+
+    test('a focused element wins over one that lost focus in the same turn (T4)', async () => {
+        const first = button()
+        const second = button()
+        first.focus()
+        second.focus()
+        settingsOpen.set(true)
+        first.focus()
+        settingsOpen.set(false)
+        await tick()
+        restoreOpenerFocus()
+        expect(document.activeElement).toBe(second)
     })
 })
