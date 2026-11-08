@@ -14,6 +14,11 @@ Generates deterministic RisuAI save data at four sizes and measures the cost of
 - Reuses the repo's real `encodeRisuSaveLegacy` / `decodeRisuSave` via the same
   `vi.mock` pattern as `src/ts/storage/tests/risuSave.test.ts`, so generated `.bin`
   files are real save files rather than approximations.
+- **Importable fixtures without vitest.** `make-c04-fixture.mjs` (chat-body rendering) and `make-chat-scene-fixture.mjs` (CHORE-664:
+  five characters with 30, 300 and 600-message chats, a prose chat and a script profile, pointed at the device mock) are plain Node
+  generators whose `.bin` output imports through the app's load-backup UI. `make-chat-scene-fixture.accept.mjs` is its plain-node
+  acceptance test (`node Agents/Tools/save-gen/make-chat-scene-fixture.accept.mjs`; `CHAT_SCENE_GENERATOR` points at a mutant copy).
+  It is not collected by `pnpm test`. Its matching reply source is `device/mock-openai.mjs --reply-bytes`.
 
 ### Running it
 

@@ -21,6 +21,8 @@ scratch (`%TEMP%\risu-b715\devscripts\`, not in the repository). Where a stateme
 | `cdp.mjs` | `node` helper: evaluates one expression in the first page target of a forwarded WebView devtools port. |
 | `cdp-session.mjs` | `node` helper: persistent CDP client (eval, CPU profile, probe injection with console capture). Probe in `probes/`. |
 | `pss-sampler.ps1` | Samples the PSS of the app process and of its own WebView sandbox process over adb into a tab-separated log; mandatory `-Serial`. |
+| `meminfo-snapshot.ps1` | One settled memory snapshot as one JSON line: phone (app and its owned WebView sandbox, App Summary and mtrack rows) or PC (renderer and GPU private bytes of one Chrome). Numbers only. |
+| `heap-read.mjs` | `node` helper: one read of the page's JS heap and DOM counters over a devtools port, optionally after a forced collection. |
 | `snapshot.ps1` | Whole-app-data snapshot of the test profile (debug builds only). |
 | `restore-snapshot.ps1` | Restores a snapshot into the app data and verifies it against the manifest (debug builds only). |
 | `import-bin.ps1` | Drives the app's own "load local backup" UI for one `.bin` fixture and collects the import phase marks. |
@@ -29,6 +31,7 @@ scratch (`%TEMP%\risu-b715\devscripts\`, not in the repository). Where a stateme
 | `mock-reverse.ps1` | Adds, verifies or removes the one `adb reverse` rule that lets the phone reach the mock; `-Probe` tests the path from the phone shell. |
 | `tests/Test-Runner.ps1` | Self-tests with a fake adb; needs no device. |
 | `tests/mock-openai.selftest.mjs` | Plain-node self-test of the mock endpoint; needs no device. |
+| `tests/meminfo-snapshot.accept.ps1`, `tests/heap-read.accept.mjs` | Acceptance tests of the two memory tools (fake adb with a real sanitised capture; fake CDP server); need no device. |
 
 Every script takes `-OutDir` (created if missing) and writes `<OutDir>\result.json`; most print one line
 `verdict=<v> reason=<text> result=<path>` and exit 0 only for `pass`, else 1.
@@ -134,6 +137,13 @@ pwsh -NoProfile -File Agents\Tools\device\build-apk.ps1 -OutDir $env:TEMP\risu-b
 - Without `-Measure` nothing changes: the full default check runs, and a build made with `VITE_RISU_MEASURE=1` in `-BuildEnv`
   fails it. `sign-release.ps1` (the real release key) always runs the full default check and has no such switch, so a
   measurement APK cannot pass it.
+- A measurement build is a release build, and `import-bin.ps1`, `snapshot.ps1` and `restore-snapshot.ps1` refuse a release build
+  (they need `run-as`, which a release install does not have). A fixture import into a measurement install therefore runs through
+  the app's own load-backup UI with a scratch driver (CDP clicks plus the exact file name), after `fixture-push.ps1` has put the
+  file in shared storage. The restore ends in a page reload, so the driver re-attaches to the devtools port afterwards. There is
+  no snapshot of the install to return to; the import replaces the profile that is there.
+- The measured JS is the same in the build's `dist`: a copy of `dist` served from a scratch static server runs the same minified
+  code on a PC Chrome (`tauribuild` is a plain `vite build`).
 
 ### Module fault switch build
 
@@ -329,6 +339,42 @@ folder, which rewrites goldens).
 - Test (no device, fake `-AdbExe`): `pwsh -NoProfile -File Agents\Tools\device\tests\pss-sampler.accept.ps1`
   (`-SamplerPath` points at a mutant copy). Not part of `Test-Runner.ps1`.
 
+### meminfo-snapshot.ps1 and heap-read.mjs
+
+The shared memory readers of CHORE-664 (CHORE-668 reuses them). Each prints one JSON line with a label and numbers; neither prints
+a package, process or path name. Read before and after a run, never during a frame run.
+
+```
+pwsh -NoProfile -File Agents\Tools\device\meminfo-snapshot.ps1 -Serial <adb serial> -Label <text> [-Package <id>] [-AllowedSerials a,b]
+pwsh -NoProfile -File Agents\Tools\device\meminfo-snapshot.ps1 -ChromePid <browser pid> -Label <text>
+node Agents\Tools\device\heap-read.mjs <port> --label <text> [--gc]
+```
+
+- **Phone line.** `{"label","mode":"device","complete","app":{...},"sandbox":{...},"missing":[...]}`. Each process object holds
+  `javaHeapKb`, `nativeHeapKb`, `graphicsKb`, `privateOtherKb`, `systemKb`, `totalPssKb` (the App Summary rows) and
+  `glMtrackPssKb`, `glMtrackPrivateDirtyKb`, `eglMtrackPssKb`, `eglMtrackPrivateDirtyKb` (the table rows `GL mtrack` and
+  `EGL mtrack`, columns `Pss Total` and `Private Dirty`). A row or column that is absent is `null` and named in `missing`, never 0.
+  `complete` is true when the six App Summary fields exist for both processes. The mtrack rows exist only for a process with GL
+  memory: on phone 2 (Android 10, WebView 156) the app section has `GL mtrack` and no `EGL mtrack`, and the sandbox section has
+  neither, so those fields are normally `null`.
+- **Ownership.** The sandbox is the isolated pid whose uid tag in `dumpsys activity processes` belongs to the app's own uid tag
+  (`Get-OwnedSandboxPids` in `lib.ps1`), and its section must be present in `dumpsys meminfo --package <Package>` under a
+  `sandboxed_process<digits>` header. Zero or several owned pids, no app pid, or a missing section give a DROP line
+  (`{"label","drop":"owner|app|app-section|sandbox-section"}`) and exit 3, with no numbers. Table columns are located by their
+  header names, never by offsets.
+- **`-ChromePid`.** Private bytes of the one `--type=renderer` child (an `--extension-process` renderer does not count) and the one
+  `--type=gpu-process` child of that browser pid; another count gives DROP (`renderer`, `gpu`). The renderer-minus-JS-heap figure is
+  the caller's to compute from `heap-read.mjs`.
+- **`heap-read.mjs`.** Sends `Runtime.getHeapUsage` and `Memory.getDOMCounters`; with `--gc` it then sends
+  `HeapProfiler.collectGarbage` and reads both again (`before` and `after`). Fields `usedSize`, `totalSize`, `nodes`, `documents`,
+  `jsEventListeners`. Exactly one page target or exit 2; connects to 127.0.0.1 only; only those three CDP methods are ever sent.
+  The method allow-set and the 127.0.0.1-only `/json` fetch are source invariants (the websocket rewrite and the method sequence are
+  tested); review them by reading `heap-read.mjs` when the tool changes.
+- **Tests (no device).** `pwsh -NoProfile -File Agents\Tools\device\tests\meminfo-snapshot.accept.ps1` (`-SnapshotPath` points at a
+  mutant copy) and `node Agents\Tools\device\tests\heap-read.accept.mjs` (`HEAP_READ_PATH` points at a mutant copy). The first embeds
+  a real sanitised phone 2 capture; a different phone or Android release may print other labels, which the parser reports as
+  `null` instead of guessing.
+
 ### snapshot.ps1 and restore-snapshot.ps1
 
 `snapshot.ps1`: `-OutDir`, `-Id` (both required), `-Profile test`, `-SnapshotRoot` (default `<ScratchRoot>\device-snapshots`),
@@ -422,8 +468,13 @@ pwsh -NoProfile -File Agents\Tools\device\mock-reverse.ps1 -OutDir $env:TEMP\ris
   pair answers 404.
 - **Replies.** Canned ASCII; every reply contains the marker `[mock-reply]`, which a DOM check can look for instead of reading text.
   `--seed` rotates which canned text comes first.
+- **Sized replies.** `--reply-bytes N` (N at least 12) answers every request with one deterministic ASCII prose text of exactly N
+  bytes that starts with `[mock-reply]`, with a blank line about every 600 bytes (`--seed` picks the first word); JSON mode and the
+  stream carry the same text. `--chunk-bytes N` cuts the streamed content into N-byte pieces instead of words (the last piece holds the
+  remainder), with or without `--reply-bytes`. With neither flag every response body is byte-identical to the earlier mock's.
+  `make-chat-scene-fixture.mjs` (in `save-gen/`) builds the matching `.bin` whose scripts match words of this reply.
 - **Options.** `--delay-ms` (before each reply), `--chunk-delay-ms` (between SSE chunks), `--fail-every N` (every Nth chat request
-  answers 500), `--log <path>` (JSON lines), `--pid-file <path>` (removed on SIGINT or SIGTERM).
+  answers 500), `--reply-bytes N`, `--chunk-bytes N`, `--log <path>` (JSON lines), `--pid-file <path>` (removed on SIGINT or SIGTERM).
 - **Log format.** One JSON object per line, never body text, header values or query strings:
   - `{"t","event":"connect"}` for every accepted TCP socket, before any byte is read;
   - `{"t","event":"request","method","path","stream","auth","bodyBytes","messages","status"}` for every parsed request (`auth` is
