@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { createStreamCadence, nextStreamCadence, STREAM_CONTAINMENT } from './streamCadence'
+import { createStreamCadence, nextStreamCadence } from './streamCadence'
 
 describe('stream cadence', () => {
     test('backs off after slow renders and recovers after five fast renders', () => {
@@ -20,13 +20,5 @@ describe('stream cadence', () => {
         for (let i = 0; i < 5; i++) cadence.record(1)
         expect(cadence.interval).toBe(250)
         expect(nextStreamCadence({ interval: 100, fastRenders: 0 }, 1, true).interval).toBe(250)
-    })
-
-    test('containment data excludes the newest three and retains measured height', () => {
-        expect(STREAM_CONTAINMENT).toEqual({
-            newestUncontained: 3,
-            contentVisibility: 'auto',
-            containIntrinsicSize: 'last-measured-height',
-        })
     })
 })

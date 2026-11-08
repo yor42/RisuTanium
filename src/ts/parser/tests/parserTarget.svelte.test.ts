@@ -223,7 +223,7 @@ vi.mock(import('../../process/scripts'), () => ({
         const parserSvelte = await import('../parser.svelte')
         return parserSvelte.risuChatParser(data, { cbsConditions } as never)
     }),
-    processScriptFull: vi.fn(async (_char: unknown, data: string, _mode: string, chatID = -1, cbsConditions: unknown = {}) => {
+    processScriptFull: vi.fn(async (_char: unknown, data: string, _mode: string, chatID = -1, cbsConditions: unknown = {}, ..._rest: unknown[]) => {
         const parserSvelte = await import('../parser.svelte')
         return {
             data: parserSvelte.risuChatParser(data, { chatID, cbsConditions } as never),
@@ -677,5 +677,29 @@ describe('Display: ParseMarkdown reads the selected chat, never a target (guard)
         selectedCharID.set(1)
         const resultB = await ParseMarkdown('{{getvar::x}}', charB)
         expect(resultB).toContain('b-value')
+    })
+})
+
+describe('Display: ParseMarkdown forwards the script cache mode', () => {
+    async function cacheArgOf(...extra: ['use' | 'bypass'] | []): Promise<unknown> {
+        const scripts = await import('../../process/scripts')
+        const mocked = vi.mocked(scripts.processScriptFull)
+        mocked.mockClear()
+        const char = makeCharacter('char-cache-arg')
+        installDb([char])
+        await ParseMarkdown('x', char, 'notrim', -1, {}, ...extra)
+        return mocked.mock.calls.at(-1)?.[9]
+    }
+
+    test('a bypass request reaches the script pass as the cache argument (specification)', async () => {
+        expect(await cacheArgOf('bypass')).toBe('bypass')
+    })
+
+    test('a use request reaches the script pass as the cache argument (specification)', async () => {
+        expect(await cacheArgOf('use')).toBe('use')
+    })
+
+    test('no request means the default use mode (guard)', async () => {
+        expect((await cacheArgOf()) ?? 'use').toBe('use')
     })
 })

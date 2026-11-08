@@ -25,6 +25,7 @@
     import { shouldAnchorBottom } from '../../ts/chatShell/bottomAnchor'
     import { bindReaderIntent, canHostMove, createReaderIntent } from '../../ts/chatShell/readerIntent'
     import { watchSoftKeyboard } from '../../ts/chatShell/softKeyboard'
+    import { lowPowerMarked } from '../../ts/chatShell/lowPower'
     import { hostIme } from '../../ts/android/hostBridge'
     import { treeView } from '../../ts/process/chatTreeView'
 
@@ -153,7 +154,7 @@
     // The fade is an animation: reduced motion (the OS setting or the app's `rm` class) and low power switch it off, so the attribute that starts it is never set.
     function fadeAllowed(): boolean {
         const root = document.documentElement
-        if (root.classList.contains('rm') || root.classList.contains('nexus-low-power') || root.hasAttribute('data-low-power')) return false
+        if (root.classList.contains('rm') || lowPowerMarked(root)) return false
         return !(typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
     }
 

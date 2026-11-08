@@ -122,7 +122,7 @@ describe('createToSafeHtml production wiring (MC-239)', () => {
         const html = await convert('hello {{user}}')
         expect(html).toContain('hello Ari')
         expect(calls.display).toEqual([['hello {{user}}', displayOptions]])
-        expect(calls.markdown[0].slice(2)).toEqual(['notrim', 7, cbsConditions])
+        expect(calls.markdown[0].slice(2)).toEqual(['notrim', 7, cbsConditions, 'bypass'])
     })
 
     test('a failing display parse falls back to the source and is recorded like a completed row', async () => {

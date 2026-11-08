@@ -102,7 +102,7 @@
 
     let shouldRenderRawStreaming = $derived(renderRawStreaming && !translated && !retranslate)
 
-    const markParsing = async (data: string, charArg: string | simpleCharacterArgument, chatID: number, requestedRevision: number, deferTranslation: boolean, tries?:number) => {
+    const markParsing = async (data: string, charArg: string | simpleCharacterArgument, chatID: number, requestedRevision: number, deferTranslation: boolean, scriptCache: 'use' | 'bypass', tries?:number) => {
         // track 'translated' and 'retranslate' state
         translated;
         retranslate;
@@ -111,7 +111,7 @@
             if(deferTranslation){
                 // No decision, no cache lookup and no `lastCharArg`/`lastChatId` write: the instance mounted at the stream
                 // end makes the decision once and translates once.
-                return await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition())
+                return await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition(), scriptCache)
             }
             if((!isEqual(lastCharArg, charArg)) || (chatID !== lastChatId)){
                 lastCharArg = charArg
@@ -130,7 +130,7 @@
                                 if(destroyed){
                                     return
                                 }
-                                cache = await getLLMCache(await ParseMarkdown(data, charArg, !DBState.db.legacyTranslation ? 'pretranslate' : mode, chatID, getCbsCondition()))
+                                cache = await getLLMCache(await ParseMarkdown(data, charArg, !DBState.db.legacyTranslation ? 'pretranslate' : mode, chatID, getCbsCondition(), scriptCache))
                             }
 
                             translateText = cache !== null
@@ -163,7 +163,7 @@
                     translating = true
                     data = await translateHTML(data, false, charArg, chatID, retranslate)
                     translating = false
-                    const marked = await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition())
+                    const marked = await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition(), scriptCache)
                     lastCharArg = charArg
                     transResult = marked
                 }
@@ -174,7 +174,7 @@
                             return
                         }
                     }
-                    const marked = await ParseMarkdown(data, charArg, 'pretranslate', chatID, getCbsCondition())
+                    const marked = await ParseMarkdown(data, charArg, 'pretranslate', chatID, getCbsCondition(), scriptCache)
                     translating = true
                     const translated = await postTranslationParse(await translateHTML(marked, false, charArg, chatID, retranslate))
                     translating = false
@@ -188,7 +188,7 @@
                             return
                         }
                     }
-                    const marked = await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition())
+                    const marked = await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition(), scriptCache)
                     translating = true
                     const translated = await translateHTML(marked, false, charArg, chatID, retranslate)
                     translating = false
@@ -203,7 +203,7 @@
                 return transResult
             }
             else{
-                const marked = await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition())
+                const marked = await ParseMarkdown(data, charArg, mode, chatID, getCbsCondition(), scriptCache)
                 lastCharArg = charArg
                 return marked
             }   
@@ -218,7 +218,7 @@
                 alertError(wrapped)
                 return data
             }
-            return await markParsing(data, charArg, chatID, requestedRevision, deferTranslation, (tries ?? 0) + 1)
+            return await markParsing(data, charArg, chatID, requestedRevision, deferTranslation, scriptCache, (tries ?? 0) + 1)
         }
         finally{
             lastRenderedRevision = requestedRevision
@@ -361,7 +361,7 @@
             shown,
             lookup: seen,
         })
-        currentRun = markParsing(data, charArg, chatID, revision, deferTranslation)
+        currentRun = markParsing(data, charArg, chatID, revision, deferTranslation, streamingTail ? 'bypass' : 'use')
         return currentRun
     }
 

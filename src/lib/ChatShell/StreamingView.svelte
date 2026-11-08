@@ -2,6 +2,7 @@
     import { onDestroy, untrack } from 'svelte'
     import { splitStreamingText, renderOpenParagraphSource, openThoughtsWordCount, createToSafeHtml, type StreamingParseContext } from '../../ts/chatShell/streamingSafe'
     import { createStreamCadence } from '../../ts/chatShell/streamCadence'
+    import { lowPowerMarked } from '../../ts/chatShell/lowPower'
     import { yieldToEventLoop } from '../../ts/chatShell/yieldToEventLoop'
     import { language } from '../../lang'
 
@@ -12,7 +13,8 @@
         parseContext?: StreamingParseContext
     }
     let { text, modelShortName = '', character = null, parseContext = {} }: Props = $props()
-    const cadence = createStreamCadence()
+    // Read once per view: the view mounts when a stream starts, so a marker set mid-stream applies from the next stream.
+    const cadence = createStreamCadence(lowPowerMarked())
     let finished = $state<{ source: string, html: string }[]>([])
     let openHtml = $state('')
     let thinkingWords = $state<number | null>(null)
