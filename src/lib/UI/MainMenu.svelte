@@ -13,6 +13,28 @@
     import Title from "./Title.svelte";
     import { pageStorageModeStore } from "src/ts/storage/pageStorageMode";
     import { utilityOpen, utilityVisible } from "../Utility/utilityGate";
+    import type { Snippet } from "svelte";
+    import { get } from "svelte/store";
+    import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
+
+    interface Props {
+      // Rendered under the version line while the Realm full view is closed.
+      header?: Snippet;
+    }
+
+    let { header }: Props = $props();
+
+    // Back closes the Realm full view, as its own Back arrow does. Registered once; the thunks read
+    // the store at call time, so the effect reads no reactive state and never re-registers.
+    $effect(() =>
+      registerBackHandler(
+        backCloseHandler({
+          isOpen: () => get(OpenRealmStore),
+          snapshot: () => get(OpenRealmStore),
+          close: () => OpenRealmStore.set(false),
+        }),
+      ),
+    );
 
     // Discriminated on `kind` rather than a bare optional `href`, so a
     // disclosure entry can never also carry a direct-navigate href and vice
@@ -248,6 +270,9 @@
     {#if !$OpenRealmStore}
       <Title />
       <h3 class="text-textcolor2 mt-1">{language.homeVersion} {getVersionString()}</h3>
+      {#if header}
+        {@render header()}
+      {/if}
     {/if}
     <div class="w-full flex p-4 flex-col text-textcolor max-w-4xl">
       {#if !$OpenRealmStore}

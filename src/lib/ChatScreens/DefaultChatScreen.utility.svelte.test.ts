@@ -7,7 +7,7 @@
  *
  * REAL: `DefaultChatScreen.svelte`, `utilityGate.ts`, the page-mode store. MOCKED: the desktop-transport probe (so a
  * non-desktop page can be simulated) and everything else `DefaultChatScreen` imports, as in
- * `DefaultChatScreen.chatPanel.svelte.test.ts`; `MainMenu` and `UtilityScreen` are marker stubs.
+ * `DefaultChatScreen.chatPanel.svelte.test.ts`; the Home shell and `UtilityScreen` are marker stubs.
  */
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { writable } from 'svelte/store'
@@ -227,7 +227,7 @@ vi.mock('./Suggestion.svelte', () => ({
 vi.mock('../Playground/PlaygroundMenu.svelte', () => ({
     default: (_anchor: unknown) => {},
 }))
-vi.mock('../UI/MainMenu.svelte', () => ({
+vi.mock('../UI/Home/HomeShell.svelte', () => ({
     default: (anchor: Text) => {
         anchor.data = 'main-menu-stub'
     },
