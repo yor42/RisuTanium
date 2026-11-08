@@ -62,6 +62,13 @@ function keys(target: HTMLElement): string[] {
     return [...target.querySelectorAll<HTMLButtonElement>('button')].map((element) => element.dataset.bootKey ?? '')
 }
 
+/** Dispatches a click whose event time is `stamp`, the way a tap queued before the screen appeared carries an earlier time. */
+function tapStamped(element: HTMLElement, stamp: number): void {
+    const tap = new MouseEvent('click', { bubbles: true, cancelable: true })
+    Object.defineProperty(tap, 'timeStamp', { value: stamp })
+    element.dispatchEvent(tap)
+}
+
 async function settled(promise: Promise<unknown>): Promise<'pending' | 'resolved'> {
     return Promise.race([promise.then(() => 'resolved' as const), new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 20))])
 }
@@ -108,6 +115,21 @@ describe('the saved versions', () => {
         flushSync()
         expect(getBootScreen()?.answered).toBe(true)
         expect([...target.querySelectorAll('button')].every((element) => element.disabled)).toBe(true)
+    })
+
+    test('a version pressed with an event time before the screen appeared is discarded after the window; a later press answers', async () => {
+        const target = mountScreen()
+        const answer = askBootScreen(offers())
+        flushSync()
+        const shownAt = getBootScreen()!.shownAt
+        await afterGuard()
+
+        tapStamped(button(target, pickButtonKey(VERSIONS[1])), shownAt - 1)
+        expect(await settled(answer)).toBe('pending')
+        expect(getBootScreen()?.answered).toBe(false)
+
+        tapStamped(button(target, pickButtonKey(VERSIONS[1])), shownAt + 500)
+        await expect(answer).resolves.toBe(pickButtonKey(VERSIONS[1]))
     })
 
     test('a double press on a version answers once', async () => {

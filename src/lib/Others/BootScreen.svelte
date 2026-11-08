@@ -55,7 +55,7 @@
                             data-boot-key={button.key}
                             class="px-4 py-2 rounded-md border border-darkborderc bg-darkbutton hover:bg-selected disabled:opacity-50"
                             disabled={view.answered}
-                            onclick={() => pressBootButton(button.key)}
+                            onclick={(event) => pressBootButton(button.key, event.timeStamp)}
                         >{button.label}</button>
                     {/each}
                 </div>
