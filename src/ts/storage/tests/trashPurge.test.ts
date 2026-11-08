@@ -1,11 +1,12 @@
 /**
  * The trash purge rule (`src/ts/storage/trashPurge.ts`).
  *
- * Compatibility guard: `isTrashPurgeDue` must answer exactly like upstream's
- * startup purge expression in `checkNewFormat`, for every saved `trashTime`
- * value, odd ones included, so a `.bin` moved between the two purges the same
- * characters. That expression is copied below as the oracle, which is what
- * pins the behaviour.
+ * Compatibility guard: `isTrashPurgeDue` has the same expression shape as
+ * upstream's startup purge in `checkNewFormat` (truthy `trashTime`, strict
+ * comparison), so odd saved values behave as upstream's expression does with
+ * this fork's age. The age differs on purpose: upstream purges at 3 days, this
+ * fork at 30, so a character trashed between 3 and 30 days ago is the accepted
+ * divergence window. Upstream's expression is copied below as the oracle.
  */
 import { describe, test, expect } from 'vitest'
 import { TRASH_PURGE_AGE_MS, isTrashPurgeDue } from '../trashPurge'
@@ -17,17 +18,41 @@ function asSaved(value: object | string | number | boolean | null | undefined): 
     return value as SavedTrashTime
 }
 
-// The purge's original inline expression.
-function originalPurgeDue(trashTime: SavedTrashTime, now: number): boolean {
+const DAY = 24 * 60 * 60 * 1000
+
+// Upstream's purge expression with its own literal 3-day age.
+function upstreamPurgeDue(trashTime: SavedTrashTime, now: number): boolean {
     const targetTrashTime = trashTime ? trashTime + 1000 * 60 * 60 * 24 * 3 : 0
+    return !!(trashTime && targetTrashTime < now)
+}
+
+// Upstream's expression with the age as a parameter.
+function sameShapePurgeDue(trashTime: SavedTrashTime, now: number, ageMs: number): boolean {
+    const targetTrashTime = trashTime ? trashTime + ageMs : 0
     return !!(trashTime && targetTrashTime < now)
 }
 
 const NOW = 1_800_000_000_000
 
 describe('isTrashPurgeDue', () => {
-    test('compatibility guard: the purge age is three days', () => {
-        expect(TRASH_PURGE_AGE_MS).toBe(259_200_000)
+    test('the purge age is 30 days', () => {
+        expect(TRASH_PURGE_AGE_MS).toBe(2_592_000_000)
+    })
+
+    test('literal days: 4 and 29 days are kept, 31 days is purged', () => {
+        expect(isTrashPurgeDue(NOW - 4 * DAY, NOW)).toBe(false)
+        expect(isTrashPurgeDue(NOW - 29 * DAY, NOW)).toBe(false)
+        expect(isTrashPurgeDue(NOW - 31 * DAY, NOW)).toBe(true)
+    })
+
+    test('literal days: exactly 30 days is kept, one millisecond more is purged', () => {
+        expect(isTrashPurgeDue(NOW - 30 * DAY, NOW)).toBe(false)
+        expect(isTrashPurgeDue(NOW - 30 * DAY - 1, NOW)).toBe(true)
+    })
+
+    test('diagnostic: 4 days old is purged by upstream and kept by this fork', () => {
+        expect(upstreamPurgeDue(NOW - 4 * DAY, NOW)).toBe(true)
+        expect(isTrashPurgeDue(NOW - 4 * DAY, NOW)).toBe(false)
     })
 
     test('compatibility guard: the boundary is strict', () => {
@@ -64,8 +89,8 @@ describe('isTrashPurgeDue', () => {
         ['boundary - 1 ms', NOW - TRASH_PURGE_AGE_MS - 1],
     ]
     for (const [name, value] of odd) {
-        test(`compatibility guard: ${name} matches the original expression`, () => {
-            expect(isTrashPurgeDue(value, NOW)).toBe(originalPurgeDue(value, NOW))
+        test(`compatibility guard: ${name} matches upstream's expression at this fork's age`, () => {
+            expect(isTrashPurgeDue(value, NOW)).toBe(sameShapePurgeDue(value, NOW, TRASH_PURGE_AGE_MS))
         })
     }
 })

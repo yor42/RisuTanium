@@ -1537,7 +1537,7 @@ export const languageSpanish = {
     "deleteFolderTrashConfirm": (name: string, count: number) => (count === 1
         ? `¿Mover a la papelera el 1 personaje de la carpeta "${name}"?`
         : `¿Mover a la papelera los ${count} personajes de la carpeta "${name}"?`)
-        + ` Un personaje restaurado vuelve fuera de cualquier carpeta. La papelera se vacía automáticamente después de 3 días.`,
+        + ` Un personaje restaurado vuelve fuera de cualquier carpeta. Los personajes en la papelera se conservan 30 días en esta app; otras versiones pueden eliminarlos antes.`,
     "fullWordMatching": "Coincidencia Completa de Palabras",
     "fullWordAsciiBoundary": "Límites de palabra al estilo SillyTavern",
     "botSettingAtStart": "Menú del Bot al Iniciar",
@@ -1797,7 +1797,7 @@ export const languageSpanish = {
     "grid": "Cuadrícula",
     "list": "Lista",
     "trash": "Papelera",
-    "trashDesc": "Los personajes eliminados se mueven a la papelera. Puedes restaurarlos o eliminarlos permanentemente. Los personajes eliminados se purgan automáticamente después de 3 días.",
+    "trashDesc": "Los personajes eliminados se mueven a la papelera. Puedes restaurarlos o eliminarlos permanentemente. Los personajes eliminados se conservan 30 días en esta app y después se purgan automáticamente; otras versiones pueden eliminarlos antes.",
     "shareExport": "Compartir/Exportar",
     "risupresetDesc": "El formato Risupreset es un formato específicamente diseñado para presets de RisuAI upstream.",
     "risuMDesc": "El formato RisuM es un formato diseñado específicamente para módulos de RisuAI upstream.",
@@ -2908,7 +2908,10 @@ export const languageSpanish = {
         editGroup: "Agrupar en carpeta nueva",
         editSelectedCount: (count: number) => count === 1 ? `1 seleccionado` : `${count} seleccionados`,
         editFolderToggle: "Abrir o cerrar la carpeta",
-        editTrashConfirm: (count: number) => count === 1 ? `¿Mover 1 personaje a la papelera?` : `¿Mover ${count} personajes a la papelera?`,
+        editTrashConfirm: (count: number) => (count === 1
+            ? `¿Mover 1 personaje a la papelera?`
+            : `¿Mover ${count} personajes a la papelera?`)
+            + ` Un personaje restaurado vuelve fuera de cualquier carpeta. Los personajes en la papelera se conservan 30 días en esta app; otras versiones pueden eliminarlos antes.`,
         editMoved: (n: number) => n === 1 ? `1 elemento movido` : `${n} elementos movidos`,
         editFolderRemoveConfirm: (names: string[]) => {
             const q = names.map((n) => `“${n}”`)

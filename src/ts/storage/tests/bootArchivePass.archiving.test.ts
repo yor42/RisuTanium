@@ -225,7 +225,7 @@ describe('boot archive pass: archiving eligible characters', () => {
         useHost('opfs')
         const world = await worldFor(kit, 'opfs', baseTree([
             fullCharacter('a', 'A'),
-            // trashTime 123 is long past the three-day purge, so the pass leaves it for the purge.
+            // trashTime 123 is long past the 30-day purge, so the pass leaves it for the purge.
             fullCharacter('t', 'Trashed', { trashTime: 123 }),
             fullCharacter('b', 'B'),
             fullCharacter('§playground', 'Playground'),

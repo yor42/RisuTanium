@@ -271,6 +271,7 @@ const { encodeRisuSaveLegacy } = await import('src/ts/storage/risuSave')
 const DAY = 24 * 60 * 60 * 1000
 const OLD = 'aaaaaaaa-0000-4000-8000-000000000001'
 const RECENT = 'aaaaaaaa-0000-4000-8000-000000000002'
+const MID = 'aaaaaaaa-0000-4000-8000-000000000003'
 
 const token = (id: string) => `{{inlayed::${id}}}`
 
@@ -352,7 +353,8 @@ describe('the boot purge of long-trashed characters', () => {
         state.items.set('database/database.bin', encodeRisuSaveLegacy({
             ...baseDb(),
             characters: [
-                trashedCharacter('old', 4 * DAY, [token(OLD), token(RECENT)]),
+                trashedCharacter('old', 31 * DAY, [token(OLD), token(RECENT)]),
+                trashedCharacter('mid', 4 * DAY, [token(MID)]),
                 trashedCharacter('recent', DAY / 24, [token(RECENT)]),
             ],
         }))
@@ -360,7 +362,10 @@ describe('the boot purge of long-trashed characters', () => {
         await loadData()
 
         await vi.waitFor(() => { expect(state.removed).toEqual([OLD]) }, { timeout: 4000, interval: 25 })
+        const { getInlayCleanupState } = await import('src/ts/process/files/inlayCleanup')
+        await vi.waitFor(() => { expect(getInlayCleanupState()).toEqual({ pending: 0, running: false }) }, { timeout: 4000, interval: 25 })
+        expect(state.removed).toEqual([OLD])
         const characters = state.db.characters as Array<{ chaId: string }>
-        expect(characters.map((c) => c.chaId)).toEqual(['recent'])
+        expect(characters.map((c) => c.chaId)).toEqual(['mid', 'recent'])
     })
 })

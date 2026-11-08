@@ -1668,7 +1668,7 @@ export const languageJapanese = {
     deleteFolderTrashConfirm: (name: string, count: number) => (count === 1
         ? `フォルダ「${name}」内の1体のキャラクターをゴミ箱に移動しますか？`
         : `フォルダ「${name}」内の${count}体のキャラクターをゴミ箱に移動しますか？`)
-        + ` 復元されたキャラクターはフォルダの外に戻ります。ゴミ箱は3日後に自動的に空になります。`,
+        + ` 復元されたキャラクターはフォルダの外に戻ります。ゴミ箱内のキャラクターはこのアプリで30日間保管されます。他のバージョンではより早く削除される場合があります。`,
     fullWordMatching: "完全単語一致",
     fullWordAsciiBoundary: "SillyTavern方式の単語境界",
     botSettingAtStart: "起動時にボットメニューを表示",
@@ -1928,7 +1928,7 @@ export const languageJapanese = {
     grid: "グリッド",
     list: "リスト",
     trash: "ゴミ箱",
-    trashDesc: "削除されたキャラクターはゴミ箱に移動されます。復元するか、完全に削除できます。削除されたキャラクターは3日後に自動的に完全削除されます。",
+    trashDesc: "削除されたキャラクターはゴミ箱に移動されます。復元するか、完全に削除できます。削除されたキャラクターはこのアプリで30日間保管された後、自動的に完全削除されます。他のバージョンではより早く削除される場合があります。",
     shareExport: "共有/エクスポート",
     risupresetDesc: "Risupreset形式は、アップストリームのRisuAIのプリセット向けに特別に設計されたフォーマットです。",
     risuMDesc: "RisuM形式は、アップストリームのRisuAIのモジュール向けに特別に設計されたフォーマットです。",
@@ -3056,7 +3056,7 @@ export const languageJapanese = {
         editTrashConfirm: (count: number) => (count === 1
             ? `1体のキャラクターをゴミ箱に移動しますか？`
             : `${count}体のキャラクターをゴミ箱に移動しますか？`)
-            + ` 復元されたキャラクターはフォルダの外に戻ります。ゴミ箱は3日後に自動的に空になります。`,
+            + ` 復元されたキャラクターはフォルダの外に戻ります。ゴミ箱内のキャラクターはこのアプリで30日間保管されます。他のバージョンではより早く削除される場合があります。`,
         editMoved: (count: number) => count === 1 ? `1件の項目を移動しました` : `${count}件の項目を移動しました`,
         editFolderRemoveConfirm: (names: string[]) => {
             if (names.length <= 1) {

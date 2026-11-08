@@ -417,6 +417,15 @@ describe('isArchivableCharacter', () => {
         expect(isArchivableCharacter(fullGroup({ trashTime: 1_000 }), NOW)).toBe(false)
     })
 
+    test('regression reproducer: a character or group trashed 4 days ago is archivable, 31 days ago is not', () => {
+        const DAY = 24 * 60 * 60 * 1000
+
+        expect(isArchivableCharacter(fullCharacter({ trashTime: NOW - 4 * DAY }), NOW)).toBe(true)
+        expect(isArchivableCharacter(fullGroup({ trashTime: NOW - 4 * DAY }), NOW)).toBe(true)
+        expect(isArchivableCharacter(fullCharacter({ trashTime: NOW - 31 * DAY }), NOW)).toBe(false)
+        expect(isArchivableCharacter(fullGroup({ trashTime: NOW - 31 * DAY }), NOW)).toBe(false)
+    })
+
     test('guard: a full untrashed character is archivable', () => {
         expect(isArchivableCharacter(fullCharacter(), NOW)).toBe(true)
     })

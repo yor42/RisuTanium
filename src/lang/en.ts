@@ -1667,7 +1667,7 @@ export const languageEnglish = {
     deleteFolderTrashConfirm: (name: string, count: number) => (count === 1
         ? `Move the 1 character in the folder "${name}" to the trash?`
         : `Move the ${count} characters in the folder "${name}" to the trash?`)
-        + ` A restored character returns outside any folder. The trash is emptied automatically after 3 days.`,
+        + ` A restored character returns outside any folder. Trashed characters are kept 30 days in this app; other versions may remove them sooner.`,
     fullWordMatching: "Full Word Matching",
     fullWordAsciiBoundary: "SillyTavern-style Word Boundaries",
     botSettingAtStart: "Bot Menu when Launch",
@@ -1927,7 +1927,7 @@ export const languageEnglish = {
     grid: "Grid",
     list: "List",
     trash: "Trash",
-    trashDesc: "Deleted characters are moved to trash. You can restore or delete them permanently. Deleted characters are automatically purged after 3 days.",
+    trashDesc: "Deleted characters are moved to trash. You can restore or delete them permanently. Deleted characters are kept 30 days in this app, then purged automatically; other versions may remove them sooner.",
     shareExport: "Share/Export",
     risupresetDesc: "Risupreset format is a format specifically designed for upstream RisuAI presets.",
     risuMDesc: "RisuM format is a format that is specifically designed for upstream RisuAI modules.",
@@ -3056,7 +3056,7 @@ export const languageEnglish = {
         editTrashConfirm: (count: number) => (count === 1
             ? `Move 1 character to the trash?`
             : `Move ${count} characters to the trash?`)
-            + ` A restored character returns outside any folder. The trash is emptied automatically after 3 days.`,
+            + ` A restored character returns outside any folder. Trashed characters are kept 30 days in this app; other versions may remove them sooner.`,
         editMoved: (count: number) => count === 1 ? `Moved 1 item` : `Moved ${count} items`,
         editFolderRemoveConfirm: (names: string[]) => {
             if (names.length <= 1) {
