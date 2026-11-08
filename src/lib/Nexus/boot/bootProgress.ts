@@ -1,5 +1,7 @@
-// What the startup screen shows. Boot is split into seven steps that exist on every platform, so the bar
-// never jumps backwards and never pretends to know how long a step takes: it shows which step is running
+// What the startup screen shows. Boot is split into seven steps. A platform that has no work for a step skips
+// it (the web build has no `app` step, store2 paths skip the save and library steps), but the step only moves
+// forward on every platform's text order, so the bar never jumps backwards and never pretends to know how
+// long a step takes: it shows which step is running
 // and, when a step reports counts, how far through that step it is.
 import type { BrandStatus } from '../brand/brandStatus'
 
@@ -108,7 +110,7 @@ const legacyText: readonly (readonly [string, BootStep, Partial<BootProgress>?])
     ['Decoding Local Save File...', 'library'],
     ['Reading Backup Files...', 'library', { recovering: true, detail: recoveringLabel }],
     ['Checking Update...', 'app'],
-    ['Checking Service Worker...', 'app'],
+    ['Checking Service Worker...', 'storage'],
     ['Listing Stored Files...', 'files'],
     ['Loading Plugins...', 'plugins'],
     ['Checking For Format Update...', 'finish'],
@@ -131,6 +133,23 @@ export function bootProgressFromLegacyText(text: string, previous: BootStep = 's
         return { step: 'library', state: 'running', detail: text, count: { done: Math.max(done - 1, 0), total } }
     }
     return { step: previous, state: 'running' }
+}
+
+export interface LegacyBootTracker {
+    /** Maps the text and remembers its step, so text that is not known keeps the step before it. */
+    read(text: string): BootProgress
+}
+
+/** One tracker per screen: it starts at the first step and holds the latest step it has read. */
+export function createLegacyBootTracker(): LegacyBootTracker {
+    let last: BootStep = 'storage'
+    return {
+        read(text) {
+            const progress = bootProgressFromLegacyText(text, last)
+            last = progress.step
+            return progress
+        },
+    }
 }
 
 /**
