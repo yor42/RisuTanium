@@ -52,6 +52,7 @@ import { DBState, SettingsMenuIndex, selIdState, settingsOpen } from '../../ts/s
 import { setSettingsShellEnabled } from '../../ts/settingsShell/settingsShellSwitch.svelte'
 import { installSettingsOrigin, resetSettingsOriginForTests } from '../../ts/settingsShell/settingsOrigin'
 import { setShellBackHandler, settingsShellEscape } from '../../ts/settingsShell/settingsNavigation'
+import { openSearch, resetSearch, settingsSearchState } from '../../ts/settingsShell/settingsSearchState.svelte'
 import { openSettingsForFix, resetSettingsRouteForTests } from '../Setting/settingsRoute'
 import SettingsShell from './SettingsShell.svelte'
 import Host from './SettingsShell.testHost.svelte'
@@ -113,6 +114,7 @@ beforeEach(() => {
 afterEach(() => {
     for (const component of mounted.splice(0)) unmount(component)
     document.body.replaceChildren()
+    resetSearch()
     resetBackHandlersForTests()
     resetSettingsRouteForTests()
     resetSettingsOriginForTests()
@@ -170,6 +172,46 @@ describe('T7 Android Back through dispatchBack', () => {
         expect(pressBack()).toBe(true)
         expect(showToast).toHaveBeenCalledTimes(1)
         unmount(shell)
+    })
+})
+
+describe('T-A7 Back with the search open', () => {
+    test('Android Back closes only the search, then follows page, index and close', () => {
+        SettingsMenuIndex.set(1)
+        settingsOpen.set(true)
+        mountHost()
+        openSearch()
+        flushSync()
+        expect(pressBack()).toBe(true)
+        expect(settingsSearchState.open).toBe(false)
+        expect(get(settingsOpen)).toBe(true)
+        expect(get(SettingsMenuIndex)).toBe(1)
+        expect(pressBack()).toBe(true)
+        expect(get(SettingsMenuIndex)).toBe(-1)
+        expect(get(settingsOpen)).toBe(true)
+        expect(pressBack()).toBe(true)
+        expect(get(settingsOpen)).toBe(false)
+        expect(showToast).not.toHaveBeenCalled()
+    })
+
+    test('Escape and the header Back close the search first and keep Settings open', () => {
+        SettingsMenuIndex.set(1)
+        settingsOpen.set(true)
+        const { target } = mountHost()
+        openSearch()
+        flushSync()
+        expect(settingsShellEscape()).toBe(true)
+        flushSync()
+        expect(settingsSearchState.open).toBe(false)
+        expect(get(settingsOpen)).toBe(true)
+        expect(get(SettingsMenuIndex)).toBe(1)
+        openSearch()
+        flushSync()
+        backButton(target).click()
+        flushSync()
+        expect(settingsSearchState.open).toBe(false)
+        expect(get(settingsOpen)).toBe(true)
+        expect(get(SettingsMenuIndex)).toBe(1)
     })
 })
 

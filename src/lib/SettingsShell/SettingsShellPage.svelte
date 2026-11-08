@@ -3,12 +3,12 @@
     import { SparkleIcon } from '@lucide/svelte'
     import { language } from '../../lang'
     import { additionalSettingsMenu, DBState, easyPanelStore, SettingsMenuIndex } from '../../ts/stores.svelte'
+    import { arrivalInFlight } from '../../ts/settingsShell/settingsArrival'
     import { pageEntry, pageForIndex, settingsLabel } from '../../ts/settingsShell/settingsPages'
     import PluginDefinedIcon from '../Others/PluginDefinedIcon.svelte'
     import UserSettings from '../Setting/Pages/UserSettings.svelte'
     import BotSettings from '../Setting/Pages/BotSettings.svelte'
     import OtherBotSettings from '../Setting/Pages/OtherBotSettings.svelte'
-    import DisplaySettings from '../Setting/Pages/DisplaySettings.svelte'
     import PluginSettings from '../Setting/Pages/PluginSettings.svelte'
     import AdvancedSettings from '../Setting/Pages/AdvancedSettings.svelte'
     import LanguageSettings from '../Setting/Pages/LanguageSettings.svelte'
@@ -17,6 +17,7 @@
     import PromptSettings from '../Setting/Pages/PromptSettings.svelte'
     import ModuleSettings from '../Setting/Pages/Module/ModuleSettings.svelte'
     import HotkeySettings from '../Setting/Pages/HotkeySettings.svelte'
+    import DisplayShellPage from './DisplayShellPage.svelte'
     import ModeVisibilityGroup from './ModeVisibilityGroup.svelte'
     import ModeVisibilityConfirm from './ModeVisibilityConfirm.svelte'
     import { showAllModes, type HomeMode } from '../../ts/storage/homeModes'
@@ -58,16 +59,25 @@
         if (scroller && shownIndex !== null) scrollMemory.set(shownIndex, scroller.scrollTop)
     })
 
+    // A search arrival lands at the top and scrolls to its row itself, so the remembered position yields to it.
     $effect(() => {
         const target = index
         const column = scroller
         if (!column) return
+        if (arrivalInFlight(target)) return
         void tick().then(() => { column.scrollTop = scrollMemory.get(target) ?? 0 })
     })
 
     /** Moves focus to the page heading, where a phone drill-in lands. */
     export function focusHeading(): void {
         heading?.focus()
+    }
+
+    let displayPage = $state<ReturnType<typeof DisplayShellPage>>()
+
+    /** Opens whatever hides the row and returns its element; null when the shown view has no such row. */
+    export async function reveal(rowId: string): Promise<HTMLElement | null> {
+        return displayPage ? displayPage.reveal(rowId) : null
     }
 </script>
 
@@ -105,7 +115,7 @@
                     <OtherBotSettings />
                 {:else if index === 3}
                     <ModeVisibilityGroup onaskshowall={(trigger, hidden) => { showAllAsk = { trigger, hidden } }} />
-                    <DisplaySettings />
+                    <DisplayShellPage bind:this={displayPage} {phone} />
                 {:else if index === 4}
                     <PluginSettings />
                 {:else if index === 6}

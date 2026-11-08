@@ -3,6 +3,7 @@ import { isReturnToChat } from '../../lib/Setting/settingsRoute'
 import type { BackHandler } from '../backHandlers'
 import { SettingsMenuIndex, settingsOpen } from '../stores.svelte'
 import { firstIndexOf, isSettingsPageId, type SettingsPageId } from './settingsPages'
+import { closeSearch, settingsSearchState } from './settingsSearchState.svelte'
 
 const LAST_PAGE_KEY = 'risuSettings.lastPage'
 
@@ -41,16 +42,28 @@ export function writeLastPage(page: SettingsPageId): void {
 }
 
 /**
- * The one close step of the shell, shared by the header Back, Android Back and Escape. After the Fix route
- * Back closes outright; on a phone a page goes up to the index; every other case closes Settings. The width is
- * read at call time.
+ * The one close step of the shell, shared by the header Back, Android Back and Escape. An open search closes
+ * first and nothing else changes. Then, after the Fix route Back closes outright; on a phone a page goes up to
+ * the index; every other case closes Settings. The width is read at call time.
  */
 export function settingsShellBackStep(): void {
+    if (settingsSearchState.open) {
+        closeSearch()
+        return
+    }
     if (isReturnToChat() || !isPhoneWidth(window.innerWidth) || get(SettingsMenuIndex) === -1) {
         settingsOpen.set(false)
         return
     }
     SettingsMenuIndex.set(-1)
+}
+
+/**
+ * What the shell compares around a Back step to learn whether the step changed anything: Settings open, the page
+ * index and the search open. Closing the search alone counts as a change.
+ */
+export function settingsShellBackSnapshot(): string {
+    return `${get(settingsOpen)}|${get(SettingsMenuIndex)}|${settingsSearchState.open}`
 }
 
 let shellBackHandler: BackHandler | null = null

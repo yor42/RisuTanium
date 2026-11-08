@@ -5,12 +5,19 @@
         changeColorScheme,
         colorSchemeList,
         colorSchemePresets,
+        defaultColorScheme,
         type ColorScheme,
     } from 'src/ts/gui/colorscheme';
 
     const formatSchemeName = (name: string) => {
         if (name === 'custom') {
             return language.optCustom;
+        }
+
+        const names: Readonly<Record<string, string | undefined>> = language.settingsShellSchemeNames;
+        const named = names[name];
+        if (named) {
+            return named;
         }
 
         return name
@@ -64,7 +71,7 @@
             class="palette-wheel relative h-14 w-14 overflow-hidden rounded-full shadow-sm"
             aria-hidden="true"
         >
-            <span class="palette-wheel-fill" style={paletteStyle(DBState.db.customColorScheme)}></span>
+            <span class="palette-wheel-fill" style={paletteStyle(DBState.db.customColorScheme ?? defaultColorScheme)}></span>
         </span>
         <span class="w-full truncate text-sm text-textcolor">{language.optCustom}</span>
     </button>
