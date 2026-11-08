@@ -1601,23 +1601,29 @@ export async function addCharacter(arg:{
         return
     }
     reseter();
+    let added: character | groupChat | undefined
     switch(r){
         case 'createfromScratch':
-            createNewCharacter()
+            added = DBState.db.characters[createNewCharacter()]
             break
         case 'createGroup':
-            createNewGroup()
+            added = DBState.db.characters[createNewGroup()]
             break
         case 'importCharacter':
-            await importCharacter()
+            added = (await importCharacter()).at(-1)
             break
         default:
             return
     }
-    let db = getDatabase()
-    if(db.characters[db.characters.length-1]){
-        changeChar(db.characters.length-1)
+    //Only a slot this call added is selected, found again by identity because the list can change during an import; nothing added leaves the selection as it was.
+    if(!added){
+        return
     }
+    const index = DBState.db.characters.indexOf(added)
+    if(index === -1){
+        return
+    }
+    await changeChar(index)
 }
 
 /**

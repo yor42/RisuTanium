@@ -103,11 +103,15 @@ async function addImportedCharacter(char:character, run:ImportArchiveRun|null):P
     return DBState.db.characters.push(char) - 1
 }
 
-//Attempts every file through `runImportBatch`; a character that was added gets its order checked.
-async function importFiles(items:ImportItem[]):Promise<void> {
+//Attempts every file through `runImportBatch`; a character that was added gets its order checked. Pushes the slots that were added onto `added`, in file order, each read when its file was added, and returns it.
+async function importFiles(items:ImportItem[], added:(character|groupChat)[] = []):Promise<(character|groupChat)[]> {
     await runImportBatch(items, {
         afterImported: (outcome) => {
             if(outcome.kind === 'imported' && outcome.index !== null){
+                const slot = DBState.db.characters[outcome.index]
+                if(slot){
+                    added.push(slot)
+                }
                 try {
                     checkCharOrder()
                 } catch (error) {
@@ -116,6 +120,7 @@ async function importFiles(items:ImportItem[]):Promise<void> {
             }
         }
     })
+    return added
 }
 
 //One entry of a multi-file import whose kind is decided by its name: a name that is not a card, preset or module, or a read that yields no data, is refused with a reason of its own; a read that throws is a failure.
@@ -216,11 +221,17 @@ async function importClassified(file:ClassifiedImport, data:File|ImportSource, r
     }
 }
 
-export async function importCharacter() {
+/**
+ * Picks files and imports them. Resolves to the slots it added, in file order, each read when its file was added;
+ * an archived import yields its archive placeholder. A cancelled or empty pick, and files that were all refused,
+ * declined or failed, yield an empty list. A throw after some files were added yields the slots collected so far.
+ */
+export async function importCharacter():Promise<(character|groupChat)[]> {
+    const added:(character|groupChat)[] = []
     try {
         const files = await selectFileByDom(["*"], 'multiple')
         if(!files || files.length === 0){
-            return
+            return added
         }
 
         const run = newImportArchiveRun()
@@ -230,11 +241,11 @@ export async function importCharacter() {
                 name: f.name,
                 data: f
             }, run)
-        })))
+        })), added)
     } catch (error) {
         alertError(error)
-        return null
     }
+    return added
 }
 
 type ImportProcessResult<T extends boolean> = T extends true ? character | number | null : number | null

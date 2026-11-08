@@ -235,6 +235,7 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 //#endregion
 
 import { importCharacter, importCharacterProcess, importOpenedFiles, importOpenedSources, isOpenedSourceImportable } from 'src/ts/characterCards'
+import { alertError } from 'src/ts/alert'
 import { importPreset } from 'src/ts/storage/database.svelte'
 import { open } from '@tauri-apps/plugin-fs'
 import { charxLimits } from 'src/ts/process/processzip'
@@ -387,6 +388,52 @@ describe('importCharacter with several files', () => {
         await pick([offSpec, charx('Good')])
         expect(names()).toEqual(['Old', 'Good'])
         expect(h.errors).toEqual([])
+    })
+})
+
+// ---------------------------------------------------------------------------------------------
+// The picker answers the slots it added, so a caller never has to guess them from the list tail
+// ---------------------------------------------------------------------------------------------
+
+describe('importCharacter result', () => {
+    test('two good files return their two slots, in file order', async () => {
+        h.picked = [charx('One'), png('Two')]
+        const result = await importCharacter()
+        expect(h.characters.length).toBe(2)
+        expect(result.length).toBe(2)
+        expect(result[0]).toBe(h.characters[0])
+        expect(result[1]).toBe(h.characters[1])
+    })
+
+    test('a good file followed by a refused file returns the good slot only', async () => {
+        h.picked = [charx('Good'), cutPng('Cut')]
+        const result = await importCharacter()
+        expect(h.characters.length).toBe(1)
+        expect(result.length).toBe(1)
+        expect(result[0]).toBe(h.characters[0])
+    })
+
+    test('a throw after two files were collected returns those two slots, the last collected one last', async () => {
+        //The summary of the refused third file is shown after both good files were collected; showing it throws once.
+        vi.mocked(alertError).mockImplementationOnce(() => { throw new Error('summary failed') })
+        h.picked = [charx('One'), png('Two'), cutPng('Cut')]
+        const result = await importCharacter()
+        expect(h.characters.length).toBe(2)
+        expect(result.length).toBe(2)
+        expect(result[0]).toBe(h.characters[0])
+        expect(result[result.length - 1]).toBe(h.characters[1])
+        expect(h.last).toBe('error:summary failed')
+    })
+
+    test('files that are all refused return an empty list', async () => {
+        h.picked = [cutPng('Cut'), textFile('notes.txt')]
+        expect(await importCharacter()).toEqual([])
+    })
+
+    test.each([['an empty pick', []], ['a cancelled pick', null]])('%s returns an empty list', async (_label, picked) => {
+        h.picked = picked as File[] | null
+        expect(await importCharacter()).toEqual([])
+        expect(h.characters).toEqual([])
     })
 })
 
