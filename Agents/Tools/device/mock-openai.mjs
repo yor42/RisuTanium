@@ -1,5 +1,9 @@
 // node mock-openai.mjs [--port <n>] [--delay-ms <n>] [--chunk-delay-ms <n>] [--fail-every <n>] [--seed <n>] [--log <path>] [--pid-file <path>]
+//                      [--reply-bytes <n>] [--chunk-bytes <n>]
 // A canned OpenAI-style chat endpoint for synthetic-device checks. Node built-ins only; bound to 127.0.0.1.
+// --reply-bytes N (N >= 12) answers every request with the same deterministic ASCII prose of exactly N bytes that starts with
+// REPLY_MARKER, with a blank line about every 600 bytes; --seed picks the first word. --chunk-bytes N splits the streamed content
+// into N-byte pieces instead of words. Neither flag changes any byte of the default output.
 // Endpoints: POST /v1/chat/completions (JSON, or SSE when the body has stream:true), GET /v1/models, GET /__ping,
 // OPTIONS preflight on any path. Every other method and path pair answers 404.
 // Invariants:
@@ -19,14 +23,17 @@ const CANNED = [
   'Nothing here depends on the request text. Only the reply marker identifies this answer.',
   'A short canned answer follows. It has several words so a stream arrives in several chunks.'
 ]
+// The sized reply is built from these words; the scene fixture's script patterns (make-chat-scene-fixture.mjs) match the first ten.
+const SIZED_WORDS = ['amber', 'birch', 'cedar', 'dune', 'elm', 'fern', 'glen', 'heath', 'iris', 'juniper', 'kelp', 'larch', 'moss', 'nettle', 'oak', 'pine']
+const SIZED_PARAGRAPH_BYTES = 600
 
 function usage(text) {
   console.error(text)
-  console.error('usage: node mock-openai.mjs [--port <n>] [--delay-ms <n>] [--chunk-delay-ms <n>] [--fail-every <n>] [--seed <n>] [--log <path>] [--pid-file <path>]')
+  console.error('usage: node mock-openai.mjs [--port <n>] [--delay-ms <n>] [--chunk-delay-ms <n>] [--fail-every <n>] [--seed <n>] [--log <path>] [--pid-file <path>] [--reply-bytes <n>] [--chunk-bytes <n>]')
   process.exit(1)
 }
 
-const options = { port: 6250, delayMs: 0, chunkDelayMs: 0, failEvery: 0, seed: 0, log: null, pidFile: null }
+const options = { port: 6250, delayMs: 0, chunkDelayMs: 0, failEvery: 0, seed: 0, log: null, pidFile: null, replyBytes: 0, chunkBytes: 0 }
 const argv = process.argv.slice(2)
 for (let i = 0; i < argv.length; i++) {
   const name = argv[i]
@@ -38,10 +45,24 @@ for (let i = 0; i < argv.length; i++) {
   else if (name === '--chunk-delay-ms' && wholeNumber) options.chunkDelayMs = number
   else if (name === '--fail-every' && wholeNumber) options.failEvery = number
   else if (name === '--seed' && wholeNumber) options.seed = number
+  else if (name === '--reply-bytes' && wholeNumber && number >= REPLY_MARKER.length) options.replyBytes = number
+  else if (name === '--chunk-bytes' && wholeNumber && number >= 1) options.chunkBytes = number
   else if (name === '--log' && value) options.log = value
   else if (name === '--pid-file' && value) options.pidFile = value
   else usage('bad argument ' + name + (value === undefined ? '' : ' ' + value))
 }
+
+// Exactly replyBytes ASCII bytes (the text is ASCII, so characters and bytes are the same), the same for every request.
+function sizedReply(bytes) {
+  let text = REPLY_MARKER
+  let sinceBreak = text.length
+  for (let i = options.seed; text.length < bytes; i++) {
+    const word = SIZED_WORDS[i % SIZED_WORDS.length]
+    if (sinceBreak >= SIZED_PARAGRAPH_BYTES) { text += '\n\n' + word; sinceBreak = word.length } else { text += ' ' + word; sinceBreak += 1 + word.length }
+  }
+  return text.slice(0, bytes)
+}
+const SIZED_REPLY = options.replyBytes > 0 ? sizedReply(options.replyBytes) : null
 
 function log(entry) {
   if (!options.log) return
@@ -57,7 +78,19 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 let chatCount = 0
 
 function replyFor(index) {
+  if (SIZED_REPLY !== null) return SIZED_REPLY
   return REPLY_MARKER + ' ' + CANNED[(options.seed + index) % CANNED.length]
+}
+
+// The streamed content pieces: N-byte slices with --chunk-bytes, otherwise one piece per word (the default).
+function contentPieces(text) {
+  if (options.chunkBytes > 0) {
+    const pieces = []
+    for (let at = 0; at < text.length; at += options.chunkBytes) pieces.push(text.slice(at, at + options.chunkBytes))
+    return pieces
+  }
+  const words = text.split(' ')
+  return words.map((word, position) => word + (position < words.length - 1 ? ' ' : ''))
 }
 
 function corsHeaders(request) {
@@ -97,12 +130,11 @@ function sendJson(request, response, status, value, entry) {
 }
 
 function sseEvents(index) {
-  const words = replyFor(index).split(' ')
   const base = { id: 'mock-' + index, object: 'chat.completion.chunk', created: 0, model: 'mock-model' }
   const events = [{ ...base, choices: [{ index: 0, delta: { role: 'assistant' } }] }]
-  words.forEach((word, position) => {
-    events.push({ ...base, choices: [{ index: 0, delta: { content: word + (position < words.length - 1 ? ' ' : '') } }] })
-  })
+  for (const piece of contentPieces(replyFor(index))) {
+    events.push({ ...base, choices: [{ index: 0, delta: { content: piece } }] })
+  }
   events.push({ ...base, choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })
   return events
 }

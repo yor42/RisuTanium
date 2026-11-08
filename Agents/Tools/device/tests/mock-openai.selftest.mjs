@@ -5,6 +5,7 @@
 // The SSE parser below is a copy of the data-line rule in getTranStream (src/ts/process/request/openAI/requests.ts); the real app
 // remains the authority against drift.
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { request as httpRequest } from 'node:http'
 import { connect } from 'node:net'
 import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs'
@@ -252,6 +253,56 @@ try {
   assert(plainMs >= 140, 'delay-ms: a reply waits at least the delay')
   assert(streamMs >= 150 + 80 * 10, 'chunk-delay-ms: a stream waits between its chunks')
   await stopServer(slow)
+
+  // --reply-bytes and --chunk-bytes
+  const sized = await startServer('sized', ['--reply-bytes', '20480', '--chunk-bytes', '32'])
+  const sizedSse = await send(sized.port, 'POST', '/v1/chat/completions', { body: { model: 'x', stream: true, messages: [{ role: 'user', content: 'hi' }] } })
+  const sizedPieces = dataEvents(sizedSse.body).map((e) => e.choices[0].delta.content).filter((c) => c !== undefined)
+  const sizedText = sizedPieces.join('')
+  assert(Buffer.byteLength(sizedText) === 20480 && sizedText.startsWith('[mock-reply] ') && /^[\x20-\x7e\n]+$/.test(sizedText), 'reply-bytes: the joined SSE content is exactly 20480 printable ASCII bytes and starts with the reply marker')
+  assert((sizedText.match(/\n\n/g) ?? []).length >= 30 && !sizedText.includes('\n\n\n'), 'reply-bytes: a blank line separates paragraphs about every 600 bytes')
+  const sizedJson = await send(sized.port, 'POST', '/v1/chat/completions', { body: { model: 'x', stream: false, messages: [{ role: 'user', content: 'hi' }] } })
+  assert(JSON.parse(sizedJson.body).choices[0].message.content === sizedText, 'reply-bytes: JSON mode answers the same text as the stream')
+  assert(sizedPieces.length === Math.ceil(20480 / 32) && sizedPieces.every((c) => Buffer.byteLength(c) === 32), 'chunk-bytes: 640 content events of 32 bytes each')
+  let sizedMidLine = 0
+  let sizedSeen = ''
+  for (const c of sizedSse.chunks) { sizedSeen += c; if (!sizedSeen.endsWith('\n')) sizedMidLine++ }
+  assert(sizedMidLine > 0 && parseLikeApp(sizedSse.body).text === sizedText, 'chunk-bytes: a data line is still split across two writes and the app rule reads the same text')
+  await stopServer(sized)
+  const oddSized = await startServer('odd-sized', ['--reply-bytes', '100', '--chunk-bytes', '32'])
+  const oddSse = await send(oddSized.port, 'POST', '/v1/chat/completions', { body: { model: 'x', stream: true, messages: [] } })
+  const oddPieces = dataEvents(oddSse.body).map((e) => e.choices[0].delta.content).filter((c) => c !== undefined)
+  assert(oddPieces.length === 4 && oddPieces.slice(0, 3).every((c) => c.length === 32) && oddPieces[3].length === 4 && oddPieces.join('').startsWith('[mock-reply] '), 'chunk-bytes: the last piece holds the remainder (32, 32, 32, 4)')
+  await stopServer(oddSized)
+  const chunkOnly = await startServer('chunk-only', ['--chunk-bytes', '10'])
+  const chunkOnlySse = await send(chunkOnly.port, 'POST', '/v1/chat/completions', { body: { model: 'x', stream: true, messages: [] } })
+  const chunkOnlyPieces = dataEvents(chunkOnlySse.body).map((e) => e.choices[0].delta.content).filter((c) => c !== undefined)
+  assert(chunkOnlyPieces.length > 2 && chunkOnlyPieces.slice(0, -1).every((c) => c.length === 10) && chunkOnlyPieces.join('').startsWith('[mock-reply] Hello'), 'chunk-bytes: without --reply-bytes the canned reply is cut into 10-byte pieces')
+  await stopServer(chunkOnly)
+  const badReply = await new Promise((resolve) => {
+    const child = spawn(process.execPath, [serverPath, '--port', '0', '--reply-bytes', '5'], { stdio: ['ignore', 'pipe', 'pipe'] })
+    children.push(child)
+    const timer = setTimeout(() => { child.kill(); resolve('timeout') }, 5000)
+    child.on('exit', (code) => { clearTimeout(timer); resolve(code) })
+  })
+  assert(badReply === 1, 'reply-bytes: a size below the marker length is refused with exit 1')
+
+  // With neither flag the output equals the base mock's, byte for byte. The digests are sha256 of the whole response body of the
+  // first four chat requests (seed 0 and seed 2), captured from the mock as it stood before --reply-bytes and --chunk-bytes existed.
+  const sha256 = (text) => createHash('sha256').update(text).digest('hex')
+  const baseDigests = {
+    'stream-seed0': ['7d700f3d86f4c44fb94b1a0e8838c4c868d2c2d8e35e0d2362a2584122a9fa81', '1e622690d58c5e33f9e05dfad844a3da55cadbfa4f703c667293846815e7f6bb', '44caf90dff00f1e4796c5dab1a02ec55f2c4ea9c530fc413422db7a37216bef9', '680a368d28d1bfd20c0951d2aa0e383dac6f92132364fcb77b3913e3252d6f12'],
+    'json-seed0': ['0c334e903a1505999600a9bbb022f400b0e83d7d9cec3c353f8277692031f7a5', '6da6a943148a3d5012c9c37966c5e0de7561fb65ae43f9a355ab38c52bf05036', '525665f316f7c02fd510d38d03923384215c3ebcf83bb846f70f087001a31f14', 'b96ca7a1f53a56ee724d4cde9ca76b3b2d9bc354e83e2f1804bfdb33ab511869'],
+    'stream-seed2': ['0ef059dd59cd60f206780b2224e7c6859070a5c23ec2755197c35e9293c3ff4b', '578dd82450f3f7ba5006366c3692fe44109452b2d59d11797e4123a8098d9638', '6a8a0199d41e19c05b10829881b4b8430005bae21c333768704726ac823ad3f2', 'be9ebbf75f0fe0c7723f0b41c3974f93a0196ce6782fc5143f0030247626ba7a'],
+    'json-seed2': ['85a06a64d0737837a137ed1076b3bfb38e3e7a6a7a88f5f32ebb84512e83d667', '26bb883daae68057d9fc6bf516a6c7e57856a2049f7e973b5aae9d5957a0335c', '28aa4b3cfb159f50b9409cdbb1bef2bf765e7c181dd5ec147b8e6ab82aaee7e8', '533476104b0be15f9eb667b257c4fc3af6fe6eb4443f0682a33ef74eda2b8939'],
+  }
+  for (const [name, expected] of Object.entries(baseDigests)) {
+    const identity = await startServer('identity-' + name, name.endsWith('seed2') ? ['--seed', '2'] : [])
+    const got = []
+    for (let i = 0; i < 4; i++) got.push(sha256((await send(identity.port, 'POST', '/v1/chat/completions', { body: { model: 'x', stream: name.startsWith('stream'), messages: [{ role: 'user', content: 'hi' }] } })).body))
+    assert(got.join() === expected.join(), 'default identity: ' + name + ' response bodies equal the base mock byte for byte')
+    await stopServer(identity)
+  }
 
   // SIGINT shutdown cannot be delivered to a child on Windows (the child is terminated at once), so it is only asserted elsewhere.
   if (process.platform !== 'win32') {
