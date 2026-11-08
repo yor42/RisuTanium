@@ -43,6 +43,7 @@ import {
     finishFirstRun,
     keyAdvisory,
     languageToWrite,
+    standardKeyPrefix,
     nicknameReady,
     providerTakesKey,
     resolveChoices,
@@ -352,6 +353,15 @@ describe('key advisory', () => {
 
     test('the prefix is judged on the trimmed key', () => {
         expect(keyAdvisory('claude', '  sk-abc ')).toEqual({ ready: true, standardPrefix: true })
+    })
+
+    test('the displayed standard prefix is the one the advisory judges against', () => {
+        expect(standardKeyPrefix('claude')).toBe('sk-')
+        expect(standardKeyPrefix('openai')).toBe('sk-')
+        expect(standardKeyPrefix('openrouter')).toBe('sk-')
+        expect(standardKeyPrefix('gemini')).toBe('AIza')
+        expect(standardKeyPrefix('horde')).toBe('')
+        expect(standardKeyPrefix('later')).toBe('')
     })
 
     test('horde and later take no key', () => {

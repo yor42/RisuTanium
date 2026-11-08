@@ -94,6 +94,11 @@ export function providerTakesKey(provider: FirstRunProvider): boolean {
     return KEY_PREFIX[provider] !== undefined
 }
 
+/** What a standard key of the provider starts with, or an empty string for a provider that takes no key. */
+export function standardKeyPrefix(provider: FirstRunProvider): string {
+    return KEY_PREFIX[provider] ?? ''
+}
+
 export function keyAdvisory(provider: FirstRunProvider, key: string): KeyAdvisory {
     const trimmed = key.trim()
     const prefix = KEY_PREFIX[provider]
