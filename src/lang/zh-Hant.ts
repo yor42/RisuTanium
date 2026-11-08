@@ -1563,6 +1563,8 @@ export const languageChineseTraditional = {
     "homeSourceIssuesLabel": "議題",
     "homeSourceUpstreamLabel": "上游",
     "homeLinkUtilityTitle": "工具",
+    "homeModeSwitcherLabel": "模式",
+    "homeModeComingLater": "即將推出",
     "homeLinkUtilityDescription": "無需角色或聊天，透過已儲存的任務預設集與模型對話。",
     "homeLinkEmailTitle": "電子郵件",
     "homeLinkEmailDescription": "直接聯絡開發者。",

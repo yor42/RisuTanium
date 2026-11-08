@@ -1518,6 +1518,8 @@ export const languageVietnamese = {
     "homeSourceIssuesLabel": "Vấn đề",
     "homeSourceUpstreamLabel": "upstream",
     "homeLinkUtilityTitle": "Tiện ích",
+    "homeModeSwitcherLabel": "Chế độ",
+    "homeModeComingLater": "Sắp ra mắt",
     "homeLinkUtilityDescription": "Trò chuyện với một mô hình thông qua cài đặt trước tác vụ đã lưu, không cần nhân vật hay cuộc trò chuyện.",
     "homeLinkEmailTitle": "Email",
     "homeLinkEmailDescription": "Liên hệ trực tiếp với nhà phát triển.",

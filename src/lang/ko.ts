@@ -1518,6 +1518,8 @@ export const languageKorean = {
     "homeSourceIssuesLabel": "이슈",
     "homeSourceUpstreamLabel": "업스트림",
     "homeLinkUtilityTitle": "유틸리티",
+    "homeModeSwitcherLabel": "모드",
+    "homeModeComingLater": "출시 예정",
     "homeLinkUtilityDescription": "캐릭터나 채팅 없이, 저장된 작업 프리셋을 통해 모델과 대화합니다.",
     "homeLinkEmailTitle": "이메일",
     "homeLinkEmailDescription": "개발자에게 직접 연락하세요.",

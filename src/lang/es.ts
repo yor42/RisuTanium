@@ -1518,6 +1518,8 @@ export const languageSpanish = {
     "homeSourceIssuesLabel": "Incidencias",
     "homeSourceUpstreamLabel": "upstream",
     "homeLinkUtilityTitle": "Utilidad",
+    "homeModeSwitcherLabel": "Modo",
+    "homeModeComingLater": "Próximamente",
     "homeLinkUtilityDescription": "Habla con un modelo a través de un preset de tarea guardado, sin personaje ni chat.",
     "homeLinkEmailTitle": "Correo electrónico",
     "homeLinkEmailDescription": "Ponte en contacto directamente con el desarrollador.",
