@@ -2926,7 +2926,11 @@ export const languageGerman = {
         "iconAlt": "Symbol",
         "popupEditor": "Popup-Editor",
         "beta": "Beta",
-        "logoAlt": "Logo"
+        "logoAlt": "Logo",
+        "sidebarItemRemoved": "„{name}“ entfernt",
+        "sidebarItemRestored": "„{name}“ ist wieder da",
+        "sidebarItemUndoRefused": "Rückgängig nicht möglich: „{name}“ ist bereits in der Liste.",
+        "sidebarItemUndoFailed": "Das Entfernen konnte nicht rückgängig gemacht werden."
     },
     "uiCommon": {
         "delete": "Löschen",
@@ -2952,7 +2956,8 @@ export const languageGerman = {
         "inlayAlt": "Inlay",
         "videoTagUnsupported": "Ihr Browser unterstützt das Video-Tag nicht.",
         "audioTagUnsupported": "Ihr Browser unterstützt das Audio-Tag nicht.",
-        "imageAlt": "Bild"
+        "imageAlt": "Bild",
+        "undo": "Rückgängig"
     },
     "modelStatus": {
         "retiredTag": "eingestellt",

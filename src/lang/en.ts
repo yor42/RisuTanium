@@ -3076,6 +3076,10 @@ export const languageEnglish = {
         popupEditor: "Popup Editor",
         beta: "Beta",
         logoAlt: "logo",
+        sidebarItemRemoved: "Removed \"{name}\"",
+        sidebarItemRestored: "\"{name}\" is back",
+        sidebarItemUndoRefused: "Can't undo: \"{name}\" is already in the list.",
+        sidebarItemUndoFailed: "Couldn't undo the removal.",
     },
     uiCommon: {
         delete: "Delete",
@@ -3102,6 +3106,7 @@ export const languageEnglish = {
         videoTagUnsupported: "Your browser does not support the video tag.",
         audioTagUnsupported: "Your browser does not support the audio tag.",
         imageAlt: "img",
+        undo: "Undo",
     },
     modelStatus: {
         retiredTag: "retired",

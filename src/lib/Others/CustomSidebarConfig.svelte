@@ -5,6 +5,10 @@
     import { getFullSettingsData, getLabel } from "src/ts/setting/utils";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
+    import { tick } from "svelte";
+    import { fillLang } from "src/lang/fill";
+    import { removeSidebarItem, sidebarItemUndoAction } from "src/ts/setting/sidebarItemUndo";
+    import { postUndoToast } from "src/ts/toast/toastHost.svelte";
 
 
     let configPage: "list" | "add" | "addSettingsSubmenu" = $state("list");
@@ -12,6 +16,27 @@
 
     function closeDialog() {
         customSideBarConfigDialogStore.open = false;
+    }
+
+    // Removes the row, offers Undo, then moves focus to a neighbouring Delete (same index, else the
+    // previous one) or to Add Item, so focus never drops to the page when the focused row goes away.
+    async function deleteItem(id: string) {
+        const removed = removeSidebarItem(id);
+        if (removed === null) {
+            return;
+        }
+        postUndoToast({
+            text: fillLang(language.othersUi.sidebarItemRemoved, { name: removed.item.label }),
+            actionLabel: language.uiCommon.undo,
+            action: sidebarItemUndoAction(removed.item, removed.index),
+        });
+        await tick();
+        const deletes = document.querySelectorAll<HTMLElement>("[data-sidebar-item-delete]");
+        const target =
+            deletes[removed.index] ??
+            deletes[removed.index - 1] ??
+            document.querySelector<HTMLElement>("[data-sidebar-item-add] button");
+        target?.focus();
     }
 
     // Back does what the Close button and the backdrop do, whatever page is showing. The effect
@@ -51,12 +76,8 @@
 
                         <button
                             class="ml-2"
-                            onclick={() => {
-                                DBState.db.customSidebarItems =
-                                    DBState.db.customSidebarItems.filter(
-                                        (i) => i.id !== item.id,
-                                    );
-                            }}
+                            data-sidebar-item-delete
+                            onclick={() => deleteItem(item.id)}
                         >
                             {language.uiCommon.delete}
                         </button>
@@ -64,13 +85,15 @@
                 {/each}
             </div>
 
-            <Button
-                onclick={() => {
-                    configPage = "add";
-                }}
-            >
-                {language.othersUi.addItem}
-            </Button>
+            <div style="display: contents" data-sidebar-item-add>
+                <Button
+                    onclick={() => {
+                        configPage = "add";
+                    }}
+                >
+                    {language.othersUi.addItem}
+                </Button>
+            </div>
 
             <Button onclick={closeDialog}>
                 {language.uiCommon.close}

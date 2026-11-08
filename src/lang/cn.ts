@@ -2922,7 +2922,11 @@ export const languageChinese = {
         "iconAlt": "图标",
         "popupEditor": "弹出式编辑器",
         "beta": "测试版",
-        "logoAlt": "标志"
+        "logoAlt": "标志",
+        "sidebarItemRemoved": "已移除“{name}”",
+        "sidebarItemRestored": "“{name}”已恢复",
+        "sidebarItemUndoRefused": "无法撤销：“{name}”已在列表中。",
+        "sidebarItemUndoFailed": "无法撤销移除。"
     },
     "uiCommon": {
         "delete": "删除",
@@ -2948,7 +2952,8 @@ export const languageChinese = {
         "inlayAlt": "内嵌图",
         "videoTagUnsupported": "您的浏览器不支持 video 标签。",
         "audioTagUnsupported": "您的浏览器不支持 audio 标签。",
-        "imageAlt": "图片"
+        "imageAlt": "图片",
+        "undo": "撤销"
     },
     "modelStatus": {
         "retiredTag": "已停用",
