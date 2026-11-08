@@ -1,18 +1,15 @@
 // @vitest-environment happy-dom
 
 /**
- * The trash on the simple character list.`CharacterSimpleList.svelte` hides
- * trashed characters by default. With `trashEntry` it offers a "Trash (n)" row
- * (n is the whole trash count, whatever the search) that opens the trash in
- * place with a back row; the open view applies the current search, offers
- * restore, delete permanently and Empty trash, and hides the add-character
- * button so it never covers the last row's actions. Without `trashEntry` (the
- * list embedded in GridCatalog) there is no entry.
+ * The trash and the add button on the simple character list.
+ * `CharacterSimpleList.svelte` hides trashed characters by default and lists
+ * them with `hideTrash=false`. The trash itself (restore, delete permanently,
+ * Empty trash) lives in `CharacterTrashList`, not here. The add-character
+ * button is always present and a click adds one character.
  *
  * MOCKED: the module set of `CharacterSimpleList.search.svelte.test.ts` (same
- * directory), with `changeChar`, `restoreCharacterFromTrash`, `removeChar` and
- * `removeTrashedCharacters` bare spies and the clock faked for
- * `setTimeout`/`clearTimeout` only. Nothing here writes to storage.
+ * directory), with `changeChar` and `addCharacter` bare spies and the clock
+ * faked for `setTimeout`/`clearTimeout` only. Nothing here writes to storage.
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
@@ -32,11 +29,9 @@ vi.mock('localforage', () => ({
     },
 }))
 
-const { changeCharSpy, restoreSpy, removeCharSpy, removeTrashedSpy } = vi.hoisted(() => ({
+const { changeCharSpy, addCharacterSpy } = vi.hoisted(() => ({
     changeCharSpy: vi.fn(),
-    restoreSpy: vi.fn(),
-    removeCharSpy: vi.fn(),
-    removeTrashedSpy: vi.fn(),
+    addCharacterSpy: vi.fn(),
 }))
 
 vi.mock(
@@ -132,9 +127,7 @@ vi.mock(import('../../ts/characters'), async (importOriginal) => {
     return {
         ...actual,
         changeChar: changeCharSpy,
-        restoreCharacterFromTrash: restoreSpy,
-        removeChar: removeCharSpy,
-        removeTrashedCharacters: removeTrashedSpy,
+        addCharacter: addCharacterSpy,
     }
 })
 
@@ -149,7 +142,6 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 //#endregion
 
 import { DBState } from '../../ts/stores.svelte'
-import { language } from '../../lang'
 import CharacterSimpleList from './CharacterSimpleList.svelte'
 
 //#region fixtures and helpers
@@ -205,28 +197,15 @@ async function settle(): Promise<void> {
     flushSync()
 }
 
-let mountedProps: { search?: string } | undefined
-
-/** Types into the search box of the mounted list: its `search` prop changes after mount. */
-function typeQuery(query: string): void {
-    if (!mountedProps) {
-        throw new Error('no list is mounted')
-    }
-    mountedProps.search = query
-}
-
-async function withMounted(props: { hideTrash?: boolean; search?: string; trashEntry?: boolean }, body: (target: HTMLElement) => void | Promise<void>): Promise<void> {
+async function withMounted(props: { hideTrash?: boolean; search?: string }, body: (target: HTMLElement) => void | Promise<void>): Promise<void> {
     const target = document.createElement('div')
     document.body.appendChild(target)
-    const reactiveProps = $state({ ...props, search: props.search })
-    mountedProps = reactiveProps
-    const app = mount(CharacterSimpleList, { target, props: reactiveProps }) as Record<string, unknown>
+    const app = mount(CharacterSimpleList, { target, props }) as Record<string, unknown>
     try {
         await settle()
         await body(target)
     } finally {
         await unmount(app as never)
-        mountedProps = undefined
         target.remove()
     }
 }
@@ -235,30 +214,13 @@ function rowNames(root: HTMLElement): string[] {
     return Array.from(root.querySelectorAll('div.flex-1 > span:first-child')).map((s) => s.textContent?.trim() ?? '')
 }
 
-function buttonWith(root: HTMLElement, text: string): HTMLButtonElement | undefined {
-    return Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.includes(text))
-}
-
-const trashEntryLabel = (n: number) => `${language.trash} (${n})`
-
-function trashRowNames(root: HTMLElement): string[] {
-    return Array.from(root.querySelectorAll('h4')).map((h) => h.textContent?.trim() ?? '')
-}
-
-function addButton(root: HTMLElement): Element | null {
-    return root.querySelector('button.absolute')
-}
-
-async function openTrash(root: HTMLElement): Promise<void> {
-    buttonWith(root, trashEntryLabel(2))!.click()
-    await settle()
+function addButton(root: HTMLElement): HTMLButtonElement | null {
+    return root.querySelector<HTMLButtonElement>('button.absolute')
 }
 
 beforeEach(() => {
     changeCharSpy.mockClear()
-    restoreSpy.mockClear()
-    removeCharSpy.mockClear()
-    removeTrashedSpy.mockClear()
+    addCharacterSpy.mockClear()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
 })
 
@@ -287,170 +249,16 @@ describe('CharacterSimpleList: the trash is hidden by default', { timeout: 60_00
     })
 })
 
-describe('CharacterSimpleList: the Trash (n) row', { timeout: 60_000 }, () => {
-    test('shows the whole trash count as the first row and opens no trash view until clicked', async () => {
-        DBState.db = buildDb(standard())
-
-        await withMounted({ trashEntry: true }, (target) => {
-            expect(buttonWith(target, trashEntryLabel(2))).toBeDefined()
-            expect(target.querySelector('h4')).toBeNull()
-            expect(rowNames(target)).toEqual(['Ann', 'Bob'])
-        })
-    })
-
-    test('is absent when the trash is empty', async () => {
-        DBState.db = buildDb([makeCharacter('a', 'Ann')])
-
-        await withMounted({ trashEntry: true }, (target) => {
-            expect(buttonWith(target, language.trash)).toBeUndefined()
-        })
-    })
-
-    test('does not count hidden system characters', async () => {
-        DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('§playground', 'assistant', { trashTime: GONE })])
-
-        await withMounted({ trashEntry: true }, (target) => {
-            expect(buttonWith(target, language.trash)).toBeUndefined()
-        })
-    })
-
-    // Guard: passes before and after; the embedded list has its own Trash tab.
-    test('guard: without trashEntry there is no Trash row', async () => {
+describe('CharacterSimpleList: the add-character button', { timeout: 60_000 }, () => {
+    // Guard: passes before and after.
+    test('guard: the add-character button is present and adds a character', async () => {
         DBState.db = buildDb(standard())
 
         await withMounted({}, (target) => {
-            expect(buttonWith(target, language.trash)).toBeUndefined()
-        })
-    })
-
-    test('keeps the whole count while a search narrows the list', async () => {
-        DBState.db = buildDb(standard())
-
-        await withMounted({ trashEntry: true }, async (target) => {
-            typeQuery('ann')
-            await settle()
-            vi.advanceTimersByTime(150)
-            await settle()
-            expect(rowNames(target)).toEqual(['Ann'])
-            expect(buttonWith(target, trashEntryLabel(2))).toBeDefined()
-        })
-    })
-
-    test('follows the trash: it appears when a character is trashed and goes when the last is restored', async () => {
-        DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
-
-        await withMounted({ trashEntry: true }, async (target) => {
-            expect(buttonWith(target, language.trash)).toBeUndefined()
-            DBState.db.characters[0].trashTime = GONE
-            await settle()
-            expect(buttonWith(target, trashEntryLabel(1))).toBeDefined()
-            DBState.db.characters[0].trashTime = undefined
-            await settle()
-            expect(buttonWith(target, language.trash)).toBeUndefined()
-        })
-    })
-})
-
-describe('CharacterSimpleList: the open trash view', { timeout: 60_000 }, () => {
-    test('replaces the list with the trashed characters and a back row, and hides the add button', async () => {
-        DBState.db = buildDb(standard())
-
-        await withMounted({ trashEntry: true }, async (target) => {
-            expect(addButton(target)).not.toBeNull()
-            await openTrash(target)
-            expect(trashRowNames(target).sort()).toEqual(['Cara', 'Cat'])
-            expect(rowNames(target)).toEqual([])
-            expect(buttonWith(target, language.settingsPage.back)).toBeDefined()
-            expect(buttonWith(target, language.emptyTrash)).toBeDefined()
-            expect(addButton(target)).toBeNull()
-        })
-    })
-
-    test('back returns to the list with the add button', async () => {
-        DBState.db = buildDb(standard())
-
-        await withMounted({ trashEntry: true }, async (target) => {
-            await openTrash(target)
-            buttonWith(target, language.settingsPage.back)!.click()
-            await settle()
-            expect(rowNames(target)).toEqual(['Ann', 'Bob'])
-            expect(target.querySelector('h4')).toBeNull()
-            expect(addButton(target)).not.toBeNull()
-        })
-    })
-
-    test('applies the current search to the trashed rows and the Empty trash label', async () => {
-        DBState.db = buildDb(standard())
-
-        await withMounted({ trashEntry: true }, async (target) => {
-            await openTrash(target)
-            typeQuery('cat')
-            await settle()
-            vi.advanceTimersByTime(150)
-            await settle()
-            expect(trashRowNames(target)).toEqual(['Cat'])
-            expect(buttonWith(target, language.emptyTrashMatching(1))).toBeDefined()
-        })
-    })
-
-    test('restore and delete permanently act on the row\'s own character', async () => {
-        DBState.db = buildDb(standard())
-
-        await withMounted({ trashEntry: true }, async (target) => {
-            await openTrash(target)
-            const rowButtons = Array.from(target.querySelectorAll('h4'))
-                .find((h) => h.textContent?.trim() === 'Cat')!
-                .parentElement!.querySelectorAll<HTMLButtonElement>('.justify-end button')
-            rowButtons[0].click()
-            expect(restoreSpy).toHaveBeenCalledWith(DBState.db.characters[2])
-            rowButtons[1].click()
-            expect(removeCharSpy).toHaveBeenCalledWith(DBState.db.characters[2], 'Cat', 'permanent')
-        })
-    })
-
-    test('a trashed row does not open on a click: the avatar and the name do nothing', async () => {
-        DBState.db = buildDb(standard())
-
-        await withMounted({ trashEntry: true }, async (target) => {
-            await openTrash(target)
-            const avatars = Array.from(target.querySelectorAll<HTMLElement>('.ico'))
-            expect(avatars.length).toBe(2)
-            for (const avatar of avatars) {
-                avatar.click()
-            }
-            for (const heading of Array.from(target.querySelectorAll('h4'))) {
-                heading.click()
-            }
-            expect(changeCharSpy).not.toHaveBeenCalled()
-        })
-    })
-
-    test('Empty trash hands over exactly the shown trashed characters', async () => {
-        DBState.db = buildDb(standard())
-
-        await withMounted({ trashEntry: true }, async (target) => {
-            await openTrash(target)
-            buttonWith(target, language.emptyTrash)!.click()
-            expect(removeTrashedSpy).toHaveBeenCalledTimes(1)
-            const [refs, options] = removeTrashedSpy.mock.calls[0]
-            expect((refs as CharacterFixture[]).map((c) => c.name).sort()).toEqual(['Cara', 'Cat'])
-            expect(options).toEqual({ matching: false })
-        })
-    })
-
-    test('when the last trashed character is restored while open, the view shows the empty trash and keeps the back row', async () => {
-        DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('c', 'Cat', { trashTime: GONE })])
-
-        await withMounted({ trashEntry: true }, async (target) => {
-            buttonWith(target, trashEntryLabel(1))!.click()
-            await settle()
-            expect(trashRowNames(target)).toEqual(['Cat'])
-            DBState.db.characters[1].trashTime = undefined
-            await settle()
-            expect(trashRowNames(target)).toEqual([])
-            expect(buttonWith(target, language.emptyTrash)).toBeUndefined()
-            expect(buttonWith(target, language.settingsPage.back)).toBeDefined()
-            expect(target.textContent).toContain(language.trashDesc)
+            const button = addButton(target)
+            expect(button).not.toBeNull()
+            button!.click()
+            expect(addCharacterSpy).toHaveBeenCalledTimes(1)
         })
     })
 })

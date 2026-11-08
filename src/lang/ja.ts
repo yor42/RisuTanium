@@ -842,7 +842,6 @@ export const languageJapanese = {
         moduleIntergration:
             "モジュール連携セクションにモジュールのネームスペースを入力することで、モジュールを有効化できます。複数のモジュールを有効化したい場合は、カンマで区切ることができます（例: `module1,module2,module3`）。これは、プリセットごとにモジュールの使用状況を切り替えたい上級者向けの機能です。",
         customCSS: "スタイリング用のカスタムCSSです。問題が発生した場合は、(Ctrl + .) を押して無効化／有効化を切り替えることもできます。",
-        betaMobileGUI: "有効にすると、小さな画面（800px未満）でベータ版モバイルGUIを使用します。再読み込みが必要です。",
         enableScrollToActiveChar: "有効にすると、ホットキーを押した際にサイドバーが現在アクティブなキャラクターまでスクロールします。フォルダが閉じている場合は自動的に開かれます。",
         unrecommended: "これは非推奨の設定です。この設定を使用することは推奨されません。",
         jsonSchema:
@@ -2011,7 +2010,6 @@ export const languageJapanese = {
     promptConvertion: "プロンプト変換",
     convertionStep1: "プロンプトに関連するすべてのファイルを選択してください（Context、Instruct、SamplerのJSONに対応しています）",
     customCSS: "カスタムCSS",
-    betaMobileGUI: "ベータモバイルGUI",
     enableScrollToActiveChar: "アクティブなキャラクターへのスクロールを有効化",
     menu: "メニュー",
     jsonSchema: "JSONスキーマ",

@@ -4,7 +4,7 @@
  *
  * HYPOTHESIS UNDER TEST (source-read by the Orchestrator, measured here, not
  * assumed): `src/lib/Others/GridCatalog.svelte` renders four layouts
- * (3 = simple, delegating to `src/lib/Mobile/MobileCharacters.svelte`;
+ * (3 = simple, delegating to `src/lib/Others/CharacterSimpleList.svelte`;
  * 0 = grid; 1 = list; 2 = trash), each iterating an UNKEYED `{#each
  * formatChars(search, DBState.db) as char}` (or `sortChar(...)` for simple).
  * `formatChars` (`GridCatalog.svelte:23-53`) builds brand-new objects on
@@ -25,13 +25,12 @@
  *
  * UPDATE (post-AV-1, `Agents/Reports/12-charlist-avatar-plan.md` section 2):
  * the hypothesis above described the code as it stood BEFORE this plan
- * landed. `GridCatalog.svelte` and `MobileCharacters.svelte` now read each
- * item's image through a two-level `{@const imgPath = char.image}` /
- * `{@const avatarStyle = getCharImage(imgPath, 'css')}` derived boundary
- * (plan section 2.2(i)), which only re-invokes `getCharImage`/`getFileSrc`
- * when the resolved path string itself changes, and grid/list/trash are now
- * keyed by `char.index` (plan section 2.2(ii)) so filtering/reordering no
- * longer changes which key maps to which image. The action-count
+ * landed. `GridCatalog.svelte` and `CharacterSimpleList.svelte` no longer
+ * pass `getCharImage(...)` straight to `BarIcon.svelte`: they draw each
+ * item's avatar through `CharListAvatar.svelte`, which looks the image up
+ * once per `src` and only while the row reports itself visible, and the
+ * rows are keyed by character, so filtering/reordering no longer changes
+ * which key maps to which image. The action-count
  * assertions below (`ACTIONS` / the per-N `expect` block) are pinned
  * against THIS fixed code, with the old, pre-fix numbers kept alongside
  * them as history; the paragraph above is left as originally written
@@ -39,7 +38,7 @@
  * what it measures, not because it describes current behaviour.
  *
  * WHAT THIS HARNESS DOES: mounts the REAL `GridCatalog.svelte` (and
- * therefore the real `MobileCharacters.svelte` and `BarIcon.svelte`) with
+ * therefore the real `CharacterSimpleList.svelte` and `BarIcon.svelte`) with
  * Svelte's `mount()` into happy-dom, drives it exactly like a user would
  * (click the real layout buttons, type into the real search input, mutate
  * `DBState.db` directly the way the rest of the app does), and counts calls
@@ -98,8 +97,8 @@
  *     exercised when `isTauri` is false).
  *   - `src/ts/stores.svelte` -- replaced with a thin, genuinely reactive
  *     (`$state`-backed) stand-in exposing every store this import graph
- *     reads (`DBState`, `selectedCharID`, `MobileGUIStack`, `CharEmotion`,
- *     `OpenRealmStore`, `MobileSearch`, `alertStore`, `selIdState`,
+ *     reads (`DBState`, `selectedCharID`, `CharEmotion`,
+ *     `OpenRealmStore`, `alertStore`, `selIdState`,
  *     `SettingsMenuIndex`, `ShowRealmFrameStore`, `settingsOpen`). Kept in
  *     THIS ONE FILE per Agents/Tools/README.md's "Harnesses that mock the
  *     app's rune modules: keep them in ONE file" -- splitting the factory
@@ -108,7 +107,7 @@
  *
  * NOT mocked: `src/ts/characters.ts` (`getCharImage` is real), `src/lang`,
  * `src/ts/util.ts` (`findCharacterIndexbyId`, `parseMultilangString`),
- * `GridCatalog.svelte`, `MobileCharacters.svelte`, `BarIcon.svelte`,
+ * `GridCatalog.svelte`, `CharacterSimpleList.svelte`, `BarIcon.svelte`,
  * `TextInput.svelte`, `Button.svelte`, the lucide icon components, and
  * everything characters.ts drags in transitively.
  *
@@ -252,10 +251,8 @@ vi.mock(import('../../../src/ts/stores.svelte'), () => {
     return {
         DBState: state,
         selectedCharID: writable(-1),
-        MobileGUIStack: writable([]),
         CharEmotion: writable(new Map()),
         OpenRealmStore: writable({ isOpen: false }),
-        MobileSearch: writable(''),
         alertStore: writable({ type: 'none', msg: '' }),
         selIdState: { state: -1 },
         SettingsMenuIndex: writable(0),

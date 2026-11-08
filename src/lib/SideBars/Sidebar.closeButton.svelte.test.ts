@@ -3,7 +3,9 @@
 /**
  * The close strip at the top of the character sidebar is a single button that
  * must show an X icon and carry an accessible name, and must start the close
- * once, ignoring clicks while the close is in progress.
+ * once, ignoring clicks while the close is in progress. The button is
+ * `invisible` exactly when `DynamicGUI` is off (the wide, non-shell layout) and
+ * visible in the narrow overlay (`DynamicGUI` on).
  *
  * Mounts the REAL `Sidebar.svelte`. Module mocks follow
  * `src/lib/Others/charlistAvatarLookups.svelte.test.ts`: the rune/store module
@@ -91,10 +93,8 @@ vi.mock(import('../../ts/stores.svelte'), () => {
     return {
         DBState: state,
         selectedCharID: writable(-1),
-        MobileGUIStack: writable([]),
         CharEmotion: writable(new Map()),
         OpenRealmStore: writable({ isOpen: false }),
-        MobileSearch: writable(''),
         alertStore: writable({ type: 'none', msg: '' }),
         selIdState: { state: -1 },
         SettingsMenuIndex: writable(0),
@@ -116,7 +116,7 @@ vi.mock(import('../../ts/stores.svelte'), () => {
     } as unknown as typeof import('../../ts/stores.svelte')
 })
 
-import { DBState, sideBarClosing } from '../../ts/stores.svelte'
+import { DBState, DynamicGUI, sideBarClosing } from '../../ts/stores.svelte'
 import { language } from '../../lang'
 import Sidebar from './Sidebar.svelte'
 import { resetRailMemory } from './sidebarDnd.testKit'
@@ -157,6 +157,7 @@ describe('character sidebar close strip', () => {
 
     beforeEach(() => {
         resetRailMemory()
+        DynamicGUI.set(false)
     })
 
     afterEach(async () => {
@@ -165,6 +166,26 @@ describe('character sidebar close strip', () => {
             mounted.target.remove()
             mounted = null
         }
+        DynamicGUI.set(false)
+    })
+
+    // Guard: the wide, non-shell layout hides the strip's X but keeps it in the DOM.
+    test('guard: the close button is invisible when DynamicGUI is off', () => {
+        mounted = mountSidebar()
+        const btn = closeButton(mounted.target)
+        expect(btn).toBeDefined()
+        expect(btn!.classList.contains('invisible')).toBe(true)
+    })
+
+    // Guard: the narrow overlay shows the X and a click starts the close.
+    test('guard: the close button is visible under DynamicGUI and starts the close', () => {
+        DynamicGUI.set(true)
+        mounted = mountSidebar()
+        const btn = closeButton(mounted.target)
+        expect(btn).toBeDefined()
+        expect(btn!.classList.contains('invisible')).toBe(false)
+        btn!.click()
+        expect(get(sideBarClosing)).toBe(true)
     })
 
     test('regression reproducer: the close button is found by its accessible name and contains an svg icon', () => {

@@ -1,24 +1,20 @@
 <script lang="ts">
     import { DBState } from 'src/ts/stores.svelte';
     import { addCharacter, changeChar } from "src/ts/characters";
-    import { ArrowLeft, MessageSquareIcon, PlusIcon, TrashIcon } from "@lucide/svelte";
+    import { MessageSquareIcon, PlusIcon } from "@lucide/svelte";
     import { coldStubChatCount } from "src/ts/process/coldCharacter";
     import { language } from "src/lang";
     import { createCharacterSearch, type CharacterSearch } from "src/ts/gui/characterSearch.svelte";
     import { slotKeys } from "src/ts/gui/characterSearch";
-    import CharacterTrashList from "./CharacterTrashList.svelte";
     import CharacterWindow from "./CharacterWindow.svelte";
     import CharListAvatar from "./CharListAvatar.svelte";
-    import { SIMPLE_ROW_FALLBACK_PX, listRows, type ScrollAnchor } from "./charListRows";
+    import { SIMPLE_ROW_FALLBACK_PX, listRows } from "./charListRows";
     import { compareRecent } from "./charListOrder";
 
     interface Props {
         endGrid?: () => void;
         search?: string;
         hideTrash?: boolean;
-        // Offers a "Trash (n)" row that opens the trash in place. Off for the
-        // list embedded in GridCatalog, which has its own Trash tab.
-        trashEntry?: boolean;
         // The search result of the screen that embeds this list. Without it the
         // list searches by `search`, else shows every character.
         results?: CharacterSearch;
@@ -29,38 +25,13 @@
 
     const agoFormatter = new Intl.RelativeTimeFormat(navigator.languages, { style: 'short' });
 
-    let {endGrid = () => {}, search, hideTrash = true, trashEntry = false, results, onpick}: Props = $props();
-    // Local on purpose: the trash view is not navigation state. Leaving the
-    // screen resets it.
-    let trashOpen = $state(false);
+    let {endGrid = () => {}, search, hideTrash = true, results, onpick}: Props = $props();
     // Fixed for the component's life: the effect inside createCharacterSearch
     // can only be created during initialisation, and an embedding screen never
     // swaps its result. The result's properties are getters, so reading them in
     // the template follows later queries.
     // svelte-ignore state_referenced_locally
     const found = results ?? createCharacterSearch(() => search ?? '');
-
-    // The list is unmounted while the trash view is open, so what it needs to come back to the
-    // same row is kept here: the row measurements (the saved position only means the same row
-    // against the heights it was taken with) and the row at the top when the trash was opened.
-    const listHeights = new Map<string, number>();
-    let listWindow = $state<ReturnType<typeof CharacterWindow>>();
-    let listAnchor = $state<ScrollAnchor | null>(null);
-    let anchorQuery = '';
-
-    function openTrash() {
-        listAnchor = listWindow?.getAnchor() ?? null;
-        anchorQuery = found.query;
-        trashOpen = true;
-    }
-
-    // A search that changed while the trash was open means a different list: it starts at the top.
-    function closeTrash() {
-        if (found.query !== anchorQuery) {
-            listAnchor = null;
-        }
-        trashOpen = false;
-    }
 
     function makeAgoText(time:number){
         if(time === 0){
@@ -95,7 +66,7 @@
     // neither the search nor the chats, so a keystroke or a new message does
     // not re-sort it; a row reads its own chat count and image when drawn.
     // A row is keyed by its character (`slotKeys`), never by its position, so a removal elsewhere keeps
-    // the saved scroll anchor and the row heights on the same character. `i` is the slot it is at now.
+    // focus and the measured row heights on the same character. `i` is the slot it is at now.
     const sorted = $derived.by(() => {
         const keys = slotKeys(DBState.db.characters);
         const entries: { name: string; i: number; key: string; interaction: number }[] = [];
@@ -146,30 +117,11 @@
     {/if}
 {/snippet}
 <div class="flex flex-col items-center w-full h-full">
-    {#if trashOpen}
-        <button class="flex p-2 gap-2 w-full items-center text-textcolor2 border-b border-b-darkborderc shrink-0" onclick={closeTrash}>
-            <ArrowLeft size={20} />
-            <span>{language.settingsPage.back}</span>
-        </button>
-        <div class="w-full p-2 flex-1 min-h-0">
-            <CharacterTrashList found={found} />
-        </div>
-    {:else}
-    {#if trashEntry && found.trashedTotal > 0}
-        <button class="flex p-2 gap-2 w-full items-center text-textcolor2 border-b border-b-darkborderc shrink-0" onclick={openTrash}>
-            <TrashIcon size={20} />
-            <span>{language.trash} ({found.trashedTotal})</span>
-        </button>
-    {/if}
-    <CharacterWindow bind:this={listWindow} class="w-full flex-1 min-h-0" {rows} fallbackHeight={SIMPLE_ROW_FALLBACK_PX} heights={listHeights} resetToken={found.query} initialAnchor={listAnchor} {card} />
-    {/if}
+    <CharacterWindow class="w-full flex-1 min-h-0" {rows} fallbackHeight={SIMPLE_ROW_FALLBACK_PX} resetToken={found.query} {card} />
 </div>
 
-<!-- Hidden in the trash view: it would cover the actions of the last row. -->
-{#if !trashOpen}
-    <button class="p-4 rounded-full absolute bottom-2 right-2 bg-borderc" onclick={() => {
-        addCharacter()
-    }}>
-        <PlusIcon size={24} />
-    </button>
-{/if}
+<button class="p-4 rounded-full absolute bottom-2 right-2 bg-borderc" onclick={() => {
+    addCharacter()
+}}>
+    <PlusIcon size={24} />
+</button>
