@@ -5,12 +5,6 @@ export interface StreamCadenceState {
     fastRenders: number
 }
 
-export const STREAM_CONTAINMENT = {
-    newestUncontained: 3,
-    contentVisibility: 'auto',
-    containIntrinsicSize: 'last-measured-height',
-} as const
-
 export function nextStreamCadence(state: StreamCadenceState, durationMs: number, lowPower = false): StreamCadenceState {
     const interval = lowPower && state.interval < 250 ? 250 : state.interval
     if (durationMs > 8) {

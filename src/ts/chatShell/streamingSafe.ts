@@ -10,20 +10,27 @@ export interface StreamingSplit {
 const blockStart = /^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s?|```|~~~)/
 const cssProperty = /\{\s*(?:--[\w-]+|color|background(?:-color|-image)?|margin(?:-[\w-]+)?|padding(?:-[\w-]+)?|font(?:-[\w-]+)?|border(?:-[\w-]+)?|display|width|height|opacity)\s*:/i
 
-function openConstruct(text: string): boolean {
-    const lines = text.split('\n')
-    let fence = ''
-    for (const line of lines) {
-        const marker = /^\s{0,3}(`{3,})/.exec(line)?.[1]
-        if (marker && (!fence || (marker[0] === fence[0] && marker.length >= fence.length))) {
-            fence = fence ? '' : marker
-        }
+// The fence state after one more line: '' when no fence is open, else the opening marker.
+function foldFenceLine(fence: string, line: string): string {
+    const marker = /^\s{0,3}(`{3,})/.exec(line)?.[1]
+    if (marker && (!fence || (marker[0] === fence[0] && marker.length >= fence.length))) {
+        return fence ? '' : marker
     }
-    if (fence) return true
+    return fence
+}
+
+// Whether a `<Thoughts>` is open after one more line: the last `<Thoughts>` seen has no `</Thoughts>` after it.
+// Neither token contains a newline, so folding line by line equals searching the whole block.
+function foldThoughtsLine(open: boolean, line: string): boolean {
+    const opened = line.lastIndexOf('<Thoughts>')
+    if (opened >= 0) return line.indexOf('</Thoughts>', opened + '<Thoughts>'.length) < 0
+    return open && !line.includes('</Thoughts>')
+}
+
+// The checks that need the whole block; the caller has already ruled out an open fence and an open Thoughts.
+function openAfterFold(text: string): boolean {
     const styleOpen = text.search(/<style\b[^>]*>(?![\s\S]*<\/style\s*>)/i)
     if (styleOpen >= 0) return true
-    const thoughtsOpen = text.search(/<Thoughts>(?![\s\S]*<\/Thoughts>)/)
-    if (thoughtsOpen >= 0) return true
     if (/(?:^|[\s>])<(?:[A-Za-z!/][^>]*|)$/.test(text.trimEnd())) return true
     const macro = text.lastIndexOf('{{')
     if (macro >= 0 && text.indexOf('}}', macro) < 0 && text.length - macro <= 64) return true
@@ -37,16 +44,24 @@ function openConstruct(text: string): boolean {
 export function splitStreamingText(text: string, fromIndex = 0): StreamingSplit {
     const finished: string[] = []
     let start = Number.isInteger(fromIndex) && fromIndex > 0 && fromIndex <= text.length ? fromIndex : 0
+    // Fence and Thoughts state of the current block, folded one line at a time so an open construct is never re-scanned.
+    // Both are closed whenever a block is emitted, so they carry no stale state into the next block.
+    let fence = ''
+    let thoughtsOpen = false
     for (let i = start; i < text.length; i++) {
         if (text[i] !== '\n') continue
+        const lineStart = text.lastIndexOf('\n', i - 1) + 1
+        const currentLine = text.slice(lineStart, i)
+        const blockLine = lineStart >= start ? currentLine : text.slice(start, i)
+        fence = foldFenceLine(fence, blockLine)
+        thoughtsOpen = foldThoughtsLine(thoughtsOpen, blockLine)
         const blank = text[i + 1] === '\n'
         const nextLine = text.slice(i + (blank ? 2 : 1))
-        const currentLine = text.slice(text.lastIndexOf('\n', i - 1) + 1, i)
         const boundary = blank || blockStart.test(nextLine) || /^\s{0,3}~~~\s*$/.test(currentLine)
         if (!boundary) continue
         const end = i + (blank ? 2 : 1)
         const block = text.slice(start, end)
-        if (openConstruct(block)) continue
+        if (fence || thoughtsOpen || openAfterFold(block)) continue
         // Finished blocks are emitted only after a complete boundary and never change as text grows.
         finished.push(block)
         start = end
@@ -129,7 +144,8 @@ export async function createToSafeHtml(modelShortName: string, charArg: Paramete
         if (displayOptions) {
             try { parsed = scripts.risuChatParser(source, displayOptions) } catch (error) { recordCaughtError('chat.parse', error); parsed = source }
         }
-        const displayed = await parser.ParseMarkdown(parsed, charArg, 'notrim', chatID, cbsConditions)
+        // Every text this factory converts is part of a streamed partial reply, so it bypasses the script cache.
+        const displayed = await parser.ParseMarkdown(parsed, charArg, 'notrim', chatID, cbsConditions, 'bypass')
         return toSafeHtml(source, {
             display: () => displayed,
             sanitize: parser.trimMarkdown,

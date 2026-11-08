@@ -830,7 +830,11 @@ export async function ParseMarkdown(
     charArg:(character|simpleCharacterArgument | groupChat | string) = null,
     mode:'normal'|'back'|'pretranslate'|'notrim' = 'normal',
     chatID=-1,
-    cbsConditions:CbsConditions = {}
+    cbsConditions:CbsConditions = {},
+    // 'bypass' is for a streamed partial reply: the next chunk replaces its display text, so the script cache neither
+    // serves nor keeps it. The last text of a legacy 'off'-mode stream is also parsed this way, so the first later
+    // display parse of that message misses once and then stores.
+    scriptCache:'use'|'bypass' = 'use'
 ) {
     let firstParsed = ''
     const additionalAssetMode = (mode === 'back') ? 'back' : 'normal'
@@ -844,7 +848,7 @@ export async function ParseMarkdown(
     }
 
     if(char){
-        data = (await processScriptFull(char, data, 'editdisplay', chatID, cbsConditions)).data
+        data = (await processScriptFull(char, data, 'editdisplay', chatID, cbsConditions, undefined, undefined, undefined, undefined, scriptCache)).data
     }
 
     if(firstParsed !== data && char && char.type !== 'group'){
