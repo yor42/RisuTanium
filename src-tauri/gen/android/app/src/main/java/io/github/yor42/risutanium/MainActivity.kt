@@ -1,6 +1,7 @@
 package io.github.yor42.risutanium
 
 import android.Manifest
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -9,6 +10,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
+import android.os.SystemClock
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -16,6 +19,7 @@ import android.view.WindowManager
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
@@ -173,7 +177,72 @@ class MainActivity : TauriActivity() {
     if (previous != null && previous !== webView && sameId(previous, webView)) {
       mainHandler.post { retire(previous) }
     }
+    // wry installs its client after this callback returns, so the wrapper goes on in the next
+    // message. onRenderProcessGone exists from API 26.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      mainHandler.post { installRendererLossClient(webView) }
+    }
   }
+
+  // Only the live view is wrapped, and never twice. A view superseded before its install runs is not wrapped; a same-id one is retired by the post above.
+  @RequiresApi(Build.VERSION_CODES.O)
+  private fun installRendererLossClient(webView: WebView) {
+    val client = webView.webViewClient
+    if (webView !== liveWebView || client is RendererLossClient) return
+    webView.webViewClient = RendererLossClient(client, ::onRendererGone)
+  }
+
+  // Every wrapped view answers true: Chromium aborts the process unless all of them handle the
+  // loss. Whether the loss is live is decided in the runner, which runs ahead of every other
+  // queued message so that no lifecycle or main-pipe message runs between the loss and the exit.
+  // The dead view only leaves the tree; it is not destroyed, because the runner ends the process.
+  private fun onRendererGone(view: WebView?, didCrash: Boolean): Boolean {
+    val isLive = view != null && view === liveWebView
+    mainHandler.postAtFrontOfQueue { runRendererLoss(isLive, didCrash, lossEffects) }
+    try {
+      view?.let { (it.parent as? ViewGroup)?.removeView(it) }
+    } catch (error: Exception) {
+      Log.w("RendererLoss", "dead view not removed", error)
+    }
+    return true
+  }
+
+  private val lossEffects = object : RendererLossEffects {
+    override fun foreground(): Boolean =
+      !isFinishing && !isDestroyed && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
+
+    override fun now(): Long = SystemClock.elapsedRealtime()
+
+    override fun load(): String? = lossPrefs().getString(KEY_LOSS_TIMES, null)
+
+    override fun log(action: RendererLossAction?, didCrash: Boolean) {
+      Log.w("RendererLoss", "renderer gone: didCrash=$didCrash action=$action")
+    }
+
+    override fun logOutcome(durable: Boolean, ok: Boolean, relaunchCalled: Boolean) {
+      Log.w("RendererLoss", "outcome: durable=$durable ok=$ok relaunchCalled=$relaunchCalled")
+    }
+
+    override fun warn(step: String, error: Exception) {
+      Log.w("RendererLoss", "$step failed", error)
+    }
+
+    override fun persist(value: String): Boolean = persistLossTimes(lossPrefs(), value)
+
+    override fun stopKeepAlive() = KeepAliveService.stop(applicationContext)
+
+    // The start and the kill run in one message, so the new task can only begin in a new process.
+    override fun relaunch() {
+      startActivity(
+        Intent.makeRestartActivityTask(ComponentName(this@MainActivity, MainActivity::class.java))
+          .putExtra(EXTRA_FORCE_LEGACY_BRIDGES, forceLegacyRequested)
+      )
+    }
+
+    override fun exitProcess() = Process.killProcess(Process.myPid())
+  }
+
+  private fun lossPrefs() = getSharedPreferences(RENDERER_LOSS_PREFS, MODE_PRIVATE)
 
   // The separate host objects, one per bridge; the registration used where the message channel
   // is not available.
