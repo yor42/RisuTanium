@@ -1034,3 +1034,25 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-1137](Maintainer-Context.md#mc-1137--maintainer-approval-s3b-implementation-after-chore-572-2026-11-08) | Maintainer approval: S3b implementation after CHORE-572 (2026-11-08) |
 | [MC-1138](Maintainer-Context.md#mc-1138--commit-merge-and-push-approvals-with-hashes-2026-11-08) | Commit, merge and push approvals with hashes, 2026-11-08 |
 | [MC-1139](Maintainer-Context.md#mc-1139--orchestrator-rulings-recorded-for-the-records-not-maintainer-answers-2026-11-08) | Orchestrator rulings recorded for the records (not maintainer answers), 2026-11-08 |
+| [MC-1140](Maintainer-Context.md#mc-1140--lane-c-on-account-2-and-the-account-load-balancing-2026-11-08) | Lane C on account 2 and the account load balancing, 2026-11-08 |
+| [MC-1141](Maintainer-Context.md#mc-1141--chore-664-closed-on-partial-evidence-mapping-answers-new-tickets-chore-676-and-chore-677-2026-11-08) | CHORE-664 closed on partial evidence; mapping answers (new tickets CHORE-676 and CHORE-677), 2026-11-08 |
+| [MC-1142](Maintainer-Context.md#mc-1142--chore-666-assigned-to-lane-b-lane-b-answers-a-and-b-2026-11-08) | CHORE-666 assigned to lane B; lane B answers (a) and (b), 2026-11-08 |
+| [MC-1143](Maintainer-Context.md#mc-1143--chore-672-accepted-over-target-accept-as-is-2026-11-08) | CHORE-672 accepted over target ("Accept as is"), 2026-11-08 |
+| [MC-1144](Maintainer-Context.md#mc-1144--chore-572-pause-timer-under-sheets-and-the-follow-up-answers-q-a-q-b-o1-and-o2-2026-11-08) | CHORE-572: "Pause timer under sheets" and the follow-up answers Q-A, Q-B, O1 and O2, 2026-11-08 |
+| [MC-1145](Maintainer-Context.md#mc-1145--ui-s4-lane-c-answers-home-layout-mode-switcher-parallel-work-2026-11-08) | UI-S4 lane C answers: Home layout, mode switcher, parallel work, 2026-11-08 |
+| [MC-1146](Maintainer-Context.md#mc-1146--ui-s4-lane-c-answers-pq1-pq2-oq1-c1b-copy-review-and-ko-출시-예정-2026-11-08) | UI-S4 lane C answers: PQ1, PQ2, OQ1, C1b copy review and ko "출시 예정", 2026-11-08 |
+| [MC-1147](Maintainer-Context.md#mc-1147--ui-s4-lane-c-lane-defaults-not-maintainer-answers-2026-11-08) | UI-S4 lane C lane defaults (not maintainer answers), 2026-11-08 |
+| [MC-1148](Maintainer-Context.md#mc-1148--s3b-n1-note-9-answer-q1-split-pass-rule-2026-11-08) | S3b N1 Note 9 answer Q1: split pass rule, 2026-11-08 |
+| [MC-1149](Maintainer-Context.md#mc-1149--s3b-n1-note-9-answer-q2-per-step-storage-now-2026-11-08) | S3b N1 Note 9 answer Q2: per-step storage now, 2026-11-08 |
+| [MC-1150](Maintainer-Context.md#mc-1150--s3b-local-wip-commit-and-rebase-onto-main-approved-2026-11-08) | S3b local WIP commit and rebase onto main, approved, 2026-11-08 |
+| [MC-1151](Maintainer-Context.md#mc-1151--commit-approvals-with-hashes-checked-with-git-2026-11-08) | Commit approvals, with hashes (checked with git), 2026-11-08 |
+| [MC-1152](Maintainer-Context.md#mc-1152--merge-and-push-approvals-with-hashes-checked-with-git-2026-11-08) | Merge and push approvals, with hashes (checked with git), 2026-11-08 |
+| [MC-1153](Maintainer-Context.md#mc-1153--orchestrator-rulings-recorded-for-the-records-not-maintainer-answers-2026-11-08) | Orchestrator rulings recorded for the records (not maintainer answers), 2026-11-08 |
+| [MC-1154](Maintainer-Context.md#mc-1154--ui-s4-lane-c-answers-home-empty-states-h-onboarding-hide-checkbox-c2-and-sizing-of-c2-and-e-in-parallel-with-h-2026-11-08) | UI-S4 lane C answers: Home empty states (H), Onboarding Hide checkbox (C2), and sizing of C2 and E in parallel with H, 2026-11-08 |
+| [MC-1155](Maintainer-Context.md#mc-1155--boot-paint-finding-option-c-step-texts-around-the-store2-load-no-paint-yields-as-follow-up-stage-b2-2026-11-08) | Boot paint finding: option C (step texts around the store2 load, no paint yields) as follow-up stage B2, 2026-11-08 |
+| [MC-1156](Maintainer-Context.md#mc-1156--a9-and-the-a5-realm-leg-accepted-as-jsdom-only-2026-11-08) | A9 and the A5 Realm leg accepted as jsdom-only, 2026-11-08 |
+| [MC-1157](Maintainer-Context.md#mc-1157--chore-572-closed-close-it-2026-11-08) | CHORE-572 closed: "Close it", 2026-11-08 |
+| [MC-1158](Maintainer-Context.md#mc-1158--ledger-block-granted-to-lane-a-grant-5000-5099-superseded-by-grant-51235222-recommended-2026-11-08) | Ledger block granted to lane A: "Grant 5000-5099", superseded by "Grant 5123–5222 (Recommended)", 2026-11-08 |
+| [MC-1159](Maintainer-Context.md#mc-1159--lane-b-takes-chore-667-chore-677-chore-670-and-chore-676-sizing-in-parallel-2026-11-08) | Lane B takes CHORE-667, CHORE-677, CHORE-670 and CHORE-676; sizing in parallel, 2026-11-08 |
+| [MC-1160](Maintainer-Context.md#mc-1160--lane-a-line-627-and-lane-c-lines-110-to-116-h-and-c2-strings-final-h-chip-c2-tools-note-chore-678-filed-by-lane-a-f2-bin-export-before-pm-clear-2026-11-08) | Lane A line 627 and lane C lines 110 to 116: H and C2 strings FINAL, H chip, C2 Tools note, CHORE-678 filed by lane A, F2 .bin export before pm clear, 2026-11-08 |
+| [MC-1161](Maintainer-Context.md#mc-1161--chore-667-answers-on-renderer-loss-relayed-by-lane-b-2026-11-08) | CHORE-667 answers on renderer loss, relayed by lane B, 2026-11-08 |
