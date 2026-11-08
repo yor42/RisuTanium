@@ -1738,6 +1738,8 @@ export const languageJapanese = {
     homeSourceIssuesLabel: "イシュー",
     homeSourceUpstreamLabel: "アップストリーム",
     homeLinkUtilityTitle: "ユーティリティ",
+    homeModeSwitcherLabel: "モード",
+    homeModeComingLater: "近日公開",
     homeLinkUtilityDescription: "キャラクターやチャットなしで、保存したタスクプリセットを通じてモデルと会話します。",
     homeLinkEmailTitle: "メール",
     homeLinkEmailDescription: "開発者に直接連絡できます。",

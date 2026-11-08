@@ -1607,6 +1607,8 @@ export const languageChinese = {
     "homeSourceIssuesLabel": "议题",
     "homeSourceUpstreamLabel": "上游",
     "homeLinkUtilityTitle": "工具",
+    "homeModeSwitcherLabel": "模式",
+    "homeModeComingLater": "即将推出",
     "homeLinkUtilityDescription": "无需角色或聊天，通过已保存的任务预设与模型对话。",
     "homeLinkEmailTitle": "邮箱",
     "homeLinkEmailDescription": "直接联系开发者。",

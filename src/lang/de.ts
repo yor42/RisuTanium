@@ -1607,6 +1607,8 @@ export const languageGerman = {
     "homeSourceIssuesLabel": "Issues",
     "homeSourceUpstreamLabel": "Upstream",
     "homeLinkUtilityTitle": "Dienstprogramm",
+    "homeModeSwitcherLabel": "Modus",
+    "homeModeComingLater": "Kommt später",
     "homeLinkUtilityDescription": "Unterhalten Sie sich über eine gespeicherte Aufgaben-Voreinstellung mit einem Modell, ganz ohne Charakter oder Chat.",
     "homeLinkEmailTitle": "E-Mail",
     "homeLinkEmailDescription": "Kontaktieren Sie den Entwickler direkt.",

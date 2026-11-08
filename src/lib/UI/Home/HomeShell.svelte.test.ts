@@ -61,6 +61,7 @@ vi.mock('./HomeLibrary.svelte', () => ({ default: libraryStub }))
 
 import HomeShell from './HomeShell.svelte'
 import { homeView, showHomeLanding } from './homeView.svelte'
+import { OpenRealmStore } from 'src/ts/stores.svelte'
 
 const mountedInstances: unknown[] = []
 const mountedTargets: HTMLElement[] = []
@@ -102,6 +103,7 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+    OpenRealmStore.set(false)
     for (const instance of mountedInstances.splice(0)) {
         await unmount(instance as never).catch(() => {})
     }
@@ -149,16 +151,14 @@ describe('HomeShell', () => {
         expect(landingShown(root)).toBe(true)
         expect(libraryShown(root)).toBe(false)
 
-        await settleChunk()
-        expect(libraryShown(root)).toBe(true)
+        await vi.waitFor(() => expect(libraryShown(root)).toBe(true), { timeout: 5000 })
         expect(landingShown(root)).toBe(false)
     })
 
     test('showHomeLanding brings the landing back from the library', async () => {
         const root = mountShell()
         libraryButton(root).click()
-        await settleChunk()
-        expect(libraryShown(root)).toBe(true)
+        await vi.waitFor(() => expect(libraryShown(root)).toBe(true), { timeout: 5000 })
 
         showHomeLanding()
         flushSync()
@@ -166,11 +166,26 @@ describe('HomeShell', () => {
         expect(landingShown(root)).toBe(true)
     })
 
+    test('the mode switcher sits in the landing header and is hidden while the Realm view is open', () => {
+        const root = mountShell()
+        const group = root.querySelector('fieldset')
+        expect(group).not.toBeNull()
+        expect(group!.querySelector('legend')!.textContent).toBe(language.homeModeSwitcherLabel)
+        expect(group!.querySelectorAll('input[type="radio"]').length).toBe(3)
+
+        OpenRealmStore.set(true)
+        flushSync()
+        expect(root.querySelector('fieldset')).toBeNull()
+
+        OpenRealmStore.set(false)
+        flushSync()
+        expect(root.querySelector('fieldset')).not.toBeNull()
+    })
+
     test('every creation starts at the landing, even when the library was left open', async () => {
         const first = mountShell()
         libraryButton(first).click()
-        await settleChunk()
-        expect(libraryShown(first)).toBe(true)
+        await vi.waitFor(() => expect(libraryShown(first)).toBe(true), { timeout: 5000 })
 
         await unmount(mountedInstances.pop() as never)
         mountedTargets.pop()!.remove()

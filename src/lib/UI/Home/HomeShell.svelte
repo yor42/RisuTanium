@@ -3,6 +3,7 @@
     import { LayoutGridIcon } from '@lucide/svelte'
     import { language } from 'src/lang'
     import MainMenu from '../MainMenu.svelte'
+    import HomeModeSwitcher from './HomeModeSwitcher.svelte'
     import { homeView, openHomeLibrary, showHomeLanding } from './homeView.svelte'
 
     // Every creation starts at the landing: a selection change, the language remount and a return
@@ -31,7 +32,7 @@
     })
 </script>
 
-{#snippet libraryButton()}
+{#snippet homeHeader()}
     <button
         type="button"
         class="mt-2 flex items-center gap-2 rounded-md border border-borderc/10 bg-darkbg px-4 py-2 text-textcolor hover:bg-selected/50"
@@ -40,10 +41,11 @@
         <LayoutGridIcon size={18} />
         {language.character}
     </button>
+    <HomeModeSwitcher />
 {/snippet}
 
 {#if homeView.view === 'library' && LibraryScreen}
     <LibraryScreen />
 {:else}
-    <MainMenu header={libraryButton} />
+    <MainMenu header={homeHeader} />
 {/if}

@@ -1737,6 +1737,8 @@ export const languageEnglish = {
     homeSourceIssuesLabel: "Issues",
     homeSourceUpstreamLabel: "upstream",
     homeLinkUtilityTitle: "Utility",
+    homeModeSwitcherLabel: "Mode",
+    homeModeComingLater: "Coming later",
     homeLinkUtilityDescription: "Talk to a model through a saved task preset, with no character or chat.",
     homeLinkEmailTitle: "Email",
     homeLinkEmailDescription: "Contact the developer directly.",
