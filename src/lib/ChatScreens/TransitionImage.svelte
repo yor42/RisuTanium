@@ -1,4 +1,11 @@
+<script module lang="ts">
+    // Must exceed the 0.5s .old-image animation, so a normal fade ends on animationend; the timer only covers a
+    // fade whose animationend never fires.
+    export const FADE_FALLBACK_MS = 1000
+</script>
+
 <script lang="ts">
+    import { onDestroy } from "svelte";
     import { language } from "src/lang";
     let currentSrc:string[] = $state([])
     let oldSrc:string[] = $state([]);
@@ -13,14 +20,30 @@
 
     let { src = [], classType }: Props = $props();
 
+    // Plain counters, never state: they are written inside the effect that calls processSrc.
+    let requestSeq = 0
+    let fadeTimer: ReturnType<typeof setTimeout> | undefined
+
     async function processSrc(src:string[]|Promise<string[]>) {
-        const resultSrc = await src
+        // Only the most recently started request may change what is displayed; a superseded one,
+        // whatever its outcome, is discarded.
+        const seq = ++requestSeq
+        let resolved:string[]
+        try {
+            resolved = await src
+        } catch (reason) {
+            console.warn('TransitionImage: emotion images rejected', reason)
+            return
+        }
+        if (seq !== requestSeq) return
 
         let styl = styleType
+        let resultSrc = resolved
         // The leading entry is always the style marker, never an image; a lone marker leaves nothing to render.
-        if(resultSrc.length > 0){
-            styl = resultSrc[0]
-            resultSrc.splice(0, 1)
+        // The received array is never mutated: the producer may hand the same array to another render.
+        if(resolved.length > 0){
+            styl = resolved[0]
+            resultSrc = resolved.slice(1)
         }
         if (JSON.stringify(resultSrc) !== JSON.stringify(currentSrc) || styl !== styleType) {
             handleTransitionEnd()
@@ -34,11 +57,14 @@
                 currentSrc = resultSrc
                 styleType = styl
                 showOldImage = true;
+                fadeTimer = setTimeout(handleTransitionEnd, FADE_FALLBACK_MS)
             }
         }
     }
 
     function handleTransitionEnd() {
+        clearTimeout(fadeTimer)
+        fadeTimer = undefined
         if (showOldImage) {
             showOldImage = false;
         }
@@ -47,6 +73,11 @@
     $effect.pre(() => {
         processSrc(src)
     });
+
+    onDestroy(() => {
+        requestSeq++
+        clearTimeout(fadeTimer)
+    })
 
 
 
