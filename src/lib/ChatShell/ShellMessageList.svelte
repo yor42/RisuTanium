@@ -16,6 +16,7 @@
     import { STEP_HOLD_MOUNT_CAP, createStepHold, heldPin, pagesForPin, type PinRelease, type StepRowRunner } from '../../ts/chatShell/stepHold'
     import { afterAppend, foldLoadMorePages, jumpOnlyGrows, jumpWindow,mountCap, newestWindow, normalizeBottom, shellInitialPages, shellPages, shellWindow, slideNewer, slideOlder, trimHeld } from '../../ts/chatShell/mountWindow'
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
+    import { offscreenRowCounts } from '../../ts/chatShell/offscreenRows'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { language } from '../../lang'
@@ -398,17 +399,10 @@
 
     // Older rows mount above the reader: the distance from the bottom is restored explicitly, not left to CSS scroll anchoring.
     let pendingBottomDistance: number | null = null
-    // Mounted articles that lie wholly below or above the viewport; the window can unmount them without the reader seeing it.
+    // Mounted rows that lie wholly below or above the viewport; the window can unmount them without the reader seeing it.
+    // Classified on the row containers, so a skipped (content-visibility) older row is not laid out to be measured.
     function offscreenCounts(scroller: HTMLElement): { newer: number, older: number } {
-        const viewport = scroller.getBoundingClientRect()
-        let newer = 0
-        let older = 0
-        for (const row of rows?.querySelectorAll<HTMLElement>('article[data-part="chat-message"]') ?? []) {
-            const box = row.getBoundingClientRect()
-            if (box.top >= viewport.bottom) newer += 1
-            else if (box.bottom <= viewport.top) older += 1
-        }
-        return { newer, older }
+        return offscreenRowCounts(scroller, rows)
     }
     // The height the newest `count` mounted rows (from `start` down) take in the scroll content, measured on their containers.
     function heightOfNewest(start: number, count: number): number {
