@@ -43,6 +43,7 @@
     import { takeOverlayReturnFocus } from "../../ts/chatShell/overlayFocus";
     import { hasOpenShell } from "../Nexus/pattern/patternFocus";
     import ShellSidebar from "../ChatShell/sidebar/ShellSidebar.svelte";
+    import { showHomeLanding } from "../UI/Home/homeView.svelte";
   let sideBarMode = $state(0);
   let editMode = $state(false);
   let menuMode = $state(0);
@@ -214,6 +215,7 @@
     selectedCharID.set(-1)
     PlaygroundStore.set(0)
     OpenRealmStore.set(false)
+    showHomeLanding()
   }}
 >
   <HomeIcon />
@@ -306,6 +308,7 @@
           selectedCharID.set(-1)
           PlaygroundStore.set(0)
           OpenRealmStore.set(false)
+          showHomeLanding()
         }}><HomeIcon /></BarIcon>
       <div class="mt-2"></div>
       <BarIcon
@@ -364,6 +367,7 @@
           selectedCharID.set(-1)
           PlaygroundStore.set(0)
           OpenRealmStore.set(false)
+          showHomeLanding()
         }}><HomeIcon /></BarIcon>
       <div class="mt-2"></div>
       <BarIcon

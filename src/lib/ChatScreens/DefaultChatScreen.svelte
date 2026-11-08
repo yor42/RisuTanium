@@ -17,7 +17,7 @@
     import CreatorQuote from "./CreatorQuote.svelte";
     import { stopTTS } from "src/ts/process/tts";
     import { canChatSpeak } from "src/ts/process/ttsModes";
-    import MainMenu from '../UI/MainMenu.svelte';
+    import HomeShell from '../UI/Home/HomeShell.svelte';
     import AssetInput from './AssetInput.svelte';
     import { aiLawApplies, chatFoldedState, chatFoldedStateMessageIndex, downloadFile } from 'src/ts/globalApi.svelte';
     import { v4 } from 'uuid';
@@ -544,7 +544,7 @@
             {#if $utilityOpen && utilityVisible($pageStorageModeStore)}
                 <UtilityScreen />
             {:else}
-                <MainMenu />
+                <HomeShell />
             {/if}
         {:else}
             {#await loadPlaygroundMenu() then PlaygroundMenu}
