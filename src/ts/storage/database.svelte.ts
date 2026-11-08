@@ -26,6 +26,7 @@ import {
     DEFAULT_CHAT_LOAD_INITIAL_PAGES,
     normalizeChatLoadPages,
 } from '../chatLoadPages';
+import { normalizeHideUnusedModes, normalizeVisibleModes, type HomeMode } from './homeModes';
 
 //APP_VERSION_POINT is to locate the app version in the database file for version bumping
 export let appVer = "0.1.0" //<APP_VERSION_POINT>
@@ -730,6 +731,8 @@ export function setDatabase(data:Database){
     // Because its likely they are power users who would benefit from the features
     data.enableRisuaiProTools ??= data.plugins.length > 0
     data.keepSessionAlive = normalizeKeepSessionAlive(data.keepSessionAlive)
+    data.visibleModes = normalizeVisibleModes(data.visibleModes)
+    data.hideUnusedModes = normalizeHideUnusedModes(data.hideUnusedModes)
     data.loadouts ??= []
     data.loadoutApplyOptions ??= {
         modules: true,
@@ -1320,6 +1323,8 @@ export interface Database{
     disableSeperateParameterChangeOnPresetChange?:boolean
     saveSignatures?:boolean
     keepSessionAlive: KeepSessionAliveMode
+    visibleModes: HomeMode[]
+    hideUnusedModes: boolean
     longPressToPopupEditor?: boolean
     loadouts: Loadout[]
     loadoutApplyOptions: {
