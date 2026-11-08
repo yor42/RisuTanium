@@ -17,6 +17,10 @@
     import PromptSettings from '../Setting/Pages/PromptSettings.svelte'
     import ModuleSettings from '../Setting/Pages/Module/ModuleSettings.svelte'
     import HotkeySettings from '../Setting/Pages/HotkeySettings.svelte'
+    import ModeVisibilityGroup from './ModeVisibilityGroup.svelte'
+    import ModeVisibilityConfirm from './ModeVisibilityConfirm.svelte'
+    import { showAllModes, type HomeMode } from '../../ts/storage/homeModes'
+    import type { PatternAnswer } from '../Nexus/pattern/patternWarning'
 
     interface Props {
         /** The legacy index of the view on screen; the shell passes only indexes a page hosts. */
@@ -34,6 +38,13 @@
     let scroller = $state<HTMLElement>()
     let heading = $state<HTMLElement>()
     let shownIndex: number | null = null
+    let headBlock = $state<HTMLElement>()
+    let showAllAsk = $state<{ trigger: HTMLElement, hidden: HomeMode[] } | null>(null)
+
+    function answerShowAll(answer: PatternAnswer): void {
+        if (answer === 'confirm') showAllModes(DBState.db)
+        showAllAsk = null
+    }
 
     // Runs before the DOM swaps views, so the column still holds the position of the view being left.
     $effect.pre(() => {
@@ -62,7 +73,7 @@
 
 <main class="flex flex-col grow min-w-0 min-h-0 bg-bgcolor text-textcolor" class:settings-shell-drill={phone} data-part="settings-page">
     {#if page}
-        <div class="px-4 pt-4 shrink-0">
+        <div class="px-4 pt-4 shrink-0" bind:this={headBlock}>
             <h2 class="text-xl font-semibold outline-none rounded-sm focus-visible:ring-2 focus-visible:ring-textcolor2" tabindex="-1" bind:this={heading} data-part="settings-page-heading">{settingsLabel(page.labelKey)}</h2>
             {#if page.views.length > 1}
                 <div class="flex flex-wrap gap-2 mt-3" role="group" aria-label={language.settingsShellViews}>
@@ -93,6 +104,7 @@
                 {:else if index === 2}
                     <OtherBotSettings />
                 {:else if index === 3}
+                    <ModeVisibilityGroup onaskshowall={(trigger, hidden) => { showAllAsk = { trigger, hidden } }} />
                     <DisplaySettings />
                 {:else if index === 4}
                     <PluginSettings />
@@ -132,6 +144,9 @@
             </div>
         {/if}
     </div>
+    {#if showAllAsk}
+        <ModeVisibilityConfirm hidden={showAllAsk.hidden} trigger={showAllAsk.trigger} background={[headBlock, scroller].filter((el): el is HTMLElement => el !== undefined)} onanswer={answerShowAll} />
+    {/if}
 </main>
 
 <style>
