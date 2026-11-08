@@ -1035,101 +1035,136 @@ function initStreamState(state?: {[key:string]:string}): {[key:string]:string} {
     return state;
 }
 
+/**
+ * Applies one complete or incomplete SSE line to `readed`. Returns true for a `[DONE]` line, which ends the
+ * stream; a malformed line throws, as `JSON.parse` does.
+ */
+function applyGeminiLine(
+    line:string,
+    readed:{[key:string]:string},
+    modelInfo:LLMModel,
+    saveSignature:boolean
+):boolean {
+    if (line.startsWith('data: ')) {
+        const dataStr = line.slice(6).trim();
+        if (dataStr === '[DONE]') return true;
+
+        const jsonData = JSON.parse(dataStr);
+
+        if (jsonData.candidates?.[0]?.content?.parts) {
+            const parts = jsonData.candidates[0].content.parts;
+            for (const part of parts) {
+                if (part.text) {
+                    readed["__thoughts"] += readed["__last_thought"];
+                    readed["__last_thought"] = "";
+                    if (part.thought){
+                        readed["__last_thought"] = part.text;
+                    }
+                    else {
+                        readed["0"] += part.text;
+                    }
+                    if (part.thoughtSignature) {
+                        readed["__sign_text"] = part.thoughtSignature;
+                        if(saveSignature){
+                            //Its a promise, but we don't need to await it here
+                            const sigId = v4()
+                            saveInlayedSignature(sigId, {
+                                source: modelInfo.internalID || modelInfo.id,
+                                sourceFormat: modelInfo.format,
+                                signatures: [{
+                                    type: 'text',
+                                    content: part.text,
+                                }]
+                            }).catch((error) => console.error('The Gemini signature could not be saved:', error))
+                            readed["0"] += `{{inlayeddata::${sigId}}}`;
+                        }
+                    }
+                }
+                if (part.functionCall) {
+                    const toolCallsData = JSON.parse(readed["__tool_calls"]);
+                    toolCallsData.push(part.functionCall);
+                    readed["__tool_calls"] = JSON.stringify(toolCallsData);
+                    if(part.thoughtSignature){
+                        readed["__sign_function"] = part.thoughtSignature;
+                        const sigId = v4()
+
+                        if(saveSignature){
+                            //Its a promise, but we don't need to await it here
+                            saveInlayedSignature(sigId, {
+                                source: modelInfo.internalID || modelInfo.id,
+                                sourceFormat: modelInfo.format,
+                                signatures: [{
+                                    type: 'function',
+                                    content: `${part.functionCall.name}(${JSON.stringify(part.functionCall.args)})`,
+                                }]
+                            }).catch((error) => console.error('The Gemini signature could not be saved:', error))
+                            readed["0"] += `{{inlayeddata::${sigId}}}`;
+                        }
+                    }
+                }
+            }
+        }
+
+        if(jsonData.usageMetadata){
+            readed['__usageMetadata'] = JSON.stringify(jsonData.usageMetadata)
+        }
+        if(jsonData.modelStatus){
+            readed['__modelStatus'] = JSON.stringify(jsonData.modelStatus)
+        }
+    }
+    return false
+}
+
 function getTranStream(args:{
     modelInfo:LLMModel,
     saveSignature:boolean
 }):TransformStream<Uint8Array, StreamResponseChunk> {
-    let buffer = '';
+    // Only the incomplete last line is kept between reads: each complete line is folded into `committed`
+    // once, and the tail is applied to a copy so it never changes what later reads see.
+    let carry = '';
+    // A committed `[DONE]` or malformed line ends all emission for good.
+    let halted = false;
+    const committed = initStreamState();
     // One decoder per stream, so a character split across chunks is joined instead of replaced.
     const decoder = new TextDecoder();
     const { modelInfo, saveSignature } = args
     return new TransformStream<Uint8Array, StreamResponseChunk>({
         transform(chunk, control) {
-            buffer += decoder.decode(chunk, {stream: true});
-            const lines = buffer.split('\n');
-
-            let readed = initStreamState();
-
-            try {
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const dataStr = line.slice(6).trim();
-                        if (dataStr === '[DONE]') return;
-                    
-                        const jsonData = JSON.parse(dataStr);
-                        
-                        if (jsonData.candidates?.[0]?.content?.parts) {
-                            const parts = jsonData.candidates[0].content.parts;
-                            for (const part of parts) {
-                                if (part.text) {
-                                    readed["__thoughts"] += readed["__last_thought"];
-                                    readed["__last_thought"] = "";
-                                    if (part.thought){
-                                        readed["__last_thought"] = part.text;
-                                    }
-                                    else {
-                                        readed["0"] += part.text;
-                                    }
-                                    if (part.thoughtSignature) {
-                                        readed["__sign_text"] = part.thoughtSignature;
-                                        if(saveSignature){
-                                            //Its a promise, but we don't need to await it here
-                                            const sigId = v4()
-                                            saveInlayedSignature(sigId, {
-                                                source: modelInfo.internalID || modelInfo.id,
-                                                sourceFormat: modelInfo.format,
-                                                signatures: [{
-                                                    type: 'text',
-                                                    content: part.text,
-                                                }]
-                                            }).catch((error) => console.error('The Gemini signature could not be saved:', error))
-                                            readed["0"] += `{{inlayeddata::${sigId}}}`;
-                                        }
-                                    }
-                                }
-                                if (part.functionCall) {
-                                    const toolCallsData = JSON.parse(readed["__tool_calls"]);
-                                    toolCallsData.push(part.functionCall);
-                                    readed["__tool_calls"] = JSON.stringify(toolCallsData);
-                                    if(part.thoughtSignature){
-                                        readed["__sign_function"] = part.thoughtSignature;
-                                        const sigId = v4()
-
-                                        if(saveSignature){
-                                            //Its a promise, but we don't need to await it here
-                                            saveInlayedSignature(sigId, {
-                                                source: modelInfo.internalID || modelInfo.id,
-                                                sourceFormat: modelInfo.format,
-                                                signatures: [{
-                                                    type: 'function',
-                                                    content: `${part.functionCall.name}(${JSON.stringify(part.functionCall.args)})`,
-                                                }]
-                                            }).catch((error) => console.error('The Gemini signature could not be saved:', error))
-                                            readed["0"] += `{{inlayeddata::${sigId}}}`;
-                                        }
-                                    }
-                                }
-                            }
+            if (halted) return;
+            carry += decoder.decode(chunk, {stream: true});
+            const lastBreak = carry.lastIndexOf('\n');
+            if (lastBreak >= 0) {
+                const complete = carry.slice(0, lastBreak).split('\n');
+                carry = carry.slice(lastBreak + 1);
+                try {
+                    for (const line of complete) {
+                        if (applyGeminiLine(line, committed, modelInfo, saveSignature)) {
+                            halted = true;
+                            return;
                         }
-
-                        if(jsonData.usageMetadata){
-                            readed['__usageMetadata'] = JSON.stringify(jsonData.usageMetadata)
-                        }
-                        if(jsonData.modelStatus){
-                            readed['__modelStatus'] = JSON.stringify(jsonData.modelStatus)
-                        }
-                    } 
+                    }
+                } catch (error) {
+                    halted = true;
+                    return;
                 }
+            }
+
+            // The enqueued object is fresh: `wrapToolStream` mutates what it receives.
+            const readed = {...committed};
+            try {
+                if (applyGeminiLine(carry, readed, modelInfo, saveSignature)) return;
                 control.enqueue(readed)
             } catch (error) {
 
             }
         },
         flush() {
-            buffer += decoder.decode();
+            carry += decoder.decode();
         }
     });
 }
+
+export const __testGeminiStream = { getTranStream }
 
 function wrapToolStream(
     stream: ReadableStream<StreamResponseChunk>,
