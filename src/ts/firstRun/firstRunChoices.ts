@@ -7,6 +7,7 @@ import { prebuiltPresets } from '../process/templates/templates'
 import { FIRST_RUN_MODELS } from '../model/firstRunModels'
 import { DBState } from '../stores.svelte'
 import { updateTextThemeAndCSS } from '../gui/colorscheme'
+import { setHideUnusedModes, setVisibleModes, type HomeMode } from '../storage/homeModes'
 
 export type FirstRunProvider = 'claude' | 'openai' | 'gemini' | 'openrouter' | 'horde' | 'later'
 export type MemoryChoice = 'cheap' | 'balanced' | 'memory' | 'unlimited'
@@ -114,6 +115,8 @@ export interface FirstRunState {
     skipped: boolean
     appLanguage: string
     use: UseChoice | null
+    /** The "Hide unused modes?" box is ticked. Counts only while `offersHideUnused(use)`. */
+    hideUnused: boolean
     /** Persona name for stories and both, nickname for tools. */
     name: string
     description: string
@@ -140,6 +143,11 @@ export interface StepList {
 /** The Use step holds no default: Continue stays disabled until the person picks. */
 export function useStepReady(use: UseChoice | null): boolean {
     return use !== null
+}
+
+/** The "Hide unused modes?" checkbox is offered for Stories and Tools, never for Both or before a pick. */
+export function offersHideUnused(use: UseChoice | null): boolean {
+    return use === 'stories' || use === 'tools'
 }
 
 /** With Yes chosen a nickname is required; No needs nothing; an unanswered question is not ready. */
@@ -199,6 +207,8 @@ export interface FirstRunChoices {
     memory: MemoryChoice
     chatLanguage: ChatLanguageChoice
     persona: FirstRunPersona
+    /** The only mode Home keeps showing, or null when the person hides nothing. */
+    onlyMode: HomeMode | null
 }
 
 const NO_PERSONA: FirstRunPersona = { name: '', description: '', keepPicture: false }
@@ -206,11 +216,12 @@ const NO_PERSONA: FirstRunPersona = { name: '', description: '', keepPicture: fa
 /**
  * What the answers resolve to, or null while a question is unanswered. Skip setup, and Horde or set-up-later without
  * "set up now", resolve to Balanced memory and an unchanged chat language, discarding any earlier memory and language
- * answers. Tools carries only the nickname.
+ * answers. Tools carries only the nickname. `onlyMode` is set only for a ticked box that is still offered (Stories gives
+ * Roleplay, Tools gives Utility); Skip, Both and an unticked box give null.
  */
 export function resolveChoices(state: FirstRunState): FirstRunChoices | null {
     if (state.skipped) {
-        return { provider: 'later', apiKey: '', memory: 'balanced', chatLanguage: 'unchanged', persona: NO_PERSONA }
+        return { provider: 'later', apiKey: '', memory: 'balanced', chatLanguage: 'unchanged', persona: NO_PERSONA, onlyMode: null }
     }
     if (state.use === null || state.provider === null || stepsFor(state).needsAnswer !== null) {
         return null
@@ -226,6 +237,7 @@ export function resolveChoices(state: FirstRunState): FirstRunChoices | null {
         memory: later ? 'balanced' : state.memory,
         chatLanguage: later || state.appLanguage === 'en' ? 'unchanged' : state.chatLanguage,
         persona,
+        onlyMode: state.hideUnused && offersHideUnused(state.use) ? (state.use === 'tools' ? 'utility' : 'rp') : null,
     }
 }
 
@@ -315,7 +327,8 @@ function writePersona(db: Database, persona: FirstRunPersona): void {
 
 /**
  * Writes the choices into `db` and returns it. The preset goes first because it overwrites context, response and model;
- * everything the person chose follows it. It never writes the mode fields and never sets `didFirstSetup`.
+ * everything the person chose follows it. The mode fields are written only for a non-null `onlyMode`, through the
+ * setters, remembering the set before hiding turns on; a null `onlyMode` writes neither field. It never sets `didFirstSetup`.
  */
 export function applyFirstRunChoices(db: Database, choices: FirstRunChoices): Database {
     const target = setPreset(db, prebuiltPresets.OAI2)
@@ -329,6 +342,10 @@ export function applyFirstRunChoices(db: Database, choices: FirstRunChoices): Da
     }
     writeChatLanguage(target, choices.chatLanguage)
     writePersona(target, choices.persona)
+    if (choices.onlyMode !== null) {
+        setVisibleModes(target, [choices.onlyMode])
+        setHideUnusedModes(target, true)
+    }
     return target
 }
 

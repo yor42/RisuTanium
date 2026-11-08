@@ -11,6 +11,7 @@ import {
     keyAdvisory,
     languageToWrite,
     nicknameReady,
+    offersHideUnused,
     providerTakesKey,
     resolveChoices,
     stepsFor,
@@ -51,6 +52,11 @@ export class WelcomeFlow {
     /** The finishing display is up: every control is disabled and the choices are written when it ends. */
     finishing = $state(false)
     finished = $state(false)
+    /**
+     * A Welcome restore is open, from the first confirmation until the restore entry settles. Every Welcome step control is
+     * disabled meanwhile, so a second restore cannot stack on a picker that is still up.
+     */
+    restoring = $state(false)
 
     readonly detected: DetectedLanguage
     /** The language the person picked; null until they pick one. */
@@ -58,6 +64,8 @@ export class WelcomeFlow {
     appLanguage: FirstRunLanguage = $state('en')
 
     use: UseChoice | null = $state(null)
+    /** Only meaningful while `hideOffered`; a change of use clears it. */
+    hideUnused = $state(false)
     name = $state('')
     description = $state('')
     keepPicture = $state(false)
@@ -87,6 +95,13 @@ export class WelcomeFlow {
         void this.appLanguage
         return language
     })
+
+    /** Every Welcome step control is disabled and its flow method ignores calls. */
+    welcomeLocked = $derived(this.finishing || this.restoring)
+    /** The Hide-unused-modes checkbox is offered for the current use. */
+    hideOffered = $derived(offersHideUnused(this.use))
+    /** The ticked box counts: it is ticked and still offered. */
+    hidesUnused = $derived(this.hideUnused && this.hideOffered)
 
     stepList = $derived(stepsFor({ appLanguage: this.appLanguage, use: this.use, provider: this.provider, setUpNow: this.setUpNow }))
     steps = $derived(this.stepList.steps)
@@ -145,6 +160,7 @@ export class WelcomeFlow {
             skipped,
             appLanguage: this.appLanguage,
             use: this.use,
+            hideUnused: this.hideUnused,
             name: this.name,
             description: this.description,
             keepPicture: this.keepPicture,
@@ -166,7 +182,7 @@ export class WelcomeFlow {
     }
 
     pickLanguage(code: FirstRunLanguage): void {
-        if (this.finishing) {
+        if (this.welcomeLocked) {
             return
         }
         changeLanguage(code)
@@ -176,24 +192,33 @@ export class WelcomeFlow {
     }
 
     startSetup(): void {
-        if (this.finishing) {
+        if (this.welcomeLocked) {
             return
         }
         this.writeLanguage('start')
         this.index = 1
     }
 
-    /** The restore keeps its own language and flag; no flow state is held across it, because the promise may never settle. */
+    /**
+     * The restore keeps its own language and flag. The lock is held across the entry call, which settles with the
+     * restore flow (also when the flow fails), or earlier when a dismissed picker fires no event and the window comes
+     * back. It lifts on any settle, a rejection included; the rejection itself is left unhandled so the global rejection
+     * handler reports it. Accepted limitation: a picker dismissed with no event while the window never returns leaves the
+     * entry pending, and Welcome stays locked until a return or a reload.
+     */
     restore(): void {
-        if (this.finishing) {
+        if (this.welcomeLocked) {
             return
         }
         this.writeLanguage('restore')
-        void restoreFromBinFileAtFirstRun()
+        this.restoring = true
+        void restoreFromBinFileAtFirstRun().finally(() => {
+            this.restoring = false
+        })
     }
 
     skipSetup(): void {
-        if (this.finishing) {
+        if (this.welcomeLocked) {
             return
         }
         this.writeLanguage('skip')
@@ -207,6 +232,9 @@ export class WelcomeFlow {
         if (this.finishing) {
             return
         }
+        if (use !== this.use) {
+            this.hideUnused = false
+        }
         this.use = use
         if (use === 'tools') {
             // Tools carries only a nickname: the persona description and picture do not travel with it.
@@ -214,6 +242,13 @@ export class WelcomeFlow {
             this.keepPicture = false
             DBState.db.userIcon = ''
         }
+    }
+
+    setHideUnused(value: boolean): void {
+        if (this.finishing || !this.hideOffered) {
+            return
+        }
+        this.hideUnused = value
     }
 
     chooseProvider(provider: FirstRunProvider): void {

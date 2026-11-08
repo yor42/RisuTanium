@@ -1,6 +1,7 @@
 <script lang="ts">
     import { language } from 'src/lang'
     import { getCharImage } from 'src/ts/characters'
+    import { createEnterKeyController } from 'src/ts/chatShell/enterKey'
     import { selectUserImg } from 'src/ts/persona'
     import { DBState } from 'src/ts/stores.svelte'
     import type { WelcomeFlow } from './welcomeFlow.svelte'
@@ -8,9 +9,12 @@
     /** `persona` for stories and both (name, description, picture); `nickname` for tools (a yes or no, then a nickname). */
     let { flow, mode }: { flow: WelcomeFlow, mode: 'persona' | 'nickname' } = $props()
 
+    // The name and nickname inputs never coexist, so one controller serves whichever is mounted.
+    const enter = createEnterKeyController()
+
     function advanceOnEnter(e: KeyboardEvent): void {
-        // Enter during IME composition confirms the composition; it must not advance the step.
-        if (e.key.toLocaleLowerCase() === 'enter' && !e.shiftKey && !e.isComposing) {
+        // An Enter that commits an IME composition, or arrives in the tail after it, must not advance the step.
+        if (enter.shouldSend(e, 'send')) {
             e.preventDefault()
             flow.next()
         }
@@ -65,6 +69,9 @@
             disabled={flow.finishing}
             autocomplete="off"
             onkeydown={advanceOnEnter}
+            oncompositionstart={() => enter.compositionStart()}
+            oncompositionend={() => enter.compositionEnd()}
+            onblur={() => enter.compositionEnd()}
         />
     </label>
     <label class="flex flex-col gap-1 mt-4">
@@ -112,6 +119,9 @@
                 disabled={flow.finishing}
                 autocomplete="off"
                 onkeydown={advanceOnEnter}
+                oncompositionstart={() => enter.compositionStart()}
+                oncompositionend={() => enter.compositionEnd()}
+                onblur={() => enter.compositionEnd()}
             />
         </label>
         {#if flow.name.trim() !== ''}

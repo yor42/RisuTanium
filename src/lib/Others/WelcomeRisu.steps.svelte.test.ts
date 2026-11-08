@@ -172,7 +172,7 @@ function toProvider(target: HTMLElement): void {
 
 beforeEach(() => {
     DBState.db = { userIcon: '' } as Database
-    restoreAtFirstRun.mockClear()
+    restoreAtFirstRun.mockReset().mockImplementation(async () => {})
     restoreFromSettings.mockClear()
     finishFirstRunMock.mockClear()
 })
@@ -217,6 +217,7 @@ describe('the Welcome walk', () => {
             memory: 'balanced',
             chatLanguage: 'unchanged',
             persona: { name: 'Mira', description: '', keepPicture: false },
+            onlyMode: null,
         })
     })
 
@@ -554,6 +555,214 @@ describe('IME Enter', () => {
     })
 })
 
+describe('IME Enter after a composition (Samsung Cheonjiin order)', () => {
+    // The controller reads performance.now() at call time; each dispatch sets the clock first.
+    let now: ReturnType<typeof vi.spyOn>
+
+    beforeEach(() => {
+        now = vi.spyOn(performance, 'now')
+    })
+
+    afterEach(() => {
+        now.mockRestore()
+    })
+
+    function compose(field: HTMLInputElement, type: 'compositionstart' | 'compositionend', at: number): void {
+        now.mockReturnValue(at)
+        field.dispatchEvent(new Event(type, { bubbles: true }))
+    }
+
+    function pressEnter(field: HTMLInputElement, at: number, keyCode = 13, shiftKey = false): void {
+        now.mockReturnValue(at)
+        field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode, shiftKey, isComposing: false, bubbles: true, cancelable: true }))
+        flushSync()
+    }
+
+    function toNicknameField(target: HTMLElement): HTMLInputElement {
+        press(target, language.onboarding.startSetup)
+        choose(target, 'welcome-use', 'tools')
+        press(target, language.onboarding.continue)
+        choose(target, 'welcome-nickname', 'yes')
+        const field = textInput(target, language.nickname)
+        typeInto(field, 'Mira')
+        return field
+    }
+
+    function toKeyField(target: HTMLElement): HTMLInputElement {
+        toProvider(target)
+        choose(target, 'welcome-provider', 'claude')
+        const field = textInput(target, language.apiKey)
+        typeInto(field, SYNTHETIC_KEY)
+        return field
+    }
+
+    test('name: Enter at the end of a composition and the tail after it do not advance; later Enter does', () => {
+        const target = mountWelcome()
+        toPersona(target)
+        const field = textInput(target, language.name)
+
+        compose(field, 'compositionstart', 1000)
+        pressEnter(field, 1000)
+        expect(heading(target)).toBe(language.onboarding.personaTitle)
+
+        compose(field, 'compositionend', 1000)
+        pressEnter(field, 1010)
+        expect(heading(target)).toBe(language.onboarding.personaTitle)
+
+        pressEnter(field, 1100)
+        expect(heading(target)).toBe(language.onboarding.providerTitle)
+    })
+
+    test('name: the device order (compositionend, then Enter 10 ms later) does not advance', () => {
+        const target = mountWelcome()
+        toPersona(target)
+        const field = textInput(target, language.name)
+
+        compose(field, 'compositionstart', 900)
+        compose(field, 'compositionend', 1000)
+        pressEnter(field, 1010)
+        expect(heading(target)).toBe(language.onboarding.personaTitle)
+
+        pressEnter(field, 1100)
+        expect(heading(target)).toBe(language.onboarding.providerTitle)
+    })
+
+    test('API key: Enter at the end of a composition and the tail after it do not advance; later Enter does', () => {
+        const target = mountWelcome()
+        const field = toKeyField(target)
+
+        compose(field, 'compositionstart', 1000)
+        pressEnter(field, 1000)
+        expect(heading(target)).toBe(language.onboarding.providerTitle)
+
+        compose(field, 'compositionend', 1000)
+        pressEnter(field, 1010)
+        expect(heading(target)).toBe(language.onboarding.providerTitle)
+
+        pressEnter(field, 1100)
+        expect(heading(target)).toBe(language.onboarding.stepMemory)
+    })
+
+    test('API key: the device order (compositionend, then Enter 10 ms later) does not advance', () => {
+        const target = mountWelcome()
+        const field = toKeyField(target)
+
+        compose(field, 'compositionstart', 900)
+        compose(field, 'compositionend', 1000)
+        pressEnter(field, 1010)
+        expect(heading(target)).toBe(language.onboarding.providerTitle)
+
+        pressEnter(field, 1100)
+        expect(heading(target)).toBe(language.onboarding.stepMemory)
+    })
+
+    test('nickname: Enter at the end of a composition and the tail after it do not advance; later Enter does', () => {
+        const target = mountWelcome()
+        const field = toNicknameField(target)
+
+        compose(field, 'compositionstart', 1000)
+        pressEnter(field, 1000)
+        expect(heading(target)).toBe(language.onboarding.nicknameQuestion)
+
+        compose(field, 'compositionend', 1000)
+        pressEnter(field, 1010)
+        expect(heading(target)).toBe(language.onboarding.nicknameQuestion)
+
+        pressEnter(field, 1100)
+        expect(heading(target)).toBe(language.onboarding.providerTitle)
+    })
+
+    test('nickname: the device order (compositionend, then Enter 10 ms later) does not advance', () => {
+        const target = mountWelcome()
+        const field = toNicknameField(target)
+
+        compose(field, 'compositionstart', 900)
+        compose(field, 'compositionend', 1000)
+        pressEnter(field, 1010)
+        expect(heading(target)).toBe(language.onboarding.nicknameQuestion)
+
+        pressEnter(field, 1100)
+        expect(heading(target)).toBe(language.onboarding.providerTitle)
+    })
+
+    test('Enter with keyCode 229 does not advance', () => {
+        const target = mountWelcome()
+        toPersona(target)
+        const field = textInput(target, language.name)
+
+        pressEnter(field, 1000, 229)
+        expect(heading(target)).toBe(language.onboarding.personaTitle)
+    })
+
+    test('a plain Enter with no composition advances', () => {
+        const target = mountWelcome()
+        toPersona(target)
+        const field = textInput(target, language.name)
+
+        pressEnter(field, 1000)
+        expect(heading(target)).toBe(language.onboarding.providerTitle)
+    })
+
+    test('a blur ends a composition that never reported its end, so a later Enter advances', () => {
+        const target = mountWelcome()
+        toPersona(target)
+        const field = textInput(target, language.name)
+
+        compose(field, 'compositionstart', 1000)
+        now.mockReturnValue(1001)
+        field.dispatchEvent(new Event('blur'))
+        pressEnter(field, 2000)
+        expect(heading(target)).toBe(language.onboarding.providerTitle)
+    })
+
+    test('nickname: a blur ends a composition that never reported its end, so a later Enter advances', () => {
+        const target = mountWelcome()
+        const field = toNicknameField(target)
+
+        compose(field, 'compositionstart', 1000)
+        now.mockReturnValue(1001)
+        field.dispatchEvent(new Event('blur'))
+        pressEnter(field, 2000)
+        expect(heading(target)).toBe(language.onboarding.providerTitle)
+    })
+
+    test('API key: a blur ends a composition that never reported its end, so a later Enter advances', () => {
+        const target = mountWelcome()
+        const field = toKeyField(target)
+
+        compose(field, 'compositionstart', 1000)
+        now.mockReturnValue(1001)
+        field.dispatchEvent(new Event('blur'))
+        pressEnter(field, 2000)
+        expect(heading(target)).toBe(language.onboarding.stepMemory)
+    })
+
+    test('name: Shift+Enter with no composition does not advance', () => {
+        const target = mountWelcome()
+        toPersona(target)
+        const field = textInput(target, language.name)
+
+        pressEnter(field, 1000, 13, true)
+        expect(heading(target)).toBe(language.onboarding.personaTitle)
+    })
+
+    test('nickname: Shift+Enter with no composition does not advance', () => {
+        const target = mountWelcome()
+        const field = toNicknameField(target)
+
+        pressEnter(field, 1000, 13, true)
+        expect(heading(target)).toBe(language.onboarding.nicknameQuestion)
+    })
+
+    test('API key: Shift+Enter with no composition does not advance', () => {
+        const target = mountWelcome()
+        const field = toKeyField(target)
+
+        pressEnter(field, 1000, 13, true)
+        expect(heading(target)).toBe(language.onboarding.providerTitle)
+    })
+})
+
 describe('the finish lifecycle', () => {
     function toReviewViaLater(target: HTMLElement): void {
         toProvider(target)
@@ -619,5 +828,342 @@ describe('the finish lifecycle', () => {
         vi.advanceTimersByTime(FINISH_DISPLAY_MS * 2)
 
         expect(finishFirstRunMock).not.toHaveBeenCalled()
+    })
+})
+
+describe('the Hide unused modes checkbox', () => {
+    function hideBox(target: HTMLElement): HTMLInputElement | null {
+        return target.querySelector<HTMLInputElement>('input[type="checkbox"]')
+    }
+
+    function tickHide(target: HTMLElement, checked = true): void {
+        const box = hideBox(target)
+        expect(box, 'the Hide unused modes checkbox').not.toBeNull()
+        if (box!.checked !== checked) {
+            box!.click()
+            flushSync()
+        }
+    }
+
+    /** The text of every element the checkbox names in aria-describedby. */
+    function descriptions(box: HTMLInputElement): string[] {
+        return (box.getAttribute('aria-describedby') ?? '').split(' ').filter((id) => id !== '').map((id) => document.getElementById(id)?.textContent ?? '')
+    }
+
+    /** From the Use step, through the person's use, to Review, answering the later questions with the cheapest option. */
+    function useThroughToReview(target: HTMLElement, use: 'stories' | 'tools', tick: boolean): void {
+        press(target, language.onboarding.startSetup)
+        choose(target, 'welcome-use', use)
+        if (tick) {
+            tickHide(target)
+        }
+        press(target, language.onboarding.continue)
+        if (use === 'tools') {
+            choose(target, 'welcome-nickname', 'no')
+        }
+        press(target, language.onboarding.continue)
+        choose(target, 'welcome-provider', 'later')
+        choose(target, 'welcome-set-up-now', 'no')
+        press(target, language.onboarding.continue)
+    }
+
+    test('no checkbox before a pick or for Both', () => {
+        const target = mountWelcome()
+        press(target, language.onboarding.startSetup)
+        expect(hideBox(target)).toBeNull()
+
+        choose(target, 'welcome-use', 'both')
+        expect(hideBox(target)).toBeNull()
+    })
+
+    test('Stories offers an unticked checkbox named by its label and described by the hint, with no Tools note', () => {
+        const target = mountWelcome()
+        press(target, language.onboarding.startSetup)
+        choose(target, 'welcome-use', 'stories')
+
+        const box = hideBox(target)!
+        expect(box.checked).toBe(false)
+        expect([...box.labels ?? []].map((label) => label.textContent?.trim())).toEqual([language.onboarding.hideUnused])
+        expect(box.labels?.[0].className).toContain('min-h-11')
+        expect(descriptions(box)).toEqual([language.onboarding.hideUnusedHintStories])
+
+        tickHide(target)
+        expect(target.textContent).not.toContain(language.onboarding.hideUnusedToolsLater)
+        expect(descriptions(hideBox(target)!)).toEqual([language.onboarding.hideUnusedHintStories])
+    })
+
+    test('Tools shows the note beside the unticked box and keeps it once ticked', () => {
+        const target = mountWelcome()
+        press(target, language.onboarding.startSetup)
+        choose(target, 'welcome-use', 'tools')
+
+        const unticked = hideBox(target)!
+        expect(unticked.checked).toBe(false)
+        expect(descriptions(unticked)).toEqual([language.onboarding.hideUnusedHintTools, language.onboarding.hideUnusedToolsLater])
+
+        tickHide(target)
+        expect(hideBox(target)!.checked).toBe(true)
+        expect(descriptions(hideBox(target)!)).toEqual([language.onboarding.hideUnusedHintTools, language.onboarding.hideUnusedToolsLater])
+    })
+
+    test('changing the use clears the tick, and Both offers no box', () => {
+        const target = mountWelcome()
+        press(target, language.onboarding.startSetup)
+        choose(target, 'welcome-use', 'stories')
+        tickHide(target)
+
+        choose(target, 'welcome-use', 'tools')
+        expect(hideBox(target)!.checked).toBe(false)
+        tickHide(target)
+        choose(target, 'welcome-use', 'both')
+        expect(hideBox(target)).toBeNull()
+        choose(target, 'welcome-use', 'stories')
+        expect(hideBox(target)!.checked).toBe(false)
+    })
+
+    test('the flow ignores a tick when no box is offered, and clears it when the use changes', () => {
+        const flow = new WelcomeFlow('en-US')
+
+        flow.setHideUnused(true)
+        expect([flow.hideUnused, flow.hidesUnused]).toEqual([false, false])
+        flow.chooseUse('both')
+        flow.setHideUnused(true)
+        expect([flow.hideUnused, flow.hidesUnused]).toEqual([false, false])
+
+        flow.chooseUse('stories')
+        flow.setHideUnused(true)
+        expect(flow.hidesUnused).toBe(true)
+        flow.chooseUse('tools')
+        expect([flow.hideUnused, flow.hidesUnused]).toEqual([false, false])
+    })
+
+    test('Review names the hidden modes on the Use row only when ticked, and Change returns to Use with the tick kept', () => {
+        const ticked = mountWelcome()
+        useThroughToReview(ticked, 'stories', true)
+        expect(ticked.textContent).toContain(language.onboarding.hideUnusedReview)
+
+        const change = ticked.querySelector<HTMLButtonElement>(`button[aria-label="${language.onboarding.change}: ${language.onboarding.stepUse}"]`)
+        expect(change, 'the Change button of the Use row').not.toBeNull()
+        change!.click()
+        flushSync()
+        expect(heading(ticked)).toBe(language.onboarding.useTitle)
+        expect(hideBox(ticked)!.checked).toBe(true)
+    })
+
+    test('Review shows no hidden-modes line for an unticked box', () => {
+        const target = mountWelcome()
+        useThroughToReview(target, 'stories', false)
+
+        expect(target.textContent).not.toContain(language.onboarding.hideUnusedReview)
+    })
+
+    test.each([
+        ['stories', 'rp'],
+        ['tools', 'utility'],
+    ] as const)('a ticked %s walk finishes with only mode %s', (use, onlyMode) => {
+        vi.useFakeTimers()
+        const target = mountWelcome()
+        useThroughToReview(target, use, true)
+
+        press(target, language.onboarding.finish)
+        vi.advanceTimersByTime(FINISH_DISPLAY_MS)
+
+        expect(finishFirstRunMock).toHaveBeenCalledTimes(1)
+        expect(finishFirstRunMock.mock.calls[0][0].onlyMode).toBe(onlyMode)
+    })
+
+    test('an unticked walk finishes with no only mode', () => {
+        vi.useFakeTimers()
+        const target = mountWelcome()
+        useThroughToReview(target, 'stories', false)
+
+        press(target, language.onboarding.finish)
+        vi.advanceTimersByTime(FINISH_DISPLAY_MS)
+
+        expect(finishFirstRunMock.mock.calls[0][0].onlyMode).toBeNull()
+    })
+
+    test('while finishing, the tick cannot change and the finish keeps the only mode', () => {
+        vi.useFakeTimers()
+        const flow = new WelcomeFlow('en-US')
+        flow.chooseUse('stories')
+        flow.setHideUnused(true)
+        flow.chooseProvider('later')
+        flow.setUpNow = false
+        flow.finish()
+
+        flow.setHideUnused(false)
+        vi.advanceTimersByTime(FINISH_DISPLAY_MS)
+
+        expect(flow.hideUnused).toBe(true)
+        expect(finishFirstRunMock).toHaveBeenCalledTimes(1)
+        expect(finishFirstRunMock.mock.calls[0][0].onlyMode).toBe('rp')
+        flow.dispose()
+    })
+
+    test('a tick, Back to Welcome, then Restore does not finish and leaves the stored mode fields alone', () => {
+        DBState.db = { userIcon: '', visibleModes: ['hybrid'], hideUnusedModes: true } as unknown as Database
+        const target = mountWelcome()
+        press(target, language.onboarding.startSetup)
+        choose(target, 'welcome-use', 'stories')
+        tickHide(target)
+        press(target, language.onboarding.back)
+
+        press(target, language.onboarding.restoreBackup)
+
+        expect(restoreAtFirstRun).toHaveBeenCalledTimes(1)
+        expect(finishFirstRunMock).not.toHaveBeenCalled()
+        expect(DBState.db.visibleModes).toEqual(['hybrid'])
+        expect(DBState.db.hideUnusedModes).toBe(true)
+    })
+
+    test('a tick, Back to Welcome, then Skip finishes with no only mode', () => {
+        vi.useFakeTimers()
+        const target = mountWelcome()
+        press(target, language.onboarding.startSetup)
+        choose(target, 'welcome-use', 'stories')
+        tickHide(target)
+        press(target, language.onboarding.back)
+
+        press(target, language.onboarding.skipSetup)
+        vi.advanceTimersByTime(FINISH_DISPLAY_MS)
+
+        expect(finishFirstRunMock.mock.calls[0][0].onlyMode).toBeNull()
+    })
+})
+
+describe('the Welcome restore lock', () => {
+    /** The next restore entry call stays pending, standing in for the confirmations plus the picker. */
+    function holdRestoreEntry(): { release: () => void, fail: (error: Error) => void } {
+        let release: () => void = () => { }
+        let fail: (error: Error) => void = () => { }
+        restoreAtFirstRun.mockImplementationOnce(() => new Promise<void>((resolve, reject) => {
+            release = resolve
+            fail = reject
+        }))
+        return { release: () => release(), fail: (error) => fail(error) }
+    }
+
+    async function settled(): Promise<void> {
+        await tick()
+        await tick()
+        flushSync()
+    }
+
+    function welcomeControls(target: HTMLElement): { start: HTMLButtonElement, restore: HTMLButtonElement, skip: HTMLButtonElement, languages: HTMLFieldSetElement } {
+        return {
+            start: buttonWithText(target, language.onboarding.startSetup),
+            restore: buttonWithText(target, language.onboarding.restoreBackup),
+            skip: buttonWithText(target, language.onboarding.skipSetup),
+            languages: target.querySelector('fieldset')!,
+        }
+    }
+
+    test('while the restore entry is pending, Start, Restore, Skip and the language radios are disabled', async () => {
+        const target = mountWelcome()
+        const held = holdRestoreEntry()
+
+        press(target, language.onboarding.restoreBackup)
+
+        const controls = welcomeControls(target)
+        expect(controls.start.disabled).toBe(true)
+        expect(controls.restore.disabled).toBe(true)
+        expect(controls.skip.disabled).toBe(true)
+        expect(controls.languages.disabled).toBe(true)
+        held.release()
+        await settled()
+    })
+
+    test('while the restore entry is pending, a second Restore, Start, language pick and Skip do nothing', async () => {
+        vi.useFakeTimers()
+        const flow = new WelcomeFlow('en-US')
+        const held = holdRestoreEntry()
+
+        flow.restore()
+        flow.restore()
+        flow.startSetup()
+        flow.pickLanguage('de')
+        flow.skipSetup()
+        vi.advanceTimersByTime(FINISH_DISPLAY_MS)
+
+        expect(restoreAtFirstRun).toHaveBeenCalledTimes(1)
+        expect(flow.index).toBe(0)
+        expect(flow.appLanguage).toBe('en')
+        expect(flow.finishing).toBe(false)
+        expect(finishFirstRunMock).not.toHaveBeenCalled()
+        held.release()
+        await settled()
+        flow.dispose()
+    })
+
+    test('guard: when the entry settles, every control is enabled again and Restore starts exactly one new entry', async () => {
+        const target = mountWelcome()
+        const held = holdRestoreEntry()
+        press(target, language.onboarding.restoreBackup)
+
+        held.release()
+        await settled()
+
+        const controls = welcomeControls(target)
+        expect(controls.start.disabled).toBe(false)
+        expect(controls.restore.disabled).toBe(false)
+        expect(controls.skip.disabled).toBe(false)
+        expect(controls.languages.disabled).toBe(false)
+        press(target, language.onboarding.restoreBackup)
+        expect(restoreAtFirstRun).toHaveBeenCalledTimes(2)
+        expect(heading(target)).toBe(language.onboarding.welcomeTitle)
+    })
+
+    test('an entry that rejects unlocks the controls and leaves the rejection unhandled for the global handler', async () => {
+        const target = mountWelcome()
+        const failure = new Error('picker threw')
+        let fail: (error: Error) => void = () => { }
+        const entry = new Promise<void>((_resolve, reject) => {
+            fail = reject
+        })
+        // The promise the flow derives from the entry is the one the global rejection handler would see: nothing in the
+        // flow may attach a handler to it.
+        const originalFinally = entry.finally.bind(entry)
+        let derived: Promise<void> | undefined
+        // Plain counters, not vi.fn: a vitest spy attaches its own handler to a returned promise and would hide the check.
+        const attached = { then: 0, catch: 0, finally: 0 }
+        entry.finally = (onFinally) => {
+            const made = originalFinally(onFinally)
+            const originalThen = made.then.bind(made)
+            const originalCatch = made.catch.bind(made)
+            const originalFinallyOfMade = made.finally.bind(made)
+            made.then = ((...handlers: Parameters<typeof originalThen>) => {
+                attached.then += 1
+                return originalThen(...handlers)
+            }) as typeof made.then
+            made.catch = ((...handlers: Parameters<typeof originalCatch>) => {
+                attached.catch += 1
+                return originalCatch(...handlers)
+            }) as typeof made.catch
+            made.finally = ((...handlers: Parameters<typeof originalFinallyOfMade>) => {
+                attached.finally += 1
+                return originalFinallyOfMade(...handlers)
+            }) as typeof made.finally
+            derived = made
+            return made
+        }
+        restoreAtFirstRun.mockImplementationOnce(() => entry)
+
+        press(target, language.onboarding.restoreBackup)
+
+        expect(derived).toBeDefined()
+        expect(attached).toEqual({ then: 0, catch: 0, finally: 0 })
+        // The test's own handler goes on only after that check, so the rejection is never left unhandled.
+        const seen = derived!.then(() => undefined, (error: unknown) => error)
+        expect(attached.then).toBe(1)
+        fail(failure)
+        await settled()
+
+        await expect(seen).resolves.toBe(failure)
+        const controls = welcomeControls(target)
+        expect(controls.restore.disabled).toBe(false)
+        expect(controls.start.disabled).toBe(false)
+        expect(controls.skip.disabled).toBe(false)
+        expect(controls.languages.disabled).toBe(false)
     })
 })

@@ -1,5 +1,6 @@
 <script lang="ts">
     import { language } from 'src/lang'
+    import { createEnterKeyController } from 'src/ts/chatShell/enterKey'
     import { providerTakesKey, standardKeyPrefix, type FirstRunProvider } from 'src/ts/firstRun/firstRunChoices'
     import type { WelcomeFlow } from './welcomeFlow.svelte'
 
@@ -38,9 +39,11 @@
     })
     const asksSetUpNow = $derived(flow.provider === 'horde' || flow.provider === 'later')
 
+    const enter = createEnterKeyController()
+
     function advanceOnEnter(e: KeyboardEvent): void {
-        // Enter during IME composition confirms the composition; it must not advance the step.
-        if (e.key.toLocaleLowerCase() === 'enter' && !e.shiftKey && !e.isComposing) {
+        // An Enter that commits an IME composition, or arrives in the tail after it, must not advance the step.
+        if (enter.shouldSend(e, 'send')) {
             e.preventDefault()
             flow.next()
         }
@@ -93,6 +96,9 @@
                     spellcheck="false"
                     autocapitalize="off"
                     onkeydown={advanceOnEnter}
+                    oncompositionstart={() => enter.compositionStart()}
+                    oncompositionend={() => enter.compositionEnd()}
+                    onblur={() => enter.compositionEnd()}
                 />
                 <button
                     type="button"

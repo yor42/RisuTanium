@@ -50,7 +50,12 @@
                     list.push({ step, label: language.language, value: LANGUAGE_NAMES[flow.appLanguage] })
                     break
                 case 'use':
-                    list.push({ step, label: language.onboarding.stepUse, value: flow.use === null ? language.onboarding.notSet : useLabels[flow.use] })
+                    list.push({
+                        step,
+                        label: language.onboarding.stepUse,
+                        value: flow.use === null ? language.onboarding.notSet : useLabels[flow.use],
+                        detail: flow.hidesUnused ? language.onboarding.hideUnusedReview : undefined,
+                    })
                     break
                 case 'persona': {
                     const name = flow.name.trim()
