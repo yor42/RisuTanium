@@ -1534,8 +1534,8 @@ export const languageVietnamese = {
     "deleteFolder": "Xóa thư mục",
     "deleteFolderKeep": "Giữ lại các nhân vật",
     "deleteFolderTrash": (count: number) => `Chuyển ${count} nhân vật vào thùng rác`,
-    "deleteFolderTrashConfirm": (name: string, count: number) => `Chuyển ${count} nhân vật trong thư mục "${name}" vào thùng rác?`
-        + ` Nhân vật được khôi phục sẽ quay lại bên ngoài mọi thư mục. Thùng rác sẽ tự động được dọn sạch sau 3 ngày.`,
+    "deleteFolderTrashConfirm": (name: string, count: number) => (`Chuyển ${count} nhân vật trong thư mục "${name}" vào thùng rác?`)
+        + ` Nhân vật được khôi phục sẽ nằm ngoài mọi thư mục. Các nhân vật trong thùng rác được giữ 30 ngày trong ứng dụng này; các phiên bản khác có thể xóa sớm hơn.`,
     "fullWordMatching": "So khớp từ đầy đủ",
     "fullWordAsciiBoundary": "Ranh giới từ kiểu SillyTavern",
     "botSettingAtStart": "Menu Bot khi khởi chạy",
@@ -1795,7 +1795,7 @@ export const languageVietnamese = {
     "grid": "Lưới",
     "list": "Danh sách",
     "trash": "Thùng rác",
-    "trashDesc": "Các nhân vật đã xóa sẽ được chuyển vào thùng rác. Bạn có thể khôi phục hoặc xóa vĩnh viễn chúng. Các nhân vật đã xóa sẽ tự động bị xóa sau 3 ngày.",
+    "trashDesc": "Các nhân vật đã xóa sẽ được chuyển vào thùng rác. Bạn có thể khôi phục hoặc xóa vĩnh viễn chúng. Các nhân vật đã xóa được giữ 30 ngày trong ứng dụng này rồi tự động bị xóa; các phiên bản khác có thể xóa sớm hơn.",
     "shareExport": "Chia sẻ/Xuất",
     "risupresetDesc": "Định dạng Risupreset là định dạng được thiết kế dành riêng cho các cài đặt trước RisuAI thượng nguồn.",
     "risuMDesc": "Định dạng RisuM là định dạng được thiết kế dành riêng cho các mô-đun RisuAI thượng nguồn.",
@@ -2906,7 +2906,8 @@ export const languageVietnamese = {
         editGroup: "Gom vào thư mục mới",
         editSelectedCount: (count: number) => `Đã chọn ${count}`,
         editFolderToggle: "Mở hoặc đóng thư mục",
-        editTrashConfirm: (count: number) => `Chuyển ${count} nhân vật vào thùng rác?`,
+        editTrashConfirm: (count: number) => (`Chuyển ${count} nhân vật vào thùng rác?`)
+            + ` Nhân vật được khôi phục sẽ nằm ngoài mọi thư mục. Các nhân vật trong thùng rác được giữ 30 ngày trong ứng dụng này; các phiên bản khác có thể xóa sớm hơn.`,
         editMoved: (n: number) => `Đã di chuyển ${n} mục`,
         editFolderRemoveConfirm: (names: string[]) => {
             const q = names.map((n) => `"${n}"`)

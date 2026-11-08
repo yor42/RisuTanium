@@ -180,7 +180,7 @@ const LEGACY_UNIT = '11111111-2222-4333-8444-555555555555'
 const GROUP_ID = 'group-up'
 const MEMBERS = ['member-1', 'member-2']
 const TRASHED_AT = 1_700_000_001_000
-const OLD_TRASH = Date.now() - 30 * 24 * 60 * 60 * 1000
+const OLD_TRASH = Date.now() - 60 * 24 * 60 * 60 * 1000
 
 /** The enrichment-only fields: none of them is on an upstream stub. */
 const ENRICHMENT_FIELDS = ['coldVersion', 'coldChatCount', 'creatorNotes', 'lastInteraction', 'characters', 'tags', 'creator']

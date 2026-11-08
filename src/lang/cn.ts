@@ -1534,8 +1534,8 @@ export const languageChinese = {
     "deleteFolder": "删除文件夹",
     "deleteFolderKeep": "保留角色",
     "deleteFolderTrash": (count: number) => `将 ${count} 个角色移至垃圾桶`,
-    "deleteFolderTrashConfirm": (name: string, count: number) => `将文件夹“${name}”中的 ${count} 个角色移至垃圾桶吗？`
-        + ` 还原的角色将回到文件夹之外。垃圾桶会在 3 天后自动清空。`,
+    "deleteFolderTrashConfirm": (name: string, count: number) => (`将文件夹“${name}”中的 ${count} 个角色移至垃圾桶吗？`)
+        + ` 还原的角色会回到所有文件夹之外。垃圾桶中的角色在本应用中保留 30 天；其他版本可能更早将其删除。`,
     "fullWordMatching": "完整单词匹配",
     "fullWordAsciiBoundary": "SillyTavern 式单词边界",
     "botSettingAtStart": "激活时显示机器人菜单",
@@ -1795,7 +1795,7 @@ export const languageChinese = {
     "grid": "网格",
     "list": "列表",
     "trash": "垃圾桶",
-    "trashDesc": "删除的角色将移至垃圾桶，可选择还原或永久删除。删除的角色将在 3 天后自动永久删除。",
+    "trashDesc": "删除的角色将移至垃圾桶，可选择还原或永久删除。删除的角色将在本应用中保留 30 天后自动永久删除；其他版本可能更早将其删除。",
     "shareExport": "分享/导出",
     "risupresetDesc": "Risupreset 是专为上游 RisuAI 默认设置设计的格式。",
     "risuMDesc": "RisuM 是专为上游 RisuAI 模块设计的格式。",
@@ -2906,7 +2906,8 @@ export const languageChinese = {
         "editGroup": "归入新文件夹",
         "editSelectedCount": (count: number) => `已选择 ${count} 个`,
         "editFolderToggle": "打开或关闭文件夹",
-        "editTrashConfirm": (count: number) => `将 ${count} 个角色移至垃圾桶吗？`,
+        "editTrashConfirm": (count: number) => (`将 ${count} 个角色移至垃圾桶吗？`)
+            + ` 还原的角色会回到所有文件夹之外。垃圾桶中的角色在本应用中保留 30 天；其他版本可能更早将其删除。`,
         "editMoved": (n: number) => `已移动 ${n} 项`,
         "editFolderRemoveConfirm": (names: string[]) => {
             const q = names.map((n) => `“${n}”`)

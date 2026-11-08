@@ -8,14 +8,18 @@
  * opening it replaces the slot wholesale with the unit's character when that
  * character's `chaId` equals the stub's, and the lists read only the name,
  * image, chat count and `creatorNotes`. Every test here passes before and
- * after the version 3 change, except the one marked as a reproducer, which
- * asserts the new keys themselves; they pin that the extra keys stay inert for
- * upstream.
+ * after the version 3 change, except the ones marked as reproducers: one
+ * asserts the new keys themselves, the other the longer trash retention of this
+ * fork; they pin that the extra keys stay inert for upstream.
  */
 import { describe, test, expect } from 'vitest'
 import type { character } from '../../storage/database.svelte'
 import { buildColdStub, coldUnitCharacter, enrichLegacyStub } from '../coldCharacter'
-import { TRASH_PURGE_AGE_MS } from '../../storage/trashPurge'
+import { isTrashPurgeDue } from '../../storage/trashPurge'
+
+// Upstream's purge age. It is a literal of the model, not this fork's constant:
+// the fork keeps trashed characters longer than upstream does.
+const UPSTREAM_TRASH_PURGE_AGE_MS = 1000 * 60 * 60 * 24 * 3
 
 interface UpstreamUnit {
     character?: character
@@ -136,9 +140,10 @@ describe.each(STUBS)('compatibility guard (model of upstream): %s', (_label, mak
 // Trash model, from kwaroran/RisuAI 979dbc9d:
 //  - the trash list shows slots with a truthy `trashTime` (GridCatalog.svelte);
 //  - untrash sets `slot.trashTime = undefined` on the slot itself (GridCatalog.svelte);
-//  - the startup purge in bootstrap.ts uses the same expression as this fork's
-//    `isTrashPurgeDue` and only splices the slot: no unit is removed (units go
-//    only through the manual "Clean Unused Cold Storage" path);
+//  - the startup purge in bootstrap.ts uses the expression shape of this fork's
+//    `isTrashPurgeDue` with a 3-day age (this fork keeps 30 days) and only
+//    splices the slot: no unit is removed (units go only through the manual
+//    "Clean Unused Cold Storage" path);
 //  - opening a stub replaces the slot wholesale with the unit's character
 //    (changeChar in characters.ts), so the unit's `trashTime` is what survives.
 
@@ -149,7 +154,7 @@ function upstreamTrashListed(slot: character): boolean {
 
 /** Model: upstream's startup purge; it never touches units. */
 function upstreamPurge(slots: character[], now: number): character[] {
-    return slots.filter((slot) => !(slot.trashTime && slot.trashTime + TRASH_PURGE_AGE_MS < now))
+    return slots.filter((slot) => !(slot.trashTime && slot.trashTime + UPSTREAM_TRASH_PURGE_AGE_MS < now))
 }
 
 /** Model: upstream's untrash. */
@@ -183,9 +188,17 @@ describe('compatibility guard (model of upstream): a trashed character this fork
         const { stub, units } = archive()
         const before = JSON.stringify(units)
 
-        expect(upstreamPurge([stub], TRASHED_AT + TRASH_PURGE_AGE_MS)).toEqual([stub])
-        expect(upstreamPurge([stub], TRASHED_AT + TRASH_PURGE_AGE_MS + 1)).toEqual([])
+        expect(upstreamPurge([stub], TRASHED_AT + UPSTREAM_TRASH_PURGE_AGE_MS)).toEqual([stub])
+        expect(upstreamPurge([stub], TRASHED_AT + UPSTREAM_TRASH_PURGE_AGE_MS + 1)).toEqual([])
         expect(JSON.stringify(units)).toBe(before)
+    })
+
+    test('regression reproducer: 4 days after trashing, upstream purges the archived stub and this fork keeps it', () => {
+        const { stub } = archive()
+        const fourDaysLater = TRASHED_AT + 4 * 24 * 60 * 60 * 1000
+
+        expect(upstreamPurge([stub], fourDaysLater)).toEqual([])
+        expect(isTrashPurgeDue(stub.trashTime, fourDaysLater)).toBe(false)
     })
 
     test('mutation-checked guard: untrash, then open, gives a character that a later purge keeps', () => {
@@ -196,7 +209,7 @@ describe('compatibility guard (model of upstream): a trashed character this fork
         const opened = upstreamOpen(stub, units) as character
 
         expect(opened.trashTime).toBeUndefined()
-        expect(upstreamPurge([opened], TRASHED_AT + 10 * TRASH_PURGE_AGE_MS)).toEqual([opened])
+        expect(upstreamPurge([opened], TRASHED_AT + 10 * UPSTREAM_TRASH_PURGE_AGE_MS)).toEqual([opened])
     })
 
     test('diagnostic: opening without untrashing gives an untrashed character, because the unit carries no trashTime', () => {

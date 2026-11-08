@@ -276,13 +276,32 @@ describe('trashed characters at boot', () => {
         expect(unitFiles()).toHaveLength(1)
     })
 
+    test('regression reproducer: a character trashed 4 days ago survives boot as a stub keeping its trashTime; one trashed 31 days ago is purged with no unit', async () => {
+        const fourDaysAgo = NOW - 4 * DAY
+        await seedBlockProfile([
+            fullCharacter('m', 'M', { trashTime: fourDaysAgo }),
+            fullCharacter('o', 'O', { trashTime: NOW - 31 * DAY }),
+        ])
+
+        await bootOnAndroid()
+
+        const characters = lastInstalled()
+        expect(characters.map((c) => c.chaId)).toEqual(['m'])
+        expect(typeof characters[0].coldstorage).toBe('string')
+        expect(characters[0].trashTime).toBe(fourDaysAgo)
+        expect(unitFiles()).toHaveLength(1)
+        expect(unitFiles().some((key) => unitText(key).includes('"chaId":"m"'))).toBe(true)
+        expect(unitFiles().some((key) => unitText(key).includes('"chaId":"o"'))).toBe(false)
+        expect(unitFiles().some((key) => unitText(key).includes('trashTime'))).toBe(false)
+    })
+
     test('guard (MC-304; needs the archive of a trashed character first): a trashed stub purged on a later boot leaves its unit on disk', async () => {
         await seedBlockProfile([fullCharacter('r', 'R', { trashTime: NOW - 60_000 })])
         await bootOnAndroid()
         const units = unitFiles()
         expect(units).toHaveLength(1)
 
-        vi.setSystemTime(NOW + 4 * DAY)
+        vi.setSystemTime(NOW + 31 * DAY)
         setDatabaseMock.mockClear()
         vi.resetModules()
         await bootOnAndroid()

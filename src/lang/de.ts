@@ -1537,7 +1537,7 @@ export const languageGerman = {
     "deleteFolderTrashConfirm": (name: string, count: number) => (count === 1
         ? `Den 1 Charakter im Ordner "${name}" in den Papierkorb verschieben?`
         : `Die ${count} Charaktere im Ordner "${name}" in den Papierkorb verschieben?`)
-        + ` Ein wiederhergestellter Charakter landet außerhalb jedes Ordners. Der Papierkorb wird nach 3 Tagen automatisch geleert.`,
+        + ` Ein wiederhergestellter Charakter landet außerhalb jedes Ordners. Gelöschte Charaktere werden in dieser App 30 Tage aufbewahrt; andere Versionen können sie früher entfernen.`,
     "fullWordMatching": "Vollständige Wortübereinstimmung",
     "fullWordAsciiBoundary": "Wortgrenzen im SillyTavern-Stil",
     "botSettingAtStart": "Bot-Menü beim Start anzeigen",
@@ -1797,7 +1797,7 @@ export const languageGerman = {
     "grid": "Raster",
     "list": "Liste",
     "trash": "Papierkorb",
-    "trashDesc": "Gelöschte Charaktere werden in den Papierkorb verschoben. Sie können sie wiederherstellen oder dauerhaft löschen. Gelöschte Charaktere werden nach 3 Tagen automatisch bereinigt.",
+    "trashDesc": "Gelöschte Charaktere werden in den Papierkorb verschoben. Sie können sie wiederherstellen oder dauerhaft löschen. Gelöschte Charaktere werden in dieser App 30 Tage aufbewahrt und dann automatisch bereinigt; andere Versionen können sie früher entfernen.",
     "shareExport": "Teilen/Exportieren",
     "risupresetDesc": "Risupreset-Format ist ein Format, das speziell für Voreinstellungen des Upstream-Projekts RisuAI entwickelt wurde.",
     "risuMDesc": "RisuM-Format ist ein Format, das speziell für Module des Upstream-Projekts RisuAI entwickelt wurde.",
@@ -2908,7 +2908,10 @@ export const languageGerman = {
         "editGroup": "In neuen Ordner gruppieren",
         "editSelectedCount": (count: number) => `${count} ausgewählt`,
         "editFolderToggle": "Ordner öffnen oder schließen",
-        "editTrashConfirm": (count: number) => count === 1 ? `1 Charakter in den Papierkorb verschieben?` : `${count} Charaktere in den Papierkorb verschieben?`,
+        "editTrashConfirm": (count: number) => (count === 1
+            ? `1 Charakter in den Papierkorb verschieben?`
+            : `${count} Charaktere in den Papierkorb verschieben?`)
+            + ` Ein wiederhergestellter Charakter landet außerhalb jedes Ordners. Gelöschte Charaktere werden in dieser App 30 Tage aufbewahrt; andere Versionen können sie früher entfernen.`,
         "editMoved": (n: number) => n === 1 ? `1 Element verschoben` : `${n} Elemente verschoben`,
         "editFolderRemoveConfirm": (names: string[]) => {
             const q = names.map((n) => `„${n}“`)
