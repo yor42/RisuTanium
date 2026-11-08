@@ -11,6 +11,7 @@
     import { fillLang } from "src/lang/fill";
     import { getIrisSystemPrompt } from "src/ts/iris";
     import { keyEventBlocked } from "src/ts/keyEventBlocked";
+    import { isImeComposing } from "src/ts/ime/compositionGuard";
     import { RisuAccessClient } from "src/ts/process/mcp/risuaccess";
     import localforage from "localforage";
     import { getModelInfo, LLMFormat } from "src/ts/model/modellist";
@@ -212,7 +213,7 @@
     }
 
     function handleInputKey(e: KeyboardEvent) {
-        if (e.key === "Enter") {
+        if (e.key === "Enter" && !isImeComposing(e)) {
             e.preventDefault();
             submitUserInput();
         }

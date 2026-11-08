@@ -118,6 +118,7 @@ import { language } from 'src/lang'
 import { resetBackHandlersForTests } from 'src/ts/backHandlers'
 import { setDatabase, type Database } from 'src/ts/storage/database.svelte'
 import { DBState, SettingsMenuIndex, settingsOpen } from 'src/ts/stores.svelte'
+import { enterKeydown, imeEventSequence } from 'src/ts/ime/tests/imeEventSequence'
 import { setShellBackHandler } from '../../ts/settingsShell/settingsNavigation'
 import { installSettingsOrigin, resetSettingsOriginForTests } from '../../ts/settingsShell/settingsOrigin'
 import { resetSearch, settingsSearchState } from '../../ts/settingsShell/settingsSearchState.svelte'
@@ -330,6 +331,30 @@ describe('T-A10 an IME composition owns its keys', () => {
         await settle()
         expect(settingsSearchState.open).toBe(true)
         expect(get(SettingsMenuIndex)).toBe(6)
+    })
+})
+
+describe('T-R-Settings the Enter that follows a composition end', () => {
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    test.each([2, 200])('an Enter at +%s ms after compositionend opens the result once', async (gap) => {
+        SettingsMenuIndex.set(6)
+        settingsOpen.set(true)
+        const target = mountHost()
+        await settle()
+        await typeQuery(target, 'custom css')
+        const field = searchField(target)
+        const clock = vi.spyOn(performance, 'now')
+        clock.mockReturnValue(1000)
+        imeEventSequence(field, 'custom css')
+        clock.mockReturnValue(1000 + gap)
+        const press = enterKeydown(field)
+        flushSync()
+        await settle()
+        expect(press.defaultPrevented).toBe(true)
+        expect(settingsSearchState.open).toBe(false)
     })
 })
 

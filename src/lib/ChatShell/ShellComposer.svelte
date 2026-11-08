@@ -156,8 +156,6 @@
         if (enter.shouldSend(event, enterMode)) {
             event.preventDefault()
             if (!sendWaitsForDelete) void sendMain(source, false)
-        } else if (enter.isStrayAfterComposition(event)) {
-            event.preventDefault()
         }
     }
 
@@ -193,12 +191,12 @@
         ) })} send={() => sendWaitsForDelete ? undefined : sendMain(source, false)} />
     </ExtrasStrip>
     {#if DBState.db.useAutoTranslateInput && DBState.db.translator}
-        <textarea bind:this={translateInput} data-part="chat-composer-translate" data-kind="field" aria-label={language.enterMessageForTranslateToEnglish} placeholder={language.enterMessageForTranslateToEnglish} value={shownDraft.messageInputTranslate} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInputTranslate = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, true) }} onkeydown={keydown} oncompositionstart={() => enter.compositionStart()} oncompositionend={() => enter.compositionEnd()}></textarea>
+        <textarea bind:this={translateInput} data-part="chat-composer-translate" data-kind="field" aria-label={language.enterMessageForTranslateToEnglish} placeholder={language.enterMessageForTranslateToEnglish} value={shownDraft.messageInputTranslate} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInputTranslate = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, true) }} onkeydown={keydown}></textarea>
     {/if}
     <div data-part="chat-composer-row">
         <button data-part="chat-composer-plus" data-kind="icon-button" aria-label={language.chatShellMoreActions} onclick={(event) => onplus(event.currentTarget)}>+</button>
         <button data-part="chat-composer-persona" data-kind="chip" aria-label={language.chatShellChoosePersona} onclick={(event) => onpersona(event.currentTarget)}>{language.asPersona(personaName)}</button>
-        <textarea bind:this={input} data-part="chat-composer-input" data-kind="field" aria-label={language.chatShellMessage} placeholder={language.chatShellMessage} value={shownDraft.messageInput} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInput = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, false) }} onpaste={paste} onkeydown={keydown} oncompositionstart={() => enter.compositionStart()} oncompositionend={() => enter.compositionEnd()} oncontextmenu={openPopup}></textarea>
+        <textarea bind:this={input} data-part="chat-composer-input" data-kind="field" aria-label={language.chatShellMessage} placeholder={language.chatShellMessage} value={shownDraft.messageInput} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInput = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, false) }} onpaste={paste} onkeydown={keydown} oncontextmenu={openPopup}></textarea>
         {#if $doingChat || isComposerBusy()}
             <button data-part="chat-composer-stop" data-kind="icon-button" aria-label={language.chatShellStop} onclick={abortChat}><span data-part="chat-composer-progress" data-stage={$chatProcessStage}></span>■</button>
         {:else}

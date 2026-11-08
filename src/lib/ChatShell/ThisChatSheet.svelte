@@ -9,6 +9,7 @@
     import { exportChat, removeChatConfirmed } from '../../ts/characters'
     import { effectiveJailbreak, effectiveMemory, writeChatJailbreak, writeChatMemory } from '../../ts/parser/chatToggleScope'
     import { chatStats, normalizeChatName, promptHasJailbreakToggle, relativeTime, setChatHideNames, writeChatName, writeChatNote } from '../../ts/chatShell/thisChatEdits'
+    import { isImeComposing } from '../../ts/ime/compositionGuard'
     import PluginDefinedIcon from '../Others/PluginDefinedIcon.svelte'
     import ShellSheet from './ShellSheet.svelte'
     import ToggleScopeSwitch from './ToggleScopeSwitch.svelte'
@@ -172,7 +173,7 @@
     }
 
     function onNameKey(event: KeyboardEvent): void {
-        if (event.key === 'Enter' && !event.isComposing && session) {
+        if (event.key === 'Enter' && !isImeComposing(event) && session) {
             event.preventDefault()
             commitRename(session, true)
         }

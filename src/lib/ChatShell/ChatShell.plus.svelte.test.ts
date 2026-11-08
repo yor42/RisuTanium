@@ -54,7 +54,6 @@ vi.mock('../../ts/process/composerActions.svelte', () => ({
 vi.mock('../../ts/chatShell/sendFailure.svelte', () => ({ shellGenerationSource: (closeMenu: () => void) => ({ closeMenu }), failureOf: () => null, retrySendFailure: vi.fn() }))
 vi.mock('../../ts/chatShell/enterKey', () => ({ createEnterKeyController: () => ({
     hardwareSeen: false, observeViewport: vi.fn(), observeKey: vi.fn(), touch: vi.fn(), shouldSend: () => false,
-    compositionStart: vi.fn(), compositionEnd: vi.fn(),
 }) }))
 vi.mock('../../ts/chatShell/stopDelete.svelte', () => ({ requestStopDelete: vi.fn(() => true), isStopDeletePending: () => false }))
 vi.mock('../../ts/chatShell/deviceSettings', () => ({ readEnterMode: () => 'auto', writeEnterMode: vi.fn() }))

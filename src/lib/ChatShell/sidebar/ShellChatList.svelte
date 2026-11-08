@@ -8,6 +8,7 @@
     import { indicatorGap, isFolderItem, siblingDropTarget, siblingEdges, stepTarget, type ChatOrdering } from "../../../ts/chatShell/chatOrder";
     import { startDragSession, type DragSession } from "../../../ts/chatShell/dragSession";
     import type { ChatSort } from "../../../ts/chatShell/deviceSettings";
+    import { isImeComposing } from "../../../ts/ime/compositionGuard";
     import ShellChatRow from "./ShellChatRow.svelte";
 
     type Entry = Database['characters'][number];
@@ -244,7 +245,7 @@
         const input = event.currentTarget as HTMLInputElement;
         if (event.key === "Enter") {
             // The Enter that confirms an IME composition belongs to the composition.
-            if (event.isComposing || event.keyCode === 229) {
+            if (isImeComposing(event)) {
                 return;
             }
             event.preventDefault();

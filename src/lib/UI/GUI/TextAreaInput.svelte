@@ -144,6 +144,7 @@
   import { DBState, disableHighlight, popUpEditorStore } from 'src/ts/stores.svelte';
   import { isMobile } from 'src/ts/platform'
     import { hotkeyMatches } from 'src/ts/hotkey';
+    import { isImeComposing } from 'src/ts/ime/compositionGuard';
     interface Props {
         size?: 'xs'|'sm'|'md'|'lg'|'xl'|'default';
         autocomplete?: 'on'|'off';
@@ -290,6 +291,12 @@
     }
 
     const handleKeyDown = (e:KeyboardEvent) => {
+        if(isImeComposing(e)){
+            if(e.key === 'Enter'){
+                e.stopPropagation()
+            }
+            return
+        }
         if(autocompleteContents.length >= 1){
             switch(e.key){
                 case 'ArrowDown':

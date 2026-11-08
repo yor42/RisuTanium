@@ -5,6 +5,7 @@
     import type { Chat, Database } from "src/ts/storage/database.svelte";
     import { ROW_HEIGHT, previewLine, isArchivedChat, windowRange } from "../../../ts/chatShell/chatListModel";
     import type { SearchResult } from "../../../ts/chatShell/chatSearch";
+    import { isImeComposing } from "../../../ts/ime/compositionGuard";
 
     type Entry = Database['characters'][number];
 
@@ -117,7 +118,7 @@
     function onFieldKeydown(event: KeyboardEvent) {
         if (event.key === "Enter") {
             // The Enter that confirms an IME composition belongs to the composition.
-            if (event.isComposing || event.keyCode === 229) {
+            if (isImeComposing(event)) {
                 return;
             }
             event.preventDefault();

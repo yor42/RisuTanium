@@ -3,6 +3,7 @@
   import { DBState, selectedCharID } from "src/ts/stores.svelte";
   import type { BulkEditState, Category } from "./types";
   import { language } from "src/lang";
+  import { isImeComposing } from "src/ts/ime/compositionGuard";
 
   interface Props {
     bulkEditState: BulkEditState;
@@ -66,6 +67,7 @@
 
   function handleBulkSelectKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') {
+      if (isImeComposing(e)) return;
       parseAndSelectSummaries();
     }
   }

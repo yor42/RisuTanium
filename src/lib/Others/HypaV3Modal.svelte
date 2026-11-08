@@ -6,6 +6,7 @@
     summarize,
   } from "src/ts/process/memory/hypav3";
   import { alertNormalWait } from "src/ts/alert";
+  import { isImeComposing } from "src/ts/ime/compositionGuard";
   import { DBState, selectedCharID, hypaV3ModalOpen } from "src/ts/stores.svelte";
   import { language } from "src/lang";
   import { fillLang } from "src/lang/fill";
@@ -833,7 +834,10 @@
                         searchState.currentResultIndex = -1;
                       }
                     }}
-                    onkeydown={(e) => onSearch(e)}
+                    onkeydown={(e) => {
+                      if (e.key === "Enter" && isImeComposing(e)) return;
+                      onSearch(e);
+                    }}
                   />
                 </form>
 

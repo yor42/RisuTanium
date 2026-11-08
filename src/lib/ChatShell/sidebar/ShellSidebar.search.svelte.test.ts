@@ -95,6 +95,7 @@ import { dispatchBack, registerBackHandler, resetBackHandlersForTests } from '..
 import { MAX_MOUNTED_ROWS } from '../../../ts/chatShell/chatListModel'
 import { takeOverlayReturnFocus } from '../../../ts/chatShell/overlayFocus'
 import { clearPending, switchTarget } from '../../../ts/chatShell/switchTarget.svelte'
+import { enterKeydown, imeEventSequence } from '../../../ts/ime/tests/imeEventSequence'
 import ShellSidebar from './ShellSidebar.svelte'
 
 type Entry = Database['characters'][number]
@@ -353,6 +354,23 @@ describe('opening', () => {
         press(field(), 'Enter', init)
         expect(mocks.changeChar).not.toHaveBeenCalled()
         expect(mocks.changeChat).not.toHaveBeenCalled()
+    })
+
+    test.each([2, 200])('TS3: the Enter that follows compositionend at +%s ms opens the first result once', (gap) => {
+        hangulFixture()
+        selectedCharID.set(0)
+        render()
+        let clock = 5000
+        const spy = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+        try {
+            imeEventSequence(field(), 'ㅎㄱ')
+            clock += gap
+            const press = enterKeydown(field())
+            expect(press.defaultPrevented).toBe(true)
+            expect(mocks.changeChar).toHaveBeenCalledTimes(1)
+        } finally {
+            spy.mockRestore()
+        }
     })
 
     test('TS3b: Enter acts on the text typed now, not on the results that landed before', () => {

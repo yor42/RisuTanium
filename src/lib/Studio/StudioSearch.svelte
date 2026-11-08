@@ -6,6 +6,7 @@
 <script lang="ts">
     import { onMount, tick, untrack } from 'svelte'
     import { language } from '../../lang'
+    import { isImeComposing } from '../../ts/ime/compositionGuard'
     import { ownerSourceFor, readTextSources } from '../../ts/studio/ownerSource.svelte'
     import { createSearchRunner, type RunnerState, type SearchWork } from '../../ts/studio/searchRunner'
     import {
@@ -120,7 +121,7 @@
 
     // An IME composition owns its Enter: it commits the text and must not open a result.
     function oninputkeydown(event: KeyboardEvent): void {
-        if (event.isComposing || event.keyCode === 229) return
+        if (isImeComposing(event)) return
         if (event.key === 'Enter') {
             event.preventDefault()
             const first = run.results[0]
@@ -139,7 +140,7 @@
     }
 
     async function onresultkeydown(event: KeyboardEvent): Promise<void> {
-        if (event.isComposing || event.keyCode === 229) return
+        if (isImeComposing(event)) return
         if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
         event.preventDefault()
         const buttons = resultButtons()

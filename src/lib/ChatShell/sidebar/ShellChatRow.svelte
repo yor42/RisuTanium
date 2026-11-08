@@ -7,6 +7,7 @@
     import * as composerDrafts from "../../../ts/process/composerDrafts.svelte";
     import { ROW_HEIGHT, isArchivedChat, previewLine, rowTime } from "../../../ts/chatShell/chatListModel";
     import { createHold, type ListEditing } from "../../../ts/chatShell/chatListEdits";
+    import { isImeComposing } from "../../../ts/ime/compositionGuard";
 
     interface Props {
         chat: Chat;
@@ -105,7 +106,7 @@
     function onFieldKeydown(event: KeyboardEvent) {
         if (event.key === "Enter") {
             // The Enter that confirms an IME composition belongs to the composition.
-            if (event.isComposing || event.keyCode === 229) {
+            if (isImeComposing(event)) {
                 return;
             }
             event.preventDefault();

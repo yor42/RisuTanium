@@ -1,5 +1,6 @@
 <script lang="ts">
   import { warnOnReject } from "src/ts/warnOnReject";
+    import { isImeComposing } from "src/ts/ime/compositionGuard";
 
     import Suggestion from './Suggestion.svelte';
     import { CameraIcon, DatabaseIcon, DicesIcon, GlobeIcon, ImagePlusIcon, LanguagesIcon, Laugh, MenuIcon, MicOffIcon, PackageIcon, Plus, RefreshCcwIcon, ReplyIcon, Send, StepForwardIcon, XIcon, BrainIcon, ArrowDown, SparkleIcon } from "@lucide/svelte";
@@ -586,7 +587,7 @@
                           bind:this={inputEle}
                           readonly={isComposerLocked()}
                           onkeydown={(e) => {
-                        if(e.key.toLocaleLowerCase() === "enter" && !e.isComposing){
+                        if(e.key.toLocaleLowerCase() === "enter" && !isImeComposing(e)){
                             if(DBState.db.sendWithEnter && (!e.shiftKey)){
                                 send()
                                 e.preventDefault()
@@ -726,7 +727,7 @@
                               bind:this={inputTranslateEle}
                               readonly={isComposerLocked()}
                               onkeydown={(e) => {
-                            if(e.key.toLocaleLowerCase() === "enter" && (!e.shiftKey)){
+                            if(e.key.toLocaleLowerCase() === "enter" && (!e.shiftKey) && !isImeComposing(e)){
                                 if(DBState.db.sendWithEnter){
                                     send()
                                     e.preventDefault()

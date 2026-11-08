@@ -2,6 +2,7 @@
     import PatternDialog from './PatternDialog.svelte'
     import { language } from '../../../lang'
     import { encodeChoice, encodeText, PATTERN_PROMPT_CANCEL } from '../../../ts/patternPromptAnswer'
+    import { isImeComposing } from '../../../ts/ime/compositionGuard'
 
     interface Props {
         kind: 'select' | 'input'
@@ -38,7 +39,7 @@
     }
 
     function onFieldKeydown(event: KeyboardEvent) {
-        if (event.key === 'Enter' && !event.isComposing) {
+        if (event.key === 'Enter' && !isImeComposing(event)) {
             event.preventDefault()
             answer(encodeText(text))
         }
