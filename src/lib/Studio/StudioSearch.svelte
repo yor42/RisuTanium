@@ -6,7 +6,7 @@
 <script lang="ts">
     import { onMount, tick, untrack } from 'svelte'
     import { language } from '../../lang'
-    import { createOwnerSource, readTextSources } from '../../ts/studio/ownerSource.svelte'
+    import { ownerSourceFor, readTextSources } from '../../ts/studio/ownerSource.svelte'
     import { createSearchRunner, type RunnerState, type SearchWork } from '../../ts/studio/searchRunner'
     import {
         SEARCH_CHIPS,
@@ -32,7 +32,7 @@
     } from '../../ts/studio/studioScreen.svelte'
     import { itemLabelOf, kindLabelOf, tagLabelOf } from './TreeRow.svelte'
 
-    const source = createOwnerSource(() => studioScreen.chaId)
+    const source = ownerSourceFor(() => studioScreen.chaId)
     const model = $derived(source.current.model)
     const unloaded = $derived(model ? unloadedCountOf(model) : 0)
 

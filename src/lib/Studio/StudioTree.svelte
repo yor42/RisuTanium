@@ -16,7 +16,7 @@
     import { tick, untrack } from 'svelte'
     import { classicDestinationOf, openInClassicEditor } from '../../ts/studio/classicLinks.svelte'
     import type { KindNode, OwnerModel, OwnerNode, StudioKind } from '../../ts/studio/ownerModel'
-    import { createOwnerSource } from '../../ts/studio/ownerSource.svelte'
+    import { ownerSourceFor } from '../../ts/studio/ownerSource.svelte'
     import {
         TREE_PAGE_SIZE,
         applyStudioTarget,
@@ -30,6 +30,7 @@
         studioScreen,
     } from '../../ts/studio/studioScreen.svelte'
     import { treeKeyAction, type TreeRowInfo } from '../../ts/studio/treeKeys'
+    import { reuseUnchangedRows } from '../../ts/studio/treeRows'
     import { COMBINED_KINDS, combinedKeyOf } from './StudioCombined.svelte'
     import TreeRow, { badgeLabelOf, itemLabelOf, kindLabelOf, noticeTextOf, tagLabelOf, type RowKind } from './TreeRow.svelte'
 
@@ -49,7 +50,7 @@
         selected: boolean
     }
 
-    const source = createOwnerSource(() => studioScreen.chaId)
+    const source = ownerSourceFor(() => studioScreen.chaId)
     const model = $derived(source.current.model)
 
     // Only lorebooks and regex lists have rows below the kind; every other kind is one leaf.
@@ -90,9 +91,9 @@
             row.selected = studioScreen.selectedOwnerKey === owner.key && studioScreen.selectedKind === node.kind && studioScreen.selectedItemId === null
             rows.push(row)
             if (!row.expanded) return
-            const items = node.items()
-            const shown = Math.min(items.length, TREE_PAGE_SIZE * ((studioScreen.pages[id] ?? 0) + 1))
-            const count = shown < items.length ? shown + 1 : shown
+            const { items, total: listLength } = node.itemsUpTo(TREE_PAGE_SIZE * ((studioScreen.pages[id] ?? 0) + 1))
+            const shown = items.length
+            const count = shown < listLength ? shown + 1 : shown
             for (let index = 0; index < shown; index++) {
                 const item = items[index]
                 const itemRow = base(`i:${item.id}`, 'item', level + 1, id, count, index + 1, itemLabelOf(item))
@@ -104,7 +105,7 @@
                 itemRow.selected = studioScreen.selectedItemId === item.id
                 rows.push(itemRow)
             }
-            if (shown < items.length) pushMore(id, level + 1, id, items.length - shown, count, count)
+            if (shown < listLength) pushMore(id, level + 1, id, listLength - shown, count, count)
         }
 
         const pushOwner = (owner: OwnerNode, level: number, parentId: string | null, size: number, pos: number): void => {
@@ -188,7 +189,17 @@
         return rows
     }
 
-    const rows = $derived(model ? rowsOf(model) : [])
+    // A rebuild keeps the object of every row whose fields did not change, so the keyed list skips it.
+    let previousRows: ReadonlyMap<string, TreeNode> = new Map()
+    const rows = $derived.by((): TreeNode[] => {
+        if (!model) {
+            previousRows = new Map()
+            return []
+        }
+        const reused = reuseUnchangedRows(previousRows, rowsOf(model))
+        previousRows = reused.byId
+        return reused.rows
+    })
 
     let treeElement: HTMLElement | undefined = $state()
     let focusId = $state<string | null>(null)

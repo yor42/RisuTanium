@@ -3,7 +3,7 @@
     import { language } from '../../lang'
     import { classicDestinationOf, openInClassicEditor } from '../../ts/studio/classicLinks.svelte'
     import { itemSectionsOf, type TextField } from '../../ts/studio/itemText'
-    import { createOwnerSource, readTextSources } from '../../ts/studio/ownerSource.svelte'
+    import { ownerSourceFor, readTextSources } from '../../ts/studio/ownerSource.svelte'
     import { applyStudioTarget, clearStudioSelection, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
     import type { StudioItem } from '../../ts/studio/ownerModel'
@@ -13,7 +13,7 @@
     // Item text is shown as text only, never as markup, and is cut so one huge entry cannot stall the page.
     const DETAIL_TEXT_LIMIT = 2000
 
-    const source = createOwnerSource(() => studioScreen.chaId)
+    const source = ownerSourceFor(() => studioScreen.chaId)
     const model = $derived(source.current.model)
 
     // The first pane that has the model places the opening target (the phone shows only one pane at a time).
@@ -29,9 +29,9 @@
     // A kind without a list below it (everything but lore and regex) is one item: choosing the kind shows it.
     function selectedItemOf(): StudioItem | undefined {
         if (!kindNode) return undefined
-        const items = kindNode.items()
-        if (studioScreen.selectedItemId !== null) return items.find((candidate) => candidate.id === studioScreen.selectedItemId)
+        if (studioScreen.selectedItemId !== null) return kindNode.itemById(studioScreen.selectedItemId)
         if (kindNode.kind === 'lore' || kindNode.kind === 'regex') return undefined
+        const items = kindNode.items()
         return items.length === 1 ? items[0] : undefined
     }
 
