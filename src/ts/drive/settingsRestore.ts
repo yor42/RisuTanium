@@ -1,9 +1,9 @@
 /**
- * The two Settings restore buttons (a `.bin` file, and the internal backup / store2 restore point) as flows. Each opens a
- * restore run before its first question and holds it across the loader, so the run spans the picker and the save-first
- * waits that come before the loader registers its busy entry. The run ends with the outcome the loader reports; a loader
- * that rejects ends it `failed` (every loader converts a throw after its write into an outcome, so a rejection means
- * nothing was replaced).
+ * The restore buttons as flows: the two Settings buttons (a `.bin` file, and the internal backup / store2 restore point)
+ * and the Welcome restore of a `.bin` file. Each opens a restore run before its first question and holds it across the
+ * loader, so the run spans the picker and the save-first waits that come before the loader registers its busy entry.
+ * The run ends with the outcome the loader reports; a loader that rejects ends it `failed` (every loader converts a
+ * throw after its write into an outcome, so a rejection means nothing was replaced).
  */
 import { language } from 'src/lang'
 import { alertConfirm } from '../alert'
@@ -35,6 +35,11 @@ async function restoreFlow(loader: () => Promise<{ outcome: OperationOutcome }>)
 /** Settings: restore from a `.bin` file the person picks. */
 export function restoreFromBinFile(): Promise<void> {
     return restoreFlow(() => LoadLocalBackup())
+}
+
+/** Welcome: the same restore and confirmations as Settings, and the restored database persists `didFirstSetup = true`. */
+export function restoreFromBinFileAtFirstRun(): Promise<void> {
+    return restoreFlow(() => LoadLocalBackup(undefined, undefined, { completeFirstSetup: true }))
 }
 
 /** Settings: restore the internal backup (legacy snapshot) or, on a store2 page, a restore point. */

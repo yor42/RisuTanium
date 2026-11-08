@@ -1662,6 +1662,22 @@ export interface OpenedBin {
 export type LocalBackupEnd = OperationEnd<ImportFacts>;
 
 /**
+ * The Welcome screen's restore: the restored database persists `didFirstSetup = true`, so the reload that follows does not
+ * show Welcome again. Only the picker restore accepts it.
+ */
+export interface FirstRunRestore {
+    completeFirstSetup: true;
+}
+
+/** Marks a decoded tree as past first setup when the option is on, and returns the same tree. */
+function withFirstSetupDone(tree: Database, on: boolean): Database {
+    if (on) {
+        tree.didFirstSetup = true;
+    }
+    return tree;
+}
+
+/**
  * The `.bin` import, from the picker to the reload. The returned promise never rejects and settles once, with how the
  * import ended; the shell's own alerts are unchanged and no caller needs the value. A successful import reloads the
  * page inside the shell, so in a real page the page is gone before a caller could read `committed`; it is settled
@@ -1673,7 +1689,12 @@ export type LocalBackupEnd = OperationEnd<ImportFacts>;
  * With `opened` (never together with `boot`) there is no picker: the same restore runs over the file the caller opened,
  * under a busy entry of its own, and the promise settles when the restore ends. The caller owns and closes the source.
  */
-export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin): Promise<LocalBackupEnd> {
+export function LoadLocalBackup(boot: undefined, opened: undefined, restore: FirstRunRestore): Promise<LocalBackupEnd>;
+// Last, so `Parameters<typeof LoadLocalBackup>` stays the boot and opened pair every other caller uses.
+export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin): Promise<LocalBackupEnd>;
+export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?: FirstRunRestore): Promise<LocalBackupEnd> {
+    // The option applies to the picker restore only: a boot or opened-file restore always keeps the file's own value.
+    const completeFirstSetup = restore?.completeFirstSetup === true && boot === undefined && opened === undefined;
     const operation: OperationName = boot === undefined ? 'import' : 'boot-import';
     // Created before anything can await, so the picker opens in this call's own turn.
     let resolveEnd: (end: LocalBackupEnd) => void = () => { };
@@ -2353,7 +2374,7 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin): Promise<
                     const end = await commitStore2Import({
                         target: store2Import.target,
                         busy,
-                        decode: () => readBinDatabaseTree(file, databaseEntry),
+                        decode: async () => withFirstSetupDone(await readBinDatabaseTree(file, databaseEntry), completeFirstSetup),
                         reader: createBinImportReader(file, store2Import.index),
                     });
                     switch (end.kind) {
@@ -2455,6 +2476,8 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin): Promise<
                 // keeps its working settings as a new preset, over none.
                 completeRestoredTree(dbData);
                 repairBotPresetsId(dbData)
+                // Before the build: the written generation and the installed database both carry it, and nothing saves after the install.
+                withFirstSetupDone(dbData, completeFirstSetup);
                 const built = await buildRestoreSet(dbData);
                 if ('refusal' in built) {
                     alertError(built.refusal);
