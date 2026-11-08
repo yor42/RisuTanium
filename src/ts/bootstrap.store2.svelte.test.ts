@@ -958,7 +958,7 @@ describe('loadData(): a boot that throws after the person answered (reproducer)'
         registerStore2Boot(async () => {
             const answered = askBootScreen({ title: 'Q', paragraphs: [], lists: [], details: null, buttons: [{ key: 'yes', label: 'Yes' }], focus: null })
             await new Promise<void>(resolve => setTimeout(resolve, ANSWER_GUARD_MS + 20))
-            pressBootButton('yes')
+            pressBootButton('yes', performance.now())
             await answered
             expect(getBootScreen()?.answered).toBe(true)
             throw new Error('the dispatch threw after the answer')

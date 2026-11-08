@@ -182,8 +182,9 @@
         }
     });
 
-    // The consent dialogs take no click until the pause after each appearance is over, so a press
-    // meant for what was on screen before cannot answer them.
+    // The consent dialogs take no click made before they appeared, however late its handler runs, and
+    // none until the pause after each appearance is over, so a press meant for what was on screen
+    // before cannot answer them.
     let consentSeen: alertData | null = null
     let consentShownAt = 0
 
@@ -195,8 +196,8 @@
         }
     });
 
-    function consentPaused(): boolean {
-        return performance.now() - consentShownAt < ANSWER_GUARD_MS
+    function consentPaused(event: MouseEvent): boolean {
+        return event.timeStamp < consentShownAt || performance.now() - consentShownAt < ANSWER_GUARD_MS
     }
 
     let root: HTMLElement | undefined
@@ -377,8 +378,8 @@
                 </div>
             {:else if a.type === 'tos' && import.meta.env.VITE_RISU_LEGAL_CONFIGURED}
                 <div class="flex gap-2 w-full">
-                    <Button className="mt-4 grow" onclick={() => {
-                        if(consentPaused()){
+                    <Button className="mt-4 grow" onclick={(event) => {
+                        if(consentPaused(event)){
                             return
                         }
                         alertStore.set({
@@ -386,8 +387,8 @@
                             msg: UPSTREAM_AGREEMENT_ACCEPT
                         })
                     }}>{language.upstreamAgreementAccept}</Button>
-                    <Button styled={'outlined'} className="mt-4 grow" onclick={() => {
-                        if(consentPaused()){
+                    <Button styled={'outlined'} className="mt-4 grow" onclick={(event) => {
+                        if(consentPaused(event)){
                             return
                         }
                         alertStore.set({
@@ -428,8 +429,8 @@
                     })
                 }}>{language.alertComp.ok}</Button>
             {:else if a.type === 'staleAccountNotice'}
-               <Button className="mt-4" onclick={() => {
-                    if(consentPaused()){
+               <Button className="mt-4" onclick={(event) => {
+                    if(consentPaused(event)){
                         return
                     }
                     alertStore.set({

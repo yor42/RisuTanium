@@ -60,6 +60,13 @@ function button(target: HTMLElement, key: string): HTMLButtonElement {
 
 const afterGuard = () => new Promise<void>((resolve) => setTimeout(resolve, ANSWER_GUARD_MS + 40))
 
+/** Dispatches a click whose event time is `stamp`, the way a tap queued before the screen appeared carries an earlier time. */
+function tapStamped(element: HTMLElement, stamp: number): void {
+    const tap = new MouseEvent('click', { bubbles: true, cancelable: true })
+    Object.defineProperty(tap, 'timeStamp', { value: stamp })
+    element.dispatchEvent(tap)
+}
+
 async function settled(promise: Promise<unknown>): Promise<'pending' | 'resolved'> {
     return Promise.race([promise.then(() => 'resolved' as const), new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 20))])
 }
@@ -185,8 +192,60 @@ describe('the answer guard', () => {
 
         button(target, 'yes').click()
         await expect(answer).resolves.toBe('yes')
-        pressBootButton('no')
+        pressBootButton('no', performance.now())
         expect(getBootScreen()?.answered).toBe(true)
+    })
+})
+
+describe('the tap clock', () => {
+    test('a press stamped before the screen appeared is discarded however late its handler runs; one stamped at the show time answers', async () => {
+        const target = mountScreen()
+        const answer = askBootScreen(model())
+        flushSync()
+        const shownAt = getBootScreen()!.shownAt
+        await afterGuard()
+
+        tapStamped(button(target, 'yes'), shownAt - 1)
+        expect(await settled(answer)).toBe('pending')
+        expect(getBootScreen()?.answered).toBe(false)
+        expect(button(target, 'yes').disabled).toBe(false)
+
+        tapStamped(button(target, 'yes'), shownAt)
+        await expect(answer).resolves.toBe('yes')
+    })
+
+    test('a press stamped after the first screen but before the screen that replaced it answers neither', async () => {
+        const target = mountScreen()
+        const first = askBootScreen(model())
+        flushSync()
+        const firstShownAt = getBootScreen()!.shownAt
+        await afterGuard()
+
+        const second = askBootScreen(model({ title: 'Second' }))
+        flushSync()
+        const secondShownAt = getBootScreen()!.shownAt
+        await afterGuard()
+
+        const stamp = secondShownAt - 1
+        expect(stamp).toBeGreaterThan(firstShownAt)
+        tapStamped(button(target, 'yes'), stamp)
+        expect(await settled(second)).toBe('pending')
+        expect(await settled(first)).toBe('pending')
+    })
+
+    test('a terminal screen discards a press stamped before it appeared', async () => {
+        const target = mountScreen()
+        const onPress = vi.fn()
+        showTerminalBootScreen(model({ buttons: [{ key: 'reload', label: 'Reload' }], focus: 'reload' }), onPress)
+        flushSync()
+        const shownAt = getBootScreen()!.shownAt
+        await afterGuard()
+
+        tapStamped(button(target, 'reload'), shownAt - 1)
+        expect(onPress).not.toHaveBeenCalled()
+
+        tapStamped(button(target, 'reload'), shownAt + 500)
+        expect(onPress).toHaveBeenCalledExactlyOnceWith('reload')
     })
 })
 

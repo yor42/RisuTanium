@@ -191,6 +191,14 @@ function clickShown(target: HTMLElement, index: number): void {
     flushSync()
 }
 
+/** Clicks the button with an event time of `stamp`, the way a tap queued before the dialog appeared carries an earlier time. */
+function clickStamped(button: HTMLButtonElement, stamp: number): void {
+    const tap = new MouseEvent('click', { bubbles: true, cancelable: true })
+    Object.defineProperty(tap, 'timeStamp', { value: stamp })
+    button.dispatchEvent(tap)
+    flushSync()
+}
+
 function advance(ms: number): void {
     vi.advanceTimersByTime(ms)
     flushSync()
@@ -211,6 +219,53 @@ afterEach(async () => {
     vi.useRealTimers()
     vi.unstubAllEnvs()
     vi.clearAllMocks()
+})
+
+describe('a click made before a consent dialog appeared is discarded however late its handler runs', () => {
+    test.each([
+        ['Accept', TOS, 0, UPSTREAM_AGREEMENT_ACCEPT],
+        ['Decline', TOS, 1, UPSTREAM_AGREEMENT_DECLINE],
+        ['OK on the stale-account notice', STALE, 0, STALE_ACCOUNT_NOTICE_ACK],
+    ])('%s: a click stamped before the dialog appeared writes nothing and leaves it up; a click stamped after writes its value', (_label, alert, index, value) => {
+        const target = mountAlertComp()
+        const before = performance.now()
+        const buttons = show(target, alert)
+        const shown = get(alertStore)
+        advance(GUARD_MS)
+
+        clickStamped(buttons[index], before - 1)
+        expect.soft(get(alertStore), 'the store after a click stamped before the dialog appeared').toBe(shown)
+        expect.soft(target.querySelectorAll('button').length, 'buttons still on screen').toBe(buttons.length)
+
+        clickStamped(buttons[index], before + GUARD_MS)
+        expect(get(alertStore)).toEqual({ type: 'none', msg: value })
+    })
+
+    test('a click stamped exactly at the show time is accepted after the pause', () => {
+        const target = mountAlertComp()
+        const before = performance.now()
+        const buttons = show(target, TOS)
+        advance(GUARD_MS)
+
+        clickStamped(buttons[0], before)
+        expect(get(alertStore)).toEqual({ type: 'none', msg: UPSTREAM_AGREEMENT_ACCEPT })
+    })
+
+    test('a dialog that replaces another counts clicks from its own appearance', () => {
+        const target = mountAlertComp()
+        show(target, TOS)
+        advance(GUARD_MS)
+
+        const second = performance.now()
+        const buttons = show(target, STALE)
+        const shown = get(alertStore)
+        advance(GUARD_MS)
+
+        clickStamped(buttons[0], second - 1)
+        expect(get(alertStore), 'the store after a click stamped before the notice replaced the dialog').toBe(shown)
+        clickStamped(buttons[0], second + GUARD_MS)
+        expect(get(alertStore)).toEqual({ type: 'none', msg: STALE_ACCOUNT_NOTICE_ACK })
+    })
 })
 
 describe('the agreement dialog discards a click within 400 ms of appearing', () => {

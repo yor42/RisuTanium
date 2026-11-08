@@ -72,7 +72,7 @@ const sleep = (milliseconds: number) => new Promise<void>((resolve) => setTimeou
 
 async function pressAfterGuard(key: string): Promise<void> {
     await sleep(ANSWER_GUARD_MS + 40)
-    pressBootButton(key)
+    pressBootButton(key, performance.now())
 }
 
 /** Waits for a screen other than `previous`. */
@@ -165,7 +165,7 @@ describe('an answer that stops the boot leaves the "nothing was changed" screen 
         const answer = ask(ui)
         const question = await screenAfter(null)
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton(key)
+        pressBootButton(key, performance.now())
         await expect(answer).resolves.toBe(expected)
 
         const view = getBootScreen()!
@@ -174,7 +174,7 @@ describe('an answer that stops the boot leaves the "nothing was changed" screen 
         expect(keys(view)).toEqual(['reload'])
         expect(reload).not.toHaveBeenCalled()
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton('reload')
+        pressBootButton('reload', performance.now())
         expect(reload).toHaveBeenCalledTimes(1)
         // The terminal screen is not cleared by the press.
         expect(getBootScreen()).not.toBeNull()
@@ -186,7 +186,7 @@ describe('an answer that stops the boot leaves the "nothing was changed" screen 
         const question = await screenAfter(null)
         expect(keys(question)).toEqual(['declinedConvert', 'declinedImport'])
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton('declinedImport')
+        pressBootButton('declinedImport', performance.now())
         await expect(answer).resolves.toBe('import')
         expect(getBootScreen()?.model).toBe(question.model)
     })
@@ -207,7 +207,7 @@ describe('an answer that stops the boot leaves the "nothing was changed" screen 
         expect(question.model.title).toBe(text().offerTitle)
         expect(keys(question)).toEqual(['offerRestoreNewest', 'offerImport'])
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton(button)
+        pressBootButton(button, performance.now())
         await expect(answer).resolves.toBe(expected)
     })
 
@@ -216,7 +216,7 @@ describe('an answer that stops the boot leaves the "nothing was changed" screen 
         const answer = ui.confirmFlaggedOpen(flagged)
         const question = await screenAfter(null)
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton('flaggedContinue')
+        pressBootButton('flaggedContinue', performance.now())
         await expect(answer).resolves.toBe('continue')
         expect(getBootScreen()?.model).toBe(question.model)
     })
@@ -315,7 +315,7 @@ describe('the real dispatch with the production port, over rows of the boot tabl
         expect(writes()).toEqual({ backendChanged: false, store: [], deletes: [] })
 
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton('convertNo')
+        pressBootButton('convertNo', performance.now())
         const declined = await screenAfter(question)
 
         expect(declined.model.title).toBe(text().declinedTitle)
@@ -332,7 +332,7 @@ describe('the real dispatch with the production port, over rows of the boot tabl
         expect(keys(question)).toEqual(['offerRestoreNewest', 'offerImport'])
         expect(writes()).toEqual({ backendChanged: false, store: [], deletes: [] })
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton('offerImport')
+        pressBootButton('offerImport', performance.now())
 
         await expect(result).resolves.toEqual({ kind: 'stopped' })
         expect(writes()).toEqual({ backendChanged: false, store: [], deletes: [] })
@@ -351,11 +351,11 @@ describe('the real dispatch with the production port, over rows of the boot tabl
         }, { ui, kind: 'indexeddb', backend: async () => backend, keyEnv: testEnv(createClock(), 9001), lists: fakeLists, importBackup })
         const question = await screenAfter(null)
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton('convertNo')
+        pressBootButton('convertNo', performance.now())
         const declined = await screenAfter(question)
         expect(keys(declined)).toEqual(['declinedConvert', 'declinedImport'])
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton('declinedImport')
+        pressBootButton('declinedImport', performance.now())
         await vi.waitFor(() => expect(importBackup).toHaveBeenCalledTimes(1))
         const again = await screenAfter(declined)
         expect(keys(again)).toEqual(['declinedConvert', 'declinedImport'])
@@ -381,7 +381,7 @@ describe('the real dispatch with the production port, over rows of the boot tabl
         const seen: (BootScreenView | null)[] = []
         const timer = setInterval(() => seen.push(getBootScreen()), 1)
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton('convertNo')
+        pressBootButton('convertNo', performance.now())
         await screenAfter(question)
         clearInterval(timer)
         expect(seen.length).toBeGreaterThan(0)
@@ -440,12 +440,12 @@ describe('the real dispatch with the production port, over a damaged commit key 
         const offers = await screenAfter(null)
         expect(keys(offers)).toContain('recoveryConvertOffer')
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton('recoveryConvertOffer')
+        pressBootButton('recoveryConvertOffer', performance.now())
         const confirm = await screenAfter(offers)
         expect(confirm.model.title).toBe(text().convertTitle)
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton('convertYes')
-        pressBootButton('convertYes')
+        pressBootButton('convertYes', performance.now())
+        pressBootButton('convertYes', performance.now())
         await vi.waitFor(() => expect(t.reload).toHaveBeenCalledTimes(1), { timeout: 15000 })
         // The marker and the final write: a second conversion would add two more.
         expect(t.commitWrites()).toBe(2)
@@ -457,10 +457,10 @@ describe('the real dispatch with the production port, over a damaged commit key 
         const t = await recoveryRig({ mainFile: false })
         const offers = await screenAfter(null)
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton(`pick:${t.planted.manifestKey}`)
+        pressBootButton(`pick:${t.planted.manifestKey}`, performance.now())
         const confirm = await screenAfter(offers)
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton('recoveryPickGo')
+        pressBootButton('recoveryPickGo', performance.now())
         await vi.waitFor(() => expect(getBootScreen()?.model.title).toBe(text().recoveryInstallTitle), { timeout: 15000 })
         expect(getBootScreen()?.model).not.toBe(confirm.model)
 
@@ -471,13 +471,13 @@ describe('the real dispatch with the production port, over a damaged commit key 
         }
         t.memory.poke(COMMIT_KEY, encodeUnit(UNIT_TYPE.commit, nextCommitKey(cleared.value, { current: null, retained: [], pins: [], staging: null }, testEnv(createClock(), 4040))))
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton('recoveryInstallGo')
+        pressBootButton('recoveryInstallGo', performance.now())
         await vi.waitFor(() => expect(getBootScreen()?.model.title).toBe(text().recoveryStoppedTitle), { timeout: 15000 })
         expect(getBootScreen()?.model.paragraphs).toEqual([text().recoveryChanged])
         expect(keys(getBootScreen()!)).toEqual(['reload'])
 
         await sleep(ANSWER_GUARD_MS + 40)
-        pressBootButton('reload')
+        pressBootButton('reload', performance.now())
         expect(t.reload).toHaveBeenCalledTimes(1)
         expect(getBootScreen()).not.toBeNull()
         expect(t.settled()).toBe(false)

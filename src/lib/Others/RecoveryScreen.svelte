@@ -18,7 +18,7 @@
                     data-boot-key={row.key}
                     class="w-full text-left px-4 py-2 rounded-md border border-darkborderc bg-darkbutton hover:bg-selected disabled:opacity-50"
                     {disabled}
-                    onclick={() => pressBootButton(row.key)}
+                    onclick={(event) => pressBootButton(row.key, event.timeStamp)}
                 >{row.label}</button>
             </li>
         {/each}

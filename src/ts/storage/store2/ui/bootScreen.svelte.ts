@@ -8,8 +8,9 @@ import type { BootScreenModel } from './bootText'
  * Invariants:
  *  - Answering a question never clears the screen. The screen stays (its buttons off, a working line on) until the port
  *    shows the next one or the page loads, so no answer can leave a bare loading screen.
- *  - A press within `ANSWER_GUARD_MS` of the screen appearing, or of the screen replacing another, is discarded; a press
- *    after the first answer is discarded too. Nothing else answers a question: no key, backdrop or Back handler exists here.
+ *  - A press made before the screen appeared, however late its handler runs, is discarded; so is a press handled within
+ *    `ANSWER_GUARD_MS` of the screen appearing, or of the screen replacing another; a press after the first answer is
+ *    discarded too. Nothing else answers a question: no key, backdrop or Back handler exists here.
  *  - The view is a raw state: a screen that lists thousands of names is read, never proxied.
  */
 
@@ -53,10 +54,16 @@ export function showTerminalBootScreen(model: BootScreenModel, onPress: (key: st
     view = { model, shownAt: performance.now(), answered: false, onPress }
 }
 
-/** A press from the screen's own button: discarded inside the guard window, otherwise passed to the screen. */
-export function pressBootButton(key: string): void {
+/**
+ * A press from the screen's own button, passed to the screen only if the press itself happened after the screen appeared
+ * (`pressedAt` is its event time on the `performance.now()` clock) and the handler runs after the guard window.
+ */
+export function pressBootButton(key: string, pressedAt: number): void {
     const current = view
     if (current === null || current.answered) {
+        return
+    }
+    if (pressedAt < current.shownAt) {
         return
     }
     if (performance.now() - current.shownAt < ANSWER_GUARD_MS) {
