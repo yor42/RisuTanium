@@ -987,7 +987,7 @@ async function registerSw(): Promise<boolean> {
 /**
  * Updates the error handling by adding custom handlers for errors and unhandled promise rejections.
  */
-function updateErrorHandling() {
+export function updateErrorHandling() {
     const errorHandler = (event: ErrorEvent) => {
         handleWindowError(event, {
             warn: (message) => console.warn(message),

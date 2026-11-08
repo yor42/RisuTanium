@@ -11,7 +11,7 @@
 <h2 class="text-2xl font-bold text-center outline-hidden" tabindex="-1" data-step-heading>{text.onboarding.welcomeTitle}</h2>
 <p class="text-textcolor2 text-center mt-2">{text.onboarding.welcomeLead}</p>
 
-<fieldset class="mt-6 border-none p-0 m-0 min-w-0" disabled={flow.finishing}>
+<fieldset class="mt-6 border-none p-0 m-0 min-w-0" disabled={flow.welcomeLocked}>
     <legend class="text-sm text-textcolor2 mb-2">{text.language}</legend>
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
         {#each FIRST_RUN_LANGUAGES as code (code)}
@@ -36,19 +36,19 @@
     <button
         type="button"
         class="min-h-11 px-4 rounded-md bg-selected text-textcolor font-bold disabled:opacity-50"
-        disabled={flow.finishing}
+        disabled={flow.welcomeLocked}
         onclick={() => flow.startSetup()}
     >{text.onboarding.startSetup}</button>
     <button
         type="button"
         class="min-h-11 px-4 rounded-md border border-darkborderc hover:bg-bgcolor disabled:opacity-50"
-        disabled={flow.finishing}
+        disabled={flow.welcomeLocked}
         onclick={() => flow.restore()}
     >{text.onboarding.restoreBackup}</button>
     <button
         type="button"
         class="min-h-11 px-4 rounded-md text-textcolor2 hover:text-textcolor disabled:opacity-50"
-        disabled={flow.finishing}
+        disabled={flow.welcomeLocked}
         onclick={() => flow.skipSetup()}
     >{text.onboarding.skipSetup}</button>
 </div>

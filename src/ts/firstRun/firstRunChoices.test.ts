@@ -13,6 +13,7 @@ const box = vi.hoisted(() => ({
     order: [] as string[],
     flagAtThemeRefresh: undefined as unknown,
     flagAtRedrain: undefined as unknown,
+    modesAtThemeRefresh: undefined as unknown,
 }))
 
 vi.mock('../storage/database.svelte', () => ({
@@ -31,10 +32,14 @@ vi.mock('../gui/colorscheme', () => ({
     updateTextThemeAndCSS: () => {
         box.order.push('theme')
         box.flagAtThemeRefresh = (box.state.db as { didFirstSetup?: unknown }).didFirstSetup
+        const { visibleModes, hideUnusedModes } = box.state.db as { visibleModes?: unknown, hideUnusedModes?: unknown }
+        box.modesAtThemeRefresh = { visibleModes, hideUnusedModes }
     },
 }))
 
+import { switcherEntries } from 'src/lib/UI/Home/homeSwitcher'
 import { FIRST_RUN_MODELS } from '../model/firstRunModels'
+import { HOME_MODES, isRepairState, lockOf, showAllModes, type ModeState } from '../storage/homeModes'
 import {
     FIRST_RUN_LANGUAGES,
     MEMORY_SIZES,
@@ -43,6 +48,7 @@ import {
     finishFirstRun,
     keyAdvisory,
     languageToWrite,
+    offersHideUnused,
     standardKeyPrefix,
     nicknameReady,
     providerTakesKey,
@@ -96,6 +102,7 @@ function choices(over: Partial<FirstRunChoices> = {}): FirstRunChoices {
         memory: 'balanced',
         chatLanguage: 'unchanged',
         persona: { name: '', description: '', keepPicture: true },
+        onlyMode: null,
         ...over,
     }
 }
@@ -105,6 +112,7 @@ function state(over: Partial<FirstRunState> = {}): FirstRunState {
         skipped: false,
         appLanguage: 'en',
         use: 'stories',
+        hideUnused: false,
         name: '',
         description: '',
         keepPicture: false,
@@ -124,6 +132,7 @@ beforeEach(() => {
     box.order.length = 0
     box.flagAtThemeRefresh = undefined
     box.flagAtRedrain = undefined
+    box.modesAtThemeRefresh = undefined
 })
 
 afterEach(() => {
@@ -220,6 +229,7 @@ describe('skip and set-up-later resolve to the defaults', () => {
             memory: 'balanced',
             chatLanguage: 'unchanged',
             persona: { name: '', description: '', keepPicture: false },
+            onlyMode: null,
         })
         const db = apply(freshDb(), resolved as FirstRunChoices)
         expect([db.maxContext, db.maxResponse]).toEqual([12000, 800])
@@ -319,13 +329,88 @@ describe('persona', () => {
     })
 })
 
-describe('scope', () => {
-    test('the choices never write the mode fields or the setup flag', () => {
-        const db = apply(freshDb(), choices({ provider: 'claude', apiKey: 'K', chatLanguage: 'englishProcessing', persona: { name: 'Mina', description: 'd', keepPicture: true } }))
+describe('hiding unused modes', () => {
+    /** A database holding the mode fields in the shapes the real loader produces. */
+    const defaultModesDb = (): FakeDb => ({ ...freshDb(), visibleModes: [...HOME_MODES], hideUnusedModes: false })
 
-        expect(Object.keys(db)).not.toContain('hideUnusedModes')
-        expect(Object.keys(db)).not.toContain('visibleModes')
-        expect(Object.keys(db)).not.toContain('didFirstSetup')
+    test('the checkbox is offered for stories and tools, never for both or before a pick', () => {
+        expect(offersHideUnused('stories')).toBe(true)
+        expect(offersHideUnused('tools')).toBe(true)
+        expect(offersHideUnused('both')).toBe(false)
+        expect(offersHideUnused(null)).toBe(false)
+    })
+
+    test('a ticked box resolves stories to Roleplay only and tools to Utility only', () => {
+        expect(resolveChoices(state({ use: 'stories', hideUnused: true }))?.onlyMode).toBe('rp')
+        expect(resolveChoices(state({ use: 'tools', wantsNickname: false, hideUnused: true }))?.onlyMode).toBe('utility')
+    })
+
+    test('an unticked box, and a stale tick for both, resolve to no mode', () => {
+        expect(resolveChoices(state({ use: 'both', hideUnused: true }))?.onlyMode).toBeNull()
+        expect(resolveChoices(state({ use: 'stories', hideUnused: false }))?.onlyMode).toBeNull()
+        expect(resolveChoices(state({ use: 'tools', wantsNickname: false, hideUnused: false }))?.onlyMode).toBeNull()
+    })
+
+    test('skip setup never carries a tick', () => {
+        expect(resolveChoices(state({ skipped: true, use: 'stories', hideUnused: true }))?.onlyMode).toBeNull()
+    })
+
+    test.each([
+        ['rp', ['rp']],
+        ['utility', ['utility']],
+    ] as const)('applying only mode %s remembers that set and turns hiding on, in a new array', (onlyMode, expected) => {
+        const before = defaultModesDb()
+        const previousSet = before.visibleModes
+
+        const db = apply(before, choices({ onlyMode }))
+
+        expect(db.visibleModes).toEqual(expected)
+        expect(db.hideUnusedModes).toBe(true)
+        expect(db.visibleModes).not.toBe(previousSet)
+    })
+
+    test('no only mode leaves non-default mode fields untouched, writes none that are absent and never sets the setup flag', () => {
+        const stored = (): FakeDb => ({ ...freshDb(), visibleModes: ['hybrid', 'utility'], hideUnusedModes: true })
+        const resolvedSkip = resolveChoices(state({ skipped: true, use: 'stories', hideUnused: true })) as FirstRunChoices
+        const resolvedUnticked = resolveChoices(state({ use: 'stories', hideUnused: false })) as FirstRunChoices
+
+        for (const applied of [choices(), resolvedSkip, resolvedUnticked]) {
+            const db = apply(stored(), applied)
+
+            expect(db.visibleModes).toEqual(['hybrid', 'utility'])
+            expect(db.hideUnusedModes).toBe(true)
+        }
+        const bare = apply(freshDb(), choices({ provider: 'claude', apiKey: 'K', chatLanguage: 'englishProcessing', persona: { name: 'Mina', description: 'd', keepPicture: true } }))
+        expect(Object.keys(bare)).not.toContain('hideUnusedModes')
+        expect(Object.keys(bare)).not.toContain('visibleModes')
+        expect(Object.keys(bare)).not.toContain('didFirstSetup')
+    })
+
+    test('the modes are set before the theme refresh and the setup flag comes last', () => {
+        box.state.db = defaultModesDb()
+
+        finishFirstRun(choices({ onlyMode: 'rp' }))
+
+        expect(box.order).toEqual(['setPreset', 'theme'])
+        expect(box.modesAtThemeRefresh).toEqual({ visibleModes: ['rp'], hideUnusedModes: true })
+        expect(box.flagAtThemeRefresh).toBeUndefined()
+        expect((box.state.db as { didFirstSetup?: unknown }).didFirstSetup).toBe(true)
+    })
+
+    test.each([
+        ['rp'],
+        ['utility'],
+    ] as const)('after finishing with only %s, Home has no switcher, Settings shows the repair state, and Show all restores three modes', (onlyMode) => {
+        box.state.db = defaultModesDb()
+
+        finishFirstRun(choices({ onlyMode }))
+
+        const modes = box.state.db as ModeState
+        expect(switcherEntries(modes)).toEqual([])
+        expect(isRepairState(modes)).toBe(true)
+        expect(lockOf(onlyMode, modes)).toBe('last')
+        showAllModes(modes)
+        expect(switcherEntries(modes)).toHaveLength(3)
     })
 })
 
