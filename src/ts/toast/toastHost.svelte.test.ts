@@ -641,6 +641,234 @@ describe('suspension', () => {
     })
 })
 
+describe('pause', () => {
+    test('TP1 pauseWhile holds the timer, keeps the toast and resumes with the remaining time', () => {
+        const { clock, host } = setup()
+        let flag = $state(false)
+        const stop = $effect.root(() => { host.pauseWhile(() => flag) })
+        flushSync()
+        const id = postUndo(host, ok())
+        clock.advance(2000)
+        flag = true
+        flushSync()
+        expect(host.paused).toBe(true)
+        clock.advance(60_000)
+        expect(ids(host)).toEqual([id])
+        flag = false
+        flushSync()
+        expect(host.paused).toBe(false)
+        clock.advance(3999)
+        expect(ids(host)).toEqual([id])
+        clock.advance(1)
+        expect(ids(host)).toEqual([])
+        stop()
+    })
+
+    test('TP2 a pause composes with the focus hold, the hover hold and a suspension', () => {
+        for (const other of ['focus', 'hover', 'suspend'] as const) {
+            const { clock, host } = setup()
+            let paused = $state(false)
+            let suspended = $state(false)
+            const stop = $effect.root(() => {
+                host.pauseWhile(() => paused)
+                host.suspendWhile(() => suspended)
+            })
+            flushSync()
+            const id = postUndo(host, ok())
+            clock.advance(1000)
+            paused = true
+            flushSync()
+            if (other === 'suspend') {
+                suspended = true
+                flushSync()
+            } else {
+                host.setHold(other, true)
+            }
+            paused = false
+            flushSync()
+            // The other reason still holds the timer after the pause ends.
+            clock.advance(60_000)
+            expect(ids(host)).toEqual([id])
+            if (other === 'suspend') {
+                suspended = false
+                flushSync()
+            } else {
+                host.setHold(other, false)
+            }
+            clock.advance(4999)
+            expect(ids(host)).toEqual([id])
+            clock.advance(1)
+            expect(ids(host)).toEqual([])
+            stop()
+        }
+    })
+
+    test('TP3 pause owners are counted: the pause lasts until the last one releases', () => {
+        const { clock, host } = setup()
+        let first = $state(true)
+        let second = $state(true)
+        const stop = $effect.root(() => {
+            host.pauseWhile(() => first)
+            host.pauseWhile(() => second)
+        })
+        flushSync()
+        const id = postUndo(host, ok())
+        expect(host.count().pausers).toBe(2)
+        first = false
+        flushSync()
+        expect(host.paused).toBe(true)
+        clock.advance(60_000)
+        expect(ids(host)).toEqual([id])
+        second = false
+        flushSync()
+        expect(host.paused).toBe(false)
+        expect(host.count().pausers).toBe(0)
+        clock.advance(6000)
+        expect(ids(host)).toEqual([])
+        stop()
+    })
+
+    test('TP4 a toast posted while paused is shown and announced at once and its timer starts at release', () => {
+        const { clock, host } = setup()
+        let flag = $state(true)
+        const stop = $effect.root(() => { host.pauseWhile(() => flag) })
+        flushSync()
+        const versionBefore = host.version
+        flag = false
+        flushSync()
+        flag = true
+        flushSync()
+        expect(host.version).toBe(versionBefore)
+
+        const seqBefore = host.polite.seq
+        const id = postUndo(host, ok(), 'Removed X')
+        expect(ids(host)).toEqual([id])
+        expect(host.polite.text).toBe('Removed X')
+        expect(host.polite.seq).toBe(seqBefore + 1)
+        expect(host.version).toBe(versionBefore + 1)
+        clock.advance(60_000)
+        expect(ids(host)).toEqual([id])
+        flag = false
+        flushSync()
+        clock.advance(5999)
+        expect(ids(host)).toEqual([id])
+        clock.advance(1)
+        expect(ids(host)).toEqual([])
+        stop()
+    })
+
+    test('TP5 a warning stays through a pause and gets no timer at release', () => {
+        const { clock, host } = setup()
+        let flag = $state(false)
+        const stop = $effect.root(() => { host.pauseWhile(() => flag) })
+        flushSync()
+        host.post({ kind: 'warning', text: 'before' })
+        flag = true
+        flushSync()
+        host.post({ kind: 'error', text: 'during' })
+        clock.advance(60_000)
+        expect(texts(host)).toEqual(['before', 'during'])
+        flag = false
+        flushSync()
+        expect(clock.pending()).toBe(0)
+        clock.advance(60_000)
+        expect(texts(host)).toEqual(['before', 'during'])
+        stop()
+    })
+
+    test('TP6 admission is unchanged while paused and a released toast waits for the resume', () => {
+        const { clock, host } = setup()
+        let flag = $state(true)
+        const stop = $effect.root(() => { host.pauseWhile(() => flag) })
+        flushSync()
+        postUndo(host, ok(), 'u1')
+        postUndo(host, ok(), 'u2')
+        const u3 = postUndo(host, ok(), 'u3')
+        postUndo(host, ok(), 'u4')
+        expect(texts(host)).toEqual(['u2', 'u3', 'u4'])
+        host.post({ text: 'plain' })
+        expect(host.count().queued).toBe(1)
+        host.dismiss(u3)
+        expect(texts(host)).toEqual(['u2', 'u4', 'plain'])
+        expect(host.count().queued).toBe(0)
+        clock.advance(60_000)
+        expect(texts(host)).toEqual(['u2', 'u4', 'plain'])
+        flag = false
+        flushSync()
+        clock.advance(5000)
+        expect(texts(host)).toEqual(['u2', 'u4'])
+        clock.advance(1000)
+        expect(texts(host)).toEqual([])
+        stop()
+    })
+
+    test('TP7 the undo run timeout still fires while paused and the failure toast waits for the resume', async () => {
+        const { clock, host } = setup()
+        let flag = $state(false)
+        const stop = $effect.root(() => { host.pauseWhile(() => flag) })
+        flushSync()
+        const never = deferred<UndoOutcome>()
+        const id = postUndo(host, action(() => never.promise, 'never'))
+        const pressed = host.activate(id)
+        flag = true
+        flushSync()
+        clock.advance(10_000)
+        await pressed
+        expect(host.visible[0].kind).toBe('info')
+        expect(host.visible[0].text).toBe('FAILED')
+        clock.advance(60_000)
+        expect(ids(host)).toEqual([id])
+        flag = false
+        flushSync()
+        clock.advance(4999)
+        expect(ids(host)).toEqual([id])
+        clock.advance(1)
+        expect(ids(host)).toEqual([])
+        stop()
+    })
+
+    test('TP8 destroying an owner ends its pause; reset clears the pausers; a pause changes neither version nor suspension', () => {
+        const { host } = setup()
+        const stop = $effect.root(() => { host.pauseWhile(() => true) })
+        flushSync()
+        expect(host.paused).toBe(true)
+        expect(host.suspended).toBe(false)
+        expect(host.count().pausers).toBe(1)
+        stop()
+        expect(host.paused).toBe(false)
+        expect(host.count().pausers).toBe(0)
+
+        const stopAgain = $effect.root(() => { host.pauseWhile(() => true) })
+        flushSync()
+        host.reset()
+        expect(host.count().pausers).toBe(0)
+        expect(host.paused).toBe(false)
+        const versionAfterReset = host.version
+        expect(() => stopAgain()).not.toThrow()
+        expect(host.count().pausers).toBe(0)
+        expect(host.version).toBe(versionAfterReset)
+    })
+
+    test('TP9 the outcome toast of an undo pressed while paused starts its 5 s at the resume', async () => {
+        const { clock, host } = setup()
+        let flag = $state(true)
+        const stop = $effect.root(() => { host.pauseWhile(() => flag) })
+        flushSync()
+        const id = postUndo(host, ok('Restored'))
+        await host.activate(id)
+        expect(host.visible[0].kind).toBe('success')
+        clock.advance(60_000)
+        expect(ids(host)).toEqual([id])
+        flag = false
+        flushSync()
+        clock.advance(4999)
+        expect(ids(host)).toEqual([id])
+        clock.advance(1)
+        expect(ids(host)).toEqual([])
+        stop()
+    })
+})
+
 describe('announcements, reset and version', () => {
     test('TH15 regions by kind, a seq per write, identical texts twice, one batched write on resume', async () => {
         const { host } = setup()
@@ -698,7 +926,7 @@ describe('announcements, reset and version', () => {
         resetToastHostForTests()
         await pressed
         expect(vi.getTimerCount()).toBe(0)
-        expect(toastHost.count()).toEqual({ visible: 0, queued: 0, suspenders: 0 })
+        expect(toastHost.count()).toEqual({ visible: 0, queued: 0, suspenders: 0, pausers: 0 })
         expect(toastHost.holds()).toEqual({ hover: false, focus: false })
         expect(toastHost.polite).toEqual({ text: '', seq: 0 })
         expect(toastHost.assertive).toEqual({ text: '', seq: 0 })
@@ -708,21 +936,26 @@ describe('announcements, reset and version', () => {
         expect(recordCaughtError).toHaveBeenCalledWith('toast.undo.late', expect.anything())
     })
 
-    test('TH16 reset also clears suspenders and holds', () => {
+    test('TH16 reset also clears suspenders, pausers and holds', () => {
         resetToastHostForTests()
         const stopOwner = $effect.root(() => { toastHost.suspendWhile(() => true) })
+        const stopPauser = $effect.root(() => { toastHost.pauseWhile(() => true) })
         flushSync()
         expect(toastHost.count().suspenders).toBe(1)
+        expect(toastHost.count().pausers).toBe(1)
+        expect(toastHost.paused).toBe(true)
         for (const name of ['a', 'b', 'c']) {
             toastHost.post({ kind: 'error', text: name })
         }
         expect(toastHost.count().queued).toBe(1)
         toastHost.setHold('hover', true)
         resetToastHostForTests()
-        expect(toastHost.count()).toEqual({ visible: 0, queued: 0, suspenders: 0 })
+        expect(toastHost.count()).toEqual({ visible: 0, queued: 0, suspenders: 0, pausers: 0 })
         expect(toastHost.suspended).toBe(false)
+        expect(toastHost.paused).toBe(false)
         expect(toastHost.holds()).toEqual({ hover: false, focus: false })
         stopOwner()
+        stopPauser()
     })
 
     test('TH18 the singleton obeys fake timers installed after import', () => {

@@ -1,6 +1,7 @@
 <script lang="ts">
     import { language } from '../../../lang'
     import { toastHost, type ToastHost, type ToastKind } from '../../../ts/toast/toastHost.svelte'
+    import { modalLayerOpen } from './modalLayers.svelte'
 
     interface Props {
         /** True while an alert covers the page: the stack is hidden and inert and its timers are held. */
@@ -13,6 +14,9 @@
     // The host is fixed for the component's lifetime; the suspension follows `covered` through the closure.
     // svelte-ignore state_referenced_locally
     host.suspendWhile(() => covered)
+    // An open focus-trapping overlay holds the timers only; the stack stays visible.
+    // svelte-ignore state_referenced_locally
+    host.pauseWhile(() => modalLayerOpen())
 
     // Holds are derived from DOM facts after every host change, never latched: the host never infers one, so no
     // hold can be forgotten or left set. None of this state is reactive; it is read and written only by the
@@ -28,7 +32,8 @@
     let before: Element | null = null
 
     function syncHolds(): void {
-        if (hovered !== null && (host.suspended || !hovered.isConnected)) {
+        // A pause drops the hover like a suspension: an overlay may inert the toast, so its pointer leave may never arrive.
+        if (hovered !== null && (host.suspended || host.paused || !hovered.isConnected)) {
             hovered = null
         }
         const active = document.activeElement
@@ -94,6 +99,11 @@
     })
 
     $effect(() => {
+        void host.paused
+        syncHolds()
+    })
+
+    $effect(() => {
         const onVisibility = (): void => {
             if (document.visibilityState === 'hidden') {
                 hovered = null
@@ -114,6 +124,7 @@
     class="toast-stack"
     data-part="toast-host"
     data-suspended={host.suspended ? '' : undefined}
+    data-paused={host.paused ? '' : undefined}
     inert={host.suspended}
     style:visibility={host.suspended ? 'hidden' : undefined}
     onfocusin={onFocusIn}

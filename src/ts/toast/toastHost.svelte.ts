@@ -3,7 +3,7 @@ import { recordCaughtError } from '../caughtErrors'
 /**
  * The app-wide toast and undo host: rune state, timers, admission and queue, undo runs and suspension.
  *
- * It touches no DOM, `window` or storage at import or when called, except `suspendWhile`, which creates a Svelte
+ * It touches no DOM, `window` or storage at import or when called, except `suspendWhile` and `pauseWhile`, which create a Svelte
  * effect and therefore needs a component or `$effect.root` owner. Holds (hover and focus) are written only by the
  * view, from DOM facts; the host never infers one.
  */
@@ -96,6 +96,13 @@ export interface ToastHost {
      */
     suspendWhile(isActive: () => boolean): void
     readonly suspended: boolean
+    /**
+     * Holds every timer while `isActive()` is true, with the same owner rules as `suspendWhile`. A pause holds
+     * timers only: the stack stays visible and interactive, announcements are written at once, and admission is
+     * unchanged. Timers resume with the time they had left.
+     */
+    pauseWhile(isActive: () => boolean): void
+    readonly paused: boolean
     /** Oldest first. */
     readonly visible: readonly ToastView[]
     /**
@@ -115,7 +122,7 @@ export interface ToastHost {
     clearHolds(): void
     /** The Undo button. */
     activate(id: ToastId): Promise<void>
-    count(): { visible: number, queued: number, suspenders: number }
+    count(): { visible: number, queued: number, suspenders: number, pausers: number }
     holds(): { hover: boolean, focus: boolean }
     reset(): void
 }
@@ -211,6 +218,9 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
     let suspended = $state(false)
     // Plain mirror of `suspended` for internal decisions: an effect that called `setSuspended` must not subscribe to it.
     let isSuspended = false
+    let paused = $state(false)
+    // Plain mirror of `paused`, for the same reason as `isSuspended`.
+    let isPaused = false
     let polite = $state<Announcement>({ text: '', seq: 0 })
     let assertive = $state<Announcement>({ text: '', seq: 0 })
     // Write-only counter: reading a rune inside an effect would subscribe the effect to it.
@@ -221,6 +231,7 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
     let generation = 0
     let hold = { hover: false, focus: false }
     const tokens = new Set<object>()
+    const pauseTokens = new Set<object>()
     const runCancels = new Set<() => void>()
     // Lets `reset` finish the promise of an `activate` whose run it abandons.
     const runResolvers = new Set<() => void>()
@@ -280,7 +291,7 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
     }
 
     function shouldRun(entry: Entry): boolean {
-        return entry.remaining !== null && !isSuspended &&!hold.hover && !hold.focus && !entry.pending && !entry.ended
+        return entry.remaining !== null && !isSuspended && !isPaused && !hold.hover && !hold.focus && !entry.pending && !entry.ended
     }
 
     function pauseTimer(entry: Entry): void {
@@ -526,6 +537,35 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         })
     }
 
+    /** Timers only: no `touch`, no announcement change and no hold change, so nothing but `reconcile` runs. */
+    function setPaused(): void {
+        const next = pauseTokens.size > 0
+        if (next === isPaused) {
+            return
+        }
+        isPaused = next
+        paused = next
+        reconcile()
+    }
+
+    function pauseWhile(isActive: () => boolean): void {
+        const active = $derived.by(() => isActive() === true)
+        $effect(() => {
+            if (!active) {
+                return
+            }
+            const token = {}
+            pauseTokens.add(token)
+            setPaused()
+            return () => {
+                // A token removed by `reset` is ignored.
+                if (pauseTokens.delete(token)) {
+                    setPaused()
+                }
+            }
+        })
+    }
+
     function setHold(reason: 'hover' | 'focus', on: boolean): void {
         if (hold[reason] === on) {
             return
@@ -663,8 +703,11 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         entries = []
         queue = []
         tokens.clear()
+        pauseTokens.clear()
         isSuspended = false
         suspended = false
+        isPaused = false
+        paused = false
         for (const release of runResolvers) {
             release()
         }
@@ -687,6 +730,8 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         dismissUndo,
         suspendWhile,
         get suspended() { return suspended },
+        pauseWhile,
+        get paused() { return paused },
         get visible() { return shown },
         get version() { return version },
         get polite() { return polite },
@@ -694,7 +739,7 @@ export function createToastHost(opts: { clock?: ToastClock, config?: Partial<Toa
         setHold,
         clearHolds,
         activate,
-        count: () => ({ visible: entries.length, queued: queue.length, suspenders: tokens.size }),
+        count: () => ({ visible: entries.length, queued: queue.length, suspenders: tokens.size, pausers: pauseTokens.size }),
         holds: () => ({ ...hold }),
         reset,
     }

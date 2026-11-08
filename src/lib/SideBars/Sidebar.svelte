@@ -42,6 +42,7 @@
     import { shellEligible } from "../../ts/chatShell/shellSwitch.svelte";
     import { takeOverlayReturnFocus } from "../../ts/chatShell/overlayFocus";
     import { hasOpenShell } from "../Nexus/pattern/patternFocus";
+    import { holdModalLayer } from "../Nexus/pattern/modalLayers.svelte";
     import ShellSidebar from "../ChatShell/sidebar/ShellSidebar.svelte";
     import { showHomeLanding } from "../UI/Home/homeView.svelte";
   let sideBarMode = $state(0);
@@ -156,6 +157,8 @@
     if (!overlayModal || !panelEl) {
       return;
     }
+    // The inert page is a modal layer: the toast timers pause until this overlay ends.
+    const releaseLayer = holdModalLayer();
     // A name left from an earlier overlay does not apply to this one.
     takeOverlayReturnFocus();
     const panel = panelEl;
@@ -171,6 +174,7 @@
     }
     panel.focus();
     return () => {
+      releaseLayer();
       for (const element of inerted) {
         element.removeAttribute('inert');
       }
