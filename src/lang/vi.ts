@@ -2922,7 +2922,11 @@ export const languageVietnamese = {
         iconAlt: "biểu tượng",
         popupEditor: "Trình chỉnh sửa cửa sổ bật lên",
         beta: "Beta",
-        logoAlt: "logo"
+        logoAlt: "logo",
+        sidebarItemRemoved: "Đã xóa \"{name}\"",
+        sidebarItemRestored: "Đã khôi phục \"{name}\"",
+        sidebarItemUndoRefused: "Không thể hoàn tác: \"{name}\" đã có trong danh sách.",
+        sidebarItemUndoFailed: "Không thể hoàn tác việc xóa."
     },
     uiCommon: {
         delete: "Xóa",
@@ -2948,7 +2952,8 @@ export const languageVietnamese = {
         inlayAlt: "Inlay",
         videoTagUnsupported: "Trình duyệt của bạn không hỗ trợ thẻ video.",
         audioTagUnsupported: "Trình duyệt của bạn không hỗ trợ thẻ audio.",
-        imageAlt: "hình ảnh"
+        imageAlt: "hình ảnh",
+        undo: "Hoàn tác"
     },
     modelStatus: {
         retiredTag: "đã ngừng",

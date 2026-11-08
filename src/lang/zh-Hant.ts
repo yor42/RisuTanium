@@ -2967,7 +2967,11 @@ export const languageChineseTraditional = {
         "iconAlt": "圖示",
         "popupEditor": "彈出式編輯器",
         "beta": "Beta",
-        "logoAlt": "標誌"
+        "logoAlt": "標誌",
+        "sidebarItemRemoved": "已移除「{name}」",
+        "sidebarItemRestored": "「{name}」已還原",
+        "sidebarItemUndoRefused": "無法復原：「{name}」已在清單中。",
+        "sidebarItemUndoFailed": "無法復原移除。"
     },
     "uiCommon": {
         "delete": "刪除",
@@ -2993,7 +2997,8 @@ export const languageChineseTraditional = {
         "inlayAlt": "內嵌圖",
         "videoTagUnsupported": "您的瀏覽器不支援 video 標籤。",
         "audioTagUnsupported": "您的瀏覽器不支援 audio 標籤。",
-        "imageAlt": "圖片"
+        "imageAlt": "圖片",
+        "undo": "復原"
     },
     "modelStatus": {
         "retiredTag": "已停用",

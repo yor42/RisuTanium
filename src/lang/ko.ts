@@ -2922,7 +2922,11 @@ export const languageKorean = {
         iconAlt: "아이콘",
         popupEditor: "팝업 편집기",
         beta: "베타",
-        logoAlt: "로고"
+        logoAlt: "로고",
+        sidebarItemRemoved: "\"{name}\" 항목을 제거했습니다",
+        sidebarItemRestored: "\"{name}\" 항목을 되돌렸습니다",
+        sidebarItemUndoRefused: "실행 취소할 수 없습니다. \"{name}\" 항목이 이미 목록에 있습니다.",
+        sidebarItemUndoFailed: "제거를 실행 취소하지 못했습니다."
     },
     uiCommon: {
         delete: "삭제",
@@ -2948,7 +2952,8 @@ export const languageKorean = {
         inlayAlt: "인레이",
         videoTagUnsupported: "사용 중인 브라우저가 video 태그를 지원하지 않습니다.",
         audioTagUnsupported: "사용 중인 브라우저가 audio 태그를 지원하지 않습니다.",
-        imageAlt: "이미지"
+        imageAlt: "이미지",
+        undo: "실행 취소"
     },
     modelStatus: {
         retiredTag: "종료됨",

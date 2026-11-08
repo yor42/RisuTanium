@@ -2926,7 +2926,11 @@ export const languageSpanish = {
         iconAlt: "icono",
         popupEditor: "Editor Emergente",
         beta: "Beta",
-        logoAlt: "logo"
+        logoAlt: "logo",
+        sidebarItemRemoved: "Se quitó «{name}»",
+        sidebarItemRestored: "«{name}» ha vuelto",
+        sidebarItemUndoRefused: "No se puede deshacer: «{name}» ya está en la lista.",
+        sidebarItemUndoFailed: "No se pudo deshacer la eliminación."
     },
     uiCommon: {
         delete: "Eliminar",
@@ -2952,7 +2956,8 @@ export const languageSpanish = {
         inlayAlt: "Inlay",
         videoTagUnsupported: "Tu navegador no admite la etiqueta video.",
         audioTagUnsupported: "Tu navegador no admite la etiqueta audio.",
-        imageAlt: "imagen"
+        imageAlt: "imagen",
+        undo: "Deshacer"
     },
     modelStatus: {
         retiredTag: "retirado",

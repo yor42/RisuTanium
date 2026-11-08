@@ -3076,6 +3076,10 @@ export const languageJapanese = {
         popupEditor: "ポップアップエディタ",
         beta: "ベータ",
         logoAlt: "ロゴ",
+        sidebarItemRemoved: "「{name}」を削除しました",
+        sidebarItemRestored: "「{name}」を元に戻しました",
+        sidebarItemUndoRefused: "元に戻せません。「{name}」はすでにリストにあります。",
+        sidebarItemUndoFailed: "削除を元に戻せませんでした。",
     },
     uiCommon: {
         delete: "削除",
@@ -3102,6 +3106,7 @@ export const languageJapanese = {
         videoTagUnsupported: "お使いのブラウザはvideoタグに対応していません。",
         audioTagUnsupported: "お使いのブラウザはaudioタグに対応していません。",
         imageAlt: "画像",
+        undo: "元に戻す",
     },
     modelStatus: {
         retiredTag: "提供終了",

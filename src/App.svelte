@@ -37,6 +37,8 @@
     import BootScreen from './lib/Others/BootScreen.svelte';
     import { getBootScreen } from './ts/storage/store2/ui/bootScreen.svelte';
     import { chatSurface, installChatSurface } from './lib/ChatScreens/chatSurface.svelte';
+    import ToastHost from './lib/Nexus/pattern/ToastHost.svelte';
+    import { coversPage } from './ts/alertEscape';
 
     installChatSurface()
     installSettingsOrigin()
@@ -309,4 +311,5 @@
         <CustomSidebarConfig />
     {/if}
     </AlertInertScope>
+    <ToastHost covered={coversPage($alertStore.type)} />
 </main>
