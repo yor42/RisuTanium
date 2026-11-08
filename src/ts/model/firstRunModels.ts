@@ -2,4 +2,5 @@
 export const FIRST_RUN_MODELS = {
     claude: 'claude-sonnet-4-6',
     openai: 'gpt4o',
+    gemini: 'gemini-flash-latest',
 } as const

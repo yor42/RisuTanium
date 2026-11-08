@@ -761,3 +761,64 @@ describe('a .bin whose database entry is the compressed legacy format both expor
         expect(upstreamRead.mainPrompt).toBe('exported prompt')
     })
 })
+
+describe('a first-run restore completes first setup in the committed tree (block path)', () => {
+    /** The picker restore, with the first-run option when `withOption` is set. */
+    async function runPickerRestore(file: Uint8Array, withOption: boolean): Promise<void> {
+        if (withOption) {
+            LoadLocalBackup(undefined, undefined, { completeFirstSetup: true })
+        } else {
+            LoadLocalBackup()
+        }
+        const input = capturedInput
+        if (!input) {
+            throw new Error('LoadLocalBackup did not create a file input')
+        }
+        Object.defineProperty(input, 'files', { value: [new File([file as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')], configurable: true })
+        await (input.onchange as unknown as (ev: Event) => Promise<void>).call(input, new Event('change'))
+    }
+
+    async function committedFlag(): Promise<unknown> {
+        return ((await committedTree()) as unknown as { didFirstSetup?: unknown } | null)?.didFirstSetup
+    }
+
+    test('regression reproducer: a file whose flag is false commits true when restored with the option', async () => {
+        await seedBlockProfile(OLD())
+
+        await runPickerRestore(await binOf(tree([character('new-a', 'New A')], { didFirstSetup: false })), true)
+
+        expect(await committedFlag()).toBe(true)
+        expect(setDatabaseMock.mock.calls[0][0]).toMatchObject({ didFirstSetup: true })
+    })
+
+    test('regression reproducer: a file with no flag commits true when restored with the option', async () => {
+        await seedBlockProfile(OLD())
+        const withoutFlag = tree([character('new-a', 'New A')])
+        expect('didFirstSetup' in withoutFlag).toBe(false)
+
+        await runPickerRestore(await binOf(withoutFlag), true)
+
+        expect(await committedFlag()).toBe(true)
+    })
+
+    test.each([false, undefined] as const)('guard: the same file (flag %s) restored without the option keeps the file\'s own value', async (flag) => {
+        await seedBlockProfile(OLD())
+
+        await runPickerRestore(await binOf(tree([character('new-a', 'New A')], flag === undefined ? {} : { didFirstSetup: flag })), false)
+
+        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expect(await committedFlag()).toBe(flag)
+    })
+
+    test('guard: an opened-file restore never takes the option and writes the file\'s own value', async () => {
+        await seedBlockProfile(OLD())
+        const { importSourceOfBytes } = await import('../../importSource')
+        const bytes = await binOf(tree([character('new-a', 'New A')], { didFirstSetup: false }))
+
+        // The overload forbids the combination; a caller that forces it past the types is still ignored.
+        const forced = LoadLocalBackup as unknown as (boot: undefined, opened: unknown, restore: unknown) => ReturnType<typeof LoadLocalBackup>
+        await forced(undefined, { source: importSourceOfBytes('backup.bin', bytes), name: 'backup.bin', lastModified: 0 }, { completeFirstSetup: true })
+
+        expect(await committedFlag()).toBe(false)
+    })
+})

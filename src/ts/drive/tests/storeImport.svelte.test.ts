@@ -1052,3 +1052,80 @@ describe.each([undefined, 16] as const)('the order of the entries does not chang
         expect(page.reloads.count).toBe(0)
     })
 })
+
+describe('a first-run restore completes first setup in the committed tree (store2 path)', () => {
+    async function flaggedBin(page: Page, flag: boolean | undefined): Promise<Uint8Array> {
+        const source = makeDb('backup', ['alpha'])
+        if (flag !== undefined) {
+            source.didFirstSetup = flag
+        }
+        return binOf(binEntry('golden-avatar.png', AVATAR), binEntry('database.risudat', await blockFileBytes(page, source)))
+    }
+
+    /** The picker restore with the first-run option. */
+    async function loadBinAtFirstRun(page: Page, bytes: Uint8Array): Promise<void> {
+        const { LoadLocalBackup } = await import('src/ts/drive/backuplocal')
+        const realCreateElement = document.createElement.bind(document)
+        let input: HTMLInputElement | null = null
+        const spy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+            const element = realCreateElement(tag)
+            if (tag === 'input') {
+                input = element as HTMLInputElement
+            }
+            return element
+        })
+        try {
+            LoadLocalBackup(undefined, undefined, { completeFirstSetup: true })
+            const chosen = input as HTMLInputElement | null
+            if (chosen === null) {
+                throw new Error('LoadLocalBackup did not create a file input')
+            }
+            Object.defineProperty(chosen, 'files', { value: [new File([bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')], configurable: true })
+            await (chosen.onchange as unknown as (event: Event) => Promise<void>).call(chosen, new Event('change'))
+        } finally {
+            spy.mockRestore()
+        }
+        void page
+    }
+
+    test.each([false, undefined] as const)('regression reproducer: a file whose flag is %s commits true when restored with the option', async (flag) => {
+        const page = await openPage()
+
+        await loadBinAtFirstRun(page, await flaggedBin(page, flag))
+
+        expect(page.reloads.count).toBe(1)
+        expect(alertErrorTexts(page)).toEqual([])
+        expect((await databaseOf(page, await currentKey(page) as string)).didFirstSetup).toBe(true)
+    })
+
+    test.each([false, undefined] as const)('guard: the same file (flag %s) restored without the option keeps the file\'s own value', async (flag) => {
+        const page = await openPage()
+
+        await loadBin(page, await flaggedBin(page, flag))
+
+        expect(page.reloads.count).toBe(1)
+        expect((await databaseOf(page, await currentKey(page) as string)).didFirstSetup).toBe(flag)
+    })
+
+    test('a conflict on the first attempt still commits the mark on the second', async () => {
+        const page = await openPage()
+        const real = page.k.committer
+        let calls = 0
+        page.useCommitter({
+            ...real,
+            commit: async (read, request) => {
+                calls++
+                if (calls === 1) {
+                    return { status: 'conflict', current: read }
+                }
+                return await real.commit(await real.readCommit(), request)
+            },
+        })
+
+        await loadBinAtFirstRun(page, await flaggedBin(page, false))
+
+        expect(calls).toBe(2)
+        expect(page.reloads.count).toBe(1)
+        expect((await databaseOf(page, await currentKey(page) as string)).didFirstSetup).toBe(true)
+    })
+})
