@@ -10,9 +10,10 @@ vi.mock('../stores.svelte', async () => {
 import { SettingsMenuIndex, settingsOpen } from '../stores.svelte'
 import { fixPending, openSettingsForFix, resetSettingsRouteForTests } from '../../lib/Setting/settingsRoute'
 import {
-    isPhoneWidth, PHONE_MAX_WIDTH, readLastPage, resolveOpenIndex, setShellBackHandler, settingsShellBackStep,
-    settingsShellEscape, writeLastPage,
+    isPhoneWidth, PHONE_MAX_WIDTH, readLastPage, resolveOpenIndex, setShellBackHandler, settingsShellBackSnapshot,
+    settingsShellBackStep, settingsShellEscape, writeLastPage,
 } from './settingsNavigation'
+import { openSearch, resetSearch, settingsSearchState } from './settingsSearchState.svelte'
 
 function setWidth(width: number): void {
     Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width })
@@ -23,9 +24,11 @@ beforeEach(() => {
     SettingsMenuIndex.set(-1)
     settingsOpen.set(false)
     resetSettingsRouteForTests()
+    resetSearch()
 })
 
 afterEach(() => {
+    resetSearch()
     setShellBackHandler(null)
     vi.restoreAllMocks()
     resetSettingsRouteForTests()
@@ -119,6 +122,62 @@ describe('settingsShellBackStep', () => {
         settingsShellBackStep()
         expect(get(settingsOpen)).toBe(false)
         expect(get(fixPending)).toBe(true)
+    })
+})
+
+describe('settingsShellBackStep with the search open (T-A6)', () => {
+    test('a phone page keeps its place: the first step closes only the search, the next goes up', () => {
+        setWidth(412)
+        settingsOpen.set(true)
+        SettingsMenuIndex.set(3)
+        openSearch()
+        settingsShellBackStep()
+        expect(settingsSearchState.open).toBe(false)
+        expect(get(settingsOpen)).toBe(true)
+        expect(get(SettingsMenuIndex)).toBe(3)
+        settingsShellBackStep()
+        expect(get(SettingsMenuIndex)).toBe(-1)
+    })
+
+    test('the wide layout closes only the search, not Settings', () => {
+        setWidth(1280)
+        settingsOpen.set(true)
+        SettingsMenuIndex.set(3)
+        openSearch()
+        settingsShellBackStep()
+        expect(settingsSearchState.open).toBe(false)
+        expect(get(settingsOpen)).toBe(true)
+        expect(get(SettingsMenuIndex)).toBe(3)
+    })
+
+    test('after the Fix route the search still closes first and the failed-send card is not told yet', () => {
+        setWidth(412)
+        openSettingsForFix('botSettings')
+        openSearch()
+        settingsShellBackStep()
+        expect(settingsSearchState.open).toBe(false)
+        expect(get(settingsOpen)).toBe(true)
+        expect(get(fixPending)).toBe(false)
+    })
+
+    test('closing the search changes the snapshot the Back handler compares', () => {
+        settingsOpen.set(true)
+        SettingsMenuIndex.set(3)
+        const closed = settingsShellBackSnapshot()
+        openSearch()
+        const open = settingsShellBackSnapshot()
+        expect(open).not.toBe(closed)
+        setWidth(1280)
+        settingsShellBackStep()
+        expect(settingsShellBackSnapshot()).toBe(closed)
+    })
+
+    test('the snapshot names Settings, the index and the search', () => {
+        settingsOpen.set(true)
+        SettingsMenuIndex.set(11)
+        expect(settingsShellBackSnapshot()).toBe('true|11|false')
+        openSearch()
+        expect(settingsShellBackSnapshot()).toBe('true|11|true')
     })
 })
 
