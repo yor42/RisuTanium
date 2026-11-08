@@ -30,11 +30,20 @@ import PromptDiffModal from 'src/lib/Others/PromptDiffModal.svelte'
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-async function settle(): Promise<void> {
-    for (let i = 0; i < 5; i++) {
+// The card diff is computed asynchronously after a lazy `import('diff')`, so how long the expected text takes
+// to appear depends on module-load time under machine load. Wait on the condition itself, with a generous
+// deadline, instead of a fixed number of ticks; the final assertion still decides pass or fail.
+async function settle(
+    target: HTMLElement,
+    expectedText: string,
+    flush: () => void = flushSync,
+    deadlineMs = 20_000,
+): Promise<void> {
+    const deadline = Date.now() + deadlineMs
+    do {
         await sleep(20)
-        flushSync()
-    }
+        flush()
+    } while (!textOf(target).includes(expectedText) && Date.now() < deadline)
 }
 
 let mounted: Array<{ target: HTMLElement, app: Record<string, unknown> }> = []
@@ -44,7 +53,7 @@ async function mountModal(): Promise<HTMLElement> {
     document.body.appendChild(target)
     const app = mount(PromptDiffModal, { target, props: { firstPresetId: 0, secondPresetId: 1 } }) as unknown as Record<string, unknown>
     mounted.push({ target, app })
-    await settle()
+    await settle(target, 'added body')
     return target
 }
 
@@ -97,5 +106,32 @@ describe('a preset without a prompt template in card format', { timeout: 30_000 
     test('regression reproducer: a first preset saved without the template key is shown as empty, so the second preset\'s cards still render', async () => {
         delete useDb()[0].promptTemplate
         expect(textOf(await mountModal())).toContain('added body')
+    })
+})
+
+describe('a slow lazy diff module import', { timeout: 30_000 }, () => {
+    // Mechanism reproducer: the diff module resolves 300 ms late, so a fixed short settle shows the
+    // "No diff computed yet" placeholder; waiting on the rendered text shows the cards.
+    test('mechanism reproducer: the card diff still renders once a delayed diff module resolves', async () => {
+        useDb()
+        vi.resetModules()
+        vi.doMock('diff', async () => {
+            await sleep(300)
+            return await vi.importActual<typeof import('diff')>('diff')
+        })
+        const fresh = await import('svelte')
+        const { default: FreshModal } = await import('src/lib/Others/PromptDiffModal.svelte')
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const app = fresh.mount(FreshModal, { target, props: { firstPresetId: 0, secondPresetId: 1 } }) as unknown as Record<string, unknown>
+        try {
+            await settle(target, 'added body', fresh.flushSync)
+            expect(textOf(target)).toContain('added body')
+        } finally {
+            await fresh.unmount(app as never)
+            target.remove()
+            vi.doUnmock('diff')
+            vi.resetModules()
+        }
     })
 })
