@@ -9,6 +9,12 @@ type CharArg = simpleCharacterArgument | string | null
 /** Largest number of remembered bodies. Past it the oldest-used entry is dropped and its body blanks for one parse, as it did before the cache. */
 export const RENDER_CACHE_CAPACITY = 200
 
+/** Largest total of remembered characters (sources plus HTML) across all entries; the oldest-used entries are dropped until the total fits. Characters stand in for bytes: two-byte text costs up to twice as much. */
+export const RENDER_CACHE_CHAR_BUDGET = 4_000_000
+
+/** Largest size of one entry. A larger body is never stored, so one huge body cannot push the rest out; it is no larger than the budget, so a stored entry survives its own insert. */
+export const RENDER_CACHE_ENTRY_CHAR_LIMIT = 1_000_000
+
 /** Recorded for a body that is waiting for its first render, so the next instance of the slot shows the indicator. */
 export const AWAITING = Symbol('awaiting')
 
@@ -37,6 +43,13 @@ export type CacheLookup =
 
 let currentScope: string | null = null
 const entries = new Map<string, Entry>()
+// Invariant: the sum of `entryChars` over `entries`. Every insert, replace, eviction and clear keeps it so.
+let totalChars = 0
+
+/** What an entry counts against the budget; an awaiting entry holds only its source. */
+function entryChars(entry: Entry): number {
+    return entry.source.length + (entry.value === AWAITING ? 0 : entry.value.length)
+}
 
 /** The scope of the open chat; the owner's chaId and the chat id, falling back to the page index for an id-less chat. */
 export function scopeOf(chaId: string, chatId: string | undefined, chatPage: number): string {
@@ -55,6 +68,7 @@ export function slotKeyOf(firstMessage: boolean, idx: number, charArg: CharArg):
 export function clearChatBodyRenderCache(): void {
     currentScope = null
     entries.clear()
+    totalChars = 0
 }
 
 function matches(entry: Entry, fp: RenderFingerprint): boolean {
@@ -85,19 +99,37 @@ export function lookup(fp: RenderFingerprint): CacheLookup {
 export function record(fp: RenderFingerprint, value: string | typeof AWAITING): void {
     if(fp.scope !== currentScope){
         entries.clear()
+        totalChars = 0
         currentScope = fp.scope
     }
-    entries.delete(fp.slot)
-    entries.set(fp.slot, {
+    // The old entry of the slot goes first, also when the new one is not stored: the fingerprint carries no render
+    // revision, so keeping it could serve HTML from before a module or regex change.
+    const prior = entries.get(fp.slot)
+    if(prior){
+        entries.delete(fp.slot)
+        totalChars -= entryChars(prior)
+    }
+    const entry: Entry = {
         source: fp.source,
         role: fp.role,
         charArg: fp.charArg,
         value,
-    })
-    if(entries.size > RENDER_CACHE_CAPACITY){
+    }
+    const size = entryChars(entry)
+    if(size > RENDER_CACHE_ENTRY_CHAR_LIMIT){
+        return
+    }
+    entries.set(fp.slot, entry)
+    totalChars += size
+    while(entries.size > RENDER_CACHE_CAPACITY || totalChars > RENDER_CACHE_CHAR_BUDGET){
         const oldest = entries.keys().next()
-        if(!oldest.done){
-            entries.delete(oldest.value)
+        if(oldest.done){
+            break
+        }
+        const dropped = entries.get(oldest.value)
+        entries.delete(oldest.value)
+        if(dropped){
+            totalChars -= entryChars(dropped)
         }
     }
 }
