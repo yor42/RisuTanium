@@ -42,6 +42,20 @@ vi.mock('../../ts/storage/database.svelte', () => ({ setDatabase: writes.setData
 vi.mock('../../ts/storage/characterSaveMarks', () => ({ markCharacterForSave: writes.markCharacterForSave }))
 vi.mock('../../ts/liveCharacterWrite', () => ({ writeLiveCharacter: writes.writeLiveCharacter, writeLiveChat: writes.writeLiveChat }))
 vi.mock('../../ts/storage/store2/moduleAcquire', () => ({ acquireModule: writes.acquireModule }))
+// The live forms build the history service on first use, which reads the save loop's counters. Nothing here saves.
+vi.mock('../../ts/globalApi.svelte', () => ({
+    getSaveMarkCount: () => 0,
+    getCommittedSaveMarkCount: () => 0,
+    afterNextSaveCommit: () => {},
+    requestSaveNow: vi.fn(),
+    requestNetSweep: vi.fn(),
+    hasUnsavedSaveMarks: () => false,
+    getPeerSaveCount: () => 0,
+    onSavingStopped: () => () => {},
+    isSavingStopped: () => false,
+    isCharacterUnsavable: () => false,
+    saving: { state: false },
+}))
 vi.mock('../../ts/process/moduleUse', () => ({
     useModuleRow: writes.useModuleRow,
     useModuleById: writes.useModuleById,
@@ -86,7 +100,8 @@ vi.mock('../../lang', async () => {
 
 import { resetBackHandlersForTests } from '../../ts/backHandlers'
 import { classicLinks } from '../../ts/studio/classicLinks.svelte'
-import { openStudio, resetStudioScreenForTests } from '../../ts/studio/studioScreen.svelte'
+import { resetStudioHistoryAccessorForTests } from '../../ts/studio/history/studioHistoryService.svelte'
+import { openStudio, resetStudioScreenForTests, selectStudioNode, setStudioRestoreSheetOpen } from '../../ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from '../../ts/studio/studioSwitch.svelte'
 import { studioOpen } from '../../ts/studio/studioOpen'
 import StudioScreen from './StudioScreen.svelte'
@@ -220,6 +235,7 @@ afterEach(async () => {
     app = undefined
     host?.remove()
     host = undefined
+    resetStudioHistoryAccessorForTests()
     resetStudioScreenForTests()
     resetBackHandlersForTests()
     setStudioEnabled(false)
@@ -313,6 +329,75 @@ describe('3l a whole visit writes nothing', () => {
         expect(writes.acquireModule).not.toHaveBeenCalled()
         expect(writes.useModuleRow).not.toHaveBeenCalled()
         expect(writes.useModuleById).not.toHaveBeenCalled()
+    })
+
+    test('T-UI1: the live forms, fully loaded, write nothing while their fields are only focused and left', async () => {
+        const before = snapshotOf(db.db)
+        openStudio(ownerTarget, null)
+        show()
+
+        // The basic info of the character: description, hide-icon and every first message.
+        selectStudioNode('character:cha-1', 'basic', null)
+        flushSync()
+        await vi.waitFor(() => expect(part('studio-character-form')?.getAttribute('data-phase')).toBe('memoryOnly'), { timeout: 20000 })
+        const characterFields = Array.from(document.querySelectorAll<HTMLElement>('[data-part="studio-character-form"] textarea, [data-part="studio-character-form"] input'))
+        expect(characterFields.length).toBeGreaterThanOrEqual(2)
+        for (const field of characterFields) {
+            field.focus()
+            field.blur()
+            flushSync()
+        }
+
+        // The note of this chat.
+        selectStudioNode('chat:chat-1', null, null)
+        flushSync()
+        await vi.waitFor(() => expect(part('studio-chat-note-form')?.getAttribute('data-phase')).toBe('memoryOnly'), { timeout: 20000 })
+        const note = part('studio-form-note') as HTMLTextAreaElement
+        note.focus()
+        note.blur()
+        flushSync()
+
+        expect(snapshotOf(db.db)).toEqual(before)
+        expect(writes.setDatabase).not.toHaveBeenCalled()
+        expect(writes.markCharacterForSave).not.toHaveBeenCalled()
+        expect(writes.writeLiveCharacter).not.toHaveBeenCalled()
+        expect(writes.writeLiveChat).not.toHaveBeenCalled()
+    })
+
+    test('T-UI1: the History panel and the restore sheet write nothing when opened, read and left', async () => {
+        const before = snapshotOf(db.db)
+        openStudio(ownerTarget, null)
+        show()
+        selectStudioNode('character:cha-1', 'basic', null)
+        flushSync()
+        await vi.waitFor(() => expect(part('studio-character-form')?.getAttribute('data-phase')).toBe('memoryOnly'), { timeout: 20000 })
+
+        part('studio-history-toggle')?.click()
+        flushSync()
+        await vi.waitFor(() => expect(part('studio-history-banner')).not.toBeNull(), { timeout: 20000 })
+        expect(part('studio-history-device-note')).not.toBeNull()
+        // Nothing to undo, redo or restore yet: pressing the keys writes nothing either.
+        for (const init of [{ key: 'z', ctrlKey: true }, { key: 'z', ctrlKey: true, shiftKey: true }, { key: 'y', ctrlKey: true }]) {
+            part('studio')?.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }))
+            flushSync()
+        }
+
+        // The sheet itself, opened over the panel and cancelled.
+        setStudioRestoreSheetOpen(true)
+        flushSync()
+        expect(part('studio-restore-sheet')).not.toBeNull()
+        part('studio-restore-cancel')?.click()
+        flushSync()
+        expect(part('studio-restore-sheet')).toBeNull()
+        part('studio-history-close')?.click()
+        flushSync()
+        expect(part('studio-history')).toBeNull()
+
+        expect(snapshotOf(db.db)).toEqual(before)
+        expect(writes.setDatabase).not.toHaveBeenCalled()
+        expect(writes.markCharacterForSave).not.toHaveBeenCalled()
+        expect(writes.writeLiveCharacter).not.toHaveBeenCalled()
+        expect(writes.writeLiveChat).not.toHaveBeenCalled()
     })
 
     test('the walk sees a key that a reader adds', () => {

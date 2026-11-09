@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { ArrowLeft, ChevronDownIcon, PanelLeftIcon, SearchIcon } from '@lucide/svelte'
+    import { ArrowLeft, ChevronDownIcon, HistoryIcon, PanelLeftIcon, SearchIcon } from '@lucide/svelte'
     import { language } from '../../lang'
     import type { StudioLayout } from '../../ts/studio/studioLayout'
 
@@ -12,9 +12,13 @@
         ontitle: () => void
         ondrawer: () => void
         onsearch: () => void
+        // The History entry point: shown when a handler is given. It is disabled while the selection has no history.
+        historyOpen?: boolean
+        historyAvailable?: boolean
+        onhistory?: () => void
     }
 
-    let { layout, drawerOpen, searchOpen, onback, ontitle, ondrawer, onsearch }: Props = $props()
+    let { layout, drawerOpen, searchOpen, onback, ontitle, ondrawer, onsearch, historyOpen = false, historyAvailable = true, onhistory }: Props = $props()
 
     const buttonClass = 'flex h-11 min-w-11 items-center justify-center gap-1 rounded-md px-2 text-textcolor2 hover:bg-selected hover:text-textcolor cursor-pointer'
 </script>
@@ -39,4 +43,9 @@
     <button type="button" class={buttonClass} aria-label={language.studioSearch} aria-expanded={searchOpen} aria-keyshortcuts="Control+K Meta+K" data-part="studio-search-toggle" onclick={onsearch}>
         <SearchIcon size={18} />
     </button>
+    {#if onhistory}
+        <button type="button" class={buttonClass} aria-label={language.studioHistory} aria-expanded={historyOpen} disabled={!historyAvailable && !historyOpen} data-part="studio-history-toggle" onclick={onhistory}>
+            <HistoryIcon size={18} />
+        </button>
+    {/if}
 </header>

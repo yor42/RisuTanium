@@ -1,6 +1,14 @@
 import { tick } from 'svelte'
 import { backCloseHandler, registerBackHandler } from '../backHandlers'
-import { closeStudio, showStudioList, studioScreen, studioViaList, type StudioOpener } from './studioScreen.svelte'
+import {
+    closeStudio,
+    setStudioHistoryOpen,
+    setStudioRestoreSheetOpen,
+    showStudioList,
+    studioScreen,
+    studioViaList,
+    type StudioOpener,
+} from './studioScreen.svelte'
 
 interface BackLayer {
     isOpen: () => boolean
@@ -41,14 +49,32 @@ export function installStudioBack(): void {
     registerStudioBackLayer({ isOpen: () => studioScreen.open, close: leaveStudio })
     registerStudioBackLayer({ isOpen: () => studioScreen.drawerOpen, close: () => { studioScreen.drawerOpen = false } })
     registerStudioBackLayer({ isOpen: () => studioScreen.searchOpen, close: closeStudioSearch })
-    // Detail to list sits below search and the drawer, whichever of them opened last: it registers
-    // only while neither is open, so it is always the newest handler once they are closed.
+    registerStudioBackLayer({ isOpen: () => studioScreen.historyOpen, close: closeStudioHistory })
+    // Detail to list sits below search, the drawer and the History panel, whichever of them opened last: it
+    // registers only while none is open, so it is always the newest handler once they are closed.
     registerStudioBackLayer({
-        isOpen: () => studioViaList() && !studioScreen.searchOpen && !studioScreen.drawerOpen,
+        isOpen: () => studioViaList() && !studioScreen.searchOpen && !studioScreen.drawerOpen && !studioScreen.historyOpen,
         close: showStudioList,
     })
 }
 
+/**
+ * The restore sheet's Back layer, called from the sheet's own initialisation. The sheet is mounted only while
+ * it is open, so the layer lives exactly as long, and it registers after the History panel it opens over: Back
+ * closes the sheet before the panel.
+ */
+export function registerStudioSheetBack(): void {
+    registerStudioBackLayer({ isOpen: () => studioScreen.restoreSheetOpen, close: closeStudioRestoreSheet })
+}
+
 export function closeStudioSearch(): void {
     studioScreen.searchOpen = false
+}
+
+export function closeStudioHistory(): void {
+    setStudioHistoryOpen(false)
+}
+
+export function closeStudioRestoreSheet(): void {
+    setStudioRestoreSheetOpen(false)
 }

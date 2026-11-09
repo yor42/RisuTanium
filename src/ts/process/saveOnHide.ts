@@ -36,9 +36,35 @@ export interface SaveOnHideDeps {
     saveNow: () => void
     /** Asks the idle net to verdict every resident at its next turn; it marks nothing and never dirties the page. */
     sweepNet?: () => void
+    /** Flushes other persisted kinds' pending debounces; it marks nothing and never dirties the page. */
+    leaveFlush?: () => void
 }
 
-export type FlushDeps = Pick<SaveOnHideDeps, 'kinds' | 'streams' | 'unsaved' | 'mark' | 'saveNow' | 'sweepNet'>
+export type FlushDeps = Pick<SaveOnHideDeps, 'kinds' | 'streams' | 'unsaved' | 'mark' | 'saveNow' | 'sweepNet' | 'leaveFlush'>
+
+const leaveFlushes = new Set<() => void>()
+
+/**
+ * Adds a function that the page's leave rule runs on every hide, `pagehide` and Back flush. It must mark
+ * nothing and never dirty the page. Returns the remover; production never calls it, tests do.
+ */
+export function registerLeaveFlush(fn: () => void): () => void {
+    leaveFlushes.add(fn)
+    return () => {
+        leaveFlushes.delete(fn)
+    }
+}
+
+// Each registered function runs in its own try/catch, so one that throws never stops the next.
+function runLeaveFlushes(): void {
+    for (const fn of [...leaveFlushes]) {
+        try {
+            fn()
+        } catch (error) {
+            console.error(error)
+        }
+    }
+}
 
 /**
  * The one rule for leaving the page, by hide or by Back: first ask the idle net for a sweep, whatever else
@@ -49,6 +75,12 @@ export type FlushDeps = Pick<SaveOnHideDeps, 'kinds' | 'streams' | 'unsaved' | '
 export function flushBeforeLeaving(deps: FlushDeps): void {
     try {
         deps.sweepNet?.()
+    } catch (error) {
+        console.error(error)
+    }
+    // After the sweep and before the chat branch, which returns early: this one place covers both.
+    try {
+        deps.leaveFlush?.()
     } catch (error) {
         console.error(error)
     }
@@ -156,6 +188,7 @@ function pageFlushDeps(): FlushDeps {
         mark: markCharacterForSave,
         saveNow: requestSaveNow,
         sweepNet: requestNetSweep,
+        leaveFlush: runLeaveFlushes,
     }
 }
 

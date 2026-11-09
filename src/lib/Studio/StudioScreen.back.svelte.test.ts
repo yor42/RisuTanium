@@ -49,8 +49,23 @@ vi.mock('../../lang', async () => {
 })
 
 import { dispatchBack, registerBackHandler, resetBackHandlersForTests } from '../../ts/backHandlers'
+import type { SaveAck } from '../../ts/studio/edit/saveAck.svelte'
+import type { OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
+import {
+    resetStudioHistoryAccessorForTests,
+    setStudioHistoryServiceForTests,
+    setStudioVisitAckForTests,
+} from '../../ts/studio/history/studioHistoryService.svelte'
 import { registerStudioBackLayer } from '../../ts/studio/studioBack.svelte'
-import { openStudio, pickStudioItem, resetStudioScreenForTests, studioScreen } from '../../ts/studio/studioScreen.svelte'
+import {
+    openStudio,
+    pickStudioItem,
+    resetStudioScreenForTests,
+    setStudioHistoryOpen,
+    setStudioRestoreSheetOpen,
+    setStudioSelection,
+    studioScreen,
+} from '../../ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from '../../ts/studio/studioSwitch.svelte'
 import { studioOpen } from '../../ts/studio/studioOpen'
 import StudioScreen from './StudioScreen.svelte'
@@ -126,6 +141,7 @@ afterEach(async () => {
     host?.remove()
     host = undefined
     opener.remove()
+    resetStudioHistoryAccessorForTests()
     resetStudioScreenForTests()
     resetBackHandlersForTests()
     setStudioEnabled(false)
@@ -358,6 +374,166 @@ describe('2g Esc', () => {
         expect(studioScreen.searchOpen).toBe(true)
         press({})
         expect(studioScreen.searchOpen).toBe(false)
+    })
+})
+
+describe('2h the History panel and the restore sheet are Back layers', () => {
+    // The history service is a stand-in here: this suite is about layering, and the panel and the sheet have their
+    // own suites over the real service.
+    const stubAck = { display: 'idle', canRetry: () => false, retry: () => false, noteEdit: () => {}, dispose: () => {} } as unknown as SaveAck
+
+    beforeEach(() => {
+        setStudioHistoryServiceForTests({
+            useOwner: () => {},
+            setAck: () => {},
+            closeOpenStep: () => {},
+            view: (owner: string) => ({
+                ownerKey: owner, phase: 'ready', banner: null, restricted: false, editable: true, persisted: true,
+                done: [], undone: [], deleted: [], restore: null,
+            }),
+        } as unknown as OwnerHistoryService)
+        setStudioVisitAckForTests(stubAck)
+    })
+
+    function showWithHistory(width: number): void {
+        openStudio(ownerTarget, { element: opener })
+        show(width)
+        setStudioSelection('character:char', null, null)
+        flushSync()
+    }
+
+    function pressOn(target: HTMLElement, init: KeyboardEventInit): KeyboardEvent {
+        const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true, ...init })
+        target.dispatchEvent(event)
+        flushSync()
+        return event
+    }
+
+    test('T-UI6 the header opens the panel; Back closes it before it leaves Studio', () => {
+        showWithHistory(1200)
+        click('studio-history-toggle')
+        expect(studioScreen.historyOpen).toBe(true)
+        expect(part('studio-history')).not.toBeNull()
+
+        expect(back()).toBe(true)
+        expect(studioScreen.historyOpen).toBe(false)
+        expect(part('studio-history')).toBeNull()
+        expect(get(studioOpen)).toBe(true)
+        expect(back()).toBe(true)
+        expect(get(studioOpen)).toBe(false)
+    })
+
+    test('T-UI6 Esc closes the panel and never Studio', () => {
+        showWithHistory(1200)
+        click('studio-history-toggle')
+        expect(pressOn(part('studio')!, {}).defaultPrevented).toBe(true)
+        expect(studioScreen.historyOpen).toBe(false)
+        pressOn(part('studio')!, {})
+        expect(get(studioOpen)).toBe(true)
+    })
+
+    test('the newest of the panel and the search closes first, in Back and in Esc', () => {
+        showWithHistory(1200)
+        click('studio-history-toggle')
+        click('studio-search-toggle')
+        back()
+        expect(studioScreen.searchOpen).toBe(false)
+        expect(studioScreen.historyOpen).toBe(true)
+        back()
+        expect(studioScreen.historyOpen).toBe(false)
+
+        click('studio-history-toggle')
+        click('studio-search-toggle')
+        pressOn(part('studio')!, {})
+        expect(studioScreen.searchOpen).toBe(false)
+        expect(studioScreen.historyOpen).toBe(true)
+        pressOn(part('studio')!, {})
+        expect(studioScreen.historyOpen).toBe(false)
+    })
+
+    test('on a phone the panel closes before the detail goes back to the list, whatever opened last', () => {
+        showWithHistory(400)
+        click('studio-title')
+        pickStudioItem()
+        flushSync()
+        expect(studioScreen.detailShown).toBe(true)
+        click('studio-history-toggle')
+        click('studio-search-toggle')
+        click('studio-search-toggle')
+        expect(studioScreen.historyOpen).toBe(true)
+
+        back()
+        expect(studioScreen.historyOpen).toBe(false)
+        expect(studioScreen.detailShown).toBe(true)
+        back()
+        expect(studioScreen.detailShown).toBe(false)
+        expect(get(studioOpen)).toBe(true)
+        back()
+        expect(get(studioOpen)).toBe(false)
+    })
+
+    test('T-UI10 the sheet is above the panel: Back, then Back, then Back', () => {
+        showWithHistory(1200)
+        click('studio-history-toggle')
+        setStudioRestoreSheetOpen(true)
+        flushSync()
+        expect(part('studio-restore-sheet')).not.toBeNull()
+
+        back()
+        expect(part('studio-restore-sheet')).toBeNull()
+        expect(studioScreen.historyOpen).toBe(true)
+        expect(get(studioOpen)).toBe(true)
+        back()
+        expect(studioScreen.historyOpen).toBe(false)
+        expect(get(studioOpen)).toBe(true)
+        back()
+        expect(get(studioOpen)).toBe(false)
+    })
+
+    test('T-UI10 Esc on Cancel closes only the sheet', () => {
+        showWithHistory(1200)
+        click('studio-history-toggle')
+        setStudioRestoreSheetOpen(true)
+        flushSync()
+        const cancel = part('studio-restore-cancel')!
+        expect(pressOn(cancel, {}).defaultPrevented).toBe(true)
+        expect(part('studio-restore-sheet')).toBeNull()
+        expect(studioScreen.historyOpen).toBe(true)
+        expect(get(studioOpen)).toBe(true)
+    })
+
+    // Back is newest-first, Esc closes the sheet first and then search, the drawer and the panel in that fixed
+    // order. They differ only when a layer opens after the sheet; each closes one layer and none leaves Studio.
+    test('a search opened over the sheet: Back closes the search first, Esc closes the sheet first', () => {
+        showWithHistory(1200)
+        click('studio-history-toggle')
+        setStudioRestoreSheetOpen(true)
+        flushSync()
+        click('studio-search-toggle')
+        expect(studioScreen.searchOpen).toBe(true)
+
+        back()
+        expect(studioScreen.searchOpen).toBe(false)
+        expect(studioScreen.restoreSheetOpen).toBe(true)
+
+        click('studio-search-toggle')
+        expect(pressOn(part('studio')!, {}).defaultPrevented).toBe(true)
+        expect(studioScreen.restoreSheetOpen).toBe(false)
+        expect(studioScreen.searchOpen).toBe(true)
+        expect(studioScreen.historyOpen).toBe(true)
+        expect(get(studioOpen)).toBe(true)
+    })
+
+    test('the sheet opens only while the panel is open', () => {
+        showWithHistory(1200)
+        setStudioRestoreSheetOpen(true)
+        flushSync()
+        expect(studioScreen.restoreSheetOpen).toBe(false)
+        expect(part('studio-restore-sheet')).toBeNull()
+        setStudioHistoryOpen(true)
+        setStudioRestoreSheetOpen(true)
+        flushSync()
+        expect(part('studio-restore-sheet')).not.toBeNull()
     })
 })
 
