@@ -84,9 +84,11 @@
         // Whether the avatar is on screen, read live when the thumbnail queue picks its next task. Without it
         // the avatar counts as visible. It is called outside this component's effects, never tracked by them.
         visible?: () => boolean;
+        // Marks the avatar as loading its character: a dimmed cover with a spinner, and aria-busy on the button form.
+        busy?: boolean;
     }
 
-    let { src, fallbackStyle = "", onclick, label, class: className = "", children, visible }: Props = $props();
+    let { src, fallbackStyle = "", onclick, label, class: className = "", children, visible, busy = false }: Props = $props();
 
     // The lookup effect reads no visibility itself: the queue calls this later, and a change of `visible`
     // must not look the image up again.
@@ -139,10 +141,22 @@
 
     const base = "ico shrink-0 flex justify-center items-center rounded-md h-14 w-14 min-h-14 shadow-lg bg-[#6b7280]";
 </script>
+{#snippet openingMark()}
+    <span aria-hidden="true" data-charlist-opening class="absolute inset-0 rounded-md bg-darkbg/60 flex items-center justify-center pointer-events-none">
+        <span class="h-6 w-6 rounded-full border-2 border-textcolor border-t-transparent animate-spin motion-reduce:animate-none"></span>
+    </span>
+{/snippet}
 {#if onclick && label}
-    <button class="{base} cursor-pointer hover:bg-[#10b981] transition-colors duration-150 {className}" aria-label={label} style={style || null} {onclick}>
+    <button class="{base} cursor-pointer hover:bg-[#10b981] transition-colors duration-150 {className}" class:relative={busy} aria-label={label} aria-busy={busy ? "true" : undefined} style={style || null} {onclick}>
         {@render children?.()}
+        {#if busy}
+            {@render openingMark()}
+        {/if}
     </button>
 {:else}
-    <div class="{base} {className}" aria-hidden="true" style={style || null}></div>
+    <div class="{base} {className}" class:relative={busy} aria-hidden="true" style={style || null}>
+        {#if busy}
+            {@render openingMark()}
+        {/if}
+    </div>
 {/if}

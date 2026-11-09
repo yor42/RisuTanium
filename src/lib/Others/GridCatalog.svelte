@@ -1,9 +1,9 @@
 <script lang="ts">
     import { onDestroy, tick, untrack } from "svelte";
     import { v4 } from "uuid";
-    import { changeChar, getCharImage, removeChar, trashCharacters } from "../../ts/characters";
+    import { archivedMemberIds, changeChar, getCharImage, removeChar, supersedeChangeChar, trashCharacters, type ChangeCharOutcome } from "../../ts/characters";
     import { checkCharOrder } from "src/ts/globalApi.svelte";
-    import { alertConfirm, alertSelect } from "src/ts/alert";
+    import { alertConfirm, alertError, alertNormal, alertSelect } from "src/ts/alert";
     import { DBState } from 'src/ts/stores.svelte';
     import { ArrowLeft, User, Users, TrashIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, PencilIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
     import { selectedCharID } from "../../ts/stores.svelte";
@@ -153,7 +153,8 @@
     // simple list does.
     // A reply being written refuses the pick in either mode, and the grid stays open so the notice is
     // read where the tap was. In the new shell the switch is quiet and a failed restore ends in the
-    // chat frame.
+    // chat frame. With the shell off, a warm pick opens and closes at once; a pick that must restore
+    // keeps the grid open with its tile marked and closes it only when `changeChar` selected.
     function pick(index: number) {
         if (refuseSwitchWhileWriting()) {
             return
@@ -164,9 +165,96 @@
             void switchCharacter(entry)
             return
         }
-        changeChar(index)
-        endGrid()
+        const slot = DBState.db.characters[index]
+        if (!mustRestore(slot)) {
+            changeChar(index)
+            endGrid()
+            return
+        }
+        if (index === openingIndex) {
+            return
+        }
+        void beginPendingPick(index, slot)
     }
+
+    //#region pending pick
+
+    // The one pending pick of a slot that must restore. The slot object, its index and its chaId are kept
+    // together: the marker follows the object when the list re-indexes, and the index and chaId when the
+    // restore's install replaces the object, so the tile stays marked while a restored group's members load.
+    type CharacterSlot = (typeof DBState.db.characters)[number]
+    let opening = $state.raw<{ slot: CharacterSlot, index: number, chaId: string } | null>(null)
+    // Counts the picks and the drops; a continuation acts on `opening` only while its own number is current.
+    let pickSeq = 0
+    const openingIndex = $derived.by(() => {
+        if (opening === null) {
+            return -1
+        }
+        const characters = DBState.db.characters
+        const at = characters.indexOf(opening.slot)
+        if (at !== -1) {
+            return at
+        }
+        return characters[opening.index]?.chaId === opening.chaId ? opening.index : -1
+    })
+
+    // Mirrors the two awaiting branches of `changeChar`: a placeholder, and a group with an archived member.
+    function mustRestore(slot: CharacterSlot | undefined): boolean {
+        if (!slot) {
+            return false
+        }
+        return !!slot.coldstorage || (slot.type === 'group' && archivedMemberIds(slot).length > 0)
+    }
+
+    async function beginPendingPick(index: number, slot: CharacterSlot) {
+        const mine = ++pickSeq
+        opening = { slot, index, chaId: slot.chaId }
+        let outcome: ChangeCharOutcome
+        try {
+            outcome = await changeChar(index)
+        } catch (error) {
+            console.error('Grid pick failed:', error)
+            recordCaughtError('grid.pick', error)
+            if (mine === pickSeq) {
+                opening = null
+                alertError(language.errors.coldStorageRestoreUnreadable)
+            }
+            return
+        }
+        finishPendingPick(mine, outcome)
+    }
+
+    // `selected` closes the host whatever happened to this component meanwhile: in the Home host the
+    // selection itself unmounts the library before this runs. Every other outcome leaves the grid open and
+    // acts only while it is still the latest pick; the restore has already told the user about a failure.
+    function finishPendingPick(mine: number, outcome: ChangeCharOutcome) {
+        if (outcome === 'selected') {
+            if (mine === pickSeq) {
+                opening = null
+            }
+            endGrid()
+            return
+        }
+        if (mine !== pickSeq) {
+            return
+        }
+        opening = null
+        if (outcome === 'busy') {
+            alertNormal(language.chatShellSwitchRefusedWriting)
+        }
+    }
+
+    // Leaving the screen or entering edit mode cancels the open: a later landing selects nothing.
+    function dropPendingPick() {
+        if (opening === null) {
+            return
+        }
+        pickSeq++
+        opening = null
+        supersedeChangeChar()
+    }
+
+    //#endregion
 
     //#region edit mode
 
@@ -286,6 +374,7 @@
     // invalidates a continuation that a later enter or exit has overtaken.
     let enterGeneration = 0
     function enterEdit(held?: GridEntry) {
+        dropPendingPick()
         const switched = !canEdit(sort)
         if (switched) {
             chooseSort('order')
@@ -1286,6 +1375,7 @@
     onDestroy(() => {
         // A confirmation still open must not write after the screen is gone.
         dropGeneration++
+        dropPendingPick()
         machine.destroy()
         ghost?.remove()
         ghost = null
@@ -1351,9 +1441,9 @@
             if (clickedLink(event) || (!clickedButton(event) && selectedInside(event.currentTarget, window.getSelection()))) { return }
             pick(index)
         }}>
-            <CharListAvatar src={char.image} {visible} />
+            <CharListAvatar src={char.image} {visible} busy={openingIndex === index} />
             <div class="flex-1 flex flex-col ml-2 min-w-0">
-                <h4 class="text-textcolor font-bold text-lg mb-1 break-words"><button class="text-start font-bold cursor-pointer">{char.name || language.settingsPage.unnamed}</button></h4>
+                <h4 class="text-textcolor font-bold text-lg mb-1 break-words"><button class="text-start font-bold cursor-pointer" aria-busy={openingIndex === index ? 'true' : undefined}>{char.name || language.settingsPage.unnamed}</button></h4>
                 <CharacterDescription
                     text={parsedDesc['en'] || parsedDesc['xx'] || language.othersUi.noDescription}
                     visible={true}
@@ -1489,6 +1579,7 @@
                     {visible}
                     fallbackStyle={char.image ? '' : index === $selectedCharID ? 'background:var(--risu-theme-selected)' : ''}
                     label={char.name || language.settingsPage.unnamed}
+                    busy={openingIndex === index}
                     onclick={() => {
                         if (editing) {
                             togglePick(entry)
@@ -1630,7 +1721,7 @@
             </div>
         {:else if selected === 3}
             <div class="flex-1 min-h-0 flex flex-col">
-                <CharacterSimpleList endGrid={endGrid} hideTrash={true} results={found} onpick={pick} />
+                <CharacterSimpleList endGrid={endGrid} hideTrash={true} results={found} onpick={pick} opening={(index) => openingIndex === index} />
             </div>
         {/if}
     </div>

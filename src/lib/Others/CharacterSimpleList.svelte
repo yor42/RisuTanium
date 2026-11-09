@@ -21,11 +21,13 @@
         // What a tap on a row does with the character's slot. Without it the row opens the
         // character and leaves the screen, as it always did.
         onpick?: (index: number) => void;
+        // Whether the character at this slot is being loaded by a pick: the row is marked busy.
+        opening?: (index: number) => boolean;
     }
 
     const agoFormatter = new Intl.RelativeTimeFormat(navigator.languages, { style: 'short' });
 
-    let {endGrid = () => {}, search, hideTrash = true, results, onpick}: Props = $props();
+    let {endGrid = () => {}, search, hideTrash = true, results, onpick, opening}: Props = $props();
     // Fixed for the component's life: the effect inside createCharacterSearch
     // can only be created during initialisation, and an embedding screen never
     // swaps its result. The result's properties are getters, so reading them in
@@ -95,7 +97,8 @@
     {#if entry && c}
         {@const chats = coldStubChatCount(c)}
         {@const agoText = makeAgoText(entry.interaction)}
-        <button class="flex p-2 border-t-darkborderc gap-2 w-full" class:border-t={position !== 1} onclick={() => {
+        {@const busy = opening?.(index) ?? false}
+        <button class="flex p-2 border-t-darkborderc gap-2 w-full" class:border-t={position !== 1} aria-busy={busy ? 'true' : undefined} onclick={() => {
             if (onpick) {
                 onpick(index)
                 return
@@ -103,7 +106,7 @@
             changeChar(index)
             endGrid()
         }}>
-            <CharListAvatar src={c.image} {visible} class="hover:bg-[#10b981] transition-colors duration-150" />
+            <CharListAvatar src={c.image} {visible} {busy} class="hover:bg-[#10b981] transition-colors duration-150" />
             <div class="flex flex-1 w-full flex-col justify-start items-start text-start">
                 <span>{entry.name}</span>
                 <div class="text-sm text-textcolor2 flex items-center w-full flex-wrap">
