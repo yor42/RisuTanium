@@ -1630,7 +1630,7 @@ export async function addCharacter(arg:{
  * The `chaId`s in `group.characters`, each once, that have a placeholder among
  * their holders. A `chaId` no character holds is not one of them.
  */
-function archivedMemberIds(group: groupChat): string[] {
+export function archivedMemberIds(group: groupChat): string[] {
     const found: string[] = []
     for(const chaId of new Set(group.characters)){
         if(findChaIdHolders(chaId).some((i) => DBState.db.characters[i].coldstorage)){

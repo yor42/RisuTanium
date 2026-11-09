@@ -28,10 +28,11 @@ vi.mock('localforage', () => ({
     },
 }))
 
-const { changeCharSpy, removeCharSpy, registerSpy } = vi.hoisted(() => ({
+const { changeCharSpy, removeCharSpy, registerSpy, supersedeSpy } = vi.hoisted(() => ({
     changeCharSpy: vi.fn(),
     removeCharSpy: vi.fn(),
     registerSpy: vi.fn(),
+    supersedeSpy: vi.fn(),
 }))
 
 vi.mock(
@@ -130,6 +131,7 @@ vi.mock(import('../../../ts/characters'), async (importOriginal) => {
         ...actual,
         changeChar: changeCharSpy,
         removeChar: removeCharSpy,
+        supersedeChangeChar: supersedeSpy,
     }
 })
 
@@ -236,6 +238,7 @@ beforeEach(() => {
     localStorage.clear()
     changeCharSpy.mockReset()
     removeCharSpy.mockReset()
+    supersedeSpy.mockReset()
     showToast.mockReset()
     showHomeLanding()
     resetBackHandlersForTests()
@@ -303,6 +306,119 @@ describe('HomeLibrary: picking and leaving', () => {
             await settle()
             expect(homeView.view).toBe('landing')
         })
+    })
+})
+
+describe('HomeLibrary: picking an archived character', () => {
+    /** An archived character in the shape the upstream application writes. */
+    function archivedBob(): CharacterFixture {
+        return {
+            type: 'character',
+            chaId: 'b',
+            name: 'Bob',
+            image: '',
+            chats: [{ message: [{ time: 1, data: '', role: 'char' }], note: '', name: '', localLore: [] }],
+            chatPage: 0,
+            firstMsgIndex: 0,
+            coldstorage: 'unit-b',
+            coldStoragedChats: [],
+        } as unknown as CharacterFixture
+    }
+
+    // A pick that must restore waits for the load. A `selected` settlement writes the selection before it
+    // resolves, like the real one.
+    let land: (outcome: 'selected' | 'superseded') => void = () => {}
+    beforeEach(() => {
+        DBState.db.characters[1] = archivedBob()
+        changeCharSpy.mockImplementation((index: number) => new Promise((resolve) => {
+            land = (outcome) => {
+                if (outcome === 'selected') {
+                    selectedCharID.set(index)
+                }
+                resolve(outcome)
+            }
+        }))
+    })
+
+    test('H1: the library stays until the load selects, then the host unmounts it and still returns to the landing', async () => {
+        openHomeLibrary()
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        let app: Record<string, unknown> | null = mount(HomeLibrary, { target }) as Record<string, unknown>
+        // The Home shell removes the library as soon as the selection is written.
+        const stop = selectedCharID.subscribe((value) => {
+            if (value >= 0 && app) {
+                const mounted = app
+                app = null
+                void unmount(mounted as never)
+            }
+        })
+        try {
+            await settle()
+            clickButton(target, language.simple)
+            await settle()
+            const row = Array.from(target.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.includes('Bob'))!
+            row.click()
+            await settle()
+            expect(homeView.view).toBe('library')
+            expect(changeCharSpy.mock.calls).toEqual([[1]])
+
+            land('selected')
+            await settle()
+            expect(app).toBeNull()
+            expect(selectionLog).toEqual(['write:1'])
+            expect(homeView.view).toBe('landing')
+        } finally {
+            stop()
+            if (app) {
+                await unmount(app as never)
+            }
+            target.remove()
+        }
+    })
+
+    test('H2: Back while the load is pending removes the library and supersedes the open', async () => {
+        openHomeLibrary()
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        let app: Record<string, unknown> | null = mount(HomeLibrary, { target }) as Record<string, unknown>
+        // The Home shell mounts the library only in the library view.
+        const stopHost = $effect.root(() => {
+            $effect(() => {
+                if (homeView.view !== 'library' && app) {
+                    const mounted = app
+                    app = null
+                    queueMicrotask(() => void unmount(mounted as never))
+                }
+            })
+        })
+        try {
+            await settle()
+            clickButton(target, language.simple)
+            await settle()
+            const row = Array.from(target.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.includes('Bob'))!
+            row.click()
+            await settle()
+            expect(changeCharSpy).toHaveBeenCalledTimes(1)
+            expect(supersedeSpy).not.toHaveBeenCalled()
+
+            expect(dispatchBack()).toBe(true)
+            await settle()
+            expect(homeView.view).toBe('landing')
+            expect(app).toBeNull()
+            expect(supersedeSpy).toHaveBeenCalledTimes(1)
+
+            land('superseded')
+            await settle()
+            expect(homeView.view).toBe('landing')
+            expect(selectionLog).toEqual([])
+        } finally {
+            stopHost()
+            if (app) {
+                await unmount(app as never)
+            }
+            target.remove()
+        }
     })
 })
 
