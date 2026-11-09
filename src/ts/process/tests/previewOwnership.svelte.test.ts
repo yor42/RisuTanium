@@ -359,13 +359,14 @@ describe('the previews while the composer\'s Send waits on its input step', () =
 })
 
 describe('switching characters', () => {
-    test('guard: changeChar is refused while the flag is set', async () => {
+    test('changeChar selects the new character while the flag is set', async () => {
         selectedCharID.set(BOB)
         doingChat.set(true)
 
         await changeChar(CHARLIE)
 
-        expect(get(selectedCharID)).toBe(BOB)
+        expect(get(selectedCharID)).toBe(CHARLIE)
+        expect(get(doingChat)).toBe(true)
     })
 
     test('guard: changeChar is accepted during the composer\'s wait on its input step', async () => {

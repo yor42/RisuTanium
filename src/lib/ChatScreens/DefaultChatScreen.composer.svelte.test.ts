@@ -280,16 +280,28 @@ const doingChatMock = vi.hoisted(() => {
 })
 const generationGateBox = vi.hoisted(() => ({ current: Promise.resolve() as Promise<void> }))
 const sendChatGateQueue = vi.hoisted(() => [] as Array<{ gate: Promise<void> }>)
-const sendChatMock = vi.hoisted(() => vi.fn(async (_index: number, arg: { signal?: AbortSignal, continue?: boolean }) => {
+// Like the real unit, each accepted call owns an abort signal its registration stops and relays its
+// caller's abort to; `unitSignals` records them in call order.
+const unitSignals = vi.hoisted(() => [] as AbortSignal[])
+// The registry the real unit registers in; set once the module under test is imported.
+const registry = vi.hoisted(() => ({ registerWork: null as null | ((origin: { chaId: string, chatId: string }, stop: () => void, kind: 'reply') => { end: () => void }) }))
+const sendChatMock = vi.hoisted(() => vi.fn(async (_index: number, arg: { signal?: AbortSignal, continue?: boolean, origin?: { chaId: string, chatId: string } }) => {
     if (get(doingChatMock as never)) {
         return false
     }
     doingChatMock.set(true)
+    const unit = new AbortController()
+    unitSignals.push(unit.signal)
+    const abortUnit = () => unit.abort()
+    arg.signal?.addEventListener('abort', abortUnit)
+    const handle = arg.origin ? registry.registerWork!(arg.origin, abortUnit, 'reply') : null
     try {
         const queued = sendChatGateQueue.shift()
         await (queued ? queued.gate : generationGateBox.current)
         return true
     } finally {
+        handle?.end()
+        arg.signal?.removeEventListener('abort', abortUnit)
         doingChatMock.set(false)
     }
 }))
@@ -336,7 +348,7 @@ import { language } from 'src/lang'
 import { compositionEnd, compositionStart, enterKeydown, imeEventSequence } from 'src/ts/ime/tests/imeEventSequence'
 import DefaultChatScreen from './DefaultChatScreen.svelte'
 import { isComposerBusy, isComposerLocked, isAutoModeActive, resetComposerActionsForTests } from 'src/ts/process/composerActions.svelte'
-import { isWriting } from 'src/ts/process/chatOrigin'
+import { isWriting, registerWork } from 'src/ts/process/chatOrigin'
 import { hasLocalDrafts, hasMessageEditorDrafts, resetLocalDraftsForTest } from 'src/ts/localDrafts'
 import { getMultiTabAction } from 'src/ts/storage/multiTabReload'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
@@ -573,6 +585,7 @@ function gateNextGeneration() {
 //#endregion
 
 beforeAll(async () => {
+    registry.registerWork = registerWork
     const jsonLua = await readFile(resolve(process.cwd(), 'public/lua/json.lua'), 'utf8')
     vi.stubGlobal('fetch', vi.fn(async () => new Response(jsonLua, { status: 200 })))
 })
@@ -596,6 +609,7 @@ afterEach(async () => {
     processMultiCommandMock.mockReset()
     processMultiCommandMock.mockImplementation(async () => false)
     sendChatMock.mockClear()
+    unitSignals.splice(0)
     sendChatGateQueue.splice(0)
     generationGateBox.current = Promise.resolve()
     doingChatMock.set(false)
@@ -815,19 +829,27 @@ describe('a cancelled send puts its values back after a switch', () => {
         typeInto(mainTextarea(target), 'B-text')
         await settle()
 
+        // T11 (B half): the other chat shows no Stop, so it cannot cancel A's send; Send is disabled there.
+        expect(busyButton(target)).toBeNull()
+        expect(sendButton(target).disabled).toBe(true)
+        expect(sendButton(target).title).toBe(language.chatShellSendBlockedWriting)
+        expect(mainTextarea(target).value).toBe('B-text')
+
+        selectedCharID.set(0)
+        await settle()
         const busy = busyButton(target)
         expect(busy).not.toBeNull()
         busy!.click()
         await settle()
 
-        expect(mainTextarea(target).value).toBe('B-text')
+        expect(mainTextarea(target).value).toBe('A-text')
 
         first.release()
         await settle()
 
-        selectedCharID.set(0)
+        selectedCharID.set(1)
         await settle()
-        expect(mainTextarea(target).value).toBe('A-text')
+        expect(mainTextarea(target).value).toBe('B-text')
     })
 
     test('a send whose chat is deleted during the wait does not alter the chat switched to during it', async () => {
@@ -1163,8 +1185,9 @@ describe('aborting generation from a remounted composer', () => {
         clickMenuItemByLabel(target1, language.autoMode)
         await waitFor(() => sendChatMock.mock.calls.length >= 1)
 
-        const passedSignal = (sendChatMock.mock.calls.at(-1)?.[1] as { signal?: AbortSignal })?.signal
-        expect(passedSignal).toBeDefined()
+        // Stop reaches the tick through its own registration, which aborts the unit's signal.
+        const unitSignal = unitSignals.at(-1)
+        expect(unitSignal).toBeDefined()
 
         await unmountScreen(instance1)
         const { target: target2 } = mountScreen()
@@ -1176,7 +1199,7 @@ describe('aborting generation from a remounted composer', () => {
             busy!.click()
             await settle()
 
-            expect(passedSignal!.aborted).toBe(true)
+            expect(unitSignal!.aborted).toBe(true)
         } finally {
             const release2 = gateNextGeneration()
             release1()
@@ -1539,14 +1562,23 @@ describe('the notice for an archived chat that cannot be loaded', () => {
         expect(retryButton(target)?.disabled).toBe(false)
     })
 
-    test('guard: while a reply is being generated the Retry button is disabled', async () => {
+    test('T16: a reply written in another chat leaves the Retry button enabled; work in the shown chat disables it', async () => {
         const target = await openLegacyChat()
         expect(retryButton(target)?.disabled).toBe(false)
 
         doingChatMock.set(true)
         await settle()
+        expect(retryButton(target)?.disabled).toBe(false)
 
+        const shown = liveChar(0)
+        const reply = registerWork({ chaId: shown.chaId, chatId: shown.chats[0].id }, undefined, 'reply')
+        await settle()
         expect(retryButton(target)?.disabled).toBe(true)
+
+        reply.end()
+        doingChatMock.set(false)
+        await settle()
+        expect(retryButton(target)?.disabled).toBe(false)
     })
 
     test('guard: a retry that finds the unit missing shows the not-found text and hides the Retry button', async () => {

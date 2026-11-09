@@ -233,6 +233,7 @@ export const DISPLAY_SHELL_SECTIONS: readonly DisplaySection[] = [
             plain('display.playMessage'),
             plain('display.playMessageOnTranslateEnd'),
             plain('display.notification'),
+            plain('display.replyNotifications'),
         ],
     },
     {

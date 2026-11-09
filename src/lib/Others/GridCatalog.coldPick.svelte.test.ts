@@ -188,6 +188,7 @@ Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true
 
 import { DBState, selectedCharID } from '../../ts/stores.svelte'
 import { doingChat } from '../../ts/process/index.svelte'
+import { isWriting, registerWork } from '../../ts/process/chatOrigin'
 import * as shellSwitchModule from '../../ts/chatShell/shellSwitch.svelte'
 import { language } from '../../lang'
 import GridCatalog from './GridCatalog.svelte'
@@ -427,8 +428,9 @@ describe('GridCatalog: a cold pick keeps the grid open until the character has o
         })
     })
 
-    test('C5: a reply that started meanwhile shows the reply notice and leaves the grid open', async () => {
+    test('C5 (T6): a reply being written does not stop a cold pick: the tile is marked and the grid closes when it lands selected', async () => {
         DBState.db = buildDb([makeCharacter('a', 'Ann'), upstreamStub('b', 'Bob')])
+        doingChat.set(true)
         const endGrid = vi.fn()
 
         await withMounted(endGrid, async (target) => {
@@ -436,11 +438,12 @@ describe('GridCatalog: a cold pick keeps the grid open until the character has o
             tiles(target)[1].click()
             await settle()
             expect(endGrid).not.toHaveBeenCalled()
+            expect(markCount(target)).toBe(1)
 
-            calls[0].land('busy')
+            calls[0].land('selected')
             await settle()
-            expect(alertNormalSpy).toHaveBeenCalledWith(language.chatShellSwitchRefusedWriting)
-            expect(endGrid).not.toHaveBeenCalled()
+            expect(alertNormalSpy).not.toHaveBeenCalled()
+            expect(endGrid).toHaveBeenCalledTimes(1)
             expect(markCount(target)).toBe(0)
         })
     })
@@ -607,6 +610,33 @@ describe('GridCatalog: a cold pick keeps the grid open until the character has o
             expect(alertNormalSpy).not.toHaveBeenCalled()
             expect(alertErrorSpy).not.toHaveBeenCalled()
         } finally {
+            target.remove()
+        }
+    })
+
+    test('guard: T23 dropping a pending pick during a reply supersedes the pick only and leaves the reply registered and running', async () => {
+        DBState.db = buildDb([makeCharacter('a', 'Ann'), upstreamStub('b', 'Bob')])
+        doingChat.set(true)
+        const stopReply = vi.fn()
+        const reply = registerWork({ chaId: 'a', chatId: 'a-chat' }, stopReply, 'reply')
+        const endGrid = vi.fn()
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const app = mount(GridCatalog, { target, props: { endGrid } }) as Record<string, unknown>
+        try {
+            await settle()
+            clickLayoutButton(target, 0)
+            tiles(target)[1].click()
+            await settle()
+            expect(markCount(target)).toBe(1)
+
+            await unmount(app)
+
+            expect(supersedeSpy).toHaveBeenCalledTimes(1)
+            expect(stopReply).not.toHaveBeenCalled()
+            expect(isWriting({ chaId: 'a', chatId: 'a-chat' })).toBe(true)
+        } finally {
+            reply.end()
             target.remove()
         }
     })

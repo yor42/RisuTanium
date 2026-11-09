@@ -58,6 +58,7 @@ vi.mock('./ts/stores.svelte', async () => {
     return {
         DynamicGUI: writable(false),
         settingsOpen: writable(false),
+        selectedCharID: writable(-1),
         SettingsMenuIndex: writable(-1),
         selIdState: { selId: -1 },
         sideBarStore: writable(false),

@@ -3,6 +3,7 @@
  * registration for its owner and, for a group, for its member too;
  * `hasWorkIn` and `stopWorkIn` match the owner only; `end()` is idempotent.
  */
+import { flushSync } from 'svelte'
 import { describe, test, expect, vi, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database, Chat } from '../../storage/database.svelte'
@@ -15,8 +16,8 @@ vi.mock(import('../../stores.svelte'), () => {
     } as unknown as typeof import('../../stores.svelte')
 })
 
-import { DBState } from '../../stores.svelte'
-import { beginWork, isWriting, registerWork, hasWorkIn, stopWorkIn, hasAnyWork, isWorkInProgress, type WorkHandle } from '../chatOrigin'
+import { DBState, selectedCharID } from '../../stores.svelte'
+import { beginWork, isWriting, registerWork, hasWorkIn, stopWorkIn, hasAnyWork, isWorkInProgress, isGeneratingIn, isBusyIn, isShownChat, type WorkHandle } from '../chatOrigin'
 
 type CharacterFixture = Database['characters'][number]
 
@@ -284,6 +285,142 @@ describe('hasWorkIn and stopWorkIn match by owner and chat, not by member', () =
         open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, vi.fn()))
 
         expect(hasWorkIn({ chaId: 'char-b' })).toBe(false)
+    })
+})
+
+// Specification tests (new API, no earlier version to fail against): a registration's kind decides
+// which of the two reactive queries counts it, and the match is by owner.
+describe('isGeneratingIn and isBusyIn count registrations by kind', () => {
+    test('T9: a reply counts for both queries, a preview for isBusyIn only, other work for neither', () => {
+        const reply = open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, undefined, 'reply'))
+        expect(isGeneratingIn({ chaId: 'char-a', chatId: 'chat-a' })).toBe(true)
+        expect(isBusyIn({ chaId: 'char-a', chatId: 'chat-a' })).toBe(true)
+        reply.end()
+        expect(isGeneratingIn({ chaId: 'char-a', chatId: 'chat-a' })).toBe(false)
+        expect(isBusyIn({ chaId: 'char-a', chatId: 'chat-a' })).toBe(false)
+
+        const preview = open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, undefined, 'preview'))
+        expect(isGeneratingIn({ chaId: 'char-a', chatId: 'chat-a' })).toBe(false)
+        expect(isBusyIn({ chaId: 'char-a', chatId: 'chat-a' })).toBe(true)
+        preview.end()
+
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }))
+        expect(isGeneratingIn({ chaId: 'char-a', chatId: 'chat-a' })).toBe(false)
+        expect(isBusyIn({ chaId: 'char-a', chatId: 'chat-a' })).toBe(false)
+        expect(hasWorkIn({ chaId: 'char-a', chatId: 'chat-a' })).toBe(true)
+    })
+
+    test('T9: another chat of the same character, and another character, are not counted', () => {
+        open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, undefined, 'reply'))
+
+        expect(isGeneratingIn({ chaId: 'char-a' })).toBe(true)
+        expect(isGeneratingIn({ chaId: 'char-a', chatId: 'chat-b' })).toBe(false)
+        expect(isGeneratingIn({ chaId: 'char-b', chatId: 'chat-a' })).toBe(false)
+    })
+
+    test('T9: a group turn counts for the group owner, never for the member it speaks as', () => {
+        installDb([
+            makeGroup('group-1', [makeChat('chat-1')], ['member-a']),
+            makeCharacter('member-a', [makeChat('member-a-chat')]),
+        ])
+        const owner = DBState.db.characters[0]
+        const member = DBState.db.characters[1]
+        open(beginWork(owner, (owner as unknown as { chats: Chat[] }).chats[0], member, undefined, 'reply')!)
+
+        expect(isGeneratingIn({ chaId: 'group-1', chatId: 'chat-1' })).toBe(true)
+        expect(isGeneratingIn({ chaId: 'member-a' })).toBe(false)
+        expect(isGeneratingIn({ chaId: 'member-a', chatId: 'member-a-chat' })).toBe(false)
+    })
+
+    test('T9: the kind survives a throw through end() in a finally, and a stop that ends the unit', () => {
+        let handle: WorkHandle | undefined
+        expect(() => {
+            handle = registerWork({ chaId: 'char-a', chatId: 'chat-a' }, undefined, 'reply')
+            try {
+                expect(isGeneratingIn({ chaId: 'char-a' })).toBe(true)
+                throw new Error('boom')
+            } finally {
+                handle.end()
+            }
+        }).toThrow('boom')
+        expect(isGeneratingIn({ chaId: 'char-a' })).toBe(false)
+
+        const stopped = open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, () => { stopped.end() }, 'reply'))
+        stopWorkIn({ chaId: 'char-a', chatId: 'chat-a' })
+        expect(isGeneratingIn({ chaId: 'char-a' })).toBe(false)
+    })
+
+    test('T9c: isBusyIn and isGeneratingIn re-run an effect when a unit begins and when it ends', () => {
+        const seen: Array<[boolean, boolean]> = []
+        const stopEffect = $effect.root(() => {
+            $effect(() => {
+                seen.push([isBusyIn({ chaId: 'char-a', chatId: 'chat-a' }), isGeneratingIn({ chaId: 'char-a', chatId: 'chat-a' })])
+            })
+        })
+        flushSync()
+        expect(seen).toEqual([[false, false]])
+
+        const handle = open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }, undefined, 'reply'))
+        flushSync()
+        expect(seen.at(-1)).toEqual([true, true])
+
+        handle.end()
+        flushSync()
+        expect(seen.at(-1)).toEqual([false, false])
+        stopEffect()
+    })
+
+    test('T9c: a take, tree or command registration does not re-run the effect', () => {
+        let runs = 0
+        const stopEffect = $effect.root(() => {
+            $effect(() => {
+                void isBusyIn({ chaId: 'char-a', chatId: 'chat-a' })
+                runs++
+            })
+        })
+        flushSync()
+        const before = runs
+
+        const handle = open(registerWork({ chaId: 'char-a', chatId: 'chat-a' }))
+        flushSync()
+        handle.end()
+        flushSync()
+
+        expect(runs).toBe(before)
+        stopEffect()
+    })
+
+    test('T9b: a reply started inside an effect does not subscribe that effect to the version', () => {
+        let runs = 0
+        let handle: WorkHandle | undefined
+        const stopEffect = $effect.root(() => {
+            $effect(() => {
+                runs++
+                handle = registerWork({ chaId: 'char-a', chatId: 'chat-a' }, undefined, 'reply')
+            })
+        })
+        flushSync()
+        if (handle) open(handle)
+
+        expect(runs).toBe(1)
+        expect(isGeneratingIn({ chaId: 'char-a' })).toBe(true)
+        stopEffect()
+    })
+})
+
+describe('isShownChat names the chat on screen', () => {
+    test('it is true for the selected character\'s open chat only', () => {
+        installDb([
+            makeCharacter('char-a', [makeChat('chat-a'), makeChat('chat-b')]),
+            makeCharacter('char-b', [makeChat('chat-c')]),
+        ])
+        selectedCharID.set(0)
+
+        expect(isShownChat({ chaId: 'char-a', chatId: 'chat-a' })).toBe(true)
+        expect(isShownChat({ chaId: 'char-a', chatId: 'chat-b' })).toBe(false)
+        expect(isShownChat({ chaId: 'char-b', chatId: 'chat-c' })).toBe(false)
+        selectedCharID.set(-1)
+        expect(isShownChat({ chaId: 'char-a', chatId: 'chat-a' })).toBe(false)
     })
 })
 

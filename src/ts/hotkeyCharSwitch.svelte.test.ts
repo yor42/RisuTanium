@@ -174,6 +174,7 @@ import { initHotkey } from './hotkey'
 import { DBState, PlaygroundStore, OpenRealmStore, selectedCharID } from './stores.svelte'
 import { doingChat } from './process/index.svelte'
 import { readColdStorageItem } from './process/coldstorage.svelte'
+import { beginWork } from './process/chatOrigin'
 import { alertError } from './alert'
 import { language } from '../lang'
 import { changeChar, characterFormatUpdate } from './characters'
@@ -370,20 +371,21 @@ describe('nextChar / prevChar from Home (no character selected)', () => {
 })
 
 describe('nextChar / prevChar switch through the same path as a sidebar click', () => {
-    // Regression reproducer: prevChar/nextChar set selectedCharID directly
-    // instead of going through changeChar, so a reply in progress does not
-    // block the switch the way a sidebar click is blocked.
-    test('does not switch while a reply is being generated', async () => {
+    // Regression reproducer (T7): a reply in progress never blocks the switch,
+    // the same as for a sidebar click.
+    test('switches while a reply is being generated', async () => {
         selectedCharID.set(BOB)
         PlaygroundStore.set(1)
         OpenRealmStore.set(true)
         doingChat.set(true)
+        const reply = beginWork(DBState.db.characters[BOB], DBState.db.characters[BOB].chats[0], undefined, undefined, 'reply')
 
         await fireNextChar()
+        reply?.end()
 
-        expect(get(selectedCharID)).toBe(BOB)
-        expect(get(PlaygroundStore)).toBe(1)
-        expect(get(OpenRealmStore)).toBe(true)
+        expect(get(selectedCharID)).toBe(CHARLIE)
+        expect(get(PlaygroundStore)).toBe(0)
+        expect(get(OpenRealmStore)).toBe(false)
     })
 
     // A cold-storage placeholder is restored before it is selected:
@@ -471,10 +473,9 @@ describe('nextChar / prevChar consume the keypress synchronously', () => {
         await pending
     })
 
-    // Regression reproducer, doingChat-refused case: a matched hotkey is
-    // consumed regardless of whether the switch it requests goes through, the
-    // same as every other matched hotkey in this listener.
-    test('nextChar prevents default and stops propagation even when doingChat refuses the switch', async () => {
+    // A matched hotkey is consumed synchronously, whether or not a reply is
+    // being generated, the same as every other matched hotkey in this listener.
+    test('nextChar prevents default and stops propagation while a reply is being generated', async () => {
         selectedCharID.set(BOB)
         doingChat.set(true)
         const ev = makeCtrlKeyEvent(']')
@@ -487,6 +488,6 @@ describe('nextChar / prevChar consume the keypress synchronously', () => {
         expect(stopPropagationSpy).toHaveBeenCalled()
 
         await pending
-        expect(get(selectedCharID)).toBe(BOB)
+        expect(get(selectedCharID)).toBe(CHARLIE)
     })
 })

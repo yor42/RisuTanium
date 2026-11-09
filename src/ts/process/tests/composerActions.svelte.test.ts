@@ -2307,3 +2307,115 @@ function interceptSleep(ms: number) {
 }
 
 //#endregion
+
+describe('CHORE-685 S1b: the playMessage chime after an off-screen notice (T18)', () => {
+    const plays = { count: 0 }
+
+    beforeEach(() => {
+        plays.count = 0
+        sendChatMock.mockReset()
+        // The suite runs in node, where there is no Audio.
+        Object.defineProperty(globalThis, 'Audio', {
+            configurable: true,
+            writable: true,
+            value: class {
+                play(): Promise<void> {
+                    plays.count += 1
+                    return Promise.resolve()
+                }
+            },
+        })
+    })
+
+    afterEach(() => {
+        Reflect.deleteProperty(globalThis, 'Audio')
+    })
+
+    function targetOf(char: character) {
+        const chat = char.chats[0]
+        return { origin: { chaId: char.chaId, chatId: chat.id! }, originHint: { owner: char, chat } }
+    }
+
+    test('guard: with playMessage on and no notice, the reply sounds the composer chime once', async () => {
+        const char = makeCharacter('c-chime-plain')
+        installDb([char], { playMessage: true })
+        const { sendChatMain } = await import('../composerActions.svelte')
+        sendChatMock.mockImplementationOnce(async () => true)
+
+        await sendChatMain(targetOf(char))
+
+        expect(plays.count).toBe(1)
+    })
+
+    test('reproducer (T18): with playMessage on, a reply the notice already sounded adds no composer chime', async () => {
+        const char = makeCharacter('c-chime-announced')
+        installDb([char], { playMessage: true })
+        const { sendChatMain } = await import('../composerActions.svelte')
+        const { announceReply } = await import('../replyNotice')
+        sendChatMock.mockImplementationOnce(async (_index: number, arg: SendChatArg) => {
+            announceReply({ origin: { chaId: char.chaId, chatId: char.chats[0].id! }, outcome: 'reply' }, arg.signal)
+            return true
+        })
+
+        await sendChatMain(targetOf(char))
+
+        // The notice's chime is the one sound; the composer's adds none.
+        expect(plays.count).toBe(1)
+    })
+
+    test('reproducer (MC-1204): a failed reply plays no composer chime', async () => {
+        const char = makeCharacter('c-chime-failed')
+        installDb([char], { playMessage: true })
+        const { sendChatMain } = await import('../composerActions.svelte')
+        const { announceReply } = await import('../replyNotice')
+        sendChatMock.mockImplementationOnce(async (_index: number, arg: SendChatArg) => {
+            announceReply({ origin: { chaId: char.chaId, chatId: char.chats[0].id! }, outcome: 'failed' }, arg.signal)
+            return false
+        })
+
+        await sendChatMain(targetOf(char))
+
+        expect(plays.count).toBe(0)
+    })
+
+    test('reproducer (MC-1204): a stopped reply plays no composer chime', async () => {
+        const char = makeCharacter('c-chime-stopped')
+        installDb([char], { playMessage: true })
+        const { sendChatMain } = await import('../composerActions.svelte')
+        const { announceReply } = await import('../replyNotice')
+        sendChatMock.mockImplementationOnce(async (_index: number, arg: SendChatArg) => {
+            announceReply({ origin: { chaId: char.chaId, chatId: char.chats[0].id! }, outcome: 'stopped' }, arg.signal)
+            return false
+        })
+
+        await sendChatMain(targetOf(char))
+
+        expect(plays.count).toBe(0)
+    })
+
+    test('reproducer (MC-1204): a reply stopped on screen, with no notice, plays no composer chime', async () => {
+        const char = makeCharacter('c-chime-stopped-onscreen')
+        installDb([char], { playMessage: true })
+        const { sendChatMain } = await import('../composerActions.svelte')
+        sendChatMock.mockImplementationOnce(async () => false)
+        const controller = new AbortController()
+        controller.abort()
+
+        await sendChatMain(targetOf(char), false, controller)
+
+        expect(plays.count).toBe(0)
+    })
+
+    test('reproducer (MC-1204): a send that threw plays no composer chime', async () => {
+        const char = makeCharacter('c-chime-threw')
+        installDb([char], { playMessage: true })
+        const { sendChatMain } = await import('../composerActions.svelte')
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+        sendChatMock.mockImplementationOnce(async () => { throw new Error('the send broke') })
+
+        await sendChatMain(targetOf(char))
+
+        logged.mockRestore()
+        expect(plays.count).toBe(0)
+    })
+})

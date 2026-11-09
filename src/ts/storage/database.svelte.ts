@@ -1931,6 +1931,12 @@ export interface Chat{
     scopedMemory?: boolean
     /** Hides the avatar and the visible name of every message of this chat in the chat shell. Fork-only; absent means shown. */
     hideNames?: boolean
+    /**
+     * Set when a reply to this chat finished (`'reply'`) or failed or was stopped (`'error'`) while the chat was not on screen;
+     * cleared when the chat is on screen again. Fork-only: a `.bin` export leaves it out. Absent means none, and any other
+     * value (written by a later build) reads as none, is kept by the clear, and is replaced by a new outcome.
+     */
+    unseenReply?: 'reply' | 'error'
     onboardingDone?: boolean
     /**
      * The messages that are not on the active path (`message`), oldest departure first. Absent when the chat has none;

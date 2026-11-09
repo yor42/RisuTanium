@@ -18,6 +18,7 @@
  *    run, for an empty parse, or for the alternates of a multiline answer;
  *  - the parse carries the run's own `subject`, so context tags read the chat
  *    the run belongs to, and it writes no chat variables;
+ *  - a reply whose chat is not on screen, at speak time or after the translation, is not spoken;
  *  - a Stop releases a send that is waiting on speech.
  *
  * Tests whose title starts with `guard:` pin behaviour that must be preserved.
@@ -825,7 +826,7 @@ describe('the parse that produces spoken text', () => {
     test.each([
         ['streaming'],
         ['non-streaming'],
-    ] as const)('regression reproducer: a context tag in a %s reply reads the chat the run belongs to, not the chat on screen', async (mode) => {
+    ] as const)('regression reproducer (T15): a %s reply is not spoken when the screen moved to another chat meanwhile', async (mode) => {
         installDb([
             makeCharacter('char-0', [makeChat('chat-origin', [msg('user', 'Hi')], { scriptstate: { $mood: 'calm' } })]),
             makeCharacter('char-1', [makeChat('chat-other', [msg('user', 'Yo')], { scriptstate: { $mood: 'angry' } })]),
@@ -835,6 +836,30 @@ describe('the parse that produces spoken text', () => {
             if (triggerMode === 'output') {
                 writeAt(arg.origin, (ctx) => { ctx.chat.message.at(-1)!.data = 'Mood is {{getvar::mood}}.' })
                 selectedCharID.set(1)
+            }
+            return undefined
+        })
+        mockReplyIn(mode, 'Placeholder.')
+
+        const result = await settled(() => sendChat())
+
+        expect(result).toBe(true)
+        expect(sayTTSMock).not.toHaveBeenCalled()
+        expect(spoken()).toEqual([])
+    })
+
+    test.each([
+        ['streaming'],
+        ['non-streaming'],
+    ] as const)('guard: a context tag in a %s reply reads the chat the run belongs to', async (mode) => {
+        installDb([
+            makeCharacter('char-0', [makeChat('chat-origin', [msg('user', 'Hi')], { scriptstate: { $mood: 'calm' } })]),
+            makeCharacter('char-1', [makeChat('chat-other', [msg('user', 'Yo')], { scriptstate: { $mood: 'angry' } })]),
+        ])
+        selectedCharID.set(0)
+        runTriggerMock.mockImplementation(async (_char: unknown, triggerMode: string, arg: { origin: Origin }) => {
+            if (triggerMode === 'output') {
+                writeAt(arg.origin, (ctx) => { ctx.chat.message.at(-1)!.data = 'Mood is {{getvar::mood}}.' })
             }
             return undefined
         })
@@ -961,13 +986,28 @@ describe('which speaker is voiced', () => {
         expect(ttsParseCalls()[0].options.chara).toBe('The Party')
     })
 
-    test('regression reproducer: a user-role reply is parsed with the user name of the chat the send belongs to, after the screen switched chats', async () => {
+    test('regression reproducer: a user-role reply is parsed with the user name of the chat the send belongs to', async () => {
         installDb([
             makeCharacter('char-0', [makeChat('chat-origin', [msg('user', 'Hi')])]),
             makeCharacter('char-1', [makeChat('chat-other', [msg('user', 'Yo')])]),
         ])
         selectedCharID.set(0)
         vi.mocked(getUserName).mockImplementation((chat) => (chat && chat.id === 'chat-origin' ? 'Origin User' : 'Screen User'))
+        requestChatDataMock.mockResolvedValueOnce({ type: 'multiline', result: [['user', 'I am {{user}}.']] })
+
+        const result = await settled(() => sendChat())
+
+        expect(result).toBe(true)
+        expect(spoken()).toEqual(['I am Origin User.'])
+        expect(ttsParseCalls()[0].options.chara).toBe('Origin User')
+    })
+
+    test('regression reproducer (T15): a user-role reply is not spoken after the screen switched chats', async () => {
+        installDb([
+            makeCharacter('char-0', [makeChat('chat-origin', [msg('user', 'Hi')])]),
+            makeCharacter('char-1', [makeChat('chat-other', [msg('user', 'Yo')])]),
+        ])
+        selectedCharID.set(0)
         runTriggerMock.mockImplementation(async (_char: unknown, triggerMode: string) => {
             if (triggerMode === 'output') {
                 selectedCharID.set(1)
@@ -979,8 +1019,7 @@ describe('which speaker is voiced', () => {
         const result = await settled(() => sendChat())
 
         expect(result).toBe(true)
-        expect(spoken()).toEqual(['I am Origin User.'])
-        expect(ttsParseCalls()[0].options.chara).toBe('Origin User')
+        expect(sayTTSMock).not.toHaveBeenCalled()
     })
 })
 
@@ -1187,7 +1226,22 @@ describe('auto speech in the shown, translated language', () => {
         expect(sayTTSMock).not.toHaveBeenCalled()
     })
 
-    test('guard: the translator note is the send owner\'s, even after the screen switches to another character', async () => {
+    test('guard: the translator note is the send owner\'s', async () => {
+        installDb([
+            makeCharacter('char-0', [makeChat('chat-origin', [msg('user', 'Hi')])], { translatorNote: 'NOTE-A' }),
+            makeCharacter('char-1', [makeChat('chat-other', [msg('user', 'Yo')])], { translatorNote: 'NOTE-B' }),
+        ], translating)
+        selectedCharID.set(0)
+        requestChatDataMock.mockImplementationOnce(async () => ({ type: 'success', result: 'Hello.' }))
+
+        const result = await settled(() => sendChat())
+
+        expect(result).toBe(true)
+        expect(translateWholeTextMock).toHaveBeenCalledTimes(1)
+        expect(translateWholeTextMock.mock.calls[0][1]).toEqual({ translatorNote: 'NOTE-A' })
+    })
+
+    test('regression reproducer (T15): nothing is translated or spoken once the screen switched to another character', async () => {
         installDb([
             makeCharacter('char-0', [makeChat('chat-origin', [msg('user', 'Hi')])], { translatorNote: 'NOTE-A' }),
             makeCharacter('char-1', [makeChat('chat-other', [msg('user', 'Yo')])], { translatorNote: 'NOTE-B' }),
@@ -1201,7 +1255,26 @@ describe('auto speech in the shown, translated language', () => {
         const result = await settled(() => sendChat())
 
         expect(result).toBe(true)
-        expect(translateWholeTextMock).toHaveBeenCalledTimes(1)
-        expect(translateWholeTextMock.mock.calls[0][1]).toEqual({ translatorNote: 'NOTE-A' })
+        expect(translateWholeTextMock).not.toHaveBeenCalled()
+        expect(sayTTSMock).not.toHaveBeenCalled()
+    })
+
+    test('regression reproducer (T15): a screen switch during the translation stops the speech', async () => {
+        installDb([
+            makeCharacter('char-0', [makeChat('chat-origin', [msg('user', 'Hi')])]),
+            makeCharacter('char-1', [makeChat('chat-other', [msg('user', 'Yo')])]),
+        ], translating)
+        selectedCharID.set(0)
+        const held = holdTranslation()
+        mockReplyIn('non-streaming', 'Hello.')
+
+        const outcome = settled(() => sendChat())
+        await until(() => translateWholeTextMock.mock.calls.length > 0, 'the translation')
+        selectedCharID.set(1)
+        held.release()
+        const result = await outcome
+
+        expect(result).toBe(true)
+        expect(sayTTSMock).not.toHaveBeenCalled()
     })
 })

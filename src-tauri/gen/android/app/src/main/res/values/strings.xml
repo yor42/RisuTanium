@@ -2,4 +2,6 @@
     <string name="app_name">"RisuTanium"</string>
     <string name="main_activity_title">"RisuTanium"</string>
     <string name="keepalive_channel_name">Background work</string>
+    <string name="reply_channel_name">Replies</string>
+    <string name="reply_channel_description">A reply finished in a chat you were not looking at.</string>
 </resources>

@@ -17,6 +17,8 @@ vi.mock('src/ts/process/index.svelte', () => ({
 }))
 vi.mock('src/ts/process/composerActions.svelte', () => ({
     isComposerBusy: () => false,
+    isComposerBusyIn: () => false,
+    stopComposerWorkIn: () => {},
     isComposerLocked: () => false,
     isAutoModeActive: () => false,
 }))

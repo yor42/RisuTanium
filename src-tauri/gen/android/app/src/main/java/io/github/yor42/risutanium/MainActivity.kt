@@ -6,12 +6,14 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
@@ -19,6 +21,7 @@ import android.view.WindowManager
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.ColorUtils
@@ -39,6 +42,14 @@ class MainActivity : TauriActivity() {
 
   // The message channel's handler while the channel is in use; main thread only.
   private var hostListener: HostMessageListener? = null
+
+  private val replyNotifier by lazy { ReplyNotifier(applicationContext) }
+
+  // Registered in the initializer, before the activity starts, as the result API requires.
+  private val replyPermissionRequest =
+    registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+      applyReplyStep(afterAsk(granted))
+    }
 
   // A live system day/night switch changes the navigation-bar rule on API 35+; the activity is
   // not recreated (uiMode is in configChanges), so the last colour is applied again.
@@ -162,6 +173,7 @@ class MainActivity : TauriActivity() {
         imeState,
         SystemBarsBridge(::applyBarColor),
         KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce),
+        newReplyNotificationsBridge(),
         OpenedFilesBridge(contentResolver)
       )
       try {
@@ -254,7 +266,73 @@ class MainActivity : TauriActivity() {
       KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce),
       "__risuTaniumKeepAlive"
     )
+    webView.addJavascriptInterface(newReplyNotificationsBridge(), "__risuTaniumReplyNotificationsHost")
     webView.addJavascriptInterface(OpenedFilesBridge(contentResolver), "__risuTaniumOpenedFilesHost")
+  }
+
+  private fun newReplyNotificationsBridge() = ReplyNotificationsBridge(
+    applicationContext,
+    ::pushReplyNotificationsState,
+    ::enableReplyNotifications,
+    ::disableReplyNotifications
+  )
+
+  // The real state is read again on every resume: the user may have changed the system settings
+  // while the app was away.
+  override fun onResume() {
+    super.onResume()
+    pushReplyNotificationsState()
+  }
+
+  // Turning the switch on: the opt-in is stored first, the channel is created with its sound, and
+  // what happens next follows from the system state (enableStep).
+  private fun enableReplyNotifications() {
+    ReplyNotifier.setOptedIn(applicationContext, true)
+    try {
+      replyNotifier.ensureChannel()
+      val granted = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+      val channelBlocked = replyNotifier.channelImportance() == CHANNEL_IMPORTANCE_NONE
+      applyReplyStep(enableStep(Build.VERSION.SDK_INT, granted, replyNotifier.appNotificationsEnabled(), channelBlocked))
+    } catch (error: Exception) {
+      Log.w("MainActivity", "reply notifications enable failed", error)
+      pushReplyNotificationsState()
+    }
+  }
+
+  private fun disableReplyNotifications() {
+    ReplyNotifier.setOptedIn(applicationContext, false)
+    pushReplyNotificationsState()
+  }
+
+  private fun applyReplyStep(step: EnableStep) {
+    when (step) {
+      EnableStep.Ask -> replyPermissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
+      EnableStep.OpenSettings -> {
+        openAppNotificationSettings()
+        pushReplyNotificationsState()
+      }
+      EnableStep.Done -> pushReplyNotificationsState()
+    }
+  }
+
+  // The app's notification settings, or its details page below API 26. A device without the
+  // screen leaves the switch where it was.
+  private fun openAppNotificationSettings() {
+    try {
+      val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+      } else {
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+      }
+      startActivity(intent)
+    } catch (error: Exception) {
+      Log.w("MainActivity", "notification settings not opened", error)
+    }
+  }
+
+  private fun pushReplyNotificationsState() {
+    val json = encodeReplyNotificationsState(ReplyNotifier.optedIn(applicationContext), replyNotifier.enabled())
+    callPage("window.__risuTaniumReplyNotificationsState?.($json)")
   }
 
   // Decided once per process, so every WebView of the process gets the same bridges. The force

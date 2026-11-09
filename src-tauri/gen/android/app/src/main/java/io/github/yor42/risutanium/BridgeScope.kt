@@ -48,6 +48,11 @@ sealed class BridgeCommand {
   // A take that has an id but a wrong argument list: it is answered with an empty reply.
   data class OpenedFilesMalformedTake(val id: Int) : BridgeCommand()
   data class OpenedFilesConfirm(val through: Long) : BridgeCommand()
+  object ReplyNotificationsRefresh : BridgeCommand()
+  object ReplyNotificationsEnable : BridgeCommand()
+  object ReplyNotificationsDisable : BridgeCommand()
+  data class ReplyNotificationsNotify(val key: String, val title: String, val body: String, val silent: Boolean) : BridgeCommand()
+  data class ReplyNotificationsCancel(val key: String) : BridgeCommand()
 }
 
 // Largest magnitude a double holds exactly as an integer.
@@ -75,6 +80,7 @@ fun toCommand(bridge: String, method: String, args: List<Any?>, id: Any?): Bridg
   "ime" -> if (method == "subscribe" && args.isEmpty()) BridgeCommand.SubscribeIme else null
   "systemBars" -> systemBarsCommand(method, args)
   "keepAlive" -> keepAliveCommand(method, args)
+  "replyNotifications" -> replyNotificationsCommand(method, args)
   "openedFiles" -> openedFilesCommand(method, args, id)
   else -> null
 }
@@ -102,6 +108,30 @@ private fun keepAliveCommand(method: String, args: List<Any?>): BridgeCommand? {
       if (args.size != 1) return null
       val ms = intArg(args[0]) ?: return null
       return BridgeCommand.KeepAliveStopAfter(ms)
+    }
+  }
+  return null
+}
+
+// A notification key is a string of 1 to REPLY_KEY_MAX_LENGTH characters; the silent flag is a
+// boolean, never a number or a string.
+private fun replyNotificationsCommand(method: String, args: List<Any?>): BridgeCommand? {
+  when (method) {
+    "refresh" -> return if (args.isEmpty()) BridgeCommand.ReplyNotificationsRefresh else null
+    "enable" -> return if (args.isEmpty()) BridgeCommand.ReplyNotificationsEnable else null
+    "disable" -> return if (args.isEmpty()) BridgeCommand.ReplyNotificationsDisable else null
+    "notify" -> {
+      if (args.size != 4) return null
+      val key = args[0] as? String ?: return null
+      val title = args[1] as? String ?: return null
+      val body = args[2] as? String ?: return null
+      val silent = args[3] as? Boolean ?: return null
+      return if (isReplyKey(key)) BridgeCommand.ReplyNotificationsNotify(key, title, body, silent) else null
+    }
+    "cancel" -> {
+      if (args.size != 1) return null
+      val key = args[0] as? String ?: return null
+      return if (isReplyKey(key)) BridgeCommand.ReplyNotificationsCancel(key) else null
     }
   }
   return null

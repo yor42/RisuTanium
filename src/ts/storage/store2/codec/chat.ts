@@ -21,9 +21,11 @@ export const CHUNK_CAP_BYTES = 131_072
 
 /**
  * Writer parameter, not format: the chat fields that change on a send and so
- * travel with the last chunk (`st`) instead of the chat core.
+ * travel with the last chunk (`st`) instead of the chat core. `unseenReply` is
+ * set when a send settles, which already rewrites the last chunk; in the core it
+ * would rewrite the memory data held there on every set and clear.
  */
-export const TAIL_STATE_FIELDS = ['lastMemory', 'scriptstate', 'suggestMessages', 'lastDate'] as const
+export const TAIL_STATE_FIELDS = ['lastMemory', 'scriptstate', 'suggestMessages', 'lastDate', 'unseenReply'] as const
 
 /** Volatile chat fields, never stored. */
 export const VOLATILE_CHAT_FIELDS = ['isStreaming', 'activeStreamingDisplayOptimizationMode'] as const

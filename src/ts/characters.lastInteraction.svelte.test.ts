@@ -151,6 +151,7 @@ vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { doingChat } from 'src/ts/process/index.svelte'
 import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { beginWork } from 'src/ts/process/chatOrigin'
 import { changeChar, characterFormatUpdate, supersedeChangeChar } from './characters'
 import { restoreColdCharacterByChaId } from 'src/ts/process/coldMemberRestore'
 import { recentCharacters } from 'src/ts/chatShell/recentCharacters'
@@ -336,16 +337,39 @@ describe('an abandoned switch is not a use', () => {
         expect(recentCharacters(DBState.db.characters)[0]).toBe(slot(0))
     })
 
-    test('a restore that lands while a reply is being written ends busy and leaves lastInteraction as it was', async () => {
+    test('T3: a restore that lands while a reply is being written is selected and counts as a use', async () => {
         installDb([fullCharacter('here') as unknown as CharacterFixture, stubOf('away')])
         const release = holdRead(fullCharacter('away'))
+        const before = Date.now()
         const pending = changeChar(1, { quiet: true })
         await settle()
+        const writing = beginWork(slot(0), slot(0).chats[0], undefined, undefined, 'reply')
         doingChat.set(true)
         release()
 
-        expect(await pending).toBe('busy')
-        expect(lastInteractionOf(1)).toBe(LONG_AGO)
+        expect(await pending).toBe('selected')
+        writing?.end()
+        expect(get(selectedCharID)).toBe(1)
+        expect(lastInteractionOf(1)).toBeGreaterThanOrEqual(before)
+    })
+
+    test('T3b: a group with archived members is selected when a reply starts during the member restore', async () => {
+        const group = {
+            type: 'group', name: 'team name', image: '', chaId: 'team', chatPage: 0, firstMsgIndex: -1, lastInteraction: LONG_AGO,
+            characters: ['member'], characterTalks: [0.5], characterActive: [true], globalLore: [],
+            chats: [{ id: 'team-chat', message: [], note: '', name: 'Chat 1', localLore: [] }],
+        }
+        installDb([fullCharacter('here') as unknown as CharacterFixture, group as unknown as CharacterFixture, stubOf('member')])
+        const release = holdRead(fullCharacter('member'))
+        const pending = changeChar(1, { quiet: true })
+        await settle()
+        const writing = beginWork(slot(0), slot(0).chats[0], undefined, undefined, 'reply')
+        doingChat.set(true)
+        release()
+
+        expect(await pending).toBe('selected')
+        writing?.end()
+        expect(get(selectedCharID)).toBe(1)
     })
 
     test('an archived group superseded while its members are restored leaves lastInteraction as it was', async () => {

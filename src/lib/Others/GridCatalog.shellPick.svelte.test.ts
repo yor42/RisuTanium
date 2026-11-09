@@ -2,17 +2,16 @@
 
 /**
  * `GridCatalog.svelte` picks while the new shell is the active surface go through
- * `switchCharacter`: refused with the notice (grid stays open) while a reply is being written,
- * quiet otherwise, and a refused restore ends in the chat frame, never in an alert. With the shell
- * not eligible an idle pick is today's `changeChar(index)` and `endGrid()`, and a reply being written
- * refuses it the same way.
+ * `switchCharacter`: quiet, with a reply being written or not, and a refused restore ends in the
+ * chat frame, never in an alert. With the shell not eligible a pick is `changeChar(index)` and
+ * `endGrid()`, with a reply being written or not.
  *
  * Invariants exercised here:
- * - TB9: during a reply a pick shows the notice, leaves the grid open, switches nothing.
+ * - TB9: during a reply a pick closes the grid and switches quietly, with no notice.
  * - TB11: a pick of an archived character is a quiet switch; a missing unit ends as `failed`, no alert.
  * - TB10 (guard): idle with the shell not eligible a pick is today's call, in the Grid tab and the Simple list.
- * - TB12: during a reply a pick with the shell not eligible refuses the same way, in the Grid, List and
- *   Simple tabs: notice, grid stays open, no `changeChar`.
+ * - TB12: during a reply a pick with the shell not eligible is the same plain call, in the Grid, List and
+ *   Simple tabs.
  * - TB13 (guard): in edit mode a tile tap only toggles the pick, with no notice, during a reply too.
  *
  * MOCKED: the module set of `GridCatalog.pick.svelte.test.ts` (same directory); `changeChar` is a
@@ -255,32 +254,36 @@ afterEach(() => {
 })
 
 describe('GridCatalog picks while the new shell is the active surface', { timeout: 60_000 }, () => {
-    test('TB9: during a reply a Grid tab pick shows the notice, keeps the grid open and switches nothing', async () => {
+    test('TB9 (T6): during a reply a Grid tab pick closes the grid and switches quietly, with no notice', async () => {
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
+        changeCharSpy.mockResolvedValue('selected')
         doingChat.set(true)
         const endGrid = vi.fn()
 
-        await withMounted(endGrid, (target) => {
+        await withMounted(endGrid, async (target) => {
             clickLayoutButton(target, 0)
             target.querySelectorAll<HTMLElement>('.ico')[1].click()
-            expect(alertNormalSpy).toHaveBeenCalledWith(language.chatShellSwitchRefusedWriting)
-            expect(changeCharSpy).not.toHaveBeenCalled()
-            expect(endGrid).not.toHaveBeenCalled()
+            await settle()
+            expect(alertNormalSpy).not.toHaveBeenCalled()
+            expect(changeCharSpy).toHaveBeenCalledWith(1, { quiet: true })
+            expect(endGrid).toHaveBeenCalledTimes(1)
         })
     })
 
-    test('TB9: the Simple list refuses the same way', async () => {
+    test('TB9 (T6): the Simple list switches the same way', async () => {
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
+        changeCharSpy.mockResolvedValue('selected')
         doingChat.set(true)
         const endGrid = vi.fn()
 
-        await withMounted(endGrid, (target) => {
+        await withMounted(endGrid, async (target) => {
             clickLayoutButton(target, 3)
             const row = Array.from(target.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.includes('Bob'))!
             row.click()
-            expect(alertNormalSpy).toHaveBeenCalledWith(language.chatShellSwitchRefusedWriting)
-            expect(changeCharSpy).not.toHaveBeenCalled()
-            expect(endGrid).not.toHaveBeenCalled()
+            await settle()
+            expect(alertNormalSpy).not.toHaveBeenCalled()
+            expect(changeCharSpy).toHaveBeenCalledWith(1, { quiet: true })
+            expect(endGrid).toHaveBeenCalledTimes(1)
         })
     })
 
@@ -343,7 +346,7 @@ describe('GridCatalog picks while the new shell is the active surface', { timeou
         })
     })
 
-    test('TB12: during a reply with the shell not eligible a Grid tab pick shows the notice, keeps the grid open and switches nothing', async () => {
+    test('TB12 (T6): during a reply with the shell not eligible a Grid tab pick is the plain call and closes the grid', async () => {
         shellFlag.eligible = false
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
         doingChat.set(true)
@@ -352,13 +355,13 @@ describe('GridCatalog picks while the new shell is the active surface', { timeou
         await withMounted(endGrid, (target) => {
             clickLayoutButton(target, 0)
             target.querySelectorAll<HTMLElement>('.ico')[1].click()
-            expect(endGrid).not.toHaveBeenCalled()
-            expect(changeCharSpy).not.toHaveBeenCalled()
-            expect(alertNormalSpy).toHaveBeenCalledWith(language.chatShellSwitchRefusedWriting)
+            expect(endGrid).toHaveBeenCalledTimes(1)
+            expect(changeCharSpy.mock.calls).toEqual([[1]])
+            expect(alertNormalSpy).not.toHaveBeenCalled()
         })
     })
 
-    test('TB12: during a reply with the shell not eligible a List tab pick refuses the same way', async () => {
+    test('TB12 (T6): during a reply with the shell not eligible a List tab pick switches the same way', async () => {
         shellFlag.eligible = false
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
         doingChat.set(true)
@@ -368,13 +371,13 @@ describe('GridCatalog picks while the new shell is the active surface', { timeou
             clickLayoutButton(target, 1)
             const heading = Array.from(target.querySelectorAll('h4')).find((h) => h.textContent?.trim() === 'Bob')!
             heading.click()
-            expect(endGrid).not.toHaveBeenCalled()
-            expect(changeCharSpy).not.toHaveBeenCalled()
-            expect(alertNormalSpy).toHaveBeenCalledWith(language.chatShellSwitchRefusedWriting)
+            expect(endGrid).toHaveBeenCalledTimes(1)
+            expect(changeCharSpy.mock.calls).toEqual([[1]])
+            expect(alertNormalSpy).not.toHaveBeenCalled()
         })
     })
 
-    test('TB12: during a reply with the shell not eligible a Simple tab pick refuses the same way', async () => {
+    test('TB12 (T6): during a reply with the shell not eligible a Simple tab pick switches the same way', async () => {
         shellFlag.eligible = false
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
         doingChat.set(true)
@@ -384,9 +387,9 @@ describe('GridCatalog picks while the new shell is the active surface', { timeou
             clickLayoutButton(target, 3)
             const row = Array.from(target.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.includes('Bob'))!
             row.click()
-            expect(endGrid).not.toHaveBeenCalled()
-            expect(changeCharSpy).not.toHaveBeenCalled()
-            expect(alertNormalSpy).toHaveBeenCalledWith(language.chatShellSwitchRefusedWriting)
+            expect(endGrid).toHaveBeenCalledTimes(1)
+            expect(changeCharSpy.mock.calls).toEqual([[1]])
+            expect(alertNormalSpy).not.toHaveBeenCalled()
         })
     })
 

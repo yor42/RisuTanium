@@ -7,8 +7,8 @@
  * - `quiet` passes through to the cold restore: a refused restore shows no
  *   alert and comes back as `{failed: reason}`; without `quiet` the user is
  *   told exactly as before.
- * - `busy` is returned when a reply is being written, at entry and when one
- *   starts during the read; `superseded` when a later call has started.
+ * - A reply being written never refuses a switch, at entry or when one starts
+ *   during the read; `superseded` is returned when a later call has started.
  * - Selection is unchanged by every outcome except `selected`.
  *
  * This file drives the REAL `src/ts/characters.ts`; every other module it
@@ -162,6 +162,7 @@ import { DBState, selectedCharID, selIdState } from 'src/ts/stores.svelte'
 import { doingChat } from 'src/ts/process/index.svelte'
 import { alertError, alertNormal } from 'src/ts/alert'
 import { buildColdStub } from 'src/ts/process/coldCharacter'
+import { beginWork, type WorkHandle } from 'src/ts/process/chatOrigin'
 import { changeChar, supersedeChangeChar } from './characters'
 import { changeChatTo } from 'src/ts/globalApi.svelte'
 import { abandonPendingSwitch, clearPending, switchCharacter, switchTarget } from './chatShell/switchTarget.svelte'
@@ -199,6 +200,20 @@ function forkStub(chaId: string, key: string): CharacterFixture {
 
 function installDb(characters: CharacterFixture[]): void {
     DBState.db = { characters } as unknown as Database
+}
+
+/** A reply being written into the first chat of a warm character: the flag and the registration a real send holds. */
+function startReplyIn(chaId: string): WorkHandle {
+    const owner = DBState.db.characters.find((entry) => entry.chaId === chaId)
+    if (!owner) {
+        throw new Error(`no character ${chaId}`)
+    }
+    const handle = beginWork(owner, owner.chats[0], undefined, undefined, 'reply')
+    if (!handle) {
+        throw new Error('the reply registration was refused')
+    }
+    doingChat.set(true)
+    return handle
 }
 
 interface PendingRead {
@@ -268,15 +283,15 @@ describe('changeChar quiet and outcomes', () => {
         expect(get(selectedCharID)).toBe(-1)
     })
 
-    test('TA3: busy at entry while a reply is being written, nothing selected', async () => {
+    test('TA3 (T1): a switch while a reply is being written selects the character and shows no notice', async () => {
         installDb([warmCharacter('a'), warmCharacter('b')])
-        doingChat.set(true)
+        const reply = startReplyIn('a')
 
         const outcome = await changeChar(1)
+        reply.end()
 
-        expect(outcome).toBe('busy')
-        expect(get(selectedCharID)).toBe(-1)
-        // Old callers (hotkeys, the old shell) stay silent: only the shell's own switch path shows the notice.
+        expect(outcome).toBe('selected')
+        expect(get(selectedCharID)).toBe(1)
         expect(alertNormal).not.toHaveBeenCalled()
     })
 
@@ -297,18 +312,19 @@ describe('changeChar quiet and outcomes', () => {
         expect(get(selectedCharID)).toBe(1)
     })
 
-    test('TA4b: a reply that starts during the read reports busy, nothing selected', async () => {
-        installDb([forkStub('slow', 'unit-slow')])
+    test('TA4b (T2): a reply that starts during the restore does not stop the restored character from being selected', async () => {
+        installDb([forkStub('slow', 'unit-slow'), warmCharacter('writer')])
         const pending = holdReads()
 
         const call = changeChar(0, { quiet: true })
         await tick()
-        doingChat.set(true)
+        const reply = startReplyIn('writer')
         pending[0].resolve(ok(fullCharacter('slow')))
         const outcome = await call
+        reply.end()
 
-        expect(outcome).toBe('busy')
-        expect(get(selectedCharID)).toBe(-1)
+        expect(outcome).toBe('selected')
+        expect(get(selectedCharID)).toBe(0)
         expect(alertNormal).not.toHaveBeenCalled()
     })
 

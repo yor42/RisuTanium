@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { requestSuggestionData } from "src/ts/process/suggestionRequest";
-    import { doingChat, type OpenAIChat } from "../../ts/process/index.svelte";
+    import type { OpenAIChat } from "../../ts/process/index.svelte";
+    import { isBusyIn } from "../../ts/process/chatOrigin";
     import { type character, type Message, type groupChat } from "../../ts/storage/database.svelte";
 	import { DBState } from 'src/ts/stores.svelte';
     import { isComposerLocked } from "src/ts/process/composerActions.svelte";
@@ -38,8 +39,22 @@
         abortController = undefined
     }
 
+    // Only a reply or preview in the shown chat holds the suggestions; a reply written in another chat
+    // neither clears them nor asks for new ones.
+    const shownTarget = $derived.by(() => {
+        const shownChar = DBState.db.characters?.[$selectedCharID]
+        const shownChatId = shownChar?.chats?.[shownChar.chatPage]?.id
+        return shownChar?.chaId && shownChatId ? { chaId: shownChar.chaId, chatId: shownChatId } : null
+    })
+    const shownKey = $derived(shownTarget ? `${shownTarget.chaId}\u0000${shownTarget.chatId}` : null)
+    const shownBusy = $derived(shownTarget ? isBusyIn(shownTarget) : false)
+
     const updateSuggestions = () => {
-        if($selectedCharID > -1 && !$doingChat) {
+        if($selectedCharID > -1) {
+            if(shownBusy){
+                suggestMessages = []
+                return
+            }
             if(progressChatPage > 0 && progressChatPage != chatPage){
                 cancelSuggestionRequest()
             }
@@ -49,7 +64,7 @@
     }
 
     const requestSuggestions = () => {
-        if($doingChat || $selectedCharID <= -1 || (suggestMessages && suggestMessages.length > 0) || progress){
+        if(shownBusy || $selectedCharID <= -1 || (suggestMessages && suggestMessages.length > 0) || progress){
             return
         }
 
@@ -132,13 +147,29 @@
         })
     }
 
-    const unsub = doingChat.subscribe(async (v) => {
-        if(v) {
-            cancelSuggestionRequest()
-            suggestMessages = []
+    // Asked once at mount, then only when the shown chat's own busy state falls.
+    requestSuggestions()
+    let seenKey = untrack(() => shownKey)
+    let seenBusy = untrack(() => shownBusy)
+    $effect(() => {
+        const key = shownKey
+        const busy = shownBusy
+        const sameChat = key === seenKey
+        const wasBusy = seenBusy
+        seenKey = key
+        seenBusy = busy
+        // A change of the shown chat requests nothing: `updateSuggestions` takes that chat's own list.
+        if(!sameChat || wasBusy === busy){
             return
         }
-        requestSuggestions()
+        untrack(() => {
+            if(busy){
+                cancelSuggestionRequest()
+                suggestMessages = []
+                return
+            }
+            requestSuggestions()
+        })
     })
 
     const translateSuggest = async (toggle, messages)=>{
@@ -154,7 +185,6 @@
 
     onDestroy(() => {
         cancelSuggestionRequest()
-        unsub()
     })
 
     $effect.pre(() => {
@@ -193,7 +223,7 @@
             <div class="loadmove mx-2"></div>
             <div>{language.creatingSuggestions}</div>
         </div>        
-    {:else if !$doingChat}
+    {:else if !shownBusy}
         {#if DBState.db.translator !== ''}
             <div class="flex mr-2 mb-2">
                 <button class={"bg-textcolor2 hover:bg-darkbutton font-bold py-2 px-4 rounded-sm " + (toggleTranslate ? 'text-green-500' : 'text-textcolor')}

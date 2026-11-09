@@ -20,6 +20,8 @@
     import { getFolderColorLabels, getFolderColorValue } from "./folderColors";
     import Toggles from "./Toggles.svelte";
     import { changeChatTo, createChatCopyName, reorderChatsKeepingCurrent } from "src/ts/globalApi.svelte";
+    import { isGeneratingIn } from "src/ts/process/chatOrigin";
+    import { replyMarkOf } from "src/ts/process/replyMarks";
 
     interface Props {
         chara: character|groupChat;
@@ -137,6 +139,19 @@
         })
     })
 </script>
+<!-- Own chat only: the registry's version and this chat's mark, nothing a streamed token writes. -->
+{#snippet replyMarks(chat: Chat)}
+    {@const writing = isGeneratingIn({ chaId: chara.chaId, chatId: chat.id })}
+    {@const mark = replyMarkOf(chat)}
+    {#if writing}
+        <span data-part="reply-writing-badge" role="img" aria-label={language.chatWritingBadge} class="ml-1 animate-pulse text-textcolor2"><PencilIcon size={14} /></span>
+    {/if}
+    {#if mark === 'reply'}
+        <span data-part="reply-new-dot" role="img" aria-label={language.chatNewReplyDot} class="ml-1 size-2 shrink-0 rounded-full bg-selected border border-textcolor2"></span>
+    {:else if mark === 'error'}
+        <span data-part="reply-error-dot" role="img" aria-label={language.chatReplyErrorDot} class="ml-1 size-2 shrink-0 rounded-full bg-draculared"></span>
+    {/if}
+{/snippet}
 <div class="flex flex-col w-full h-[calc(100%-2rem)] max-h-[calc(100%-2rem)]">
     <Button className="relative bottom-2" onclick={() => {
         createNewChat(chara)
@@ -245,6 +260,7 @@
                             <TextInput bind:value={chat.name} className="grow min-w-0" padding={false}/>
                         {:else}
                             <span>{chat.name}</span>
+                            {@render replyMarks(chat)}
                         {/if}
                         <div class="grow flex justify-end">
                             <div role="button" tabindex="0" onkeydown={(e) => {
@@ -343,6 +359,7 @@
                     <TextInput bind:value={chara.chats[i].name} className="grow min-w-0" padding={false}/>
                 {:else}
                     <span>{chat.name}</span>
+                    {@render replyMarks(chat)}
                 {/if}
                 <div class="grow flex justify-end">
                     <div role="button" tabindex="0" onkeydown={(e) => {

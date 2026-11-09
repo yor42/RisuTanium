@@ -29,6 +29,7 @@ class HostMessageListener(
   private val ime: ImeStateHolder,
   private val systemBars: SystemBarsBridge,
   private val keepAlive: KeepAliveBridge,
+  private val replyNotifications: ReplyNotificationsBridge,
   private val openedFiles: OpenedFilesBridge
 ) : WebViewCompat.WebMessageListener {
   private val mainHandler = Handler(Looper.getMainLooper())
@@ -133,6 +134,12 @@ class HostMessageListener(
       is BridgeCommand.KeepAliveStop -> keepAlive.stop()
       is BridgeCommand.KeepAliveStopAfter -> keepAlive.stopAfter(command.ms)
       is BridgeCommand.KeepAliveRequestNotificationPermissionOnce -> keepAlive.requestNotificationPermissionOnce()
+      is BridgeCommand.ReplyNotificationsRefresh -> replyNotifications.refresh()
+      is BridgeCommand.ReplyNotificationsEnable -> replyNotifications.enable()
+      is BridgeCommand.ReplyNotificationsDisable -> replyNotifications.disable()
+      is BridgeCommand.ReplyNotificationsNotify ->
+        replyNotifications.notify(command.key, command.title, command.body, command.silent)
+      is BridgeCommand.ReplyNotificationsCancel -> replyNotifications.cancel(command.key)
       is BridgeCommand.OpenedFilesConfirm -> openedFiles.confirm(command.through)
       is BridgeCommand.OpenedFilesMalformedTake -> reply(replyProxy, encodeTakeReply(command.id, "[]", 0))
       is BridgeCommand.OpenedFilesTake -> take(command.id, replyProxy)

@@ -371,6 +371,18 @@ describe('a loaded character', () => {
         expect(h.deletes).toEqual([])
     })
 
+    // P12, a compatibility guard (passes before and after): the unit holds the whole character, so the new-reply mark of a
+    // chat travels in it and a restore shows it again.
+    test('guard (P12): the new-reply mark of a chat is written into the unit with the rest of the character', async () => {
+        const chats = [{ id: 'A-chat', message: [{ role: 'char', data: 'hello', time: 1 }], note: '', name: '', localLore: [], unseenReply: 'reply' }]
+        setDb([fullCharacter('A', { chats })])
+
+        succeeded(await archiveLoaded(0))
+
+        const unit = h.units.get('unit-new') as { character: { chats: Array<{ unseenReply?: string }> } }
+        expect(unit.character.chats[0].unseenReply).toBe('reply')
+    })
+
     test('new behaviour: the lastInteraction and trashTime of the live character at the final step are the stub\'s', async () => {
         setDb([fullCharacter('A', { trashTime: 5 })])
         h.whileReading = () => { live(0).lastInteraction = 999; live(0).trashTime = 0 }

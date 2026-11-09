@@ -7,7 +7,7 @@ import type { toSaveType } from '../storage/risuSave'
 import { isWriting, registerWork, type WorkHandle } from '../process/chatOrigin'
 import { isStopDeletePending, requestStopDelete } from './stopDelete.svelte'
 
-const flag = vi.hoisted(() => ({ subscribers: 0, abortChat: vi.fn<() => void>() }))
+const flag = vi.hoisted(() => ({ subscribers: 0, abortChat: vi.fn<() => void>(), stop: vi.fn<() => void>() }))
 vi.mock('../process/index.svelte', async () => {
     const { writable: store } = await import('svelte/store')
     const base = store(false)
@@ -32,7 +32,12 @@ vi.mock('../../lang', () => ({ language: {
     removeThisAndFollowingMessages: 'from', removeMessageQuestion: 'which?',
     chatShellStopDeleteChanged: 'changed',
 } }))
-vi.mock('../process/generationOwnership.svelte', () => ({ isComposerWindowOpen: vi.fn(() => false) }))
+vi.mock('../process/generationOwnership.svelte', () => ({
+    isComposerWindowOpen: vi.fn(() => false),
+    bumpReplyVersion: vi.fn(),
+    readReplyVersion: vi.fn(() => 0),
+    composerWindowFor: vi.fn(() => false),
+}))
 vi.mock('../process/scriptings', () => ({ runLuaButtonTrigger: vi.fn(), runLuaInteractionTrigger: vi.fn() }))
 vi.mock('../process/triggers', () => ({ runTrigger: vi.fn() }))
 vi.mock('../process/moduleEnsure', () => ({ ensureModulesOrAlert: vi.fn() }))
@@ -80,6 +85,7 @@ beforeEach(async () => {
     schedule = vi.fn<() => void>()
     installCharacterSaveMarks({ tracker, schedule })
     flag.abortChat.mockReset()
+    flag.stop.mockReset()
     vi.mocked(alertNormal).mockReset()
     doingChat.set(false)
     selectedCharID.set(0)
@@ -97,10 +103,11 @@ describe('T24 stop and delete', () => {
     it('deletes in a macrotask after the send has fully settled, never inside the flag subscriber', async () => {
         const { owner, chat, origin } = setup()
         doingChat.set(true)
-        const handle = registerWork(origin)
+        const handle = registerWork(origin, flag.stop)
         const target = chat.message[3]
         expect(requestStopDelete(owner, chat, target, 'one')).toBe(true)
-        expect(flag.abortChat).toHaveBeenCalledTimes(1)
+        expect(flag.stop).toHaveBeenCalledTimes(1)
+        expect(flag.abortChat).not.toHaveBeenCalled()
         expect(chat.message).toHaveLength(4)
 
         doingChat.set(false)
@@ -192,10 +199,10 @@ describe('T24 stop and delete', () => {
         expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'c2', 'u3'])
         expect(isStopDeletePending(origin)).toBe(false)
     })
-    it('a request made while no send is running aborts, then deletes in a macrotask', async () => {
+    it('a request made while no work is registered stops nothing, then deletes in a macrotask', async () => {
         const { owner, chat } = setup()
         expect(requestStopDelete(owner, chat, chat.message[1], 'one')).toBe(true)
-        expect(flag.abortChat).toHaveBeenCalledTimes(1)
+        expect(flag.abortChat).not.toHaveBeenCalled()
         expect(chat.message).toHaveLength(4)
         expect(isStopDeletePending()).toBe(true)
         await macrotask()
@@ -273,6 +280,7 @@ describe('T24 stop and delete', () => {
         const { owner, chat } = setup()
         const stranger = message('stranger')
         expect(requestStopDelete(owner, chat, stranger, 'one')).toBe(false)
+        expect(flag.stop).not.toHaveBeenCalled()
         expect(flag.abortChat).not.toHaveBeenCalled()
         expect(isStopDeletePending()).toBe(false)
     })
@@ -297,10 +305,10 @@ describe('T24 stop and delete', () => {
     it('refuses a second request while one is pending and still completes the first', async () => {
         const { owner, chat, origin } = setup()
         doingChat.set(true)
-        const handle = registerWork(origin)
+        const handle = registerWork(origin, flag.stop)
         expect(requestStopDelete(owner, chat, chat.message[3], 'one')).toBe(true)
         expect(requestStopDelete(owner, chat, chat.message[1], 'one')).toBe(false)
-        expect(flag.abortChat).toHaveBeenCalledTimes(1)
+        expect(flag.stop).toHaveBeenCalledTimes(1)
         settleSend(handle, owner.chaId)
         await macrotask()
         expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'c2', 'u3'])
@@ -309,12 +317,45 @@ describe('T24 stop and delete', () => {
         expect(chat.message.map((item) => item.chatId)).toEqual(['u1', 'u3'])
     })
 
+    it('stops only the work of its own chat: a reply in another chat keeps writing', async () => {
+        const { owner, chat, origin } = setup()
+        const otherStop = vi.fn<() => void>()
+        doingChat.set(true)
+        const handle = registerWork(origin, flag.stop)
+        const other = registerWork({ chaId: 'owner-b', chatId: 'chat-b' }, otherStop, 'reply')
+        requestStopDelete(owner, chat, chat.message[3], 'one')
+        expect(flag.stop).toHaveBeenCalledTimes(1)
+        expect(otherStop).not.toHaveBeenCalled()
+        expect(flag.abortChat).not.toHaveBeenCalled()
+        settleSend(handle, owner.chaId)
+        await macrotask()
+        expect(chat.message).toHaveLength(3)
+        expect(isWriting({ chaId: 'owner-b', chatId: 'chat-b' })).toBe(true)
+        other.end()
+    })
+
+    it('stops only the work of its own chat when another chat of the same character is writing too', async () => {
+        const { owner, chat, origin } = setup()
+        const siblingStop = vi.fn<() => void>()
+        doingChat.set(true)
+        const handle = registerWork(origin, flag.stop)
+        const sibling = registerWork({ chaId: origin.chaId, chatId: 'chat-a2' }, siblingStop, 'reply')
+        requestStopDelete(owner, chat, chat.message[3], 'one')
+        expect(flag.stop).toHaveBeenCalledTimes(1)
+        expect(siblingStop).not.toHaveBeenCalled()
+        settleSend(handle, owner.chaId)
+        await macrotask()
+        expect(chat.message).toHaveLength(3)
+        expect(isWriting({ chaId: origin.chaId, chatId: 'chat-a2' })).toBe(true)
+        sibling.end()
+    })
+
     it('leaves no subscription or pending request behind after it resolves', async () => {
         const { owner, chat, origin } = setup()
         doingChat.set(true)
         const handle = registerWork(origin)
         requestStopDelete(owner, chat, chat.message[3], 'one')
-        expect(flag.subscribers).toBe(1)
+        expect(flag.subscribers).toBe(0)
         settleSend(handle, owner.chaId)
         expect(flag.subscribers).toBe(0)
         await macrotask()

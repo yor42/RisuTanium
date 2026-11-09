@@ -15,13 +15,13 @@ import { withInFlight } from "../process/inFlightWork"
 import { requestChatData } from "../process/request/request"
 import { createModuleFailureMemory, ensureCurrentModules } from "../process/moduleEnsure"
 import { hasModuleStubs } from "../process/moduleRefList"
-import { doingChat, type OpenAIChat } from "../process/index.svelte"
+import type { OpenAIChat } from "../process/index.svelte"
 import { applyMarkdownToNode, risuChatParser, type simpleCharacterArgument } from "../parser/parser.svelte"
 import { selectedCharID } from "../stores.svelte"
 import { getModuleRegexScripts } from "../process/modules"
 import { getNodetextToSentence, sleep } from "../util"
 import { processScriptFull } from "../process/scripts"
-import type { RunSubject } from "../process/chatOrigin"
+import { isGeneratingIn, type RunSubject } from "../process/chatOrigin"
 import localforage from "localforage"
 import sendSound from '../../etc/send.mp3'
 
@@ -357,6 +357,20 @@ function escapeTranslatedForMarkup(text: string): string {
     return text.replace(/&/g, "&amp;").replace(/</g, "&lt;")
 }
 
+/**
+ * True while the text being translated belongs to a chat with a reply being
+ * written: the subject's chat when one is passed, else the chat on screen. A
+ * chat opened while another chat writes translates as it does when idle.
+ */
+function textBelongsToWritingChat(subject?: RunSubject): boolean {
+    if(subject){
+        return isGeneratingIn({ chaId: subject.origin.chaId, chatId: subject.origin.chatId })
+    }
+    const shown = getDatabase().characters?.[get(selectedCharID)]
+    const shownChatId = shown?.chats?.[shown.chatPage]?.id
+    return !!shown?.chaId && !!shownChatId && isGeneratingIn({ chaId: shown.chaId, chatId: shownChatId })
+}
+
 async function translateHTMLUntracked(html: string, reverse:boolean, charArg:simpleCharacterArgument|string = '', chatID:number, regenerate = false, subject?:RunSubject): Promise<string> {
     if(!html){
         return html
@@ -381,8 +395,7 @@ async function translateHTMLUntracked(html: string, reverse:boolean, charArg:sim
         }
     }
     let db = getDatabase()
-    let DoingChat = get(doingChat)
-    if(DoingChat){
+    if(textBelongsToWritingChat(subject)){
         if(isExpTranslator()){
             if(!(db.translatorType === 'llm' && await getLLMCache(html) !== null)){
                 return html

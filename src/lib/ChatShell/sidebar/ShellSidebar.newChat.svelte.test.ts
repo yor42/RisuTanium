@@ -10,7 +10,7 @@
  * - More lists the places the old rail and tab bar reached (TB5).
  * - The sort control carries the "On this device" description and writes the device key (TB4).
  * - A strip tap switches through `switchCharacter` (quiet for a warm character); during a reply it
- *   is refused with the notice and the overlay stays open; in an overlay a switch closes the
+ *   is not refused and shows no notice; in an overlay a switch closes the
  *   overlay, docked it stays (TB7, TB9 sibling).
  *
  * MOCKED: the stores module, `characters` (spies; `createNewChat` copies the producer's shape),
@@ -100,6 +100,7 @@ vi.mock('../../Others/PluginDefinedIcon.svelte', () => ({ default: () => {} }))
 
 import { DBState, DynamicGUI, alertStore, bookmarkListOpen, selectedCharID, selIdState, sideBarClosing } from 'src/ts/stores.svelte'
 import { doingChat } from 'src/ts/process/index.svelte'
+import { registerWork } from 'src/ts/process/chatOrigin'
 import { language } from 'src/lang'
 import { takeOverlayReturnFocus } from '../../../ts/chatShell/overlayFocus'
 import { clearPending } from '../../../ts/chatShell/switchTarget.svelte'
@@ -335,16 +336,19 @@ describe('switching from the strip', () => {
         expect(mocks.changeChar.mock.calls[0]).toEqual([1])
     })
 
-    test('a tap during a reply shows the notice, switches nothing and keeps the overlay open', () => {
-        const [, b] = twoCharacters()
+    test('T5: a tap during a reply switches at once, shows no notice and closes the overlay', () => {
+        const [a, b] = twoCharacters()
         selectedCharID.set(0)
         DynamicGUI.set(true)
         doingChat.set(true)
+        const reply = registerWork({ chaId: a.chaId, chatId: 'id-a1' }, undefined, 'reply')
         render()
         stripButton(b.name).click()
-        expect(mocks.changeChar).not.toHaveBeenCalled()
-        expect(mocks.alertNormal).toHaveBeenCalledWith(language.chatShellSwitchRefusedWriting)
-        expect(get(sideBarClosing)).toBe(false)
+        reply.end()
+        expect(mocks.changeChar).toHaveBeenCalledTimes(1)
+        expect(mocks.changeChar).toHaveBeenCalledWith(1, { quiet: true })
+        expect(mocks.alertNormal).not.toHaveBeenCalled()
+        expect(get(sideBarClosing)).toBe(true)
     })
 
     test('in an overlay a switch closes the overlay; docked it stays open', () => {

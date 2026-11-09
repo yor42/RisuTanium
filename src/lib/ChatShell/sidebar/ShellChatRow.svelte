@@ -1,10 +1,12 @@
 <script lang="ts">
     import { onDestroy, tick, untrack } from "svelte";
-    import { ChevronDownIcon, ChevronUpIcon, EllipsisIcon, GripVerticalIcon } from "@lucide/svelte";
+    import { ChevronDownIcon, ChevronUpIcon, EllipsisIcon, GripVerticalIcon, PencilIcon } from "@lucide/svelte";
     import { language } from "src/lang";
     import type { Chat } from "src/ts/storage/database.svelte";
     import { DBState } from "src/ts/stores.svelte";
     import * as composerDrafts from "../../../ts/process/composerDrafts.svelte";
+    import { isGeneratingIn } from "../../../ts/process/chatOrigin";
+    import { replyMarkOf } from "../../../ts/process/replyMarks";
     import { ROW_HEIGHT, isArchivedChat, previewLine, rowTime } from "../../../ts/chatShell/chatListModel";
     import { createHold, type ListEditing } from "../../../ts/chatShell/chatListEdits";
     import { isImeComposing } from "../../../ts/ime/compositionGuard";
@@ -45,6 +47,9 @@
         return record.messageInput !== "" || record.messageInputTranslate !== "" || record.fileInput.length > 0;
     });
     const name = $derived(chat.name || language.settingsPage.unnamed);
+    // Own chat only: the registry's version and this chat's mark, nothing a streamed token writes.
+    const writing = $derived(chaId && chat.id ? isGeneratingIn({ chaId, chatId: chat.id }) : false);
+    const mark = $derived(archived ? null : replyMarkOf(chat));
     const renaming = $derived(editing.renamingChat === chat);
     const menuOpen = $derived(editing.menu?.kind === "chat" && editing.menu.chat === chat);
 
@@ -197,6 +202,14 @@
         >
             <span class="flex items-baseline gap-2">
                 <span data-part="chat-row-name" class="grow truncate font-medium">{chat.name || language.settingsPage.unnamed}</span>
+                {#if writing}
+                    <span data-part="reply-writing-badge" role="img" aria-label={language.chatWritingBadge} class="shrink-0 self-center animate-pulse text-textcolor2"><PencilIcon size={14} /></span>
+                {/if}
+                {#if mark === "reply"}
+                    <span data-part="reply-new-dot" role="img" aria-label={language.chatNewReplyDot} class="shrink-0 self-center size-2 rounded-full bg-selected border border-textcolor2"></span>
+                {:else if mark === "error"}
+                    <span data-part="reply-error-dot" role="img" aria-label={language.chatReplyErrorDot} class="shrink-0 self-center size-2 rounded-full bg-draculared"></span>
+                {/if}
                 {#if time}
                     <span data-part="chat-row-time" class="shrink-0 text-xs text-textcolor2">{time}</span>
                 {/if}

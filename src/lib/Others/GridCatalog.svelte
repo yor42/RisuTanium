@@ -1,9 +1,9 @@
 <script lang="ts">
-    import { onDestroy, tick, untrack } from "svelte";
+    import { onDestroy, setContext, tick, untrack } from "svelte";
     import { v4 } from "uuid";
     import { archivedMemberIds, changeChar, getCharImage, removeChar, supersedeChangeChar, trashCharacters, type ChangeCharOutcome } from "../../ts/characters";
     import { checkCharOrder } from "src/ts/globalApi.svelte";
-    import { alertConfirm, alertError, alertNormal, alertSelect } from "src/ts/alert";
+    import { alertConfirm, alertError, alertSelect } from "src/ts/alert";
     import { DBState } from 'src/ts/stores.svelte';
     import { ArrowLeft, User, Users, TrashIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, PencilIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
     import { selectedCharID } from "../../ts/stores.svelte";
@@ -16,7 +16,7 @@
     import CharacterDescription from "./CharacterDescription.svelte";
     import CharacterWindow from "./CharacterWindow.svelte";
     import CharListAvatar from "./CharListAvatar.svelte";
-    import CharacterNameRow from "./CharacterNameRow.svelte";
+    import CharacterNameRow, { replyStateContext, type CharacterReplyState } from "./CharacterNameRow.svelte";
     import { GRID_ROW_FALLBACK_PX, LIST_ROW_FALLBACK_PX, gridSectionRows, listRows } from "./charListRows";
     import { buildGridEntries, folderTileClass, type GridEntry, type SortMode } from "./charListOrder";
     import { loadGridSort, parseGridSort, saveGridSort } from "./gridMemory";
@@ -42,10 +42,35 @@
     import { registerBackHandler } from "../../ts/backHandlers";
     import { pageCovered } from "../../ts/alertPrompts";
     import { shellEligible } from "../../ts/chatShell/shellSwitch.svelte";
-    import { refuseSwitchWhileWriting, switchCharacter } from "../../ts/chatShell/switchTarget.svelte";
+    import { switchCharacter } from "../../ts/chatShell/switchTarget.svelte";
     import { recordCaughtError } from "../../ts/caughtErrors";
     import HomeEmptyHero from "../UI/Home/HomeEmptyHero.svelte";
     import { hasLiveCharacter } from "../UI/Home/homeEmpties";
+    import { isGeneratingIn } from "../../ts/process/chatOrigin";
+    import { replyMarkOf, type ReplyMarkKind } from "../../ts/process/replyMarks";
+    import type { character, groupChat } from "../../ts/storage/database.svelte";
+
+    // What a tile or row shows of the character's replies. A read of its own chats' marks and of the registry's version only:
+    // a streamed token writes a message, which neither of them reads, so it re-renders no row.
+    function replyStateOf(char: character | groupChat | undefined): CharacterReplyState {
+        if (!char) {
+            return { writing: false, mark: null };
+        }
+        const writing = isGeneratingIn({ chaId: char.chaId });
+        let mark: ReplyMarkKind | null = null;
+        for (const chat of char.chats ?? []) {
+            const chatMark = replyMarkOf(chat);
+            if (chatMark === 'error') {
+                return { writing, mark: chatMark };
+            }
+            mark ??= chatMark;
+        }
+        return { writing, mark };
+    }
+
+    // The rows of the Simple and List views and the Trash list draw this through their name row; a trashed character shows none.
+    setContext(replyStateContext, (chaId: string): CharacterReplyState =>
+        replyStateOf(DBState.db.characters.find((candidate) => candidate.chaId === chaId && !candidate.trashTime)));
     interface Props {
         endGrid?: any;
     }
@@ -161,14 +186,11 @@
     }
     // Picking an entry opens the character and leaves the screen, as the
     // simple list does.
-    // A reply being written refuses the pick in either mode, and the grid stays open so the notice is
-    // read where the tap was. In the new shell the switch is quiet and a failed restore ends in the
-    // chat frame. With the shell off, a warm pick opens and closes at once; a pick that must restore
-    // keeps the grid open with its tile marked and closes it only when `changeChar` selected.
+    // A reply being written never refuses a pick. In the new shell the switch is quiet and a failed
+    // restore ends in the chat frame. With the shell off, a warm pick opens and closes at once; a pick
+    // that must restore keeps the grid open with its tile marked and closes it only when `changeChar`
+    // selected.
     function pick(index: number) {
-        if (refuseSwitchWhileWriting()) {
-            return
-        }
         if (shellEligible()) {
             const entry = DBState.db.characters[index]
             endGrid()
@@ -249,9 +271,6 @@
             return
         }
         opening = null
-        if (outcome === 'busy') {
-            alertNormal(language.chatShellSwitchRefusedWriting)
-        }
     }
 
     // Leaving the screen or entering edit mode cancels the open: a later landing selects nothing.
@@ -1563,6 +1582,7 @@
     {:else if entry}
         {@const index = entry.index}
         {@const char = DBState.db.characters[index]}
+        {@const replyState = replyStateOf(char)}
         <!-- A search result, or any sort but My order, names the folder of each member. -->
         {@const badge = (found.searching || sort !== 'order') && entry.folderName !== undefined ? (entry.folderName || language.sidebarUi.defaultFolderName) : undefined}
         <!-- Defence in depth: a position past the end of a shrinking list draws no tile instead of throwing. -->
@@ -1570,7 +1590,7 @@
             <!-- The avatar's button is not a prop of CharListAvatar: in edit mode the attachment gives it aria-pressed from the selection. -->
             <div
                 class="flex items-center text-textcolor"
-                class:relative={badge !== undefined || editing}
+                class:relative={badge !== undefined || editing || replyState.writing || replyState.mark !== null}
                 class:opacity-40={dimmedKeys.has(entry.key)}
                 {@attach (node: HTMLElement) => {
                     const button = node.querySelector('button')
@@ -1610,6 +1630,14 @@
                     {@render pickMark(picks.has(entry.key))}
                 {/if}
                 {@render dropMark(entry.key)}
+                {#if replyState.writing}
+                    <span data-part="reply-writing-badge" role="img" aria-label={language.chatWritingBadge} class="absolute top-0 start-0 flex items-center justify-center rounded-full bg-darkbg/80 p-0.5 text-textcolor2 animate-pulse pointer-events-none"><PencilIcon size={12} /></span>
+                {/if}
+                {#if replyState.mark === 'reply'}
+                    <span data-part="reply-new-dot" role="img" aria-label={language.chatNewReplyDot} class="absolute top-0 end-0 size-3 rounded-full bg-selected border border-textcolor2 pointer-events-none"></span>
+                {:else if replyState.mark === 'error'}
+                    <span data-part="reply-error-dot" role="img" aria-label={language.chatReplyErrorDot} class="absolute top-0 end-0 size-3 rounded-full bg-draculared pointer-events-none"></span>
+                {/if}
                 {#if badge !== undefined}
                     <span class="absolute bottom-0 inset-x-0 flex items-center gap-0.5 px-0.5 rounded-b-md bg-darkbg/80 text-textcolor2 text-[10px] leading-tight pointer-events-none">
                         <FolderIcon size={10} class="shrink-0" />

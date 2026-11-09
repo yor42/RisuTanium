@@ -2,6 +2,7 @@ import { get } from 'svelte/store'
 import { DBState, selectedCharID } from '../stores.svelte'
 import type { Message, character, Chat, groupChat } from '../storage/database.svelte'
 import { doingChat, sendChat } from './index.svelte'
+import { hasChimedFor, hasSilencedFor } from './replyNotice'
 import type { SendChatOriginHint } from './index.svelte'
 import { sleep } from '../util'
 import { language } from '../../lang'
@@ -13,11 +14,11 @@ import { ensureModulesOrAlert } from './moduleEnsure'
 import { hasModuleStubs } from './moduleRefList'
 import { isColdChat } from './coldstorageData'
 import { isExpTranslator, translate } from '../translator/translator'
-import { beginWork, originStatus, writeAt, type Origin, type WorkHandle } from './chatOrigin'
+import { beginWork, isBusyIn, isShownChat, originStatus, stopWorkIn, writeAt, type Origin, type WorkHandle } from './chatOrigin'
 import { rerollBase } from './rerollHistory'
 import { detachTail, endTarget, refuseUnreadableAlt, siblingsAt, stampMissingIds, switchTo } from './chatTree'
 import { markCharacterForSave } from '../storage/characterSaveMarks'
-import { abortUnitInProgress, isComposerWindowOpen, setComposerWindow, turnsReachedCount } from './generationOwnership.svelte'
+import { abortUnitInProgress, composerWindowFor, isComposerWindowOpen, setComposerWindow, turnsReachedCount } from './generationOwnership.svelte'
 import { registerDraft, unregisterDraft, COMPOSER_DRAFT_KIND } from '../localDrafts'
 import * as composerDrafts from './composerDrafts.svelte'
 import type { ComposerDraftKey } from './composerDrafts.svelte'
@@ -143,6 +144,23 @@ export function resetComposerActionsForTests(): void {
 /** True while the one-action window is open; the Send button's busy state. */
 export function isComposerBusy(): boolean {
     return isComposerWindowOpen()
+}
+
+/**
+ * True while a reply or preview is registered in `target`, or the composer
+ * window is open for it. The shown chat's Send and Stop follow this, so a
+ * reply written elsewhere does not turn them into a Stop for this chat.
+ */
+export function isComposerBusyIn(target: { chaId: string, chatId: string }): boolean {
+    return isBusyIn(target) || composerWindowFor(target)
+}
+
+/**
+ * Stops the work owned by `target` alone: its send, its unsettled take and its
+ * auto mode. Another chat's work is never touched.
+ */
+export function stopComposerWorkIn(target: { chaId: string, chatId: string }): void {
+    stopWorkIn(target)
 }
 
 /** True from a Send's/Continue's take until its hand-off or put-back. */
@@ -273,7 +291,7 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
     // controller rather than a stale one left by an earlier generation.
     currentGenerationController = controller
 
-    setComposerWindow(true)
+    setComposerWindow(true, workHandle.origin)
     locked = true
 
     const record: InflightRecord = {
@@ -665,7 +683,7 @@ async function regenerate(source: ComposerActionsSource): Promise<void> {
     if(refused){
         return
     }
-    setComposerWindow(true)
+    setComposerWindow(true, entry.workHandle.origin)
     try {
         const { char, chat, workHandle } = entry
         // Closed before the chat is cut: nothing between the cut and the
@@ -722,6 +740,7 @@ export async function sendChatMain(target: GenerationTarget, continued: boolean 
     // this same generation.
     currentGenerationController = controller
     let completed = false
+    let threw = false
     try {
         completed = await sendChat(-1, {
             signal: controller.signal,
@@ -730,10 +749,14 @@ export async function sendChatMain(target: GenerationTarget, continued: boolean 
             originHint: target.originHint
         })
     } catch (error) {
+        threw = true
         console.error(error)
         alertError(error)
     }
-    if(DBState.db.playMessage){
+    // A reply that finished off screen already sounded once in `announceReply`, whichever channel carried the sound. A failed
+    // or stopped reply plays no sound at all.
+    const silent = threw || controller.signal.aborted || hasSilencedFor(controller.signal)
+    if(DBState.db.playMessage && !hasChimedFor(controller.signal) && !silent){
         const audio = new Audio(sendSound);
         audio.play().catch(() => {});
     }
@@ -803,8 +826,7 @@ export function abortChat(): void {
 
 /** True while the chat on screen is the one `origin` names. */
 function isShowingChat(origin: Origin): boolean {
-    const shown = DBState.db.characters[get(selectedCharID)]
-    return shown?.chaId === origin.chaId && shown.chats?.[shown.chatPage]?.id === origin.chatId
+    return isShownChat(origin)
 }
 
 /**
@@ -851,7 +873,7 @@ export async function runAutoMode(source: ComposerActionsSource): Promise<void> 
     }
     const target: GenerationTarget = { origin: workHandle.origin, originHint: { owner: char, chat } }
     autoModeRunning = true
-    setComposerWindow(true)
+    setComposerWindow(true, target.origin)
     try {
         let quietTicks = 0
         while(autoModeRunning){

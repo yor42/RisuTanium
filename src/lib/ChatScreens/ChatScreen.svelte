@@ -14,8 +14,13 @@
     import SideBarArrow from "../UI/GUI/SideBarArrow.svelte";
     import ModuleChatMenu from "../Setting/Pages/Module/ModuleChatMenu.svelte";
     import { chatSurface } from "./chatSurface.svelte";
+    import { onMount } from 'svelte';
+    import { holdChatView } from '../../ts/process/chatOnScreen.svelte';
     let openChatList = $state(false)
     let openModuleList = $state(false)
+
+    // A mounted ChatScreen is one of the conditions for a chat to count as on screen; the release runs on destroy.
+    onMount(() => holdChatView())
 
     // Opening Settings closes the chat and module menus.
     let seenCloseEpoch = chatSurface.closeEpoch

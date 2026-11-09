@@ -58,6 +58,9 @@ vi.mock(import('src/ts/parser/parser.svelte'), () => ({
 }) as unknown as typeof import('src/ts/parser/parser.svelte'))
 
 import { DBState } from 'src/ts/stores.svelte'
+import { doingChat } from 'src/ts/process/index.svelte'
+import { registerWork } from 'src/ts/process/chatOrigin'
+import { requestSuggestionData } from 'src/ts/process/suggestionRequest'
 import Suggestion from './Suggestion.svelte'
 
 interface LiveMessage { role: 'user' | 'char', data: string, chatId: string }
@@ -95,6 +98,7 @@ const shown = () => target?.textContent ?? ''
 
 beforeEach(() => {
     pending.resolvers.length = 0
+    doingChat.set(false)
 })
 
 afterEach(async () => {
@@ -110,6 +114,64 @@ const path = (): LiveMessage[] => [
     { role: 'user', data: 'Hi', chatId: 'u1' },
     { role: 'char', data: 'Hello', chatId: 'c2' },
 ]
+
+describe('suggestions while a reply is written in another chat', () => {
+    /** The shown chat carries ids and a list already, so a request for it would only follow a clear. */
+    function setupShownWithIds(suggestMessages: string[]): LiveChat {
+        const chat = { id: 'chat-b', message: path(), suggestMessages } as unknown as LiveChat
+        DBState.db = {
+            translator: '',
+            autoTranslate: false,
+            subModel: 'sub',
+            autoSuggestPrompt: 'suggest',
+            characters: [{ chaId: 'char-b', name: 'Char B', chatPage: 0, chats: [chat] }],
+        } as never
+        target = document.createElement('div')
+        document.body.appendChild(target)
+        instance = mount(Suggestion, { target, props: { send: () => {}, messageInput: () => {} } })
+        flushSync()
+        return (DBState.db.characters as unknown as Array<{ chats: LiveChat[] }>)[0].chats[0]
+    }
+
+    test('T13: a reply that starts and settles in another chat leaves the shown chat\'s suggestions alone and asks for none', async () => {
+        setupShownWithIds(['alpha reply', 'beta reply'])
+        await settle()
+        expect(shown()).toContain('alpha reply')
+        vi.mocked(requestSuggestionData).mockClear()
+
+        const reply = registerWork({ chaId: 'char-a', chatId: 'chat-a' }, undefined, 'reply')
+        doingChat.set(true)
+        flushSync()
+        await settle()
+        expect(shown()).toContain('alpha reply')
+
+        reply.end()
+        doingChat.set(false)
+        flushSync()
+        await settle()
+
+        expect(shown()).toContain('alpha reply')
+        expect(requestSuggestionData).not.toHaveBeenCalled()
+    })
+
+    test('T13: a reply in the shown chat clears the list while it writes and asks again when it ends', async () => {
+        const chat = setupShownWithIds(['alpha reply'])
+        await settle()
+        vi.mocked(requestSuggestionData).mockClear()
+
+        const reply = registerWork({ chaId: 'char-b', chatId: 'chat-b' }, undefined, 'reply')
+        flushSync()
+        await settle()
+        expect(shown()).not.toContain('alpha reply')
+
+        // The new reply replaces the last message, which drops the chat's own list.
+        delete chat.suggestMessages
+        reply.end()
+        flushSync()
+        await settle()
+        expect(requestSuggestionData).toHaveBeenCalledTimes(1)
+    })
+})
 
 describe('suggestions across a tree switch', () => {
     test('guard: the list is empty once the switch clears the chat suggestions', async () => {

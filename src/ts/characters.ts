@@ -15,7 +15,6 @@ import { ensureCurrentModulesOrAlert, ensureModulesOrAlert } from "./process/mod
 import { hasModuleStubs, unloadedModulesOf } from "./process/moduleRefList";
 import { parseMarkdownSafe, sanitizeMarkdownSafe } from "./parser/parser.svelte";
 import { translateHTML } from "./translator/translator";
-import { doingChat } from "./process/index.svelte";
 import { importCharacter } from "./characterCards";
 import { PngChunk } from "./pngChunk";
 import { findChaIdHolders, restoreColdCharacter, type ColdRestoreFailure } from "./process/coldCharacterRestore";
@@ -1706,8 +1705,7 @@ function alertGroupMembersNotLoaded(names: string[]){
 }
 
 /**
- * Counts the `changeChar` calls that got past the `doingChat` guard plus each
- * `supersedeChangeChar()`. Only a call still holding the latest number may
+ * Counts the `changeChar` calls plus each `supersedeChangeChar()`. Only a call still holding the latest number may
  * select a character, so a slow restore of an archived character cannot
  * override a later choice or a selection move that ended its switch.
  */
@@ -1724,12 +1722,12 @@ export function supersedeChangeChar(): void {
 
 /**
  * What a `changeChar` call ended as. Only `selected` moved the selection.
- * `busy`: a reply is being written. `superseded`: a later call started.
- * `gone`: the character was no longer in the list when it was due to be
- * selected. `failed`: an archived character could not be restored; with
+ * A reply being written never refuses a switch. `superseded`: a later call
+ * started. `gone`: the character was no longer in the list when it was due to
+ * be selected. `failed`: an archived character could not be restored; with
  * `quiet` the caller reports it from `reason`.
  */
-export type ChangeCharOutcome = 'selected' | 'busy' | 'superseded' | 'gone' | { failed: ColdRestoreFailure }
+export type ChangeCharOutcome = 'selected' | 'superseded' | 'gone' | { failed: ColdRestoreFailure }
 
 export async function changeChar(index: number, arg:{
     reseter?:()=>any,
@@ -1740,18 +1738,14 @@ export async function changeChar(index: number, arg:{
 } = {}): Promise<ChangeCharOutcome> {
     const reseter = arg.reseter ?? (() => {})
     const updateInteraction = !arg.keepInteraction
-    if(get(doingChat)){
-      return 'busy'
-    }
     const callId = ++latestChangeChar
     reseter();
     const clicked = DBState.db.characters?.[index]
     if(clicked?.coldstorage){
         // The restore finds the clicked placeholder again after its read, so
         // the character list may have changed meanwhile; it tells the user
-        // when it fails. Selecting is skipped when a later call has started
-        // or a chat began generating during the read. The last interaction is
-        // set only when the character is selected.
+        // when it fails. Selecting is skipped when a later call has started.
+        // The last interaction is set only when the character is selected.
         const outcome = arg.quiet
             ? await restoreColdCharacter(clicked, { quiet: true })
             : await restoreColdCharacter(clicked)
@@ -1775,9 +1769,6 @@ export async function changeChar(index: number, arg:{
         if(callId !== latestChangeChar){
             return 'superseded'
         }
-        if(get(doingChat)){
-            return 'busy'
-        }
         const selectedIndex = DBState.db.characters.indexOf(outcome.character)
         if(selectedIndex === -1){
             return 'gone'
@@ -1795,9 +1786,6 @@ export async function changeChar(index: number, arg:{
         const failedMembers = await restoreGroupMembers(clicked)
         if(callId !== latestChangeChar){
             return 'superseded'
-        }
-        if(get(doingChat)){
-            return 'busy'
         }
         const groupIndex = DBState.db.characters.indexOf(clicked)
         if(groupIndex === -1){

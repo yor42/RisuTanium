@@ -2,10 +2,9 @@
  * `switchCharacter` and the pending-switch state (`switchTarget.svelte.ts`).
  *
  * Invariants exercised here:
- * - A switch while a reply is being written is refused with a notice and
- *   changes nothing; other outcomes of the underlying `changeChar` end the
- *   pending state, except a refused restore, which stays as `failed` for the
- *   frame to show.
+ * - A reply being written never refuses a switch; outcomes of the underlying
+ *   `changeChar` end the pending state, except a refused restore, which stays
+ *   as `failed` for the frame to show.
  * - The pending state never outlives a foreign selection change, a newer
  *   switch or a non-failed outcome, and a stale outcome never revives it.
  * - The character index is resolved when the switch is requested.
@@ -50,9 +49,9 @@ vi.mock(import('src/ts/process/index.svelte'), () => ({
 import { DBState, selectedCharID, selIdState } from 'src/ts/stores.svelte'
 import { alertNormal, alertError } from 'src/ts/alert'
 import { doingChat } from 'src/ts/process/index.svelte'
-import { language } from 'src/lang'
+import { registerWork } from 'src/ts/process/chatOrigin'
 import { resolveSwitchFocus } from './overlayFocus'
-import { switchTarget, switchCharacter, retrySwitch, backToPrevious, abandonPendingSwitch, clearPending, refuseSwitchWhileWriting } from './switchTarget.svelte'
+import { switchTarget, switchCharacter, retrySwitch, backToPrevious, abandonPendingSwitch, clearPending } from './switchTarget.svelte'
 
 type Entry = Database['characters'][number]
 
@@ -109,25 +108,35 @@ describe('pending switch state', () => {
         expect(switchTarget.reason).toBeNull()
     })
 
-    test('TA5: a switch while a reply is written is refused with the notice and changes nothing', async () => {
+    test('TA5 (T4): a switch while a reply is written reaches changeChar and shows no notice', async () => {
         const [first] = install([warm('a'), warm('b')])
+        changeCharMock.mockResolvedValue('selected')
         doingChat.set(true)
+        const reply = registerWork({ chaId: 'b', chatId: 'b-chat' }, undefined, 'reply')
 
         const outcome = await switchCharacter(first)
+        reply.end()
 
-        expect(outcome).toBe('busy')
-        expect(alertNormal).toHaveBeenCalledTimes(1)
-        expect(alertNormal).toHaveBeenCalledWith(language.chatShellSwitchRefusedWriting)
-        expect(changeCharMock).not.toHaveBeenCalled()
+        expect(outcome).toBe('selected')
+        expect(alertNormal).not.toHaveBeenCalled()
+        expect(changeCharMock).toHaveBeenCalledTimes(1)
         expect(switchTarget.phase).toBe('idle')
     })
 
-    test('refuseSwitchWhileWriting reports whether it refused, and only notices when it did', () => {
-        expect(refuseSwitchWhileWriting()).toBe(false)
-        expect(alertNormal).not.toHaveBeenCalled()
+    test('TA5b (T4): a cold switch while a reply is written is pending as usual and lands without a notice', async () => {
+        const [, s] = install([warm('a'), stub('s')])
+        const calls = holdChangeChar()
         doingChat.set(true)
-        expect(refuseSwitchWhileWriting()).toBe(true)
-        expect(alertNormal).toHaveBeenCalledTimes(1)
+        const reply = registerWork({ chaId: 'a', chatId: 'a-chat' }, undefined, 'reply')
+
+        const pending = switchCharacter(s)
+        expect(switchTarget.phase).toBe('loading')
+        calls[0].resolve('selected')
+        await pending
+        reply.end()
+
+        expect(switchTarget.phase).toBe('idle')
+        expect(alertNormal).not.toHaveBeenCalled()
     })
 
     test('a warm character switches quietly and leaves nothing pending', async () => {
@@ -301,18 +310,17 @@ describe('pending switch state', () => {
         expect(alertNormal).not.toHaveBeenCalled()
     })
 
-    test('TA11: a reply that started during the read ends the pending state with the notice', async () => {
+    test('TA11: a reply that started during the read does not keep the switch pending', async () => {
         const [, s] = install([warm('a'), stub('s')])
         const calls = holdChangeChar()
 
         const pending = switchCharacter(s)
         doingChat.set(true)
-        calls[0].resolve('busy')
+        calls[0].resolve('selected')
         await pending
 
         expect(switchTarget.phase).toBe('idle')
-        expect(alertNormal).toHaveBeenCalledTimes(1)
-        expect(alertNormal).toHaveBeenCalledWith(language.chatShellSwitchRefusedWriting)
+        expect(alertNormal).not.toHaveBeenCalled()
     })
 
     test('gone ends the pending state without a notice', async () => {

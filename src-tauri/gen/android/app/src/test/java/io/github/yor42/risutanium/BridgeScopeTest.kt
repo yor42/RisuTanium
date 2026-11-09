@@ -2,6 +2,7 @@ package io.github.yor42.risutanium
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -99,6 +100,69 @@ class BridgeScopeTest {
     assertNull(toCommand("keepAlive", "stopAfter", listOf("100"), null))
     assertNull(toCommand("openedFiles", "confirm", listOf("3"), null))
     assertNull(toCommand("openedFiles", "confirm", listOf(-1), null))
+  }
+
+  @Test
+  fun everyReplyNotificationsFormIsRecognised() {
+    assertNotNull(toCommand("replyNotifications", "refresh", emptyList(), null))
+    assertNotNull(toCommand("replyNotifications", "enable", emptyList(), null))
+    assertNotNull(toCommand("replyNotifications", "disable", emptyList(), null))
+    assertNotNull(toCommand("replyNotifications", "notify", listOf("cha/chat", "Title", "Body", true), null))
+    assertNotNull(toCommand("replyNotifications", "notify", listOf("cha/chat", "", "", false), null))
+    assertNotNull(toCommand("replyNotifications", "cancel", listOf("cha/chat"), null))
+  }
+
+  // New-API test: it names the command types this stage adds.
+  @Test
+  fun theReplyNotificationsCommandsCarryTheirArguments() {
+    assertSame(BridgeCommand.ReplyNotificationsRefresh, toCommand("replyNotifications", "refresh", emptyList(), null))
+    assertSame(BridgeCommand.ReplyNotificationsEnable, toCommand("replyNotifications", "enable", emptyList(), null))
+    assertSame(BridgeCommand.ReplyNotificationsDisable, toCommand("replyNotifications", "disable", emptyList(), null))
+    assertEquals(
+      BridgeCommand.ReplyNotificationsNotify("a/b", "T", "B", true),
+      toCommand("replyNotifications", "notify", listOf("a/b", "T", "B", true), null)
+    )
+    assertEquals(
+      BridgeCommand.ReplyNotificationsNotify("a/b", "T", "B", false),
+      toCommand("replyNotifications", "notify", listOf("a/b", "T", "B", false), null)
+    )
+    assertEquals(BridgeCommand.ReplyNotificationsCancel("a/b"), toCommand("replyNotifications", "cancel", listOf("a/b"), null))
+  }
+
+  @Test
+  fun aReplyNotificationsKeyIsOneToTwoHundredCharacters() {
+    val longest = "k".repeat(200)
+    assertNotNull(toCommand("replyNotifications", "notify", listOf(longest, "T", "B", true), null))
+    assertNotNull(toCommand("replyNotifications", "cancel", listOf(longest), null))
+    assertNull(toCommand("replyNotifications", "notify", listOf("k".repeat(201), "T", "B", true), null))
+    assertNull(toCommand("replyNotifications", "notify", listOf("", "T", "B", true), null))
+    assertNull(toCommand("replyNotifications", "cancel", listOf("k".repeat(201)), null))
+    assertNull(toCommand("replyNotifications", "cancel", listOf(""), null))
+  }
+
+  @Test
+  fun aReplyNotificationsWrongArityIsDropped() {
+    assertNull(toCommand("replyNotifications", "refresh", listOf(1), null))
+    assertNull(toCommand("replyNotifications", "enable", listOf("x"), null))
+    assertNull(toCommand("replyNotifications", "disable", listOf(true), null))
+    assertNull(toCommand("replyNotifications", "notify", listOf("k", "T", "B"), null))
+    assertNull(toCommand("replyNotifications", "notify", listOf("k", "T", "B", true, 1), null))
+    assertNull(toCommand("replyNotifications", "notify", emptyList(), null))
+    assertNull(toCommand("replyNotifications", "cancel", emptyList(), null))
+    assertNull(toCommand("replyNotifications", "cancel", listOf("k", "j"), null))
+    assertNull(toCommand("replyNotifications", "restart", emptyList(), null))
+  }
+
+  @Test
+  fun aReplyNotificationsWrongTypeIsDropped() {
+    assertNull(toCommand("replyNotifications", "notify", listOf("k", "T", "B", "true"), null))
+    assertNull(toCommand("replyNotifications", "notify", listOf("k", "T", "B", 1), null))
+    assertNull(toCommand("replyNotifications", "notify", listOf("k", "T", "B", null), null))
+    assertNull(toCommand("replyNotifications", "notify", listOf(5, "T", "B", true), null))
+    assertNull(toCommand("replyNotifications", "notify", listOf("k", null, "B", true), null))
+    assertNull(toCommand("replyNotifications", "notify", listOf("k", "T", 3, true), null))
+    assertNull(toCommand("replyNotifications", "cancel", listOf(7), null))
+    assertNull(toCommand("replyNotifications", "cancel", listOf(null), null))
   }
 
   @Test

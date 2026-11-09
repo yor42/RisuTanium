@@ -18,6 +18,7 @@ import { RefElementError, withReplacedRefs } from 'src/ts/storage/store2/recover
 import {
     omittedTailsOf, planRestore, RtbRestoreError, type RestorePlanInput, type RestoreRequest,
 } from 'src/ts/storage/store2/rtb/restoreBuild'
+import { buildSmall, type Obj } from './codecFixtures'
 import { createClock, testEnv } from './commitFixtures'
 import {
     assembleStore, captureExport, commitRestore, damagedFrame, FIXTURE_WALK_ROW_IDS, FIXTURE_WALK_TABLE, nonCanonicalFrame, rowsOf, rtbWorld, walkRefsOf,
@@ -165,6 +166,20 @@ describe('the round trip (T4-1, guard)', () => {
 
         const restored = await commitRestore(request)
         expect(assembleStore(restored.units, restored.manifestKey)).toEqual(assembleStore(world.store, world.manifestKey))
+    })
+
+    // P6, a compatibility guard (passes before and after): a restore copies the chunk frames as stored, so the new-reply mark in a chat's last chunk survives.
+    test('guard (P6): the new-reply mark of a chat is restored with the store', async () => {
+        const database = JSON.parse(JSON.stringify(buildSmall(2))) as Obj
+        ;((database.characters as Obj[])[0].chats as Obj[])[0].unseenReply = 'reply'
+        const world = await rtbWorld({ layout: 1, database })
+        const cap = await captureExport(await world.open())
+
+        const restored = await commitRestore(planRestore(inputOf(cap)))
+
+        const characters = (assembleStore(restored.units, restored.manifestKey) as { characters: Obj[] }).characters
+        expect((characters[0].chats as Obj[])[0].unseenReply).toBe('reply')
+        expect((characters[1].chats as Obj[]).some(chat => 'unseenReply' in chat)).toBe(false)
     })
 
     test('the planted preset, chunk and v 2 list travel as stored, and their new Refs keep the old length, checksum and element 3', () => {

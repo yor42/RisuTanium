@@ -1,6 +1,6 @@
 <script lang="ts">
     import { DBState, selIdState } from '../../ts/stores.svelte'
-    import { doingChat } from '../../ts/process/index.svelte'
+    import { isComposerBusyIn } from '../../ts/process/composerActions.svelte'
     import { aiLawApplies } from '../../ts/globalApi.svelte'
     import { coldStorageHeader, preLoadChat, retryLegacyColdChatLoad } from '../../ts/process/coldstorage.svelte'
     import { coldChatNoticeText, legacyRetryStateFor, legacyRetryView, matchColdStorageLoadErrorKey, type LegacyRetryState } from '../../ts/process/coldstorageData'
@@ -14,6 +14,8 @@
     let errorKey = $derived(matchColdStorageLoadErrorKey(first?.data))
     let retryState: Record<string, LegacyRetryState> = $state({})
     let stateKey = $derived(`${character?.chaId ?? ''}::${errorKey ?? ''}`)
+    // Only work in the shown chat holds the retry; a reply written elsewhere does not.
+    let shownBusy = $derived(character?.chaId && chat?.id ? isComposerBusyIn({ chaId: character.chaId, chatId: chat.id }) : false)
 
     async function retry(): Promise<void> {
         if (!character || !errorKey) return
@@ -44,7 +46,7 @@
         <div data-part="chat-legacy-cold-notice" role="status">
             <p>{view.text}</p>
             {#if view.detail !== null}<p>{view.detail}</p>{/if}
-            {#if view.showRetry}<button disabled={retryState[stateKey] === 'pending' || $doingChat} onclick={() => void retry()}>{language.errors.coldStorageLegacyChatRetryButton}</button>{/if}
+            {#if view.showRetry}<button disabled={retryState[stateKey] === 'pending' || shownBusy} onclick={() => void retry()}>{language.errors.coldStorageLegacyChatRetryButton}</button>{/if}
         </div>
     {/if}
     {#if chat?.message?.length === 0 && aiLawApplies()}
