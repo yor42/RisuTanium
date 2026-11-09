@@ -4,12 +4,16 @@
  * `GridCatalog.svelte` picks while the new shell is the active surface go through
  * `switchCharacter`: refused with the notice (grid stays open) while a reply is being written,
  * quiet otherwise, and a refused restore ends in the chat frame, never in an alert. With the shell
- * not eligible a pick is today's `changeChar(index)` and `endGrid()`.
+ * not eligible an idle pick is today's `changeChar(index)` and `endGrid()`, and a reply being written
+ * refuses it the same way.
  *
  * Invariants exercised here:
  * - TB9: during a reply a pick shows the notice, leaves the grid open, switches nothing.
  * - TB11: a pick of an archived character is a quiet switch; a missing unit ends as `failed`, no alert.
- * - TB10 (guard): with the shell not eligible a pick is today's call, in the Grid tab and the Simple list.
+ * - TB10 (guard): idle with the shell not eligible a pick is today's call, in the Grid tab and the Simple list.
+ * - TB12: during a reply a pick with the shell not eligible refuses the same way, in the Grid, List and
+ *   Simple tabs: notice, grid stays open, no `changeChar`.
+ * - TB13 (guard): in edit mode a tile tap only toggles the pick, with no notice, during a reply too.
  *
  * MOCKED: the module set of `GridCatalog.pick.svelte.test.ts` (same directory); `changeChar` is a
  * spy, the shell switch is a reactive flag, the alert module keeps its real prompts and spies the
@@ -226,8 +230,8 @@ async function withMounted(endGrid: () => void, body: (target: HTMLElement) => v
     }
 }
 
-function clickLayoutButton(root: HTMLElement, layout: 0 | 3): void {
-    const label = (layout === 0 ? language.grid : language.simple).trim()
+function clickLayoutButton(root: HTMLElement, layout: 0 | 1 | 3): void {
+    const label = (layout === 0 ? language.grid : layout === 1 ? language.list : language.simple).trim()
     const btn = Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.trim() === label)
     if (!btn) {
         throw new Error(`layout button not found for label "${label}"`)
@@ -311,10 +315,9 @@ describe('GridCatalog picks while the new shell is the active surface', { timeou
         })
     })
 
-    test('guard: TB10 with the shell not eligible a pick is the plain call and closes the grid', async () => {
+    test('guard: TB10 idle with the shell not eligible a pick is the plain call and closes the grid', async () => {
         shellFlag.eligible = false
         DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
-        doingChat.set(true)
         const endGrid = vi.fn()
 
         await withMounted(endGrid, (target) => {
@@ -337,6 +340,74 @@ describe('GridCatalog picks while the new shell is the active surface', { timeou
             row.click()
             expect(changeCharSpy.mock.calls).toEqual([[1]])
             expect(endGrid).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    test('TB12: during a reply with the shell not eligible a Grid tab pick shows the notice, keeps the grid open and switches nothing', async () => {
+        shellFlag.eligible = false
+        DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
+        doingChat.set(true)
+        const endGrid = vi.fn()
+
+        await withMounted(endGrid, (target) => {
+            clickLayoutButton(target, 0)
+            target.querySelectorAll<HTMLElement>('.ico')[1].click()
+            expect(endGrid).not.toHaveBeenCalled()
+            expect(changeCharSpy).not.toHaveBeenCalled()
+            expect(alertNormalSpy).toHaveBeenCalledWith(language.chatShellSwitchRefusedWriting)
+        })
+    })
+
+    test('TB12: during a reply with the shell not eligible a List tab pick refuses the same way', async () => {
+        shellFlag.eligible = false
+        DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
+        doingChat.set(true)
+        const endGrid = vi.fn()
+
+        await withMounted(endGrid, (target) => {
+            clickLayoutButton(target, 1)
+            const heading = Array.from(target.querySelectorAll('h4')).find((h) => h.textContent?.trim() === 'Bob')!
+            heading.click()
+            expect(endGrid).not.toHaveBeenCalled()
+            expect(changeCharSpy).not.toHaveBeenCalled()
+            expect(alertNormalSpy).toHaveBeenCalledWith(language.chatShellSwitchRefusedWriting)
+        })
+    })
+
+    test('TB12: during a reply with the shell not eligible a Simple tab pick refuses the same way', async () => {
+        shellFlag.eligible = false
+        DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
+        doingChat.set(true)
+        const endGrid = vi.fn()
+
+        await withMounted(endGrid, (target) => {
+            clickLayoutButton(target, 3)
+            const row = Array.from(target.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent?.includes('Bob'))!
+            row.click()
+            expect(endGrid).not.toHaveBeenCalled()
+            expect(changeCharSpy).not.toHaveBeenCalled()
+            expect(alertNormalSpy).toHaveBeenCalledWith(language.chatShellSwitchRefusedWriting)
+        })
+    })
+
+    test('guard: TB13 in edit mode a tile tap toggles the pick, with no notice, during a reply', async () => {
+        shellFlag.eligible = false
+        DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
+        doingChat.set(true)
+        const endGrid = vi.fn()
+
+        await withMounted(endGrid, async (target) => {
+            clickLayoutButton(target, 0)
+            const edit = Array.from(target.querySelectorAll('button')).find((b) => b.textContent?.trim() === language.othersUi.editMode)!
+            edit.click()
+            await settle()
+            const tile = target.querySelectorAll<HTMLElement>('.ico')[1]
+            tile.click()
+            await settle()
+            expect(alertNormalSpy).not.toHaveBeenCalled()
+            expect(changeCharSpy).not.toHaveBeenCalled()
+            expect(endGrid).not.toHaveBeenCalled()
+            expect(target.querySelectorAll<HTMLElement>('.ico')[1].getAttribute('aria-pressed')).toBe('true')
         })
     })
 })

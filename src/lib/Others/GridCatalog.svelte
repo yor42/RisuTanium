@@ -151,13 +151,14 @@
     }
     // Picking an entry opens the character and leaves the screen, as the
     // simple list does.
-    // In the new shell the switch is quiet and a failed restore ends in the chat frame; a reply being
-    // written refuses it, and the grid stays open so the notice is read where the tap was.
+    // A reply being written refuses the pick in either mode, and the grid stays open so the notice is
+    // read where the tap was. In the new shell the switch is quiet and a failed restore ends in the
+    // chat frame.
     function pick(index: number) {
+        if (refuseSwitchWhileWriting()) {
+            return
+        }
         if (shellEligible()) {
-            if (refuseSwitchWhileWriting()) {
-                return
-            }
             const entry = DBState.db.characters[index]
             endGrid()
             void switchCharacter(entry)
