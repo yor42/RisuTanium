@@ -96,12 +96,22 @@
     }
 
     let hashes: Set<number> = new Set();
+    // The inputs of each row's hash as of the previous run, by row index. A row whose inputs are all unchanged reuses its
+    // hash instead of walking its text again, so a streamed chunk costs a walk of the changed row only. `msg` is the
+    // message object the entry was made for, and `streamCarry` marks a hash that the streaming tail carries in place
+    // while its text changes: such an entry is never reused as a plain memo hit.
+    type HashMemoEntry = { data: string, id: string, tail: string, hash: number, streamCarry: boolean, msg: Message };
+    let hashMemo: Map<number, HashMemoEntry> = new Map();
     type ChatInstance = {
         updateStreamingDisplay?: (state: {
             isOptimizedStreamingMessage: boolean
             streamingOptimizationMode: StreamingDisplayOptimizationMode
             rawStreamingText: string
+            message?: string
+            translationHold?: boolean
         }) => void
+        isTranslatedView?: () => boolean
+        updateExpectedId?: (id: string | undefined) => void
     }
     let mountInstances: Map<number, ChatInstance> = new Map();
     // Every run of the effect below that mounts anything mounts all of its roots under one holder, so
@@ -148,6 +158,7 @@
             loadEnd = Math.max(0, chatFoldedStateMessageIndex.index - loadPages)
         }
 
+        const nextHashMemo: Map<number, HashMemoEntry> = new Map();
         const reloadPointerMap = get(ReloadChatPointer);
         // The loop keeps every reactive read; mounting is deferred to one holder after it, in the same order.
         const pendingMounts: Array<(run: MountHolderRun<number>) => void> = [];
@@ -171,13 +182,53 @@
                 && i === messages.length - 1
                 && isActiveStreamReply(message.chatId)
                 && DBState.db.autoTranslate === true;
-            let hashd = hashMessageData + (message.chatId ?? '') + i.toString() + messageLargePortrait.toString() + message.disabled?.toString() + reloadPointer.toString() + (interrupted ? 'interrupted' : '') + (deferAutoTranslate ? 'autotr' : '');
-            const currentHash = hashCode(hashd);
+            const rowId = message.chatId ?? '';
+            const rowTail = i.toString() + messageLargePortrait.toString() + message.disabled?.toString() + reloadPointer.toString() + (interrupted ? 'interrupted' : '') + (deferAutoTranslate ? 'autotr' : '');
+            const memoEntry = hashMemo.get(i);
+            // The reply being streamed in 'off' mode: the last 'char' row of a streaming chat. Its row is carried in place
+            // while only its text changes, and the translated view waits for the reply to end.
+            const offTail = performanceMode === 'off'
+                && currentChat?.isStreaming === true
+                && i === messages.length - 1
+                && message.role === 'char';
+            const holdTail = offTail && isActiveStreamReply(message.chatId);
+            // A row whose only change is a newly stamped id keeps its mounted instance and receives the id in place. It
+            // holds for the same message object only: another object at this index (a switched chat or a shifted row)
+            // replaces the row, and a carried tail is never kept here, so a stream still ends with one remount.
+            const stampKept = memoEntry !== undefined
+                && !memoEntry.streamCarry
+                && memoEntry.msg === message
+                && memoEntry.id === ''
+                && rowId !== ''
+                && memoEntry.data === hashMessageData
+                && memoEntry.tail === rowTail;
+            let currentHash: number;
+            let streamCarry = false;
+            if(stampKept){
+                currentHash = memoEntry.hash;
+            }
+            else if(offTail && memoEntry && memoEntry.msg === message && memoEntry.id === rowId && memoEntry.tail === rowTail){
+                currentHash = memoEntry.hash;
+                streamCarry = true;
+            }
+            else if(memoEntry && !memoEntry.streamCarry && memoEntry.data === hashMessageData && memoEntry.id === rowId && memoEntry.tail === rowTail){
+                currentHash = memoEntry.hash;
+            }
+            else{
+                currentHash = hashCode(hashMessageData + rowId + rowTail);
+            }
+            nextHashMemo.set(i, { data: hashMessageData, id: rowId, tail: rowTail, hash: currentHash, streamCarry, msg: message });
             currentHashes.add(currentHash);
             if(!hashes.has(currentHash)){
                 const b = document.createElement('div');
                 b.setAttribute('x-hashed', currentHash.toString());
                 b.classList.add('chat-message-container');
+                // A tail mounted at the end of a carried stream keeps the translated view the carried instance showed.
+                // Read here, before the removal below unmounts that instance.
+                const startTranslated = !offTail
+                    && memoEntry?.streamCarry === true
+                    && memoEntry.msg === message
+                    && mountInstances.get(memoEntry.hash)?.isTranslatedView?.() === true;
                 const props = {
                     message: message.data,
                     isLastMemory: false,
@@ -199,6 +250,8 @@
                     rawStreamingText: message.data,
                     interrupted,
                     deferAutoTranslate,
+                    translationHold: holdTail,
+                    startTranslated,
                     expectedId: message.chatId,
                     onStep: onStep,
                     onBranch: onBranch,
@@ -225,7 +278,12 @@
                     isOptimizedStreamingMessage: activeStreamingMessage,
                     streamingOptimizationMode: performanceMode,
                     rawStreamingText: message.data,
+                    message: offTail ? message.data : undefined,
+                    translationHold: holdTail,
                 })
+                if(stampKept){
+                    mountInstances.get(currentHash)?.updateExpectedId?.(message.chatId)
+                }
             }
             nextHash = currentHash;
             
@@ -262,12 +320,14 @@
         });
 
         hashes = currentHashes;
-        
+        hashMemo = nextHashMemo;
+
     };
 
     onDestroy(() => {
         console.log('Unmounting Chats');
         hashes.clear();
+        hashMemo.clear();
         mountInstances.forEach((inst) => {
             unmount(inst);
         });
@@ -286,6 +346,7 @@
             element.remove();
         });
         hashes = new Set();
+        hashMemo = new Map();
     }
 
     function checkIfAtBottom() {
@@ -328,7 +389,16 @@
                 restoreTop = capture.top;
             }
         }
-        const wasAtBottom = checkIfAtBottom();
+        // The bottom position is read only when the auto-scroll block below will use it: a new 'char' reply in the same
+        // chat. A streamed chunk grows no list, so it forces no layout here.
+        const currentChatRoomId = getCurrentChatRoomId();
+        const isSameChat = currentChatRoomId === previousChatRoomId;
+        let newCharReply = false;
+        if(isSameChat && messages.length > previousLength){
+            const lastMsg = messages[messages.length - 1];
+            newCharReply = !!lastMsg && lastMsg.role === 'char' && !!DBState.db.autoScrollToNewMessage;
+        }
+        const wasAtBottom = newCharReply ? checkIfAtBottom() : false;
         const scrollHost = chatBody?.parentElement ?? null;
         if(rebuilding){
             lastRebuildEpoch = chatSurface.rebuildEpoch;
@@ -353,23 +423,17 @@
             }
         }
 
-        const currentChatRoomId = getCurrentChatRoomId();
-        const isSameChat = currentChatRoomId === previousChatRoomId;
-        
         // Only auto-scroll if it's the same chat and new messages were added
-        if(isSameChat && messages.length > previousLength){
-            const lastMsg = messages[messages.length - 1];
-            if(lastMsg && lastMsg.role === 'char' && DBState.db.autoScrollToNewMessage){
-                if(wasAtBottom || DBState.db.alwaysScrollToNewMessage){
-                    const element = chatBody.firstElementChild;
-                    if(element){
-                        setTimeout(() => {
-                            element.scrollIntoView({ behavior: 'instant', block: 'start' });
-                        }, 700);
-                    }
-                } else {
-                    hasNewUnreadMessage = true;
+        if(newCharReply){
+            if(wasAtBottom || DBState.db.alwaysScrollToNewMessage){
+                const element = chatBody.firstElementChild;
+                if(element){
+                    setTimeout(() => {
+                        element.scrollIntoView({ behavior: 'instant', block: 'start' });
+                    }, 700);
                 }
+            } else {
+                hasNewUnreadMessage = true;
             }
         }
         previousLength = messages.length;

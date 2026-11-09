@@ -485,14 +485,16 @@ describe('S3 boundary: a source change plus a remount shows the indicator, never
         expect(held.text).not.toContain('P:FIRST')
     })
 
-    test('G T22 row 3: the streaming reply is not given an indicator per chunk', async () => {
+    test('G T22 row 3: the streaming reply keeps its previous rendering, without an indicator, on the same row', async () => {
         const { target, chat } = await renderedMessage()
+        const row = rowNodes(target)[0]
         chat.isStreaming = true
         for (const chunk of ['FIRST a', 'FIRST ab', 'FIRST abc']) {
             chat.message[0].data = chunk
             const held = await sampleBody(target)
             expect(held.indicators).toBe(0)
-            expect(held.text).not.toContain('P:FIRST')
+            expect(held.text).toContain('P:FIRST')
+            expect(rowNodes(target)[0]).toBe(row)
         }
     })
 
@@ -743,6 +745,213 @@ describe('S5 the Chats tail defers auto-translate while its reply streams', () =
         }
         await answerEverything()
         expect((await sampleBody(target)).text).toContain('T:P:C ab')
+    })
+})
+
+//#endregion
+
+//#region S6: the 'off' tail is carried in place
+
+describe('S6 the carried tail keeps its row and its rendering', () => {
+    test('R T12\': after three held chunks the latest parse lands on the same row', async () => {
+        const { target, chat } = await renderedMessage()
+        const row = rowNodes(target)[0]
+        chat.isStreaming = true
+        for (const chunk of ['FIRST a', 'FIRST ab', 'FIRST abc']) {
+            chat.message[0].data = chunk
+            const held = await sampleBody(target)
+            expect(held.text).toContain('P:FIRST')
+        }
+        await answerParse(h.parses.length - 1, 'P:FIRST abc')
+        const after = await sampleBody(target)
+        expect(rowNodes(target)[0]).toBe(row)
+        expect(after.text).toContain('P:FIRST abc')
+        expect(after.indicators).toBe(0)
+    })
+})
+
+//#endregion
+
+//#region S7: an editor on the carried tail
+
+const EDIT_AREA = '.message-edit-area'
+const pencilOf = (target: HTMLElement) => target.querySelector<HTMLButtonElement>('.button-icon-edit')!
+
+describe('S7 an editor opened on the streaming tail in mode off', () => {
+    test('R T14: the editor keeps its element and its typed text over later chunks', async () => {
+        const { target, chat } = await renderedMessage()
+        chat.isStreaming = true
+        chat.message[0].data = 'FIRST a'
+        await sampleBody(target)
+        pencilOf(target).click()
+        flushSync()
+        const area = target.querySelector<HTMLTextAreaElement>(EDIT_AREA)
+        expect(area).not.toBeNull()
+        area!.value = 'typed text'
+        area!.dispatchEvent(new Event('input', { bubbles: true }))
+        flushSync()
+
+        for (const chunk of ['FIRST ab', 'FIRST abc']) {
+            chat.message[0].data = chunk
+            await sampleBody(target)
+        }
+        expect(target.querySelector<HTMLTextAreaElement>(EDIT_AREA)).toBe(area)
+        expect(area!.value).toBe('typed text')
+    })
+
+    test('G T14b: a save mid-stream is overwritten by the next chunk, in the data and on the screen', async () => {
+        const { target, chat } = await renderedMessage()
+        chat.isStreaming = true
+        chat.message[0].data = 'FIRST a'
+        await sampleBody(target)
+        pencilOf(target).click()
+        flushSync()
+        const area = target.querySelector<HTMLTextAreaElement>(EDIT_AREA)!
+        area.value = 'saved text'
+        area.dispatchEvent(new Event('input', { bubbles: true }))
+        flushSync()
+        pencilOf(target).click()
+        await sampleBody(target)
+        expect(chat.message[0].data).toBe('saved text')
+
+        chat.message[0].data = 'FIRST chunk'
+        await sampleBody(target)
+        for (const parse of h.parses.slice()) {
+            parse.resolve(`P:${parse.args[0] as string}`)
+        }
+        const after = await sampleBody(target)
+        expect(chat.message[0].data).toBe('FIRST chunk')
+        expect(after.text).toContain('P:FIRST chunk')
+        expect(after.text).not.toContain('saved text')
+    })
+})
+
+//#endregion
+
+//#region S6T: in mode off a translated view waits for the end of the reply and translates once
+
+const TRANSLATE = {
+    translatorType: 'google', translator: 'ko', translatorInputLanguage: 'en',
+    showTranslationLoading: false,
+}
+
+const translateButtonOf = (target: HTMLElement, index: number) =>
+    rowNodes(target)[index].querySelector<HTMLButtonElement>('.button-icon-translate')!
+
+/** A translated-view stream: mounted and settled, the translator log cleared, the stream open. */
+async function openTranslateStream(dbOverrides: Record<string, unknown> = {}, tailText = 'C') {
+    const messages: LiveMessage[] = [
+        { role: 'user', data: 'U', chatId: 'u1' },
+        { role: 'char', data: tailText, chatId: 'c1' },
+    ]
+    const mounted = mountChats(messages, { ...TRANSLATE, ...dbOverrides })
+    await wait(20)
+    await answerEverything()
+    h.translations.length = 0
+    const remove = startStream(mounted.chat, 'c1')
+    await wait(40)
+    await answerEverything(2)
+    return { ...mounted, remove }
+}
+
+async function streamChunk(chat: LiveChat, text: string) {
+    chat.message[1].data = text
+    await wait(40)
+    await answerEverything(2)
+}
+
+describe('S6T translated view during a carried stream', () => {
+    test('R T19: no request during the stream, one at the end for the final text, and the toggle survives', async () => {
+        const { target, chat, remove } = await openTranslateStream()
+        await streamChunk(chat, 'C a')
+        const tail = rowNodes(target)[1]
+        translateButtonOf(target, 1).click()
+        await wait(40)
+        await answerEverything(2)
+        for (const chunk of ['C ab', 'C abc']) {
+            await streamChunk(chat, chunk)
+        }
+        expect(h.translations).toHaveLength(0)
+        expect(rowNodes(target)[1]).toBe(tail)
+        expect(translateButtonOf(target, 1).className).toContain('text-blue-400')
+
+        endStream(chat, remove)
+        await wait(40)
+        await answerEverything()
+        expect(h.translations).toHaveLength(1)
+        expect(h.translations[0].args[0]).toBe('P:C abc')
+        expect(rowTexts(await sampleBody(target))[1]).toContain('T:P:C abc')
+        expect(translateButtonOf(target, 1).className).toContain('text-blue-400')
+    })
+
+    test('R T19b: with the loading spinner on, no chunk shows a spinner and the row keeps the previous parse', async () => {
+        const { target, chat, remove } = await openTranslateStream({ showTranslationLoading: true })
+        await streamChunk(chat, 'C a')
+        translateButtonOf(target, 1).click()
+        await wait(40)
+        await answerEverything(2)
+        for (const chunk of ['C ab', 'C abc']) {
+            chat.message[1].data = chunk
+            const held = await sampleBody(target)
+            expect(held.html).not.toContain('animation: spin')
+            expect(rowTexts(held)[1]).toContain('P:')
+            await answerEverything(2)
+        }
+        expect(h.translations).toHaveLength(0)
+        endStream(chat, remove)
+    })
+
+    test('R T19c: a toggle with no chunk keeps the row, sends nothing during the stream and one request at the end', async () => {
+        const { target, chat, remove } = await openTranslateStream()
+        const tail = rowNodes(target)[1]
+        translateButtonOf(target, 1).click()
+        await wait(40)
+        await answerEverything(2)
+        expect(h.translations).toHaveLength(0)
+
+        endStream(chat, remove)
+        await wait(40)
+        await answerEverything()
+        expect(rowNodes(target)[1]).toBe(tail)
+        expect(h.translations).toHaveLength(1)
+        expect(h.translations[0].args[0]).toBe('P:C')
+    })
+
+    test('R T19e: a stream that ends after a partial text translates that text once', async () => {
+        const { target, chat, remove } = await openTranslateStream({}, 'C part')
+        translateButtonOf(target, 1).click()
+        await wait(40)
+        await answerEverything(2)
+        expect(h.translations).toHaveLength(0)
+
+        // The abort path ends the stream by the same two writes as a normal end.
+        endStream(chat, remove)
+        await wait(40)
+        await answerEverything()
+        expect(h.translations).toHaveLength(1)
+        expect(h.translations[0].args[0]).toBe('P:C part')
+        expect(rowTexts(await sampleBody(target))[1]).toContain('T:P:C part')
+    })
+
+    test('G T19d: the carried view is handed over once; a body re-keyed later decides afresh', async () => {
+        const { target, chat, remove } = await openTranslateStream()
+        await streamChunk(chat, 'C a')
+        translateButtonOf(target, 1).click()
+        await wait(40)
+        await answerEverything(2)
+        endStream(chat, remove)
+        await wait(40)
+        await answerEverything()
+        expect(h.translations).toHaveLength(1)
+
+        translateButtonOf(target, 1).click()
+        await wait(40)
+        await answerEverything(2)
+        expect(translateButtonOf(target, 1).className).not.toContain('text-blue-400')
+        ReloadGUIPointer.update((v) => v + 1)
+        await wait(60)
+        await answerEverything()
+        expect(h.translations).toHaveLength(1)
     })
 })
 
