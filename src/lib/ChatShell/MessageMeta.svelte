@@ -1,3 +1,8 @@
+<script module lang="ts">
+    // One formatter serves every row. Its time zone and default locale are fixed when the module loads, so a change of either while the app runs shows from the next reload.
+    const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
+</script>
+
 <script lang="ts">
     import { partition, type ActionId } from '../../ts/chatShell/actionSlots'
     import { currentSlots, syncSlots } from '../../ts/chatShell/slotsStore.svelte'
@@ -45,7 +50,7 @@
 </script>
 
 <div data-part="chat-message-actions">
-    {#if time}<time class="time" datetime={new Date(time).toISOString()}>{new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(time)}</time>{/if}
+    {#if time}<time class="time" datetime={new Date(time).toISOString()}>{timeFormat.format(time)}</time>{/if}
     {#if model}<span class="model" title={model}>{model}</span>{/if}
     <span class="spacer"></span>
     {#each pinned as id (id)}
