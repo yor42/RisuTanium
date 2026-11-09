@@ -340,6 +340,8 @@ class FakeResizeObserver {
 }
 
 beforeEach(() => {
+    // Each test mounts on the default tab, because the library remembers its tab on this device.
+    localStorage.clear()
     changeCharSpy.mockClear()
     removeCharSpy.mockClear()
     CountingIntersectionObserver.watched.length = 0

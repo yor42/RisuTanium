@@ -19,7 +19,7 @@
     import CharacterNameRow, { replyStateContext, type CharacterReplyState } from "./CharacterNameRow.svelte";
     import { GRID_ROW_FALLBACK_PX, LIST_ROW_FALLBACK_PX, gridSectionRows, listRows } from "./charListRows";
     import { buildGridEntries, folderTileClass, type GridEntry, type SortMode } from "./charListOrder";
-    import { loadGridSort, parseGridSort, saveGridSort } from "./gridMemory";
+    import { loadGridSort, loadLibraryTab, parseGridSort, saveGridSort, saveLibraryTab } from "./gridMemory";
     import SelectInput from "../UI/GUI/SelectInput.svelte";
     import { loadOpenFolders, saveOpenFolders } from "../SideBars/railMemory";
     import { clickedButton, clickedLink, selectedInside } from "src/ts/gui/descriptionMarkdown";
@@ -79,7 +79,7 @@
     // A dark halo behind a folder tile's icon or name keeps it readable over a bright picture.
     const FACE_SHADOW = 'drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]'
     let search = $state('')
-    let selected = $state(3)
+    let selected = $state(loadLibraryTab())
     // List tab, per row and keyed by the character's chaId (stable when a removal shifts indices): whether the
     // description is expanded, and whether its clamp currently cuts text off.
     // The toggle shows while either holds, so an expanded row keeps its "Show
@@ -489,6 +489,7 @@
             exitEdit()
         }
         selected = tab
+        saveLibraryTab(tab)
     }
 
     // A pick whose tile is gone or now stands for another object leaves the selection, so an action

@@ -230,6 +230,8 @@ const names = () => DBState.db.characters.map((c) => c.name)
 beforeEach(() => {
     alertConfirmSpy.mockReset()
     alertConfirmSpy.mockImplementation(async () => true)
+    // Each test mounts on the default tab, because the library remembers its tab on this device.
+    localStorage.clear()
 })
 
 //#endregion

@@ -191,6 +191,8 @@ afterEach(async () => {
     }
     mounted = []
     vi.useRealTimers()
+    // Each test mounts on the default tab, because the library remembers its tab on this device.
+    localStorage.clear()
 })
 
 function viewButton(root: HTMLElement, label: string): HTMLButtonElement {
