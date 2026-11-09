@@ -58,8 +58,8 @@ async function build(): Promise<Loaded> {
     let store = failedStore
     let claim = failedClaim
     try {
-        const [idb, locks] = await Promise.all([import('./studioStoreIdb'), import('./studioClaimLocks')])
-        const created = { store: idb.createStudioStoreIdb(), claim: locks.createStudioClaimLocks() }
+        const [proxy, locks] = await Promise.all([import('./studioStoreProxy'), import('./studioClaimLocks')])
+        const created = { store: proxy.createStudioStoreProxy(), claim: locks.createStudioClaimLocks() }
         store = created.store
         claim = created.claim
     } catch (error) {

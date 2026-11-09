@@ -16,10 +16,16 @@ const h = vi.hoisted(() => ({
 
 // The adapters' stand-ins, kept apart so a case can register a failing module and the next case gets these back.
 const adapterMocks = vi.hoisted(() => ({
+    // The main realm must never build the IndexedDB adapter: this one is counted, and its stores are not the
+    // ones the service uses.
     idb: async () => {
         const doubles = await import('src/ts/studio/history/tests/studioStoreDoubles')
+        return { createStudioStoreIdb: vi.fn(() => doubles.createMemoryStudioStore()) }
+    },
+    proxy: async () => {
+        const doubles = await import('src/ts/studio/history/tests/studioStoreDoubles')
         return {
-            createStudioStoreIdb: vi.fn(() => {
+            createStudioStoreProxy: vi.fn(() => {
                 const store = doubles.createMemoryStudioStore()
                 h.stores.push(store)
                 return store
@@ -36,6 +42,7 @@ vi.mock('src/ts/platform', () => ({
     },
 }))
 vi.mock('src/ts/studio/history/studioStoreIdb', () => adapterMocks.idb())
+vi.mock('src/ts/studio/history/studioStoreProxy', () => adapterMocks.proxy())
 vi.mock('src/ts/studio/history/studioClaimLocks', () => adapterMocks.locks())
 vi.mock('src/ts/process/saveOnHide', () => ({
     registerLeaveFlush: vi.fn((flush: () => void) => {
@@ -161,19 +168,22 @@ describe('the service is built on first use', () => {
         expect(m.onHide.registerLeaveFlush).toHaveBeenCalledTimes(1)
     })
 
-    test('the device store and the claim are created at first use only, once', async () => {
+    test('T-W1 the worker store proxy and the claim are created at first use only, once, and the IndexedDB adapter is never built on the main thread', async () => {
         const m = await fresh()
+        const proxy = await import('src/ts/studio/history/studioStoreProxy')
         const idb = await import('src/ts/studio/history/studioStoreIdb')
         const locks = await import('src/ts/studio/history/studioClaimLocks')
+        vi.mocked(proxy.createStudioStoreProxy).mockClear()
         vi.mocked(idb.createStudioStoreIdb).mockClear()
         vi.mocked(locks.createStudioClaimLocks).mockClear()
         await vi.dynamicImportSettled()
-        expect(idb.createStudioStoreIdb).not.toHaveBeenCalled()
+        expect(proxy.createStudioStoreProxy).not.toHaveBeenCalled()
         expect(locks.createStudioClaimLocks).not.toHaveBeenCalled()
 
         await m.accessor.loadStudioHistoryService()
         await m.accessor.loadStudioHistoryService()
-        expect(idb.createStudioStoreIdb).toHaveBeenCalledTimes(1)
+        expect(proxy.createStudioStoreProxy).toHaveBeenCalledTimes(1)
+        expect(idb.createStudioStoreIdb).not.toHaveBeenCalled()
         expect(locks.createStudioClaimLocks).toHaveBeenCalledTimes(1)
     })
 
@@ -263,6 +273,7 @@ describe('a module that cannot be loaded (I11: no form stays read-only because a
     })
 
     const IDB = 'src/ts/studio/history/studioStoreIdb'
+    const PROXY = 'src/ts/studio/history/studioStoreProxy'
     const LOCKS = 'src/ts/studio/history/studioClaimLocks'
     const CORE = 'src/ts/studio/history/ownerHistory.svelte'
 
@@ -276,12 +287,13 @@ describe('a module that cannot be loaded (I11: no form stays read-only because a
     afterEach(() => {
         vi.restoreAllMocks()
         vi.doMock(IDB, () => adapterMocks.idb())
+        vi.doMock(PROXY, () => adapterMocks.proxy())
         vi.doMock(LOCKS, () => adapterMocks.locks())
         vi.doUnmock(CORE)
     })
 
     const adapters = [
-        ['the device store adapter', IDB],
+        ['the device store proxy', PROXY],
         ['the claim adapter', LOCKS],
     ] as const
 
@@ -303,6 +315,16 @@ describe('a module that cannot be loaded (I11: no form stays read-only because a
             expect(h.stores).toHaveLength(0)
         })
     }
+
+    test('the IndexedDB adapter module failing to load changes nothing: the main realm never imports it, so the owner reaches ready over the proxy', async () => {
+        failToLoad(IDB)
+        const m = await fresh()
+        const service = await m.accessor.loadStudioHistoryService()
+        const owner = m.phase.characterOwnerKey('A')
+        await service.whenReady(owner)
+        expect(service.view(owner).phase).toBe('ready')
+        expect(h.stores).toHaveLength(1)
+    })
 
     test('the service module failing leaves no service and reports the load as failed; a later call builds it', async () => {
         failToLoad(CORE)

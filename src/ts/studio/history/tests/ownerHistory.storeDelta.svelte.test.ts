@@ -3,7 +3,9 @@
 // ordinary edit, a coalesced edit, an undo or redo, a delete and a restore, whether the baseline came from
 // a load or from earlier saves, and that no save changes the history the page keeps. Every case runs over
 // the memory double and over the IndexedDB adapter on fake-indexeddb. Time moves only through the fake
-// clock; the adapter's own asynchrony is awaited with real ticks.
+// clock; the adapter's own asynchrony is awaited with real ticks. A third backend runs the adapter behind
+// the worker store (the proxy, the real host and a channel double), and its own cases pin what that store
+// posts and when.
 import 'fake-indexeddb/auto'
 import { IDBFactory, IDBObjectStore } from 'fake-indexeddb'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
@@ -15,7 +17,10 @@ import { createOwnerHistoryService, type OwnerHistoryService } from '../ownerHis
 import { characterOwnerKey, type OwnerKey } from '../ownerPhase'
 import { STUDIO_DB_NAME, STUDIO_DB_VERSION, STUDIO_STORE_NAME, createStudioStoreIdb } from '../studioStoreIdb'
 import type { StudioHistoryStore } from '../studioHistoryStore'
+import type { SaveMessage } from '../studioStoreProtocol'
+import { createStudioStoreProxy } from '../studioStoreProxy'
 import { createFakeClock, drainMicrotasks, type FakeClock } from './historyTestKit.test-helpers'
+import { createStudioChannel, type StudioChannel } from './studioStoreChannel'
 import { createClaimDouble, createMemoryStudioStore, storedRecord, type MemoryStudioStore } from './studioStoreDoubles'
 
 const h = vi.hoisted(() => ({ marks: 0 }))
@@ -60,6 +65,8 @@ interface Backend {
     take(): Promise<Writes>
     // Everything started has finished.
     idle(): Promise<void>
+    // The worker backend's channels, one per store made; absent on the other backends.
+    channels?: StudioChannel[]
 }
 
 // `h:<owner>` is the header; an `e:` key is the part after its gen; a key outside the owner range is kept whole.
@@ -102,8 +109,11 @@ function doubleBackend(): Backend {
     }
 }
 
-function idbBackend(): Backend {
+// The adapter on fake-indexeddb, directly or behind the worker store: the proxy, the real host and the real
+// adapter joined by a channel double that has a database factory of its own (this one).
+function idbBackend(viaWorker = false): Backend {
     const factory = new IDBFactory()
+    const channels: StudioChannel[] = []
     let inflight = 0
     const log: { op: 'put' | 'delete'; key: string }[] = []
     const nativePut = IDBObjectStore.prototype.put
@@ -125,8 +135,16 @@ function idbBackend(): Backend {
         }
     }
     return {
+        channels,
         make: (options) => {
-            const store = createStudioStoreIdb({ factory, capBytes: options?.capBytes })
+            let store: StudioHistoryStore
+            if (viaWorker) {
+                const channel = createStudioChannel({ factory, capBytes: options?.capBytes })
+                channels.push(channel)
+                store = createStudioStoreProxy({ spawn: channel.spawn })
+            } else {
+                store = createStudioStoreIdb({ factory, capBytes: options?.capBytes })
+            }
             return {
                 open: () => track(store.open()),
                 load: (owner) => track(store.load(owner)),
@@ -235,7 +253,8 @@ const newest = (page: Page) => page.service.view(A).done.at(-1)!
 
 describe.each([
     ['memory double', doubleBackend],
-    ['IndexedDB adapter', idbBackend],
+    ['IndexedDB adapter', () => idbBackend()],
+    ['worker store (proxy, host and IndexedDB adapter)', () => idbBackend(true)],
 ])('%s', (_label, makeBackend) => {
     let backend: Backend
 
@@ -419,5 +438,61 @@ describe.each([
         const stored = storedRecord(await backend.stored(), A)
         expect(stored).not.toBeNull()
         expect(stored!.record.done.length).toBeLessThan(page.service.view(A).done.length)
+    })
+})
+
+// ---------------------------------------------------------------- the worker store
+
+function savesPosted(channel: StudioChannel): SaveMessage[] {
+    return channel.posted.filter((message): message is SaveMessage => message.t === 'save')
+}
+
+describe('worker store', () => {
+    let backend: Backend
+
+    beforeEach(() => {
+        backend = idbBackend(true)
+    })
+
+    test('T-W4 one edit in a page that loaded a 100-step owner posts exactly the changed entries and writes a delta', async () => {
+        const first = buildPage(backend)
+        await ready(backend, first)
+        for (let i = 0; i < 100; i++) {
+            first.clock.set(first.clock.now() + 1500)
+            expect(first.service.editField(A, 'desc', `desc ${i}`).ok).toBe(true)
+        }
+        await leave(backend, first)
+        expect(first.service.view(A).done).toHaveLength(100)
+
+        const second = buildPage(backend, { visit: 'v2' })
+        await ready(backend, second)
+        expect(second.service.view(A).done).toHaveLength(100)
+        await backend.take()
+        await editAndLeave(backend, second, 'desc 100')
+
+        const channel = backend.channels![1]
+        const message = savesPosted(channel).at(-1)!
+        expect([...message.put, ...message.delta].map((entry) => entry.k).sort()).toEqual(['r', 's'])
+        expect(message.put.flatMap((entry) => (entry.k === 's' ? [entry.value.id] : []))).toEqual([newest(second).id])
+        expect(message.done).toHaveLength(100)
+        expect(sorted(await backend.take()).puts).toEqual(['h', 'i', 'r', `s:${newest(second).id}`].sort())
+    })
+
+    test('T-W7b the page-leave flush has posted its save after microtasks alone, before the worker could answer', async () => {
+        const page = buildPage(backend)
+        await ready(backend, page)
+        const channel = backend.channels![0]
+        const answered = channel.replies.length
+        page.clock.set(page.clock.now() + 1500)
+        expect(page.service.editField(A, 'desc', 'typed').ok).toBe(true)
+        for (const flush of page.captured) {
+            flush()
+        }
+        await drainMicrotasks()
+        expect(savesPosted(channel)).toHaveLength(1)
+        // No macrotask has run: the worker has not handled the message.
+        expect(channel.replies).toHaveLength(answered)
+        await backend.idle()
+        expect(storedRecord(await backend.stored(), A)?.record.done).toHaveLength(1)
     })
 })

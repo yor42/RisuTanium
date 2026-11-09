@@ -2,7 +2,7 @@
 // T-S18c part 1: the production wiring of the leave registration. The service is created with no
 // injected registrar, so it registers through its default (the real saveOnHide.ts registry), and the
 // leave is the real `flushPageBeforeLeaving()`. The file-wide mocks below replace the persistence
-// module `globalApi.svelte`, the store module `stores.svelte`, the two device adapters, the platform
+// module `globalApi.svelte`, the store module `stores.svelte`, the store proxy and the claim adapter, the platform
 // flag, the save ack module and the language table, in both parts; saveOnHide.ts, the service and the
 // accessor are the real files, and every case resets the module registry, so no registration leaks
 // from one case to the next.
@@ -15,10 +15,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({ marks: 0, stores: [] as { counts: { save: number }; shared: Map<string, string> }[] }))
 
-vi.mock('src/ts/studio/history/studioStoreIdb', async () => {
+vi.mock('src/ts/studio/history/studioStoreProxy', async () => {
     const doubles = await import('src/ts/studio/history/tests/studioStoreDoubles')
     return {
-        createStudioStoreIdb: vi.fn(() => {
+        createStudioStoreProxy: vi.fn(() => {
             const store = doubles.createMemoryStudioStore()
             h.stores.push(store)
             return store
