@@ -27,6 +27,7 @@ import CustomTextThemeEditor from 'src/lib/Setting/Pages/Display/CustomTextTheme
 import CustomBackgroundToggle from 'src/lib/Setting/Pages/Display/CustomBackgroundToggle.svelte';
 import NullableTextColorToggle from 'src/lib/Setting/Pages/Display/NullableTextColorToggle.svelte';
 import NotificationToggle from 'src/lib/Setting/Pages/Display/NotificationToggle.svelte';
+import ReplyNotificationsToggle from 'src/lib/Setting/Pages/Display/ReplyNotificationsToggle.svelte';
 import ChatShellPreviewToggle from 'src/lib/Setting/Pages/Display/ChatShellPreviewToggle.svelte';
 import SettingsShellPreviewToggle from 'src/lib/Setting/Pages/Display/SettingsShellPreviewToggle.svelte';
 import StudioSwitchToggle from 'src/lib/Setting/Pages/Display/StudioSwitchToggle.svelte';
@@ -48,6 +49,7 @@ export const customComponents: Record<string, Component<any>> = {
     'CustomBackgroundToggle': CustomBackgroundToggle,
     'NullableTextColorToggle': NullableTextColorToggle,
     'NotificationToggle': NotificationToggle,
+    'ReplyNotificationsToggle': ReplyNotificationsToggle,
     'ChatShellPreviewToggle': ChatShellPreviewToggle,
     'SettingsShellPreviewToggle': SettingsShellPreviewToggle,
     'StudioSwitchToggle': StudioSwitchToggle,

@@ -9,7 +9,7 @@
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { createHostChannelFake } from './hostChannelFake'
-import { connectHostBridge, gestureInsetLeft, hasOpenedFilesHost, hostIme, keepAliveHost, openedFilesTake, systemBarsHost } from './hostBridge'
+import { connectHostBridge, gestureInsetLeft, hasOpenedFilesHost, hostIme, keepAliveHost, openedFilesTake, replyNotificationsHost, systemBarsHost } from './hostBridge'
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
@@ -17,6 +17,7 @@ afterEach(() => {
     delete window.__risuTaniumHost
     delete window.__risuTaniumSystemBars
     delete window.__risuTaniumKeepAlive
+    delete window.__risuTaniumReplyNotificationsHost
     delete window.__risuTaniumGestureInset
     delete window.__risuTaniumOpenedFilesHost
     delete window.__risuTaniumIme
@@ -125,6 +126,43 @@ describe('the keep-alive service over the channel', () => {
         keepAliveHost()?.stop?.()
         expect(legacy.start).not.toHaveBeenCalled()
         expect(legacy.stop).not.toHaveBeenCalled()
+    })
+})
+
+// New-API tests: they name the reply-notification bridge this stage adds.
+describe('the reply notifications over the channel', () => {
+    test.each([
+        ['refresh', []],
+        ['enable', []],
+        ['disable', []],
+        ['notify', ['cha/chat', 'Title', 'Body', true]],
+        ['notify', ['cha/chat', 'Title', 'Body', false]],
+        ['cancel', ['cha/chat']],
+    ] as const)('%s goes out as one message', (method, args) => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        const host = replyNotificationsHost() as Record<string, (...values: unknown[]) => unknown>
+        host[method](...args)
+        expect(fake.postedTo('replyNotifications', method)).toEqual([{ bridge: 'replyNotifications', method, args }])
+    })
+
+    test('the channel wins over the separate host object', () => {
+        const fake = createHostChannelFake()
+        const legacy = { notify: vi.fn(), cancel: vi.fn() }
+        window.__risuTaniumHost = fake.channel
+        window.__risuTaniumReplyNotificationsHost = legacy
+        replyNotificationsHost()?.notify?.('k', 'T', 'B', true)
+        replyNotificationsHost()?.cancel?.('k')
+        expect(legacy.notify).not.toHaveBeenCalled()
+        expect(legacy.cancel).not.toHaveBeenCalled()
+        expect(fake.postedTo('replyNotifications', 'notify')).toHaveLength(1)
+    })
+
+    test('guard: without the channel the separate object is handed back unchanged, and nothing where there is no host', () => {
+        expect(replyNotificationsHost()).toBeUndefined()
+        const legacy = { notify: vi.fn() }
+        window.__risuTaniumReplyNotificationsHost = legacy
+        expect(replyNotificationsHost()).toBe(legacy)
     })
 })
 

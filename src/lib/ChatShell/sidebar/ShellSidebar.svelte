@@ -11,7 +11,7 @@
     import type { Chat, ChatFolder, Database } from "src/ts/storage/database.svelte";
     import { openChatOf, selectedOwner } from "../../../ts/chatShell/chatOpen";
     import { recentCharacters } from "../../../ts/chatShell/recentCharacters";
-    import { abandonPendingSwitch, refuseSwitchWhileWriting, switchCharacter, switchTarget } from "../../../ts/chatShell/switchTarget.svelte";
+    import { abandonPendingSwitch, switchCharacter, switchTarget } from "../../../ts/chatShell/switchTarget.svelte";
     import { readChatSort, writeChatSort, type ChatSort } from "../../../ts/chatShell/deviceSettings";
     import { resolveSwitchFocus, setOverlayReturnFocus } from "../../../ts/chatShell/overlayFocus";
     import { WIDE_LAYOUT_MIN_PX } from "../../SideBars/panelGesture";
@@ -443,9 +443,6 @@
     }
 
     function pickCharacter(entry: Entry, event: MouseEvent | KeyboardEvent) {
-        if (refuseSwitchWhileWriting()) {
-            return;
-        }
         const overlay = get(DynamicGUI);
         // A click with no pointer detail is a keyboard activation: focus then follows the switch.
         if (overlay && event.detail === 0) {

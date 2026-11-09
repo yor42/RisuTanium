@@ -11,6 +11,9 @@
 
 let windowOpen = $state(false)
 
+/** The chat the open window belongs to; null while it is closed or was opened without one. */
+let windowOrigin = $state<{ chaId: string, chatId: string } | null>(null)
+
 /**
  * True from the composer Send's take until its hand-off returns, for the whole
  * of a reroll or unreroll, and for a whole auto-mode run. Reactive: the Send
@@ -20,8 +23,40 @@ export function isComposerWindowOpen(): boolean {
     return windowOpen
 }
 
-export function setComposerWindow(open: boolean): void {
+/**
+ * Opens or closes the window. `origin` names the chat the window is held for;
+ * closing always clears it.
+ */
+export function setComposerWindow(open: boolean, origin?: { chaId: string, chatId: string }): void {
     windowOpen = open
+    windowOrigin = open && origin ? { chaId: origin.chaId, chatId: origin.chatId } : null
+}
+
+/**
+ * True while the window is open for this chat. A window opened without an
+ * origin belongs to no chat. Reactive, like `isComposerWindowOpen`.
+ */
+export function composerWindowFor(target: { chaId: string, chatId: string }): boolean {
+    return windowOpen && windowOrigin !== null
+        && windowOrigin.chaId === target.chaId && windowOrigin.chatId === target.chatId
+}
+
+let replyVersion = $state(0)
+let replyVersionCount = 0
+
+/**
+ * Bumped whenever a reply or preview registration starts or ends, and only
+ * then, so a reader of `readReplyVersion()` re-runs exactly when the set of
+ * writing chats changes. Takes, trees and commands never bump it. The bump
+ * only writes, so a send started inside an effect does not subscribe that
+ * effect to the version.
+ */
+export function bumpReplyVersion(): void {
+    replyVersion = ++replyVersionCount
+}
+
+export function readReplyVersion(): number {
+    return replyVersion
 }
 
 let unitController: AbortController | null = null

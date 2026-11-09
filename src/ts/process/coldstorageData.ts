@@ -183,9 +183,11 @@ export type PreLoadChatResult = 'none' | 'ok' | 'missing' | 'error' | 'unavailab
  *                        replaced the character, or its chats were
  *                        reordered). Nothing to retry, or unsafe to apply the
  *                        result.
- *   - `'busy'`        -- `doingChat` or the chat's own `isStreaming` was set,
- *                        either before the read started or by the time it
- *                        finished. Retry again once sending settles.
+ *   - `'busy'`        -- the chat's own `isStreaming` was set or a reply is
+ *                        being written into this chat (`isWriting` for its
+ *                        character and chat), either before the read started
+ *                        or by the time it finished. Work in other chats does
+ *                        not count. Retry again once that reply settles.
  *   - `'ok'`          -- the read succeeded and the chat's messages/side
  *                        fields were restored.
  *   - `'missing'`     -- the reader positively confirmed the data doesn't

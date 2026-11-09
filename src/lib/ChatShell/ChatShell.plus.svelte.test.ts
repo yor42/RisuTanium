@@ -49,7 +49,7 @@ vi.mock('../../ts/localDrafts', () => ({ COMPOSER_DRAFT_KIND: 'composer', regist
 vi.mock('../../ts/process/files/multisend', () => ({ postChatFile: vi.fn() }))
 vi.mock('../../ts/process/composerActions.svelte', () => ({
     sendMain: vi.fn(), sendContinue: vi.fn(), reroll: vi.fn(), abortChat: vi.fn(),
-    isComposerBusy: () => false, isComposerLocked: () => false, updateInputTransateMessage: vi.fn(),
+    isComposerBusy: () => false, isComposerBusyIn: () => false, isComposerLocked: () => false, updateInputTransateMessage: vi.fn(),
 }))
 vi.mock('../../ts/chatShell/sendFailure.svelte', () => ({ shellGenerationSource: (closeMenu: () => void) => ({ closeMenu }), failureOf: () => null, retrySendFailure: vi.fn() }))
 vi.mock('../../ts/chatShell/enterKey', () => ({ createEnterKeyController: () => ({

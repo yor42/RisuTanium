@@ -489,7 +489,7 @@ describe('changeChar on a group -- which call selects', () => {
         expect(get(selectedCharID)).toBe(2)
     })
 
-    test('a chat that starts generating while members are being restored leaves the selection unchanged', async () => {
+    test('a chat that starts generating while members are being restored does not stop the group from being selected', async () => {
         const memberA = fullCharacter('a')
         installDb([asSlot(fullGroup('g', ['a'])), stubOf(memberA, 'unit-a')])
         const held = holdReads(new Map([['unit-a', ok(memberA)]]))
@@ -502,8 +502,8 @@ describe('changeChar on a group -- which call selects', () => {
         await held.releaseUntil(() => finished)
         await done
 
-        expect(selections).toEqual([])
-        expect(get(selectedCharID)).toBe(-1)
+        expect(selections.map((s) => s.id)).toEqual([0])
+        expect(get(selectedCharID)).toBe(0)
     })
 })
 

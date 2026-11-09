@@ -1,8 +1,9 @@
 import { v4 as uuidv4 } from "uuid"
-import { DBState } from "../stores.svelte"
+import { get } from "svelte/store"
+import { DBState, selectedCharID } from "../stores.svelte"
 import type { character, groupChat, Chat } from "../storage/database.svelte"
 import { markCharacterForSave } from "../storage/characterSaveMarks"
-import { isComposerWindowOpen } from "./generationOwnership.svelte"
+import { bumpReplyVersion, isComposerWindowOpen, readReplyVersion } from "./generationOwnership.svelte"
 
 /**
  * The origin API: an opaque, re-resolved-on-every-use address for a chat
@@ -771,32 +772,47 @@ export interface WorkHandle {
  */
 export type WorkStop = () => void
 
+/**
+ * What a registration is for. A `reply` is a send that writes a chat's reply,
+ * a `preview` is a send that builds a prompt and writes nothing, and `work` is
+ * every other unit (a take, a tree edit, a command). Only `reply` and
+ * `preview` are reported by `isGeneratingIn` and `isBusyIn`.
+ */
+export type WorkKind = 'reply' | 'preview' | 'work'
+
 interface Registration {
     chaId: string
     chatId: string
     memberChaId?: string
+    kind: WorkKind
     stop?: WorkStop
     stopped: boolean
     ended: boolean
 }
 
-// Plain module state, like `src/ts/localDrafts.ts` -- not a rune. Nothing
-// here needs to be reactive: `isWriting` is polled, never watched, and a
-// registration that outlives its work (because a caller forgot to call
-// `end()`) should not need a reactive graph to eventually settle; it just
-// leaves a stale "writing" answer, never a lost write.
+// Plain module state, like `src/ts/localDrafts.ts` -- not a rune. `isWriting`,
+// `hasWorkIn` and `stopWorkIn` are polled, never watched, and a registration
+// that outlives its work (because a caller forgot to call `end()`) should not
+// need a reactive graph to eventually settle; it just leaves a stale "writing"
+// answer, never a lost write. The only reactive reads are `isGeneratingIn` and
+// `isBusyIn`, which follow a version that changes whenever a `reply` or
+// `preview` registration starts or ends.
 const registrations: Registration[] = []
 
-function registerOrigin(origin: Origin, stop?: WorkStop): WorkHandle {
+function registerOrigin(origin: Origin, stop?: WorkStop, kind: WorkKind = 'work'): WorkHandle {
     const registration: Registration = {
         chaId: origin.chaId,
         chatId: origin.chatId,
         memberChaId: origin.memberChaId,
+        kind,
         stop,
         stopped: false,
         ended: false,
     }
     registrations.push(registration)
+    if (kind !== 'work') {
+        bumpReplyVersion()
+    }
     return {
         origin,
         end: () => {
@@ -808,6 +824,9 @@ function registerOrigin(origin: Origin, stop?: WorkStop): WorkHandle {
             if (index !== -1) {
                 registrations.splice(index, 1)
             }
+            if (kind !== 'work') {
+                bumpReplyVersion()
+            }
         },
     }
 }
@@ -817,9 +836,10 @@ function registerOrigin(origin: Origin, stop?: WorkStop): WorkHandle {
  * that already holds an origin and needs neither the id fill nor the
  * resolution `beginWork` makes. Registrations are counted like `beginWork`'s.
  * `stop`, when given, is what `stopWorkIn` calls to end this unit early.
+ * `kind` defaults to `work`.
  */
-export function registerWork(origin: Origin, stop?: WorkStop): WorkHandle {
-    return registerOrigin(origin, stop)
+export function registerWork(origin: Origin, stop?: WorkStop, kind?: WorkKind): WorkHandle {
+    return registerOrigin(origin, stop, kind)
 }
 
 /**
@@ -935,8 +955,9 @@ function fillChatId(chat: Chat): { chatId: string, filled: boolean } {
  * member is semantically always an ordinary character, never a nested group.
  *
  * `stop`, when given, is what `stopWorkIn` calls to end this unit early.
+ * `kind` defaults to `work`.
  */
-export function beginWork(character: character | groupChat, chat: Chat, member?: character | groupChat, stop?: WorkStop): WorkHandle | null {
+export function beginWork(character: character | groupChat, chat: Chat, member?: character | groupChat, stop?: WorkStop, kind?: WorkKind): WorkHandle | null {
     // Every object with a missing id must be findable live before any fill
     // runs: filling the owner and then discovering the chat cannot be found
     // would leave a fresh chaId written to the live database even though the
@@ -969,7 +990,7 @@ export function beginWork(character: character | groupChat, chat: Chat, member?:
     // one every later write already gets from resolveOrigin.
     resolveOrigin(origin)
 
-    return registerOrigin(origin, stop)
+    return registerOrigin(origin, stop, kind)
 }
 
 /**
@@ -1003,6 +1024,36 @@ function ownedBy(registration: Registration, target: { chaId: string, chatId?: s
  */
 export function hasWorkIn(target: { chaId: string, chatId?: string }): boolean {
     return registrations.some((registration) => ownedBy(registration, target))
+}
+
+function hasKindIn(target: { chaId: string, chatId?: string }, kinds: readonly WorkKind[]): boolean {
+    // The version is read first, so a reader inside an effect or a template
+    // re-runs when a reply or preview registration starts or ends.
+    readReplyVersion()
+    return registrations.some((registration) => kinds.includes(registration.kind) && ownedBy(registration, target))
+}
+
+/**
+ * True while a `reply` send is registered as owned by `target` (see
+ * `hasWorkIn` for the owner-level match: a group's turn shows on the group,
+ * never on the member it speaks as). Reactive.
+ */
+export function isGeneratingIn(target: { chaId: string, chatId?: string }): boolean {
+    return hasKindIn(target, ['reply'])
+}
+
+/**
+ * True while a `reply` or a `preview` send is registered as owned by `target`.
+ * Reactive; same owner-level match as `isGeneratingIn`.
+ */
+export function isBusyIn(target: { chaId: string, chatId?: string }): boolean {
+    return hasKindIn(target, ['reply', 'preview'])
+}
+
+/** True while the chat on screen is the one `origin` names. */
+export function isShownChat(origin: { chaId: string, chatId: string }): boolean {
+    const shown = DBState.db.characters[get(selectedCharID)]
+    return shown?.chaId === origin.chaId && shown.chats?.[shown.chatPage]?.id === origin.chatId
 }
 
 /**

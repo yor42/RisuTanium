@@ -399,7 +399,7 @@ interface Page {
  * A store2 page of four characters: the first resident, the other three stubs of their entities. `grow` makes the
  * first chat of a character at least that many bytes of JSON by repeating its first message (short strings only).
  */
-async function pageOf(grow: Record<number, number> = {}, withAlt = false, fork: 'none' | 'valid' | 'inert' = 'none'): Promise<Page> {
+async function pageOf(grow: Record<number, number> = {}, withAlt = false, fork: 'none' | 'valid' | 'inert' = 'none', unseenReply = false): Promise<Page> {
     const memory = createMemoryBackend()
     const clock = createClock()
     const env = testEnv(clock, 4242)
@@ -413,6 +413,11 @@ async function pageOf(grow: Record<number, number> = {}, withAlt = false, fork: 
     if (fork !== 'none') {
         for (const slot of fixture.characters) {
             forkKeysOn(((slot as unknown as Obj).chats as Obj[])[0], fork === 'valid')
+        }
+    }
+    if (unseenReply) {
+        for (const slot of fixture.characters) {
+            ;((slot as unknown as Obj).chats as Obj[])[0].unseenReply = 'reply'
         }
     }
     for (const [index, bytes] of Object.entries(grow)) {
@@ -892,5 +897,21 @@ describe.each([
         expect(text).not.toContain('"interrupted"')
         // guard: nothing was worth naming
         expect(forkPrompts()).toEqual([])
+    }, 120_000)
+
+    test.each([['stub', STUB], ['inline', { mode: 'inline' } as BackupExportOptions]])('reproducer (P3): in %s mode the new-reply mark never reaches the file, nothing names it, and the live chats keep it', async (_mode, options) => {
+        const page = await pageOf({}, false, 'none', true)
+        expect(((page.db.characters[0] as unknown as Obj).chats as Obj[])[0].unseenReply, 'resident character').toBe('reply')
+        for (const entry of page.entries.slice(1)) {
+            expect((wholeOf(page, entry) as unknown as { chats: Obj[] }).chats[0].unseenReply, 'stub entity').toBe('reply')
+        }
+
+        const outcome = await run(options)
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        expect(await fileText()).not.toContain('"unseenReply"')
+        expect(forkPrompts()).toEqual([])
+        expect(altPrompts()).toEqual([])
+        expect(((page.db.characters[0] as unknown as Obj).chats as Obj[])[0].unseenReply).toBe('reply')
     }, 120_000)
 })

@@ -129,6 +129,24 @@ describe('reply-end flush with the loop sleeps parked (store2, tauri kind)', () 
         await until(async () => (await savedPersonality(page.k, 2)) === 'final reply', 'the requested pass with parked sleeps', 3000)
     })
 
+    // Compatibility guard (CHORE-685 S1d): the new-reply mark is a chat field that the codec keeps in the last chunk's state; a
+    // hidden reply end saves it like any other edit of the origin.
+    test('guard: a new-reply mark set on a chat is committed by a hidden reply end although every loop sleep is parked', async () => {
+        const page = await startPage(buildSmall(4))
+        await settled(page.w)
+        h.parked.add(page.w.id)
+        await sleepReal(200)
+        setVisibility('hidden')
+        const { flushPageReplyEndWhenHidden } = await import('src/ts/process/saveOnHide')
+        const chats = characters(page.db)[2].chats as Entry[]
+        chats[0].unseenReply = 'reply'
+        flushPageReplyEndWhenHidden({ chaId: characters(page.db)[2].chaId as string })
+
+        const savedMark = async (): Promise<unknown> => (((await page.k.saved()).characters[2] as unknown as Entry).chats as Entry[])[0].unseenReply
+        await until(async () => (await savedMark()) === 'reply', 'the requested pass with parked sleeps', 3000)
+        expect(((await page.k.saved()).characters[2] as unknown as Entry).chats).toHaveLength(chats.length)
+    })
+
     // Compatibility guard: passes before and after the change. A visible page keeps its debounce.
     test('guard: a visible reply end requests nothing', async () => {
         const page = await startPage(buildSmall(4))

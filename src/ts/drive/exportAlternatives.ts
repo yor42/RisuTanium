@@ -18,7 +18,8 @@ interface ForkOnlyKey {
     /** Where the key lives: on the chat, or on each of its messages. */
     scope: 'chat' | 'message'
     key: string
-    kind: ForkOnlyKind
+    /** The kind the prompt names; null for a key that is removed and never named. */
+    kind: ForkOnlyKind | null
     /** Whether the present value is worth naming; `owner` is the object that carries the key. A value that is not named is still removed. */
     holds(value: unknown, owner: Fields): boolean
 }
@@ -54,7 +55,7 @@ function chatSwitchActs(value: unknown, owner: Fields): boolean {
  * The fork-only keys. The messages kept in `alt` leave with it. A coverage pointer is read only while it equals the first
  * line of the chat's `supaMemoryData`; any other value is inert, so it is removed and not named. The same holds for the
  * chat's own jailbreak and memory switches while the chat's scope flag is off or the value is not a boolean, and for
- * `hideNames` unless it is `true`.
+ * `hideNames` unless it is `true`. The new-reply mark `unseenReply` is always removed and never named.
  */
 export const FORK_ONLY_CHAT_KEYS: readonly ForkOnlyKey[] = [
     { scope: 'chat', key: 'alt', kind: 'alternatives', holds: (_value, owner) => chatHoldsAlternatives(owner) },
@@ -68,6 +69,8 @@ export const FORK_ONLY_CHAT_KEYS: readonly ForkOnlyKey[] = [
     { scope: 'chat', key: 'scopedJailbreak', kind: 'chatJailbreak', holds: chatSwitchActs },
     { scope: 'chat', key: 'scopedMemory', kind: 'chatMemory', holds: chatSwitchActs },
     { scope: 'chat', key: 'hideNames', kind: 'hideNames', holds: (value) => value === true },
+    // A transient mark that clears the next time the chat opens: upstream has no use for it, so it is removed without a warning.
+    { scope: 'chat', key: 'unseenReply', kind: null, holds: () => false },
 ]
 
 const CHAT_KEYS = FORK_ONLY_CHAT_KEYS.filter((row) => row.scope === 'chat')
@@ -90,7 +93,7 @@ function forkOnlyKinds(chat: Fields): ForkOnlyKind[] {
     const kinds: ForkOnlyKind[] = []
     for (const row of FORK_ONLY_CHAT_KEYS) {
         const owners = row.scope === 'chat' ? [chat] : (Array.isArray(chat.message) ? chat.message : [])
-        if (!kinds.includes(row.kind) && owners.some((owner) => isFields(owner) && row.key in owner && row.holds(owner[row.key], owner))) {
+        if (row.kind !== null && !kinds.includes(row.kind) && owners.some((owner) => isFields(owner) && row.key in owner && row.holds(owner[row.key], owner))) {
             kinds.push(row.kind)
         }
     }

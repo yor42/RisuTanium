@@ -11,6 +11,7 @@ import { guiSizeText, updateGuisize } from '../gui/guisize';
 import { updateTextThemeAndCSS } from '../gui/colorscheme';
 import { CustomGUISettingMenuStore } from '../stores.svelte';
 import { isTauriDesktop } from '../tauriDesktop';
+import { isAndroidTransport } from '../storage/tauriByteTransport';
 
 export const displayThemeSettingsItems: SettingItem[] = [
     {
@@ -349,7 +350,8 @@ export const displayOtherSettingsItems: SettingItem[] = [
         keywords: ['quote', 'single', 'trailing'],
     },
     { id: 'display.menuSideBar', type: 'check', labelKey: 'menuSideBar', bindKey: 'menuSideBar', keywords: ['menu', 'sidebar'] },
-    { id: 'display.notification', type: 'custom', componentId: 'NotificationToggle', keywords: ['notification'] },
+    { id: 'display.notification', type: 'custom', componentId: 'NotificationToggle', condition: () => !isAndroidTransport(), keywords: ['notification'] },
+    { id: 'display.replyNotifications', type: 'custom', componentId: 'ReplyNotificationsToggle', condition: () => isAndroidTransport(), keywords: ['notification', 'reply'] },
     {
         id: 'display.useChatSticker',
         type: 'check',

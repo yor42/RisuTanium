@@ -27,6 +27,7 @@
  * Tests whose title starts with `guard:` pass before and after the ownership
  * change: they pin behaviour that must be preserved.
  */
+import { flushSync } from 'svelte'
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import type { Database, Chat, Message } from 'src/ts/storage/database.svelte'
@@ -383,6 +384,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 //#endregion
 
 import { sendChat, doingChat } from 'src/ts/process/index.svelte'
+import { isBusyIn, isGeneratingIn, stopWorkIn } from 'src/ts/process/chatOrigin'
 import { send, reroll, unReroll, runAutoMode, abortChat, isAutoModeActive, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { processMultiCommand } from 'src/ts/process/command'
@@ -1290,6 +1292,90 @@ describe('text typed with a leading / that is not a command, sent through an inp
 
         expect.soft(result).toBeInstanceOf(Error)
         expect.soft(draftText()).toBe('/me waves')
+    })
+})
+
+// Specification tests (new API, no earlier version to fail against): the kind a real send registers with.
+describe('the registration of a real send', () => {
+    const here = { chaId: 'char-0', chatId: 'chat-0' }
+
+    test('T9: its chat is generating and busy while the provider call runs, a prompt preview is busy only, and both end with the call', async () => {
+        installWorld()
+        const seen: Array<{ generating: boolean, busy: boolean, preview: boolean }> = []
+        requestChatDataMock.mockImplementation(async (request: { previewBody?: boolean }) => {
+            seen.push({ generating: isGeneratingIn(here), busy: isBusyIn(here), preview: !!request.previewBody })
+            return { type: 'success', result: 'reply' }
+        })
+
+        await sendChat(-1, { previewPrompt: true })
+        const afterPreview = { generating: isGeneratingIn(here), busy: isBusyIn(here) }
+        await sendChat(-1)
+
+        expect(seen).toEqual([
+            { generating: false, busy: true, preview: true },
+            { generating: true, busy: true, preview: false },
+        ])
+        expect(afterPreview).toEqual({ generating: false, busy: false })
+        expect(isGeneratingIn(here)).toBe(false)
+        expect(isBusyIn(here)).toBe(false)
+    })
+
+    test('T9: a call refused because another unit holds the flag registers nothing', async () => {
+        installWorld()
+        holdEveryRequest()
+        const running = makePluginApi().sendChat('running send')
+        await requestHeld(1)
+        const reactiveSeen: boolean[] = []
+        const stopEffect = $effect.root(() => {
+            $effect(() => { reactiveSeen.push(isGeneratingIn(here)) })
+        })
+        flushSync()
+
+        const refused = await sendChat(-1)
+        flushSync()
+
+        expect(refused).toBe(false)
+        expect(reactiveSeen).toEqual([true])
+        await drain(running)
+        flushSync()
+        expect(reactiveSeen).toEqual([true, false])
+        stopEffect()
+    })
+
+    test('T9: a send stopped through the origin ends its registration, and a thrown provider error ends it too', async () => {
+        installWorld()
+        holdEveryRequest()
+        const call = makePluginApi().sendChat('plugin says')
+        await requestHeld(1)
+        expect(isGeneratingIn(here)).toBe(true)
+
+        stopWorkIn(here)
+        await drain(call)
+        expect(isGeneratingIn(here)).toBe(false)
+
+        requestChatDataMock.mockReset()
+        requestChatDataMock.mockRejectedValueOnce(new Error('provider down'))
+        await settledOutcome(sendChat(-1))
+        expect(isGeneratingIn(here)).toBe(false)
+        expect(get(doingChat)).toBe(false)
+    })
+
+    test('T9b guard: a real send started inside an $effect settles, with no unsafe state mutation', async () => {
+        installWorld()
+        mockReply('effect reply')
+        let outcome: Promise<boolean> | undefined
+        const stopEffect = $effect.root(() => {
+            // The send's synchronous start reads reactive state, so the effect may re-run; the re-run is refused.
+            $effect(() => {
+                outcome ??= sendChat(-1)
+            })
+        })
+        flushSync()
+
+        expect(await outcome).toBe(true)
+        expect(contents()).toEqual(['Hi', 'effect reply'])
+        expect(isGeneratingIn(here)).toBe(false)
+        stopEffect()
     })
 })
 

@@ -37,13 +37,17 @@
     import BootScreen from './lib/Others/BootScreen.svelte';
     import { getBootScreen } from './ts/storage/store2/ui/bootScreen.svelte';
     import { chatSurface, installChatSurface } from './lib/ChatScreens/chatSurface.svelte';
+    import { installChatOnScreen } from './ts/process/chatOnScreen.svelte';
+    import { installReplyNotifications } from './ts/android/replyNotifications.svelte';
     import ToastHost from './lib/Nexus/pattern/ToastHost.svelte';
     import { coversPage } from './ts/alertEscape';
     import NexusBootScreen from './lib/Nexus/boot/NexusBootScreen.svelte';
     import { createLegacyBootTracker } from './lib/Nexus/boot/bootProgress';
 
     installChatSurface()
+    installChatOnScreen()
     installSettingsOrigin()
+    installReplyNotifications()
 
     // The tracker lives as long as App, so the step survives a boot question covering the screen.
     const bootTracker = createLegacyBootTracker()

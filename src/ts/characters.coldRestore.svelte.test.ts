@@ -653,7 +653,7 @@ describe('changeChar on an archived character -- which call selects', () => {
         expect(get(selectedCharID)).toBe(1)
     })
 
-    test('a chat that starts generating during the read leaves the selection unchanged', async () => {
+    test('a chat that starts generating during the read does not stop the restore from selecting the character', async () => {
         installDb([warmCharacter('before'), upstreamStub('member', 'unit-member')])
         const pending = holdReads()
 
@@ -661,23 +661,31 @@ describe('changeChar on an archived character -- which call selects', () => {
         await tick()
         doingChat.set(true)
         pending[0].resolve(ok(fullCharacter('member', 'restored description')))
-        await done
 
-        expect(get(selectedCharID)).toBe(-1)
+        await expect(done).resolves.toBe('selected')
+        expect(get(selectedCharID)).toBe(1)
+        expect(slot(1).coldstorage).toBeUndefined()
+        expect(slot(1).desc).toBe('restored description')
+        expect(slot(0).desc).toBe('before description')
         expect(vi.mocked(alertError)).not.toHaveBeenCalled()
     })
 
-    test('guard: a chat already generating at the start returns before the reseter and any read', async () => {
+    test('a chat already generating at the start does not stop the reseter, the read or the selection', async () => {
         installDb([warmCharacter('before'), upstreamStub('member', 'unit-member')])
         doingChat.set(true)
+        const pending = holdReads()
         const reseter = vi.fn()
 
-        await changeChar(1, { reseter })
+        const done = changeChar(1, { reseter })
+        await tick()
+        pending[0].resolve(ok(fullCharacter('member')))
 
-        expect(reseter).not.toHaveBeenCalled()
-        expect(readColdStorageItemMock).not.toHaveBeenCalled()
-        expect(get(selectedCharID)).toBe(-1)
-        expect(slot(1).coldstorage).toBe('unit-member')
+        await expect(done).resolves.toBe('selected')
+        expect(reseter).toHaveBeenCalledTimes(1)
+        expect(readColdStorageItemMock).toHaveBeenCalledTimes(1)
+        expect(get(selectedCharID)).toBe(1)
+        expect(slot(1).coldstorage).toBeUndefined()
+        expect(slot(0).desc).toBe('before description')
     })
 
     test('guard: the reseter runs at the start, before the read completes', async () => {

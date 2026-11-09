@@ -410,11 +410,16 @@ interface Page {
 }
 
 /** A store2 page: the first character resident, the others stubs of their entities, the residency registered. */
-async function pageOf(options: { backend?: (memory: MemoryBackend) => Store2Backend, group?: boolean } = {}): Promise<Page> {
+async function pageOf(options: { backend?: (memory: MemoryBackend) => Store2Backend, group?: boolean, unseenReply?: boolean } = {}): Promise<Page> {
     const memory = createMemoryBackend()
     const clock = createClock()
     const env = testEnv(clock, 4242)
     const fixture = { ...(shortened(buildSmall(3)) as Obj), archiveCharacters: true } as unknown as Database
+    if (options.unseenReply === true) {
+        for (const slot of fixture.characters) {
+            ;((slot as unknown as Obj).chats as Obj[])[0].unseenReply = 'reply'
+        }
+    }
     if (options.group === true) {
         // A group of the first two characters. The boot policy opens a group with a usable id as a stub, like any character.
         const characters = fixture.characters as unknown as Obj[]
@@ -658,6 +663,24 @@ describe.each([
         const installed = vi.mocked(setDatabase).mock.calls[0][0] as unknown as { characters: Array<Record<string, unknown>> }
         expect(installed.characters[groupIndex]).toMatchObject({ type: 'group', chaId: 'group-one', name: 'Group One', characters: whole.characters })
         expect(installed.characters.every((character) => character.coldstorage === undefined)).toBe(true)
+    })
+
+    test('reproducer (P5): the new-reply mark of a stub is carried in no exported chat, and nothing names it', async () => {
+        const page = await pageOf({ unseenReply: true })
+        for (const entry of page.entries.slice(1)) {
+            expect(((wholeOf(page, entry).chats as Obj[])[0]).unseenReply, entry.name).toBe('reply')
+        }
+
+        await run()
+
+        expect(backupPrompts()).toEqual([])
+        const exported = await exportedCharacters()
+        expect(exported).toHaveLength(page.entries.length)
+        for (const character of exported) {
+            for (const chat of character.chats as Obj[]) {
+                expect('unseenReply' in chat, String(character.name)).toBe(false)
+            }
+        }
     })
 
     test('guard: a page with no stub exports every character as it is, with no entity payload', async () => {

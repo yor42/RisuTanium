@@ -56,9 +56,12 @@ import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { flushPageReplyEndWhenHidden } from "./saveOnHide";
 import { MEASURE } from "./memory/measureFlag";
 import { noteReplyArrived } from "../storage/saveRequestProbe";
-import { beginWork, createSendSubject, registerWork, resolveOriginWithHint, type Origin, type OriginContext, type SendSubject, type WorkHandle, type WorkStop } from "./chatOrigin";
+import { beginWork, createSendSubject, isShownChat, registerWork, resolveOriginWithHint, type Origin, type OriginContext, type SendSubject, type WorkHandle, type WorkKind, type WorkStop } from "./chatOrigin";
 import { noteTurnReached, publishUnit, releaseUnit } from "./generationOwnership.svelte";
 import { addActiveStream } from "./activeStreams";
+import { isChatOnScreen } from "./chatOnScreen.svelte";
+import { classifyReplyOutcome, noteUnitFailure, recordReplyOutcome, type ReplyAnnouncement } from "./replyMarks";
+import { announceReply, noteReplySound } from "./replyNotice";
 
 export interface OpenAIChat{
     role: 'system'|'user'|'assistant'|'function'
@@ -242,6 +245,8 @@ function enterSendChat(chatProcessIndex: number, arg: SendChatArg, stop?: WorkSt
     let hint: SendChatOriginHint
     let owner: character | groupChat
     let handle: WorkHandle | null = null
+    // A prompt preview writes no reply; the recursion inherits the kind from its own arg.
+    const kind: WorkKind = (arg.preview || arg.previewPrompt) ? 'preview' : 'reply'
 
     if(arg.origin){
         const ctx = resolveOriginWithHint(arg.origin, arg.originHint)
@@ -270,7 +275,7 @@ function enterSendChat(chatProcessIndex: number, arg: SendChatArg, stop?: WorkSt
         if(!selected || !selectedChat){
             return null
         }
-        handle = beginWork(selected, selectedChat, undefined, stop)
+        handle = beginWork(selected, selectedChat, undefined, stop, kind)
         if(!handle){
             return null
         }
@@ -284,7 +289,7 @@ function enterSendChat(chatProcessIndex: number, arg: SendChatArg, stop?: WorkSt
         handle?.end()
         handle = null
     }
-    handle ??= registerWork(origin, stop)
+    handle ??= registerWork(origin, stop, kind)
 
     return { context: { origin, hint, subject: createSendSubject(origin, hint) }, handle }
 }
@@ -300,6 +305,15 @@ function settleSendChatCall(entry: SendChatEntry): void {
     entry.handle.end()
     markCharacterForSave(entry.context.origin.chaId)
     markCharacterForSave(entry.context.origin.memberChaId)
+}
+
+/**
+ * The one admission gate for an outermost send: a single send runs at a time,
+ * whichever chat it writes to. The check and the take stay one synchronous
+ * stretch, so no other gate may shadow this one.
+ */
+function sendAdmissible(): boolean {
+    return !get(doingChat)
 }
 
 /**
@@ -324,7 +338,7 @@ function settleSendChatCall(entry: SendChatEntry): void {
  */
 export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Promise<boolean> {
     chatProcessStage.set(0)
-    if(get(doingChat) || arg.signal?.aborted){
+    if(!sendAdmissible() || arg.signal?.aborted){
         return false
     }
     // The registration carries this unit's abort, so a delete of the chat it
@@ -340,6 +354,11 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     // page is not cut off while a reply is being produced. Refused sends and the
     // recursion never begin one.
     let endInFlight: () => void = () => {}
+    // How the unit ended, for the reply mark (`recordReplyOutcome`).
+    let completed = false
+    let threw = false
+    let modulesFailed = false
+    let announcement: ReplyAnnouncement | null = null
     try {
         callerSignal?.addEventListener('abort', relayAbort)
         publishUnit(unit)
@@ -348,19 +367,45 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
         // Awaited only after the flag is taken, so the check and the take stay one synchronous stretch. The busy
         // button aborts the wait through the unit's signal; a failure alerts once and the finally releases the unit.
         if(hasModuleStubs() && !(await ensureModulesOrAlert(entry.context.origin, unit.signal, entry.context.hint))){
+            modulesFailed = true
             return false
         }
-        const completed = await sendChatBody(chatProcessIndex, { ...arg, signal: unit.signal }, entry.context)
+        completed = await sendChatBody(chatProcessIndex, { ...arg, signal: unit.signal }, entry.context)
         return completed && !unit.signal.aborted
+    } catch (error) {
+        threw = true
+        throw error
     } finally {
         try {
+            // First, before the hidden-page flush and while the registration is live: the mark it writes is then saved by
+            // that flush, and a put-back or re-archive that waits on the registration cannot race it. Never throws.
+            if(!(arg.preview || arg.previewPrompt)){
+                const facts = { completed, signal: unit.signal, threw, modulesFailed }
+                announcement = recordReplyOutcome(entry.context, facts, isChatOnScreen)
+                // On screen or off: a failed or stopped reply plays no sound, so the composer's chime must know. Never throws.
+                try {
+                    noteReplySound(callerSignal, classifyReplyOutcome(entry.context.subject.resolve() !== null, facts))
+                } catch (error) {
+                    console.error('The reply sound could not be recorded', error)
+                }
+            }
             flushPageReplyEndWhenHidden(entry.context.origin)
             endInFlight()
             callerSignal?.removeEventListener('abort', relayAbort)
             releaseUnit(unit)
             doingChat.set(false)
         } finally {
-            settleSendChatCall(entry)
+            try {
+                settleSendChatCall(entry)
+            } finally {
+                // After the registration has ended, so the chat no longer reads as writing when the chip appears. Its own
+                // try: a failing notice must not turn a finished send into a failed one.
+                try {
+                    announceReply(announcement, callerSignal)
+                } catch (error) {
+                    console.error('The reply notice could not be posted', error)
+                }
+            }
         }
     }
 }
@@ -560,6 +605,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     }
 
     function throwError(error:string){
+        noteUnitFailure(abortSignal)
         if(!DBState?.db?.inlayErrorResponse){
             alertError(error)
             return
@@ -2612,8 +2658,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
 
     // Only a speaker whose mode produces speech is parsed and spoken: the parse
     // of an unvoiced speaker would feed text to nothing, and `sayTTS` would run
-    // TTS preprocess hooks for it.
-    if(!abortSignal.aborted && DBState.db.ttsAutoSpeech && isTTSVoiceMode(currentChar.ttsMode)){
+    // TTS preprocess hooks for it. A chat that is not on screen is not spoken.
+    if(!abortSignal.aborted && DBState.db.ttsAutoSpeech && isTTSVoiceMode(currentChar.ttsMode) && isShownChat(origin)){
         const ttsTarget = resolveReply()
         if(ttsTarget){
             const storedReply = ttsTarget.ctx.chat.message[ttsTarget.index]
@@ -2637,7 +2683,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     text = await translateForSpeech(spoken, [abortSignal, currentTTSSignal()], note)
                 }
                 // The reply can be deleted while the translation is pending; a Stop or a deleted chat ends the wait.
-                if(text !== null && !abortSignal.aborted && resolveReply()){
+                // The chat can also be left meanwhile, and a chat that is not on screen is not spoken.
+                if(text !== null && !abortSignal.aborted && resolveReply() && isShownChat(origin)){
                     await sayTTS(currentChar, text, { skipTextFilter: true })
                 }
             }
@@ -2727,22 +2774,6 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             origin,
             originHint: hint
         })
-    }
-
-    if(DBState.db.notification){
-        try {
-            const permission = await Notification.requestPermission()
-            if(permission === 'granted'){
-                const noti = new Notification('RisuTanium', {
-                    body: result
-                })
-                noti.onclick = () => {
-                    window.focus()
-                }
-            }
-        } catch (error) {
-            
-        }
     }
 
     if(!currentChar.inlayViewScreen){

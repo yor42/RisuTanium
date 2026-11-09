@@ -1,6 +1,6 @@
 /**
  * Page side of the Android host channel. When the host injects one message object into the
- * app's main frame, the system-bar, gesture-inset, keep-alive and opened-files bridges all go
+ * app's main frame, the system-bar, gesture-inset, keep-alive, reply-notification and opened-files bridges all go
  * through it as JSON strings; otherwise each caller gets the separate host object it used
  * before, unchanged. Every export prefers the channel, so a caller never touches both.
  *
@@ -9,6 +9,7 @@
  * ignores a message it does not understand, so a bad value never throws here either.
  */
 import type { KeepAliveHost } from './keepAliveService'
+import type { ReplyNotificationsHost } from './replyNotifications.svelte'
 
 interface HostMessageEvent {
     data: unknown
@@ -220,6 +221,25 @@ export function keepAliveHost(): Partial<KeepAliveHost> | undefined {
             stop: () => call('stop', []),
             stopAfter: (ms: number) => call('stopAfter', [ms]),
             requestNotificationPermissionOnce: () => call('requestNotificationPermissionOnce', []),
+        }
+    }
+    return legacy
+}
+
+/** The reply-notification bridge: over the channel when the host injected one, else the separate object (undefined when the host has none). */
+export function replyNotificationsHost(): Partial<ReplyNotificationsHost> | undefined {
+    const channel = bind()
+    const legacy = window.__risuTaniumReplyNotificationsHost
+    if (channel) {
+        const call = (method: string, args: unknown[]): void => {
+            send(channel, { bridge: 'replyNotifications', method, args })
+        }
+        return {
+            refresh: () => call('refresh', []),
+            enable: () => call('enable', []),
+            disable: () => call('disable', []),
+            notify: (key: string, title: string, body: string, silent: boolean) => call('notify', [key, title, body, silent]),
+            cancel: (key: string) => call('cancel', [key]),
         }
     }
     return legacy

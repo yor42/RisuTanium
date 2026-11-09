@@ -13,7 +13,7 @@ import { language } from "src/lang"
 import type { Database } from "../storage/database.svelte"
 import { isPluginStorageIndex, largeIdsOfIndex } from "./pluginStorageIndex"
 import { classifyColdDecodeFailure, classifyColdDecompressFailure, coldStorageHeader, getColdStorageAffectedCharacters, getColdStorageBackupName, isColdStorageBackupData, isRestorableColdStorageKey, listColdBackupRoots, listColdDataKeysFromDb, listInnerColdStorageKeys, matchColdStorageLoadErrorKey, mergeRetriedColdChatSideFields, type ColdBackupRoot, type ColdReadErrorKind, type PreLoadChatResult, type RetryLegacyColdChatLoadResult } from "./coldstorageData"
-import { doingChat } from "./index.svelte"
+import { isWriting } from "./chatOrigin"
 import { isSafeColdStorageKey } from "./coldStorageKey"
 import { withoutColdValueForkOnly, type ForkOnlyChatLabel } from "../drive/exportAlternatives"
 import { coldUnitStoreKey, coldUnitStoreRefusal, legacyOpfsUnitName } from "./coldUnitLocation"
@@ -980,7 +980,10 @@ export async function retryLegacyColdChatLoad(characterIndex:number, chatIndex:n
     }
     const chaId = DBState.db?.characters?.[characterIndex]?.chaId
 
-    if(get(doingChat) || chat.isStreaming){
+    // Only a reply written into this chat holds the retry; a reply in another chat does not.
+    const writingHere = () => !!chaId && !!chat.id && isWriting({ chaId, chatId: chat.id })
+
+    if(writingHere() || chat.isStreaming){
         return 'busy'
     }
 
@@ -988,7 +991,7 @@ export async function retryLegacyColdChatLoad(characterIndex:number, chatIndex:n
 
     // A send may have started while the read was in flight -- re-check
     // busy status after the await too.
-    if(get(doingChat) || chat.isStreaming){
+    if(writingHere() || chat.isStreaming){
         return 'busy'
     }
 

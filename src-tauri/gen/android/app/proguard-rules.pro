@@ -40,6 +40,11 @@
     @android.webkit.JavascriptInterface public <methods>;
 }
 
+# The page calls the reply-notification bridge by name the same way.
+-keep class io.github.yor42.risutanium.ReplyNotificationsBridge {
+    @android.webkit.JavascriptInterface public <methods>;
+}
+
 # The page takes the files other apps opened through the opened-files bridge by name the same way.
 -keep class io.github.yor42.risutanium.OpenedFilesBridge {
     @android.webkit.JavascriptInterface public <methods>;

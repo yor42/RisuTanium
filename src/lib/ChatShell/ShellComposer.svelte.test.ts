@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { flushSync, mount, unmount } from 'svelte'
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import * as drafts from '../../ts/process/composerDrafts.svelte'
 import { hasLocalDrafts, resetLocalDraftsForTest } from '../../ts/localDrafts'
@@ -16,11 +16,14 @@ const busy = writable(false)
 const stage = writable(0)
 const sendMain = vi.fn(async () => {})
 const abortChat = vi.fn()
+const stopComposerWorkIn = vi.fn()
+// Whether work is registered in the shown chat, and whether the global send flag is held by another chat.
+const work = $state({ shown: false, window: false })
 const postChatFile = vi.fn(async () => [{ type: 'asset' as const, data: 'asset-id' }])
 
 vi.mock('../../ts/stores.svelte', () => ({ DBState: state, selIdState: selection, popUpEditorStore: popup }))
 vi.mock('../../ts/process/index.svelte', () => ({ doingChat: busy, chatProcessStage: stage }))
-vi.mock('../../ts/process/composerActions.svelte', () => ({ sendMain, abortChat, isComposerBusy: () => false, isComposerLocked: () => false, reroll: vi.fn(), updateInputTransateMessage: vi.fn() }))
+vi.mock('../../ts/process/composerActions.svelte', () => ({ sendMain, abortChat, stopComposerWorkIn, isComposerBusy: () => work.window, isComposerBusyIn: () => work.shown, isComposerLocked: () => false, reroll: vi.fn(), updateInputTransateMessage: vi.fn() }))
 const pendingDelete = $state({ chatId: null as string | null })
 vi.mock('../../ts/process/chatOrigin', () => ({ beginWork: vi.fn(), originOf: (owner: { chaId: string }, chat: { id: string }) => ({ chaId: owner.chaId, chatId: chat.id }) }))
 vi.mock('../../ts/chatShell/stopDelete.svelte', () => ({
@@ -34,6 +37,7 @@ vi.mock('../ChatScreens/AssetInput.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../lang', () => ({ language: {
     chatShellMessage: 'Message', chatShellMoreActions: 'More actions', chatShellChoosePersona: 'Choose persona',
     asPersona: (name: string) => `as ${name}`, chatShellStop: 'Stop', chatShellSend: 'Send', chatShellSendWaitsForDelete: 'Waiting for the reply to be deleted…',
+    chatShellSendBlockedWriting: 'Another chat is writing a reply. Send when it finishes.',
     chatShellRemoveAttachment: 'Remove attachment', enterKey: 'Enter key',
     chatShellStickers: 'Stickers', chatShellOnThisDevice: 'On this device',
     chatShellEnterAutomatic: 'Automatic', chatShellEnterSend: 'Send', chatShellEnterNewline: 'New line', postFile: 'Post File',
@@ -48,7 +52,10 @@ afterEach(async () => {
     resetLocalDraftsForTest()
     drafts.resetComposerDraftsForTests()
     pendingDelete.chatId = null
-    sendMain.mockClear(); abortChat.mockClear(); postChatFile.mockClear()
+    sendMain.mockClear(); abortChat.mockClear(); stopComposerWorkIn.mockClear(); postChatFile.mockClear()
+    work.shown = false
+    work.window = false
+    busy.set(false)
     vi.unstubAllGlobals()
 })
 
@@ -192,13 +199,55 @@ describe('ShellComposer draft and actions', () => {
         expect(tools.querySelector('[data-part="chat-composer-enter-scope"]')?.textContent).toBe('On this device')
     })
 
-    test('busy state shows Stop and calls abortChat', async () => {
+    test('T11: work in the shown chat shows Stop, and Stop stops that chat only', async () => {
+        const node = await show()
+        busy.set(true)
+        work.shown = true
+        flushSync()
+        node.querySelector<HTMLButtonElement>('[data-part="chat-composer-stop"]')?.click()
+        expect(stopComposerWorkIn).toHaveBeenCalledTimes(1)
+        expect(stopComposerWorkIn).toHaveBeenCalledWith({ chaId: 'c', chatId: 'chat' })
+        expect(abortChat).not.toHaveBeenCalled()
+    })
+
+    test('T10: a reply written in another chat shows no Stop, disables Send with the reason, and leaves typing alone', async () => {
         const node = await show()
         busy.set(true)
         flushSync()
-        node.querySelector<HTMLButtonElement>('[data-part="chat-composer-stop"]')?.click()
-        expect(abortChat).toHaveBeenCalledTimes(1)
+        expect(node.querySelector('[data-part="chat-composer-stop"]')).toBeNull()
+        const send = node.querySelector<HTMLButtonElement>('[data-part="chat-send"]')!
+        expect(send.disabled).toBe(true)
+        expect(send.title).toBe('Another chat is writing a reply. Send when it finishes.')
+        const reasonId = send.getAttribute('aria-describedby')!
+        expect(node.querySelector(`#${reasonId}`)?.textContent).toBe('Another chat is writing a reply. Send when it finishes.')
+        send.click()
+        expect(sendMain).not.toHaveBeenCalled()
+        const input = node.querySelector<HTMLTextAreaElement>('[data-part="chat-composer-input"]')!
+        expect(input.readOnly).toBe(false)
+        input.value = 'typed meanwhile'
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        flushSync()
+        expect(drafts.peek({ chaId: 'c', chatId: 'chat' }).messageInput).toBe('typed meanwhile')
+
         busy.set(false)
+        flushSync()
+        expect(node.querySelector<HTMLButtonElement>('[data-part="chat-send"]')!.disabled).toBe(false)
+        expect(node.querySelector<HTMLButtonElement>('[data-part="chat-send"]')!.hasAttribute('aria-describedby')).toBe(false)
+    })
+
+    test('T10: another chat\'s open take window (the send flag not yet held) disables Send with the reason, and it re-enables when the window closes', async () => {
+        const node = await show()
+        work.window = true
+        flushSync()
+        const send = node.querySelector<HTMLButtonElement>('[data-part="chat-send"]')!
+        expect(get(busy)).toBe(false)
+        expect(send.disabled).toBe(true)
+        expect(send.title).toBe('Another chat is writing a reply. Send when it finishes.')
+        send.click()
+        expect(sendMain).not.toHaveBeenCalled()
+        work.window = false
+        flushSync()
+        expect(node.querySelector<HTMLButtonElement>('[data-part="chat-send"]')!.disabled).toBe(false)
     })
 
     test('paste counts the FileReader until load, error, or abort settles', async () => {

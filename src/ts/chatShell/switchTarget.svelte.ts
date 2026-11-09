@@ -1,8 +1,5 @@
 import { get } from 'svelte/store'
-import { language } from 'src/lang'
-import { alertNormal } from '../alert'
 import { changeChar, supersedeChangeChar, type ChangeCharOutcome } from '../characters'
-import { doingChat } from '../process/index.svelte'
 import type { ColdRestoreFailure } from '../process/coldCharacterRestore'
 import type { Database } from '../storage/database.svelte'
 import { DBState, selectedCharID } from '../stores.svelte'
@@ -38,15 +35,6 @@ export function clearPending(): void {
     switchTarget.reason = null
 }
 
-/** True, after telling the user why, when a reply is being written: a character switch would orphan it. */
-export function refuseSwitchWhileWriting(): boolean {
-    if(!get(doingChat)){
-        return false
-    }
-    alertNormal(language.chatShellSwitchRefusedWriting)
-    return true
-}
-
 /**
  * The slot to switch to, resolved when the switch is requested: the entry's
  * own slot, else the sole holder of its `chaId`, else -1.
@@ -75,9 +63,6 @@ function resolveIndex(entry: Entry): number {
  * leaves nothing pending.
  */
 export async function switchCharacter(entry: Entry): Promise<ChangeCharOutcome> {
-    if(refuseSwitchWhileWriting()){
-        return 'busy'
-    }
     const index = resolveIndex(entry)
     if(index === -1){
         clearPending()
@@ -129,11 +114,7 @@ export async function switchCharacter(entry: Entry): Promise<ChangeCharOutcome> 
     if(mine !== seq){
         return outcome
     }
-    if(outcome === 'busy'){
-        clearPending()
-        alertNormal(language.chatShellSwitchRefusedWriting)
-    }
-    else if(typeof outcome === 'object'){
+    if(typeof outcome === 'object'){
         switchTarget.phase = 'failed'
         switchTarget.reason = outcome.failed
     }

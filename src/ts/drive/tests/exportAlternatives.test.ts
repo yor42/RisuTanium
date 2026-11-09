@@ -93,7 +93,20 @@ describe('withoutForkOnlyChatData', () => {
             'chat:scopedJailbreak:chatJailbreak',
             'chat:scopedMemory:chatMemory',
             'chat:hideNames:hideNames',
+            'chat:unseenReply:null',
         ])
+    })
+
+    // OQ-R1 (b): the new-reply mark is removed from a `.bin` export and never named, so it adds no warning and no string.
+    test.each(['reply', 'error', 'a value of a later build'])('reproducer (P3): unseenReply %j is removed from the exported chat and names nothing', (value) => {
+        const input = character([{ name: 'A', unseenReply: value, message: [1] }, { name: 'B', message: [2] }])
+        const snapshot = JSON.stringify(input)
+
+        const out = withoutForkOnlyChatData(input)
+
+        expect(out.chats).toEqual([{ name: 'A', message: [1] }, { name: 'B', message: [2] }])
+        expect(forkOnlyChatLabels(input)).toEqual([])
+        expect(JSON.stringify(input)).toBe(snapshot)
     })
 
     // C-T11 at the table: a switch is named only while the chat's scope flag is on and the value is a boolean
@@ -203,6 +216,21 @@ describe('withoutColdValueForkOnly', () => {
         const out = withoutColdValueForkOnly({ message: [{ interrupted: false }], name: 'Loose', supaMemoryData: 'L', supaMemoryCoveredId: 'x' }, 'k')
         expect(out.value).toEqual({ message: [{}], name: 'Loose', supaMemoryData: 'L' })
         expect(out.labels).toEqual([])
+    })
+
+    test('reproducer (P5): a character unit and a chat unit lose unseenReply, are not named, and the inputs are untouched', () => {
+        const unit = { character: character([{ name: 'A', unseenReply: 'reply', message: [1] }]) }
+        const loose = { message: [1], name: 'Loose', unseenReply: 'error' }
+
+        const a = withoutColdValueForkOnly(unit, 'unit-a')
+        const b = withoutColdValueForkOnly(loose, 'unit-b')
+
+        expect(JSON.stringify(a.value)).not.toContain('unseenReply')
+        expect(a.labels).toEqual([])
+        expect(b.value).toEqual({ message: [1], name: 'Loose' })
+        expect(b.labels).toEqual([])
+        expect(unit.character.chats[0].unseenReply).toBe('reply')
+        expect(loose.unseenReply).toBe('error')
     })
 })
 

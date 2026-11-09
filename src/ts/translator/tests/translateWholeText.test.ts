@@ -86,7 +86,9 @@ vi.mock('localforage', () => ({
 
 //#endregion
 
-import { translateWholeText } from '../translator'
+import { translateHTML, translateWholeText } from '../translator'
+import { doingChat } from '../../process/index.svelte'
+import { registerWork, type RunSubject } from '../../process/chatOrigin'
 
 const FIVE_PARAGRAPHS = 'one\n\ntwo\n\nthree\n\nfour\n\nfive'
 
@@ -190,5 +192,56 @@ describe('translateWholeText', () => {
 
         expect(await translateWholeText('  \n')).toBe('  \n')
         expect(h.requests).toEqual([])
+    })
+})
+
+describe('translateHTML while a reply is being written', () => {
+    const openReplies: Array<{ end: () => void }> = []
+
+    afterEach(() => {
+        for (const reply of openReplies.splice(0)) {
+            reply.end()
+        }
+    })
+
+    function writeReplyIn(chaId: string, chatId: string): void {
+        openReplies.push(registerWork({ chaId, chatId }, undefined, 'reply'))
+        doingChat.set(true)
+    }
+
+    test('T14: text of a chat that is not the one writing is translated (llm, cache miss)', async () => {
+        installDb('llm', { characters: [{ chaId: 'shown', type: 'character', chatPage: 0, modules: [], customscript: [], chats: [{ id: 'shown-chat' }] }] })
+        writeReplyIn('writer', 'writer-chat')
+
+        const result = await translateHTML('hello', false, '', 0)
+
+        expect(h.requests).toEqual(['hello'])
+        expect(result).toBe('T:hello')
+        doingChat.set(false)
+    })
+
+    test('guard: text of the chat that is writing keeps its original while the reply streams (cache miss)', async () => {
+        installDb('llm', { characters: [{ chaId: 'shown', type: 'character', chatPage: 0, modules: [], customscript: [], chats: [{ id: 'shown-chat' }] }] })
+        writeReplyIn('shown', 'shown-chat')
+
+        const result = await translateHTML('hello', false, '', 0)
+
+        expect(h.requests).toEqual([])
+        expect(result).toBe('hello')
+        doingChat.set(false)
+    })
+
+    test('T14: a subject names the chat whose text it is, whatever chat is shown', async () => {
+        installDb('llm', { characters: [{ chaId: 'shown', type: 'character', chatPage: 0, modules: [], customscript: [], chats: [{ id: 'shown-chat' }] }] })
+        writeReplyIn('writer', 'writer-chat')
+        const ofWriter = { origin: { chaId: 'writer', chatId: 'writer-chat' } } as RunSubject
+        const ofShown = { origin: { chaId: 'shown', chatId: 'shown-chat' } } as RunSubject
+
+        const skipped = await translateHTML('hello', false, '', 0, false, ofWriter)
+        const translated = await translateHTML('hello', false, '', 0, false, ofShown)
+
+        expect(skipped).toBe('hello')
+        expect(translated).toBe('T:hello')
+        doingChat.set(false)
     })
 })

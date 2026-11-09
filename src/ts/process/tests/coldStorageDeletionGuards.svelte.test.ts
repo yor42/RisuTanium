@@ -483,6 +483,7 @@ import {
 import { isColdChat, formatColdStorageLoadError, mergeRetriedColdChatSideFields } from '../coldstorageData'
 import type { RetryLegacyColdChatSideFields } from '../coldstorageData'
 import { doingChat } from '../index.svelte'
+import { registerWork } from '../chatOrigin'
 import { sweepTauriAssets, sweepForageAssetKey } from '../../storage/assetSweep'
 import { RisuSaveEncoder } from '../../storage/risuSave'
 import { recordLoadTimeListing } from '../../storage/loadTimeListing'
@@ -1905,7 +1906,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
         expect(chat.message).toEqual(messageBefore)
     })
 
-    test('RL6: "busy" when doingChat is already set before the read starts', async () => {
+    test('RL6: "busy" when a reply is already being written into this chat before the read starts', async () => {
         platformState.isTauri = false
         resetOpfs()
 
@@ -1914,10 +1915,29 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
         const errorChat = makeErrorTextChat('rl6-chat-0', coldKey)
         DBState.db = makeRetryDb('rl6-char', errorChat)
 
+        const reply = registerWork({ chaId: 'rl6-char', chatId: 'rl6-chat-0' }, undefined, 'reply')
         doingChat.set(true)
         const result = await retryLegacyColdChatLoad(0, 0)
+        reply.end()
 
         expect(result).toBe('busy')
+    })
+
+    test('RL6b (T16): a reply being written into another chat does not hold the retry', async () => {
+        platformState.isTauri = false
+        resetOpfs()
+
+        const coldKey = 'rl6b-cold-key'
+        await setColdStorageItem(coldKey, { message: [{ time: 1, data: 'x', role: 'user' }] })
+        const errorChat = makeErrorTextChat('rl6b-chat-0', coldKey)
+        DBState.db = makeRetryDb('rl6b-char', errorChat)
+
+        const reply = registerWork({ chaId: 'rl6b-other-char', chatId: 'rl6b-other-chat' }, undefined, 'reply')
+        doingChat.set(true)
+        const result = await retryLegacyColdChatLoad(0, 0)
+        reply.end()
+
+        expect(result).toBe('ok')
     })
 
     test('RL7: "busy" when the chat\'s own isStreaming is set before the read starts', async () => {
@@ -1934,7 +1954,7 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
         expect(result).toBe('busy')
     })
 
-    test('RL8: "busy" when doingChat turns true during the read', async () => {
+    test('RL8: "busy" when a reply starts in this chat during the read', async () => {
         platformState.isTauri = false
         resetOpfs()
 
@@ -1944,9 +1964,11 @@ describe('CHORE-07 stage 7c-2: retryLegacyColdChatLoad', () => {
         DBState.db = makeRetryDb('rl8-char', errorChat)
 
         const resultPromise = retryLegacyColdChatLoad(0, 0)
-        // Synchronously, before the read settles, a send starts.
+        // Synchronously, before the read settles, a send starts in this chat.
+        const reply = registerWork({ chaId: 'rl8-char', chatId: 'rl8-chat-0' }, undefined, 'reply')
         doingChat.set(true)
         const result = await resultPromise
+        reply.end()
 
         expect(result).toBe('busy')
     })

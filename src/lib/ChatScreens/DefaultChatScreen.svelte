@@ -47,6 +47,8 @@
         abortChat as composerAbortChat,
         updateInputTransateMessage as composerUpdateInputTransateMessage,
         isComposerBusy,
+        isComposerBusyIn,
+        stopComposerWorkIn,
         isComposerLocked,
         isAutoModeActive,
         type ComposerActionsSource
@@ -321,7 +323,16 @@
     }
     // Rendered state of the tree controls; the composer's own gate still decides each press.
     const treeControlsBusy = () => $doingChat || isComposerBusy()
+    // The shown chat's own work decides Stop and Stop reaches that work only; work in another chat
+    // disables Send and leaves typing alone.
+    const shownOrigin = $derived(currentCharacter?.chaId && currentChatObj?.id ? { chaId: currentCharacter.chaId, chatId: currentChatObj.id } : null)
+    const shownBusy = $derived(shownOrigin ? isComposerBusyIn(shownOrigin) : false)
+    const writingElsewhere = $derived(!shownBusy && ($doingChat || isComposerBusy()))
     function abortChat(){
+        if(shownOrigin){
+            stopComposerWorkIn(shownOrigin)
+            return
+        }
         composerAbortChat()
     }
     async function runAutoMode() {
@@ -691,7 +702,7 @@
                 ></textarea>
 
 
-                {#if $doingChat || isComposerBusy() || doingChatInputTranslate}
+                {#if shownBusy || doingChatInputTranslate}
                     <button
                             aria-labelledby="cancel"
                             class="peer-focus:border-textcolor  flex justify-center border-y border-darkborderc items-center text-textcolor p-3 hover:bg-blue-500 hover:text-white transition-colors" onclick={abortChat}
@@ -702,11 +713,15 @@
                 {:else}
                     <button
                             onclick={send}
-                            class="flex justify-center border-y border-darkborderc items-center text-textcolor p-3 peer-focus:border-textcolor hover:bg-blue-500 hover:text-white transition-colors button-icon-send"
+                            disabled={writingElsewhere}
+                            title={writingElsewhere ? language.chatShellSendBlockedWriting : undefined}
+                            aria-describedby={writingElsewhere ? 'chat-send-blocked-reason' : undefined}
+                            class="flex justify-center border-y border-darkborderc items-center text-textcolor p-3 peer-focus:border-textcolor hover:bg-blue-500 hover:text-white transition-colors button-icon-send disabled:opacity-50"
                             style:height={inputHeight}
                     >
                         <Send />
                     </button>
+                    {#if writingElsewhere}<span id="chat-send-blocked-reason" hidden>{language.chatShellSendBlockedWriting}</span>{/if}
                 {/if}
                 {#if DBState.db.characters[$selectedCharID]?.chaId !== '§playground'}
                     <button
@@ -890,7 +905,7 @@
                     {/if}
                     {#if legacyView.showRetry}
                         <Button
-                            disabled={legacyRetryStatus === 'pending' || $doingChat}
+                            disabled={legacyRetryStatus === 'pending' || shownBusy}
                             onclick={() => retryColdChatLoad(
                                 currentCharacter?.chaId ?? '',
                                 legacyErrorKey ?? '',
