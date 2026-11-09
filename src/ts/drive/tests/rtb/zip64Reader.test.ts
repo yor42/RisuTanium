@@ -608,6 +608,50 @@ describe('T-crcbad a damaged body is damaged on read', () => {
             expect(read.result.finding.code).toBe('crc')
         }
     })
+
+    /** A one-byte body is checked against its central CRC like any other size. */
+    async function oneByteFile(): Promise<Uint8Array> {
+        return build([
+            { name: 'mimetype', method: 0, body: BODY.mime },
+            { name: 'o/stored', method: 0, body: new Uint8Array([0x41]) },
+            { name: 'o/deflated', method: 8, body: new Uint8Array([0x42]) },
+        ])
+    }
+
+    test('an intact one-byte stored entry and one-byte deflated entry read back', async () => {
+        const bytes = await oneByteFile()
+        const index = indexOf(await walk(bytes))
+        for (const [name, value] of [['o/stored', 0x41], ['o/deflated', 0x42]] as const) {
+            const read = await readAll(rangeSourceOfBytes(bytes), index, index.find(name)[0])
+            expect(read.result.ok).toBe(true)
+            expect(Array.from(read.bytes)).toEqual([value])
+        }
+    })
+
+    test('a flipped byte in a one-byte stored entry fails the CRC', async () => {
+        const copy = patched(await oneByteFile(), (dv, l) => {
+            const entry = l.zip.entries.find((candidate) => candidate.name === 'o/stored')!
+            dv.setUint8(entry.local.dataStart, dv.getUint8(entry.local.dataStart) ^ 0x40)
+        })
+        const index = indexOf(await walk(copy))
+        const read = await readAll(rangeSourceOfBytes(copy), index, index.find('o/stored')[0])
+        expect(read.result.ok).toBe(false)
+        if (read.result.ok === false) {
+            expect(read.result.finding.code).toBe('crc')
+            expect(read.result.finding.name).toBe('o/stored')
+        }
+    })
+
+    test('a wrong central CRC on a one-byte deflated entry fails', async () => {
+        const copy = patched(await oneByteFile(), (dv, l) => dv.setUint32(centralStart(l, 'o/deflated') + 16, 0xDEADBEEF, true))
+        const index = indexOf(await walk(copy))
+        const read = await readAll(rangeSourceOfBytes(copy), index, index.find('o/deflated')[0])
+        expect(read.result.ok).toBe(false)
+        if (read.result.ok === false) {
+            expect(read.result.finding.code).toBe('crc')
+            expect(read.result.finding.name).toBe('o/deflated')
+        }
+    })
 })
 
 describe('T44 inflation bound', () => {
