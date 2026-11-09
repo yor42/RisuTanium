@@ -472,6 +472,18 @@ function departRecords(chat: Chat, tail: readonly Message[], parentId: string | 
     return records;
 }
 
+/** `departRecords` onto a plain list that the caller assigns afterwards; the stamp follows that list. */
+function appendDepartRecords(alt: ChatAlt[], tail: readonly Message[], parentId: string | null): ChatAlt[] {
+    const stamp = nextStamp(alt);
+    const records = tail.map((m, k): ChatAlt => ({
+        m,
+        p: k === 0 ? parentId : tail[k - 1].chatId ?? null,
+        a: stamp,
+    }));
+    alt.push(...records);
+    return records;
+}
+
 /**
  * Cuts `message[i..]` off the path into records, the first one following `message[i - 1]` (or the root)
  * and each later one following the message before it, all with one new stamp appended to `alt`. Messages
@@ -537,13 +549,16 @@ export function switchTo(chat: Chat, i: number, headId: string): boolean {
     const arriving = arrivingAt.map((k) => alt[k]);
     stampMissingIds(chat);
     const tail = path.slice(i);
-    path.splice(i);
-    const parentId = i === 0 ? null : path[i - 1].chatId ?? null;
-    for (const k of [...arrivingAt].sort((a, b) => b - a)) {
-        alt.splice(k, 1);
-    }
-    const departed = tail.length === 0 ? [] : departRecords(chat, tail, parentId);
-    path.push(...arriving.map((record) => record.m));
+    const nextPath = path.slice(0, i);
+    const parentId = i === 0 ? null : nextPath[i - 1].chatId ?? null;
+    const arrivingSet = new Set(arrivingAt);
+    const nextAlt = alt.filter((_record, k) => !arrivingSet.has(k));
+    const departed = tail.length === 0 ? [] : appendDepartRecords(nextAlt, tail, parentId);
+    nextPath.push(...arriving.map((record) => record.m));
+    // Each container is assigned once: in-place splice and push writes through the reactive proxy
+    // would mark every dependent of every touched index separately.
+    chat.message = nextPath;
+    chat.alt = nextAlt;
     carryBranchState(chat, departed, arriving[0], false);
     return true;
 }
