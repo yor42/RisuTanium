@@ -29,6 +29,7 @@ import { escapeHtmlText } from "./htmlEscape";
 import { keepChatPageOf, openChatOf } from "./chatShell/chatOpen";
 import { chatRecency } from "./chatShell/chatListModel";
 import { isHiddenSystemCharacter } from "./hiddenCharacters";
+import { findOrigin, placeRestored, recordTrashOrigins, releaseTrashOrigin } from "./trashOrigin";
 import { chatNameFromFile, detectJsonChatFormat, readAgnaiChat, readCaiTurnsChat, readDumperChats, readKoboldChat, readMorseChats, readOobaChat, readTavernJsonl, tavernMessageName, type CaiChatsResult, type ChatImportResult } from "./chatImport";
 
 export function createNewCharacter() {
@@ -1206,7 +1207,10 @@ export async function removeChar(identifier:string|number|character|groupChat,na
     }
     let removed: (character | groupChat)[] = []
     if(type === 'normal'){
-        chars[index].trashTime = Date.now()
+        const trashedAt = Date.now()
+        chars[index].trashTime = trashedAt
+        // Before `checkCharOrder` strips the id: the place it leaves is what a restore needs.
+        recordTrashOrigins(db, [chars[index]], trashedAt)
     }
     else{
         removed = chars.splice(index, 1)
@@ -1438,6 +1442,8 @@ export async function trashCharacters(picked: { characters: readonly (character 
         stopWorkIn({ chaId: c.chaId })
         c.trashTime = now
     }
+    // Before the folder splices: a picked folder is dissolved below, so nothing is recorded against it.
+    recordTrashOrigins(DBState.db, doomed, now, picked.folders)
     const trashedIds = new Set(doomed.map((c) => c.chaId))
     const order = DBState.db.characterOrder
     if(order){
@@ -1573,6 +1579,10 @@ function removeKeepingCurrent(owner: character | groupChat, chat: Chat): boolean
  * field write (`trashTime = undefined`), invisible to both the
  * selected-character tracker and the identity tracker (element/whole-array
  * replacement only), so it does not persist without the explicit mark below.
+ *
+ * The character goes back to the folder and position `trashOrigins` recorded for this trashing, as far as
+ * they still exist (`placeRestored`); otherwise `checkCharOrder` pushes it at the top-level end. The order
+ * is edited before `checkCharOrder` and the record is released after it.
  */
 export function restoreCharacterFromTrash(identifier: string | character | groupChat): void {
     const chars = DBState.db.characters
@@ -1585,8 +1595,18 @@ export function restoreCharacterFromTrash(identifier: string | character | group
         return
     }
     const restored = chars[restoreIdx]
+    // The record is read for exactly this trashing: a slot that is not trashed matches none.
+    const trashedAt = restored.trashTime
+    const origin = typeof trashedAt === 'number' ? findOrigin(DBState.db.trashOrigins, restored.chaId, trashedAt) : undefined
     restored.trashTime = undefined
+    // Placed before `checkCharOrder`, which would push the unordered id at the top-level end.
+    if(origin && Array.isArray(DBState.db.characterOrder)){
+        placeRestored(DBState.db.characterOrder, restored.chaId, origin)
+    }
     checkCharOrder()
+    if(typeof trashedAt === 'number'){
+        releaseTrashOrigin(DBState.db, restored.chaId, trashedAt)
+    }
     markCharacterForSave(restored.chaId)
 }
 

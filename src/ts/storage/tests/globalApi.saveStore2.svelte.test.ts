@@ -993,3 +993,45 @@ describe('guard: restoring a trashed character carries the restore into the save
         }
     })
 })
+
+describe('new behaviour: the trash origin rides the store2 commit and survives a reload', () => {
+    test('trashing a character that is not selected commits trashOrigins with the root, and a restore over the saved database goes back to the folder', async () => {
+        // The shared mocks stub `src/ts/characters`; the real module is needed here, and the stub returns afterwards.
+        vi.doUnmock('src/ts/characters')
+        // Modules the trash and restore never touch, kept out of the real module's import graph.
+        vi.doMock('src/ts/process/index.svelte', async () => ({ doingChat: (await import('svelte/store')).writable(false) }))
+        vi.doMock('src/ts/process/coldCharacterRestore', () => ({ findChaIdHolders: vi.fn(() => []), restoreColdCharacter: vi.fn() }))
+        vi.doMock('src/ts/plugins/apiV3/v3.svelte', async () => ({ customV3ProviderMetaStore: (await import('svelte/store')).writable({}), loadV3Plugins: vi.fn() }))
+        vi.doMock('src/ts/characterCards', () => ({ importCharacter: vi.fn() }))
+        vi.doMock('src/ts/translator/translator', () => ({ translateHTML: vi.fn() }))
+        try {
+            const db = small()
+            const ids = characters(db as unknown as Entry).map(c => String(c.chaId))
+            db.characterOrder = [ids[0], { id: 'f1', name: 'F', color: '', data: [ids[1], ids[2], ids[3]] }]
+            const page = await startPage(db)
+            await settled(page.w)
+            const { trashCharacters, restoreCharacterFromTrash } = await import('src/ts/characters')
+            // Resolved by reference: the world's shared mocks replace the id lookup of `src/ts/util`.
+            const target = characters(page.db)[2] as unknown as character
+            let pending: Promise<number> | undefined
+            await commitAfter(page, () => { pending = trashCharacters({ characters: [target], folders: [] }) })
+            expect(await pending).toBe(1)
+
+            const saved = await page.k.saved()
+            const savedRoot = saved as unknown as Record<string, unknown>
+            expect(savedRoot.trashOrigins).toEqual([{ chaId: ids[2], t: saved.characters[2].trashTime, folder: 'f1', after: { char: ids[1] } }])
+
+            // A reload: the saved database becomes the live one, and the character is restored from it.
+            const reloaded = JSON.parse(JSON.stringify(saved)) as Database
+            ;(page.stores.DBState as { db: unknown }).db = reloaded
+            const trashedAfterReload = (page.stores.DBState as { db: Database }).db.characters[2]
+            restoreCharacterFromTrash(trashedAfterReload)
+
+            const live = JSON.parse(JSON.stringify((page.stores.DBState as { db: Database }).db)) as Database
+            expect(live.characterOrder).toEqual([ids[0], { id: 'f1', name: 'F', color: '', data: [ids[1], ids[2], ids[3]] }])
+            expect((live as unknown as Record<string, unknown>).trashOrigins).toEqual([])
+        } finally {
+            vi.doMock('src/ts/characters', () => ({ updateLorebooks: vi.fn((v: unknown) => v) }))
+        }
+    })
+})
