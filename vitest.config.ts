@@ -3,7 +3,14 @@ import { configDefaults, defineConfig } from 'vitest/config'
 
 export default defineConfig({
   plugins: [
-    svelte(),
+    svelte({
+      compilerOptions: {
+        experimental: {
+          // Off in this fork: matches vite.config.ts so tests run the shipped scheduler (the async scheduler runs $effect.pre after block updates).
+          async: false
+        }
+      }
+    }),
   ],
   resolve: {
     alias: {

@@ -241,6 +241,19 @@
 
     });
 
+    // The forms bind directly to these configs, and blocks can update before
+    // $effect.pre runs, so hold a form back until the effects above have created its config.
+    const ttsConfigReady = $derived.by(() => {
+        const chara = DBState.db.characters[$selectedCharID] as character
+        switch (chara.ttsMode) {
+            case 'novelai': return chara.naittsConfig !== undefined
+            case 'gptsovits': return chara.gptSoVitsConfig !== undefined
+            case 'fishspeech': return chara.fishSpeechConfig !== undefined
+            case 'openai': return chara.oaiTTSConfig !== undefined
+            default: return true
+        }
+    })
+
     async function getFishSpeechModels() {
         try {
             fishSpeechModels = await fetchFishSpeechModels(DBState.db.fishSpeechKey);
@@ -928,7 +941,7 @@
                 <span class="text-textcolor">Intonation scale</span>
                 <NumberInput size={"sm"} marginBottom bind:value={DBState.db.characters[$selectedCharID].voicevoxConfig.INTONATION_SCALE}/>
                 <span class="text-sm mb-2 text-textcolor2">{language.sidebarUi.voicevoxHint}</span>
-        {:else if DBState.db.characters[$selectedCharID].ttsMode === 'novelai'}
+        {:else if DBState.db.characters[$selectedCharID].ttsMode === 'novelai' && ttsConfigReady}
             <span class="text-textcolor">{language.sidebarUi.ttsCustomVoiceSeed}</span>
             <Check bind:check={DBState.db.characters[$selectedCharID].naittsConfig.customvoice}/>
             {#if !DBState.db.characters[$selectedCharID].naittsConfig.customvoice}
@@ -953,7 +966,7 @@
                 <OptionInput value="v1">v1</OptionInput>
                 <OptionInput value="v2">v2</OptionInput>
             </SelectInput>
-        {:else if DBState.db.characters[$selectedCharID].ttsMode === 'openai'}
+        {:else if DBState.db.characters[$selectedCharID].ttsMode === 'openai' && ttsConfigReady}
             <span class="text-textcolor">{language.sidebarUi.ttsVoice}</span>
             {#if !DBState.db.characters[$selectedCharID].oaiTTSConfig?.enabled}
                 <SelectInput className="mb-4 mt-2" bind:value={DBState.db.characters[$selectedCharID].oaiVoice}>
@@ -1024,7 +1037,7 @@
                     })
                 }
             }}>{language.selectModel}</Button>
-        {:else if DBState.db.characters[$selectedCharID].ttsMode === 'gptsovits'}
+        {:else if DBState.db.characters[$selectedCharID].ttsMode === 'gptsovits' && ttsConfigReady}
             <span class="text-textcolor">{language.sidebarUi.ttsVolume}</span>
             <SliderInput min={0.0} max={1.0} step={0.01} fixed={2} bind:value={DBState.db.characters[$selectedCharID].gptSoVitsConfig.volume}/>
             <span class="text-textcolor">URL</span>
@@ -1137,7 +1150,7 @@
                 <OptionInput value="cut4">{language.sidebarUi.ttsCut4}</OptionInput>
                 <OptionInput value="cut5">{language.sidebarUi.ttsCut5}</OptionInput>
             </SelectInput>        
-        {:else if DBState.db.characters[$selectedCharID].ttsMode === 'fishspeech'}
+        {:else if DBState.db.characters[$selectedCharID].ttsMode === 'fishspeech' && ttsConfigReady}
             {#await getFishSpeechModels()}
                 <span class="text-textcolor">{language.loadingEllipsis}</span>
             {:then}

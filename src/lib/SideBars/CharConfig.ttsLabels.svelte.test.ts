@@ -539,6 +539,31 @@ describe('the Bias section of the advanced tab', () => {
     })
 })
 
+describe('a mode switch on a character without the mode\'s config', () => {
+    const GATED = [
+        { mode: 'novelai', configKey: 'naittsConfig', firstLabel: 'Custom Voice Seed' },
+        { mode: 'openai', configKey: 'oaiTTSConfig', firstLabel: 'Advanced (OpenAI-compatible endpoint)' },
+        { mode: 'gptsovits', configKey: 'gptSoVitsConfig', firstLabel: 'Volume' },
+        { mode: 'fishspeech', configKey: 'fishSpeechConfig', firstLabel: 'Chunk Length' },
+    ]
+
+    test.each(GATED)('compatibility guard: switching to $mode creates its config and renders its first label without throwing', async (c) => {
+        changeLanguage('en')
+        install('', { naittsConfig: undefined, oaiTTSConfig: undefined, gptSoVitsConfig: undefined, fishSpeechConfig: undefined })
+        const root = await mountConfig()
+        const chara = DBState.db.characters as unknown as Array<Record<string, unknown>>
+        expect(chara[0][c.configKey]).toBeUndefined()
+
+        chara[0].ttsMode = c.mode
+        expect(() => flushSync()).not.toThrow()
+        await new Promise((resolve) => setTimeout(resolve, 20))
+        flushSync()
+
+        expect(chara[0][c.configKey]).toBeDefined()
+        expect(labelTexts(root)).toContain(c.firstLabel)
+    })
+})
+
 describe('the VOICEVOX Style label', () => {
     test('regression reproducer: the label uses the theme text colour class', async () => {
         changeLanguage('en')
