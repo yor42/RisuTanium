@@ -54,6 +54,7 @@ vi.mock('../../lang', async () => {
     return { language: helpers.studioLanguageMock() }
 })
 
+import { enterKeydown, imeEventSequence } from '../../ts/ime/tests/imeEventSequence'
 import { dispatchBack, resetBackHandlersForTests } from '../../ts/backHandlers'
 import { openStudio, resetStudioScreenForTests, studioScreen } from '../../ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from '../../ts/studio/studioSwitch.svelte'
@@ -224,6 +225,28 @@ describe('5f entry and keys', () => {
         press(field(), { key: 'Enter' })
         expect(studioScreen.searchOpen).toBe(false)
         expect(studioScreen.selectedItemId).toBe('cha-1/lore:0')
+    })
+
+    test.each([2, 200])('T-R-Studio the Enter at +%s ms after a composition end opens the first result once', async (gap) => {
+        openStudio(ownerTarget, null)
+        show()
+        openSearch()
+        typeQuery('king')
+        await settled(() => expect(resultIds()).toEqual(['cha-1/lore:0', 'cha-1/lore:1']))
+
+        const clock = vi.spyOn(performance, 'now')
+        try {
+            clock.mockReturnValue(1000)
+            imeEventSequence(field(), 'king')
+            clock.mockReturnValue(1000 + gap)
+            const press = enterKeydown(field())
+            flushSync()
+            expect(press.defaultPrevented).toBe(true)
+            expect(studioScreen.searchOpen).toBe(false)
+            expect(studioScreen.selectedItemId).toBe('cha-1/lore:0')
+        } finally {
+            clock.mockRestore()
+        }
     })
 
     test('Esc during a composition keeps the search; Esc after it closes it and returns focus to the button', async () => {

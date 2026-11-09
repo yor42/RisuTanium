@@ -110,6 +110,7 @@ import { language } from 'src/lang'
 import { coldStorageHeader } from '../../../ts/process/coldstorageData'
 import { takeOverlayReturnFocus } from '../../../ts/chatShell/overlayFocus'
 import { clearPending } from '../../../ts/chatShell/switchTarget.svelte'
+import { compositionStart, enterKeydown, imeEventSequence } from '../../../ts/ime/tests/imeEventSequence'
 import ShellSidebar from './ShellSidebar.svelte'
 
 type Entry = Database['characters'][number]
@@ -455,6 +456,39 @@ describe('inline rename', () => {
         expect(nameInput()).not.toBeNull()
     })
 
+    test.each([2, 200])('the Enter that follows compositionend at +%s ms saves the composed name once', (gap) => {
+        const { A } = fixture()
+        render()
+        const input = startRename('Two')
+        let clock = 5000
+        const spy = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+        try {
+            imeEventSequence(input, '간')
+            clock += gap
+            const press = enterKeydown(input)
+            flushSync()
+            expect(press.defaultPrevented).toBe(true)
+            expect(A.chats[1].name).toBe('간')
+            expect(nameInput()).toBeNull()
+            expect(mocks.markCharacterForSave).toHaveBeenCalledTimes(1)
+        } finally {
+            spy.mockRestore()
+        }
+    })
+
+    test('a composition that never reported its end does not hold a later plain Enter', () => {
+        const { A } = fixture()
+        render()
+        const input = startRename('Two')
+        type(input, '간')
+        compositionStart(input)
+        const press = enterKeydown(input)
+        flushSync()
+        expect(press.defaultPrevented).toBe(true)
+        expect(A.chats[1].name).toBe('간')
+        expect(nameInput()).toBeNull()
+    })
+
     test('an empty name reverts without a write', () => {
         const { A } = fixture()
         render()
@@ -625,6 +659,28 @@ describe('folders', () => {
         flushSync()
         expect(folderInput()).toBeNull()
         expect(A.chatFolders?.[0].name).toBe('Alpha')
+    })
+
+    test.each([2, 200])('the Enter that follows compositionend at +%s ms saves a folder rename once', (gap) => {
+        const { A } = fixture()
+        render()
+        click(folderMenuButton('Alpha'))
+        click(menuItem('folder-rename'))
+        const input = folderInput()!
+        let clock = 5000
+        const spy = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+        try {
+            imeEventSequence(input, '간')
+            clock += gap
+            const press = enterKeydown(input)
+            flushSync()
+            expect(press.defaultPrevented).toBe(true)
+            expect(A.chatFolders?.[0].name).toBe('간')
+            expect(folderInput()).toBeNull()
+            expect(mocks.markCharacterForSave).toHaveBeenCalledTimes(1)
+        } finally {
+            spy.mockRestore()
+        }
     })
 
     test('Colour writes the chosen colour', () => {

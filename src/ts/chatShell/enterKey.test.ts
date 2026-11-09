@@ -28,44 +28,21 @@ describe('T11 Enter detection', () => {
         expect(controller.hardwareSeen).toBe(true)
     })
 
-    test('composition and the 30 ms tail suppress Send', () => {
+    test('isComposing, 229, shift and newline suppress Send; a plain Enter sends', () => {
         const controller = createEnterKeyController()
         controller.observeKey({ key: 'Tab', ctrlKey: false, altKey: false, isTrusted: true })
-        controller.compositionStart()
-        expect(controller.shouldSend(plainEnter, 'send', 100)).toBe(false)
-        controller.compositionEnd(100)
-        expect(controller.shouldSend(plainEnter, 'send', 129)).toBe(false)
-        expect(controller.shouldSend(plainEnter, 'send', 130)).toBe(true)
-        expect(controller.shouldSend({ ...plainEnter, isComposing: true }, 'send', 140)).toBe(false)
-        expect(controller.shouldSend({ ...plainEnter, shiftKey: true }, 'send', 140)).toBe(false)
-        expect(controller.shouldSend(plainEnter, 'newline', 140)).toBe(false)
-    })
-})
-
-describe('stray Enter after composition end', () => {
-    test('a real Enter inside the 30 ms tail is stray; outside, composing, 229, shift and active composition are not', () => {
-        const controller = createEnterKeyController()
-        controller.compositionStart()
-        expect(controller.isStrayAfterComposition(plainEnter, 100)).toBe(false)
-        controller.compositionEnd(100)
-        expect(controller.isStrayAfterComposition(plainEnter, 102)).toBe(true)
-        expect(controller.isStrayAfterComposition(plainEnter, 129)).toBe(true)
-        expect(controller.isStrayAfterComposition(plainEnter, 130)).toBe(false)
-        expect(controller.isStrayAfterComposition({ ...plainEnter, shiftKey: true }, 102)).toBe(false)
-        expect(controller.isStrayAfterComposition({ ...plainEnter, isComposing: true }, 102)).toBe(false)
-        expect(controller.isStrayAfterComposition({ ...plainEnter, keyCode: 229 }, 102)).toBe(false)
-        expect(controller.isStrayAfterComposition({ ...plainEnter, key: 'a' }, 102)).toBe(false)
-    })
-
-    test('an Enter keydown before any composition is never stray', () => {
-        const controller = createEnterKeyController()
-        expect(controller.isStrayAfterComposition(plainEnter, 0)).toBe(false)
+        expect(controller.shouldSend(plainEnter, 'send')).toBe(true)
+        expect(controller.shouldSend({ ...plainEnter, isComposing: true }, 'send')).toBe(false)
+        expect(controller.shouldSend({ ...plainEnter, keyCode: 229 }, 'send')).toBe(false)
+        expect(controller.shouldSend({ ...plainEnter, shiftKey: true }, 'send')).toBe(false)
+        expect(controller.shouldSend({ ...plainEnter, key: 'a' }, 'send')).toBe(false)
+        expect(controller.shouldSend(plainEnter, 'newline')).toBe(false)
     })
 })
 
 describe('T4 IME keyCode', () => {
     test('229 never sends even when isComposing is false', () => {
         const controller = createEnterKeyController()
-        expect(controller.shouldSend({ ...plainEnter, keyCode: 229 }, 'send', 100)).toBe(false)
+        expect(controller.shouldSend({ ...plainEnter, keyCode: 229 }, 'send')).toBe(false)
     })
 })

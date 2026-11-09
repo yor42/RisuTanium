@@ -556,7 +556,8 @@ describe('IME Enter', () => {
 })
 
 describe('IME Enter after a composition (Samsung Cheonjiin order)', () => {
-    // The controller reads performance.now() at call time; each dispatch sets the clock first.
+    // Only a live composition holds an Enter; there is no time window. Each dispatch sets the clock first so the
+    // +2 ms and +200 ms rows place the Enter at an explicit gap after compositionend.
     let now: ReturnType<typeof vi.spyOn>
 
     beforeEach(() => {
@@ -572,9 +573,9 @@ describe('IME Enter after a composition (Samsung Cheonjiin order)', () => {
         field.dispatchEvent(new Event(type, { bubbles: true }))
     }
 
-    function pressEnter(field: HTMLInputElement, at: number, keyCode = 13, shiftKey = false): void {
+    function pressEnter(field: HTMLInputElement, at: number, keyCode = 13, shiftKey = false, isComposing = false): void {
         now.mockReturnValue(at)
-        field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode, shiftKey, isComposing: false, bubbles: true, cancelable: true }))
+        field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode, shiftKey, isComposing, bubbles: true, cancelable: true }))
         flushSync()
     }
 
@@ -596,102 +597,56 @@ describe('IME Enter after a composition (Samsung Cheonjiin order)', () => {
         return field
     }
 
-    test('name: Enter at the end of a composition and the tail after it do not advance; later Enter does', () => {
-        const target = mountWelcome()
-        toPersona(target)
-        const field = textInput(target, language.name)
+    const fields = [
+        { label: 'name', open: (target: HTMLElement) => { toPersona(target); return textInput(target, language.name) }, stays: () => language.onboarding.personaTitle, advances: () => language.onboarding.providerTitle },
+        { label: 'API key', open: toKeyField, stays: () => language.onboarding.providerTitle, advances: () => language.onboarding.stepMemory },
+        { label: 'nickname', open: toNicknameField, stays: () => language.onboarding.nicknameQuestion, advances: () => language.onboarding.providerTitle },
+    ]
 
-        compose(field, 'compositionstart', 1000)
-        pressEnter(field, 1000)
-        expect(heading(target)).toBe(language.onboarding.personaTitle)
+    describe.each(fields)('$label field', ({ open, stays, advances }) => {
+        test.each([2, 200])('the Enter %i ms after compositionend advances', (gap) => {
+            const target = mountWelcome()
+            const field = open(target)
 
-        compose(field, 'compositionend', 1000)
-        pressEnter(field, 1010)
-        expect(heading(target)).toBe(language.onboarding.personaTitle)
+            compose(field, 'compositionstart', 900)
+            compose(field, 'compositionend', 1000)
+            pressEnter(field, 1000 + gap)
+            expect(heading(target)).toBe(advances())
+        })
 
-        pressEnter(field, 1100)
-        expect(heading(target)).toBe(language.onboarding.providerTitle)
-    })
+        test('after compositionstart with no compositionend, a plain Enter advances', () => {
+            const target = mountWelcome()
+            const field = open(target)
 
-    test('name: the device order (compositionend, then Enter 10 ms later) does not advance', () => {
-        const target = mountWelcome()
-        toPersona(target)
-        const field = textInput(target, language.name)
+            compose(field, 'compositionstart', 1000)
+            pressEnter(field, 1000)
+            expect(heading(target)).toBe(advances())
+        })
 
-        compose(field, 'compositionstart', 900)
-        compose(field, 'compositionend', 1000)
-        pressEnter(field, 1010)
-        expect(heading(target)).toBe(language.onboarding.personaTitle)
+        test('a composition that never reported its end does not hold a later Enter', () => {
+            const target = mountWelcome()
+            const field = open(target)
 
-        pressEnter(field, 1100)
-        expect(heading(target)).toBe(language.onboarding.providerTitle)
-    })
+            compose(field, 'compositionstart', 1000)
+            pressEnter(field, 2000)
+            expect(heading(target)).toBe(advances())
+        })
 
-    test('API key: Enter at the end of a composition and the tail after it do not advance; later Enter does', () => {
-        const target = mountWelcome()
-        const field = toKeyField(target)
+        test('Enter with keyCode 229 does not advance', () => {
+            const target = mountWelcome()
+            const field = open(target)
 
-        compose(field, 'compositionstart', 1000)
-        pressEnter(field, 1000)
-        expect(heading(target)).toBe(language.onboarding.providerTitle)
+            pressEnter(field, 1000, 229)
+            expect(heading(target)).toBe(stays())
+        })
 
-        compose(field, 'compositionend', 1000)
-        pressEnter(field, 1010)
-        expect(heading(target)).toBe(language.onboarding.providerTitle)
+        test('Enter with isComposing true does not advance', () => {
+            const target = mountWelcome()
+            const field = open(target)
 
-        pressEnter(field, 1100)
-        expect(heading(target)).toBe(language.onboarding.stepMemory)
-    })
-
-    test('API key: the device order (compositionend, then Enter 10 ms later) does not advance', () => {
-        const target = mountWelcome()
-        const field = toKeyField(target)
-
-        compose(field, 'compositionstart', 900)
-        compose(field, 'compositionend', 1000)
-        pressEnter(field, 1010)
-        expect(heading(target)).toBe(language.onboarding.providerTitle)
-
-        pressEnter(field, 1100)
-        expect(heading(target)).toBe(language.onboarding.stepMemory)
-    })
-
-    test('nickname: Enter at the end of a composition and the tail after it do not advance; later Enter does', () => {
-        const target = mountWelcome()
-        const field = toNicknameField(target)
-
-        compose(field, 'compositionstart', 1000)
-        pressEnter(field, 1000)
-        expect(heading(target)).toBe(language.onboarding.nicknameQuestion)
-
-        compose(field, 'compositionend', 1000)
-        pressEnter(field, 1010)
-        expect(heading(target)).toBe(language.onboarding.nicknameQuestion)
-
-        pressEnter(field, 1100)
-        expect(heading(target)).toBe(language.onboarding.providerTitle)
-    })
-
-    test('nickname: the device order (compositionend, then Enter 10 ms later) does not advance', () => {
-        const target = mountWelcome()
-        const field = toNicknameField(target)
-
-        compose(field, 'compositionstart', 900)
-        compose(field, 'compositionend', 1000)
-        pressEnter(field, 1010)
-        expect(heading(target)).toBe(language.onboarding.nicknameQuestion)
-
-        pressEnter(field, 1100)
-        expect(heading(target)).toBe(language.onboarding.providerTitle)
-    })
-
-    test('Enter with keyCode 229 does not advance', () => {
-        const target = mountWelcome()
-        toPersona(target)
-        const field = textInput(target, language.name)
-
-        pressEnter(field, 1000, 229)
-        expect(heading(target)).toBe(language.onboarding.personaTitle)
+            pressEnter(field, 1000, 13, false, true)
+            expect(heading(target)).toBe(stays())
+        })
     })
 
     test('a plain Enter with no composition advances', () => {
@@ -701,40 +656,6 @@ describe('IME Enter after a composition (Samsung Cheonjiin order)', () => {
 
         pressEnter(field, 1000)
         expect(heading(target)).toBe(language.onboarding.providerTitle)
-    })
-
-    test('a blur ends a composition that never reported its end, so a later Enter advances', () => {
-        const target = mountWelcome()
-        toPersona(target)
-        const field = textInput(target, language.name)
-
-        compose(field, 'compositionstart', 1000)
-        now.mockReturnValue(1001)
-        field.dispatchEvent(new Event('blur'))
-        pressEnter(field, 2000)
-        expect(heading(target)).toBe(language.onboarding.providerTitle)
-    })
-
-    test('nickname: a blur ends a composition that never reported its end, so a later Enter advances', () => {
-        const target = mountWelcome()
-        const field = toNicknameField(target)
-
-        compose(field, 'compositionstart', 1000)
-        now.mockReturnValue(1001)
-        field.dispatchEvent(new Event('blur'))
-        pressEnter(field, 2000)
-        expect(heading(target)).toBe(language.onboarding.providerTitle)
-    })
-
-    test('API key: a blur ends a composition that never reported its end, so a later Enter advances', () => {
-        const target = mountWelcome()
-        const field = toKeyField(target)
-
-        compose(field, 'compositionstart', 1000)
-        now.mockReturnValue(1001)
-        field.dispatchEvent(new Event('blur'))
-        pressEnter(field, 2000)
-        expect(heading(target)).toBe(language.onboarding.stepMemory)
     })
 
     test('name: Shift+Enter with no composition does not advance', () => {

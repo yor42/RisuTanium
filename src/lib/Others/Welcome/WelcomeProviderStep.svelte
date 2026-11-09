@@ -42,7 +42,7 @@
     const enter = createEnterKeyController()
 
     function advanceOnEnter(e: KeyboardEvent): void {
-        // An Enter that commits an IME composition, or arrives in the tail after it, must not advance the step.
+        // Only a composing keydown is left to the IME; the Enter after compositionend is the user's press and advances.
         if (enter.shouldSend(e, 'send')) {
             e.preventDefault()
             flow.next()
@@ -96,9 +96,6 @@
                     spellcheck="false"
                     autocapitalize="off"
                     onkeydown={advanceOnEnter}
-                    oncompositionstart={() => enter.compositionStart()}
-                    oncompositionend={() => enter.compositionEnd()}
-                    onblur={() => enter.compositionEnd()}
                 />
                 <button
                     type="button"

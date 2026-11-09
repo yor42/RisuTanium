@@ -53,6 +53,7 @@ const languageMock = vi.hoisted(() => {
 vi.mock('src/lang', () => languageMock)
 vi.mock('../../lang', () => languageMock)
 
+import { enterKeydown, imeEventSequence } from '../../ts/ime/tests/imeEventSequence'
 import ThisChatSheet from './ThisChatSheet.svelte'
 import { additionalChatMenu, hypaV3ModalOpen, settingsOpen } from 'src/ts/stores.svelte'
 import { get } from 'svelte/store'
@@ -463,6 +464,41 @@ describe('rename (S3)', () => {
         expect(chat.name).toBe('Quiet dawn')
         expect(h.mark).toHaveBeenCalledWith('char-a')
         expect(part('title')!.textContent).toBe('Quiet dawn')
+    })
+
+    test.each([2, 200])('the Enter that follows compositionend at +%s ms commits the composed name once', async (gap) => {
+        await show()
+        const input = await startRename()
+        let clock = 5000
+        const spy = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+        try {
+            imeEventSequence(input, '간')
+            clock += gap
+            const press = enterKeydown(input)
+            flushSync()
+            await tick()
+            expect(press.defaultPrevented).toBe(true)
+            expect(chat.name).toBe('간')
+            expect(h.mark).toHaveBeenCalledTimes(1)
+            expect(part('name-input')).toBeNull()
+        } finally {
+            spy.mockRestore()
+        }
+    })
+
+    test('an Enter that confirms an IME composition (isComposing or keyCode 229) commits nothing and is not prevented', async () => {
+        await show()
+        const input = await startRename()
+        input.value = 'Han'
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        const composing = enterKeydown(input, { isComposing: true })
+        const legacy = enterKeydown(input, { keyCode: 229 })
+        flushSync()
+        await tick()
+        expect(composing.defaultPrevented).toBe(false)
+        expect(legacy.defaultPrevented).toBe(false)
+        expect(chat.name).toBe('Harbour night')
+        expect(part('name-input')).not.toBeNull()
     })
 
     test('blur commits', async () => {

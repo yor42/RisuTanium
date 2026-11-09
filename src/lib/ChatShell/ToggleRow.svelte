@@ -2,6 +2,7 @@
     import { tick } from 'svelte'
     import { StarIcon } from '@lucide/svelte'
     import { language } from '../../lang'
+    import { isImeComposing } from '../../ts/ime/compositionGuard'
     import { isOn, selectControl, selectedIndex, shownText, type DuplicateBadge, type PanelValueRow } from '../../ts/chatShell/togglePanel'
 
     /**
@@ -60,7 +61,7 @@
     })
 
     function onInputKey(event: KeyboardEvent): void {
-        if (event.key === 'Enter' && !event.isComposing) {
+        if (event.key === 'Enter' && !isImeComposing(event)) {
             event.preventDefault()
             oncommit()
         }

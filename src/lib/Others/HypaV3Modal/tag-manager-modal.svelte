@@ -9,6 +9,7 @@
   import { DBState, selectedCharID } from "src/ts/stores.svelte";
   import type { TagManagerState } from "./types";
   import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
+  import { isImeComposing } from "src/ts/ime/compositionGuard";
 
   interface Props {
     tagManagerState: TagManagerState;
@@ -96,6 +97,7 @@
 
   function handleEditTagKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') {
+      if (isImeComposing(e)) return;
       saveEditingTag();
     } else if (e.key === 'Escape') {
       cancelEditingTag();
@@ -104,6 +106,7 @@
 
   function handleAddTagKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') {
+      if (isImeComposing(e)) return;
       handleAddTagEnter();
     }
   }

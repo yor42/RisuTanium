@@ -62,6 +62,7 @@ const languageMock = vi.hoisted(() => {
 vi.mock('src/lang', () => languageMock)
 vi.mock('../../lang', () => languageMock)
 
+import { enterKeydown, imeEventSequence } from '../../ts/ime/tests/imeEventSequence'
 import TogglesPanel from './TogglesPanel.svelte'
 import { resetTogglePanelSession } from '../../ts/chatShell/togglePanel'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from '../../ts/storage/moduleStub'
@@ -421,6 +422,48 @@ describe('text rows and the editor sheet', () => {
         expect(sharedValues().toggle_t).toBe('hello')
         expect(q(row(target, 't'), '[data-part="toggle-text-input"]')).toBeNull()
         expect(status(target)).toBe('textsaved:Say')
+    })
+
+    test.each([2, 200])('the Enter that follows compositionend at +%s ms saves the inline field once', async (gap) => {
+        install({ prompt: 't=Say=text' })
+        const target = await show()
+        ;(q(row(target, 't'), '[data-part="toggle-text-button"]') as HTMLButtonElement).click()
+        flushSync()
+        await tick()
+        const input = q(row(target, 't'), '[data-part="toggle-text-input"]') as HTMLInputElement
+        let clock = 5000
+        const spy = vi.spyOn(performance, 'now').mockImplementation(() => clock)
+        try {
+            imeEventSequence(input, '간')
+            clock += gap
+            const press = enterKeydown(input)
+            flushSync()
+            await tick()
+            expect(press.defaultPrevented).toBe(true)
+            expect(sharedValues().toggle_t).toBe('간')
+            expect(q(row(target, 't'), '[data-part="toggle-text-input"]')).toBeNull()
+        } finally {
+            spy.mockRestore()
+        }
+    })
+
+    test('an Enter that confirms an IME composition (isComposing or keyCode 229) saves nothing and is not prevented', async () => {
+        install({ prompt: 't=Say=text' })
+        const target = await show()
+        ;(q(row(target, 't'), '[data-part="toggle-text-button"]') as HTMLButtonElement).click()
+        flushSync()
+        await tick()
+        const input = q(row(target, 't'), '[data-part="toggle-text-input"]') as HTMLInputElement
+        input.value = 'Han'
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+        const composing = enterKeydown(input, { isComposing: true })
+        const legacy = enterKeydown(input, { keyCode: 229 })
+        flushSync()
+        await tick()
+        expect(composing.defaultPrevented).toBe(false)
+        expect(legacy.defaultPrevented).toBe(false)
+        expect(sharedValues().toggle_t).toBeUndefined()
+        expect(q(row(target, 't'), '[data-part="toggle-text-input"]')).not.toBeNull()
     })
 
     test('Escape reverts the inline field, writes nothing and keeps the panel', async () => {

@@ -8,6 +8,7 @@ vi.mock(import('../../../ts/stores.svelte'), () => ({
 
 import { alertStore } from '../../../ts/stores.svelte'
 import { encodeChoice, encodeText, PATTERN_PROMPT_CANCEL } from '../../../ts/patternPromptAnswer'
+import { enterKeydown, imeEventSequence } from '../../../ts/ime/tests/imeEventSequence'
 import PatternPrompt from './PatternPrompt.svelte'
 import PatternPromptHost from './PatternPromptHost.svelte'
 
@@ -94,6 +95,34 @@ describe('PatternPrompt input', () => {
         field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
         field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
         expect(onanswer).toHaveBeenCalledExactlyOnceWith(encodeText('xyz'))
+    })
+
+    test.each([2, 200])('an Enter at +%s ms after compositionend answers the composed text once', (gap) => {
+        const clock = vi.spyOn(performance, 'now').mockReturnValue(5000)
+        try {
+            const onanswer = vi.fn()
+            const target = render(PatternPrompt, { kind: 'input', heading: 'Name', onanswer })
+            const field = part(target, 'field') as HTMLInputElement
+            imeEventSequence(field, '간')
+            flushSync()
+            clock.mockReturnValue(5000 + gap)
+            const press = enterKeydown(field)
+            expect(press.defaultPrevented).toBe(true)
+            expect(onanswer).toHaveBeenCalledExactlyOnceWith(encodeText('간'))
+        } finally {
+            clock.mockRestore()
+        }
+    })
+
+    test('a composing Enter (isComposing or keyCode 229) answers nothing and is not prevented', () => {
+        const onanswer = vi.fn()
+        const target = render(PatternPrompt, { kind: 'input', heading: 'Name', onanswer })
+        const field = part(target, 'field') as HTMLInputElement
+        const flagged = enterKeydown(field, { isComposing: true })
+        const legacy = enterKeydown(field, { keyCode: 229 })
+        expect(flagged.defaultPrevented).toBe(false)
+        expect(legacy.defaultPrevented).toBe(false)
+        expect(onanswer).not.toHaveBeenCalled()
     })
 
     test('OK answers the entered text, including the empty string', () => {

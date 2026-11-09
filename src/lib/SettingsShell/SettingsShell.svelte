@@ -3,6 +3,7 @@
     import { get } from 'svelte/store'
     import { language } from '../../lang'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
+    import { isImeComposing } from '../../ts/ime/compositionGuard'
     import { getModelInfo } from '../../ts/model/modellist'
     import { getSettingsIndex, searchSettings, type SearchHit } from '../../ts/setting/settingsSearch'
     import { buildSearchSources } from '../../ts/setting/settingsSearchSources'
@@ -169,7 +170,7 @@
     // Bound on the shell root, never on the window, so a key typed outside Settings is not taken. A composition's
     // keys belong to the IME.
     function onrootkeydown(event: KeyboardEvent): void {
-        if (event.isComposing || event.keyCode === 229) return
+        if (isImeComposing(event)) return
         const accelerator = (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k'
         const slash = event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey && !isTextEntry(event.target)
         if (!accelerator && !slash) return
@@ -187,7 +188,7 @@
     }
 
     function onsearchkeydown(event: KeyboardEvent): void {
-        if (event.isComposing || event.keyCode === 229) return
+        if (isImeComposing(event)) return
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             if (rows.length === 0) return
             event.preventDefault()

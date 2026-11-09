@@ -333,6 +333,7 @@ vi.mock('../Playground/PlaygroundMenu.svelte', () => ({
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { language } from 'src/lang'
+import { compositionEnd, compositionStart, enterKeydown, imeEventSequence } from 'src/ts/ime/tests/imeEventSequence'
 import DefaultChatScreen from './DefaultChatScreen.svelte'
 import { isComposerBusy, isComposerLocked, isAutoModeActive, resetComposerActionsForTests } from 'src/ts/process/composerActions.svelte'
 import { isWriting } from 'src/ts/process/chatOrigin'
@@ -1595,5 +1596,74 @@ describe('the tree handlers the screen gives the message list', () => {
             doingChatMock.set(false)
         }
         expect(props.getBusy()).toBe(false)
+    })
+})
+
+describe('Enter right after an IME composition ends', () => {
+    function stageDraftAndInstall(translateField: boolean) {
+        installDb([makeCharacter(freshId('cha'), [makeChat(freshId('chat'), [])])], translateField ? { useAutoTranslateInput: true } : {})
+    }
+
+    // A send reaches sendChat only after its asynchronous input steps, so an absence check waits first.
+    async function sendWouldHaveStarted(): Promise<void> {
+        await new Promise((resolve) => setTimeout(resolve, 30))
+        flushSync()
+    }
+
+    test.each([2, 200])('the main field sends once on the Enter that follows compositionend at +%s ms', async (gap) => {
+        stageDraftAndInstall(false)
+        const clock = vi.spyOn(performance, 'now').mockReturnValue(5000)
+        try {
+            const { target } = mountScreen()
+            const field = mainTextarea(target)
+            imeEventSequence(field, '간')
+            await settle()
+            clock.mockReturnValue(5000 + gap)
+            const press = enterKeydown(field)
+            expect(press.defaultPrevented).toBe(true)
+            await waitFor(() => sendChatMock.mock.calls.length > 0)
+            await sendWouldHaveStarted()
+            expect(sendChatMock).toHaveBeenCalledTimes(1)
+        } finally {
+            clock.mockRestore()
+        }
+    })
+
+    test.each([2, 200])('the translate field sends once on the Enter that follows compositionend at +%s ms', async (gap) => {
+        stageDraftAndInstall(true)
+        const clock = vi.spyOn(performance, 'now').mockReturnValue(5000)
+        try {
+            const { target } = mountScreen()
+            typeInto(mainTextarea(target), 'hello')
+            await settle()
+            const field = translateTextarea(target)!
+            compositionStart(field)
+            compositionEnd(field, '간')
+            clock.mockReturnValue(5000 + gap)
+            const press = enterKeydown(field)
+            expect(press.defaultPrevented).toBe(true)
+            await waitFor(() => sendChatMock.mock.calls.length > 0)
+            await sendWouldHaveStarted()
+            expect(sendChatMock).toHaveBeenCalledTimes(1)
+        } finally {
+            clock.mockRestore()
+        }
+    })
+
+    test('a composing Enter (isComposing or keyCode 229) sends nothing in either field and is not prevented', async () => {
+        stageDraftAndInstall(true)
+        const { target } = mountScreen()
+        typeInto(mainTextarea(target), 'hello')
+        await settle()
+        const events = [
+            enterKeydown(mainTextarea(target), { isComposing: true }),
+            enterKeydown(mainTextarea(target), { keyCode: 229 }),
+            enterKeydown(translateTextarea(target)!, { isComposing: true }),
+            enterKeydown(translateTextarea(target)!, { keyCode: 229 }),
+        ]
+        await settle()
+        await sendWouldHaveStarted()
+        expect(events.map((event) => event.defaultPrevented)).toEqual([false, false, false, false])
+        expect(sendChatMock).not.toHaveBeenCalled()
     })
 })
