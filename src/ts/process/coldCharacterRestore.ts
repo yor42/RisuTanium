@@ -9,6 +9,7 @@ import { noteRestoredBytes, readSizeOf } from "./memory/restoredBytes"
 import { findChaIdHolders, retainOnLoad, retainOnRestore } from "./coldRetained"
 import { getResidency, residencyReadOf } from "../storage/store2/residencyActive"
 import { markIdentitySeen } from "../storage/dbChangeEffects.svelte"
+import { noteResidentLoaded } from "../storage/store2/residentLoads"
 
 /**
  * Reading an archived character's unit back and installing it in place of its
@@ -262,6 +263,8 @@ async function restoreOnce(stub: Slot, options: ColdRestoreOptions): Promise<Col
 
     const restored = applyStubStateOnRestore(target, unit.character)
     characters[index] = restored
+    // A character became resident: the save loop's idle back-off ends at its next iteration.
+    noteResidentLoaded()
     const loaded = residencyReadOf(result)
     const residency = getResidency()
     if (loaded !== undefined && residency !== null) {

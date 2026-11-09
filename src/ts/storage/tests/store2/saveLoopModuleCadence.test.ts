@@ -79,7 +79,7 @@ function effectiveModules(request: SavePassRequest): boolean {
 }
 
 /** Starts the loop; `edit` may replace the kit's committer before the loop reads it. */
-async function startRun(db: Database, idleNet: { intervalMs: number, moduleIntervalMs?: number } | null, edit: (kit: Store2Kit) => void = () => {}): Promise<Run> {
+async function startRun(db: Database, idleNet: { intervalMs: number, moduleIntervalMs?: number, quiet?: null } | null, edit: (kit: Store2Kit) => void = () => {}): Promise<Run> {
     const kit = await startStore2({ db, idleNet })
     const inner = createSaveEncoder({ previous: kit.context.previous, lists: kit.context.lists, env: kit.context.env })
     const requests: SavePassRequest[] = []
@@ -243,7 +243,9 @@ describe('the idle net takes module scope at most once per interval', () => {
 
     test('reproducer: with no resident character, module scope is not taken until 30 s, then once, then not again until 60 s', async () => {
         // An ordinary slot with no resident reads the peer and plans nothing; only a due slot or a fallback plans.
-        const run = await startRun(clone(buildSmall(0)), TICKING)
+        // The 60 s tick follows an unchanged one with no activity between, which the idle back-off supersedes (5 min): the
+        // base cadence is pinned with `quiet: null`; the back-off's own cadence is pinned in saveLoopNetQuiet.
+        const run = await startRun(clone(buildSmall(0)), { ...TICKING, quiet: null })
         const scoped: Array<[number, string]> = []
         for (const offset of [2_000, 29_999, 30_000, 31_000, 59_999, 60_000]) {
             const slot = await run.slotAt(offset)
@@ -298,7 +300,8 @@ describe('the idle net takes module scope at most once per interval', () => {
     })
 
     test('reproducer: a configured moduleIntervalMs replaces the default', async () => {
-        const run = await startRun(clone(buildSmall(0)), { intervalMs: 1, moduleIntervalMs: 5_000 })
+        // The second tick follows an unchanged one with no activity between: the base cadence is pinned with `quiet: null`.
+        const run = await startRun(clone(buildSmall(0)), { intervalMs: 1, moduleIntervalMs: 5_000, quiet: null })
         expect(moduleScopeOf(await run.slotAt(4_999))).toBe('no plan')
         expect(moduleScopeOf(await run.slotAt(5_000))).toBe('modules')
         expect(moduleScopeOf(await run.slotAt(9_999))).toBe('no plan')
