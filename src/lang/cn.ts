@@ -1673,6 +1673,7 @@ export const languageChinese = {
     "homeEmptyBody": "创建一个角色，或导入你已有的角色。",
     "homeEmptyCreate": "创建角色",
     "homeEmptyImport": "导入角色",
+    "libraryNoMatch": "没有符合搜索条件的角色。",
     "homeLinkUtilityDescription": "无需角色或聊天，通过已保存的任务预设与模型对话。",
     "homeLinkEmailTitle": "邮箱",
     "homeLinkEmailDescription": "直接联系开发者。",
@@ -2029,6 +2030,10 @@ export const languageChinese = {
     "list": "列表",
     "trash": "垃圾桶",
     "trashDesc": "删除的角色将移至垃圾桶，可选择还原或永久删除。删除的角色将在本应用中保留 30 天后自动永久删除；其他版本可能更早将其删除。",
+    "trashDaysLeft": (days: number) => `剩余 ${days} 天`,
+    "trashRestore": "还原",
+    "trashDeletePermanently": "永久删除",
+    "trashEmpty": "垃圾桶是空的。",
     "shareExport": "分享/导出",
     "risupresetDesc": "Risupreset 是专为上游 RisuAI 默认设置设计的格式。",
     "risuMDesc": "RisuM 是专为上游 RisuAI 模块设计的格式。",
@@ -3140,7 +3145,7 @@ export const languageChinese = {
         "editSelectedCount": (count: number) => `已选择 ${count} 个`,
         "editFolderToggle": "打开或关闭文件夹",
         "editTrashConfirm": (count: number) => (`将 ${count} 个角色移至垃圾桶吗？`)
-            + ` 还原的角色会回到所有文件夹之外。垃圾桶中的角色在本应用中保留 30 天；其他版本可能更早将其删除。`,
+            + ` 因此变空的文件夹将被删除。还原的角色会回到其原文件夹（若该文件夹仍存在），否则回到列表末尾，位于所有文件夹之外。垃圾桶中的角色在本应用中保留 30 天；其他版本可能更早将其删除。`,
         "editMoved": (n: number) => `已移动 ${n} 项`,
         "editFolderRemoveConfirm": (names: string[]) => {
             const q = names.map((n) => `“${n}”`)

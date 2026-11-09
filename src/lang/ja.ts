@@ -1804,6 +1804,7 @@ export const languageJapanese = {
     homeEmptyBody: "キャラクターを作成するか、お持ちのキャラクターをインポートしてください。",
     homeEmptyCreate: "キャラクターを作成",
     homeEmptyImport: "キャラクターをインポート",
+    libraryNoMatch: "検索に一致するキャラクターがありません。",
     homeLinkUtilityDescription: "キャラクターやチャットなしで、保存したタスクプリセットを通じてモデルと会話します。",
     homeLinkEmailTitle: "メール",
     homeLinkEmailDescription: "開発者に直接連絡できます。",
@@ -2162,6 +2163,10 @@ export const languageJapanese = {
     list: "リスト",
     trash: "ゴミ箱",
     trashDesc: "削除されたキャラクターはゴミ箱に移動されます。復元するか、完全に削除できます。削除されたキャラクターはこのアプリで30日間保管された後、自動的に完全削除されます。他のバージョンではより早く削除される場合があります。",
+    trashDaysLeft: (days: number) => `残り${days}日`,
+    trashRestore: "復元",
+    trashDeletePermanently: "完全に削除",
+    trashEmpty: "ゴミ箱は空です。",
     shareExport: "共有/エクスポート",
     risupresetDesc: "Risupreset形式は、アップストリームのRisuAIのプリセット向けに特別に設計されたフォーマットです。",
     risuMDesc: "RisuM形式は、アップストリームのRisuAIのモジュール向けに特別に設計されたフォーマットです。",
@@ -3289,7 +3294,7 @@ export const languageJapanese = {
         editTrashConfirm: (count: number) => (count === 1
             ? `1体のキャラクターをゴミ箱に移動しますか？`
             : `${count}体のキャラクターをゴミ箱に移動しますか？`)
-            + ` 復元されたキャラクターはフォルダの外に戻ります。ゴミ箱内のキャラクターはこのアプリで30日間保管されます。他のバージョンではより早く削除される場合があります。`,
+            + ` この操作で空になったフォルダは削除されます。復元されたキャラクターは、元のフォルダがまだ存在すればそこに戻り、存在しなければフォルダの外のリストの末尾に戻ります。ゴミ箱内のキャラクターはこのアプリで30日間保管されます。他のバージョンではより早く削除される場合があります。`,
         editMoved: (count: number) => count === 1 ? `1件の項目を移動しました` : `${count}件の項目を移動しました`,
         editFolderRemoveConfirm: (names: string[]) => {
             if (names.length <= 1) {

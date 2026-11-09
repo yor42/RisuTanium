@@ -8,6 +8,7 @@
     import { slotKeys } from "src/ts/gui/characterSearch";
     import CharacterWindow from "./CharacterWindow.svelte";
     import CharListAvatar from "./CharListAvatar.svelte";
+    import CharacterNameRow from "./CharacterNameRow.svelte";
     import { SIMPLE_ROW_FALLBACK_PX, listRows } from "./charListRows";
     import { compareRecent } from "./charListOrder";
 
@@ -98,7 +99,7 @@
         {@const chats = coldStubChatCount(c)}
         {@const agoText = makeAgoText(entry.interaction)}
         {@const busy = opening?.(index) ?? false}
-        <button class="flex p-2 border-t-darkborderc gap-2 w-full" class:border-t={position !== 1} aria-busy={busy ? 'true' : undefined} onclick={() => {
+        <button class="flex p-2 border-t-darkborderc gap-2 w-full rounded-md transition-colors duration-150 hover:bg-darkbutton/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" class:border-t={position !== 1} aria-busy={busy ? 'true' : undefined} onclick={() => {
             if (onpick) {
                 onpick(index)
                 return
@@ -106,9 +107,9 @@
             changeChar(index)
             endGrid()
         }}>
-            <CharListAvatar src={c.image} {visible} {busy} class="hover:bg-[#10b981] transition-colors duration-150" />
+            <CharListAvatar src={c.image} {visible} {busy} class="hover:bg-selected transition-colors duration-150" />
             <div class="flex flex-1 w-full flex-col justify-start items-start text-start">
-                <span>{entry.name}</span>
+                <CharacterNameRow chaId={c.chaId} name={entry.name} />
                 <div class="text-sm text-textcolor2 flex items-center w-full flex-wrap">
                     <span class="mr-1">{chats}</span>
                     <MessageSquareIcon size={14} />

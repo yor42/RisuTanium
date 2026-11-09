@@ -16,6 +16,7 @@
     import CharacterDescription from "./CharacterDescription.svelte";
     import CharacterWindow from "./CharacterWindow.svelte";
     import CharListAvatar from "./CharListAvatar.svelte";
+    import CharacterNameRow from "./CharacterNameRow.svelte";
     import { GRID_ROW_FALLBACK_PX, LIST_ROW_FALLBACK_PX, gridSectionRows, listRows } from "./charListRows";
     import { buildGridEntries, folderTileClass, type GridEntry, type SortMode } from "./charListOrder";
     import { loadGridSort, parseGridSort, saveGridSort } from "./gridMemory";
@@ -43,6 +44,8 @@
     import { shellEligible } from "../../ts/chatShell/shellSwitch.svelte";
     import { refuseSwitchWhileWriting, switchCharacter } from "../../ts/chatShell/switchTarget.svelte";
     import { recordCaughtError } from "../../ts/caughtErrors";
+    import HomeEmptyHero from "../UI/Home/HomeEmptyHero.svelte";
+    import { hasLiveCharacter } from "../UI/Home/homeEmpties";
     interface Props {
         endGrid?: any;
     }
@@ -63,6 +66,13 @@
     // simple list. It follows the query after the typing debounce, so all three
     // always show the same matches.
     const found = createCharacterSearch(() => search)
+
+    // The empty library is judged over the unfiltered list, so a query can never produce it; the no-match
+    // line needs a landed query (`found.searching`), so it neither shows for a blank query nor during the
+    // typing debounce. Simple, Grid and List replace their content with the hero or the line; Trash has
+    // its own lines and never shows the hero.
+    const libraryEmpty = $derived(!hasLiveCharacter(DBState.db.characters))
+    const libraryNoMatch = $derived(!libraryEmpty && found.searching && found.live.length === 0)
 
     // A card is keyed by its character (`slotKeys`), never by its position, so a removal elsewhere keeps
     // focus, scroll anchor and measured heights on the same character. The map resolves a key to the
@@ -1437,13 +1447,13 @@
         {@const parsedDesc = parseMultilangString(char.creatorNotes ?? '')}
         <!-- The whole row opens the character. Keyboard users reach it through the name button, whose click bubbles here; the row's other buttons stop their clicks, and a click on a link inside the description is left to the link. -->
         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-        <div class="flex p-2 border border-darkborderc rounded-md cursor-pointer" onclick={(event) => {
+        <div class="flex p-2 border border-darkborderc rounded-md cursor-pointer transition-colors duration-150 hover:bg-darkbutton/40" onclick={(event) => {
             if (clickedLink(event) || (!clickedButton(event) && selectedInside(event.currentTarget, window.getSelection()))) { return }
             pick(index)
         }}>
             <CharListAvatar src={char.image} {visible} busy={openingIndex === index} />
             <div class="flex-1 flex flex-col ml-2 min-w-0">
-                <h4 class="text-textcolor font-bold text-lg mb-1 break-words"><button class="text-start font-bold cursor-pointer" aria-busy={openingIndex === index ? 'true' : undefined}>{char.name || language.settingsPage.unnamed}</button></h4>
+                <h4 class="text-textcolor font-bold text-lg mb-1 break-words"><button class="text-start font-bold cursor-pointer rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" aria-busy={openingIndex === index ? 'true' : undefined}><CharacterNameRow chaId={char.chaId} name={char.name || language.settingsPage.unnamed} /></button></h4>
                 <CharacterDescription
                     text={parsedDesc['en'] || parsedDesc['xx'] || language.othersUi.noDescription}
                     visible={true}
@@ -1611,6 +1621,18 @@
     {/if}
 {/snippet}
 
+<!-- The empty library's hero (Create and Import select a character and then close this screen) or the
+     no-match line. Shown in place of the Simple, Grid and List content. -->
+{#snippet libraryEmptyState()}
+    {#if libraryEmpty}
+        <div class="flex-1 min-h-0 overflow-y-auto flex justify-center">
+            <HomeEmptyHero onselected={() => endGrid()} />
+        </div>
+    {:else}
+        <div class="flex-1 min-h-0 overflow-y-auto"><p class="text-textcolor2 text-sm text-center mt-4" data-part="library-no-match">{language.libraryNoMatch}</p></div>
+    {/if}
+{/snippet}
+
 <div class="h-full w-full flex justify-center">
     <div class="h-full p-6 bg-darkbg max-w-full w-2xl flex flex-col">
         <div class="mx-4 mb-6 flex flex-col shrink-0">
@@ -1627,18 +1649,21 @@
                 </div>
             </div>
             <div class="flex flex-wrap gap-2 mt-2">
-                <Button styled={selected === 3 ? 'primary' : 'outlined'} size="sm" onclick={() => selectTab(3)}>
-                    {language.simple}
-                </Button>
-                <Button styled={selected === 0 ? 'primary' : 'outlined'} size="sm" onclick={() => selectTab(0)}>
-                    {language.grid}
-                </Button>
-                <Button styled={selected === 1  ? 'primary' : 'outlined'} size="sm" onclick={() => selectTab(1)}>
-                    {language.list}
-                </Button>
-                <Button styled={selected === 2  ? 'primary' : 'outlined'} size="sm" onclick={() => selectTab(2)}>
-                    {language.trash}
-                </Button>
+                <!-- Renders no box of its own, so the buttons wrap and size exactly as direct children of the row. -->
+                <div data-part="library-views" class="contents">
+                    <Button styled={selected === 3 ? 'primary' : 'outlined'} size="sm" ariaPressed={selected === 3} onclick={() => selectTab(3)}>
+                        {language.simple}
+                    </Button>
+                    <Button styled={selected === 0 ? 'primary' : 'outlined'} size="sm" ariaPressed={selected === 0} onclick={() => selectTab(0)}>
+                        {language.grid}
+                    </Button>
+                    <Button styled={selected === 1  ? 'primary' : 'outlined'} size="sm" ariaPressed={selected === 1} onclick={() => selectTab(1)}>
+                        {language.list}
+                    </Button>
+                    <Button styled={selected === 2  ? 'primary' : 'outlined'} size="sm" ariaPressed={selected === 2} onclick={() => selectTab(2)}>
+                        {language.trash}
+                    </Button>
+                </div>
                 <div class="grow"></div>
                 <span class="text-textcolor2 text-sm">
                     {selected === 2 ? found.trash.length : found.live.length} {language.character}
@@ -1698,7 +1723,11 @@
 
             <div class="relative flex-1 min-h-0 flex flex-col">
                 <!-- Vertical panning stays with the browser; the callout and text selection are off so a long press is the Grid's. The bottom padding lets the last row scroll clear of the floating button. -->
-                <CharacterWindow bind:this={gridWindow} attach={attachGrid} class="flex-1 min-h-0 pb-16 select-none [touch-action:pan-y] [-webkit-touch-callout:none]" layout="grid" rows={gridRowsFor} fallbackHeight={GRID_ROW_FALLBACK_PX} resetToken={JSON.stringify([sort, found.query])} rowClass="flex justify-center supports-[justify-content:safe_center]:[justify-content:safe_center] gap-2 pb-2" card={gridCard} />
+                {#if libraryEmpty || libraryNoMatch}
+                    {@render libraryEmptyState()}
+                {:else}
+                    <CharacterWindow bind:this={gridWindow} attach={attachGrid} class="flex-1 min-h-0 pb-16 select-none [touch-action:pan-y] [-webkit-touch-callout:none]" layout="grid" rows={gridRowsFor} fallbackHeight={GRID_ROW_FALLBACK_PX} resetToken={JSON.stringify([sort, found.query])} rowClass="flex justify-center supports-[justify-content:safe_center]:[justify-content:safe_center] gap-2 pb-2" card={gridCard} />
+                {/if}
                 <button
                     class="absolute bottom-3 right-6 z-10 flex items-center gap-1 px-4 py-2 rounded-full shadow-lg bg-darkbutton hover:bg-selected border border-darkborderc text-textcolor cursor-pointer"
                     onclick={() => { if (editing) { exitEdit() } else { enterEdit() } }}
@@ -1714,14 +1743,22 @@
                 <div class="sr-only" role="status" aria-atomic="true" data-grid-live>{liveText}</div>
             </div>
         {:else if selected === 1}
-            <CharacterWindow class="flex-1 min-h-0" rows={listRowsNow} fallbackHeight={LIST_ROW_FALLBACK_PX} resetToken={found.query} rowClass="pb-2" card={listCard} />
+            {#if libraryEmpty || libraryNoMatch}
+                {@render libraryEmptyState()}
+            {:else}
+                <CharacterWindow class="flex-1 min-h-0" rows={listRowsNow} fallbackHeight={LIST_ROW_FALLBACK_PX} resetToken={found.query} rowClass="pb-2" card={listCard} />
+            {/if}
         {:else if selected === 2}
             <div class="flex-1 min-h-0 flex flex-col">
                 <CharacterTrashList found={found} />
             </div>
         {:else if selected === 3}
             <div class="flex-1 min-h-0 flex flex-col">
-                <CharacterSimpleList endGrid={endGrid} hideTrash={true} results={found} onpick={pick} opening={(index) => openingIndex === index} />
+                {#if libraryEmpty || libraryNoMatch}
+                    {@render libraryEmptyState()}
+                {:else}
+                    <CharacterSimpleList endGrid={endGrid} hideTrash={true} results={found} onpick={pick} opening={(index) => openingIndex === index} />
+                {/if}
             </div>
         {/if}
     </div>

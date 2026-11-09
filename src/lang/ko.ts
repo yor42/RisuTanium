@@ -1673,6 +1673,7 @@ export const languageKorean = {
     "homeEmptyBody": "캐릭터를 만들거나, 갖고 있는 캐릭터를 가져오세요.",
     "homeEmptyCreate": "캐릭터 만들기",
     "homeEmptyImport": "캐릭터 가져오기",
+    "libraryNoMatch": "검색과 일치하는 캐릭터가 없습니다.",
     "homeLinkUtilityDescription": "캐릭터나 채팅 없이, 저장된 작업 프리셋을 통해 모델과 대화합니다.",
     "homeLinkEmailTitle": "이메일",
     "homeLinkEmailDescription": "개발자에게 직접 연락하세요.",
@@ -2029,6 +2030,10 @@ export const languageKorean = {
     "list": "리스트",
     "trash": "휴지통",
     "trashDesc": "삭제된 캐릭터는 휴지통에 보관됩니다. 복구하거나 영구 삭제할 수 있습니다. 삭제된 캐릭터는 이 앱에서 30일간 보관된 뒤 자동으로 영구 삭제되며, 다른 버전에서는 더 일찍 삭제될 수 있습니다.",
+    "trashDaysLeft": (days: number) => `${days}일 남음`,
+    "trashRestore": "복구",
+    "trashDeletePermanently": "영구 삭제",
+    "trashEmpty": "휴지통이 비어 있습니다.",
     "shareExport": "공유/내보내기",
     "risupresetDesc": "Risupreset 포맷은 포맷을 공유하기 위한 업스트림 RisuAI 전용 포맷입니다.",
     "risuMDesc": "RisuM 포맷은 업스트림 RisuAI 모듈을 위해 특별히 설계된 포맷입니다.",
@@ -3140,7 +3145,7 @@ export const languageKorean = {
         editSelectedCount: (count: number) => `${count}개 선택됨`,
         editFolderToggle: "폴더 열기 또는 닫기",
         editTrashConfirm: (count: number) => (`캐릭터 ${count}개를 휴지통으로 이동하시겠습니까?`)
-            + ` 복구된 캐릭터는 폴더 밖으로 돌아갑니다. 휴지통의 캐릭터는 이 앱에서 30일간 보관되며, 다른 버전에서는 더 일찍 삭제될 수 있습니다.`,
+            + ` 이 작업으로 비게 되는 폴더는 삭제됩니다. 복구된 캐릭터는 원래 폴더가 아직 있으면 그 폴더로, 없으면 폴더 밖 목록의 맨 끝으로 돌아갑니다. 휴지통의 캐릭터는 이 앱에서 30일간 보관되며, 다른 버전에서는 더 일찍 삭제될 수 있습니다.`,
         editMoved: (n: number) => `${n}개 항목을 이동했습니다`,
         editFolderRemoveConfirm: (names: string[]) => {
             const q = names.map((n) => `"${n}"`)

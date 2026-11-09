@@ -1803,6 +1803,7 @@ export const languageEnglish = {
     homeEmptyBody: "Create a character, or import one you already have.",
     homeEmptyCreate: "Create character",
     homeEmptyImport: "Import character",
+    libraryNoMatch: "No characters match your search.",
     homeLinkUtilityDescription: "Talk to a model through a saved task preset, with no character or chat.",
     homeLinkEmailTitle: "Email",
     homeLinkEmailDescription: "Contact the developer directly.",
@@ -2161,6 +2162,10 @@ export const languageEnglish = {
     list: "List",
     trash: "Trash",
     trashDesc: "Deleted characters are moved to trash. You can restore or delete them permanently. Deleted characters are kept 30 days in this app, then purged automatically; other versions may remove them sooner.",
+    trashDaysLeft: (days: number) => days === 1 ? "1 day left" : `${days} days left`,
+    trashRestore: "Restore",
+    trashDeletePermanently: "Delete permanently",
+    trashEmpty: "Trash is empty.",
     shareExport: "Share/Export",
     risupresetDesc: "Risupreset format is a format specifically designed for upstream RisuAI presets.",
     risuMDesc: "RisuM format is a format that is specifically designed for upstream RisuAI modules.",
@@ -3289,7 +3294,7 @@ export const languageEnglish = {
         editTrashConfirm: (count: number) => (count === 1
             ? `Move 1 character to the trash?`
             : `Move ${count} characters to the trash?`)
-            + ` A restored character returns outside any folder. Trashed characters are kept 30 days in this app; other versions may remove them sooner.`,
+            + ` A folder this leaves empty is removed. A restored character goes back to its folder if that folder still exists, otherwise to the end of the list, outside any folder. Trashed characters are kept 30 days in this app; other versions may remove them sooner.`,
         editMoved: (count: number) => count === 1 ? `Moved 1 item` : `Moved ${count} items`,
         editFolderRemoveConfirm: (names: string[]) => {
             if (names.length <= 1) {

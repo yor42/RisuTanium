@@ -7,11 +7,12 @@ import { firstIndexOf } from 'src/ts/settingsShell/settingsPages'
 /**
  * Creates a blank character and selects it. The selection is awaited here, not left to the hero:
  * the hero unmounts as soon as the new slot is pushed, and that must not skip the selection.
+ * Resolves true only when the selection happened, so a caller closes its screen on that and on nothing else.
  */
-export async function createCharacterFromHome(): Promise<void> {
+export async function createCharacterFromHome(): Promise<boolean> {
     const { createNewCharacter, changeChar } = await import('src/ts/characters')
     const index = createNewCharacter()
-    await changeChar(index)
+    return (await changeChar(index)) === 'selected'
 }
 
 /**
@@ -19,14 +20,15 @@ export async function createCharacterFromHome(): Promise<void> {
  * picker or a preset or module file adds none, and selecting then would open a trashed or hidden slot.
  * The length is read before the first await, so it is the length the user saw.
  */
-export async function importCharacterFromHome(): Promise<void> {
+export async function importCharacterFromHome(): Promise<boolean> {
     const before = DBState.db.characters.length
     const { importCharacter } = await import('src/ts/characterCards')
     await importCharacter()
     if (DBState.db.characters.length > before) {
         const { changeChar } = await import('src/ts/characters')
-        await changeChar(DBState.db.characters.length - 1)
+        return (await changeChar(DBState.db.characters.length - 1)) === 'selected'
     }
+    return false
 }
 
 /**

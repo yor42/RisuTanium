@@ -1,6 +1,7 @@
 <button
     onclick={onclick}
     {disabled}
+    aria-pressed={ariaPressed}
     class="{
         styled === 'primary' ? ((selected ? 'bg-bg-selected' : 'bg-darkbutton') + " hover:bg-selected focus:ring-selected border-darkborderc")
         : styled === 'outlined' ? 'bg-transparent hover:bg-darkbg focus:ring-selected border-darkborderc text-textcolor2'
@@ -27,6 +28,8 @@
         className?: string;
         size?: "sm" | "md" | "lg";
         disabled?: boolean;
+        // Set only by a button that toggles a state; left out, the attribute is not rendered.
+        ariaPressed?: boolean;
         children?: import('svelte').Snippet;
         onclick?: (event: MouseEvent & {
             currentTarget: EventTarget & HTMLButtonElement;
@@ -39,6 +42,7 @@
         className = "",
         size = "md",
         disabled = false,
+        ariaPressed,
         children,
         onclick
     }: Props = $props();

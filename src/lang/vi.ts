@@ -1673,6 +1673,7 @@ export const languageVietnamese = {
     "homeEmptyBody": "Hãy tạo một nhân vật hoặc nhập nhân vật bạn đã có.",
     "homeEmptyCreate": "Tạo nhân vật",
     "homeEmptyImport": "Nhập nhân vật",
+    "libraryNoMatch": "Không có nhân vật nào khớp với tìm kiếm của bạn.",
     "homeLinkUtilityDescription": "Trò chuyện với một mô hình thông qua cài đặt trước tác vụ đã lưu, không cần nhân vật hay cuộc trò chuyện.",
     "homeLinkEmailTitle": "Email",
     "homeLinkEmailDescription": "Liên hệ trực tiếp với nhà phát triển.",
@@ -2029,6 +2030,10 @@ export const languageVietnamese = {
     "list": "Danh sách",
     "trash": "Thùng rác",
     "trashDesc": "Các nhân vật đã xóa sẽ được chuyển vào thùng rác. Bạn có thể khôi phục hoặc xóa vĩnh viễn chúng. Các nhân vật đã xóa được giữ 30 ngày trong ứng dụng này rồi tự động bị xóa; các phiên bản khác có thể xóa sớm hơn.",
+    "trashDaysLeft": (days: number) => `Còn ${days} ngày`,
+    "trashRestore": "Khôi phục",
+    "trashDeletePermanently": "Xóa vĩnh viễn",
+    "trashEmpty": "Thùng rác trống.",
     "shareExport": "Chia sẻ/Xuất",
     "risupresetDesc": "Định dạng Risupreset là định dạng được thiết kế dành riêng cho các cài đặt trước RisuAI thượng nguồn.",
     "risuMDesc": "Định dạng RisuM là định dạng được thiết kế dành riêng cho các mô-đun RisuAI thượng nguồn.",
@@ -3140,7 +3145,7 @@ export const languageVietnamese = {
         editSelectedCount: (count: number) => `Đã chọn ${count}`,
         editFolderToggle: "Mở hoặc đóng thư mục",
         editTrashConfirm: (count: number) => (`Chuyển ${count} nhân vật vào thùng rác?`)
-            + ` Nhân vật được khôi phục sẽ nằm ngoài mọi thư mục. Các nhân vật trong thùng rác được giữ 30 ngày trong ứng dụng này; các phiên bản khác có thể xóa sớm hơn.`,
+            + ` Thư mục bị bỏ trống do thao tác này sẽ bị xóa. Nhân vật được khôi phục sẽ quay về thư mục cũ nếu thư mục đó vẫn còn, nếu không sẽ nằm ở cuối danh sách, ngoài mọi thư mục. Các nhân vật trong thùng rác được giữ 30 ngày trong ứng dụng này; các phiên bản khác có thể xóa sớm hơn.`,
         editMoved: (n: number) => `Đã di chuyển ${n} mục`,
         editFolderRemoveConfirm: (names: string[]) => {
             const q = names.map((n) => `"${n}"`)
