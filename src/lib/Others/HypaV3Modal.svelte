@@ -577,7 +577,7 @@
         textarea.readOnly = true;
         textarea.focus();
         window.setTimeout(() => {
-          searchState.ref.focus(); // Restore focus to search bar
+          searchState?.ref?.focus(); // Restore focus to search bar
           textarea.readOnly = false; // Remove readonly after focus moved
         }, 300);
       }
