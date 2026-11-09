@@ -376,3 +376,68 @@ describe('wait', () => {
         expect(waiting.settled()).toBe(true)
     })
 })
+
+describe('wakeIdle (CHORE-687)', () => {
+    test('TW1(a) it ends a live wait and calls no hook: no mark, no dirty page, no due change', async () => {
+        const { state, scheduler } = setup()
+        const waiting = track(scheduler.wait(60_000))
+
+        scheduler.wakeIdle()
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(waiting.settled()).toBe(true)
+        expect(state.marks).toBe(0)
+        expect(state.dirty).toBe(false)
+        expect(state.due).toBe(0)
+        expect(scheduler.debouncePending()).toBe(false)
+    })
+
+    test('TW1(b) with no live wait the next wait returns at once, once; the one after sleeps', async () => {
+        const { scheduler } = setup()
+
+        scheduler.wakeIdle()
+        const first = track(scheduler.wait(1000))
+        await vi.advanceTimersByTimeAsync(0)
+        expect(first.settled()).toBe(true)
+
+        const second = track(scheduler.wait(1000))
+        await vi.advanceTimersByTimeAsync(999)
+        expect(second.settled()).toBe(false)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(second.settled()).toBe(true)
+    })
+
+    test('TW1(c) it does not end a live rearm wait: a failure back-off keeps its delay', async () => {
+        const { scheduler } = setup()
+        const backoff = track(scheduler.waitRearm(1000))
+
+        scheduler.wakeIdle()
+        await vi.advanceTimersByTimeAsync(999)
+        expect(backoff.settled()).toBe(false)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(backoff.settled()).toBe(true)
+
+        // It left nothing behind for the wait that follows the back-off.
+        const next = track(scheduler.wait(1000))
+        await vi.advanceTimersByTimeAsync(999)
+        expect(next.settled()).toBe(false)
+    })
+
+    test('TW1(d) it runs no onRequest listener and leaves the latch unset: a later rearm wait sleeps', async () => {
+        const { scheduler } = setup()
+        let ran = 0
+        scheduler.onRequest(() => { ran += 1 })
+
+        scheduler.wakeIdle()
+        scheduler.wakeIdle()
+        expect(ran).toBe(0)
+
+        // The idle latch is consumed by a plain wait only; a rearm wait is not ended by it.
+        const rearm = track(scheduler.waitRearm(1000))
+        await vi.advanceTimersByTimeAsync(999)
+        expect(rearm.settled()).toBe(false)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(rearm.settled()).toBe(true)
+        expect(ran).toBe(0)
+    })
+})

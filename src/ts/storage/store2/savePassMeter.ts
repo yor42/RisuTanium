@@ -327,7 +327,7 @@ export interface NetShadowTally {
 export type NetSlotReason =
     | 'modulesDue' | 'consent' | 'redo' | 'readFailed' | 'parked' | 'dueAfterRead' | 'pending' | 'unheld' | 'stub' | 'unsavableAbsent'
     | 'verdictClean' | 'verdictDirty' | 'verdictUnknown' | 'slotMissing' | 'guardThrow' | 'noResident'
-    | 'dueAfterYield' | 'dbChanged' | 'verdictSkipped'
+    | 'dueAfterYield' | 'dbChanged' | 'verdictSkipped' | 'scanBackedOff'
 
 /** What the judged character's verdict said. A `verdictOf` that threw reads as `unknown`: the encoder logs the throw and returns it. */
 export type NetVerdictOutcome = 'clean' | 'dirty' | 'unknown'
@@ -545,7 +545,7 @@ function netFoundNow(): NetFoundState {
 
 const NET_SLOT_REASONS: readonly NetSlotReason[] = [
     'modulesDue', 'consent', 'redo', 'readFailed', 'parked', 'dueAfterRead', 'pending', 'unheld', 'stub', 'unsavableAbsent',
-    'verdictClean', 'verdictDirty', 'verdictUnknown', 'slotMissing', 'guardThrow', 'noResident', 'dueAfterYield', 'dbChanged', 'verdictSkipped',
+    'verdictClean', 'verdictDirty', 'verdictUnknown', 'slotMissing', 'guardThrow', 'noResident', 'dueAfterYield', 'dbChanged', 'verdictSkipped', 'scanBackedOff',
 ]
 
 interface NetVerdictState {

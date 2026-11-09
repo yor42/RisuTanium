@@ -141,6 +141,11 @@ export interface IdleNetOptions {
     moduleIntervalMs?: number
     /** Tests only: a clean verdict younger than this lets the net skip that resident's next verdict; 0 disables the skip. */
     backstopMs?: number
+    /**
+     * Tests only: the idle back-off's thresholds; absent means the `IDLE_NET_QUIET_*` constants, `null` means no
+     * back-off, no forced tick and no cadence bypass on a sweep (the sweep still clears the clean-verdict clocks).
+     */
+    quiet?: { afterMs: number, intervalMs: number, moduleIntervalMs: number } | null
 }
 
 /** The idle net's default cadence: one resident character per tick. */
@@ -152,8 +157,23 @@ export const IDLE_NET_INTERVAL_MS = 2000
  */
 const NET_VERDICT_BACKSTOP_MS = 30_000
 
-/** The idle net takes module scope at most this often; a module edit that raised no mark waits for the next such tick. */
+/**
+ * The idle net takes module scope at most this often while the page is active; a module edit that raised no mark waits
+ * for the next such tick. `IDLE_NET_QUIET_MODULE_INTERVAL_MS` replaces it after an unchanged tick on a quiet page.
+ */
 export const IDLE_NET_MODULE_INTERVAL_MS = 30_000
+
+/** A visible, clean page with no activity for this long moves the idle net to its quiet cadence. */
+export const IDLE_NET_QUIET_AFTER_MS = 60_000
+
+/** The quiet cadence's scan interval: `netScan` runs at most this often. Every other slot still runs its cheap checks. */
+export const IDLE_NET_QUIET_INTERVAL_MS = 30_000
+
+/**
+ * The quiet cadence's module-scope interval, once a module-scope tick has ended unchanged and nothing has happened
+ * since. Any activity restores `IDLE_NET_MODULE_INTERVAL_MS`.
+ */
+export const IDLE_NET_QUIET_MODULE_INTERVAL_MS = 300_000
 
 /** A commit landed but its backend could not confirm it reached stable storage: the person is told, and the next pass commits again. */
 export class Store2NotFlushedError extends Error {
@@ -205,7 +225,10 @@ export interface Store2LoopPort {
     sweep(): void
     /** A pass is due: a debounce elapsed, a save was requested now, or a failed pass asked again. */
     isDue(): boolean
-    /** The page holds edits that no commit has taken. */
+    /**
+     * The page holds edits that no commit has taken. The idle net reads it too: a dirty page holds the base cadence,
+     * because an edit mark is activity that ends the idle back-off.
+     */
     isDirty(): boolean
     /** Typed text no commit has taken (composer, an open edit). Not a dirty edit: it never routes a tab to `decide`. */
     hasDrafts(): boolean
@@ -258,9 +281,14 @@ export interface Store2LoopPort {
     now(): number
     /** The idle-net slot's one yield before its verdict; absent means `yieldToEventLoop`. Tests inject their own. */
     yieldNow?(): Promise<void>
-    /** True once after the page asked for a sweep (a hide or Back): every resident is then verdicted at its next turn. Read after the yield. */
+    /**
+     * True once after the page asked for a sweep (a hide or Back). Read at the top of each loop iteration: every
+     * resident is then verdicted at its next turn, and the next net slot is a module-scope full tick that runs at once.
+     */
     takeNetSweep?(): boolean
-    /** Whether the page is hidden; a hidden page's slots never skip a verdict. Read after the yield. */
+    /** True once after a character became resident since the last call; read at the top of each loop iteration. It ends the idle back-off. */
+    takeResidentLoaded?(): boolean
+    /** Whether the page is hidden; a hidden page's slots never skip a verdict and never back off. Read by the scan gate, the module interval and after the yield. */
     pageHidden?(): boolean
     /**
      * Whether the encode's budgeted yields are skipped now: a hidden Android page may be frozen inside a yield, and
@@ -551,8 +579,35 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
      */
     const cleanVerdictAt = new Map<string, number>()
     let lastNetAt = port.now()
-    /** When a tick last took module scope; the next such tick is `moduleMs` later, whatever the first one came to. */
+    /** When a tick last took module scope; the next such tick is `moduleIntervalNow()` later, or the next slot while a sweep owes module scope. */
     let lastModuleNetAt = port.now()
+    /**
+     * The idle back-off's thresholds; `null` for no back-off (tests only). Production passes no option and so always
+     * runs on the constants.
+     */
+    const quiet = context.idleNet?.quiet === null
+        ? null
+        : {
+            afterMs: context.idleNet?.quiet?.afterMs ?? IDLE_NET_QUIET_AFTER_MS,
+            intervalMs: context.idleNet?.quiet?.intervalMs ?? IDLE_NET_QUIET_INTERVAL_MS,
+            moduleIntervalMs: context.idleNet?.quiet?.moduleIntervalMs ?? IDLE_NET_QUIET_MODULE_INTERVAL_MS,
+        }
+    /**
+     * The last activity: an edit mark the loop has not yet seen taken, a pass that did anything but end unchanged, a
+     * peer park ending, a character becoming resident, a sweep, a replaced database object, or a slot that found
+     * something to save. The idle back-off counts from here, and any activity ends it.
+     */
+    let lastActivityAt = port.now()
+    /** When the last slot that ran `netScan` ran it; the quiet scan interval counts from here. */
+    let lastScanAt = Number.NEGATIVE_INFINITY
+    /** The database object the last scan gate saw; a different one is activity. */
+    let lastSeenDb: Database | null = null
+    /** Whether the current net slot ran `netScan`; set by the scan gate, read by `netSlot`. */
+    let scanRan = false
+    /** A sweep owes one net slot now, whatever `lastNetAt` says. */
+    let sweepSlotOwed = false
+    /** A sweep owes a module-scope tick: every slot takes module scope until one ends saved or not flushed. */
+    let moduleSweepOwed = false
     /** Consecutive cut ticks; above zero a redo is owed, and the next net slot is a full tick. */
     let cutTicks = 0
     /** The cut check of the attempt in flight; `null` when the attempt cannot be cut. One attempt runs at a time under the write lock. */
@@ -608,6 +663,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     /** Ends the park. A Reload press still waiting for its check is answered `moved`. */
     function unpark(): void {
         park = null
+        lastActivityAt = port.now()
         port.setStopped('')
         const waiting = reloadAsk
         reloadAsk = null
@@ -914,10 +970,27 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     }
 
     /**
+     * The least time between two module-scope ticks now. It lengthens to the quiet module interval only when a
+     * module-scope tick has ended unchanged and nothing has happened since (`lastModuleNetAt` is then later than every
+     * activity, and a tick that wrote or failed bumps the activity clock after its own stamp), and never on a hidden page.
+     */
+    function moduleIntervalNow(): number {
+        if (quiet !== null && port.pageHidden?.() !== true && lastModuleNetAt > lastActivityAt) {
+            return Math.max(moduleMs, quiet.moduleIntervalMs)
+        }
+        return moduleMs
+    }
+
+    /** Whether the next tick takes module scope: a sweep owes it, or the module interval has passed. */
+    function modulesDueNow(now: number): boolean {
+        return moduleSweepOwed || now - lastModuleNetAt >= moduleIntervalNow()
+    }
+
+    /**
      * The request of one pass. A marked pass takes its modules from the snapshot's flag. A tick takes module scope at
-     * most once per `moduleMs`: with no resident character the tick still runs and carries the modules until they are
+     * most once per module interval: with no resident character the tick still runs and carries the modules until they are
      * due; with residents the character round-robin is unchanged and module scope rides on whichever tick is next once
-     * due. The module clock advances when a tick takes module scope, so a check that fails waits for the next one.
+     * due. The module clock advances when a tick takes module scope, so a check that fails waits for the next one, unless a sweep still owes module scope.
      * A tick given `netChaId` is a verdict slot's pass: it names that character, takes no module scope, and leaves the
      * round-robin index and the module clock alone, because the slot that judged the character already consumed its turn.
      */
@@ -929,7 +1002,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             return { marked: new Set(), modules: false, whole: false, net: { chaId: netChaId, modules: false }, ...yielding }
         }
         const now = port.now()
-        const modulesDue = now - lastModuleNetAt >= moduleMs
+        const modulesDue = modulesDueNow(now)
         if (modulesDue) {
             lastModuleNetAt = now
         }
@@ -1379,6 +1452,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     async function pass(tick: boolean, netChaId: string | null = null): Promise<boolean> {
         const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleScope: false, foreignCleared: false, standingMarker: null, standingLiveness: null }
         let cut = false
+        // A tick that saved with nothing written and no module refusal is the one outcome that is not activity.
+        let endedUnchanged = false
         if (!tick) {
             port.beginIteration()
         }
@@ -1388,6 +1463,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             switch (outcome.kind) {
                 case 'saved':
                     retries = 0
+                    endedUnchanged = tick && !outcome.wrote && run.moduleRefusal === null
+                    if (tick && run.moduleScope) {
+                        moduleSweepOwed = false
+                    }
                     if (run.moduleScope && run.moduleRefusal === null) {
                         // Only a pass that planned the modules proves no stub blocks them; a character-only pass or a
                         // degraded one says nothing, so the person is not asked again while the same stub stands.
@@ -1454,6 +1533,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     // commit landed and is acknowledged, so what it skipped is settled now: the next pass does not
                     // necessarily name a skipped saved character. The retry is arranged first, so a settle cannot drop it.
                     forced = true
+                    if (tick && run.moduleScope) {
+                        moduleSweepOwed = false
+                    }
                     savetrys += 1
                     port.requestPass()
                     if (run.plan !== null) {
@@ -1491,6 +1573,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 await backOff(landedDelay)
             }
         } finally {
+            if (!endedUnchanged) {
+                lastActivityAt = port.now()
+            }
             if (!tick) {
                 port.endIteration()
             }
@@ -1526,7 +1611,12 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
      * re-checks only what the yield can change: a pass became due, or the database object was replaced.
      */
     async function netDecision(): Promise<NetDecision> {
-        const modulesDue = port.now() - lastModuleNetAt >= moduleMs
+        // A dirty page is activity: edit marks that no marked pass has taken yet keep the base cadence, and a bump here is
+        // seen by the module interval below in the same slot. It is a read with no other effect, so no branch is delayed.
+        if (quiet !== null && port.isDirty()) {
+            lastActivityAt = port.now()
+        }
+        const modulesDue = modulesDueNow(port.now())
         // A cut tick owes a redo: every slot until one ends is a full tick, so the redo cannot be replaced by a verdict.
         if (modulesDue || consent !== null || cutTicks > 0) {
             if (MEASURE) {
@@ -1575,6 +1665,26 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             return { kind: 'full' }
         }
         const db = port.getDatabase()
+        // The scan gate. Every branch above ran at the base cadence. A replaced database object is activity; after
+        // `quiet.afterMs` of none, on a visible page with nothing unsavable, `netScan` runs at most once per
+        // `quiet.intervalMs`. A negative scan age (a clock that moved back) counts as due.
+        if (db !== lastSeenDb) {
+            lastSeenDb = db
+            lastActivityAt = port.now()
+        }
+        const gateNow = port.now()
+        const quietNow = quiet !== null && port.pageHidden?.() !== true && unsavable.size === 0 && gateNow - lastActivityAt >= quiet.afterMs
+            ? quiet
+            : null
+        const backedOff = quietNow !== null
+        if (quietNow !== null && gateNow - lastScanAt >= 0 && gateNow - lastScanAt < quietNow.intervalMs) {
+            if (MEASURE) {
+                noteNetSlotEnd('scanBackedOff')
+            }
+            return { kind: 'none' }
+        }
+        lastScanAt = gateNow
+        scanRan = true
         const checksStartedAt = MEASURE ? performance.now() : 0
         // Each check's sub-part runs from the previous check's end, and an exit closes `checksMs` at the same clock read as
         // its last sub-part, so the sub-parts sum to `checksMs`; a check the slot did not run leaves its sub-part null.
@@ -1641,8 +1751,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         // One yield before the verdict, so the work above and the work below are separate stretches of the event loop. It
         // sits before the `netIndex` advance: a slot that leaves at `dueAfterYield` or `dbChanged` uses no resident's turn.
         // This loop is suspended during the yield, so `previous`'s identity, `pendingKey`, the shadow map, `netIndex`,
-        // `cleanVerdictAt`, `lastModuleNetAt`, `unsavable`, `park` and `consent` cannot change; `pageHidden` and
-        // `takeNetSweep` are the page's and are read after it; character loads may fill missing unit digests
+        // `cleanVerdictAt`, `lastModuleNetAt`, `unsavable`, `park` and `consent` cannot change; `pageHidden` is the
+        // page's and is read after it (a sweep is taken at the loop top, never inside a slot); character loads may fill missing unit digests
         // in place, which depends only on the bytes and does not change a verdict. The write lock is not held across it.
         // `pruneMs` ends at the yield (the `noResident` check falls inside it) and `checksMs` is closed up to it; a later
         // exit that runs the `find` adds `findMs` to it, and one that does not leaves it as it is.
@@ -1664,10 +1774,6 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 resumedAt = performance.now()
                 netResumedAt = resumedAt
             }
-        }
-        // A hide or Back asked for a sweep: every resident is verdicted at its next turn. Consumed on every slot that passes the yield.
-        if (port.takeNetSweep?.() === true) {
-            cleanVerdictAt.clear()
         }
         if (port.isDue()) {
             if (MEASURE) {
@@ -1711,8 +1817,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             return { kind: 'full' }
         }
         // The verdict alone is skipped: everything above ran as on the base, and the rotation has advanced. The old clock
-        // goes back unchanged so the age counts from the last real verdict. A hidden page never skips.
-        if (cleanAt !== undefined && backstopMs > 0 && !(port.pageHidden?.() ?? false)) {
+        // goes back unchanged so the age counts from the last real verdict. A hidden page never skips, and neither does
+        // a backed-off scan turn: its interval already exceeds the backstop.
+        if (cleanAt !== undefined && backstopMs > 0 && !(port.pageHidden?.() ?? false) && !backedOff) {
             const age = port.now() - cleanAt
             if (age >= 0 && age < backstopMs) {
                 cleanVerdictAt.set(chaId, cleanAt)
@@ -1752,14 +1859,22 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             netResumedAt = null
             noteNetSlotBegin()
         }
+        scanRan = false
+        let threw = false
         try {
             decision = await netDecision()
         } catch (error) {
             console.error(error)
+            threw = true
             if (MEASURE) {
                 noteNetSlotEnd(netReadDone ? 'guardThrow' : 'readFailed')
             }
             decision = { kind: 'full' }
+        }
+        // A slot that scanned and found something to do (unheld, stub, absent, missing, a dirty or unknown verdict) is
+        // activity even when the pass that follows ends unchanged; the pre-scan full returns decide through the pass outcome.
+        if (threw || (scanRan && decision.kind !== 'none')) {
+            lastActivityAt = port.now()
         }
         // The one end-of-decision read, shared by the normal exits and the guard's catch. A slot that reached `judge` splits
         // into span A (judge start to the yield, or to this read when it exited before the yield), the yield, and span B
@@ -1814,6 +1929,19 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 }
                 continue
             }
+            // A resident load and a sweep are activity. A hide or Back sweep also clears every clean-verdict clock, and
+            // (unless the back-off is off) owes a net slot now and a module-scope tick until one lands.
+            if (port.takeResidentLoaded?.() === true) {
+                lastActivityAt = port.now()
+            }
+            if (port.takeNetSweep?.() === true) {
+                cleanVerdictAt.clear()
+                lastActivityAt = port.now()
+                if (quiet !== null) {
+                    sweepSlotOwed = true
+                    moduleSweepOwed = true
+                }
+            }
             if (port.peerHeard()) {
                 peerSignal = true
             }
@@ -1848,8 +1976,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 await port.wait(500)
                 continue
             }
-            if (netMs !== null && deferral === null && port.now() - lastNetAt >= netMs) {
+            if (netMs !== null && deferral === null && (sweepSlotOwed || port.now() - lastNetAt >= netMs)) {
                 lastNetAt = port.now()
+                sweepSlotOwed = false
                 if (MEASURE && netHeldNow()) {
                     noteNetHeldTick()
                 } else if (MEASURE) {

@@ -77,6 +77,8 @@ interface StartOptions {
     moduleIntervalMs?: number
     /** Whether the port carries `pageHidden` and `takeNetSweep`; the real port does. */
     realPort?: boolean
+    /** The base cadence with no idle back-off, for a test that pins a rule the back-off supersedes. */
+    quiet?: null
 }
 
 const worlds: World[] = []
@@ -136,7 +138,12 @@ function pause(ms: number): Promise<void> {
 async function startWorld(db: Database, options: StartOptions = {}): Promise<World> {
     const kit = await startStore2({
         db,
-        idleNet: { intervalMs: 1, moduleIntervalMs: options.moduleIntervalMs ?? 1_000_000_000, backstopMs: options.backstopMs ?? 30_000 },
+        idleNet: {
+            intervalMs: 1,
+            moduleIntervalMs: options.moduleIntervalMs ?? 1_000_000_000,
+            backstopMs: options.backstopMs ?? 30_000,
+            ...(options.quiet === null ? { quiet: null } : {}),
+        },
     })
     const inner = createSaveEncoder({ previous: kit.context.previous, lists: kit.context.lists, env: kit.context.env })
     const requests: SavePassRequest[] = []
@@ -459,13 +466,15 @@ const SCRIPTED_RUN_BASE: Array<[string | null, number | null]> = [
 ]
 
 describe('B4 and B10 the rotation and the decisions are the base\'s', () => {
+    // The scripted run's second module tick comes 7 s after an unchanged one with no activity between (the unmarked edit
+    // is skipped by the backstop), which the idle back-off supersedes: the base cadence is pinned with `quiet: null`.
     test('B4 with every resident clean, the judged resident of each slot, full ticks included, equals the base\'s', async () => {
-        const seen = await scriptedRun({}, false)
+        const seen = await scriptedRun({ quiet: null }, false)
         expect(seen.map(([, judged]) => judged)).toEqual(SCRIPTED_JUDGED_BASE)
     })
 
     test('B4 the same run skips repeat visits, and a resident a full tick encoded is verdicted at its next own turn', async () => {
-        const seen = await scriptedRun({}, false)
+        const seen = await scriptedRun({ quiet: null }, false)
         // Slots 10 and 17 are the turns that follow a full tick over the same resident; the tick removed its clock.
         expect(seen.map(([reason]) => reason)).toEqual([
             'verdictClean', 'verdictClean', 'verdictClean', 'verdictSkipped', 'verdictSkipped',
@@ -548,9 +557,12 @@ describe('B7 a clock that runs backwards', () => {
 })
 
 describe('B8 a sweep', () => {
+    // Pinned at the base cadence: with the idle back-off on, a sweep also runs a module-scope full tick at once, which
+    // takes a resident's turn (the sweep tests of the back-off are in saveLoopNetQuiet). The sweep's clearing of the
+    // clean-verdict clocks is what this test pins.
     test('B8 a requested sweep makes every resident verdict at its next turn, once', async () => {
         const db = clone(buildSmall(3))
-        const world = await startWorld(db)
+        const world = await startWorld(db, { quiet: null })
         for (const offset of [1_000, 2_000, 3_000]) {
             await world.slotAt(offset)
         }

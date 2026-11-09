@@ -29,6 +29,7 @@ import { appendIfAbsent, installCharacterSaveMarks } from "./storage/characterSa
 import { createSaveScheduler } from "./storage/saveScheduler";
 import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
 import type { Store2LoopPort } from "./storage/store2/saveLoop";
+import { takeResidentLoaded } from "./storage/store2/residentLoads";
 import { saveFailureStore } from "./storage/store2/saveFailure";
 import { openBootWindow } from "./bootWindow";
 import { AutoStorage } from "./storage/autoStorage";
@@ -1266,9 +1267,17 @@ export function requestSaveNow(): void {
 /** A hide or Back asked the store2 idle net to verdict every resident at its next turn; the loop takes it once. */
 let netSweepPending = false
 
-/** Asks for that sweep. It marks nothing and never makes the page dirty. */
+/** Ends the store2 loop's idle wait without a save request; null before the loop's real scheduler is live. */
+let netSweepWakeImpl: (() => void) | null = null
+
+/**
+ * Asks for that sweep and wakes the loop out of an idle wait, so the sweep's module-scope tick starts at once instead
+ * of at the next timer (a hidden page may not run one for a while). It marks nothing, never makes the page dirty,
+ * counts no save request and cuts no running pass.
+ */
 export function requestNetSweep(): void {
     netSweepPending = true
+    netSweepWakeImpl?.()
 }
 
 /**
@@ -2094,6 +2103,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
     })
     installCharacterSaveMarks({ tracker: changeTracker, schedule: () => saveTimeoutExecute() })
     requestSaveNowImpl = () => scheduler.requestNow()
+    netSweepWakeImpl = () => scheduler.wakeIdle()
     const bootWindowAnswer = bootWindow.close()
     $effect.root(() => {
         registerDbChangeEffects({
@@ -2242,6 +2252,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
             netSweepPending = false
             return pending
         },
+        takeResidentLoaded: takeResidentLoaded,
         pageHidden: () => document.visibilityState === 'hidden',
         yieldImmediately: shouldBypassFrozenPagePaths,
     }

@@ -9,6 +9,9 @@
  * `wait` returns at once instead, exactly once. Waits that do not go through
  * `wait`, and a loop parked for good, are never touched.
  *
+ * `wakeIdle` is the same wake without the request: it ends a plain `wait` (or is kept once for the next plain `wait`)
+ * and nothing else, so the idle net can start a slot at once without a mark, a dirty page or a cut pass.
+ *
  * A measurement build notes each request before it changes anything; the note has no effect on the wake.
  */
 import { MEASURE } from '../process/memory/measureFlag'
@@ -42,6 +45,12 @@ export interface SaveScheduler {
      * following wait.
      */
     waitRearm(ms: number): Promise<void>
+    /**
+     * Ends a live plain `wait` early, or, when no wait is live, makes the next plain `wait` return at once, once. It is not
+     * a save request: it counts no mark, marks nothing dirty, leaves `latch` alone and runs no `onRequest` listener, so a
+     * running pass is never cut by it. A live `waitRearm` back-off is left to run out.
+     */
+    wakeIdle(): void
     /** True while a debounce is running. */
     debouncePending(): boolean
     /**
@@ -58,6 +67,7 @@ export function createSaveScheduler(options: SaveSchedulerOptions): SaveSchedule
     let timer: ReturnType<typeof setTimeout> | null = null
     let pending = false
     let latch = false
+    let idleLatch = false
     let wake: (() => void) | null = null
     let wakeRearms = false
     const listeners = new Set<() => void>()
@@ -126,7 +136,23 @@ export function createSaveScheduler(options: SaveSchedulerOptions): SaveSchedule
                 latch = false
                 return Promise.resolve()
             }
+            if (idleLatch) {
+                idleLatch = false
+                return Promise.resolve()
+            }
             return sleepWake(ms, false)
+        },
+        wakeIdle() {
+            if (wake === null) {
+                idleLatch = true
+                return
+            }
+            if (wakeRearms) {
+                return
+            }
+            const resolve = wake
+            wake = null
+            resolve()
         },
         waitRearm(ms) {
             if (latch) {
