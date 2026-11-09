@@ -1673,6 +1673,7 @@ export const languageGerman = {
     "homeEmptyBody": "Erstelle einen Charakter oder importiere einen, den du schon hast.",
     "homeEmptyCreate": "Charakter erstellen",
     "homeEmptyImport": "Charakter importieren",
+    "libraryNoMatch": "Keine Charaktere entsprechen deiner Suche.",
     "homeLinkUtilityDescription": "Unterhalten Sie sich über eine gespeicherte Aufgaben-Voreinstellung mit einem Modell, ganz ohne Charakter oder Chat.",
     "homeLinkEmailTitle": "E-Mail",
     "homeLinkEmailDescription": "Kontaktieren Sie den Entwickler direkt.",
@@ -1975,6 +1976,10 @@ export const languageGerman = {
     "list": "Liste",
     "trash": "Papierkorb",
     "trashDesc": "Gelöschte Charaktere werden in den Papierkorb verschoben. Sie können sie wiederherstellen oder dauerhaft löschen. Gelöschte Charaktere werden in dieser App 30 Tage aufbewahrt und dann automatisch bereinigt; andere Versionen können sie früher entfernen.",
+    "trashDaysLeft": (days: number) => days === 1 ? "Noch 1 Tag" : `Noch ${days} Tage`,
+    "trashRestore": "Wiederherstellen",
+    "trashDeletePermanently": "Dauerhaft löschen",
+    "trashEmpty": "Der Papierkorb ist leer.",
     "shareExport": "Teilen/Exportieren",
     "risupresetDesc": "Risupreset-Format ist ein Format, das speziell für Voreinstellungen des Upstream-Projekts RisuAI entwickelt wurde.",
     "risuMDesc": "RisuM-Format ist ein Format, das speziell für Module des Upstream-Projekts RisuAI entwickelt wurde.",
@@ -3088,7 +3093,7 @@ export const languageGerman = {
         "editTrashConfirm": (count: number) => (count === 1
             ? `1 Charakter in den Papierkorb verschieben?`
             : `${count} Charaktere in den Papierkorb verschieben?`)
-            + ` Ein wiederhergestellter Charakter landet außerhalb jedes Ordners. Gelöschte Charaktere werden in dieser App 30 Tage aufbewahrt; andere Versionen können sie früher entfernen.`,
+            + ` Ein Ordner, der dadurch leer wird, wird entfernt. Ein wiederhergestellter Charakter kehrt in seinen Ordner zurück, sofern dieser noch existiert, andernfalls ans Ende der Liste, außerhalb jedes Ordners. Gelöschte Charaktere werden in dieser App 30 Tage aufbewahrt; andere Versionen können sie früher entfernen.`,
         "editMoved": (n: number) => n === 1 ? `1 Element verschoben` : `${n} Elemente verschoben`,
         "editFolderRemoveConfirm": (names: string[]) => {
             const q = names.map((n) => `„${n}“`)

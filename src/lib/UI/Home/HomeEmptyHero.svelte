@@ -4,6 +4,14 @@
     import { hasLiveCharacter } from './homeEmpties'
     import { createCharacterFromHome, importCharacterFromHome } from './homeEmptyActions'
 
+    interface Props {
+        // Called after a Create or Import that selected a character, for a host that must close itself.
+        // The landing passes nothing: its own view follows the selection.
+        onselected?: () => void
+    }
+
+    let { onselected }: Props = $props()
+
     const headingId = $props.id()
 
     // Reads `DBState.db` on every evaluation, so it follows a wholesale database swap as well as a
@@ -22,7 +30,9 @@
         }
         creating = true
         try {
-            await createCharacterFromHome()
+            if (await createCharacterFromHome()) {
+                onselected?.()
+            }
         } finally {
             creating = false
         }
@@ -34,7 +44,9 @@
         }
         importing = true
         try {
-            await importCharacterFromHome()
+            if (await importCharacterFromHome()) {
+                onselected?.()
+            }
         } finally {
             importing = false
         }

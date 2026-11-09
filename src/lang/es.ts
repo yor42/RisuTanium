@@ -1673,6 +1673,7 @@ export const languageSpanish = {
     "homeEmptyBody": "Crea un personaje o importa uno que ya tengas.",
     "homeEmptyCreate": "Crear personaje",
     "homeEmptyImport": "Importar personaje",
+    "libraryNoMatch": "Ningún personaje coincide con tu búsqueda.",
     "homeLinkUtilityDescription": "Habla con un modelo a través de un preset de tarea guardado, sin personaje ni chat.",
     "homeLinkEmailTitle": "Correo electrónico",
     "homeLinkEmailDescription": "Ponte en contacto directamente con el desarrollador.",
@@ -1975,6 +1976,10 @@ export const languageSpanish = {
     "list": "Lista",
     "trash": "Papelera",
     "trashDesc": "Los personajes eliminados se mueven a la papelera. Puedes restaurarlos o eliminarlos permanentemente. Los personajes eliminados se conservan 30 días en esta app y después se purgan automáticamente; otras versiones pueden eliminarlos antes.",
+    "trashDaysLeft": (days: number) => days === 1 ? "Queda 1 día" : `Quedan ${days} días`,
+    "trashRestore": "Restaurar",
+    "trashDeletePermanently": "Eliminar permanentemente",
+    "trashEmpty": "La papelera está vacía.",
     "shareExport": "Compartir/Exportar",
     "risupresetDesc": "El formato Risupreset es un formato específicamente diseñado para presets de RisuAI upstream.",
     "risuMDesc": "El formato RisuM es un formato diseñado específicamente para módulos de RisuAI upstream.",
@@ -3088,7 +3093,7 @@ export const languageSpanish = {
         editTrashConfirm: (count: number) => (count === 1
             ? `¿Mover 1 personaje a la papelera?`
             : `¿Mover ${count} personajes a la papelera?`)
-            + ` Un personaje restaurado vuelve fuera de cualquier carpeta. Los personajes en la papelera se conservan 30 días en esta app; otras versiones pueden eliminarlos antes.`,
+            + ` Una carpeta que quede vacía se elimina. Un personaje restaurado vuelve a su carpeta si esta aún existe; si no, al final de la lista, fuera de cualquier carpeta. Los personajes en la papelera se conservan 30 días en esta app; otras versiones pueden eliminarlos antes.`,
         editMoved: (n: number) => n === 1 ? `1 elemento movido` : `${n} elementos movidos`,
         editFolderRemoveConfirm: (names: string[]) => {
             const q = names.map((n) => `“${n}”`)
