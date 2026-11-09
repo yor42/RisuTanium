@@ -773,6 +773,39 @@ describe('S3 the Chats effect keeps its streaming, order and holder behaviour', 
         expect(messageRow(target, 1).textContent).toContain('chunk1 chunk2')
     })
 
+    test('G X4b: a message that is retried after its streaming text was already forwarded shows that text at once, with no new chunk (guard for the boundary forwarder)', async () => {
+        const { target, chat } = mountChats(
+            [{ role: 'user', data: 'A' }, { role: 'char', data: 'chunk1', generationInfo: BADGED }],
+            { streamingDisplayOptimizationMode: 'strong', requestInfoInsideChat: true },
+        )
+        await wait(20)
+        await answerAllParses()
+        chat.isStreaming = true
+        flushSync()
+        await wait(20)
+        await answerAllParses()
+
+        chat.message[1].data = 'chunk1 chunk2'
+        flushSync()
+        await tick()
+        expect(messageRow(target, 1).textContent).toContain('chunk1 chunk2')
+
+        h.modelThrows = true
+        DBState.db.zoomsize = 120
+        flushSync()
+        await tick()
+        const panel = failedPanel(target, 1)
+        expect(panel).not.toBeNull()
+
+        h.modelThrows = false
+        const retry = [...panel!.querySelectorAll('button')].find((b) => b.textContent === language.messageRenderRetry)!
+        retry.click()
+        flushSync()
+        await wait(20)
+        await answerAllParses()
+        expect(messageRow(target, 1).textContent).toContain('chunk1 chunk2')
+    })
+
     test('G X3: the newest message stays first in the DOM after the first mount, a middle remount and appends (passes before and after)', async () => {
         const { target, chat } = mountChats([{ role: 'user', data: 'A' }, { role: 'char', data: 'B' }, { role: 'user', data: 'C' }])
         await wait(20)

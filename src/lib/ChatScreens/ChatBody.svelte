@@ -42,6 +42,10 @@
         rawStreamingText?: string
         /** Fixed at mount by Chats: true only while the tail's reply streams. The translation then waits for the re-mount at the stream end. */
         deferAutoTranslate?: boolean
+        /** Live: true while the tail's reply streams in place. A wanted translation then waits; the parse shows untranslated text. */
+        translationHold?: boolean
+        /** Returns true once, for a body that replaces one showing the translated view: the first decision then keeps that view. */
+        takeStartTranslated?: () => boolean
         /** The rebuild epoch of the enclosing surface row, fixed when that row was created; null outside the chat surface. */
         surfaceEpoch?: number | null
     }
@@ -61,6 +65,8 @@
         renderRawStreaming = false,
         rawStreamingText = '',
         deferAutoTranslate = false,
+        translationHold = false,
+        takeStartTranslated = undefined,
         surfaceEpoch = null,
     }: Props =  $props()
 
@@ -106,6 +112,8 @@
         // track 'translated' and 'retranslate' state
         translated;
         retranslate;
+        // The hold is read only while a translation is wanted, so a hold flip on an untranslated row starts no parse.
+        const held = (retranslate || translated) && translationHold
         let mode = 'notrim' as const
         try {
             if(deferTranslation){
@@ -140,6 +148,10 @@
                         }
                     }
 
+                    if(takeStartTranslated?.() === true){
+                        translateText = true
+                    }
+
                     const lastTranslated = translated
 
                     setTimeout(() => {
@@ -155,7 +167,7 @@
                     console.error(error)
                 }
             }
-            if(retranslate || translated){
+            if((retranslate || translated) && !held){
                 let transResult
                 
                 if(DBState.db.translatorType === 'llm' && DBState.db.translateBeforeHTMLFormatting){
@@ -355,7 +367,7 @@
             return currentRun
         }
         runSpinner = runShowsSpinner({
-            translateRun: retranslate || translated,
+            translateRun: (retranslate || translated) && !translationHold,
             showTranslationLoading: untrack(() => !!DBState.db.showTranslationLoading),
             revisionChanged: lastRenderedRevision !== null && revision !== lastRenderedRevision,
             shown,
@@ -407,12 +419,13 @@
         gate: boolean
         translated: boolean
         retranslate: boolean
+        hold: boolean
     }
     let lastRunInputs: RunInputs | null = null
     let heldSinceLastRun = false
 
     const sameInputs = (a: RunInputs, b: RunInputs) => a.data === b.data && a.idx === b.idx && a.revision === b.revision
-        && a.gate === b.gate && a.translated === b.translated && a.retranslate === b.retranslate
+        && a.gate === b.gate && a.translated === b.translated && a.retranslate === b.retranslate && a.hold === b.hold
         && isEqual(a.character, b.character)
 
     // Outside the surface this is the plain start of a run. Inside it the inputs are read first, so the derived keeps
@@ -423,7 +436,7 @@
         if(surfaceEpoch === null){
             return startRun(msgDisplay, character, idx, renderRevision, gatePending)
         }
-        const inputs: RunInputs = { data: msgDisplay, character, idx, revision: renderRevision, gate: gatePending, translated, retranslate }
+        const inputs: RunInputs = { data: msgDisplay, character, idx, revision: renderRevision, gate: gatePending, translated, retranslate, hold: (translated || retranslate) && translationHold }
         if(surfaceEpoch !== chatSurface.rebuildEpoch){
             return currentRun ?? HELD
         }

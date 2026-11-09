@@ -89,7 +89,7 @@ import { DBState } from 'src/ts/stores.svelte'
 import { ParseMarkdown } from 'src/ts/parser/parser.svelte'
 import ChatBody from './ChatBody.svelte'
 
-const ui = $state({ translated: false, retranslate: false, source: null as string | null })
+const ui = $state({ translated: false, retranslate: false, source: null as string | null, hold: false })
 const mounted: Array<{ target: HTMLElement, instance: Record<string, unknown> }> = []
 
 /** The current chat holds one reply and streams it, so a body at idx 0 is the streaming tail. */
@@ -117,7 +117,7 @@ function setDb(over: Record<string, unknown> = {}, streaming = true) {
     } as never
 }
 
-function mountBody(deferAutoTranslate?: boolean) {
+function mountBody(deferAutoTranslate?: boolean, extra: Record<string, unknown> = {}) {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const props: Record<string, unknown> = {
@@ -136,6 +136,7 @@ function mountBody(deferAutoTranslate?: boolean) {
     if (deferAutoTranslate !== undefined) {
         props.deferAutoTranslate = deferAutoTranslate
     }
+    Object.defineProperties(props, Object.getOwnPropertyDescriptors(extra))
     const instance = mount(ChatBody, { target, props: props as never }) as Record<string, unknown>
     flushSync()
     mounted.push({ target, instance })
@@ -165,6 +166,7 @@ beforeEach(() => {
     ui.translated = false
     ui.retranslate = false
     ui.source = null
+    ui.hold = false
     clearChatBodyRenderCache()
     vi.spyOn(console, 'log').mockImplementation(() => {})
 })
@@ -232,5 +234,41 @@ describe('S5 guards: nothing but the prop defers', () => {
         await pause(30)
         await answerEveryParse()
         expect(h.translations.length).toBeGreaterThan(0)
+    })
+})
+
+describe('S6T the translation hold of a tail carried in place', () => {
+    test('R T19u: a translated body under the hold never translates; lifting the hold translates the last text once', async () => {
+        setDb({ autoTranslate: true })
+        ui.translated = true
+        ui.hold = true
+        const body = mountBody(undefined, { get translationHold() { return ui.hold } })
+        await pause(30)
+        await answerEveryParse()
+        for (const source of ['FIRST a', 'FIRST ab', 'FIRST abc']) {
+            ui.source = source
+            await pause(30)
+            await answerEveryParse()
+        }
+        expect(h.translations).toHaveLength(0)
+        expect(body.target.innerHTML).toContain('P:FIRST abc')
+
+        ui.hold = false
+        await pause(30)
+        await answerEveryParse()
+        expect(h.translations).toHaveLength(1)
+        expect(h.translations[0].args[0]).toBe('P:FIRST abc')
+    })
+
+    test('R T19u2: a body told to start translated keeps the translated view through its first decision and translates once', async () => {
+        setDb({ autoTranslate: false })
+        ui.translated = true
+        let pending = true
+        mountBody(undefined, { takeStartTranslated: () => { const value = pending; pending = false; return value } })
+        await pause(30)
+        await answerEveryParse()
+        expect(ui.translated).toBe(true)
+        expect(h.translations).toHaveLength(1)
+        expect(pending).toBe(false)
     })
 })

@@ -199,7 +199,8 @@ export function pendingDisplay(input: DisplayInput): PendingDisplay {
     if(lookup.kind === 'awaiting'){
         return { kind: 'indicator' }
     }
-    // The streaming reply remounts per chunk by design; it stays blank for the parse.
+    // A streaming reply never gets the indicator for its stale lookup: an instance that has shown a render keeps it
+    // while the next parse is pending, and one that has shown none stays blank for the parse.
     if(lookup.kind === 'stale' && !input.streamingTail){
         return { kind: 'indicator' }
     }

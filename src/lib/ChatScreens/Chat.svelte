@@ -35,6 +35,7 @@
     import { HideIconStore, ReloadGUIPointer, selIdState } from "../../ts/stores.svelte"
     import AutoresizeArea from "../UI/GUI/TextAreaResizable.svelte"
     import ChatBody from './ChatBody.svelte'
+    import { viewportWidthThisTask } from './chatViewportWidth'
     import PopupButton from "../UI/PopupButton.svelte";
     import PartialEditController from './PartialEditController.svelte';
     import { getLLMCache } from "../../ts/translator/translator"
@@ -73,6 +74,10 @@
         interrupted?: boolean;
         /** True only for the Chats tail while its reply streams; Chats carries the same fact in the row's hash, so the row is re-mounted when it ends. */
         deferAutoTranslate?: boolean;
+        /** Live: true while the Chats tail's reply streams in place; a translated view then waits for the stream end. */
+        translationHold?: boolean;
+        /** Mount-time: the tail replaces an instance that showed the translated view, so this one starts in it. */
+        startTranslated?: boolean;
         /** The chat id this row's message had when the row was mounted; a tree press acts only while the message at `idx` still has it. */
         expectedId?: string;
         /** Steps the sibling at `idx`: the arrows and the end control press through it. */
@@ -112,6 +117,8 @@
         rawStreamingText = message,
         interrupted = false,
         deferAutoTranslate = false,
+        translationHold = false,
+        startTranslated = false,
         expectedId = undefined,
         onStep = undefined,
         onBranch = undefined,
@@ -145,7 +152,14 @@
     let rootChatId = $derived(DBState.db.characters?.[selIdState.selId]?.chats?.[DBState.db.characters?.[selIdState.selId]?.chatPage]?.message?.[idx]?.chatId ?? '')
     let msgDisplay = $state('')
     let renderFailed = $state(false)
-    let translated = $state(false)
+    let translated = $state(untrack(() => startTranslated))
+    // Handed to the body once: its first decision would otherwise reset the view, and a later re-keyed body decides afresh.
+    let startTranslatedPending = untrack(() => startTranslated)
+    const takeStartTranslated = () => {
+        const pending = startTranslatedPending
+        startTranslatedPending = false
+        return pending
+    }
     let partialEditEnabled = $state(true)
     const editor = createMessageEditorController({
         getMessage: () => message,
@@ -232,6 +246,10 @@
         isOptimizedStreamingMessage = state.isOptimizedStreamingMessage
         streamingOptimizationMode = state.streamingOptimizationMode
         rawStreamingText = state.rawStreamingText
+    }
+
+    export function isTranslatedView(): boolean {
+        return translated
     }
 
     async function rm(e:MouseEvent | TouchEvent, rec?:boolean){
@@ -701,6 +719,8 @@
                     bind:retranslate={retranslate}
                     {renderRawStreaming}
                     {deferAutoTranslate}
+                    {translationHold}
+                    {takeStartTranslated}
                     {surfaceEpoch}
                     {rawStreamingText} />
             {/key}
@@ -742,7 +762,7 @@
             <span class="text-xs" aria-live="polite">{statusMessage}</span>
             <div class="flex items-center ml-2 gap-2">
                 {@render translationButton()}
-                {#if window.innerWidth >= 640}
+                {#if viewportWidthThisTask() >= 640}
                     {@render majorIconButtonsBody(false)}
                     {#if DBState.db.characters[selIdState.selId] && popupHasItems(false)}
                         <PopupButton>

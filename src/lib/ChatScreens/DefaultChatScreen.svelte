@@ -33,6 +33,7 @@
     import Button from '../UI/GUI/Button.svelte';
     import PluginDefinedIcon from '../Others/PluginDefinedIcon.svelte';
     import { getAdditionalChatLoadPages, getInitialChatLoadPages, pagesOnReturn } from 'src/ts/chatLoadPages';
+    import { legacyMountCap, legacyTrimPages } from './legacyWindow';
     import { COMPOSER_DRAFT_KIND, hasMessageEditorDrafts, onDraftsChanged, registerDraft, unregisterDraft } from 'src/ts/localDrafts';
     import { chatWindowKey, createChatWindowPolicy, runWithFullWindow } from 'src/ts/chatWindowPolicy';
     import {
@@ -560,8 +561,10 @@
             }
             //@ts-expect-error scrollHeight/clientHeight/scrollTop don't exist on EventTarget, but target is HTMLElement here
             const scrolled = (e.target.scrollHeight - e.target.clientHeight + e.target.scrollTop)
+            let grewWindow = false
             if(scrolled < 100 && DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage].message.length > loadPages){
                 loadPages += getAdditionalChatLoadPages(DBState.db)
+                grewWindow = true
             }
             const chatTarget = e.target as HTMLElement;
             const chatsContainer = (DBState.db.fixedChatTextarea && chatTarget.children[1]) ? chatTarget.children[1] : chatTarget.children[0];
@@ -569,6 +572,20 @@
             const isAtBottom = lastEl ? lastEl.getBoundingClientRect().top <= chatTarget.getBoundingClientRect().bottom + 100 : true;
             if(isAtBottom){
                 showNewMessageButton = false;
+            }
+            // Back at the latest messages, a window grown past the cap drops its oldest rows. The scroll origin is the
+            // bottom, so the reader stays where they are, and the reset token is not bumped (no scroll signal).
+            const trimmedPages = legacyTrimPages({
+                loadPages,
+                cap: legacyMountCap(getInitialChatLoadPages(DBState.db)),
+                atBottom: isAtBottom,
+                grew: grewWindow,
+                editorsOpen: hasMessageEditorDrafts(),
+                folded: chatFoldedStateMessageIndex.index !== -1,
+                scrollingToMessage: isScrollingToMessage,
+            })
+            if(trimmedPages !== null){
+                loadPages = trimmedPages
             }
         }}>
             <div

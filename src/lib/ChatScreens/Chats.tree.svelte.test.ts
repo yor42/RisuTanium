@@ -6,7 +6,7 @@
  *
  * Invariants pinned here: no tree data enters a row's mount hash, so a send, a switch on another row or a
  * new alternative never remounts a row (an open editor on it survives); a message that had no id when its
- * row mounted gets its row remounted with the id once the id exists. The real `Chats.svelte` is mounted;
+ * row mounted keeps its row and receives the id in place once the id exists. The real `Chats.svelte` is mounted;
  * `Chat.svelte` is replaced by a stub that records the props it was mounted with.
  *
  * Test kinds: every row here is a new-rule guard (the props and the view do not exist before this change).
@@ -133,7 +133,7 @@ describe('the props a row gets for the chat tree', () => {
         expect(mountsAt(0)[0].getTreeView).toBe(mountsAt(1)[0].getTreeView)
     })
 
-    test('a message without an id is mounted without expectedId, and remounts with it once it has one', () => {
+    test('a message without an id is mounted without expectedId, and its row keeps mounted and gets the id once it has one', () => {
         const chat = mountChats([
             { role: 'user', data: 'Hi' },
             { role: 'char', data: 'Hello', chatId: 'c2' },
@@ -143,7 +143,8 @@ describe('the props a row gets for the chat tree', () => {
         chat.message[0].chatId = 'u1'
         flushSync()
 
-        expect(mountsAt(0).map((entry) => entry.expectedId)).toEqual([undefined, 'u1'])
+        expect(mountsAt(0)).toHaveLength(1)
+        expect(mountsAt(0)[0].expectedId).toBe('u1')
         expect(mountsAt(1).length).toBe(1)
     })
 })
