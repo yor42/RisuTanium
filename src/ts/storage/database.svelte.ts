@@ -4,6 +4,7 @@ import { changeLanguage, language } from '../../lang';
 import { downloadNotice } from '../exportNotice';
 import type { RisuPlugin } from '../plugins/plugins.svelte';
 import type {triggerscript as triggerscriptMain} from '../process/triggers';
+import type { TrashOrigin } from '../trashOrigin';
 import { downloadFile, saveAsset as saveImageGlobal } from '../globalApi.svelte';
 import { defaultAutoSuggestPrompt, defaultJailbreak, defaultMainPrompt } from './defaultPrompts';
 import { alertNormal, alertNormalWait } from '../alert';
@@ -1325,6 +1326,8 @@ export interface Database{
     keepSessionAlive: KeepSessionAliveMode
     visibleModes: HomeMode[]
     hideUnusedModes: boolean
+    /** Where each trashed character sat, so a restore can put it back. See `src/ts/trashOrigin.ts`. */
+    trashOrigins?: TrashOrigin[]
     longPressToPopupEditor?: boolean
     loadouts: Loadout[]
     loadoutApplyOptions: {
