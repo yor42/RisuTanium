@@ -1,6 +1,7 @@
 package io.github.yor42.risutanium
 
 import android.annotation.SuppressLint
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -15,6 +16,8 @@ import androidx.core.app.NotificationManagerCompat
 // Posts the "a reply finished in a chat you were not looking at" notification. One notification
 // per chat: the page's key is the notification tag and the id is fixed, so a new reply in the same
 // chat replaces the old one, and the keep-alive notification (its own id, no tag) is never touched.
+// A sounding post is always a fresh record (the old one is cancelled first, see postReply); a silent
+// one updates the existing record in place.
 // Everything here runs on the main thread. It holds the application context, never the activity.
 //
 // The reply channel's sound is our chime, fixed once the channel is created: a later sound change
@@ -79,7 +82,14 @@ class ReplyNotifier(private val context: Context) {
           PendingIntent.getActivity(context, 0, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         )
       }
-      NotificationManagerCompat.from(context).notify(key, REPLY_ID, builder.build())
+      val manager = NotificationManagerCompat.from(context)
+      postReply(
+        object : ReplyPostSink<Notification> {
+          override fun cancel(tag: String, id: Int) = manager.cancel(tag, id)
+          override fun notify(tag: String, id: Int, notification: Notification) = manager.notify(tag, id, notification)
+        },
+        key, REPLY_ID, silent, builder.build()
+      ) { error -> Log.w(TAG, "old reply notification not cancelled before the post", error) }
     } catch (error: Exception) {
       Log.w(TAG, "reply notification not posted", error)
     }
