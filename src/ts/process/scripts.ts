@@ -249,18 +249,26 @@ export function resetScriptCache(){
  *
  * `cache` is `'bypass'` for a call whose text is never looked up again, such as
  * a streamed partial reply: it neither reads nor stores in either cache.
+ *
+ * `moduleScripts` is the module regex list of one prompt build and one subject.
+ * It is filled by the first pass that runs with it and reused by the rest, so a
+ * change to the module selection after that (a plugin's `setDatabase` of
+ * `enabledModules`, `modules` or `moduleIntergration`, or a user toggle) applies
+ * from the next build. Without it every pass derives the list itself.
  */
-export function processScriptFull(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID = -1, cbsConditions:CbsConditions = {}, origin?:Origin, sendSubject?:RunSubject, messageRef?:MessageRef|null, promptView?:PromptView, cache:'use'|'bypass' = 'use'): ReturnType<typeof runScriptPass>{
+export function processScriptFull(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID = -1, cbsConditions:CbsConditions = {}, origin?:Origin, sendSubject?:RunSubject, messageRef?:MessageRef|null, promptView?:PromptView, cache:'use'|'bypass' = 'use', moduleScripts?:PromptModuleScripts): ReturnType<typeof runScriptPass>{
     // Not `async`: in a normal build the caller gets the body's own promise,
     // so an `await` of it resumes after the same microtask ticks as before.
     if(!MEASURE){
-        return runScriptPass(char, data, mode, chatID, cbsConditions, origin, sendSubject, messageRef, promptView, cache)
+        return runScriptPass(char, data, mode, chatID, cbsConditions, origin, sendSubject, messageRef, promptView, cache, moduleScripts)
     }
     const startT = performance.now()
     const probe: ScriptPassProbe = { cache: 'aborted', scans: 0, earlyRejects: 0 }
-    return runScriptPass(char, data, mode, chatID, cbsConditions, origin, sendSubject, messageRef, promptView, cache, probe)
+    return runScriptPass(char, data, mode, chatID, cbsConditions, origin, sendSubject, messageRef, promptView, cache, moduleScripts, probe)
         .finally(() => noteScriptPass(mode, startT, probe.cache, probe.scans, probe.earlyRejects))
 }
+
+export type PromptModuleScripts = { list?: customscript[] }
 
 /**
  * What a measured `processScriptFull` call reports to the chat phase ring. The
@@ -274,7 +282,7 @@ interface ScriptPassProbe {
     earlyRejects: number
 }
 
-async function runScriptPass(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID:number, cbsConditions:CbsConditions, origin:Origin|undefined, sendSubject:RunSubject|undefined, messageRef:MessageRef|null|undefined, promptView:PromptView|undefined, cache:'use'|'bypass', probe?:ScriptPassProbe){
+async function runScriptPass(char:character|groupChat|simpleCharacterArgument, data:string, mode:ScriptMode, chatID:number, cbsConditions:CbsConditions, origin:Origin|undefined, sendSubject:RunSubject|undefined, messageRef:MessageRef|null|undefined, promptView:PromptView|undefined, cache:'use'|'bypass', moduleScripts:PromptModuleScripts|undefined, probe?:ScriptPassProbe){
     let db = getDatabase()
     let emoChanged = false
     const subject = sendSubject ?? (origin ? createRunSubject(origin) : undefined)
@@ -311,7 +319,8 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
     }
 
     data = risuChatParser(data, { chatID: chatID, cbsConditions, subject, promptView })
-    const scripts = (db.presetRegex ?? []).concat(char.customscript).concat(getModuleRegexScripts(subject))
+    const moduleRegexScripts = moduleScripts ? (moduleScripts.list ??= getModuleRegexScripts(subject)) : getModuleRegexScripts(subject)
+    const scripts = (db.presetRegex ?? []).concat(char.customscript).concat(moduleRegexScripts)
     const promptPass = promptView !== undefined
     const useCache = cache === 'use' && (!promptPass || isKeyDeterminedPass(scripts, mode, data))
     const hash = useCache ? generateScriptCacheKey(scripts, data, mode, chatID, cbsConditions, subject, promptView) : ''

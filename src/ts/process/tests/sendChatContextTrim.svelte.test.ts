@@ -50,7 +50,7 @@ const h = vi.hoisted(() => ({
     nanMarker: null as null | string,
     /** Fields the model-info stand-in returns on top of its placeholder model. */
     modelInfo: {} as Record<string, unknown>,
-    /** Runs inside every model-info lookup (the send looks the model up once per message). */
+    /** Runs inside every model-info lookup (the send looks the model up once before the prompt loop, and once per message that holds an inlay). */
     onModelInfo: null as null | (() => void),
 }))
 
@@ -350,6 +350,7 @@ let runTriggerMock: ReturnType<typeof vi.fn>
 let exampleMessageMock: ReturnType<typeof vi.fn>
 let getInlayAssetMock: ReturnType<typeof vi.fn>
 let providerOptions: Map<string, { tokenizer?: string }>
+let editprocessHooks: Set<(data: string) => Promise<string | null>>
 
 beforeAll(async () => {
     const jsonLua = await readFile(resolve(process.cwd(), 'public/lua/json.lua'), 'utf8')
@@ -373,6 +374,7 @@ beforeAll(async () => {
     exampleMessageMock = (await import('../exampleMessages')).exampleMessage as unknown as ReturnType<typeof vi.fn>
     getInlayAssetMock = (await import('../files/inlays')).getInlayAsset as unknown as ReturnType<typeof vi.fn>
     providerOptions = (await import('../../plugins/plugins.svelte')).pluginV2.providerOptions as unknown as Map<string, { tokenizer?: string }>
+    editprocessHooks = (await import('../../plugins/plugins.svelte')).pluginV2.editprocess as unknown as Set<(data: string) => Promise<string | null>>
 })
 
 function msg(role: 'user' | 'char', data: string, extra: Partial<Message> = {}): Message {
@@ -506,6 +508,7 @@ beforeEach(() => {
     h.modelInfo = {}
     h.onModelInfo = null
     providerOptions.clear()
+    editprocessHooks.clear()
     runTriggerMock.mockReset()
     runTriggerMock.mockImplementation(async () => undefined)
     exampleMessageMock.mockReset()
@@ -1765,19 +1768,78 @@ describe('guard: the trim over the other inputs the context takes', () => {
         expectFrozen('fraction-trim', outcome(result))
     })
 
+    // The per-message seam is the process-script hook: it runs once for every
+    // message's script pass, whether or not the message holds an inlay.
     test('guard: the memory gate turning true while the messages are prepared hands the memory system every chat', async () => {
-        let lookups = 0
-        h.onModelInfo = () => {
-            lookups++
-            if (lookups === 30) {
+        let passes = 0
+        editprocessHooks.add(async () => {
+            passes++
+            if (passes === 30) {
                 DBState.db.characters[0].supaMemory = true
                 DBState.db.hypaV3 = true
             }
-        }
+            return null
+        })
         const result = await runChat({})
-        expect(lookups).toBeGreaterThanOrEqual(30)
+        expect(passes).toBeGreaterThanOrEqual(30)
         expect(hypaV3Mock).toHaveBeenCalledTimes(1)
         expectFrozen('gate-flip', outcome(result))
+    })
+
+    describe('guard: the model is looked up only for a message that holds an inlay', () => {
+        async function lookupsOf(messages: Message[]): Promise<number> {
+            let lookups = 0
+            h.onModelInfo = () => { lookups++ }
+            await runChat({}, {}, messages)
+            h.onModelInfo = null
+            return lookups
+        }
+
+        const withInlays = (i: number, data: string) => {
+            if (i === 2) {
+                return `${data} {{inlay::imgA}} {{inlay::imgB}}`
+            }
+            return i === 58 ? `${data} {{inlay::img58}}` : data
+        }
+
+        test('guard: the number of lookups does not grow with the number of messages', async () => {
+            const few = await lookupsOf(plain(5))
+            const many = await lookupsOf(plain(61))
+            expect(many - few).toBe(0)
+        })
+
+        test('guard: each message with inlays adds exactly one lookup', async () => {
+            h.modelInfo = { flags: [0] }
+            getInlayAssetMock.mockImplementation(async () => ({ type: 'image', data: 'data:image/png;base64,QUJD', width: 4, height: 4 }))
+            const without = await lookupsOf(plain(61))
+            const inlayed = await lookupsOf(plain(61, withInlays))
+            expect(inlayed - without).toBe(2)
+        })
+
+        test('guard: a message keeps the model flags it read before its inlay awaits, and the next message reads again', async () => {
+            h.modelInfo = { flags: [0] }
+            getInlayAssetMock.mockImplementation(async (name: string) => {
+                if (name === 'imgA') {
+                    h.modelInfo = { flags: [] }
+                }
+                return { type: 'image', data: 'data:image/png;base64,QUJD', width: 4, height: 4 }
+            })
+            const transformers = await import('../transformers')
+            ;(transformers.runImageEmbedding as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([{ generated_text: 'CAP' }])
+            try {
+                await runChat({ maxContext: 100000 }, {}, plain(61, withInlays))
+            } finally {
+                (transformers.runImageEmbedding as unknown as ReturnType<typeof vi.fn>).mockReset()
+            }
+            const formated = lastBody()?.formated ?? []
+            const entryOf = (i: number) => formated.find((entry) => entry.content.includes(`[M${String(i).padStart(4, '0')}]`))
+            const first = entryOf(2) as unknown as { content: string, multimodals?: unknown[] }
+            const second = entryOf(58) as unknown as { content: string, multimodals?: unknown[] }
+            expect(first.multimodals?.length).toBe(2)
+            expect(first.content).not.toContain('[CAP]')
+            expect(second.multimodals?.length ?? 0).toBe(0)
+            expect(second.content).toContain('[CAP]')
+        })
     })
 
     for (const trimStartNewChat of [true, false]) {
