@@ -375,14 +375,24 @@ function mountGrid(grid: LiveMessage[][][], dbOverrides: Record<string, unknown>
 
 const mountOne = (messages: LiveMessage[], dbOverrides: Record<string, unknown> = {}) => mountGrid([[messages]], dbOverrides)
 
-/** The producer's stamp: a new array of the same message objects, each given an id when it has none. */
-function stampIds(chat: LiveChat, prefix = 'id') {
+/**
+ * The producer's stamp: each message of the array the chat holds is given an id when it has none, in place. With
+ * `replace`, the array is also replaced by a new one of the same message objects, as other writers do.
+ */
+function stampIds(chat: LiveChat, prefix = 'id', replace = false) {
     let n = 0
-    chat.message = chat.message.map((v) => {
+    const stamp = (v: LiveMessage) => {
         v.chatId = v.chatId ?? `${prefix}${n}`
         n += 1
-        return v
-    })
+    }
+    if (replace) {
+        chat.message = chat.message.map((v) => {
+            stamp(v)
+            return v
+        })
+    } else {
+        chat.message.forEach(stamp)
+    }
     flushSync()
 }
 
@@ -441,7 +451,7 @@ describe('S8 a stamped id keeps the row for the same message', () => {
         }
     })
 
-    test('G T24s: the stamp gives the list effect no dependency on the row, so it runs once', () => {
+    test('G T24s: a stamp that replaces the array gives the list effect no dependency on the row, so it runs once', () => {
         const { chat } = mountOne([
             { role: 'user', data: 'a' },
             { role: 'char', data: 'b' },
@@ -449,7 +459,7 @@ describe('S8 a stamped id keeps the row for the same message', () => {
         const runs = () => vi.mocked(console.log).mock.calls.filter((call) => call[0] === 'Updating Chats').length
         const before = runs()
 
-        stampIds(chat)
+        stampIds(chat, 'id', true)
 
         expect(runs() - before).toBe(1)
     })
