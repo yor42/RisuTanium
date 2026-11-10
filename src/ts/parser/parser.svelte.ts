@@ -1726,6 +1726,9 @@ function blockEndMatcher(p1:string,type:{type:blockMatch,type2?:string,mode?:str
     }
 }
 
+// The role tags the parser rewrites to macros; the early return in `risuChatParser` must test the same set, without `g` so `test` keeps no state.
+const ROLE_TAG_PATTERN = /<(?:user|char|bot)>/i
+
 export function risuChatParser(da:string, arg:{
     chatID?:number
     db?:Database
@@ -1778,6 +1781,18 @@ export function risuChatParser(da:string, arg:{
         }
     }
 
+    arg.callStack = (arg.callStack ?? 0) + 1
+
+    if(arg.callStack > 20){
+        return 'ERROR: Call stack limit reached'
+    }
+
+    // Text without a macro, a `{#` or a role tag passes the scan below unchanged. The depth
+    // count above still runs first: callers that reuse one options object depend on it.
+    if(typeof da === 'string' && !da.includes('{{') && !da.includes('{#') && !ROLE_TAG_PATTERN.test(da)){
+        return da
+    }
+
     let pointer = 0;
     let nested:string[] = [""]
     let stackType = new Uint8Array(512)
@@ -1798,12 +1813,6 @@ export function risuChatParser(da:string, arg:{
         data:string,
         arg:string[]
     }> = arg.functions ?? (new Map())
-
-    arg.callStack = (arg.callStack ?? 0) + 1
-
-    if(arg.callStack > 20){
-        return 'ERROR: Call stack limit reached'
-    }
 
     const matcherObj = {
         chatID: chatID,

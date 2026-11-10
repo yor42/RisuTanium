@@ -1409,7 +1409,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         currentTokens += await tokenizer.tokenizeChat(chat)
     }
     
-    console.log('Prepared messages for token calculation:', ms)
+    if(import.meta.env.DEV){
+        console.log('Prepared messages for token calculation:', ms)
+    }
 
     if(abortSignal.aborted){
         return false
@@ -1620,7 +1622,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
         index++
     }
-    console.log(JSON.stringify(chats, null, 2))
+    if(import.meta.env.DEV){
+        console.log(JSON.stringify(chats, null, 2))
+    }
 
     const depthPrompts = lorepmt.actives.filter(v => {
         return (v.pos === 'depth' && v.depth > 0) || v.pos === 'reverse_depth'
