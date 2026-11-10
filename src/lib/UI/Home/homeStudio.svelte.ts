@@ -167,8 +167,9 @@ async function openArchivedStudioFromHome(stub: character | groupChat, opener: H
             clearIfPending(request)
             return false
         }
-        // The call that made the install formats it, whether or not this request goes on to open: a joined
-        // `changeChar` would otherwise select an unformatted character.
+        // The call that made the install formats it, whether or not this request goes on to open. A request that
+        // joined another caller's restore does not format here: `changeChar` and the send's member restore each
+        // format for every call they serve.
         if (outcome.installedHere) characterFormatUpdate(index)
         if (!isCurrentRequest(request) || changeCharGeneration() !== request.generation) {
             clearIfPending(request)

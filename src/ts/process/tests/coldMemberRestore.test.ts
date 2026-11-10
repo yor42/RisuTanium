@@ -455,7 +455,7 @@ describe('restoreColdCharacterByChaId -- who holds the chaId once the read is do
         expect(characterFormatUpdateMock).not.toHaveBeenCalled()
     })
 
-    test('guard: a placeholder replaced during the read by the full character with the same chaId keeps that character, untouched and unformatted', async () => {
+    test('guard: a placeholder replaced during the read by the full character with the same chaId keeps that character and its edits, formatting it once like any restored answer', async () => {
         installDb([warmCharacter('before'), coldPlaceholder('member')])
         const replacement = warmCharacter('member', 'edited by the user')
         readColdStorageItemMock.mockImplementationOnce(async () => {
@@ -469,7 +469,7 @@ describe('restoreColdCharacterByChaId -- who holds the chaId once the read is do
         expect(holderOf('member')).toBe(replacement)
         expect((holderOf('member') as unknown as character).desc).toBe('edited by the user')
         expect(alertErrorMock).not.toHaveBeenCalled()
-        expect(characterFormatUpdateMock).not.toHaveBeenCalled()
+        expect(formattedCharacters()).toEqual([replacement])
     })
 
     test('a placeholder replaced during the read by a placeholder with the same chaId and another unit key installs nothing, keeps the new placeholder and its key, and stays silent', async () => {
@@ -534,6 +534,43 @@ describe('restoreColdCharacterByChaId -- two restores of one placeholder', () =>
         expect(holderOf('member')).toBe(installedByFirst)
         expect((holderOf('member') as unknown as character).desc).toBe('edited between the two completions')
         expect(DBState.db.characters.map((c) => c.chaId)).toEqual(['before', 'member'])
+    })
+})
+
+describe('restoreColdCharacterByChaId -- a request that joins a running restore', () => {
+    test('guard: both requests resolve true and each formats the one installed character', async () => {
+        installDb([warmCharacter('before'), coldPlaceholder('member')])
+        const pending = holdReads()
+
+        const first = restoreColdCharacterByChaId('member')
+        const joined = restoreColdCharacterByChaId('member')
+        await tick()
+        pending[0].resolve(ok(warmCharacter('member', 'restored description')))
+
+        expect(await first).toBe(true)
+        expect(await joined).toBe(true)
+        const formatted = formattedCharacters()
+        expect(formatted).toHaveLength(2)
+        expect(formatted[0]).toBe(holderOf('member'))
+        expect(formatted[1]).toBe(holderOf('member'))
+    })
+
+    test('a format that throws rejects the joined request too, and never answers true for an unformatted member', async () => {
+        installDb([warmCharacter('before'), coldPlaceholder('member')])
+        const pending = holdReads()
+        characterFormatUpdateMock.mockImplementation(() => { throw new Error('member format failed') })
+
+        const first = restoreColdCharacterByChaId('member')
+        const joined = restoreColdCharacterByChaId('member')
+        const firstSettled = expect(first).rejects.toThrow('member format failed')
+        const joinedSettled = expect(joined).rejects.toThrow('member format failed')
+        await tick()
+        pending[0].resolve(ok(warmCharacter('member', 'restored description')))
+        await firstSettled
+        await joinedSettled
+
+        expect((holderOf('member') as unknown as character).coldstorage).toBeUndefined()
+        expect((holderOf('member') as unknown as character).desc).toBe('restored description')
     })
 })
 

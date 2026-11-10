@@ -1706,7 +1706,7 @@ async function restoreGroupMembers(group: groupChat): Promise<string[]> {
         if(outcome.status === 'refused'){
             failed.push(name)
         }
-        else if(outcome.status === 'restored' && outcome.installedHere){
+        else if(outcome.status === 'restored'){
             const restoredIndex = DBState.db.characters.indexOf(outcome.character)
             if(restoredIndex !== -1){
                 characterFormatUpdate(restoredIndex)
@@ -1783,9 +1783,10 @@ export async function changeChar(index: number, arg:{
         if(restoredIndex === -1){
             return 'gone'
         }
-        if(outcome.installedHere){
-            characterFormatUpdate(restoredIndex);
-        }
+        // Every caller formats, not only the one that installed: a caller that
+        // joined the install must not select a character whose format threw.
+        // The format only fills missing fields, so a second run is harmless.
+        characterFormatUpdate(restoredIndex);
         let failedMembers: string[] = []
         if(outcome.character.type === 'group'){
             failedMembers = await restoreGroupMembers(outcome.character)
