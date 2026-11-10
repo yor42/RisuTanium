@@ -22,18 +22,23 @@ export class CanonicalJsonError extends TypeError {
  * The parameter is `unknown` because the encoder is the boundary that proves a
  * value is plain JSON; typed interfaces with optional fields are not assignable
  * to `JsonValue`.
+ *
+ * `prewritten` maps a container (by identity) to the exact string this encoder
+ * wrote for it earlier. The string is pushed in place of the container, so the
+ * caller must hold a string equal to `canonicalJson` of that container as it
+ * is now; the container is not walked and not checked.
  */
-export function canonicalJson(value: unknown): string {
+export function canonicalJson(value: unknown, prewritten?: ReadonlyMap<object, string>): string {
     const parts: string[] = []
-    writeValue(value, parts, [])
+    writeValue(value, parts, [], prewritten)
     return parts.join('')
 }
 
-export function encodeCanonicalJson(value: unknown): Uint8Array {
-    return new TextEncoder().encode(canonicalJson(value))
+export function encodeCanonicalJson(value: unknown, prewritten?: ReadonlyMap<object, string>): Uint8Array {
+    return new TextEncoder().encode(canonicalJson(value, prewritten))
 }
 
-function writeValue(value: unknown, out: string[], ancestors: object[]): void {
+function writeValue(value: unknown, out: string[], ancestors: object[], prewritten?: ReadonlyMap<object, string>): void {
     if (value === null) {
         out.push('null')
         return
@@ -51,15 +56,21 @@ function writeValue(value: unknown, out: string[], ancestors: object[]): void {
             }
             out.push(JSON.stringify(value))
             return
-        case 'object':
-            writeContainer(value, out, ancestors)
+        case 'object': {
+            const stored = prewritten?.get(value)
+            if (stored !== undefined) {
+                out.push(stored)
+                return
+            }
+            writeContainer(value, out, ancestors, prewritten)
             return
+        }
         default:
             throw new CanonicalJsonError(`A ${typeof value} is not JSON.`)
     }
 }
 
-function writeContainer(value: object, out: string[], ancestors: object[]): void {
+function writeContainer(value: object, out: string[], ancestors: object[], prewritten?: ReadonlyMap<object, string>): void {
     if (ancestors.includes(value)) {
         throw new CanonicalJsonError('A cycle is not JSON.')
     }
@@ -73,7 +84,7 @@ function writeContainer(value: object, out: string[], ancestors: object[]): void
             if (i > 0) {
                 out.push(',')
             }
-            writeValue(value[i], out, ancestors)
+            writeValue(value[i], out, ancestors, prewritten)
         }
         out.push(']')
     } else {
@@ -91,7 +102,7 @@ function writeContainer(value: object, out: string[], ancestors: object[]): void
                 out.push(',')
             }
             out.push(JSON.stringify(key), ':')
-            writeValue((value as Record<string, unknown>)[key], out, ancestors)
+            writeValue((value as Record<string, unknown>)[key], out, ancestors, prewritten)
         })
         out.push('}')
     }

@@ -12,7 +12,7 @@ vi.mock(import('src/ts/alert'), () => ({
 
 import { changeLanguage, language } from 'src/lang'
 import { Store2CommitRefusedError, Store2NotFlushedError } from 'src/ts/storage/store2/saveLoop'
-import { StubRefusedError } from 'src/ts/storage/store2/codec'
+import { CodecInputError, StubRefusedError } from 'src/ts/storage/store2/codec'
 import { describeSaveFailure, saveFailureClassOf } from 'src/ts/storage/store2/ui/peerUi'
 
 /**
@@ -110,6 +110,23 @@ describe('a failure without a wording of its own', () => {
         const report = describeSaveFailure('plain text', 5, false)
         expect(report.showRaw).toBe(true)
         expect(report.alert).toBeNull()
+    })
+})
+
+describe('a codec input error (an entry the save cannot encode, for example a non-object character slot)', () => {
+    // Guard: pins today's presentation, which the idle liveCheck gate relies on being quiet: one retrying toast, then nothing until the fifth failure.
+    const error = new CodecInputError('characters[3] is not an object.')
+
+    test('it is the unmapped class', () => {
+        expect(saveFailureClassOf(error, false)).toBe('other')
+    })
+
+    test('attempt 1 is the retrying toast, 2 to 4 are silent, 5 shows the error as it is', () => {
+        expect(describeSaveFailure(error, 1, false)).toEqual({ toast: language.saveRetrying, alert: null, showRaw: false, waitMs: 1000 })
+        for (const attempts of [2, 3, 4]) {
+            expect(describeSaveFailure(error, attempts, false)).toEqual({ toast: null, alert: null, showRaw: false, waitMs: 1000 })
+        }
+        expect(describeSaveFailure(error, 5, false)).toEqual({ toast: null, alert: null, showRaw: true, waitMs: 1000 })
     })
 })
 

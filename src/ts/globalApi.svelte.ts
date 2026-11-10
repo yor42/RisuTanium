@@ -31,6 +31,7 @@ import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } fro
 import type { Store2LoopPort } from "./storage/store2/saveLoop";
 import { takeResidentLoaded } from "./storage/store2/residentLoads";
 import { saveFailureStore } from "./storage/store2/saveFailure";
+import { createLiveCheckGate, type LiveCheckSignal } from "./storage/store2/liveCheckGate";
 import { openBootWindow } from "./bootWindow";
 import { AutoStorage } from "./storage/autoStorage";
 import { createStorageTabLocks } from "./storage/storageTabLocks";
@@ -2144,12 +2145,30 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         }
         return report.waitMs
     }
+    // The walk of the character list runs when a reading below moved, a pass failed, or the idle interval passed.
+    const liveCheckGate = createLiveCheckGate()
     const port: Store2LoopPort = {
         tracker: changeTracker,
         reloadFlag: requiresFullEncoderReload,
         getDatabase,
         mergeBack: mergeUnsavedChanges,
         liveCheck() {
+            const db = getDatabase()
+            const list: unknown = db?.characters
+            const signal: LiveCheckSignal = {
+                db,
+                characters: typeof list === 'object' ? list : undefined,
+                length: Array.isArray(list) ? list.length : 0,
+                marks: saveMarkCount,
+                dirty: dirtySinceLastSave,
+                due: changed,
+                failed: get(saveFailureStore) !== null,
+            }
+            const now = Date.now()
+            if (!liveCheckGate.due(signal, now)) {
+                return
+            }
+            liveCheckGate.walked(signal, now)
             // Held ids are not a hold here: any string id is a legal store2 chaId, so they must not suspend order pruning. A repair sets the full-reload flag itself.
             if (liveCharacterCheck({ holds: false }).repaired) {
                 saveMarkCount += 1

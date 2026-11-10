@@ -107,6 +107,22 @@ export function carryShards(
     return next
 }
 
+/**
+ * The digest of the canonical frame of each shard body this encoder produced. A body parsed at boot, or built by anything
+ * else, is never noted, so a lookup answers only for a body whose frame was digested here.
+ * INVARIANT: a noted body's canonical frame has the noted digest, so a body noted once is never mutated afterwards:
+ * not its fields (unknown top-level fields included), not its entries array.
+ */
+const shardDigests = new WeakMap<Shard, string>()
+
+export function noteShardDigest(body: Shard, digest: string): void {
+    shardDigests.set(body, digest)
+}
+
+export function shardDigestOf(body: Shard): string | undefined {
+    return shardDigests.get(body)
+}
+
 export function refTuple(ref: Ref): Ref {
     return [ref[0], ref[1], ref[2]]
 }
