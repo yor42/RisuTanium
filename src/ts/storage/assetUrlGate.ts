@@ -91,6 +91,30 @@ export type AssetSizeVerdict = 'within' | 'over' | 'unknown'
 const MAX_CACHED_SIZES = 20000
 
 const storedSizes = new Map<string, number>()
+
+/** Marks `key` as the most recently used entry of `map`; a missing key stays missing. */
+function touchEntry<V>(map: Map<string, V>, key: string): V | undefined {
+    const value = map.get(key)
+    if (value !== undefined) {
+        map.delete(key)
+        map.set(key, value)
+    }
+    return value
+}
+
+/** Stores `key` as the most recent entry of `map`; at `cap` entries the least recently used one goes first. */
+function putEntry<V>(map: Map<string, V>, key: string, value: V, cap: number): void {
+    map.delete(key)
+    while (map.size >= cap) {
+        const oldest = map.keys().next()
+        if (oldest.done) {
+            break
+        }
+        map.delete(oldest.value)
+    }
+    map.set(key, value)
+}
+
 const sizeProbes = new Map<string, Promise<number | null>>()
 const reportedFailures = new Set<string>()
 
@@ -100,7 +124,7 @@ const reportedFailures = new Set<string>()
  * while it ran does not write its size back.
  */
 function probeStoredSize(key: string): Promise<number | null> {
-    const known = storedSizes.get(key)
+    const known = touchEntry(storedSizes, key)
     if (known !== undefined) {
         return Promise.resolve(known)
     }
@@ -124,10 +148,7 @@ function probeStoredSize(key: string): Promise<number | null> {
         }
         if (sizeProbes.get(key) === probe) {
             sizeProbes.delete(key)
-            if (storedSizes.size >= MAX_CACHED_SIZES) {
-                storedSizes.clear()
-            }
-            storedSizes.set(key, size)
+            putEntry(storedSizes, key, size, MAX_CACHED_SIZES)
         }
         return size
     })()
@@ -212,6 +233,104 @@ export function createWholeReadBudget(budgetBytes: number = ANDROID_LIST_WHOLE_R
     }
 }
 
+/**
+ * A chat image of at least this stored size loads through the app-wide in-flight
+ * queue (`createInFlightByteGate`) instead of as soon as the browser asks.
+ */
+export const ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES = 8 * 1024 * 1024
+
+/** What the chat images that are being read may take in total from the WebView's Java heap. */
+export const ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES = 64 * 1024 * 1024
+
+/** The attribute that holds the real `src` of a chat image whose load waits for the queue. Only the sanitizer's hook sets it. */
+export const DEFERRED_IMAGE_SRC_ATTRIBUTE = 'data-risu-deferred-src'
+
+/** The `src` a deferred image shows meanwhile: an empty vector image, so the image is a pending image to the layout. */
+export const DEFERRED_IMAGE_PLACEHOLDER_SRC = "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='0'%20height='0'/%3E"
+
+const MAX_WHOLE_READ_URLS = 20000
+
+/** The asset key behind each whole-read URL `getFileSrc` made on Android, so markup that holds only the URL can learn the stored size. */
+const wholeReadUrlKeys = new Map<string, string>()
+
+/**
+ * Records that `url` was made for the whole read of `key`. The size is not
+ * stored here: it is read from the size cache at lookup, so a deleted asset
+ * (`forgetStoredAssetSizes`) stops being known at once.
+ */
+export function rememberWholeReadUrl(url: string, key: string): void {
+    putEntry(wholeReadUrlKeys, url, key, MAX_WHOLE_READ_URLS)
+}
+
+/**
+ * The stored size of the file `url` reads whole, or `undefined` when the URL or
+ * its size is not known (the image is then not deferred). A hit keeps both
+ * entries recent, so a size the chat keeps asking about is not aged out by the
+ * probes of lists.
+ */
+export function wholeReadBytesOfUrl(url: string): number | undefined {
+    const key = touchEntry(wholeReadUrlKeys, url)
+    if (key === undefined) {
+        return undefined
+    }
+    return touchEntry(storedSizes, key)
+}
+
+/** One admission to the in-flight queue; `release` is idempotent. */
+export interface InFlightGrant {
+    release(): void
+}
+
+/** The queue of whole reads that are in flight at once. */
+export interface InFlightByteGate {
+    /**
+     * Resolves when `bytes` may be read: when the sum in flight plus `bytes` is
+     * within the budget, or when nothing is in flight (so one file larger than the
+     * budget still loads). Grants are strictly first in, first out.
+     */
+    acquire(bytes: number): Promise<InFlightGrant>
+}
+
+/** A queue that keeps the sum of the grants it holds within `budgetBytes`, plus one grant when it was empty. */
+export function createInFlightByteGate(budgetBytes: number): InFlightByteGate {
+    let inFlight = 0
+    let holders = 0
+    const waiting: { bytes: number, grant: (grant: InFlightGrant) => void }[] = []
+
+    const pump = () => {
+        for (;;) {
+            const head = waiting[0]
+            if (head === undefined || (holders > 0 && inFlight + head.bytes > budgetBytes)) {
+                return
+            }
+            waiting.shift()
+            inFlight += head.bytes
+            holders++
+            let released = false
+            head.grant({
+                release() {
+                    if (released) {
+                        return
+                    }
+                    released = true
+                    inFlight -= head.bytes
+                    holders--
+                    pump()
+                },
+            })
+        }
+    }
+
+    return {
+        acquire(bytes: number): Promise<InFlightGrant> {
+            return new Promise((resolve) => {
+                waiting.push({ bytes, grant: resolve })
+                pump()
+            })
+        },
+    }
+}
+
 /** Forgets what is known about `keys` (a deleted asset), including a probe still running. */
 export function forgetStoredAssetSizes(keys: Iterable<string>): void {
     for (const key of keys) {
@@ -226,4 +345,5 @@ export function resetAssetUrlGateForTest(): void {
     storedSizes.clear()
     sizeProbes.clear()
     reportedFailures.clear()
+    wholeReadUrlKeys.clear()
 }
