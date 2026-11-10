@@ -44,7 +44,7 @@ describe('a chunk the memo remembered from a plan that did not commit is written
         expect(encoder.chunkMemoStats().entries).toBeGreaterThan(0)
         slots[2] = saved
         const plan = await encoder.plan(db as unknown as Database, marked)
-        const built = plan.commitRequest().build({ mint: mintOf(5), seq: 2, now: NOW })
+        const built = await plan.commitRequest().build({ mint: mintOf(5), seq: 2, now: NOW })
         expect(writtenText(built.units)).toContain('MARK-THROWING-PLAN')
     })
 
@@ -54,10 +54,10 @@ describe('a chunk the memo remembered from a plan that did not commit is written
         const marked = { marked: new Set([slots[0].chaId as string]), modules: false, whole: false }
         messages.push({ ...messages[messages.length - 1], data: 'MARK-FAILED-COMMIT' })
         const failed = await encoder.plan(db as unknown as Database, marked)
-        failed.commitRequest().build({ mint: mintOf(5), seq: 2, now: NOW })
+        await failed.commitRequest().build({ mint: mintOf(5), seq: 2, now: NOW })
         // No acknowledge: the commit did not land.
         const plan = await encoder.plan(db as unknown as Database, marked)
-        const built = plan.commitRequest().build({ mint: mintOf(6), seq: 2, now: NOW })
+        const built = await plan.commitRequest().build({ mint: mintOf(6), seq: 2, now: NOW })
         expect(writtenText(built.units)).toContain('MARK-FAILED-COMMIT')
     })
 })
