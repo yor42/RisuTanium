@@ -188,6 +188,7 @@ import { changeChar, removeChar } from 'src/ts/characters'
 import { dispatchBack, resetBackHandlersForTests } from 'src/ts/backHandlers'
 import { createHostChannelFake } from 'src/ts/android/hostChannelFake'
 import { holdChatView, installChatOnScreen, resetChatOnScreenForTests } from 'src/ts/process/chatOnScreen.svelte'
+import { buildColdStub } from 'src/ts/process/coldCharacter'
 import { replyMarkOf } from 'src/ts/process/replyMarks'
 import { chatSurface, installChatSurface, resetChatSurfaceForTests } from 'src/lib/ChatScreens/chatSurface.svelte'
 import { openInClassicEditor } from 'src/ts/studio/classicLinks.svelte'
@@ -381,7 +382,6 @@ describe('availability', () => {
             warmCharacter('normal'),
             warmCharacter('group', { type: 'group' }),
             warmCharacter('§playground'),
-            warmCharacter('cold', { coldstorage: 'unit-cold' }),
             warmCharacter('trashed', { trashTime: 5 }),
         ])
         const eligibleAt = (index: number): boolean => {
@@ -389,11 +389,11 @@ describe('availability', () => {
             return studioEligible()
         }
 
-        for (const index of [0, 1, 2, 3]) {
+        for (const index of [0, 1, 2]) {
             expect(homeStudioAvailable(slot(index)), `slot ${index}`).toBe(eligibleAt(index))
         }
         expect(homeStudioAvailable(slot(0))).toBe(true)
-        expect(homeStudioAvailable(slot(4))).toBe(false)
+        expect(homeStudioAvailable(slot(3))).toBe(false)
 
         setStudioEnabled(false)
         expect(homeStudioAvailable(slot(0))).toBe(eligibleAt(0))
@@ -402,6 +402,29 @@ describe('availability', () => {
 
         MobileGUI.set(true)
         expect(homeStudioAvailable(slot(0))).toBe(eligibleAt(0))
+        expect(homeStudioAvailable(slot(0))).toBe(false)
+    })
+
+    test('R T30: an archived stub is available (the open loads it first); a group, a trashed or a playground stub, the switch off and Beta Mobile GUI still are not', () => {
+        const stubOf = (source: character): character => buildColdStub(source, `unit-${source.chaId}`, [])
+        installDb([
+            stubOf(warmCharacter('normal')),
+            stubOf(warmCharacter('group', { type: 'group', characters: [] })),
+            stubOf(warmCharacter('§playground')),
+            stubOf(warmCharacter('trashed', { trashTime: 5 })),
+        ])
+
+        expect(slot(0).coldstorage).toBe('unit-normal')
+        expect(homeStudioAvailable(slot(0))).toBe(true)
+        expect(homeStudioAvailable(slot(1))).toBe(false)
+        expect(homeStudioAvailable(slot(2))).toBe(false)
+        expect(homeStudioAvailable(slot(3))).toBe(false)
+
+        setStudioEnabled(false)
+        expect(homeStudioAvailable(slot(0))).toBe(false)
+        setStudioEnabled(true)
+
+        MobileGUI.set(true)
         expect(homeStudioAvailable(slot(0))).toBe(false)
     })
 

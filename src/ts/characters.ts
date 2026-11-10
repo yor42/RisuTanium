@@ -1720,6 +1720,11 @@ export function supersedeChangeChar(): void {
     latestChangeChar++
 }
 
+/** The count a caller can record to tell whether a `changeChar` call or `supersedeChangeChar()` ran since. */
+export function changeCharGeneration(): number {
+    return latestChangeChar
+}
+
 /**
  * What a `changeChar` call ended as. Only `selected` moved the selection.
  * A reply being written never refuses a switch. `superseded`: a later call
