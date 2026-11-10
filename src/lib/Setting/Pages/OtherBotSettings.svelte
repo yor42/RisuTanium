@@ -19,7 +19,7 @@
     import SelectInput from "src/lib/UI/GUI/SelectInput.svelte";
     import OptionInput from "src/lib/UI/GUI/OptionInput.svelte";
     import SliderInput from "src/lib/UI/GUI/SliderInput.svelte";
-    import { getCharImage } from "src/ts/characters";
+    import { useCharImageLookups } from "src/ts/media/charImageLookups";
     import Accordion from "src/lib/UI/Accordion.svelte";
     import CheckInput from "src/lib/UI/GUI/CheckInput.svelte";
     import TextAreaInput from "src/lib/UI/GUI/TextAreaInput.svelte";
@@ -30,6 +30,9 @@
     import { alertError, alertInput, alertConfirm, alertNormal } from "src/ts/alert";
     import { createHypaV3Preset } from "src/ts/process/memory/hypav3";
     import { importHypaV3PresetFile } from "src/ts/process/memory/hypaV3PresetImport";
+
+    // One hold per reference image; they end with the page.
+    const lookups = useCharImageLookups();
 
     let submenu = $state(DBState.db.useLegacyGUI ? -1 : 0);
 
@@ -556,7 +559,7 @@
                                 <span class="text-sm">{language.settingsPage.uploadImage}</span>
                             </div>
                         {:else}
-                            {#await warnOnReject('OtherBotSettings: NAI character image rejected', getCharImage(DBState.db.NAIImgConfig.character_image, 'plain'))}
+                            {#await warnOnReject('OtherBotSettings: NAI character image rejected', lookups.get('naiCharacter', DBState.db.NAIImgConfig.character_image, 'plain'))}
                                 <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center">
                                     <span class="text-sm">{language.settingsPage.uploadingImage}</span>
                                 </div>
@@ -648,7 +651,7 @@
                                 <span class="text-sm">{language.settingsPage.uploadImage}</span>
                             </div>
                         {:else}
-                            {#await warnOnReject('OtherBotSettings: NAI base image rejected', getCharImage(DBState.db.NAIImgConfig.image, 'plain'))}
+                            {#await warnOnReject('OtherBotSettings: NAI base image rejected', lookups.get('naiBase', DBState.db.NAIImgConfig.image, 'plain'))}
                                 <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center">
                                     <span class="text-sm">{language.settingsPage.uploadingImage}</span>
                                 </div>
@@ -963,7 +966,7 @@
                                     <span class="text-sm">{language.settingsPage.uploadImage}</span>
                                 </div>
                             {:else}
-                                {#await warnOnReject('OtherBotSettings: wavespeed reference image rejected', getCharImage(DBState.db.wavespeedImage.reference_image, 'plain'))}
+                                {#await warnOnReject('OtherBotSettings: wavespeed reference image rejected', lookups.get('wavespeedReference', DBState.db.wavespeedImage.reference_image, 'plain'))}
                                     <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500 flex items-center justify-center">
                                         <span class="text-sm">{language.settingsPage.uploadingImage}</span>
                                     </div>

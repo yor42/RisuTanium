@@ -9,6 +9,7 @@
     import { PlusIcon, SmileIcon, TrashIcon, UserIcon, ActivityIcon, BookIcon, User, Braces, Volume2Icon, DownloadIcon, HardDriveUploadIcon, Share2Icon, ImageIcon, ImageOffIcon, ArrowUp, ArrowDown, FileMusicIcon } from '@lucide/svelte'
     import { assetListElement, assetListUse, createWholeReadBudget, rowAssetUrl, storeRowAssetUrl, type RowAssetUrl, type WholeReadBudget } from 'src/ts/storage/assetUrlGate'
     import Check from "../UI/GUI/CheckInput.svelte";
+    import { useCharImageLookups } from "../../ts/media/charImageLookups";
     import { addCharEmotion, addingEmotion, getCharImage, rmCharEmotion, selectCharImg, makeGroupImage, removeChar, changeCharImage } from "../../ts/characters";
     import LoreBook from "./LoreBook/LoreBookSetting.svelte";
     import { alertConfirm, alertError, alertNormal, showHypaV2Alert } from "../../ts/alert";
@@ -49,6 +50,9 @@
     }
 
     let { studioEntry = true }: Props = $props();
+
+    // One hold per image position (group member, group icon, character icon, additional icon row); they end with the page.
+    const lookups = useCharImageLookups();
 
     let iconRemoveMode = $state(false)
     let viewSubMenu = $state(0)
@@ -347,7 +351,7 @@
                 <div class="text-center">{language.talkness}</div>
                 <div class="text-center">{language.active}</div>
                 {#each (DBState.db.characters[$selectedCharID] as groupChat).characters as char, i}
-                    {#await warnOnReject('CharConfig: group member icon rejected', getCharImage(findCharacterbyId(char).image, 'css'))}
+                    {#await warnOnReject('CharConfig: group member icon rejected', lookups.get('member:' + i, findCharacterbyId(char).image, 'css'))}
                         <BarIcon onClick={() => {
                             rmCharFromGroup(i)
                         }}>
@@ -439,7 +443,7 @@
     {#if viewSubMenu === 0}
         {#if DBState.db.characters[$selectedCharID].type === 'group'}
             <button onclick={async () => {await selectCharImg($selectedCharID)}}>
-                {#await warnOnReject('CharConfig: group icon rejected', getCharImage(DBState.db.characters[$selectedCharID].image, 'css'))}
+                {#await warnOnReject('CharConfig: group icon rejected', lookups.get('groupIcon', DBState.db.characters[$selectedCharID].image, 'css'))}
                     <div class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer ring-3"></div>
                 {:then im}
                     <div class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer ring-3" style={im}></div>
@@ -464,7 +468,7 @@
                             iconRemoveMode = false
                         }
                     }}>
-                        {#await warnOnReject('CharConfig: character icon rejected', getCharImage(DBState.db.characters[$selectedCharID].image, (DBState.db.characters[$selectedCharID] as character).largePortrait ? 'lgcss' : 'css'))}
+                        {#await warnOnReject('CharConfig: character icon rejected', lookups.get('charIcon', DBState.db.characters[$selectedCharID].image, (DBState.db.characters[$selectedCharID] as character).largePortrait ? 'lgcss' : 'css'))}
                             <div
                                 class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer ring-3 transition-shadow"
                                 class:ring-red-500={iconRemoveMode}
@@ -494,7 +498,7 @@
                                 iconRemoveMode = false
                             }
                         }}>
-                            {#await warnOnReject('CharConfig: additional asset icon rejected', getCharImage(assets.uri, (DBState.db.characters[$selectedCharID] as character).largePortrait ? 'lgcss' : 'css'))}
+                            {#await warnOnReject('CharConfig: additional asset icon rejected', lookups.get('asset:' + i, assets.uri, (DBState.db.characters[$selectedCharID] as character).largePortrait ? 'lgcss' : 'css'))}
                                 <div
                                     class="rounded-md h-24 w-24 shadow-lg bg-textcolor2 cursor-pointer hover:ring-3 transition-shadow"
                                     class:ring-red-500={iconRemoveMode} class:ring-3={iconRemoveMode}

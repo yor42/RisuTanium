@@ -2,7 +2,7 @@
   import { onDestroy, tick, untrack } from "svelte";
   import { DBState, selectedCharID } from "src/ts/stores.svelte";
   import { FolderIcon, FolderOpenIcon } from "@lucide/svelte";
-  import { addCharacter, changeChar, getCharImage, visibleCharacterIds } from "../../ts/characters";
+  import { addCharacter, changeChar, visibleCharacterIds } from "../../ts/characters";
   import { language } from "../../lang";
   import isEqual from "lodash/isEqual";
   import SidebarAvatar from "./SidebarAvatar.svelte";
@@ -1080,7 +1080,7 @@
               {#if char.type === 'normal'}
                 {@const imgPath = char.img}
                 <SidebarAvatar
-                  src={imgPath ? getCharImage(imgPath, "thumb") : "/none.webp"}
+                  loc={imgPath ?? ''}
                   size="56"
                   rounded={IconRounded}
                   chaId={DBState.db.characters[char.index]?.chaId}
@@ -1089,8 +1089,7 @@
                 {#key char.color}
                 {#key char.name}
                   {@const folderImgPath = char.img}
-                  {@const avatarBg = folderImgPath ? getCharImage(folderImgPath, "thumb") : ""}
-                  <SidebarAvatar src="slot" size="56" rounded={IconRounded} bordered color={char.color} backgroundimg={avatarBg}>
+                  <SidebarAvatar src="slot" size="56" rounded={IconRounded} bordered color={char.color} backgroundLoc={folderImgPath ?? ''}>
                     {#if DBState.db.showFolderName}
                       <div class="h-full w-full flex justify-center items-center">
                         <span class="hyphens-auto truncate font-bold">{char.name}</span>
@@ -1129,7 +1128,7 @@
                 use:tooltipRail={member.name}
               >
               <SidebarAvatar
-                src={member.img ? getCharImage(member.img, "thumb") : "/none.webp"}
+                loc={member.img ?? ''}
                 size="56"
                 rounded={IconRounded}
                 chaId={DBState.db.characters[member.index]?.chaId}

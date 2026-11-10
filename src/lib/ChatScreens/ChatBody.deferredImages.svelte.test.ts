@@ -290,6 +290,47 @@ describe('four 60 MiB images in one message', () => {
     })
 })
 
+describe('a chat body shown again after its images were read', () => {
+    /** Mounts a body for the message slot `idx`, as `Chats` does for each row. */
+    function mountRow(idx: number) {
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const props = { ...baseProps(target), idx }
+        const instance = mount(ChatBody, { target, props: props as never }) as Record<string, unknown>
+        flushSync()
+        mounted.push({ target, instance })
+        return { target, unmountBody: () => unmount(instance) }
+    }
+
+    test('TW4: a remounted body whose image was read lately waits for a slot while another message holds the queue', async () => {
+        await seed('one', 60)
+        await seed('two', 60)
+
+        // Row 0 reads its image once, so the URL is warm, and then goes away; the render cache keeps its markup.
+        const first = mountRow(0)
+        await answerParse(0, assetImage('one'))
+        expect(realOf(first.target)).toHaveLength(1)
+        await loadAll(first.target)
+        await first.unmountBody()
+
+        // Row 1 holds the whole queue with a different image.
+        const holder = mountRow(1)
+        await answerParse(1, assetImage('two'))
+        expect(realOf(holder.target)).toHaveLength(1)
+
+        // Row 0 comes back from the render cache; its parse is still pending.
+        const again = mountRow(0)
+        await flushAll()
+        expect(imgs(again.target)).toHaveLength(1)
+        expect(realOf(again.target)).toHaveLength(0)
+        expect(realOf(holder.target).length + realOf(again.target).length).toBe(1)
+
+        await loadAll(holder.target)
+        expect(realOf(again.target)).toHaveLength(1)
+        expect(again.target.querySelector(`[${DEFERRED_IMAGE_SRC_ATTRIBUTE}]`)).toBeNull()
+    })
+})
+
 describe('the sanitizer', () => {
     test('T8 G: another caller of trimMarkdown keeps every source', async () => {
         for (const key of KEYS) {

@@ -1,10 +1,16 @@
 <script lang="ts">
   import { warnOnReject } from "src/ts/warnOnReject";
   import { language } from "src/lang";
+  import { useCharImageLookups } from "src/ts/media/charImageLookups";
 
   interface Props {
     rounded: boolean;
-    src: string|Promise<string>;
+    // Required unless `loc` is given. "slot" selects the folder form, whose background is `backgroundimg`
+    // or the image at `backgroundLoc`.
+    src?: string|Promise<string>;
+    // Image location looked up by this component; its read is held until the location changes or the avatar is destroyed.
+    loc?: string;
+    backgroundLoc?: string;
     size?: string;
     bordered?: boolean;
     color?: string;
@@ -16,6 +22,8 @@
   let {
     rounded,
     src,
+    loc,
+    backgroundLoc,
     size = "22",
     bordered = false,
     color = '',
@@ -23,6 +31,14 @@
     children,
     chaId
   }: Props = $props();
+
+  const lookups = useCharImageLookups();
+
+  // Deriveds, so the `{#await}` heads re-run only when the location or hide-all-images changes. A lookup called
+  // straight in a head would re-run (and ask again) on unrelated database writes. Each is read only by the head of
+  // the branch that shows it, so a lookup starts only for the branch that is rendered.
+  const backgroundInput = $derived(backgroundLoc !== undefined ? lookups.getIf('bg', !!backgroundLoc, backgroundLoc, 'thumb', '') : backgroundimg);
+  const srcInput = $derived(loc !== undefined ? lookups.getIf('src', !!loc, loc, 'thumb', '/none.webp') : src);
 </script>
 
 <span class="flex shrink-0 items-center justify-center avatar"
@@ -31,9 +47,9 @@
       class:rounded-md={bordered}
       data-char-id={chaId}
 >
-  {#if src}
+  {#if src || loc !== undefined}
     {#if src === "slot"}
-      {#await warnOnReject('SidebarAvatar: backgroundimg rejected', backgroundimg)}
+      {#await warnOnReject('SidebarAvatar: backgroundimg rejected', backgroundInput)}
       <div
         class="bg-skin-border sidebar-avatar rounded-md bg-top flex items-center justify-center {
           color === 'red' ? 'bg-red-700/50' :
@@ -95,7 +111,7 @@
       </div>
     {/await}
     {:else}
-      {#await warnOnReject('SidebarAvatar: src rejected', src)}
+      {#await warnOnReject('SidebarAvatar: src rejected', srcInput)}
         <div
           class="bg-skin-border sidebar-avatar rounded-md bg-top"
           style:width={size + "px"}

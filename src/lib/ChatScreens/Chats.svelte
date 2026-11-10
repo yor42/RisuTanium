@@ -2,7 +2,7 @@
     import type { character, groupChat, Message, StreamingDisplayOptimizationMode } from 'src/ts/storage/database.svelte';
     import { mount, onDestroy, unmount, untrack } from 'svelte';
     import ChatMessageBoundary from './ChatMessageBoundary.svelte';
-    import { getCharImage } from 'src/ts/characters';
+    import { useCharImageLookups } from 'src/ts/media/charImageLookups';
     import { createSimpleCharacter, DBState, selectedCharID, ReloadChatPointer } from 'src/ts/stores.svelte';
     import { chatFoldedStateMessageIndex } from 'src/ts/globalApi.svelte';
     import { get } from 'svelte/store';
@@ -74,6 +74,9 @@
 
     let chatBody: HTMLDivElement;
 
+    // The character and user icons are read through holds that last as long as this list.
+    const lookups = useCharImageLookups();
+
     // The same identity the render cache scopes a chat by; null when no chat is selected.
     const ownerKey = (): string | null => {
         const charId = get(selectedCharID);
@@ -139,8 +142,9 @@
 
         let nextHash = 0;
         let currentHashes: Set<number> = new Set();
-        const charImage = getCharImage(currentCharacter.image, 'css')
-        const userImage = getCharImage(userIcon, 'css')
+        // Both slots are asked on every run, so a changed image replaces the old hold and kept rows follow to the new one.
+        const charImage = lookups.get('char', currentCharacter.image, 'css')
+        const userImage = lookups.get('user', userIcon, 'css')
         const simpleChar = createSimpleCharacter(currentCharacter);
         let loadStart = messages.length - 1
         let loadEnd = messages.length - loadPages
