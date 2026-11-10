@@ -2,7 +2,8 @@
   import { onDestroy, tick, untrack } from "svelte";
   import { DBState, selectedCharID } from "src/ts/stores.svelte";
   import { FolderIcon, FolderOpenIcon } from "@lucide/svelte";
-  import { addCharacter, changeChar, visibleCharacterIds } from "../../ts/characters";
+  import { addCharacter, visibleCharacterIds } from "../../ts/characters";
+  import { changeCharOrAlert } from "../../ts/characterPick";
   import { language } from "../../lang";
   import isEqual from "lodash/isEqual";
   import SidebarAvatar from "./SidebarAvatar.svelte";
@@ -723,14 +724,14 @@
           toggleFolder(char.id)
         }
         else {
-          changeChar(char.index, {reseter})
+          void changeCharOrAlert('rail.pick', char.index, {reseter})
         }
         return
       }
       if (char.type === 'folder') {
         const member = char.folder.find((m) => m.key === key)
         if (member) {
-          changeChar(member.index, {reseter})
+          void changeCharOrAlert('rail.pick', member.index, {reseter})
           return
         }
       }
