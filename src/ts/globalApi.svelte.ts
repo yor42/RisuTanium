@@ -77,7 +77,7 @@ import { hasLocalDrafts } from "./localDrafts";
 import { beginChokePoint, busyKinds } from "./process/memory/busyActions";
 import { installNetHold } from "./storage/measureExportHold";
 import { isAndroidTransport, shouldBypassFrozenPagePaths } from "./storage/tauriByteTransport";
-import { androidWithholdsUrl, forgetStoredAssetSizes, type AssetUse, type WholeReadBudget } from "./storage/assetUrlGate";
+import { androidWithholdsUrl, forgetStoredAssetSizes, rememberWholeReadUrl, type AssetUse, type WholeReadBudget } from "./storage/assetUrlGate";
 import { parseJsonBody } from "./network/frozenBody";
 import { MEASURE } from "./process/memory/measureFlag";
 import { noteChatSelect } from "./process/chatPhaseRing";
@@ -429,6 +429,10 @@ function objectUrlOfAssetBlob(loc: string, blob: Blob): string {
  * @param {string} loc - The location of the file.
  * @param {AssetUse} use - What the URL is for.
  * @param {WholeReadBudget} budget - The whole-read budget of the calling list; used for an `assets` file with a `'whole'` use only.
+ * On Android a `'whole'` URL that is returned is also recorded with its asset
+ * path (`rememberWholeReadUrl`), so the chat sanitizer can learn the stored size
+ * of an image whose markup holds only the URL.
+ *
  * @returns {Promise<string>} - A promise that resolves to the source URL of the file, or `''` when none can be made or it is withheld.
  */
 export async function getFileSrc(loc: string, use: AssetUse = 'whole', budget?: WholeReadBudget) {
@@ -446,7 +450,11 @@ export async function getFileSrc(loc: string, use: AssetUse = 'whole', budget?: 
                 if (store.urlFor === undefined) {
                     throw new Error('The desktop store offers no URL for a file.')
                 }
-                return await store.urlFor(loc)
+                const url = await store.urlFor(loc)
+                if (url && use === 'whole' && isAndroidTransport()) {
+                    rememberWholeReadUrl(url, loc)
+                }
+                return url
             } catch (error) {
                 console.error(error)
                 return ''
