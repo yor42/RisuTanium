@@ -937,3 +937,340 @@ describe('the chat note form', () => {
         expect(part('studio-form-readonly-reason')).not.toBeNull()
     })
 })
+
+// ---------------------------------------------------------------- first-message rows keep their node
+
+describe('first-message rows are keyed by identity', () => {
+    interface ValueWriteSpy {
+        // Every node whose `value` was assigned since the last reset, in order.
+        writes: HTMLTextAreaElement[]
+        reset(): void
+        restore(): void
+    }
+
+    let activeSpy: ValueWriteSpy | null = null
+
+    // Wraps the `value` setter of HTMLTextAreaElement.prototype, where the framework's value binding writes.
+    function installValueWriteSpy(): ValueWriteSpy {
+        const original = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')
+        if (!original || !original.set || !original.get) throw new Error('the textarea value accessor is missing')
+        const setValue = original.set
+        const writes: HTMLTextAreaElement[] = []
+        Object.defineProperty(HTMLTextAreaElement.prototype, 'value', {
+            configurable: true,
+            enumerable: original.enumerable,
+            get: original.get,
+            set(this: HTMLTextAreaElement, next: string) {
+                writes.push(this)
+                setValue.call(this, next)
+            },
+        })
+        const spy: ValueWriteSpy = {
+            writes,
+            reset() {
+                writes.length = 0
+            },
+            restore() {
+                Object.defineProperty(HTMLTextAreaElement.prototype, 'value', original)
+                activeSpy = null
+            },
+        }
+        activeSpy = spy
+        return spy
+    }
+
+    afterEach(() => {
+        activeSpy?.restore()
+    })
+
+    // Distinct strings with a unique leading tag and filler, shaped like long first messages.
+    function messages(count: number, tag = 'g'): string[] {
+        return Array.from({ length: count }, (_unused, i) => `${tag}${i}:${'x'.repeat(200)}`)
+    }
+
+    const valuesOf = () => greetingInputs().map((field) => field.value)
+    const deleteButton = (index: number) => parts('studio-greeting-delete')[index] as HTMLButtonElement
+
+    async function mountList(list: string[]): Promise<{ rig: Rig; host: ToastRig }> {
+        const rig = makeRig()
+        const host = makeToastHost()
+        live().alternateGreetings = list
+        mountInto(StudioCharacterForm, { chaId: 'A', host: host.host })
+        await settle()
+        return { rig, host }
+    }
+
+    function writesOn(nodes: readonly HTMLTextAreaElement[], spy: ValueWriteSpy): number {
+        return spy.writes.filter((node) => nodes.includes(node)).length
+    }
+
+    test('R1 deleting slot 0 keeps the other nodes and writes none of them', async () => {
+        const list = messages(3)
+        await mountList(list)
+        const before = greetingInputs()
+        const spy = installValueWriteSpy()
+        deleteButton(0).click()
+        await settle()
+        const after = greetingInputs()
+        expect(after).toHaveLength(2)
+        expect(after[0]).toBe(before[1])
+        expect(after[1]).toBe(before[2])
+        expect(writesOn(before, spy)).toBe(0)
+        expect(valuesOf()).toEqual(list.slice(1))
+    })
+
+    test('R2 deleting a middle row keeps the other nodes and writes none of them', async () => {
+        const list = messages(4)
+        await mountList(list)
+        const before = greetingInputs()
+        const spy = installValueWriteSpy()
+        deleteButton(1).click()
+        await settle()
+        const after = greetingInputs()
+        expect(after).toHaveLength(3)
+        expect(after[0]).toBe(before[0])
+        expect(after[1]).toBe(before[2])
+        expect(after[2]).toBe(before[3])
+        expect(writesOn(before, spy)).toBe(0)
+        expect(valuesOf()).toEqual([list[0], list[2], list[3]])
+    })
+
+    test('R3 undo of a delete mounts one node and leaves the others unwritten', async () => {
+        const list = messages(3)
+        const { rig } = await mountList(list)
+        expect(rig.service.greetingDelete(A, 0).ok).toBe(true)
+        await settle()
+        const before = greetingInputs()
+        const spy = installValueWriteSpy()
+        expect(rig.service.undo(A).ok).toBe(true)
+        await settle()
+        const after = greetingInputs()
+        expect(after).toHaveLength(3)
+        expect(after[1]).toBe(before[0])
+        expect(after[2]).toBe(before[1])
+        expect(before).not.toContain(after[0])
+        expect(writesOn(before, spy)).toBe(0)
+        expect(valuesOf()).toEqual(list)
+    })
+
+    test('R4 redo of a delete removes one node and leaves the others unwritten', async () => {
+        const list = messages(3)
+        const { rig } = await mountList(list)
+        expect(rig.service.greetingDelete(A, 0).ok).toBe(true)
+        expect(rig.service.undo(A).ok).toBe(true)
+        await settle()
+        const before = greetingInputs()
+        const spy = installValueWriteSpy()
+        expect(rig.service.redo(A).ok).toBe(true)
+        await settle()
+        const after = greetingInputs()
+        expect(after).toHaveLength(2)
+        expect(after[0]).toBe(before[1])
+        expect(after[1]).toBe(before[2])
+        expect(writesOn(before, spy)).toBe(0)
+        expect(valuesOf()).toEqual(list.slice(1))
+    })
+
+    test('R5 Restore deleted after an unrelated step mounts one node and leaves the others unwritten', async () => {
+        const list = messages(3)
+        const { rig, host } = await mountList(list)
+        deleteButton(0).click()
+        await settle()
+        expect(rig.service.editField(A, 'desc', 'unrelated').ok).toBe(true)
+        rig.service.closeOpenStep(A)
+        const before = greetingInputs()
+        const spy = installValueWriteSpy()
+        await host.host.activate(host.host.visible[0].id)
+        await settle()
+        const after = greetingInputs()
+        expect(after).toHaveLength(3)
+        expect(after[1]).toBe(before[0])
+        expect(after[2]).toBe(before[1])
+        expect(writesOn(before, spy)).toBe(0)
+        expect(valuesOf()).toEqual(list)
+    })
+
+    test('R6 reverting past a front delete mounts one node and leaves the others unwritten', async () => {
+        const list = messages(3)
+        const { rig } = await mountList(list)
+        expect(rig.service.editField(A, 'desc', 'earlier').ok).toBe(true)
+        rig.service.closeOpenStep(A)
+        expect(rig.service.greetingDelete(A, 0).ok).toBe(true)
+        await settle()
+        const target = rig.service.view(A).done[0].id
+        const before = greetingInputs()
+        const spy = installValueWriteSpy()
+        expect(rig.service.revertTo(A, target).ok).toBe(true)
+        await settle()
+        // The revert of one delete is a single insert at the front, not positional rewrites.
+        const revertListOps = (rig.service.view(A).done.at(-1)?.ops ?? []).filter((op) => op.op === 'listInsert' || op.op === 'listSet' || op.op === 'listRemove')
+        expect(revertListOps.map((op) => op.op)).toEqual(['listInsert'])
+        expect(revertListOps[0]).toMatchObject({ op: 'listInsert', index: 0 })
+        const after = greetingInputs()
+        expect(after).toHaveLength(3)
+        expect(after[1]).toBe(before[0])
+        expect(after[2]).toBe(before[1])
+        expect(writesOn(before, spy)).toBe(0)
+        expect(valuesOf()).toEqual(list)
+    })
+
+    test('R7 a focused row keeps its focus on the same text when another row is inserted or removed', async () => {
+        const list = messages(3)
+        const { rig } = await mountList(list)
+        expect(rig.service.greetingDelete(A, 0).ok).toBe(true)
+        await settle()
+        const focused = greetingInputs()[0]
+        focused.focus()
+        expect(focused.value).toBe(list[1])
+        expect(rig.service.undo(A).ok).toBe(true)
+        await settle()
+        expect(document.activeElement).toBe(focused)
+        expect(focused.value).toBe(list[1])
+        expect(greetingInputs()[1]).toBe(focused)
+        expect(rig.service.redo(A).ok).toBe(true)
+        await settle()
+        expect(document.activeElement).toBe(focused)
+        expect(focused.value).toBe(list[1])
+        expect(greetingInputs()[0]).toBe(focused)
+    })
+
+    test('G2 add focuses the new last row and writes no existing node', async () => {
+        const list = messages(3)
+        await mountList(list)
+        const before = greetingInputs()
+        const spy = installValueWriteSpy()
+        ;(part('studio-greeting-add') as HTMLButtonElement).click()
+        await settle()
+        const after = greetingInputs()
+        expect(after).toHaveLength(4)
+        expect(after.slice(0, 3)).toEqual(before)
+        expect(document.activeElement).toBe(after[3])
+        expect(writesOn(before, spy)).toBe(0)
+        expect(valuesOf()).toEqual([...list, ''])
+    })
+
+    test('G3 the part names and positional labels follow the list after a front delete', async () => {
+        await mountList(messages(3))
+        deleteButton(0).click()
+        await settle()
+        expect(parts('studio-greeting-row')).toHaveLength(2)
+        expect(greetingInputs().map((field) => field.dataset.index)).toEqual(['0', '1'])
+        expect(greetingInputs().map((field) => field.getAttribute('aria-label'))).toEqual(['altGreet 1', 'altGreet 2'])
+        expect(parts('studio-greeting-delete').map((button) => button.getAttribute('aria-label'))).toEqual(['studioGreetingDelete 1', 'studioGreetingDelete 2'])
+    })
+
+    test('G4 typing keeps the node, the focus and the caret and writes no value back', async () => {
+        const list = messages(3)
+        const { rig } = await mountList(list)
+        const before = greetingInputs()
+        const field = before[1]
+        field.focus()
+        field.value = `${list[1]}Z`
+        field.setSelectionRange(7, 7)
+        const spy = installValueWriteSpy()
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+        flushSync()
+        await settle()
+        expect(greetingInputs()[1]).toBe(field)
+        expect(document.activeElement).toBe(field)
+        expect(field.selectionStart).toBe(7)
+        expect(spy.writes).toHaveLength(0)
+        expect(live().alternateGreetings[1]).toBe(`${list[1]}Z`)
+        expect(rig.service.view(A).done).toHaveLength(1)
+    })
+
+    test('G5 after a front delete typing and deleting hit the rows at their current positions', async () => {
+        const list = messages(4)
+        await mountList(list)
+        deleteButton(0).click()
+        await settle()
+        type(greetingInputs()[0], 'first now')
+        expect(live().alternateGreetings).toEqual(['first now', list[2], list[3]])
+        deleteButton(1).click()
+        await settle()
+        expect(live().alternateGreetings).toEqual(['first now', list[3]])
+        expect(valuesOf()).toEqual(['first now', list[3]])
+    })
+
+    test('G6 undo of a first-message edit puts the old text back in the field', async () => {
+        const list = messages(3)
+        const { rig } = await mountList(list)
+        type(greetingInputs()[1], 'edited')
+        expect(rig.service.undo(A).ok).toBe(true)
+        await settle()
+        expect(valuesOf()).toEqual(list)
+    })
+
+    test('G7 deleting every row shows the empty note and focuses Add; adding from empty gives one row', async () => {
+        await mountList(messages(2))
+        deleteButton(0).click()
+        await settle()
+        deleteButton(0).click()
+        await settle()
+        expect(greetingInputs()).toHaveLength(0)
+        expect(part('studio-character-form')?.textContent).toContain('studioGreetingsEmpty')
+        expect(document.activeElement).toBe(part('studio-greeting-add'))
+        ;(part('studio-greeting-add') as HTMLButtonElement).click()
+        await settle()
+        expect(valuesOf()).toEqual([''])
+        expect(part('studio-character-form')?.textContent).not.toContain('studioGreetingsEmpty')
+    })
+
+    test.each([0, 1])('G8 equal strings: deleting row %i leaves the right values and count', async (at) => {
+        await mountList(['x', 'x', 'y'])
+        deleteButton(at).click()
+        await settle()
+        expect(valuesOf()).toEqual(['x', 'y'])
+        expect(live().alternateGreetings).toEqual(['x', 'y'])
+    })
+
+    test('G9 two empty rows: deleting the first leaves one empty row with the focus', async () => {
+        await mountList([])
+        ;(part('studio-greeting-add') as HTMLButtonElement).click()
+        await settle()
+        ;(part('studio-greeting-add') as HTMLButtonElement).click()
+        await settle()
+        expect(valuesOf()).toEqual(['', ''])
+        deleteButton(0).click()
+        await settle()
+        expect(valuesOf()).toEqual([''])
+        expect(document.activeElement).toBe(greetingInputs()[0])
+    })
+
+    test('G10 replacing the live list by an equal-content copy keeps every node and writes none', async () => {
+        const list = messages(3)
+        await mountList(list)
+        const before = greetingInputs()
+        const spy = installValueWriteSpy()
+        // Re-joined halves: equal content, but not the same string objects.
+        const copy = list.map((text) => text.slice(0, 5) + text.slice(5))
+        live().alternateGreetings = copy
+        await settle()
+        expect(greetingInputs()).toEqual(before)
+        expect(spy.writes).toHaveLength(0)
+        expect(valuesOf()).toEqual(list)
+    })
+
+    test('G11 replacing the list by different content shows the new list, same length and shorter', async () => {
+        await mountList(messages(3))
+        live().alternateGreetings = messages(3, 'n')
+        await settle()
+        expect(valuesOf()).toEqual(messages(3, 'n'))
+        live().alternateGreetings = messages(2, 'm')
+        await settle()
+        expect(valuesOf()).toEqual(messages(2, 'm'))
+        expect(parts('studio-greeting-row')).toHaveLength(2)
+    })
+
+    test('G12 a form mounted for another character builds its own nodes with that list', async () => {
+        await mountList(messages(2))
+        const first = greetingInputs()
+        await unmountAll()
+        db.db.characters = [makeCharacter({ chaId: 'B', alternateGreetings: messages(3, 'b') })]
+        studioScreen.chaId = 'B'
+        mountInto(StudioCharacterForm, { chaId: 'B' })
+        await settle()
+        expect(valuesOf()).toEqual(messages(3, 'b'))
+        expect(greetingInputs().some((node) => first.includes(node))).toBe(false)
+    })
+})
