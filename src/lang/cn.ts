@@ -350,6 +350,7 @@ export const languageChinese = {
         "networkFetchWeb": "这可能是由 CORS 错误引起的。这种情况只会在使用网页版时发生，因为浏览器存在一些限制。请尝试使用本地版或其他版本的 RisuTanium。",
         "networkFetchPlain": "这可能是一次数据抓取（Fetch）错误。请尝试在设置中关闭强制抓取选项。",
         "requestTimedOut": "请求超时。",
+        "realmUploadNoAnswer": "RisuRealm 没有响应，因此未上传任何内容。请检查网络连接后重试。",
         "requestLogRemoved": "该请求记录已被删除。",
         "requestLogRemovedDesc": "当客户端刷新或加载时，该请求记录会被删除。",
         "secretRefUnavailable": (name: string) => `环境变量 ${name} 不可用：该变量未设置、服务器不允许使用，或服务器拒绝了请求。`,

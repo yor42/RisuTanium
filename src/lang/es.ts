@@ -350,6 +350,7 @@ export const languageSpanish = {
         "networkFetchWeb": "Esto puede ser un error de CORS. Esto solo ocurre al usar la versión web debido a las limitaciones del navegador. Intenta usar la versión local de escritorio u otra versión de RisuTanium.",
         "networkFetchPlain": "Esto puede ser un error de fetch simple. Intenta desactivar la opción de forzar fetch simple en la configuración.",
         "requestTimedOut": "Se agotó el tiempo de espera de la solicitud.",
+        "realmUploadNoAnswer": "RisuRealm no respondió, por lo que no se subió nada. Comprueba tu conexión e inténtalo de nuevo.",
         "requestLogRemoved": "Este registro de solicitud ha sido eliminado.",
         "requestLogRemovedDesc": "Este registro de solicitud se elimina cuando el cliente se actualiza o recarga.",
         "secretRefUnavailable": (name: string) => `La variable de entorno ${name} no está disponible: no está definida, el servidor no la permite o el servidor rechazó la solicitud.`,

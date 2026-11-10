@@ -351,6 +351,7 @@ export const languageJapanese = {
             "CORSエラーの可能性があります。これはブラウザの制限により、ウェブ版の使用時にのみ発生します。デスクトップローカル版、またはRisuTaniumの他のバージョンをお試しください。",
         networkFetchPlain: "プレーンfetchエラーの可能性があります。設定で「プレーンfetch強制」オプションを無効にしてみてください。",
         requestTimedOut: "リクエストがタイムアウトしました。",
+        realmUploadNoAnswer: "RisuRealm から応答がなかったため、何もアップロードされませんでした。接続を確認して、もう一度お試しください。",
         requestLogRemoved: "このリクエストログは削除されました。",
         requestLogRemovedDesc: "このリクエストログは、クライアントが更新または再読み込みされたときに削除されます。",
         secretRefUnavailable: (name: string) =>

@@ -5,16 +5,6 @@ import { getCurrentCharacter, type character } from "./storage/database.svelte";
 import { alertStore } from "./alert";
 import { asBuffer } from "./util";
 
-let pong = false;
-
-window.addEventListener("message", (event) => {
-    if (event.origin === "https://realm.risuai.net") {
-        if (event.data === "pong") {
-            pong = true;
-        }
-    }
-});
-
 export async function shareRealmCardData():Promise<{ name: ArrayBuffer; data: ArrayBuffer; } | null> {
     const char = safeStructuredClone(getCurrentCharacter({snapshot:true})) as character
     const trimedName = char.name.replace(/[^a-zA-Z0-9]/g, '') || 'character';

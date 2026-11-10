@@ -350,6 +350,7 @@ export const languageGerman = {
         "networkFetchWeb": "Dies kann ein CORS-Fehler sein. Dies geschieht nur bei Verwendung der Webversion aufgrund von Browserbeschränkungen. Versuchen Sie, die lokale Desktop-Version oder eine andere Version von RisuTanium zu verwenden.",
         "networkFetchPlain": "Dies kann ein einfacher Abruffehler sein. Versuchen Sie, die Option 'Erzwinge einfachen Abruf' in den Einstellungen zu deaktivieren.",
         "requestTimedOut": "Zeitüberschreitung der Anfrage.",
+        "realmUploadNoAnswer": "RisuRealm hat nicht geantwortet, daher wurde nichts hochgeladen. Überprüfe deine Verbindung und versuche es erneut.",
         "requestLogRemoved": "Dieses Anfrage-Protokoll wurde entfernt.",
         "requestLogRemovedDesc": "Dieses Anfrage-Protokoll wird entfernt, wenn der Client aktualisiert oder neu geladen wird.",
         "secretRefUnavailable": (name: string) => `Die Umgebungsvariable ${name} ist nicht verfügbar, weil sie nicht gesetzt ist, der Server sie nicht erlaubt oder der Server die Anfrage abgelehnt hat.`,
