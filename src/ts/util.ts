@@ -7,6 +7,7 @@ import { readUserFile } from "./storage/tauriUserFile"
 import { isAndroidTransport } from "./storage/tauriByteTransport"
 import { basename } from "@tauri-apps/api/path"
 import { createBlankChar, getCharImage } from "./characters"
+import type { CharImageLookups } from "./media/charImageLookups"
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { isIOS, isTauri } from "src/ts/platform"
 import { isTauriDesktop } from "src/ts/tauriDesktop"
@@ -354,12 +355,21 @@ export async function changeFullscreen(){
     }
 }
 
-export async function getCustomBackground(db:string){
+/**
+ * With `lookups` the image is read through the 'background' slot, which a later call replaces. The short branch
+ * releases the slot as well, so a background that is cleared while its read waits is given back and stays empty:
+ * the awaiting call then sees `null`, which a real read of a non-empty location never returns.
+ */
+export async function getCustomBackground(db:string, lookups?:CharImageLookups){
     if(db.length < 2){
+        lookups?.getIf('background', false, db, 'plain', null)
         return ''
     }
     else{
-        const filesrc = await getCharImage(db, 'plain')
+        const filesrc = lookups ? await lookups.get('background', db, 'plain') : await getCharImage(db, 'plain')
+        if(filesrc === null){
+            return ''
+        }
         return `background: url("${filesrc}"); background-size: cover;`
     }
 }
@@ -415,7 +425,11 @@ export function defaultEmotion(em:[string,string][]){
     return ''
 }
 
-export async function getEmotion(db:Database,chaEmotion:{[key:string]: [string, string, number][]}, type:'contain'|'plain'|'css'){
+/**
+ * With `lookups` each character's image is read through a slot named by its chaId, so a repeated call asks for the
+ * same key and shares one read. Within a call a repeated chaId resolves to the same character, hence the same key.
+ */
+export async function getEmotion(db:Database,chaEmotion:{[key:string]: [string, string, number][]}, type:'contain'|'plain'|'css', lookups?:CharImageLookups){
     const selectedChar = get(selectedCharID)
     const currentDat = db.characters[selectedChar]
     if(!currentDat){
@@ -463,11 +477,14 @@ export async function getEmotion(db:Database,chaEmotion:{[key:string]: [string, 
         if(currentChar.viewScreen === 'emotion'){
             const currEmotion = chaEmotion[currentChar.chaId]
             let im = ''
+            const slot = `emotion:${currentChar.chaId}`
             if(!currEmotion || currEmotion.length === 0){
-                im = (await getCharImage(defaultEmotion(currentChar?.emotionImages),type))
+                const loc = defaultEmotion(currentChar?.emotionImages)
+                im = lookups ? (await lookups.get(slot, loc, type)) : (await getCharImage(loc,type))
             }
             else{
-                im = (await getCharImage(currEmotion[currEmotion.length - 1][1], type))
+                const loc = currEmotion[currEmotion.length - 1][1]
+                im = lookups ? (await lookups.get(slot, loc, type)) : (await getCharImage(loc, type))
             }
             if(im && im.length > 2){
                 datas.push(im)
@@ -476,7 +493,8 @@ export async function getEmotion(db:Database,chaEmotion:{[key:string]: [string, 
         else if(currentChar.viewScreen === 'imggen'){
             const currEmotion = chaEmotion[currentChar.chaId]
             if(!currEmotion || currEmotion.length === 0){
-                datas.push(await getCharImage(currentChar.image ?? '', 'plain'))
+                const portrait = currentChar.image ?? ''
+                datas.push(lookups ? await lookups.get(`imggen:${currentChar.chaId}`, portrait, 'plain') : await getCharImage(portrait, 'plain'))
             }
             else{
                 datas.push(currEmotion[currEmotion.length - 1][1])

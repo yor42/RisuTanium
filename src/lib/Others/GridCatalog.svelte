@@ -2,6 +2,8 @@
     import { onDestroy, setContext, tick, untrack } from "svelte";
     import { v4 } from "uuid";
     import { archivedMemberIds, changeChar, getCharImage, removeChar, supersedeChangeChar, trashCharacters, type ChangeCharOutcome } from "../../ts/characters";
+    import { useCharImageLookups } from "../../ts/media/charImageLookups";
+    import { isAndroidTransport } from "../../ts/storage/tauriByteTransport";
     import { checkCharOrder } from "src/ts/globalApi.svelte";
     import { alertConfirm, alertError, alertSelect } from "src/ts/alert";
     import { DBState } from 'src/ts/stores.svelte';
@@ -182,8 +184,14 @@
     // tile's await block re-runs with it, so a fresh lookup would blank every picture for a moment.
     // The key carries the hide-all-images setting, which the lookup reads, so a flip is a new lookup;
     // a lookup that fails is dropped so the next render asks again.
+    // On Android each tile instead holds its own queued read through the lookups (slot = the tile's key, which carries the
+    // folder's occurrence), so a large picture waits in the whole-read queue until the tile goes away.
     const pictureLookups = new Map<string, Promise<string>>()
-    function folderPicture(imgFile: string): Promise<string> {
+    const holdLookups = useCharImageLookups()
+    function folderPicture(slotKey: string, imgFile: string): Promise<string> {
+        if (isAndroidTransport()) {
+            return holdLookups.get(`folder:${slotKey}`, imgFile, 'thumbcss')
+        }
         const key = `${DBState.db.hideAllImages ? 'hidden' : 'shown'}|${imgFile}`
         let lookup = pictureLookups.get(key)
         if (lookup === undefined) {
@@ -1612,7 +1620,7 @@
             >
                 {#if entry.imgFile}
                     <!-- The picture is a layer beneath the face; a picture that is missing, fails to load or is hidden leaves the face alone, as in the rail. -->
-                    {#await folderPicture(entry.imgFile)}
+                    {#await folderPicture(entry.key, entry.imgFile)}
                         <span class="absolute inset-0" aria-hidden="true"></span>
                     {:then pictureStyle}
                         {#if pictureStyle && !pictureStyle.includes('url("")')}

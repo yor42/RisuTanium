@@ -43,6 +43,7 @@ vi.mock('../ChatShell/ChatShell.svelte', () => ({
 }))
 vi.mock('./ResizeBox.svelte', () => ({ default: () => ({}) }))
 vi.mock('./TransitionImage.svelte', () => ({ default: () => ({}) }))
+vi.mock('../../ts/media/charImageLookups', () => ({ useCharImageLookups: () => ({ get: vi.fn(), getIf: vi.fn(), dispose: vi.fn() }) }))
 vi.mock('./BackgroundDom.svelte', () => ({ default: () => ({}) }))
 vi.mock('../UI/GUI/SideBarArrow.svelte', () => ({ default: () => ({}) }))
 vi.mock('../Others/ChatList.svelte', () => ({ default: () => ({}) }))

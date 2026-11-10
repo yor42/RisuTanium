@@ -18,6 +18,10 @@
 
 import { createRawSnippet, flushSync, mount, tick, unmount, type ComponentProps } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+// The lookups helper pulls in the application graph, which this test does not need: it passes promises.
+vi.mock('src/ts/media/charImageLookups', () => ({
+    useCharImageLookups: () => ({ get: vi.fn(), getIf: vi.fn(), dispose: vi.fn() }),
+}))
 import SidebarAvatar from './SidebarAvatar.svelte'
 import BarIcon from './BarIcon.svelte'
 

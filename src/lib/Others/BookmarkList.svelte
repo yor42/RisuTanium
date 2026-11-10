@@ -2,7 +2,7 @@
     import { onMount, onDestroy } from "svelte";
     import { XIcon, TrashIcon, PencilIcon, BookOpenCheckIcon, BookLockIcon, ArrowRightIcon } from "@lucide/svelte";
     import Chat from "../ChatScreens/Chat.svelte";
-    import { getCharImage } from "src/ts/characters";
+    import { useCharImageLookups } from "src/ts/media/charImageLookups";
     import { findCharacterbyId, getUserName, getUserIcon } from "src/ts/util";
     import { createSimpleCharacter, bookmarkListOpen, DBState, selectedCharID, ScrollToMessageStore } from "src/ts/stores.svelte";
     import { language } from "src/lang";
@@ -12,6 +12,9 @@
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
     import { branchAt, isComposerBusy } from "src/ts/process/composerActions.svelte";
     import { doingChat } from "src/ts/process/index.svelte";
+
+    // One hold per speaker image, named by role and location: rows of one speaker share a read, and the holds end with the list.
+    const lookups = useCharImageLookups();
 
     const close = () => $bookmarkListOpen = false;
 
@@ -205,7 +208,7 @@
                                         idx={msg.originalIndex}
                                         message={msg.data}
                                         name={msg.speaker?.name}
-                                        img={getCharImage(msg.speaker?.image, 'css')}
+                                        img={lookups.get('speaker|' + (msg.speaker?.image ?? ''), msg.speaker?.image ?? '', 'css')}
                                         role={msg.role}
                                         messageGenerationInfo={msg.generationInfo}
                                         rerollIcon={false}
@@ -221,7 +224,7 @@
                                         idx={msg.originalIndex}
                                         message={msg.data}
                                         name={msg.role === 'user' ? getUserName() : chara.name}
-                                        img={msg.role === 'user' ? getCharImage(getUserIcon(), 'css') : getCharImage(chara.image, 'css')}
+                                        img={msg.role === 'user' ? lookups.get('user|' + getUserIcon(), getUserIcon(), 'css') : lookups.get('char|' + chara.image, chara.image, 'css')}
                                         role={msg.role}
                                         messageGenerationInfo={msg.generationInfo}
                                         rerollIcon={false}

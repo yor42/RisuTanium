@@ -16,6 +16,7 @@
     import { chatSurface } from "./chatSurface.svelte";
     import { onMount } from 'svelte';
     import { holdChatView } from '../../ts/process/chatOnScreen.svelte';
+    import { useCharImageLookups } from '../../ts/media/charImageLookups';
     let openChatList = $state(false)
     let openModuleList = $state(false)
 
@@ -40,13 +41,15 @@
         +   (DBState.db.textBorder ? "text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;" : '')
         +   (DBState.db.textScreenRounded ? "border-radius: 2rem; padding: 1rem;" : '')
         +   (DBState.db.textScreenBorder ? `border: 0.3rem solid ${DBState.db.textScreenBorder};` : ''))
+    // One hold per read position of this screen: the background and the waifu portrait.
+    const lookups = useCharImageLookups()
     let bgImg= $state('')
     let lastBg = $state('')
     $effect.pre(() => {
         (async () =>{
             if(DBState.db.customBackground !== lastBg){
                 lastBg = DBState.db.customBackground
-                bgImg = await getCustomBackground(DBState.db.customBackground)
+                bgImg = await getCustomBackground(DBState.db.customBackground, lookups)
             }
         })()
     });
@@ -59,7 +62,7 @@
         {#if $selectedCharID >= 0}
             {#if DBState.db.characters[$selectedCharID].viewScreen !== 'none'}
                 <div class="h-full mr-10 flex justify-end halfw" style:width="{42 * (DBState.db.waifuWidth2 / 100)}rem">
-                    <TransitionImage classType="waifu" src={getEmotion(DBState.db, $CharEmotion, 'plain')}/>
+                    <TransitionImage classType="waifu" src={getEmotion(DBState.db, $CharEmotion, 'plain', lookups)}/>
                 </div>
             {/if}
         {/if}

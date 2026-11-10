@@ -402,6 +402,50 @@ describe('animated avatars whose thumbnail was skipped, on Android', () => {
         loader.dispose()
     })
 
+    test('TW5 a chat image whose URL was read lately takes a slot, so a 20 MiB avatar waits and the exposure stays within 64 MiB', async () => {
+        transport.sizes['assets/chat.webp'] = 60 * MIB
+        await androidAssetSizeVerdict('assets/chat.webp')
+        rememberWholeReadUrl(URL_OF('assets/chat.webp'), 'assets/chat.webp')
+        const makeChatImage = () => {
+            const node = document.createElement('img')
+            node.setAttribute(DEFERRED_IMAGE_SRC_ATTRIBUTE, URL_OF('assets/chat.webp'))
+            node.setAttribute('src', DEFERRED_IMAGE_PLACEHOLDER_SRC)
+            document.body.appendChild(node)
+            return node
+        }
+        const loader = createDeferredImageLoader()
+        const first = makeChatImage()
+        loader.scan(document.body)
+        FakeObserver.instances[FakeObserver.instances.length - 1].fire(first)
+        await settle()
+        first.dispatchEvent(new Event('load'))
+        await settle()
+        first.remove()
+
+        // The chat is shown again: its image is warm and has not loaded yet when the list avatar asks.
+        const again = makeChatImage()
+        loader.scan(document.body)
+        await settle()
+        seed(['assets/a.webp'], 20)
+        const tile = mountTile('assets/a.webp')
+        await settle()
+
+        const chatInFlight = again.getAttribute('src') === URL_OF('assets/chat.webp') ? 60 * MIB : 0
+        const avatarInFlight = unsettledSources().filter((url) => url === URL_OF('assets/a.webp')).length * 20 * MIB
+            + (styleOf(tile) ? 20 * MIB : 0)
+        expect(chatInFlight + avatarInFlight).toBeLessThanOrEqual(64 * MIB)
+        expect(styleOf(tile)).toBe('')
+        expect(FakeImage.all).toHaveLength(0)
+
+        again.dispatchEvent(new Event('load'))
+        await settle()
+        expect(FakeImage.all.map((image) => image.src)).toEqual([URL_OF('assets/a.webp')])
+        FakeImage.all[0].fire('load')
+        await settle()
+        expect(styleOf(tile)).toBe(STYLE_OF('assets/a.webp'))
+        loader.dispose()
+    })
+
     test('T12 an error still applies the style and gives the slot back', async () => {
         seed(FOUR, 20)
         const targets = FOUR.map(mountTile)

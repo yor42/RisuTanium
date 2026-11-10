@@ -8,7 +8,7 @@
     import { tick, onDestroy, untrack } from 'svelte';
     import Chat from "./Chat.svelte";
     import { DBState } from 'src/ts/stores.svelte';
-    import { getCharImage } from "../../ts/characters";
+    import { useCharImageLookups } from "../../ts/media/charImageLookups";
     import { chatProcessStage, doingChat } from "../../ts/process/index.svelte";
     import { firstMessageIndexOf, firstMessageOf, nextFirstMessageIndex } from "../../ts/process/firstMessage";
     import { findCharacterbyId, livePersona, sleep } from "../../ts/util";
@@ -66,6 +66,8 @@
         customStyle?: string;
     }
 
+    // The first-message icon is read through a hold that lasts as long as this screen.
+    const lookups = useCharImageLookups()
     let openMenu = $state(false)
     let loadPages = $state(getInitialChatLoadPages(DBState.db))
     // Stage A (A-lite) of the chat-list-window plan: bounds loadPages back to
@@ -945,7 +947,7 @@
                         name={DBState.db.characters[$selectedCharID].name}
                         message={firstMessageOf(DBState.db.characters[$selectedCharID], DBState.db.characters[$selectedCharID].chats[DBState.db.characters[$selectedCharID].chatPage])}
                         role='char'
-                        img={getCharImage(DBState.db.characters[$selectedCharID].image, 'css')}
+                        img={lookups.get('firstMessage', DBState.db.characters[$selectedCharID].image, 'css')}
                         idx={-1}
                         altGreeting={DBState.db.characters[$selectedCharID].alternateGreetings.length > 0}
                         largePortrait={DBState.db.characters[$selectedCharID].largePortrait}

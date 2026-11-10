@@ -8,7 +8,7 @@
     
     import { DBState } from 'src/ts/stores.svelte';
     import { currentPresetOf } from 'src/ts/storage/currentPreset';
-    import { getCharImage } from '../../ts/characters';
+    import { useCharImageLookups } from '../../ts/media/charImageLookups';
     import { isHiddenSystemCharacter } from '../../ts/hiddenCharacters';
     import { ParseMarkdown } from '../../ts/parser/parser.svelte';
     import BarIcon from '../SideBars/BarIcon.svelte';
@@ -36,6 +36,9 @@
     import { translateStackTrace } from "../../ts/sourcemap";
     import { getDetailedOSLabel, getFallbackOSLabel, getRisuEnvironmentLabel } from "src/ts/platform";
     import versionData from "../../../version.json";
+
+    // One hold per character row of the picker; a row gives it back when it leaves the viewport, the alert when it closes.
+    const lookups = useCharImageLookups();
 
     let showDetails = $state(false);
     let translatedStackTrace = $state('');
@@ -463,7 +466,7 @@
                         {#if char.type !== 'group' && !char.trashTime && !isHiddenSystemCharacter(char)}
                             {@const imgPath = char.image}
                             {@const isVisible = visibleSelectChars.has(i)}
-                            {@const avatarStyle = isVisible ? getCharImage(imgPath, 'thumbcss') : ''}
+                            {@const avatarStyle = lookups.getIf('char:' + i, isVisible, imgPath, 'thumbcss', '')}
                             <div use:nearViewport={{ onChange: (v, node) => {
                                 if (v) { visibleSelectChars.set(i, node) } else if (visibleSelectChars.get(i) === node) { visibleSelectChars.delete(i) }
                             } }}>
