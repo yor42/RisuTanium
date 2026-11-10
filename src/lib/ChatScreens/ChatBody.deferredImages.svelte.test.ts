@@ -95,7 +95,7 @@ import { addMetadataToElement, trimMarkdown } from 'src/ts/parser/parser.svelte'
 import {
     DEFERRED_IMAGE_PLACEHOLDER_SRC, DEFERRED_IMAGE_SRC_ATTRIBUTE, androidAssetSizeVerdict, rememberWholeReadUrl, resetAssetUrlGateForTest,
 } from 'src/ts/storage/assetUrlGate'
-import { resetDeferredImagesForTest } from './deferredAssetImages'
+import { createDeferredImageLoader, holdWarmAsks, resetDeferredImagesForTest } from './deferredAssetImages'
 import ChatBody from './ChatBody.svelte'
 
 const MIB = 1024 * 1024
@@ -408,5 +408,111 @@ describe('the wrapper binds after the markup is shown', () => {
 
         expect(body.target.querySelector('img')?.getAttribute('src')).toBe(URL_OF('one'))
         expect(body.target.querySelector(`[${DEFERRED_IMAGE_SRC_ATTRIBUTE}]`)).toBeNull()
+    })
+})
+
+describe('a warm hold while the body is parsed', () => {
+    /** Reports an element only when a test says so, so an observed image stays unrequested. */
+    class HeldObserver {
+        static instances: HeldObserver[] = []
+        observed = new Set<Element>()
+        constructor(private callback: IntersectionObserverCallback) {
+            HeldObserver.instances.push(this)
+        }
+        observe(element: Element) { this.observed.add(element) }
+        unobserve(element: Element) { this.observed.delete(element) }
+        disconnect() { this.observed.clear() }
+        fire(element: Element) {
+            this.callback([{ target: element, isIntersecting: true }] as never, this as never)
+        }
+    }
+    Object.defineProperty(HeldObserver.prototype, 'scrollMargin', { get: () => '' })
+
+    const SOURCE_PROPS = baseProps(undefined)
+
+    /** Reads `one` once so that its URL is warm: a cold body reaches the queue through the auto-reporting observer. */
+    async function warmOne() {
+        await seed('one', 9)
+        const first = mountBody()
+        await answerParse(0, assetImage('one'))
+        await loadAll(first.target)
+        await first.unmountBody()
+    }
+
+    /** A loader made before any hold with a warm URL of its own: it asks at once while no hold is active, and observes while one is. */
+    async function makeGateProbe() {
+        await seed('gate', 9)
+        const probe = createDeferredImageLoader()
+        const root = document.createElement('div')
+        document.body.appendChild(root)
+        const probeNode = () => {
+            const img = document.createElement('img')
+            img.setAttribute(DEFERRED_IMAGE_SRC_ATTRIBUTE, URL_OF('gate'))
+            img.setAttribute('src', DEFERRED_IMAGE_PLACEHOLDER_SRC)
+            img.setAttribute('loading', 'lazy')
+            return img
+        }
+        const first = probeNode()
+        root.replaceChildren(first)
+        probe.scan(root)
+        HeldObserver.instances[HeldObserver.instances.length - 1].fire(first)
+        await flushAll()
+        first.dispatchEvent(new Event('load'))
+        await flushAll()
+        return async () => {
+            const node = probeNode()
+            root.replaceChildren(node)
+            probe.scan(root)
+            await flushAll()
+            const asked = node.getAttribute('src') === URL_OF('gate')
+            if (asked) {
+                node.dispatchEvent(new Event('load'))
+                await flushAll()
+            }
+            root.replaceChildren()
+            return !asked
+        }
+    }
+
+    function mountHarness() {
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const instance = mount(ChatBodyBoundRootHarness, { target, props: { bodyProps: SOURCE_PROPS as never } }) as Record<string, unknown>
+        mounted.push({ target, instance })
+        flushSync()
+        return target
+    }
+
+    test('CB1: a blank scan while the parse is pending does not end the hold; the image decided after the parse is observed, not asked', async () => {
+        await warmOne()
+        clearChatBodyRenderCache()
+        vi.stubGlobal('IntersectionObserver', HeldObserver)
+        const gateIsOn = await makeGateProbe()
+        const release = holdWarmAsks()
+        const target = mountHarness()
+        await flushAll()
+        release()
+        expect(await gateIsOn()).toBe(true)
+
+        await answerParse(h.parses.length - 1, assetImage('one'))
+        const img = target.querySelector('img')
+        expect(img?.getAttribute('src')).toBe(DEFERRED_IMAGE_PLACEHOLDER_SRC)
+        expect(img?.hasAttribute(DEFERRED_IMAGE_SRC_ATTRIBUTE)).toBe(true)
+        expect(HeldObserver.instances.some((observer) => img !== null && observer.observed.has(img))).toBe(true)
+        expect(await gateIsOn()).toBe(false)
+    })
+
+    test('CB2: a body shown from the render cache scans rendered markup at mount, so the hold ends at its release without a parse', async () => {
+        await warmOne()
+        vi.stubGlobal('IntersectionObserver', HeldObserver)
+        const gateIsOn = await makeGateProbe()
+        const release = holdWarmAsks()
+        const target = mountHarness()
+        await flushAll()
+        expect(target.querySelectorAll('img')).toHaveLength(1)
+        expect(await gateIsOn()).toBe(true)
+
+        release()
+        expect(await gateIsOn()).toBe(false)
     })
 })
