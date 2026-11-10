@@ -53,7 +53,7 @@ The app saves the Playground chat like a normal character, with the name "assist
 
 A character of your own with the name "assistant" is not affected. Fork difference: Upstream shows the Playground character in the character grid.
 
-You cannot restore the Playground character from the trash tab. So when you open the Playground, the app also takes its character out of the trash if it was ever in the trash. Suppose a Playground character is in the trash, and you never open the Playground again. Then the trash clean-up still deletes the character permanently. This happens on the first start more than 3 days after the character went to the trash.
+You cannot restore the Playground character from the trash tab. So when you open the Playground, the app also takes its character out of the trash if it was ever in the trash. Suppose a Playground character is in the trash, and you never open the Playground again. Then the trash clean-up still deletes the character permanently. This happens on the first start more than 30 days after the character went to the trash.
 <!-- src/ts/hiddenCharacters.ts; src/ts/playgroundChat.ts selectPlaygroundChat; src/lib/Others/GridCatalog.svelte formatChars; src/ts/hotkey.ts characterCycle; src/ts/bootstrap.ts checkNewFormat (trash purge) -->
 
 <!-- src/lib/Playground/PlaygroundMenu.svelte:26-50; src/ts/process/index.svelte.ts:438-467; src/lib/ChatScreens/DefaultChatScreen.svelte:762-774; src/lib/ChatScreens/Chat.svelte:996-1004,1230-1240 -->
