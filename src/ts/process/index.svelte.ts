@@ -12,7 +12,7 @@ import { loadLoreBookV3Prompt } from "./lorebook.svelte";
 import { findCharacterbyId, getUserName, getAuthorNoteDefaultText, getPersonaPrompt, isLastCharPunctuation, trimUntilPunctuation, parseToggleSyntax, prebuiltAssetCommand } from "../util";
 import { requestChatData } from "./request/request";
 import { stableDiff } from "./stableDiff";
-import { processScript, processScriptFull, risuChatParser, type MessageLocator, type MessageRef } from "./scripts";
+import { processScript, processScriptFull, risuChatParser, type MessageLocator, type MessageRef, type PromptModuleScripts } from "./scripts";
 import { exampleMessage } from "./exampleMessages";
 import { firstMessageOf } from "./firstMessage";
 import { sayTTS } from "./tts";
@@ -1463,11 +1463,14 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     // and the `@@` branches find the message again by identity should the chat
     // shift.
     const messageLocator = createMessageLocator()
+    // The module regex list is fixed at the first pass of this build: a change to
+    // the module selection during the loop applies from the next send.
+    const moduleScripts: PromptModuleScripts = {}
     for(const msg of ms){
         const chatIndex = msChatIndexes[index]
         let formatedChat = (await processScriptFull(nowChatroom,risuChatParser(msg.data, {chara: currentChar, role: msg.role, subject, promptView: promptViewAt(promptView, chatIndex)}), 'editprocess', chatIndex, {
             chatRole: msg.role,
-        }, undefined, subject, {message: msg, index: chatIndex, locator: messageLocator}, promptView)).data
+        }, undefined, subject, {message: msg, index: chatIndex, locator: messageLocator}, promptView, 'use', moduleScripts)).data
         let name = ''
         if(msg.role === 'char'){
             if(msg.saying){
@@ -1503,8 +1506,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
 
         let multimodal:MultiModal[] = []
-        const modelinfo = getModelInfo(DBState.db.aiModel)
         if(inlays.length > 0){
+            const modelinfo = getModelInfo(DBState.db.aiModel)
             for(const inlay of inlays){
                 const inlayName = inlay.replace('{{inlayed::', '').replace('{{inlay::', '').replace('}}', '').replace('{{inlayeddata::', '')
                 const inlayData = await getInlayAsset(inlayName)

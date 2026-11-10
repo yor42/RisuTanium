@@ -12,13 +12,14 @@ import { writable } from 'svelte/store'
 import type { Chat, character, customscript, Message } from '../../storage/database.svelte'
 import type { OriginContext, RunSubject } from '../chatOrigin'
 import type { PromptView } from '../../cbs'
-import type { ScriptMode } from '../scripts'
+import type { PromptModuleScripts, ScriptMode } from '../scripts'
 import type { ChatPhaseRingHandle } from '../chatPhaseRing'
 
 const h = vi.hoisted(() => ({
     db: {} as Record<string, unknown>,
     measure: true,
     modulesThrow: false,
+    moduleDerivations: 0,
 }))
 
 vi.mock('../memory/measureFlag', () => ({
@@ -46,6 +47,7 @@ vi.mock('../../parser/parser.svelte', () => ({
 vi.mock('../modules', () => ({
     getModuleAssets: () => [],
     getModuleRegexScripts: () => {
+        h.moduleDerivations++
         if (h.modulesThrow) {
             throw new Error('module scripts unavailable')
         }
@@ -100,6 +102,7 @@ const call = (scripts: customscript[], data: string, mode: ScriptMode) =>
 beforeEach(() => {
     h.measure = true
     h.modulesThrow = false
+    h.moduleDerivations = 0
     resetScriptCache()
     h.db = { presetRegex: [], dynamicAssets: false, characters: [] }
     vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -196,6 +199,32 @@ describe('processScriptFull chat phase entries', () => {
         const entry = ringOf()!.snapshot()[0]
         expect(entry.kind === 'script' && entry.cache).toBe('aborted')
     })
+})
+
+describe('processScriptFull module regex list holder', () => {
+    const callWith = (holder: PromptModuleScripts | undefined) =>
+        processScriptFull(charWith([]), 'text', 'editprocess', -1, {}, undefined, undefined, undefined, undefined, 'use', holder)
+
+    for (const measure of [true, false]) {
+        test(`one holder derives the list once over two calls (measurement ${measure ? 'on' : 'off'})`, async () => {
+            h.measure = measure
+            const holder: PromptModuleScripts = {}
+            await callWith(holder)
+            await callWith(holder)
+            expect(h.moduleDerivations).toBe(1)
+            expect(holder.list).toEqual([])
+        })
+
+        test(`guard: calls without a holder derive per call, and each holder derives for itself (measurement ${measure ? 'on' : 'off'})`, async () => {
+            h.measure = measure
+            await callWith(undefined)
+            await callWith(undefined)
+            expect(h.moduleDerivations).toBe(2)
+            await callWith({})
+            await callWith({})
+            expect(h.moduleDerivations).toBe(4)
+        })
+    }
 })
 
 /**

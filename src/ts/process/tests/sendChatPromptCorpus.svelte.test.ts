@@ -281,6 +281,13 @@ vi.mock(import('../transformers'), () => ({
     runImageEmbedding: vi.fn(),
 }) as unknown as typeof import('../transformers'))
 
+// The real derivation, wrapped so a test can count how often a send derives the
+// module reference list.
+vi.mock(import('../moduleRefList'), async (importOriginal) => {
+    const actual = await importOriginal()
+    return { ...actual, moduleRefIdsOf: vi.fn(actual.moduleRefIdsOf) }
+})
+
 // Real: `../../util`, `../scripts`, `../scriptings` (wasmoon), `../modules`,
 // `../lorebook.svelte`, `../../parser/parser.svelte`, `../../parser/chatML`,
 // `../../cbs`, `../../parser/chatVar.svelte`, `../chatOrigin`,
@@ -721,6 +728,16 @@ const PINNED_PROMPT: string[][] = [
     ['system', 'NOTE[Alice/PersonaA/VAR-A]'],
 ]
 
+/** The chat messages and note of the send over `moduleMessages`, with module A's two scripts applied. */
+const PINNED_PROMPT_MODULES: string[][] = [
+    ['user', '@@repeat_back end MODA-PersonaA'],
+    ['assistant', 'hi @@repeat_back end'],
+    ['user', 'qTAGa'],
+    ['assistant', 'c MODA-PersonaATAGb'],
+    ['user', 'MODA-PersonaA last'],
+    ['system', 'NOTE[Alice/PersonaA/VAR-A]'],
+]
+
 function dumpWorld(): { A: character, B: character } {
     return world({
         messagesA: [
@@ -839,5 +856,106 @@ describe('guard: parsing through the send\'s subject changes nothing while the s
         handle.end()
 
         expect(differing).toEqual(['{{char}}', '{{user}}', '{{getvar::who}}'])
+    })
+})
+
+describe('the module regex list of one prompt build', () => {
+    /** Alternating macro-free messages that end on a user message. */
+    const plainMessages = (n: number): Message[] => (
+        Array.from({ length: n }, (_, i) => msg((n - 1 - i) % 2 === 0 ? 'user' : 'char', `m${i}`))
+    )
+    const MODULE_R = {
+        id: 'mod-R', name: 'mod-R',
+        regex: [{ comment: 'r', in: 'plain', out: 'REPLACED', type: 'editprocess', ableFlag: false }],
+    }
+    const MODULE_A_REGEX = {
+        ...MODULE_A,
+        regex: [
+            { comment: 'a', in: 'plain', out: 'MODA-{{user}}', type: 'editprocess', ableFlag: false },
+            { comment: 'rb', in: 'TAG\\w+', out: '@@repeat_back end', type: 'editprocess', ableFlag: false },
+        ],
+    }
+    const MODULE_B_REGEX = {
+        ...MODULE_B,
+        regex: [{ comment: 'b', in: 'plain', out: 'MODB', type: 'editprocess', ableFlag: false }],
+    }
+    const moduleMessages = (): Message[] => [
+        msg('user', 'TAGa plain'), msg('char', 'hi TAGb'), msg('user', 'q'), msg('char', 'c plain'), msg('user', 'plain last'),
+    ]
+    const sixPlain = (): Message[] => Array.from({ length: 6 }, (_, i) => msg(i % 2 === 0 ? 'user' : 'char', 'plain'))
+    const regexEntries = (r: Captured): string[] => r.prompt.map((e) => e.content).filter((c) => c === 'plain' || c === 'REPLACED')
+
+    async function refIdCalls(): Promise<number> {
+        const { moduleRefIdsOf } = await import('../moduleRefList')
+        return vi.mocked(moduleRefIdsOf).mock.calls.length
+    }
+
+    async function derivationsOfSend(n: number): Promise<number> {
+        const { A } = world({ messagesA: plainMessages(n) })
+        const before = await refIdCalls()
+        const result = await sendWith(A, A.chats[0], 0)
+        expect(result.outcome).toBe(true)
+        return (await refIdCalls()) - before
+    }
+
+    test('T3-1: a send derives the module reference list as often for 40 messages as for 5', async () => {
+        const few = await derivationsOfSend(5)
+        const many = await derivationsOfSend(40)
+        expect(few).toBeGreaterThan(0)
+        expect(many - few).toBe(0)
+    })
+
+    test('T3-2: a module selected by an editprocess hook during the loop applies from the next send', async () => {
+        const { pluginV2 } = await import('../../plugins/plugins.svelte')
+        const { A } = world({ messagesA: sixPlain(), db: { modules: [MODULE_A, MODULE_B, MODULE_R] } })
+        let calls = 0
+        // Call 1 is the pre-loop pass and call 2 is the first message's pass, which fills the list. The flip has to come
+        // at call 3 or later, after that derivation, or the first message would already see the new module.
+        const hook = async (): Promise<null> => {
+            calls++
+            if (calls === 3) {
+                A.chats[0].modules.push('mod-R')
+            }
+            return null
+        }
+        pluginV2.editprocess.add(hook)
+        let first: Captured
+        try {
+            first = await sendWith(A, A.chats[0], 0)
+        } finally {
+            pluginV2.editprocess.delete(hook)
+        }
+        expect(first.outcome).toBe(true)
+        expect(calls).toBeGreaterThanOrEqual(3)
+        expect(regexEntries(first)).toEqual(Array(6).fill('plain'))
+
+        A.chats[0].message.length = 6
+        const second = await sendWith(A, A.chats[0], 0)
+        expect(second.outcome).toBe(true)
+        expect(regexEntries(second)).toEqual(Array(6).fill('REPLACED'))
+    })
+
+    test('T3-5: guard: the prompt shows each module script of the send\'s chat, with the selection on either chat', async () => {
+        const run = async (selection: number): Promise<string[][]> => {
+            const { A } = world({ messagesA: moduleMessages(), db: { modules: [MODULE_A_REGEX, MODULE_B_REGEX] } })
+            const result = await sendWith(A, A.chats[0], selection)
+            expect(result.outcome).toBe(true)
+            return result.prompt.map((e) => [e.role, e.content])
+        }
+        const onA = await run(0)
+        const onB = await run(1)
+        expect(onB).toEqual(onA)
+        expect(JSON.stringify(onA)).not.toContain('MODB')
+        expect(onA.slice(-PINNED_PROMPT_MODULES.length)).toEqual(PINNED_PROMPT_MODULES)
+    })
+
+    test('T3-6: guard: a module added between two sends applies to the second, not the first', async () => {
+        const { A } = world({ messagesA: sixPlain(), db: { modules: [MODULE_A, MODULE_B, MODULE_R] } })
+        const first = await sendWith(A, A.chats[0], 0)
+        A.chats[0].message.length = 6
+        A.chats[0].modules.push('mod-R')
+        const second = await sendWith(A, A.chats[0], 0)
+        expect(regexEntries(first)).toEqual(Array(6).fill('plain'))
+        expect(regexEntries(second)).toEqual(Array(6).fill('REPLACED'))
     })
 })
