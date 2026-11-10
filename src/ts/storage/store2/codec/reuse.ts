@@ -1,7 +1,10 @@
-import { encodeUnit, newManifestKey, newShardKey, newUnitKey, readRef, refOfFrame, UNIT_TYPE, type KeyEnv, type UnitType } from '../format'
+import {
+    canonicalJson, encodeFrame, encodeUnit, newManifestKey, newShardKey, newUnitKey, readRef, refOfFrame, UNIT_TYPE, type KeyEnv, type Ref, type UnitType,
+} from '../format'
 import { Sha256 } from '../../../assetHash'
 import { MEASURE } from '../../../process/memory/measureFlag'
 import type { KeyMint } from '../commit'
+import type { ChunkMemo } from './chunkMemo'
 import {
     CodecError, isWrittenUnit,
     type EncodedTree, type EncodedUnit, type PreviousEncoding, type ReusableUnit, type SplitRecorder, type WrittenUnit,
@@ -68,6 +71,11 @@ export interface UnitSinkOptions {
     reuseOnly?: boolean
     /** Measurement builds only: counts each put and the time its framing and digest take. */
     split?: SplitRecorder
+    /**
+     * The saved text of earlier chunks (see `ChunkMemo`). `putReusing` skips framing and digesting a chunk whose payload
+     * is the remembered one and whose previous unit carries the remembered digest. Absent, every chunk is framed.
+     */
+    chunkMemo?: ChunkMemo
 }
 
 /**
@@ -85,6 +93,7 @@ export class UnitSink {
     private readonly claimedKeys = new Set<string>()
     private readonly reuseOnly: boolean
     private declare readonly split: SplitRecorder | undefined
+    private readonly chunkMemo: ChunkMemo | undefined
 
     constructor(
         private readonly env: KeyEnv,
@@ -93,6 +102,7 @@ export class UnitSink {
         options: UnitSinkOptions = {},
     ) {
         this.reuseOnly = options.reuseOnly === true
+        this.chunkMemo = options.chunkMemo
         if (MEASURE && options.split !== undefined) {
             this.split = options.split
         }
@@ -134,14 +144,35 @@ export class UnitSink {
         return this.record(identity, type, this.freshKey(kind), bytes, digest, false)
     }
 
-    /** Reuse an unchanged unit at its identity or another position in the same family. */
-    putReusing(identity: string, type: UnitType, body: object, family: string): EncodedUnit {
+    /**
+     * Reuse an unchanged unit at its identity or another position in the same family. `prewritten` carries canonical
+     * strings the caller already holds for containers of `body` (see `canonicalJson`); the bytes are the same either way.
+     */
+    putReusing(identity: string, type: UnitType, body: object, family: string, prewritten?: ReadonlyMap<object, string>): EncodedUnit {
         const started = MEASURE && this.split !== undefined ? this.split.now() : 0
-        const bytes = encodeUnit(type, body)
-        const framed = MEASURE && this.split !== undefined ? this.split.now() : 0
-        const digest = unitDigest(bytes)
-        if (MEASURE && this.split !== undefined) {
-            this.split.splitUnitCost(framed - started, this.split.now() - framed)
+        let bytes: Uint8Array
+        let digest: string
+        const memo = this.chunkMemo
+        if (memo === undefined) {
+            bytes = encodeUnit(type, body, prewritten)
+            digest = this.digestFramed(started, bytes)
+        } else {
+            // The frame is a pure function of the type and the payload text, so a remembered payload has a known digest.
+            const payload = canonicalJson(body, prewritten)
+            const remembered = memo.digestOf(identity, type, payload)
+            const previousDigest = this.previous?.units.get(identity)?.digest
+            if (remembered !== undefined && remembered === previousDigest) {
+                const reused = this.reuseAt(identity, type)
+                if (reused !== null) {
+                    if (MEASURE && this.split !== undefined) {
+                        this.split.splitUnitCost(this.split.now() - started, 0)
+                    }
+                    return reused
+                }
+            }
+            bytes = encodeFrame(type, new TextEncoder().encode(payload))
+            digest = this.digestFramed(started, bytes)
+            memo.remember(identity, type, payload, digest)
         }
         const prior = this.previous?.units.get(identity)
         if (prior !== undefined && !this.claimedKeys.has(prior.key) && isSameUnit(prior, type, bytes, digest)) {
@@ -179,7 +210,39 @@ export class UnitSink {
         return this.record(identity, type, this.freshKey(kind), bytes, digest, false)
     }
 
+    /**
+     * The previous encoding's unit at `identity` as a reused unit, without framing or digesting anything. The caller
+     * vouches that the unit `put` would build is that unit (same type, same canonical frame); this checks only what the
+     * sink itself holds: the prior has the type and a digest, kept bytes (a byte-for-byte comparison this path cannot
+     * make) are absent, and its key is not yet claimed. Null means the caller goes on to `put`. It never mints a key, so
+     * a reuse-only sink may use it too.
+     */
+    reuseAt(identity: string, type: UnitType): EncodedUnit | null {
+        const prior = this.previous?.units.get(identity)
+        if (prior === undefined || prior.type !== type || prior.digest === undefined || prior.bytes !== undefined
+            || this.claimedKeys.has(prior.key)) {
+            return null
+        }
+        return this.recordUnit(identity, type, prior.key, [prior.ref[0], prior.ref[1], prior.ref[2]], prior.digest, null)
+    }
+
+    /** The digest of `bytes`; a measurement build records the framing time since `started` and the digest time. */
+    private digestFramed(started: number, bytes: Uint8Array): string {
+        const framed = MEASURE && this.split !== undefined ? this.split.now() : 0
+        const digest = unitDigest(bytes)
+        if (MEASURE && this.split !== undefined) {
+            this.split.splitUnitCost(framed - started, this.split.now() - framed)
+        }
+        return digest
+    }
+
     private record(identity: string, type: UnitType, key: string, bytes: Uint8Array, digest: string, reused: boolean): EncodedUnit {
+        return this.recordUnit(identity, type, key, refOfFrame(key, bytes), digest, reused ? null : bytes)
+    }
+
+    /** `bytes` null records a reused unit. */
+    private recordUnit(identity: string, type: UnitType, key: string, ref: Ref, digest: string, bytes: Uint8Array | null): EncodedUnit {
+        const reused = bytes === null
         if (this.identities.has(identity)) {
             throw new CodecError('input', `The unit identity "${identity}" is used twice in one encode.`)
         }
@@ -188,7 +251,6 @@ export class UnitSink {
         if (reused) {
             this.claimedKeys.add(key)
         }
-        const ref = refOfFrame(key, bytes)
         // A reused unit drops the frame here: the tree outlives the pass's `put` calls and must not pin it.
         const unit: EncodedUnit = reused
             ? { identity, key, type, ref, digest, reused: true }

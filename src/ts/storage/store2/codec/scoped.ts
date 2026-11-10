@@ -12,6 +12,7 @@ import {
     checkDatabase, emitCharacter, encodeCharacter, encodeFront, encodeModuleSetYielding, Encoder, finishTree, IDENTITY,
     normalizeCharacter, normalizeCharacterFromPlain, type ModuleSet, type NormalizedCharacter,
 } from './split'
+import { noteShardDigest } from './shard'
 import { isColdStub } from './stub'
 import {
     CodecAssembleError, CodecError, CodecInputError, isWrittenUnit, SharedChaIdStubError, StubRefusedError, type EncodedTree,
@@ -104,17 +105,121 @@ function carriedModuleSet(previous: PreviousEncoding | null): ModuleSet {
     return { body, ref: [unit.ref[0], unit.ref[1], unit.ref[2]], buckets: previous.objects?.manifest?.fixed.moduleBuckets ?? null }
 }
 
+/** The fields of a slot that `overlayStub` reads, as `overlayLeavesEntry` reads them. */
+export interface OverlaidFields {
+    name?: unknown
+    creatorNotes?: unknown
+    image?: unknown
+    lastInteraction?: unknown
+    trashTime?: unknown
+    type?: unknown
+    characters?: unknown
+    tags?: unknown
+    creator?: unknown
+    additionalData?: { creator?: unknown } | null
+}
+
+/**
+ * What `stubDescription` gave an entry's slot notes. The description is a pure function of the notes string, so the
+ * memo is keyed by the entry only to bound its lifetime and holds the notes it was made from: a different value
+ * computes again. The comparison with the entry's own `creatorNotes` is never memoised.
+ */
+const stubDescriptions = new WeakMap<ShardEntry, { notes: string, description: string }>()
+
+function descriptionOf(entry: ShardEntry, notes: unknown): string {
+    if (typeof notes !== 'string') {
+        return stubDescription(notes)
+    }
+    const memo = stubDescriptions.get(entry)
+    if (memo !== undefined && Object.is(memo.notes, notes)) {
+        return memo.description
+    }
+    const description = stubDescription(notes)
+    stubDescriptions.set(entry, { notes, description })
+    return description
+}
+
+/** The strings of `live` in order (holes and non-strings dropped, as `stubTags` and a group's member filter do) are exactly `held`. */
+function sameStringList(live: unknown, held: unknown): boolean {
+    if (!Array.isArray(held)) {
+        return false
+    }
+    let next = 0
+    if (Array.isArray(live)) {
+        for (let index = 0; index < live.length; index++) {
+            const item: unknown = live[index]
+            if (typeof item === 'string') {
+                if (next >= held.length || !Object.is(item, held[next])) {
+                    return false
+                }
+                next++
+            }
+        }
+    }
+    return next === held.length
+}
+
+/**
+ * Whether `overlayStub(before, slot)` equals `before` under `sameJsonValue`, read in place. The overlay leaves the
+ * fields it does not touch as the same references, so only its own fields can differ. An overlaid key that `before`
+ * lacks adds a key (different), and a key the overlay deletes that `before` holds removes one (different).
+ * INVARIANT: this inlines the fields `overlayStub` reads, and `overlayStub` and the idle net's `netScan` both decide
+ * through it. A field added to the overlay must be added here, or a change to it would read as clean; the `netScan`
+ * drift test perturbs every key of `stubFromEntry`.
+ */
+export function overlayLeavesEntry(slot: OverlaidFields, before: ShardEntry): boolean {
+    const held = (key: keyof ShardEntry): boolean => Object.hasOwn(before, key)
+    const name = slot.name
+    if (typeof name === 'string' ? !(held('name') && Object.is(name, before.name)) : !held('name')) {
+        return false
+    }
+    if (!(held('creatorNotes') && Object.is(descriptionOf(before, slot.creatorNotes), before.creatorNotes))) {
+        return false
+    }
+    const image = slot.image
+    if (typeof image === 'string' ? !(held('image') && Object.is(image, before.image)) : held('image')) {
+        return false
+    }
+    const lastInteraction = slot.lastInteraction
+    if (typeof lastInteraction === 'number' ? !(held('lastInteraction') && Object.is(lastInteraction, before.lastInteraction)) : held('lastInteraction')) {
+        return false
+    }
+    const trashTime = slot.trashTime
+    if (typeof trashTime === 'number' ? !(held('trashTime') && Object.is(trashTime, before.trashTime)) : held('trashTime')) {
+        return false
+    }
+    if (slot.type === 'group') {
+        return held('characters') && sameStringList(slot.characters, before.characters)
+    }
+    if (!(held('tags') && sameStringList(slot.tags, before.tags))) {
+        return false
+    }
+    const edited = slot.additionalData?.creator
+    let creator = ''
+    if (typeof edited === 'string' && edited.length > 0) {
+        creator = edited
+    } else if (typeof slot.creator === 'string') {
+        creator = slot.creator
+    }
+    return held('creator') && Object.is(creator, before.creator)
+}
+
 /**
  * A stub's shard entry: the previous entry with the fields a stub may change
  * since then. The stub's own `chatPage` and `firstMsgIndex` are placeholders
  * and its chats are a pointer, so the previous entry's values stay; no body of
- * the stub is encoded.
+ * the stub is encoded. An overlay that changes nothing returns `before` itself, so
+ * a shard of unchanged stubs keeps its entry objects and `finishTree` can take the
+ * shard's previous unit.
  *
- * INVARIANT: the idle net's `netScan` (saveEncoder.ts) reads this overlay's fields in place instead of calling it.
- * A field added, removed or normalised differently here must change `netScan`'s `overlayLeavesEntry` alike, or a
- * change to that field reads as clean there.
+ * INVARIANT: `overlayLeavesEntry` decides whether the overlay changes anything and the idle net's `netScan`
+ * (saveEncoder.ts) decides through it as well. A field added, removed or normalised differently here must change
+ * `overlayLeavesEntry` alike, or a change to that field reads as clean.
  */
 export function overlayStub(before: ShardEntry, slot: Slot): ShardEntry {
+    if (overlayLeavesEntry(slot, before)) {
+        return before
+    }
     const entry: ShardEntry = { ...before }
     entry.name = typeof slot.name === 'string' ? slot.name : before.name
     entry.creatorNotes = stubDescription(slot.creatorNotes)
@@ -491,6 +596,10 @@ function rekey(tree: EncodedTree, parents: ReadonlyMap<string, ParentBody>, cont
             rewritten.set(unit.identity, body)
             bytes = encodeUnit(parent.type, body)
             digest = unitDigest(bytes)
+            if (unit.type === UNIT_TYPE.shard) {
+                // The rewritten body is what the next pass sees as the previous shard; its digest is the one just taken.
+                noteShardDigest(body as Shard, digest)
+            }
         }
         const next: WrittenUnit = { ...unit, key, bytes, digest, ref: refOfFrame(key, bytes) }
         finalRefs.set(tailOfKey(unit.key), next.ref)
@@ -600,6 +709,7 @@ class ReuseOnlyEncoder extends Encoder {
         return this.checking.put(identity, type, body, kind)
     }
 
+    // The bytes do not depend on the prewritten strings, so the check path ignores them.
     override putReusing(identity: string, type: UnitType, body: object, _family: string): EncodedUnit {
         return this.checking.put(identity, type, body)
     }

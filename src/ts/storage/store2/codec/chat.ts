@@ -105,37 +105,65 @@ export function sealChunks(messages: readonly JsonObject[], cap: number = CHUNK_
     return chunks
 }
 
-/** A stable message stamp when present, otherwise the message's canonical content. */
-export function anchorKey(message: JsonObject): string {
-    return typeof message.chatId === 'string' && message.chatId.length > 0 ? message.chatId : canonicalJson(message)
+/**
+ * A stable message stamp when present, otherwise the message's canonical content. `json` is the message's canonical
+ * string when the caller already holds it, and is used only where the content is the key.
+ */
+export function anchorKey(message: JsonObject, json?: string): string {
+    return typeof message.chatId === 'string' && message.chatId.length > 0 ? message.chatId : json ?? canonicalJson(message)
 }
 
 /** Seal at size limits and at anchors after the minimum size. Every message stays whole. */
 export function sealAnchored(messages: readonly JsonObject[], p: { min: number, target: number, max: number }): JsonObject[][] {
+    return sealAnchoredJson(messages, p).groups
+}
+
+/** The groups `sealAnchored` forms, with each group's messages' canonical strings (parallel arrays). */
+function sealAnchoredJson(messages: readonly JsonObject[], p: { min: number, target: number, max: number }): { groups: JsonObject[][], json: string[][] } {
     const chunks: JsonObject[][] = []
+    const chunksJson: string[][] = []
     let current: JsonObject[] = []
+    let currentJson: string[] = []
     let size = 2
     let sealNext = false
     for (const message of messages) {
-        const length = utf8Length(canonicalJson(message))
+        const text = canonicalJson(message)
+        const length = utf8Length(text)
         if (current.length > 0 && size + length + 1 > p.max) {
             chunks.push(current)
+            chunksJson.push(currentJson)
             current = []
+            currentJson = []
             size = 2
             sealNext = false
         } else if (sealNext) {
             chunks.push(current)
+            chunksJson.push(currentJson)
             current = []
+            currentJson = []
             size = 2
             sealNext = false
         }
         size += length + (current.length > 0 ? 1 : 0)
         current.push(message)
+        currentJson.push(text)
         sealNext = p.target > 0 && size >= p.min
-            && crc32(new TextEncoder().encode(anchorKey(message))) * p.target < length * 0x1_0000_0000
+            && crc32(new TextEncoder().encode(anchorKey(message, text))) * p.target < length * 0x1_0000_0000
     }
     chunks.push(current)
-    return chunks
+    chunksJson.push(currentJson)
+    return { groups: chunks, json: chunksJson }
+}
+
+/** Per chunk of a split chat, its messages' canonical strings; a body that did not come from `splitChat` has none. */
+const messageJsonOf = new WeakMap<ChatChunk, readonly string[]>()
+
+/**
+ * The canonical strings of `chunk.msgs`, in order, kept from the split that built the chunk. Valid while the chunk's
+ * messages are not changed, which holds until the encode that follows the split has framed the chunk.
+ */
+export function chunkMessageJson(chunk: ChatChunk): readonly string[] | undefined {
+    return messageJsonOf.get(chunk)
 }
 
 export interface SplitChat {
@@ -147,7 +175,7 @@ export interface SplitChat {
 
 /** The chat core, chunk bodies and alternatives units of `chat` (a plain JSON object). `st` is written in the last chunk only. */
 export function splitChat(chat: JsonObject, where: string, cap?: number): SplitChat {
-    const groups = sealAnchored(chatMessages(chat, where), {
+    const { groups, json } = sealAnchoredJson(chatMessages(chat, where), {
         min: MESSAGE_CHUNKING.min, target: MESSAGE_CHUNKING.target, max: cap ?? MESSAGE_CHUNKING.max,
     })
     const st = tailState(chat)
@@ -156,6 +184,7 @@ export function splitChat(chat: JsonObject, where: string, cap?: number): SplitC
         if (index === groups.length - 1 && st !== undefined) {
             body.st = st
         }
+        messageJsonOf.set(body, json[index])
         return body
     })
     return { core: { v: 1, f: chatCoreFields(chat) }, chunks, alt: splitAlt(chat, cap ?? CHUNK_CAP_BYTES) }

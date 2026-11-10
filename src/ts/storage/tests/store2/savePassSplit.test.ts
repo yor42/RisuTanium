@@ -108,12 +108,17 @@ function comparedOf(split: SavePassSplit): ComparedSplit {
  */
 function expectationOf(tree: EncodedTree, characterCount: number, modulesScoped: boolean): Expectation {
     const puts: Record<Section, number> = { front: 0, modules: 0, characters: 0, finish: 0 }
-    const shardPuts = tree.units.filter(unit => unit.identity.startsWith('shard:')).length
+    // In these fixtures the previous encoding comes from the encoder, so a reused shard is taken without being framed and is no put.
+    const isTakenShard = (unit: EncodedTree['units'][number]): boolean => unit.reused && unit.identity.startsWith('shard:')
+    const shardPuts = tree.units.filter(unit => unit.identity.startsWith('shard:') && !isTakenShard(unit)).length
     // Each bucket of the module index is one more put in the module section, beyond the root the base cost already holds.
     const bucketPuts = tree.units.filter(unit => unit.identity.startsWith(MODULE_BUCKET_IDENTITY)).length
     const perCharacter = new Map<string, number>()
     const perModule = new Map<string, { puts: number, derived: boolean }>()
     for (const unit of tree.units) {
+        if (isTakenShard(unit)) {
+            continue
+        }
         puts[groupOf(unit.identity)]++
         const owner = entityOfCharacterUnit(unit.identity)
         if (owner !== null) {
@@ -234,7 +239,7 @@ describe('the split of a module tick', () => {
             expect(split.sections[name].unitEncodeMs).toBe(expected.puts[name])
             expect(split.sections[name].unitDigestMs).toBe(expected.puts[name])
         }
-        expect(split.puts).toBe(independent.units.length)
+        expect(split.puts).toBe(independent.units.filter(unit => !(unit.reused && unit.identity.startsWith('shard:'))).length)
 
         expect(split.moduleCount).toBe((db.modules as unknown[]).length)
         expect(comparedOf(split)).toEqual(expected.split)
