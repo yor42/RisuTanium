@@ -48,6 +48,7 @@ import { ShowRealmFrameStore } from 'src/ts/stores.svelte'
 const LINK = '```\nhttps://realm.risuai.net/character/abc123\n```'
 let instance: unknown
 let target: HTMLElement
+let frameWindow: { postMessage: ReturnType<typeof vi.fn> }
 
 function mountAccepted(): void {
     localStorage.setItem(UPSTREAM_AGREEMENT_KEY, 'accepted')
@@ -57,11 +58,16 @@ function mountAccepted(): void {
     instance = mount(RealmFrame, { target, props: {} })
     flushSync()
     const iframe = target.querySelector('iframe')
-    Object.defineProperty(iframe, 'contentWindow', { configurable: true, value: { postMessage: vi.fn() } })
+    frameWindow = { postMessage: vi.fn() }
+    Object.defineProperty(iframe, 'contentWindow', { configurable: true, value: frameWindow })
 }
 
 async function uploadSucceeds(): Promise<void> {
-    window.dispatchEvent(new MessageEvent('message', { data: { type: 'success', id: 'abc123' } }))
+    window.dispatchEvent(new MessageEvent('message', {
+        data: { type: 'success', id: 'abc123' },
+        origin: 'https://realm.risuai.net',
+        source: frameWindow as unknown as Window,
+    }))
     await Promise.resolve()
     flushSync()
 }
