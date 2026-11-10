@@ -3,6 +3,7 @@
     import { language } from '../../lang'
     import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
     import type { StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
+    import { createGreetingRowKeys } from '../../ts/studio/greetingRowKeys'
     import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
     import { beginOwnerVisit, ensureStudioHistory, getStudioHistoryService, historyBannerText, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
     import { DBState } from '../../ts/stores.svelte'
@@ -42,6 +43,10 @@
     const hidden = $derived(live === undefined || live.license === 'private' || view?.restricted === true)
     const editable = $derived(view?.editable === true)
     const greetings = $derived(live?.alternateGreetings ?? [])
+    // Rows keep their DOM node while their text survives a list change, so a delete, undo, redo or restore
+    // mounts or removes one row instead of rewriting every row after it.
+    const rowKeys = createGreetingRowKeys()
+    const greetingRows = $derived(rowKeys.rows(greetings))
     const banner = $derived(view ? historyBannerText(view.banner) : null)
     // The history service could not be loaded at all: the fields stay read-only (there is no write path) until a retry builds it.
     const loadFailed = $derived(!service && studioHistoryLoadFailed())
@@ -185,7 +190,7 @@
             {#if greetings.length === 0}
                 <p class="text-sm text-textcolor2">{language.studioGreetingsEmpty}</p>
             {/if}
-            {#each greetings as greeting, index (index)}
+            {#each greetingRows as row, index (row.id)}
                 <div class="flex items-start gap-2" data-part="studio-greeting-row">
                     <textarea
                         data-part="studio-greeting-input"
@@ -194,7 +199,7 @@
                         aria-label={`${language.altGreet} ${index + 1}`}
                         readonly={!editable}
                         aria-busy={editable ? undefined : 'true'}
-                        value={greeting}
+                        value={row.text}
                         onfocus={onFocus}
                         onblur={onBlur}
                         oninput={(event) => onGreetingInput(index, event)}
