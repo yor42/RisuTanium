@@ -13,6 +13,9 @@ import {
  * Every URL has at most one read record at a time, shared by all loaders and all nodes of that URL. The record is made
  * when the URL is first asked for, holds the URL's single queue grant, and gives the real `src` to each node attached to
  * it. A real `src` is set only while the URL's record holds a grant; settling a record writes none.
+ *
+ * While a list opens (`holdWarmAsks`) a warm node is observed rather than asked by its box, because the box is not final
+ * yet and an ask cannot be withdrawn.
  */
 
 /** Chromium's own lazy-load distance for an image. */
@@ -25,8 +28,8 @@ const BAND_PX = 1250
 const SETTLE_TIMEOUT_MS = 30_000
 
 /**
- * URLs whose read finished lately: a new node for one of them asks at once when it is within the observer margin; it
- * still waits for the slot.
+ * URLs whose read finished lately: a new node for one of them asks at once when it is within the observer margin, except
+ * while a warm hold is active; it still waits for the slot.
  */
 const WARM_URL_LIMIT = 32
 
@@ -40,16 +43,93 @@ interface ReadRecord {
     listeners: Map<HTMLImageElement, { load: () => void, error: () => void }>
 }
 
+/**
+ * How long a warm hold may last. MC-1279 allows one to two seconds: long enough for a slow chat-body parse after a
+ * list opens, short enough that a lost signal cannot keep streaming rows on the observer path.
+ */
+const WARM_HOLD_TIMEOUT_MS = 1500
+
+/**
+ * A list that is opening. Its warm images are observed instead of tested by box until `listDone` is set and every loader
+ * created while the hold was active (`waiting`) has made its first scan of rendered markup, or until `timer` fires.
+ */
+interface WarmHold {
+    listDone: boolean
+    waiting: Set<object>
+    timer: ReturnType<typeof setTimeout> | undefined
+}
+
 const warm = new Set<string>()
+// Holds that have not ended yet. While any is active a warm node with no live record is observed, not asked by its box.
+const activeHolds = new Set<WarmHold>()
 // URL -> its record, from the moment it is asked for until it settles. Module-wide, like the queue behind it.
 const records = new Map<string, ReadRecord>()
 // Node -> the record it is attached to. Invariant: an attached node is in `nodes` of its record.
 let attachedTo = new WeakMap<HTMLImageElement, ReadRecord>()
 
-/** Test seam: forgets the app-wide queue, the warm URLs and every read record. */
+const WARM_HOLD_MARK_PREFIX = 'risu:warm-hold:'
+
+/** Diagnostic only: the take and end times of a hold, for a device run to read. */
+function markWarmHold(name: string): void {
+    if (typeof performance !== 'undefined' && typeof performance.mark === 'function') {
+        performance.mark(WARM_HOLD_MARK_PREFIX + name)
+    }
+}
+
+/** Removes the marks of earlier holds, so they do not accumulate; the marks of the latest open stay readable until the next one. */
+function clearWarmHoldMarks(): void {
+    if (typeof performance !== 'undefined' && typeof performance.clearMarks === 'function') {
+        for (const name of ['take', 'end:settled', 'end:timeout']) {
+            performance.clearMarks(WARM_HOLD_MARK_PREFIX + name)
+        }
+    }
+}
+
+/** Ends a hold once, whether it settled or ran out of time; a hold that already ended is left alone. */
+function endHold(hold: WarmHold, reason: 'settled' | 'timeout'): void {
+    if (!activeHolds.delete(hold)) {
+        return
+    }
+    clearTimeout(hold.timer)
+    markWarmHold('end:' + reason)
+}
+
+function maybeEndHold(hold: WarmHold): void {
+    if (hold.listDone && hold.waiting.size === 0) {
+        endHold(hold, 'settled')
+    }
+}
+
+/**
+ * Starts a hold for a list that is opening and returns its release, which says the list has placed its rows. The hold
+ * ends when that is said and every loader created meanwhile has scanned rendered markup, or `WARM_HOLD_TIMEOUT_MS`
+ * after it began. Release is idempotent and does nothing once the hold has ended or the test seam has reset it.
+ */
+export function holdWarmAsks(): () => void {
+    if (activeHolds.size === 0) {
+        clearWarmHoldMarks()
+    }
+    const hold: WarmHold = { listDone: false, waiting: new Set(), timer: undefined }
+    hold.timer = setTimeout(() => endHold(hold, 'timeout'), WARM_HOLD_TIMEOUT_MS)
+    activeHolds.add(hold)
+    markWarmHold('take')
+    return () => {
+        if (!activeHolds.has(hold)) {
+            return
+        }
+        hold.listDone = true
+        maybeEndHold(hold)
+    }
+}
+
+/** Test seam: forgets the app-wide queue, the warm URLs, every warm hold and every read record. */
 export function resetDeferredImagesForTest(): void {
     resetAndroidWholeReadQueueForTest()
     warm.clear()
+    for (const hold of activeHolds) {
+        clearTimeout(hold.timer)
+    }
+    activeHolds.clear()
     for (const record of records.values()) {
         clearTimeout(record.timer)
         removeListeners(record)
@@ -149,8 +229,12 @@ function liveRecordFor(url: string): ReadRecord | undefined {
 }
 
 export interface DeferredImageLoader {
-    /** Routes every deferred image under `root`; a call replaces what the previous call observed. */
-    scan(root: ParentNode): void
+    /**
+     * Routes every deferred image under `root`; a call replaces what the previous call observed. `rendered` says the
+     * markup is the body's real render: the loader's first such scan, or its disposal, ends its wait in every warm hold
+     * that was active when it was created.
+     */
+    scan(root: ParentNode, rendered?: boolean): void
     /** Sets `url` as the source of `img`, deferring the load when the file is large and the queue is in use. */
     assign(img: HTMLImageElement, url: string): void
     /** Stops observing. Reads already granted run to their end and release their slot. */
@@ -161,6 +245,20 @@ export function createDeferredImageLoader(): DeferredImageLoader {
     let observer: IntersectionObserver | null = null
     // Nodes this loader's observer is watching; dropped with the observer at each scan.
     let observed = new WeakSet<HTMLImageElement>()
+    // Joins the wait of every hold active now; a hold taken later does not wait for this loader.
+    const waitToken = {}
+    for (const hold of activeHolds) {
+        hold.waiting.add(waitToken)
+    }
+
+    /** This loader no longer holds back any warm hold: it has scanned rendered markup, or it is gone. */
+    const markRendered = () => {
+        for (const hold of [...activeHolds]) {
+            if (hold.waiting.delete(waitToken)) {
+                maybeEndHold(hold)
+            }
+        }
+    }
 
     const observe = (img: HTMLImageElement) => {
         ensureObserver().observe(img)
@@ -243,7 +341,10 @@ export function createDeferredImageLoader(): DeferredImageLoader {
         promoteUnder(record, img)
     }
 
-    /** `near` is the band test the caller already made for a warm node; without it the test is made here. */
+    /**
+     * `near` is the band test the caller already made for a warm node; without it the test is made here. While a warm
+     * hold is active the box is not trusted and the node is observed, whatever `near` says.
+     */
     const route = (img: HTMLImageElement, near?: boolean) => {
         const url = img.getAttribute(DEFERRED_IMAGE_SRC_ATTRIBUTE)
         if (!url) {
@@ -256,7 +357,7 @@ export function createDeferredImageLoader(): DeferredImageLoader {
             }
             return
         }
-        if (warm.has(url) && (near ?? inBand(img))) {
+        if (warm.has(url) && activeHolds.size === 0 && (near ?? inBand(img))) {
             ask(img, url)
             return
         }
@@ -289,26 +390,35 @@ export function createDeferredImageLoader(): DeferredImageLoader {
     }
 
     return {
-        scan(root) {
+        scan(root, rendered = true) {
             const images = Array.from(root.querySelectorAll<HTMLImageElement>(`img[${DEFERRED_IMAGE_SRC_ATTRIBUTE}]`))
             if (!observerSupported()) {
                 for (const img of images) {
                     promote(img, img.getAttribute(DEFERRED_IMAGE_SRC_ATTRIBUTE) ?? '')
                 }
+                if (rendered) {
+                    markRendered()
+                }
                 return
             }
             ensureObserver().disconnect()
             observed = new WeakSet()
-            // The band rects are all read before any attribute is written, so one scan costs one layout.
+            // The band rects are all read before any attribute is written, so one scan costs one layout. A held scan
+            // reads none: the box it would read is not final.
             const near = new Map<HTMLImageElement, boolean>()
-            for (const img of images) {
-                const url = img.getAttribute(DEFERRED_IMAGE_SRC_ATTRIBUTE)
-                if (url && warm.has(url) && attachedTo.get(img) === undefined && liveRecordFor(url) === undefined) {
-                    near.set(img, inBand(img))
+            if (activeHolds.size === 0) {
+                for (const img of images) {
+                    const url = img.getAttribute(DEFERRED_IMAGE_SRC_ATTRIBUTE)
+                    if (url && warm.has(url) && attachedTo.get(img) === undefined && liveRecordFor(url) === undefined) {
+                        near.set(img, inBand(img))
+                    }
                 }
             }
             for (const img of images) {
                 route(img, near.get(img))
+            }
+            if (rendered) {
+                markRendered()
             }
         },
         assign(img, url) {
@@ -343,6 +453,7 @@ export function createDeferredImageLoader(): DeferredImageLoader {
             observer?.disconnect()
             observer = null
             observed = new WeakSet()
+            markRendered()
         },
     }
 }

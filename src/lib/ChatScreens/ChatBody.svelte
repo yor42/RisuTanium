@@ -507,7 +507,9 @@
         if(!root){
             return
         }
-        untrack(() => loader.scan(root))
+        // Only a scan of rendered markup ends this body's wait in an open warm hold; a blank or spinner scan does not.
+        const rendered = display.kind === 'html'
+        untrack(() => loader.scan(root, rendered))
     })
 </script>
 

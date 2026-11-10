@@ -11,6 +11,7 @@
     import { treeView } from 'src/ts/process/chatTreeView';
     import { chatSurface, isChatSurfaceInstalled, onSurfaceHiding } from './chatSurface.svelte';
     import { scopeOf } from './chatBodyRenderCache';
+    import { holdWarmAsks } from './deferredAssetImages';
 
     const getCurrentChatRoomId = () => {
         const charId = get(selectedCharID);
@@ -328,8 +329,49 @@
 
     };
 
+    // The warm hold of the list that is opening (see holdWarmAsks): taken before the new rows are mounted, so their loaders wait for it.
+    // Plain variables on purpose: nothing renders from them, and the effect that writes them must not depend on them.
+    let openWarmHold: (() => void) | null = null;
+    let openWarmFrame: number | null = null;
+    const requestFrame = (callback: () => void): number => typeof requestAnimationFrame === 'function' ? requestAnimationFrame(callback) : window.setTimeout(callback, 16);
+    const cancelFrame = (id: number): void => { if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id); else window.clearTimeout(id); };
+    function cancelOpenWarmFrame(): void {
+        if(openWarmFrame !== null){
+            cancelFrame(openWarmFrame);
+            openWarmFrame = null;
+        }
+    }
+    function takeOpenWarmHold(): void {
+        // The pending hold keeps living through the loaders that wait on it; only its list signal is given here.
+        openWarmHold?.();
+        cancelOpenWarmFrame();
+        openWarmHold = holdWarmAsks();
+    }
+    // Releases `which` and empties the slot only when `which` is still the pending hold, so a stale signal cannot end a newer one.
+    function releaseOpenWarmHold(which: (() => void) | null): void {
+        which?.();
+        if(which !== null && openWarmHold === which){
+            openWarmHold = null;
+        }
+    }
+    // Gives the list signal of `forHold` after `frames` animation frames. A newer take cancels the pending frame, and its own
+    // hold is released by its own call, so a stale frame cannot end a newer hold.
+    function releaseAfterFrames(forHold: (() => void) | null, frames: number): void {
+        openWarmFrame = requestFrame(() => {
+            openWarmFrame = null;
+            if(frames > 1){
+                releaseAfterFrames(forHold, frames - 1);
+            }
+            else{
+                releaseOpenWarmHold(forHold);
+            }
+        });
+    }
+
     onDestroy(() => {
         console.log('Unmounting Chats');
+        cancelOpenWarmFrame();
+        releaseOpenWarmHold(openWarmHold);
         hashes.clear();
         hashMemo.clear();
         mountInstances.forEach((inst) => {
@@ -404,6 +446,20 @@
         }
         const wasAtBottom = newCharReply ? checkIfAtBottom() : false;
         const scrollHost = chatBody?.parentElement ?? null;
+        // Opening a list holds its warm images: a rebuild return (re-entry) and a room change (including the first run that
+        // has a room). The take comes before any row is unmounted or mounted, so every new row's loader waits for it. A rebuild
+        // gives its list signal one frame after the scroll restore, a room change two frames after the rows mount. A stream
+        // chunk or an append in the same room takes nothing.
+        let signalFrames = 0;
+        if(rebuilding){
+            takeOpenWarmHold();
+            signalFrames = 1;
+        }
+        else if(!isSameChat && currentChatRoomId !== null){
+            takeOpenWarmHold();
+            signalFrames = 2;
+        }
+        const signalHold = signalFrames > 0 ? openWarmHold : null;
         if(rebuilding){
             lastRebuildEpoch = chatSurface.rebuildEpoch;
             unmountAllRows();
@@ -411,6 +467,9 @@
         updateChatBody()
         if(restoreTop !== null && scrollHost){
             scrollHost.scrollTop = restoreTop;
+        }
+        if(signalHold !== null){
+            releaseAfterFrames(signalHold, signalFrames);
         }
 
         // Scroll-to-bottom after a window reset that actually lowered

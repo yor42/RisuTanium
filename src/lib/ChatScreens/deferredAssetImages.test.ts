@@ -20,7 +20,7 @@ vi.mock('../../ts/storage/tauriByteTransport', () => ({
 import {
     DEFERRED_IMAGE_PLACEHOLDER_SRC, DEFERRED_IMAGE_SRC_ATTRIBUTE, androidAssetSizeVerdict, rememberWholeReadUrl, resetAssetUrlGateForTest,
 } from '../../ts/storage/assetUrlGate'
-import { createDeferredImageLoader, resetDeferredImagesForTest } from './deferredAssetImages'
+import { createDeferredImageLoader, holdWarmAsks, resetDeferredImagesForTest } from './deferredAssetImages'
 
 const MIB = 1024 * 1024
 const URL_OF = (key: string) => 'http://asset.localhost/' + key
@@ -985,5 +985,337 @@ describe('assign', () => {
         loader.assign(big, URL_OF('big'))
         expect(big.getAttribute('src')).toBe(URL_OF('big'))
         expect(big.hasAttribute(DEFERRED_IMAGE_SRC_ATTRIBUTE)).toBe(false)
+    })
+})
+
+describe('while a list opens', () => {
+    // A loader made before any hold, with a warm URL of its own, tells whether the hold gate is on. It never joins a
+    // hold's waiting set, so it does not keep any hold alive.
+    let probe: Loader
+    let probeRoot: HTMLElement
+
+    async function makeGateProbe() {
+        probe = createDeferredImageLoader()
+        probeRoot = document.createElement('div')
+        document.body.appendChild(probeRoot)
+        await warmUp(probe, 'gate', 10)
+    }
+
+    /** The gate is on when a warm node without a box is observed rather than asked. An asked node is loaded again to free its slot. */
+    async function gateIsOn(): Promise<boolean> {
+        const node = await deferredImage('gate', 10)
+        probeRoot.replaceChildren(node)
+        probe.scan(probeRoot)
+        await settleMicrotasks()
+        const asked = isReal(node, 'gate')
+        if (asked) {
+            fireLoad(node)
+            await settleMicrotasks()
+        }
+        node.remove()
+        return !asked
+    }
+
+    function newRoot(): HTMLElement {
+        const root = document.createElement('div')
+        document.body.appendChild(root)
+        return root
+    }
+
+    const lastObserver = () => FakeObserver.instances[FakeObserver.instances.length - 1]
+
+    test('T1 a warm node near the viewport is observed, not asked, and stays unrequested when it is far at the release', async () => {
+        const loader = createDeferredImageLoader()
+        await warmUp(loader, 'a', 10)
+        const near = await deferredImage('a', 10)
+        placeAt(near, 100, 200)
+        const release = holdWarmAsks()
+        loader.scan(document.body)
+        await settleMicrotasks()
+
+        expect(isDeferred(near)).toBe(true)
+        expect(lastObserver().observed.has(near)).toBe(true)
+
+        placeAt(near, window.innerHeight + 5000, window.innerHeight + 5100)
+        release()
+        await settleMicrotasks()
+        expect(isDeferred(near)).toBe(true)
+        expect(lastObserver().observed.has(near)).toBe(true)
+        expect(await slotIsFree(loader)).toBe(true)
+    })
+
+    test('T1 assign: a warm URL assigned near the viewport is observed, not asked', async () => {
+        const loader = createDeferredImageLoader()
+        await warmUp(loader, 'a', 10)
+        const img = bareImage()
+        placeAt(img, 100, 200)
+        const release = holdWarmAsks()
+        loader.assign(img, URL_OF('a'))
+        await settleMicrotasks()
+
+        expect(isDeferred(img)).toBe(true)
+        expect(lastObserver().observed.has(img)).toBe(true)
+        release()
+    })
+
+    test('T2 a near warm node under a hold is real at its first report, and the release changes nothing', async () => {
+        const loader = createDeferredImageLoader()
+        await warmUp(loader, 'a', 10)
+        const near = await deferredImage('a', 10)
+        placeAt(near, 100, 200)
+        const release = holdWarmAsks()
+        loader.scan(document.body)
+        await settleMicrotasks()
+        expect(isDeferred(near)).toBe(true)
+        expect(lastObserver().observed.has(near)).toBe(true)
+
+        await reach(near)
+        expect(isReal(near, 'a')).toBe(true)
+        expect(exposure()).toBe(10)
+        release()
+        await settleMicrotasks()
+        expect(isReal(near, 'a')).toBe(true)
+        expect(exposure()).toBe(10)
+    })
+
+    test('T3: a hold with no waiting loader ends at its release', async () => {
+        await makeGateProbe()
+        const release = holdWarmAsks()
+        expect(await gateIsOn()).toBe(true)
+        release()
+        expect(await gateIsOn()).toBe(false)
+    })
+
+    test('T4 a released hold whose loader never scans ends at 1500 ms and not before', async () => {
+        vi.useFakeTimers()
+        await makeGateProbe()
+        const release = holdWarmAsks()
+        createDeferredImageLoader()
+        release()
+
+        await vi.advanceTimersByTimeAsync(1499)
+        expect(await gateIsOn()).toBe(true)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(await gateIsOn()).toBe(false)
+        expect(await slotIsFree(createDeferredImageLoader())).toBe(true)
+    })
+
+    test('T5 holds overlap: a second release of one hold does not end the other, and the other ends at its own release', async () => {
+        await makeGateProbe()
+        const releaseA = holdWarmAsks()
+        const releaseB = holdWarmAsks()
+
+        releaseA()
+        releaseA()
+        expect(await gateIsOn()).toBe(true)
+        releaseB()
+        expect(await gateIsOn()).toBe(false)
+    })
+
+    test('T5 order: releasing the later hold first leaves the earlier one active until its own release', async () => {
+        await makeGateProbe()
+        const releaseA = holdWarmAsks()
+        const releaseB = holdWarmAsks()
+
+        releaseB()
+        expect(await gateIsOn()).toBe(true)
+        releaseA()
+        expect(await gateIsOn()).toBe(false)
+    })
+
+    test('T6 G: under a hold the queue still admits one record per URL within 64 MiB and in order', async () => {
+        const loader = createDeferredImageLoader()
+        await warmUp(loader, 'a', 60)
+        const v = await deferredImage('v', 60)
+        loader.scan(document.body)
+        await reach(v)
+        expect(isReal(v, 'v')).toBe(true)
+
+        const release = holdWarmAsks()
+        const x = await deferredImage('a', 60)
+        const y = await deferredImage('a', 60)
+        const c = await deferredImage('c', 60)
+        placeAt(x, 100, 200)
+        placeAt(y, 300, 400)
+        loader.scan(document.body)
+        await settleMicrotasks()
+        expect(isDeferred(x)).toBe(true)
+        expect(isDeferred(y)).toBe(true)
+
+        await reach(x)
+        await reach(y)
+        expect(isDeferred(x)).toBe(true)
+        expect(isDeferred(y)).toBe(true)
+        expect(exposure()).toBeLessThanOrEqual(64)
+
+        fireLoad(v)
+        await settleMicrotasks()
+        expect(isReal(x, 'a')).toBe(true)
+        expect(isReal(y, 'a')).toBe(true)
+        expect(exposure()).toBeLessThanOrEqual(64)
+
+        await reach(c)
+        expect(isDeferred(c)).toBe(true)
+        fireLoad(x)
+        fireLoad(y)
+        await settleMicrotasks()
+        expect(isReal(c, 'c')).toBe(true)
+        expect(exposure()).toBeLessThanOrEqual(64)
+        release()
+    })
+
+    test('T7 G: under a hold a node of a URL that is being read is real at once, and a cold node still asks only when reported', async () => {
+        const loader = createDeferredImageLoader()
+        const first = await deferredImage('v', 10)
+        loader.scan(document.body)
+        await reach(first)
+        expect(isReal(first, 'v')).toBe(true)
+
+        const release = holdWarmAsks()
+        const again = await deferredImage('v', 10)
+        const cold = await deferredImage('w', 10)
+        loader.scan(document.body)
+        await settleMicrotasks()
+        expect(isReal(again, 'v')).toBe(true)
+        expect(isDeferred(cold)).toBe(true)
+        expect(lastObserver().observed.has(cold)).toBe(true)
+
+        await reach(cold)
+        expect(isReal(cold, 'w')).toBe(true)
+        release()
+    })
+
+    test('T8: a reset ends every hold and its timer, and an old release cannot end a later hold', async () => {
+        vi.useFakeTimers()
+        await makeGateProbe()
+        const releaseOld = holdWarmAsks()
+        resetDeferredImagesForTest()
+        await makeGateProbe()
+        expect(await gateIsOn()).toBe(false)
+
+        await vi.advanceTimersByTimeAsync(1000)
+        holdWarmAsks()
+        expect(await gateIsOn()).toBe(true)
+        releaseOld()
+        await vi.advanceTimersByTimeAsync(500)
+        expect(await gateIsOn()).toBe(true)
+        await vi.advanceTimersByTimeAsync(999)
+        expect(await gateIsOn()).toBe(true)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(await gateIsOn()).toBe(false)
+    })
+
+    test('T9 a loader made during a hold keeps it open after the release until it scans rendered markup', async () => {
+        await makeGateProbe()
+        const release = holdWarmAsks()
+        const loader = createDeferredImageLoader()
+        const root = newRoot()
+        release()
+        expect(await gateIsOn()).toBe(true)
+
+        loader.scan(root, false)
+        expect(await gateIsOn()).toBe(true)
+        loader.scan(root, true)
+        expect(await gateIsOn()).toBe(false)
+    })
+
+    test('T9 default: a scan without the argument counts as rendered', async () => {
+        await makeGateProbe()
+        const release = holdWarmAsks()
+        const loader = createDeferredImageLoader()
+        release()
+        expect(await gateIsOn()).toBe(true)
+
+        loader.scan(newRoot())
+        expect(await gateIsOn()).toBe(false)
+    })
+
+    test('T9 unsupported: a scan where the WebView cannot scroll-margin an observer still counts as rendered', async () => {
+        await makeGateProbe()
+        const release = holdWarmAsks()
+        const loader = createDeferredImageLoader()
+        release()
+        expect(await gateIsOn()).toBe(true)
+
+        class NoMargin {
+            observe() {}
+            unobserve() {}
+            disconnect() {}
+        }
+        vi.stubGlobal('IntersectionObserver', NoMargin)
+        loader.scan(newRoot(), false)
+        loader.scan(newRoot(), true)
+        vi.stubGlobal('IntersectionObserver', FakeObserver)
+        expect(await gateIsOn()).toBe(false)
+    })
+
+    test('T10 a loader disposed during a hold stops holding it open', async () => {
+        await makeGateProbe()
+        const release = holdWarmAsks()
+        const loader = createDeferredImageLoader()
+        release()
+        expect(await gateIsOn()).toBe(true)
+
+        loader.dispose()
+        expect(await gateIsOn()).toBe(false)
+    })
+
+    test('T11 a rendered scan alone does not end a hold whose list has not signalled', async () => {
+        await makeGateProbe()
+        const release = holdWarmAsks()
+        const loader = createDeferredImageLoader()
+        loader.scan(newRoot(), true)
+        expect(await gateIsOn()).toBe(true)
+
+        release()
+        expect(await gateIsOn()).toBe(false)
+    })
+
+    test('T12: a loader made before the hold does not keep it open', async () => {
+        const early = createDeferredImageLoader()
+        await makeGateProbe()
+        const release = holdWarmAsks()
+        expect(await gateIsOn()).toBe(true)
+
+        release()
+        expect(await gateIsOn()).toBe(false)
+        early.dispose()
+    })
+
+    test('T13 one loader waits in both of two overlapping holds, and its rendered scan ends both', async () => {
+        await makeGateProbe()
+        const releaseA = holdWarmAsks()
+        const releaseB = holdWarmAsks()
+        const loader = createDeferredImageLoader()
+        const root = newRoot()
+        releaseA()
+        releaseB()
+        expect(await gateIsOn()).toBe(true)
+
+        loader.scan(root, true)
+        expect(await gateIsOn()).toBe(false)
+    })
+
+    test('T14 a held scan reads no box; the reads resume once the hold has ended', async () => {
+        await makeGateProbe()
+        const loader = createDeferredImageLoader()
+        await warmUp(loader, 'a', 10)
+        const nodes = [await deferredImage('a', 10), await deferredImage('a', 10)]
+        let reads = 0
+        for (const node of nodes) {
+            placeAt(node, 100, 200)
+            const boxOf = node.getBoundingClientRect
+            node.getBoundingClientRect = () => { reads++; return boxOf.call(node) }
+        }
+        const release = holdWarmAsks()
+        loader.scan(document.body)
+        await settleMicrotasks()
+        expect(reads).toBe(0)
+        expect(nodes.every(isDeferred)).toBe(true)
+
+        release()
+        loader.scan(document.body)
+        await settleMicrotasks()
+        expect(reads).toBeGreaterThan(0)
     })
 })

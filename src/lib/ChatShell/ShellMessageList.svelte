@@ -19,6 +19,7 @@
     import { offscreenRowCounts } from '../../ts/chatShell/offscreenRows'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
     import { recordCaughtError } from '../../ts/caughtErrors'
+    import { holdWarmAsks } from '../ChatScreens/deferredAssetImages'
     import { language } from '../../lang'
     import ShellMessage, { type ActionRequest, type CustomizeRequest } from './ShellMessage.svelte'
 
@@ -205,10 +206,32 @@
         renderRows = visibleRows
     })
 
+    // The warm hold of the list that is opening (see holdWarmAsks): taken before the new rows exist, so their loaders wait for it.
+    // Plain variables on purpose: nothing renders from them, and the effects that write them must not depend on them.
+    let openWarmHold: (() => void) | null = null
+    let openWarmFrame: number | null = null
+    function takeOpenWarmHold(): void {
+        // The pending hold keeps living through the loaders that wait on it; only its list signal is given here.
+        openWarmHold?.()
+        if (openWarmFrame !== null) { cancelFrame(openWarmFrame); openWarmFrame = null }
+        openWarmHold = holdWarmAsks()
+    }
+    // Releases `which` and empties the slot only when `which` is still the pending hold, so a stale signal cannot end a newer one.
+    function releaseOpenWarmHold(which: (() => void) | null): void {
+        which?.()
+        if (which !== null && openWarmHold === which) openWarmHold = null
+    }
+    onDestroy(() => {
+        if (openWarmFrame !== null) { cancelFrame(openWarmFrame); openWarmFrame = null }
+        releaseOpenWarmHold(openWarmHold)
+    })
+
     let heldKey: string | undefined
     $effect.pre(() => {
         const key = chatWindowKey(character.chaId, chat)
         untrack(() => {
+            // Every chat the list opens, the first one included, holds its warm images until the rows have placed and rendered.
+            if (key !== heldKey) takeOpenWarmHold()
             // A hold pending across a chat change would commit the old chat's pin against the new chat's rows, so it is dropped before the new window renders.
             // The other chat opens at its newest message, so a window slid in this chat is not carried over.
             if (heldKey !== undefined && key !== heldKey) { hold.cancel(); realign.cancel(); bottom = null }
@@ -233,10 +256,15 @@
             if (next.lowered) windowResetToken += 1
         }
         if (installed && chatSurface.rebuildEpoch !== rebuildEpoch) {
+            // The hold comes before `rebuildEpoch` re-keys the rows, so every remounted row's loader waits for it.
+            takeOpenWarmHold()
             rebuildEpoch = chatSurface.rebuildEpoch
             guiPointer = chatSurface.heldGui
             rowPointers = chatSurface.heldChat
             if (hideOwner === chatWindowKey(character.chaId, chat) && hideTop !== null && host) { host.scrollTop = hideTop; if (!isScrolledToBottom(host)) follower?.release() }
+            // The list signal is one frame after the restore, restored or not; the remounted rows' scans still have to follow.
+            const forHold = openWarmHold
+            openWarmFrame = requestFrame(() => { openWarmFrame = null; releaseOpenWarmHold(forHold) })
             hideTop = null
         } else if (installed) {
             guiPointer = chatSurface.heldGui
@@ -386,13 +414,16 @@
         return host.scrollTop
     }
     function restAtNewest(forRoom: string | null): void {
+        // This pass signals only the hold that was pending when it was asked for; a newer key change owns a newer hold.
+        const forHold = openWarmHold
         void tick().then(() => {
             if (destroyed || room() !== forRoom) return
             const placed = placeAtNewest()
-            if (placed === null || typeof requestAnimationFrame === 'undefined') return
+            if (placed === null || typeof requestAnimationFrame === 'undefined') { releaseOpenWarmHold(forHold); return }
             requestAnimationFrame(() => {
-                if (destroyed || room() !== forRoom || !host || host.scrollTop !== placed) return
-                placeAtNewest()
+                if (destroyed || room() !== forRoom) return
+                if (host && host.scrollTop === placed) placeAtNewest()
+                releaseOpenWarmHold(forHold)
             })
         })
     }
