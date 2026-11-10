@@ -34,6 +34,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 import { createChunkedWriter } from 'src/ts/storage/tauriByteTransport'
 import { sweepAllWriteTemps, WRITE_TEMP_DIRECTORIES } from 'src/ts/storage/tauriAtomicWrite'
+import writeTempDirectories from 'src/ts/storage/tests/writeTempDirectories.json'
 
 const TEMP = 'risu-write-0123456789abcdef.tmp'
 const BYTES = Uint8Array.from([1, 2, 3])
@@ -81,8 +82,8 @@ describe('sweepAllWriteTemps', () => {
         expect(h.fs.files.has('modeldata/openrouter.json')).toBe(true)
     })
 
-    test('names the directories it covers: database, remotes, coldstorage, blocks, assets and modeldata', () => {
-        expect([...WRITE_TEMP_DIRECTORIES].sort()).toEqual(['assets', 'blocks', 'coldstorage', 'database', 'modeldata', 'remotes'])
+    test('names the directories the native startup sweep walks, in its order: the shared fixture', () => {
+        expect([...WRITE_TEMP_DIRECTORIES]).toEqual(writeTempDirectories)
     })
 
     test('keeps every file that is not a write temp, including names that merely look like one', async () => {
@@ -134,7 +135,6 @@ describe('sweepAllWriteTemps', () => {
         const sent = h.desktop.chunk.callsOf('app_fs_sweep_write_temps')
         expect(sent).toHaveLength(1)
         expect(sent[0].args).toEqual({ directories: [...WRITE_TEMP_DIRECTORIES] })
-        expect([...WRITE_TEMP_DIRECTORIES].sort()).toEqual(['assets', 'blocks', 'coldstorage', 'database', 'modeldata', 'remotes'])
         expect(temps()).toEqual([])
     })
 

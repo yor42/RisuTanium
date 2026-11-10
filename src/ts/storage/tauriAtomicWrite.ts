@@ -177,7 +177,7 @@ export async function sweepAtomicWriteTemps(directory: string, options: { recurs
  */
 export const WRITE_TEMP_DIRECTORIES: readonly string[] = ['database', 'remotes', 'coldstorage', 'blocks', 'assets', 'modeldata']
 
-/** The app command that walks and sweeps the AppData root and `WRITE_TEMP_DIRECTORIES` natively (`app_fs::sweep_write_temps`). */
+/** The app command that walks and sweeps the AppData root and `WRITE_TEMP_DIRECTORIES` natively (through `app_fs::StartupSweep::take_or_walk`). */
 export const APP_FS_SWEEP_WRITE_TEMPS_COMMAND = 'app_fs_sweep_write_temps'
 
 /** Logs each failure a native sweep reported; a reply of any other shape is logged as malformed. */
@@ -199,9 +199,11 @@ function logSweepReport(reply: unknown): void {
  *
  * On Android and desktop one native command walks the directories and removes
  * the temps, so the entry count never crosses IPC; only the report of failures
- * comes back. The listing runs natively in that one call and the boot still
- * awaits it. A page without the operating-system plugin walks through the file
- * plugin.
+ * comes back. The native side already started a walk at process start that
+ * keeps every temp this process creates; a call made while that walk runs waits
+ * for it and takes its report. Later calls (a reload, a second page) walk again
+ * and keep the temps newer than the call. A page without the operating-system
+ * plugin walks through the file plugin.
  */
 export async function sweepAllWriteTemps(): Promise<void> {
     if (usesAppFs()) {
