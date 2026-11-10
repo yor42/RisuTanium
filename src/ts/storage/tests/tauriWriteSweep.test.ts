@@ -10,12 +10,27 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 const h = await vi.hoisted(async () => {
     const fs = (await import('src/ts/storage/tests/tauriFsFake')).createFakeTauriFs({ strict: true })
     const desktop = (await import('src/ts/storage/tests/tauriDesktopFake')).createDesktopInvoke(fs)
-    return { fs, desktop }
+    const switches = { noOsPlugin: false, rejectSweepCommand: false }
+    return { fs, desktop, switches }
 })
 
 vi.mock('@tauri-apps/plugin-fs', () => h.fs.module)
-vi.mock('@tauri-apps/plugin-os', () => ({ type: () => 'windows' }))
-vi.mock('@tauri-apps/api/core', () => ({ invoke: h.desktop.invoke }))
+vi.mock('@tauri-apps/plugin-os', () => ({
+    type: () => {
+        if (h.switches.noOsPlugin) {
+            throw new Error('the operating-system plugin is missing')
+        }
+        return 'windows'
+    },
+}))
+vi.mock('@tauri-apps/api/core', () => ({
+    invoke: async (command: string, args?: unknown, options?: unknown) => {
+        if (h.switches.rejectSweepCommand && command === 'app_fs_sweep_write_temps') {
+            throw 'the sweep task failed'
+        }
+        return await (h.desktop.invoke as (command: string, args?: unknown, options?: unknown) => Promise<unknown>)(command, args, options)
+    },
+}))
 
 import { createChunkedWriter } from 'src/ts/storage/tauriByteTransport'
 import { sweepAllWriteTemps, WRITE_TEMP_DIRECTORIES } from 'src/ts/storage/tauriAtomicWrite'
@@ -30,6 +45,8 @@ function temps(): string[] {
 beforeEach(() => {
     h.fs.reset()
     h.desktop.reset()
+    h.switches.noOsPlugin = false
+    h.switches.rejectSweepCommand = false
     vi.restoreAllMocks()
 })
 
@@ -95,13 +112,63 @@ describe('sweepAllWriteTemps', () => {
         expect(h.fs.files.has(`assets/${TEMP}`)).toBe(false)
     })
 
-    test('directories that do not exist yet are skipped without an error and without a listing of them', async () => {
+    test('directories that do not exist yet are skipped without an error and without a failure in the report', async () => {
         const logged = vi.spyOn(console, 'error').mockImplementation(() => { })
 
         await sweepAllWriteTemps()
 
         expect(logged).not.toHaveBeenCalled()
-        expect(h.fs.calls.filter((call) => call.op === 'readDir').map((call) => call.path)).toEqual(['.'])
+        expect(h.desktop.count('app_fs_sweep_write_temps')).toBe(1)
+    })
+
+    test('an app-command page lists nothing through the plugin and sends one sweep command naming the six directories', async () => {
+        const writer = createChunkedWriter('assets/nested/old.bin', { durable: true, chunkBytes: 4 })
+        await writer.write(new Uint8Array(12))
+        const blocks = createChunkedWriter('blocks/gen/c/6162', { durable: true, chunkBytes: 4 })
+        await blocks.write(new Uint8Array(12))
+        expect(temps()).toHaveLength(2)
+
+        await sweepAllWriteTemps()
+
+        expect(h.fs.calls.filter((call) => call.op === 'readDir').map((call) => call.path)).toEqual([])
+        const sent = h.desktop.chunk.callsOf('app_fs_sweep_write_temps')
+        expect(sent).toHaveLength(1)
+        expect(sent[0].args).toEqual({ directories: [...WRITE_TEMP_DIRECTORIES] })
+        expect([...WRITE_TEMP_DIRECTORIES].sort()).toEqual(['assets', 'blocks', 'coldstorage', 'database', 'modeldata', 'remotes'])
+        expect(temps()).toEqual([])
+    })
+
+    test('a rejected sweep command is logged and the sweep resolves', async () => {
+        h.switches.rejectSweepCommand = true
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => { })
+
+        await expect(sweepAllWriteTemps()).resolves.toBeUndefined()
+
+        expect(logged).toHaveBeenCalled()
+    })
+
+    test('a failure the command reports is logged and the sweep resolves', async () => {
+        h.fs.plant(`assets/${TEMP}`, BYTES)
+        h.fs.failRemoves('Access is denied. (os error 5)')
+        const logged = vi.spyOn(console, 'error').mockImplementation(() => { })
+
+        await expect(sweepAllWriteTemps()).resolves.toBeUndefined()
+
+        expect(logged).toHaveBeenCalledTimes(1)
+        expect(String(logged.mock.calls[0][0])).toContain('Access is denied')
+    })
+
+    test('a page without the operating-system plugin sweeps through the plugin walk', async () => {
+        h.switches.noOsPlugin = true
+        h.fs.plant(`assets/nested/${TEMP}`, BYTES)
+        h.fs.plant('assets/keep.png', BYTES)
+
+        await sweepAllWriteTemps()
+
+        expect(h.desktop.count('app_fs_sweep_write_temps')).toBe(0)
+        expect(h.fs.calls.filter((call) => call.op === 'readDir').length).toBeGreaterThan(0)
+        expect(temps()).toEqual([])
+        expect(h.fs.files.has('assets/keep.png')).toBe(true)
     })
 
     test('does not descend into the root: a temp inside an unrelated directory stays', async () => {
