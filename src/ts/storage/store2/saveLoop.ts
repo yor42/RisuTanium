@@ -296,6 +296,11 @@ export interface Store2LoopPort {
      */
     yieldImmediately?(): boolean
     /**
+     * The owners a reply streams into now, by `chaId`. The idle net never verdicts or names such a character while it is
+     * listed and not unsavable; marked passes and the leave flushes still write it. Absent means none.
+     */
+    replyOwners?(): ReadonlySet<string>
+    /**
      * A back-off that a save request ends early and whose request is kept for the wait after the pass, so a frozen page's
      * page timer is not awaited between the request and the commit. Present only where the page can freeze; absent means
      * the back-offs are the plain timed `sleep`.
@@ -604,7 +609,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     /**
      * The last activity: an edit mark the loop has not yet seen taken, a pass that did anything but end unchanged, a
      * peer park ending, a character becoming resident, a sweep, a replaced database object, or a slot that found
-     * something to save. The idle back-off counts from here, and any activity ends it.
+     * something to save. A turn or a full tick held for a reply streaming into its owner also counts, so a streaming
+     * owner keeps the page at the cadence a changing resident keeps it at. The idle back-off counts from here, and any activity ends it.
      */
     let lastActivityAt = port.now()
     /** When the last slot that ran `netScan` ran it; the quiet scan interval counts from here. */
@@ -981,7 +987,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     /**
      * The least time between two module-scope ticks now. It lengthens to the quiet module interval only when a
      * module-scope tick has ended unchanged and nothing has happened since (`lastModuleNetAt` is then later than every
-     * activity, and a tick that wrote or failed bumps the activity clock after its own stamp), and never on a hidden page.
+     * activity, and a tick that wrote or failed bumps the activity clock after its own stamp, as does a tick held for a
+     * reply at its own stamp), and never on a hidden page.
      */
     function moduleIntervalNow(): number {
         if (quiet !== null && port.pageHidden?.() !== true && lastModuleNetAt > lastActivityAt) {
@@ -993,6 +1000,14 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     /** Whether the next tick takes module scope: a sweep owes it, or the module interval has passed. */
     function modulesDueNow(now: number): boolean {
         return moduleSweepOwed || now - lastModuleNetAt >= moduleIntervalNow()
+    }
+
+    /**
+     * Whether a reply is streaming into this character's chat and the idle net must leave it to the marked passes. An
+     * unsavable character is never held: its retry pass keeps its turn.
+     */
+    function heldForReply(chaId: string): boolean {
+        return port.replyOwners?.().has(chaId) === true && !unsavable.has(chaId)
     }
 
     /**
@@ -1025,6 +1040,12 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
         const index = netIndex % residents.length
         netIndex = (index + 1) % residents.length
+        if (heldForReply(residents[index])) {
+            // A reply still streaming into the owner is activity, as a tick naming a changing owner is. The owner's
+            // clean clock stays, and the tick keeps module scope.
+            lastActivityAt = now
+            return { marked: new Set(), modules: false, whole: false, net: { chaId: null, modules: modulesDue }, ...yielding }
+        }
         cleanVerdictAt.delete(residents[index])
         return { marked: new Set(), modules: false, whole: false, net: { chaId: residents[index], modules: modulesDue }, ...yielding }
     }
@@ -1858,6 +1879,18 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 noteSignalVerdict(chaId, 'unknown', null)
             }
             return { kind: 'character', chaId }
+        }
+        // The rotation has advanced, so this held turn is used up as a skip's is. The clean clock is put back, and a reply
+        // still streaming into the owner is activity, as a dirty verdict on a changing owner is.
+        if (heldForReply(chaId)) {
+            if (cleanAt !== undefined) {
+                cleanVerdictAt.set(chaId, cleanAt)
+            }
+            lastActivityAt = port.now()
+            if (MEASURE) {
+                noteNetSlotEnd('replyHeld')
+            }
+            return { kind: 'none' }
         }
         const slot = (db.characters as Array<character | groupChat | null>).find(
             (candidate): candidate is character | groupChat => typeof candidate === 'object' && candidate !== null && !isColdStub(candidate)

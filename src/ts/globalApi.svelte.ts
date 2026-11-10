@@ -29,6 +29,7 @@ import { appendIfAbsent, installCharacterSaveMarks } from "./storage/characterSa
 import { createSaveScheduler } from "./storage/saveScheduler";
 import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
 import type { Store2LoopPort } from "./storage/store2/saveLoop";
+import { activeStreamOwners } from "./process/activeStreams";
 import { takeResidentLoaded } from "./storage/store2/residentLoads";
 import { saveFailureStore } from "./storage/store2/saveFailure";
 import { createLiveCheckGate, type LiveCheckSignal } from "./storage/store2/liveCheckGate";
@@ -2282,6 +2283,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         takeResidentLoaded: takeResidentLoaded,
         pageHidden: () => document.visibilityState === 'hidden',
         yieldImmediately: shouldBypassFrozenPagePaths,
+        replyOwners: activeStreamOwners,
     }
     if (MEASURE) {
         // A measurement build can hold the idle net while an export runs; dirty passes are not affected.

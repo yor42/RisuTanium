@@ -44,6 +44,15 @@ export function isActiveStreamReply(chatId: string | undefined): boolean {
     return false
 }
 
+/** The owners a reply streams into now, by `chaId`; a group's speaking member is not one. */
+export function activeStreamOwners(): Set<string> {
+    const owners = new Set<string>()
+    for (const entry of streams) {
+        owners.add(entry.chaId)
+    }
+    return owners
+}
+
 export function resetActiveStreamsForTest(): void {
     streams.clear()
 }
