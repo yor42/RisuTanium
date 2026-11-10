@@ -41,6 +41,12 @@ describe('2a studio target grammar', () => {
         expect(parseStudioTarget('owner=character:a&owner=chat:b')).toEqual({ owner: { type: 'character', id: 'a' } })
     })
 
+    test('T12: home is a known origin, and an unknown one is still ignored', () => {
+        expect(parseStudioTarget('owner=character:a&from=home')).toEqual({ owner: { type: 'character', id: 'a' }, from: 'home' })
+        expect(parseStudioTarget('from=home')).toEqual({ from: 'home' })
+        expect(parseStudioTarget('owner=character:a&from=homepage')).toEqual({ owner: { type: 'character', id: 'a' } })
+    })
+
     test('malformed input is reported, not guessed', () => {
         for (const input of ['owner=character', 'owner=character:', 'owner=widget:1', 'owner=:1', 'owner=character:a&kind=', 'owner=character:a&item=', 'owner=%E0%A4%A', 'owner=character:a%']) {
             const result = parseStudioTarget(input)

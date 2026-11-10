@@ -1,7 +1,19 @@
+<script lang="ts" module>
+    /**
+     * What the Home library hands the lists so a row can open its character in Studio. Absent in every other
+     * host, where no Studio control exists.
+     */
+    export interface LibraryStudio {
+        /** Whether Studio can open the character at this slot. */
+        available(index: number): boolean;
+        /** Selects the slot and opens Studio on it; `opener` is the control that was pressed. */
+        open(index: number, opener: HTMLElement): void;
+    }
+</script>
 <script lang="ts">
     import { DBState } from 'src/ts/stores.svelte';
     import { addCharacter, changeChar } from "src/ts/characters";
-    import { MessageSquareIcon, PlusIcon } from "@lucide/svelte";
+    import { LayoutPanelLeftIcon, MessageSquareIcon, PlusIcon } from "@lucide/svelte";
     import { coldStubChatCount } from "src/ts/process/coldCharacter";
     import { language } from "src/lang";
     import { createCharacterSearch, type CharacterSearch } from "src/ts/gui/characterSearch.svelte";
@@ -24,11 +36,14 @@
         onpick?: (index: number) => void;
         // Whether the character at this slot is being loaded by a pick: the row is marked busy.
         opening?: (index: number) => boolean;
+        // Present only in the Home library. A row whose character Studio can open then gets an icon button
+        // beside the row button; without it, or for any other row, the markup is unchanged.
+        studio?: LibraryStudio;
     }
 
     const agoFormatter = new Intl.RelativeTimeFormat(navigator.languages, { style: 'short' });
 
-    let {endGrid = () => {}, search, hideTrash = true, results, onpick, opening}: Props = $props();
+    let {endGrid = () => {}, search, hideTrash = true, results, onpick, opening, studio}: Props = $props();
     // Fixed for the component's life: the effect inside createCharacterSearch
     // can only be created during initialisation, and an embedding screen never
     // swaps its result. The result's properties are getters, so reading them in
@@ -99,25 +114,46 @@
         {@const chats = coldStubChatCount(c)}
         {@const agoText = makeAgoText(entry.interaction)}
         {@const busy = opening?.(index) ?? false}
-        <button class="flex p-2 border-t-darkborderc gap-2 w-full rounded-md transition-colors duration-150 hover:bg-darkbutton/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" class:border-t={position !== 1} aria-busy={busy ? 'true' : undefined} onclick={() => {
-            if (onpick) {
-                onpick(index)
-                return
-            }
-            changeChar(index)
-            endGrid()
-        }}>
-            <CharListAvatar src={c.image} {visible} {busy} class="hover:bg-selected transition-colors duration-150" />
-            <div class="flex flex-1 w-full flex-col justify-start items-start text-start">
-                <CharacterNameRow chaId={c.chaId} name={entry.name} />
-                <div class="text-sm text-textcolor2 flex items-center w-full flex-wrap">
-                    <span class="mr-1">{chats}</span>
-                    <MessageSquareIcon size={14} />
-                    <span class="mr-1 ml-1">|</span>
-                    <span>{agoText}</span>
+        {@const studioShown = studio?.available(index) ?? false}
+        <!-- The row button; with a Studio control beside it the divider line moves to the wrapper, so it runs under both. -->
+        {#snippet rowButton(divided: boolean)}
+            <button class="flex p-2 border-t-darkborderc gap-2 w-full rounded-md transition-colors duration-150 hover:bg-darkbutton/40 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected" class:border-t={divided} aria-busy={busy ? 'true' : undefined} onclick={() => {
+                if (onpick) {
+                    onpick(index)
+                    return
+                }
+                changeChar(index)
+                endGrid()
+            }}>
+                <CharListAvatar src={c.image} {visible} {busy} class="hover:bg-selected transition-colors duration-150" />
+                <div class="flex flex-1 w-full flex-col justify-start items-start text-start">
+                    <CharacterNameRow chaId={c.chaId} name={entry.name} />
+                    <div class="text-sm text-textcolor2 flex items-center w-full flex-wrap">
+                        <span class="mr-1">{chats}</span>
+                        <MessageSquareIcon size={14} />
+                        <span class="mr-1 ml-1">|</span>
+                        <span>{agoText}</span>
+                    </div>
                 </div>
+            </button>
+        {/snippet}
+        {#if studio && studioShown}
+            <div class="flex items-center gap-1 border-t-darkborderc" class:border-t={position !== 1}>
+                {@render rowButton(false)}
+                <button
+                    class="shrink-0 p-2 rounded-md text-textcolor2 hover:text-textcolor hover:bg-darkbutton/40 transition-colors duration-150 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-selected"
+                    data-part="library-studio"
+                    data-cha-id={c.chaId}
+                    aria-label={language.studioOpenInNamed(entry.name)}
+                    title={language.studioOpenInNamed(entry.name)}
+                    onclick={(event) => studio?.open(index, event.currentTarget)}
+                >
+                    <LayoutPanelLeftIcon size={18} />
+                </button>
             </div>
-        </button>
+        {:else}
+            {@render rowButton(position !== 1)}
+        {/if}
     {/if}
 {/snippet}
 <div class="flex flex-col items-center w-full h-full">

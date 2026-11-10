@@ -1,8 +1,11 @@
 <script lang="ts">
+    import { tick } from 'svelte'
     import GridCatalog from '../../Others/GridCatalog.svelte'
-    import { OpenRealmStore } from 'src/ts/stores.svelte'
+    import type { LibraryStudio } from '../../Others/CharacterSimpleList.svelte'
+    import { DBState, OpenRealmStore } from 'src/ts/stores.svelte'
     import { backCloseHandler, registerBackHandler } from 'src/ts/backHandlers'
-    import { homeView, showHomeLanding } from './homeView.svelte'
+    import { homeStudioAvailable, openStudioFromHome } from './homeStudio.svelte'
+    import { homeView, showHomeLanding, takeHomeReturnFocus } from './homeView.svelte'
 
     // Registered once for the lifetime of the library. The thunks read the view at call time, so
     // the effect reads no reactive state and never re-registers: a re-registration would move this
@@ -24,8 +27,42 @@
             showHomeLanding()
         }
     })
+
+    // The Home library is the only host that offers Open in Studio. Availability is read from the slot at
+    // call time, and the open is Home's own: it selects the slot and ends the visit back here.
+    const studio: LibraryStudio = {
+        available: (index) => homeStudioAvailable(DBState.db.characters[index]),
+        open: (index, opener) => {
+            openStudioFromHome(index, opener)
+        },
+    }
+
+    let root: HTMLDivElement | undefined = $state()
+
+    // The end of a Home-opened Studio visit asks for the focus to return to the character's control. The
+    // opener unmounted with the library, so the library moves it: the character's control when it is drawn
+    // (the Simple and List tabs, a row in view), else the library's Back button, so it never falls to the body.
+    // The request is read once, on mount, and waits for the library: the library chunk may load after the visit ends.
+    $effect(() => {
+        const chaId = takeHomeReturnFocus()
+        if (chaId === null) {
+            return
+        }
+        let current = true
+        void tick().then(() => {
+            if (!current || !root) {
+                return
+            }
+            const control = Array.from(root.querySelectorAll<HTMLElement>('[data-part="library-studio"]'))
+                .find((candidate) => candidate.getAttribute('data-cha-id') === chaId)
+            ;(control ?? root.querySelector<HTMLElement>('[data-part="library-back"]'))?.focus()
+        })
+        return () => {
+            current = false
+        }
+    })
 </script>
 
-<div class="h-full w-full">
-    <GridCatalog endGrid={() => showHomeLanding()} />
+<div class="h-full w-full" bind:this={root}>
+    <GridCatalog endGrid={() => showHomeLanding()} {studio} />
 </div>

@@ -1838,6 +1838,7 @@ export const languageChineseTraditional = {
     "studioSwitchLabel": "工作室（預覽）",
     "studioSwitchHelp": "可在對話或角色設定中以工作室開啟角色。角色設定維持不變。",
     "studioOpenIn": "在工作室中開啟",
+    "studioOpenInNamed": (name: string) => `在工作室中開啟：${name}`,
     "studioTitle": "工作室",
     "studioTreeLabel": "擁有者與項目",
     "studioOwnerCharacter": "角色",

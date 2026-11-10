@@ -6,12 +6,13 @@
     import HomeEmptyHero from './HomeEmptyHero.svelte'
     import HomeModeSwitcher from './HomeModeSwitcher.svelte'
     import HomePersonaChip from './HomePersonaChip.svelte'
-    import { homeView, openHomeLibrary, showHomeLanding } from './homeView.svelte'
+    import { homeView, openHomeLibrary, showHomeLanding, startHomeView } from './homeView.svelte'
 
     // Every creation starts at the landing: a selection change, the language remount and a return
     // to Home all create a fresh shell. Covers (Settings, Studio) keep it mounted, so the view
-    // survives them.
-    showHomeLanding()
+    // survives them. The one exception is the return from a Home-opened Studio visit, which starts
+    // at the library.
+    startHomeView()
 
     // The library is a separate chunk, loaded on first open. The landing stays up until it is
     // ready, and a failed load goes back to the landing with the error shown, as Studio does.

@@ -20,7 +20,7 @@ vi.mock('../stores.svelte', () => ({
 }))
 vi.mock('../chatShell/shellSwitch.svelte', () => ({ shellEligible: () => shell.eligible }))
 
-import { classicDestinationOf, classicLinks, clearClassicLinkRequest, openInClassicEditor, routeOf } from './classicLinks.svelte'
+import { classicDestinationOf, classicLinks, clearClassicLinkRequest, openInClassicEditor, routeOf, studioClosingToCharacterEditor } from './classicLinks.svelte'
 import { studioOpen } from './studioOpen'
 import type { StudioKind } from './ownerModel'
 import type { StudioOwnerType } from './studioTarget'
@@ -105,6 +105,63 @@ describe('4e Studio closes first', () => {
         expect(get(SettingsMenuIndex)).toBe(14)
         expect(get(settingsOpen)).toBe(true)
         expect(studioWasOpenAt).toEqual({ settingsIndex: false, settingsOpen: false })
+    })
+})
+
+describe('the character link-out flag', () => {
+    // What a studioOpen subscriber sees at the moment Studio closes.
+    function flagAtClose(): boolean[] {
+        const seen: boolean[] = []
+        stops.push(studioOpen.subscribe((open) => {
+            if (!open) seen.push(studioClosingToCharacterEditor())
+        }))
+        return seen
+    }
+
+    test('F: it is true while Studio closes for a character destination, and false before and after', () => {
+        const seen = flagAtClose()
+        expect(studioClosingToCharacterEditor()).toBe(false)
+
+        openInClassicEditor('character', 'lore')
+
+        expect(seen).toEqual([true])
+        expect(studioClosingToCharacterEditor()).toBe(false)
+    })
+
+    test('G: a Settings destination never sets it', () => {
+        const seen = flagAtClose()
+
+        openInClassicEditor('module', 'lore')
+
+        expect(seen).toEqual([false])
+        expect(studioClosingToCharacterEditor()).toBe(false)
+    })
+
+    test('G: a close not made by a link-out does not set it', () => {
+        const seen = flagAtClose()
+
+        studioOpen.set(false)
+
+        expect(seen).toEqual([false])
+    })
+
+    test('G: it is reset when a subscriber of the close throws', () => {
+        stops.push(studioOpen.subscribe((open) => {
+            if (!open) throw new Error('subscriber failed')
+        }))
+
+        expect(() => openInClassicEditor('character', null)).toThrow('subscriber failed')
+
+        expect(studioClosingToCharacterEditor()).toBe(false)
+    })
+
+    test('G: a destination with no classic editor closes nothing and sets nothing', () => {
+        const seen = flagAtClose()
+
+        expect(openInClassicEditor('widget' as StudioOwnerType, null)).toBe(false)
+
+        expect(get(studioOpen)).toBe(true)
+        expect(seen).toEqual([])
     })
 })
 

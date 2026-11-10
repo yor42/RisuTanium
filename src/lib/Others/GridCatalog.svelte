@@ -5,13 +5,13 @@
     import { checkCharOrder } from "src/ts/globalApi.svelte";
     import { alertConfirm, alertError, alertSelect } from "src/ts/alert";
     import { DBState } from 'src/ts/stores.svelte';
-    import { ArrowLeft, User, Users, TrashIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, PencilIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
+    import { ArrowLeft, User, Users, LayoutPanelLeftIcon, TrashIcon, FolderIcon, FolderOpenIcon, FolderPlusIcon, PencilIcon, CheckIcon, ChevronDownIcon, ChevronRightIcon } from "@lucide/svelte";
     import { selectedCharID } from "../../ts/stores.svelte";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import Button from "../UI/GUI/Button.svelte";
     import { language } from "src/lang";
     import { parseMultilangString } from "src/ts/util";
-    import CharacterSimpleList from "./CharacterSimpleList.svelte";
+    import CharacterSimpleList, { type LibraryStudio } from "./CharacterSimpleList.svelte";
     import CharacterTrashList from "./CharacterTrashList.svelte";
     import CharacterDescription from "./CharacterDescription.svelte";
     import CharacterWindow from "./CharacterWindow.svelte";
@@ -73,9 +73,12 @@
         replyStateOf(DBState.db.characters.find((candidate) => candidate.chaId === chaId && !candidate.trashTime)));
     interface Props {
         endGrid?: any;
+        // Passed only by the Home library. Without it no Open in Studio control exists in any tab, as in the
+        // App-level grid host.
+        studio?: LibraryStudio;
     }
 
-    let { endGrid = () => {} }: Props = $props();
+    let { endGrid = () => {}, studio }: Props = $props();
     // A dark halo behind a folder tile's icon or name keeps it readable over a bright picture.
     const FACE_SHADOW = 'drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]'
     let search = $state('')
@@ -603,8 +606,29 @@
         void scrollToNewFolder(spec.id, groupGeneration)
     }
 
+    // The one character the selection holds when the Home library offers Open in Studio for it: exactly
+    // one pick, a character, and Studio can open its slot now. Held as the object, never as an index.
+    function studioPick(): { key: string, char: character | groupChat } | null {
+        if (!studio || picks.size !== 1) {
+            return null
+        }
+        const [key, picked] = [...picks][0]
+        if (picked.kind !== 'char' || !studio.available(DBState.db.characters.indexOf(picked.char))) {
+            return null
+        }
+        return { key, char: picked.char }
+    }
+
+    // The control the menu was opened from, for Studio to return focus to; the tile if it is still drawn.
+    function tileOpener(key: string): HTMLElement {
+        const tile = Array.from(gridScroller?.querySelectorAll('[data-charlist-key]') ?? []).find((el) => el.getAttribute('data-charlist-key') === key)
+        return tile?.querySelector('button') ?? gridScroller ?? document.body
+    }
+
     // The choices are fixed when the menu opens and the chosen index is read against that list, so an
-    // availability change while the menu waits cannot turn one choice into another.
+    // availability change while the menu waits cannot turn one choice into another. Open in Studio is the
+    // exception in what it reads after the answer: the slot of its character is found again by identity,
+    // and Studio must still be able to open it, because the list may have changed while the menu waited.
     let menuOpen = false
     async function openBulkMenu() {
         if (menuOpen) {
@@ -612,8 +636,13 @@
         }
         menuOpen = true
         try {
-            const actions: ('group' | 'trash' | 'cancel')[] = []
+            const actions: ('studio' | 'group' | 'trash' | 'cancel')[] = []
             const labels: string[] = []
+            const toStudio = studioPick()
+            if (toStudio) {
+                actions.push('studio')
+                labels.push(language.studioOpenIn)
+            }
             if (groupAvailable) {
                 actions.push('group')
                 labels.push(language.othersUi.editGroup)
@@ -621,7 +650,13 @@
             actions.push('trash', 'cancel')
             labels.push(language.othersUi.editMoveToTrash, language.cancel)
             const chosen = actions[parseInt(await alertSelect(labels))]
-            if (chosen === 'group') {
+            if (chosen === 'studio' && toStudio) {
+                const index = DBState.db.characters.indexOf(toStudio.char)
+                if (index !== -1 && studio?.available(index)) {
+                    studio.open(index, tileOpener(toStudio.key))
+                }
+            }
+            else if (chosen === 'group') {
                 groupPicked()
             }
             else if (chosen === 'trash') {
@@ -1490,6 +1525,21 @@
                         </button>
                     {/if}
                     <div class="grow"></div>
+                    {#if studio?.available(index)}
+                        <button
+                            class="hover:text-textcolor text-textcolor2"
+                            data-part="library-studio"
+                            data-cha-id={char.chaId}
+                            aria-label={language.studioOpenInNamed(char.name || language.settingsPage.unnamed)}
+                            title={language.studioOpenInNamed(char.name || language.settingsPage.unnamed)}
+                            onclick={(event) => {
+                                event.stopPropagation()
+                                studio?.open(index, event.currentTarget)
+                            }}
+                        >
+                            <LayoutPanelLeftIcon />
+                        </button>
+                    {/if}
                     <button class="hover:text-textcolor text-textcolor2" onclick={(event) => {
                         event.stopPropagation()
                         removeChar(char, char.name)
@@ -1668,6 +1718,7 @@
             <div class="flex items-center gap-3 mb-2">
                 <button
                     class="flex items-center justify-center p-2 rounded-lg hover:bg-selected transition-colors shrink-0"
+                    data-part="library-back"
                     onclick={() => endGrid()}
                     title={language.settingsPage.back}
                 >
@@ -1786,7 +1837,7 @@
                 {#if libraryEmpty || libraryNoMatch}
                     {@render libraryEmptyState()}
                 {:else}
-                    <CharacterSimpleList endGrid={endGrid} hideTrash={true} results={found} onpick={pick} opening={(index) => openingIndex === index} />
+                    <CharacterSimpleList endGrid={endGrid} hideTrash={true} results={found} onpick={pick} opening={(index) => openingIndex === index} {studio} />
                 {/if}
             </div>
         {/if}

@@ -1793,6 +1793,7 @@ export const languageKorean = {
     "studioSwitchLabel": "스튜디오 (미리 보기)",
     "studioSwitchHelp": "채팅 또는 캐릭터 설정에서 캐릭터를 스튜디오로 엽니다. 캐릭터 설정은 그대로 유지됩니다.",
     "studioOpenIn": "스튜디오에서 열기",
+    "studioOpenInNamed": (name: string) => `스튜디오에서 열기: ${name}`,
     "studioTitle": "스튜디오",
     "studioTreeLabel": "소유자 및 항목",
     "studioOwnerCharacter": "캐릭터",

@@ -2,7 +2,7 @@
 // Pure: no store, no DOM. Whether the owner, kind and item exist is decided against the owner model.
 
 export type StudioOwnerType = 'character' | 'chat' | 'preset' | 'module' | 'plugin'
-export type StudioFrom = 'chat' | 'library' | 'settings'
+export type StudioFrom = 'chat' | 'library' | 'settings' | 'home'
 
 export interface StudioOwnerRef {
     type: StudioOwnerType
@@ -22,7 +22,7 @@ export interface StudioTargetError {
 }
 
 const OWNER_TYPES: readonly StudioOwnerType[] = ['character', 'chat', 'preset', 'module', 'plugin']
-const ORIGINS: readonly StudioFrom[] = ['chat', 'library', 'settings']
+const ORIGINS: readonly StudioFrom[] = ['chat', 'library', 'settings', 'home']
 const KIND_ALIASES: Readonly<Record<string, string>> = {
     lua: 'scripts',
     trigger: 'scripts',

@@ -1793,6 +1793,7 @@ export const languageVietnamese = {
     "studioSwitchLabel": "Studio (xem trước)",
     "studioSwitchHelp": "Mở nhân vật trong Studio từ cài đặt trò chuyện hoặc nhân vật. Cài đặt nhân vật vẫn giữ nguyên.",
     "studioOpenIn": "Mở trong Studio",
+    "studioOpenInNamed": (name: string) => `Mở trong Studio: ${name}`,
     "studioTitle": "Studio",
     "studioTreeLabel": "Chủ sở hữu và mục",
     "studioOwnerCharacter": "Nhân vật",
