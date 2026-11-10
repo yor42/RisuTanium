@@ -695,6 +695,106 @@ async function compare(owner: Owner, chat: Chat, member: character | undefined):
 
 //#endregion
 
+/**
+ * A send over messages that mix macro-free text with every text the parser
+ * rewrites, so the prompt the provider receives pins what the parse of each
+ * chat message produces. The marker text is distinct so a dump of the prompt
+ * can be told apart from any other log line.
+ */
+const DUMP_MARKER = 'PROMPTDUMP-714'
+const PINNED_PROMPT: string[][] = [
+    ['system', 'DESC[Alice/PersonaA/VAR-A]\n\nDescription of Alice: PERS[Alice/PersonaA/VAR-A]\n\nCircumstances and context of the dialogue: SCEN[Alice/PersonaA/VAR-A]\n\nPA-PROMPT'],
+    ['system', '[Start a new chat]'],
+    ['user', 'EXU[Alice/PersonaA/{{getvar'],
+    ['assistant', 'EXC[Alice/PersonaA/{{getvar'],
+    ['system', '[Start a new chat]'],
+    ['assistant', 'FIRST[Alice/PersonaA/VAR-A]'],
+    ['user', 'plain'],
+    ['assistant', 'hi PersonaA'],
+    ['user', 'Alice waves'],
+    ['assistant', 'a }} b { c'],
+    ['user', 'a{{b'],
+    ['assistant', '한국어 😀'],
+    ['user', '\\{\\{x\\}\\}'],
+    ['assistant', 'AFTER-PersonaA'],
+    ['user', 'PROMPTDUMP-714 last'],
+    ['system', 'NOTE[Alice/PersonaA/VAR-A]'],
+]
+
+function dumpWorld(): { A: character, B: character } {
+    return world({
+        messagesA: [
+            msg('user', 'plain'),
+            msg('char', 'hi <user>'),
+            msg('user', '{{char}} waves'),
+            msg('char', 'a }} b { c'),
+            msg('user', 'a{#b'),
+            msg('char', '한국어 \u{1F600}'),
+            msg('user', '\\{\\{x\\}\\}'),
+            msg('char', '<Thoughts>t</Thoughts>after'),
+            msg('user', `${DUMP_MARKER} last`),
+        ],
+        charA: { customscript: [{ comment: 'out', in: 'after', out: 'AFTER-{{user}}', type: 'editprocess', ableFlag: false }] },
+    })
+}
+
+describe('the prompt a send builds from macro-free and macro text', () => {
+    test('T-P1: the first model request holds the pinned prompt', async () => {
+        const { A } = dumpWorld()
+        const result = await sendWith(A, A.chats[0], 0)
+
+        expect(result.outcome).toBe(true)
+        expect(result.prompt.map((e) => [e.role, e.content])).toEqual(PINNED_PROMPT)
+    })
+})
+
+describe('the full-prompt console dumps of a send', () => {
+    let log: ReturnType<typeof vi.spyOn> | null = null
+
+    afterEach(() => {
+        vi.unstubAllEnvs()
+        log?.mockRestore()
+        log = null
+    })
+
+    /** The two dumps: the message list before tokenizing and the final chat list. */
+    function dumpsOf(log: { mock: { calls: unknown[][] } }): { prepared: unknown[][], serialized: string[] } {
+        const prepared = log.mock.calls.filter((c) => c[0] === 'Prepared messages for token calculation:')
+        const serialized = log.mock.calls
+            .filter((c) => c.length === 1 && typeof c[0] === 'string' && c[0].includes(DUMP_MARKER))
+            .map((c) => c[0] as string)
+        return { prepared, serialized }
+    }
+
+    test('T-G1: a build with DEV false prints neither dump', async () => {
+        vi.stubEnv('DEV', false)
+        log = vi.spyOn(console, 'log').mockImplementation(() => {})
+        const { A } = dumpWorld()
+        const result = await sendWith(A, A.chats[0], 0)
+
+        expect(result.outcome).toBe(true)
+        const { prepared, serialized } = dumpsOf(log!)
+        expect(prepared).toHaveLength(0)
+        expect(serialized).toHaveLength(0)
+    })
+
+    test('T-G2: a build with DEV true prints both dumps once, unchanged', async () => {
+        vi.stubEnv('DEV', true)
+        log = vi.spyOn(console, 'log').mockImplementation(() => {})
+        const { A } = dumpWorld()
+        const result = await sendWith(A, A.chats[0], 0)
+
+        expect(result.outcome).toBe(true)
+        const { prepared, serialized } = dumpsOf(log!)
+        expect(prepared).toHaveLength(1)
+        expect(JSON.stringify(prepared[0][1])).toContain(DUMP_MARKER)
+        expect(serialized).toHaveLength(1)
+        const chats = JSON.parse(serialized[0]) as Array<{ role: string, content: string }>
+        expect(chats.every((c) => typeof c.role === 'string' && typeof c.content === 'string')).toBe(true)
+        expect(serialized[0]).toBe(JSON.stringify(chats, null, 2))
+    })
+})
+
 describe('guard: parsing through the send\'s subject changes nothing while the selection is on the send\'s chat', () => {
     test('guard: a character send parses every tag the same with and without its subject', async () => {
         const A = makeChar('char-A', 'Alice', [makeChat('chat-A', [msg('user', 'u0'), msg('char', 'c1'), msg('user', 'u2')], { bindedPersona: 'p-A', modules: ['mod-A'] })])

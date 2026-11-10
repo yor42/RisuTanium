@@ -90,6 +90,49 @@ describe('treeView', () => {
         }
     })
 
+    test('T-F1: a chat with no alt records has a trivial view', () => {
+        const variants: Record<string, unknown>[] = [{}, { alt: [] }, { alt: 'broken' }, { alt: { not: 'a list' } }]
+        for (const extra of variants) {
+            const chat = chatOf([message('a', 1), message('b', 2), message('c', 3)], extra)
+            const view = treeView(chat)
+            for (let i = 0; i < 3; i++) {
+                expect(view.at(i)).toEqual({ index: 1, count: 1 })
+            }
+            for (const outside of [-1, 3, 0.5, Number.NaN]) {
+                expect(view.at(outside)).toBeNull()
+            }
+            expect(view.continuation).toBe(0)
+            expectAgreesWithSiblingsAt(chat)
+        }
+    })
+
+    test('T-F1: the trivial view follows the path length at the time of the call', () => {
+        const chat = chatOf([message('a', 1)])
+        const view = treeView(chat)
+        expect(view.at(1)).toBeNull()
+        chat.message.push(message('b', 2))
+        expect(view.at(1)).toEqual({ index: 1, count: 1 })
+    })
+
+    test('T-F2: a chat with no alt records does not read the message ids', () => {
+        for (const extra of [{}, { alt: [] }]) {
+            let reads = 0
+            const counted = (id: string, time: number): Message => new Proxy(message(id, time), {
+                get(target, prop, receiver) {
+                    if (prop === 'chatId') {
+                        reads++
+                    }
+                    return Reflect.get(target, prop, receiver)
+                },
+            })
+            const chat = chatOf([counted('a', 1), counted('b', 2), counted('c', 3)], extra)
+            const view = treeView(chat)
+            view.at(1)
+            expect(view.continuation).toBe(0)
+            expect(reads).toBe(0)
+        }
+    })
+
     test('an empty path counts the records that follow the root', () => {
         const chat = chatOf([message('a', 1), message('b', 2)])
         detachTail(chat, 1)
