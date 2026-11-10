@@ -62,8 +62,10 @@ vi.mock(import('src/ts/realmUploadUrl'), () => ({
 // Never resolves: the real ping/pong handshake this backs (`waitPing` in
 // RealmFrame.svelte) has no partner in this test, so a resolving mock would
 // spin the wait loop forever instead of leaving it parked after one attempt.
+const sleepSpy = vi.hoisted(() => vi.fn((_ms: number): Promise<void> => new Promise(() => {})))
+
 vi.mock(import('src/ts/util'), () => ({
-    sleep: vi.fn(() => new Promise(() => {})),
+    sleep: sleepSpy,
 }) as unknown as typeof import('src/ts/util'))
 
 vi.mock(import('src/ts/stores.svelte'), () => {
@@ -79,7 +81,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 //#endregion
 
 import RealmFrame from './RealmFrame.svelte'
-import { ShowRealmFrameStore, alertStore } from 'src/ts/stores.svelte'
+import { DBState, ShowRealmFrameStore, alertStore } from 'src/ts/stores.svelte'
 
 const mountedTargets: HTMLElement[] = []
 const mountedInstances: unknown[] = []
@@ -153,15 +155,17 @@ function observeIframeInsertions(): { stop(): Element[] } {
 // that never answers in this suite) would reject on its very first message
 // post. Called right after a mount that rendered an iframe, before anything
 // awaits further, so that loop finds a harmless stand-in instead.
-function stubIframeContentWindow(target: HTMLElement): void {
+function stubIframeContentWindow(target: HTMLElement): { postMessage: ReturnType<typeof vi.fn> } | null {
     const iframe = target.querySelector('iframe')
     if (!iframe) {
-        return
+        return null
     }
+    const stub = { postMessage: vi.fn() }
     Object.defineProperty(iframe, 'contentWindow', {
         configurable: true,
-        value: { postMessage: vi.fn() },
+        value: stub,
     })
+    return stub
 }
 
 beforeEach(() => {
@@ -271,5 +275,180 @@ describe('RealmFrame.svelte: a failed card export never reaches the upload ifram
         expect(alertErrorSpy).toHaveBeenCalledWith(failure)
         expect(postMessage).not.toHaveBeenCalled()
         expect(get(ShowRealmFrameStore)).toBe('')
+    })
+})
+
+describe('RealmFrame.svelte: only the Realm frame itself is heard and addressed', () => {
+    const REALM_ORIGIN = 'https://realm.risuai.net'
+    const UUID = '0f8fad5b-d9cb-469f-a165-70867728950e'
+
+    type FrameStub = { postMessage: ReturnType<typeof vi.fn> }
+
+    function acceptUpstream(): void {
+        localStorage.setItem(UPSTREAM_AGREEMENT_KEY, 'accepted')
+        resetUpstreamAgreementForTests()
+    }
+
+    async function settleLong() {
+        for (let i = 0; i < 10; i++) {
+            await Promise.resolve()
+        }
+        flushSync()
+    }
+
+    async function mountWithFrame(): Promise<FrameStub> {
+        acceptUpstream()
+        const target = mountRealmFrame()
+        const stub = stubIframeContentWindow(target)
+        if (!stub) {
+            throw new Error('iframe missing')
+        }
+        await settleLong()
+        return stub
+    }
+
+    function post(data: unknown, sender: { origin: string, source: unknown }): void {
+        window.dispatchEvent(new MessageEvent('message', {
+            data,
+            origin: sender.origin,
+            source: sender.source as Window,
+        }))
+        flushSync()
+    }
+
+    function deferredSleep(): () => void {
+        let release = (): void => {}
+        sleepSpy.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve }))
+        return () => release()
+    }
+
+    function characters(): { type: string, realmId: string }[] {
+        return DBState.db.characters as unknown as { type: string, realmId: string }[]
+    }
+
+    beforeEach(() => {
+        DBState.db.characters = [{ type: 'character', realmId: '' }] as unknown as typeof DBState.db.characters
+    })
+
+    test.each(['close', 'success'])('regression reproducer: a %s message from a foreign origin is ignored', async (type) => {
+        const frame = await mountWithFrame()
+        post({ type, id: 'abc123' }, { origin: 'https://evil.example', source: frame })
+        await settleLong()
+
+        expect(get(ShowRealmFrameStore)).toBe('character')
+        expect(alertMdSpy).not.toHaveBeenCalled()
+        expect(characters()[0].realmId).toBe('')
+    })
+
+    test.each(['close', 'success'])('regression reproducer: a %s message from the Realm origin but another source is ignored', async (type) => {
+        const frame = await mountWithFrame()
+        expect(frame).toBeTruthy()
+        post({ type, id: 'abc123' }, { origin: REALM_ORIGIN, source: { postMessage: vi.fn() } })
+        await settleLong()
+
+        expect(get(ShowRealmFrameStore)).toBe('character')
+        expect(alertMdSpy).not.toHaveBeenCalled()
+        expect(characters()[0].realmId).toBe('')
+    })
+
+    test('regression reproducer: a pong from a foreign origin does not end the handshake', async () => {
+        const release = deferredSleep()
+        const frame = await mountWithFrame()
+        expect(frame.postMessage).toHaveBeenCalledTimes(1)
+
+        post({ type: 'pong' }, { origin: 'https://evil.example', source: frame })
+        release()
+        await settleLong()
+
+        const sent = frame.postMessage.mock.calls.map((c) => (c[0] as { type: string }).type)
+        expect(sent).not.toContain('filedata')
+        expect(sent.filter((t) => t === 'ping').length).toBeGreaterThan(1)
+    })
+
+    test('regression reproducer: the ping is addressed to the Realm origin, not any origin', async () => {
+        const frame = await mountWithFrame()
+
+        expect(frame.postMessage).toHaveBeenCalled()
+        expect(frame.postMessage.mock.calls[0][0]).toEqual({ type: 'ping' })
+        expect(frame.postMessage.mock.calls[0][1]).toBe(REALM_ORIGIN)
+    })
+
+    test('regression reproducer: the file data is addressed to the Realm origin with the transfer pair', async () => {
+        const release = deferredSleep()
+        const frame = await mountWithFrame()
+
+        post({ type: 'pong' }, { origin: REALM_ORIGIN, source: frame })
+        release()
+        await settleLong()
+
+        const fileCall = frame.postMessage.mock.calls.find((c) => (c[0] as { type: string }).type === 'filedata')
+        expect(fileCall).toBeTruthy()
+        const message = fileCall![0] as { type: string, buf: ArrayBuffer[] }
+        expect(fileCall![1]).toBe(REALM_ORIGIN)
+        expect(fileCall![2]).toEqual(message.buf)
+        expect(fileCall![2]).toHaveLength(2)
+    })
+
+    test.each([
+        ['a backtick', 'a`b'],
+        ['a newline', 'a\nb'],
+        ['a path', 'x/../y'],
+        ['empty', ''],
+        ['a number', 123],
+        ['an object', {}],
+    ])('regression reproducer: a success with an unsafe id (%s) is refused', async (_label, id) => {
+        const frame = await mountWithFrame()
+        post({ type: 'success', id }, { origin: REALM_ORIGIN, source: frame })
+        await settleLong()
+
+        expect(alertMdSpy).not.toHaveBeenCalled()
+        expect(characters()[0].realmId).toBe('')
+        expect(get(ShowRealmFrameStore)).toBe('character')
+    })
+
+    test('regression reproducer: a null data message from the Realm frame is dropped without throwing', async () => {
+        const frame = await mountWithFrame()
+        const onError = vi.fn()
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+        window.addEventListener('error', onError)
+        try {
+            post(null, { origin: REALM_ORIGIN, source: frame })
+            await settleLong()
+            expect(onError).not.toHaveBeenCalled()
+            expect(consoleError).not.toHaveBeenCalled()
+        } finally {
+            window.removeEventListener('error', onError)
+            consoleError.mockRestore()
+        }
+    })
+
+    test('guard: a close from the Realm frame closes it', async () => {
+        const frame = await mountWithFrame()
+        post({ type: 'close' }, { origin: REALM_ORIGIN, source: frame })
+        await settleLong()
+
+        expect(get(ShowRealmFrameStore)).toBe('')
+    })
+
+    test.each(['abc123', UUID])('guard: a success from the Realm frame with id %s shows the link, stores the id and closes', async (id) => {
+        const frame = await mountWithFrame()
+        post({ type: 'success', id }, { origin: REALM_ORIGIN, source: frame })
+        await settleLong()
+
+        expect(alertMdSpy).toHaveBeenCalledTimes(1)
+        expect(alertMdSpy.mock.calls[0][0]).toContain('https://realm.risuai.net/character/' + id)
+        expect(characters()[0].realmId).toBe(id)
+        expect(get(ShowRealmFrameStore)).toBe('')
+    })
+
+    test('guard: a successful file data message from the Realm frame reveals the iframe', async () => {
+        const frame = await mountWithFrame()
+        const target = document.body
+        expect(target.querySelector('.loadmove')).toBeTruthy()
+        post({ type: 'filedata', success: true }, { origin: REALM_ORIGIN, source: frame })
+        await settleLong()
+
+        expect(target.querySelector('.loadmove')).toBeNull()
+        expect(target.querySelector('iframe')?.classList.contains('hidden')).toBe(false)
     })
 })

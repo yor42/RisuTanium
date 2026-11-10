@@ -8,6 +8,7 @@
     import { DBState } from 'src/ts/stores.svelte';
     import { selectedCharID, ShowRealmFrameStore } from "src/ts/stores.svelte";
     import { getRealmUploadUrl } from "src/ts/realmUploadUrl";
+    import { acceptRealmFrameMessage, realmFrameOrigin } from "src/ts/realmFrameMessage";
     import { sleep } from "src/ts/util";
     import { onDestroy, onMount } from "svelte";
     import { isUpstreamAccepted } from "src/ts/upstreamAgreement";
@@ -33,24 +34,32 @@
     let loadingStage = $state(0)
     let pongGot = false
 
+    const realmOrigin = realmFrameOrigin()
+
     const pmfunc = (e:MessageEvent) => {
-        if(e.data.type === 'filedata' && e.data.success){
+        // Only the upload iframe itself, at the Realm origin, is heard; a
+        // refused message has no effect and leaves no trace.
+        const message = acceptRealmFrameMessage(e, iframe?.contentWindow, realmOrigin)
+        if(!message){
+            return
+        }
+        if(message.type === 'filedata'){
             loadingStage = 2
         }
-        if(e.data.type === 'pong'){
+        if(message.type === 'pong'){
             pongGot = true
         }
-        if(e.data.type === 'close'){
+        if(message.type === 'close'){
             close()
         }
-        if(e.data.type === 'success'){
-            alertMd(fillLang(language.alerts.realmUploadSuccess, { link: "```\nhttps://realm.risuai.net/character/" +  e.data.id + "\n```" }))
+        if(message.type === 'success'){
+            alertMd(fillLang(language.alerts.realmUploadSuccess, { link: "```\nhttps://realm.risuai.net/character/" +  message.id + "\n```" }))
             if($ShowRealmFrameStore.startsWith('preset') || $ShowRealmFrameStore.startsWith('module')){
                 //TODO, add preset edit
             }
             else if(DBState.db.characters[$selectedCharID].type === 'character'){
                 loadingStage = 0
-                DBState.db.characters[$selectedCharID].realmId = e.data.id
+                DBState.db.characters[$selectedCharID].realmId = message.id
             }
             close()
         }
@@ -61,7 +70,7 @@
             while(!pongGot){
                 iframe.contentWindow.postMessage({
                     type: 'ping'
-                }, '*')
+                }, realmOrigin)
                 await sleep(300)
             }
         }
@@ -133,7 +142,7 @@
             iframe.contentWindow.postMessage({
                 type: 'filedata',
                 buf: [data.data, data.name]
-            }, '*', [data.data, data.name])
+            }, realmOrigin, [data.data, data.name])
         }
     })
 
