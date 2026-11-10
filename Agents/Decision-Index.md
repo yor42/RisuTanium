@@ -1056,3 +1056,147 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-1159](Maintainer-Context.md#mc-1159--lane-b-takes-chore-667-chore-677-chore-670-and-chore-676-sizing-in-parallel-2026-11-08) | Lane B takes CHORE-667, CHORE-677, CHORE-670 and CHORE-676; sizing in parallel, 2026-11-08 |
 | [MC-1160](Maintainer-Context.md#mc-1160--lane-a-line-627-and-lane-c-lines-110-to-116-h-and-c2-strings-final-h-chip-c2-tools-note-chore-678-filed-by-lane-a-f2-bin-export-before-pm-clear-2026-11-08) | Lane A line 627 and lane C lines 110 to 116: H and C2 strings FINAL, H chip, C2 Tools note, CHORE-678 filed by lane A, F2 .bin export before pm clear, 2026-11-08 |
 | [MC-1161](Maintainer-Context.md#mc-1161--chore-667-answers-on-renderer-loss-relayed-by-lane-b-2026-11-08) | CHORE-667 answers on renderer loss, relayed by lane B, 2026-11-08 |
+| [MC-1162](Maintainer-Context.md#mc-1162--s3b-per-owner-store-cap-set-to-half-the-store-2-mib-2026-11-08) | S3b per-owner store cap set to half the store (2 MiB), 2026-11-08 |
+| [MC-1163](Maintainer-Context.md#mc-1163--s3b-opq-2-the-per-save-rule-also-binds-note-9-rows-1m-and-5b-2026-11-08) | S3b OPQ-2: the per-save rule also binds Note 9 rows 1m and 5b, 2026-11-08 |
+| [MC-1164](Maintainer-Context.md#mc-1164--s3b4-known-limitation-a-later-step-on-a-very-long-alternate-first-message-2026-11-09) | S3b4 known limitation: a later step on a very long alternate first message, 2026-11-09 |
+| [MC-1165](Maintainer-Context.md#mc-1165--chore-687-idle-save-scan-backs-off-from-2-s-to-30-s-after-about-1-min-clean-2026-11-09) | CHORE-687 idle save scan backs off from 2 s to 30 s after about 1 min clean, 2026-11-09 |
+| [MC-1166](Maintainer-Context.md#mc-1166--chore-687-module-safety-net-tick-backs-off-from-30-s-to-5-min-2026-11-09) | CHORE-687 module safety-net tick backs off from 30 s to 5 min, 2026-11-09 |
+| [MC-1167](Maintainer-Context.md#mc-1167--chore-687-closes-on-the-back-off-the-remaining-stall-gets-its-own-ticket-2026-11-09) | CHORE-687 closes on the back-off; the remaining stall gets its own ticket, 2026-11-09 |
+| [MC-1168](Maintainer-Context.md#mc-1168--chore-687-device-acceptance-long-tasks-only-at-the-backed-off-cadence-2026-11-09) | CHORE-687 device acceptance: long tasks only at the backed-off cadence, 2026-11-09 |
+| [MC-1169](Maintainer-Context.md#mc-1169--chore-687-open-characters-checked-one-per-turn-under-back-off-2026-11-09) | CHORE-687: open characters checked one per turn under back-off, 2026-11-09 |
+| [MC-1170](Maintainer-Context.md#mc-1170--chore-687-front-units-ride-the-5-min-module-tick-2026-11-09) | CHORE-687: front units ride the 5 min module tick, 2026-11-09 |
+| [MC-1171](Maintainer-Context.md#mc-1171--chore-687-one-time-synthetic-string-edit-on-phone-2-for-the-device-check-2026-11-09) | CHORE-687: one-time synthetic string edit on phone 2 for the device check, 2026-11-09 |
+| [MC-1172](Maintainer-Context.md#mc-1172--upstream-8e1fee403-merged-with-the-experimental-async-flag-off-2026-11-09) | Upstream 8e1fee403 merged with the experimental async flag off, 2026-11-09 |
+| [MC-1173](Maintainer-Context.md#mc-1173--upstream-experimental-block-kept-with-async-false-2026-11-09) | Upstream experimental block kept with async false, 2026-11-09 |
+| [MC-1174](Maintainer-Context.md#mc-1174--open-realm-browser-is-a-full-screen-cover-reply-end-dot-chime-and-notification-2026-11-09) | Open Realm browser is a full-screen cover: reply-end dot, chime and notification, 2026-11-09 |
+| [MC-1175](Maintainer-Context.md#mc-1175--schedule-the-chore-320-and-chore-321-asset-list-design-pass-no-code-slot-2026-11-09) | Schedule the CHORE-320 and CHORE-321 asset-list design pass (no code slot), 2026-11-09 |
+| [MC-1176](Maintainer-Context.md#mc-1176--q-a1-character-asset-folder-is-an-optional-field-in-the-cards-extensions-2026-11-09) | Q-A1: character asset folder is an optional field in the card's extensions, 2026-11-09 |
+| [MC-1177](Maintainer-Context.md#mc-1177--module-folder-field-2026-11-09) | Module folder field, 2026-11-09 |
+| [MC-1178](Maintainer-Context.md#mc-1178--module-folder-loss-as-an-mc-175-exception-2026-11-09) | Module-folder loss as an MC-175 exception, 2026-11-09 |
+| [MC-1179](Maintainer-Context.md#mc-1179--slice-4-module-asset-form-2026-11-09) | Slice 4 module asset form, 2026-11-09 |
+| [MC-1180](Maintainer-Context.md#mc-1180--duplicate-finder-may-remove-extra-copies-2026-11-09) | Duplicate finder may remove extra copies, 2026-11-09 |
+| [MC-1181](Maintainer-Context.md#mc-1181--duplicate-matches-by-name-and-size-byte-check-by-button-2026-11-09) | Duplicate matches by name and size, byte check by button, 2026-11-09 |
+| [MC-1182](Maintainer-Context.md#mc-1182--no-early-detector-build-2026-11-09) | No early detector build, 2026-11-09 |
+| [MC-1183](Maintainer-Context.md#mc-1183--remove-duplicates-only-within-one-owner-same-name-and-same-bytes-2026-11-09) | Remove duplicates only within one owner, same name and same bytes, 2026-11-09 |
+| [MC-1184](Maintainer-Context.md#mc-1184--merge-and-rename-for-the-same-picture-under-different-names-2026-11-09) | Merge and rename for the same picture under different names, 2026-11-09 |
+| [MC-1185](Maintainer-Context.md#mc-1185--refuse-asset-removal-when-undo-cannot-be-persisted-2026-11-09) | Refuse asset removal when undo cannot be persisted, 2026-11-09 |
+| [MC-1186](Maintainer-Context.md#mc-1186--same-name-and-identical-stored-path-removable-without-hashing-2026-11-09) | Same name and identical stored path removable without hashing, 2026-11-09 |
+| [MC-1187](Maintainer-Context.md#mc-1187--character-merge-rewrites-owner-text-only-2026-11-09) | Character merge rewrites owner text only, 2026-11-09 |
+| [MC-1188](Maintainer-Context.md#mc-1188--module-merge-rewrites-module-text-only-2026-11-09) | Module merge rewrites module text only, 2026-11-09 |
+| [MC-1189](Maintainer-Context.md#mc-1189--undo-after-later-edits-is-partial-2026-11-09) | Undo after later edits is partial, 2026-11-09 |
+| [MC-1190](Maintainer-Context.md#mc-1190--module-folders-carried-through-charx-module-converters-2026-11-09) | Module folders carried through CharX module converters, 2026-11-09 |
+| [MC-1191](Maintainer-Context.md#mc-1191--one-level-of-folders-2026-11-09) | One level of folders, 2026-11-09 |
+| [MC-1192](Maintainer-Context.md#mc-1192--emotion-images-get-filter-bulk-select-duplicate-finder-and-merge-but-no-folders-2026-11-09) | Emotion images get filter, bulk select, duplicate finder and merge but no folders, 2026-11-09 |
+| [MC-1193](Maintainer-Context.md#mc-1193--rename-carries-the-asset-folder-and-cleans-stale-entries-2026-11-09) | Rename carries the asset folder and cleans stale entries, 2026-11-09 |
+| [MC-1194](Maintainer-Context.md#mc-1194--the-kept-name-is-preselected-and-case-only-or-extension-only-differences-are-merge-candidates-2026-11-09) | The kept name is preselected and case-only or extension-only differences are merge candidates, 2026-11-09 |
+| [MC-1195](Maintainer-Context.md#mc-1195--undo-after-a-reload-goes-through-studio-history-with-a-named-step-line-2026-11-09) | Undo after a reload goes through Studio history with a named step line, 2026-11-09 |
+| [MC-1196](Maintainer-Context.md#mc-1196--ccassets-and-other-arrays-are-report-only-2026-11-09) | ccAssets and other arrays are report-only, 2026-11-09 |
+| [MC-1197](Maintainer-Context.md#mc-1197--accepted-all-recommended-ui-defaults-n2-to-n10-n12-n13-n15-and-n16-2026-11-09) | Accepted all recommended UI defaults N2 to N10, N12, N13, N15 and N16, 2026-11-09 |
+| [MC-1198](Maintainer-Context.md#mc-1198--merge-preview-counts-skip-archived-and-cold-owners-and-say-so-2026-11-09) | Merge preview counts skip archived and cold owners and say so, 2026-11-09 |
+| [MC-1199](Maintainer-Context.md#mc-1199--fold-the-getclosestmatch-cache-key-defect-into-stage-d5-as-a-shared-cause-2026-11-09) | Fold the getClosestMatch cache-key defect into stage D5 as a shared cause, 2026-11-09 |
+| [MC-1200](Maintainer-Context.md#mc-1200--another-tab-owning-a-character-refuses-asset-delete-remove-and-merge-2026-11-09) | Another tab owning a character refuses asset delete, remove and merge, 2026-11-09 |
+| [MC-1201](Maintainer-Context.md#mc-1201--module-merge-needs-an-explicit-confirm-in-two-cases-2026-11-09) | Module merge needs an explicit confirm in two cases, 2026-11-09 |
+| [MC-1202](Maintainer-Context.md#mc-1202--retained-asset-list-travels-in-bin-unchanged-with-no-warning-2026-11-09) | Retained asset list travels in .bin unchanged with no warning, 2026-11-09 |
+| [MC-1203](Maintainer-Context.md#mc-1203--crash-window-between-removal-write-and-history-save-accepted-2026-11-09) | Crash window between removal write and history save accepted, 2026-11-09 |
+| [MC-1204](Maintainer-Context.md#mc-1204--failed-or-stopped-replies-play-no-sound-including-the-composer-chime-2026-11-09) | Failed or stopped replies play no sound, including the composer chime, 2026-11-09 |
+| [MC-1205](Maintainer-Context.md#mc-1205--module-asset-retained-list-stripped-from-export-and-upload-2026-11-09) | Module asset retained list stripped from export and upload, 2026-11-09 |
+| [MC-1206](Maintainer-Context.md#mc-1206--module-owned-by-another-tab-refusal-wording-2026-11-09) | Module owned by another tab refusal wording, 2026-11-09 |
+| [MC-1207](Maintainer-Context.md#mc-1207--module-sharing-an-id-gets-a-read-only-asset-form-2026-11-09) | Module sharing an id gets a read-only asset form, 2026-11-09 |
+| [MC-1208](Maintainer-Context.md#mc-1208--studio-undo-stuck-on-an-already-before-state-step-is-passed-over-mc-091-fold-in-2026-11-09) | Studio undo stuck on an already-before-state step is passed over (MC-091 fold-in), 2026-11-09 |
+| [MC-1209](Maintainer-Context.md#mc-1209--undo-moved-past-a-step-that-can-no-longer-be-undone-with-a-note-2026-11-09) | Undo moved past a step that can no longer be undone, with a note, 2026-11-09 |
+| [MC-1210](Maintainer-Context.md#mc-1210--two-suspected-s3b-first-message-undo-defects-filed-as-chore-690-2026-11-09) | Two suspected S3b first-message undo defects filed as CHORE-690, 2026-11-09 |
+| [MC-1211](Maintainer-Context.md#mc-1211--history-insert-already-present-is-skipped-with-the-existing-toast-2026-11-09) | History insert already present is skipped with the existing toast, 2026-11-09 |
+| [MC-1212](Maintainer-Context.md#mc-1212--new-first-message-delete-stores-a-neighbour-witness-superseded-in-mechanism-by-mc-1223-2026-11-09) | New first-message delete stores a neighbour witness, superseded in mechanism by MC-1223, 2026-11-09 |
+| [MC-1213](Maintainer-Context.md#mc-1213--undoing-a-revert-re-lists-the-deleted-first-message-2026-11-09) | Undoing a revert re-lists the deleted first message, 2026-11-09 |
+| [MC-1214](Maintainer-Context.md#mc-1214--presence-check-covers-every-history-insert-path-mc-091-scope-amendment-2026-11-09) | Presence check covers every history insert path, MC-091 scope amendment, 2026-11-09 |
+| [MC-1215](Maintainer-Context.md#mc-1215--no-deleted-assets-history-list-asset-removals-undone-through-ctrlz-and-the-history-panel-2026-11-09) | No Deleted assets History list; asset removals undone through Ctrl+Z and the history panel, 2026-11-09 |
+| [MC-1216](Maintainer-Context.md#mc-1216--pre-chore-690-undo-records-without-a-witness-skip-with-the-mc-1209-note-2026-11-09) | Pre-CHORE-690 undo records without a witness skip with the MC-1209 note, 2026-11-09 |
+| [MC-1217](Maintainer-Context.md#mc-1217--same-chat-sounding-reply-repost-on-one-ui-fixed-as-a-new-ticket-2026-11-10) | Same-chat sounding reply repost on One UI fixed as a new ticket, 2026-11-10 |
+| [MC-1218](Maintainer-Context.md#mc-1218--chore-685-complete-with-gaps-noted-2026-11-10) | CHORE-685 COMPLETE with gaps noted, 2026-11-10 |
+| [MC-1219](Maintainer-Context.md#mc-1219--history-remove-applies-only-when-its-run-index-is-above-sameafter-2026-11-10) | History remove applies only when its run index is above sameAfter, 2026-11-10 |
+| [MC-1220](Maintainer-Context.md#mc-1220--lost-owner-write-of-a-consuming-action-stays-consumed-until-lane-d-skip-with-note-2026-11-10) | Lost owner write of a consuming action stays consumed until Lane D skip-with-note, 2026-11-10 |
+| [MC-1221](Maintainer-Context.md#mc-1221--restore-point-consumes-an-equal-text-entry-newest-first-2026-11-10) | Restore point consumes an equal-text entry, newest first, 2026-11-10 |
+| [MC-1222](Maintainer-Context.md#mc-1222--chore-690-oi-11-restore-point-leaves-a-side-chats-first-message-choice-alone-2026-11-10) | CHORE-690 OI-11: restore point leaves a side chat's first-message choice alone, 2026-11-10 |
+| [MC-1223](Maintainer-Context.md#mc-1223--chore-690-mechanism-step-level-list-fingerprint-supersedes-mc-1212-2026-11-10) | CHORE-690 mechanism: step-level list fingerprint, supersedes MC-1212, 2026-11-10 |
+| [MC-1224](Maintainer-Context.md#mc-1224--chore-690-outside-edit-per-op-checks-as-on-base-2026-11-10) | CHORE-690 outside edit: per-op checks as on base, 2026-11-10 |
+| [MC-1225](Maintainer-Context.md#mc-1225--chore-690-restore-point-consumption-stays-the-last-stage-with-an-exit-2026-11-10) | CHORE-690 restore-point consumption stays the last stage, with an exit, 2026-11-10 |
+| [MC-1226](Maintainer-Context.md#mc-1226--chore-690-hash-cost-measure-on-note-9-memo-only-if-over-16-ms-2026-11-10) | CHORE-690 hash cost: measure on Note 9, memo only if over 16 ms, 2026-11-10 |
+| [MC-1227](Maintainer-Context.md#mc-1227--chore-690-two-way-rule-a-fingerprinted-step-refuses-list-operations-from-the-other-side-or-neither-2026-11-10) | CHORE-690 two-way rule: a fingerprinted step refuses list operations from the other side or neither, 2026-11-10 |
+| [MC-1228](Maintainer-Context.md#mc-1228--chore-690-listset-only-undo-after-a-lost-save-may-overwrite-an-equal-text-slot-known-limitation-2026-11-10) | CHORE-690 listSet-only undo after a lost save may overwrite an equal-text slot: known limitation, 2026-11-10 |
+| [MC-1229](Maintainer-Context.md#mc-1229--chore-690-ships-s1-and-s2-through-gate-2-and-the-note-9-check-s3-last-chore-693-follow-up-2026-11-10) | CHORE-690 ships S1 and S2 through Gate 2 and the Note 9 check; S3 last; CHORE-693 follow-up, 2026-11-10 |
+| [MC-1230](Maintainer-Context.md#mc-1230--four-read-only-fable-senior-advisor-hunts-from-the-lane-d-session-2026-11-10) | Four read-only Fable senior-advisor hunts from the Lane D session, 2026-11-10 |
+| [MC-1231](Maintainer-Context.md#mc-1231--file-and-start-chore-695-chore-696-chore-697-and-chore-698-2026-11-10) | File and start CHORE-695, CHORE-696, CHORE-697 and CHORE-698, 2026-11-10 |
+| [MC-1232](Maintainer-Context.md#mc-1232--chore-695-with-typed-text-continue-extends-the-last-reply-and-keeps-the-draft-2026-11-10) | CHORE-695: with typed text, Continue extends the last reply and keeps the draft, 2026-11-10 |
+| [MC-1233](Maintainer-Context.md#mc-1233--hidden-page-flush-while-a-lorebook-repair-question-is-open-amends-mc-623-mc-627-mc-629-chore-699-2026-11-10) | Hidden-page flush while a lorebook-repair question is open (amends MC-623, MC-627, MC-629; CHORE-699), 2026-11-10 |
+| [MC-1234](Maintainer-Context.md#mc-1234--second-narrower-fable-perf-pass-library-leg-after-stage-g-2026-11-10) | Second, narrower Fable perf pass; library leg after stage G, 2026-11-10 |
+| [MC-1235](Maintainer-Context.md#mc-1235--file-chore-700-chore-701-and-chore-702-boot-scan-chat-images-save-loop-2026-11-10) | File CHORE-700, CHORE-701 and CHORE-702 (boot scan, chat images, save loop), 2026-11-10 |
+| [MC-1236](Maintainer-Context.md#mc-1236--chore-698-also-covers-the-message-list-f1-finding-2026-11-10) | CHORE-698 also covers the message-list F1 finding, 2026-11-10 |
+| [MC-1237](Maintainer-Context.md#mc-1237--chore-701-q1-big-chat-images-through-one-64-mib-queue-option-a-2026-11-10) | CHORE-701 Q1: big chat images through one 64 MiB queue (option A), 2026-11-10 |
+| [MC-1238](Maintainer-Context.md#mc-1238--chore-702-plan-all-four-items-2026-11-10) | CHORE-702 plan all four items, 2026-11-10 |
+| [MC-1239](Maintainer-Context.md#mc-1239--oi-18-keep-it-fast-for-the-long-revert-2026-11-10) | OI-18 keep it fast for the long revert, 2026-11-10 |
+| [MC-1240](Maintainer-Context.md#mc-1240--chore-690-d-n9-sheet-uses-the-october-census-bound-2026-11-10) | CHORE-690 D-N9 sheet uses the October census bound, 2026-11-10 |
+| [MC-1241](Maintainer-Context.md#mc-1241--chore-699-commit-with-the-module-edit-loss-limit-accepted-2026-11-10) | CHORE-699 commit with the module-edit loss limit accepted, 2026-11-10 |
+| [MC-1242](Maintainer-Context.md#mc-1242--chore-699-no-device-check-for-the-trigger-2026-11-10) | CHORE-699 no device check for the trigger, 2026-11-10 |
+| [MC-1243](Maintainer-Context.md#mc-1243--file-chore-703-704-and-705-from-the-library-perf-pass-2026-11-10) | file CHORE-703, 704 and 705 from the library perf pass, 2026-11-10 |
+| [MC-1244](Maintainer-Context.md#mc-1244--open-in-studio-on-every-character-archived-load-then-open-g3-2026-11-10) | Open in Studio on every character; archived load then open (G3), 2026-11-10 |
+| [MC-1245](Maintainer-Context.md#mc-1245--chore-702-chunk-memo-pool-payload-string-and-failed-retry-2026-11-10) | CHORE-702 chunk memo pool, payload string and failed retry, 2026-11-10 |
+| [MC-1246](Maintainer-Context.md#mc-1246--chore-698-narrowed-to-stages-a-and-b-2026-11-10) | CHORE-698 narrowed to stages A and B, 2026-11-10 |
+| [MC-1247](Maintainer-Context.md#mc-1247--chore-706-decides-on-the-partial-backup-shaped-synthetic-profile-2026-11-10) | CHORE-706 decides on the partial-backup-shaped synthetic profile, 2026-11-10 |
+| [MC-1248](Maintainer-Context.md#mc-1248--chore-698-note-9-run-is-an-owed-check-not-a-merge-blocker-2026-11-10) | CHORE-698 Note 9 run is an owed check, not a merge blocker, 2026-11-10 |
+| [MC-1249](Maintainer-Context.md#mc-1249--chore-653-new-chat-closes-the-narrow-sidebar-overlay-close-it-2026-11-10) | CHORE-653: New chat closes the narrow sidebar overlay (Close it), 2026-11-10 |
+| [MC-1250](Maintainer-Context.md#mc-1250--chore-659-write-delay-helper-only-2026-11-10) | CHORE-659 write-delay helper only, 2026-11-10 |
+| [MC-1251](Maintainer-Context.md#mc-1251--chore-657-drops-the-explicit-save-mark-2026-11-10) | CHORE-657 drops the explicit save mark, 2026-11-10 |
+| [MC-1252](Maintainer-Context.md#mc-1252--chore-706-closed-as-measured-not-worth-it-reopen-rule-2026-11-10) | CHORE-706 closed as measured-not-worth-it, reopen rule, 2026-11-10 |
+| [MC-1253](Maintainer-Context.md#mc-1253--focus-handlers-left-in-place-amending-mc-1250-and-mc-1251-2026-11-10) | Focus handlers left in place, amending MC-1250 and MC-1251, 2026-11-10 |
+| [MC-1254](Maintainer-Context.md#mc-1254--chore-708-filed-for-large-avatar-reads-through-the-chore-703-queue-started-now-2026-11-10) | CHORE-708 filed for large avatar reads through the CHORE-703 queue, started now, 2026-11-10 |
+| [MC-1255](Maintainer-Context.md#mc-1255--chore-703-dv3-and-dv4-rerun-on-the-current-build-per-scenario-bin-files-2026-11-10) | CHORE-703 DV3 and DV4 rerun on the current build, per-scenario bin files, 2026-11-10 |
+| [MC-1256](Maintainer-Context.md#mc-1256--lane-d-takes-chore-708-coding-files-chore-709-and-chore-710-takes-chore-702-stage-4-2026-11-10) | Lane D takes CHORE-708 coding, files CHORE-709 and CHORE-710, takes CHORE-702 stage 4, 2026-11-10 |
+| [MC-1257](Maintainer-Context.md#mc-1257--chore-710-format-failure-leaves-the-character-loaded-and-unselected-2026-11-10) | CHORE-710 format failure leaves the character loaded and unselected, 2026-11-10 |
+| [MC-1258](Maintainer-Context.md#mc-1258--chore-711-filed-as-a-separate-follow-up-2026-11-10) | CHORE-711 filed as a separate follow-up, 2026-11-10 |
+| [MC-1259](Maintainer-Context.md#mc-1259--chore-708-p1-first-come-first-served-2026-11-10) | CHORE-708 P1 first come, first served, 2026-11-10 |
+| [MC-1260](Maintainer-Context.md#mc-1260--chore-708-p2-thumbnail-whole-reads-go-to-chore-712-2026-11-10) | CHORE-708 P2 thumbnail whole reads go to CHORE-712, 2026-11-10 |
+| [MC-1261](Maintainer-Context.md#mc-1261--warm-url-queue-skip-folded-into-chore-708-2026-11-10) | Warm-URL queue skip folded into CHORE-708, 2026-11-10 |
+| [MC-1262](Maintainer-Context.md#mc-1262--chore-710-scope-folds-the-send-path-format-gap-2026-11-10) | CHORE-710 scope folds the send-path format gap, 2026-11-10 |
+| [MC-1263](Maintainer-Context.md#mc-1263--chore-708-p6-previously-seen-image-strict-and-only-when-busy-2026-11-10) | CHORE-708 P6 previously seen image, strict and only when busy, 2026-11-10 |
+| [MC-1264](Maintainer-Context.md#mc-1264--chore-713-filed-for-back-during-the-open-in-studio-load-2026-11-10) | CHORE-713 filed for Back during the Open-in-Studio load, 2026-11-10 |
+| [MC-1265](Maintainer-Context.md#mc-1265--chore-714-filed-and-sized-from-source-per-send-whole-chat-pass-2026-11-10) | CHORE-714 filed and sized from source, per-send whole-chat pass, 2026-11-10 |
+| [MC-1266](Maintainer-Context.md#mc-1266--chore-714-profile-plus-stage-1-then-decide-2026-11-10) | CHORE-714 profile plus stage 1, then decide, 2026-11-10 |
+| [MC-1267](Maintainer-Context.md#mc-1267--window-first-prompt-build-only-as-a-later-separate-opus-reviewed-ticket-2026-11-10) | Window-first prompt build only as a later, separate opus-reviewed ticket, 2026-11-10 |
+| [MC-1268](Maintainer-Context.md#mc-1268--two-full-prompt-consolelog-calls-stay-in-dev-builds-only-2026-11-10) | Two full-prompt console.log calls stay in dev builds only, 2026-11-10 |
+| [MC-1269](Maintainer-Context.md#mc-1269--chore-711-wording-reuses-coldstoragerestoreunreadable-no-new-key-2026-11-10) | CHORE-711 wording reuses coldStorageRestoreUnreadable, no new key, 2026-11-10 |
+| [MC-1270](Maintainer-Context.md#mc-1270--chore-711-scope-list-and-sidebar-rows-chore-715-filed-2026-11-10) | CHORE-711 scope list and sidebar rows, CHORE-715 filed, 2026-11-10 |
+| [MC-1271](Maintainer-Context.md#mc-1271--fold-the-switchtarget-loading-phase-leak-into-chore-711-2026-11-10) | Fold the switchTarget loading-phase leak into CHORE-711, 2026-11-10 |
+| [MC-1272](Maintainer-Context.md#mc-1272--warm-or-group-switch-that-throws-shows-a-quiet-load-failed-frame-with-retry-and-back-2026-11-10) | Warm or group switch that throws shows a quiet load-failed frame with Retry and Back, 2026-11-10 |
+| [MC-1273](Maintainer-Context.md#mc-1273--move-grid-pick-into-711-chore-715-narrowed-2026-11-10) | Move grid pick into 711, CHORE-715 narrowed, 2026-11-10 |
+| [MC-1274](Maintainer-Context.md#mc-1274--lane-d-work-order-chore-711-coding-chore-715-and-chore-712-sizing-and-planning-2026-11-10) | Lane D work order: CHORE-711 coding, CHORE-715 and CHORE-712 sizing and planning, 2026-11-10 |
+| [MC-1275](Maintainer-Context.md#mc-1275--chore-712-thumbnails-share-the-strict-fifo-with-display-reads-2026-11-10) | CHORE-712 thumbnails share the strict FIFO with display reads, 2026-11-10 |
+| [MC-1276](Maintainer-Context.md#mc-1276--chore-712-thumbnail-15-s-timer-starts-when-the-grant-arrives-2026-11-10) | CHORE-712 thumbnail 15 s timer starts when the grant arrives, 2026-11-10 |
+| [MC-1277](Maintainer-Context.md#mc-1277--chore-712-bytes-fallback-stays-out-of-the-queue-2026-11-10) | CHORE-712 bytes fallback stays out of the queue, 2026-11-10 |
+| [MC-1278](Maintainer-Context.md#mc-1278--chore-708-dv1-wc-fail-accepted-as-a-recorded-limitation-708-merged-chore-716-filed-2026-11-10) | CHORE-708 DV1-W(c) FAIL accepted as a recorded limitation, 708 merged, CHORE-716 filed, 2026-11-10 |
+| [MC-1279](Maintainer-Context.md#mc-1279--chore-716-one-frame-placeholder-for-near-warm-images-at-open-and-re-entry-2026-11-10) | CHORE-716 one-frame placeholder for near warm images at open and re-entry, 2026-11-10 |
+| [MC-1280](Maintainer-Context.md#mc-1280--chore-716-scope-covers-both-lists-2026-11-10) | CHORE-716 scope covers both lists, 2026-11-10 |
+| [MC-1281](Maintainer-Context.md#mc-1281--a-settings-or-studio-return-that-rebuilds-every-row-counts-as-re-entry-2026-11-10) | A Settings or Studio return that rebuilds every row counts as re-entry, 2026-11-10 |
+| [MC-1282](Maintainer-Context.md#mc-1282--chore-713-closeout-close-accept-the-flash-2026-11-10) | CHORE-713 closeout "Close, accept the flash", 2026-11-10 |
+| [MC-1283](Maintainer-Context.md#mc-1283--lane-as-mc-block-extends-past-mc-1239-record-only-2026-11-10) | Lane A's MC block extends past MC-1239 (record only), 2026-11-10 |
+| [MC-1284](Maintainer-Context.md#mc-1284--label-evidence-for-batch-64-decisions-addendum-2026-11-08) | Label evidence for batch 64 decisions (addendum), 2026-11-08 |
+| [MC-1285](Maintainer-Context.md#mc-1285--ui-s4-c2-welcome-restore-double-start-and-welcome-ime-enter-folded-into-c2-2026-11-08) | UI-S4 C2: Welcome restore double-start and Welcome IME Enter folded into C2, 2026-11-08 |
+| [MC-1286](Maintainer-Context.md#mc-1286--chore-679-filed-and-sized-now-q1-and-q2-2026-11-08) | CHORE-679 filed and sized now; Q1 and Q2, 2026-11-08 |
+| [MC-1287](Maintainer-Context.md#mc-1287--chore-676-includes-gemini-chore-670-old-list-answers-translate-once-2026-11-08) | CHORE-676 includes Gemini; CHORE-670 old-list answers; translate once, 2026-11-08 |
+| [MC-1288](Maintainer-Context.md#mc-1288--chore-667-crash-loop-guard-fresh-process-relaunch-background-loss-guard-exit-and-mutant-limit-2026-11-08) | CHORE-667: crash-loop guard, fresh-process relaunch, background loss, guard exit and mutant limit, 2026-11-08 |
+| [MC-1289](Maintainer-Context.md#mc-1289--ui-s3-s3b-worker-stage-next-and-opq-t-opq-l-opq-f-2026-11-09) | UI-S3 S3b: "Worker stage next" and OPQ-T, OPQ-L, OPQ-F, 2026-11-09 |
+| [MC-1290](Maintainer-Context.md#mc-1290--slot-pick-chore-669-663-678-645-and-chore-678--chore-645-answers-2026-11-09) | Slot pick (CHORE-669, 663, 678, 645) and CHORE-678 / CHORE-645 answers, 2026-11-09 |
+| [MC-1291](Maintainer-Context.md#mc-1291--lane-b-ticket-picks-chore-663-and-chore-669-answers-2026-11-08-to-2026-11-09) | Lane B ticket picks; CHORE-663 and CHORE-669 answers, 2026-11-08 to 2026-11-09 |
+| [MC-1292](Maintainer-Context.md#mc-1292--chore-683-character-pick-fails-bug-report-and-answers-2026-11-09) | CHORE-683 character pick fails: bug report and answers, 2026-11-09 |
+| [MC-1293](Maintainer-Context.md#mc-1293--chore-685-switch-during-reply-design-answers-2026-11-09) | CHORE-685 switch during reply: design answers, 2026-11-09 |
+| [MC-1294](Maintainer-Context.md#mc-1294--chore-685-plan-r2-and-r3-answers-2026-11-09) | CHORE-685 plan r2 and r3 answers, 2026-11-09 |
+| [MC-1295](Maintainer-Context.md#mc-1295--chore-679-reassessment-welcome-d4-hypav3modal-timer-gboard-skip-2026-11-09) | CHORE-679 reassessment, Welcome D4, HypaV3Modal timer, Gboard skip, 2026-11-09 |
+| [MC-1296](Maintainer-Context.md#mc-1296--ui-s4-e-library-layout-product-answers-mc-892-gap-answered-2026-11-09) | UI-S4 E library layout product answers (MC-892 gap answered), 2026-11-09 |
+| [MC-1297](Maintainer-Context.md#mc-1297--ui-s4-stage-g-studio-from-home-answers-2026-11-09) | UI-S4 stage G (Studio from Home) answers, 2026-11-09 |
+| [MC-1298](Maintainer-Context.md#mc-1298--dd-210-amended-back-from-a-home-opened-studio-lands-in-the-home-library-2026-11-09) | DD-210 amended: Back from a Home-opened Studio lands in the Home library, 2026-11-09 |
+| [MC-1299](Maintainer-Context.md#mc-1299--ui-s4-ed-density-tab-g-q1-and-g3-q1-2026-11-10) | UI-S4 ED density tab, G Q1 and G3 Q1, 2026-11-10 |
+| [MC-1300](Maintainer-Context.md#mc-1300--chore-687-filed-and-closed-chore-685-device-checks-queued-chore-692-closed-2026-11-09-to-2026-11-10) | CHORE-687 filed and closed; CHORE-685 device checks queued; CHORE-692 closed, 2026-11-09 to 2026-11-10 |
+| [MC-1301](Maintainer-Context.md#mc-1301--chore-703705704-start-order-chore-704-q1-and-q2-2026-11-10) | CHORE-703/705/704 start order; CHORE-704 Q1 and Q2, 2026-11-10 |
+| [MC-1302](Maintainer-Context.md#mc-1302--upstream-202610295-adopt-five-commits-adopt-the-removal-batch-proceed-2026-11-10) | Upstream 2026.10.295: adopt five commits, Adopt the removal, batch Proceed, 2026-11-10 |
+| [MC-1303](Maintainer-Context.md#mc-1303--lane-d-takes-open-tickets-slot-cap-raise-to-6-lane-d-codes-712-and-715-ahead-2026-11-10) | Lane D takes open tickets; slot cap Raise to 6; lane D codes 712 and 715 ahead, 2026-11-10 |
+| [MC-1304](Maintainer-Context.md#mc-1304--chore-714-follow-up-stages-sized-after-the-stage-0-profile-2026-11-10) | CHORE-714 follow-up stages sized after the stage 0 profile, 2026-11-10 |
+| [MC-1305](Maintainer-Context.md#mc-1305--chore-714-store2-stage-count-run-first-hold-saves-until-the-reply-settles-if-retries-are-the-cause-2026-11-10) | CHORE-714 store2 stage: count run first; hold saves until the reply settles if retries are the cause, 2026-11-10 |

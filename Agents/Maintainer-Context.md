@@ -23340,3 +23340,1623 @@ CHORE-649 (log 376 to 417, full entry in section 3.2):
 **Results (as logged; lane B claims).** Lane B is building a release APK of `72c256bdf` for Onboarding D1 to D5 and the CHORE-667 renderer-loss repro (lane A log line 628). CHORE-676, 677 and 670 PC profiling continues in lane B.
 
 **Not decided.** The renderer-loss repro result and the clean-baseline post-stream memory run are not in the log: TODO(evidence). The option label is TODO(evidence). The Roadmap CHORE-667 row now records these answers; the product-call wording it carried earlier is withdrawn by this entry.
+
+### MC-1162 — S3b per-owner store cap set to half the store (2 MiB), 2026-11-08
+
+- Tag: decisions (AskUserQuestion answer relayed by the S3 session; verbatim label from lane A log line 637). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1131` (S3b persistence under one size cap), `MC-1148` (N1 split pass rule), `MC-1149` (per-step storage), `MC-1163` (binds the N1 rows), `MC-1069`.
+
+**What the maintainer chose (label verbatim, lane A log line 637).** "Per-owner cap = half (Recommended)". Description as relayed by the S3 session (same line): "Each owner keeps at most 2 MiB (half the store), so two big owners always fit together and the largest full write is about 2 MiB (~71 ms p95 on the Note 9 today, inside the rule). Cost: a long description keeps about 4-5 history steps instead of about 9. Ordinary fields are unaffected." Options not chosen (same line): "Band the switch row", "Report it only", "Evict live owners last". Reason as logged (line 636): two alternately edited owners near the cap evict each other, and each switch rewrites about 4 MiB (about 250 ms on the Note 9).
+
+**Results (as logged by the S3 session; not re-measured here).** Plan r8 opus Gate 1 showed the eviction loop (line 636). Plan r9 Gate 1 round 3 (fresh opus) was EDITORIAL with 0 substantive and 7 editorial findings, and the REJECT streak ended at 2 (line 644). The S3 session reports 424,839 simulated saves with 0 ping-pong evictions and no save above about 2 MiB (line 644; simulation, not a device run).
+
+**Not decided.** The 71 ms, 250 ms and 4-5 step figures are S3-session or option-description claims; the clerk did not verify them. Note 9 device evidence under plan r9 is TODO(evidence). Gate 2 and commit state are not part of this entry.
+
+### MC-1163 — S3b OPQ-2: the per-save rule also binds Note 9 rows 1m and 5b, 2026-11-08
+
+- Tag: decisions (AskUserQuestion answer relayed by the S3 session; verbatim label from lane A log line 644). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1148` (N1 split pass rule), `MC-1162` (per-owner cap), `MC-1069`.
+
+**What the maintainer chose (label verbatim, lane A log line 644).** "Bind both (Recommended)". Option not chosen (same line): "Report only". Scope as logged: the per-save rule also binds Note 9 row 1m (about 300 resident owners, then a normal save) and row 5b (a large owner returns into a full store and evicts about 100 small owners).
+
+**Results (as logged).** The ID MC-1163 was reserved for this answer in batch 65 (line 644). No measurement for rows 1m or 5b is recorded in this entry: TODO(evidence).
+
+**Not decided.** On a fail, contingency C-2 (evict victims past the first K in a follow-up transaction) returns to the maintainer before it is built (line 644). This entry does not authorize C-2.
+
+### MC-1164 — S3b4 known limitation: a later step on a very long alternate first message, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer from the S3 session; the ID was assigned by lane A; verbatim label from lane A log line 761). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1162` (per-owner cap), `MC-1163` (N1 rows), `MC-1148` (N1 split pass rule), `MC-1069`.
+
+**What the maintainer chose (label verbatim, lane A log line 761).** "Report it". Scope as logged: a later step on a very long alternate first message (about 3 copies, about 16.7 ms at 200k characters on the Note 9) is a known limitation; no list codec and no row.
+
+**Results (as logged).** Lane A log line 761 names the next steps: an S3b4 Gate 2 delta (opus and mutants), a harness rebuild with row 2e, and a full N1-c rerun on phone 2. No result for those steps is recorded in this entry: TODO(evidence).
+
+**Not decided.** Nothing further recorded. The 16.7 ms figure is the S3 and lane A figure and is not re-measured here.
+
+### MC-1165 — CHORE-687 idle save scan backs off from 2 s to 30 s after about 1 min clean, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane B; verbatim label from the lane B answers block, and decision wording from lane A log line 777). Date: 2026-11-09. Exact times: relay block 2026-11-09T06:18:52.676Z (UTC; lane B answers file; per-answer times not logged). Sweep ref: none. Related: `MC-1166` to `MC-1171` (other CHORE-687 answers), `MC-1167` (ticket split), `MC-1168` (device acceptance), `MC-1069`.
+
+**What the maintainer chose (label verbatim, lane B answers).** "Back off to 30 s (Recommended)". Question as logged: how long may an unmarked edit wait to be saved on a quiet, clean profile. Decision wording (lane A log line 777): the net scan backs off from 2 s to 30 s after about 1 min clean; it resets on any edit mark, pass, peer event or resident load; hide and Back always run one full check first (existing requestNetSweep and takeNetSweep).
+
+**Results (as logged; lane A and lane B claims).** Gate 1 r1 (opus) was REJECT (lane A log line 791). Lane B's arbitration kept the base cadence for a hidden page and placed the forced check in the hide's own turn, which keeps the "first" part of this decision; no new product decision was recorded there. Gate 1 r2 (line 792) noted that the r2 plan had dropped the reset-on-edit-mark wording, and the fix bumps the cadence at the gate when port.isDirty(). The log does not record that change as a maintainer answer; it is a mechanism change inside the decision. Phone 2 device run DV1 PASS: scans about every 2.2 s for about 65 s of quiet, then about every 32.0 to 32.1 s (lane A log line 843; lane B claim).
+
+**Not decided.** Whether the final reset wording (edit mark through the gate bump) matches the decision text is TODO(evidence); the parent checks it against the Gate 1 r3 record.
+
+### MC-1166 — CHORE-687 module safety-net tick backs off from 30 s to 5 min, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane B; verbatim label from the lane B answers block, and decision wording from lane A log line 778). Date: 2026-11-09. Exact times: relay block 2026-11-09T06:18:52.676Z (UTC). Sweep ref: none. Related: `MC-1165` (net scan), `MC-1167` (ticket split), `MC-1170` (front units), `MC-1171` (device exception), `MC-1069`.
+
+**What the maintainer chose (label verbatim, lane B answers).** "Back off to 5 min (Recommended)". Question as logged: every 30 s the save loop re-encodes and hashes all modules and front units, 154 to 186 ms on the Note 9 even when nothing changed. Decision wording (lane A log line 778): the module safety-net tick backs off from 30 s to 5 min once modules are verified unchanged; it resets on any edit and is forced on hide and Back.
+
+**Results (as logged; lane A log line 843 reports lane B's DV1 on phone 2).** Module ticks ran every 301 to 302 s, and module ticks took 152 to 168 ms on the phone (lane B claim; recorded as input for the MC-1167 ticket).
+
+**Not decided.** The front-unit part of the 5 min cadence is MC-1170.
+
+### MC-1167 — CHORE-687 closes on the back-off; the remaining stall gets its own ticket, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane B; verbatim label from the lane B answers block, and decision wording from lane A log line 779). Date: 2026-11-09. Exact times: relay block 2026-11-09T06:18:52.676Z (UTC). Sweep ref: none. Related: `MC-1165`, `MC-1166`, `MC-1168`, `MC-1069`.
+
+**What the maintainer chose (label verbatim, lane B answers).** "File a separate ticket (Recommended)". Decision wording (lane A log line 779): CHORE-687 closes on the back-off; a stall over 50 ms remaining at the backed-off cadence gets its own ticket (a deeper change signal over db.characters).
+
+**Results (as logged; lane B claims, lane A log line 843).** DV1 measured backed-off scans at 51 to 79 ms and module ticks at 152 to 168 ms on phone 2; these are recorded as input for the MC-1167 ticket. The backed-off scan figures are above the 50 ms line in this entry's wording; the log does not interpret that, and this draft does not either. The CHORE-687 "Close it" answer is at lane A log line 844; DV3 was noted as optional and NOT RUN.
+
+**Not decided.** The follow-up ticket's number and filing are not in the supplied log: TODO(evidence).
+
+### MC-1168 — CHORE-687 device acceptance: long tasks only at the backed-off cadence, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane B; verbatim label from the lane B answers block, and decision wording from lane A log line 780). Date: 2026-11-09. Exact times: relay block 2026-11-09T06:18:52.676Z (UTC). Sweep ref: none. Related: `MC-1165` to `MC-1167` (back-off cadence), `MC-1171` (synthetic edit exception), `MC-1069`.
+
+**What the maintainer chose (label verbatim, lane B answers).** "Rare, at the set cadence (Recommended)". Decision wording (lane A log line 780): device acceptance is long tasks only at the backed-off cadence, recorded with timing; an unmarked edit is still saved after the quiet period and after backgrounding.
+
+**Results (as logged; lane B claims, lane A log line 843; release build of main 2cdc8eadf, phone 2, synthetic p1000r profile).** DV1 PASS (see MC-1165). DV2-ctl PASS: an unmarked edit force-stopped 5 s later was not saved, so the back-off was in effect. DV2a PASS: an edit with no hide, force-stopped at 45 s, was committed by the 32 s scan. DV2b PASS in both trials: an edit, then Home, then force-stop at 3.3 s and 12.5 s, committed by the hide sweep. DV3 NOT RUN (optional, un-profiled 20 min).
+
+**Not decided.** DV3 is not run; the close answer records it as optional (lane A log line 844).
+
+### MC-1169 — CHORE-687: open characters checked one per turn under back-off, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane B; verbatim label from the lane B answers block, and decision wording from lane A log line 783). Date: 2026-11-09. Exact times: relay block 2026-11-09T06:31:37.185Z (UTC). Sweep ref: none. Related: `MC-1165` (net scan cadence), `MC-1170` (front units), `MC-1171`, `MC-1069`.
+
+**What the maintainer chose (label verbatim, lane B answers).** "Accept, one per turn (Recommended)". Question as logged (O1): while the scan is backed off, open characters are still checked one per scan turn; with 2 open characters an unmarked edit may wait up to 2 x 30 s = 60 s; hide and Back still force a check of all. Decision wording (lane A log line 783): under back-off, open (resident) characters are still verdicted one per turn, rotation unchanged (worst case R x 30 s); hide and Back check all of them.
+
+**Results (as logged).** Gate 1 r1 finding F4 (lane A log line 791): with one resident the wait can reach 60 s, beyond the decision wording of R x 30 s.
+
+**Not decided.** Contradiction recorded once: the decision wording gives a worst case of R x 30 s; Gate 1 F4 says one resident can reach 60 s; the lane B question text uses 2 x 30 s = 60 s for two residents. No maintainer answer on this difference is in the supplied log: TODO(evidence). The parent decides whether it needs a question; the clerk does not arbitrate.
+
+### MC-1170 — CHORE-687: front units ride the 5 min module tick, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane B; verbatim label from the lane B answers block, and decision wording from lane A log line 784). Date: 2026-11-09. Exact times: relay block 2026-11-09T06:31:37.185Z (UTC). Sweep ref: none. Related: `MC-1166` (module tick), `MC-1169`, `MC-1171`, `MC-1069`.
+
+**What the maintainer chose (label verbatim, lane B answers).** "Accept 5 min (Recommended)". Question as logged (O2): the 5 min module check also covers presets, plugins, plugin storage, config, order and shards; on a page with no open character, an unmarked edit to those also waits up to 5 min instead of 30 s; hide and Back still force it. Decision wording (lane A log line 784): front units ride the 5 min module tick as part of MC-1166; hide and Back force it.
+
+**Results.** No device result for front units is recorded in this entry: TODO(evidence).
+
+**Not decided.** Nothing further recorded.
+
+### MC-1171 — CHORE-687: one-time synthetic string edit on phone 2 for the device check, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane B; verbatim label from the lane B answers block, and decision wording from lane A log line 785). Date: 2026-11-09. Exact times: relay block 2026-11-09T06:31:37.185Z (UTC). Sweep ref: none. Related: `MC-1168` (device acceptance), `MC-1170`, `MC-1069`, and the standing device rule against hand-editing app state (no MC ID in the supplied log).
+
+**What the maintainer chose (label verbatim, lane B answers).** "Allow on phone 2 synthetic (Recommended)". Decision wording (lane A log line 785): a one-time device exception to the no-hand-edit rule; on phone 2 only, one string field on a named throwaway synthetic character, through the page's own database object, with no storage writes; recorded in the report; it does not extend to other runs or devices.
+
+**Results (as logged; lane B claim).** The CHORE-687 device runs used this method for the unmarked-edit checks (lane A log line 804 names the "MC-1171 method"; the DV2 results are at line 843). The lane B device report is named at line 843 and was not read by the clerk.
+
+**Not decided.** The exception is one-time and limited to phone 2 synthetic. Any other run or device needs its own answer.
+
+### MC-1172 — Upstream 8e1fee403 merged with the experimental async flag off, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer; verbatim label from lane A log line 796). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1173` (configs), CHORE-688 (flag adoption, filed and unscheduled), `MC-1069`.
+
+**What the maintainer chose (label verbatim, lane A log line 796).** "Merge, flag off (Recommended)" (Option B). Decision wording (same line): take all upstream code including both guards, keep the flag off, open a follow-up ticket to adopt the flag. Basis as logged (line 796): with the flag on, a 36-file sample went from 746/746 to 148 failures in 23 files.
+
+**Results (as logged; lane A claims).** trial36 (d91f3f6af plus 8e1fee403 resolved, flag off): FULLRUN PASS, test 0, check 0 (0 errors), build 0; upstream Gate 2 PASS (lane A log line 805). The maintainer's "Commit merge and push (Recommended)" answer (line 805) produced merge commit c11cd386c (parents d91f3f6af and 8e1fee403); main was fast-forwarded and pushed as logged.
+
+**Not decided.** Flag adoption is CHORE-688 (filed, unscheduled; line 805). The Changes-from-upstream wiki entry ("experimental.async off") is owed (line 805). The commit and push answer has no MC entry in the supplied batch: TODO(evidence) for whether it belongs with the MC-1138 and MC-1151 approval records.
+
+### MC-1173 — Upstream experimental block kept with async false, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer; verbatim label from lane A log line 796). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1172` (flag off), CHORE-688, `MC-1069`.
+
+**What the maintainer chose (label verbatim, lane A log line 796).** "Upstream block, async false (Recommended)". Decision wording (same line): keep upstream's compilerOptions.experimental block in vite.config.ts and vitest.config.ts with async: false and a one-line reason.
+
+**Results (as logged; lane A claim, line 799).** The up8e1-b1 merge resolution applied the flag off in both configs (5 hunks as logged). Its report is not read by the clerk.
+
+**Not decided.** Nothing further recorded. Flag adoption is CHORE-688 (MC-1172).
+
+### MC-1174 — Open Realm browser is a full-screen cover: reply-end dot, chime and notification, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer; verbatim label from lane A log line 797). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-685, `MC-1204` (failed or stopped reply sounds), `MC-1115` (lane A leads the UI), `MC-1069`.
+
+**What the maintainer chose (label verbatim, lane A log line 797).** "Yes, off screen (Recommended)". Decision wording (same line): an open Realm browser (RealmFrame) is a full-screen cover like the phone sidebar, so a reply finishing behind it gets the dot, chime and notification.
+
+**Results (as logged; lane A claims).** CHORE-685 Gate 2 on S1a, S1d and S1c: adversarial EDITORIAL and opus EDITORIAL (line 797). Remediation r1 applied and independently verified PASS, covering the Realm cover (line 799). This is code and review evidence, not a device result: device result TODO(evidence).
+
+**Not decided.** The unnumbered C4 answer at lane A log line 768 uses the same label ("Yes, off screen (Recommended)") for a different decision (a full-screen cover such as the DynamicGUI sidebar makes the chat underneath off screen). It is not merged into this entry.
+
+### MC-1175 — Schedule the CHORE-320 and CHORE-321 asset-list design pass (no code slot), 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer; verbatim label from lane A log line 800). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1176` to `MC-1182` (Lane D-assets answers), `MC-1119` (UI-S3 fold tickets; answer 8 "Keep, unscheduled"), `MC-1069`.
+
+**What the maintainer chose (label verbatim, lane A log line 800).** "Schedule the design pass (Recommended)". Decision wording (same line): a CHORE-320+321 asset-list design pass in a new session (Lane D-assets), design and spec draft only, %TEMP% scratch, no code slot, coordinating with the S3 session.
+
+**Results (as logged).** The design document docs/design/studio/SLICE4_SPEC.md was committed as 0ccfb2a31 on the maintainer's "Commit and push" answer (lane A log line 860, 2026-11-10). It is a design document, not application code; the commit approval is separate from this entry.
+
+**Not decided.** Build order is set by MC-1182 (no early detector build; everything waits for slice 4).
+
+### MC-1176 — Q-A1: character asset folder is an optional field in the card's extensions, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer from the Lane D-assets session; the option label is not in the supplied log: TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1175` (design pass), `MC-1177` and `MC-1190` (module folders, not this card field), `MC-1182`, `MC-1069`.
+
+**What the maintainer chose (label TODO(evidence)).** Wording as relayed by lane A (lane A log line 801): the character asset folder is an optional field in the card's extensions; asset names are unchanged.
+
+**Results.** None; design-level answer, no code.
+
+**Not decided.** Option label TODO(evidence).
+
+
+### MC-1177 — Module folder field, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1176` (character asset folder), `MC-1178` (module-folder loss exception), `MC-1190` (amends MC-1177 and MC-1178), `MC-1179` (slice 4 module asset form).
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:801).** "Q-A2: modules get a new optional folder field, lost on an upstream round trip." Amended by MC-1190 (A:814): module folders are carried through the CharX module converters.
+
+**Results.** No result recorded; decision relay only. The CHORE-320/321 build is not started or approved (A:851).
+
+**Not decided.** The round-trip behaviour now follows MC-1190; the parent confirms the amendment at the rule source. No other open question is recorded here.
+
+### MC-1178 — Module-folder loss as an MC-175 exception, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-175` (compatibility rule the exception is recorded against), `MC-1177` (module folder field), `MC-1190` (amends the exception wording).
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:801).** "Q-A3: that module-folder loss is recorded as an MC-175 exception with no export warning (amends MC-518's unstated exception)." Wording amended by MC-1190 (A:814): "may be lost upstream".
+
+**Results.** No result recorded; decision relay only. The CHORE-320/321 build is not started or approved (A:851).
+
+**Not decided.** The MC-518 amendment is as logged in A:801 and is not checked against MC-518 here: TODO(evidence). The parent confirms the MC-1190 wording change at the rule source.
+
+### MC-1179 — Slice 4 module asset form, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1182` (everything waits for slice 4), `MC-1177` (module folder field), `MC-1207` (read-only form for a module that shares its id).
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:801).** "Q-A4: slice 4 gains a small module asset form."
+
+**Results.** No result recorded; decision relay only. Slice 4 is not scheduled by this entry (MC-1182).
+
+**Not decided.** Slice 4 scheduling remains with the S3 session (A:851).
+
+### MC-1180 — Duplicate finder may remove extra copies, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1183` (clarifies this entry), `MC-1181` (name and size match), `MC-1186` (narrow reading of MC-1183).
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:801 and A:803).** "Q-D1: the duplicate finder may also REMOVE extra copies with undo." The log calls this "a scope change from report-only: a persisted write, storage gate and opus-reviewer required."
+
+**Results.** No result recorded; decision relay only. The CHORE-321 build is not started or approved (A:851).
+
+**Not decided.** The removal rule is refined by MC-1183 and MC-1186. The storage gate and opus-reviewer requirement are the log's own statement and are not a maintainer decision.
+
+### MC-1181 — Duplicate matches by name and size, byte check by button, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1180` (duplicate finder removal), `MC-1183` (removal rule), `MC-1186`.
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:801).** "Q-D2: name and size matches show at once, a button runs the byte-hash check; scope is one owner, with an option for owner plus enabled modules."
+
+**Results.** No result recorded; decision relay only. The CHORE-321 build is not started or approved (A:851).
+
+**Not decided.** How the "owner plus enabled modules" option is placed in the plan is not recorded in the frozen sources: TODO(evidence).
+
+### MC-1182 — No early detector build, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1179`, `MC-1175` (design pass scheduled), `MC-1177` to `MC-1191` (asset-list answers that wait on slice 4).
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:801).** "MC-1182: no early detector build, everything waits for slice 4." CHORE-325 is held (no new MC); CHORE-327 comes after the core (A:800, A:851).
+
+**Results.** No result recorded. Slice-4 stage reassignment between lanes is recorded as lane allocation, not a product decision (A:846). Slice 4 scheduling is owned by the S3 session (A:851).
+
+**Not decided.** When slice 4 is scheduled is not recorded in the frozen sources: TODO(evidence).
+
+### MC-1183 — Remove duplicates only within one owner, same name and same bytes, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1180` (clarified by this entry), `MC-1181`, `MC-1186` (narrow reading of this entry).
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:803).** "'Remove duplicates' applies only to rows in the same owner (one character or one module) with the same name AND the same bytes. Removal is enabled only after the byte-hash check confirms the match. A name+size match alone shows as 'possible duplicate' and never allows removal. Undo restores the rows, and the stored file is kept until undo ends."
+
+**Results.** No result recorded; decision relay only. The CHORE-321 build is not started or approved (A:851).
+
+**Not decided.** Nothing further recorded.
+
+### MC-1184 — Merge and rename for the same picture under different names, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1183`, `MC-1187` (character merge), `MC-1188` (module merge), `DD-173` (narrowed to merge only by DD-269 per A:857).
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:803 and A:857).** "New scope for CHORE-321: the same picture under different names in one owner gets a 'merge and rename' action. It keeps one name and rewrites text references (card text, lorebook, scripts) from the other name to it. A preview lists every rewrite before writing, and one undo step reverses the whole merge." The log records this as a persisted write plus reference rewriting, requiring opus-reviewer, and expensive to reverse, so a senior-advisor challenge before implementation.
+
+**Results.** No result recorded. Lane A allotted DD-269 as the DD-173 narrowing by this entry (merge only), in an uncommitted SLICE4_SPEC.md placement (A:857). No implementation is approved.
+
+**Not decided.** The CHORE-320/321 design plan was reviewed: opus [REJECT] on r1 to r4 (A:831, A:842, A:845, A:847), adversarial reviews on r1 to r5 (A:831, A:842, A:845, A:847, A:851), and senior-advisor r1 to r3 (A:834, A:851); Gate 1 was ACCEPTED in r5 (A:851). Whether the advisor or the Gate 1 reviews covered this merge-and-rename mechanism specifically is TODO(evidence). The opus-reviewer implementation review and the senior-advisor challenge before the build are still owed (A:803, A:851); the build is not started or approved.
+
+### MC-1185 — Refuse asset removal when undo cannot be persisted, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1200` (extends this entry), `MC-1203` (crash window), `MC-1202`.
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:809).** "Q13: refuse remove, merge or remove-extras when undo history cannot be persisted ('Cannot keep undo right now'); nothing changes."
+
+**Results.** No result recorded; decision relay only. A:834 adds that the MC-1185 and MC-1200 refusals run before the write as a synchronous phase check (the MC-1203 crash window is accepted). The CHORE-320/321 build is not started or approved (A:851).
+
+**Not decided.** The extension by MC-1200 (another tab owns the character) is recorded there, not here.
+
+### MC-1186 — Same name and identical stored path removable without hashing, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1183` (the reading this narrows), `MC-1180`.
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:810).** "Q12, a narrow reading of MC-1183: same name plus an identical stored path is removable at once without hashing; removal never deletes bytes."
+
+**Results.** No result recorded; decision relay only. The CHORE-321 build is not started or approved (A:851).
+
+**Not decided.** Nothing further recorded.
+
+### MC-1187 — Character merge rewrites owner text only, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1198` (archived and cold owners not checked, refines the preview), `MC-1188` (module merge), `MC-1184`.
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:811).** "Q2: a character merge rewrites the owner's text only; the preview and toast show 'N chats still mention <old>'; chats are untouched; one undo step."
+
+**Results.** No result recorded; decision relay only. The preview counts are refined by MC-1198 (A:828). The CHORE-321 build is not started or approved (A:851).
+
+**Not decided.** Nothing further recorded.
+
+### MC-1188 — Module merge rewrites module text only, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1201` (amends this entry: explicit confirm), `MC-1198` (preview counts skip archived and cold owners), `MC-1187`.
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:812).** "Q3: a module merge rewrites the module's text only; the preview scans enabling characters read-only and lists 'N characters use this name; their text is not changed' with hit counts."
+
+**Results.** No result recorded; decision relay only. Amended by MC-1201 (A:832) and refined by MC-1198 (A:828). The CHORE-321 build is not started or approved (A:851).
+
+**Not decided.** The amendment by MC-1201 is recorded in that entry; the parent confirms at the rule source.
+
+### MC-1189 — Undo after later edits is partial, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1195` (undo after reload, same asset area), `MC-1185`.
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:813).** "Q16: undo after later edits is partial: rows and file restored, text restored where it still matches, lines not restored are listed."
+
+**Results.** No result recorded; decision relay only. The CHORE-321 build is not started or approved (A:851).
+
+**Not decided.** Nothing further recorded.
+
+### MC-1190 — Module folders carried through CharX module converters, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1177` and `MC-1178` (both amended by this entry).
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:814).** "Q6/Q7, amends MC-1177/MC-1178: module folders are carried through the CharX module converters (same field); the MC-1178 exception wording becomes 'may be lost upstream'."
+
+**Results.** No result recorded; decision relay only. The CHORE-320/321 build is not started or approved (A:851).
+
+**Not decided.** The parent confirms the amendments to MC-1177 and MC-1178 at their rule source (this draft does not edit those entries). Whether the converters' behaviour matches this wording is not checked here: TODO(evidence).
+
+### MC-1191 — One level of folders, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the Lane D-assets session; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1176` (character asset folder), `MC-1177` (module folders), `MC-1192` (emotion images have no folders).
+
+**What the maintainer chose (option label TODO(evidence)), then the log's wording (lane A relay, A:815).** "Q14: one level of folders."
+
+**Results.** No result recorded; decision relay only. The CHORE-320/321 design pass Gate 1 is accepted (r5, A:851); the build is not started or approved (A:851).
+
+**Not decided.** Nothing further recorded.
+
+
+### MC-1192 — Emotion images get filter, bulk select, duplicate finder and merge but no folders, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D-assets via lane A; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-320`, `CHORE-321` (asset design pass); `MC-778` grilling of plan r1 (lane A log line 808); `MC-1197` (UI defaults).
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A paraphrase of Q15).** "Q15 emotion images: filter, bulk, finder, merge, no folders": emotion images get filter, bulk select, the duplicate finder and merge, but no folders. Full answer text is in `b65\s3fold\answers-grill-r1.md`, which is not in the frozen sources: TODO(evidence).
+
+**Results (lane A report, not independently checked).** Part of the CHORE-320/321 design. Gate 1 was accepted in r5, closure-scoped (lane A log line 851). Nothing is built or approved for build; the build waits for slice 4 scheduling (MC-1182), CHORE-690 landing, and a code slot.
+
+**Not decided.** Nothing beyond this entry. The build is not approved.
+
+### MC-1193 — Rename carries the asset folder and cleans stale entries, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D-assets via lane A; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-320` (asset design pass); `MC-778` grilling (lane A log line 808).
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A paraphrase of N1).** Rename carries the folder; a stale folder entry is cleaned when no row of that name remains; undo restores it.
+
+**Results (lane A report, not independently checked).** Part of the CHORE-320/321 design accepted in Gate 1 r5 (lane A log line 851). Not built.
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1194 — The kept name is preselected and case-only or extension-only differences are merge candidates, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D-assets via lane A; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-321`; `MC-778` grilling (lane A log line 808).
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A paraphrase of N11).** The kept name is preselected (more references wins; emotion "neutral" wins) and the user can change it. Case-only and extension-only name differences are offered as merge candidates, for same bytes only.
+
+**Results (lane A report, not independently checked).** Part of the CHORE-320/321 design accepted in Gate 1 r5 (lane A log line 851). Not built.
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1195 — Undo after a reload goes through Studio history with a named step line, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D-assets via lane A; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-321`; `MC-778` grilling (lane A log line 808).
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A paraphrase of N14).** Undo after a reload goes through Studio history (Ctrl+Z or the history panel) with a named step line. A clear message is shown if the file is gone.
+
+**Results (lane A report, not independently checked).** Part of the CHORE-320/321 design accepted in Gate 1 r5 (lane A log line 851). Not built.
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1196 — ccAssets and other arrays are report-only, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D-assets via lane A; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-321`; `MC-778` grilling (lane A log line 808).
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A paraphrase of Q9).** ccAssets and other arrays are report-only: never removed or merged across kinds.
+
+**Results (lane A report, not independently checked).** Part of the CHORE-320/321 design accepted in Gate 1 r5 (lane A log line 851). Not built.
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1197 — Accepted all recommended UI defaults N2 to N10, N12, N13, N15 and N16, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answers relayed by lane D-assets via lane A; option labels TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-320`, `CHORE-321`; `MC-778` grilling (lane A log line 808); `MC-1215` (later reversal of grill default Q5).
+
+**What the maintainer chose (labels TODO(evidence)), then the log's wording (lane A relay).** "accepted all recommended UI defaults N2-N10, N12, N13, N15 and N16 as listed in answers-grill-r1.md." The list itself is not in the frozen sources: TODO(evidence).
+
+**Results (lane A report, not independently checked).** Part of the CHORE-320/321 design accepted in Gate 1 r5 (lane A log line 851). Not built.
+
+**Not decided.** The individual default texts are not supplied here: TODO(evidence).
+
+### MC-1198 — Merge preview counts skip archived and cold owners and say so, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D-assets via lane A; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1187` (character merge preview counts), `MC-1188` (module merge preview counts), `CHORE-321`.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (OPQ-1 as logged).** The merge preview counts skip archived and cold owners and say so (e.g. "{k} archived chats not checked"), with no I/O on them.
+
+**Results (lane A report, not independently checked).** Part of the CHORE-320/321 design accepted in Gate 1 r5 (lane A log line 851). Not built.
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1199 — Fold the getClosestMatch cache-key defect into stage D5 as a shared cause, 2026-11-09
+
+- Tag: decisions (relayed by lane D-assets via lane A; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-091` (shared-cause correction); `CHORE-320`, `CHORE-321`.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A relay).** Fold in the adjacent defect at `src/ts/parser/parser.svelte.ts:732`: getClosestMatch overwrites a pool's cache key with one path after a near-miss lookup, which collapses the random variant pool until the cache resets. It is fixed in stage D5. The log says it needs a regression reproducer that is red on the pre-fix base.
+
+**Results.** No reproducer, test run or fix is in the frozen sources: TODO(evidence).
+
+**Not decided.** The reproducer and its red-on-base run are owed: TODO(evidence).
+
+### MC-1200 — Another tab owning a character refuses asset delete, remove and merge, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D-assets via lane A; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1185` (extended), `MC-1206` (module wording), `CHORE-320`, `CHORE-321`.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A relay).** When another tab owns the character (a Studio memory-only owner), asset delete, remove-extras and merge are refused with "Open this character in one tab to remove assets". Other edits stay memory-only as today.
+
+**Results (lane A report, not independently checked).** Part of the CHORE-320/321 design accepted in Gate 1 r5 (lane A log line 851). Not built.
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1201 — Module merge needs an explicit confirm in two cases, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D-assets via lane A; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: amends `MC-1188`; `MC-1198` (archived owners not checked); `CHORE-321`.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A relay).** A module merge still rewrites only the module's own text and lists the enabling characters with hit counts. It now needs an explicit confirm when any enabling character's text uses the old name, or when some archived characters were not checked (MC-1198). The confirm names those characters and warns that a similar-looking picture may show instead, because of the closest-name fallback.
+
+**Results (lane A report, not independently checked).** Part of the CHORE-320/321 design accepted in Gate 1 r5 (lane A log line 851). Not built.
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1202 — Retained asset list travels in .bin unchanged with no warning, 2026-11-09
+
+- Tag: decisions (maintainer answer relayed by lane A; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-175` (not an MC-175 exception); `MC-1205` (extends this); `MC-1203`; `CHORE-320`, `CHORE-321`.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A relay).** The retained list travels in .bin unchanged and with no warning, like trashTime. Cards and CharX never carry it. It is not an MC-175 exception.
+
+**Results (lane A report, not independently checked).** The senior-advisor option D (a fork-only top-level `assetRetained` field on the character and on RisuModule, written in the same owner write as the row removal) was adopted into plan r3 (lane A log line 834). Plan r4 simplified it (line 842). Accepted in Gate 1 r5 (line 851). Not built.
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1203 — Crash window between removal write and history save accepted, 2026-11-09
+
+- Tag: decisions (maintainer answer relayed by lane A; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1202`; `MC-1185` and `MC-1200` (refusals run before the write); `CHORE-320`, `CHORE-321`.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A relay).** The crash window is accepted. If the app dies between the removal write and the history save, the removal has no undo line. Its file stays retained only until the next asset write on that owner prunes the entry, and cleanup may delete it after that. The MC-1185 and MC-1200 refusals still run before the write, as a synchronous phase check.
+
+**Results (lane A report, not independently checked).** Recorded as an accepted limitation of the CHORE-320/321 design. Lane A note (line 847): the Gate 1 r4 fix for opus S1 (union with the last acknowledged saved record) is not an MC-1203 extension. No crash test is in the frozen sources: TODO(evidence).
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1204 — Failed or stopped replies play no sound, including the composer chime, 2026-11-09
+
+- Tag: decisions (maintainer AskUserQuestion 2026-11-09; option label verbatim "Silence it too"). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-685` (switch during reply, closed as MC-1218); `MC-1115` (lane A leads the UI); `MC-1217` (CHORE-692 repost fix). Note: lane A offered "Next free MC-1204" at lane A log line 834; the number was used by the answer at line 835.
+
+**What the maintainer chose (label as logged: "Silence it too"), then the log's wording (lane A paraphrase).** A failed or stopped reply plays no sound at all, including the playMessage composer chime.
+
+**Results (lane A claims, not independently checked).** Gate 2 S1b delta: adversarial EDITORIAL and opus EDITORIAL, with the silence rule applied in the rem2 remediation. rem2 verified ACCEPT (`gate2b\rem2-verify.md`, lane A log line 836). Lane A checks on the c685b snapshot: svelte-check 0 errors and 2 warnings; vitest 831 files passed (line 836). trial39 FULLRUN PASS (test 0, check 0 errors and 2 warnings, build OK; record `risu-fullrun\2026-11-09T11-28-12-651Z`, line 837); merged to main as 1cfa819ee. Lane B DV1 on Note 9 phone 2 (PARTIAL, line 848): MC-1204 checked for failed replies with the app off, on and hidden, and for an on-screen stop; the off-screen stop was NOT RUN. DV1 notification volume was 0, so the audible part is inferred (line 848). Lane B DV2 on the Pixel_6a_LowRam_35 emulator (AOSP API 35, PARTIAL, line 850): item 5 (FORCE_LEGACY_BRIDGES) NOT RUN; item 7 ran at volume 5/7 on stock AOSP; nothing was measured audibly. Gate 2 S1b delta perf PASS (line 835; happy-dom proxy on i9-13900KF, windowed DOM): Simple +2.1 ms/+3.3%, Grid -4.2 ms/-2.9%. Lane A rulings (line 835, UI lead under MC-1115): moving a character to Trash counts as a delete-stop (outcome none); the duplicated-id limitation is extended to the twin-shown case; tests added for opus 3 and adversarial 1. INCIDENT (line 835): an opus reviewer's .NET relative-path write briefly changed the main checkout src/ts/process/saveOnHide.ts (`if (!pageIsHidden())` to `if (true)`). It was restored; lane A verified blob 93d4abc0 equals HEAD and git status of src is clean. Anything built from C:\Projects\RisuAI\src in the window of about 19:30-19:41 local is suspect; batch-65 records must carry this. Approvals: "Commit and run trial" (line 836, f5d6a76f2); "Merge and push" (line 837, 1cfa819ee). DV1b (lines 848-850) found that Samsung One UI marks a replace of an existing record non-interruptive; that finding led to MC-1217 and CHORE-692, not to an MC-1204 change. CHORE-685 closed COMPLETE with gaps noted (MC-1218).
+
+**Not decided.** The off-screen stop device check: TODO(evidence). Audible confirmation of silence: TODO(evidence).
+
+### MC-1205 — Module asset retained list stripped from export and upload, 2026-11-09
+
+- Tag: decisions (maintainer answer relayed by lane D-assets via lane A; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: extends `MC-1202`; `CHORE-320`, `CHORE-321`.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A relay).** The module `assetRetained` list is stripped from .risum export and RisuRealm upload, and dropped on module import.
+
+**Results (lane A report, not independently checked).** Part of the CHORE-320/321 design accepted in Gate 1 r5 (lane A log line 851). Not built.
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1206 — Module owned by another tab refusal wording, 2026-11-09
+
+- Tag: decisions (maintainer answer relayed by lane D-assets via lane A; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: extends `MC-1200`; `CHORE-320`, `CHORE-321`.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A relay).** For a module owned by another tab, the MC-1200 refusal reads "Open this module in one tab to remove assets".
+
+**Results (lane A report, not independently checked).** Part of the CHORE-320/321 design accepted in Gate 1 r5 (lane A log line 851). Not built.
+
+**Not decided.** Nothing beyond this entry.
+
+
+### MC-1207 — Module sharing an id gets a read-only asset form, 2026-11-09
+
+- Tag: decisions (maintainer answer relayed by lane A from Lane D-assets' plan r3 answers, A:838; channel not logged; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1200` (another-tab refusal), `MC-1202`, `MC-1205`, `MC-1206` (same answer set, A:838); `CHORE-320`, `CHORE-321` (asset design pass).
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A relay).** A module that shares its id with another module gets a read-only asset form with the notice "This module shares its id with another module; asset changes are off".
+
+**Results (lane A log, not independently checked).** Recorded at A:838. The CHORE-320/321 design pass passed Gate 1 at r5, closure-scoped (A:851). Nothing is built or approved for build; it waits for slice 4 scheduling (MC-1182), CHORE-690 landing for D3-lite, and a code slot (A:851). Implementation status: TODO(evidence).
+
+**Not decided.** Nothing beyond this entry. The build is not approved.
+
+### MC-1208 — Studio undo stuck on an already-before-state step is passed over (MC-091 fold-in), 2026-11-09
+
+- Tag: decisions (maintainer answer relayed by lane A from Lane D-assets' plan r3 answers, A:838; channel not logged; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-091` (shared-cause fold-in), `MC-1209`, `MC-1210`, `MC-1214`, `MC-1219`; `CHORE-320`, `CHORE-321`, `CHORE-690`.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A paraphrase).** Studio undo can stick on a step whose ops are already in their before-state. planReplay treats that step as done, moves past it and shows a note. The log names the option as "opus S3 option b" without quoting a label. It touches every S3b step kind, so opus-reviewer covers it, and the S3 session is told (A:838).
+
+**Results (lane A log, not independently checked).** Recorded at A:838. MC-1209 refines MC-1208 by dropping such a step and showing a note (A:839). Lane C's G file map (C:272) marks StudioScreen.svelte as ask-first for the MC-1208/1209 display branch. Implementation owner and status: TODO(evidence).
+
+**Not decided.** The exact option label is not in the supplied log: TODO(evidence).
+
+### MC-1209 — Undo moved past a step that can no longer be undone, with a note, 2026-11-09
+
+- Tag: decisions (Lane D-assets answer relayed by lane A, A:839; label TODO(evidence), the log cites plan-r3a option (a)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1208` (refined), `MC-1216` (uses this note), `MC-1211`, `MC-1214`; `CHORE-690`, `CHORE-320`, `CHORE-321`.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (OPQ-4, refines MC-1208).** Undoing a step whose only unapplied ops are consumed, inert or already in place drops the step and shows "Undo moved past a step that can no longer be undone here." This covers a delete whose item was already used by a History restore or by undoing a revert. Ctrl+Z keeps working below it. The log records no plan change (plan-r3a option (a)) (A:839).
+
+**Results (lane A log, not independently checked).** Recorded at A:839. MC-1216 applies the same note to pre-CHORE-690 records (A:845). Implementation status: TODO(evidence).
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1210 — Two suspected S3b first-message undo defects filed as CHORE-690, 2026-11-09
+
+- Tag: decisions (maintainer asked for a new ticket, relayed by lane A from Lane D-assets, A:839; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690` (filed; owner: the S3 session; outside the asset plan), `MC-1208`, `MC-1209`, `MC-1211` to `MC-1214`, `MC-1219`, `MC-1223`, `MC-1227`.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A paraphrase).** The maintainer asked for a new ticket, filed as CHORE-690, covering two suspected pre-existing S3b first-message undo defects found by source reading only. The ticket starts with two diagnostic tests. H1: a crash window on a first-message delete lets undo re-insert a first message that is still present, giving a duplicate, because applyForward listInsert checks only the index bound. H2: a revert across a first-message delete consumes the deleted item; undoing the revert removes the message again without listing the item, and after a new edit clears Redo the message cannot be restored (A:839).
+
+**Results (lane A relay of the S3 session, not independently checked).** Diagnostics run in a scratch copy of main 1cfa819ee: H1 REPRODUCED and H2 REPRODUCED; adversarial reviewers confirmed both (A:840). CHORE-690 sized M, two stages (A:841). Gate 1 went through r2 to r7 with rejects and editorials (A:852, A:854, A:865, A:870, A:894); plan-r7a is ready (A:897); the freed code slot went to CHORE-690 (A:901); an S1 coder is live (C:322). Merge status at the frozen range end: TODO(evidence).
+
+**Not decided.** The option label is not quoted in the supplied log: TODO(evidence). The product answers for CHORE-690 are recorded as MC-1211 to MC-1214 and MC-1219 to MC-1229.
+
+### MC-1211 — History insert already present is skipped with the existing toast, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the S3 session, A:841). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1208`, `MC-1209`, `MC-1212`, `MC-1214`, `MC-1216`; `CHORE-690`.
+
+**What the maintainer chose (label as logged): "Skip it, existing toast".** A history insert whose value is already present is skipped and the rest of the step applies. If nothing applies, Undo refuses with the existing studioRefusalPrecondition toast. The stuck step stays until MC-1208/1209 lands (A:841).
+
+**Results (lane A log, not independently checked).** Recorded at A:841 from the S3 session's CHORE-690 size check. CHORE-690 is in flight at the frozen range end (A:901; C:322); see MC-1210.
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1212 — New first-message delete stores a neighbour witness, superseded in mechanism by MC-1223, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the S3 session, A:841). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1223` (supersedes this answer's per-op neighbour witness), `MC-1211`, `MC-1214`, `MC-1219`; `CHORE-690`.
+
+**What the maintainer chose (label as logged): "Store neighbours".** New first-message deletes record a neighbour witness (an optional additive field) so the check is exact. Records already saved fall back to the exact-slot check. This is a stored-format addition, so opus-reviewer (A:841).
+
+**Results (lane A log, not independently checked).** Recorded at A:841. Superseded in its mechanism by MC-1223, recorded at A:858: the step-level list fingerprint "supersedes MC-1212's per-op neighbour witness"; it stays an optional field with no version bump, and old records keep the exact-slot fallback. This entry is kept unchanged as the record of the answer; its mechanism is replaced by MC-1223 and then MC-1227.
+
+**Not decided.** The witness mechanism is decided by MC-1223 and MC-1227, not by this entry.
+
+### MC-1213 — Undoing a revert re-lists the deleted first message, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the S3 session, A:841). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1214` (presence check), `MC-1210` (H2 defect); `CHORE-690`.
+
+**What the maintainer chose (label as logged): "Yes, list it again".** Undoing a revert re-lists the deleted first message in "Deleted first messages", and redoing the revert consumes it again (A:841).
+
+**Results (lane A log, not independently checked).** Recorded at A:841. It answers the H2 pattern the S3 session reproduced (A:840). CHORE-690 is in flight at the frozen range end (A:901).
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1214 — Presence check covers every history insert path, MC-091 scope amendment, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the S3 session, A:841; MC-091 scope amendment). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-091`, `MC-1211`, `MC-1208`, `MC-1212`; `CHORE-690`, `CHORE-691` (filed).
+
+**What the maintainer chose (label as logged): "Fold all in".** The presence check covers every history insert path: undo of revert and restore-point steps, and redo of restore. A restore point also consumes the matching deleted entry (A:841).
+
+**Results (lane A log, not independently checked).** Recorded at A:841. Lane A filed CHORE-691 (open, unscheduled): when MAX_DELETED (50) evicts an item whose delete step is still in done, undo of that step is skipped forever; a different defect class from CHORE-690 (A:841).
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1215 — No Deleted assets History list; asset removals undone through Ctrl+Z and the history panel, 2026-11-09
+
+- Tag: decisions (Lane D-assets answer relayed by lane A, A:845; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1197` (grilling default Q5, reversed by this answer), `MC-1216`; `CHORE-320`, `CHORE-321`.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A relay).** There is no "Deleted assets" History list for asset removals. They are undone only through Ctrl+Z/Redo and the history panel, and the step carries every row (A:845).
+
+**Results (lane A log, not independently checked).** The log states that this reverses grilling default Q5 (one grouped deleted item, under MC-1197) and removes opus r3 S1 (A:845). The CHORE-320/321 design pass passed Gate 1 at r5 (A:851); the build is not started.
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1216 — Pre-CHORE-690 undo records without a witness skip with the MC-1209 note, 2026-11-09
+
+- Tag: decisions (Lane D-assets answer relayed by lane A, A:845; option label TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1211` (refined by this answer), `MC-1209` (the note), `MC-1223` (old records keep the exact-slot fallback); `CHORE-690`.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A relay).** For undo records written before CHORE-690, which have no neighbour witness, Ctrl+Z on an unsafe first-message undo skips the step with the MC-1209 note "Undo moved past a step that can no longer be undone here." It does not refuse the step for good. No released build carries such records (A:845).
+
+**Results (lane A log, not independently checked).** Recorded at A:845; the S3 session is told by Lane D (A:845). Under MC-1223 older records keep the exact-slot fallback (A:858). Implementation status: TODO(evidence).
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1217 — Same-chat sounding reply repost on One UI fixed as a new ticket, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A, A:851; label as logged). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1204` (silence rule for failed replies), `MC-1218` (CHORE-685 closeout); `CHORE-685`, `CHORE-692`.
+
+**What the maintainer chose (label as logged): "Fix it as a new ticket".** On Samsung One UI a same-chat sounding reply that replaces an existing notification is marked non-alerting. The fix is to clear the old notification and then post a fresh one for sounding reposts. Filed as CHORE-692 (A:851).
+
+**Results (lane A log, not independently checked).** CHORE-692 Gate 2 EDITORIAL; the cancel also runs below API 26, accepted with no change (A:853). Maintainer "Commit, merge and push": commit 89d2a0c9b, merged as 7fea8cea3, pushed (A:853). Lane B validation PASS on Note 9 (phone 2, One UI, API 29), release build of 7fea8cea3, bridge posts only, not heard by ear (A:855). Maintainer "Close and remove": CHORE-692 COMPLETE with the limit "bridge posts only, not heard by ear" (A:856).
+
+**Not decided.** Audible checks are not recorded: TODO(evidence).
+
+### MC-1218 — CHORE-685 COMPLETE with gaps noted, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A, A:851; label as logged). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1204`, `MC-1217`; `CHORE-685` (merged 1cfa819ee), `CHORE-692`.
+
+**What the maintainer chose (label as logged): "Close with gaps noted".** CHORE-685 is COMPLETE. The gaps recorded at A:851: NOT RUN an off-screen stop (no UI exists); DV2 item 5, FORCE_LEGACY_BRIDGES (debug build only); a real group chat; audible checks (phone volume 0). The One UI repost question goes to CHORE-692.
+
+**Results (lane A and lane B logs, not independently checked).** Earlier device items: DV1 PARTIAL (A:848), DV1b PARTIAL (A:849), DV2 emulator PARTIAL (A:850). Later lane B reports DV2 item 5 PASS on Note 9 phone 2 (API 29) with a debug APK of 6d97c9e71, with the zero-argument notify and legacy IME/keep-alive behaviour not tested (A:890).
+
+**Not decided.** The gaps listed above remain as logged: TODO(evidence) for any gap closure.
+
+### MC-1219 — History remove applies only when its run index is above sameAfter, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by the S3 session through lane A, A:852; label as logged; MC-091 shared cause). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-091`, `MC-1214`, `MC-1223` (same witness), `MC-1229`; `CHORE-690`.
+
+**What the maintainer chose (label as logged): "Fold it in".** A history remove applies only when run(index) > (sameAfter ?? 0). It uses the same witness, needs no format change, and old records behave as today (A:852).
+
+**Results (lane A log, not independently checked).** Recorded at A:852 from CHORE-690 Gate 1 r2. The fingerprint mechanism that later reuses the witness is MC-1223 (A:858). CHORE-690 is in flight at the frozen range end (A:901).
+
+**Not decided.** Nothing beyond this entry.
+
+### MC-1220 — Lost owner write of a consuming action stays consumed until Lane D skip-with-note, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the S3 session, A:852; OI-3). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1209` (the note), `MC-1216`, `MC-1221` (OI-10); `CHORE-690`.
+
+**What the maintainer chose (label as logged): "Accept until Lane D".** After a lost owner write of a consuming action (Restore deleted, revert, restore point), the entry stays consumed and the undo is refused until Lane D's skip-with-note re-lists it (A:852).
+
+**Results (lane A log, not independently checked).** Recorded at A:852. Its interaction with the later fingerprint decisions MC-1223 and MC-1227 is not stated in the supplied sources: TODO(evidence).
+
+**Not decided.** Lane D's skip-with-note is the release point for this entry; its status is TODO(evidence).
+
+### MC-1221 — Restore point consumes an equal-text entry, newest first, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A from the S3 session, A:852; OI-10). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1220` (OI-3), `MC-1222` (OI-11), `MC-1214` (restore point consumes the matching deleted entry), `MC-1225`; `CHORE-690`.
+
+**What the maintainer chose (label as logged): "Same text, newest first".** A restore point consumes any listed entry with equal text, most recently listed first, at most as many as the copies it re-adds (A:852).
+
+**Results (lane A log, not independently checked).** Recorded at A:852. MC-1225 keeps restore-point consumption as the last CHORE-690 stage with its own Gate 1 delta (A:858). CHORE-690 is in flight at the frozen range end (A:901).
+
+**Not decided.** Nothing beyond this entry.
+
+
+### MC-1222 — CHORE-690 OI-11: restore point leaves a side chat's first-message choice alone, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer in the S3 session, relayed by lane A). Date: 2026-11-10. Exact times: UNKNOWN (lane A log has no times). Sweep ref: none. Related: `MC-1219`, `MC-1220`, `MC-1221` (same answer set, A:852); `MC-1211` to `MC-1214` (CHORE-690 answers of 2026-11-09, A:841).
+
+**What the maintainer chose (label as logged: "No").** OI-11: a restore point leaves a side chat's first-message choice alone (A:852).
+
+**Results (as logged).** Recorded as a maintainer answer in lane A's log (A:852). No implementation or test result is attributed to this answer in the frozen log. CHORE-690 state after it: see MC-1223 to MC-1229.
+
+**Not decided.** Nothing further is recorded in the frozen log for this item.
+
+### MC-1223 — CHORE-690 mechanism: step-level list fingerprint, supersedes MC-1212, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer in the S3 session, relayed by lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1212` (superseded by this entry, A:858); `MC-1224`, `MC-1225`, `MC-1226`, `MC-1227` (makes this rule two-way, A:867), `MC-1228`, `MC-1229`.
+
+**What the maintainer chose (label as logged: "Fingerprint").** Mechanism, labelled "three-way" in the lane A relay (A:858): supersedes MC-1212's per-op neighbour witness; still an optional field with no version bump; old records keep the exact-slot fallback; OI-12 withdrawn.
+
+**Results (as logged).** The three-way wording at A:858 is changed to two-way by MC-1227 (A:867: "makes MC-1223 two-way"). Lane A's senior-advisor run reported an executed model with 0 wrong results in 200,000 multi-op reverts (A:858, lane A relay of s3\c690\advisor\result.md; not independently checked by the clerk). CHORE-690 Gate 1 rounds: r3 rejected before this answer (A:854; it triggered the advisor run at A:858); after it, r4 (A:865) and r5 (A:870) rejected, r5 on one cost finding only; r7 passed (A:894).
+
+**Not decided.** This entry does not accept CHORE-690. Gate 2 and the Note 9 check are still owed (see MC-1229).
+
+### MC-1224 — CHORE-690 outside edit: per-op checks as on base, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer in the S3 session, relayed by lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1223`; `MC-1227` (supersedes this entry in part, A:867).
+
+**What the maintainer chose (label as logged: "Today's checks").** "when the list matches neither side, the per-op checks run as on the base" (A:858, lane A relay of the S3 answer).
+
+**Results (as logged).** Superseded in part by MC-1227 (A:867: "supersedes MC-1224"): for a fingerprinted step, a list matching neither side now skips the list operations. Lane A's relay says steps without a fingerprint (old records, listSet-only steps) keep the per-op checks (A:867).
+
+**Not decided.** Nothing further is recorded for this entry beyond the supersession.
+
+### MC-1225 — CHORE-690 restore-point consumption stays the last stage, with an exit, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer in the S3 session, relayed by lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1223`, `MC-1229` (keeps S3 last, A:867).
+
+**What the maintainer chose (label as logged: "Keep, with an exit").** Restore-point consumption stays as the last stage with its own Gate 1 delta; one more substantive reject on it moves it to a follow-up without re-asking (A:858, lane A relay).
+
+**Results (as logged).** A:867 records "S3 stays last under MC-1225". No restore-point stage result is recorded in the frozen log.
+
+**Not decided.** The exit is conditional on a further substantive reject. No follow-up ticket for restore-point consumption is named in the frozen log: TODO(evidence).
+
+### MC-1226 — CHORE-690 hash cost: measure on Note 9, memo only if over 16 ms, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer in the S3 session, relayed by lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1223`, `MC-1229`, `MC-1239` (OI-18, 500,000-character threshold, A:894), `MC-1240` (D-N9 census bound, A:894); CHORE-693 F1 names an amendment of this entry as a proposed follow-up (A:867), not a decision.
+
+**What the maintainer chose (label as logged: "Measure, then decide").** Hash on list actions only, never on typing; measure on the Note 9 before Gate 2 (a lane B device check is owed); add a memo only if over 16 ms; if still over, large lists fall back to per-op checks as a stated limitation (A:858, lane A relay).
+
+**Results (as logged; lane A measurements on the i9, not Note 9).** One hash of 50 x 200k characters took 14.6 ms (A:865). The revert-cost finding at plan r5 (A:870) led to advisor ruling c690-advisor3 (element-hash carry): interleaved 10x10 revert 1.97 ms vs 10.81 ms; 98-step span 13 ms vs 141 ms (A:878). Residual per lane A: a single action needing two full-list hashes at tier B is about 10-19 ms on the phone; the D-N9 device sheet decides it (A:878). Note 9 measurement: TODO(evidence); the D-N9 sheet was queued to lane B (A:897).
+
+**Not decided.** Whether a memo or a size-threshold branch is needed is not decided. If the D-N9 size-threshold branch fires, it becomes a maintainer question (A:878).
+
+### MC-1227 — CHORE-690 two-way rule: a fingerprinted step refuses list operations from the other side or neither, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer in the S3 session, relayed by lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1223` (made two-way by this entry); `MC-1224` (superseded); `MC-1228`; `MC-1229`; `MC-1239` (OI-18 threshold, A:894); `MC-1240` (D-N9 census bound, A:894).
+
+**What the maintainer chose (label as logged: "Refuse them").** "for a fingerprinted step, a live list equal to the expected side applies; the other side or neither skips the step's list ops, and the existing refusal shows if nothing applies. Steps without a fingerprint (old records, listSet-only) keep the per-op checks plus the exact-slot fallback." (A:867, lane A relay; the entry supersedes MC-1224 and makes MC-1223 two-way.)
+
+**Results (as logged).** Lane A's second advisor run reported 0 wrong list changes for any number of lost list steps when the top step carries a fingerprint (A:867, executed by the advisor per the relay; not independently checked by the clerk). Cost recorded: more refusals after outside edits until Lane D lands (prepend drift 2,449 vs 1,310) (A:867).
+
+**Not decided.** Nothing further is recorded for this entry.
+
+### MC-1228 — CHORE-690 listSet-only undo after a lost save may overwrite an equal-text slot: known limitation, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer in the S3 session, relayed by lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1227`, `MC-1229`; CHORE-693 F1 (proposed follow-up, A:867).
+
+**What the maintainer chose (label as logged: "Known limitation").** After a lost save, undoing a first-message text edit (listSet-only) can overwrite an equal-text slot; recorded as a stated residue (A:867, lane A relay).
+
+**Results (as logged).** Recorded as an accepted stated limitation. No test or device result is attributed to it in the frozen log.
+
+**Not decided.** Whether CHORE-693 F1 (fingerprinting listSet-only steps at typing-burst boundaries) removes this residue is not decided; it is a proposed follow-up only (A:867).
+
+### MC-1229 — CHORE-690 ships S1 and S2 through Gate 2 and the Note 9 check; S3 last; CHORE-693 follow-up, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer in the S3 session, relayed by lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1225`, `MC-1226`, `MC-1227`, `MC-1228`; tickets CHORE-690 and CHORE-693 (filed A:867).
+
+**What the maintainer chose (label as logged: "Yes").** "CHORE-690 ships S1 (two-way, plus a total hash that never throws, with a null sentinel and a golden) and S2 (H2 re-list) through Gate 2 and the Note 9 check; S3 stays last under MC-1225. Follow-up filed as CHORE-693: F1, fingerprint listSet-only steps at typing-burst boundaries, two hashes per burst (amends MC-1226); F2, Lane D's note wording for 'changed elsewhere' vs 'never landed'; F3, the Note 9 size-threshold outcome if needed." (A:867, lane A relay.)
+
+**Results (as logged).** Gate 1 r7 passed with EDITORIAL verdicts from opus and adversarial reviewers, folded into plan-r7a without re-gating (A:894). The S1 coder brief is queued for a code slot; the D-N9 run sheet is queued to lane B after stage G DV1-DV6 (A:897). A code slot was granted when a lane A track freed (A:901). Gate 2 verdict and Note 9 check for S1 and S2: TODO(evidence), not reached in the frozen log.
+
+**Not decided.** S3 scope is last under MC-1225. CHORE-693 has no decision beyond its filing in this entry.
+
+### MC-1230 — Four read-only Fable senior-advisor hunts from the Lane D session, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer, 2026-11-10; option label not in the frozen log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1231` (tickets filed from the hunts); `MC-1234` (second perf pass); `MC-1239` (the S3 OI-18 answer, which the S3 session first recorded as MC-1230 and lane A renumbered to MC-1239, A:894). This number belongs to the hunts only.
+
+**What the maintainer chose (label TODO(evidence)).** Run four read-only Fable senior-advisor hunts (persistence/data loss, performance bottlenecks, chat pipeline bugs, code smell/dead code QA) from the Lane D-assets session, which is idle until slice 4. Findings come back to lane A for tickets; no code (A:869). Lane A also records a reported Fable quota reset on the account (A:869).
+
+**Results (lane A relay).** Hunt results: persistence 3 and 5 refuted, not filed (A:872). Findings filed as CHORE-695 to CHORE-698 under MC-1231 (A:872, A:873). Not filed, record only: persistence 4, chat 3 to 8, perf F2 to F4, smell 4, 5 and 7 to 15 (A:877). A verify.md exists for each hunt (persistence, perf, chat, smell; A:872); verify verdicts beyond the persistence 3 and 5 refutations are not relayed in the frozen lines: TODO(evidence).
+
+**Not decided.** The record-only findings (A:877) have no maintainer decision in the frozen log.
+
+### MC-1231 — File and start CHORE-695, CHORE-696, CHORE-697 and CHORE-698, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer, 2026-11-10; option label not in the frozen log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1230` (source hunts); `MC-1232` (CHORE-695 product answer); `MC-1233` (CHORE-699, filed A:875); `MC-1236` (CHORE-698 scope); `MC-1246` (CHORE-698 narrowed later, A:906; outside this draft's range).
+
+**What the maintainer chose (label TODO(evidence)).** File and start: CHORE-695 (Continue with a typed draft writes the reply into or over the user message; chat 1, confirmed executed); CHORE-696 (group Continue is a plain send; member turns never continue; the random-order path drops the last speaker; chat 2, confirmed executed); CHORE-697 (hardening and dead-code cleanup, per the hunt findings, A:873); CHORE-698 (perf F1: the top-level 6a dirty-tracking effect re-snapshots every unpartitioned top-level key per send and settings keystroke; measure first; dirty-tracking contract, opus gates) (A:873).
+
+**Results (as logged; lane A relays).**
+- CHORE-695/696: Gate 2 EDITORIAL, editorial 1 applied (A:892); committed 9a6ed4ec9 (A:893); trial42 FULLRUN PASS and merged as 5e5657ed4 (A:901).
+- CHORE-697: Gate 2 EDITORIAL with two guard tests added (A:899, A:900); committed 45a7efc68 (A:900); merged into main as ca48bc6dc with CHORE-699 (A:907).
+- CHORE-698: combined opus Gate 2 r1 REJECT (A:933: F1 test-only gap, the pop of a chunk's last message is untested and mutant G-M9 survived all 138 tests; F2 sendOnce comment; F3 the prod-compile evidence was a dev compile, rerun as a real prod compile 138/138); test-only remediation with 3 guard rows, G-M9 and G-M6 killed (A:943); fresh opus Gate 2 r2 APPROVE, committed bfaea19d1 (A:949); trial48 PASS and merged as 1c8a3aaf0 (A:959). Its 6a settings leg was moved out by MC-1246 (A:906).
+
+**Not decided.** The CHORE-698 scope is later narrowed by MC-1246 (A:906), which this draft does not cover.
+
+### MC-1232 — CHORE-695: with typed text, Continue extends the last reply and keeps the draft, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer, 2026-11-10; option label not in the frozen log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1231`, `MC-1230`.
+
+**What the maintainer chose (label TODO(evidence)).** "With typed text in the composer, Continue extends the last reply and leaves the draft in the composer untouched." (A:874, lane A relay.)
+
+**Results (as logged).** Gate 1 r1 EDITORIAL with lane A arbitration on its editorial 1 (A:889). Gate 2 EDITORIAL: lane A applied editorial 1 (generationSkipped clears the entry only when its action matches, with a test); editorial 2 (a group Continue on a last reply with no saying does nothing) accepted as a safe degrade (A:892). Committed 9a6ed4ec9 (A:893); merged as 5e5657ed4 after trial42 PASS (A:901). No device check for CHORE-695 is recorded in the frozen log: TODO(evidence).
+
+**Not decided.** Nothing further is recorded for this entry.
+
+### MC-1233 — Hidden-page flush while a lorebook-repair question is open (amends MC-623, MC-627, MC-629; CHORE-699), 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer, 2026-11-10; option label not in the frozen log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-623`, `MC-627`, `MC-629` (amended for the hidden-page case, A:875); `MC-1231`; the commit approval and device waiver are `MC-1241` and `MC-1242` (outside this draft's range).
+
+**What the maintainer chose (label TODO(evidence)).** While a module lorebook-repair question holds the save loop, a hidden-page (hide/Back) flush saves everything else and carries modules whole, as the existing refusal/degraded plan does; the question stays open (A:875, lane A relay). Filed as CHORE-699 (persistence 1; durability/commit order, opus gates).
+
+**Results (as logged).** Gate 1 r2 EDITORIAL (opus; E1 to E3) (A:889). Gate 2 ACCEPT (opus) (A:895), with carried items: O3 is mocked loop evidence only, with no device leg; K1/I5 module edits made while the question is open are lost if the hidden page is killed (unannounced, MC-629); K4 the hidden reply-end keep-alive ends at a held commit (inferred, untested); K5 the hidden net cadence cost. Committed 332cd5c49 (A:896); merged as ca48bc6dc (A:907), trial43 PASS.
+
+**Not decided.** The K1/I5 limit is accepted in MC-1241 (outside this draft). No device check for the trigger is owed per MC-1242 (outside this draft).
+
+### MC-1234 — Second, narrower Fable perf pass; library leg after stage G, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer, 2026-11-10; option label not in the frozen log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1230` (first hunts); `MC-1243` (tickets from pass 2, A:898; outside this draft); `MC-1236`.
+
+**What the maintainer chose (label TODO(evidence)).** Run a second, narrower Fable perf pass from the Lane D session on the legs pass 1 missed; the library leg waits for lane C stage G (A:876, lane A relay).
+
+**Results (lane A relay).** Pass 2 results (A:879; snapshot 6d97c9e71): refuted msglist F4. Records only (A:882): assets F2 is new evidence for CHORE-162; msglist F2 adds numbers to the Roadmap memory stage-1 item; msglist F3 not filed (by design). The library leg was done on snapshot 1785b84bc (A:898). Lane D's incident note (A:879): a hook timeout left a 0-byte Agents/Workflow-State.json.lock with no holder; lane D removed only that lock after checking its age and size.
+
+**Not decided.** The record-only items have no maintainer decision in the frozen log.
+
+### MC-1235 — File CHORE-700, CHORE-701 and CHORE-702 (boot scan, chat images, save loop), 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer, 2026-11-10; option label not in the frozen log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1236`; `MC-1237` (CHORE-701 Q1) and `MC-1238` (CHORE-702 plan), outside this draft's range.
+
+**What the maintainer chose (label TODO(evidence)).** File and start, as relayed by lane A (A:880): CHORE-700 (boot asset scan: each Tauri launch awaits a recursive readDir of assets/ and the other data directories before store2 boot; measure on Note 9 first, fix only if over about 100 ms; store2 F1); CHORE-701 (chat inline images on Android are read whole and in parallel with no budget, the MC-760 gap; plus ChatBody console logging and the assetUrlGate cache clearing; assets F1, F3, F4); CHORE-702 (save-loop costs, measure first; the hidden flush and idle loop; store2 F2, F3; durability path, opus gates).
+
+**Results (as logged; lane A and lane B claims).**
+- CHORE-700: lane B Note 9 run (A:885): boot gap about 3.2 us per entry, 107 ms at 0 files and 430 ms at 100k; over the 100 ms line, so the fix proceeds. Stage 1 Gate 2 remediation applied and committed ff5ce021a (A:919), merged as 2648caf1d (A:927). Stage 1 device A5 FAIL against the 30 ms rule (A:941, lane B claim). Stage 2 Gate 2 opus EDITORIAL with remediation E1 to E4 and an independent remediation check APPROVE (A:967, A:971, A:972); merged with CHORE-710 to main d15a75244 (A:976). Lane B's stage 2 rerun on Note 9 (A:998, lane B claim): A5 30 ms rule PASS (gap at 100k minus gap at 0 = -17 ms); A5 50 ms Home rule narrow PASS (+42 ms vs 1k, 8 ms margin; n=8, spread 1210-1291 ms, so the delta could be 0 to +90). D1 reproducer: TODO(evidence) (owed per A:967; not among the A:998 rows).
+- CHORE-701: committed 046286a39 (A:902); merged as e01184c87 (A:914, trial44 PASS). Lane B device rows on Note 9 (A:926, lane B claim; release of e01184c87): D1, D2, D4, D5 and D7 PASS. D3 is logged without a PASS label (one network request for the 20 MiB image, no blank after first display, one 52 ms placeholder on first-ever load). D6 is an observation, not a PASS (scrollMargin supported on WebView 156.0.8078.47, not 155; base native lazy load starts about 3000 px out with Wi-Fi off). Lane A parent decision: keep the 1250 px margin (A:926). A:926 lists "a fast fling was not measured" as a limitation. Fling check (A:931, lane B claim): 5 adb flings, 0 in-view placeholder or loading frames; caveat: the fastest fling (1400 px/80 ms) finished inside one 168 ms frame gap that the rAF sampler cannot see into (a stall, not a blank).
+- CHORE-702: S1 to S3 harvested (A:918, A:928). S4 is the CodecInputError presentation survey, option B within MC-1245 Q3, accepted by lane A (A:958); the combined opus Gate 2 returned EDITORIAL, with chunk-memo-on-throw judged NOT REAL and a reviewer guard test adopted (A:969). trial51 check failed on 2 errors in codecChunkMemoThrow.test.ts (missing awaits, introduced by the remediation after Gate 2), fixed by d6329f9a7 (A:974-975). Merged as ee2f37874 from 300dd4f36 + d6329f9a7 after trial53 PASS (A:980). No device run for CHORE-702 in the frozen log: TODO(evidence).
+
+**Not decided.** Device checks for CHORE-700 stage 2 (D1 reproducer) and CHORE-702 remain TODO(evidence).
+
+### MC-1236 — CHORE-698 also covers the message-list F1 finding, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer, 2026-11-10; option label not in the frozen log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1231` (CHORE-698 filed); `MC-1246` (narrows CHORE-698 to the per-message stages A and B and moves the 6a settings leg to CHORE-706, A:906; outside this draft's range).
+
+**What the maintainer chose (label TODO(evidence)).** "Scope change: CHORE-698 also covers msglist F1 (each send recreates the selected character's per-message dirty-tracking family at least 4 times, about 86 ms per pass at 10k messages on the i9; the push half is KNOWN, Roadmap 547-550)." (A:881, lane A relay.)
+
+**Results (as logged).** Lane A's per-message measurement: a send does 3 chat.message reassignments and 2 pushes, so the family is rebuilt 5 times; about 195 to 235 ms per pass at 10k on the i9; in-place loops cut a 10k send from about 1.1 s to 0.46 s (A:884). Gate 1 r3 REJECT (A:904); advisor ruling and MC-1246 (A:906); combined opus Gate 2 r1 REJECT (A:933; test-only gap, mutant G-M9 survived), test-only remediation (A:943), fresh opus Gate 2 r2 APPROVE and commit bfaea19d1 (A:949); merged as 1c8a3aaf0 (A:959, trial48 PASS). Lane B Note 9 run (A:981, lane B claim): long tasks per send at 10k, median of 7, 1663 ms vs 3671 ms on the pre-698 build; user message appears in 131 to 167 ms at every length.
+
+**Not decided.** The 6a settings leg is outside this entry's scope after MC-1246 (A:906). Any decision on it is recorded in the batch 65 range, not here.
+
+
+### MC-1237 — CHORE-701 Q1: big chat images through one 64 MiB queue (option A), 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-701; MC-760 (gap named in the CHORE-701 ticket text, A:880); MC-1243 (CHORE-703 reuses the 64 MiB queue).
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane A paraphrase, A:886).** "Option A, big chat images (8 MiB or more) on Android load through one app-wide 64 MiB in-flight queue; all still show in the same box, possibly later."
+
+**Results (lane A and lane B claims).** CHORE-701 Gate 2 ACCEPT, editorial E1 recorded only; maintainer "Commit"; commit 046286a39 on branch c701 (A:902). Trial44 FULLRUN PASS and "Merge and push"; merged e01184c87 (A:914). Lane B device rows on Note 9 phone 2, release build of e01184c87 (b61\laneb\c701dv\result.md, A:926), on synthetic padded PNGs (stresses the whole-read, not decode), row by row as the source logs them: D1 PASS (4x60 MiB, no OOM, FIFO one in flight, heap peak 66 MB, PSS 413 MB); D2 PASS; D3 not labelled PASS in the source (one network request for the 20 MiB image, no blank after first display, one 52 ms placeholder on first-ever load, so plan Q2 does not arise); D4 PASS (Beta on); D5 PASS (swap 1160-1310 px out, about 1100 px before view, 0x0 placeholder, anchoring holds); D6 not labelled PASS in the source (scrollMargin supported on WebView 156.0.8078.47, not 155; base native lazy load starts about 3000 px out, Wi-Fi off); D7 PASS. Fling check PASS on the same build (b61\laneb\c701dv\fling\result.md, A:931). Limit: the fastest fling (1400 px in 80 ms) finished inside one 168 ms frame gap that the rAF sampler cannot see into.
+
+**Not decided.** The 1250 px prefetch margin is a lane A parent technical decision (A:926), not an MC decision. The fast-fling limit is recorded as a limit, not as a pass.
+
+### MC-1238 — CHORE-702 plan all four items, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; option label TODO(evidence); log wording "plan all four"). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-702; MC-1245 (amends the item 3 wording, Q2); the pre-plan measurements at A:884 (no MC ID).
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (A:887).** "Plan all four: (1) reuse unchanged shards and carried stubs (fixed per-pass cost); (2) one serialisation per message; (3) skip unchanged chat chunks by remembered plain value, memory within the existing shadow budget precedent (16 MiB per character, 64 MiB total); (4) idle liveCheck at most once per 30 s when nothing changed (repair latency up to 30 s). Same bytes and digests; opus gates."
+
+**Results (lane A claims).** S1 coder dispatched (A:905). S2 harvested into risu-code-track-c702, 6/6 mutants killed (A:918). S3 done: storage vitest 12628 passed, 11/11 mutants killed; deviation recorded: the memo keeps its own cap constants with the same values in chunkMemo.ts (A:928). S4 (CodecInputError survey) handed to lane D (MC-1256, A:956). Lane D combined opus Gate 2 EDITORIAL, chunk-memo-on-throw not real (18-pass base-vs-change dump byte-identical) (A:969). Trial53 FULLRUN PASS; merged as ee2f37874 with the fix-up d6329f9a7 (A:974 to A:980). The fix-up followed the trial51 svelte-check FAIL (2 errors in codecChunkMemoThrow.test.ts, A:974; lane D fix-up of 3 awaits, A:975); commit 300dd4f36 is the CHORE-702 commit (A:980). No device run for CHORE-702 is recorded in the frozen range (A:980): TODO(evidence).
+
+**Not decided.** The 16 MiB and 64 MiB caps come from the log's item (3) wording; no separate cap decision is recorded. Device evidence for CHORE-702 is TODO(evidence).
+
+### MC-1239 — OI-18 keep it fast for the long revert, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by the S3 session; label "Keep it fast" as logged, A:894 and A:897). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-690; MC-1220 to MC-1229 (the S3 batch, source s3\decisions.md, A:894); MC-1230 (Fable hunts, a different decision, A:869).
+- Numbering: the S3 session recorded this answer as MC-1230. Lane A renumbered it to MC-1239 because MC-1230 is its Fable-hunt entry (A:894). Stale MC-1230 references in the S3 records must be corrected by the parent (TODO(evidence) for the list of stale references).
+
+**What the maintainer chose (label "Keep it fast", as logged), then the log's wording (A:894).** "A long revert runs the two-way check on its newest steps until about 500,000 characters are read, then the per-op checks; no visible change."
+
+**Results (lane A relay of S3 claims).** CHORE-690 Gate 1 r7 passed: opus EDITORIAL and adversarial EDITORIAL, editorials folded into plan-r7a.md with no re-gate (A:894, A:897). Gate 1 r2 to r6 (rejects and advisor rulings) are not summarised here; see A:852, A:854, A:865, A:870 and A:878. The code slot was granted when the trial42 merge freed a track (A:894, A:901). No CHORE-690 implementation merge is recorded in the frozen range (TODO(evidence)).
+
+**Not decided.** Nothing beyond the logged answer and the S3 plan.
+
+### MC-1240 — CHORE-690 D-N9 sheet uses the October census bound, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; option label TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-690; MC-1239; the D-N9 run sheet in the S3 plan (A:897).
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (A:894).** "The CHORE-690 D-N9 sheet uses the October census bound (largest character core 2.12 MiB, which contains its first messages) as the first-message list total, with a skewed largest message; no new real-data scan."
+
+**Results.** The D-N9 run sheet (tier C, 2.12 MiB two-byte list per this entry) is queued to lane B after stage G DV1 to DV6, micro cells first, real-code cells after S1 lands (A:897). No run result is recorded in the frozen range: TODO(evidence).
+
+**Not decided.** Nothing further. The sheet's pass or fail is not decided here.
+
+### MC-1241 — CHORE-699 commit with the module-edit loss limit accepted, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; option label TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-699 (hidden-page flush while the lorebook-repair question is open, MC-1233); MC-629 (the unannounced loss the limit refers to, A:896).
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (A:896).** "CHORE-699 commit with the limit accepted: module edits made while the lorebook question is open are lost if the hidden page is killed (unannounced, MC-629)."
+
+**Results (lane A claims).** CHORE-699 Gate 2 ACCEPT (opus; c699\gate2\result.md, A:895). Commit 332cd5c49 on branch c699 (A:896). Merged to main as part of ca48bc6dc, with a clean merge of 45a7efc68 (CHORE-697) and 332cd5c49 (A:907). Carried limits from the Gate 2 (A:895): mocked loop evidence only (O3), K4 keep-alive ends at a held commit (inferred, untested), K5 hidden net cadence cost.
+
+**Not decided.** The limit is accepted as logged. No device evidence exists for this trigger (see MC-1242).
+
+### MC-1242 — CHORE-699 no device check for the trigger, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; option label TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-699; MC-1241.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (A:896).** "No device check for the CHORE-699 trigger; simulated loop evidence accepted as a gap."
+
+**Results (lane A claims).** The commit and merge went ahead (MC-1241; merged in ca48bc6dc, A:907). The gap is carried as the simulated loop evidence only (A:895, O3). No device run for the trigger is recorded (TODO(evidence) if a later check is ever run).
+
+**Not decided.** Nothing further. This entry does not record a device pass.
+
+### MC-1243 — file CHORE-703, 704 and 705 from the library perf pass, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; option label TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-703 (library F1), CHORE-704 (library F2), CHORE-705 (library F3 and F4); MC-1234 (library perf leg, complete, A:898); MC-1237 (the 64 MiB queue that CHORE-703 reuses); MC-1254 (CHORE-708 routes the other avatar reads through the CHORE-703 queue).
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (lane D relay, A:898).** File CHORE-703 (Android animated avatars that skip the thumbnail are whole-read in parallel as library tiles mount, no budget; OOM risk at extreme size; reuse the CHORE-701 64 MiB queue once 701 merges). File CHORE-704 (List and Trash rows parse every mounted row's full creator notes through the chat markdown parser, twice through a DOM parser, under a 3-line clamp; about 13.1 ms per 3 KB note on the i9). File CHORE-705 (small cleanup: a linear find inside a derived per row; thumbnail record reads start in mount order, not visibility). F5 negligible, not filed.
+
+Maintainer answer recorded in lane A's log without an MC number (A:915): start CHORE-703, 705 and 704 in that order as slots free; CHORE-704 Q1 "A" (accept and measure on a device first; HTML and fenced notes keep the full render); CHORE-704 Q2 "A" (accept the one-parse prefix on first Show more). These answers have no MC ID in the supplied log: TODO(evidence) for the MC number and option labels.
+
+**Results (lane A and lane B claims).** CHORE-703 merged 3300de487 after trial46 FULLRUN PASS (A:946). Lane B DV1 to DV6 on phone 2: PARTIAL (A:951); finding O2 (the no-options getCharImage path is unqueued: rail 22 reads, 202 MiB in flight) led to MC-1254. Isolated DV3 and DV4 rerun on the current build, per-scenario .bin files: DV3 PASS, DV4 PASS on the bound and display; the queue holding an image behind strip reads was not demonstrated (A:965, b61\laneb\c703dv\result-dv34.md). CHORE-705 merged d66b07095 (A:950). CHORE-704 Gate 2 (adversarial) ACCEPT (A:945); merged 8a308a651 (A:950). Device checks for CHORE-704 are TODO(evidence).
+
+**Not decided.** The MC number and option labels for the 2026-11-10 start order and the CHORE-704 Q1 and Q2 answers (A:915) are TODO(evidence). A:915 says "MC numbers assigned in records batch 65"; the numbers and option labels are not in the supplied log.
+
+### MC-1244 — Open in Studio on every character; archived load then open (G3), 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; option label "Show it; load, then open (Recommended)" as logged in lane C, C:306). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S4 stage G (plan item A4), stage G3; asked by lane A and lane C at the same time (crossed; one entry, no third ask, A:920).
+
+**What the maintainer chose (label as logged, C:306), then the log's wording (lane A relay, A:903).** "Show Open in Studio on every character; tapping an archived one loads it from the archive, then opens Studio."
+
+**Results (lane A, lane B and lane C claims).** Lane B found the gap on stage G DV1 to DV5, release of 1785b84bc: with archive-at-startup ON, archived (coldstorage) characters showed no Open in Studio control until opened in that session (A:903, b61\laneb\gdv\result-phone.md). Stage G DV6 on PC Chrome is recorded separately (A:908). Lane C G3 plan r1 (C:310, A:921). Gate 1 r1 REJECT from both reviewers (REJECT streak 1; C:318); r2 EDITORIAL from both (C:320; A:953 "Gate 1 r2 EDITORIAL x2"); Gate 2 adversarial and opus EDITORIAL; mutants 25/29 (4 equivalent) (A:953, C:330). Committed 623cf8438 on branch uis4g3-wip, maintainer "Commit, full suite at merge" (A:953). Merged as a43d834af in trial49 (A:962). Lane B device G3-1 to G3-4 PASS on release 435e8b648: 90/90 controls with archive-at-startup ON; 8 Back cancels clean; background completion of a cancelled load UNOBSERVED (A:977, b61\laneb\g3c698\result-g3.md). Lane B observation A (an early Back can land on Home on a fresh launch, 235 to 300 ms registration) and observation B (a Back between select and Studio mount is consumed and Studio still opens) are recorded as observations; CHORE-713 (MC-1264, outside this draft range) was filed to cover both.
+
+**Not decided.** The Q1 answer "No indicator for now (Recommended)" (C:310) is an unnumbered maintainer answer in the lane C log; no MC ID is supplied for it (TODO(evidence)). Esc is not a Back route in stage G A1; this is a records correction only, not a product change (A:908, A:920). Background completion of a cancelled load is UNOBSERVED.
+
+### MC-1245 — CHORE-702 chunk memo pool, payload string and failed retry, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answers; option labels TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-702; MC-1238 (Q2 amends its item 3 wording); MC-1256 (lane D takes the S4 survey and combined Gate 2).
+
+**What the maintainer chose (labels TODO(evidence)), then the log's wording (lane A paraphrase, A:904).** Q1: the S3 chunk memo gets its own pool with the same caps (16 MiB per character, 64 MiB total; up to 128 MiB worst case with the verdict shadows). Q2: the memo remembers the canonical payload string instead of the plain value (amends the MC-1238 wording). Q3: a failed and retried idle-net pass inside the 30 s window is accepted for a no-signal malformed in-place write.
+
+**Results (lane A and lane D claims).** Q1 and Q2 are implemented in S3 with one recorded deviation: the memo keeps its own cap constants with the same values in chunkMemo.ts (A:928). For Q3, lane A accepted option B inside the Q3 answer: the gate is due immediately after a failed pass, read from saveFailureStore in the liveCheck glue, with no saveLoop.ts change (A:958). Lane D reported the chunk-memo-on-throw concern as not real (A:969). Merged within CHORE-702 as ee2f37874 (A:980), with the fix-up d6329f9a7 that followed the trial51 svelte-check FAIL (A:974).
+
+**Not decided.** The Q3 option B choice inside the answer is a lane A acceptance, not a separate maintainer answer (TODO(evidence) if the parent wants it as one). No device run for CHORE-702 is recorded (see MC-1238).
+
+### MC-1246 — CHORE-698 narrowed to stages A and B, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; option label TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-698; CHORE-706 (receives the 6a settings leg); MC-1236 (the msglist F1 scope change); MC-1247 and MC-1248.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (A:906).** "Narrow CHORE-698 to the per-message stages A and B; the 6a settings leg moves to CHORE-706 (measure-gated follow-up: about 10k nodes or more, schedule with the S4(b) test rewrite; fewer, close as measured-not-worth-it)."
+
+**Results (lane A claims).** Context: Gate 1 r3 was a third consecutive substantive REJECT (opus, A:904); the senior-advisor ruling (A:906) was to ship stages A and B as a subtractive plan r4 and remove stage C. Stage A harvested with red before green shown and mutants A-M1 and A-M2 killed (A:917). Stage B done (A:923). Combined opus Gate 2 r1 was REJECT (A:933): F1 test-only (when a chunk empties, the chunk effect's own frontUnshiftSelected is the only front; a pop of the last chunk's sole message and a truncate to an exact chunk boundary were untested; mutant G-M9 survived all 138 tests; code correct on probes P1 and P2); F2 sendOnce comment; F3 the prod-compile evidence was a dev compile, and the reviewer ran a real prod compile, 138/138. Remediation was test-only, answering that REJECT, with mutants G-M9 and G-M6 killed (A:943). Combined Gate 2 r2 opus APPROVE (A:949). Committed bfaea19d1 on branch c698 (A:949). Merged as 1c8a3aaf0 (A:959).
+
+**Not decided.** The 6a settings leg is measured under CHORE-706; the closure of CHORE-706 is recorded under MC-1252 (outside this draft range).
+
+### MC-1247 — CHORE-706 decides on the partial-backup-shaped synthetic profile, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; option label TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-706; MC-1246 (the leg moved here); MC-1252 (closure, outside this draft range).
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (A:906).** "CHORE-706 decides on the partial-backup-shaped synthetic profile; no scan of real data."
+
+**Results (lane A and lane D claims, before closure).** Lane D measured about 1,142 nodes on the partial-backup-shaped synthetic profile against the 10k bar, with the independent check pending (A:940; perf-analyzer sizing, b66\tickets\laned\c706\sizing.md; A:938 only records that the scouts were running). The independent verdict (PLAUSIBLE; the 10k metric was undefined in MC-1246) is recorded at A:942. The decision on the closure is MC-1252, outside this draft range.
+
+**Not decided.** The 10k metric definition and the closure rule are recorded under MC-1252 and are not restated here. No real-data scan was run.
+
+### MC-1248 — CHORE-698 Note 9 run is an owed check, not a merge blocker, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; option label TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-698; MC-1246; MC-1236.
+
+**What the maintainer chose (label TODO(evidence)), then the log's wording (A:906).** "The CHORE-698 Note 9 send and mount run is an owed check after merge, not a merge blocker."
+
+**Results (lane B claims).** CHORE-698 merged as 1c8a3aaf0 (A:959) before the run. Lane B ran the send and mount check on Note 9 phone 2, release 435e8b648 against pre-698 1785b84bc (b61\laneb\g3c698\result-698.md, A:981). Long tasks per send, median of 7: 1k 423 vs 640 ms; 5k 1154 vs 1869; 10k 1663 vs 3671 (8-message control 209). User message appears in 131 to 167 ms at every length (was 170 to 427). Residual grows about 0.15 to 0.17 ms per message; largest task at 10k is 1.2 to 1.3 s median, 2.7 s worst. Post-reply long tasks are 74, 164, 398 and 677 ms at 8, 1k, 5k and 10k messages; the DOM holds 31 messages (A:981). B1 many-chat mount: no growth and no separable regression (3 of 6 tReady rows on 698, agent script bug noted).
+
+**Not decided.** The lane B profile lead (a CBS parse on each send, INFERRED from one 10k CPU profile) is a CHORE-714 matter under MC-1265, outside this draft range. No pass or fail threshold is recorded in this entry: TODO(evidence) for any threshold. Whether release 435e8b648 includes 1c8a3aaf0 as logged: log order suggests yes (1c8a3aaf0 merged to main at A:959, 435e8b648 at A:962), but a tree check is TODO(evidence).
+
+### MC-1249 — CHORE-653: New chat closes the narrow sidebar overlay (Close it), 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; option label "Close it (Recommended)" as logged, A:938). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-653; the focus cluster CHORE-657, CHORE-658 and CHORE-659 (MC-1250, MC-1251, MC-1253).
+
+**What the maintainer chose (label as logged, A:938), then the log's wording.** "Close it (Recommended)": New chat closes the narrow sidebar overlay like a row tap; desktop unchanged.
+
+**Results (lane D and lane A claims).** Lane D coder run; committed ddb1708e0 on c653-laned (A:944; maintainer "Commit and queue trial"). Gate 2 EDITORIAL remediated by a docked keyboard test (A:944). Trial47 FULLRUN PASS; merged as 461482311 (A:950; maintainer "Merge and push").
+
+**Not decided.** This label is the product choice for New chat behaviour. It is not a CHORE-653 ticket closeout. No closeout answer for CHORE-653 is recorded in the frozen range; the status is "merged 461482311; closeout not asked" (TODO(evidence) for any later closeout answer).
+
+### MC-1250 — CHORE-659 write-delay helper only, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; option label "Write-delay helper only (Recommended)" as logged, A:940). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-659; CHORE-657 (MC-1251); CHORE-658; MC-1253 (amends this entry, outside this draft range).
+
+**What the maintainer chose (label as logged, A:940), then the log's wording (lane D paraphrase).** "One helper deferring state writes from focus handlers (ShellHeader onfocusout, ShellSidebar New-chat menu close, ThisChatSheet note box; existing deferred sites move onto it); the keyed-move focus-restore helper recorded as not worth building."
+
+**Results (lane D and lane A claims).** The focus cluster was handed off with Gate 1 EDITORIAL and a combined Gate 2 APPROVE (117 files, 1845 tests) (A:955). Committed 67f5e6bfd on cfocus-laned (A:955). Trial49 FULLRUN PASS; merged 435e8b648 with the G3 merge (A:962). CHORE-658 was confirmed by source (A:940). A:948 corrects the fix location: it defers the report sink in windowErrorGuard.ts one microtask (the bootstrap.ts wording at A:940 is superseded), and CHORE-658 is "worse than logged": a throwing $store subscriber leaves svelte/store's module-wide subscriber_queue non-empty, so no store subscriber is notified again (A:948).
+
+**Not decided.** MC-1253 (outside this draft range) amends this entry: the three focus handlers stay in place with guard tests. Whether merged 435e8b648 contains the helper as this entry describes, or the amended form, is TODO(evidence).
+
+### MC-1251 — CHORE-657 drops the explicit save mark, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; option label "Drop it (Recommended)" as logged, A:940). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-657; CHORE-658; MC-1250; MC-1253 (amends, outside this draft range).
+
+**What the maintainer chose (label as logged, A:940), then the log's wording.** "Drop it (Recommended)": no explicit save mark in createNewChat; CHORE-657 keeps the note-box fix.
+
+**Results (lane D relay).** "CHORE-657 closes guard-only (MC-1251/1253)" (A:955). The focus cluster merge is recorded at A:962 (435e8b648); whether CHORE-657's guard-only closure is in that merge is TODO(evidence).
+
+**Not decided.** MC-1253 (outside this draft range) says the focus handlers stay with guard tests. Closeout administration for CHORE-657 beyond the lane D relay is TODO(evidence).
+
+
+### MC-1252 — CHORE-706 closed as measured-not-worth-it, reopen rule, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; label as logged). Date: 2026-11-10. Exact times: UNKNOWN (no UTC time in the frozen sources). Sweep ref: none. Related: `MC-1246` (defined the 10k walk metric), `CHORE-706`.
+
+**What the maintainer chose (label as logged).** "Close, reopen rule". Log wording (lane A, A:942): CHORE-706 is closed as measured-not-worth-it. Reopen if a real save's `upstreamKvBlocks` or `trashOrigins` push the walk toward 10k.
+
+**Results (as logged; lane A relay of lane D evidence, not verified by the clerk).** Sizing `b66\tickets\laned\c706\sizing.md` (perf-analyzer, executed): 1,142 nodes on a partial-backup-shaped synthetic profile with 500 characters, about 3.9 ms per walk on an i9 dev compile; about 1,650 nodes at 1,000 characters. Verify `b66\tickets\laned\c706\verify.md` (adversarial verdict PLAUSIBLE): the 10k metric was undefined in MC-1246; the measure rule is every object, array, element and leaf; `upstreamKvBlocks` and `trashOrigins` were unmeasured growers; a heavy real profile was estimated at 2 to 4 thousand nodes (estimate, not a measurement). No device run is recorded in A:942.
+
+**Not decided.** The reopen trigger depends on unmeasured growers and a real-save measurement that the cited lines do not contain: TODO(evidence).
+
+### MC-1253 — Focus handlers left in place, amending MC-1250 and MC-1251, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; label as logged). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1250` and `MC-1251` (amended), `CHORE-657`, `CHORE-658`, `CHORE-659`.
+
+**What the maintainer chose (label as logged).** "Leave them (Recommended)". Log wording (lane D relay, A:948): amends MC-1250 and MC-1251. Svelte 5.57.3 runs template event handlers with no active reaction, so the ShellHeader focused handler, the ShellSidebar menuFocusOut handler and the ThisChatSheet note blur handler cannot raise state_unsafe_mutation; they stay with their guard tests. focusSettle.ts serves raw addEventListener listeners (softKeyboard, CharacterWindow, SidebarRail). If Gate 1 refutes the premise, the three handlers move.
+
+**Results (as logged; lane D claims, not verified by the clerk).** A:948 also records that CHORE-658 is worse than logged: a throwing $store subscriber leaves svelte/store's module-wide subscriber_queue non-empty, so no store subscriber is notified again; the fix defers the report sink in windowErrorGuard.ts by one microtask. A:955: focus cluster handoff, Gate 1 EDITORIAL, combined Gate 2 APPROVE (117 files, 1845 tests). CHORE-657 closes guard-only (MC-1251 and MC-1253). A:962 (lane A, trial49 FULLRUN PASS): maintainer 'Merge and push' merged UI-S4 G3 (a43d834af) and the focus cluster CHORE-658/659 as 435e8b648; tree equals trial49 aa919ae77; pushed. The Svelte 5.57.3 behaviour and the resolved version are not checked against the installed dependency: TODO(evidence).
+
+**Not decided.** Whether the premise holds is for Gate 1 to refute (the three handlers then move, as logged). MC-1250 and MC-1251 are not edited by this draft; any supersession marker on those entries is for the parent. A:955 also records a maintainer "Commit and queue trial" answer for commit 67f5e6bfd on cfocus-laned. That is a commit approval with no MC ID in this range and is not part of this entry's label: TODO(evidence) on whether it needs its own ID.
+
+### MC-1254 — CHORE-708 filed for large avatar reads through the CHORE-703 queue, started now, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; label TODO(evidence): A:952 gives no option label). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1255` (same log line), `MC-1256`, `CHORE-703`, `CHORE-708`.
+
+**What the maintainer chose (label TODO(evidence)).** Log wording (lane A, A:952): file CHORE-708, which routes every large whole-avatar read outside the library list (rail, folder pictures, GridCatalog, AlertComp and the rest) through the CHORE-703 queue, and start now (sizing, plan, gates).
+
+**Results.** Filing and start in A:952 and A:956 (lane A). Sizing and gate events (lane A and lane D claims, A:963): sizing (`c708\size-census`, `size-mech`); plan r1 to r3 with Gate 1 r1 adversarial EDITORIAL and opus REJECT (F1 Chats rows holding a never-settling promise; F2 unmount-leak test only for the rail), r2 adversarial REJECT (AlertComp slot key collision) and opus REJECT (G1 Android custom background slot unreleased on clear; mechanism kept), r3 adversarial APPROVE and opus EDITORIAL; final plan `c708\result-plan-r3.md`: three stages, one combined Gate 2, lane B DV1 on a stage-1 build must pass before merge. A:989 (lane D): stages 1, 2, 3 and W handed off (`laned\c708\handoff.md`); combined opus Gate 2 EDITORIAL (402 files, 5182 tests, check 0); three merge preconditions (DV1, DV1-W, combined DV3); committed 91c41f733 on c708-laned (base 435e8b648). A:996 (lane A): trial54 FULLRUN PASS. A:1023 (lane A): maintainer 'Merge and push' merged the work as ad96897dc on main (the CHORE-711 merge is aad3dec3a on the same line).
+
+**Not decided.** Option label: TODO(evidence).
+
+### MC-1255 — CHORE-703 DV3 and DV4 rerun on the current build, per-scenario bin files, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; label as logged in A:952). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1254` (same log line), `CHORE-703`, `MC-1261` (warm-URL lead).
+
+**What the maintainer chose (label as logged).** "Rerun now": CHORE-703 DV3 and DV4 rerun on the current 703 build with per-scenario .bin files, by lane B.
+
+**Results (lane B claim, A:965; the result file was not read by the clerk).** Isolated rerun on phone 2, build 3300de487 against e01184c87, per-scenario .bin (`b61\laneb\c703dv\result-dv34.md`). DV3 PASS: no difference beyond noise, 3 runs each; visual delay median 1300 ms vs 1257 ms; Simple requested only 16 of 30 tiles on both builds, correcting the first run. DV4 PASS on the bound and the display (max in flight 40 MiB, 3 of 3). Not demonstrated: the queue holding an image behind strip reads (reads ran back to back). Lead recorded at A:965: after an artificial CDP clearBrowserCache the warm-URL list promoted a 40 MiB image straight to its real src with no queue grant (80 MiB in flight); real WebView eviction timing was not measured.
+
+**Not decided.** The queue-holding behaviour is not shown by these runs. The warm-URL lead is carried by MC-1261. Whether the result file matches the summary above is TODO(evidence) until the independent check.
+
+### MC-1256 — Lane D takes CHORE-708 coding, files CHORE-709 and CHORE-710, takes CHORE-702 stage 4, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; label TODO(evidence): A:956 gives no option label). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1254`, `MC-1259`, `MC-1257`, `CHORE-702`, `CHORE-708`, `CHORE-709`, `CHORE-710`.
+
+**What the maintainer chose (label TODO(evidence)).** Log wording (lane A, A:956): lane D takes (1) CHORE-708 coding after its Gate 1, with lane A planning; (2) CHORE-709, filed for the CHORE-707 leftovers (realm.ts dead pong flag; no timeout when the Realm frame never answers); (3) CHORE-710, filed for the G3 opus E3 finding (an installer format throw lets a joined changeChar select a half-formatted character; pre-existing); (4) CHORE-702 stage 4 plus the CodecInputError presentation survey, taking over risu-code-track-c702 (S1 to S3 uncommitted, base 5e5657ed4) with the combined opus Gate 2.
+
+**Results (lane claims, not verified by the clerk).** Assignment and filing in the cited lines (A:956). A:958 records lane A's acceptance of the CHORE-702 S4 survey option B within MC-1245 Q3 (lane A acceptance, not a maintainer answer; survey file `laned\c702\s4survey.md`). A:969 (lane D): CHORE-702 S1 to S4 handed off (`laned\c702\handoff.md`; combined opus Gate 2 EDITORIAL; committed on c702m-laned, base 8a308a651). A:969 also records the combined opus Gate 2 disposition: EDITORIAL; chunk-memo-on-throw NOT REAL (18-pass base-vs-change dump byte-identical); reviewer guard test and P09 killer adopted; store2 205 files, 7370 passed; svelte-check 0. A:974 (lane A): trial51 test and build PASS, check FAIL with 2 errors in `codecChunkMemoThrow.test.ts` (48:34, 61:34: a build() result may be a Promise, missing await), introduced by the remediation after Gate 2's svelte-check; sent to lane D. A:975 (lane D): the fix-up added 3 awaits in that file (test 2/2; svelte-check 0 errors); committed on c702m-laned. CHORE-709: A:960 (lane D) handed off (`laned\c709\handoff.md`; Gate 1 EDITORIAL, Gate 2 APPROVE; 186 tests; 15 mutants; translator low confidence de/vi/zh-Hant); maintainer 'Commit and queue trial' committed 62639fa85 on c709-laned (base 9e086ed9f). A:970 (lane A): trial50 FULLRUN PASS; maintainer 'Merge and push' merged CHORE-709 as 5e077ae16. A:980 (lane A): merged as ee2f37874 (300dd4f36 plus fix-up d6329f9a7); no device run for 702 yet. The CHORE-708 coding start is recorded in MC-1259 (main 435e8b648, A:964); the CHORE-710 handoff is recorded in MC-1262 (A:968).
+
+**Not decided.** Option label: TODO(evidence). Whether every item of the combined Gate 2 EDITORIAL (A:969) was closed by the fix-up at A:975 is not recorded beyond the merge line at A:980: TODO(evidence). The CodecInputError survey's own acceptance (beyond the lane A line at A:958) is not recorded: TODO(evidence).
+
+### MC-1257 — CHORE-710 format failure leaves the character loaded and unselected, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; label as logged). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-350` (no restore or rewrite of saved data), `MC-1256`, `MC-1262`, `CHORE-710`.
+
+**What the maintainer chose (label as logged).** "Stay loaded, unselected". Log wording (lane D relay, A:958): after a format failure on a joined cold-restore select, the character stays resident and unselected; nothing is put back or rewritten (MC-350). Fix: the joined changeChar also runs characterFormatUpdate (sizing `laned\c710\sizing.md`, as logged).
+
+**Results.** None beyond the sizing reference in A:958 (the sizing file was not read by the clerk).
+
+**Not decided.** The send-path gap in coldMemberRestore.ts is a separate scope fold, MC-1262.
+
+### MC-1258 — CHORE-711 filed as a separate follow-up, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; label as logged). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-708` (SidebarRail overlap), `MC-1257`, `MC-1269` to `MC-1271` (later sizing, outside this range).
+
+**What the maintainer chose (label as logged).** "Separate follow-up". Log wording (lane A, A:958): CharacterSimpleList and SidebarRail row taps show no error when changeChar rejects (no catch). The overlap with CHORE-708 on SidebarRail means CHORE-711 follows CHORE-708.
+
+**Results (as logged; later lane D sizing at A:991, cited for context only).** Sizing `laned\c711\sizing.md` (lane D claim): the premise is partly refuted. A failed row tap shows the window guard's raw untranslated alert; a refused restore resolves {failed} and is already alerted, so only thrown errors need the catch.
+
+Follow-through (lane claims, not verified by the clerk): A:995 (MC-1272) CHORE-711 plan r1 adds helper `src/ts/characterPick.ts` changeCharOrAlert for the three row sites; a warm or group switch that throws shows the quiet 'load failed' frame with Retry and Back, no alert. A:997 (MC-1273) folds the GridCatalog warm pick into CHORE-711; CHORE-715 narrowed. A:1000 (MC-1274): Gate 1 r3 APPROVE. A:1008: committed 10af2e983 on c711-laned (base 91c41f733). A:1023: merged as aad3dec3a on main.
+
+**Not decided.** No device record for CHORE-711 appears in A:960 to A:1026: TODO(evidence). MC-1269 to MC-1271 (A:991) and MC-1272 to MC-1274 are outside this entry's range.
+
+### MC-1259 — CHORE-708 P1 first come, first served, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; label as logged). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1256` (coding to lane D), `MC-1254`, `MC-1260`, `CHORE-708`.
+
+**What the maintainer chose (label as logged).** "First come, first served". Log wording (lane A, A:964): CHORE-708 P1 rail whole reads queue FIFO with everything else. Device bound: the first chat avatar paints within 5 s of the chat frame (base recorded). Exceeding the bound reopens P1 with option (b) defer-while-closed. CHORE-708 coding goes to lane D on main 435e8b648 (MC-1256).
+
+**Results (lane B claims relayed by lane A and lane D, not verified by the clerk).** A:992 (lane B, `b61\laneb\c708dv\result.md`, stage 1 build): DV1-a, DV1-b and the MC-1259 bound PASS; rail burst large in flight 160 to 60 MiB; Java heap 212 to 109 MB; 1 request per large URL; first chat avatar paints 551 ms or less. Caveat in A:992: a chat opened during the burst reaches 80 MiB (chat read unqueued in stage 1), rechecked in DV3 on the combined build. A:993 (lane B via lane D): early chat open during the burst hit 80 MiB in 1 of 3 runs (stage 1 only). A:989 (lane D) names DV3 on a combined-branch build as a merge precondition for the 5 s bound; A:996 (lane A): the 708 merge waits for DV1-W and combined DV3. A:1011 (lane B, `laneb\c708c\result.md`, combined build): DV3 (1)(2)(3)(5) PASS; DV1-W (a)(b) PASS; 'MC-1259 bound met (<=1.69 s)'; cap 60 MiB held 24 of 24; base OOM 9 of 15; DV1-W (c) FAIL 3 of 3 (warm far image at the top of a long chat re-requested on re-entry). A:1013 (maintainer via lane D, MC-1278): DV1-W(c) accepted as a recorded limitation; 708 merges; the fix is CHORE-716. Commit 91c41f733 (A:989) and merge ad96897dc (A:1023) as in MC-1254.
+
+**Not decided.** The base measurement behind the 5 s bound is referenced as "recorded" but its value is not in the cited lines: TODO(evidence). The 551 ms figure is a stage 1 DV1 result, not that base measurement. The combined-build bound result (A:1011) is a lane B claim; independent confirmation: TODO(evidence).
+
+### MC-1260 — CHORE-708 P2 thumbnail whole reads go to CHORE-712, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; label TODO(evidence): A:964 gives no option label). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1259`, `MC-1275` to `MC-1277`, `CHORE-708`, `CHORE-712`.
+
+**What the maintainer chose (label TODO(evidence)).** Log wording (lane A, A:964): P2 thumbnail-generation whole reads go to a separate ticket, CHORE-712, filed after lane B's DV1 renderThumb count.
+
+**Results (lane B claim relayed via lane D, A:993, not verified by the clerk).** CHORE-712 input: DV1-c renderThumb whole-read loads 6 cold, 0 warm. Follow-through (lane D relay, sizing `c712\sizing.md`): A:1002 to A:1005 record maintainer answers MC-1275 (thumbnails share the strict FIFO with display reads), MC-1276 (thumb 15 s timer starts when the grant arrives) and MC-1277 (bytes fallback stays out of the queue; DV-C records JS heap); A:1006 (lane A) confirms the IDs and sizes CHORE-712 small, one stage. A:1016 (lane A): committed on c712-laned (on 91c41f733); lane B DV-A, DV-B and DV-C are merge preconditions, with a DV-D diagnostic on a release build of the branch.
+
+**Not decided.** Option label: TODO(evidence).
+
+### MC-1261 — Warm-URL queue skip folded into CHORE-708, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; label TODO(evidence): A:966 gives no option label). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1263` (P6 under the same stage), `MC-1255` (warm-URL lead from DV4), `CHORE-708`.
+
+**What the maintainer chose (label TODO(evidence)).** Log wording (lane A, A:966): fold the warm-URL queue skip into CHORE-708 as a shared cause, with a plan delta, a short Gate 1 delta and the same combined Gate 2.
+
+**Results (as logged; lane D claims).** A:973 records the opus Gate 1 r4 REJECT on the stage W warm-URL delta (`c708\gate1-r4.md`): F1 duplicate warm nodes blink with an empty queue; F2 a late re-assign holds a slot for 30 s; F3 off-screen warm images become eager reads; F4 P6 unsettled (answered by MC-1263). A:973 also records three consecutive substantive rejects (r1, r2, r4; r3 editorial) and a senior-advisor escalation before r5. Follow-through: stage W handed off in A:989 with the combined Gate 2 (EDITORIAL; re-resolve on image change confirmed); DV1-W (c) FAIL in A:1011 and the accepted limitation MC-1278 (A:1013).
+
+**Not decided.** Option label: TODO(evidence). Dispositions of F1 to F3 are not recorded in the cited lines: TODO(evidence).
+
+### MC-1262 — CHORE-710 scope folds the send-path format gap, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; label as logged). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1257`, `MC-1256`, `CHORE-710`.
+
+**What the maintainer chose (label as logged).** "Fold into 710". Log wording (lane D relay, A:966): CHORE-710 scope fold of the send-path coldMemberRestore.ts format gap. The ID was reserved on the same line; the answer is recorded at A:966.
+
+**Results (as logged; lane D and lane A claims).** A:968 (lane D): CHORE-710 handed off (`laned\c710\handoff.md`; tiny carve-out; Gate 2 adversarial EDITORIAL; MC-1262 send-path fold; delta EDITORIAL; the delta's homeStudio note refuted by the lane D parent from source). The maintainer's "Commit and queue trial" answer committed the work on c710-laned (base 435e8b648). A:971 (lane A): CHORE-710 commit bc5aa544f in trial51. A:976 (lane A): merged into main as d15a75244 with CHORE-700 stage 2 (trial52).
+
+**Not decided.** The "Commit and queue trial" answer has no MC ID in this range: TODO(evidence) on whether it needs one. Whether bc5aa544f is the commit that carries the send-path fold is not stated in A:971: TODO(evidence).
+
+### MC-1263 — CHORE-708 P6 previously seen image, strict and only when busy, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; label as logged). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1261` (warm-URL fold), `CHORE-708`.
+
+**What the maintainer chose (label as logged).** "Strict, only when busy". Log wording (lane D relay, A:973): a previously seen image always takes a queue slot; it repaints at once when there is room and blinks only while the queue is busy. This settles the open P6 question (F4 of the r4 review).
+
+**Results (as logged; lane D claims).** The answer followed the opus Gate 1 r4 REJECT on the stage W delta (`c708\gate1-r4.md`). Three consecutive substantive rejects led to a senior-advisor escalation before r5 (lane D). Stage 1 coding continues on file-disjoint work.
+
+**Not decided.** Dispositions of F1 to F3 are not recorded in the cited lines: TODO(evidence).
+
+### MC-1264 — CHORE-713 filed for Back during the Open-in-Studio load, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; label TODO(evidence): A:978 gives no option label). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-713`, `CHORE-690` (no edit to the granted files, per A:979), `CHORE-698` (gap A diagnostic queue).
+
+**What the maintainer chose (label TODO(evidence)).** Log wording (lane A, A:978): file CHORE-713 (Back during the Open-in-Studio load: early gap A and late gap B) for lane C to size and fix.
+
+**Results (lane A ruling and lane B, lane C claims; not maintainer answers).** A:979, lane A: write grant for src/App.svelte (no live writer) and src/ts/studio/studioBack.svelte.ts (S3 session confirmed CHORE-690 holds no current or planned edit to either). Gap B (Back during the StudioScreen lazy-chunk load) is fixed for every Studio entry (shared cause). C:340, lane C sizing (`c713\sizing.md`): B = the lazy Studio chunk leaves no Studio Back layer before mount (shared cause); A = the click is dispatched late, with no in-path work before registration. Worktree risu-code-track-c713 on d15a75244 (branch c713-wip). A:983 (lane B, `b61\laneb\c713\result-gapA.md`, release d15a75244): the ~300 ms double-tap hypothesis is not supported for real taps (adb input tap: click 16 ms after touchstart; Back handler registered within 30 ms of the click; Studio at 409 ms); on a fresh launch CDP touch put the click at 295 ms, and the log calls gap A a CDP-injection artifact (physical finger not measured). A:994 (lane C): gap A recorded as investigated, not a defect; gap B fix committed as f104025a4 on c713-wip (base d15a75244; Gate 2 EDITORIAL, rem-check ACCEPT). A:999 (lane A): merged as 56326527a. Lane B D1 after merge is owed before closeout (A:994, A:999).
+
+**Not decided.** Option label: TODO(evidence). Whether gap A is a defect: lane B and lane C both record it as not a defect (CDP injection); the physical finger was not measured; no maintainer ruling on gap A is recorded: TODO(evidence). A:979 states that an app-wide tap delay would return as a scope question.
+
+### MC-1265 — CHORE-714 filed and sized from source, per-send whole-chat pass, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; label TODO(evidence): A:982 gives no option label). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1266` (profile and stage 1), `CHORE-714`.
+
+**What the maintainer chose (label TODO(evidence)).** Log wording (lane A, A:982): file CHORE-714 (the per-send whole-chat prompt and CBS pass and the post-reply settle grow with chat length) and size it now from source (lane A). The fix decision waits for the sizing.
+
+**Results (lane claims, not verified by the clerk).** Trigger: A:981 (lane B, one 10k CPU profile, INFERRED lead): the prompt builder runs a CBS parse (risuChatParser, 453 ms self) over every message on each send. Sizing A:985 (lane A, `b66\tickets\c714\sizing.md`; critic over size-send and size-settle): the whole-chat CBS parse runs 4 times per send (index.svelte.ts runCurrentChatFunction entry and after reply, prompt loop, scripts.ts runScriptPass) and explains about 30% of the Note 9 slope; the rest is unattributed (per-message getModuleRegexScripts, proxy traps, store2 save walk, chatTreeView pathFirst). New compatibility finding: @@inject regex writes and V2 editprocess plugin calls run per message in the prompt pass, so a window-first build changes behaviour.
+
+**Not decided.** The fix decision waits for the profile chosen in MC-1266; the sizing file itself was not read by the clerk: TODO(evidence). The ID numbers MC-1264 to MC-1266 were also proposed by lane D for CHORE-711 at A:991; they were already taken and renumbered to MC-1269 to MC-1271 (outside this range). This entry keeps MC-1265 for CHORE-714.
+
+### MC-1266 — CHORE-714 profile plus stage 1, then decide, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer; label as logged). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1265`, `MC-1267` and `MC-1268` (same log line, outside this range), `CHORE-714`.
+
+**What the maintainer chose (label as logged).** "Profile + stage 1, then decide". Log wording (lane A, A:986): lane B takes a named-function Note 9 profile of one 10k send on a main release (counters at the four parse sites, getModuleRegexScripts, the save pass and treeView). Lane A plans stage 1 (parser identity fast path with a fast-vs-full oracle, chatTreeView guard, prompt-log gate). Later stages are decided on the profile.
+
+**Results (lane A claims, not verified by the clerk).** A:987: stage 1 plan Gate 1 adversarial EDITORIAL (`c714\s1\result-plan-r1.md`); OQ1 option (a) recorded as an orchestrator call (the chatTreeView fast path need not reproduce the original throw on null message entries). A:988: stage 1 coder done (T-F2 and T-G1 red on base, green after; 19 of 19 mutants; 156 files, 2062 tests; check 0), harvested to risu-code-track-c714. A:990: stage 1 Gate 2 adversarial APPROVE (9 own mutants killed; base replay: exactly T-F2 and T-G1 red); committed 20c61a2d6 on c714s1 (base ee2f37874); i9 parser x10k macro-free 17 to 2 ms per pass. A:999: trial55 FULLRUN PASS; merged as 56326527a. A:992 (lane B): CHORE-714 builds of ee2f37874 ready (plain EA265DC9; names-unmangled profile 64104A1A, no source maps). The profile output itself is not recorded in the cited lines.
+
+**Not decided.** Later stages wait for the profile; no profile output is recorded in the cited lines: TODO(evidence). MC-1267 (window-first prompt build, only as a later separate opus-reviewed ticket if stage 1 is not enough) and MC-1268 (the two full-prompt console.log calls stay in dev builds only) are recorded on the same line but are outside this draft's range.
+
+
+### MC-1267 — Window-first prompt build only as a later, separate opus-reviewed ticket, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer recorded in lane A's log; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1266` (CHORE-714 profile and stage 1 answer, same log line), `MC-1268`, `MC-1069`.
+
+**What the maintainer chose (label not logged: TODO(evidence); lane A's wording, lane A log line 986).** "window-first prompt build allowed only as a later, separate opus-reviewed ticket if stage 1 is not enough."
+
+**Results (as logged).** No window-first ticket is filed in the supplied range. CHORE-714 stage 1 was committed as `20c61a2d6` (lane A log line 990) and merged with CHORE-713 as `56326527a` (lane A log line 999; trial55 FULLRUN PASS as logged).
+
+**Not decided.** Whether stage 1 is insufficient is not in the supplied range: TODO(evidence). The later ticket, if any, needs its own Gate 1 and opus review.
+
+### MC-1268 — Two full-prompt console.log calls stay in dev builds only, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer recorded in lane A's log; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1266`, `MC-1267`, `MC-1069`.
+
+**What the maintainer chose (label not logged: TODO(evidence); lane A's wording, lane A log line 986).** "the two full-prompt console.log calls stay in dev builds only."
+
+**Results (as logged).** Lane A's log line 999 states that the trial55 release bundle has no "Prepared messages for token calculation" string (D-G3). The command output for that bundle check is not in the supplied log: TODO(evidence).
+
+**Not decided.** Nothing further logged.
+
+### MC-1269 — CHORE-711 wording reuses coldStorageRestoreUnreadable, no new key, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1270`, `MC-1271`, `MC-1272`, `MC-1270`, `MC-1273` (the same CHORE-711 sizing answers), `MC-058` (translator owns non-English locales).
+
+**What the maintainer chose (label not logged: TODO(evidence); lane D relay, lane A log line 991).** "MC-1269 wording reuses coldStorageRestoreUnreadable, no new key." The sizing premise it answers (`laned\c711\sizing.md`, as logged): a failed row tap shows the window guard's raw untranslated alert; a refused restore resolves {failed} and is already alerted, so only thrown errors need the catch.
+
+**Results (as logged; lane D and lane A claims).** CHORE-711 Gate 1 r3 APPROVE (lane A log line 1000, lane D claim). Commit approved as "Commit and trial" and committed as `10af2e983` on `c711-laned` (lane A log line 1008). Merged with CHORE-708 as `aad3dec3a` (lane A log line 1023; trial56 FULLRUN PASS, line 1022).
+
+**Not decided.** Nothing further logged for the wording.
+
+### MC-1270 — CHORE-711 scope list and sidebar rows, CHORE-715 filed, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1269`, `MC-1273` (narrows CHORE-715 again), `MC-1274`.
+
+**What the maintainer chose (label not logged: TODO(evidence); lane D relay, lane A log line 991).** "MC-1270 scope list + sidebar rows only; follow-up CHORE-715 filed for the other unguarded changeChar sites (GridCatalog warm pick, hotkey prev/next, characterCards import-then-open) reusing the same helper."
+
+**Results (as logged).** CHORE-715 was sized tiny as a carve-out: four call swaps to changeCharOrAlert in hotkey.ts and characterCards.ts (lane A log line 1006, `laned\c715\sizing.md`). The maintainer's "Commit and queue trial" committed CHORE-715 Gate 2 APPROVE work on `c715-laned` on top of `10af2e983` (lane A log line 1010). The GridCatalog warm pick was moved into CHORE-711 (`MC-1273`).
+
+**Not decided.** Nothing further logged.
+
+### MC-1271 — Fold the switchTarget loading-phase leak into CHORE-711, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1269`, `MC-1272`.
+
+**What the maintainer chose (label not logged: TODO(evidence); lane D relay, lane A log line 991).** "MC-1271 fold into CHORE-711: switchCharacter via ShellSidebar/GridCatalog leaves switchTarget phase 'loading' and its watcher subscribed when changeChar throws."
+
+**Results (as logged).** Folded into CHORE-711 scope; the CHORE-711 Gate 1 r3 APPROVE is recorded at lane A log line 1000 (lane D claim). No device check for this path is logged in the supplied range: TODO(evidence).
+
+**Not decided.** Nothing further logged.
+
+### MC-1272 — Warm or group switch that throws shows a quiet load-failed frame with Retry and Back, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1271`, `MC-1273`, `MC-1274`.
+
+**What the maintainer chose (label not logged: TODO(evidence); lane D relay, lane A log line 995).** "a warm or group switch that throws shows the same quiet 'load failed' frame with Retry and Back, no alert." The same line names the plan it answers (`laned\c711\plan-r1.md`): helper `src/ts/characterPick.ts` changeCharOrAlert for the 3 row sites; switchCharacter never rejects. Those plan details are lane D's text, not separate maintainer words.
+
+**Results (as logged).** CHORE-711 Gate 1 r3 APPROVE (lane A log line 1000, lane D claim). Lane D's r3 also records that "the grid warm pick alerts on every failing warm tap and no longer imports the helper" (line 1000).
+
+**Not decided.** The supplied log does not say how the grid warm pick alert in lane D's r3 note (line 1000) sits with the no-alert wording above for a warm switch that throws: TODO(evidence). The parent should check this against the CHORE-711 plan and gate files before any closeout.
+
+### MC-1273 — Move grid pick into 711, CHORE-715 narrowed, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; option label verbatim as logged). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1270` (the CHORE-715 scope this narrows), `MC-1272`, `MC-1274`.
+
+**What the maintainer chose (label as logged: "Move grid pick into 711"; lane A log line 997).** "CHORE-711 also wraps the GridCatalog warm pick. CHORE-715 narrowed to hotkey prev/next and characterCards import-then-open (reuse the 711 helper)." The plan-r2 finding behind it (as logged): CharacterSimpleList's non-onpick branch has no production caller, so a real list tap runs GridCatalog's warm pick.
+
+**Results (as logged).** The change is in CHORE-711's Gate 1 r3 (lane A log line 1000, lane D claim). CHORE-715 was then sized tiny (lane A log line 1006).
+
+**Not decided.** Nothing further logged.
+
+### MC-1274 — Lane D work order: CHORE-711 coding, CHORE-715 and CHORE-712 sizing and planning, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1269` to `MC-1273`, `MC-1275` to `MC-1277` (CHORE-712 answers), `MC-1069`.
+
+**What the maintainer chose (label not logged: TODO(evidence); lane D relay, lane A log line 1000).** "(1) codes CHORE-711 on top of the committed CHORE-708 branch (91c41f733), rebasing onto main once 708 merges; (2) sizes and plans CHORE-715 (read-only; coder after 711); (3) sizes and plans CHORE-712 (avatar thumbnail-generation whole reads; DV1-c: 6 cold, 0 warm; coding after 708 merges)."
+
+**Results (as logged).** Lane A recorded that the maintainer approved lane D coding ahead, with CHORE-712 on the 708 branch and CHORE-715 on `10af2e983` (lane A log line 1009). CHORE-712 was committed on `c712-laned` on top of `91c41f733` (lane A log line 1016). CHORE-708 merged as `ad96897dc` (lane A log line 1023).
+
+**Not decided.** Nothing further logged.
+
+### MC-1275 — CHORE-712 thumbnails share the strict FIFO with display reads, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; ID pending lane A's acknowledgement, confirmed at lane A log line 1006; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1276`, `MC-1277`, `MC-1259` (the 5 s bound named in the answer), `MC-1274`.
+
+**What the maintainer chose (label not logged: TODO(evidence); lane D relay, lane A log lines 1002 to 1003).** "thumbs share the strict FIFO with display reads (no gate priority / contract change); revisit only if DV-B fails the MC-1259 5 s bound."
+
+**Results (as logged).** Lane A confirmed the three answers at line 1006 (sizing `c712\sizing.md`, premises verified by parent as logged). CHORE-712 was committed as "Commit and send rows to B" on `c712-laned`, on `91c41f733` (lane A log line 1016). Lane B's DV-A, DV-B and DV-C merge preconditions and the DV-D diagnostic are owed on a release build: TODO(evidence).
+
+**Not decided.** Nothing further logged.
+
+### MC-1276 — CHORE-712 thumbnail 15 s timer starts when the grant arrives, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; ID pending lane A's acknowledgement, confirmed at lane A log line 1006; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1275`, `MC-1277`.
+
+**What the maintainer chose (label not logged: TODO(evidence); lane D relay, lane A log line 1004).** "thumb 15 s timer starts when the grant arrives (queue wait bounded by holders' 30 s settle)."
+
+**Results (as logged).** Confirmed at lane A log line 1006. The sizing premise (no 8 MiB gate in avatarThumb; the 15 s timer at runTask) was verified by the parent as logged (lane A log line 1002). No device run of this timer is logged: TODO(evidence).
+
+**Not decided.** Nothing further logged.
+
+### MC-1277 — CHORE-712 bytes fallback stays out of the queue, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; ID pending lane A's acknowledgement, confirmed at lane A log line 1006; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1275`, `MC-1276`.
+
+**What the maintainer chose (label not logged: TODO(evidence); lane D relay, lane A log line 1005).** "bytes fallback (header failure / urlDecodeOff, ranged IPC into JS memory) stays out of the queue; DV-C records JS heap."
+
+**Results (as logged).** Confirmed at lane A log line 1006. The DV-C JS heap record is owed on a device build: TODO(evidence).
+
+**Not decided.** The DV-D question (does an aborted Image load free the Java array before the grant release) is open in lane A's sizing (lane A log line 1006): TODO(evidence).
+
+### MC-1278 — CHORE-708 DV1-W(c) FAIL accepted as a recorded limitation, 708 merged, CHORE-716 filed, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; the same decision appears at lane A log lines 1013 and 1014; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1259` to `MC-1261` (CHORE-708 bounds and stage answers), `MC-1263` (P6 band rule), `MC-1279`, `MC-1281`.
+
+**What the maintainer chose (label not logged: TODO(evidence); lane A log line 1013 and lane D relay line 1014).** "accept CHORE-708 DV1-W(c) as a recorded limitation and merge 708; CHORE-716 filed to re-run the near/far band test after the chat list settles (own gates + phone re-run)."
+
+**Results (as logged; lane B claim).** Lane B's DV1-W(c) on the combined build: FAIL 3/3 (warm far image at the top of a long chat re-requested on re-entry; band test sees unsettled layout, scrollHeight 774). DV3 (1), (2), (3) and (5) PASS; DV1-W (a) and (b) PASS; MC-1259 bound met (<=1.69 s); cap 60 MiB held 24/24 (lane A log line 1011; `laneb\c708c\result.md`). CHORE-708 merged as `ad96897dc` (lane A log line 1023).
+
+**Not decided.** The DV1-W(c) limitation is recorded as accepted for CHORE-708 only. The CHORE-716 phone re-run is owed: TODO(evidence).
+
+### MC-1279 — CHORE-716 one-frame placeholder for near warm images at open and re-entry, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1263` (P6 "Strict, only when busy" for streaming warm repaint), `MC-1278`, `MC-1280`, `MC-1281`.
+
+**What the maintainer chose (label not logged: TODO(evidence); lane A log line 1019, relay line 1021).** "accept a placeholder of about one frame for near warm images at chat open or re-entry only, by a module-level hold on the warm rect test, with a safety timeout of about 1-2 s. Elsewhere, streaming included, warm repaint stays immediate (MC-1263)."
+
+**Results (as logged).** CHORE-716 sizing is `c716\sizing.md` (lane A log line 1018). No CHORE-716 code is logged in the supplied range.
+
+**Not decided.** The exact timeout value within "about 1-2 s" is not fixed in the supplied log: TODO(evidence).
+
+### MC-1280 — CHORE-716 scope covers both lists, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1279`, `MC-1281`, `MC-1278`.
+
+**What the maintainer chose (label not logged: TODO(evidence); lane A log line 1020, relay line 1021).** "scope covers both lists: stage 1 the chat shell (ShellMessageList), stage 2 the legacy Chats.svelte (groups, waifu, playground)."
+
+**Results (as logged).** Lane C was asked whether it had work on ShellMessageList.svelte or Chats.svelte and answered no (lane C log line 368). Lane A recorded "no pending work on ShellMessageList/Chats/deferredAssetImages; CHORE-716 clear to cut" (lane A log line 1023).
+
+**Not decided.** Nothing further logged.
+
+### MC-1281 — A Settings or Studio return that rebuilds every row counts as re-entry, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane D; option label not in the supplied log: TODO(evidence)). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1279` (the hold this applies to the rebuild branch), `MC-1280`, `MC-1278`.
+
+**What the maintainer chose (label not logged: TODO(evidence); lane A log line 1025, relay line 1026).** "a Settings or Studio return that rebuilds every row (rebuildEpoch) counts as re-entry under MC-1279. Take the same hold in the rebuild branch, released one frame after the scroll restore (plan-r1 O1 option A: SO8/CO6 plus one mutant each)."
+
+**Results (as logged).** None in the supplied range. The plan-r1 reference is lane D's plan file, not checked by the clerk: TODO(evidence).
+
+**Not decided.** The MC-1281 text does not state a separate timeout for the rebuild branch; the timeout is as in MC-1279 only if the parent confirms this reading: TODO(evidence).
+
+
+### MC-1282 — CHORE-713 closeout "Close, accept the flash", 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer relayed by lane A after the batch 65 freeze; the post-freeze addition quotes the label as "Close, accept the flash"). Date: 2026-11-10. Exact times: UNKNOWN (TODO(evidence): the supplied addition gives no time). Sweep ref: none. Related: `MC-1264` (filed CHORE-713), `MC-1069` (AskUserQuestion for decisions and closeouts).
+
+**What the maintainer chose (label as quoted in the post-freeze lane A log addition).** "Close, accept the flash": CHORE-713 COMPLETE; the 45-70 ms Studio flash when the WebView delivers Back only after the Studio mount is an accepted limitation; physical Back press/gesture UNOBSERVED.
+
+**Results (as logged; lane B and lane A claims, not re-run by the clerk).**
+- Evidence named by the addition: lane B `b61\laneb\c713\result-d1.md` (STATUS DONE): D1 rows 1 to 3 PASS on release 56326527a, Note 9 phone 2, adb keyevent and JS-timed Back only. Row 1 (library, Open in Studio): Back before the Studio mount left Studio unshown in 15 of 15 trials. Row 2 (chat entry, studio-entry row): 5 of 5 trials with Back before the mount. Row 3 (reopen after Back): 4 of 4 trials opened Studio again with no error.
+- Qualification in that file (Summary, lines 7 and 8): a Back delivered only after the mount closed Studio 45-70 ms later, with Studio visible for about 50-70 ms; this is the flash the maintainer accepted.
+- Gap A (lane B `result-gapA.md`, lane C C:352, lane A A:983): recorded as not a defect (CDP touch-injection delay; adb tap click 16 ms after touchstart). Lane claim; no maintainer answer on gap A in this entry.
+- Merge and commit as logged: committed `f104025a4` (lane C C:362; maintainer "Commit, full suite at merge"); merged as `56326527a` with CHORE-714 stage 1 after trial55 FULLRUN PASS (lane A A:999; maintainer "Merge and push", MC reference TODO(evidence)). Main pushed (lane A A:999).
+
+**Not decided.** A physical Back press or gesture was not observed (UNOBSERVED); the flash on a physical press is not measured. The acceptance covers the 45-70 ms flash only. The supplied addition cites D1 rows 1 to 3 only; rows beyond 3 are not in the supplied evidence (TODO(evidence)). Cleanup of worktree `c713` is left for lane A with maintainer approval (lane C C:366); not decided here.
+
+
+### MC-1283 — Lane A's MC block extends past MC-1239 (record only), 2026-11-10
+
+- Tag: record (block-allocation note under `MC-1062`; no maintainer answer in this entry). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1062` (grant of lane A's MC block), `MC-1040`, `MC-1281`, `MC-1282`.
+
+**What the record says.** `MC-1062` gives lane A's block as `MC-1040` to `MC-1239` (Maintainer-Context.md line 21592). Its grant text, quoted by the maintainer, is: "feel free to allocate as much mc blocks as you'd like", while lane A is the only orchestrator (line 21584). Batch 65 IDs used above the block: `MC-1240` to `MC-1281` are used in the frozen lane A range (42 IDs, per the inventory check; lane A log line 1026 reads "Next free: MC-1282" at the freeze, so `MC-1282` was unused then). `MC-1282` comes from the post-freeze addition (CHORE-713 closeout, "Close, accept the flash"). This batch's unnumbered answers take `MC-1283` to `MC-1303` (drafting plan); the plan's reserved ceiling is `MC-1339`. The ceiling is a drafting-plan figure, not a maintainer decision.
+
+**What the maintainer chose.** Nothing new in this entry. No maintainer answer is attributed to it.
+
+**Results.** This draft covers `MC-1283` to `MC-1292` only. `MC-1293` to `MC-1303` are outside this draft and are not checked here: TODO(evidence).
+
+**Not decided.** Whether `MC-1062` needs a dated pointer to this entry is for the parent. The `MC-1062` text is not rewritten by this entry.
+
+### MC-1284 — Label evidence for batch 64 decisions (addendum), 2026-11-08
+
+- Tag: decisions (label addendum; no new answer). Date: 2026-11-08 (every cited line falls on 2026-11-08 UTC or on the lane A 2026-11-08 date; the brief's "2026-11-07/08" is not supported by the cited lines). Exact times: UTC times from the lane B transcript are given per bullet. Sweep ref: none. Related: `MC-1128`, `MC-1129`, `MC-1130`, `MC-1136`, `MC-1142`, `MC-1144`, `MC-1148`, `MC-1149`, `MC-1150`, `MC-1160`, `MC-1161`.
+
+**What the maintainer chose (labels as logged; "B:" is the lane B answers transcript, "A:" is the lane A log).** Each label is attached only where the question's wording matches the entry; a wording match is not a confirmed link.
+- `MC-1128` (CHORE-572 scope, host and lifetime; Q1 to Q3): B:19 "New consumers only (Recommended)"; B:21 "Sticky, assertive (Recommended)"; B:23 "Theme, 2 + chip (Recommended)"; B:25 "Defer Alt+Z; rule OK (Recommended)"; B:43 "Polite refusal (Recommended)" (Q1); B:45 "Queue; undo replaces oldest undo (Recommended)" (Q2); B:47 "No line now (Recommended)" (Q3). Conflict answers at 00:21 and 00:23 UTC: B:29 "3 stacked, 6 s undo (Recommended)" (matches the "up to 3 visible; undo 6 s" wording of `MC-1128`); B:33 "Outlive close (Recommended)" is not quoted in `MC-1128`: TODO(evidence) whether it is part of that entry.
+- `MC-1129` (O1, 01:17 UTC): B:51 "Accept for now (Recommended)".
+- `MC-1130` (CHORE-664, 00:23 UTC): B:35 "Off" (Q664-1, chat-shell toggle); B:37 "Numbers only (Recommended)" (Q664-2); B:39 "Leave to 668 (Recommended)" (Q664-3).
+- `MC-1136` (clear phone 2, 02:36 UTC): B:57 "Yes, clear phone 2".
+- `MC-1142` (CHORE-666, 07:21 UTC): B:65 "Existing markers only (Recommended)" is item (a). Item (b), "STREAM_CONTAINMENT removed", has a candidate label B:67 "Remove it (Recommended)" (content-visibility rule); this is a wording candidate only: TODO(evidence). B:71 "Include it (Recommended)" (07:36 UTC; fold-in of the in-thought splitter fix) is not recorded in `MC-1142`: TODO(evidence) whether a separate entry is wanted. It is not added here.
+- `MC-1144` (CHORE-572 follow-up, 07:42 and 07:53 UTC): Q-A = B:75 "Every focus-trapping overlay (Recommended)"; Q-B = B:77 "Resume remaining time (Recommended)"; O1 = B:81 "Keep unpressable (Recommended)"; O2 = B:83 "Accept and record (Recommended)". The phrase "Pause timer under sheets" is not an answer label: it is quoted inside the question text at B:74 ("you said 'Pause timer under sheets'"), and lane A logs it at A:584.
+- `MC-1148`, `MC-1149`, `MC-1150` (S3b, relayed by the S3 session; A:638): `MC-1148` "Split the rule (Recommended)"; `MC-1149` "Per-step storage now (Recommended)"; `MC-1150` "WIP commit + rebase (Recommended)". The S3 session's own log line is not in the supplied packet: TODO(evidence).
+- `MC-1160` (F2 export before the phone 2 wipe, 11:08 UTC): B:97 "Export, then wipe (Recommended)". A:646 gives the same label under "Wipe phone 2". The B:96 question names the "synthetic F2 test profile", which matches `MC-1160`; the link is by wording.
+- `MC-1161` (CHORE-667 renderer loss, 11:05 UTC): B:91 "Reload silently (Recommended)"; B:93 "Loss only (Recommended)". A:646 gives the same two labels under "Recovery" and "TrimMemory".
+
+**Results (as logged).** These are label attachments made by the clerk from the supplied transcripts. They are not new decisions and do not change any answer.
+
+**Not decided.** The links for `MC-1142` item (b), B:71 and B:33 are unconfirmed: TODO(evidence). This addendum is appended, not a rewrite of the earlier entries; the parent applies it as the addendum that lane A's log asks for (A:638).
+
+### MC-1285 — UI-S4 C2: Welcome restore double-start and Welcome IME Enter folded into C2, 2026-11-08
+
+- Tag: decisions (AskUserQuestion answers relayed by lane C). Date: 2026-11-08. Exact times: UNKNOWN (no clock time in the lane A or lane C lines cited). Sweep ref: none. Related: `MC-1154` (C2 Hide checkbox sizing), `MC-1160` (C2 strings), `MC-1069`.
+
+**What the maintainer chose.**
+- Restore double-start (A:641, relayed by lane C): the maintainer answered the question whether to fix a second Restore press while the file picker is open with "Fold into C2 (Recommended)". Logged wording: "While a restore is pending, disable or ignore Welcome's buttons, and add a test." Lane C's log (C:120) records the same.
+- Welcome IME Enter (A:655, relayed by lane C; question "How should I fix Welcome?"): "Fold into C2 (Recommended)". Logged wording: the Welcome name, nickname and API key Enter handlers reuse `createEnterKeyController` from `src/ts/chatShell/enterKey.ts` (imported in place); own plan addendum and Gate 1; a combined opus recheck of C2; a D4 device recheck by lane B after the commit (A:655; C:139 agrees).
+- Accepted limitation (A:649, lane C): a picker return more than 2000 ms after the window returns can start a second Welcome entry and a second run; the busy guards refuse it and nothing is replaced. The maintainer's answer label is TODO(evidence); the wording as relayed at A:688 is "a late picker return can start a second restore attempt, the app refuses it as busy, and no data changes."
+
+**Results (as logged; lane C and lane A claims).**
+- C2 opus Gate 2: r1 REJECT with two substantive findings (F1, a rejected restore flow leaves Welcome locked; F2, a listener-cleanup test lets mutants survive) and two editorial (C:130-135; the editorials are F3, the late picker return bounded by the busy guards, at C:133, and F4, mock hygiene, at C:134). r2 REJECT: the remediation made the restore error console-only instead of the base `alertError` path (A:672). r3 EDITORIAL with close-out PASS (A:688; lane C claim). Mutants r3 10/10 plus RJ8; 271 files and 4976 tests passed; `pnpm check` 0 (lane C claim, A:688).
+- Commit 8a0aa1b33 on uis4onb-wip, "maintainer approved (via lane C)" (A:688; approval label TODO(evidence)). Merged as a04c11e70 (A:690; "Merge and push (Recommended)").
+- Phone 2 after the merge (A:702, lane B claim): DV1-3, DV5 and DV7 PASS; DV4 PARTIAL (TalkBack order unobserved); D4 IME recheck FAIL on Samsung Cheonjiin (Go on a composing syllable advanced on the first press). Later maintainer product calls on D4 are recorded in their own entries (A:703 onward; see MC-1295).
+
+**Not decided.** The label of the accepted-limitation answer (TODO(evidence)). The D4 product outcome is outside this entry.
+
+### MC-1286 — CHORE-679 filed and sized now; Q1 and Q2, 2026-11-08
+
+- Tag: decisions (AskUserQuestion answers relayed in lane A's log). Date: 2026-11-08. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1285` (Welcome Enter fix folded into C2), `MC-1069`.
+
+**What the maintainer chose.**
+- Filing (A:651): "File CHORE-679, size now (Recommended)" (unchosen: "File CHORE-679, unscheduled", "Device-check first"). Logged wording: one ticket for the shared Enter-after-compositionend cause outside Welcome (survey surfaces, share the composer `enterKey.ts` guard, reproducers); sized now, coded when a slot frees. Lane A's log names CHORE-680 as the next free ticket at this point.
+- Q1 (A:661): "Insert the newline (Recommended)" (unchosen: "Swallow it"). Logged wording: in the TextAreaInput contenteditable, the Enter right after compositionend inserts the newline as today; the fix only stops it corrupting a live composition.
+- Q2 (A:661): "Leave it out (Recommended)" (unchosen: "Include it"). Logged wording: the App.svelte April Fools site is excluded and recorded as a known gap.
+- The window-size question (DV-1 cases b and d) was deferred until DV-1 data existed (A:661).
+
+**Results (as logged; lane A and lane B claims).**
+- Sizing survey (A:657, lane A): 19 sites, 12 YES, 5 UNSURE and 2 NO by source reading; an independent check (EDITORIAL) corrected the summary counts and found a missed PartialEditController.svelte. Plan r1 Gate 1 (adversarial) REJECT with 2 substantive and 4 editorial findings (A:660). Plan r2 Gate 1 EDITORIAL, which corrects the site count to 16 (A:665; A:657 says 19; the difference is not resolved in the log: TODO(evidence)).
+- DV-1 on phone 2 PARTIAL (A:669, lane B claim): classification (a), the 30 ms tail stays (later superseded, see MC-1295: the maintainer's Q-A at A:708 removes the tail, and A:728 reworks the commit). Continuation V4 and V5 (A:686, lane B claim).
+- Coder stages (coder evidence, not gate evidence): S1 (A:671), S2 (A:676), S3 (A:683), S4 and S5 (A:689).
+- Combined Gate 2 r1 EDITORIAL (A:698); commit d5da90418 "Commit locally (Recommended)" (A:700; local only). Rebased and reworked (2ab2c8dd4, A:710; then 4b37cd00a, "Replace old commit (Recommended)", A:728). Trial31 FULLRUN PASS and "Merge and push (Recommended)": main b29a84993 (CHORE-679) (A:733 and A:734).
+- A separate follow-up timer fix (commit 424334300, "Commit, then trial34 (Recommended)", A:754) came from a trial33 uncaught error that was not caused by CHORE-670 (A:744). Merged as e90cea870 (A:761).
+
+**Not decided.** The later D4 product calls, the reassessment and the Gboard coverage (skipped by the maintainer, A:757) are in their own entries (see MC-1295).
+
+### MC-1287 — CHORE-676 includes Gemini; CHORE-670 old-list answers; translate once, 2026-11-08
+
+- Tag: decisions (AskUserQuestion answers relayed by lane B; labels as relayed in lane A lines 646, 654 and 662). Date: 2026-11-08. Exact times (UTC, lane B transcript): 11:44:21Z (Gemini), 11:51:26Z (off-mode row, send burst, and the windowing decision at B:112-113), 12:08:10Z (windowing form, cap and above-cap rule, B:117-121), 12:21:06Z (translate toggle). Sweep ref: none. Related: `MC-1141` (CHORE-664 mapping onto CHORE-666 to 670), `MC-1142`, `MC-1159` (lane B takes CHORE-670 and CHORE-676).
+
+**What the maintainer chose.**
+- CHORE-676, Gemini (B:100-101; A:646 label "676 Gemini"): "Include Gemini (Recommended)" (unchosen: "OpenAI only").
+- CHORE-670 off-mode row (B:108-109; A:646 label "670 'off' row"): "Update in place" (unchosen: "Keep rebuild (Recommended)", "Hide actions while streaming").
+- CHORE-670 send burst (B:110-111; A:646 label "Send burst"): "Keep rows when ids are stamped" (unchosen: "Leave the one-time rebuild (Recommended)", "Stamp ids at load").
+- CHORE-670 windowing (B:112-113; A:646 label "Windowing"): "Add windowing" (unchosen: "Not in this ticket (Recommended)").
+- Windowing form, row cap and above-cap rule (B:117, B:119, B:121; A:654): "Trim when back at bottom (Recommended)"; "100, same as new screen (Recommended)"; "Your setting wins (Recommended)". The unchosen labels in A:654 are "Hard sliding cap", "50", "200" and "Cap wins".
+- CHORE-670 translate toggle while streaming (B:129; A:662): "Translate once at end (Recommended)" (unchosen: "Reset toggle per chunk", "Hide while streaming").
+
+**Results (as logged; lane B claims unless stated).**
+- CHORE-676: Gate 1 r2 EDITORIAL (A:652). Stage 1 (OpenAI) and stage 2 (Gemini) in one slot (A:662 and A:666; coder evidence). Commit 478422b6f, "Commit only (Recommended)" (B:149; A:673), with a combined opus Gate 2 r1 EDITORIAL (A:673). Merged as 00d9c746e (A:690, "Merge and push (Recommended)").
+- CHORE-670: Gate 1 r1 REJECT (A:662). Plan r3 Gate 1 PASS with r2 EDITORIAL (A:670). Stage 1 passed 11/11 mutants (A:680). D1 PASS on phone 2 (A:717; result file t10-perf2\c670\d1\result-r2.md). Commit d64067053, "Commit after D1 (Recommended)" (B:178-179; A:736), with Gate 2 ACCEPT and two test-only editorials. Trial33 FULLRUN FAIL-ERROR from an uncaught timer error outside CHORE-670's files (A:744; lane A judged it not caused by CHORE-670). Merged in trial34 as 43751a7d0 (A:761).
+
+**Not decided.** Nothing beyond these answers. The CHORE-670 device checks are lane B claims.
+
+### MC-1288 — CHORE-667: crash-loop guard, fresh-process relaunch, background loss, guard exit and mutant limit, 2026-11-08
+
+- Tag: decisions (AskUserQuestion answers relayed by lane B; labels as relayed in lane A lines 645, 662 and 666). Date: 2026-11-08. Exact times (UTC, lane B transcript): 11:47:41Z (crash loop), 12:30:06Z (mechanism), 12:43:05Z (background loss, guard exit, mutant limit), 21:26:03Z (commit approval). Sweep ref: none. Related: `MC-1161` (earlier renderer-loss answers; its in-process part is superseded here), `MC-1141` (post-stream memory folded into CHORE-667), `MC-1159` (lane B owns CHORE-667).
+
+**What the maintainer chose.**
+- Crash loop (B:103-105; A:645 label "Crash loop"): "Close after 3 in 60 s (Recommended)" (unchosen: "Crash as today", "No guard").
+- Mechanism (B:136-137; A:662 label "667 mechanism"): "Fresh-process relaunch (Recommended)" (unchosen: "Keep in-process rebuild", "Close cleanly only"). Logged wording (A:662): on renderer loss the app schedules its own relaunch, exits cleanly and reopens to the start screen; the crash-loop guard stays (3 in 60 s, then stays closed); the data outcome is the same as today's crash. A:662 says this "Supersedes the in-process part of the earlier 'Reload silently' answer" (see `MC-1161`).
+- Background loss (B:140-141; A:666 label "Background"): "Exit only (Recommended)" (unchosen: "Try to relaunch").
+- Guard exit (B:142-143; A:666 label "Guard exit"): "Accept (Recommended)" (unchosen: "Use finish()"). Logged wording: the guard ends the process (killProcess) instead of Activity finish(), because finish() can hit the same freeze; the visible result is the same (app closed, no crash dialog).
+- Mutant limit (B:144-145; A:666 label "Mutants"): "Accept limitation (Recommended)" (unchosen: "Build mutant APKs"). Logged wording: three of the plan's mutants can only be told apart by device runs of broken APKs, not by unit tests.
+- Commit approval (B:152-153, 21:26:03Z): "Commit only (Recommended)" for three native files on c667-wip-laneb.
+
+**Results (as logged; lane B claims).**
+- Gate 1: r1 opus review, scoped to a dead-page Rust write in flight while the new page boots (A:645). r2 second substantive REJECT (an in-process recreate mid-stream can deadlock the wry pipe, ANR; A:662). r3 third consecutive substantive REJECT (the crash-loop guard fails open when the persist fails; A:673). A senior-advisor review kept the fresh-process relaunch with a local fail-closed fix (A:673). r4 fresh opus delta EDITORIAL (A:680).
+- Device before-run (A:645): a `Page.crash` killed the app with data intact (lane B claim).
+- Commit 8aa854112 "Commit only (via lane B)" (A:687), Gate 2 r1 opus EDITORIAL. Phone 2 D-a to D-f PASS: foreground relaunch about 0.65 s with a new pid; background loss exits; the third loss in 60 s exits; no ANR or tombstone (A:687). D1 was PARTIAL at that point; the D1 leftovers later PASS (A:702).
+- Merged as 87d27098f (A:690, "Merge and push (Recommended)").
+
+**Not decided.** `MC-1161` is not rewritten here; the supersession wording is the lane A log's (A:662). Whether `MC-1161` needs a pointer is for the parent: TODO(evidence).
+
+### MC-1289 — UI-S3 S3b: "Worker stage next" and OPQ-T, OPQ-L, OPQ-F, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answers relayed by the S3 session through lane A; the label for the earlier OPQ-1 options is not logged: TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1148`, `MC-1149`, `MC-1150` (S3b Q1, Q2 and local WIP), `MC-1162` (per-owner cap), `MC-1069`.
+
+**What the maintainer chose.**
+- A:690 (S3 relay): "Worker stage next (Recommended)" (supersedes OPQ-1; the C-2 contingency is not built). Same relay: "Commit locally (Recommended)" for ddb26f212 on s3b-wip, local only, not to merge until the worker stage passes Note 9. The commit event is recorded with the ledger, not here.
+- A:692 (S3 relay): OPQ-T "Report big saves (Recommended)": whole-save time is reported for saves at or above about 0.4 MB (rows 2a, 2b, 4s, 2c-3, 5, 5b); the 100 ms bound applies to rows 1, 1m, 3, 4 and 2c-2; the 16 ms main-thread bound applies to every save. OPQ-L "Report the load time (Recommended)" (row 6 load reported). OPQ-F "Memory-only + banner (Recommended)" (no module-worker support leads to the existing memory-only mode plus a banner; no main-thread fallback).
+- A:697 (S3 relay, correction): OPQ-L re-asked on 2026-11-09 and answered "Report it (Recommended)": opening a large character history (row 6) is reported, not held to 16 ms; the 16 ms bound applies to saves only. This supersedes the row-6 main-thread part of the A:692 OPQ-L answer.
+
+**Results (as logged; S3 and lane B claims).**
+- Plan r10 opus Gate 1 REJECT (streak 1; A:697). r10a narrowed the protocol to P-A, with P-B only if a 2b-class main-thread row fails on Note 9 (A:697).
+- N1-b on Note 9 (lane B): banded FAIL and row 6 FAIL (T_load p95 145 ms), no INVALID rows (A:687). S3 reports about 45 ms main-thread per 0.5 MiB at that point (A:689).
+- N1-c on Note 9: row 2b main-thread p95 16.4 and 17.1 ms against the 16 ms bound (A:726); the S3 session then found this was a harness artifact (the 2b long text was sent twice; the app shares the object; A:729). Rerun of 2a and 2b: row 2b main-thread band FAIL (16.655 ms clean; 20.355 ms overlapped); 2aS and 2aL pass (A:743; lane B claim). S3 returns to S3b4-2 (P-B, plan r11) (A:743).
+- S3b4-1 is uncommitted (A:744). S3b4-2 Gate 1 r2 EDITORIAL and coder started (A:761).
+
+- N1-c second run (lane B claim, A:790, 2026-11-09): on phone 2 (2ac80128) the S3b N1-c second run is COMPLETE with all rows passing (lane A relays that identity matched build-info.json). MT p95 is at or under 16 ms on every banded row, closest 2e at 15.59 ms (a single sample; other loads 11.76 and 10.745). TX and 7b pass on both legs; no INVALID, FAIL or ERROR rows. This is not labelled as the S3b4-2 or P-B build: the source does not say which build it is (UNVERIFIABLE from the sources).
+- trial35 FULLRUN PASS (lane A claim, A:793): test=0, check=0 (0 errors), build=0 on 066793b67 plus S3b 9ecb87de3. Maintainer "Merge and push (Recommended)": main 066793b67 -> d91f3f6af. A:793 names 9ecb87de3 as the merge commit and also as the S3b commit in the trial line: TODO(evidence) which.
+
+**Not decided.** The commit approval for ddb26f212 is a ledger event.
+
+### MC-1290 — Slot pick (CHORE-669, 663, 678, 645) and CHORE-678 / CHORE-645 answers, 2026-11-09
+
+- Tag: decisions (AskUserQuestion; the multiSelect option labels are not in the supplied log: TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1160` (CHORE-678 filed by lane A), `MC-1291` (lane B picks), `MC-1069` (parallel tracks as options).
+
+**What the maintainer chose.**
+- Slot pick (A:690, multiSelect): CHORE-669 and CHORE-663 to lane B; CHORE-678 and CHORE-645 to lane A sizing. Labels: TODO(evidence). CHORE-661 was also taken by lane B by maintainer answer (A:690; see `MC-1291`).
+- CHORE-678 cancel (A:691): "Keep current selection (Recommended)".
+- CHORE-678 multi-file (A:691): "The last added (Recommended)".
+- CHORE-645 scope (A:691): "Boot screen + consent (Recommended)".
+- CHORE-645 stale-tap feedback (A:691): "Nothing (Recommended)".
+
+**Results (as logged; lane A claims).**
+- Sizing (A:691): critiques found the CHORE-678 Q3 inapplicable (the picker path has no preset or module branch), so it was dropped; CHORE-645 `answerShownPrompt` (Android back) must stay exempt.
+- Plan r1: CHORE-678 Gate 1 EDITORIAL; CHORE-645 Gate 1 ACCEPT (A:693).
+- Gate 2 r1 for CHORE-678: EDITORIAL (behaviour ACCEPT, tests EDITORIAL; A:698). CHORE-645 needed a write-set amendment for a required `pressedAt` parameter (19 test call sites; approved by the orchestrator as a mechanical technical prerequisite; A:699). CHORE-645 Gate 2 r1 ACCEPT on both lenses; CHORE-678 remediation check ACCEPT, with E2 and M12 as an accepted limitation of lane A's check, not a maintainer answer (A:700).
+- A reviewer's relative-path mutant script did a no-op rewrite in the main checkout; git shows no tracked change (A:700; lane A report).
+- "Commit both locally (Recommended)": 678 as 0501576b1 and 645 as 05c7f7914 on c678-645-wip (A:700).
+- "Merge 661/678/645; hold 679 (Recommended)": main 2bd895e9c (678 and 645) after trial28 FULLRUN PASS (A:707).
+
+**Not decided.** The E2 limitation for CHORE-678 is a lane A accepted limitation, not a maintainer decision: TODO(evidence) for any maintainer wording.
+
+### MC-1291 — Lane B ticket picks; CHORE-663 and CHORE-669 answers, 2026-11-08 to 2026-11-09
+
+- Tag: decisions (AskUserQuestion answers relayed by lane B; labels as in the lane B transcript and lane A log). Date: 2026-11-08 to 2026-11-09. Exact times (UTC, lane B transcript): 21:34:04Z (slot pick), 22:10:55Z (CHORE-663 cause), 22:43:29Z (CHORE-669 cache), 22:50:47Z (CHORE-663 far rows), 2026-11-09 00:22:12Z (free slot), 03:11:39Z (CHORE-663 stage 2). The time-zone relation between these UTC times and the dated lane A lines is not in the sources: TODO(evidence). Example: A:694 is dated 2026-11-09 and relays the 22:43Z answer.
+- Related: `MC-1290` (lane A slot pick), `MC-1069`.
+
+**What the maintainer chose.**
+- Slot pick (B:156-157, 21:34:04Z): "CHORE-663,CHORE-669,CHORE-661" (verbatim; A:690 confirms the owners).
+- CHORE-663 cause (B:160-161, 22:10:55Z): "B, then A progressive (Recommended)". Logged question: the PC measurement shows (B) the branch switch writes through the reactive chat array, growing with chat length, and (A) each step mounts the visible window and re-parses each row. This answer appears only in the lane B transcript; lane A's log has no line for it.
+- CHORE-669 cache (B:164-165, 22:43:29Z; A:694 relay): "Byte budget (Recommended)" (keep the cap, add a size budget, no clear on leave).
+- CHORE-663 stage 2 far rows (B:168-169, 22:50:47Z; A:696 relay): "Blank body (Recommended)". Superseded in practice by the later stage 2 decision below.
+- Free slot (B:182-185, 2026-11-09 00:22:12Z; A:713 relay): "CHORE-660" (lane B takes CHORE-660, Golden O1 CRC hardening).
+- CHORE-663 stage 2 (B:216-217, 03:11:39Z; A:730 relay): "Drop deferral, keep formatter (Recommended)".
+- Not an answer: B:192-193 (2026-11-09 01:58:00Z) records "[User did not answer this question — they sent a message instead.]" No decision is recorded from it.
+
+**Results (as logged; lane B and lane A claims).**
+- CHORE-669: plan r1 Gate 1 EDITORIAL (A:695); commit d41719da9 "Commit only" with Gate 2 ACCEPT (A:701); merged 10839f5c9 (A:712; "Merge and push (Recommended)").
+- CHORE-660: commit 6b9e1dee5 "Commit only" with Gate 2 ACCEPT (A:716); merged e358c9b4e in trial30 (A:718).
+- CHORE-661: commit 222db893e "Commit only" with Gate 2 ACCEPT (A:700); merged 3022cb29d (A:707).
+- CHORE-663: Gate 1 r1 REJECT (A:694), r2 REJECT (streak 2; A:700), r2 opus delta (A:696), r3 EDITORIAL (A:704; the streak ends at 2). Stage 1 committed 53df3a2c0 "Commit stage 1 (Recommended)" (B:188-189; lane A relays it at A:716 as "Commit only"), merged cd3a92dd6 (A:718). Stage 2 deferral failed the PC D2 check (a 94 px move from native Chrome scroll anchoring; A:721 "FAILED PC D2" and A:724 the PC diagnosis) and the PC D1 showed a weak benefit (A:730). The deferral was dropped; the formatter-only stage 2 was committed 62ee30b1c "Commit only" (A:732). The phone D2 leg was dropped as no longer needed (lane B claim, A:732), and the stage was merged 529b2d985 (A:739). The CHORE-663 closeout question is owed (A:739, lane A; not asked in the supplied log).
+
+**Not decided.** The B:192-193 free-slot question has no recorded answer (see above).
+
+### MC-1292 — CHORE-683 character pick fails: bug report and answers, 2026-11-09
+
+- Tag: decisions (bug report and AskUserQuestion answers relayed by lane B). Date: 2026-11-09. Exact times (UTC, lane B transcript): 02:03:45Z (screen), 02:12:11Z (during a reply), 02:21:28Z (rail and hotkeys), 03:36:00Z (cold start), 03:48:13Z (load error and cancel). Sweep ref: none. Related: `MC-1293` (CHORE-685, which absorbed CHORE-684), `MC-1069`.
+
+**What the maintainer chose (and reported).**
+- Screen (B:196-197): "Grid/catalog screen" (the MVP).
+- Symptom afterwards (B:198-199; free-text answer, verbatim): "previous chat or home. depending on whatever I was doing before changing character. if first character after fresh startup fails to load, it returns to home with sidebar open. if there was a chat that was already open, screen returns to previous chat with sidebar open."
+- Q683-3 (B:202-203): "Refuse, keep grid open (Recommended)" (during a reply, the grid stays open with the existing 'reply being written' notice).
+- Q683-4 (B:204-205): "Measure on phone 2 first (Recommended)".
+- Q683-5 (B:208-209): "Add notice, follow-up ticket" (the classic sidebar rail and prev/next hotkeys also refuse silently; A:721 files CHORE-684; A:741 later folds it into CHORE-685).
+- Q683-7 (B:224-225): "Keep grid until it opens (Recommended)".
+- Q683-8 (B:226-227): "File a ticket (Recommended)" (a second tap within about 270 ms cancels both clicks; A:737 files CHORE-686).
+- Q683-9 (B:230-231): "Existing 'could not load' notice (Recommended)".
+- Q683-10 (B:232-233): "Cancel the open (Recommended)".
+
+**Results (as logged; lane B claims unless stated).**
+- Trace (A:719-720): the generating variant is confirmed in source. The grid pick calls `changeChar` without await and then ends the grid; `changeChar` refuses silently while a reply is being written.
+- Stage 1 (generating case): committed 777475ffa "Commit only" with Gate 2 ACCEPT and three reproducers red on base (A:725); merged 3d2bd509b (A:734). The commit approval is B:212-213 ("Commit only (Recommended)", 2026-11-09 02:36:04Z) whose question text is blank in the transcript; matching it to stage 1 is by lane A's label at A:725: TODO(evidence).
+- Phone result for stage 1 (A:737; release 777475ffa, p1000r): 27 of 27 cold picks opened (the fresh-start "never opens" did not reproduce); the grid closes 127 to 329 ms before the selection is written; click-to-selection p50 505 ms; the A7 refusal during a reply PASS on the device.
+- Stage 2 (keep grid until open): committed 67d71781e "Commit now" (A:749), Gate 2 ACCEPT with no findings (M1 to M17 killed; 759 tests; svelte-check 0). The commit approval is B:236-237 ("Commit now (Recommended)", 04:20:57Z) with a blank question text: matching is by lane A's label, TODO(evidence). Merged as 066793b67 (A:761).
+- Phone D1 for stage 2 (A:763): 11 cold picks; the grid stays until after the selection write; no Home or previous-chat frame; spinner and aria-busy=true; pending about 250 to 450 ms; close-while-pending 3 of 3 not opened (the restore completes and the pick is not applied). Limit: a DOM click, not a finger tap.
+
+**Not decided.** Whether a finger tap behaves as the DOM click did is not observed (A:763 limit). The CHORE-686 double-tap finding is unscheduled. The two blank-question commit answers are matched by label only (TODO(evidence)).
+
+
+### MC-1293 — CHORE-685 switch during reply: design answers, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answers unless stated; the typed TODO is a maintainer instruction, not a question answer). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-685` (ticket), `CHORE-684` (folded into 685), `CHORE-683` (Q683-3 refusal, superseded for this case by the typed TODO), `CHORE-617` (Utility mode), `MC-1294` (plan r2 and r3 answers), CHORE-683 pick refusal (its MC ID is TODO(evidence); MC-1292 is not in Maintainer-Context or the frozen sources).
+
+**What the maintainer chose.**
+- Typed TODO, verbatim (lane B relay, lane A log line 723; typed by the maintainer, no option label): "let's file the 'allow switch during generation' as a later TODO Item that should work before/alongside utility/hybrid mode implementation." Filed as CHORE-685, unscheduled, no owner at filing. Hybrid mode has no Roadmap row; lane A links CHORE-617 and records Hybrid as an unfiled item (line 723).
+- Q685-1, verbatim free text (lane A log line 741; option label TODO(evidence)): "multiple replies in parallel is needed for utility mode anyway. so it is the final goal. but if 'one reply at a time' can serve as a stepping stone for parallel replies, we can take it as a temporary solution for now."
+- Q685-2, "Fold into CHORE-685 (Recommended)" (line 741): CHORE-684 closes into CHORE-685; no notice is built; the classic rail and the prev/next hotkeys switch freely under CHORE-685.
+- Q685-3, "Plan now, code after 683/670 (Recommended)" (line 741).
+- Q685-4 and Q685-5, verbatim free text (lane A log line 742; no option label logged: TODO(evidence)). Q685-4: "background reply should play chime and show notification chip along with notification on android." Q685-5: "I think we could add blue dot on the chat(next to the name) that has a new reply."
+- AskUserQuestion answers (lane A log line 747; labels as logged): D4/M3 "Send disabled + reason (Recommended)"; D1 "Its own screen now, row later (Recommended)"; TTS "No TTS off screen (Recommended)"; D3 "Small writing badge (Recommended)" (a badge while writing, which becomes the blue dot when the reply is done; restyled in UI-S4 E); M2 "Accept now, decide before parallel (Recommended)".
+- M1, answered as a scope statement (label TODO(evidence)): parallel replies are needed for "Roleplay vs roleplay" and "Utility sub-agents", not for Hybrid-into-character (line 747).
+- D5, free text (label TODO(evidence)), line 747: "per chat. also, iirc triggers/lua are chat specific. I could be wrong though."
+
+**Results.** Lane A's source checks (lane A claims, not maintainer decisions): the D5 premise is partly refuted; Lua setName, setDescription, setCharacterFirstMessage and setBackgroundEmbedding and v2 trigger lorebook, description and global-note writes exist at character level (lane A log line 755). The later plan rounds are recorded in MC-1294.
+
+**Not decided.** D5 stays open and gates S3 (lane A log line 756). Whether the maintainer re-answered D5 after the premise check is TODO(evidence). Parallel replies are the final goal for Utility mode (Q685-1); one reply at a time is only a stepping stone.
+
+### MC-1294 — CHORE-685 plan r2 and r3 answers, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answers; labels as logged where a label is shown, otherwise TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1293` (design answers), `MC-1174` (a different full-screen cover decision, Realm browser; not this answer), `MC-1217` and `MC-1218` (One UI repost ticket and CHORE-685 closeout, later batch entries).
+
+**What the maintainer chose.**
+- Plan r2 (lane A log line 756; AskUserQuestion labels as logged): notification permission "Settings switch + ask (Recommended)"; errors off screen "Error chip and dot too"; dot persistence "Saved per chat" (a persistence-contract change: opus-reviewer and MC-350 migration and MC-774 .bin apply, per lane A); off screen "Not visible = off screen (Recommended)"; error dot "Red error dot (Recommended)"; chime "Always on (Recommended)"; stacking "One per chat (Recommended)".
+- Android sound, free text, verbatim (line 756; option label TODO(evidence)): "can we use our own chime as abdroid notification sound? I've seen some apps like kakaotalk and discord doing that." Lane A's reply, as logged: a channel sound from a raw resource, one sound at a time.
+- Plan r3 (lane A log line 765; AskUserQuestion labels as logged): OQ-R1 "Drop it silently (Recommended)" (a fork-to-upstream .bin export drops the reply mark with no warning and no new string); readings C1 (errors: chip and red dot only, no chime or notification), C2 (web opt-in Notification stays silent, chat name only) and C3 (any Android deny opens notification settings), all "confirmed"; English strings "Approve as written (Recommended)"; DV2 device "Android emulator (Recommended)" (API 33+ emulator, synthetic profile).
+- Line 768, "Yes, off screen (Recommended)" (C4): a full-screen cover, for example the DynamicGUI sidebar, makes the chat underneath count as off screen; R9 gains condition 5 and T25 gains the row.
+
+**Results (lane A claims).** Plan r2 Gate 1 REJECT, streak 2 (line 755). Plan r3 Gate 1 PASSED with editorials (line 764). Implementation started from main 066793b67 in stages S1a, S1d, S1c and S1b (lines 765 and 768).
+
+**Not decided.** The status of D5 after plan r3 is not logged in lines 764 to 768: TODO(evidence). The Android permission consequence (the system ask happens once at first keep-alive start, so a denied install may never see the system notification; lane A line 755) has no recorded accepted limitation: TODO(evidence). Device checks: see MC-1300.
+
+### MC-1295 — CHORE-679 reassessment, Welcome D4, HypaV3Modal timer, Gboard skip, 2026-11-09
+
+- Tag: decisions (AskUserQuestion answers; labels as logged). Date: 2026-11-09. Exact times: lane B UTC times only: Gboard device question 2026-11-09T04:25:21.131Z (lane B answers line 239, answer line 241); Gboard skip 2026-11-09T04:40:21.081Z (lane B answers line 243, answer line 245); other answers UNKNOWN. Sweep ref: none. Related: CHORE-679 filing and sizing answers (ID `MC-1286` as assigned in the batch 65 group-plan and ledger drafts), `MC-1296` (E product answers, same day), `CHORE-680` (closed into CHORE-679), `CHORE-682` (known-limit follow-up).
+
+**What the maintainer chose.**
+- D4 product call (lane C log line 196; relayed in lane A log line 703): "Allow first-press advance (Recommended)". Go may commit the syllable and advance in one press, provided the text is kept. Condition set in that answer: lane B confirms the value on phone 2.
+- Reassessment answers (lane A log line 708; the same answers are recorded in lane C log line 204): Q-A "Commit and act (Recommended)" (one press commits and acts everywhere; the guard protects only live composition, isComposing and keyCode 229; the 30 ms tail is removed); Q-B "Rework, then merge (Recommended)"; Q-C "Known limit + ticket (Recommended)" (hardware-style composing Enter loss is a known limitation; follow-up CHORE-682 observes desktop Chromium and a Bluetooth keyboard first); Q-D "Fold into CHORE-679 (Recommended)" (the tail is removed from enterKey.ts, ShellComposer and the Welcome steps; CHORE-680 closes into CHORE-679).
+- HypaV3Modal focus timer (lane A log line 745): "Fix timer, then merge both (Recommended)".
+- Gboard coverage (lane A log line 751, relayed): "Use another spare device". Lane B's question, answered by the maintainer (lane B answers lines 239 to 241): "Other Note 9 (29f3cde9…)" for this run only.
+- Gboard skip (lane B answers lines 243 to 245, labelled by the question's answer): "Skip Gboard for now (Recommended)". Lane A records Gboard as NOT RUN by maintainer decision (lane A log line 757).
+
+**Results (lane A, lane B and lane C claims).**
+- The Welcome D4 value read-back passed on phone 2: 12 trials, every advance kept the full value (lane C log line 203, lane B claim).
+- CHORE-679 merged into main: lane A log line 734 records main cd3a92dd6 -> b29a84993 (merge commit 4b37cd00a); lane C cites main 3d2bd509b for the same change (lane C log line 206).
+- HypaV3Modal timer: trial33 FULLRUN FAIL-ERROR, an uncaught setTimeout focus call after unmount, raised during the CHORE-679 IME test (lane A log line 744). The timer fix passed Gate 2 EDITORIAL (line 753), was committed as 424334300 (line 754) and merged as e90cea870 (line 761).
+- Gboard: the trial on the other Note 9 was blocked by a signature mismatch, since installing needed a data clear (lane B answers line 244; lane A line 757). Samsung Cheonjiin and Samsung English cases 1 to 5 PASS (lane B claim, line 757). Gboard NOT RUN.
+
+**Not decided.** Chat send at the CHORE-679 sites remains a separate maintainer call (lane A log line 703). The CHORE-682 known-limit follow-up has no logged schedule: TODO(evidence). Whether the Gboard gap is accepted as a limitation in the CHORE-679 closeout is TODO(evidence).
+
+### MC-1296 — UI-S4 E library layout product answers (MC-892 gap answered), 2026-11-09
+
+- Tag: decisions (maintainer answers relayed by lane C; labels as logged where shown, otherwise TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-892` (restore-position gap, answered by this entry; the MC-892 text is not rewritten), `MC-1297` (stage G), `MC-1299` (ED density tab), `CHORE-681` (library undo, unscheduled), `CHORE-584` (precedent for keeping a field in the save and .bin).
+
+**What the maintainer chose.**
+- Lane C log lines 154 to 161 (E answers, free text as logged; no option labels given: TODO(evidence)): layout is a restyle of content only, keeping the Sidebar and chrome (top bar and drawer later); features are restyled in place, all views and features kept; placement keeps the F1 bounded library view; restore position is the previous folder and position if they still exist, otherwise the end with no folder; undo for library actions is a later ticket, not part of E; trash shows days left as one new string; density waits for E0.
+- Lane A log line 758 and lane C log line 209 (AskUserQuestion, labels as logged): "Plan E now, density later (Recommended)".
+- Lane A log line 766 and lane C log line 214 (labels as logged): emptied folder, "Accept: restore to the end" (honest confirm copy); folder exists but its anchor is gone, "End of that folder"; trash origin storage, "In the save and .bin" (no warning; CHORE-584 precedent); empty library, "Reuse Home's hero".
+- Lane A log line 769 and lane C log line 220 (labels as logged): copy "Approve as drafted" (trashDaysLeft, trashRestore, trashDeletePermanently, trashEmpty, libraryNoMatch; reworded othersUi.editTrashConfirm).
+- Record action (lane C log line 174, a lane A update): this entry marks the MC-892 restore-position gap as answered. The MC-892 text is not rewritten here.
+
+**Results (lane A and lane C claims).** Stage E plan r1 was rejected by both reviewers (lane A log line 766; lane C log line 213). Plan r2 passed Gate 1 (lane A log line 769; lane C log line 218). E1 adds a persisted trash-origin field and needs an opus Gate 2 (lane A log line 769).
+
+**Not decided.** DV-E5, the PC Chromium pitch check, blocks the E2 merge; it is owned by lane C (lane C log line 221). The library undo ticket CHORE-681 is unscheduled (lane C log line 198).
+
+### MC-1297 — UI-S4 stage G (Studio from Home) answers, 2026-11-09
+
+- Tag: decisions (maintainer answers relayed by lane C and lane A; labels as logged where shown, otherwise TODO(evidence)). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1298` (DD-210 amendment), `MC-1299` (G Q1 and G3 Q1), `MC-1244` (Open in Studio on every character, later), `MC-1296` (stage E answers, same day).
+
+**What the maintainer chose.**
+- Lane C log lines 163 to 171 (stage G answers, free text as logged; no option labels given: TODO(evidence)): the entry is a per-character "Open in Studio" in the Home library; the design's global rail Studio entry is not in G, because it needs a character-less Studio (UX-01); the mechanism is visit-scoped selection; no bump (keepInteraction); archived characters hide the entry; G is implemented after S3b merges, and the plan can start against main at that point.
+- Lane A log line 758 (AskUserQuestion, label as logged): "Keep waiting for S3b (Recommended)".
+- Lane A log line 690 records the same answers and the DD-210 amendment flag (see MC-1298).
+
+**Results (lane A and lane C claims).** Stage G plan r1 was rejected at Gate 1 (lane C log line 280). Plan r2 was rejected (line 282). The orchestrator ruled that the A12 and T6d cases are dropped (lane C log line 282; this is an orchestrator ruling, not a maintainer answer). Plan r3 passed Gate 1 with editorials (line 284). G1 and G2 were implemented, and the combined Gate 2 was EDITORIAL with a remediation (lane C log lines 290, 294, 296, 298). G was committed as 034caaf03 on uis4g-wip (lane C log line 298) and merged to main as 1785b84bc (lane C log line 302, citing a lane A trial41 full PASS claim). G DV1 to DV6 were run by lane B (lane C log line 306).
+
+**Not decided.** The Studio rail entry and any character-less Studio are not decided and not in G (lane C log line 165).
+
+### MC-1298 — DD-210 amended: Back from a Home-opened Studio lands in the Home library, 2026-11-09
+
+- Tag: decisions (amendment of an existing answer). Date: 2026-11-09. Exact times: UNKNOWN. Sweep ref: none. Related: `DD-210` (docs/design/DECISIONS.md, the Home return contract), `MC-1297` (stage G answers), `MC-1299` (G Q1 and G3 Q1).
+
+**What the maintainer chose.** Lane C log line 166 records the amendment as "DD-210 amended: Back from a Home-opened Studio lands in the Home library; scroll and edit mode are not preserved." Lane A log line 690 flags it as "DD-210 AMENDED, needs MC; G after S3b merges". Lane A line 866 adds the planned wording: "Back from a Studio opened from Home lands in the Home library; scroll position and edit mode are not kept; in-app origin from: home, with no URL form." The maintainer answer that carries this amendment, and its option label, are TODO(evidence): the lines show the amendment, not the choice that produced it.
+
+**Supersession, as recorded.** The rule being amended is DD-210, "Full return contract (Recommended)" (docs/design/DECISIONS.md line 1271). That answer says Settings and Studio return to Home "with its drafts and scroll". This amendment narrows that for Studio only, when Studio was opened from Home. Settings' return is not changed by any line in this range (TODO(evidence) to confirm no Settings amendment).
+
+**Results (lane A and lane C claims).** Implemented in stage G (lane C log lines 290 to 298), merged as 1785b84bc (line 302).
+
+**Not decided.** The DD-210 source text (docs/design/DECISIONS.md) has not been amended by this entry. The parent applies the explicit supersession at the rule source with this record; that application is TODO(evidence).
+
+### MC-1299 — UI-S4 ED density tab, G Q1 and G3 Q1, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answers; labels as logged). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1296` (E density waited for E0), `MC-1297` (stage G), `MC-1298` (DD-210 amendment), `MC-1244` (Open in Studio on every character; archived ones load first).
+
+**What the maintainer chose.**
+- ED, "Keep density, remember tab (Recommended)" (lane C log line 256 with the label; lane A log line 851 gives the same answer without the label): keep the Simple default (73 px) and Grid 56 px tiles; the library reopens on the last-used tab (Simple, Grid, List or Trash), device-local only. Lane C's record says this is a small stage with its own gates, proceeding through Gate 2 (MC-1069).
+- G Q1, "Edit-mode tile menu (Recommended)" (lane A log line 866; lane C log line 274): the Grid offers Open in Studio in the edit-mode tile menu.
+- G3 Q1, "No indicator for now (Recommended)" (lane C log line 310; lane A log line 921 gives the same answer as "no busy indicator for now"): no busy indicator for the cold pre-step.
+
+**Results (lane C and lane A claims).** ED Gate 2 PASS, mutants 9 of 9 killed plus M9 equivalent (lane C log line 262). The maintainer answered "Commit, full suite at merge (Recommended)" (line 262). ED was committed as cba43676b (lane A log line 856), trial40 FULLRUN PASS, and merged to main as 6d97c9e71 (lane C log line 266). Lane B's U20 read was accepted as NOT COLD (13.96% sweep; no truly cold pass; U21 not needed for ED; lane C log line 256).
+
+**Not decided.** ED device checks DV-E1 to DV-E4 are owed to lane B (lane C log line 266). The G3 plan is in Gate 1 (lane C log line 310; lane A line 921); its result is TODO(evidence).
+
+### MC-1300 — CHORE-687 filed and closed; CHORE-685 device checks queued; CHORE-692 closed, 2026-11-09 to 2026-11-10
+
+- Tag: decisions (AskUserQuestion answers). Date: 2026-11-09 to 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1165` (CHORE-687 sizing answer Q687-1, lane A log line 777), `MC-1168` (CHORE-687 DV1, lane A log line 843), `MC-1217` and `MC-1218` (CHORE-692 ticket and CHORE-685 closeout, later batch entries), `CHORE-685`, `CHORE-692`.
+
+**What the maintainer chose.**
+- "File and size now (Recommended)" (lane A log line 771, 2026-11-09): CHORE-687 is filed for the store2 idle-net scan (62 to 77 ms every about 2 s, and 154 to 186 ms every about 30 s on a Note 9 at 1000 synthetic stubs); owner lane B for sizing.
+- "Close it" (lane A log line 844, 2026-11-09): CHORE-687 is closed; the closeout record goes in batch 65; DV3 is noted as optional and not run.
+- "Queue after U20" (lane A log line 844, 2026-11-09): CHORE-685 device checks, DV1 on Note 9 and DV2 on an Android 13+ emulator, run after E0 U20 on an APK of main 1cfa819ee.
+- "Close and remove" (lane A log line 856, 2026-11-10): CHORE-692 is COMPLETE, with the limit that the checks used bridge posts and were not heard by ear; the c692 worktree is removed and its branch kept.
+
+**Results (lane A and lane B claims).**
+- CHORE-687 DV on a release build of main 2cdc8eadf (lane A log line 843): DV1 PASS (the scan backs off to about 32 s after about 65 s of quiet; module tick every 301 to 302 s); DV2-ctl PASS; DV2a PASS; DV2b PASS in both trials; DV3 NOT RUN (optional).
+- CHORE-685 device checks, before the closeout in MC-1218: DV1 on Note 9 PARTIAL (lane B log line 848; the One UI repost finding went to CHORE-692); DV2 on an emulator PARTIAL (line 850). Off-screen stop, DV2 item 5 and an audible check were NOT RUN.
+- CHORE-692: Gate 2 EDITORIAL; approved "Commit, merge and push" and merged as 7fea8cea3 (lane A log line 853). Note 9 validation PASS with bridge posts (lane B claim, line 855). Not heard by ear (volume 4 of 15, restored to 0). An audible check with volume above 0 is owed (line 853).
+
+**Not decided.** The audible CHORE-692 check is owed (lane A line 853). The off-screen stop and the real group-chat leg are not run (line 851). The CHORE-685 closeout gaps are recorded in MC-1218 (lane A log line 851).
+
+### MC-1301 — CHORE-703/705/704 start order; CHORE-704 Q1 and Q2, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answers). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690`, `CHORE-698`, `CHORE-700` and `CHORE-702` (code tracks live at the time, lane A log line 916; CHORE-701 is not named there), `CHORE-704` (device measure owed).
+
+**What the maintainer chose (lane A log line 915).**
+- Order: "start CHORE-703, 705 and 704 in that order as slots free." Option label TODO(evidence).
+- CHORE-704 Q1: "A, accept and measure on a device first" (HTML and fenced notes keep the full render). The full option label beyond the letter "A" is as logged; TODO(evidence) for any other wording.
+- CHORE-704 Q2: "A, accept the one-parse prefix on first Show more."
+- The log adds "MC numbers assigned in records batch 65."
+
+**Results (lane A claims).** CHORE-703 registration waited for a free track (line 916); its coder finished with 8 files, red-before-green tests and mutants M1 to M17 killed (line 922); its Gate 2 was EDITORIAL with an exact-boundary test to remediate (line 925). CHORE-705 coder done (line 930). CHORE-704 dispatched (line 923).
+
+**Not decided.** The CHORE-704 device measure that Q1 asks for is not logged: TODO(evidence). CHORE-703 DV1 to DV6 are owed to lane B (line 925).
+
+### MC-1302 — Upstream 2026.10.295: adopt five commits, Adopt the removal, batch Proceed, 2026-11-10
+
+- Tag: decisions (a typed instruction for the batch; AskUserQuestion answers for the removal and the batch). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-224` (upstream merge procedure and Upstream-Merges.md record), `MC-1079` and `MC-1081` (real git merge), `MC-440` (version suffix up2026.10.295), `MC-884` (item 8 stage-7 revisit closed early by the removal; the MC-884 text is not rewritten).
+
+**What the maintainer chose.**
+- Typed instruction (lane A log line 924; no option label): "there were 5 additional commits from upstream. see if we can adopt them followed by git merge to track upstream." The five commits are upstream 8e1fee403..4d87a70ff: 8a50627b1, 4a1ff45c6, 2229a7f4d, afb5918bb and 4d87a70ff.
+- AskUserQuestion, "Adopt the removal" (lane A log line 929): upstream 4a1ff45c6 removes the Node raw-digest bearer that MC-884 item 8 had kept. Only the one-hour JWT authorizes; the fork WS ticket and env-secret paths are kept.
+- AskUserQuestion, "Proceed" (lane A log line 929): the upstream batch proceeds through a coder resolution in risu-code-track-up295, pinning tests for the rel hook and the V3 URL check, the Upstream-Merges.md record, independent review and a trial; then the maintainer is asked before any commit or push.
+
+**Results (lane A claims).**
+- Triage (lane A log line 927, from the critic packet): 8a50627b1 ALREADY-IN; 2229a7f4d TAKEN-ADAPTED (parser rel hook only; isTrustedHubOrigin skipped); afb5918bb TAKEN; 4d87a70ff TAKEN-ADAPTED (suffix up2026.10.295; tauri.conf keeps the fork identity); 4a1ff45c6 needed a maintainer decision (answered at line 929).
+- Trial48 FULLRUN PASS (test, check and build 0; lane A log line 959). The maintainer answered "Merge and push"; the upstream merge was committed as 017b6f701 (parents 8a308a651 and 4d87a70ff), main was fast-forwarded and pushed; rev-list HEAD..upstream/main = 0 (line 959). Upstream-Merges.md first parent was corrected in the same merge (line 959).
+
+**Not decided.** The independent review of the upstream resolution, as the batch required, is not in the supplied lines: TODO(evidence). The MC-884 item 8 stage-7 revisit is closed early by "Adopt the removal" here; the MC-884 text itself is not rewritten.
+
+
+### MC-1303 — Lane D takes open tickets; slot cap Raise to 6; lane D codes 712 and 715 ahead, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answers relayed by lane A, log line 936 and line 1009). Date: 2026-11-10. Exact times: UNKNOWN (neither cited line carries a UTC time; the lane B answers file has no entry for this decision). Sweep ref: none. Related: `MC-1095` and `MC-1098` (slot cap, amended by this entry), `MC-1069` (AskUserQuestion for decisions; parallel tickets offered as options), `MC-1256` (later lane D assignment, not part of this entry).
+
+**What the maintainer chose (lane A paraphrase, log line 936).** The maintainer's typed prompt, as logged: "lane D is currently idle. see if it can take on the open tickets with it's empty slots." The AskUserQuestion answer, as logged: lane D takes CHORE-706 (settings-leg measure), CHORE-657, CHORE-658 and CHORE-659 (focus cluster), CHORE-653 (New chat keeps sidebar overlay), and a new ticket CHORE-707 (RealmFrame message handler has no origin check and posts with '*'; from the upstream 295 triage; fork and upstream). The option label for the ticket selection is not in the supplied log: TODO(evidence).
+
+- Slot cap, label as logged: "Raise to 6" until the next handoff, then restore 2 (amends `MC-1095`/`MC-1098`). The log names `.claude/workflow-policy.json` maxImplementationTracks 4 -> 6.
+
+**What the maintainer chose (lane A paraphrase, log line 1009).** "maintainer approved lane D coding ahead: CHORE-712 on the 708 branch, CHORE-715 on 10af2e983." Commits and merges stay with lane A. The option label is not in the supplied log: TODO(evidence).
+
+**Results (lane claims as logged; not verified by the clerk).**
+- Lane D relay, log line 938: four tickets accepted; read-only scouts started on snapshot 2648caf1d.
+- Lane A log, line 942: CHORE-706 closed as measured-not-worth-it under `MC-1252`.
+- Lane A log, line 950: CHORE-653 merged as 461482311 (lane D branch) and pushed.
+- Lane A log, line 959: CHORE-707 merged as 9e086ed9f and pushed.
+- Lane A log, line 962: CHORE-658 and CHORE-659 merged as 435e8b648 with UI-S4 G3 (merge recorded by lane A).
+- Lane A log, line 1010: CHORE-715 committed on c715-laned on 10af2e983 (maintainer "Commit and queue trial"; trial57 is the planned combined run).
+- Lane A log, line 1016: CHORE-712 committed on c712-laned on the CHORE-708 branch 91c41f733 (maintainer "Commit and send rows to B"); lane B device rows are merge preconditions.
+- Slot cap: the maintainer decision is logged at line 936. Whether `.claude/workflow-policy.json` now reads 6 was not checked by the clerk: TODO(evidence).
+
+**Not decided.** The handoff that restores the cap to 2 is not defined in the supplied log: TODO(evidence). The product answers inside CHORE-653, CHORE-657 to CHORE-659 and CHORE-707 are recorded in their own entries and are not part of this entry. The ID MC-1303 is the reserved ID from the batch brief; the source line 936 carries no MC number.
+
+
+### MC-1304 — CHORE-714 follow-up stages sized after the stage 0 profile, 2026-11-10
+
+- Tag: decisions (AskUserQuestion asked by lane A, multiSelect). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1265` to `MC-1268` (CHORE-714 scope, stage 1, window build later, dev-only prompt logs), `MC-1069`.
+
+**What the maintainer chose (lane A decisions log, 2026-11-10; labels verbatim).** "getModelInfo once per send", "Module scripts once per send" and "store2 save re-walk". Not chosen: "Stop at stage 1".
+
+**Results (lane B claim; `b61\laneb\c714\result-profile.md`, Note 9 phone 2, 10k-message synthetic chat, ee2f37874 then 56326527a).** Long tasks per send, median of 7: 1k 584 to 333 ms, 5k 1198 to 636 ms, 10k 2197 to 1198 ms. After-reply long tasks did not fall (10k 598 to 551 ms). Remaining per 10k send at 56326527a: the store2 save pass (planScopedEncode) 626 ms, running about 3 to 6 times per send; runScriptPass 311 ms (getModuleRegexScripts 129 ms); getModelInfo 271 ms over about 10,253 calls (structuredClone 193 ms). The fixture is macro-free with no modules or regex scripts, so module costs on real profiles are unmeasured.
+
+**Not decided.** Stage boundaries, order and acceptance come from sizing and plans. The store2 save stage touches dirty tracking and the save pass, so it takes opus-reviewer at Gate 1 and Gate 2. The window-first prompt build stays a later separate ticket (`MC-1267`).
+
+### MC-1305 — CHORE-714 store2 stage: count run first; hold saves until the reply settles if retries are the cause, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answers asked by lane A; post-freeze addition to records batch 65). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1304` (follow-up stages sized), `MC-1265` to `MC-1268` (CHORE-714 scope), `MC-1069`.
+
+**What the maintainer chose (lane A decisions log line 1039; labels verbatim).** "Count run; 10k is real" and "Yes, hold until settled". Count run: lane B runs a breakpoint-counter measurement on the Note 9 for planScopedEncode, normalizeCharacter and verdictOf, after its CHORE-712 checks; the design targets chats up to 10k messages. Hold: if the count shows the extra passes come from retries during streaming, saves may be coalesced and held until the reply settles; the durability window then equals the stream length.
+
+**Results (lane A claims; not verified by the clerk).** Lane A sizing (live log line 1040): s4 store2 is LARGE and a stage 0 count run comes first because the premise "3-6 passes per send" is unsupported by the profile (lane B stage 0 profile measured planScopedEncode at 626 ms per 10k send but did not count passes). No count result is recorded yet: TODO(evidence).
+
+**Not decided.** Whether the hold is built depends on the count result. The store2 stage touches dirty tracking and the save pass, so it takes opus-reviewer at Gate 1 and Gate 2 (`MC-1304`). A hold lengthens the loss window on a crash during a stream; its acceptance to a specific design is for the Gate 1 plan and this entry only permits it.
