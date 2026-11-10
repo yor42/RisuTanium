@@ -6,6 +6,7 @@
  * answers and `settled` promise the test controls, and the port records what the loop reports. A refusal is made the way
  * a page meets it: a module stub of a recorded entry, plus a second module of the same id.
  * Labels: reproducer (fails against the base or the named mutant), guard (passes before and after).
+ * The port reports a visible page unless a test gives it a `hidden` flag and hides it.
  */
 import { afterEach, describe, expect, test } from 'vitest'
 import { moduleStubOf } from '../../store2/moduleStubMatch'
@@ -59,6 +60,14 @@ interface Run {
     reads: number
     crashed: unknown[]
     heard: boolean
+    /** Commits whose write resolved. */
+    landed: number
+    /** When set, the counting committer waits for it before it writes. */
+    commitHold: Promise<void> | null
+    /** A hide or Back sweep the port hands to the loop at its next turn (only with the `sweep` option). */
+    sweepOwed: boolean
+    /** How many coming `saved` notices throw, as a failed hand-off after a landed commit does. */
+    savedThrows: number
     /** Marks the modules dirty and asks for a pass, as an edit does. */
     mark(): void
     /** Puts the full body back into the stub's slot, as a finished load does. */
@@ -81,6 +90,10 @@ interface StartOptions {
     peerAnswer?: 'reload' | 'save-mine'
     /** Whether the live list starts as the refusing state (a stub and a second module of its id). */
     refusing?: boolean
+    /** The page's visibility, read live; without it the port has no `pageHidden` and no `markUnsaved` (a visible page). */
+    hidden?: { value: boolean }
+    /** Whether the port hands hide or Back sweeps to the loop (`takeNetSweep`). */
+    sweep?: boolean
 }
 
 /** Turns module 0 of `db` into its recorded stub and adds a second module of the same id: the planner cannot carry the stub then. */
@@ -114,7 +127,7 @@ async function startRun(options: StartOptions = {}): Promise<Run> {
         state: { due: false, dirty: false, saved: 0, begun: 0, ended: 0 },
         failures: [], uncounted: [], sleeps: [], requests, valveCalls,
         valve: () => ({ kind: 'loaded' }),
-        commits: 0, reads: 0, crashed: [], heard: false,
+        commits: 0, reads: 0, crashed: [], heard: false, landed: 0, commitHold: null, sweepOwed: false, savedThrows: 0,
         mark() {
             run.tracker.modules = true
             run.state.dirty = true
@@ -144,7 +157,12 @@ async function startRun(options: StartOptions = {}): Promise<Run> {
             },
             async commit(read, request) {
                 run.commits += 1
-                return wrapped.commit(read, request)
+                if (run.commitHold !== null) {
+                    await run.commitHold
+                }
+                const result = await wrapped.commit(read, request)
+                run.landed += 1
+                return result
             },
             async saveMine(read, request) {
                 run.commits += 1
@@ -191,6 +209,10 @@ async function startRun(options: StartOptions = {}): Promise<Run> {
         },
         unsavable: () => {},
         saved() {
+            if (run.savedThrows > 0) {
+                run.savedThrows -= 1
+                throw new Error('The saved notice failed.')
+            }
             run.state.saved += 1
         },
         broadcast: () => {},
@@ -226,6 +248,20 @@ async function startRun(options: StartOptions = {}): Promise<Run> {
         },
         sleepForever: () => new Promise<never>(() => {}),
         now: () => run.clock.now,
+    }
+    const hidden = options.hidden
+    if (hidden !== undefined) {
+        port.pageHidden = () => hidden.value
+        port.markUnsaved = () => {
+            run.state.dirty = true
+        }
+    }
+    if (options.sweep === true) {
+        port.takeNetSweep = () => {
+            const owed = run.sweepOwed
+            run.sweepOwed = false
+            return owed
+        }
     }
     runStore2SaveLoop(kit.context, port).catch((error: unknown) => {
         run.crashed.push(error)
@@ -487,5 +523,339 @@ describe('Save mine consent survives a deferral', () => {
         expect(run.peer.asked[1].reason).toBe('peer-commit')
         expect(run.commits).toBe(0)
         gate.settle()
+    })
+})
+
+/** A valve like the real one: `deferred` with the same flight's promise while the question is open, `refused` once it has settled. */
+function askingValve(gate: Gate): (call: number) => ModuleStubLoad {
+    let open = true
+    void gate.promise.then(() => {
+        open = false
+    })
+    return () => open ? { kind: 'deferred', settled: gate.promise } : { kind: 'refused' }
+}
+
+function chaIdOf(run: Run): string {
+    return String((run.db.characters as unknown as Plain[])[0].chaId)
+}
+
+function nameIn(db: Database, chaId: string): unknown {
+    return (db.characters as unknown as Plain[]).find((slot) => slot !== null && slot.chaId === chaId)?.name
+}
+
+/** Renames character 0; a marked edit also takes the character mark and asks for a pass, as an edit does. */
+function editCharacter(run: Run, name: string, marked = true): void {
+    const character = (run.db.characters as unknown as Plain[])[0]
+    character.name = name
+    if (marked) {
+        run.tracker.character.push(character.chaId as string)
+        run.state.dirty = true
+        run.state.due = true
+    }
+}
+
+describe('c699 a hidden page saves past an open module question (MC-1233)', () => {
+    test('T1 a hide flush while the question holds the loop saves the character edit with the modules carried, quietly, and keeps the page dirty', async () => {
+        const hidden = { value: false }
+        const run = await startRun({ hidden })
+        const gate = gateOf()
+        run.valve = () => ({ kind: 'deferred', settled: gate.promise })
+        run.mark()
+        await until(() => run.valveCalls.length === 1, 'the visible deferred pass')
+        await sleep(40)
+        expect(run.commits).toBe(0)
+        hidden.value = true
+        editCharacter(run, 'saved while hidden')
+        await sleep(300)
+        expect(run.commits).toBe(1)
+        const saved = await run.kit.saved()
+        expect(nameIn(saved, chaIdOf(run))).toBe('saved while hidden')
+        expect(saved.modules).toEqual(run.kit.seedDb.modules)
+        expect(run.requests.at(-1)?.carryModules).toBe(true)
+        expect(run.failures).toEqual([])
+        expect(run.uncounted).toEqual([])
+        expect(run.peer.notSaved).toEqual([])
+        expect(run.peer.edited).toEqual([])
+        expect(run.state.dirty).toBe(true)
+        expect(run.tracker.modules).toBe(true)
+        gate.settle()
+    })
+
+    test('T2 a page already hidden when the first deferred answer comes saves in that same pass, and a visible page then keeps the hold', async () => {
+        const hidden = { value: true }
+        const run = await startRun({ hidden })
+        const gate = gateOf()
+        run.valve = () => ({ kind: 'deferred', settled: gate.promise })
+        editCharacter(run, 'saved on a hidden page')
+        run.mark()
+        await sleep(300)
+        expect(run.commits).toBe(1)
+        expect(run.valveCalls).toHaveLength(1)
+        expect(run.requests).toHaveLength(2)
+        expect(run.requests[1].carryModules).toBe(true)
+        hidden.value = false
+        const planned = run.requests.length
+        run.mark()
+        await sleep(300)
+        expect(run.requests).toHaveLength(planned)
+        expect(run.commits).toBe(1)
+        gate.settle()
+    })
+
+    test('T3 a second hide saves the second edit, and a visible mark after it still makes no pass', async () => {
+        const hidden = { value: false }
+        const run = await startRun({ hidden })
+        const gate = gateOf()
+        run.valve = () => ({ kind: 'deferred', settled: gate.promise })
+        run.mark()
+        await until(() => run.valveCalls.length === 1, 'the visible deferred pass')
+        hidden.value = true
+        editCharacter(run, 'first hide')
+        await sleep(300)
+        expect(run.commits).toBe(1)
+        hidden.value = false
+        await sleep(40)
+        hidden.value = true
+        editCharacter(run, 'second hide')
+        await sleep(300)
+        expect(run.commits).toBe(2)
+        expect(nameIn(await run.kit.saved(), chaIdOf(run))).toBe('second hide')
+        hidden.value = false
+        const planned = run.requests.length
+        run.mark()
+        await sleep(300)
+        expect(run.requests).toHaveLength(planned)
+        gate.settle()
+    })
+
+    test('T4a after a held commit, the answer that installs is followed by exactly one pass with module scope', async () => {
+        const hidden = { value: true }
+        const run = await startRun({ hidden })
+        const gate = gateOf()
+        run.valve = askingValve(gate)
+        editCharacter(run, 'held commit')
+        run.mark()
+        await sleep(300)
+        expect(run.commits).toBe(1)
+        run.install()
+        gate.settle()
+        await until(() => run.commits === 2, 'the pass after the answer')
+        await sleep(100)
+        expect(run.commits).toBe(2)
+        expect(run.requests.at(-1)?.modules).toBe(true)
+        expect(run.requests.at(-1)?.carryModules).not.toBe(true)
+        expect(run.valveCalls).toHaveLength(1)
+        expect(run.failures).toEqual([])
+    })
+
+    test('T4b after a held commit, a load that failed is told once by the pass that follows the answer', async () => {
+        const hidden = { value: true }
+        const run = await startRun({ hidden })
+        const gate = gateOf()
+        run.valve = askingValve(gate)
+        editCharacter(run, 'held commit')
+        run.mark()
+        await sleep(300)
+        expect(run.commits).toBe(1)
+        expect(run.peer.notSaved).toEqual([])
+        gate.settle()
+        await sleep(300)
+        expect(run.failures).toEqual([])
+        expect(run.peer.notSaved).toHaveLength(1)
+        expect(run.peer.notSaved[0].moduleId).toBe(run.kit.context.previous.objects?.moduleIndex?.entries[0].id)
+    })
+
+    test('T5 a page that reports itself visible keeps the hold: one plan, no commit', async () => {
+        const run = await startRun({ hidden: { value: false } })
+        const gate = gateOf()
+        run.valve = () => ({ kind: 'deferred', settled: gate.promise })
+        editCharacter(run, 'visible')
+        run.mark()
+        await sleep(300)
+        expect(run.commits).toBe(0)
+        expect(run.requests).toHaveLength(1)
+        expect(run.valveCalls).toHaveLength(1)
+        gate.settle()
+    })
+
+    test('T5b a pass admitted while hidden that turns visible before the valve answers keeps the quiet hold', async () => {
+        const hidden = { value: true }
+        const run = await startRun({ hidden })
+        const gate = gateOf()
+        run.valve = () => {
+            hidden.value = false
+            return { kind: 'deferred', settled: gate.promise }
+        }
+        editCharacter(run, 'turned visible')
+        run.mark()
+        await sleep(300)
+        expect(run.commits).toBe(0)
+        expect(run.valveCalls).toHaveLength(1)
+        const planned = run.requests.length
+        run.mark()
+        await sleep(300)
+        expect(run.requests).toHaveLength(planned)
+        gate.settle()
+        await until(() => run.requests.length > planned, 'the pass after the answer')
+    })
+
+    test('T6 a question answered while the held commit is in flight: the held commit lands first with the stored module, then a module pass lands the answer', async () => {
+        const hidden = { value: true }
+        const run = await startRun({ hidden })
+        const gate = gateOf()
+        run.valve = askingValve(gate)
+        const first = gateOf()
+        run.commitHold = first.promise
+        editCharacter(run, 'edit before the answer')
+        run.mark()
+        await sleep(300)
+        expect(run.commits).toBe(1)
+        expect(run.landed).toBe(0)
+        run.install()
+        ;(run.db.modules as unknown as Plain[])[0].name = 'renamed by the answer'
+        run.mark()
+        gate.settle()
+        const second = gateOf()
+        run.commitHold = second.promise
+        first.settle()
+        await until(() => run.landed === 1, 'the held commit')
+        const afterHeld = await run.kit.saved()
+        expect((afterHeld.modules as unknown as Plain[])[0].name).toBe((run.kit.seedDb.modules as unknown as Plain[])[0].name)
+        expect(nameIn(afterHeld, chaIdOf(run))).toBe('edit before the answer')
+        second.settle()
+        await until(() => run.landed === 2, 'the module pass')
+        const final = await run.kit.saved()
+        expect((final.modules as unknown as Plain[])[0].name).toBe('renamed by the answer')
+        expect(nameIn(final, chaIdOf(run))).toBe('edit before the answer')
+        expect(run.failures).toEqual([])
+    })
+
+    test('T7 a peer commit before the hide parks the page and asks, and nothing is written over it', async () => {
+        const hidden = { value: false }
+        const run = await startRun({ hidden })
+        const gate = gateOf()
+        run.valve = () => ({ kind: 'deferred', settled: gate.promise })
+        run.mark()
+        await until(() => run.valveCalls.length === 1, 'the visible deferred pass')
+        await peerCommit(run.kit, (peerDb) => { peerDb.username = 'written by a peer' })
+        hidden.value = true
+        editCharacter(run, 'hidden edit')
+        await sleep(300)
+        expect(run.peer.asked).toHaveLength(1)
+        expect(run.peer.asked[0].reason).toBe('peer-commit')
+        expect(run.commits).toBe(0)
+        expect((await run.kit.saved()).username).toBe('written by a peer')
+        gate.settle()
+    })
+
+    test('T8 no busy loop: after a held commit the net makes no module-scope tick until the module interval, then exactly one', async () => {
+        const hidden = { value: true }
+        const run = await startRun({ hidden, sweep: true, idleNet: { intervalMs: 1, moduleIntervalMs: 600_000 } })
+        const gate = gateOf()
+        run.valve = () => ({ kind: 'deferred', settled: gate.promise })
+        editCharacter(run, 'held commit')
+        run.mark()
+        await sleep(300)
+        expect(run.commits).toBe(1)
+        const valveCalls = run.valveCalls.length
+        const commits = run.commits
+        run.clock.now += 1000
+        await sleep(300)
+        expect(run.valveCalls).toHaveLength(valveCalls)
+        expect(run.commits).toBe(commits)
+        run.clock.now += 600_000
+        await sleep(300)
+        expect(run.valveCalls).toHaveLength(valveCalls + 1)
+        await sleep(300)
+        expect(run.valveCalls).toHaveLength(valveCalls + 1)
+        expect(run.failures).toEqual([])
+        gate.settle()
+    })
+
+    test('T10 a hidden page whose acknowledged encoding holds no module set keeps the quiet wait', async () => {
+        const run = await startRun({ hidden: { value: true } })
+        run.kit.context.encoder!.carriesModules = () => false
+        const gate = gateOf()
+        run.valve = () => ({ kind: 'deferred', settled: gate.promise })
+        editCharacter(run, 'cannot carry')
+        run.mark()
+        await sleep(300)
+        expect(run.commits).toBe(0)
+        expect(run.valveCalls).toHaveLength(1)
+        expect(run.requests).toHaveLength(1)
+        gate.settle()
+    })
+
+    test('T10b with no module set to carry, a hidden sweep does not open the net over the hold', async () => {
+        const hidden = { value: true }
+        const run = await startRun({ hidden, sweep: true, idleNet: { intervalMs: 1, moduleIntervalMs: 600_000 } })
+        run.kit.context.encoder!.carriesModules = () => false
+        const gate = gateOf()
+        run.valve = () => ({ kind: 'deferred', settled: gate.promise })
+        run.mark()
+        await until(() => run.valveCalls.length === 1, 'the deferred pass')
+        run.sweepOwed = true
+        await sleep(300)
+        expect(run.valveCalls).toHaveLength(1)
+        expect(run.commits).toBe(0)
+        gate.settle()
+    })
+
+    test('T12 a held pass does not reset the not-saved memory: the person is told once', async () => {
+        const hidden = { value: false }
+        const run = await startRun({ hidden })
+        const gate = gateOf()
+        run.valve = (call) => call === 2 || call === 3 ? { kind: 'deferred', settled: gate.promise } : { kind: 'refused' }
+        run.mark()
+        await until(() => run.peer.notSaved.length === 1 && run.state.begun === run.state.ended, 'the degraded pass')
+        run.mark()
+        await until(() => run.valveCalls.length === 2, 'the visible deferred pass')
+        await sleep(40)
+        hidden.value = true
+        editCharacter(run, 'held commit')
+        run.mark()
+        await sleep(300)
+        hidden.value = false
+        gate.settle()
+        await until(() => run.valveCalls.length >= 4 && run.state.begun === run.state.ended, 'the pass after the answer')
+        await sleep(100)
+        expect(run.peer.notSaved).toHaveLength(1)
+    })
+
+    test('T13 a hide sweep while the question holds the loop saves an unmarked resident change with the modules carried', async () => {
+        const hidden = { value: false }
+        const run = await startRun({ hidden, sweep: true, idleNet: { intervalMs: 600_000, moduleIntervalMs: 600_000 } })
+        const gate = gateOf()
+        run.valve = () => ({ kind: 'deferred', settled: gate.promise })
+        run.mark()
+        await until(() => run.valveCalls.length === 1, 'the visible deferred pass')
+        await sleep(40)
+        hidden.value = true
+        editCharacter(run, 'unmarked change', false)
+        run.sweepOwed = true
+        await sleep(300)
+        expect(run.commits).toBe(1)
+        expect(nameIn(await run.kit.saved(), chaIdOf(run))).toBe('unmarked change')
+        expect(run.requests.at(-1)?.carryModules).toBe(true)
+        expect(run.failures).toEqual([])
+        expect(run.peer.notSaved).toEqual([])
+        gate.settle()
+    })
+
+    test('T14 a held pass whose commit landed and whose notice then threw still asks for one pass when the answer comes', async () => {
+        const hidden = { value: true }
+        const run = await startRun({ hidden })
+        const gate = gateOf()
+        run.valve = askingValve(gate)
+        run.savedThrows = 1
+        editCharacter(run, 'held commit')
+        run.mark()
+        await sleep(300)
+        expect(run.commits).toBe(1)
+        expect(run.uncounted).toHaveLength(1)
+        hidden.value = false
+        gate.settle()
+        await sleep(300)
+        expect(run.peer.notSaved).toHaveLength(1)
     })
 })
