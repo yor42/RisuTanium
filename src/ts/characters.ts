@@ -19,6 +19,7 @@ import { importCharacter } from "./characterCards";
 import { PngChunk } from "./pngChunk";
 import { findChaIdHolders, restoreColdCharacter, type ColdRestoreFailure } from "./process/coldCharacterRestore";
 import { getAvatarThumbSrc, isThumbEligible, THUMB_ABORTED, type ThumbAborted, type ThumbRequestOptions } from "./media/avatarThumb";
+import { awaitQueuedWholeRead } from "./media/queuedWholeRead";
 import { markCharacterForSave } from "./storage/characterSaveMarks";
 import { applyCharacterDefaults } from "./storage/characterDefaults";
 import { createSendSubject, hasWorkIn, originOf, stopWorkIn } from "./process/chatOrigin";
@@ -106,11 +107,20 @@ export function createNewChat(cha: character | groupChat): number {
  * With `options` (only the list avatars pass them) the lookup may be abandoned
  * through its signal; it then resolves to `THUMB_ABORTED`, a value that is
  * neither `null` nor a style, after touching nothing further. Without options
- * the result is exactly what it always was.
+ * the result is exactly what it always was, and no whole read is queued.
+ * With a signal, a thumbnail lookup that falls back to a whole-read file of 8 MiB
+ * or more (Android) first waits in the app-wide whole-read queue and loads the
+ * file once there; the style is returned only after that read settles, and
+ * `onWholeReadQueued` is called when it waited, so the caller does not remember
+ * a style whose re-use would start that read outside the queue.
  */
+export interface CharImageOptions extends ThumbRequestOptions {
+    onWholeReadQueued?: () => void
+}
+
 export async function getCharImage(loc:string, type:'plain'|'css'|'contain'|'lgcss'|'thumb'|'thumbcss'): Promise<string|null>
-export async function getCharImage(loc:string, type:'plain'|'css'|'contain'|'lgcss'|'thumb'|'thumbcss', options:ThumbRequestOptions): Promise<string|null|ThumbAborted>
-export async function getCharImage(loc:string, type:'plain'|'css'|'contain'|'lgcss'|'thumb'|'thumbcss', options?:ThumbRequestOptions): Promise<string|null|ThumbAborted> {
+export async function getCharImage(loc:string, type:'plain'|'css'|'contain'|'lgcss'|'thumb'|'thumbcss', options:CharImageOptions): Promise<string|null|ThumbAborted>
+export async function getCharImage(loc:string, type:'plain'|'css'|'contain'|'lgcss'|'thumb'|'thumbcss', options?:CharImageOptions): Promise<string|null|ThumbAborted> {
     const db = DBState.db
 
     // 'thumb'/'thumbcss' only change how the src is resolved below; every
@@ -147,6 +157,15 @@ export async function getCharImage(loc:string, type:'plain'|'css'|'contain'|'lgc
         return THUMB_ABORTED
     }
     const filesrc = thumbSrc ?? await getFileSrc(loc)
+    if(thumbSrc === null && filesrc && options?.signal){
+        const outcome = await awaitQueuedWholeRead(filesrc, options.signal)
+        if(outcome === 'aborted'){
+            return THUMB_ABORTED
+        }
+        if(outcome === 'queued'){
+            options.onWholeReadQueued?.()
+        }
+    }
     if(wrapType === 'plain'){
         return filesrc
     }

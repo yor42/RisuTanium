@@ -234,12 +234,13 @@ export function createWholeReadBudget(budgetBytes: number = ANDROID_LIST_WHOLE_R
 }
 
 /**
- * A chat image of at least this stored size loads through the app-wide in-flight
- * queue (`createInFlightByteGate`) instead of as soon as the browser asks.
+ * A chat image or a list avatar of at least this stored size loads through the
+ * app-wide in-flight queue (`createInFlightByteGate`) instead of as soon as the
+ * browser asks.
  */
 export const ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES = 8 * 1024 * 1024
 
-/** What the chat images that are being read may take in total from the WebView's Java heap. */
+/** What the chat images and list avatars that are being read may take in total from the WebView's Java heap. */
 export const ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES = 64 * 1024 * 1024
 
 /** The attribute that holds the real `src` of a chat image whose load waits for the queue. Only the sanitizer's hook sets it. */
@@ -331,6 +332,23 @@ export function createInFlightByteGate(budgetBytes: number): InFlightByteGate {
     }
 }
 
+let androidInFlightWholeReads = createInFlightByteGate(ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES)
+
+/**
+ * The one app-wide queue of whole reads in flight, shared by chat images and list
+ * avatars: the WebView holds one Java array per read whichever surface asked, so
+ * the sum granted stays within `ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES`, plus one
+ * file larger than the budget when nothing else is in flight.
+ */
+export function androidWholeReadQueue(): InFlightByteGate {
+    return androidInFlightWholeReads
+}
+
+/** Test seam: replaces the app-wide queue with an empty one. */
+export function resetAndroidWholeReadQueueForTest(): void {
+    androidInFlightWholeReads = createInFlightByteGate(ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES)
+}
+
 /** Forgets what is known about `keys` (a deleted asset), including a probe still running. */
 export function forgetStoredAssetSizes(keys: Iterable<string>): void {
     for (const key of keys) {
@@ -346,4 +364,5 @@ export function resetAssetUrlGateForTest(): void {
     sizeProbes.clear()
     reportedFailures.clear()
     wholeReadUrlKeys.clear()
+    resetAndroidWholeReadQueueForTest()
 }

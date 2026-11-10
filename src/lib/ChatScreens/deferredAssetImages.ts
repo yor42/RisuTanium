@@ -1,13 +1,14 @@
 import {
-    ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES, ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES, DEFERRED_IMAGE_PLACEHOLDER_SRC,
-    DEFERRED_IMAGE_SRC_ATTRIBUTE, createInFlightByteGate, wholeReadBytesOfUrl, type InFlightGrant,
+    ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES, DEFERRED_IMAGE_PLACEHOLDER_SRC,
+    DEFERRED_IMAGE_SRC_ATTRIBUTE, androidWholeReadQueue, resetAndroidWholeReadQueueForTest, wholeReadBytesOfUrl, type InFlightGrant,
 } from '../../ts/storage/assetUrlGate'
 
 /**
  * Loads the large asset images of chat bodies one budget at a time. The sanitizer leaves such an image with a
  * placeholder `src` and its real URL in `data-risu-deferred-src`; a loader observes those images and gives each its real
  * `src` once it is within `OBSERVER_MARGIN` of the viewport and the app-wide queue has room for its read. The queue is
- * shared by every loader, because the WebView holds one Java array per read, whichever message the image is in.
+ * shared by every loader and by the list avatars (`queuedWholeRead.ts`), because the WebView holds one Java array per
+ * read, whichever message or list the file is in.
  */
 
 /** Chromium's own lazy-load distance for an image. */
@@ -19,14 +20,13 @@ const SETTLE_TIMEOUT_MS = 30_000
 /** URLs whose read finished lately: a re-rendered node for one of them takes its real `src` without a slot. */
 const WARM_URL_LIMIT = 32
 
-let gate = createInFlightByteGate(ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES)
 const warm = new Set<string>()
 // URL -> the nodes that wait for the read already in flight for that URL.
 const inFlight = new Map<string, Set<HTMLImageElement>>()
 
-/** Test seam: forgets the queue, the warm URLs and every read in flight. */
+/** Test seam: forgets the app-wide queue, the warm URLs and every read in flight. */
 export function resetDeferredImagesForTest(): void {
-    gate = createInFlightByteGate(ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES)
+    resetAndroidWholeReadQueueForTest()
     warm.clear()
     inFlight.clear()
 }
@@ -123,7 +123,7 @@ export function createDeferredImageLoader(): DeferredImageLoader {
         }
         queued.add(img)
         const bytes = wholeReadBytesOfUrl(url) ?? ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES
-        void gate.acquire(bytes).then((grant) => {
+        void androidWholeReadQueue().acquire(bytes).then((grant) => {
             queued.delete(img)
             if (!img.isConnected || img.getAttribute(DEFERRED_IMAGE_SRC_ATTRIBUTE) !== url) {
                 grant.release()

@@ -8,9 +8,11 @@ vi.mock('../tauriByteTransport', () => ({
 }))
 
 import {
+    ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES,
     ANDROID_LIST_WHOLE_READ_BUDGET_BYTES,
     ANDROID_WHOLE_READ_URL_LIMIT_BYTES,
     androidAssetSizeVerdict,
+    androidWholeReadQueue,
     androidWithholdsUrl,
     assetListElement,
     assetListUse,
@@ -255,6 +257,34 @@ describe('the in-flight byte gate', () => {
         second.release()
         await thirdGrant
         expect(third).toBe(true)
+    })
+})
+
+describe('the app-wide whole-read queue', () => {
+    test('there is one queue for every caller, and the test reset replaces it with an empty one', async () => {
+        expect(androidWholeReadQueue()).toBe(androidWholeReadQueue())
+        const held = await androidWholeReadQueue().acquire(ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES)
+        let waiting = false
+        void androidWholeReadQueue().acquire(1).then(() => { waiting = true })
+        await Promise.resolve()
+        expect(waiting).toBe(false)
+
+        resetAssetUrlGateForTest()
+        const fresh = await androidWholeReadQueue().acquire(ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES)
+        expect(fresh).not.toBe(held)
+        fresh.release()
+        held.release()
+    })
+
+    test('the queue keeps the chat budget', async () => {
+        const first = await androidWholeReadQueue().acquire(40 * 1024 * 1024)
+        let second = false
+        void androidWholeReadQueue().acquire(40 * 1024 * 1024).then(() => { second = true })
+        await Promise.resolve()
+        expect(second).toBe(false)
+        first.release()
+        await Promise.resolve()
+        expect(second).toBe(true)
     })
 })
 
