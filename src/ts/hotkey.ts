@@ -12,7 +12,7 @@ import { updateTextThemeAndCSS } from "./gui/colorscheme"
 import { defaultHotkeys } from "./defaulthotkeys"
 import { previewMayStart, renderPromptResult, runPreview } from "./process/previewRunner"
 import { isEnterActivatedControl, shouldYieldToFocusedControl } from "./hotkeyYield"
-import { changeChar } from "./characters"
+import { changeCharOrAlert } from "./characterPick"
 import { isHiddenSystemCharacter } from "./hiddenCharacters"
 import { settingsShellEscape } from "./settingsShell/settingsNavigation"
 
@@ -242,7 +242,7 @@ export function initHotkey(){
                     if(blocked){
                         break
                     }
-                    await changeChar(target)
+                    await changeCharOrAlert('hotkey.prev', target)
                     if(get(selectedCharID) === target){
                         PlaygroundStore.set(0)
                         OpenRealmStore.set(false)
@@ -265,7 +265,7 @@ export function initHotkey(){
                     if(blocked){
                         break
                     }
-                    await changeChar(target)
+                    await changeCharOrAlert('hotkey.next', target)
                     if(get(selectedCharID) === target){
                         PlaygroundStore.set(0)
                         OpenRealmStore.set(false)

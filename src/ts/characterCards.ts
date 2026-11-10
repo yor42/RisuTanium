@@ -7,7 +7,8 @@ import { language } from "src/lang"
 import { downloadNotice } from "src/ts/exportNotice"
 import { fillLang } from "src/lang/fill"
 import { v4 as uuidv4, v4 } from 'uuid';
-import { changeChar, characterFormatUpdate } from "./characters"
+import { characterFormatUpdate } from "./characters"
+import { changeCharOrAlert } from "./characterPick"
 import { ASSET_PIECE_SAVE_MIN_BYTES } from "./assetHash"
 import { buildCardJsonTemplate, streamCardJson } from "./cardJsonStream"
 import { AppendableBuffer, AssetSourceChangedError, BlankWriter, checkCharOrder, loadAsset, LocalWriter, readImage, saveAsset, saveAssetFromPieces, VirtualWriter } from "./globalApi.svelte"
@@ -2772,7 +2773,7 @@ async function downloadRealmCard(id:string, arg:{
             }
             checkCharOrder()
             if(opensAtOnce && getDatabase().characters[imported]){
-                changeChar(imported)
+                void changeCharOrAlert('realm.openPng', imported)
             }
             return
         }
@@ -2794,7 +2795,7 @@ async function downloadRealmCard(id:string, arg:{
         }
         checkCharOrder()
         if(opensAtOnce && getDatabase().characters[added]){
-            changeChar(added)
+            void changeCharOrAlert('realm.openCard', added)
             alertStore.set({
                 type: 'none',
                 msg: ''
