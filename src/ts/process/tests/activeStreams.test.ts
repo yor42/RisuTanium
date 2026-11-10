@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'vitest'
-import { activeStreams, addActiveStream, isActiveStreamReply, resetActiveStreamsForTest } from 'src/ts/process/activeStreams'
+import { activeStreamOwners, activeStreams, addActiveStream, isActiveStreamReply, resetActiveStreamsForTest } from 'src/ts/process/activeStreams'
 
 beforeEach(() => {
     resetActiveStreamsForTest()
@@ -39,5 +39,19 @@ describe('the active-stream registry', () => {
         addActiveStream({ chaId: 'group', memberChaId: 'member', replyChatId: 'r1' })
 
         expect(activeStreams()).toEqual([{ chaId: 'group', memberChaId: 'member', replyChatId: 'r1' }])
+    })
+
+    test('the owner set holds owner chaIds only, is live, and keeps an owner while another of its streams remains', () => {
+        const removeFirst = addActiveStream({ chaId: 'group-a', memberChaId: 'member-m', replyChatId: 'r1' })
+        const removeSecond = addActiveStream({ chaId: 'group-a', replyChatId: 'r2' })
+        const removeOther = addActiveStream({ chaId: 'char-b', replyChatId: 'r3' })
+
+        expect([...activeStreamOwners()].sort()).toEqual(['char-b', 'group-a'])
+        expect(activeStreamOwners().has('member-m')).toBe(false)
+        removeFirst()
+        expect(activeStreamOwners().has('group-a')).toBe(true)
+        removeSecond()
+        removeOther()
+        expect(activeStreamOwners().size).toBe(0)
     })
 })

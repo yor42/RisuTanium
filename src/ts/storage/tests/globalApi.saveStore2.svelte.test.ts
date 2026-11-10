@@ -409,26 +409,26 @@ describe('new behaviour: the page hide saves an unsaved edit with no chat in fli
     })
 })
 
+/** Counts the idle net's verdict calls and its slots (one `netScan` each) on the encoder the loop runs. */
+function watchNet(page: Page): { verdicts: string[], scans: () => number } {
+    const encoder = page.k.encoder
+    const verdicts: string[] = []
+    let scans = 0
+    const realVerdict = encoder.verdictOf.bind(encoder)
+    const realScan = encoder.netScan.bind(encoder)
+    encoder.verdictOf = (slot) => {
+        verdicts.push(String((slot as { chaId?: unknown }).chaId))
+        return realVerdict(slot)
+    }
+    encoder.netScan = (scanned) => {
+        scans += 1
+        return realScan(scanned)
+    }
+    return { verdicts, scans: () => scans }
+}
+
 describe('new behaviour: the net backstop on the real port (hidden page and Back)', () => {
     const idleNet = { intervalMs: 100, moduleIntervalMs: 1_000_000_000, backstopMs: 30_000 }
-
-    /** Counts the idle net's verdict calls and its slots (one `netScan` each) on the encoder the loop runs. */
-    function watchNet(page: Page): { verdicts: string[], scans: () => number } {
-        const encoder = page.k.encoder
-        const verdicts: string[] = []
-        let scans = 0
-        const realVerdict = encoder.verdictOf.bind(encoder)
-        const realScan = encoder.netScan.bind(encoder)
-        encoder.verdictOf = (slot) => {
-            verdicts.push(String((slot as { chaId?: unknown }).chaId))
-            return realVerdict(slot)
-        }
-        encoder.netScan = (scanned) => {
-            scans += 1
-            return realScan(scanned)
-        }
-        return { verdicts, scans: () => scans }
-    }
 
     /** Waits until every resident has been verdicted once and then at least two slots passed with no further verdict: the skip is live. */
     async function reachSkipControl(page: Page, watch: ReturnType<typeof watchNet>): Promise<void> {
@@ -476,6 +476,61 @@ describe('new behaviour: the net backstop on the real port (hidden page and Back
         const scans = net.scans()
         await until(() => net.scans() >= scans + 2, 'two slots to pass after the sweep', 20_000)
         expect(net.verdicts.length).toBe(verdicts)
+    })
+})
+
+describe('new behaviour: the reply hold on the real port', () => {
+    async function storedPersonality(page: Page, index: number): Promise<unknown> {
+        return ((await page.k.saved()).characters[index] as unknown as Entry).personality
+    }
+
+    test('a registered owner is not verdicted for two rotations; after removal a marked pass writes its edit', async () => {
+        let watch: ReturnType<typeof watchNet> | null = null
+        const idleNet = { intervalMs: 100, moduleIntervalMs: 1_000_000_000, backstopMs: 0 }
+        const page = await startPage(small(), { idleNet, beforeStart: (started) => { watch = watchNet(started) } })
+        const net = watch as unknown as ReturnType<typeof watchNet>
+        await until(() => net.verdicts.length >= characters(page.db).length, 'every resident verdicted once', 20_000)
+        await settled(page.w)
+        const { addActiveStream } = await import('src/ts/process/activeStreams')
+        const id = String(characters(page.db)[2].chaId)
+        const remove = addActiveStream({ chaId: id, replyChatId: 'reply' })
+        try {
+            // Not the selected character: an in-place edit raises no mark.
+            characters(page.db)[2].personality = 'held on the real page'
+            page.flush()
+            const before = net.verdicts.length
+            const scans = net.scans()
+            await until(() => net.scans() >= scans + 2 * characters(page.db).length, 'two rotations', 20_000)
+            expect(net.verdicts.slice(before)).not.toContain(id)
+            expect(await storedPersonality(page, 2)).not.toBe('held on the real page')
+        } finally {
+            remove()
+        }
+        page.w.marks.markCharacterForSave(id)
+        await until(async () => await storedPersonality(page, 2) === 'held on the real page', 'the marked pass after the stream', 2_000)
+    })
+
+    test('the leave flush writes a held owner while marks keep restarting the debounce', async () => {
+        const idleNet = { intervalMs: 100, moduleIntervalMs: 1_000_000_000, backstopMs: 30_000 }
+        const page = await startPage(small(), { idleNet })
+        await settled(page.w)
+        const { addActiveStream } = await import('src/ts/process/activeStreams')
+        const { flushPageBeforeLeaving } = await import('src/ts/process/saveOnHide')
+        const id = String(characters(page.db)[2].chaId)
+        const remove = addActiveStream({ chaId: id, replyChatId: 'reply' })
+        page.w.marks.markCharacterForSave(id)
+        await settled(page.w)
+        const timer = setInterval(() => page.w.marks.markCharacterForSave(id), 100)
+        try {
+            characters(page.db)[2].personality = 'leaving mid-stream'
+            page.w.marks.markCharacterForSave(id)
+            page.flush()
+            flushPageBeforeLeaving()
+            await until(async () => await storedPersonality(page, 2) === 'leaving mid-stream', 'the leave flush', 2_000)
+        } finally {
+            clearInterval(timer)
+            remove()
+        }
     })
 })
 
