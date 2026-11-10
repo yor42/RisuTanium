@@ -143,6 +143,14 @@ vi.mock(import('../../ts/stores.svelte'), () => {
     } as unknown as typeof import('../../ts/stores.svelte')
 })
 
+// The real characters module imports characterCards, which imports characterPick, which imports
+// characters again. Loading the original inside the characters factory below would close that
+// cycle on the unmocked module and bind characterPick to the real changeChar instead of the spy,
+// so the cycle is cut here; this component never reaches characterCards.
+vi.mock(import('../../ts/characterCards'), () => ({
+    importCharacter: vi.fn(async () => []),
+}) as unknown as typeof import('../../ts/characterCards'))
+
 vi.mock(import('../../ts/characters'), async (importOriginal) => ({
     ...(await importOriginal()),
     changeChar: changeCharSpy,
