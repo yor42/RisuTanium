@@ -231,14 +231,15 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
     // itself replaced) is covered by the parent's own `markChanged(true)`,
     // never by a recreated child's first run.
     //
-    // Decision on `chats[chatPage].id`: reading
-    // `characters[selIdState]?.chats[...chatPage].id` WITHOUT `?.` on the
-    // `chats` element itself means -- if `chats[chatPage]` is undefined (an
-    // out-of-range or empty `chats`), `.id` throws. That is preserved below,
-    // even though the read is split into local variables: still no `?.` on
-    // that element, so it throws in the same cases. Adding `?.` would
-    // silently change behaviour from "throws today" to "never throws" for a
-    // case this file does not otherwise handle.
+    // The active chat is read with optional reads. When `chatPage` names no
+    // chat (out of range, an empty list or no list), 6b-front still fronts
+    // the selected chaId and calls `markChanged`, because it is the only
+    // piece that tracks `chatPage` and a `chatPage` write must be marked. It
+    // records no `tracker.chat` pair, because there is no chat id to name. A
+    // throw here would abort the effect flush and leave the tracking effects
+    // queued after it dead for the page load. The tracked reads are the
+    // in-range reads up to the missing element: a missing index still gets a
+    // source, so filling it or moving `chatPage` back reruns this effect.
     //
     // chaId re-read at fronting time, not captured: only 6b-front lists
     // `chaId` itself as a tracked read (it needs the CURRENT
@@ -273,7 +274,7 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
 
     // 6b-front: the only piece that reads `chatPage` as a tracked dependency,
     // and the only piece that writes `tracker.chat`. It also reads `chaId`
-    // and `chats[chatPage].id`, but those two are not unique to this effect:
+    // and the active chat's `id` when there is one, but those two are not unique to this effect:
     // the `chaId` field child (in 6b-char below) tracks `chaId` through its
     // own generic `$state.snapshot(char[key])` read, and the per-chat child
     // for index `chatPage` reads that chat's `id` as part of its own
@@ -288,11 +289,15 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
             frontUnshiftSelected(char)
             const chats = char.chats
             const chatPage = char.chatPage
-            if (
-                opts.tracker.chat[0]?.[0] !== chaId ||
-                opts.tracker.chat[0]?.[1] !== chats[chatPage].id
-            ) {
-                opts.tracker.chat.unshift([chaId, chats[chatPage].id])
+            const activeChat = chats?.[chatPage]
+            if (activeChat) {
+                const chatId = activeChat.id
+                if (
+                    opts.tracker.chat[0]?.[0] !== chaId ||
+                    opts.tracker.chat[0]?.[1] !== chatId
+                ) {
+                    opts.tracker.chat.unshift([chaId, chatId])
+                }
             }
         }
         opts.markChanged(frontRanOnce)
