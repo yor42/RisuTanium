@@ -1,8 +1,10 @@
 // @vitest-environment node
 /**
- * The Node server's direct-password check never authorizes before a password
- * exists, and no legacy storage route can address the server's own password
- * file. Run against the real `server/node/server.cjs` as a child process.
+ * A blank credential never authorizes on a server with no password, the stored
+ * password digest is never accepted as a bearer (only a signed token or a job's
+ * own ticket is), and no legacy storage route can address the server's own
+ * password file. Run against the real `server/node/server.cjs` as a child
+ * process.
  *
  * The blank credential is the single byte 0xA0, which `String.prototype.trim`
  * removes. It is sent over a raw latin1 socket so the byte reaches the server
@@ -222,24 +224,95 @@ describe('a blank direct credential on a server with no password', () => {
     }, 60_000)
 })
 
-describe('guard: authorization on an initialized server is unchanged', () => {
-    test('a token and the direct password value both authorize env-secret and the WebSocket upgrade', async () => {
+describe('authorization on an initialized server', () => {
+    const upgrade = { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==' }
+
+    test('guard: a token authorizes env-secret and the WebSocket upgrade', async () => {
+        const fx = await startInitialized()
+        const token = await fx.authHeader()
+
+        const reply = await rawRequest(fx.baseUrl, 'POST', '/api/env-secret', { ...jsonType, 'risu-auth': token }, JSON.stringify({ name: ENV_NAME }))
+        expect(reply.status).toBe(200)
+        expect(reply.body).toContain(ENV_VALUE)
+
+        const upgraded = await rawRequest(fx.baseUrl, 'GET', '/proxy-stream-jobs/nojob/ws', { ...upgrade, 'risu-auth': token })
+        expect(upgraded.statusLine).toBe('HTTP/1.1 404 Not Found')
+    }, 60_000)
+
+    test('the stored password digest is no bearer on env-secret', async () => {
         const fx = await startInitialized()
         const digest = await passwordDigest(fx)
-        const token = await fx.authHeader()
-        const envBody = JSON.stringify({ name: ENV_NAME })
+        const reply = await rawRequest(fx.baseUrl, 'POST', '/api/env-secret', { ...jsonType, 'risu-auth': digest }, JSON.stringify({ name: ENV_NAME }))
+        expect(reply.status).toBeGreaterThanOrEqual(400)
+        expect(reply.body).not.toContain(ENV_VALUE)
+    }, 60_000)
 
-        for (const credential of [token, digest]) {
-            const reply = await rawRequest(fx.baseUrl, 'POST', '/api/env-secret', { ...jsonType, 'risu-auth': credential }, envBody)
-            expect(reply.status).toBe(200)
-            expect(reply.body).toContain(ENV_VALUE)
-        }
+    test('the stored password digest is no bearer on /proxy2 and reaches no target', async () => {
+        const fx = await startInitialized()
+        const digest = await passwordDigest(fx)
+        const reply = await rawRequest(fx.baseUrl, 'POST', '/proxy2', {
+            ...jsonType,
+            'risu-auth': digest,
+            'risu-url': encodeURIComponent(targetUrl('/digest-hit')),
+            'risu-header': encodeURIComponent('{}'),
+        }, '{}')
+        await waitForHits()
+        expect(reply.status).toBeGreaterThanOrEqual(400)
+        expect(reply.body).not.toContain('target-reached')
+        expect(hits.get('/digest-hit') ?? 0).toBe(0)
+    }, 60_000)
 
-        const upgrade = { Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==' }
-        for (const credential of [token, digest]) {
-            const reply = await rawRequest(fx.baseUrl, 'GET', '/proxy-stream-jobs/nojob/ws', { ...upgrade, 'risu-auth': credential })
-            expect(reply.statusLine).toBe('HTTP/1.1 404 Not Found')
-        }
+    test.each(['/proxy', '/proxy2'])('the stored password digest is no bearer on %s GET and reaches no target', async (route) => {
+        const fx = await startInitialized()
+        const digest = await passwordDigest(fx)
+        const reply = await rawRequest(fx.baseUrl, 'GET', route, { 'risu-auth': digest, 'risu-url': encodeURIComponent(targetUrl('/digest-get-hit')) })
+        await waitForHits()
+        expect(reply.status).toBeGreaterThanOrEqual(400)
+        expect(reply.body).not.toContain('target-reached')
+        expect(hits.get('/digest-get-hit') ?? 0).toBe(0)
+    }, 60_000)
+
+    test('the stored password digest is no bearer on /proxy POST and reaches no target', async () => {
+        const fx = await startInitialized()
+        const digest = await passwordDigest(fx)
+        const reply = await rawRequest(fx.baseUrl, 'POST', '/proxy', {
+            ...jsonType,
+            'risu-auth': digest,
+            'risu-url': encodeURIComponent(targetUrl('/digest-post-hit')),
+            'risu-header': encodeURIComponent('{}'),
+        }, '{}')
+        await waitForHits()
+        expect(reply.status).toBeGreaterThanOrEqual(400)
+        expect(reply.body).not.toContain('target-reached')
+        expect(hits.get('/digest-post-hit') ?? 0).toBe(0)
+    }, 60_000)
+
+    test('the stored password digest is no bearer on stream job creation and makes no job', async () => {
+        const fx = await startInitialized()
+        const digest = await passwordDigest(fx)
+        const reply = await rawRequest(fx.baseUrl, 'POST', '/proxy-stream-jobs', { ...jsonType, 'risu-auth': digest },
+            JSON.stringify({ url: targetUrl('/digest-job-hit'), method: 'GET', headers: {} }))
+        await waitForHits()
+        expect(reply.status).toBeGreaterThanOrEqual(400)
+        expect(reply.body).not.toContain('jobId')
+        expect(hits.get('/digest-job-hit') ?? 0).toBe(0)
+    }, 60_000)
+
+    test('the stored password digest is no bearer on stream job deletion', async () => {
+        const fx = await startInitialized()
+        const digest = await passwordDigest(fx)
+        const reply = await rawRequest(fx.baseUrl, 'DELETE', '/proxy-stream-jobs/nojob', { 'risu-auth': digest })
+        expect(reply.status).toBeGreaterThanOrEqual(400)
+        expect(reply.body).not.toContain('success')
+    }, 60_000)
+
+    test('the stored password digest is no bearer on the WebSocket upgrade, in the header or the query', async () => {
+        const fx = await startInitialized()
+        const digest = await passwordDigest(fx)
+        const inHeader = await rawRequest(fx.baseUrl, 'GET', '/proxy-stream-jobs/nojob/ws', { ...upgrade, 'risu-auth': digest })
+        expect(inHeader.statusLine).toBe('HTTP/1.1 401 Unauthorized')
+        const inQuery = await rawRequest(fx.baseUrl, 'GET', `/proxy-stream-jobs/nojob/ws?risu-auth=${encodeURIComponent(digest)}`, upgrade)
+        expect(inQuery.statusLine).toBe('HTTP/1.1 401 Unauthorized')
     }, 60_000)
 })
 

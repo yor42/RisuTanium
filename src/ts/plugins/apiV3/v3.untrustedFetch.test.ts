@@ -225,4 +225,36 @@ describe('the V3 fetch APIs of a plugin', () => {
         expect(h.untrustedNative).not.toHaveBeenCalled()
         expect(h.untrustedGlobal).not.toHaveBeenCalled()
     })
+
+    test.each([
+        'https://risuai%2Exyz/x',
+        'https://RISUAI.XYZ./x',
+        'https://sub.risuai.net/x',
+        'https://risuai。xyz/x',
+        'https://risu\nai.xyz/x',
+        '//risuai.xyz/x',
+    ])('the blocked-host check refuses the encoded or dotted form %j before any request', (url) => {
+        const api = makeApi()
+        expect(() => api.nativeFetch(url, { method: 'GET' })).toThrow('blocked for security reasons')
+        expect(() => api.risuFetch(url, {})).toThrow('blocked for security reasons')
+        expect(h.untrustedNative).not.toHaveBeenCalled()
+        expect(h.untrustedGlobal).not.toHaveBeenCalled()
+    })
+
+    test.each([
+        'https://example.com/?r=risuai.xyz',
+        'https://notrisuai.xyz/x',
+    ])('the blocked-host check lets %s through: only the parsed host counts', async (url) => {
+        h.untrustedNative.mockResolvedValue(new Response('ok'))
+        h.untrustedGlobal.mockResolvedValue({ ok: true, data: {}, headers: {}, status: 200 })
+        const api = makeApi()
+        await api.nativeFetch(url, { method: 'GET' })
+        await api.risuFetch(url, {})
+        expect(h.untrustedNative).toHaveBeenCalledTimes(1)
+        expect(h.untrustedGlobal).toHaveBeenCalledTimes(1)
+    })
+
+    test('a non-string URL is refused as invalid', () => {
+        expect(() => makeApi().nativeFetch(123 as never, { method: 'GET' })).toThrow('Invalid URL')
+    })
 })

@@ -427,3 +427,35 @@ Merge commits: `84315bfdf` ("Merge upstream cb7f122d4: keep the fork's tree, rec
 - **Next merge:** use `git log --no-merges 39f1ac147..upstream/main`. Skipped upstream changes cannot be re-merged by `git merge`; port them by hand and give the port commit a message that names the upstream hashes.
 - Move the version suffix again in `appSubVer`, `version.json` and README, as for the earlier merges.
 - The pnpm 11 and dependency decisions that came from this range are in `MC-1080`.
+
+## 2026-11-10 — merge of upstream/main `4d87a70ff`
+
+Merge commit: the commit that adds this entry. Parents: `8a308a651` and `4d87a70ff`. Unlike the 2026-11-04/05 merges this is a content merge (`git merge upstream/main`, merge base `8e1fee403`), resolved by hand: 10 conflicted paths, 2 auto-merged. After it, `git rev-list --count HEAD..upstream/main` is 0.
+
+**Upstream range:** `8e1fee403..4d87a70ff`: 5 commits, all by kwaroran, 2026-11-09. **Last upstream commit merged: `4d87a70ff`.**
+
+**Why.** The maintainer, 2026-11-10: "there were 5 additional commits from upstream. see if we can adopt them followed by git merge to track upstream." The digest-bearer removal was the maintainer's "Adopt the removal" the same day (both in the 2026-11-10 decisions log; MC IDs assigned in records batch 65). Procedure per `MC-224`, `MC-1079`/`MC-1081` (real git merge) and `MC-440` (version suffix).
+
+### Disposition
+
+| Upstream commit | Disposition | Reason / where |
+|---|---|---|
+| `8a50627b1` fix: escapes (4 hunks) | ALREADY-IN | Empty-password guard: the fork's `isAuthorizedRequest` already refused a blank password (and `4a1ff45c6` removes that function). Trigger display escaping: the fork's `src/ts/triggerEffectDisplay.ts` already escapes every hole, escapes the `type` fallback and uses `safeIndent`; the component conflict resolves to the fork side. `applyMarkdownToNode` and `translateHTML` already create elements from the owner document (comment-only conflict, fork comment kept). Existing pins: `triggerEffectDisplay.test.ts`, `applyMarkdownOwnerDocument.test.ts`, `translateHtmlOwnerDocument.test.ts`. |
+| `4a1ff45c6` fix: allow jwts in node | TAKEN-ADAPTED (maintainer: "Adopt the removal"; closes the `MC-884` item 8 stage-7 revisit) | The raw password digest is no longer accepted as `risu-auth` on `/proxy`, `/proxy2`, `/proxy-stream-jobs` (POST, DELETE), `/api/env-secret` or the stream WebSocket; only a valid JWT (or the per-job ticket) is. `isAuthorizedRequest`, `isAuthorizedProxyRequest` and `checkProxyAuth` are removed; every caller uses `checkAuth` / `isAuthorizedJwtHeader`, on the fork's `authBeforeBody`/`asyncRoute` routes and ticket branch. Tests: `nodeAuthFailClosed.test.ts` (digest refused per route, including GET `/proxy`, GET `/proxy2`, POST `/proxy` and POST `/proxy-stream-jobs`) and `nodeBodyBeforeAuth.test.ts` (S3-G6). No fork client sent the digest. |
+| `2229a7f4d` fix: use isTrustedHubOrigin | TAKEN-ADAPTED (`rel` hook only); origin hunks ALREADY-IN by absence; helper SKIPPED | The `message` handlers it hardened (AlertComp login, UserSettings account, `sionyw.ts` OAuth) left the fork with RisuAccount (`87b974e5c`); `src/ts/sionyw.ts` stays deleted and `isTrustedHubOrigin` is not added (no callers). The `rel` hook in `parser.svelte.ts` is taken: an author-supplied `rel` on a sanitized anchor becomes `noopener noreferrer`. New test `anchorRelSanitize.test.ts`. |
+| `afb5918bb` refactor url that is allowed | TAKEN | The plugin `risuFetch`/`nativeFetch` host blocklist compares the parsed hostname (exact or subdomain, trailing dots stripped) instead of a substring: encoded, dotted and newline forms of `risuai.xyz`/`risuai.net`/`sionyw.com` are blocked, and URLs that only mention them are not. Auto-merged, equal to upstream's hunks. Tests added to `v3.untrustedFetch.test.ts`. |
+| `4d87a70ff` bump version to 2026.10.295 | TAKEN-ADAPTED | `MC-440`: `appVer` and `tauri.conf.json` stay `0.1.0` (with the fork's product name and identifier); `appSubVer` is `up2026.10.295` and `version.json` is `0.1.0-up2026.10.295`. |
+
+### Conflicts and how each was resolved
+
+`server.cjs`: see the `4a1ff45c6` row; two unmarked `authBeforeBody(checkProxyAuth)` lines also changed. TriggerV2List, AlertComp, UserSettings, characterCards, translator: fork side. `tauri.conf.json`, `database.svelte.ts`, `version.json`: fork side with the new suffix. `sionyw.ts`: stays deleted. Mechanical checks on the staged merge: no conflict markers, no unmerged paths, `node --check server/node/server.cjs` passes, 10 files differ from `8a308a651`.
+
+### Persistence
+
+No persisted shape, `.bin`, save or plugin data changes (`MC-175`). Behaviour changes: a Node-hosted client or script that sent the stored digest as `risu-auth` now gets 400/401 (none known); a plugin URL that only mentions a blocked host is no longer blocked.
+
+### Follow-ups
+
+- **Next merge:** `git log --no-merges 4d87a70ff..upstream/main`; move the suffix in `appSubVer` and `version.json` only (README no longer carries it).
+- `RealmFrame.svelte` `pmfunc` had no origin check (fork and upstream alike): filed and fixed separately as CHORE-707.
+- Optional: refresh `docs/wiki/Changes-from-upstream.md` (its upstream version lines are stale).
