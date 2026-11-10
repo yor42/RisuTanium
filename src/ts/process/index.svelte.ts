@@ -105,11 +105,6 @@ export interface MultiModal{
     width?:number
 }
 
-export interface requestTokenPart{
-    name:string
-    tokens:number
-}
-
 /**
  * True exactly while one outermost `sendChat` call is in progress. That call
  * sets it when it is accepted and clears it when it settles; nothing else
@@ -117,8 +112,6 @@ export interface requestTokenPart{
  */
 export const doingChat = writable(false)
 export const chatProcessStage = writable(0)
-export const abortChat = writable(false)
-export let requestTokenParts:{[key:string]:requestTokenPart[]} = {}
 
 /**
  * Test-only observation of the positions a streamed reply's flush wrote at.

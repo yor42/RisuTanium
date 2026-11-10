@@ -1576,6 +1576,93 @@ describe('registerDbChangeEffects — selected-character partition equivalence s
         expect(tracker.chat[0]).toEqual(['char-1', 'chat-0'])
     })
 
+    test('mounted with an out-of-range chatPage: later edits are still fronted and marked', () => {
+        installSelectedCharacterFixture()
+        selectedChar().chatPage = 9
+        const { tracker, markChanged } = freshTrackerAndMarker()
+        cleanup = $effect.root(() => {
+            registerDbChangeEffects({ tracker, markChanged })
+        })
+        let mountError: unknown
+        try { flushSync() } catch (error) { mountError = error }
+
+        tracker.character = [SENTINEL]
+        markChanged.mockClear()
+        selectedChar().desc = 'edited description'
+        flushSync()
+
+        expectFronted(tracker, markChanged)
+        expect(tracker.chat).toEqual([])
+        expect(mountError).toBeUndefined()
+    })
+
+    test.each([
+        ['chatPage past the end', (c: Record<string, any>) => { c.chatPage = 9 }],
+        ['chats emptied', (c: Record<string, any>) => { c.chats = [] }],
+        ['chats removed', (c: Record<string, any>) => { delete c.chats }],
+    ] as Array<[string, (c: Record<string, any>) => void]>)('no active chat (%s): fronts, marks, records no pair, keeps tracking', (_name, mutate) => {
+        const { tracker, markChanged } = setupArmed()
+        let switchError: unknown
+        mutate(selectedChar())
+        try { flushSync() } catch (error) { switchError = error }
+
+        expectFronted(tracker, markChanged)
+        expect(tracker.chat).toEqual([])
+
+        tracker.character = [SENTINEL]
+        markChanged.mockClear()
+        selectedChar().desc = 'edited after'
+        flushSync()
+        expectFronted(tracker, markChanged)
+        expect(switchError).toBeUndefined()
+    })
+
+    test('replacing the active chat with a new object moves tracker.chat to its id', () => {
+        const { tracker } = setupArmed()
+
+        selectedChar().chats[2] = makeChat('chat-2-new', 1)
+        flushSync()
+
+        expect(tracker.chat[0]).toEqual(['char-1', 'chat-2-new'])
+    })
+
+    // Only 6b-front records tracker.chat, so an in-place id change of the
+    // active chat must re-run it (the id read must stay tracked).
+    test('renaming the active chat id in place moves tracker.chat to the new id', () => {
+        const { tracker, markChanged } = setupArmed()
+
+        selectedChar().chats[2].id = 'chat-2-renamed'
+        flushSync()
+
+        expectFronted(tracker, markChanged)
+        expect(tracker.chat[0]).toEqual(['char-1', 'chat-2-renamed'])
+    })
+
+    // Reassigning the whole chats list must re-run 6b-front (the chats read
+    // must stay tracked) so tracker.chat names the active chat of the new list.
+    test('reassigning character.chats moves tracker.chat to the new active chat', () => {
+        const { tracker, markChanged } = setupArmed()
+
+        selectedChar().chats = [makeChat('new-0', 1), makeChat('new-1', 1), makeChat('new-2', 1)]
+        flushSync()
+
+        expectFronted(tracker, markChanged)
+        expect(tracker.chat[0]).toEqual(['char-1', 'new-2'])
+    })
+
+    test('a chat appended at an out-of-range chatPage index becomes the tracked active chat', () => {
+        const { tracker, markChanged } = setupArmed()
+        selectedChar().chatPage = 6
+        try { flushSync() } catch { /* the outcome below is the assertion */ }
+        tracker.chat = []
+        markChanged.mockClear()
+
+        selectedChar().chats.push(makeChat('chat-6', 1))
+        flushSync()
+
+        expect(tracker.chat[0]).toEqual(['char-1', 'chat-6'])
+    })
+
     test('the selection changed via selectedCharID.set fronts the NEW selected chaId', () => {
         const { tracker, markChanged } = setupArmed()
 
@@ -2256,8 +2343,8 @@ const messageAppendStep: CounterStep = () => {
 const selectOtherStep: CounterStep = () => { selectedCharID.set(1) }
 const replaceOtherStep: CounterStep = () => { DBState.db.characters[2] = counterChar('C') as unknown as Database['characters'][number] }
 const replaceSelectedStep: CounterStep = () => { DBState.db.characters[0] = counterChar('A') as unknown as Database['characters'][number] }
-// Out-of-range chatPage: 6b-front throws between its onPartitionRun and its markChanged.
-const throwFrontStep: CounterStep = () => { counterChars()[0].chatPage = 5 }
+// Out-of-range chatPage: 6b-front fronts and marks but records no tracker.chat pair.
+const outOfRangePageStep: CounterStep = () => { counterChars()[0].chatPage = 5 }
 
 describe('registerDbChangeEffects — net-signal counters', () => {
     afterEach(() => {
@@ -2274,6 +2361,7 @@ describe('registerDbChangeEffects — net-signal counters', () => {
         ['identity replacement of a non-selected character', [replaceOtherStep]],
         ['identity replacement of the selected character', [replaceSelectedStep]],
         ['edit then in-place rename', [fieldEditStep, renameSelectedStep]],
+        ['out-of-range chatPage then module edit', [outOfRangePageStep, moduleEditStep]],
     ]
 
     // Compatibility guard: the wrappers are transparent. It passes with the switch off too; it fails if a wrapper
@@ -2352,40 +2440,15 @@ describe('registerDbChangeEffects — net-signal counters', () => {
         expect(on.runs).toEqual(off.runs)
     })
 
-    // T2f: the known leak. Each case starts from a front run that throws between its two calls.
-    describe('a front run that throws between its tag and its markChanged', () => {
-        test('then a module edit: booked as part (the documented leak), tagOverwritten stays 0', () => {
-            const on = runCounterScenario([throwFrontStep, moduleEditStep])
-            expect(on.steps[0].threw).toBe(true)
+    // T2f: an out-of-range chatPage still reaches the front run's markChanged, so its tag never goes stale.
+    describe('a front run on an out-of-range chatPage', () => {
+        test('does not throw, books one part for A, and a following module edit books partGlobal with no stale tag', () => {
+            const on = runCounterScenario([outOfRangePageStep, moduleEditStep])
+            expect(on.steps.map(step => step.threw)).toEqual([false, false])
+            expect(on.steps[0].part).toEqual({ A: 1 })
             expect(on.steps[1].part).toEqual({ A: 1 })
+            expect(on.steps[1].partGlobal).toBe(1)
             expect(on.steps[1].tagOverwritten).toBe(0)
-            expect(on.steps[1].partGlobal).toBe(0)
-        })
-
-        test('then a field edit: tagOverwritten is 1', () => {
-            const on = runCounterScenario([throwFrontStep, fieldEditStep])
-            expect(on.steps[1].tagOverwritten).toBe(1)
-            expect(on.steps[1].part).toEqual({ A: 1 })
-        })
-
-        test('then a non-selected identity replacement: identity once and no part; the next global edit books partGlobal', () => {
-            const on = runCounterScenario([throwFrontStep, replaceOtherStep, moduleEditStep])
-            expect(on.steps[1].identity).toEqual({ C: 1 })
-            expect(on.steps[1].part).toEqual({})
-            expect(on.steps[2].partGlobal).toBe(1)
-        })
-
-        test.each([
-            ['module edit', [throwFrontStep, moduleEditStep]],
-            ['field edit', [throwFrontStep, fieldEditStep]],
-            ['identity replacement', [throwFrontStep, replaceOtherStep, moduleEditStep]],
-        ] as Array<[string, CounterStep[]]>)('saving behaviour is identical with the switch on and off: %s', (_name, steps) => {
-            const on = runCounterScenario(steps, { on: true })
-            const off = runCounterScenario(steps, { on: false })
-            expect(on.marks).toEqual(off.marks)
-            expect(on.tracker).toEqual(off.tracker)
-            expect(on.runs).toEqual(off.runs)
-            expect(on.steps.map(step => step.threw)).toEqual(off.steps.map(step => step.threw))
         })
     })
 })
