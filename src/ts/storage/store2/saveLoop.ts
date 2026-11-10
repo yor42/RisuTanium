@@ -288,7 +288,7 @@ export interface Store2LoopPort {
     takeNetSweep?(): boolean
     /** True once after a character became resident since the last call; read at the top of each loop iteration. It ends the idle back-off. */
     takeResidentLoaded?(): boolean
-    /** Whether the page is hidden; a hidden page's slots never skip a verdict and never back off. Read by the scan gate, the module interval and after the yield. */
+    /** Whether the page is hidden; a hidden page's slots never skip a verdict and never back off. Read by the scan gate, the module interval, after the yield, the deferral gates and the held module plan. */
     pageHidden?(): boolean
     /**
      * Whether the encode's budgeted yields are skipped now: a hidden Android page may be frozen inside a yield, and
@@ -433,7 +433,10 @@ type Outcome =
     /** The server refused a body as too large: nothing was applied and the same bytes never fit, so this tab stops saving. */
     | { kind: 'stop', cause: Store2PayloadTooLargeError, label: string, cleared: AbandonResult | null }
     | { kind: 'not-flushed' }
-    /** A module's load is waiting for the person's answer: nothing was written, nothing is counted, and the loop makes no further pass until `settled`. */
+    /**
+     * A module's load is waiting for the person's answer on a visible page, or on a hidden page whose acknowledged encoding
+     * holds no module set: nothing was written, nothing is counted, and the loop makes no further pass until `settled`.
+     */
     | { kind: 'deferred', settled: Promise<void> }
     /**
      * A full or module tick on a hidden Android page ended before its commit because a pass became due: nothing was
@@ -478,6 +481,8 @@ interface PassRun {
     standingMarker: Staging | null
     /** The probe's answer for `standingMarker`; null when it is null or no probe answered. */
     standingLiveness: MarkerLiveness | null
+    /** The open module question this pass saved past on a hidden page (`hiddenHeldAdmits`); `null` otherwise. */
+    held: Promise<void> | null
 }
 
 /** The failures that name the page's own state as stale for good: only a reload ends them. */
@@ -563,7 +568,11 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     readStopped = () => stopped
     /** The epoch the person agreed to overwrite with Save mine. */
     let consent: string | null = null
-    /** Set while a module load waits for the person's answer; `null` otherwise. Gates the passes and the idle net, never the park handling or the peer check. */
+    /**
+     * Set while a module load waits for the person's answer; `null` otherwise. Gates the passes and the idle net on a
+     * visible page, or on a hidden page whose acknowledged encoding holds no module set; never the park handling or the
+     * peer check. A hidden page whose encoding holds the modules passes it (see `hiddenHeldAdmits`).
+     */
     let deferral: Promise<void> | null = null
     /** A commit reported that it was not flushed: the next pass commits even when it changed nothing. */
     let forced = false
@@ -1021,21 +1030,33 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     }
 
     /**
+     * Whether a module question that holds the loop is passed now. Only a hidden page whose acknowledged encoding holds
+     * the module set passes it: the leaving page saves everything else with the modules carried whole, the question stays
+     * open, and a visible page keeps the hold. Read live at each use, so a page that turns visible between the gate and
+     * the valve answer keeps the quiet hold.
+     */
+    function hiddenHeldAdmits(): boolean {
+        return port.pageHidden?.() === true && encoder.carriesModules()
+    }
+
+    /**
      * The plan of one pass over the live list. A module stub the planner cannot carry is brought in through the context's
      * valve and the pass is planned again with the same request. The valve never waits for the person while the write
-     * lock is held: a load that would ask answers `deferred`, and the pass ends quietly (`ModuleLoadDeferred`). One load
+     * lock is held: a load that would ask answers `deferred`, and the pass ends quietly (`ModuleLoadDeferred`), except on
+     * a hidden page that admits the hold (`hiddenHeldAdmits`): that pass is planned with the modules carried whole and
+     * returns the open flight beside the plan as `held`, with no refusal told. One load
      * is made per module id and pass. A module refusal that survives its load (or that no load can help: an edited stub,
      * or no valve) does not fail the pass: the pass is planned again with the modules carried whole, and the refusal is
      * returned beside that plan so the caller holds the module mark. Characters and chats still save. The modules are
      * carried only when the acknowledged encoding holds them; otherwise the planner's own error surfaces.
      */
-    async function planOf(db: Database, request: SavePassRequest): Promise<{ plan: SavePlan, moduleRefusal: StubRefusedError | null }> {
+    async function planOf(db: Database, request: SavePassRequest): Promise<{ plan: SavePlan, moduleRefusal: StubRefusedError | null, held: Promise<void> | null }> {
         const loaded = new Set<string>()
         let planDb = db
         let planRequest = request
         for (;;) {
             try {
-                return { plan: await planWithStubLoads(planDb, planRequest), moduleRefusal: null }
+                return { plan: await planWithStubLoads(planDb, planRequest), moduleRefusal: null, held: null }
             } catch (error) {
                 if (!(error instanceof StubRefusedError) || error.kind !== 'module') {
                     throw error
@@ -1048,6 +1069,12 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     }
                     const result = await context.loadModuleStub(error.chaId)
                     if (result.kind === 'deferred') {
+                        if (hiddenHeldAdmits()) {
+                            if (MEASURE) {
+                                activeGaps?.resume()
+                            }
+                            return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: null, held: result.settled }
+                        }
                         throw new ModuleLoadDeferred(result.settled)
                     }
                     if (MEASURE) {
@@ -1062,7 +1089,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 if (!encoder.carriesModules()) {
                     throw error
                 }
-                return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: error }
+                return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: error, held: null }
             }
         }
     }
@@ -1280,6 +1307,15 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 port.tracker.modules = true
                 port.markUnsaved?.()
             }
+            if (planned.held !== null) {
+                // A held pass is quiet and keeps the module mark and the dirty state, so module changes retry after the
+                // answer. The deferral and the request after the answer are kept here, before the commit is built, so
+                // every exit of the pass keeps them.
+                run.held = planned.held
+                port.tracker.modules = true
+                port.markUnsaved?.()
+                holdDeferral(planned.held)
+            }
         } catch (error) {
             if (error instanceof ModuleLoadDeferred) {
                 return { kind: 'deferred', settled: error.settled }
@@ -1355,6 +1391,28 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 : { kind: 'retry', reason: result.reason, detail: result.detail }
         }
         return outcomeOf(result, plan, run)
+    }
+
+    const heldRequested = new WeakSet<Promise<void>>()
+    /**
+     * Keeps the loop held by an open module question after a hidden pass saved past it: sets the deferral when none
+     * stands and never clears or replaces one. Once per flight, a pass is requested when it settles, so the answer's
+     * module change (or its failure notice) follows the held commit.
+     */
+    function holdDeferral(settled: Promise<void>): void {
+        if (deferral === null) {
+            const clearDeferral = (): void => {
+                if (deferral === waiting) {
+                    deferral = null
+                }
+            }
+            const waiting: Promise<void> = settled.then(clearDeferral, clearDeferral)
+            deferral = waiting
+        }
+        if (!heldRequested.has(settled)) {
+            heldRequested.add(settled)
+            void settled.then(() => port.requestPass())
+        }
     }
 
     function foldBack(snapshot: Store2Snapshot | null): void {
@@ -1450,7 +1508,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
 
     /** Runs one pass; resolves `true` when it was a tick cut at a yield (nothing written or counted), `false` otherwise. */
     async function pass(tick: boolean, netChaId: string | null = null): Promise<boolean> {
-        const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleScope: false, foreignCleared: false, standingMarker: null, standingLiveness: null }
+        const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleScope: false, foreignCleared: false, standingMarker: null, standingLiveness: null, held: null }
         let cut = false
         // A tick that saved with nothing written and no module refusal is the one outcome that is not activity.
         let endedUnchanged = false
@@ -1463,11 +1521,11 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             switch (outcome.kind) {
                 case 'saved':
                     retries = 0
-                    endedUnchanged = tick && !outcome.wrote && run.moduleRefusal === null
+                    endedUnchanged = tick && !outcome.wrote && run.moduleRefusal === null && run.held === null
                     if (tick && run.moduleScope) {
                         moduleSweepOwed = false
                     }
-                    if (run.moduleScope && run.moduleRefusal === null) {
+                    if (run.moduleScope && run.moduleRefusal === null && run.held === null) {
                         // Only a pass that planned the modules proves no stub blocks them; a character-only pass or a
                         // degraded one says nothing, so the person is not asked again while the same stub stands.
                         editedAnnounced = null
@@ -1966,7 +2024,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     continue
                 }
             }
-            if (port.isDue() && deferral === null) {
+            if (port.isDue() && (deferral === null || hiddenHeldAdmits())) {
                 await pass(false)
                 await port.wait(500)
                 continue
@@ -1976,7 +2034,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 await port.wait(500)
                 continue
             }
-            if (netMs !== null && deferral === null && (sweepSlotOwed || port.now() - lastNetAt >= netMs)) {
+            if (netMs !== null && (deferral === null || hiddenHeldAdmits()) && (sweepSlotOwed || port.now() - lastNetAt >= netMs)) {
                 lastNetAt = port.now()
                 sweepSlotOwed = false
                 if (MEASURE && netHeldNow()) {
