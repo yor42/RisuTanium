@@ -21,6 +21,7 @@ import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
+import { languageEnglish } from 'src/lang/en'
 
 //#region module mocks
 
@@ -450,5 +451,153 @@ describe('RealmFrame.svelte: only the Realm frame itself is heard and addressed'
 
         expect(target.querySelector('.loadmove')).toBeNull()
         expect(target.querySelector('iframe')?.classList.contains('hidden')).toBe(false)
+    })
+})
+
+describe('RealmFrame.svelte: an unanswered handshake is bounded and stops with the frame', () => {
+    const REALM_ORIGIN = 'https://realm.risuai.net'
+    const PING_ATTEMPTS = 50
+
+    type FrameStub = { postMessage: ReturnType<typeof vi.fn> }
+
+    function acceptUpstream(): void {
+        localStorage.setItem(UPSTREAM_AGREEMENT_KEY, 'accepted')
+        resetUpstreamAgreementForTests()
+    }
+
+    // One macrotask drains every immediately-resolved sleep in the wait loop.
+    async function drain(): Promise<void> {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        flushSync()
+    }
+
+    // The first `resolved` sleeps return at once; later ones never return, so an
+    // unbounded loop parks instead of spinning.
+    function cappedSleep(resolved: number, onCall?: (call: number) => void): void {
+        let calls = 0
+        sleepSpy.mockImplementation(() => {
+            calls++
+            onCall?.(calls)
+            return calls <= resolved ? Promise.resolve() : new Promise<void>(() => {})
+        })
+    }
+
+    function mountWithStub(): FrameStub {
+        acceptUpstream()
+        const target = mountRealmFrame()
+        const stub = stubIframeContentWindow(target)
+        if (!stub) {
+            throw new Error('iframe missing')
+        }
+        return stub
+    }
+
+    function sentTypes(frame: FrameStub): string[] {
+        return frame.postMessage.mock.calls.map((c) => (c[0] as { type: string }).type)
+    }
+
+    async function captureRejections(run: () => Promise<void>): Promise<unknown[]> {
+        const seen: unknown[] = []
+        const handler = (reason: unknown): void => { seen.push(reason) }
+        process.on('unhandledRejection', handler)
+        try {
+            await run()
+            await drain()
+        } finally {
+            process.off('unhandledRejection', handler)
+        }
+        return seen
+    }
+
+    afterEach(() => {
+        sleepSpy.mockImplementation(() => new Promise<void>(() => {}))
+    })
+
+    test('regression reproducer: with no answer it pings 50 times, 300 ms apart, then alerts, closes and posts no file', async () => {
+        cappedSleep(60)
+        const frame = mountWithStub()
+        await drain()
+
+        expect(sentTypes(frame).filter((t) => t === 'ping')).toHaveLength(PING_ATTEMPTS)
+        expect(sleepSpy).toHaveBeenCalledTimes(PING_ATTEMPTS)
+        expect(sleepSpy.mock.calls.every((c) => c[0] === 300)).toBe(true)
+        const message = languageEnglish.errors.realmUploadNoAnswer
+        expect(typeof message).toBe('string')
+        expect(message.length).toBeGreaterThan(0)
+        expect(alertErrorSpy).toHaveBeenCalledTimes(1)
+        expect(alertErrorSpy).toHaveBeenCalledWith(message)
+        expect(get(ShowRealmFrameStore)).toBe('')
+        expect(sentTypes(frame)).not.toContain('filedata')
+
+        await drain()
+        expect(sentTypes(frame).filter((t) => t === 'ping')).toHaveLength(PING_ATTEMPTS)
+        expect(alertErrorSpy).toHaveBeenCalledTimes(1)
+    })
+
+    test('regression reproducer: destroying the frame during the first wait sends nothing more and throws nothing', async () => {
+        let release = (): void => {}
+        sleepSpy.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve }))
+        const frame = mountWithStub()
+        await drain()
+        expect(sentTypes(frame)).toEqual(['ping'])
+
+        const rejections = await captureRejections(async () => {
+            await unmount(mountedInstances.pop() as never)
+            release()
+            await drain()
+        })
+
+        expect(rejections).toEqual([])
+        expect(sentTypes(frame)).toEqual(['ping'])
+        expect(alertErrorSpy).not.toHaveBeenCalled()
+    })
+
+    test('regression reproducer: destroying the frame during the last allowed wait raises no alert and throws nothing', async () => {
+        let release = (): void => {}
+        let calls = 0
+        sleepSpy.mockImplementation(() => {
+            calls++
+            if (calls < PING_ATTEMPTS) {
+                return Promise.resolve()
+            }
+            if (calls === PING_ATTEMPTS) {
+                return new Promise<void>((resolve) => { release = resolve })
+            }
+            return new Promise<void>(() => {})
+        })
+        const frame = mountWithStub()
+        await drain()
+        expect(sentTypes(frame).filter((t) => t === 'ping')).toHaveLength(PING_ATTEMPTS)
+
+        const rejections = await captureRejections(async () => {
+            await unmount(mountedInstances.pop() as never)
+            release()
+            await drain()
+        })
+
+        expect(rejections).toEqual([])
+        expect(sentTypes(frame).filter((t) => t === 'ping')).toHaveLength(PING_ATTEMPTS)
+        expect(alertErrorSpy).not.toHaveBeenCalled()
+        expect(sentTypes(frame)).not.toContain('filedata')
+    })
+
+    test('guard: a pong during the last allowed wait still sends the file once, with no alert', async () => {
+        let frame: FrameStub | null = null
+        cappedSleep(60, (call) => {
+            if (call === PING_ATTEMPTS) {
+                window.dispatchEvent(new MessageEvent('message', {
+                    data: { type: 'pong' },
+                    origin: REALM_ORIGIN,
+                    source: frame as unknown as Window,
+                }))
+            }
+        })
+        frame = mountWithStub()
+        await drain()
+
+        expect(sentTypes(frame).filter((t) => t === 'ping')).toHaveLength(PING_ATTEMPTS)
+        expect(sentTypes(frame).filter((t) => t === 'filedata')).toHaveLength(1)
+        expect(alertErrorSpy).not.toHaveBeenCalled()
+        expect(get(ShowRealmFrameStore)).toBe('character')
     })
 })

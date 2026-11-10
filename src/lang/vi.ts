@@ -350,6 +350,7 @@ export const languageVietnamese = {
         "networkFetchWeb": "Đây có thể là lỗi CORS. Lỗi này chỉ xảy ra khi sử dụng phiên bản web do giới hạn của trình duyệt. Hãy thử dùng phiên bản desktop cục bộ, hoặc một phiên bản khác của RisuTanium.",
         "networkFetchPlain": "Đây có thể là lỗi plain fetch. Hãy thử tắt tùy chọn buộc dùng plain fetch trong cài đặt.",
         "requestTimedOut": "Yêu cầu đã hết thời gian chờ.",
+        "realmUploadNoAnswer": "RisuRealm không phản hồi nên chưa có gì được tải lên. Hãy kiểm tra kết nối của bạn rồi thử lại.",
         "requestLogRemoved": "Nhật ký yêu cầu này đã bị xóa.",
         "requestLogRemovedDesc": "Nhật ký yêu cầu này sẽ bị xóa khi client được làm mới hoặc tải lại.",
         "secretRefUnavailable": (name: string) => `Biến môi trường ${name} không khả dụng: biến này chưa được đặt, máy chủ không cho phép, hoặc máy chủ đã từ chối yêu cầu.`,

@@ -350,6 +350,7 @@ export const languageKorean = {
         "networkFetchWeb": "이것은 CORS 오류일 수 있습니다. 이는 브라우저의 제한으로 인해 웹 버전을 사용할 때만 발생합니다. 데스크톱 로컬 버전이나 다른 버전의 RisuTanium을 사용해보세요.",
         "networkFetchPlain": "이것은 요청 오류일 수 있습니다. 설정에서 직접 요청 보내기 옵션을 비활성화해 보세요.",
         "requestTimedOut": "요청 시간이 초과되었습니다.",
+        "realmUploadNoAnswer": "RisuRealm이 응답하지 않아 아무것도 업로드되지 않았습니다. 연결 상태를 확인한 뒤 다시 시도하세요.",
         "requestLogRemoved": "요청 로그가 삭제되었습니다.",
         "requestLogRemovedDesc": "요청 로그는 앱이 재시작되거나 새로고침되면 삭제됩니다.",
         "secretRefUnavailable": (name: string) => `환경 변수 ${name}을(를) 사용할 수 없습니다. 설정되지 않았거나, 서버에서 허용하지 않거나, 서버가 요청을 거부했습니다.`,

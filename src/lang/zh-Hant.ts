@@ -350,6 +350,7 @@ export const languageChineseTraditional = {
         "networkFetchWeb": "這可能是 CORS 錯誤。由於瀏覽器限制，此問題只會在網頁版發生。請嘗試使用桌面本機版或其他版本的 RisuTanium",
         "networkFetchPlain": "這可能是一般 Fetch 錯誤。請嘗試在設定中停用「強制一般 Fetch」",
         "requestTimedOut": "請求逾時",
+        "realmUploadNoAnswer": "RisuRealm 沒有回應，因此未上傳任何內容。請檢查網路連線後重試。",
         "requestLogRemoved": "此請求記錄已被移除",
         "requestLogRemovedDesc": "重新整理或重新載入用戶端後，請求記錄會被移除",
         "secretRefUnavailable": (name: string) => `環境變數 ${name} 無法使用：該變數未設定、伺服器不允許使用，或伺服器拒絕了請求。`,

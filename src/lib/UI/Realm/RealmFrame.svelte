@@ -65,15 +65,27 @@
         }
     }
 
-    const waitPing = async () => {
-        if(iframe){
-            while(!pongGot){
-                iframe.contentWindow.postMessage({
-                    type: 'ping'
-                }, realmOrigin)
-                await sleep(300)
+    // An unanswered handshake gives up after about 15 s and sends nothing
+    // after that; a destroyed frame sends nothing either, so closing it
+    // mid-handshake neither pings a detached frame nor raises an alert.
+    const PING_INTERVAL_MS = 300
+    const PING_ATTEMPTS = 50
+    let destroyed = false
+
+    const waitPing = async (): Promise<'answered' | 'gaveUp' | 'stopped'> => {
+        for(let attempt = 0; attempt < PING_ATTEMPTS && !pongGot; attempt++){
+            if(destroyed){
+                return 'stopped'
             }
+            iframe.contentWindow.postMessage({
+                type: 'ping'
+            }, realmOrigin)
+            await sleep(PING_INTERVAL_MS)
         }
+        if(destroyed){
+            return 'stopped'
+        }
+        return pongGot ? 'answered' : 'gaveUp'
     }
 
     onMount(async () => {
@@ -137,7 +149,16 @@
         }
 
         if(iframe){
-            await waitPing()
+            const outcome = await waitPing()
+            if(outcome === 'stopped'){
+                return
+            }
+            if(outcome === 'gaveUp'){
+                // Nothing was posted; the alert stays after the frame closes.
+                alertError(language.errors.realmUploadNoAnswer)
+                close()
+                return
+            }
             loadingStage = 1
             iframe.contentWindow.postMessage({
                 type: 'filedata',
@@ -147,6 +168,7 @@
     })
 
     onDestroy(() => {
+        destroyed = true
         window.removeEventListener('message', pmfunc)
     })
 </script>
