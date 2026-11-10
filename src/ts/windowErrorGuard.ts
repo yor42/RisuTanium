@@ -24,12 +24,18 @@ export function classifyWindowError(event: { readonly error: unknown }): WindowE
 export interface WindowErrorSinks {
     warn(message: string): void
     error(error: unknown): void
+    /**
+     * Shows the error. Invoked after the stack that raised the error has unwound (from a microtask), never inside
+     * it: that stack may be a Svelte block effect, where a store write throws and, through a `$store` subscriber,
+     * leaves svelte/store's module-wide subscriber queue non-empty, so no later store write notifies anyone.
+     */
     report(error: string | Error): void
 }
 
 /**
  * Applies `classifyWindowError`: an event without an error object is only noted with its message
- * (a warning, never an alert), a worker error is logged, any other error is logged and reported.
+ * (a warning, never an alert), a worker error is logged, any other error is logged at once and reported
+ * one microtask later.
  */
 export function handleWindowError(event: { readonly error: unknown; readonly message: string }, sinks: WindowErrorSinks): void {
     const disposition = classifyWindowError(event)
@@ -40,6 +46,7 @@ export function handleWindowError(event: { readonly error: unknown; readonly mes
     sinks.error(event.error)
     if (disposition === 'report') {
         // alertError accepts anything a page can throw and renders non-Error values itself.
-        sinks.report(event.error as string | Error)
+        const error = event.error as string | Error
+        queueMicrotask(() => sinks.report(error))
     }
 }

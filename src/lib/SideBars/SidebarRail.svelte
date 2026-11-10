@@ -10,6 +10,7 @@
   import BaseRoundedButton from "../UI/BaseRoundedButton.svelte";
   import { getCharacterIndexObject } from "src/ts/util";
   import { v4 } from "uuid";
+  import { createFocusSettle } from "../../ts/focusSettle";
   import { checkCharOrder } from "src/ts/globalApi.svelte";
   import { runFolderMenu } from "./folderMenu";
   import { setRailTooltipsSuppressed, tooltipRail } from "src/ts/gui/tooltip";
@@ -630,16 +631,16 @@
 
   // Chromium fires focusout synchronously while a keyed each-block moves a focused entry, inside
   // a block effect where writing `$state` throws. The pin is therefore settled in a microtask,
-  // from where focus actually is by then.
-  function syncPlusFocus() {
-    queueMicrotask(() => {
-      if (!scroller?.isConnected) {
-        return
-      }
-      const active = document.activeElement
-      plusFocused = active instanceof Element && scroller.contains(active) && entryOf(active) === null && active.closest('[data-rail-kind="plus"]') !== null
-    })
+  // from where focus actually is by then (see createFocusSettle).
+  function settlePlusFocus() {
+    if (!scroller?.isConnected) {
+      return
+    }
+    const active = document.activeElement
+    plusFocused = active instanceof Element && scroller.contains(active) && entryOf(active) === null && active.closest('[data-rail-kind="plus"]') !== null
   }
+  const plusFocusSettle = createFocusSettle(settlePlusFocus)
+  onDestroy(() => plusFocusSettle.dispose())
 
   function onFocusIn(e: FocusEvent) {
     railHasFocus = true
@@ -647,11 +648,11 @@
     if (el) {
       setCurrent(el.getAttribute('data-rail-entry')!)
     }
-    syncPlusFocus()
+    plusFocusSettle.schedule()
   }
 
   function onFocusOut(e: FocusEvent) {
-    syncPlusFocus()
+    plusFocusSettle.schedule()
     if (e.relatedTarget instanceof Node && scroller.contains(e.relatedTarget)) {
       return
     }
