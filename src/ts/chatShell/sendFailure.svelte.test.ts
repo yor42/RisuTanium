@@ -80,6 +80,26 @@ describe('shellGenerationSource', () => {
         expect(failureOf(ORIGIN.chaId, ORIGIN.chatId)).toMatchObject({ reason: 'model', action: 'regenerate' })
     })
 
+    test('a skipped action clears that chat\'s entry, leaving other chats alone', () => {
+        const source = shellGenerationSource(() => {})
+        source.refuseGeneration?.({ origin: ORIGIN, action: 'continue' })
+        source.refuseGeneration?.({ origin: OTHER, action: 'continue' })
+
+        source.generationSkipped?.({ origin: ORIGIN, action: 'continue' })
+
+        expect(failureOf(ORIGIN.chaId, ORIGIN.chatId)).toBeNull()
+        expect(failureOf(OTHER.chaId, OTHER.chatId)).toMatchObject({ action: 'continue' })
+    })
+
+    test('a skipped Continue keeps that chat\'s refusal of another action', () => {
+        const source = shellGenerationSource(() => {})
+        source.refuseGeneration?.({ origin: ORIGIN, action: 'send' })
+
+        source.generationSkipped?.({ origin: ORIGIN, action: 'continue' })
+
+        expect(failureOf(ORIGIN.chaId, ORIGIN.chatId)).toMatchObject({ action: 'send' })
+    })
+
     test('a chat without an id has no entry', () => {
         expect(failureOf('cha-a', undefined)).toBeNull()
     })

@@ -560,7 +560,10 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             replyMessage = undefined
             return locateReply(chat)
         }
-        return chat.message.length - 1
+        const last = chat.message.length - 1
+        // A continue writes only into a character reply; any other last
+        // message counts as gone.
+        return chat.message[last]?.role === 'char' ? last : -1
     }
 
     // Re-assigns the finished timings onto the reply so its reactive copy sees
@@ -775,6 +778,25 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
 
             const messages = entryCtx.chat.message
             const lastMessage = messages[messages.length-1]
+            // A continue extends the last reply as the member who said it: no
+            // order walk, and talkness and the last-speaker filter do not
+            // apply. With no such member nothing is generated.
+            if(arg.continue){
+                const speaker = lastMessage?.saying
+                const speakerIndex = speaker ? nowChatroom.characters.indexOf(speaker) : -1
+                if(!speaker || speakerIndex === -1){
+                    return true
+                }
+                return await sendChatRecursion(speakerIndex, {
+                    chatAdditonalTokens: caculatedChatTokens,
+                    signal: abortSignal,
+                    continue: true,
+                    continueMessageId: lastMessage.chatId,
+                    usedContinueTokens: arg.usedContinueTokens,
+                    origin: { ...origin, memberChaId: speaker },
+                    originHint: hint,
+                })
+            }
             let order = nowChatroom.characters.map((v,i) => {
                 return {
                     id: v,

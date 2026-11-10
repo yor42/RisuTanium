@@ -36,9 +36,9 @@ const MAX_QUIET_TICKS = 50
  * Module-level state for the single in-flight composer action (Send or
  * Continue). The one-action-at-a-time window lives in
  * `generationOwnership.svelte.ts`, where starters outside the composer read
- * it: it is open from a Send's/Continue's take, or from the start of a
- * reroll, unreroll or auto mode, until that action's generation hand-off
- * returns. `locked` is open only for a Send's/Continue's own span, from the
+ * it: it is open from a Send's take, from the start of a Continue, reroll,
+ * unreroll or auto mode, until that action's generation hand-off
+ * returns. `locked` is open only for a Send's own span, from the
  * take until the moment before generation starts (or until the values go
  * back).
  * `autoModeRunning` and `currentGenerationController` are module state too,
@@ -65,14 +65,14 @@ interface GenerationTarget {
 
 /**
  * The in-flight slot's own draft key. Registered under `COMPOSER_DRAFT_KIND`
- * for as long as a Send/Continue holds the composer's taken values, so the
+ * for as long as a Send holds the composer's taken values, so the
  * multi-tab reload gate sees a draft in flight even though the origin's
  * per-chat record reads empty during that span.
  */
 const inflightDraftKey = uuidv4()
 
 /**
- * A Send's or Continue's own pre-append span: the taken values, its work
+ * A Send's own pre-append span: the taken values, its work
  * handle and abort controller, and the origin they came from (`workHandle.origin`
  * is also the key every put-back writes to). `cancelInflight` sets `settled`
  * to true when the busy button, or a delete of the take's chat or character, cancels this
@@ -110,7 +110,7 @@ function textToPutBack(record: InflightRecord): string {
 }
 
 /**
- * The one Send/Continue currently between its take and its push, or `null`
+ * The one Send currently between its take and its push, or `null`
  * when none is. Cleared the moment that span ends, whichever way -- so a
  * later `abortChat` call (during generation, or with nothing in flight)
  * falls through to aborting whichever controller the module itself holds,
@@ -163,7 +163,7 @@ export function stopComposerWorkIn(target: { chaId: string, chatId: string }): v
     stopWorkIn(target)
 }
 
-/** True from a Send's/Continue's take until its hand-off or put-back. */
+/** True from a Send's take until its hand-off or put-back. */
 export function isComposerLocked(): boolean {
     return locked
 }
@@ -189,13 +189,19 @@ export interface GenerationRequest {
  * generation's abort controller are this module's own state, not per instance.
  *
  * `refuseGeneration` is optional. It runs synchronously, before a Send or
- * Continue takes the draft and before a new reply cuts the chat, and returns
+ * Send takes the draft, and before a Continue or a new reply starts, and returns
  * true when the caller refuses the action and has already shown why. A source
  * without it never refuses.
+ *
+ * `generationSkipped` is optional too. It runs when an action ends quietly
+ * because there is nothing for it to act on (a Continue with no reply to
+ * extend), so a source that recorded an earlier refusal of that action can
+ * drop it.
  */
 export interface ComposerActionsSource {
     closeMenu(): void
     refuseGeneration?(request: GenerationRequest): boolean
+    generationSkipped?(request: GenerationRequest): void
 }
 
 /**
@@ -247,6 +253,12 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
         return
     }
 
+    // Continue extends the last reply and never touches the composer's draft,
+    // so it takes the draft-free path.
+    if(continueResponse){
+        return continueLastReply(source, char, startChat)
+    }
+
     // beginWork captures the origin (and refuses to take anything when the
     // character or chat cannot be found or given an id). The registration
     // carries the stop a delete of this chat uses on the take.
@@ -263,7 +275,7 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
     if(!composerDrafts.peek(workHandle.origin).messageInput.startsWith('/')){
         let refused = true
         try {
-            refused = source.refuseGeneration?.({ origin: workHandle.origin, action: continueResponse ? 'continue' : 'send' }) === true
+            refused = source.refuseGeneration?.({ origin: workHandle.origin, action: 'send' }) === true
         }
         finally {
             if(refused){
@@ -375,8 +387,7 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
             if(status === 'gone'){
                 return
             }
-            // Continue extends the last message, so an appended message would become the continued one.
-            if(!continueResponse && char.type !== 'group' && DBState.db.useSayNothing){
+            if(char.type !== 'group' && DBState.db.useSayNothing){
                 const appendSayNothing = (chat: Chat) => {
                     if(chat.message.length === 0 || chat.message[chat.message.length - 1].role !== 'user'){
                         chat.message.push({ role: 'user', data: '*says nothing*' })
@@ -439,7 +450,7 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
         // The hand-off: the lock ends the moment before the generation
         // callback is called.
         locked = false
-        await sendChatMain({ origin: workHandle.origin, originHint: { owner: char, chat: startChat } }, continueResponse, controller)
+        await sendChatMain({ origin: workHandle.origin, originHint: { owner: char, chat: startChat } }, false, controller)
     }
     finally {
         // A finally acts only on its own action: once the busy button has
@@ -468,6 +479,54 @@ export async function sendMain(source: ComposerActionsSource, continueResponse: 
             locked = false
             setComposerWindow(false)
         }
+    }
+}
+
+/**
+ * Continue: extends the chat's last reply. The composer's draft is never read,
+ * taken or cleared, so it is the same after the Continue whatever its outcome.
+ * With no reply to extend (the last message is not a character's) it ends
+ * before the source is asked and before the window opens, and the source may
+ * drop a refusal it recorded for this action. The busy button reaches the
+ * generation through `currentGenerationController`; nothing here is cancelable
+ * before it.
+ */
+async function continueLastReply(source: ComposerActionsSource, char: character | groupChat, startChat: Chat): Promise<void> {
+    const controller = new AbortController()
+    const workHandle = beginWork(char, startChat, undefined, () => controller.abort())
+    if(!workHandle){
+        return
+    }
+    const last = startChat.message[startChat.message.length - 1]
+    if(!last || last.role !== 'char'){
+        workHandle.end()
+        try {
+            source.generationSkipped?.({ origin: workHandle.origin, action: 'continue' })
+        }
+        catch(error){
+            console.error(error)
+        }
+        return
+    }
+    let refused = true
+    try {
+        refused = source.refuseGeneration?.({ origin: workHandle.origin, action: 'continue' }) === true
+    }
+    finally {
+        if(refused){
+            workHandle.end()
+        }
+    }
+    if(refused){
+        return
+    }
+    setComposerWindow(true, workHandle.origin)
+    try {
+        await sendChatMain({ origin: workHandle.origin, originHint: { owner: char, chat: startChat } }, true, controller)
+    }
+    finally {
+        workHandle.end()
+        setComposerWindow(false)
     }
 }
 
@@ -764,7 +823,7 @@ export async function sendChatMain(target: GenerationTarget, continued: boolean 
 }
 
 /**
- * Cancels a Send/Continue that is still between its take and its push: its
+ * Cancels a Send that is still between its take and its push: its
  * controller aborts, its registration ends, the taken values go back to the
  * origin's own record, and the window and the lock close at once.
  */
@@ -784,7 +843,7 @@ function cancelInflight(record: InflightRecord): void {
 }
 
 /**
- * What a delete of the take's chat does to the Send/Continue owning
+ * What a delete of the take's chat does to the Send owning
  * `controller`, that one alone: before its push it is cancelled as the busy
  * button cancels it; after the push its controller is aborted, so a hand-off
  * that has not yet called `sendChat` finds the signal aborted and refuses.
@@ -804,7 +863,7 @@ export function abortChat(): void {
     // send in progress) must not shield either.
     abortUnitInProgress()
     autoModeRunning = false
-    // While a Send/Continue is still between its take and its push, the
+    // While a Send is still between its take and its push, the
     // busy button cancels it at once here, rather than waiting for its
     // stalled step to resolve and unwind on its own: the window and the
     // lock close immediately, and the taken values go back to the origin's

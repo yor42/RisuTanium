@@ -1830,7 +1830,7 @@ describe('composerActions: the origin handed to generation', () => {
         ['Send', false],
         ['Continue', true],
     ] as const)('%s hands generation the chat it started from and the objects it read it through', async (_label, isContinue) => {
-        const char = makeCharacter('c-handoff')
+        const char = userAndReply('c-handoff')
         installDb([char])
         seedDraft(char, char.chats[0], { messageInput: 'hello' })
 
@@ -1848,7 +1848,7 @@ describe('composerActions: the origin handed to generation', () => {
         ['Send', false],
         ['Continue', true],
     ] as const)('guard: %s hands generation its abort signal and its continue flag', async (_label, isContinue) => {
-        const char = makeCharacter('c-handoff-guard')
+        const char = userAndReply('c-handoff-guard')
         installDb([char])
         seedDraft(char, char.chats[0], { messageInput: 'hello' })
 
@@ -2290,6 +2290,134 @@ describe('R4 CHORE-563: New reply goes through the same gate', () => {
         expect(closeMenuCalls()).toBe(1)
         expect(sendChatMock).toHaveBeenCalledTimes(1)
         expect(char.chats[0].message.map((message) => message.data)).toEqual(['hi'])
+    })
+})
+
+describe('CHORE-695: Continue extends the last reply and never takes the composer draft', () => {
+    const typedDraft = { messageInput: 'typed text', messageInputTranslate: 'typed translation', fileInput: [] as string[] }
+
+    test('R1 Continue with typed text keeps the draft, appends nothing and continues the reply', async () => {
+        const char = userAndReply('c-continue-draft')
+        installDb([char])
+        seedDraft(char, char.chats[0], typedDraft)
+
+        const { source } = makeSource()
+        await sendContinue(source)
+
+        expect(char.chats[0].message.map((message) => message.data)).toEqual(['hi', 'reply'])
+        expect(sendChatMock).toHaveBeenCalledTimes(1)
+        expect(handOffOf()).toMatchObject({ continue: true })
+        expect(draftFor(char, char.chats[0])).toMatchObject(typedDraft)
+    })
+
+    test('R2 Continue with staged files only keeps them staged and appends nothing', async () => {
+        const char = userAndReply('c-continue-files')
+        installDb([char])
+        seedDraft(char, char.chats[0], { fileInput: ['a.png'] })
+
+        const { source } = makeSource()
+        await sendContinue(source)
+
+        expect(char.chats[0].message).toHaveLength(2)
+        expect(sendChatMock).toHaveBeenCalledTimes(1)
+        expect(draftFor(char, char.chats[0]).fileInput).toEqual(['a.png'])
+    })
+
+    test('R3 a draft starting with a slash is not run as a command by Continue and stays in the composer', async () => {
+        const char = userAndReply('c-continue-slash')
+        installDb([char])
+        seedDraft(char, char.chats[0], { messageInput: '/help' })
+
+        const { source, requests } = makeRefusingSource(false)
+        await sendContinue(source)
+
+        expect(processMultiCommandMock).not.toHaveBeenCalled()
+        expect(requests.map((request) => request.action)).toEqual(['continue'])
+        expect(sendChatMock).toHaveBeenCalledTimes(1)
+        expect(handOffOf()).toMatchObject({ continue: true })
+        expect(draftFor(char, char.chats[0]).messageInput).toBe('/help')
+    })
+
+    test('R4 Continue when the last message is not a reply generates nothing and tells the source', async () => {
+        const char = makeCharacter('c-continue-user-last', {
+            chats: [makeChat('c-continue-user-last-chat-0', {
+                message: [
+                    { role: 'char', data: 'first', time: 1 },
+                    { role: 'user', data: 'question', time: 2 },
+                ],
+            })],
+        })
+        installDb([char])
+        seedDraft(char, char.chats[0], typedDraft)
+        const skipped: GenerationRequest[] = []
+        const { source, requests } = makeRefusingSource(false)
+        source.generationSkipped = (request) => { skipped.push(request) }
+
+        await sendContinue(source)
+
+        expect(sendChatMock).not.toHaveBeenCalled()
+        expect(requests).toEqual([])
+        expect(skipped).toEqual([{ origin: { chaId: 'c-continue-user-last', chatId: 'c-continue-user-last-chat-0' }, action: 'continue' }])
+        expect(char.chats[0].message.map((message) => message.data)).toEqual(['first', 'question'])
+        expect(draftFor(char, char.chats[0])).toMatchObject(typedDraft)
+        expect(isComposerBusy()).toBe(false)
+        expect(isWriting({ chaId: char.chaId, chatId: char.chats[0].id })).toBe(false)
+    })
+
+    test('guard: a source whose skip hook throws still ends the Continue cleanly', async () => {
+        const char = makeCharacter('c-continue-skip-throws', {
+            chats: [makeChat('c-continue-skip-throws-chat-0', { message: [{ role: 'user', data: 'q', time: 1 }] })],
+        })
+        installDb([char])
+        const { source } = makeRefusingSource(false)
+        source.generationSkipped = () => { throw new Error('hook failed') }
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+        await sendContinue(source)
+
+        consoleError.mockRestore()
+        expect(isComposerBusy()).toBe(false)
+        expect(isWriting({ chaId: char.chaId, chatId: char.chats[0].id })).toBe(false)
+    })
+
+    test('G1 guard: a refused Continue keeps the whole draft and leaves nothing busy or registered', async () => {
+        const char = userAndReply('c-continue-refused-draft')
+        installDb([char])
+        seedDraft(char, char.chats[0], typedDraft)
+
+        const { source, requests } = makeRefusingSource(true)
+        await sendContinue(source)
+
+        expect(requests.map((request) => request.action)).toEqual(['continue'])
+        expect(sendChatMock).not.toHaveBeenCalled()
+        expect(draftFor(char, char.chats[0])).toMatchObject(typedDraft)
+        expect(isComposerBusy()).toBe(false)
+        expect(isComposerLocked()).toBe(false)
+        expect(isWriting({ chaId: char.chaId, chatId: char.chats[0].id })).toBe(false)
+        expect(hasLocalDrafts()).toBe(false)
+    })
+
+    test('G3 the busy button during a Continue aborts its generation and leaves the draft', async () => {
+        const char = userAndReply('c-continue-abort')
+        installDb([char])
+        seedDraft(char, char.chats[0], typedDraft)
+        const release = gateGeneration()
+
+        const { source } = makeSource()
+        const running = sendContinue(source)
+        await vi.waitFor(() => expect(sendChatMock).toHaveBeenCalledTimes(1))
+        const signal = handOffOf().signal as AbortSignal
+        expect(signal.aborted).toBe(false)
+        expect(isComposerBusy()).toBe(true)
+
+        abortChat()
+
+        expect(signal.aborted).toBe(true)
+        expect(draftFor(char, char.chats[0])).toMatchObject(typedDraft)
+        release()
+        await running
+        expect(isComposerBusy()).toBe(false)
+        expect(draftFor(char, char.chats[0])).toMatchObject(typedDraft)
     })
 })
 
