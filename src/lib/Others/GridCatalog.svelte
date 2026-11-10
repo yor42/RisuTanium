@@ -69,8 +69,19 @@
     }
 
     // The rows of the Simple and List views and the Trash list draw this through their name row; a trashed character shows none.
-    setContext(replyStateContext, (chaId: string): CharacterReplyState =>
-        replyStateOf(DBState.db.characters.find((candidate) => candidate.chaId === chaId && !candidate.trashTime)));
+    // The lookup resolves to the first live holder of the id, the slot a scan would find, through one map built per
+    // change of the slot order or of a slot's id or trash state, so a row's lookup costs one read however long the list is.
+    const liveHolderById = $derived.by(() => {
+        const holders = new Map<string, character | groupChat>();
+        for (const candidate of DBState.db.characters) {
+            if (!candidate || candidate.trashTime || holders.has(candidate.chaId)) {
+                continue;
+            }
+            holders.set(candidate.chaId, candidate);
+        }
+        return holders;
+    });
+    setContext(replyStateContext, (chaId: string): CharacterReplyState => replyStateOf(liveHolderById.get(chaId)));
     interface Props {
         endGrid?: any;
         // Passed only by the Home library. Without it no Open in Studio control exists in any tab, as in the
