@@ -577,7 +577,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     }
 
     // Every message is expanded at its own chat index, hidden ones included, and
-    // the result is written back.
+    // the result is written back to the message itself. The array object is kept:
+    // a replaced array would rebuild the dirty tracking of every message of the
+    // chat.
     function runCurrentChatFunction():Chat|null{
         const ctx = subject.resolve()
         if(!ctx){
@@ -586,9 +588,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         const split = splitSentMessages(ctx.chat.message)
         const view = promptViewOf(split, firstMessageDecision ?? decideFirstMessageSent(split.resetAt))
         promptView = view
-        ctx.chat.message = ctx.chat.message.map((v, i) => {
+        ctx.chat.message.forEach((v, i) => {
             v.data = risuChatParser(v.data, {chara: currentChar, runVar: true, subject, promptView: promptViewAt(view, i)})
-            return v
         })
         return ctx.chat
     }
@@ -726,9 +727,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     }
     const nowChatroom = entryCtx.owner
     nowChatroom.lastInteraction = Date.now()
-    entryCtx.chat.message = entryCtx.chat.message.map((v) => {
+    entryCtx.chat.message.forEach((v) => {
         v.chatId = v.chatId ?? v4()
-        return v
     })
     
     let promptInfo: MessagePresetInfo = {}

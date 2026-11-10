@@ -28,7 +28,7 @@
  * precedent for driving this exact module for real).
  */
 import { flushSync } from 'svelte'
-import { describe, test, expect, vi } from 'vitest'
+import { describe, test, expect, vi, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import type { Database } from '../../storage/database.svelte'
 import type { toSaveType } from '../../storage/risuSave'
@@ -217,8 +217,9 @@ vi.mock(import('../../plugins/plugins.svelte'), () => ({
 //#endregion
 
 import { sendChat, doingChat } from '../index.svelte'
+import { risuChatParser } from '../scripts'
 import { DBState, selectedCharID } from '../../stores.svelte'
-import { registerDbChangeEffects } from '../../storage/dbChangeEffects.svelte'
+import { MESSAGE_CHUNK_SIZE, registerDbChangeEffects } from '../../storage/dbChangeEffects.svelte'
 import { RisuSaveEncoder, decodeRisuSave } from '../../storage/risuSave'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from '../../storage/characterSaveMarks'
 
@@ -391,3 +392,175 @@ describe('sendChat — generation after a selection change', () => {
         resetCharacterSaveMarksForTest()
     })
 })
+
+//#region a send keeps the message array and marks what it changes
+
+type TrackEvent = { run: string, index: number | undefined } | { mark: boolean }
+
+interface SendRun {
+    trackedCharacters: string[]
+    events: TrackEvent[]
+    /** Position in `events` at which the send began. */
+    sendStart: number
+    arrayBefore: Database['characters'][number]['chats'][number]['message']
+    decodedMessages: Array<{ data: string, chatId?: string }>
+}
+
+/**
+ * Sends once on the selected character 0 through the real `registerDbChangeEffects` and the real encoder, and
+ * returns what the tracking saw. The tracker is emptied after the encoder's init, so a mark of character 0 can
+ * only come from the send.
+ */
+async function sendOnce(options: { stream: boolean, chatIds: boolean, messages?: number }): Promise<SendRun> {
+    installDb()
+    selectedCharID.set(0)
+    doingChat.set(false)
+    const character = DBState.db.characters[0]
+    if (options.messages !== undefined) {
+        // A long chat that ends on a user message, every message carrying its id.
+        const count = options.messages
+        character.chats[0].message = Array.from({ length: count }, (_, i) => ({
+            role: (count - 1 - i) % 2 === 0 ? 'user' : 'char',
+            data: `m${i}`,
+            time: i + 1,
+            chatId: `preset-${i}`,
+        })) as unknown as SendRun['arrayBefore']
+    }
+    // A character's first `lastInteraction` rebuilds the subtree once, and a message's first `chatId` re-runs its
+    // leaf (which would mark true on its own and hide the parse change); presetting both keeps this run to the
+    // send's own writes.
+    character.lastInteraction = 1
+    if (options.chatIds) {
+        character.chats[0].message[0].chatId = 'preset-id'
+    }
+    const arrayBefore = character.chats[0].message
+
+    const tracker = makeTracker()
+    const events: TrackEvent[] = []
+    const cleanup = $effect.root(() => {
+        registerDbChangeEffects({
+            tracker,
+            markChanged: (changed: boolean) => { events.push({ mark: changed }) },
+            onPartitionRun: (kind, index) => { events.push({ run: kind, index }) },
+        })
+    })
+    flushSync()
+    installCharacterSaveMarks({ tracker, schedule: () => {} })
+    const encoder = new RisuSaveEncoder()
+    await encoder.init(snapshotDb(DBState.db), { compression: false })
+    tracker.character = []
+
+    if (options.stream) {
+        const stream = new ReadableStream<{ data: string }>({
+            start(controller) {
+                controller.enqueue({ data: 'Reply' })
+                controller.close()
+            },
+        })
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: stream })
+    } else {
+        requestChatDataMock.mockResolvedValueOnce({ type: 'success', result: 'Reply' })
+    }
+    const sendStart = events.length
+    expect(await sendChat()).toBe(true)
+    flushSync()
+
+    const toSave = structuredClone(tracker) as toSaveType
+    // The encoder consumes the tracker it is given, so the tracked ids are read first.
+    const trackedCharacters = [...toSave.character]
+    await encoder.set(snapshotDb(DBState.db), toSave)
+    const decoded = await decodeRisuSave(new Uint8Array(encoder.encode()!))
+    const decodedChar0 = decoded.characters?.find((c: CharacterFixture) => c.chaId === 'char-0')
+    cleanup()
+    resetCharacterSaveMarksForTest()
+    return {
+        trackedCharacters,
+        events,
+        sendStart,
+        arrayBefore,
+        decodedMessages: (decodedChar0?.chats[0].message ?? []) as SendRun['decodedMessages'],
+    }
+}
+
+/** The mark that follows each run of the `message` leaf at `index`, in order, from the send's start. */
+function marksAfterLeafRuns(run: SendRun, index: number): boolean[] {
+    const marks: boolean[] = []
+    for (let i = run.sendStart; i < run.events.length; i++) {
+        const event = run.events[i]
+        if (!('run' in event) || event.run !== 'message' || event.index !== index) continue
+        const next = run.events.slice(i + 1).find((e): e is { mark: boolean } => 'mark' in e)
+        if (next) marks.push(next.mark)
+    }
+    return marks
+}
+
+describe('sendChat — the message array keeps its identity and the changes it makes are marked', () => {
+    afterEach(() => {
+        vi.mocked(risuChatParser).mockImplementation((text: string) => text ?? '')
+    })
+
+    test('a non-streamed send keeps the message array object and the reply lands in it', async () => {
+        const run = await sendOnce({ stream: false, chatIds: true })
+        const after = DBState.db.characters[0].chats[0].message
+
+        expect(after).toBe(run.arrayBefore)
+        expect(after[1].data).toBe('Reply')
+    })
+
+    test('a streamed send keeps the message array object and the reply lands in it', async () => {
+        const run = await sendOnce({ stream: true, chatIds: true })
+        const after = DBState.db.characters[0].chats[0].message
+
+        expect(after).toBe(run.arrayBefore)
+        expect(after[1].data).toBe('Reply')
+    })
+
+    test('a message whose text the parser changes is marked by its own leaf, tracked and saved', async () => {
+        vi.mocked(risuChatParser).mockImplementation((text: string) => (text === 'Hi' ? 'Hi parsed' : text ?? ''))
+
+        const run = await sendOnce({ stream: false, chatIds: true })
+
+        expect(marksAfterLeafRuns(run, 0)).toContain(true)
+        expect(run.trackedCharacters).toContain('char-0')
+        expect(run.decodedMessages[0].data).toBe('Hi parsed')
+    })
+
+    test('a message that had no id is given one, tracked and saved', async () => {
+        const run = await sendOnce({ stream: false, chatIds: false })
+        const stamped = DBState.db.characters[0].chats[0].message[0].chatId
+
+        expect(typeof stamped).toBe('string')
+        expect(stamped).not.toBe('')
+        expect(run.trackedCharacters).toContain('char-0')
+        expect(run.decodedMessages[0].chatId).toBe(stamped)
+    })
+})
+
+/** How many times each tracking piece ran from the send's start, and the runs of one piece at one index. */
+function runsSinceSend(run: SendRun): { count: (kind: string) => number, atIndex: (kind: string, index: number) => number } {
+    const runs = run.events.slice(run.sendStart).filter((e): e is { run: string, index: number | undefined } => 'run' in e)
+    return {
+        count: (kind) => runs.filter((e) => e.run === kind).length,
+        atIndex: (kind, index) => runs.filter((e) => e.run === kind && e.index === index).length,
+    }
+}
+
+describe('sendChat — a send does not rebuild the selected character\'s message tracking', () => {
+    const LONG_CHAT = 40
+
+    test.each([
+        ['non-streamed', false],
+        ['streamed', true],
+    ])('a %s send on a long chat re-runs no chat child and no chunk spawn, and only one chunk of message leaves', async (_name, stream) => {
+        const run = await sendOnce({ stream, chatIds: false, messages: LONG_CHAT })
+        const since = runsSinceSend(run)
+
+        expect(DBState.db.characters[0].chats[0].message.at(-1)?.data).toBe('Reply')
+        expect(since.atIndex('chat', 0)).toBe(0)
+        expect(since.count('messageChunks')).toBe(0)
+        expect(since.count('message')).toBeLessThanOrEqual(MESSAGE_CHUNK_SIZE)
+        expect(run.trackedCharacters).toContain('char-0')
+    })
+})
+
+//#endregion
