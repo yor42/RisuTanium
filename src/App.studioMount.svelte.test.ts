@@ -111,6 +111,10 @@ import { resetTopLevelChangesForTests } from './ts/storage/topLevelChanges'
 
 let mountedApp: Record<string, unknown> | null = null
 let target: HTMLElement | null = null
+// Whether the StudioScreen chunk of the next mounted app fails to load. It is applied by `showApp`, which
+// registers the chunk mock exactly once per test: vitest resolves the mocks queued for one module in parallel,
+// so two registrations queued in succession can take effect in either order.
+let studioChunkFails = false
 
 beforeEach(() => {
     vi.stubEnv('VITE_RISU_LEGAL_CONFIGURED', 'TRUE')
@@ -118,8 +122,7 @@ beforeEach(() => {
     vi.setSystemTime(new Date(2026, 5, 15))
     resetStubCounts()
     sidebarProps.openGrid = null
-    vi.doMock('./lib/Studio/StudioScreen.svelte', () => countingStub('studio')())
-    vi.doUnmock('./ts/studio/studioScreen.svelte')
+    studioChunkFails = false
     alertErrorSpy.mockClear()
 })
 
@@ -141,6 +144,9 @@ afterEach(async () => {
 })
 
 async function showApp() {
+    vi.doMock('./lib/Studio/StudioScreen.svelte', studioChunkFails
+        ? () => { throw new Error('chunk failed to load') }
+        : () => countingStub('studio')())
     const { default: App } = await import('./App.svelte')
     target = document.createElement('div')
     document.body.appendChild(target)
@@ -176,9 +182,8 @@ async function setStudioOpen(open: boolean) {
 
 describe('App mounts Studio over the kept-mounted chat screen', () => {
     test('a Studio screen that fails to load closes Studio, shows the chat again and reports the error', async () => {
-        vi.doMock('./lib/Studio/StudioScreen.svelte', () => { throw new Error('chunk failed to load') })
-        // The failure handler must use only App's static flag; a lazy import of the Studio state module fails here.
-        vi.doMock('./ts/studio/studioScreen.svelte', () => { throw new Error('the failure handler must not import the Studio state module') })
+        // A chunk that cannot load closes the visit through App's flag and reports the error once.
+        studioChunkFails = true
         const root = await showApp()
         const wrapper = root.querySelector<HTMLElement>('[data-chat-surface]')
 
