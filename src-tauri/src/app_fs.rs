@@ -58,6 +58,82 @@ pub fn remove_key_guarded(base: &Path, key: &str) -> Result<(), String> {
     remove_key(base, key)
 }
 
+/// What one boot sweep did: how many leftover temp files it removed, and one
+/// text per directory it could not list, key it refused or file it could not remove.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct SweepReport {
+    pub removed: u32,
+    pub failures: Vec<String>,
+}
+
+/// Removes the leftover `risu-write-<16 hex>.tmp` files of interrupted writes:
+/// from `base` itself without descending, and from every key in `directories`
+/// with everything below it. A link is never entered; a link named like a temp is
+/// removed as a link. A directory that does not exist is skipped quietly; a
+/// refused key, an unlistable directory and a failed removal are reported and
+/// the rest continue. Call it only while no write of the page can be in flight.
+pub fn sweep_write_temps(base: &Path, directories: &[String]) -> SweepReport {
+    let mut report = SweepReport::default();
+    sweep_directory(base, "", false, &mut report);
+    for directory in directories {
+        match resolve_dir(base, directory) {
+            Ok(_) if !directory.is_empty() => sweep_directory(base, directory, true, &mut report),
+            Ok(_) => report.failures.push("refused key: a swept directory key is a non-empty string".to_string()),
+            Err(reason) => report.failures.push(reason),
+        }
+    }
+    report
+}
+
+/// Sweeps the directory `key` (empty: `base`). The temps of one directory are
+/// removed only after its listing ends, so nothing is removed while iterating.
+fn sweep_directory(base: &Path, key: &str, recursive: bool, report: &mut SweepReport) {
+    let path = match resolve_dir(base, key) {
+        Ok(path) => path,
+        Err(reason) => {
+            report.failures.push(reason);
+            return;
+        }
+    };
+    let listing = match fs::read_dir(&path) {
+        Ok(listing) => listing,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return,
+        Err(e) => {
+            report.failures.push(format!("failed to list {}: {}", path.display(), e));
+            return;
+        }
+    };
+    let mut temps: Vec<String> = Vec::new();
+    let mut subdirectories: Vec<String> = Vec::new();
+    for entry in listing {
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(e) => {
+                report.failures.push(format!("failed to list {}: {}", path.display(), e));
+                continue;
+            }
+        };
+        let Ok(name) = entry.file_name().into_string() else { continue };
+        let Ok(kind) = entry.file_type() else { continue };
+        let child = if key.is_empty() { name } else { format!("{}/{}", key, name) };
+        let leaf = child.rsplit('/').next().unwrap_or("");
+        if recursive && kind.is_dir() {
+            subdirectories.push(child);
+        } else if crate::durable_write::is_temp_name(leaf) {
+            temps.push(child);
+        }
+    }
+    for temp in temps {
+        match remove_key_guarded(base, &temp) {
+            Ok(()) => report.removed += 1,
+            Err(reason) => report.failures.push(reason),
+        }
+    }
+    for subdirectory in subdirectories {
+        sweep_directory(base, &subdirectory, true, report);
+    }
+}
+
 #[cfg(windows)]
 fn remove_file_or_link(path: &Path, kind: &fs::FileType) -> io::Result<()> {
     use std::os::windows::fs::FileTypeExt;
@@ -230,5 +306,194 @@ mod tests {
         remove_key(&s.base, "link").unwrap();
         assert!(fs::symlink_metadata(s.base.join("link")).is_err());
         assert_eq!(fs::read(target.join("f")).unwrap(), b"x");
+    }
+
+    const TEMP: &str = "risu-write-0123456789abcdef.tmp";
+    const LISTED: [&str; 6] = ["database", "remotes", "coldstorage", "blocks", "assets", "modeldata"];
+
+    fn listed() -> Vec<String> {
+        LISTED.iter().map(|name| name.to_string()).collect()
+    }
+
+    fn plant(s: &Scratch, key: &str) {
+        let path = s.base.join(key);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, b"x").unwrap();
+    }
+
+    #[test]
+    fn sweep_removes_temps_at_the_root_and_at_any_depth_of_every_listed_directory() {
+        let s = Scratch::new("sweep-all");
+        plant(&s, TEMP);
+        let mut expected = 1;
+        for directory in LISTED {
+            plant(&s, &format!("{}/{}", directory, TEMP));
+            plant(&s, &format!("{}/nested/deeper/{}", directory, TEMP));
+            plant(&s, &format!("{}/keep.bin", directory));
+            expected += 2;
+        }
+
+        let report = sweep_write_temps(&s.base, &listed());
+
+        assert_eq!(report.removed, expected);
+        assert!(report.failures.is_empty(), "{:?}", report.failures);
+        assert!(!s.base.join(TEMP).exists());
+        for directory in LISTED {
+            assert!(!s.base.join(directory).join(TEMP).exists());
+            assert!(!s.base.join(directory).join("nested").join("deeper").join(TEMP).exists());
+            assert!(s.base.join(directory).join("keep.bin").exists());
+        }
+    }
+
+    #[test]
+    fn sweep_keeps_names_that_only_look_like_a_temp() {
+        let s = Scratch::new("sweep-lookalike");
+        let keep = [
+            "assets/risu-write-0123456789ABCDEF.tmp",
+            "assets/risu-write-0123.tmp",
+            "assets/xrisu-write-0123456789abcdef.tmp",
+            "assets/risu-write-0123456789abcdef.tmp.bak",
+            "assets/abc.png",
+        ];
+        for key in keep {
+            plant(&s, key);
+        }
+        // In another directory: a case-insensitive file system folds the upper-case lookalike onto it.
+        plant(&s, &format!("modeldata/{}", TEMP));
+
+        let report = sweep_write_temps(&s.base, &listed());
+
+        assert_eq!(report.removed, 1);
+        for key in keep {
+            assert!(s.base.join(key).exists(), "{}", key);
+        }
+    }
+
+    #[test]
+    fn sweep_does_not_descend_from_the_root_and_leaves_an_unlisted_directory_alone() {
+        let s = Scratch::new("sweep-root-flat");
+        plant(&s, &format!("other/{}", TEMP));
+        plant(&s, &format!("store2/{}", TEMP));
+        plant(&s, &format!("assets/{}", TEMP));
+
+        let report = sweep_write_temps(&s.base, &listed());
+
+        assert_eq!(report.removed, 1);
+        assert!(s.base.join("other").join(TEMP).exists());
+        assert!(s.base.join("store2").join(TEMP).exists());
+    }
+
+    #[test]
+    fn sweep_skips_a_missing_listed_directory_without_a_failure() {
+        let s = Scratch::new("sweep-missing");
+        plant(&s, &format!("assets/{}", TEMP));
+
+        let report = sweep_write_temps(&s.base, &listed());
+
+        assert_eq!(report.removed, 1);
+        assert!(report.failures.is_empty(), "{:?}", report.failures);
+    }
+
+    #[test]
+    fn sweep_descends_a_directory_named_like_a_temp_and_never_removes_it() {
+        let s = Scratch::new("sweep-temp-named-dir");
+        plant(&s, &format!("assets/{}/{}", TEMP, TEMP));
+        fs::create_dir_all(s.base.join("assets").join("risu-write-fedcba9876543210.tmp")).unwrap();
+
+        let report = sweep_write_temps(&s.base, &listed());
+
+        assert_eq!(report.removed, 1);
+        assert!(report.failures.is_empty(), "{:?}", report.failures);
+        assert!(s.base.join("assets").join(TEMP).is_dir());
+        assert!(!s.base.join("assets").join(TEMP).join(TEMP).exists());
+        assert!(s.base.join("assets").join("risu-write-fedcba9876543210.tmp").is_dir());
+    }
+
+    /// A link to `target`, or the error that refused it; Windows refuses link creation without the symbolic-link privilege.
+    fn make_link(target: &Path, link: &Path) -> io::Result<()> {
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(target, link)
+        }
+        #[cfg(windows)]
+        {
+            if target.is_dir() {
+                std::os::windows::fs::symlink_dir(target, link)
+            } else {
+                std::os::windows::fs::symlink_file(target, link)
+            }
+        }
+    }
+
+    #[test]
+    fn sweep_never_enters_a_link_and_removes_a_link_named_like_a_temp_without_touching_its_target() {
+        let s = Scratch::new("sweep-link");
+        let target = s.root.join("elsewhere");
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join(TEMP), b"x").unwrap();
+        fs::create_dir_all(s.base.join("assets")).unwrap();
+        let linked = make_link(&target, &s.base.join("assets").join("linked"));
+        let named = make_link(&s.sentinel, &s.base.join("assets").join(TEMP));
+        if let (Err(e), _) | (_, Err(e)) = (&linked, &named) {
+            eprintln!("SKIPPED: this host refuses link creation ({}), so the link rules are not exercised here", e);
+            return;
+        }
+
+        let report = sweep_write_temps(&s.base, &listed());
+
+        assert_eq!(report.removed, 1);
+        assert!(target.join(TEMP).exists());
+        assert!(fs::symlink_metadata(s.base.join("assets").join(TEMP)).is_err());
+        assert!(fs::symlink_metadata(s.base.join("assets").join("linked")).is_ok());
+        assert!(s.sentinel_intact());
+    }
+
+    #[test]
+    fn sweep_reports_a_temp_it_cannot_remove_and_still_removes_the_others() {
+        let s = Scratch::new("sweep-failure");
+        plant(&s, &format!("{}/inner", TEMP));
+        plant(&s, "other-file");
+        plant(&s, &format!("assets/{}", TEMP));
+
+        let report = sweep_write_temps(&s.base, &listed());
+
+        assert_eq!(report.removed, 1);
+        assert_eq!(report.failures.len(), 1, "{:?}", report.failures);
+        assert!(s.base.join(TEMP).join("inner").exists());
+        assert!(!s.base.join("assets").join(TEMP).exists());
+    }
+
+    #[test]
+    fn sweep_refuses_a_bad_directory_key_and_touches_nothing_for_it() {
+        let s = Scratch::new("sweep-refused-key");
+        plant(&s, &format!("assets/{}", TEMP));
+        let escaped = s.root.join("escaped");
+        fs::create_dir_all(&escaped).unwrap();
+        fs::write(escaped.join(TEMP), b"x").unwrap();
+        let bad: Vec<String> = ["../escaped", "/abs", "a//b"].iter().map(|key| key.to_string()).collect();
+
+        let report = sweep_write_temps(&s.base, &bad);
+
+        assert_eq!(report.removed, 0);
+        assert_eq!(report.failures.len(), bad.len(), "{:?}", report.failures);
+        assert!(report.failures.iter().all(|reason| reason.starts_with("refused key:")));
+        assert!(escaped.join(TEMP).exists());
+        assert!(s.base.join("assets").join(TEMP).exists());
+        assert!(s.sentinel_intact());
+    }
+
+    #[test]
+    fn sweep_removes_the_temp_an_abandoned_chunked_write_left_and_keeps_the_target() {
+        let s = Scratch::new("sweep-chunked");
+        plant(&s, "assets/nested/old.bin");
+        // The page dies after chunk 0: no last chunk, no abort.
+        crate::chunked_io::write_chunk_key(&s.base, "assets/nested/old.bin", "0123456789abcdef", 0, "AAAA", false, true, None).unwrap();
+        assert!(s.base.join("assets").join("nested").join(TEMP).exists());
+
+        let report = sweep_write_temps(&s.base, &listed());
+
+        assert_eq!(report.removed, 1);
+        assert!(!s.base.join("assets").join("nested").join(TEMP).exists());
+        assert_eq!(fs::read(s.base.join("assets").join("nested").join("old.bin")).unwrap(), b"x");
     }
 }

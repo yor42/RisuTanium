@@ -237,8 +237,13 @@ function expectBootOrderAndNoWaiting(): void {
     const used = wire.plugin()
     expect(used.filter((cmd) => WAITING_PLUGIN_COMMANDS.includes(cmd))).toEqual([])
     const fsCommands = pluginFsCommands()
-    expect(fsCommands.length, 'the boot sweeps the write temps with read_dir').toBeGreaterThan(0)
-    expect(fsCommands[0]).toBe('plugin:fs|read_dir')
+    expect(wire.callsOf('app_fs_sweep_write_temps').length, 'the boot sends the native write-temp sweep exactly once').toBe(1)
+    const commands = wire.calls.map((call) => call.cmd)
+    const sweepAt = commands.indexOf('app_fs_sweep_write_temps')
+    const firstStoreRead = commands.findIndex((cmd) => cmd === 'read_range' || cmd === 'plugin:fs|read_dir')
+    expect(firstStoreRead, 'the boot reads the store').toBeGreaterThan(-1)
+    expect(sweepAt, 'the native sweep runs before the first store read').toBeLessThan(firstStoreRead)
+    expect(fsCommands.length, 'the boot lists the store through the file plugin').toBeGreaterThan(0)
     expect(new Set(fsCommands)).toEqual(new Set(['plugin:fs|read_dir']))
 }
 

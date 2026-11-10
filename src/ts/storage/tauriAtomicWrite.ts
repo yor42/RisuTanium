@@ -1,5 +1,6 @@
+import { invoke } from '@tauri-apps/api/core'
 import { BaseDirectory, readDir, rename, writeFile } from '@tauri-apps/plugin-fs'
-import { appFsExists, appFsRemove } from './appFs'
+import { appFsExists, appFsRemove, usesAppFs } from './appFs'
 import { shouldChunkWrite, writeChunked } from './tauriByteTransport'
 
 /**
@@ -172,16 +173,45 @@ export async function sweepAtomicWriteTemps(directory: string, options: { recurs
  * `remotes/`, `coldstorage/`, `blocks/` (generations nest), `assets/` and
  * `modeldata/` (the cached model data files). A key without a slash lands in the AppData root itself, which is swept
  * without descending: the other directories are listed here, and nothing else
- * under the root holds store keys.
+ * under the root holds store keys. The app pages send this list to the native sweep.
  */
 export const WRITE_TEMP_DIRECTORIES: readonly string[] = ['database', 'remotes', 'coldstorage', 'blocks', 'assets', 'modeldata']
+
+/** The app command that walks and sweeps the AppData root and `WRITE_TEMP_DIRECTORIES` natively (`app_fs::sweep_write_temps`). */
+export const APP_FS_SWEEP_WRITE_TEMPS_COMMAND = 'app_fs_sweep_write_temps'
+
+/** Logs each failure a native sweep reported; a reply of any other shape is logged as malformed. */
+function logSweepReport(reply: unknown): void {
+    const failures = typeof reply === 'object' && reply !== null ? (reply as { failures?: unknown }).failures : undefined
+    if (!Array.isArray(failures)) {
+        console.error('the native write-temp sweep answered an unexpected reply', reply)
+        return
+    }
+    for (const failure of failures) {
+        console.error(failure)
+    }
+}
 
 /**
  * Sweeps the leftover write temps of every location in `WRITE_TEMP_DIRECTORIES`
  * and of the AppData root. A directory that does not exist yet is skipped
  * quietly; the same call rules as `sweepAtomicWriteTemps` apply. Never rejects.
+ *
+ * On Android and desktop one native command walks the directories and removes
+ * the temps, so the entry count never crosses IPC; only the report of failures
+ * comes back. The listing runs natively in that one call and the boot still
+ * awaits it. A page without the operating-system plugin walks through the file
+ * plugin.
  */
 export async function sweepAllWriteTemps(): Promise<void> {
+    if (usesAppFs()) {
+        try {
+            logSweepReport(await invoke<unknown>(APP_FS_SWEEP_WRITE_TEMPS_COMMAND, { directories: [...WRITE_TEMP_DIRECTORIES] }))
+        } catch (error) {
+            console.error(error)
+        }
+        return
+    }
     await sweepAtomicWriteTemps('')
     for (const directory of WRITE_TEMP_DIRECTORIES) {
         try {

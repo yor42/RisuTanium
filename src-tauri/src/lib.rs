@@ -335,6 +335,18 @@ async fn app_fs_remove(app: AppHandle, key: String) -> Result<(), String> {
         .map_err(|e| format!("the remove task failed: {}", e))?
 }
 
+/// The boot sweep of leftover write temps in the app data directory and in the
+/// listed directories; see `app_fs::sweep_write_temps`. The walk and the removals
+/// run natively on a blocking worker thread, so only the small report crosses to
+/// the page.
+#[tauri::command]
+async fn app_fs_sweep_write_temps(app: AppHandle, directories: Vec<String>) -> Result<app_fs::SweepReport, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || app_fs::sweep_write_temps(&base, &directories))
+        .await
+        .map_err(|e| format!("the sweep task failed: {}", e))
+}
+
 /// The absolute app data directory, for building asset URLs. The page supplies no path.
 #[tauri::command]
 async fn app_data_dir_path(app: AppHandle) -> Result<String, String> {
@@ -943,6 +955,7 @@ pub fn run() {
             app_fs_exists,
             app_fs_mkdir_all,
             app_fs_remove,
+            app_fs_sweep_write_temps,
             app_data_dir_path,
             free_space::app_data_free_bytes,
             write_chunk,
