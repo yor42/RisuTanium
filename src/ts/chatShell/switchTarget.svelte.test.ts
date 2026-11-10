@@ -8,6 +8,11 @@
  * - The pending state never outlives a foreign selection change, a newer
  *   switch or a non-failed outcome, and a stale outcome never revives it.
  * - The character index is resolved when the switch is requested.
+ * - A `changeChar` that throws never makes the switch reject or stay loading: while the switch is
+ *   still current it ends `failed`/`unreadable` with its selection watcher kept and no alert; a
+ *   switch ended meanwhile, or whose selection moved before the throw, resolves `superseded`.
+ * - A Retry keeps the frame shown: the phase goes `failed -> loading -> failed | idle`, never
+ *   through `idle`, also when the target is resident by then.
  *
  * `changeChar` is mocked with deferred results so each ordering is driven by
  * the test; the real one is covered by `characters.quietSwitch.svelte.test.ts`.
@@ -75,13 +80,14 @@ function install(characters: Entry[]): Entry[] {
 
 interface Deferred {
     resolve: (outcome: ChangeCharOutcome) => void
+    reject: (error: Error) => void
 }
 
 /** Every `changeChar` call stays pending until the test settles it. */
 function holdChangeChar(): Deferred[] {
     const calls: Deferred[] = []
-    changeCharMock.mockImplementation(() => new Promise<ChangeCharOutcome>((resolve) => {
-        calls.push({ resolve })
+    changeCharMock.mockImplementation(() => new Promise<ChangeCharOutcome>((resolve, reject) => {
+        calls.push({ resolve, reject })
     }))
     return calls
 }
@@ -401,6 +407,222 @@ describe('pending switch state', () => {
         expect(switchTarget.phase).toBe('idle')
         calls[1].resolve('selected')
         await warmSwitch
+    })
+})
+
+describe('a changeChar that throws (S1 to S9)', () => {
+    const boom = new Error('boom')
+    // Resolves to 'rejected' when the switch rejects, so a defect is an assertion failure and not an unhandled rejection.
+    const settled = (run: Promise<ChangeCharOutcome>) => run.then((outcome) => outcome, () => 'rejected' as const)
+
+    beforeEach(() => {
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+        // A failed state left behind would otherwise supersede from the next test's selection reset.
+        clearPending()
+        vi.mocked(console.error).mockRestore()
+    })
+
+    test('S1: a cold switch that throws while current ends failed/unreadable, resolves, and shows no alert', async () => {
+        const [, s] = install([warm('a'), stub('s')])
+        selectedCharID.set(0)
+        const calls = holdChangeChar()
+
+        const run = switchCharacter(s)
+        expect(switchTarget.phase).toBe('loading')
+        calls[0].reject(boom)
+
+        expect(await settled(run)).toEqual({ failed: 'unreadable' })
+        expect(switchTarget.phase).toBe('failed')
+        expect(switchTarget.reason).toBe('unreadable')
+        expect(switchTarget.target).toBe(s)
+        expect(alertError).not.toHaveBeenCalled()
+        expect(alertNormal).not.toHaveBeenCalled()
+    })
+
+    test('S2: a thrown cold switch keeps its watcher: a foreign selection move clears it and supersedes', async () => {
+        const [, s] = install([warm('a'), stub('s'), warm('c')])
+        selectedCharID.set(0)
+        const calls = holdChangeChar()
+
+        const run = switchCharacter(s)
+        calls[0].reject(boom)
+        expect(await settled(run)).toEqual({ failed: 'unreadable' })
+        expect(switchTarget.phase).toBe('failed')
+
+        selectedCharID.set(2)
+
+        expect(switchTarget.phase).toBe('idle')
+        expect(supersedeMock).toHaveBeenCalledTimes(1)
+    })
+
+    test.each(['back', 'abandon', 'move'] as const)('S3: a cold switch that throws after %s resolves superseded and leaves the state idle', async (how) => {
+        const [, s] = install([warm('a'), stub('s'), warm('c')])
+        selectedCharID.set(0)
+        const calls = holdChangeChar()
+
+        const run = switchCharacter(s)
+        if (how === 'back') {
+            backToPrevious()
+        } else if (how === 'abandon') {
+            abandonPendingSwitch()
+        } else {
+            selectedCharID.set(2)
+        }
+        expect(switchTarget.phase).toBe('idle')
+        calls[0].reject(boom)
+
+        expect(await settled(run)).toBe('superseded')
+        expect(switchTarget.phase).toBe('idle')
+        expect(switchTarget.target).toBeNull()
+        expect(switchTarget.reason).toBeNull()
+        expect(alertError).not.toHaveBeenCalled()
+    })
+
+    test('S4: an older cold switch that throws after a newer one started leaves the newer state alone', async () => {
+        const [, s, t] = install([warm('a'), stub('s'), stub('t')])
+        selectedCharID.set(0)
+        const calls = holdChangeChar()
+
+        const older = switchCharacter(s)
+        const newer = switchCharacter(t)
+        calls[0].reject(boom)
+
+        expect(await settled(older)).toBe('superseded')
+        expect(switchTarget.phase).toBe('loading')
+        expect(switchTarget.target).toBe(t)
+
+        selectedCharID.set(2)
+        calls[1].resolve('selected')
+        expect(await newer).toBe('selected')
+        expect(switchTarget.phase).toBe('idle')
+    })
+
+    test('S8a: a Retry of a target that is now resident is loading at once, and a throw ends failed with the watcher kept', async () => {
+        const [, s] = install([warm('a'), stub('s'), warm('c')])
+        selectedCharID.set(0)
+        const calls = holdChangeChar()
+
+        const first = switchCharacter(s)
+        calls[0].resolve({ failed: 'missing' })
+        await first
+        expect(switchTarget.phase).toBe('failed')
+        // The refused restore left the character resident, as `restoreColdCharacter` does.
+        DBState.db.characters[1] = warm('s')
+
+        const retry = retrySwitch()
+        expect(switchTarget.phase).toBe('loading')
+        expect(switchTarget.target).toBe(s)
+        expect(changeCharMock).toHaveBeenLastCalledWith(1, { quiet: true })
+        calls[1].reject(boom)
+
+        expect(await settled(retry!)).toEqual({ failed: 'unreadable' })
+        expect(switchTarget.phase).toBe('failed')
+        expect(switchTarget.reason).toBe('unreadable')
+        expect(alertError).not.toHaveBeenCalled()
+
+        selectedCharID.set(2)
+        expect(switchTarget.phase).toBe('idle')
+        expect(supersedeMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('S8b: a cold throw, then a Retry that succeeds, ends idle with the target selected', async () => {
+        const [, s] = install([warm('a'), stub('s')])
+        selectedCharID.set(0)
+        const calls = holdChangeChar()
+
+        const first = switchCharacter(s)
+        calls[0].reject(boom)
+        expect(await settled(first)).toEqual({ failed: 'unreadable' })
+        expect(switchTarget.phase).toBe('failed')
+        DBState.db.characters[1] = warm('s')
+
+        const retry = retrySwitch()
+        expect(switchTarget.phase).toBe('loading')
+        selectedCharID.set(1)
+        calls[1].resolve('selected')
+
+        expect(await settled(retry!)).toBe('selected')
+        expect(switchTarget.phase).toBe('idle')
+        expect(selIdState.selId).toBe(1)
+    })
+
+    test('S8c: a Retry of a target that became a group is loading at once and calls changeChar with the index only', async () => {
+        const [, s] = install([warm('a'), stub('s'), warm('c')])
+        selectedCharID.set(0)
+        const calls = holdChangeChar()
+
+        const first = switchCharacter(s)
+        calls[0].resolve({ failed: 'missing' })
+        await first
+        DBState.db.characters[1] = group('s')
+
+        const retry = retrySwitch()
+        expect(switchTarget.phase).toBe('loading')
+        expect(changeCharMock).toHaveBeenLastCalledWith(1)
+        calls[1].reject(boom)
+
+        expect(await settled(retry!)).toEqual({ failed: 'unreadable' })
+        expect(switchTarget.phase).toBe('failed')
+        expect(switchTarget.reason).toBe('unreadable')
+    })
+
+    test.each(['warm', 'group'] as const)('S9a: a %s switch from idle that throws ends failed/unreadable, quietly, and a foreign move clears it', async (kind) => {
+        // Three slots, so a foreign move lands on a real entry other than the one selected at the start.
+        const [, w, g] = install([warm('a'), warm('w'), group('g')])
+        selectedCharID.set(0)
+        changeCharMock.mockRejectedValueOnce(boom)
+        const target = kind === 'warm' ? w : g
+
+        expect(await settled(switchCharacter(target))).toEqual({ failed: 'unreadable' })
+        expect(switchTarget.phase).toBe('failed')
+        expect(switchTarget.reason).toBe('unreadable')
+        expect(switchTarget.target).toBe(target)
+        expect(alertError).not.toHaveBeenCalled()
+        expect(alertNormal).not.toHaveBeenCalled()
+
+        selectedCharID.set(kind === 'warm' ? 2 : 1)
+
+        expect(switchTarget.phase).toBe('idle')
+        expect(supersedeMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('S9b: a group switch that throws after the selection moved resolves superseded and installs no watcher', async () => {
+        // Slot 2 is a real entry that is not the character selected at the start; with fewer slots a missing
+        // slot reads as null and could equal a null start entry, hiding the move.
+        const [, g] = install([warm('a'), group('g'), warm('c')])
+        selectedCharID.set(0)
+        const calls = holdChangeChar()
+
+        const run = switchCharacter(g)
+        selectedCharID.set(2)
+        calls[0].reject(boom)
+
+        expect(await settled(run)).toBe('superseded')
+        expect(switchTarget.phase).toBe('idle')
+        selectedCharID.set(1)
+        expect(supersedeMock).not.toHaveBeenCalled()
+    })
+
+    test('S9c: a warm switch that throws after a newer cold switch started leaves the newer state alone', async () => {
+        const [, w, s] = install([warm('a'), warm('w'), stub('s')])
+        selectedCharID.set(0)
+        const calls = holdChangeChar()
+
+        const older = switchCharacter(w)
+        const newer = switchCharacter(s)
+        calls[0].reject(boom)
+
+        expect(await settled(older)).toBe('superseded')
+        expect(switchTarget.phase).toBe('loading')
+        expect(switchTarget.target).toBe(s)
+
+        selectedCharID.set(2)
+        calls[1].resolve('selected')
+        expect(await newer).toBe('selected')
+        expect(switchTarget.phase).toBe('idle')
     })
 })
 

@@ -12,7 +12,8 @@
 </script>
 <script lang="ts">
     import { DBState } from 'src/ts/stores.svelte';
-    import { addCharacter, changeChar } from "src/ts/characters";
+    import { addCharacter } from "src/ts/characters";
+    import { changeCharOrAlert } from "src/ts/characterPick";
     import { LayoutPanelLeftIcon, MessageSquareIcon, PlusIcon } from "@lucide/svelte";
     import { coldStubChatCount } from "src/ts/process/coldCharacter";
     import { language } from "src/lang";
@@ -122,7 +123,7 @@
                     onpick(index)
                     return
                 }
-                changeChar(index)
+                void changeCharOrAlert('list.pick', index)
                 endGrid()
             }}>
                 <CharListAvatar src={c.image} {visible} {busy} class="hover:bg-selected transition-colors duration-150" />

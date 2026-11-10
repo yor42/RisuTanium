@@ -211,7 +211,7 @@
     // A reply being written never refuses a pick. In the new shell the switch is quiet and a failed
     // restore ends in the chat frame. With the shell off, a warm pick opens and closes at once; a pick
     // that must restore keeps the grid open with its tile marked and closes it only when `changeChar`
-    // selected.
+    // selected. A warm pick ends any pending pick first; its throw is reported once, like a cold one.
     function pick(index: number) {
         if (shellEligible()) {
             const entry = DBState.db.characters[index]
@@ -221,7 +221,8 @@
         }
         const slot = DBState.db.characters[index]
         if (!mustRestore(slot)) {
-            changeChar(index)
+            dropPendingPick()
+            void pickWarm(index)
             endGrid()
             return
         }
@@ -276,6 +277,18 @@
             return
         }
         finishPendingPick(mine, outcome)
+    }
+
+    // A warm `changeChar` throws before any await, so no newer pick can start before this catch: every failure
+    // is reported. A sequence or generation check here could only be tripped by this pick's own drop.
+    async function pickWarm(index: number) {
+        try {
+            await changeChar(index)
+        } catch (error) {
+            console.error('Grid pick failed:', error)
+            recordCaughtError('grid.pick', error)
+            alertError(language.errors.coldStorageRestoreUnreadable)
+        }
     }
 
     // `selected` closes the host whatever happened to this component meanwhile: in the Home host the
