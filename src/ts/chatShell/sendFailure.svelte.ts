@@ -39,6 +39,10 @@ export function shellGenerationSource(closeMenu: () => void): ComposerActionsSou
             failures[key] = { ...refusal, action: request.action }
             return true
         },
+        generationSkipped: (request: GenerationRequest) => {
+            const key = keyOf(request.origin.chaId, request.origin.chatId)
+            if(failures[key]?.action === request.action) delete failures[key]
+        },
     }
 }
 

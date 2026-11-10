@@ -196,7 +196,8 @@ vi.mock(import('../inlayScreen'), () => ({
     runInlayScreen: runInlayScreenMock,
 }) as unknown as typeof import('../inlayScreen'))
 
-vi.mock(import('../prereroll'), () => ({
+vi.mock(import('../prereroll'), async (importOriginal) => ({
+    renameContinuedMessage: (await importOriginal()).renameContinuedMessage,
     addRerolls: vi.fn(),
 }) as unknown as typeof import('../prereroll'))
 
@@ -771,5 +772,98 @@ describe('a group chat deleted between two turns', () => {
         } finally {
             saveMarkHook.run = null
         }
+    })
+})
+
+describe('CHORE-696: a group Continue extends the last reply as the member who said it', () => {
+    /** The group world with a reply by `speaker` as its last message. */
+    function installGroupEndingInReply(speaker: string, configure: (group: CharacterFixture) => void = () => {}): void {
+        installGroupWorld()
+        const group = charById('group-1')
+        groupChat().message.push(msg('char', 'old', { saying: speaker, chatId: 'reply-id' }))
+        configure(group)
+    }
+
+    test('R7 an ordered group makes one request, as the last speaker, and extends that reply in place', async () => {
+        installGroupEndingInReply('member-2')
+        mockReply(' more')
+
+        const result = await settled(() => sendChat(-1, { continue: true }))
+
+        expect(result).toBe(true)
+        expect(requestChatDataMock).toHaveBeenCalledTimes(1)
+        expect(requestChatDataMock.mock.calls[0][0].currentChar.chaId).toBe('member-2')
+        expect(datas(groupChat())).toEqual(['Hi', 'old more'])
+        expect(sayings()).toEqual(['member-2'])
+    })
+
+    test('R8 a random-order group does not filter the last speaker out of a Continue', async () => {
+        installGroupEndingInReply('member-2', (group) => { (group as unknown as { orderByOrder: boolean }).orderByOrder = false })
+        mockReply(' more')
+
+        const result = await settled(() => sendChat(-1, { continue: true }))
+
+        expect(result).toBe(true)
+        expect(requestChatDataMock).toHaveBeenCalledTimes(1)
+        expect(requestChatDataMock.mock.calls[0][0].currentChar.chaId).toBe('member-2')
+        expect(datas(groupChat())).toEqual(['Hi', 'old more'])
+    })
+
+    test('R9 the tokens already used by an auto-continue chain reach the member turn', async () => {
+        installGroupEndingInReply('member-2')
+        DBState.db.autoContinueMinTokens = 5
+        mockReply(' more')
+
+        const result = await settled(() => sendChat(-1, { continue: true, usedContinueTokens: 10 }))
+
+        expect(result).toBe(true)
+        expect(requestChatDataMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('R10 a last speaker who is no longer a member generates nothing and resolves true', async () => {
+        installGroupEndingInReply('stranger')
+        mockReply(' more')
+
+        const result = await settled(() => sendChat(-1, { continue: true }))
+
+        expect(result).toBe(true)
+        expect(requestChatDataMock).not.toHaveBeenCalled()
+        expect(datas(groupChat())).toEqual(['Hi', 'old'])
+    })
+
+    test('R11 a muted last speaker is still continued', async () => {
+        installGroupEndingInReply('member-2', (group) => { (group as unknown as GroupLists).characterTalks = [1, 0, 1] })
+        mockReply(' more')
+
+        const result = await settled(() => sendChat(-1, { continue: true }))
+
+        expect(result).toBe(true)
+        expect(requestChatDataMock).toHaveBeenCalledTimes(1)
+        expect(requestChatDataMock.mock.calls[0][0].currentChar.chaId).toBe('member-2')
+        expect(datas(groupChat())).toEqual(['Hi', 'old more'])
+    })
+
+    test('R12 a chat ending in a user message generates nothing and resolves true', async () => {
+        installGroupWorld()
+        mockReply(' more')
+
+        const result = await settled(() => sendChat(-1, { continue: true }))
+
+        expect(result).toBe(true)
+        expect(requestChatDataMock).not.toHaveBeenCalled()
+        expect(datas(groupChat())).toEqual(['Hi'])
+    })
+
+    test('G2 guard: a plain send to a group ending in a reply still walks every member in order', async () => {
+        installGroupEndingInReply('member-2')
+        mockReply('reply 1')
+        mockReply('reply 2')
+        mockReply('reply 3')
+
+        const result = await settled(() => sendChat())
+
+        expect(result).toBe(true)
+        expect(requestChatDataMock).toHaveBeenCalledTimes(3)
+        expect(sayings()).toEqual(['member-2', 'member-1', 'member-2', 'member-3'])
     })
 })

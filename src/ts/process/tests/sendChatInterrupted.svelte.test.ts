@@ -873,6 +873,31 @@ describe('the interrupted flag on a continued reply', () => {
     })
 })
 
+describe('a continue whose last message is not a character reply', () => {
+    test('R5 a non-streaming continue leaves a user message as it is', async () => {
+        installSingleChat()
+        mockReply(' more')
+
+        await settled(() => sendChat(-1, { continue: true }))
+
+        expect(chatById('char-0', 'chat-0').message.map((m) => m.role)).toEqual(['user'])
+        expect(datas(chatById('char-0', 'chat-0'))).toEqual(['Hi'])
+        expect('interrupted' in lastMessage('char-0', 'chat-0')).toBe(false)
+    })
+
+    test('R6 a streaming continue leaves a user message as it is and clears no flag it did not set', async () => {
+        installSingleChat()
+        mockStreamingReply(' more')
+
+        await settled(() => sendChat(-1, { continue: true }))
+
+        expect(chatById('char-0', 'chat-0').message.map((m) => m.role)).toEqual(['user'])
+        expect(datas(chatById('char-0', 'chat-0'))).toEqual(['Hi'])
+        expect('interrupted' in lastMessage('char-0', 'chat-0')).toBe(false)
+        expect(activeStreams()).toEqual([])
+    })
+})
+
 describe('the flag after a load', () => {
     test('guard: the streaming reset keeps the flag and clears isStreaming', () => {
         const chat = makeChat('chat-0', [msg('user', 'Hi'), msg('char', 'Partial', { interrupted: true })], { isStreaming: true })
