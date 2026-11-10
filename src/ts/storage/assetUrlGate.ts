@@ -277,6 +277,14 @@ export function wholeReadBytesOfUrl(url: string): number | undefined {
     return touchEntry(storedSizes, key)
 }
 
+/**
+ * The stored size of `key` that the last successful probe cached, or `undefined`
+ * when it is not known. It makes no probe and keeps the entry recent.
+ */
+export function knownStoredAssetSize(key: string): number | undefined {
+    return touchEntry(storedSizes, key)
+}
+
 /** One admission to the in-flight queue; `release` is idempotent. */
 export interface InFlightGrant {
     release(): void

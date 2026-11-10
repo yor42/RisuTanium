@@ -6,7 +6,8 @@ import type { Database, folder } from '../storage/database.svelte'
 import { asBuffer } from '../util'
 import { isNodeServer, isTauri } from '../platform'
 import { getAppStore } from '../storage/store/appStore'
-import { androidAssetSizeVerdict } from '../storage/assetUrlGate'
+import { ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES, androidAssetSizeVerdict, androidWholeReadQueue, knownStoredAssetSize } from '../storage/assetUrlGate'
+import { isAndroidTransport } from '../storage/tauriByteTransport'
 import { readTauriHeader, readUrlHeader, type ImageHeader } from './avatarThumbHeader'
 
 /**
@@ -48,6 +49,13 @@ interface GenContext {
      *  that was still in flight at timeout doesn't go on to draw and encode
      *  the image for a caller nobody is waiting on any more. */
     isCancelled(): boolean
+    /** Stops the task's timer while the generator waits for something that is
+     *  bounded elsewhere (a grant of the whole-read queue). A no-op once the
+     *  task has settled. */
+    pauseTimeout(): void
+    /** Starts the task's timer again with a fresh `timeoutMs`, whether it was
+     *  paused or still running. A no-op once the task has settled. */
+    restartTimeout(): void
 }
 
 type FullGenerator = (loc: string, ctx: GenContext) => Promise<GenResult>
@@ -432,7 +440,7 @@ async function runTask(task: QueueTask) {
         pump()
     }
 
-    const timer = setTimeout(() => {
+    const onTimeout = () => {
         cancelled = true
         try {
             cleanupFn?.()
@@ -440,7 +448,8 @@ async function runTask(task: QueueTask) {
             // best-effort cleanup only
         }
         finishAndFree(null)
-    }, timeoutMs)
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined = setTimeout(onTimeout, timeoutMs)
 
     const ctx: GenContext = {
         setCleanup(fn) {
@@ -459,6 +468,17 @@ async function runTask(task: QueueTask) {
         },
         isCancelled() {
             return cancelled
+        },
+        pauseTimeout() {
+            if (!settled) {
+                clearTimeout(timer)
+            }
+        },
+        restartTimeout() {
+            if (!settled) {
+                clearTimeout(timer)
+                timer = setTimeout(onTimeout, timeoutMs)
+            }
         }
     }
 
@@ -1031,6 +1051,40 @@ async function generateFromBytes(loc: string, scope: TaskScope): Promise<{ resul
 }
 
 /**
+ * Decodes the still behind `url`. On Android a file of at least
+ * `ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES` first takes a grant of its stored size
+ * from the app-wide whole-read queue, because the WebView holds one Java array of
+ * that size for as long as the decode runs. A size that is no longer cached counts
+ * as that minimum, so no URL decode of unknown size bypasses the queue.
+ *
+ * The grant is held only from its arrival to the settle of this decode, or to the
+ * task's timeout cleanup, whichever comes first: every other await of the task
+ * (size verdict, header, asset URL, the whole-read fallback) happens outside it.
+ * The task timer is paused while the grant is awaited, because the wait is
+ * bounded by the settle timers of the grants ahead, and starts afresh at the
+ * grant. Throws when the decode fails, like `currentRenderThumb`.
+ */
+async function renderFromUrl(loc: string, url: string, scope: TaskScope, ctx: GenContext): Promise<GenResult> {
+    const bytes = knownStoredAssetSize(loc) ?? ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES
+    if (!isAndroidTransport() || bytes < ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES) {
+        return await currentRenderThumb({ kind: 'url', url }, scope)
+    }
+    ctx.pauseTimeout()
+    const grant = await androidWholeReadQueue().acquire(bytes)
+    if (scope.isCancelled()) {
+        grant.release()
+        return null
+    }
+    ctx.restartTimeout()
+    scope.own(() => grant.release())
+    try {
+        return await currentRenderThumb({ kind: 'url', url }, scope)
+    } finally {
+        grant.release()
+    }
+}
+
+/**
  * Where the first 64 KiB can be read without the whole file (Node-hosted
  * pages, Tauri), animation is decided from it and a still is decoded from the
  * asset URL, so no JS copy of the file is made. Everything else, and every
@@ -1074,7 +1128,7 @@ async function realGenerate(loc: string, ctx: GenContext): Promise<GenResult> {
                     }
                     if (url !== null) {
                         try {
-                            return await currentRenderThumb({ kind: 'url', url }, scope)
+                            return await renderFromUrl(loc, url, scope, ctx)
                         } catch {
                             if (scope.isCancelled()) {
                                 return null
