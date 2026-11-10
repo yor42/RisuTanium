@@ -189,6 +189,7 @@ class ControlledResizeObserver {
 import { DBState } from '../../ts/stores.svelte'
 import { language } from '../../lang'
 import { clearDescriptionCache } from '../../ts/gui/descriptionMarkdown'
+import { previewCut } from '../../ts/gui/descriptionPreview'
 import GridCatalog from './GridCatalog.svelte'
 
 //#region fixtures and helpers
@@ -545,6 +546,26 @@ describe('GridCatalog List tab: markdown descriptions', { timeout: 60_000 }, () 
             expect(parsed.has('filler words 40')).toBe(false)
             expect(parsed.has('filler words 60')).toBe(false)
             expect(parsed.size).toBeLessThan(60)
+        })
+    })
+
+    // Reproducer: a row's long note without markup reaches the parser as a prefix, not whole (about 20 KB each on the base).
+    test('long notes without markup are parsed as prefixes, and the toggle still appears', async () => {
+        const longNote = (owner: string): string => [`LONG ${owner} opens the note.`, ...Array.from({ length: 400 }, (_, k) => `${owner} paragraph ${k} has plain words only.`)].join('\n\n')
+        const notes = ['Pat', 'Quinn', 'Rae'].map(longNote)
+        for (const note of notes) {
+            expect(note.length).toBeGreaterThan(15_000)
+            expect(previewCut(note)).not.toBeNull()
+        }
+        DBState.db = buildDb(notes.map((note, i) => makeCharacter(`p${i}`, ['Pat', 'Quinn', 'Rae'][i], note)))
+
+        await withList(vi.fn(), async (target) => {
+            await vi.waitFor(() => expect(parseSpy).toHaveBeenCalledTimes(3), { timeout: 20_000 })
+            const inputs = parseSpy.mock.calls.map((call) => call[0])
+            expect(inputs.reduce((sum, input) => sum + input.length, 0)).toBeLessThanOrEqual(3 * 2000)
+            for (const name of ['Pat', 'Quinn', 'Rae']) {
+                expect(toggleOf(listRow(target, name))?.textContent?.trim()).toBe('Show more')
+            }
         })
     })
 
