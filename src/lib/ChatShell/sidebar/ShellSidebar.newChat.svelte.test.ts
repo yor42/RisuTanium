@@ -216,6 +216,41 @@ describe('New chat', () => {
         expect(mocks.changeChat).toHaveBeenCalledWith(0)
     })
 
+    test('in an overlay New chat closes the overlay; docked it stays open', () => {
+        install([character('a', [chat('a1')])])
+        selectedCharID.set(0)
+        DynamicGUI.set(true)
+        render()
+        byLabel(language.newChat).click()
+        expect(get(sideBarClosing)).toBe(true)
+
+        sideBarClosing.set(false)
+        DynamicGUI.set(false)
+        flushSync()
+        byLabel(language.newChat).click()
+        expect(get(sideBarClosing)).toBe(false)
+    })
+
+    test('New chat by keyboard in an overlay names where focus returns; a pointer tap names nothing', () => {
+        install([character('a', [chat('a1')])])
+        selectedCharID.set(0)
+        DynamicGUI.set(true)
+        render()
+        const button = byLabel(language.newChat)
+        button.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))
+        expect(takeOverlayReturnFocus()).toBeNull()
+
+        sideBarClosing.set(false)
+        button.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 0 }))
+        expect(takeOverlayReturnFocus()).not.toBeNull()
+
+        sideBarClosing.set(false)
+        DynamicGUI.set(false)
+        flushSync()
+        button.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 0 }))
+        expect(takeOverlayReturnFocus()).toBeNull()
+    })
+
     test('the New chat menu offers Import chat and Export all chats', () => {
         install([character('a', [chat('a1')])])
         selectedCharID.set(0)

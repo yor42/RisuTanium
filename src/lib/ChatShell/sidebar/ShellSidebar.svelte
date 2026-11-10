@@ -430,7 +430,7 @@
     }
 
     // New chat acts on the character selected now, not the one drawn at the last render.
-    function newChat() {
+    function newChat(event: MouseEvent) {
         const target = selectedOwner();
         if (!target) {
             return;
@@ -439,6 +439,13 @@
         // Opening a chat of the character that is still selected drops a loading or failed switch to another one for good.
         if (openChatOf(target, target.chats[0]) === 'opened') {
             abandonPendingSwitch();
+            if (get(DynamicGUI)) {
+                // A click with no pointer detail is a keyboard activation: focus then follows the new chat.
+                if (event.detail === 0) {
+                    setOverlayReturnFocus(() => resolveSwitchFocus(switchTarget.phase));
+                }
+                closeOverlay();
+            }
         }
     }
 
