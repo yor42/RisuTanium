@@ -1795,6 +1795,7 @@ export const languageGerman = {
     "studioSwitchLabel": "Studio (Vorschau)",
     "studioSwitchHelp": "Charaktere im Studio öffnen, aus dem Chat oder den Charaktereinstellungen. Die Charaktereinstellungen bleiben unverändert.",
     "studioOpenIn": "Im Studio öffnen",
+    "studioOpenInNamed": (name: string) => `Im Studio öffnen: ${name}`,
     "studioTitle": "Studio",
     "studioTreeLabel": "Besitzer und Elemente",
     "studioOwnerCharacter": "Charakter",

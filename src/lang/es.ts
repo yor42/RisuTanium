@@ -1795,6 +1795,7 @@ export const languageSpanish = {
     "studioSwitchLabel": "Estudio (vista previa)",
     "studioSwitchHelp": "Abre personajes en Estudio desde el chat o los ajustes del personaje. Los ajustes del personaje no cambian.",
     "studioOpenIn": "Abrir en Estudio",
+    "studioOpenInNamed": (name: string) => `Abrir en Estudio: ${name}`,
     "studioTitle": "Estudio",
     "studioTreeLabel": "Propietarios y elementos",
     "studioOwnerCharacter": "Personaje",

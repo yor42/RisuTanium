@@ -1793,6 +1793,7 @@ export const languageChinese = {
     "studioSwitchLabel": "工作室（预览）",
     "studioSwitchHelp": "可在聊天或角色设置中用工作室打开角色。角色设置保持不变。",
     "studioOpenIn": "在工作室中打开",
+    "studioOpenInNamed": (name: string) => `在工作室中打开：${name}`,
     "studioTitle": "工作室",
     "studioTreeLabel": "所有者和项目",
     "studioOwnerCharacter": "角色",

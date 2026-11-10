@@ -64,6 +64,18 @@ export function classicDestinationOf(ownerType: StudioOwnerType, kind: StudioKin
     }
 }
 
+// True only while the `studioOpen.set(false)` of a link-out to a character destination runs.
+let closingToCharacterEditor = false
+
+/**
+ * Whether Studio is being closed for a link-out to a character's classic editor. Read by a `studioOpen`
+ * subscriber: that editor opens on the selected character, so the selection must survive this close. A close for
+ * a Settings page, or any other close, leaves it false.
+ */
+export function studioClosingToCharacterEditor(): boolean {
+    return closingToCharacterEditor
+}
+
 /**
  * Leaves Studio and opens the classic editor of an owner's kind. Studio is closed before any other store moves, so
  * the surfaces it hid are back when the editor opens.
@@ -71,7 +83,12 @@ export function classicDestinationOf(ownerType: StudioOwnerType, kind: StudioKin
 export function openInClassicEditor(ownerType: StudioOwnerType, kind: StudioKind | null): boolean {
     const destination = classicDestinationOf(ownerType, kind)
     if (!destination) return false
-    studioOpen.set(false)
+    closingToCharacterEditor = destination.where === 'character'
+    try {
+        studioOpen.set(false)
+    } finally {
+        closingToCharacterEditor = false
+    }
     if (destination.where === 'settings') {
         SettingsMenuIndex.set(destination.index)
         settingsOpen.set(true)

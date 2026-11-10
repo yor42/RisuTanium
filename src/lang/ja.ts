@@ -1926,6 +1926,7 @@ export const languageJapanese = {
     studioSwitchLabel: "スタジオ（プレビュー）",
     studioSwitchHelp: "チャットまたはキャラクター設定からキャラクターをスタジオで開きます。キャラクター設定はそのままです。",
     studioOpenIn: "スタジオで開く",
+    studioOpenInNamed: (name: string) => `スタジオで開く: ${name}`,
     studioTitle: "スタジオ",
     studioTreeLabel: "所有者と項目",
     studioOwnerCharacter: "キャラクター",

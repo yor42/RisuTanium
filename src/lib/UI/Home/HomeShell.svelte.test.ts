@@ -60,7 +60,7 @@ vi.mock('./HomeLibrary.svelte', () => ({ default: libraryStub }))
 //#endregion
 
 import HomeShell from './HomeShell.svelte'
-import { homeView, showHomeLanding } from './homeView.svelte'
+import { homeView, requestHomeLibrary, showHomeLanding } from './homeView.svelte'
 import { OpenRealmStore } from 'src/ts/stores.svelte'
 
 const mountedInstances: unknown[] = []
@@ -195,5 +195,31 @@ describe('HomeShell', () => {
         expect(homeView.view).toBe('landing')
         expect(landingShown(second)).toBe(true)
         expect(libraryShown(second)).toBe(false)
+    })
+
+    test('F T13b: a requested library is shown by the creation in the same tick and consumed by it', async () => {
+        requestHomeLibrary()
+        const first = mountShell()
+        expect(homeView.view).toBe('library')
+        await vi.waitFor(() => expect(libraryShown(first)).toBe(true), { timeout: 5000 })
+
+        await unmount(mountedInstances.pop() as never)
+        mountedTargets.pop()!.remove()
+        const second = mountShell()
+        expect(homeView.view).toBe('landing')
+        expect(landingShown(second)).toBe(true)
+        expect(libraryShown(second)).toBe(false)
+        await tick()
+    })
+
+    test('G T13b: a request not used by a creation expires after the tick, so a later creation starts at the landing', async () => {
+        requestHomeLibrary()
+        await tick()
+        await tick()
+
+        const root = mountShell()
+        expect(homeView.view).toBe('landing')
+        expect(landingShown(root)).toBe(true)
+        expect(libraryShown(root)).toBe(false)
     })
 })
