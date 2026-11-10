@@ -941,6 +941,47 @@ describe('CharacterWindow: grid column changes', () => {
         expect(document.activeElement).toBe(tileOf(target, '5')!.querySelector('button'))
     })
 
+    test('(F) a focused tile re-created by the change reports no state-write error, and the pin is still settled afterwards', async () => {
+        const { target } = await mountGrid()
+        const before = tileOf(target, '5')!.querySelector('button')!
+        before.focus()
+        await settleMicrotasks()
+        await geometry.scrollAndSettle(50 * GRID_ROW)
+        expect(tileOf(target, '5')).not.toBeNull()
+
+        // Chromium blurs a focused element, with focusout, while it is still attached and before it is removed. A focus
+        // listener that wrote state at that point would throw inside the block effect that is removing the element.
+        const errors: string[] = []
+        const record = (event: ErrorEvent) => { event.preventDefault(); errors.push(String(event.error?.message ?? event.message)) }
+        window.addEventListener('error', record)
+        const originalRemove = Element.prototype.remove
+        Element.prototype.remove = function (this: Element) {
+            const active = document.activeElement
+            if (active && this.contains(active)) {
+                ;(active as HTMLElement).blur()
+            }
+            originalRemove.call(this)
+        }
+        try {
+            geometry.setWidth(THREE_COLUMNS)
+            await resizeContainer(target)
+            await settleMicrotasks()
+        } finally {
+            Element.prototype.remove = originalRemove
+            window.removeEventListener('error', record)
+        }
+
+        expect(errors).toEqual([])
+        const after = tileOf(target, '5')?.querySelector('button')
+        expect(after).toBeTruthy()
+        expect(after).not.toBe(before)
+        expect(document.activeElement).toBe(after)
+
+        await geometry.scrollAndSettle(80 * GRID_ROW)
+        expect(tileOf(target, '5')).not.toBeNull()
+        expect(document.activeElement).toBe(tileOf(target, '5')!.querySelector('button'))
+    })
+
     test('(F) a change while focus is elsewhere does not move focus', async () => {
         const { target } = await mountGrid()
         const other = document.createElement('button')

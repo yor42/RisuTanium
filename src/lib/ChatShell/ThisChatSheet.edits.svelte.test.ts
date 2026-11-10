@@ -235,6 +235,36 @@ describe('S2 note autosave and flush', () => {
         expect(h.mark).toHaveBeenCalledTimes(1)
     })
 
+    test('(G6) a focused, edited note whose sheet is removed by the block commits once, with no window error and no alert', async () => {
+        await show()
+        type('typed before removal')
+        expect(document.activeElement).toBe(note())
+
+        // Chromium blurs a focused node, with blur and focusout, while it is still attached and before it is removed.
+        const errors: string[] = []
+        const record = (event: ErrorEvent) => { event.preventDefault(); errors.push(String(event.error?.message ?? event.message)) }
+        window.addEventListener('error', record)
+        const originalRemove = Element.prototype.remove
+        vi.spyOn(Element.prototype, 'remove').mockImplementation(function (this: Element) {
+            const active = this.ownerDocument.activeElement
+            if (active && this.contains(active)) (active as HTMLElement).blur()
+            originalRemove.call(this)
+        })
+        try {
+            await close()
+            vi.advanceTimersByTime(2_000)
+            flushSync()
+        } finally {
+            window.removeEventListener('error', record)
+        }
+
+        expect(errors).toEqual([])
+        expect(chat.note).toBe('typed before removal')
+        expect(h.mark).toHaveBeenCalledTimes(1)
+        expect(h.mark).toHaveBeenCalledWith('char-a')
+        expect(h.alertError).not.toHaveBeenCalled()
+    })
+
     test('the next opening starts from the chat\'s note, not from the last draft', async () => {
         await show()
         type('first')
