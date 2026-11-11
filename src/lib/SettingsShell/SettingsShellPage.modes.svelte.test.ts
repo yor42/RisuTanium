@@ -4,7 +4,9 @@
  * The mode group on the Settings page and the Show-all confirm it hosts, with the real SettingsShellPage,
  * ModeVisibilityGroup, ModeVisibilityConfirm, PatternWarning and homeModes: the group sits first in the Display view
  * and nowhere else; the confirm is a sibling of the scroll column; Cancel, Escape and Back write nothing and return
- * focus; Confirm applies show-all. All guards for new behaviour.
+ * focus; Confirm applies show-all. All guards for new behaviour. The scroll-memory scenarios live in
+ * `SettingsShellPage.scenarios.test-helpers.svelte.ts` and also run under the async scheduler in
+ * `SettingsShellPage.asyncOrder.svelte.test.ts`.
  *
  * MOCKED: `stores.svelte` (a `$state` DBState and plain writable stores, `alertStore` read by the Back dispatcher), `alertBack`, and the legacy Settings pages
  * (empty stubs). The legacy Display page is not modified by this change.
@@ -46,6 +48,7 @@ import { language } from '../../lang'
 import { dispatchBack, resetBackHandlersForTests } from '../../ts/backHandlers'
 import { DBState } from '../../ts/stores.svelte'
 import SettingsShellPage from './SettingsShellPage.svelte'
+import { registerSettingsScrollMemorySuite } from './SettingsShellPage.scenarios.test-helpers.svelte'
 
 const mounted: Array<ReturnType<typeof mount>> = []
 
@@ -167,3 +170,5 @@ describe('the Show-all confirm', () => {
         expect(showAllButton(target).getAttribute('aria-disabled')).toBe('true')
     })
 })
+
+registerSettingsScrollMemorySuite()
