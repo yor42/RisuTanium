@@ -450,4 +450,148 @@ class KeepAliveNoticeTest {
     assertNull(read.avatar)
     assertFalse(read.stoppable)
   }
+
+  // F3: the Stopping timeout runs only while the app is in the foreground (MC-1435). The display
+  // answers what the service should do with its single timer after every change.
+
+  private fun hiddenStoppingDisplay(): KeepAliveDisplay {
+    val display = KeepAliveDisplay()
+    display.appForeground(false)
+    display.pageNotice(notice())
+    assertEquals(StopTap.ENTERED, display.stopTapped())
+    return display
+  }
+
+  @Test
+  fun hiddenTapEntersStoppingWithNoTimer() {
+    val display = hiddenStoppingDisplay()
+    assertTrue(display.stopping)
+    assertEquals(TimerChange.NONE, display.takeTimerChange())
+  }
+
+  @Test
+  fun foregroundTapArmsAtTheTap() {
+    val display = KeepAliveDisplay()
+    display.pageNotice(notice())
+    assertEquals(StopTap.ENTERED, display.stopTapped())
+    assertEquals(TimerChange.ARM, display.takeTimerChange())
+    assertEquals(TimerChange.NONE, display.takeTimerChange())
+  }
+
+  @Test
+  fun returnArmsOnceAndADuplicateDoesNotRestart() {
+    val display = hiddenStoppingDisplay()
+    assertEquals(TimerChange.NONE, display.takeTimerChange())
+    display.appForeground(true)
+    assertEquals(TimerChange.ARM, display.takeTimerChange())
+    display.appForeground(true)
+    assertEquals(TimerChange.NONE, display.takeTimerChange())
+  }
+
+  @Test
+  fun backgroundCancelsAndTheNextReturnArmsAgain() {
+    val display = KeepAliveDisplay()
+    display.pageNotice(notice())
+    display.stopTapped()
+    assertEquals(TimerChange.ARM, display.takeTimerChange())
+    display.appForeground(false)
+    assertEquals(TimerChange.CANCEL, display.takeTimerChange())
+    assertTrue(display.stopping)
+    display.appForeground(true)
+    assertEquals(TimerChange.ARM, display.takeTimerChange())
+  }
+
+  @Test
+  fun aTimeoutWhileHiddenKeepsStopping() {
+    val display = hiddenStoppingDisplay()
+    assertFalse(display.stopTimeout())
+    assertTrue(display.stopping)
+    display.appForeground(true)
+    assertEquals(TimerChange.ARM, display.takeTimerChange())
+  }
+
+  @Test
+  fun anOutcomeWhileHiddenEndsStopping() {
+    val closings = listOf(
+      Pair(notice(state = NoticeState.FINISHING, stopLabel = ""), NoticeState.STOPPED),
+      Pair(notice(state = NoticeState.FAILED, stopLabel = ""), NoticeState.FAILED),
+      Pair(notice(state = NoticeState.STOPPED, stopLabel = ""), NoticeState.STOPPED),
+      Pair(null, NoticeState.STOPPED)
+    )
+    for ((closing, expected) in closings) {
+      val display = hiddenStoppingDisplay()
+      assertTrue(display.outcome(closing))
+      assertFalse(display.stopping)
+      assertEquals(expected, display.current()?.state)
+      assertEquals(TimerChange.NONE, display.takeTimerChange())
+      display.appForeground(true)
+      assertEquals(TimerChange.NONE, display.takeTimerChange())
+    }
+  }
+
+  @Test
+  fun aNonStoppableNoticeWhileHiddenEndsStopping() {
+    val display = hiddenStoppingDisplay()
+    assertTrue(display.pageNotice(notice(state = NoticeState.IMAGE, stopLabel = "")))
+    assertFalse(display.stopping)
+    display.appForeground(true)
+    assertEquals(TimerChange.NONE, display.takeTimerChange())
+  }
+
+  @Test
+  fun anOutcomeAfterTheReturnCancelsTheTimer() {
+    val display = hiddenStoppingDisplay()
+    assertEquals(TimerChange.NONE, display.takeTimerChange())
+    display.appForeground(true)
+    assertEquals(TimerChange.ARM, display.takeTimerChange())
+    display.outcome(notice(state = NoticeState.STOPPED, stopLabel = ""))
+    assertEquals(TimerChange.CANCEL, display.takeTimerChange())
+  }
+
+  @Test
+  fun staleTapsNeverRestartTheTimer() {
+    val display = hiddenStoppingDisplay()
+    assertEquals(StopTap.STALE, display.stopTapped())
+    assertEquals(TimerChange.NONE, display.takeTimerChange())
+    display.appForeground(true)
+    assertEquals(TimerChange.ARM, display.takeTimerChange())
+    assertEquals(StopTap.STALE, display.stopTapped())
+    assertEquals(TimerChange.NONE, display.takeTimerChange())
+  }
+
+  @Test
+  fun aV1NoticeNeverStopsOrArms() {
+    val display = KeepAliveDisplay()
+    display.pageNotice(notice())
+    display.reset()
+    display.appForeground(false)
+    assertEquals(StopTap.PLAIN, display.stopTapped())
+    assertEquals(TimerChange.NONE, display.takeTimerChange())
+    display.appForeground(true)
+    assertEquals(TimerChange.NONE, display.takeTimerChange())
+    display.appForeground(false)
+    assertEquals(TimerChange.NONE, display.takeTimerChange())
+  }
+
+  @Test
+  fun aFiredTimerThenANewForegroundTapArmsANewTimer() {
+    val display = KeepAliveDisplay()
+    display.pageNotice(notice())
+    display.stopTapped()
+    assertEquals(TimerChange.ARM, display.takeTimerChange())
+    assertTrue(display.stopTimeout())
+    assertEquals(TimerChange.NONE, display.takeTimerChange())
+    assertEquals(StopTap.ENTERED, display.stopTapped())
+    assertEquals(TimerChange.ARM, display.takeTimerChange())
+  }
+
+  @Test
+  fun aV1ResetWhileArmedCancels() {
+    val display = KeepAliveDisplay()
+    display.pageNotice(notice())
+    display.stopTapped()
+    assertEquals(TimerChange.ARM, display.takeTimerChange())
+    display.reset()
+    assertEquals(TimerChange.CANCEL, display.takeTimerChange())
+  }
 }

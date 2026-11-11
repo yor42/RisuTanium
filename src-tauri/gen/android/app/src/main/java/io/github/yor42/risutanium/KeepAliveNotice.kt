@@ -6,12 +6,14 @@ package io.github.yor42.risutanium
 //
 // The page owns what the notice says and sends every title already localised, so native holds no
 // strings of its own. Native owns exactly one thing: the Stopping state, which begins on the Stop tap
-// itself (no round trip to the page) and ends when the page reports the stoppable work gone, with a
-// timeout so a Stop that did not take never leaves the user without a control.
+// itself (no round trip to the page) and ends when the page reports the stoppable work gone. While the
+// app is in the foreground a timeout also ends it, so a Stop that did not take never leaves a user who
+// can see the app without a control; in the background Stopping has no timeout.
 
 const val KEEP_ALIVE_ACCENT_COLOR = 0xFF587BFF.toInt()
 
-// How long Stopping waits for the stoppable work to end before the Stop action returns.
+// How long Stopping waits, while the app is in the foreground, for the stoppable work to end before the
+// Stop action returns.
 const val STOPPING_TIMEOUT_MS = 10000L
 
 // The first Android with an authenticated notification action (Android 12).
@@ -114,7 +116,8 @@ fun parseKeepAliveNotice(map: Map<String, Any?>): KeepAliveNotice? {
 
 // What a Stop tap did to the display.
 enum class StopTap {
-  // The display entered Stopping; the caller arms the timeout and forwards the stop to the page.
+  // The display entered Stopping; the caller forwards the stop to the page. The timeout follows from
+  // takeTimerChange.
   ENTERED,
 
   // Already Stopping: a stale tap, ignored.
@@ -125,12 +128,41 @@ enum class StopTap {
   PLAIN
 }
 
-// The notice being shown and whether native is in Stopping. Every method runs on the main thread.
-class KeepAliveDisplay {
+// What the service should do with its single Stopping timer.
+enum class TimerChange { NONE, ARM, CANCEL }
+
+// The notice being shown and whether native is in Stopping. foreground is whether the app is visible to
+// the user. Every method runs on the main thread.
+class KeepAliveDisplay(foreground: Boolean = true) {
   private var shown: KeepAliveNotice? = null
+  private var timerArmed = false
+
+  var foreground: Boolean = foreground
+    private set
 
   var stopping: Boolean = false
     private set
+
+  // The app became visible or hidden. Whether that changes the timer is answered by takeTimerChange.
+  fun appForeground(visible: Boolean) {
+    foreground = visible
+  }
+
+  // The timer is wanted exactly while Stopping and in the foreground. Returns the one step that brings
+  // the service's timer in line with that, and records it, so a repeated event or a stale tap while a
+  // timer is pending never restarts it.
+  fun takeTimerChange(): TimerChange {
+    val wanted = stopping && foreground
+    if (wanted && !timerArmed) {
+      timerArmed = true
+      return TimerChange.ARM
+    }
+    if (!wanted && timerArmed) {
+      timerArmed = false
+      return TimerChange.CANCEL
+    }
+    return TimerChange.NONE
+  }
 
   // The v2 notice to show, or null when the service shows a v1 notice or none.
   fun current(): KeepAliveNotice? = shown
@@ -142,8 +174,8 @@ class KeepAliveDisplay {
   }
 
   // A start or an update from the page. While Stopping, a stoppable notice only changes the data
-  // (numbers, title text); a notice without stoppable work ends Stopping. Returns true when Stopping
-  // ended, so the caller cancels the timeout.
+  // (numbers, title text); a notice without stoppable work ends Stopping, in the background too.
+  // Returns true when Stopping ended.
   fun pageNotice(notice: KeepAliveNotice): Boolean {
     shown = notice
     if (stopping && !notice.stoppable) {
@@ -162,8 +194,11 @@ class KeepAliveDisplay {
   }
 
   // The timeout restores the notice the page last sent, with its Stop action. Returns true when it
-  // changed the display.
+  // changed the display. The timer that fired is no longer pending. It never ends Stopping while the
+  // app is in the background.
   fun stopTimeout(): Boolean {
+    timerArmed = false
+    if (!foreground) return false
     if (!stopping) return false
     stopping = false
     return true
@@ -174,8 +209,7 @@ class KeepAliveDisplay {
   // sent, and a finishing one (or an unreadable one) shows Stopped, because the work ended after
   // the user's Stop. An image or a pending save that ended Stopping earlier falls back to its own
   // state instead, so this rule applies only when the stoppable work is the last to end. Outside
-  // Stopping the notice shows as sent. Returns true when Stopping ended, so the caller cancels the
-  // timeout.
+  // Stopping the notice shows as sent. Returns true when Stopping ended, in the background too.
   fun outcome(notice: KeepAliveNotice?): Boolean {
     val wasStopping = stopping
     if (wasStopping) {
