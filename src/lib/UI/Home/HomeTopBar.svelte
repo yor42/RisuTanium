@@ -28,30 +28,41 @@
     // changes. The start inset keeps the brand clear of the sidebar arrow that sits at the top-left
     // corner; the phone has no arrow (the menu button replaces it), so it needs only the edge gap.
     // The switcher and the chip carry their own top margin, which the wrappers cancel.
+    //
+    // Centring (MC-1403, MC-1415): the switcher sits on the visible bar's centre in mid and wide
+    // only; the phone layout is unchanged.
+    // - Wide: the insets are equal and both side tracks are identical, so the auto track is
+    //   centred; the chip wrapper's negative end margin equals the inset difference (pr-14 minus
+    //   pr-4), which gives the chip back its 16 px right edge without moving the track.
+    // - Mid: the switcher row spans both columns, so its box is the content box; the negative start
+    //   margin equals the inset difference (pl-14 minus pr-4), which makes that box symmetric
+    //   about the bar. From a viewport of 1025 px to about 1068 px with the sidebar docked open the
+    //   bar stays on one row and the switcher may drift from the centre (MC-1414).
+    // The wordmark truncates rather than covering the switcher when its column is narrow.
     const insetClass: Record<HomeBand, string> = {
-        phone: 'pl-4',
-        mid: 'pl-14',
-        wide: 'pl-14',
+        phone: 'pl-4 pr-4',
+        mid: 'pl-14 pr-4',
+        wide: 'pl-14 pr-14',
     }
     const barClass: Record<HomeBand, string> = {
         phone: 'flex flex-col items-start gap-2',
         mid: 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-2',
-        wide: 'grid grid-cols-[minmax(0,1fr)_auto_minmax(max-content,1fr)] items-center gap-x-4',
+        wide: 'grid grid-cols-[minmax(2.75rem,1fr)_auto_minmax(2.75rem,1fr)] items-center gap-x-4',
     }
     const switcherClass: Record<HomeBand, string> = {
         phone: 'w-full *:mt-0!',
-        mid: 'col-span-2 row-start-2 flex justify-center *:mt-0!',
+        mid: 'col-span-2 row-start-2 -ml-10 flex justify-center *:mt-0!',
         wide: 'flex justify-center *:mt-0!',
     }
     const chipClass: Record<HomeBand, string> = {
         phone: 'max-w-full *:mt-0!',
         mid: 'col-start-2 row-start-1 flex justify-end *:mt-0!',
-        wide: 'flex justify-end *:mt-0!',
+        wide: 'flex min-w-0 justify-end -mr-10 *:mt-0!',
     }
 </script>
 
 {#snippet brand()}
-    <div data-part="home-brand" class="flex min-h-11 items-center gap-2 text-textcolor">
+    <div data-part="home-brand" class="flex min-h-11 min-w-0 items-center gap-2 text-textcolor">
         <svg
             class="nexus-mark shrink-0"
             viewBox={MARK_VIEWBOX}
@@ -64,14 +75,14 @@
         >
             {@html inner}
         </svg>
-        <span class="text-lg font-semibold">RisuTanium</span>
+        <span class="min-w-0 truncate text-lg font-semibold">RisuTanium</span>
     </div>
 {/snippet}
 
 <header
     data-part="home-topbar"
     data-layout={band}
-    class="w-full {insetClass[band]} pr-4 pt-3 pb-2 {barClass[band]}"
+    class="w-full {insetClass[band]} pt-3 pb-2 {barClass[band]}"
 >
     {#if band === 'phone'}
         <div class="flex w-full items-center gap-2">
