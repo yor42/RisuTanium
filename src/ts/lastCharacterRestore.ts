@@ -94,9 +94,23 @@ function productionDeps(): RestoreDeps {
     }
 }
 
-/** True when nothing has taken the app off Home or is about to; evaluated once, synchronously, at the start. */
-function guardHolds(deps: RestoreDeps): boolean {
-    return deps.didFirstSetup()
+/**
+ * What the launch has already decided, as `startLaunchNavigation` passes it: `launchClaimed` is true when a
+ * notification tap named a target that resolved and is being opened as the user's own pick. It is a
+ * parameter and not a dependency so this module never imports the launch, which imports it.
+ */
+export interface RestoreLaunch {
+    launchClaimed: boolean
+}
+
+/**
+ * True when nothing has taken the app off Home or is about to; evaluated once, synchronously, at the start.
+ * A claimed launch never holds: the target's own pick is the restore, and a second pick would compete with
+ * it while an archived target still waits at Home.
+ */
+function guardHolds(deps: RestoreDeps, launch?: RestoreLaunch): boolean {
+    return !launch?.launchClaimed
+        && deps.didFirstSetup()
         && !deps.botSettingAtStart()
         && !get(deps.botMakerMode)
         && get(deps.selectedCharID) === -1
@@ -206,9 +220,10 @@ function endOf(outcome: ChangeCharOutcome | 'error'): RestoreEnd {
 
 /**
  * Starts the restore and the recorder. Synchronous up to the pick; the returned promise ends when the
- * restore does and is for tests, the boot discards it. Never throws and never rejects.
+ * restore does and is for tests, the boot discards it. Never throws and never rejects. A claimed launch
+ * skips the restore but still arms the recorder, so the target the tap opens is the one remembered.
  */
-export function startLastCharacterRestore(deps?: RestoreDeps): Promise<RestoreEnd> {
+export function startLastCharacterRestore(deps?: RestoreDeps, launch?: RestoreLaunch): Promise<RestoreEnd> {
     let live: RestoreDeps
     try {
         live = deps ?? productionDeps()
@@ -226,7 +241,7 @@ export function startLastCharacterRestore(deps?: RestoreDeps): Promise<RestoreEn
     try {
         const chaId = live.storedChaId()
         const index = chaId ? resolveRestoreIndex(live.characters(), chaId) : null
-        if (index !== null && guardHolds(live)) {
+        if (index !== null && guardHolds(live, launch)) {
             const pending = live.pick(index, { keepInteraction: true, quiet: true })
             // The pick has already counted itself, so this is the generation it must still hold to select.
             const ownGeneration = live.generation()

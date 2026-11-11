@@ -6,6 +6,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.net.Uri
 import android.os.Build
@@ -66,7 +67,7 @@ class ReplyNotifier(private val context: Context) {
       ensureChannel()
       if (!enabled()) return
       val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-        .setSmallIcon(R.drawable.ic_stat_keepalive)
+        .setSmallIcon(R.drawable.ic_stat_risutanium)
         .setContentTitle(title)
         .setContentText(body)
         .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -82,17 +83,82 @@ class ReplyNotifier(private val context: Context) {
           PendingIntent.getActivity(context, 0, launch, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         )
       }
-      val manager = NotificationManagerCompat.from(context)
-      postReply(
-        object : ReplyPostSink<Notification> {
-          override fun cancel(tag: String, id: Int) = manager.cancel(tag, id)
-          override fun notify(tag: String, id: Int, notification: Notification) = manager.notify(tag, id, notification)
-        },
-        key, REPLY_ID, silent, builder.build()
-      ) { error -> Log.w(TAG, "old reply notification not cancelled before the post", error) }
+      deliver(key, silent, builder.build())
     } catch (error: Exception) {
       Log.w(TAG, "reply notification not posted", error)
     }
+  }
+
+  // Contract v2. The title is the owner's name, the text a fixed line, and the large icon the owner's
+  // avatar when the page sent one that decodes. A locked screen that hides sensitive content shows the
+  // public version: its title only, with no icon, no tap target and no action. A tap opens the chat
+  // the notice names, and clears the notification.
+  @SuppressLint("MissingPermission")
+  fun notifyState(notice: ReplyNotice) {
+    if (!optedIn(context)) return
+    try {
+      ensureChannel()
+      if (!enabled()) return
+      val plan = replyNoticePlan(notice)
+      val appName = context.getString(R.string.app_name)
+      val builder = NotificationCompat.Builder(context, CHANNEL_ID)
+        .setSmallIcon(R.drawable.ic_stat_risutanium)
+        .setColor(KEEP_ALIVE_ACCENT_COLOR)
+        .setContentTitle(if (plan.title.isEmpty()) appName else plan.title)
+        .setContentText(plan.text)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(plan.text))
+        .setAutoCancel(true)
+        .setSilent(plan.silent)
+        .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+        .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+        .setPublicVersion(
+          NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_risutanium)
+            .setColor(KEEP_ALIVE_ACCENT_COLOR)
+            .setContentTitle(if (plan.publicVersion.title.isEmpty()) appName else plan.publicVersion.title)
+            .build()
+        )
+      val avatar = plan.avatar?.let { NotificationAvatarDecoder.decode(it) }
+      if (avatar != null) {
+        builder.setLargeIcon(avatar)
+      }
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O && !plan.silent) {
+        builder.setSound(chimeUri())
+      }
+      val target = plan.target
+      val tapIntent = if (target != null) chatIntent(target) else context.packageManager.getLaunchIntentForPackage(context.packageName)
+      if (tapIntent != null) {
+        builder.setContentIntent(
+          PendingIntent.getActivity(context, 0, tapIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        )
+      }
+      deliver(plan.tag, plan.silent, builder.build())
+    } catch (error: Exception) {
+      Log.w(TAG, "reply notification not posted", error)
+    }
+  }
+
+  // The tap intent of a notice that names a chat: explicit, with the target as data so every chat has a
+  // PendingIntent of its own, and as extras for MainActivity. NEW_TASK is harmless with singleTask.
+  private fun chatIntent(target: NoticeTarget): Intent =
+    Intent(context, MainActivity::class.java)
+      .setAction(ACTION_OPEN_CHAT)
+      .setData(Uri.parse(targetDataUri(target)))
+      .putExtra(EXTRA_TARGET_CHA_ID, target.chaId)
+      .putExtra(EXTRA_TARGET_CHAT_ID, target.chatId)
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+  // The one way a reply notification is posted: the key is the tag, so a sounding post first cancels the
+  // same tag that cancel(key) removes (see postReply).
+  private fun deliver(key: String, silent: Boolean, notification: Notification) {
+    val manager = NotificationManagerCompat.from(context)
+    postReply(
+      object : ReplyPostSink<Notification> {
+        override fun cancel(tag: String, id: Int) = manager.cancel(tag, id)
+        override fun notify(tag: String, id: Int, notification: Notification) = manager.notify(tag, id, notification)
+      },
+      key, REPLY_ID, silent, notification
+    ) { error -> Log.w(TAG, "old reply notification not cancelled before the post", error) }
   }
 
   fun cancel(key: String) {

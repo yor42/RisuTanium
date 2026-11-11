@@ -187,6 +187,57 @@ describe('calls to the host', () => {
     })
 })
 
+const NOTICE = {
+    v: 2 as const,
+    key: 'cha/chat',
+    name: 'Ada',
+    text: 'Replied',
+    publicTitle: 'New reply',
+    chaId: 'cha',
+    chatId: 'chat',
+    avatar: null,
+    silent: true,
+}
+
+describe('notifyReplyState (contract v2) is gated like notifyReply', () => {
+    test('new API: opted in and enabled posts the notice as one JSON string, key included', async () => {
+        const { fake, module } = await ready()
+        module.notifyReplyState(NOTICE)
+        const posts = fake.postedTo('replyNotifications', 'notifyState')
+        expect(posts).toHaveLength(1)
+        expect(posts[0]).toEqual({ bridge: 'replyNotifications', method: 'notifyState', args: [JSON.stringify(NOTICE)] })
+    })
+
+    test.each([
+        ['the state is unknown', null],
+        ['the user is not opted in', { optedIn: false, enabled: true }],
+        ['the system blocks notifications', { optedIn: true, enabled: false }],
+    ] as const)('new API: %s makes no host call', async (_label, host) => {
+        const { fake, module } = await ready(host === null ? null : { ...host })
+        module.notifyReplyState(NOTICE)
+        expect(fake.postedTo('replyNotifications', 'notifyState')).toEqual([])
+    })
+
+    test('new API: a key that is empty or longer than 200 characters is never sent', async () => {
+        const { fake, module } = await ready()
+        module.notifyReplyState({ ...NOTICE, key: '' })
+        module.notifyReplyState({ ...NOTICE, key: 'k'.repeat(201) })
+        expect(fake.postedTo('replyNotifications', 'notifyState')).toEqual([])
+        module.notifyReplyState({ ...NOTICE, key: 'k'.repeat(200) })
+        expect(fake.postedTo('replyNotifications', 'notifyState')).toHaveLength(1)
+    })
+
+    test('new API: the channel has the v2 method, an old separate object has not', async () => {
+        const { module } = await ready()
+        expect(module.hasReplyStateHost()).toBe(true)
+        delete window.__risuTaniumHost
+        window.__risuTaniumReplyNotificationsHost = { notify: vi.fn() }
+        expect(module.hasReplyStateHost()).toBe(false)
+        window.__risuTaniumReplyNotificationsHost = { notify: vi.fn(), notifyState: vi.fn() }
+        expect(module.hasReplyStateHost()).toBe(true)
+    })
+})
+
 describe('the notification key', () => {
     test('is the character and chat ids joined, whatever the group member', async () => {
         const module = await loadModule()

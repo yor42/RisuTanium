@@ -129,6 +129,25 @@ class BridgeScopeTest {
     assertEquals(BridgeCommand.ReplyNotificationsCancel("a/b"), toCommand("replyNotifications", "cancel", listOf("a/b"), null))
   }
 
+  // Contract v2: the notice travels as one JSON string.
+  @Test
+  fun theReplyNotificationsStateCallCarriesItsJson() {
+    assertNotNull(toCommand("replyNotifications", "notifyState", listOf("{}"), null))
+    assertEquals(
+      BridgeCommand.ReplyNotificationsNotifyState("{\"v\":2,\"key\":\"a/b\"}"),
+      toCommand("replyNotifications", "notifyState", listOf("{\"v\":2,\"key\":\"a/b\"}"), null)
+    )
+  }
+
+  @Test
+  fun aReplyNotificationsStateCallWithTheWrongArgumentsIsDropped() {
+    assertNull(toCommand("replyNotifications", "notifyState", emptyList(), null))
+    assertNull(toCommand("replyNotifications", "notifyState", listOf("{}", "{}"), null))
+    assertNull(toCommand("replyNotifications", "notifyState", listOf(5), null))
+    assertNull(toCommand("replyNotifications", "notifyState", listOf(null), null))
+    assertNull(toCommand("replyNotifications", "notifyState", listOf(true), null))
+  }
+
   @Test
   fun aReplyNotificationsKeyIsOneToTwoHundredCharacters() {
     val longest = "k".repeat(200)
@@ -323,5 +342,57 @@ class BridgeScopeTest {
     assertTrue(queue.takeAll().isEmpty())
     queue.enqueue("c")
     assertEquals(listOf("c"), queue.takeAll())
+  }
+
+  // Contract v2: each keep-alive call carries its notice as one JSON string.
+
+  @Test
+  fun keepAliveStateCommandsCarryTheirJsonString() {
+    assertNotNull(toCommand("keepAlive", "startState", listOf("{}"), null))
+    assertEquals(BridgeCommand.KeepAliveStartState("{\"v\":2}"), toCommand("keepAlive", "startState", listOf("{\"v\":2}"), null))
+    assertEquals(BridgeCommand.KeepAliveUpdateState("{\"v\":2}"), toCommand("keepAlive", "updateState", listOf("{\"v\":2}"), null))
+    assertEquals(
+      BridgeCommand.KeepAliveStopAfterWithOutcome(10000, "{\"v\":2}"),
+      toCommand("keepAlive", "stopAfterWithOutcome", listOf(10000, "{\"v\":2}"), null)
+    )
+  }
+
+  @Test
+  fun keepAliveStateCommandsWithTheWrongShapeAreDropped() {
+    assertNull(toCommand("keepAlive", "startState", emptyList(), null))
+    assertNull(toCommand("keepAlive", "startState", listOf("{}", "{}"), null))
+    assertNull(toCommand("keepAlive", "startState", listOf(5), null))
+    assertNull(toCommand("keepAlive", "startState", listOf(null), null))
+    assertNull(toCommand("keepAlive", "updateState", listOf(mapOf("v" to 2)), null))
+    assertNull(toCommand("keepAlive", "updateState", emptyList(), null))
+    assertNull(toCommand("keepAlive", "stopAfterWithOutcome", listOf("{}"), null))
+    assertNull(toCommand("keepAlive", "stopAfterWithOutcome", listOf("100", "{}"), null))
+    assertNull(toCommand("keepAlive", "stopAfterWithOutcome", listOf(0.5, "{}"), null))
+    assertNull(toCommand("keepAlive", "stopAfterWithOutcome", listOf(1, "{}", "x"), null))
+  }
+
+  @Test
+  fun anOutcomeThatIsNotAStringStillStopsAfterTheDelay() {
+    assertEquals(BridgeCommand.KeepAliveStopAfter(10000), toCommand("keepAlive", "stopAfterWithOutcome", listOf(10000, null), null))
+    assertEquals(BridgeCommand.KeepAliveStopAfter(10000), toCommand("keepAlive", "stopAfterWithOutcome", listOf(10000, 7), null))
+    assertEquals(BridgeCommand.KeepAliveStopAfter(10000), toCommand("keepAlive", "stopAfterWithOutcome", listOf(10000, mapOf("v" to 2)), null))
+  }
+
+  @Test
+  fun theV1KeepAliveCommandsStayRecognisedBesideTheV2Ones() {
+    assertEquals(BridgeCommand.KeepAliveStart("t", "s"), toCommand("keepAlive", "start", listOf("t", "s"), null))
+    assertEquals(BridgeCommand.KeepAliveUpdate("t", "s"), toCommand("keepAlive", "update", listOf("t", "s"), null))
+    assertEquals(BridgeCommand.KeepAliveStopAfter(2500), toCommand("keepAlive", "stopAfter", listOf(2500), null))
+    assertNull(toCommand("keepAlive", "startState", listOf("t", "s"), null))
+  }
+
+  // The page asks for the chat a notification tap named; the answer goes back through the page's hook.
+
+  @Test
+  fun theOpenTargetRequestTakesNoArguments() {
+    assertSame(BridgeCommand.KeepAliveRequestOpenTarget, toCommand("keepAlive", "requestOpenTarget", emptyList(), null))
+    assertNull(toCommand("keepAlive", "requestOpenTarget", listOf("g1"), null))
+    assertNull(toCommand("keepAlive", "requestOpenTarget", listOf(null), null))
+    assertNull(toCommand("keepAlive", "openTarget", emptyList(), null))
   }
 }

@@ -220,6 +220,38 @@ describe('the start of a restore', () => {
     })
 })
 
+describe('a restore the launch has claimed', () => {
+    test('L2: a claimed launch picks nothing, ends skipped and still arms the recorder', async () => {
+        const world = makeWorld()
+        const end = startLastCharacterRestore(world.deps, { launchClaimed: true })
+        world.selected.set(2)
+
+        expect(world.picks).toHaveLength(0)
+        expect(await end).toBe('skipped')
+        expect(world.writes).toEqual(['c2'])
+    })
+
+    test('L2: an unclaimed launch, or no launch argument, restores as before', () => {
+        const unclaimed = makeWorld()
+        startLastCharacterRestore(unclaimed.deps, { launchClaimed: false })
+        const plain = makeWorld()
+        startLastCharacterRestore(plain.deps)
+
+        expect(unclaimed.picks.map((pick) => pick.index)).toEqual([1])
+        expect(plain.picks.map((pick) => pick.index)).toEqual([1])
+    })
+
+    test('L2: a claimed launch on a read-only page still neither restores nor remembers', async () => {
+        const world = makeWorld()
+        world.state.readOnly = true
+
+        expect(await startLastCharacterRestore(world.deps, { launchClaimed: true })).toBe('read-only')
+        world.selected.set(2)
+
+        expect(world.writes).toEqual([])
+    })
+})
+
 describe('a restore that waits', () => {
     const arrivals: Array<[string, (world: World) => void]> = [
         ['Settings', (world) => world.settings.set(true)],

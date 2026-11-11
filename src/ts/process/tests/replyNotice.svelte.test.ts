@@ -597,7 +597,8 @@ async function sendThenLeaveWith(arg: Parameters<typeof sendChat>[1]): Promise<b
 
 import { toastHost, resetToastHostForTests, type ToastView } from 'src/ts/toast/toastHost.svelte'
 import { state as replyNotificationState } from 'src/ts/android/replyNotifications.svelte'
-import { hasChimedFor, hasSilencedFor } from 'src/ts/process/replyNotice'
+import { announceReply, hasChimedFor, hasSilencedFor, prepareReplyNoticeAvatar } from 'src/ts/process/replyNotice'
+import { __avatarThumbTestHooks, getAvatarThumbSrc, peekAvatarThumb, THUMB_VERSION } from 'src/ts/media/avatarThumb'
 import { createHostChannelFake, type HostChannelFake } from 'src/ts/android/hostChannelFake'
 
 const audioPlays = { count: 0 }
@@ -632,7 +633,30 @@ class FakeNotification {
 let fake: HostChannelFake
 
 const toasts = (): readonly ToastView[] => toastHost.visible
-const notifyCalls = () => fake.postedTo('replyNotifications', 'notify')
+/** Every post to the reply-notification bridge, v1 or v2: the guards must hold for both. */
+const notifyCalls = () => [...fake.postedTo('replyNotifications', 'notify'), ...fake.postedTo('replyNotifications', 'notifyState')]
+
+/** The v2 payloads the page sent, parsed from the JSON string each call carries. */
+interface StatePayload {
+    v: number
+    key: string
+    name: string
+    text: string
+    publicTitle: string
+    chaId: string
+    chatId: string
+    avatar: string | null
+    silent: boolean
+}
+const statePayloads = (): StatePayload[] =>
+    fake.postedTo('replyNotifications', 'notifyState').map((call) => JSON.parse((call.args as string[])[0]) as StatePayload)
+
+/** The one v2 payload the page sent; the assertion fails when there is none or more than one. */
+function onlyStatePayload(): StatePayload {
+    const payloads = statePayloads()
+    expect(payloads).toHaveLength(1)
+    return payloads[0]
+}
 
 /** Android with the switch on and the system allowing notifications, as the host reports it. */
 function androidWithSwitchOn(): void {
@@ -903,9 +927,9 @@ describe('the Android notification and the one sound (T21b, T31, R12)', () => {
         selectedCharID.set(0)
         await second
 
-        expect(notifyCalls().map((call) => call.args)).toEqual([
-            ['char-0/chat-0', 'char-0 replied', 'Evening chat', true],
-            ['char-1/chat-1', 'char-1 replied', 'Morning chat', true],
+        expect(statePayloads().map((payload) => [payload.key, payload.name, payload.silent])).toEqual([
+            ['char-0/chat-0', 'char-0', true],
+            ['char-1/chat-1', 'char-1', true],
         ])
     })
 
@@ -916,7 +940,7 @@ describe('the Android notification and the one sound (T21b, T31, R12)', () => {
         await sendThenLeave(toB)
 
         expect(audioPlays.count).toBe(1)
-        expect(notifyCalls().map((call) => call.args[3])).toEqual([true])
+        expect(statePayloads().map((payload) => payload.silent)).toEqual([true])
     })
 
     test('new API (T31, M35): page hidden and the switch on: no page chime and the notification sounds', async () => {
@@ -930,7 +954,7 @@ describe('the Android notification and the one sound (T21b, T31, R12)', () => {
         await outcome
 
         expect(audioPlays.count).toBe(0)
-        expect(notifyCalls().map((call) => call.args[3])).toEqual([false])
+        expect(statePayloads().map((payload) => payload.silent)).toEqual([false])
         // The sound went to the system, so the composer's playMessage chime must add none.
         expect(hasChimedFor(caller.signal)).toBe(true)
     })
@@ -963,6 +987,153 @@ describe('the Android notification and the one sound (T21b, T31, R12)', () => {
         await sendThenLeave(() => {})
 
         expect(notifyCalls()).toEqual([])
+    })
+})
+
+/** A thumbnail store that holds `records` by image location, as `persistRecord` writes them. */
+function thumbStoreOf(records: Record<string, unknown>) {
+    return {
+        getItem: vi.fn(async (key: string) => records[key] ?? null),
+        setItem: vi.fn(async () => {}),
+        removeItem: vi.fn(async () => {}),
+        iterate: vi.fn(async () => {}),
+    }
+}
+
+const OWNER_IMAGE = 'assets/c0.png'
+const OWNER_THUMB = 'data:image/webp;base64,UklGRg=='
+
+/** Announces a finished reply for the first chat of the first character, as the send does after its registration ended. */
+function announceFirstChat(): void {
+    announceReply({ origin: { chaId: 'char-0', chatId: 'chat-0' }, outcome: 'reply' }, undefined)
+}
+
+describe('the reply notice names who replied and never what was said (S11, S12, MC-1348, MC-1378)', () => {
+    afterEach(() => {
+        __avatarThumbTestHooks.setStore(null)
+        __avatarThumbTestHooks.reset()
+        delete window.__risuTaniumReplyNotificationsHost
+    })
+
+    test('reproducer (R1): a chat named "Secret chat" never reaches the host; the v2 notice names the character and carries the fixed text', async () => {
+        readyWorld()
+        firstChat().name = 'Secret chat'
+        androidWithSwitchOn()
+
+        await sendThenLeave(toB)
+
+        const posts = fake.postedTo('replyNotifications', 'notifyState')
+        expect(posts).toHaveLength(1)
+        expect(JSON.stringify(posts)).not.toContain('Secret chat')
+        expect(statePayloads()[0].name).toBe('char-0')
+        expect(statePayloads()[0].text).toBe('Replied')
+    })
+
+    test('new API (R2): the payload carries the key that is the notification tag, the target, the fixed texts and no icon when none is known', () => {
+        installWorld()
+        androidWithSwitchOn()
+
+        announceFirstChat()
+
+        expect(statePayloads()).toEqual([{
+            v: 2,
+            key: 'char-0/chat-0',
+            name: 'char-0',
+            text: 'Replied',
+            publicTitle: 'New reply',
+            chaId: 'char-0',
+            chatId: 'chat-0',
+            avatar: null,
+            silent: true,
+        }])
+        expect(statePayloads()[0].publicTitle).not.toContain(statePayloads()[0].name)
+    })
+
+    test('new API (R2): a group reply is titled with the group and targets the group', () => {
+        installGroupWorld(['member-1', 'member-2'])
+        androidWithSwitchOn()
+
+        announceReply({ origin: { chaId: 'group-1', chatId: 'group-chat' }, outcome: 'reply' }, undefined)
+
+        const payload = onlyStatePayload()
+        expect([payload.key, payload.name, payload.chaId, payload.chatId]).toEqual(['group-1/group-chat', 'group-1', 'group-1', 'group-chat'])
+    })
+
+    test('new API (R2): the owner\'s thumbnail from the memo is the avatar, and the notice looks nothing up itself', async () => {
+        __avatarThumbTestHooks.setStore(thumbStoreOf({ [OWNER_IMAGE]: { v: THUMB_VERSION, src: OWNER_THUMB } }) as never)
+        installWorld({}, { image: OWNER_IMAGE })
+        androidWithSwitchOn()
+        await getAvatarThumbSrc(OWNER_IMAGE)
+        await prepareReplyNoticeAvatar()
+
+        announceFirstChat()
+
+        expect(onlyStatePayload().avatar).toBe(OWNER_THUMB)
+    })
+
+    test('new API (R2): a thumbnail that is not known yet gives no icon and starts no lookup', async () => {
+        const store = thumbStoreOf({ [OWNER_IMAGE]: { v: THUMB_VERSION, src: OWNER_THUMB } })
+        __avatarThumbTestHooks.setStore(store as never)
+        installWorld({}, { image: OWNER_IMAGE })
+        androidWithSwitchOn()
+        await prepareReplyNoticeAvatar()
+
+        announceFirstChat()
+        // A lookup the notice started would reach the store after the thumbnail queue's first turn.
+        await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+        expect(onlyStatePayload().avatar).toBeNull()
+        expect(store.getItem).not.toHaveBeenCalled()
+        expect(peekAvatarThumb(OWNER_IMAGE)).toBeUndefined()
+    })
+
+    test('new API (MC-1377): an animated or ineligible avatar gives no icon', async () => {
+        __avatarThumbTestHooks.setStore(thumbStoreOf({ [OWNER_IMAGE]: { v: THUMB_VERSION, skip: true } }) as never)
+        installWorld({}, { image: OWNER_IMAGE })
+        androidWithSwitchOn()
+        await getAvatarThumbSrc(OWNER_IMAGE)
+        await prepareReplyNoticeAvatar()
+
+        announceFirstChat()
+
+        expect(onlyStatePayload().avatar).toBeNull()
+    })
+
+    test('new API (MC-1377): hideAllImages gives no icon even for a known thumbnail', async () => {
+        __avatarThumbTestHooks.setStore(thumbStoreOf({ [OWNER_IMAGE]: { v: THUMB_VERSION, src: OWNER_THUMB } }) as never)
+        installWorld({ hideAllImages: true }, { image: OWNER_IMAGE })
+        androidWithSwitchOn()
+        await getAvatarThumbSrc(OWNER_IMAGE)
+        await prepareReplyNoticeAvatar()
+
+        announceFirstChat()
+
+        expect(onlyStatePayload().avatar).toBeNull()
+    })
+
+    test('guard (R3): the host call, the toast and the chimed record are all in place when announceReply returns', () => {
+        installWorld()
+        androidWithSwitchOn()
+        const caller = new AbortController()
+
+        announceReply({ origin: { chaId: 'char-0', chatId: 'chat-0' }, outcome: 'reply' }, caller.signal)
+
+        expect(statePayloads()).toHaveLength(1)
+        expect(toasts().map((toast) => toast.text)).toEqual(['char-0 replied'])
+        expect(hasChimedFor(caller.signal)).toBe(true)
+    })
+
+    test('guard: an old host without notifyState gets the v1 notify, unchanged, and never the v2 call', async () => {
+        delete window.__risuTaniumHost
+        const legacy = { notify: vi.fn(), cancel: vi.fn() }
+        window.__risuTaniumReplyNotificationsHost = legacy
+        readyWorld()
+        androidWithSwitchOn()
+
+        await sendThenLeave(toB)
+
+        expect(legacy.notify).toHaveBeenCalledTimes(1)
+        expect(legacy.notify).toHaveBeenCalledWith('char-0/chat-0', 'char-0 replied', 'Evening chat', true)
     })
 })
 

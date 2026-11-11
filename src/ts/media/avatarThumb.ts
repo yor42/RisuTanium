@@ -651,6 +651,17 @@ export async function getAvatarThumbSrc(loc: string, options?: ThumbRequestOptio
     return waitOnEntry(loc, entry, options)
 }
 
+/**
+ * What the in-memory memo holds for `loc` right now, synchronously: a string
+ * is a thumbnail, `null` means there is none (an animated image, or a failed
+ * or skipped lookup), and `undefined` means not known yet. It starts no
+ * lookup, memoizes nothing and does not reorder the memo, so reading it never
+ * changes what a later eviction removes.
+ */
+export function peekAvatarThumb(loc: string): string | null | undefined {
+    return memo.has(loc) ? memo.get(loc) : undefined
+}
+
 /** Only local `assets/` locs are eligible, never more aggressive than the
  *  existing full-size path. */
 export function isThumbEligible(loc: string): boolean {

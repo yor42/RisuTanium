@@ -94,6 +94,7 @@ import {
     getAvatarThumbSrc,
     isAnimatedImage,
     isThumbEligible,
+    peekAvatarThumb,
     sweepAvatarThumbs,
     thumbDimensions,
 } from './avatarThumb'
@@ -1843,3 +1844,49 @@ describe('classifyImage', () => {
 })
 
 //#endregion
+
+describe('A1: peekAvatarThumb', () => {
+    // NC: new export, no pre-fix base. Its red evidence is the mutants "the peek starts a lookup" and "the peek memoizes a miss as null".
+    test('is undefined before any lookup, starts none, and does not memoize the miss', async () => {
+        const generator = vi.fn(async (loc: string) => ({ src: `src-for-${loc}` }))
+        __avatarThumbTestHooks.setGenerator(generator)
+        __avatarThumbTestHooks.setStore(makeMissStore() as never)
+
+        expect(peekAvatarThumb('assets/a.png')).toBeUndefined()
+        expect(peekAvatarThumb('assets/a.png')).toBeUndefined()
+        await Promise.resolve()
+
+        expect(generator).not.toHaveBeenCalled()
+        expect(__avatarThumbTestHooks.stats().inFlight).toBe(0)
+        expect(__avatarThumbTestHooks.stats().memoEntries).toBe(0)
+    })
+
+    test('after a lookup resolved from a stored record it is that thumbnail, and it starts nothing', async () => {
+        __avatarThumbTestHooks.setStore(makeMemoryStore({ 'assets/a.png': { v: THUMB_VERSION, src: 'stored-src' } }) as never)
+        await getAvatarThumbSrc('assets/a.png')
+
+        expect(peekAvatarThumb('assets/a.png')).toBe('stored-src')
+        expect(__avatarThumbTestHooks.stats().inFlight).toBe(0)
+    })
+
+    test('after a skipped image it is null: a thumbnail that will never exist, not one that is not known yet', async () => {
+        __avatarThumbTestHooks.setStore(makeMemoryStore({ 'assets/a.png': { v: THUMB_VERSION, skip: true } }) as never)
+        await getAvatarThumbSrc('assets/a.png')
+
+        expect(peekAvatarThumb('assets/a.png')).toBeNull()
+    })
+
+    test('does not reorder the memo, so a peeked entry is still the first one evicted', async () => {
+        __avatarThumbTestHooks.setLimits({ memoMaxEntries: 2 })
+        __avatarThumbTestHooks.setGenerator(async (loc) => ({ src: `src-for-${loc}` }))
+        __avatarThumbTestHooks.setStore(makeMissStore() as never)
+        await getAvatarThumbSrc('assets/a.png')
+        await getAvatarThumbSrc('assets/b.png')
+
+        expect(peekAvatarThumb('assets/a.png')).toBe('src-for-assets/a.png')
+        await getAvatarThumbSrc('assets/c.png')
+
+        expect(peekAvatarThumb('assets/a.png')).toBeUndefined()
+        expect(peekAvatarThumb('assets/b.png')).toBe('src-for-assets/b.png')
+    })
+})

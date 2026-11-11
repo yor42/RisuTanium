@@ -1,7 +1,8 @@
 import { language } from '../../lang'
 import { fillLang } from '../../lang/fill'
 import sendSound from '../../etc/send.mp3'
-import { notifyReply, replyNotificationKey, state as replyNotificationState } from '../android/replyNotifications.svelte'
+import type * as NotificationAvatarModule from '../android/notificationAvatar'
+import { hasReplyStateHost, notifyReply, notifyReplyState, replyNotificationKey, state as replyNotificationState } from '../android/replyNotifications.svelte'
 import { readNotificationStatus } from '../gui/notificationPermission'
 import { isAndroidTransport } from '../storage/tauriByteTransport'
 import { DBState } from '../stores.svelte'
@@ -40,17 +41,54 @@ export function noteReplySound(signal: AbortSignal | undefined, outcome: ReplyOu
     }
 }
 
+// The avatar code reads the character database and the thumbnail store, so it is loaded where the page runs in the
+// Android app rather than imported here: a static import would pull the thumbnail module and what it needs into every
+// importer of this one, including a test that mocks only part of the app. Until it has loaded, a notice has no icon.
+let avatarCode: typeof NotificationAvatarModule | null = null
+let avatarCodeLoad: Promise<void> | null = null
+
+/**
+ * Loads the avatar code the reply notice reads. Idempotent: it runs when this module loads with the Android host present,
+ * and again for every Android notice, so a notice never waits on it and a failed load is retried. Resolves when the code
+ * is available or the load failed.
+ */
+export function prepareReplyNoticeAvatar(): Promise<void> {
+    avatarCodeLoad ??= import('../android/notificationAvatar').then(
+        (loaded) => {
+            avatarCode = loaded
+        },
+        (error: unknown) => {
+            avatarCodeLoad = null
+            console.error('reply notice avatar code failed to load', error)
+        },
+    )
+    return avatarCodeLoad
+}
+
+// The Android host injects its bridge before the page's own scripts run, so its presence at load says the avatar code
+// is wanted. The transport check is not used here: this module may load inside the import cycle of a module that
+// a test replaces, where calling it at load would read the replacement before it is set up.
+if (typeof window !== 'undefined' && (window.__risuTaniumHost !== undefined || window.__risuTaniumReplyNotificationsHost !== undefined)) {
+    void prepareReplyNoticeAvatar()
+}
+
 interface ChatNames {
     /** The character or group the chat belongs to. */
     owner: string
     /** The chat's own name, empty when it has none. */
     chat: string
+    /** The owner's avatar location, empty when it has none. */
+    ownerImage: string
 }
 
 function namesOf(announcement: ReplyAnnouncement): ChatNames | null {
     const found: { names: ChatNames | null } = { names: null }
     readAt(announcement.origin, (ctx) => {
-        found.names = { owner: ctx.owner.name || language.settingsPage.unnamed, chat: ctx.chat.name || '' }
+        found.names = {
+            owner: ctx.owner.name || language.settingsPage.unnamed,
+            chat: ctx.chat.name || '',
+            ownerImage: ctx.owner.image ?? '',
+        }
     })
     return found.names
 }
@@ -117,7 +155,25 @@ export function announceReply(announcement: ReplyAnnouncement | null, callerSign
     }
     postToast({ kind: 'info', text: title, sub })
     if (android) {
-        notifyReply(replyNotificationKey(announcement.origin), title, body, visible)
+        const key = replyNotificationKey(announcement.origin)
+        void prepareReplyNoticeAvatar()
+        if (hasReplyStateHost()) {
+            // The v2 notice names the owner and says nothing of the chat. The avatar is only what the thumbnail memo
+            // already holds (undefined, not yet looked up, is no icon): nothing is looked up or waited for here.
+            notifyReplyState({
+                v: 2,
+                key,
+                name: names.owner,
+                text: language.replyNoticeText,
+                publicTitle: language.replyNoticePublicTitle,
+                chaId: announcement.origin.chaId,
+                chatId: announcement.origin.chatId,
+                avatar: avatarCode?.notificationAvatarOf(names.ownerImage) ?? null,
+                silent: visible,
+            })
+        } else {
+            notifyReply(key, title, body, visible)
+        }
     } else {
         postWebNotification(title, body)
     }
