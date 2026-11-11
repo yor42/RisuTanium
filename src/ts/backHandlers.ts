@@ -27,6 +27,12 @@ export interface BackGuardOptions {
     /** Tells the user that another Back quits. A throw means the warning could not be shown. */
     showToast: () => void
     /**
+     * Takes the warning down. Called whenever an armed guard is disarmed (a handled press, a covered
+     * press, the quitting press, the page going hidden), never on the arming press. A throw is
+     * recorded and changes nothing else.
+     */
+    hideToast?: () => void
+    /**
      * Requests a best-effort save of unsaved edits and of a streaming reply. Called on the press
      * that warns and on the press whose warning throws, never on the quitting press, in its own
      * task and try/catch, so a throw blocks neither the warning nor the quit and the save work
@@ -40,6 +46,20 @@ let guard: BackGuardOptions | null = null
 let armedAt: number | null = null
 let stopVisibilityReset: (() => void) | null = null
 
+/** Drops the arm and, when one was armed, takes the warning down; a failing hide never blocks the press. */
+function disarm(): void {
+    if (armedAt === null) {
+        return
+    }
+    armedAt = null
+    try {
+        guard?.hideToast?.()
+    } catch (error) {
+        console.error('Back warning hide failed', error)
+        recordCaughtError('back.hideWarning', error)
+    }
+}
+
 /**
  * Handles one Back press. Handlers run newest first and the first that returns true ends the
  * press. When none does, the quit guard warns on the first press and lets the second one
@@ -50,7 +70,7 @@ let stopVisibilityReset: (() => void) | null = null
  */
 export function dispatchBack(): boolean {
     if (pageCovered()) {
-        armedAt = null
+        disarm()
         try {
             closeDialogForBack()
         } catch (error) {
@@ -64,7 +84,7 @@ export function dispatchBack(): boolean {
         try {
             if (entry.run()) {
                 // A handled press ends the quit sequence: quitting always needs a fresh warning.
-                armedAt = null
+                disarm()
                 return true
             }
         } catch (error) {
@@ -95,7 +115,7 @@ function unhandledPress(): boolean {
     }
     const now = Date.now()
     if (armedAt !== null && now >= armedAt && now - armedAt < QUIT_WINDOW_MS) {
-        armedAt = null
+        disarm()
         return false
     }
     // Scheduled before the warning: a press whose warning fails quits at once and must still have
@@ -196,7 +216,7 @@ export function installBackGuard(options: BackGuardOptions): void {
     armedAt = null
     const onVisibility = () => {
         if (document.visibilityState === 'hidden') {
-            armedAt = null
+            disarm()
         }
     }
     document.addEventListener('visibilitychange', onVisibility)
