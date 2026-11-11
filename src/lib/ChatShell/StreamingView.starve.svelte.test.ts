@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 
 const control = vi.hoisted(() => ({ delay: 0, conversions: 0 }))
 
@@ -44,11 +45,11 @@ async function stream(conversionMs: number, finishedBlocks: number, chunkGapMs: 
         await vi.advanceTimersByTimeAsync(chunkGapMs)
         state.text += ` w${chunks++}`
         flushSync()
-        await tick()
+        await tickFake()
         samples.push({ finished: target.querySelectorAll('[data-part="chat-stream-finished"]').length, open: target.querySelector('[data-part="chat-stream-open"]')?.textContent ?? '' })
     }
     await vi.advanceTimersByTimeAsync(2000)
-    await tick()
+    await tickFake()
     return { chunks, samples }
 }
 

@@ -10,7 +10,8 @@
  * buttons, as the producer does. MOCKED: `getFullSettingsData` (empty) and the settings data files
  * `utils` imports to build the full list (emptied).
  */
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { SettingItem } from 'src/ts/setting/types'
@@ -84,7 +85,7 @@ function click(button: HTMLElement): void {
 }
 
 async function settle(): Promise<void> {
-    await tick()
+    await tickFake()
     await Promise.resolve()
     flushSync()
 }

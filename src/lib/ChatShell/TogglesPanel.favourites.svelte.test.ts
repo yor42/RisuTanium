@@ -6,7 +6,8 @@
  * active preset, and the MC-350 rules for a stored value this build cannot read. Mounts the REAL TogglesPanel,
  * ToggleRow and ShellSheet with the real favourites store. Guards by construction: the controls are new.
  */
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { afterEach, beforeEach, describe, expect, test, vi, type Mock } from 'vitest'
 import type { Chat } from 'src/ts/storage/database.svelte'
 
@@ -121,7 +122,7 @@ async function show(): Promise<HTMLElement> {
         },
     })
     flushSync()
-    await tick()
+    await tickFake()
     return target
 }
 
@@ -135,14 +136,14 @@ const favRow = (target: ParentNode, key: string) => q(target, `${FAV} [data-part
 async function openMenu(row: HTMLElement): Promise<void> {
     q(row, '[data-part="toggle-menu-button"]')!.click()
     flushSync()
-    await tick()
+    await tickFake()
 }
 
 async function choose(row: HTMLElement, part: string): Promise<void> {
     await openMenu(row)
     q(row, `[data-part="${part}"]`)!.click()
     flushSync()
-    await tick()
+    await tickFake()
 }
 
 function type(target: ParentNode, text: string): void {
@@ -155,7 +156,7 @@ function type(target: ParentNode, text: string): void {
 async function settle(ms = 120): Promise<void> {
     vi.advanceTimersByTime(ms)
     flushSync()
-    await tick()
+    await tickFake()
 }
 
 beforeEach(() => {
@@ -211,7 +212,7 @@ describe('starring from the row menu', () => {
         // Author groups start folded.
         q(target, '[data-part="toggles-section"][data-source="module:m1"] [data-part="toggles-group-head"]')!.click()
         flushSync()
-        await tick()
+        await tickFake()
         await choose(sourceRow(target, 'module:m1', 'inner'), 'toggle-star')
         await choose(sourceRow(target, 'prompt', 'tone'), 'toggle-star')
         expect(favKeys(target)).toEqual(['plain', 'inner', 'tone'])
@@ -228,10 +229,10 @@ describe('starring from the row menu', () => {
         expect(q(favRow(target, 'tone'), '[data-part="toggle-star"]')!.textContent).toBe('chatShellTogglesUnstar')
         q(favRow(target, 'tone'), '[data-part="toggle-star"]')!.click()
         flushSync()
-        await tick()
+        await tickFake()
         expect(favKeys(target)).toEqual(['scene'])
         // The copy that had focus is gone, so focus goes to the same toggle's own row.
-        await tick()
+        await tickFake()
         expect(document.activeElement).toBe(q(sourceRow(target, 'prompt', 'tone'), '[data-part="toggle-menu-button"]'))
         await choose(sourceRow(target, 'prompt', 'scene'), 'toggle-star')
         expect(q(target, FAV)).toBeNull()
@@ -255,8 +256,8 @@ describe('starring from the row menu', () => {
         control.focus()
         control.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true }))
         flushSync()
-        await tick()
-        await tick()
+        await tickFake()
+        await tickFake()
         expect(document.activeElement?.getAttribute('data-part')).toBe('toggle-star')
     })
 })
@@ -270,7 +271,7 @@ describe('the Favourites section', () => {
         expect(q(favRow(target, 'tone'), '[data-part="toggle-move-up"]')!.hasAttribute('disabled')).toBe(true)
         q(favRow(target, 'tone'), '[data-part="toggle-move-down"]')!.click()
         flushSync()
-        await tick()
+        await tickFake()
         expect(favKeys(target)).toEqual(['scene', 'tone', 'mood'])
         expect(storedItems()).toEqual([ref('prompt', 'scene'), ref('prompt', 'tone'), ref('prompt', 'mood')])
         expect(q(target, '[data-part="toggles-announce"]')!.textContent).toBe('moved:Tone:2:3')
@@ -308,7 +309,7 @@ describe('the Favourites section', () => {
         const flip = q(favRow(target, 'scene'), '[data-part="toggle-switch"]') as HTMLInputElement
         flip.click()
         flushSync()
-        await tick()
+        await tickFake()
         expect(sharedValues().toggle_scene).toBe('1')
         expect((q(sourceRow(target, 'prompt', 'scene'), '[data-part="toggle-switch"]') as HTMLInputElement).checked).toBe(true)
         expect(h.mark).toHaveBeenCalledWith('char-a')
@@ -410,11 +411,11 @@ describe('search and the filter', () => {
         expect(favKeys(target)).toEqual(['tone', 'scene'])
         ;(q(target, '[data-part="toggles-filter-chip"]') as HTMLButtonElement).click()
         flushSync()
-        await tick()
+        await tickFake()
         expect(q(target, FAV)).toBeNull()
         ;(q(target, '[data-part="toggles-filter-chip"]') as HTMLButtonElement).click()
         flushSync()
-        await tick()
+        await tickFake()
         expect(favKeys(target)).toEqual(['tone', 'scene'])
     })
 

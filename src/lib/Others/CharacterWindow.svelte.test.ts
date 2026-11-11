@@ -19,7 +19,7 @@
  * are asserted as reproducers through the screens in `GridCatalog.window.svelte.test.ts`,
  * `CharacterTrashList.window.svelte.test.ts` and `CharacterSimpleList.window.svelte.test.ts`.
  */
-import { createRawSnippet, flushSync, mount, unmount, type Snippet } from 'svelte'
+import { createRawSnippet, flushSync, mount, tick, unmount, type Snippet } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { gridRows, listRowKey, listRows, type CharRow, type ScrollAnchor } from './charListRows'
 import CharacterWindow from './CharacterWindow.svelte'
@@ -145,6 +145,8 @@ async function settleMicrotasks(): Promise<void> {
         await Promise.resolve()
         flushSync()
     }
+    await tick()
+    flushSync()
 }
 
 let mounted: { app: Record<string, unknown>; target: HTMLElement } | null = null

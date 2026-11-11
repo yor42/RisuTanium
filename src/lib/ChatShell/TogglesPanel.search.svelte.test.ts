@@ -5,7 +5,8 @@
  * the no-result state, the Escape and Back layers and the reset on reopen. Mounts the REAL TogglesPanel, ToggleRow and
  * ShellSheet with the real scope accessors. Guards by construction: the controls are new.
  */
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { afterEach, beforeEach, describe, expect, test, vi, type Mock } from 'vitest'
 import type { Chat } from 'src/ts/storage/database.svelte'
 
@@ -114,7 +115,7 @@ async function show(): Promise<HTMLElement> {
         },
     })
     flushSync()
-    await tick()
+    await tickFake()
     return target
 }
 
@@ -135,13 +136,13 @@ function type(target: ParentNode, text: string): void {
 async function settle(ms = 120): Promise<void> {
     vi.advanceTimersByTime(ms)
     flushSync()
-    await tick()
+    await tickFake()
 }
 
 async function escape(): Promise<void> {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
     flushSync()
-    await tick()
+    await tickFake()
 }
 
 beforeEach(() => {
@@ -447,7 +448,7 @@ describe('Escape and Back layers (S8)', () => {
         expect(keys(target)).toEqual(['a', 't'])
         ;(q(target, '[data-part="toggle-row"][data-key="t"] [data-part="toggle-text-button"]') as HTMLButtonElement).click()
         flushSync()
-        await tick()
+        await tickFake()
         expect(q(target, '[data-part="toggle-text-input"]')).not.toBeNull()
         await escape()
         expect(q(target, '[data-part="toggle-text-input"]')).toBeNull()
@@ -488,7 +489,7 @@ describe('Escape and Back layers (S8)', () => {
         await settle()
         expect(dispatchBack()).toBe(true)
         flushSync()
-        await tick()
+        await tickFake()
         expect(input(target).value).toBe('')
         expect(keys(target)).toEqual(['a', 'b'])
         expect(onclose).not.toHaveBeenCalled()
@@ -504,15 +505,15 @@ describe('Escape and Back layers (S8)', () => {
         await settle()
         ;(q(target, '[data-part="toggle-text-button"]') as HTMLButtonElement).click()
         flushSync()
-        await tick()
+        await tickFake()
         expect(dispatchBack()).toBe(true)
         flushSync()
-        await tick()
+        await tickFake()
         expect(q(target, '[data-part="toggle-text-input"]')).toBeNull()
         expect(input(target).value).toBe('say')
         expect(dispatchBack()).toBe(true)
         flushSync()
-        await tick()
+        await tickFake()
         expect(input(target).value).toBe('')
         expect(onclose).not.toHaveBeenCalled()
     })
@@ -528,10 +529,10 @@ describe('reset on reopen', () => {
         flushSync()
         view.open = false
         flushSync()
-        await tick()
+        await tickFake()
         view.open = true
         flushSync()
-        await tick()
+        await tickFake()
         expect(input(target).value).toBe('')
         expect(chip(target).getAttribute('aria-pressed')).toBe('false')
         expect(keys(target)).toEqual(['a', 'b'])
@@ -544,10 +545,10 @@ describe('reset on reopen', () => {
         type(target, 'alp')
         view.open = false
         flushSync()
-        await tick()
+        await tickFake()
         view.open = true
         flushSync()
-        await tick()
+        await tickFake()
         await settle(300)
         expect(keys(target)).toEqual(['a', 'b'])
     })
@@ -584,7 +585,7 @@ describe('keyboard hint and the row-menu keys', () => {
         control.focus()
         control.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true, cancelable: true }))
         flushSync()
-        await tick()
+        await tickFake()
         expect(q(target, '[data-part="toggle-row"][data-key="b"] [data-part="toggle-menu"]')).not.toBeNull()
         expect(q(target, '[data-part="toggle-row"][data-key="a"] [data-part="toggle-menu"]')).toBeNull()
     })
@@ -610,7 +611,7 @@ describe('keyboard hint and the row-menu keys', () => {
         // The list's own handler must not have moved the focus to the ⋯ button in the meantime.
         expect(document.activeElement).toBe(first)
         flushSync()
-        await tick()
+        await tickFake()
         expect(sharedValues().toggle_m).toBe('1')
         expect(document.activeElement?.getAttribute('data-part')).toBe('toggle-select-option')
     })

@@ -268,7 +268,8 @@ describe('the hold ends with the list signal', () => {
         expect(await gateIsOn()).toBe(false)
 
         switchRoom()
-        await tick()
+        // A flush, not a tick: the async tick waits for a frame, which would use up one of the two the hold lasts.
+        flushSync()
         await frame()
         expect(await gateIsOn()).toBe(true)
         await frame()

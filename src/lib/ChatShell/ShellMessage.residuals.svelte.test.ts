@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { flushSync, mount, tick, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import type { Message } from '../../ts/storage/database.svelte'
 
 const back = vi.hoisted(() => ({
@@ -101,7 +102,7 @@ async function show() {
     document.body.appendChild(target)
     app = mount(ShellMessage, { target, props: { idx: 0, chatId: 'm', name: 'Ari', message, onOpenActions: (request: ActionRequest) => { opened.request = request } } })
     flushSync()
-    await tick()
+    await tickFake()
 }
 afterEach(async () => {
     if (app) await unmount(app)

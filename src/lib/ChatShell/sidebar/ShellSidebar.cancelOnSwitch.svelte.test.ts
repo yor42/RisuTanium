@@ -19,6 +19,7 @@
  * the heavy sidebar children. The live writes, the list model, the menu, the confirm component and the pending rules are real.
  */
 import { flushSync, mount, tick, unmount } from 'svelte'
+import { tickFake } from '../../../ts/tests/svelteTick.test-helpers'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Chat, ChatFolder, Database } from '../../../ts/storage/database.svelte'
@@ -262,12 +263,15 @@ beforeEach(() => {
     takeOverlayReturnFocus()
 })
 
-afterEach(() => {
+afterEach(async () => {
     for (const app of mounted) {
         unmount(app)
     }
     mounted = []
     flushSync()
+    // Unmounting answers an open confirm false after a tick; wait for it so it cannot land in the next test.
+    await tickFake()
+    await Promise.resolve()
     target?.remove()
     document.body.innerHTML = ''
     vi.useRealTimers()

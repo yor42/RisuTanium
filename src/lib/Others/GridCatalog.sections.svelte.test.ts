@@ -19,7 +19,7 @@
  * every element reports, its height is 600 px and no row is ever measured, so every row is
  * the 64 px fallback.
  */
-import { flushSync, mount, unmount } from 'svelte'
+import { flushSync, mount, tick, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database, folder } from '../../ts/storage/database.svelte'
@@ -206,6 +206,7 @@ async function settle(): Promise<void> {
         flushSync()
         await Promise.resolve()
     }
+    await tick()
     flushSync()
 }
 
