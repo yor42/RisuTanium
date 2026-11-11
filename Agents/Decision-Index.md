@@ -1200,3 +1200,180 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-1303](Maintainer-Context.md#mc-1303--lane-d-takes-open-tickets-slot-cap-raise-to-6-lane-d-codes-712-and-715-ahead-2026-11-10) | Lane D takes open tickets; slot cap Raise to 6; lane D codes 712 and 715 ahead, 2026-11-10 |
 | [MC-1304](Maintainer-Context.md#mc-1304--chore-714-follow-up-stages-sized-after-the-stage-0-profile-2026-11-10) | CHORE-714 follow-up stages sized after the stage 0 profile, 2026-11-10 |
 | [MC-1305](Maintainer-Context.md#mc-1305--chore-714-store2-stage-count-run-first-hold-saves-until-the-reply-settles-if-retries-are-the-cause-2026-11-10) | CHORE-714 store2 stage: count run first; hold saves until the reply settles if retries are the cause, 2026-11-10 |
+| [MC-1306](Maintainer-Context.md#mc-1306--chore-712-device-evidence-accepted-merge-after-trial58-2026-11-10) | CHORE-712 device evidence accepted; merge after trial58, 2026-11-10 |
+| [MC-1307](Maintainer-Context.md#mc-1307--chore-714-store2-scanner-paused-mid-stream-2026-11-10) | CHORE-714 store2 scanner paused mid-stream, 2026-11-10 |
+| [MC-1308](Maintainer-Context.md#mc-1308--chore-688-svelte-experimentalasync-adopted-and-staged-2026-11-10) | CHORE-688 Svelte experimental.async adopted and staged, 2026-11-10 |
+| [MC-1309](Maintainer-Context.md#mc-1309--chore-641-closed-as-benign-2026-11-10) | CHORE-641 closed as benign, 2026-11-10 |
+| [MC-1310](Maintainer-Context.md#mc-1310--chore-652-last-character-restore-at-launch-2026-11-10) | CHORE-652 last-character restore at launch, 2026-11-10 |
+| [MC-1311](Maintainer-Context.md#mc-1311--chore-686-closes-if-adb-confirms-2026-11-10) | CHORE-686 closes if adb confirms, 2026-11-10 |
+| [MC-1312](Maintainer-Context.md#mc-1312--chore-652-launch-restore-raises-the-same-alerts-as-a-tap-2026-11-10) | CHORE-652 launch restore raises the same alerts as a tap, 2026-11-10 |
+| [MC-1313](Maintainer-Context.md#mc-1313--chore-652-settings-backup-restore-reload-counts-as-a-relaunch-2026-11-10) | CHORE-652 Settings backup-restore reload counts as a relaunch, 2026-11-10 |
+| [MC-1314](Maintainer-Context.md#mc-1314--chore-652-late-launch-file-shows-above-the-restored-chat-2026-11-10) | CHORE-652 late launch file shows above the restored chat, 2026-11-10 |
+| [MC-1315](Maintainer-Context.md#mc-1315--chore-652-read-only-pages-skip-the-restore-and-recorder-2026-11-10) | CHORE-652 read-only pages skip the restore and recorder, 2026-11-10 |
+| [MC-1316](Maintainer-Context.md#mc-1316--chore-688-focus-and-scroll-memory-captured-at-compute-2026-11-10) | CHORE-688 focus and scroll memory captured at compute, 2026-11-10 |
+| [MC-1317](Maintainer-Context.md#mc-1317--chore-714-s4-edits-to-the-streaming-character-wait-2026-11-10) | CHORE-714 s4 edits to the streaming character wait, 2026-11-10 |
+| [MC-1318](Maintainer-Context.md#mc-1318--chore-688-dirty-marking-made-explicit-at-the-root-2026-11-10) | CHORE-688 dirty marking made explicit at the root, 2026-11-10 |
+| [MC-1319](Maintainer-Context.md#mc-1319--chore-714-s4-registry-only-hold-let-it-wait-2026-11-10) | CHORE-714 s4 registry-only hold ("Let it wait"), 2026-11-10 |
+| [MC-1320](Maintainer-Context.md#mc-1320--dirty-rc-write-hook-plus-effect-safety-net-2026-11-10) | DIRTY-RC write hook plus effect safety net, 2026-11-10 |
+| [MC-1321](Maintainer-Context.md#mc-1321--dirty-rc-async-switch-after-the-hook-stage-2026-11-10) | DIRTY-RC async switch after the hook stage, 2026-11-10 |
+| [MC-1322](Maintainer-Context.md#mc-1322--dirty-rc-an-unapplied-mark-never-throws-or-drops-2026-11-10) | DIRTY-RC an unapplied mark never throws or drops, 2026-11-10 |
+| [MC-1323](Maintainer-Context.md#mc-1323--throw-mark-folded-into-dirty-rc-2026-11-10) | THROW-MARK folded into DIRTY-RC, 2026-11-10 |
+| [MC-1324](Maintainer-Context.md#mc-1324--dirty-rc-fallback-also-marks-the-settings-block-2026-11-11) | DIRTY-RC fallback also marks the settings block, 2026-11-11 |
+| [MC-1325](Maintainer-Context.md#mc-1325--dirty-rc-note-9-and-pc-bars-accepted-2026-11-11) | DIRTY-RC Note 9 and PC bars accepted, 2026-11-11 |
+| [MC-1326](Maintainer-Context.md#mc-1326--chore-690-studio-revert-growth-folded-in-2026-11-11) | CHORE-690 Studio revert growth folded in, 2026-11-11 |
+| [MC-1327](Maintainer-Context.md#mc-1327--chore-690-revert-skips-budget-suspended-list-steps-2026-11-11) | CHORE-690 revert skips budget-suspended list steps, 2026-11-11 |
+| [MC-1328](Maintainer-Context.md#mc-1328--chore-690-net-zero-revert-does-nothing-2026-11-11) | CHORE-690 net-zero revert does nothing, 2026-11-11 |
+| [MC-1329](Maintainer-Context.md#mc-1329--chore-690-restored-item-goes-to-the-end-of-the-list-2026-11-11) | CHORE-690 restored item goes to the end of the list, 2026-11-11 |
+| [MC-1330](Maintainer-Context.md#mc-1330--dirty-rc-key-row-bars-at-10-2026-11-11) | DIRTY-RC key-row bars at +10%, 2026-11-11 |
+| [MC-1331](Maintainer-Context.md#mc-1331--dirty-rc-10k-message-fixture-option-2026-11-11) | DIRTY-RC 10k-message fixture option, 2026-11-11 |
+| [MC-1332](Maintainer-Context.md#mc-1332--dirty-rc-aa-noise-check-2026-11-11) | DIRTY-RC A/A noise check, 2026-11-11 |
+| [MC-1333](Maintainer-Context.md#mc-1333--chore-690-keeps-the-16-ms-rule-and-builds-the-lever-2026-11-11) | CHORE-690 keeps the 16 ms rule and builds the lever, 2026-11-11 |
+| [MC-1334](Maintainer-Context.md#mc-1334--studio-render-filed-and-sized-separately-2026-11-11) | STUDIO-RENDER filed and sized separately, 2026-11-11 |
+| [MC-1335](Maintainer-Context.md#mc-1335--studio-render-keeps-full-boxes-and-fixes-the-re-render-2026-11-11) | STUDIO-RENDER keeps full boxes and fixes the re-render, 2026-11-11 |
+| [MC-1336](Maintainer-Context.md#mc-1336--studio-render-tap-to-frame-bars-on-note-9-2026-11-11) | STUDIO-RENDER tap-to-frame bars on Note 9, 2026-11-11 |
+| [MC-1337](Maintainer-Context.md#mc-1337--dirty-rc-boot-self-check-failure-logs-and-blocks-release-2026-11-11) | DIRTY-RC boot self-check failure logs and blocks release, 2026-11-11 |
+| [MC-1338](Maintainer-Context.md#mc-1338--chore-690-budget-skip-notice-2026-11-11) | CHORE-690 budget-skip notice, 2026-11-11 |
+| [MC-1339](Maintainer-Context.md#mc-1339--chore-690-single-end-of-list-form-repeat-2026-11-11) | CHORE-690 single end-of-list form repeat, 2026-11-11 |
+| [MC-1340](Maintainer-Context.md#mc-1340--chore-690-meaning-of-end-of-list-2026-11-11) | CHORE-690 meaning of "end of list", 2026-11-11 |
+| [MC-1341](Maintainer-Context.md#mc-1341--studio-render-focus-stays-with-the-same-message-2026-11-11) | STUDIO-RENDER focus stays with the same message, 2026-11-11 |
+| [MC-1342](Maintainer-Context.md#mc-1342--chore-652-row-3b-skipped-on-device-2026-11-11) | CHORE-652 row 3b skipped on device, 2026-11-11 |
+| [MC-1343](Maintainer-Context.md#mc-1343--ui-s4-e-ui-s5-ui-s6-sizing-and-the-wiki-trash-fix-2026-11-11) | UI-S4 E, UI-S5, UI-S6 sizing and the wiki Trash fix, 2026-11-11 |
+| [MC-1344](Maintainer-Context.md#mc-1344--ui-s4-e-drawer-on-home-only-2026-11-11) | UI-S4 E drawer on Home only, 2026-11-11 |
+| [MC-1345](Maintainer-Context.md#mc-1345--ui-s4-e-top-bar-contents-2026-11-11) | UI-S4 E top bar contents, 2026-11-11 |
+| [MC-1346](Maintainer-Context.md#mc-1346--ui-s4-e-phone-characters-button-moves-into-the-drawer-2026-11-11) | UI-S4 E phone Characters button moves into the drawer, 2026-11-11 |
+| [MC-1347](Maintainer-Context.md#mc-1347--ui-s4-e-home-uses-the-mockup-width-bands-2026-11-11) | UI-S4 E Home uses the mockup width bands, 2026-11-11 |
+| [MC-1348](Maintainer-Context.md#mc-1348--ui-s5-reply-ready-notice-rebuilt-per-spec-2026-11-11) | UI-S5 reply-ready notice rebuilt per spec, 2026-11-11 |
+| [MC-1349](Maintainer-Context.md#mc-1349--ui-s5-live-numbers-kept-as-decided-in-dd-004-2026-11-11) | UI-S5 live numbers kept as decided in DD-004, 2026-11-11 |
+| [MC-1350](Maintainer-Context.md#mc-1350--ui-s5-stage-order-ab-then-c-then-d-2026-11-11) | UI-S5 stage order A+B, then C, then D, 2026-11-11 |
+| [MC-1351](Maintainer-Context.md#mc-1351--ui-s6-installer-accepts-bundled-fonts-and-images-2026-11-11) | UI-S6 installer accepts bundled fonts and images, 2026-11-11 |
+| [MC-1352](Maintainer-Context.md#mc-1352--ui-s6-custom-css-applies-last-over-a-pack-2026-11-11) | UI-S6 Custom CSS applies last over a pack, 2026-11-11 |
+| [MC-1353](Maintainer-Context.md#mc-1353--ui-s6-install-entry-in-settings--display-2026-11-11) | UI-S6 install entry in Settings > Display, 2026-11-11 |
+| [MC-1354](Maintainer-Context.md#mc-1354--ui-s6-exceptionally-large-warning-at-20-mb-2026-11-11) | UI-S6 "exceptionally large" warning at 20 MB, 2026-11-11 |
+| [MC-1355](Maintainer-Context.md#mc-1355--ui-s6-acceptance-packs-and-licence-checks-2026-11-11) | UI-S6 acceptance packs and licence checks, 2026-11-11 |
+| [MC-1356](Maintainer-Context.md#mc-1356--ui-s5-scheduled-for-lane-c-after-stage-e-2026-11-11) | UI-S5 scheduled for lane C after stage E, 2026-11-11 |
+| [MC-1357](Maintainer-Context.md#mc-1357--dirty-rc-local-docker-build-2026-11-11) | DIRTY-RC local Docker build, 2026-11-11 |
+| [MC-1358](Maintainer-Context.md#mc-1358--ui-s4-top-bar-on-the-home-landing-only-2026-11-11) | UI-S4 top bar on the Home landing only, 2026-11-11 |
+| [MC-1359](Maintainer-Context.md#mc-1359--ui-s4-landing-title-and-top-bar-brand-kept-2026-11-11) | UI-S4 landing title and top-bar brand kept, 2026-11-11 |
+| [MC-1360](Maintainer-Context.md#mc-1360--ui-s5-stage-a-commit-approved-2026-11-11) | UI-S5 stage A commit approved, 2026-11-11 |
+| [MC-1361](Maintainer-Context.md#mc-1361--chore-652-closed-with-limits-noted-2026-11-11) | CHORE-652 closed with limits noted, 2026-11-11 |
+| [MC-1362](Maintainer-Context.md#mc-1362--chore-688-a3a-commit-approved-2026-11-11) | CHORE-688 A3a commit approved, 2026-11-11 |
+| [MC-1363](Maintainer-Context.md#mc-1363--16-ms-bar-binds-one-step-actions-2026-11-11) | 16 ms bar binds one-step actions, 2026-11-11 |
+| [MC-1364](Maintainer-Context.md#mc-1364--revert-notice-for-a-net-zero-revert-2026-11-11) | revert notice for a net-zero revert, 2026-11-11 |
+| [MC-1365](Maintainer-Context.md#mc-1365--undo-and-redo-skip-the-chat-op-after-an-outside-list-change-2026-11-11) | undo and redo skip the chat op after an outside list change, 2026-11-11 |
+| [MC-1366](Maintainer-Context.md#mc-1366--aged-out-undo-case-folded-into-chore-690-2026-11-11) | aged-out Undo case folded into CHORE-690, 2026-11-11 |
+| [MC-1367](Maintainer-Context.md#mc-1367--ui-s5-stage-b-quit-pill-commit-2026-11-11) | UI-S5 stage B quit pill commit, 2026-11-11 |
+| [MC-1368](Maintainer-Context.md#mc-1368--add-timing-judged-on-a-six-run-median-2026-11-11) | add timing judged on a six-run median, 2026-11-11 |
+| [MC-1369](Maintainer-Context.md#mc-1369--focus-moves-to-the-changed-box-after-undo-redo-and-restore-2026-11-11) | focus moves to the changed box after undo, redo and Restore, 2026-11-11 |
+| [MC-1370](Maintainer-Context.md#mc-1370--lost-focus-fix-folds-into-chore-690-2026-11-11) | lost-focus fix folds into CHORE-690, 2026-11-11 |
+| [MC-1371](Maintainer-Context.md#mc-1371--studio-render-closed-2026-11-11) | STUDIO-RENDER closed, 2026-11-11 |
+| [MC-1372](Maintainer-Context.md#mc-1372--remove-merged-clean-worktrees-and-branches-2026-11-11) | remove merged clean worktrees and branches, 2026-11-11 |
+| [MC-1373](Maintainer-Context.md#mc-1373--trial61-merge-and-push-2026-11-11) | trial61 merge and push, 2026-11-11 |
+| [MC-1374](Maintainer-Context.md#mc-1374--notification-tap-whose-chat-is-gone-2026-11-11) | notification tap whose chat is gone, 2026-11-11 |
+| [MC-1375](Maintainer-Context.md#mc-1375--cold-launch-from-an-unknown-tap-target-2026-11-11) | cold launch from an unknown tap target, 2026-11-11 |
+| [MC-1376](Maintainer-Context.md#mc-1376--tap-while-a-screen-is-open-2026-11-11) | tap while a screen is open, 2026-11-11 |
+| [MC-1377](Maintainer-Context.md#mc-1377--animated-or-unsupported-avatar-in-the-notice-2026-11-11) | animated or unsupported avatar in the notice, 2026-11-11 |
+| [MC-1378](Maintainer-Context.md#mc-1378--reply-ready-notice-copy-2026-11-11) | reply-ready notice copy, 2026-11-11 |
+| [MC-1379](Maintainer-Context.md#mc-1379--pre-s1-history-steps-outside-the-16-ms-gate-2026-11-11) | pre-S1 history steps outside the 16 ms gate, 2026-11-11 |
+| [MC-1380](Maintainer-Context.md#mc-1380--old-step-revert-counts-no-skip-2026-11-11) | old-step revert counts no skip, 2026-11-11 |
+| [MC-1381](Maintainer-Context.md#mc-1381--focus-rule-covers-revert-to-here-and-undoredo-shortcuts-2026-11-11) | focus rule covers Revert to here and undo/redo shortcuts, 2026-11-11 |
+| [MC-1382](Maintainer-Context.md#mc-1382--focus-when-only-the-description-changed-2026-11-11) | focus when only the description changed, 2026-11-11 |
+| [MC-1383](Maintainer-Context.md#mc-1383--phone-layout-keeps-the-history-panel-open-2026-11-11) | phone layout keeps the History panel open, 2026-11-11 |
+| [MC-1384](Maintainer-Context.md#mc-1384--restore-sheet-closed-by-escape-or-back-2026-11-11) | restore sheet closed by Escape or Back, 2026-11-11 |
+| [MC-1385](Maintainer-Context.md#mc-1385--cold-notification-tap-on-an-archived-character-2026-11-11) | cold notification tap on an archived character, 2026-11-11 |
+| [MC-1386](Maintainer-Context.md#mc-1386--chore-688-a2-commit-approved-2026-11-11) | CHORE-688 A2 commit approved, 2026-11-11 |
+| [MC-1387](Maintainer-Context.md#mc-1387--trial62-merge-and-push-2026-11-11) | trial62 merge and push, 2026-11-11 |
+| [MC-1388](Maintainer-Context.md#mc-1388--remove-uis5b-and-uis5a-worktrees-2026-11-11) | remove uis5b and uis5a worktrees, 2026-11-11 |
+| [MC-1389](Maintainer-Context.md#mc-1389--ko-reply-channel-name-2026-11-11) | ko reply channel name, 2026-11-11 |
+| [MC-1390](Maintainer-Context.md#mc-1390--ko-reply-notice-wording-kept-2026-11-11) | ko reply notice wording kept, 2026-11-11 |
+| [MC-1391](Maintainer-Context.md#mc-1391--dirty-rc-patched-svelte-proxy-delivery-2026-11-11) | DIRTY-RC patched Svelte proxy delivery, 2026-11-11 |
+| [MC-1392](Maintainer-Context.md#mc-1392--dirty-rc-accepted-limitation-l1-2026-11-11) | DIRTY-RC accepted limitation L1, 2026-11-11 |
+| [MC-1393](Maintainer-Context.md#mc-1393--trial63-merge-and-push-2026-11-11) | trial63 merge and push, 2026-11-11 |
+| [MC-1394](Maintainer-Context.md#mc-1394--chore-688-a3c-limitation-r1-accepted-2026-11-11) | CHORE-688 A3c limitation R1 accepted, 2026-11-11 |
+| [MC-1395](Maintainer-Context.md#mc-1395--ui-s4-stage-e-commit-approved-2026-11-11) | UI-S4 stage E commit approved, 2026-11-11 |
+| [MC-1396](Maintainer-Context.md#mc-1396--trial64-merged-and-pushed-ui-s4-stage-e-2026-11-11) | trial64 merged and pushed (UI-S4 stage E), 2026-11-11 |
+| [MC-1397](Maintainer-Context.md#mc-1397--ui-s5-row-a3-tab-s9-themed-icon-skipped-for-now-2026-11-11) | UI-S5 row A3 (Tab S9 themed icon) skipped for now, 2026-11-11 |
+| [MC-1398](Maintainer-Context.md#mc-1398--ui-s5-ab-rows-on-phone-1-in-parallel-phone-2-kept-for-chore-690-2026-11-11) | UI-S5 A+B rows on phone 1 in parallel; phone 2 kept for CHORE-690, 2026-11-11 |
+| [MC-1399](Maintainer-Context.md#mc-1399--device-track-cap-raised-from-1-to-2-2026-11-11) | device track cap raised from 1 to 2, 2026-11-11 |
+| [MC-1400](Maintainer-Context.md#mc-1400--workflow-parallel-test-reads-the-caps-from-policy-2026-11-11) | workflow-parallel test reads the caps from policy, 2026-11-11 |
+| [MC-1401](Maintainer-Context.md#mc-1401--one-time--allowclear-uninstall-on-phone-1-2026-11-11) | one-time -AllowClear uninstall on phone 1, 2026-11-11 |
+| [MC-1402](Maintainer-Context.md#mc-1402--chore-688-a3c-committed-2026-11-11) | CHORE-688 A3c committed, 2026-11-11 |
+| [MC-1403](Maintainer-Context.md#mc-1403--home-mode-switcher-centres-on-the-visible-top-bar-2026-11-11) | Home mode switcher centres on the visible top bar, 2026-11-11 |
+| [MC-1404](Maintainer-Context.md#mc-1404--wordmark-overlap-fixed-with-mc-1403-as-a-stage-e-follow-up-2026-11-11) | wordmark overlap fixed with MC-1403 as a stage E follow-up, 2026-11-11 |
+| [MC-1405](Maintainer-Context.md#mc-1405--system-bars-stay-00011c-until-the-boot-screen-hands-over-2026-11-11) | system bars stay #00011C until the boot screen hands over, 2026-11-11 |
+| [MC-1406](Maintainer-Context.md#mc-1406--quit-pill-removal-stays-silent-2026-11-11) | quit pill removal stays silent, 2026-11-11 |
+| [MC-1407](Maintainer-Context.md#mc-1407--revert-to-here-stops-at-a-first-message-step-that-no-longer-fits-2026-11-11) | Revert to here stops at a first-message step that no longer fits, 2026-11-11 |
+| [MC-1408](Maintainer-Context.md#mc-1408--undo-and-redo-at-a-non-fitting-step-change-nothing-2026-11-11) | Undo and Redo at a non-fitting step change nothing, 2026-11-11 |
+| [MC-1409](Maintainer-Context.md#mc-1409--restore-point-duplicate-split-into-a-follow-up-ticket-2026-11-11) | restore-point duplicate split into a follow-up ticket, 2026-11-11 |
+| [MC-1410](Maintainer-Context.md#mc-1410--trial65-merged-and-pushed-chore-688-a3c-2026-11-11) | trial65 merged and pushed (CHORE-688 A3c), 2026-11-11 |
+| [MC-1411](Maintainer-Context.md#mc-1411--merged-worktrees-and-branches-removed-2026-11-11) | merged worktrees and branches removed, 2026-11-11 |
+| [MC-1412](Maintainer-Context.md#mc-1412--numeric-chat-ids-dropped-from-save-marks-small-ticket-now-2026-11-11) | numeric chat ids dropped from save marks: small ticket now, 2026-11-11 |
+| [MC-1413](Maintainer-Context.md#mc-1413--numeric-chat-ids-compared-by-string-id-numid-mark-scope-b-2026-11-11) | numeric chat ids compared by String id (NUMID-MARK scope B), 2026-11-11 |
+| [MC-1414](Maintainer-Context.md#mc-1414--top-bar-switcher-stays-on-one-row-between-1025-and-about-1068-px-2026-11-11) | top-bar switcher stays on one row between 1025 and about 1068 px, 2026-11-11 |
+| [MC-1415](Maintainer-Context.md#mc-1415--phone-is-out-of-scope-for-switcher-centring-2026-11-11) | phone is out of scope for switcher centring, 2026-11-11 |
+| [MC-1416](Maintainer-Context.md#mc-1416--dirty-rc-s0-and-s1-committed-as-a-branch-checkpoint-2026-11-11) | DIRTY-RC S0 and S1 committed as a branch checkpoint, 2026-11-11 |
+| [MC-1417](Maintainer-Context.md#mc-1417--chore-688-a3b-committed-2026-11-11) | CHORE-688 A3b committed, 2026-11-11 |
+| [MC-1418](Maintainer-Context.md#mc-1418--keep-as-decided-undo-stops-at-a-non-fitting-first-message-step-2026-11-11) | "Keep as decided": Undo stops at a non-fitting first-message step, 2026-11-11 |
+| [MC-1419](Maintainer-Context.md#mc-1419--ui-s5-follow-up-committed-bar-colour-and-quit-pill-2026-11-11) | UI-S5 follow-up committed (bar colour and quit pill), 2026-11-11 |
+| [MC-1420](Maintainer-Context.md#mc-1420--ui-s5-stage-c-committed-for-merge-with-trial-2026-11-11) | UI-S5 stage C committed for merge with trial, 2026-11-11 |
+| [MC-1421](Maintainer-Context.md#mc-1421--numid-mark-commit-approved-2026-11-11) | NUMID-MARK commit approved, 2026-11-11 |
+| [MC-1422](Maintainer-Context.md#mc-1422--merge-of-a3b-trial66-and-push-approved-2026-11-11) | merge of A3b (trial66) and push approved, 2026-11-11 |
+| [MC-1423](Maintainer-Context.md#mc-1423--trial67-pass-three-commits-approved-to-merge-and-push-2026-11-11) | trial67 PASS; three commits approved to merge and push, 2026-11-11 |
+| [MC-1424](Maintainer-Context.md#mc-1424--worktree-cleanup-rule--d-only-2026-11-11) | worktree cleanup rule (-d only), 2026-11-11 |
+| [MC-1425](Maintainer-Context.md#mc-1425--ui-s4-stage-e-follow-up-committed-trial-at-merge-2026-11-11) | UI-S4 stage E follow-up committed (trial at merge), 2026-11-11 |
+| [MC-1426](Maintainer-Context.md#mc-1426--notification-denial-notice-when-it-shows-2026-11-11) | notification-denial notice: when it shows, 2026-11-11 |
+| [MC-1427](Maintainer-Context.md#mc-1427--notification-denial-notice-placement-2026-11-11) | notification-denial notice placement, 2026-11-11 |
+| [MC-1428](Maintainer-Context.md#mc-1428--notification-denial-notice-shows-once-2026-11-11) | notification-denial notice shows once, 2026-11-11 |
+| [MC-1429](Maintainer-Context.md#mc-1429--settings-line-for-notifications-2026-11-11) | Settings line for notifications, 2026-11-11 |
+| [MC-1430](Maintainer-Context.md#mc-1430--dirty-rc-s2-checkpoint-approved-not-for-main-2026-11-11) | DIRTY-RC S2 checkpoint approved, not for main, 2026-11-11 |
+| [MC-1431](Maintainer-Context.md#mc-1431--remaining-cache-slow-cases-accepted-as-stated-limits-2026-11-11) | remaining cache slow cases accepted as stated limits, 2026-11-11 |
+| [MC-1432](Maintainer-Context.md#mc-1432--background-warm-up-at-card-open-idle-time-only-2026-11-11) | background warm-up at card open, idle time only, 2026-11-11 |
+| [MC-1433](Maintainer-Context.md#mc-1433--trial68-pass-stage-e-follow-up-merge-approved-2026-11-11) | trial68 PASS; stage E follow-up merge approved, 2026-11-11 |
+| [MC-1434](Maintainer-Context.md#mc-1434--chore-690-checkpoint-commit-and-merge-of-main-approved-2026-11-11) | CHORE-690 checkpoint commit and merge of main approved, 2026-11-11 |
+| [MC-1435](Maintainer-Context.md#mc-1435--stop-in-the-background-keeps-stopping-until-the-page-confirms-2026-11-11) | Stop in the background keeps "Stopping…" until the page confirms, 2026-11-11 |
+| [MC-1436](Maintainer-Context.md#mc-1436--stage-e-top-bar-at-1280-px-with-sidebar-open-accepted-as-is-2026-11-11) | stage E top bar at 1280 px with sidebar open accepted as is, 2026-11-11 |
+| [MC-1437](Maintainer-Context.md#mc-1437--fail-closed-localhost-proxy-in-the-chrome-launch-tool-2026-11-11) | fail-closed localhost proxy in the Chrome launch tool, 2026-11-11 |
+| [MC-1438](Maintainer-Context.md#mc-1438--device-side-filtered-picker-dump-for-exact-name-fixture-picking-2026-11-11) | device-side filtered picker dump for exact-name fixture picking, 2026-11-11 |
+| [MC-1439](Maintainer-Context.md#mc-1439--real-finger-talkback-double-tap-on-the-home-drawer-x-2026-11-11) | real-finger TalkBack double-tap on the Home drawer X, 2026-11-11 |
+| [MC-1440](Maintainer-Context.md#mc-1440--mode-switcher-wraps-to-two-rows-for-long-label-languages-2026-11-11) | mode switcher wraps to two rows for long-label languages, 2026-11-11 |
+| [MC-1441](Maintainer-Context.md#mc-1441--ui-s5-follow-up-3-stopping-hold-commit-approved-2026-11-11) | UI-S5 follow-up 3 (Stopping hold) commit approved, 2026-11-11 |
+| [MC-1442](Maintainer-Context.md#mc-1442--ui-s5-follow-up-2-bar-colour-gated-on-the-webviews-drawn-frame-2026-11-11) | UI-S5 follow-up 2: bar colour gated on the WebView's drawn frame, 2026-11-11 |
+| [MC-1443](Maintainer-Context.md#mc-1443--home-top-bar-hides-the-wordmark-when-it-is-under-about-24-px-2026-11-11) | Home top bar hides the wordmark when it is under about 24 px, 2026-11-11 |
+| [MC-1444](Maintainer-Context.md#mc-1444--dirty-rc-integration-notes-checkpoint-commit-approved-2026-11-11) | DIRTY-RC integration-notes checkpoint commit approved, 2026-11-11 |
+| [MC-1445](Maintainer-Context.md#mc-1445--ui-s5-stage-d-commit-approved-2026-11-11) | UI-S5 stage D commit approved, 2026-11-11 |
+| [MC-1446](Maintainer-Context.md#mc-1446--home-top-bar-keeps-centring-for-ja-at-1280-with-the-sidebar-open-corrects-mc-1443-2026-11-11) | Home top bar keeps centring for ja at 1280 with the sidebar open; corrects MC-1443, 2026-11-11 |
+| [MC-1447](Maintainer-Context.md#mc-1447--dirty-rc-bench-limits-b4-and-b6-accepted-build-provenance-proved-on-dist-2026-11-11) | DIRTY-RC bench limits B4 and B6 accepted; build provenance proved on dist, 2026-11-11 |
+| [MC-1448](Maintainer-Context.md#mc-1448--trial70-pass-merge-f3-and-f2-and-push-2026-11-11) | trial70 PASS; merge F3 and F2 and push, 2026-11-11 |
+| [MC-1449](Maintainer-Context.md#mc-1449--push-refused-merge-originmain-before-pushing-2026-11-11) | Push refused; merge origin/main before pushing, 2026-11-11 |
+| [MC-1450](Maintainer-Context.md#mc-1450--notice-drops-the-character-count-while-the-page-is-frozen-2026-11-11) | Notice drops the character count while the page is frozen, 2026-11-11 |
+| [MC-1451](Maintainer-Context.md#mc-1451--native-owned-android-replies-the-end-goal-2026-11-11) | Native-owned Android replies: the end goal, 2026-11-11 |
+| [MC-1452](Maintainer-Context.md#mc-1452--native-reply-live-character-count-while-the-app-is-away-2026-11-11) | NATIVE-REPLY: live character count while the app is away, 2026-11-11 |
+| [MC-1453](Maintainer-Context.md#mc-1453--chore-690-s2m-cache-keeps-only-the-open-card-2026-11-11) | CHORE-690 S2M cache keeps only the open card, 2026-11-11 |
+| [MC-1454](Maintainer-Context.md#mc-1454--trial71-pass-merge-stage-d-and-push-2026-11-11) | trial71 PASS; merge stage D and push, 2026-11-11 |
+| [MC-1455](Maintainer-Context.md#mc-1455--remove-five-clean-worktrees-and-delete-merged-branches-2026-11-11) | Remove five clean worktrees and delete merged branches, 2026-11-11 |
+| [MC-1456](Maintainer-Context.md#mc-1456--ui-s4-stage-e-follow-up-2-commit-approved-2026-11-11) | UI-S4 stage E follow-up 2 commit approved, 2026-11-11 |
+| [MC-1457](Maintainer-Context.md#mc-1457--pq1-native-covers-streaming-and-non-stream-replies-2026-11-11) | PQ1: native covers streaming and non-stream replies, 2026-11-11 |
+| [MC-1458](Maintainer-Context.md#mc-1458--pq2-tool-replies-and-some-providers-stay-page-owned-2026-11-11) | PQ2: tool replies and some providers stay page-owned, 2026-11-11 |
+| [MC-1459](Maintainer-Context.md#mc-1459--pq3-what-a-recovered-reply-gets-2026-11-11) | PQ3: what a recovered reply gets, 2026-11-11 |
+| [MC-1460](Maintainer-Context.md#mc-1460--pq4-a-hard-kill-partial-is-kept-2026-11-11) | PQ4: a hard-kill partial is kept, 2026-11-11 |
+| [MC-1461](Maintainer-Context.md#mc-1461--pq5-back-during-a-live-native-reply-2026-11-11) | PQ5: Back during a live native reply, 2026-11-11 |
+| [MC-1462](Maintainer-Context.md#mc-1462--pq7-failure-while-hidden-2026-11-11) | PQ7: failure while hidden, 2026-11-11 |
+| [MC-1463](Maintainer-Context.md#mc-1463--pq8-native-done-notice-sound-and-vibration-2026-11-11) | PQ8: native done notice sound and vibration, 2026-11-11 |
+| [MC-1464](Maintainer-Context.md#mc-1464--q2-reworded-no-page-keep-alive-2026-11-11) | Q2 reworded: no page keep-alive, 2026-11-11 |
+| [MC-1465](Maintainer-Context.md#mc-1465--device-track-cap-raised-from-2-to-3-for-the-emulator-run-2026-11-11) | Device track cap raised from 2 to 3 for the emulator run, 2026-11-11 |
+| [MC-1466](Maintainer-Context.md#mc-1466--pq-a-native-count-wording-2026-11-11) | PQ-A: native count wording, 2026-11-11 |
+| [MC-1467](Maintainer-Context.md#mc-1467--pq-b-providers-counted-natively-first-2026-11-11) | PQ-B: providers counted natively first, 2026-11-11 |
+| [MC-1468](Maintainer-Context.md#mc-1468--pq-c-tool-replies-get-no-native-count-2026-11-11) | PQ-C: tool replies get no native count, 2026-11-11 |
+| [MC-1469](Maintainer-Context.md#mc-1469--emulator-uninstall-allowed-for-one-clean-install-2026-11-11) | Emulator uninstall allowed for one clean install, 2026-11-11 |
+| [MC-1470](Maintainer-Context.md#mc-1470--o4-stopped-at-once-after-a-confirmed-stop-2026-11-11) | O4: "Stopped" at once after a confirmed Stop, 2026-11-11 |
+| [MC-1471](Maintainer-Context.md#mc-1471--o1-stopped-stays-until-the-page-returns-2026-11-11) | O1: "Stopped" stays until the page returns, 2026-11-11 |
+| [MC-1472](Maintainer-Context.md#mc-1472--ui-s4-stage-e-follow-up-2-merged-and-pushed-2026-11-11) | UI-S4 stage E follow-up 2 merged and pushed, 2026-11-11 |
+| [MC-1473](Maintainer-Context.md#mc-1473--hard-kill-partial-kept-as-of-the-last-save-2026-11-11) | Hard-kill partial kept as of the last save, 2026-11-11 |
+| [MC-1474](Maintainer-Context.md#mc-1474--back-moves-the-task-to-the-background-during-a-live-native-reply-2026-11-11) | Back moves the task to the background during a live native reply, 2026-11-11 |
+| [MC-1475](Maintainer-Context.md#mc-1475--recents-swipe-still-ends-the-request-2026-11-11) | Recents swipe still ends the request, 2026-11-11 |
+| [MC-1476](Maintainer-Context.md#mc-1476--non-stream-variant-built-first-2026-11-11) | Non-stream variant built first, 2026-11-11 |
+| [MC-1477](Maintainer-Context.md#mc-1477--continue-replies-stay-page-owned-in-the-first-build-2026-11-11) | Continue replies stay page-owned in the first build, 2026-11-11 |
+| [MC-1478](Maintainer-Context.md#mc-1478--unappliable-recovered-reply-is-parked-2026-11-11) | Unappliable recovered reply is parked, 2026-11-11 |
+| [MC-1479](Maintainer-Context.md#mc-1479--natively-announced-failure-is-final-2026-11-11) | Natively announced failure is final, 2026-11-11 |
+| [MC-1480](Maintainer-Context.md#mc-1480--native-reply-stage-0c-built-after-the-non-stream-stages-2026-11-11) | NATIVE-REPLY stage 0c built after the non-stream stages, 2026-11-11 |
+| [MC-1481](Maintainer-Context.md#mc-1481--chore-690-s2m-plan-r4-residuals-accepted-2026-11-11) | CHORE-690 S2M plan r4 residuals accepted, 2026-11-11 |
+| [MC-1482](Maintainer-Context.md#mc-1482--remove-the-uise2-worktree-2026-11-11) | Remove the uise2 worktree, 2026-11-11 |

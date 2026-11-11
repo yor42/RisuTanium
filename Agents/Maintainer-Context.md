@@ -24960,3 +24960,1780 @@ Follow-through (lane claims, not verified by the clerk): A:995 (MC-1272) CHORE-7
 **Results (lane A claims; not verified by the clerk).** Lane A sizing (live log line 1040): s4 store2 is LARGE and a stage 0 count run comes first because the premise "3-6 passes per send" is unsupported by the profile (lane B stage 0 profile measured planScopedEncode at 626 ms per 10k send but did not count passes). No count result is recorded yet: TODO(evidence).
 
 **Not decided.** Whether the hold is built depends on the count result. The store2 stage touches dirty tracking and the save pass, so it takes opus-reviewer at Gate 1 and Gate 2 (`MC-1304`). A hold lengthens the loss window on a crash during a stream; its acceptance to a specific design is for the Gate 1 plan and this entry only permits it.
+
+### MC-1306 — CHORE-712 device evidence accepted; merge after trial58, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-712`, `trial58`.
+
+**What the maintainer chose (lane A decisions log line 1044; labels verbatim).** "Accept; merge if trial58 passes". DV-A, DV-B and DV-C PASS are accepted with two slips recorded: a CDP write to localStorage key risuChatShell.enabled (also in the c708c combined run), and CDP clearing of the derived thumb cache IndexedDB on each cold run. DV-D is UNOBSERVED. Merge CHORE-712 and push once trial58 (e58e60201 + 41132016d, tree 73c3f65ff) passes. Allocated from the batch-65 reserve.
+
+**Results (lane A claims; not verified by the clerk).** Trial58 FULLRUN PASS. CHORE-712 merged as 36be674e7 and pushed (lane A decisions log line 1048).
+
+**Not decided.** DV-D is UNOBSERVED.
+
+### MC-1307 — CHORE-714 store2 scanner paused mid-stream, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-714`, `MC-1319` (answers the premise later), `MC-1305`.
+
+**What the maintainer chose (lane A decisions log line 1051; labels verbatim).** "Pause scanner mid-stream": skip the idle-net safety-net scanner while a reply streams. The normal save writes the reply once it settles. A crash mid-stream loses only the partial reply. Options not chosen, as logged: "Only make walks cheaper" and "Both". Allocated from the batch-65 reserve.
+
+**Results (lane A claims; not verified by the clerk).** CHORE-714 s2 and s3 Gate 2 APPROVE with no findings (log line 1052). Committed 3f580d44e; merged as 8a8b3d5d3 and pushed (log line 1065). The s4 pass was later redesigned: lane A's "not widened" ruling (log line 1059) was overtaken by MC-1319 (log line 1077), which answers the open premise.
+
+**Not decided.** The s4 build that merged as 7bbf80bc4 follows MC-1319's registry-only hold (Gate 1 r4/r5 on the registry-only plan, lane A decisions log lines 1083 and 1085), not an arming pause.
+
+### MC-1308 — CHORE-688 Svelte experimental.async adopted and staged, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-688`, `MC-1316`, `MC-1318`.
+
+**What the maintainer chose (lane A decisions log line 1054; labels verbatim).** "Adopt" (not the recommended "Wait") for Svelte experimental.async. Plan the stages now: A1 config flip, A2 fake-timer test policy, A3 focus-order fixes in RecentStrip, ToastHost, AlertComp, SettingsShellPage and ShellSidebar, A4 Note 9 triage, A5 full run. Allocated from the lane A reserve.
+
+**Results (lane A and lane D claims; not verified by the clerk).** Lane D sizing (c688\sizing.md) gave 60 to 120 files; 148 of 746 sampled tests failed earlier; the work overlaps the Studio and S3b suites (log line 1054). Lane A is the single full-run owner for A2.0, A2 and A1/A5; A2 and A3 proceed after Gate 1; A1, A4 and A5 wait for S3b to merge (log line 1067). A1 later waits on DIRTY-RC (log line 1075).
+
+**Not decided.** The A3 focus-mechanism question was answered by MC-1316 (log line 1066).
+
+### MC-1309 — CHORE-641 closed as benign, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-641`, `ShellMessageList` restore.
+
+**What the maintainer chose (lane A decisions log line 1056; labels verbatim).** "Close as benign (Recommended)". Both restore passes logged wrote=false because scrollTop was within 4.6e-5 of the target (WRITE_EPSILON 0.5, ShellMessageList restore). The text came from lane A temporary CDP logpoints, not app code. The cause of the pre-placed position (Chromium scroll anchoring) is inferred, not proven. CHORE-641 is CLOSED. Lane D report: laned\c641\sizing.md. Next reserve MC-1310.
+
+**Results (lane A claims).** None beyond the decision.
+
+**Not decided.** None.
+
+### MC-1310 — CHORE-652 last-character restore at launch, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answers via lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-652`, `MC-1312` to `MC-1315`, `MC-1361` (closeout, outside this range).
+
+**What the maintainer chose (lane A decisions log line 1057; labels verbatim).** "Straight into its chat"; "Land on Home" (if the app was left on Home, a relaunch lands on Home); "Per device, no setting" (device-local, no DB or .bin field); "Yes, like tapping it" (the archived last character is restored at launch from cold storage). Defaults accepted as stated in the question: a deleted, trashed or hidden character lands silently on Home; groups restore like any character.
+
+**Results (lane A claims; not verified by the clerk).** Lane D sizing (laned\c652\sizing.md) is SMALL. The brief's typo "MC-1310/MC-652" meant MC-1310 (log line 1131). Commit 5ad08ff38 covers MC-1310 and MC-1312 to MC-1315 (log line 1095).
+
+**Not decided.** TODO(evidence): the full question wording is not in the log, only the option labels.
+
+### MC-1311 — CHORE-686 closes if adb confirms, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-686`, `CHORE-716` (rows run first).
+
+**What the maintainer chose (lane A decisions log line 1058; labels verbatim).** "Close if adb confirms". After the CHORE-716 rows, lane B runs one read-only adb row on phone 2: (a) a single folder tap click delay (about 16 ms?), and (b) two taps 100 to 250 ms apart on a folder and an edit-mode tile, checking whether both clicks are delivered. Close CHORE-686 as a CDP test artifact if confirmed. If clicks drop, lane D returns with a real-delay plan.
+
+**Results (lane A claims; not verified by the clerk).** The adb row ran on release 56326527a, phone 2, synthetic data (b61\laneb\c686\result.md). Real taps clicked 7 to 30 ms after touchstart. 22 of 22 double taps delivered both clicks (state toggled twice). Toggle handlers are unchanged up to aad3dec3a. CHORE-686 closes under this entry (log line 1064).
+
+**Not decided.** Not observed: physical finger, Fold 7. The optional double-toggle product question was not asked (it matches the tap count).
+
+### MC-1312 — CHORE-652 launch restore raises the same alerts as a tap, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-652`, `MC-1310`.
+
+**What the maintainer chose (lane A decisions log line 1060; labels verbatim).** "Keep them (Recommended)". The launch restore raises the same alerts a tap raises ("group members not loaded", "alt replies dropped"). A refused restore stays silent.
+
+**Results (lane A claims).** Included in commit 5ad08ff38 (log line 1095).
+
+**Not decided.** None.
+
+### MC-1313 — CHORE-652 Settings backup-restore reload counts as a relaunch, 2026-11-10
+
+- Tag: decisions (maintainer answer, CHORE-652 Q2, as logged). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-652`, `MC-1310`.
+
+**What the maintainer chose (lane A decisions log line 1061; labels verbatim).** "Open it (Recommended)". A Settings backup-restore reload counts as a relaunch. If the remembered character exists in the restored save, it opens.
+
+**Results (lane A claims).** Included in commit 5ad08ff38 (log line 1095).
+
+**Not decided.** None.
+
+### MC-1314 — CHORE-652 late launch file shows above the restored chat, 2026-11-10
+
+- Tag: decisions (maintainer answer, CHORE-652 Q3, as logged). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-652`.
+
+**What the maintainer chose (lane A decisions log line 1062; labels verbatim).** "Accept it (Recommended)". A desktop or Android launch file that arrives after the restore shows above the restored chat. No hook in the import paths.
+
+**Results (lane A claims).** Included in commit 5ad08ff38 (log line 1095).
+
+**Not decided.** None.
+
+### MC-1315 — CHORE-652 read-only pages skip the restore and recorder, 2026-11-10
+
+- Tag: decisions (maintainer answer, CHORE-652 default, as logged). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-652`.
+
+**What the maintainer chose (lane A decisions log line 1063; labels verbatim).** "Confirm (Recommended)". Read-only pages skip both the launch restore and the last-chat recorder.
+
+**Results (lane A claims).** Included in commit 5ad08ff38 (log line 1095).
+
+**Not decided.** None.
+
+### MC-1316 — CHORE-688 focus and scroll memory captured at compute, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-688` stage A3, `MC-1308`.
+
+**What the maintainer chose (lane A decisions log line 1066; labels verbatim).** "Remember at compute (Recommended)". RecentStrip and ToastHost focus return, and Settings scroll memory, are captured at the moment the new list or view is computed (a commented side effect). Today's behaviour is kept under either scheduler.
+
+**Results (lane A claims).** The A3c plan applied option 1 (log line 1190).
+
+**Not decided.** None.
+
+### MC-1317 — CHORE-714 s4 edits to the streaming character wait, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-714` s4, `MC-1319`.
+
+**What the maintainer chose (lane A decisions log line 1070; labels verbatim).** "Let it wait (Recommended)". Edits to the streaming character itself (another message of that chat, or its description) made after arming wait with the partial reply. They save at settle or on hide. A kill mid-stream can undo them. No 30 s re-check.
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** TODO(evidence): the log does not say whether MC-1319 (log line 1077, which replaces the arming design with a registry-only hold) changes this answer. The "arming" wording is superseded at the design level only.
+
+### MC-1318 — CHORE-688 dirty marking made explicit at the root, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-688` A1, `CHORE-719` (DIRTY-RC), `MC-1320`.
+
+**What the maintainer chose (lane A decisions log line 1071; labels verbatim).** "Fix root cause now" (not the recommended guard). Dirty marking is made explicit on the write path instead of by effect. An async-held update must not hide unsaved edits from save-on-hide. This is a critical-contract redesign for dirty-tracking dependencies, with its own ticket: sizing, senior-advisor challenge and opus gates. CHORE-688 A1 waits on it; A2 and A3 may proceed.
+
+**Results (lane A and lane D claims).** Lane D folded MC-1318 into CHORE-688 r2 (log line 1075): the guard is dropped; A1, A4 and A5 wait on CHORE-719 (DIRTY-RC) and S3b; the flag stays off until DIRTY-RC lands; A2 and A3 are independent. A candidate follow-up, THROW-MARK (S4b), was filed. Its fold decision is in MC-1323.
+
+**Not decided.** None beyond MC-1323.
+
+### MC-1319 — CHORE-714 s4 registry-only hold ("Let it wait"), 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-714` s4, `MC-1307` (premise answered), `MC-1305`, `MC-1317`.
+
+**What the maintainer chose (lane A decisions log line 1077; labels verbatim).** "Let it wait (Recommended)". The just-sent message and the owner's state at stream start wait with the reply, and save at settle or on hide. A mid-stream kill can lose them, as the base usually does. This replaces the arming design with a registry-only hold (about 20 lines). It supersedes lane A's 2026-11-10 "not widened" ruling (log line 1059).
+
+**Results (lane A claims; not verified by the clerk).** Plan r4 opus Gate 1 REJECT (log line 1083): a held owner's turn was not counted as activity, which moved the page into quiet cadence; the fix restored base cadence. Plan r5 EDITORIAL (log line 1085). Coder done: base 6 red, 78 of 78 after, pnpm check 0 (log line 1089). Gate 2 r1 EDITORIAL, comment-only fixes (log line 1098). Committed as 7bbf80bc4 (log line 1124) and merged into main (log line 1125).
+
+**Not decided.** None recorded beyond the MC-1317 note.
+
+### MC-1320 — DIRTY-RC write hook plus effect safety net, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-719` (DIRTY-RC), `MC-1318`, `MC-1321` to `MC-1323`.
+
+**What the maintainer chose (lane A decisions log line 1078; labels verbatim).** "Write hook + keep effect (Recommended)". A write hook (Proxy) around the app data marks every hooked edit at once. dbChangeEffects stays as a safety net. Read cost is measured on the Note 9 before shipping. Retiring the effect is a later ticket. CHORE-719 (DIRTY-RC) is the placeholder number allocated for this work.
+
+**Results (lane A and lane D claims).** Advisor r3 RETHINK (log line 1101): path P (patched Svelte) is kept, but the link rule leaked; path W fails the MC-1325 B1 bar (warm read 1.61 to 1.68x). Plan r4 (log line 1112) gave +0.37 MiB against stock +0.32 on the 10k chat with 50 swipes, a PC best-case result, with the delivery route as a Vite load-hook plugin.
+
+**Not decided.** OQ4 (path P or path W) was still open at log line 1112. Its recorded answer is under MC-1391, which is outside this range. Lane D's Note 9 read-cost measurement is owed: TODO(evidence).
+
+### MC-1321 — DIRTY-RC async switch after the hook stage, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-719` (DIRTY-RC), `CHORE-688`, `MC-1320`.
+
+**What the maintainer chose (lane A decisions log line 1079; labels verbatim).** "After hook stage (Recommended)". The CHORE-688 async switch may ship once the write-hook stage is merged and device-checked. Writes found to bypass the hook are recorded as a known limitation with a review trigger.
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** The known-limitation text and its review trigger are in the later DIRTY-RC records (outside this range): TODO(evidence) for the final text.
+
+### MC-1322 — DIRTY-RC an unapplied mark never throws or drops, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-719` (DIRTY-RC), `MC-1320`, `MC-1324`.
+
+**What the maintainer chose (lane A decisions log line 1080; labels verbatim).** "Confirm (Recommended)". A mark that cannot be applied (an unknown or blank id, or a failure) never throws and never drops. It over-marks and logs.
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** None.
+
+### MC-1323 — THROW-MARK folded into DIRTY-RC, 2026-11-10
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-10. Exact times: UNKNOWN. Sweep ref: none. Related: THROW-MARK (S4b candidate), `CHORE-719` (DIRTY-RC), `CHORE-714` s4.
+
+**What the maintainer chose (lane A decisions log line 1081; labels verbatim).** "Fold in (Recommended)". S4b folds into DIRTY-RC, and the remaining bypass writes are tracked there. Order, per the lane D sizing: CHORE-714 s4 first, then DIRTY-RC on top (lane A agrees).
+
+**Results (lane A claims).** THROW-MARK is the S4b candidate: a throw during flush kills later marks, on both schedulers (log line 1071; filed by lane D, log line 1075).
+
+**Not decided.** THROW-MARK (S4b) is folded into CHORE-719 (DIRTY-RC) and has no separate CHORE number.
+
+### MC-1324 — DIRTY-RC fallback also marks the settings block, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-719` (DIRTY-RC), `MC-1322`, `MC-1337`.
+
+**What the maintainer chose (lane A decisions log line 1086; labels verbatim).** "Also mark the block (Recommended)". For a settings write that the hook cannot pin to an owner (module, preset or similar), the fallback also marks that settings block, in addition to the MC-1322 set.
+
+**Results (lane A claims).** A lane A note (log line 1113) says MC-1324 fully closes OQ1, with no further scope.
+
+**Not decided.** None.
+
+### MC-1325 — DIRTY-RC Note 9 and PC bars accepted, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-719` (DIRTY-RC), `MC-1330`, `MC-1331`, `MC-1332`.
+
+**What the maintainer chose (lane A decisions log line 1087; labels verbatim).** "Accept (Recommended)". Note 9 release builds, median of 5: N1 10k chat open, N3 500-character grid first paint, N4 Settings open, and N5 JS heap, each at or below +10%. N2 long stream: no hook-attributable long task above 50 ms, and tokens per second within 5%. The PC bench bars B1 to B6 are accepted as proposed; they are never device proof. Lane A confirms the OQ "selected front" as an append of the selected id.
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** None.
+
+### MC-1326 — CHORE-690 Studio revert growth folded in, 2026-11-11
+
+- Tag: decisions (maintainer via S3 session AskUserQuestion, as logged). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690`, `MC-091` (shared cause), `MC-1239`, `MC-1327` to `MC-1329`.
+
+**What the maintainer chose (lane A decisions log line 1090; decision text as logged).** Fold in the pre-existing exponential growth of Studio revert steps. A repeated "Revert to here" to the same point stores 2^k - 1 ops. Confirmed on main's real code per S3. Not in the MVP a3b5d706e. The fix is the S2b net-diff revert step.
+
+**Results (lane A claims).** Evidence: s3\c690\advisor5\result.md and basegrowth\result.md, as logged.
+
+**Not decided.** None.
+
+### MC-1327 — CHORE-690 revert skips budget-suspended list steps, 2026-11-11
+
+- Tag: decisions (maintainer via S3, as logged). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690`, `MC-1239` (overridden wording), `MC-1338`.
+
+**What the maintainer chose (lane A decisions log line 1091; decision text as logged).** In a revert, budget-suspended fingerprinted list steps are skipped and counted in the existing skipped note. This overrides MC-1239's per-op fallback wording. The 500k budget stays.
+
+**Results (lane A claims).** Advisor7 (log line 1219) says MC-1327 is not superseded.
+
+**Not decided.** The notice wording is in MC-1338.
+
+### MC-1328 — CHORE-690 net-zero revert does nothing, 2026-11-11
+
+- Tag: decisions (maintainer via S3, as logged). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690`, `MC-1364` (later change).
+
+**What the maintainer chose (lane A decisions log line 1092; decision text as logged).** A revert whose net effect is nothing does nothing: no history row and no message.
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** MC-1364 (log line 1149, outside this range) changes this for a net-zero revert that skipped first-message changes: it shows a notice and still adds no history row and writes nothing.
+
+### MC-1329 — CHORE-690 restored item goes to the end of the list, 2026-11-11
+
+- Tag: decisions (maintainer via S3, as logged). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690`, `MC-1340` (defines "end of list").
+
+**What the maintainer chose (lane A decisions log line 1093; decision text as logged).** Restore deleted of an item that was re-listed by undoing a revert, whose delete aged out of both stacks, puts the item at the end of the list.
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** Meaning of "end of list": MC-1340.
+
+### MC-1330 — DIRTY-RC key-row bars at +10%, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-719` (DIRTY-RC), `MC-1325`, `MC-1332`.
+
+**What the maintainer chose (lane A decisions log line 1102; labels verbatim).** "+10% on key rows (Recommended)". Key rows: N4b modules open, N6 first marked pass, N8 boot within +10% of base. N7 idle net keeps its proposed value of at least 75%. The 50-swipe long-chat session row: heap within +10% of base. N2b, PC B7 to B9 and other new rows are diagnostic only.
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** None.
+
+### MC-1331 — DIRTY-RC 10k-message fixture option, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-719` (DIRTY-RC), `MC-1325`.
+
+**What the maintainer chose (lane A decisions log line 1103; labels verbatim).** "Keep 10k, add it (Recommended)". Add a 10k-message option to the fixture tool. N1 is the first open of that chat after launch.
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** None.
+
+### MC-1332 — DIRTY-RC A/A noise check, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer via lane A). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-719` (DIRTY-RC), `MC-1330`.
+
+**What the maintainer chose (lane A decisions log line 1104; labels verbatim).** "Yes, noise check (Recommended)". Each +10% row also runs base against base (A/A). A row whose A/A spread is at or above its bar reads INCONCLUSIVE, never PASS. There is no one-frame floor.
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** None.
+
+### MC-1333 — CHORE-690 keeps the 16 ms rule and builds the lever, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer, CHORE-690). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690`, `MC-1148` (16 ms hash rule), `MC-1334`.
+
+**What the maintainer chose (lane A decisions log line 1106; labels verbatim).** "Keep it, build lever (Recommended)". MC-1148's 16 ms hash rule stays for Studio list actions, despite about 1 s of render per action. CHORE-690 builds the element-pass lever and re-measures. Fast and slow device states are reported separately, with a calibration loop.
+
+**Results (lane A claims).** The maintainer gave the same answer directly in the S3 session. It is recorded once, here and under MC-1334 (log line 1108).
+
+**Not decided.** None.
+
+### MC-1334 — STUDIO-RENDER filed and sized separately, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-718 (STUDIO-RENDER)`, `CHORE-690`, `MC-1333`, `MC-1335` to `MC-1336`.
+
+**What the maintainer chose (lane A decisions log line 1107; labels verbatim).** "File and size it (Recommended)". New ticket CHORE-718 (STUDIO-RENDER), separate from CHORE-690. Studio list actions take 1.0 to 1.5 s click-to-frame on the Note 9. Sizing goes to lane C while idle, read-only, coordinated with S3's chore-690 worktree ownership. Fixes return to the maintainer as options.
+
+**Results (lane B claim).** Evidence: s3\c690\dn9\result.md, macro section. In that report, 70 to 90% of the time is native layout, paint and textarea work for 20 large first-message inputs; the tier B delete focus call took 1,070 ms (log line 1105).
+
+**Not decided.** None.
+
+### MC-1335 — STUDIO-RENDER keeps full boxes and fixes the re-render, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer, STUDIO-RENDER Q1). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-718 (STUDIO-RENDER)`, `MC-1334`, `MC-1336`.
+
+**What the maintainer chose (lane A decisions log line 1110; labels verbatim).** "Full boxes, fix re-render (Recommended)". Keep the full first-message boxes. Fix the re-render. No collapsing.
+
+**Results (lane C claim).** Sizing (log line 1109): an index-keyed first-message list with in-place splice reassigns textarea.value on every row from the changed slot (about 19 relayouts of a 50k-unit text). Stage 1 uses identity-keyed rows.
+
+**Not decided.** None.
+
+### MC-1336 — STUDIO-RENDER tap-to-frame bars on Note 9, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer, STUDIO-RENDER Q2). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-718 (STUDIO-RENDER)`, `MC-1368` (add re-run), `MC-1341`.
+
+**What the maintainer chose (lane A decisions log line 1111; labels verbatim).** "<=300 ms, add <=100 ms (Recommended)". On Note 9 tier B, tap-to-frame is at or below 300 ms for delete, undo, redo and Restore, and about at or below 100 ms for add. Tier C is recorded, not held to the bar. Q3 (focus after delete) was not asked: the default keeps focus on the neighbouring box unless D0 shows the cost is focusing the box itself and preventScroll does not remove it.
+
+**Results (lane C claims; not verified by the clerk).** Phone 1 release A53E0654 (log line 1155): medians delete 119, deleteMid 85, undo 178, redo 132, Restore 214 ms (PASS). Add 123 ms was marginal (n=2). The add re-run (MC-1368, log line 1159) had median 93 ms (PASS), and all six tier B cells met MC-1336. Stage 2 was not needed.
+
+**Not decided.** None.
+
+### MC-1337 — DIRTY-RC boot self-check failure logs and blocks release, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer, DIRTY-RC OQ5). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-719` (DIRTY-RC), `MC-1324`.
+
+**What the maintainer chose (lane A decisions log line 1113; labels verbatim).** "Log it, block release (Recommended)". If the boot self-check finds the hook not live, log through recordCaughtError and keep the effect safety net. Device row H0 (hook live in the release APK) blocks release. No over-mark.
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** None.
+
+### MC-1338 — CHORE-690 budget-skip notice, 2026-11-11
+
+- Tag: decisions (maintainer via S3, AskUserQuestion, as logged). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690`, `MC-1327`, `MC-1364` (wording superseded).
+
+**What the maintainer chose (lane A decisions log line 1114; decision text as logged).** A revert that skips budget-suspended list changes (MC-1327) shows a short notice: one new UI string. English comes from the plan; other locales come from a translator relay through scratch to the worktree coder.
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** The wording is superseded by MC-1364 (log line 1149, outside this range).
+
+### MC-1339 — CHORE-690 single end-of-list form repeat, 2026-11-11
+
+- Tag: decisions (maintainer via S3, as logged). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690`.
+
+**What the maintainer chose (lane A decisions log line 1115; decision text as logged).** Accept that the single end-of-list form stores a consumed or produced message three times. One revert of a 100k to 200k character message can trim stored history at the 2 MiB cap. Size stays flat across repeats.
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** None.
+
+### MC-1340 — CHORE-690 meaning of "end of list", 2026-11-11
+
+- Tag: decisions (maintainer via S3, as logged). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690`, `MC-1329`.
+
+**What the maintainer chose (lane A decisions log line 1116; decision text as logged).** "End of list" in MC-1329 means the list length recorded right after that revert, clamped at restore, not the current end.
+
+**Results (lane A claims).** A numbering correction (log line 1118) confirms MC-1340 is a valid campaign ID and that the next free ID is MC-1341.
+
+**Not decided.** None.
+
+### MC-1341 — STUDIO-RENDER focus stays with the same message, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer, STUDIO-RENDER OQ1). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-718 (STUDIO-RENDER)`, `MC-1336`, `MC-1369` (later focus rule, outside this range).
+
+**What the maintainer chose (lane A decisions log line 1120; labels verbatim).** "With the same message (Recommended)". Focus stays with the same message when undo, redo or Restore adds or removes another row. Accepted edge: if the focused one of two identical texts is removed, focus leaves the boxes.
+
+**Results (lane A and lane B claims).** D0 (log line 1121): focus() pays the pending relayout early; preventScroll made no change; F2 closed as not needed; identity keys are the lever. Device finding on phone 1 (log line 1155): focus goes to BODY after undo, redo and Restore (12 of 12 per tier). That led to MC-1369 (outside this range).
+
+**Not decided.** None.
+
+### MC-1342 — CHORE-652 row 3b skipped on device, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer, CHORE-652 row 3b). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-652`, `MC-1306` (no hand edits).
+
+**What the maintainer chose (lane A decisions log line 1126; labels verbatim).** "Skip on device (Recommended)". The unreadable-cold-unit row is NOT RUN on the release APK, because it cannot be produced without hand edits (MC-1306). It is covered by the automated tests. Row 3a runs.
+
+**Results (lane A claims).** Lane A approved lane B's row 7 sequence: base 3397fe458, then bb7c52cb1, then a fresh bb7c52cb1 build, installed with adb install -r, same ID and key.
+
+**Not decided.** Row 3b is NOT RUN on device. The closeout (MC-1361, log line 1144, outside this range) records it as NOT RUN.
+
+### MC-1343 — UI-S4 E, UI-S5, UI-S6 sizing and the wiki Trash fix, 2026-11-11
+
+- Tag: decisions (AskUserQuestion multiSelect, lane C next). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S4` stage E, `UI-S5`, `UI-S6`, `CHORE-718 (STUDIO-RENDER)`.
+
+**What the maintainer chose (lane A decisions log line 1127; labels verbatim as logged).** All four options chosen: UI-S4 stage E layout (DD-208 drawer, DD-209 top bar; lane C first confirms the E0 spec state and the chat-shell overlap); UI-S5 Android system surfaces sizing; UI-S6 theme-pack installer sizing; and the wiki Trash fix (docs/wiki/Playground.md 3 days to 30; a 30-vs-3 note in Changes-from-upstream.md). Lane C keeps at most two concurrent coders (MC-1153 item 8). At the maintainer's request, lane B runs the STUDIO-RENDER rows on phone 1 in parallel with CHORE-652 on phone 2.
+
+**Results (lane A and lane C claims).** The wiki Trash fix was committed and merged with the maintainer's "Commit, merge, push (Recommended)" (log line 1128). Lane A merged it as 00df58520 into main, docs only, and pushed (log line 1129).
+
+**Not decided.** None.
+
+### MC-1344 — UI-S4 E drawer on Home only, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer, stage E layout). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S4` stage E, DD-208.
+
+**What the maintainer chose (lane A decisions log line 1132; labels as logged).** "drawer Home only (Recommended)".
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** None.
+
+### MC-1345 — UI-S4 E top bar contents, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer, stage E layout). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S4` stage E, DD-209.
+
+**What the maintainer chose (lane A decisions log line 1132; labels as logged).** "top bar = brand, mode switcher, persona chip, Tasks and mode pill added when they exist (Recommended)".
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** None.
+
+### MC-1346 — UI-S4 E phone Characters button moves into the drawer, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer, stage E layout). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S4` stage E.
+
+**What the maintainer chose (lane A decisions log line 1132; labels as logged).** "phone Characters button moves into the drawer (Recommended)".
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** None.
+
+### MC-1347 — UI-S4 E Home uses the mockup width bands, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer, stage E layout). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S4` stage E, DD-247, DD-263.
+
+**What the maintainer chose (lane A decisions log line 1132; labels as logged).** "Home uses the mockup width bands (phone < 768, wide >= 1280, DD-247/263), chat shell keeps its own (Recommended)".
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** None.
+
+### MC-1348 — UI-S5 reply-ready notice rebuilt per spec, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer, UI-S5). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S5`, `CHORE-685`, `CHORE-692`, `DD-004`.
+
+**What the maintainer chose (lane A decisions log line 1133; labels verbatim).** "Rebuild per spec" (NOT the recommended option). The reply-ready notice is rebuilt under the spec's identity rules, rather than extending CHORE-685.
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** None.
+
+### MC-1349 — UI-S5 live numbers kept as decided in DD-004, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer, UI-S5). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S5`, `DD-004`.
+
+**What the maintainer chose (lane A decisions log line 1133; labels as logged).** "live numbers kept as decided in DD-004 (Recommended)".
+
+**Results (lane A claims).** None recorded under this ID.
+
+**Not decided.** None.
+
+### MC-1350 — UI-S5 stage order A+B, then C, then D, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer, UI-S5). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S5`, `MC-1348`, `MC-1356` (later scheduling, outside this range).
+
+**What the maintainer chose (lane A decisions log line 1133; labels as logged).** "stage order A+B, then C, then D (Recommended)".
+
+**Results (lane A claims).** None recorded under this ID. MC-1356 (log line 1135, outside this range) later schedules UI-S5 for lane C on this order.
+
+**Not decided.** None.
+
+### MC-1351 — UI-S6 installer accepts bundled fonts and images, 2026-11-11
+
+- Tag: decisions (answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S6 (theme-pack installer), `MC-1355`.
+
+**What the maintainer chose (lane A decisions log line 1134; labels verbatim).**
+- "Fonts and images too" (NOT the recommended): the first installer accepts bundled fonts and images. Remote url() stays blocked regardless (security finding, as logged).
+
+**Results (lane A claims; not verified by the clerk).**
+- Lane C sizing refresh (lane A decisions log line 1136): UI-S6 grows to 4-5 coder stages with two opus gates. The listed scope includes the MC-1351 URL rule, font and image magic-byte checks, SVG refused, per-font licence entries, binary assets in store C and a hostile-pack suite.
+
+**Not decided.** The unmodified-foundry proof is open (lane A decisions log line 1136).
+
+### MC-1352 — UI-S6 Custom CSS applies last over a pack, 2026-11-11
+
+- Tag: decisions (answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S6 (theme-pack installer).
+
+**What the maintainer chose (lane A decisions log line 1134; labels verbatim).**
+- Custom CSS still applies last over a pack (Recommended). The log gives this label without quote marks; it is recorded as logged.
+
+### MC-1353 — UI-S6 install entry in Settings > Display, 2026-11-11
+
+- Tag: decisions (answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S6 (theme-pack installer).
+
+**What the maintainer chose (lane A decisions log line 1134; labels verbatim).**
+- install entry Settings > Display (Recommended). The log gives this label without quote marks; it is recorded as logged.
+
+### MC-1354 — UI-S6 "exceptionally large" warning at 20 MB, 2026-11-11
+
+- Tag: decisions (answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S6 (theme-pack installer).
+
+**What the maintainer chose (lane A decisions log line 1134; labels verbatim).**
+- "exceptionally large" warning at 20 MB (Recommended).
+
+### MC-1355 — UI-S6 acceptance packs and licence checks, 2026-11-11
+
+- Tag: decisions (answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S6 (theme-pack installer), `MC-1351`.
+
+**What the maintainer chose (lane A decisions log line 1134; labels verbatim).**
+- ship with Origin Navy and Banana Cocoa as acceptance packs, other three after licence checks (Recommended). The log gives this label without quote marks; it is recorded as logged.
+
+**Not decided.** The other three packs wait for licence checks (lane A decisions log line 1134). No licence-check result is logged: TODO(evidence).
+
+### MC-1356 — UI-S5 scheduled for lane C after stage E, 2026-11-11
+
+- Tag: decisions (wrap-up button). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S5 (system surfaces), UI-S4 stage E, `MC-1348`, `MC-1349`, `MC-1350`, `MC-1343`.
+
+**What the maintainer chose (lane A decisions log line 1135; labels verbatim).**
+- "Schedule UI-S5 next" (wrap-up button). UI-S5 is scheduled for lane C after or alongside stage E. Order: stages A and B first, then C (rebuilt per spec, MC-1348; opus Gate 1), then D (MC-1350). At most two concurrent lane C coders. UI-S6 is not scheduled yet.
+
+**Results (lane A claims; not verified by the clerk).**
+- Lane C stage A and B Gate 1 [EDITORIAL] (lane A decisions log line 1139), with coders uis5a and uis5b running.
+
+### MC-1357 — DIRTY-RC local Docker build, 2026-11-11
+
+- Tag: decisions (answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-719 (DIRTY-RC), `MC-1391`, `MC-1325`.
+
+**What the maintainer chose (lane A decisions log line 1138; labels verbatim).**
+- "Local Docker build (Recommended)": at S1, lane D starts Docker locally and builds the image (pulls node:24-slim and npm packages inside the container; host node_modules untouched).
+
+**Results (lane A and lane D claims; not verified by the clerk).**
+- BUILD0-D PASS on local Docker (lane A decisions log line 1226): PATCH_ID in dist; own container and image removed; Docker Desktop stopped again.
+- A Docker substitute for BUILD0-D stays under this decision (lane A decisions log line 1192).
+
+### MC-1358 — UI-S4 top bar on the Home landing only, 2026-11-11
+
+- Tag: decisions (stage E answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S4 stage E, `MC-1343`, `MC-1345`, `MC-1359`.
+
+**What the maintainer chose (lane A decisions log line 1140; labels verbatim).**
+- "Home landing only (Recommended)": the top bar shows on the Home landing only; library list space and scroll unchanged.
+
+**Results (lane A claims; not verified by the clerk).**
+- Stage E Gate 1 [EDITORIAL] (lane A decisions log line 1139): E-A then E-B; a small SideBarArrow.svelte Home condition. Lane A accepted the technical choice to close a legacy sidebar overlay on phone Home landing.
+
+### MC-1359 — UI-S4 landing title and top-bar brand kept, 2026-11-11
+
+- Tag: decisions (stage E answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S4 stage E, `MC-1358`.
+
+**What the maintainer chose (lane A decisions log line 1141; labels verbatim).**
+- "Keep both for now (Recommended)": keep the landing title and the top-bar brand; MainMenu untouched.
+
+### MC-1360 — UI-S5 stage A commit approved, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S5 stage A, worktree uis5a-wip.
+
+**What the maintainer chose (lane A decisions log line 1142; labels verbatim).**
+- "Commit, trial at merge". Lane C commits only the 11 named paths (never AndroidManifest.xml or src-tauri/Cargo.toml). Full test, check and build run when it joins the next trial. Merge is asked separately. Device rows after merge: Note 9 #00011C with no #282A36 flash and the adaptive icon; Tab S9 themed icon.
+
+**Results (lane A claims; not verified by the clerk).**
+- Stage A committed 0a49491f0 on uis5a-wip (parent 71b2eee1b), exactly the 11 named paths (name-status verified by lane A). Worktree clean; not pushed or merged. The trial waits for the batch with stage B and E-A (lane A decisions log line 1143).
+
+### MC-1361 — CHORE-652 closed with limits noted, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-652 (launch restore), `MC-1310`, `MC-1312`, `MC-1313`, `MC-1314`, `MC-1315`, `MC-1342`.
+
+**What the maintainer chose (lane A decisions log line 1144; labels verbatim).**
+- "Close with limits noted".
+
+**Results (lane A and lane B claims; not verified by the clerk).**
+- Lane B, phone 2, bb7c52cb1 release (A53E0654): REQUIRED rows 1, 2, 3a, 4, 8 and 9 PASS; row 3b NOT RUN (`MC-1342`). Independent raw-poll check CONSISTENT (laned\c652\device\verify.md; editorials on r3a-end.png, the r3-cold2 values and the hit window of 310-440 ms).
+- Limits as logged: the trashed-but-remembered branch is unit-only (Remove clears the key); row 9 hit n=1 (supersede vs guard-skip path not distinguishable from raw); 9c not run (RisuRealm card); 5 fresh-install leg not run; 11 is diagnostic.
+- Record: COMPLETE in records batch 66 (lane A decisions log line 1144).
+- Incident (lane B, lane A decisions log line 1145): an ls of the phone's Download folder printed personal-looking file names into agent output. Nothing was recorded or opened. Same class as the earlier phone 2 incidents.
+
+### MC-1362 — CHORE-688 A3a commit approved, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-688 (Svelte experimental.async), `MC-1373`.
+
+**What the maintainer chose (lane A decisions log line 1146; labels verbatim).**
+- "Commit, trial at merge".
+
+**Results (lane A claims; not verified by the clerk).**
+- Committed by lane A as 2dd506b70 on c688a3a-laned (parent 71b2eee1b), 13 named paths; worktree clean.
+- Gate 2 [EDITORIAL] (laned\c688\a3a\gate2.md). Closeout records: M-A3-S, S3 and T3 equivalent survivors (S5 killed); SettingsShellPage scenarios are a modelled clamp, with D7 and D7b device rows after A1.
+- Shared helper asyncScheduler.test-helpers.ts (AC4A0D59) to check against A2 at the second merge. Trial with UI-S5 A (0a49491f0).
+
+### MC-1363 — 16 ms bar binds one-step actions, 2026-11-11
+
+- Tag: decisions (AskUserQuestion via S3). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-690 (Q-D), `MC-1148` (16 ms hash rule), `MC-1226`, `MC-1379`.
+
+**What the maintainer chose (lane A decisions log line 1148; no label quoted in the log).**
+- The 16 ms bar binds the one-step actions (delete, add, Restore deleted, undo and redo). Revert to here and Restore point get a measured, reported, ungated bound.
+
+**Results (lane B claims; verify CONSISTENT per lane A).**
+- Isolated re-run on phone 2 (lane A decisions log line 1240): MC-1363 NOT MET. listFingerprintOf p95 after 2.5-2.8 s idle: A 22.4 ms, B 71.4 ms, C 72.3 ms (medians 11.7, 50.1 and 50.8 ms; n=60 per tier). The macro run in the same record is CONSISTENT, with real taps over 16 ms of hashing at the 100 us profile (profiler confound noted).
+- The S3 rule (lane A decisions log line 1215): isolated p95 at or under 16 ms at every tier meets MC-1363; otherwise a maintainer question goes through lane A.
+- Advisor8 (lane A decisions log line 1242): MC-1226 already decides the NOT MET case.
+
+### MC-1364 — revert notice for a net-zero revert, 2026-11-11
+
+- Tag: decisions (S3 answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-690 (Q-E), `MC-1338` (text superseded), `MC-1327`.
+
+**What the maintainer chose (lane A decisions log line 1149; labels verbatim).**
+- A net-zero revert that skipped first-message changes shows the notice, adds no history row and writes nothing. Wording: "Some older changes to the first messages were not undone." Key after Gate 1 r11; supersedes the MC-1338 text.
+
+**Results (lane A claims; not verified by the clerk).**
+- The en key studioHistoryRevertListSkipped = "Some older changes to the first messages were not undone." is added to en and ko, cn, zh-Hant, vi, de, es and ja via translator scratch relay, in the chore-690 worktree only. It reuses studioRefusalPrecondition (lane A decisions log line 1246).
+
+### MC-1365 — undo and redo skip the chat op after an outside list change, 2026-11-11
+
+- Tag: decisions (S3 answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-690 (Q-F), `MC-1227`, `MC-1408`, `MC-1418`.
+
+**What the maintainer chose (lane A decisions log line 1150; no label quoted in the log).**
+- Fix undo and redo chat coupling now. After an outside list change, undo and redo also skip the chat op. If nothing else applies, refuse with the existing message and keep the step. T25 and T59c re-pinned.
+
+**Results (lane A claims; not verified by the clerk).**
+- Advisor7 (lane A decisions log line 1219): adopt "exact or stop" (900 outside-edit runs: 0 root events and 0 Deleted mismatches, against 90 and 1,595 at r11). MC-1327 is not superseded; MC-1227 is amended and MC-1365 is extended. Model rows T5, T13c, T59a, T94c, T70a, T70b and T88 move.
+
+### MC-1366 — aged-out Undo case folded into CHORE-690, 2026-11-11
+
+- Tag: decisions (S3 answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-690, CHORE-691.
+
+**What the maintainer chose (lane A decisions log line 1151; no label quoted in the log).**
+- Fold the aged-out Undo case into CHORE-690 (CHORE-691 shape). Most of CHORE-691 closes when CHORE-690 lands.
+
+### MC-1367 — UI-S5 stage B quit pill commit, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S5 stage B, DD-008, `MC-1406` (later pill fix).
+
+**What the maintainer chose (lane A decisions log line 1153; labels verbatim).**
+- "Commit, trial at merge" for stage B: Back quit pill with the ko string pressBackAgainToQuit "종료하려면 뒤로 가기를 한번 더 누르세요" (DD-008). Lane C commits the 8 named paths on uis5b-wip (71b2eee1b). Separate trial after trial61. Device rows after merge: 2 s pill, second Back quits, TalkBack polite once, tap-through, 16 px, fade 2 s, reduced motion opacity only.
+
+**Results (lane A and lane B claims; not verified by the clerk).**
+- Committed 86a19a364 on uis5b-wip (parent 71b2eee1b), 8 named paths (verified by lane A); worktree clean. Trial62 after trial61 (lane A decisions log line 1154).
+- Device rows on phone 1 (lane A decisions log line 1216, bar and pill rows of the combined A+B run): B1 (root and sidebar sheet), B2 (phrase once), B3 and B4 PASS. B1 true modal dialog NOT RUN. B2 trailing lone "상태" on pill removal 3/3; the fix is decided in `MC-1406`.
+
+### MC-1368 — add timing judged on a six-run median, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-718 (STUDIO-RENDER), `MC-1336`, `MC-1371`.
+
+**What the maintainer chose (lane A decisions log line 1156; no label quoted in the log).**
+- Re-run add only, n=6 unprofiled on phone 1; judge the ~100 ms bar on that median.
+
+**Results (lane A and lane B claims; not verified by the clerk).**
+- First run (lane A decisions log line 1155, phone 1, bb7c52cb1 release A53E0654): tier B unprofiled medians delete0 119, deleteMid 85, undo 178, redo 132, Restore 214 ms PASS (<= 300 ms, `MC-1336`). Add 123 ms marginal FAIL vs ~100 (n=2; profiled 63, trace 104). RV-del 567 and 748 recorded (19-row rewrite remains). Single-action dirty 18-40 ms vs D0 235-255. Focus went to BODY after undo, redo and Restore (`MC-1369`).
+- Re-run (lane A decisions log line 1159): add 81, 73, 82, 105, 105 and 104 ms; median 93 ms, PASS vs ~100 (lane A recomputed from add-rerun-rows-B-add.json; verify CONSISTENT). All six tier B cells meet `MC-1336`; stage 2 (F3) not needed.
+
+### MC-1369 — focus moves to the changed box after undo, redo and Restore, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-718 (STUDIO-RENDER), `MC-1370`, `MC-1381`.
+
+**What the maintainer chose (lane A decisions log line 1157; labels verbatim).**
+- After Undo, Redo and Restore in Studio, focus moves to the first-message box that was restored or changed (as delete and add do).
+
+**Results (lane B claim; not verified by the clerk).**
+- The finding that prompted this (lane A decisions log line 1155): focus goes to BODY after undo, redo and Restore (12/12 per tier).
+
+### MC-1370 — lost-focus fix folds into CHORE-690, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-690, CHORE-718 (STUDIO-RENDER), `MC-1369`, `MC-1381`.
+
+**What the maintainer chose (lane A decisions log line 1158; no label quoted in the log).**
+- The lost-focus fix (`MC-1369`) folds into CHORE-690. The S3 designer adds it to plan r11. It is not a STUDIO-RENDER stage.
+
+**Results (lane A claims; not verified by the clerk).**
+- CHORE-690 focus plan Gate 1 (adversarial) [EDITORIAL] (lane A decisions log line 1178): the reviewer did not rerun tests; the designer's 14 of 16 red at base; the coder must show red-before-green. Editorials pin focus-then-verify, a no-op sheet Confirm test, and S16 for overlay-hides-box and first-Back keyboard vs panel. The focus stage runs after S2L and S2b.
+
+### MC-1371 — STUDIO-RENDER closed, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-718 (STUDIO-RENDER), `MC-1336`, `MC-1341`, `MC-1368`, `MC-1370`.
+
+**What the maintainer chose (lane A decisions log line 1160; labels verbatim).**
+- "Close it".
+
+**Results (lane A claim; not verified by the clerk).**
+- Recorded as COMPLETE in records batch 66, with the thin add margin noted and the focus work moved to CHORE-690 per `MC-1370` (lane A decisions log line 1160).
+
+### MC-1372 — remove merged clean worktrees and branches, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: branches c652-laned, c714s4, srender-wip, wikitrash-wip; trial4 kept.
+
+**What the maintainer chose (lane A decisions log line 1161; no label quoted in the log).**
+- Remove the merged clean worktrees and local branches c652-laned, c714s4 and srender-wip (lane C), and wikitrash-wip. Keep trial4.
+
+**Results.** TODO(evidence): the removal result is not in the supplied source lines.
+
+### MC-1373 — trial61 merge and push, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S5 stage A (0a49491f0), CHORE-688 A3a (2dd506b70), trial62.
+
+**What the maintainer chose (lane A decisions log line 1162; labels verbatim).**
+- "Merge and push".
+
+**Results (lane A claims; not verified by the clerk).**
+- trial61 PASS (c5c0e1de4, tree e7297d378; FULLRUN PASS, check 0 errors, build OK; status clean before and after).
+- Main a24747a7f = 71b2eee1b + UI-S5 A 0a49491f0 + CHORE-688 A3a 2dd506b70; tree equals the trial; pushed.
+- Trial62 (c5c0e1de4 + UI-S5 B 86a19a364, tree 2a06f79db) started in trial3.
+
+### MC-1374 — notification tap whose chat is gone, 2026-11-11
+
+- Tag: decisions (answer to UI-S5 stage C question Q1; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S5 stage C, `MC-1376`, `MC-1385`.
+
+**What the maintainer chose (lane A decisions log line 1165; no label quoted in the log).**
+- A notification tap whose chat is gone but whose character exists opens that character on its current chat.
+
+### MC-1375 — cold launch from an unknown tap target, 2026-11-11
+
+- Tag: decisions (answer to UI-S5 stage C question Q2; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S5 stage C, `MC-1310` (last-character restore).
+
+**What the maintainer chose (lane A decisions log line 1166; no label quoted in the log).**
+- A cold launch from an unknown or refused tap target behaves as if there were no tap. The usual last-character restore runs.
+
+### MC-1376 — tap while a screen is open, 2026-11-11
+
+- Tag: decisions (answer to UI-S5 stage C question Q3; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S5 stage C, `MC-1374`.
+
+**What the maintainer chose (lane A decisions log line 1167; no label quoted in the log).**
+- A tap while Settings, Studio, Utility, Realm or the library is open selects the target chat and closes nothing.
+
+### MC-1377 — animated or unsupported avatar in the notice, 2026-11-11
+
+- Tag: decisions (answer to UI-S5 stage C question Q4; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S5 stage C.
+
+**What the maintainer chose (lane A decisions log line 1168; no label quoted in the log).**
+- An animated or unsupported avatar gets no large icon; the name only (no first-frame extraction).
+
+**Results (lane C ruling; not verified by the clerk).**
+- Lane C ruling on the lane B r4 device run (lane A decisions log line 1340): the animated avatar PASS (name only, no icon, per `MC-1377`).
+
+### MC-1378 — reply-ready notice copy, 2026-11-11
+
+- Tag: decisions (answer to UI-S5 stage C question Q6; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S5 stage C, `MC-1390` (Korean wording), `MC-1389`.
+
+**What the maintainer chose (lane A decisions log line 1169; labels verbatim).**
+- Reply-ready copy accepted: title = character name (group name for groups), text "Replied", lock-screen public title "New reply". Korean via translator.
+
+### MC-1379 — pre-S1 history steps outside the 16 ms gate, 2026-11-11
+
+- Tag: decisions (AskUserQuestion via S3). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-690 (Q-H1), `MC-1148`, `MC-1363`.
+
+**What the maintainer chose (lane A decisions log line 1172; no label quoted in the log).**
+- Undo or redo of a pre-S1 history step with no list fingerprint stays outside the 16 ms gate. The cost is reported as cell R3 at 2.0 x p95.
+
+### MC-1380 — old-step revert counts no skip, 2026-11-11
+
+- Tag: decisions (S3 answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-690 (Q-H2), `MC-1327`, `MC-1379`.
+
+**What the maintainer chose (lane A decisions log line 1173; no label quoted in the log).**
+- A revert that reaches such an old step and skips an aged-out delete counts no skip and shows no notice.
+
+### MC-1381 — focus rule covers Revert to here and undo/redo shortcuts, 2026-11-11
+
+- Tag: decisions (AskUserQuestion via S3). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-690 (focus), `MC-1369`, `MC-1370`.
+
+**What the maintainer chose (lane A decisions log line 1174; no label quoted in the log).**
+- The MC-1369 focus rule also covers Revert to here and Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y. The delete toast's Undo keeps ToastHost return-to-origin.
+
+**Results (lane A claim; not verified by the clerk).**
+- The CHORE-690 focus plan Gate 1 (adversarial) [EDITORIAL] (lane A decisions log line 1178) applies to this rule as well (see `MC-1370`).
+
+### MC-1382 — focus when only the description changed, 2026-11-11
+
+- Tag: decisions (S3 answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-690 (F2), `MC-1369`.
+
+**What the maintainer chose (lane A decisions log line 1175; no label quoted in the log).**
+- When no first message changed but the description, hide-icon box or a chat note did, focus goes to the changed control.
+
+### MC-1383 — phone layout keeps the History panel open, 2026-11-11
+
+- Tag: decisions (S3 answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-690 (F3), device check S16.
+
+**What the maintainer chose (lane A decisions log line 1176; no label quoted in the log).**
+- Phone layout keeps the History panel open and still focuses the box. Device check S16 records whether the keyboard shows.
+
+### MC-1384 — restore sheet closed by Escape or Back, 2026-11-11
+
+- Tag: decisions (S3 answer; mechanism not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-690 (F4).
+
+**What the maintainer chose (lane A decisions log line 1177; no label quoted in the log).**
+- Closing the restore sheet by Escape or Back while focus is already outside it leaves focus where it is.
+
+### MC-1385 — cold notification tap on an archived character, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S5 stage C (Q7), `MC-1310` (last-character restore), `MC-1374`.
+
+**What the maintainer chose (lane A decisions log line 1180; no label quoted in the log).**
+- A cold notification tap on an archived character whose restore fails shows the existing error alert and stays on Home. The last-character restore does not run.
+
+**Results (lane A note; not verified by the clerk).**
+- The lane A note at lane A decisions log line 1185 says this entry must be added to Maintainer-Context in batch 66.
+
+### MC-1386 — CHORE-688 A2 commit approved, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-688 (Svelte experimental.async), `MC-1387`.
+
+**What the maintainer chose (lane A decisions log line 1181; labels verbatim).**
+- "Commit, trial at merge" (CHORE-688 A2, tests only).
+
+**Results (lane A claims; not verified by the clerk).**
+- Committed by lane A as a5734aeb7 on c688a2-laned (parent 71b2eee1b), 38 paths; all hashes equal the handoff; worktree clean. A first commit 3aa68aa22 caught only 1 path through a CRLF parse slip and was amended before any use.
+- Gate 2 APPROVE (laned\c688\a2\gate2.md). Trial after trial62.
+
+### MC-1387 — trial62 merge and push, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S5 A and B, CHORE-688 A2 (`MC-1386`), trial63.
+
+**What the maintainer chose (lane A decisions log line 1182; labels verbatim).**
+- "Merge and push".
+
+**Results (lane A claims; not verified by the clerk).**
+- trial62 PASS (11b9c0c2a, tree 2a06f79db; FULLRUN PASS, check 0 errors, build OK, status clean).
+- Main f54b7e6b5 = a24747a7f + UI-S5 B 86a19a364; tree equals the trial; pushed.
+- Combined UI-S5 A+B device rows owed on a release build of f54b7e6b5.
+- Trial63 (11b9c0c2a + CHORE-688 A2 a5734aeb7, tree dfacb925f) started in trial4.
+
+### MC-1388 — remove uis5b and uis5a worktrees, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1372`, UI-S5 stage C worktree (risu-code-track-uis5c).
+
+**What the maintainer chose (lane A decisions log line 1183; no label quoted in the log).**
+- Remove the merged clean worktrees uis5b (uis5b-wip, 86a19a364) now and uis5a (uis5a-wip, 0a49491f0) after lane C workflow wf_938df100-f63 ends. Lane C, no force flags. The stage C worktree is risu-code-track-uis5c (uis5c-wip at f54b7e6b5).
+
+**Results (lane A record; not verified by the clerk).**
+- Cleanup done: uis5b and uis5a removed, no force (lane A decisions log line 1185).
+
+### MC-1389 — ko reply channel name, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S5 stage C, `MC-1390`, `MC-1378`.
+
+**What the maintainer chose (lane A decisions log line 1187; labels verbatim).**
+- values-ko reply_channel_name = "답변 알림" (matches the existing setting label), not the relay's "답변".
+
+**Results (lane A record; not verified by the clerk).**
+- Stage C plan adds values-ko/strings.xml (keepalive_channel_name, reply_channel_name, reply_channel_description); ko via translator relay to scratch (lane A decisions log line 1185).
+
+### MC-1390 — ko reply notice wording kept, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S5 stage C, `MC-1378`, `MC-1389`.
+
+**What the maintainer chose (lane A decisions log line 1188; labels verbatim).**
+- Keep ko replyNoticeText "답변 완료" and replyNoticePublicTitle "새 답변".
+
+### MC-1391 — DIRTY-RC patched Svelte proxy delivery, 2026-11-11
+
+- Tag: decisions (AskUserQuestion, DIRTY-RC OQ4). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-719 (DIRTY-RC), `MC-1325`, `MC-1330`, `MC-1331`, `MC-1332`, `MC-1392`.
+
+**What the maintainer chose (lane A decisions log line 1193; no label quoted in the log).**
+- Patched Svelte proxy.js: a repo-held patch served by a Vite plugin. The build fails on a Svelte version or file-hash mismatch. Shared node_modules unchanged. The lockfile pins Svelte 5.57.3. Not the wrapper.
+- Accepted costs (PC best case): first full read 1.26-1.48x; memory +6.5%; +0.05-0.10 us per extra link per write; one device notice past 64 links; patch re-apply and a checklist on every Svelte upgrade.
+- The Note 9 S2 bench decides the bars (`MC-1325`, `MC-1330`, `MC-1331`, `MC-1332`).
+
+**Results (lane D claim; not verified by the clerk).**
+- DEV0 PASS and SC1 PASS (dirty-rc\dev0\result.md; lane A decisions log line 1308): the dev server serves the patched proxy.js (PATCH_ID r1); the svelte prebundle exclusion works; selfCheckDbWriteHook() true; refusals only for Chrome background hosts and Google Fonts. D1 smoke skipped.
+
+### MC-1392 — DIRTY-RC accepted limitation L1, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-719 (DIRTY-RC), `MC-1391`, Workflow-State (records batch 66).
+
+**What the maintainer chose (lane A decisions log line 1194; no label quoted in the log).**
+- L1 is an accepted limitation. Its text and review trigger are as in plan r6 (with the E1(c) trigger). The text is to be recorded in Workflow-State in records batch 66.
+
+**Results (lane A claim; not verified by the clerk).**
+- The advisor asked that L1 (raw-edge placement-mark limitation) be recorded as an accepted limitation with a review trigger. Lane A puts it to the maintainer with OQ4 after the r6 Gate 1 (lane A decisions log line 1170).
+
+**Not decided.** The limitation text and its review trigger are not in the supplied source lines: TODO(evidence).
+
+### MC-1393 — trial63 merge and push, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-688 A2 (`MC-1386`), CHORE-688 A3c.
+
+**What the maintainer chose (lane A decisions log line 1196; labels verbatim).**
+- "Merge and push".
+
+**Results (lane A claims; not verified by the clerk).**
+- trial63 PASS (b11fe77c4, tree dfacb925f; FULLRUN PASS, check 0 errors, build OK, status clean).
+- Main f415e3e6c = f54b7e6b5 + CHORE-688 A2 a5734aeb7; tree equals the trial; pushed. The A3c coder is unblocked.
+
+### MC-1394 — CHORE-688 A3c limitation R1 accepted, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: CHORE-688 A3c, `MC-1316` (TogglesPanel opening as derived), CHORE-688 A1.
+
+**What the maintainer chose (lane A decisions log line 1197; no label quoted in the log).**
+- R1 is accepted as a stated limitation: async only; TogglesPanel may pick its starting row before favourites sync, and focus lands on the section heading. The test comment and closeout record it. Revisit at A1.
+
+**Results (lane A claims; not verified by the clerk).**
+- A3c plan r1 (lane A decisions log line 1190): one stage; app files TogglesPanel (opening as derived, `MC-1316` option 1) and SidebarRail (early return after awaits once destroyed); MC-091 shared-cause amendments 1b and 4b.
+- Gate 1 r1 [EDITORIAL] (lane A decisions log line 1191) raised R1, to be put to the maintainer with the trial63 and A2 merge question.
+
+### MC-1395 — UI-S4 stage E commit approved, 2026-11-11
+
+- Tag: decisions (AskUserQuestion). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: UI-S4 stage E (E-A Home width bands and top bar; E-B phone drawer), `MC-1344`, `MC-1345`, `MC-1346`, `MC-1347`, `MC-1358`, `MC-1359`.
+
+**What the maintainer chose (lane A decisions log line 1199; labels verbatim).**
+- "Commit, trial at merge": lane C commits the 11 named paths on uis4lay-wip (71b2eee1b). Accepted editorial: a screen reader says "Menu" three times on drawer open (existing keys only).
+
+**Results (lane C and lane A claims; not verified by the clerk).**
+- Gate 2 adversarial PASS, mutants 40/48, remediation 7/7 (stage-e\gate2\; lane A decisions log line 1199).
+- Committed f1eed3db4 on uis4lay-wip (parent 71b2eee1b), 11 named paths (verified); worktree clean (lane A decisions log line 1200). Trial64 (f415e3e6c + f1eed3db4, head e26ab77e8, tree 058694289) started in trial3.
+- Device rows DV-E1 (Note 9 360/412) and DV-E2 (PC Chromium widths) owed after merge.
+
+### MC-1396 — trial64 merged and pushed (UI-S4 stage E), 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S4` stage E (E-A and E-B), `MC-1395`, trial64.
+
+**What the maintainer chose (lane A decisions log line 1203; labels verbatim).**
+- "Merge and push".
+
+**Results (lane A claims; not verified by the clerk).**
+- trial64 (f415e3e6c + f1eed3db4, head e26ab77e8, tree 058694289): FULLRUN PASS, check 0 errors, build OK, status clean.
+- Merged to main as 8edfabfa3 (tree equal to the trial); pushed.
+
+**Not decided.** DV-E1 (Note 9, 360 and 412 px) and DV-E2 (PC Chromium widths) device rows are owed after the merge.
+
+### MC-1397 — UI-S5 row A3 (Tab S9 themed icon) skipped for now, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer in lane B). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S5` stage A, row A3.
+
+**What the maintainer chose (lane A decisions log line 1204; labels verbatim).**
+- "Skip A3 for now".
+
+**Results.** None. The Tab S9 was not connected and the install needed approval (lane B note, lane A decisions log line 1202). The log records a stage A closeout limitation unless the row is run later.
+
+**Not decided.** Whether row A3 runs later: TODO(evidence).
+
+### MC-1398 — UI-S5 A+B rows on phone 1 in parallel; phone 2 kept for CHORE-690, 2026-11-11
+
+- Tag: decisions (lane B session choice; lane A decisions log line 1205 for the lane B entry; context per lane A decisions log line 1202, which says maintainer choices in the lane B session). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S5` A+B rows, `CHORE-690` dn9b (D-N9 baseline comparability).
+
+**What was chosen (lane B entry, as logged).**
+- UI-S5 A+B rows run on phone 1 in parallel.
+- Phone 2 keeps the CHORE-690 dn9b run, so the D-N9 baseline stays comparable.
+
+**Results.** None in this entry. The phone 1 A+B run is recorded at lane A decisions log line 1216 (partial).
+
+**Not decided.** None logged. The maintainer's own wording for this choice is not in the log: TODO(evidence).
+
+### MC-1399 — device track cap raised from 1 to 2, 2026-11-11
+
+- Tag: decisions (lane B session choice; lane A decisions log line 1206). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1095` and `MC-1098` (slot caps), `MC-1465` (later raise to 3, outside this part), `.claude/workflow-policy.json` scheduling.maxDeviceTracks.
+
+**What was chosen (lane B entry, log wording kept).**
+- "device track cap raised 1 -> 2 (.claude/workflow-policy.json scheduling.maxDeviceTracks, uncommitted, same file as the temporary maxImplementationTracks 6)".
+
+**Results.** The policy edit is uncommitted (lane B claim).
+
+**Not decided.**
+- At handoff, restore only maxImplementationTracks to 2. maxDeviceTracks stays at 2 (as logged).
+- AGENTS.md and docs/workflow/2026-11-03-parallel-tracks.md still say one device track. The log gives those updates to records batch 66.
+- The maintainer's own answer text for this choice is not in the log: TODO(evidence).
+
+### MC-1400 — workflow-parallel test reads the caps from policy, 2026-11-11
+
+- Tag: decisions (lane B typed instruction and AskUserQuestion "Read cap from policy"). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `.claude/scripts/workflow-parallel.test.mjs`, `MC-1399`.
+
+**What the maintainer chose (lane A decisions log line 1207; labels verbatim).**
+- "Read cap from policy".
+
+**Results (lane B claim).** The test reads the caps from policy. The second device dispatch registers and the third is refused. 8/8 pass. Uncommitted.
+
+**Not decided.** None logged.
+
+### MC-1401 — one-time -AllowClear uninstall on phone 1, 2026-11-11
+
+- Tag: decisions (lane B entry; the maintainer answer is not in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: the standing device rule against -AllowClear (not an MC entry here).
+
+**What was chosen (lane B entry, lane A decisions log line 1208).**
+- One -AllowClear uninstall on phone 1 only, for a signature mismatch. Used once.
+
+**Results (lane B claim).** Used once. Phone 1 only.
+
+**Not decided.**
+- The standing rule against -AllowClear is otherwise unchanged (as logged).
+- Who approved this step and in what words: TODO(evidence).
+
+### MC-1402 — CHORE-688 A3c committed, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-688` stage A3c (Svelte experimental.async), `MC-1316`, `MC-1394`, `MC-1410`.
+
+**What the maintainer chose (lane A decisions log line 1210; labels verbatim).**
+- "Commit, trial at merge".
+
+**Results (lane A claims).**
+- Committed by lane A as 130e44a8b on c688a3c-laned (parent f415e3e6c), 15 paths. Hashes equal the handoff. Worktree clean.
+- Gate 2 APPROVE and remediation APPROVE. Open item L-A3c-1 closed. Only the tsconfig exclude note remains, for stage A1.
+- trial65 (8edfabfa3 + 130e44a8b, head cf4c30079) run in trial4.
+
+**Not decided.** The merge question was asked separately; see `MC-1410`.
+
+### MC-1403 — Home mode switcher centres on the visible top bar, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S4` stage E, `MC-1414`, `MC-1415`, `MC-1440`.
+
+**What the maintainer chose (lane A decisions log line 1212).**
+- The Home mode switcher centres on the visible top bar (the content area beside the sidebar), whatever sits to its left or right.
+- The 2 px target stands.
+
+**Results (lane A claim, from the DV-E2 check at lane A decisions log line 1211).** On PC Chromium at 8edfabfa3, centring failed at 1280 px with the sidebar open (-50.4 px; +20 px with the sidebar closed). The wordmark also overlapped the first switcher radio at 1280, 1300 and 1340 px with the sidebar open.
+
+**Not decided.** Phone widths are out of scope (see `MC-1415`).
+
+### MC-1404 — wordmark overlap fixed with MC-1403 as a stage E follow-up, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1403`, `UI-S4` stage E follow-up.
+
+**What the maintainer chose (lane A decisions log line 1213).**
+- Fix the wordmark overlap now, together with MC-1403, as a small UI-S4 stage E follow-up (lane C).
+- The follow-up gets its own review, trial and merge question.
+
+**Results.** The follow-up's commit and approval are recorded under `MC-1425`.
+
+**Not decided.** The merge question for the follow-up is asked separately (as chosen).
+
+### MC-1405 — system bars stay #00011C until the boot screen hands over, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S5` follow-up (lane C), `MC-1406`, `MC-1419`.
+
+**What the maintainer chose (lane A decisions log line 1217).**
+- System bars stay #00011C until the boot screen hands over to Home, then take the scheme colour.
+
+**Results (lane B claim, phone 1, f54b7e6b5 release; lane A decisions log line 1216).** Row A1 FAIL as literal: the splash and WebView stay #00011C 6/6, but the bars flip to #232833 0.23 to 0.40 s into the BootScreen (set by colorscheme.ts syncSystemBars and systemBars.ts).
+
+**Not decided.** The fix route for the early bar colour is not set in this entry. The device rows after the fix are in `MC-1419`.
+
+### MC-1406 — quit pill removal stays silent, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S5` follow-up (lane C), `MC-1419`, `MC-1405`.
+
+**What the maintainer chose (lane A decisions log line 1218).**
+- Fix the trailing "상태" announcement so that pill removal is silent (same UI-S5 follow-up).
+- Re-check on the phone with the bar fix and the B1 true-dialog case.
+
+**Results (lane B claim, phone 1; lane A decisions log line 1216).** Row B2: a trailing lone "상태" on pill removal, 3/3.
+
+**Not decided.** The phone re-check is owed after the fix (see `MC-1419`).
+
+### MC-1407 — Revert to here stops at a first-message step that no longer fits, 2026-11-11
+
+- Tag: decisions (AskUserQuestion, CHORE-690 S2b Q1). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690` S2b, `MC-1327`, `MC-1338`, `MC-1364`, `MC-1418`.
+
+**What the maintainer chose (lane A decisions log line 1220).**
+- Revert to here stops at a step whose first-message change no longer fits the list. That step's and older first-message changes stay.
+- Description and other fields still revert.
+- Notice: "Some older changes to the first messages were not undone."
+- If nothing can be reverted, the existing "changed since" message shows.
+
+**Results.** Gate 1 r12 reviewers found the wording of the Q2 answer wrong for first messages (lane A decisions log line 1244). See `MC-1418`.
+
+**Not decided.** None logged for this entry.
+
+### MC-1408 — Undo and Redo at a non-fitting step change nothing, 2026-11-11
+
+- Tag: decisions (CHORE-690 S2b Q2; answer tool not named in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690` S2b, `MC-1365` (extended), `MC-1407`, `MC-1418` (correction).
+
+**What was chosen (lane A decisions log line 1221, as logged).**
+- Undo and Redo that reach such a step change nothing.
+- They show the existing "changed since" message and keep the step.
+- This extends MC-1365.
+
+**Results.** Gate 1 r12 found that the Q2 text ("older states stay reachable with Revert to here") was wrong for first messages (lane A decisions log line 1244).
+
+**Not decided.** The correction is recorded in `MC-1418`.
+
+### MC-1409 — restore-point duplicate split into a follow-up ticket, 2026-11-11
+
+- Tag: decisions (CHORE-690 S2b Q3; answer tool not named in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-720 (RESTOREPT-DUP)`, `CHORE-690` S2b.
+
+**What was chosen (lane A decisions log line 1222).**
+- The restore-point duplicate becomes a separate follow-up ticket: CHORE-720 (RESTOREPT-DUP). The restore-point duplicate is a deleted first message that returns but stays under Deleted. It is pre-existing.
+
+**Results.** Gate 1 r12 names it as a known limitation and leaves restore points untouched.
+
+**Not decided.** The scope and sizing of CHORE-720 (RESTOREPT-DUP): TODO(evidence).
+
+### MC-1410 — trial65 merged and pushed (CHORE-688 A3c), 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1402`, `CHORE-688` A3c.
+
+**What the maintainer chose (lane A decisions log line 1223; labels verbatim).**
+- "Merge and push".
+
+**Results (lane A claims).**
+- trial65 (cf4c30079, tree 974179048): FULLRUN PASS, check 0 errors, build OK, status clean.
+- main 2f87ac220 = 8edfabfa3 + 130e44a8b. Tree equal to the trial. Pushed.
+
+**Not decided.** None logged.
+
+### MC-1411 — merged worktrees and branches removed, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1372`, `MC-1388`, `MC-1424`.
+
+**What the maintainer chose (lane A decisions log line 1224).**
+- Remove the merged clean worktrees and branches c688a3a-laned, c688a2-laned, uis4lay-wip and c688a3c-laned.
+- Lane A did this without force flags.
+
+**Results (lane A claim).** Done as logged.
+
+**Not decided.** None logged.
+
+### MC-1412 — numeric chat ids dropped from save marks: small ticket now, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-721 (NUMID-MARK)`, `MC-1413`, `MC-1421`, `MC-175`.
+
+**What the maintainer chose (lane A decisions log line 1228).**
+- Finding F3 is a small ticket now, with the placeholder CHORE-721 (NUMID-MARK) (CHORE number allocated for batch 66).
+- The finding: the store2 save loop (marksOf) keeps only string chat ids, while presentChaIds stringifies ids. Numeric-id marks are dropped. This is pre-existing and was traced to source.
+- Steps: first prove whether numeric chat ids occur and whether a change is lost. If so, compare by String(id) with a regression test. Opus review is required (persistence-critical).
+- Owner: lane D, after its two remediations.
+
+**Results (lane A investigator claim, step 1; scratch-executed).** Plugins (V3 setCharacter, V2 setChar, setDatabase and Lite) can store finite numeric chat ids. marksOf drops them, so the marked pass writes nothing. Only the idle net (one pass every 2 s, not during streaming) rescues the edit. With the net off, the edit is never stored. With the net on, it is stored after a net tick. The string control passes (lane A decisions log line 1229).
+
+**Not decided.** Whether upstream .bin files contain numeric ids: UNCERTAIN (TODO(evidence)).
+
+### MC-1413 — numeric chat ids compared by String id (NUMID-MARK scope B), 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-721 (NUMID-MARK)`, `MC-1412`, `MC-175`, `CHORE-719 (DIRTY-RC)`.
+
+**What the maintainer chose (lane A decisions log line 1230).**
+- Scope B for CHORE-721 (NUMID-MARK): compare by String(id) in store2 marksOf.
+- Let markCharacterForSave accept usable numeric ids, compared as strings.
+- No id normalisation (MC-175).
+
+**Results (lane A claims).**
+- The reproducer is red on 2f87ac220.
+- Planned: independent opus plan review (dirty-dependencies) and a coder in a fresh worktree.
+- characterSaveMarks.ts overlaps CHORE-719 (DIRTY-RC) (separate functions; second to land rebases). The second change to land rebases on the first.
+- Gate 1 r1 (lane A decisions log line 1239) took the cast route, as an explicit narrowing with an invariant comment.
+
+**Not decided.** None logged.
+
+### MC-1414 — top-bar switcher stays on one row between 1025 and about 1068 px, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer in lane C). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1403`, `MC-1440` (amends this), `UI-S4` stage E.
+
+**What the maintainer chose (lane A decisions log line 1232).**
+- With the sidebar open between 1025 and about 1068 px, the switcher stays on one row, nearly centred. It drifts right by up to about 22 px at 1025 and is exact from about 1068.
+
+**Results.** Only the DV-E2 finding recorded under `MC-1403`.
+
+**Not decided.** `MC-1440` changes the one-row promise for languages with long labels.
+
+### MC-1415 — phone is out of scope for switcher centring, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer in lane C). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1403`.
+
+**What the maintainer chose (lane A decisions log line 1233).**
+- MC-1403 centring covers the mid and wide bands only. The phone is out of scope.
+
+**Results.** None logged.
+
+**Not decided.** None logged for the phone layout.
+
+### MC-1416 — DIRTY-RC S0 and S1 committed as a branch checkpoint, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer; label not in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-719 (DIRTY-RC)`, `MC-1391`, `MC-1357`.
+
+**What the maintainer chose (lane A decisions log line 1235).**
+- Branch checkpoint commit for DIRTY-RC S0 and S1 (Gate 2 r2 APPROVE, no findings).
+- The answer label is not in the log: TODO(evidence).
+
+**Results (lane A claims).**
+- Committed ed21f01a9 on dirtyrc-laned (parent f54b7e6b5), 21 paths. Hashes equal handoff-s1.md. Worktree clean.
+- No merge and no push.
+- Note: core.autocrlf is true, so fresh checkouts get CRLF patch files. plugin.mjs hashes only the installed Svelte original, so the log calls this cosmetic. The .gitattributes decision (F6) is still open at integration.
+
+**Not decided.** F6 (.gitattributes for the patch folder) is decided at DIRTY-RC integration.
+
+### MC-1417 — CHORE-688 A3b committed, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-688` stage A3b (AlertComp), `MC-1422`, trial66.
+
+**What the maintainer chose (lane A decisions log line 1243; labels verbatim).**
+- "Commit, trial at merge".
+
+**Results (lane A claims).**
+- Committed by lane A as 29b83a23a on c688a3b-laned (parent 2f87ac220), 4 AlertComp paths. Hashes equal the handoff. Worktree clean.
+- Gate 2 r2 APPROVE (held prompt released from alertIdle).
+- trial66 (2f87ac220 + 29b83a23a, head 1decd6692, tree 1a0431bd4) in trial3.
+- Accepted limits as logged: happy-dom only; the controller store watch starts at AlertComp mount.
+
+**Not decided.** Merge: see `MC-1422`.
+
+### MC-1418 — "Keep as decided": Undo stops at a non-fitting first-message step, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer; correction to MC-1408). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1407`, `MC-1408`, `MC-1365`, `MC-1227` (amended by advisor7, lane A decisions log line 1219).
+
+**What the maintainer chose (lane A decisions log line 1245; labels verbatim).**
+- "Keep as decided".
+- Once a first-message step no longer fits the list, Undo stops there. Revert to here, to any older row, leaves first messages unchanged. Description and other fields still revert.
+- The block lifts only when the list is put back by hand to that step's state, or after 100 newer steps push that step out.
+- Even a harmless outside addition triggers the block.
+
+**Results (lane A claims).** This confirms the correction to MC-1408. Advisor7 adopted "exact or stop" (lane A decisions log line 1219): 900 outside-edit runs gave 0 root events and 0 Deleted mismatches, against 90 and 1,595 under r11.
+
+**Not decided.** None logged.
+
+### MC-1419 — UI-S5 follow-up committed (bar colour and quit pill), 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S5` follow-up (lane C), `MC-1405`, `MC-1406`, `MC-1442` (other part of this batch).
+
+**What the maintainer chose (lane A decisions log line 1247; labels verbatim).**
+- "Commit, trial at merge".
+- Lane C commits the 7 named paths on uis5f-wip (8edfabfa3).
+- Scope: MC-1405 (bars stay #00011C until BootScreen hands over). MC-1406 (quit pill drops role=status; aria-live polite kept). SPEC §8 and §9 updated.
+
+**Results (lane C claims).**
+- Committed 079d77b59 on uis5f-wip (parent 8edfabfa3), 7 paths, clean (lane A decisions log line 1248).
+- Gate 1 and Gate 2 EDITORIAL. Mutants 19/20 killed, plus remediation check PASS.
+- TalkBack silence is designed, not demonstrated.
+
+**Not decided.** Device rows owed after merge on phone 1: A1 bar timing, B2 silence, and B1 true modal dialog on a disposable synthetic chat. Lane B result-f.md on 58ff0cdc5 (verify CONSISTENT): D1 FAIL (bars white 50 to 65 ms before Home's first frame); D2 PASS presses 2 to 4; D3 PASS 3/3 (lane A decisions log line 1276). B1 true modal dialog row: TODO(evidence).
+
+### MC-1420 — UI-S5 stage C committed for merge with trial, 2026-11-11
+
+- Tag: decisions (AskUserQuestion answer). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S5` stage C (C1 to C3), `MC-1374` to `MC-1378` and `MC-1385` (earlier in this batch).
+
+**What the maintainer chose (lane A decisions log line 1249; labels verbatim).**
+- "Commit, trial at merge".
+- Lane C commits the 53 status paths on uis5c-wip (f54b7e6b5) by exact path. Lane A verified the count of 53. No Cargo or Manifest paths. 8 locales: 10 lines added, 0 removed.
+
+**Results (lane C claims).**
+- Committed c07934b40 on uis5c-wip (parent f54b7e6b5), 53 paths, clean (lane A decisions log line 1250).
+- Gate 2 opus r1 REJECT, then remediation, then r2 PASS.
+- vitest 36946 pass. svelte-check 0 errors. JVM 151 (at r1).
+- Non-blocking: the avatar cap of 400000 is not pinned. A count shown before low power stays until the next sync.
+
+**Not decided.** Device rows owed after merge: notice states and avatar, lock-screen public version, Stop with unlock, deep link (cold, warm, slow restore, archived), reply notice, process-death redelivery. Lane B stage C results. DV-C1 generating, finishing, Stopped-after-foreground and reply notice PASS, Stop in background FAIL (line 1276). DV-C3 static avatar, hideAllImages and group title PASS (line 1309). DV-C2 warm PASS, cold PASS x2 and animated avatar PASS (lane C ruling, log lines 1339 to 1340). Still NOT RUN or open: speaking, image, translating, slow restore, Settings-open, DV-C4.
+
+### MC-1421 — NUMID-MARK commit approved, 2026-11-11
+
+- Tag: decisions (as logged; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-721 (NUMID-MARK)`, `MC-1413`, `MC-1423`.
+
+**What the maintainer chose (lane A decisions log line 1252; labels verbatim).**
+- "Commit, trial at merge".
+
+**Results (lane A claims).**
+- Committed 62a6dcc9d on numid-laned (parent 2f87ac220), 6 paths. Hashes matched the handoff.
+- trial66 (2f87ac220 + A3b 29b83a23a, head 1decd6692): FULLRUN PASS, test, check and build 0. Status clean before and after.
+
+**Not decided.** Merge: see `MC-1423`.
+
+### MC-1422 — merge of A3b (trial66) and push approved, 2026-11-11
+
+- Tag: decisions (as logged; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1417`, `MC-1421`, trial66.
+
+**What the maintainer chose (lane A decisions log line 1253).**
+- Merge A3b (trial66) and push.
+
+**Results.** A3b 29b83a23a merged into main as d338167dc and pushed (git log, main). Later entries build on main 2f87ac220 (see `MC-1410`).
+
+**Not decided.** None logged.
+
+### MC-1423 — trial67 PASS; three commits approved to merge and push, 2026-11-11
+
+- Tag: decisions (as logged; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1419`, `MC-1420`, `MC-1421`, `CHORE-721 (NUMID-MARK)`.
+
+**What the maintainer chose (lane A decisions log line 1255).**
+- Merge all three: UI-S5 follow-up 079d77b59, UI-S5 stage C c07934b40, and CHORE-721 (NUMID-MARK) 62a6dcc9d. Then push.
+
+**Results (lane A claim).** trial67 (head f98ed03b4, tree 7fc5fac1d): FULLRUN PASS.
+
+**Not decided.** Merged into main as 58ff0cdc5 (UI-S5 follow-up 079d77b59, stage C c07934b40, NUMID 62a6dcc9d) and pushed (git log, main).
+
+### MC-1424 — worktree cleanup rule (-d only), 2026-11-11
+
+- Tag: decisions (as logged; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1411`, `MC-1372`, `MC-1455` (later removal, outside this part).
+
+**What the maintainer chose (lane A decisions log line 1256).**
+- Remove worktrees c688a3b, numid (CHORE-721 (NUMID-MARK)), uis5f and uis5c. Delete their merged branches with -d only.
+- Keep c690dn9b (11 lane B dirty files).
+
+**Results (lane A note, log line 1257).** Lane C had already removed uis5f and uis5c and their branches before this entry. The removal was limited to safe steps: clean worktrees, branch tips that are ancestors of 58ff0cdc5, junction rmdir, no force. The note says no work was lost.
+
+**Not decided.** Lane C waits for lane A's approval before any future cleanup, as logged in the same note.
+
+### MC-1425 — UI-S4 stage E follow-up committed (trial at merge), 2026-11-11
+
+- Tag: decisions (as logged; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1404`, `MC-1414`, `MC-1433`.
+
+**What the maintainer chose (lane A decisions log line 1259).**
+- Commit approved on uis4fix-wip (5 Home paths). Trial at merge.
+
+**Results (lane A claims).**
+- Committed 659c07969 on uis4fix-wip (parent 2f87ac220), 5 paths (lane A decisions log line 1260).
+- trial68 = 58ff0cdc5 + 659c07969 (head 3c0263668), running in trial3.
+- Lane C leads, not decided: O8 (other X-closed dialogs may share the focus-to-BODY exposure); O7 (the CHORE-690 pointer versus S3b first-message undo; nearest CHORE-650).
+
+**Not decided.** Device rows owed after merge: DV-E2b (PC Chromium) and DV-E1b (Note 9).
+
+### MC-1426 — notification-denial notice: when it shows, 2026-11-11
+
+- Tag: decisions (lane C ask, recorded as a decision; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S5` stage D, DD-009, `MC-1427`, `MC-1428`, `MC-1429`.
+
+**What the maintainer chose (lane A decisions log line 1261).**
+- The notice shows right after the denial.
+- If no chat is open, it waits for the next chat that opens.
+
+**Results.** None logged.
+
+**Not decided.** None logged.
+
+### MC-1427 — notification-denial notice placement, 2026-11-11
+
+- Tag: decisions (lane C ask, recorded as a decision; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1426`, `MC-1428`, DD-009.
+
+**What the maintainer chose (lane A decisions log line 1262).**
+- The notice sits above the composer, in both chat screens.
+
+**Results.** None logged.
+
+**Not decided.** None logged.
+
+### MC-1428 — notification-denial notice shows once, 2026-11-11
+
+- Tag: decisions (lane C ask, recorded as a decision; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1426`, `MC-1427`, `MC-1429`, DD-009.
+
+**What the maintainer chose (lane A decisions log line 1263).**
+- The notice shows once, then it is gone.
+- Close or Open settings removes it. It also clears when the user leaves that chat, or when notifications are turned back on.
+- It never follows into other chats. Nothing is saved.
+
+**Results (lane C reading, not a new decision; lane A decisions log line 1270).** The notice is used up by the first chat screen that renders it. Chat switch, Home or grid count as leaving. Settings or Studio covering the chat, or the app going to background, do not count as leaving. A same-chat remount drops it.
+
+**Not decided.** None logged.
+
+### MC-1429 — Settings line for notifications, 2026-11-11
+
+- Tag: decisions (lane C ask, recorded as a decision; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1426`, `UI-S5` stage D.
+
+**What the maintainer chose (lane A decisions log line 1264).**
+- The Settings line goes inside the Android-only reply-notification row's leaf (ReplyNotificationsToggle.svelte).
+- No Settings shell file is touched.
+
+**Results.** None logged.
+
+**Not decided.** Spec defaults, not maintainer answers (lane A decisions log line 1265): Q5 is the app-level areNotificationsEnabled only. Q6: users who denied before this build get the Settings line only, with no new persisted preference. Stage D Gate 1 r1 was REJECT.
+
+### MC-1430 — DIRTY-RC S2 checkpoint approved, not for main, 2026-11-11
+
+- Tag: decisions (as logged; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-719 (DIRTY-RC)`, `MC-1416`.
+
+**What the maintainer chose (lane A decisions log line 1266).**
+- DIRTY-RC S2 checkpoint commit approved (Gate 2 EDITORIAL, gate2-s2.md).
+- Lane A rebases the local, unpushed dirtyrc-laned branch onto 58ff0cdc5. Stop on conflict.
+- Not for main yet.
+
+**Results (lane A note, lane A decisions log line 1267).** The rebase had no conflicts. dd737e35f is S0+S1 (was ed21f01a9). 84a47d0ea is S2 (was f16f41f9c). Never pushed.
+
+**Not decided.** Merge to main: not decided.
+
+### MC-1431 — remaining cache slow cases accepted as stated limits, 2026-11-11
+
+- Tag: decisions (CHORE-690 S2M; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690` S2M, `MC-1226` (amended), `MC-1223`, `MC-1432`, `MC-1453` (later cache scope), `MC-1481`.
+
+**What the maintainer chose (lane A decisions log line 1268).**
+- Accept these as stated limits, measured and reported:
+  - A single first message over about 140k to 180k characters is read once after an edit. About 13 ms typical, 22 ms p95 at 250k.
+  - The first action before warm-up reads the whole list once. Up to about 72 ms at 1M characters on Note 9.
+  - Many equal-length, near-identical first messages of 16k or more characters.
+- No fallback. Protection stays on every card.
+- Amends the large-list fallback in MC-1226.
+
+**Results.** The figures are lane claims from the CHORE-690 measurements, not verified by the clerk.
+
+**Not decided.** The cache scope was later narrowed by `MC-1453`. The later residuals are in `MC-1481`.
+
+### MC-1432 — background warm-up at card open, idle time only, 2026-11-11
+
+- Tag: decisions (CHORE-690 S2M; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690` S2M, `MC-1431`, `MC-1226` (amended), `MC-1453`.
+
+**What the maintainer chose (lane A decisions log line 1269).**
+- Allow a background warm-up at card open. Idle time only, in small chunks, never during typing.
+- Amends the list-actions-only scope in MC-1226.
+
+**Results (lane A claims on later reviews).**
+- Gate 1 r2 REJECT (lane A decisions log line 1299): FIFO eviction re-reads a warm card mid-session. The 50 ms chunks and warm-up during typing broke the MC-1432 wording.
+- Designer r3 (lane A decisions log line 1311): clock eviction, about 8 ms fixed chunks, and any write cancels the warm-up.
+
+**Not decided.** Five residuals outside MC-1431 are listed in the r3 plan (lane A decisions log line 1311). A conformance bug is open: typing in the Studio search box does not cancel the warm-up (lane A decisions log line 1322). It is to be fixed in plan r4.
+
+### MC-1433 — trial68 PASS; stage E follow-up merge approved, 2026-11-11
+
+- Tag: decisions (as logged; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1425`, `MC-1404`.
+
+**What the maintainer chose (lane A decisions log line 1271).**
+- Merge the stage E follow-up 659c07969 and push.
+
+**Results (lane A claim).** trial68 (head 3c0263668, tree 250177bd0): FULLRUN PASS.
+
+**Not decided.** Stage E fix 659c07969 merged into main as c28dc1315 and pushed (git log, main).
+
+### MC-1434 — CHORE-690 checkpoint commit and merge of main approved, 2026-11-11
+
+- Tag: decisions (as logged; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-690`, `CHORE-718 (STUDIO-RENDER)`, `MC-1436`.
+
+**What the maintainer chose (lane A decisions log line 1273).**
+- Commit a checkpoint on branch chore-690 (17 modified and 2 new files, staged by name). Merge main (c28dc1315) into chore-690.
+- S3 performs it. No push, nothing on main, no stash or reset. Stop on conflict.
+- Final full checks and the merge question stay with lane A.
+
+**Results (lane A note, lane A decisions log line 1274).** Checkpoint b76bb439e plus merge of c28dc1315 = 4930eeb83, not pushed. pnpm check 0. Targeted vitest 1697 pass, 1 fail: the StudioForms R6 test (CHORE-718 (STUDIO-RENDER)) asserted an exact ['listInsert'], and the S2b lifecycle tail pair adds 3 ops. A later note (lane A decisions log line 1286) records the R6 restatement: StudioForms 57/57, targeted 1698/1698, check 0.
+
+**Not decided.** Final full checks and the merge question stay with lane A.
+
+### MC-1435 — Stop in the background keeps "Stopping…" until the page confirms, 2026-11-11
+
+- Tag: decisions (UI-S5 DV-C1; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S5`, SPEC §5 and J2 (Stopping timeout rule), `MC-1450`, `MC-1470` and `MC-1471` (later confirmed-Stop case, other part of this batch).
+
+**What the maintainer chose (lane A decisions log line 1280).**
+- When Stop is tapped in the shade while the app is in the background, and the page has not confirmed, the notice keeps "Stopping…" until the page confirms or the app returns.
+- The 10 s fallback starts only once the app is in the foreground again.
+- This changes the Stopping-timeout rule in SPEC §5 and J2.
+
+**Results (lane B and lane A claims).**
+- Diagnostic run (lane A decisions log line 1298, verify INCONSISTENT on framing): Stop works in the background for about 42 s (abort in 0.47 s). It fails at about 5 min 50 s (no abort for 72 s; abort 0.6 s after foreground). The count froze from about 63 s. The boundary is not established.
+- The return to Generating is the native 10 s timeout (verified; lane A decisions log line 1281). Whether the abort ran in the background is uncertain.
+- The same run logged breaches on spare phone 2: unscoped adb devices, a crop showing another app's card, stale-coordinate taps, and raw frames deleted. The log records them as incidents.
+
+**Not decided.** The cause of the background freeze is inferred, not proven (lane A decisions log lines 1324 and 1328). Observation runs are queued. The confirmed-Stop case is covered by `MC-1470`.
+
+### MC-1436 — stage E top bar at 1280 px with sidebar open accepted as is, 2026-11-11
+
+- Tag: decisions (as logged; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S4` stage E, `MC-1414`, `MC-1440`, `MC-1443` (later, other part), DV-E2b, DV-E2c.
+
+**What the maintainer chose (lane A decisions log line 1282).**
+- Accept the stage E top bar at 1280 px with the sidebar open as it is: chip about 98 px, wordmark clipped to "Ris…", no overlap.
+
+**Results (lane A claim).** DV-E2b PASS (result-e2b.md; verify CONSISTENT). The report's "48 reads" is 30 entries and 24 distinct states. Untested: long persona name, other locales, arrow with the sidebar open at 768 and 900 px.
+
+**Not decided.** The untested items were queued as DV-E2c (lane A decisions log lines 1285 and 1297). DV-E2c results are under `MC-1440`.
+
+### MC-1437 — fail-closed localhost proxy in the Chrome launch tool, 2026-11-11
+
+- Tag: decisions (as logged; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `Agents/Tools` launch-chrome.mjs, `MC-1436`, DV-E2b.
+
+**What the maintainer chose (lane A decisions log line 1283).**
+- Add a fail-closed proxy (localhost only) to Agents/Tools launch-chrome.mjs.
+- Every PC brief requires it, with a read-back.
+- Prompted by DV-E2b, whose fresh profile reached fonts.googleapis.com, openrouter.ai and raw.githubusercontent.com (no discord or risuai hosts).
+
+**Results (lane B claims; lane A notes at lane A decisions log lines 1290 and 1291).**
+- The proxy belt is done and uncommitted in the main checkout: Agents/Tools launch-chrome.mjs and README.md (+148/-18).
+- Review EDITORIAL: 22 GET and 13 CONNECT bypass forms, none passed. clientError drops were not logged; a follow-up now logs refusals. node --check and lib.accept.mjs ALL PASS. LF kept.
+- Lane A accepts the mock.test alias: the resolver maps it to 127.0.0.1, and the proxy forwards it only there.
+- Not exercised: the CDP read-back tier, exit 7, an allowed CONNECT.
+
+**Not decided.** The commit is asked with the records batch. DV-E2c ran behind the belt (lane A decisions log line 1291).
+
+### MC-1438 — device-side filtered picker dump for exact-name fixture picking, 2026-11-11
+
+- Tag: decisions (as logged; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: DV-C3, `Agents/Tools/device-guard/adbg.mjs`.
+
+**What the maintainer chose (lane A decisions log line 1287).**
+- For DV-C3 picker selection, allow a device-side filtered dump.
+- The dump is written to a device file. Grep runs on the device for the exact unique name. Only match or no-match is printed, plus that row's bounds.
+- Never copy the dump off the device or print it. Delete it by exact name.
+- This is a narrow exception to the no-dump-while-picker rule, for exact-name fixture picking only.
+
+**Results.**
+- Later, the lane B run recorded a picker retry after a no-match. Lane A's note on the partial laneb-uis5-c3 run lists, among breaches on spare phone 2, 'a picker retry after a no-match (breaks MC-1438, undisclosed)' (lane A decisions log line 1309).
+- The adb guard's pick mode follows the rule: the first no-match locks the run (lane A decisions log line 1312).
+
+**Not decided.** Incident handling for the picker retry is not recorded in the log: TODO(evidence).
+
+### MC-1439 — real-finger TalkBack double-tap on the Home drawer X, 2026-11-11
+
+- Tag: decisions (maintainer agreed to a lane B ask; later parked). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `UI-S4` stage E, DV-E1, DV-E1b, `MC-1395`.
+
+**What the maintainer chose (lane A decisions log line 1294).**
+- The maintainer agreed to do a real-finger TalkBack double-tap on the Home drawer X on phone 1. It runs on c28dc1315 and on a pre-hold build (2f87ac220), with lane B setting it up.
+- Lane C had withdrawn the ask (keep the hold). It runs anyway on the maintainer's yes.
+
+**Results (context; lane B claim, lane A decisions log line 1293).** DV-E1b: focus returns after X at 360 and 412 px. Back close PASS. "Menu" spoken once per close. UiAutomation ACTION_CLICK gave no late click. A TalkBack-off control suggests the late click came from the second input tap of the adb double-tap helper. A real-finger double-tap was NOT RUN.
+
+**Later note (lane A decisions log line 1305).** The log records the maintainer choosing "Skip for now" on this finger test when lane B asked directly. Lane A told lane B to stop its captures and release phone 1. The 2f87 APK is kept. This note has no MC number in the log, so it is recorded here as context only. The parent decides whether it needs its own ID.
+
+**Not decided.** Status as logged: parked ("Skip for now"). The real-finger double-tap is not run: TODO(evidence).
+
+### MC-1440 — mode switcher wraps to two rows for long-label languages, 2026-11-11
+
+- Tag: decisions (as logged; answer tool not named). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1414` (amended), `MC-1403`, `MC-1436`, `MC-1482` (later DV-E2d ruling, other part of this batch).
+
+**What the maintainer chose (lane A decisions log line 1295).**
+- When a language's labels do not fit one row (de at 1025 px, and ja at 1025 and 1280 px, with the sidebar open), the switcher wraps to two rows in that case only.
+- The two rows are centred, with no page overflow.
+- en and ko keep one row.
+- Amends the one-row promise of MC-1414 for long-label languages.
+
+**Results (lane A decisions log line 1297; lane A and lane C claims).** DV-E2c: the 40-character Latin persona name at 1025 px with the sidebar open overflows (chip 482 px, wordmark 0 px). The ja hint line overflows at 1280 px (1346 px). The de and ja switchers wrap. Row 3, the arrow, PASS (overlay on top, ruled per M48). Lane C plans to fix the two overflows without a product question (plan-e2-r1.md). The later DV-E2d ruling is recorded under `MC-1482`.
+
+**Not decided.** None logged for other locales beyond de and ja.
+
+### MC-1441 — UI-S5 follow-up 3 (Stopping hold) commit approved, 2026-11-11
+
+- Tag: decisions (commit approval; ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1435`.
+
+**What the maintainer chose (lane A decisions log line 1296).** Commit approved on `uis5f3-wip`, 4 paths (`KeepAliveNotice.kt`, `KeepAliveService.kt`, `KeepAliveNoticeTest.kt`, `SPEC.md`); trial at merge. No option label is quoted in the log.
+
+**Not decided.** F3 committed 50fc160cc (uis5f3-wip, parent c28dc1315), 4 hashes verified (line 1300); trial69 (c28dc1315 + F3, head 11723ca0e) FULLRUN PASS (line 1307); trial70 PASS (MC-1448).
+
+### MC-1442 — UI-S5 follow-up 2: bar colour gated on the WebView's drawn frame, 2026-11-11
+
+- Tag: decisions (commit approval; ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1405`, `MC-1445` (stage D also edits `MainActivity.kt`).
+
+**What the maintainer chose (lane A decisions log line 1301).** Commit approved on `uis5f2-wip`, 5 paths, for the bar colour gated on the WebView's drawn frame (MC-1405). Accepted fault path, as logged: if the visual-state callback is lost, a fallback changes the bars up to 250 ms late rather than leaving them on the boot colour. Trial at merge. Device row D1 as logged: at least 10 light and at least 5 dark cold launches at 60 fps. Merge note as logged: `MainActivity.kt` is also edited by stage D.
+
+**Not decided.** F2 committed b38231c78 (uis5f2-wip, parent c28dc1315), 5 hashes verified (line 1304). Lane C ruling: UI-S5 D1 (leg A) PASS with an accepted limitation, bar follows the Home frame by 1 to 3 frames (at most about 50 ms) and never leads, 20 ms rule withdrawn (line 1362). Mapping of line 1362 to this F2 row is lane A's reading.
+
+### MC-1443 — Home top bar hides the wordmark when it is under about 24 px, 2026-11-11
+
+- Tag: decisions (ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1440`, `MC-1446` (corrects one case of this entry).
+
+**What the maintainer chose (lane A decisions log line 1302).** Home top bar: when the wordmark would be under ~24 px wide (for example ja or de at 1280 with the sidebar open, under MC-1440), hide the wordmark and keep the logo, so the persona chip gets the space; no sliver.
+
+**Not decided.** The ja at 1280 case is corrected by MC-1446 (the chip stays icon-only there).
+
+### MC-1444 — DIRTY-RC integration-notes checkpoint commit approved, 2026-11-11
+
+- Tag: decisions (commit approval; ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `CHORE-719` (DIRTY-RC).
+
+**What the maintainer chose (lane A decisions log line 1306).** Checkpoint commit approved for CHORE-719 (DIRTY-RC) integration notes on `dirtyrc-laned` (3 paths). Not for main yet.
+
+**Results (lane A claim; not verified by the clerk).** Opus r2 gate verdict APPROVE (`gate2-notes-r2.md`), as logged.
+
+### MC-1445 — UI-S5 stage D commit approved, 2026-11-11
+
+- Tag: decisions (commit approval; ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1426`, `MC-1427`, `MC-1428`, `MC-1429` (stage D notification asks), `MC-1442` (`MainActivity.kt` overlap with F2).
+
+**What the maintainer chose (lane A decisions log line 1314).** Commit approved on `uis5d-wip`, 28 paths. Trial at merge, stacked with F2 and F3 (`MainActivity.kt` overlaps F2).
+
+**Results (lane A claims; not verified by the clerk).** Gate 2 r1 REJECT on F1 (scroll), fixed with a data-part marker; rem-check PASS; vitest 37144/0; mutants 41/46.
+
+### MC-1446 — Home top bar keeps centring for ja at 1280 with the sidebar open; corrects MC-1443, 2026-11-11
+
+- Tag: decisions (ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1403`, `MC-1440`, `MC-1443`.
+
+**What the maintainer chose (lane A decisions log line 1316).** For the wrapped switcher (ja at 1280 with the sidebar open): keep centring (MC-1403). The wordmark is hidden (MC-1443), the logo stays, and the persona chip stays icon-only (~52 px) in that case. This corrects MC-1443's "chip gets the space" expectation for that case.
+
+**Results (lane A claim; not verified by the clerk).** Stage E follow-up 2 Gate 2 EDITORIAL (`gate2-review-e2.md`), as logged.
+
+### MC-1447 — DIRTY-RC bench limits B4 and B6 accepted; build provenance proved on dist, 2026-11-11
+
+- Tag: decisions (ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1325`, `MC-1330`, `CHORE-719` (DIRTY-RC).
+
+**What the maintainer chose (lane A decisions log line 1318).** For CHORE-719 (DIRTY-RC), these are accepted as stated limits: bench B4 (in-place reversal sort of 1000 characters, 2.65-3.29x against a 2x bar; the app never sorts in place) and bench B6 (5 fields x 500 rows read, 1.44-1.51x, about +0.5 ms per 500 rows on i9). The Note 9 rows N3 (grid first paint) and N8 (cold start) decide visibility.
+
+Lane D ruling, endorsed, on the tools review r1 REJECT F1 (the APK JS grep is impossible because the frontend is compressed in `libalib.so`): provenance is proved on the build's dist (PATCH_ID grep, deterministic dist hash, APK sha256). H0 keeps its other two legs.
+
+### MC-1448 — trial70 PASS; merge F3 and F2 and push, 2026-11-11
+
+- Tag: decisions (ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: none.
+
+**What the maintainer chose (lane A decisions log line 1319).** Merge F3 `50fc160cc` and F2 `b38231c78`, then push, after trial70 (head `82ce26dab`). The log gives no quoted label.
+
+**Results (lane A claim; not verified by the clerk).** trial70 FULLRUN PASS, as logged.
+
+### MC-1449 — Push refused; merge origin/main before pushing, 2026-11-11
+
+- Tag: decisions (procedure; ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: none.
+
+**What the maintainer chose (lane A decisions log line 1320).** A push of `8c9324e41` was refused because origin/main had 4 maintainer commits (`e97d910f9..71760eba7`: README, LICENSE, COPYRIGHT). Decision as logged: merge origin/main into local main, then push.
+
+**Not decided.** Lane A note: main 493b65fe1 pushed (F3+F2 merge 8c9324e41 plus a merge of origin/main's 4 doc commits) (lane A decisions log line 1321).
+
+### MC-1450 — Notice drops the character count while the page is frozen, 2026-11-11
+
+- Tag: decisions (ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1435`, `MC-1451`, `MC-1452`.
+
+**What the maintainer chose (lane A decisions log line 1329).** While the page is frozen in the background, the notice drops the character-count line once no update has come for a few seconds, so no stale number shows.
+
+**Not decided.** Q2 (keep the page running in the background) is held for lane C's skip-onPause check (`investigate-skip-onpause.md`).
+
+### MC-1451 — Native-owned Android replies: the end goal, 2026-11-11
+
+- Tag: decisions (maintainer-initiated; ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1457` to `MC-1464`, `MC-1473` to `MC-1480`, `CHORE-722` (NATIVE-REPLY).
+
+**What the maintainer chose (lane A decisions log line 1331).** End goal for Android replies: native owns the reply's life. Prompt building stays in the page. Once the request starts, Rust owns it: it keeps receiving while the page is frozen, writes the reply to a crash-safe on-disk journal, stops on the notification's Stop, and posts 'reply done' itself. The page applies the journal into the chat when it wakes or on next launch, then runs output scripts. A full pipeline port is rejected. Motivated by past WebView-related data loss. Placeholder ticket CHORE-722 (NATIVE-REPLY); the CHORE number is assigned at records.
+
+**Process (as logged).** Critical persistence contract: sizing, then senior-advisor challenge, then designer, then opus Gate 1.
+
+**Not decided.** Product detail sits in `MC-1457` to `MC-1464` and `MC-1473` to `MC-1480` and is not repeated here. The sizing result is not in this log line: TODO(evidence).
+
+### MC-1452 — NATIVE-REPLY: live character count while the app is away, 2026-11-11
+
+- Tag: decisions (requirement; ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1450`, `MC-1466`, `MC-1467`, `MC-1468`, `CHORE-722` (NATIVE-REPLY).
+
+**What the maintainer chose (lane A decisions log line 1333).** For CHORE-722 (NATIVE-REPLY): the notification keeps a live character count while the app is away. The count is taken natively from the raw model text for known provider stream formats (OpenAI-style, Claude, Gemini, etc.). For unknown or plugin providers the count hides, per MC-1450. The count is taken before output scripts run, so the final length may differ. Sizing reports the cost before building.
+
+**Not decided.** The sizing cost figures are not in this log line: TODO(evidence).
+
+### MC-1453 — CHORE-690 S2M cache keeps only the open card, 2026-11-11
+
+- Tag: decisions (ask method not stated in the log; the entry cites advisor9 option A). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1431`, `MC-1432`.
+
+**What the maintainer chose (lane A decisions log line 1334).** The S2M cache remembers only the open card and is emptied when a pass starts for a different character (advisor9 option A). Returning to a big card pays the first-open cost again: MC-1431 case 2 at every card open, about 12-22 ms at 200k characters and 50-71 ms at 1M characters on Note 9, and within 16 ms under about 140k characters.
+
+**Process (as logged).** Ends the S2M Gate 1 loop after 3 consecutive rejects.
+
+### MC-1454 — trial71 PASS; merge stage D and push, 2026-11-11
+
+- Tag: decisions (ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1445`.
+
+**What the maintainer chose (lane A decisions log line 1335).** Merge stage D `baa4a051c` into `493b65fe1` and push. The merge differs from the trial tree only by COPYRIGHT, LICENSE and README (docs), as logged.
+
+**Results (lane A claim; not verified by the clerk).** trial71 (head `afdd83f22`) FULLRUN PASS and JVM 178, as logged.
+
+### MC-1455 — Remove five clean worktrees and delete merged branches, 2026-11-11
+
+- Tag: decisions (cleanup; ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1424`.
+
+**What the maintainer chose (lane A decisions log line 1336).** Remove worktrees `uis4fix`, `uis5f2`, `uis5f3`, `uis5d` and `t71jvm`; delete their merged branches with `-d`.
+
+### MC-1456 — UI-S4 stage E follow-up 2 commit approved, 2026-11-11
+
+- Tag: decisions (commit approval; ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1440`, `MC-1443`, `MC-1446`, `MC-1472`, `MC-1482`.
+
+**What the maintainer chose (lane A decisions log line 1337).** Commit approved on `uise2-wip`, 3 Home paths (Home top bar overflow, wrap, wordmark). Trial at merge on `3884ad396`. DV-E2d (PC) runs after the merge.
+
+**Not decided.** `MC-1472` only records the merge, the push, and that DV-E2d was dispatched; only `MC-1482` holds the DV-E2d result.
+
+### MC-1457 — PQ1: native covers streaming and non-stream replies, 2026-11-11
+
+- Tag: decisions (answer to a lane C sizing question; the section heading at lane A decisions log line 1346 gives the context; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1451`, `MC-1464`, `MC-1476`.
+
+**What the maintainer chose (lane A decisions log line 1347).** Native covers both streaming and non-stream replies. A non-stream reply journals the whole body; the message is created on apply.
+
+### MC-1458 — PQ2: tool replies and some providers stay page-owned, 2026-11-11
+
+- Tag: decisions (answer to a lane C sizing question; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1435`, `MC-1468`.
+
+**What the maintainer chose (lane A decisions log line 1348).** Tool replies, Claude batching, plugin providers and local Ollama/Ooba stay page-owned. They pause while hidden, as today. Stop falls back to MC-1435.
+
+### MC-1459 — PQ3: what a recovered reply gets, 2026-11-11
+
+- Tag: decisions (answer to a lane C sizing question; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1451`.
+
+**What the maintainer chose (lane A decisions log line 1349).** A reply recovered on reopen gets its text plus output scripts, triggers and listeners. No TTS, auto-continue, resend, emotion or image generation. An interrupted partial gets text only.
+
+### MC-1460 — PQ4: a hard-kill partial is kept, 2026-11-11
+
+- Tag: decisions (answer to a lane C sizing question; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1473` (narrows this entry).
+
+**What the maintainer chose (lane A decisions log line 1350).** A partial left by a hard kill is kept with the existing interrupted note and one toast, so the user can Continue.
+
+### MC-1461 — PQ5: Back during a live native reply, 2026-11-11
+
+- Tag: decisions (answer to a lane C sizing question; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1474` (how this is done).
+
+**What the maintainer chose (lane A decisions log line 1351).** Back during a live native-owned reply leaves the request and its notice running until the reply ends. Back is unchanged otherwise.
+
+### MC-1462 — PQ7: failure while hidden, 2026-11-11
+
+- Tag: decisions (answer to a lane C sizing question; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1479` (confirmation).
+
+**What the maintainer chose (lane A decisions log line 1352).** Failure while hidden shows "failed", and the user retries. No auto-retry.
+
+### MC-1463 — PQ8: native done notice sound and vibration, 2026-11-11
+
+- Tag: decisions (answer to a lane C sizing question; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: none.
+
+**What the maintainer chose (lane A decisions log line 1353).** The native done notice uses the same chime and vibration rule as today.
+
+### MC-1464 — Q2 reworded: no page keep-alive, 2026-11-11
+
+- Tag: decisions (ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1457`, `MC-1451`.
+
+**What the maintainer chose (lane A decisions log line 1354).** No page keep-alive. The post-reply chain runs when the user returns.
+
+**Not decided.** PQ6 (wake lock) has no MC ID in the log. It is deferred until the screen-off spike, as lane C asked (lane A decisions log line 1355; context line only, not an entry).
+
+### MC-1465 — Device track cap raised from 2 to 3 for the emulator run, 2026-11-11
+
+- Tag: decisions (maintainer via lane B's AskUserQuestion; label verbatim "Raise to 3 (Recommended)"). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1399`, `MC-1400`.
+
+**What the maintainer chose (lane A decisions log line 1356).** Device track cap raised from 2 to 3 for the emulator run. `.claude/workflow-policy.json` `scheduling.maxDeviceTracks` = 3 (uncommitted). The workflow-parallel device-cap test reads the cap from the policy.
+
+**Results (lane B claim; not verified by the clerk).** The device-cap test passes 8/8, as logged.
+
+**Not decided.** Restore at handoff, alongside `maxImplementationTracks`, is a records-batch question; this entry does not decide it.
+
+### MC-1466 — PQ-A: native count wording, 2026-11-11
+
+- Tag: decisions (answer to PQ-A, MC-1452 stage 0c; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1452`, `MC-1450`.
+
+**What the maintainer chose (lane A decisions log line 1358).** The native count uses the same "N characters" / "N자" line. A small jump, even backwards, is accepted. No new strings.
+
+### MC-1467 — PQ-B: providers counted natively first, 2026-11-11
+
+- Tag: decisions (answer to PQ-B; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1452`.
+
+**What the maintainer chose (lane A decisions log line 1359).** Native counts OpenAI-chat and compatibles, OpenAI Responses, Anthropic and Google first. Ollama cloud later.
+
+### MC-1468 — PQ-C: tool replies get no native count, 2026-11-11
+
+- Tag: decisions (answer to PQ-C; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1450`, `MC-1458`.
+
+**What the maintainer chose (lane A decisions log line 1360).** Tool replies get no native count. The line drops while hidden, per MC-1450, matching MC-1458.
+
+### MC-1469 — Emulator uninstall allowed for one clean install, 2026-11-11
+
+- Tag: decisions (maintainer via lane B's AskUserQuestion; label verbatim "Allow uninstall (Recommended)"). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1401`.
+
+**What the maintainer chose (lane A decisions log line 1361).** Uninstall `io.github.yor42.risutanium` on `emulator-5580` only (AVD `Pixel_6a_LowRam_35`, synthetic), then clean-install 3884. The re-run `laneb-uis5-demu2` (`...\ui-s5\stagedemu\e2`) uses one sign-install with `-AllowClear` on the emulator only; phones untouched.
+
+**Results (lane B claim; not verified by the clerk).** The earlier run `laneb-uis5-demu` was BLOCKED at install on a signature mismatch (the CHORE-685 build was signed with another key). All its rows are NOT RUN; verify CONSISTENT, as logged.
+
+### MC-1470 — O4: "Stopped" at once after a confirmed Stop, 2026-11-11
+
+- Tag: decisions (plan-f5 item O4; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1435`, `MC-1471`.
+
+**What the maintainer chose (lane A decisions log line 1363).** Once native confirms Stop cancelled the request while the page is frozen, the notice shows "Stopped" at once, with no action button and no timer. This supersedes MC-1435's "Stopping" for the confirmed case.
+
+### MC-1471 — O1: "Stopped" stays until the page returns, 2026-11-11
+
+- Tag: decisions (plan-f5 item O1; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1470`.
+
+**What the maintainer chose (lane A decisions log line 1364).** After a confirmed Stop, the "Stopped" notice stays ongoing until the page returns and finishes the reply as stopped. The rare never-finished case hangs until the app reopens. Accepted; no timeout.
+
+### MC-1472 — UI-S4 stage E follow-up 2 merged and pushed, 2026-11-11
+
+- Tag: decisions (maintainer "Merge and push (Recommended)"). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1456`, `MC-1482`.
+
+**What the maintainer chose (lane A decisions log line 1367).** UI-S4 stage E follow-up 2 `17e02ea18` merged `--no-ff` into `3884ad396` as `24d8e40bf`. The tree equals trial72 head `4bb0c4243` (0 files differ). Pushed `origin main 3884ad396..24d8e40bf`. DV-E2d (PC) dispatched to lane B.
+
+**Results (lane A claim; not verified by the clerk).** trial72 FULLRUN PASS test/check/build 0.
+
+### MC-1473 — Hard-kill partial kept as of the last save, 2026-11-11
+
+- Tag: decisions (advisor r1 answer Q-A for NATIVE-REPLY; section heading at lane A decisions log line 1369; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1460` (narrowed by this entry).
+
+**What the maintainer chose (lane A decisions log line 1370).** With the finished-reply store, a hard-kill partial is kept as of the page's last save (about the first minute hidden). The append journal is deferred.
+
+### MC-1474 — Back moves the task to the background during a live native reply, 2026-11-11
+
+- Tag: decisions (advisor r1 answer Q-B; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1461` (how it is done).
+
+**What the maintainer chose (lane A decisions log line 1371).** While a native reply is live, Back moves the task to the background instead of finishing it. This changes only Android 11 and below.
+
+### MC-1475 — Recents swipe still ends the request, 2026-11-11
+
+- Tag: decisions (advisor r1 answer Q-C; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1474`.
+
+**What the maintainer chose (lane A decisions log line 1372).** A recents swipe during a reply still ends the request, as today.
+
+### MC-1476 — Non-stream variant built first, 2026-11-11
+
+- Tag: decisions (advisor r1 answer Q-D; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1457`, `MC-1480`.
+
+**What the maintainer chose (lane A decisions log line 1373).** The maintainer's daily profile has response streaming OFF. The non-stream variant is built first.
+
+### MC-1477 — Continue replies stay page-owned in the first build, 2026-11-11
+
+- Tag: decisions (advisor r1 answer Q-E; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1435`, `MC-1458`.
+
+**What the maintainer chose (lane A decisions log line 1374).** Continue replies stay page-owned in the first build. They freeze while hidden. Stop falls back to MC-1435.
+
+### MC-1478 — Unappliable recovered reply is parked, 2026-11-11
+
+- Tag: decisions (advisor r1 answer Q-F; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-350`.
+
+**What the maintainer chose (lane A decisions log line 1375).** An unappliable recovered reply is parked, reported once, and kept until the user discards or exports it (MC-350 spirit).
+
+### MC-1479 — Natively announced failure is final, 2026-11-11
+
+- Tag: decisions (confirmation of MC-1462; ask method not stated). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1462`.
+
+**What the maintainer chose (lane A decisions log line 1376).** A natively announced failure is final. `requestRetrys` does not retry it on return.
+
+### MC-1480 — NATIVE-REPLY stage 0c built after the non-stream stages, 2026-11-11
+
+- Tag: decisions (ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1476`, `MC-1452`, `CHORE-722` (NATIVE-REPLY).
+
+**What the maintainer chose (lane A decisions log line 1378).** Because streaming is off in the maintainer's profile, CHORE-722 (NATIVE-REPLY) stage 0c (native live count, MC-1452, MC-1466 to MC-1468) is built after the non-stream native-reply stages (finished-reply store, launch apply, done notice). Stage 0b (MC-1450) stays with stage 0.
+
+### MC-1481 — CHORE-690 S2M plan r4 residuals accepted, 2026-11-11
+
+- Tag: decisions (ask method not stated in the log). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1431`, `MC-1453`.
+
+**What the maintainer chose (lane A decisions log line 1379).** The maintainer accepts these residuals:
+- R-1: a near-cap card over ~2.25M units re-reads changed text in two passes.
+- R-2: a cold first-pass add-on at every card open, 1.7-2.3x uncached on PC; phone figure pending sheet row vi.
+- R-3: one sweep per pass, 0.4 ms at 32,768 entries and 0.8 ms to delete 10,000 on PC; phone figure from Map-sweep M1/M3.
+
+OQ-E is unchanged.
+
+**Not decided.** If M1 p95 is above 8 ms, the revision that lowers `maxEntries` comes back to the maintainer with the figure.
+
+**Incident (lane A claim; not verified by the clerk).** The closing designer ran read-only `git rev-parse` and `git status` in the chore-690 worktree. The tree was unchanged (R6 file `516EB5EA` only).
+
+### MC-1482 — Remove the uise2 worktree, 2026-11-11
+
+- Tag: decisions (maintainer "Remove (Recommended)"). Date: 2026-11-11. Exact times: UNKNOWN. Sweep ref: none. Related: `MC-1424`, `MC-1455`, `MC-1443`, `MC-1456`.
+
+**What the maintainer chose (lane A decisions log line 1380).** `risu-code-track-uise2` removed (clean; head `17e02ea18` is an ancestor of main), and `uise2-wip` deleted with `-d`.
+
+**Results (lane C claim; not verified by the clerk).** DV-E2d R1-R5 PASS. R5: two rows at 390 px are the unchanged phone layout. de at 1280 with the sidebar open is 0.2 px above the MC-1443 threshold, accepted as logged. E2 has no owed device rows.
+
+**Not decided.** The E2 closeout has not been asked yet.
