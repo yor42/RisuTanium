@@ -1,8 +1,8 @@
 <script lang="ts">
-    import { untrack } from "svelte";
+    import { onDestroy } from "svelte";
     import { alertGenerationInfoStore, displayAlertText, STALE_ACCOUNT_NOTICE_ACK, type alertData } from "../../ts/alert";
     import { busyRefusalLine } from "../../ts/process/memory/busyActions";
-    import { ANSWER_GUARD_MS, isConsentType, isPromptType } from "../../ts/alertPrompts";
+    import { alertIdle, ANSWER_GUARD_MS, isConsentType, isPromptType } from "../../ts/alertPrompts";
     import { coversPage } from "../../ts/alertEscape";
     import { UPSTREAM_AGREEMENT_ACCEPT, UPSTREAM_AGREEMENT_DECLINE } from "../../ts/upstreamAgreement";
     
@@ -70,7 +70,6 @@
         return lines.join('\n')
     });
 
-    let btn
     let input = $state('')
     let cardExportType = $state('realm')
     let cardExportType2 = $state('')
@@ -137,23 +136,6 @@
         }
     }
 
-    $effect.pre(() => {
-        showDetails = false;
-        translatedStackTrace = '';
-        stackTraceTranslationFailed = false;
-        isTranslating = false;
-        if(btn){
-            btn.focus()
-        }
-        if($alertStore.type !== 'branches'){
-            branchHover = null
-        }
-        if($alertStore.type !== 'requestlogs'){
-            expandedLogs = new Set()
-            allExpanded = false
-        }
-    });
-
     // The prompt whose dialog is kept mounted. Another alert that covers it
     // hides the dialog instead of unmounting it, so what the user typed,
     // chose or scrolled to is still there when the prompt comes back. It is
@@ -170,20 +152,44 @@
         cardLicense = ''
     }
 
-    $effect.pre(() => {
-        const value = $alertStore
-        const keptPrompt = untrack(() => held)
+    // Every per-alert reset runs here, at the moment the store changes, not in an effect: under the async
+    // scheduler a pre-effect runs after the block update that already rendered the new alert, so a new
+    // prompt would render first as the live alert and then again as the held dialog. The callback also
+    // runs once at creation, which leaves the initial values unchanged.
+    // The prompt controller puts a prompt back when a consent or a notice over it is closed, so the store
+    // shows a transient close that the controller overwrites in the same notification burst, whatever the
+    // order in which the subscribers joined. A held prompt is therefore not released by that close but when
+    // the controller reports the page idle (store closed and no prompt waiting), which it publishes after it
+    // has processed each value. Until then the held dialog stays mounted, hidden and inert, because the store
+    // no longer equals it, and its typed text survives.
+    const stopIdleWatch = alertIdle.subscribe((idle) => {
+        if(idle && held !== null){
+            held = null
+            resetPromptState()
+        }
+    })
+    onDestroy(stopIdleWatch)
+
+    const stopAlertStore = alertStore.subscribe((value) => {
+        showDetails = false
+        translatedStackTrace = ''
+        stackTraceTranslationFailed = false
+        isTranslating = false
+        if(value.type !== 'branches'){
+            branchHover = null
+        }
+        if(value.type !== 'requestlogs'){
+            expandedLogs = new Set()
+            allExpanded = false
+        }
         if(isPromptType(value.type) && !isConsentType(value.type)){
-            if(value !== keptPrompt){
+            if(value !== held){
                 held = value
                 resetPromptState()
             }
         }
-        else if(value.type === 'none' && keptPrompt !== null){
-            held = null
-            resetPromptState()
-        }
-    });
+    })
+    onDestroy(stopAlertStore)
 
     // The consent dialogs take no click made before they appeared, however late its handler runs, and
     // none until the pause after each appearance is over, so a press meant for what was on screen
