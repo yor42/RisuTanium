@@ -94,6 +94,7 @@ import {
     getAvatarThumbSrc,
     isAnimatedImage,
     isThumbEligible,
+    peekAvatarThumb,
     sweepAvatarThumbs,
     thumbDimensions,
 } from './avatarThumb'
@@ -1425,6 +1426,199 @@ describe('T14: isThumbEligible (real predicate)', () => {
     })
 })
 
+describe('T15: the record read starts visible-first at bounded concurrency (CHORE-705)', () => {
+    interface HeldReadStore {
+        store: FakeStore
+        /** Keys of every `getItem` call, in call order. */
+        keys: string[]
+        /** Settles the held read of `key` as a miss. */
+        settle(key: string): void
+    }
+
+    // Every `getItem` stays pending until `settle(key)`, except keys in `rejecting`, which reject at once.
+    function makeHeldReadStore(rejecting: string[] = []): HeldReadStore {
+        const keys: string[] = []
+        const pending = new Map<string, () => void>()
+        const store = makeMissStore()
+        store.getItem = vi.fn((key: string) => {
+            keys.push(key)
+            if (rejecting.includes(key)) {
+                return Promise.reject(new Error('store read failed'))
+            }
+            return new Promise<null>((resolve) => {
+                pending.set(key, () => resolve(null))
+            })
+        })
+        return { store, keys, settle: (key) => pending.get(key)?.() }
+    }
+
+    function locs(count: number, prefix = 'assets/r'): string[] {
+        return Array.from({ length: count }, (_value, index) => `${prefix}${index}.png`)
+    }
+
+    // REPRODUCER (T5, M6, M7; red on the base: every read starts at once, in call order).
+    test('with one read slot, the only visible tile among tiles looked up in one tick is read first', async () => {
+        const held = makeHeldReadStore()
+        __avatarThumbTestHooks.setStore(held.store as never)
+        __avatarThumbTestHooks.setLimits({ readConcurrency: 1 })
+        void getAvatarThumbSrc('assets/A.png', { visible: () => false })
+        void getAvatarThumbSrc('assets/B.png', { visible: () => false })
+        void getAvatarThumbSrc('assets/C.png', { visible: () => true })
+        await flushMicrotasks()
+
+        expect(held.keys).toEqual(['assets/C.png'])
+    })
+
+    // REPRODUCER (T5b, M7, M8; red on the base: all reads start at once, so no queue is left to reorder).
+    test('visibility is read when the next read is picked, not when the lookup was made', async () => {
+        const held = makeHeldReadStore()
+        __avatarThumbTestHooks.setStore(held.store as never)
+        __avatarThumbTestHooks.setGenerator(async (loc) => ({ src: `src-for-${loc}` }))
+        __avatarThumbTestHooks.setLimits({ readConcurrency: 1 })
+        const seen = { A: false, B: false, C: false }
+        void getAvatarThumbSrc('assets/hold.png')
+        await flushMicrotasks()
+        void getAvatarThumbSrc('assets/A.png', { visible: () => seen.A })
+        void getAvatarThumbSrc('assets/B.png', { visible: () => seen.B })
+        void getAvatarThumbSrc('assets/C.png', { visible: () => seen.C })
+        await flushMicrotasks()
+        expect(held.keys).toEqual(['assets/hold.png'])
+
+        seen.B = true
+        held.settle('assets/hold.png')
+        await flushMicrotasks()
+        expect(held.keys).toEqual(['assets/hold.png', 'assets/B.png'])
+    })
+
+    // GUARD: with nothing visible the reads keep the call order, so the generation queue sees lookups in the order it did.
+    test('with nothing visible the reads start in call order', async () => {
+        const held = makeHeldReadStore()
+        __avatarThumbTestHooks.setStore(held.store as never)
+        __avatarThumbTestHooks.setLimits({ readConcurrency: 1 })
+        void getAvatarThumbSrc('assets/A.png', { visible: () => false })
+        void getAvatarThumbSrc('assets/B.png', { visible: () => false })
+        await flushMicrotasks()
+        held.settle('assets/A.png')
+        await flushMicrotasks()
+
+        expect(held.keys).toEqual(['assets/A.png', 'assets/B.png'])
+    })
+
+    // REPRODUCER (T6, M9; red on the base: all 20 reads start at once).
+    test('at most 8 record reads are in flight; the rest wait', async () => {
+        const held = makeHeldReadStore()
+        __avatarThumbTestHooks.setStore(held.store as never)
+        for (const loc of locs(20)) {
+            void getAvatarThumbSrc(loc)
+        }
+        await flushMicrotasks()
+
+        expect(held.keys).toHaveLength(8)
+        expect(__avatarThumbTestHooks.stats().readsRunning).toBe(8)
+        expect(__avatarThumbTestHooks.stats().readsQueued).toBe(12)
+    })
+
+    // GUARD of the new rule (T7, M10; fails on the base only because no cap exists).
+    test('a read that hangs frees its slot when the store timeout fires', async () => {
+        vi.useFakeTimers()
+        __avatarThumbTestHooks.setLimits({ storeTimeoutMs: 100 })
+        const held = makeHeldReadStore()
+        __avatarThumbTestHooks.setStore(held.store as never)
+        __avatarThumbTestHooks.setGenerator(async (loc) => ({ src: `src-for-${loc}` }))
+        for (const loc of locs(9)) {
+            void getAvatarThumbSrc(loc)
+        }
+        await flushMicrotasks()
+        expect(held.keys).toHaveLength(8)
+
+        await vi.advanceTimersByTimeAsync(99)
+        expect(held.keys).toHaveLength(8)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(held.keys).toHaveLength(9)
+    })
+
+    // GUARD of the new rule (T7, M11).
+    test('a read that rejects frees its slot, and its caller still gets null without generation', async () => {
+        const rejecting = locs(8)
+        const held = makeHeldReadStore(rejecting)
+        __avatarThumbTestHooks.setStore(held.store as never)
+        const generator = vi.fn(async (loc: string) => ({ src: `src-for-${loc}` }))
+        __avatarThumbTestHooks.setGenerator(generator)
+        const results = rejecting.map((loc) => getAvatarThumbSrc(loc))
+        void getAvatarThumbSrc('assets/ninth.png')
+        await flushMicrotasks()
+
+        expect(held.keys).toHaveLength(9)
+        expect(await Promise.all(results)).toEqual(rejecting.map(() => null))
+        expect(generator).not.toHaveBeenCalledWith(rejecting[0])
+    })
+
+    // REPRODUCER (T8, M12; red on the base: the lookup's read has started by the time it is aborted).
+    test('a lookup abandoned before its read started causes no store read', async () => {
+        const held = makeHeldReadStore()
+        __avatarThumbTestHooks.setStore(held.store as never)
+        for (const loc of locs(8)) {
+            void getAvatarThumbSrc(loc)
+        }
+        const controller = new AbortController()
+        const ninth = getAvatarThumbSrc('assets/ninth.png', { signal: controller.signal })
+        await flushMicrotasks()
+        expect(held.keys).toHaveLength(8)
+
+        controller.abort()
+        expect(await ninth).toBe(THUMB_ABORTED)
+        held.settle('assets/r0.png')
+        await flushMicrotasks()
+
+        expect(held.keys).not.toContain('assets/ninth.png')
+        expect(__avatarThumbTestHooks.stats().readsQueued).toBe(0)
+    })
+
+    // GUARD of the new rule (T9, M13; fails on the base only because no cap exists).
+    test('after a reset, a read that settles late frees no slot of the new run', async () => {
+        const first = makeHeldReadStore()
+        __avatarThumbTestHooks.setStore(first.store as never)
+        for (const loc of locs(8)) {
+            void getAvatarThumbSrc(loc)
+        }
+        await flushMicrotasks()
+        expect(__avatarThumbTestHooks.stats().readsRunning).toBe(8)
+
+        __avatarThumbTestHooks.reset()
+        expect(__avatarThumbTestHooks.stats().readsRunning).toBe(0)
+
+        const second = makeHeldReadStore()
+        __avatarThumbTestHooks.setReadbackCheck(() => true)
+        __avatarThumbTestHooks.setStore(second.store as never)
+        for (const loc of locs(9, 'assets/s')) {
+            void getAvatarThumbSrc(loc)
+        }
+        await flushMicrotasks()
+        expect(second.keys).toHaveLength(8)
+
+        for (const key of first.keys) {
+            first.settle(key)
+        }
+        await flushMicrotasks()
+
+        expect(second.keys).toHaveLength(8)
+        expect(__avatarThumbTestHooks.stats().readsRunning).toBe(8)
+    })
+})
+
+describe('T16: the memo holds as many thumbnails as the list style cache (CHORE-705)', () => {
+    // REPRODUCER (T10, M14; red on the base: the default cap of 1000 evicts down to 1000).
+    test('1500 distinct thumbnails stay memoised under the default caps', async () => {
+        __avatarThumbTestHooks.setStore(makeMemoryStore() as never)
+        __avatarThumbTestHooks.setGenerator(async (loc) => ({ src: `s${loc}` }))
+        for (let index = 0; index < 1500; index++) {
+            await getAvatarThumbSrc(`assets/m${index}.png`)
+        }
+
+        expect(__avatarThumbTestHooks.stats().memoEntries).toBe(1500)
+    })
+})
+
 //#endregion
 
 //#region classifyImage (a specification of new code; the equivalence guard compares it with the legacy decision)
@@ -1650,3 +1844,49 @@ describe('classifyImage', () => {
 })
 
 //#endregion
+
+describe('A1: peekAvatarThumb', () => {
+    // NC: new export, no pre-fix base. Its red evidence is the mutants "the peek starts a lookup" and "the peek memoizes a miss as null".
+    test('is undefined before any lookup, starts none, and does not memoize the miss', async () => {
+        const generator = vi.fn(async (loc: string) => ({ src: `src-for-${loc}` }))
+        __avatarThumbTestHooks.setGenerator(generator)
+        __avatarThumbTestHooks.setStore(makeMissStore() as never)
+
+        expect(peekAvatarThumb('assets/a.png')).toBeUndefined()
+        expect(peekAvatarThumb('assets/a.png')).toBeUndefined()
+        await Promise.resolve()
+
+        expect(generator).not.toHaveBeenCalled()
+        expect(__avatarThumbTestHooks.stats().inFlight).toBe(0)
+        expect(__avatarThumbTestHooks.stats().memoEntries).toBe(0)
+    })
+
+    test('after a lookup resolved from a stored record it is that thumbnail, and it starts nothing', async () => {
+        __avatarThumbTestHooks.setStore(makeMemoryStore({ 'assets/a.png': { v: THUMB_VERSION, src: 'stored-src' } }) as never)
+        await getAvatarThumbSrc('assets/a.png')
+
+        expect(peekAvatarThumb('assets/a.png')).toBe('stored-src')
+        expect(__avatarThumbTestHooks.stats().inFlight).toBe(0)
+    })
+
+    test('after a skipped image it is null: a thumbnail that will never exist, not one that is not known yet', async () => {
+        __avatarThumbTestHooks.setStore(makeMemoryStore({ 'assets/a.png': { v: THUMB_VERSION, skip: true } }) as never)
+        await getAvatarThumbSrc('assets/a.png')
+
+        expect(peekAvatarThumb('assets/a.png')).toBeNull()
+    })
+
+    test('does not reorder the memo, so a peeked entry is still the first one evicted', async () => {
+        __avatarThumbTestHooks.setLimits({ memoMaxEntries: 2 })
+        __avatarThumbTestHooks.setGenerator(async (loc) => ({ src: `src-for-${loc}` }))
+        __avatarThumbTestHooks.setStore(makeMissStore() as never)
+        await getAvatarThumbSrc('assets/a.png')
+        await getAvatarThumbSrc('assets/b.png')
+
+        expect(peekAvatarThumb('assets/a.png')).toBe('src-for-assets/a.png')
+        await getAvatarThumbSrc('assets/c.png')
+
+        expect(peekAvatarThumb('assets/a.png')).toBeUndefined()
+        expect(peekAvatarThumb('assets/b.png')).toBe('src-for-assets/b.png')
+    })
+})

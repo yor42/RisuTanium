@@ -12,6 +12,8 @@
     // not stored either: deleting its asset revokes the URL, and a style kept past that would paint a dead URL
     // when the same content is added again. A style with an empty URL
     // (the file source failed) is not stored; the empty style of hide-all-images has no URL and is.
+    // A style whose file waited in the app-wide whole-read queue is not stored: painting it from the cache
+    // would start that read outside the queue.
     const STYLE_CACHE_MAX_TOTAL = 16 * 1024 * 1024;
     const STYLE_CACHE_MAX_ENTRIES = 4000;
     const STYLE_CACHE_MAX_LENGTH = 32 * 1024;
@@ -118,13 +120,16 @@
             return;
         }
         let current = true;
+        let queued = false;
         const controller = new AbortController();
-        getCharImage(location, "thumbcss", { signal: controller.signal, visible: isVisible }).then((result) => {
+        getCharImage(location, "thumbcss", { signal: controller.signal, visible: isVisible, onWholeReadQueued: () => { queued = true; } }).then((result) => {
             // An abandoned lookup leaves no trace: nothing is painted or remembered, whatever value arrived.
             if (controller.signal.aborted || !isResolvedStyle(result)) {
                 return;
             }
-            rememberStyle(lookupKey, result ?? "");
+            if (!queued) {
+                rememberStyle(lookupKey, result ?? "");
+            }
             if (current) {
                 resolved = { key: lookupKey, style: result ?? "" };
             }

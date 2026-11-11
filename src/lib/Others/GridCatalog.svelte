@@ -2,6 +2,8 @@
     import { onDestroy, setContext, tick, untrack } from "svelte";
     import { v4 } from "uuid";
     import { archivedMemberIds, changeChar, getCharImage, removeChar, supersedeChangeChar, trashCharacters, type ChangeCharOutcome } from "../../ts/characters";
+    import { useCharImageLookups } from "../../ts/media/charImageLookups";
+    import { isAndroidTransport } from "../../ts/storage/tauriByteTransport";
     import { checkCharOrder } from "src/ts/globalApi.svelte";
     import { alertConfirm, alertError, alertSelect } from "src/ts/alert";
     import { DBState } from 'src/ts/stores.svelte';
@@ -69,8 +71,19 @@
     }
 
     // The rows of the Simple and List views and the Trash list draw this through their name row; a trashed character shows none.
-    setContext(replyStateContext, (chaId: string): CharacterReplyState =>
-        replyStateOf(DBState.db.characters.find((candidate) => candidate.chaId === chaId && !candidate.trashTime)));
+    // The lookup resolves to the first live holder of the id, the slot a scan would find, through one map built per
+    // change of the slot order or of a slot's id or trash state, so a row's lookup costs one read however long the list is.
+    const liveHolderById = $derived.by(() => {
+        const holders = new Map<string, character | groupChat>();
+        for (const candidate of DBState.db.characters) {
+            if (!candidate || candidate.trashTime || holders.has(candidate.chaId)) {
+                continue;
+            }
+            holders.set(candidate.chaId, candidate);
+        }
+        return holders;
+    });
+    setContext(replyStateContext, (chaId: string): CharacterReplyState => replyStateOf(liveHolderById.get(chaId)));
     interface Props {
         endGrid?: any;
         // Passed only by the Home library. Without it no Open in Studio control exists in any tab, as in the
@@ -171,8 +184,14 @@
     // tile's await block re-runs with it, so a fresh lookup would blank every picture for a moment.
     // The key carries the hide-all-images setting, which the lookup reads, so a flip is a new lookup;
     // a lookup that fails is dropped so the next render asks again.
+    // On Android each tile instead holds its own queued read through the lookups (slot = the tile's key, which carries the
+    // folder's occurrence), so a large picture waits in the whole-read queue until the tile goes away.
     const pictureLookups = new Map<string, Promise<string>>()
-    function folderPicture(imgFile: string): Promise<string> {
+    const holdLookups = useCharImageLookups()
+    function folderPicture(slotKey: string, imgFile: string): Promise<string> {
+        if (isAndroidTransport()) {
+            return holdLookups.get(`folder:${slotKey}`, imgFile, 'thumbcss')
+        }
         const key = `${DBState.db.hideAllImages ? 'hidden' : 'shown'}|${imgFile}`
         let lookup = pictureLookups.get(key)
         if (lookup === undefined) {
@@ -192,7 +211,7 @@
     // A reply being written never refuses a pick. In the new shell the switch is quiet and a failed
     // restore ends in the chat frame. With the shell off, a warm pick opens and closes at once; a pick
     // that must restore keeps the grid open with its tile marked and closes it only when `changeChar`
-    // selected.
+    // selected. A warm pick ends any pending pick first; its throw is reported once, like a cold one.
     function pick(index: number) {
         if (shellEligible()) {
             const entry = DBState.db.characters[index]
@@ -202,7 +221,8 @@
         }
         const slot = DBState.db.characters[index]
         if (!mustRestore(slot)) {
-            changeChar(index)
+            dropPendingPick()
+            void pickWarm(index)
             endGrid()
             return
         }
@@ -257,6 +277,18 @@
             return
         }
         finishPendingPick(mine, outcome)
+    }
+
+    // A warm `changeChar` throws before any await, so no newer pick can start before this catch: every failure
+    // is reported. A sequence or generation check here could only be tripped by this pick's own drop.
+    async function pickWarm(index: number) {
+        try {
+            await changeChar(index)
+        } catch (error) {
+            console.error('Grid pick failed:', error)
+            recordCaughtError('grid.pick', error)
+            alertError(language.errors.coldStorageRestoreUnreadable)
+        }
     }
 
     // `selected` closes the host whatever happened to this component meanwhile: in the Home host the
@@ -1601,7 +1633,7 @@
             >
                 {#if entry.imgFile}
                     <!-- The picture is a layer beneath the face; a picture that is missing, fails to load or is hidden leaves the face alone, as in the rail. -->
-                    {#await folderPicture(entry.imgFile)}
+                    {#await folderPicture(entry.key, entry.imgFile)}
                         <span class="absolute inset-0" aria-hidden="true"></span>
                     {:then pictureStyle}
                         {#if pictureStyle && !pictureStyle.includes('url("")')}

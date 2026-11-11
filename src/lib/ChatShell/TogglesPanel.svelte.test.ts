@@ -6,6 +6,7 @@
  * with the real scope accessors; the stores are plain objects and the save marks are a spy.
  */
 import { flushSync, mount, tick, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { afterEach, beforeEach, describe, expect, test, vi, type Mock } from 'vitest'
 import type { Chat } from 'src/ts/storage/database.svelte'
 
@@ -105,7 +106,7 @@ async function show(): Promise<HTMLElement> {
         },
     })
     flushSync()
-    await tick()
+    await tickFake()
     return target
 }
 

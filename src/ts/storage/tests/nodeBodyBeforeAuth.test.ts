@@ -259,7 +259,7 @@ describe('guards: the authenticated paths still work', { timeout: 60_000 }, () =
         expect(await send({})).toBe('{}')
     })
 
-    test('S3-G6 env-secret answers a token and the direct digest; a job is created with a token', async () => {
+    test('S3-G6 env-secret answers a token and refuses the direct digest; a job is created with a token', async () => {
         const ask = async (auth: string) => fetch(`${main.baseUrl}/api/env-secret`, {
             method: 'POST',
             headers: { 'content-type': 'application/json', 'risu-auth': auth },
@@ -269,7 +269,8 @@ describe('guards: the authenticated paths still work', { timeout: 60_000 }, () =
         expect(withToken.status).toBe(200)
         expect(await withToken.json()).toEqual({ value: 'secret-value' })
         const withDigest = await ask(DIGEST)
-        expect(withDigest.status).toBe(200)
+        expect(withDigest.status).toBeGreaterThanOrEqual(400)
+        expect(await withDigest.text()).not.toContain('secret-value')
 
         const job = await fetch(`${main.baseUrl}/proxy-stream-jobs`, {
             method: 'POST',

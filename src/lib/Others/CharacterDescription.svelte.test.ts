@@ -13,7 +13,7 @@
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const { parseSpy } = vi.hoisted(() => ({
     parseSpy: vi.fn(async (text: string) => `<p>${text}</p><img src="https://example.com/a.png"><picture><source srcset="https://example.com/b.png"></picture><video src="https://example.com/c.mp4"></video>`),
@@ -28,6 +28,7 @@ vi.mock('src/ts/gui/colorscheme', () => ({
 }))
 
 import { clearDescriptionCache } from '../../ts/gui/descriptionMarkdown'
+import { previewCut } from '../../ts/gui/descriptionPreview'
 import CharacterDescription from './CharacterDescription.svelte'
 
 interface MountProps {
@@ -137,5 +138,182 @@ describe('CharacterDescription', () => {
         } finally {
             warn.mockRestore()
         }
+    })
+})
+
+/**
+ * A long note without markup is parsed as a prefix while its row is clamped.
+ *
+ * LAYOUT SEAM: jsdom has no layout, so `scrollHeight` and `clientHeight` of
+ * the description block come from `layout`. The clamp measurement itself
+ * (`measureClamp`, the escalation rule) is the real one.
+ */
+describe('CharacterDescription: prefix preview of a long note', () => {
+    type Layout = (block: HTMLElement) => { scroll: number; client: number }
+    let layout: Layout = () => ({ scroll: 0, client: 0 })
+
+    const defaultParse = async (text: string): Promise<string> => `<p>${text}</p>`
+    /** An eligible note: no markup, blank-line separated, with TAIL in the last paragraph only. */
+    function eligibleNote(paragraphs: number, label = 'Paragraph'): string {
+        const note = [...Array.from({ length: paragraphs }, (_, i) => `${label} ${i} holds plain words only and nothing else.`), 'TAIL final paragraph.'].join('\n\n')
+        const cut = previewCut(note)
+        expect(cut).not.toBeNull()
+        expect(note.slice(0, cut!)).not.toContain('TAIL')
+        return note
+    }
+    const prefixOf = (note: string): string => note.slice(0, previewCut(note)!)
+
+    // Overflows (the clamp hides content) whatever is rendered.
+    const alwaysOverflows: Layout = (block) => block.hasAttribute('data-description') ? { scroll: 100, client: 20 } : { scroll: 0, client: 0 }
+    // Overflows only once the block holds the tail, as a clamp would when the prefix is shorter than the clamp.
+    const overflowsWithTail: Layout = (block) => block.hasAttribute('data-description') ? { scroll: block.textContent?.includes('TAIL') ? 100 : 10, client: 20 } : { scroll: 0, client: 0 }
+
+    function installLayoutStandIn(): () => void {
+        Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, get(this: HTMLElement) { return layout(this).scroll } })
+        Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get(this: HTMLElement) { return layout(this).client } })
+        return () => {
+            delete (HTMLElement.prototype as unknown as Record<string, unknown>).scrollHeight
+            delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientHeight
+        }
+    }
+
+    const parsedInputs = (): string[] => parseSpy.mock.calls.map((call) => call[0])
+    const shownText = (target: HTMLElement): string => target.querySelector('[data-description]')?.textContent ?? ''
+
+    let restoreLayout: () => void = () => {}
+
+    beforeEach(() => {
+        layout = () => ({ scroll: 0, client: 0 })
+        parseSpy.mockImplementation(defaultParse)
+        restoreLayout = installLayoutStandIn()
+    })
+
+    afterEach(() => {
+        restoreLayout()
+        parseSpy.mockImplementation(defaultParse)
+    })
+
+    // Reproducer: on the base the whole note reaches the parser.
+    test('a clamped row hands the parser a prefix, never the whole long note', async () => {
+        layout = alwaysOverflows
+        const note = eligibleNote(250)
+        expect(note.length).toBeGreaterThan(10_000)
+        const onClampChange = vi.fn()
+        await withMounted({ text: note, visible: true, clamped: true, onClampChange }, (target) => {
+            expect(parsedInputs()).toEqual([prefixOf(note)])
+            expect(Math.max(...parsedInputs().map((input) => input.length))).toBeLessThanOrEqual(2000)
+            expect(shownText(target)).toContain('Paragraph 0 ')
+            expect(shownText(target)).not.toContain('TAIL')
+            expect(onClampChange).toHaveBeenLastCalledWith(true)
+        })
+    })
+
+    // Guard: Show more renders the whole note; Show less returns to the cached prefix without a parse.
+    test('expanding parses the whole note and collapsing shows the prefix again without a new parse', async () => {
+        layout = alwaysOverflows
+        const note = eligibleNote(60)
+        await withMounted({ text: note, visible: true, clamped: true, onClampChange: vi.fn() }, async (target, props) => {
+            expect(shownText(target)).not.toContain('TAIL')
+            props.clamped = false
+            await settle()
+            expect(parsedInputs()).toEqual([prefixOf(note), note])
+            expect(shownText(target)).toContain('TAIL')
+            props.clamped = true
+            await settle()
+            expect(parsedInputs()).toHaveLength(2)
+            expect(shownText(target)).not.toContain('TAIL')
+        })
+    })
+
+    // Guard: a prefix shorter than the clamp renders the whole note, and the toggle is told only the final answer.
+    test('a prefix that does not fill the clamp escalates to the whole note without reporting the underfill', async () => {
+        layout = overflowsWithTail
+        const note = eligibleNote(60)
+        const onClampChange = vi.fn()
+        await withMounted({ text: note, visible: true, clamped: true, onClampChange }, (target) => {
+            expect(parsedInputs()).toEqual([prefixOf(note), note])
+            expect(shownText(target)).toContain('TAIL')
+            expect(onClampChange.mock.calls.map((call) => call[0])).not.toContain(false)
+            expect(onClampChange).toHaveBeenLastCalledWith(true)
+        })
+    })
+
+    // Guard: a row without a toggle (the Trash tab) escalates the same way.
+    test('a row without onClampChange escalates too', async () => {
+        layout = overflowsWithTail
+        const note = eligibleNote(60)
+        await withMounted({ text: note, visible: true, clamped: true }, (target) => {
+            expect(parsedInputs()).toEqual([prefixOf(note), note])
+            expect(shownText(target)).toContain('TAIL')
+        })
+    })
+
+    // Guard for the rule: the plain-text stage (before the render arrives) is never a reason to parse more.
+    test('a measurement before the render arrives does not escalate', async () => {
+        layout = (block) => block.hasAttribute('data-description') && block.firstElementChild ? overflowsWithTail(block) : { scroll: 20, client: 20 }
+        const note = eligibleNote(60)
+        parseSpy.mockImplementation(() => new Promise<string>(() => {}))
+        await withMounted({ text: note, visible: true, clamped: true, onClampChange: vi.fn() }, (target) => {
+            expect(target.querySelector('[data-description]')?.firstElementChild).toBeNull()
+            expect(parsedInputs()).toEqual([prefixOf(note)])
+        })
+    })
+
+    // Guard for the rule: a hidden block (zero height) cannot tell an underfilled clamp from no layout.
+    test('a block with no height does not escalate', async () => {
+        layout = () => ({ scroll: 0, client: 0 })
+        const note = eligibleNote(60)
+        await withMounted({ text: note, visible: true, clamped: true, onClampChange: vi.fn() }, () => {
+            expect(parsedInputs()).toEqual([prefixOf(note)])
+        })
+    })
+
+    // Guard with identity falsification (scratch only): without `stripMedia` on the prefix path the media assertions fail.
+    test('the prefix render carries no media, no app-control attribute and no non-web link', async () => {
+        layout = alwaysOverflows
+        parseSpy.mockImplementation(async (text: string) => `<p>${text}</p><img src="https://example.com/a.png"><picture><source srcset="https://example.com/b.png"></picture><video src="https://example.com/c.mp4"></video><button risu-btn="go">run</button><a href="javascript:void(0)">dead</a><a href="https://example.com/ok">ok</a>`)
+        const note = eligibleNote(60)
+        await withMounted({ text: note, visible: true, clamped: true, onClampChange: vi.fn() }, (target) => {
+            expect(parsedInputs()).toEqual([prefixOf(note)])
+            expect(target.querySelector('img, picture, source, video')).toBeNull()
+            expect(target.querySelector('[risu-btn]')).toBeNull()
+            expect(Array.from(target.querySelectorAll('a[href]')).map((a) => a.getAttribute('href'))).toEqual(['https://example.com/ok'])
+        })
+    })
+
+    // Guard: an escalation belongs to one text; a changed text starts again from its own prefix.
+    test('a changed text starts again from its own prefix after an escalation', async () => {
+        layout = overflowsWithTail
+        const first = eligibleNote(60)
+        const second = eligibleNote(70, 'Another')
+        await withMounted({ text: first, visible: true, clamped: true, onClampChange: vi.fn() }, async (target, props) => {
+            expect(parsedInputs()).toEqual([prefixOf(first), first])
+            props.text = second
+            await settle()
+            expect(parsedInputs().slice(0, 4)).toEqual([prefixOf(first), first, prefixOf(second), second])
+            expect(shownText(target)).toContain('TAIL')
+        })
+    })
+
+    // Guard: after an escalation the row measures again even when the prefix and the whole note give the same HTML.
+    test('the final measurement is reported after an escalation whose render is identical', async () => {
+        layout = overflowsWithTail
+        parseSpy.mockImplementation(async () => '<p>SAME</p>')
+        const note = eligibleNote(60)
+        const onClampChange = vi.fn()
+        await withMounted({ text: note, visible: true, clamped: true, onClampChange }, () => {
+            expect(parsedInputs()).toEqual([prefixOf(note), note])
+            expect(onClampChange).toHaveBeenLastCalledWith(false)
+        })
+    })
+
+    // Guard: notes that cannot be cut safely are parsed whole, as before.
+    test('a long note with markup is parsed whole', async () => {
+        layout = alwaysOverflows
+        const note = `<p class="x">raw</p>\n\n${eligibleNote(60)}`
+        expect(previewCut(note)).toBeNull()
+        await withMounted({ text: note, visible: true, clamped: true, onClampChange: vi.fn() }, () => {
+            expect(parsedInputs()).toEqual([note])
+        })
     })
 })

@@ -6,7 +6,8 @@
  * The panel also takes the side presentation whatever the width at mount, so a resize while it is open is followed by
  * the stylesheet. Mounts the REAL TogglesPanel, ToggleRow and ShellSheet with the real favourites store.
  */
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { afterEach, beforeEach, describe, expect, test, vi, type Mock } from 'vitest'
 import type { Chat } from 'src/ts/storage/database.svelte'
 
@@ -126,7 +127,7 @@ async function show(options: { open?: boolean } = {}): Promise<HTMLElement> {
 async function settle(ms = 120): Promise<void> {
     vi.advanceTimersByTime(ms)
     flushSync()
-    await tick()
+    await tickFake()
 }
 
 const q = (target: ParentNode, selector: string) => target.querySelector<HTMLElement>(selector)

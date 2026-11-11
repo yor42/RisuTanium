@@ -158,6 +158,7 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 
 import { DBState } from '../../ts/stores.svelte'
 import { clearDescriptionCache } from '../../ts/gui/descriptionMarkdown'
+import { previewCut } from '../../ts/gui/descriptionPreview'
 import { language } from '../../lang'
 import type { CharacterSearch } from '../../ts/gui/characterSearch.svelte'
 import { slotKeys } from '../../ts/gui/characterSearch'
@@ -324,6 +325,22 @@ describe('CharacterTrashList: a bounded window of 200 trashed rows', { timeout: 
             expect(restoreSpy).toHaveBeenCalledWith(DBState.db.characters[150])
             actions[1].click()
             expect(removeCharSpy).toHaveBeenCalledWith(DBState.db.characters[150], 'Character 150', 'permanent')
+        })
+    })
+
+    // (R) Reproducer: a trashed row's long note without markup reaches the parser as a prefix, not whole (about 20 KB each on the base).
+    test('(R) long descriptions without markup are parsed as prefixes', async () => {
+        const rows = [0, 1, 2, 3, 4]
+        for (const index of rows) {
+            const note = [`Opening of note ${index}.`, ...Array.from({ length: 400 }, (_, k) => `Note ${index} paragraph ${k} has plain words only.`)].join('\n\n')
+            expect(note.length).toBeGreaterThan(15_000)
+            expect(previewCut(note)).not.toBeNull()
+            DBState.db.characters[index].creatorNotes = note
+        }
+        await withMounted(resultFor(allIndices()), () => {
+            const longInputs = parseSpy.mock.calls.map((call) => call[0]).filter((input) => input.includes(' paragraph '))
+            expect(longInputs).toHaveLength(rows.length)
+            expect(longInputs.reduce((sum, input) => sum + input.length, 0)).toBeLessThanOrEqual(rows.length * 2000)
         })
     })
 

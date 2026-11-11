@@ -88,6 +88,7 @@
     import { chatSurface, isChatSurfaceInstalled } from '../ChatScreens/chatSurface.svelte'
     import { language } from '../../lang'
     import { getCharImage } from '../../ts/characters'
+    import { isAndroidTransport } from '../../ts/storage/tauriByteTransport'
     import { getModelInfo } from '../../ts/model/modellist'
     import { onDestroy, onMount, tick, untrack } from 'svelte'
 
@@ -235,10 +236,13 @@
     $effect(() => {
         let live = true
         avatar = null
-        if (iconMounted) Promise.resolve(img).then((source) => getCharImage(source, 'plain'))
+        // On Android the signal holds a large avatar in the whole-read queue until this run ends; a run that ends
+        // first gives its place back without a read. Off Android the call stays the two-argument one.
+        const hold = isAndroidTransport() ? new AbortController() : null
+        if (iconMounted) Promise.resolve(img).then((source) => hold ? getCharImage(source, 'plain', { signal: hold.signal }) : getCharImage(source, 'plain'))
             .then((value) => { if (live && typeof value === 'string') avatar = value })
             .catch(() => { if (live) avatar = null })
-        return () => { live = false }
+        return () => { live = false; hold?.abort() }
     })
     const surfaceEpoch = isChatSurfaceInstalled() ? untrack(() => chatSurface.rebuildEpoch) : null
     let labelId = $derived(`shell-message-name-${idx}-${chatId ?? 'first'}`)

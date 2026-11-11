@@ -13,6 +13,7 @@
  * the long press runs on fake timers.
  */
 import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database, folder } from '../../ts/storage/database.svelte'
@@ -213,6 +214,7 @@ async function settle(): Promise<void> {
         flushSync()
         await Promise.resolve()
     }
+    await tickFake()
     flushSync()
 }
 

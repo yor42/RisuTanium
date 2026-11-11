@@ -158,8 +158,17 @@
     let favourites = $derived(currentFavourites())
     // Only a star whose source is in use and still has the key shows; the others stay in the store, in place.
     let favRows = $derived(filtering ? [] : favouriteRows(sources, favourites.items))
-    // The uid of the Favourites copy this opening is aimed at; null when it is not aimed at one.
-    let openedAt = $state<string | null>(null)
+    // The uid of the Favourites copy this opening is aimed at; null when it is not aimed at one. The aim is
+    // taken when the opening is read, so the sheet's first render and its one-shot initial focus see it in
+    // either scheduler; it recomputes only when the panel opens or closes.
+    let openedAt = $derived.by(() => {
+        const opening = open
+        return untrack(() => {
+            const at = opening ? openAt : null
+            const aimed = at ? favRows.find((entry) => sameRef(entry.ref, at) && (entry.row.kind === 'text' || entry.row.kind === 'textarea')) : undefined
+            return aimed?.row.uid ?? null
+        })
+    })
 
     const isStarred = (ref: FavouriteRef): boolean => favourites.items.some((known) => sameRef(known, ref))
 
@@ -234,9 +243,6 @@
                 defaultOpen = defaultOpenSections({ sources }, valueOf)
                 groupOpen = {}
             }
-            const at = opening ? openAt : null
-            const aimed = at ? favRows.find((entry) => sameRef(entry.ref, at) && (entry.row.kind === 'text' || entry.row.kind === 'textarea')) : undefined
-            openedAt = aimed?.row.uid ?? null
         })
     })
 

@@ -2,7 +2,7 @@ import { flushSync } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from '../database.svelte'
-import { markIdentitySeen, registerDbChangeEffects } from '../dbChangeEffects.svelte'
+import { MESSAGE_CHUNK_SIZE, markIdentitySeen, registerDbChangeEffects } from '../dbChangeEffects.svelte'
 import type { DbChangeEffectOptions } from '../dbChangeEffects.svelte'
 import type { RisuModule } from '../../process/modules'
 import type { toSaveType } from '../risuSave'
@@ -1576,6 +1576,93 @@ describe('registerDbChangeEffects — selected-character partition equivalence s
         expect(tracker.chat[0]).toEqual(['char-1', 'chat-0'])
     })
 
+    test('mounted with an out-of-range chatPage: later edits are still fronted and marked', () => {
+        installSelectedCharacterFixture()
+        selectedChar().chatPage = 9
+        const { tracker, markChanged } = freshTrackerAndMarker()
+        cleanup = $effect.root(() => {
+            registerDbChangeEffects({ tracker, markChanged })
+        })
+        let mountError: unknown
+        try { flushSync() } catch (error) { mountError = error }
+
+        tracker.character = [SENTINEL]
+        markChanged.mockClear()
+        selectedChar().desc = 'edited description'
+        flushSync()
+
+        expectFronted(tracker, markChanged)
+        expect(tracker.chat).toEqual([])
+        expect(mountError).toBeUndefined()
+    })
+
+    test.each([
+        ['chatPage past the end', (c: Record<string, any>) => { c.chatPage = 9 }],
+        ['chats emptied', (c: Record<string, any>) => { c.chats = [] }],
+        ['chats removed', (c: Record<string, any>) => { delete c.chats }],
+    ] as Array<[string, (c: Record<string, any>) => void]>)('no active chat (%s): fronts, marks, records no pair, keeps tracking', (_name, mutate) => {
+        const { tracker, markChanged } = setupArmed()
+        let switchError: unknown
+        mutate(selectedChar())
+        try { flushSync() } catch (error) { switchError = error }
+
+        expectFronted(tracker, markChanged)
+        expect(tracker.chat).toEqual([])
+
+        tracker.character = [SENTINEL]
+        markChanged.mockClear()
+        selectedChar().desc = 'edited after'
+        flushSync()
+        expectFronted(tracker, markChanged)
+        expect(switchError).toBeUndefined()
+    })
+
+    test('replacing the active chat with a new object moves tracker.chat to its id', () => {
+        const { tracker } = setupArmed()
+
+        selectedChar().chats[2] = makeChat('chat-2-new', 1)
+        flushSync()
+
+        expect(tracker.chat[0]).toEqual(['char-1', 'chat-2-new'])
+    })
+
+    // Only 6b-front records tracker.chat, so an in-place id change of the
+    // active chat must re-run it (the id read must stay tracked).
+    test('renaming the active chat id in place moves tracker.chat to the new id', () => {
+        const { tracker, markChanged } = setupArmed()
+
+        selectedChar().chats[2].id = 'chat-2-renamed'
+        flushSync()
+
+        expectFronted(tracker, markChanged)
+        expect(tracker.chat[0]).toEqual(['char-1', 'chat-2-renamed'])
+    })
+
+    // Reassigning the whole chats list must re-run 6b-front (the chats read
+    // must stay tracked) so tracker.chat names the active chat of the new list.
+    test('reassigning character.chats moves tracker.chat to the new active chat', () => {
+        const { tracker, markChanged } = setupArmed()
+
+        selectedChar().chats = [makeChat('new-0', 1), makeChat('new-1', 1), makeChat('new-2', 1)]
+        flushSync()
+
+        expectFronted(tracker, markChanged)
+        expect(tracker.chat[0]).toEqual(['char-1', 'new-2'])
+    })
+
+    test('a chat appended at an out-of-range chatPage index becomes the tracked active chat', () => {
+        const { tracker, markChanged } = setupArmed()
+        selectedChar().chatPage = 6
+        try { flushSync() } catch { /* the outcome below is the assertion */ }
+        tracker.chat = []
+        markChanged.mockClear()
+
+        selectedChar().chats.push(makeChat('chat-6', 1))
+        flushSync()
+
+        expect(tracker.chat[0]).toEqual(['char-1', 'chat-6'])
+    })
+
     test('the selection changed via selectedCharID.set fronts the NEW selected chaId', () => {
         const { tracker, markChanged } = setupArmed()
 
@@ -1702,8 +1789,9 @@ describe('registerDbChangeEffects — selected-character partition equivalence s
 // COST (the partition does not over-rebuild). It drives the test-only
 // `onPartitionRun` hook (defined on `DbChangeEffectOptions`), which fires
 // at the top of every 6b piece's body -- 'front', 'char',
-// 'field', 'chats', 'chat' (with its index) and 'message' (with its index)
-// -- and is never called by production code.
+// 'field', 'chats', 'chat', 'chatFields', 'alts', 'messageChunks' (each with
+// the chat index), 'messageChunk' (with the chunk index), 'message' and 'alt'
+// (with their index) -- and is never called by production code.
 //
 // Fixture: the same general shape as the equivalence suite above (3
 // characters, the selected one at index 1 with 5 chats -- four ordinary plus
@@ -1784,7 +1872,7 @@ describe('registerDbChangeEffects — selected-character partition rebuild count
         return DBState.db.characters[1] as unknown as Record<string, any>
     }
 
-    type PartitionRun = { kind: 'front' | 'char' | 'field' | 'chats' | 'chat' | 'message' | 'alt'; index?: number }
+    type PartitionRun = { kind: 'front' | 'char' | 'field' | 'chats' | 'chat' | 'chatFields' | 'alts' | 'messageChunks' | 'messageChunk' | 'message' | 'alt'; index?: number }
 
     function countKind(log: PartitionRun[], kind: PartitionRun['kind']): number {
         return log.filter((e) => e.kind === kind).length
@@ -1943,6 +2031,12 @@ describe('registerDbChangeEffects — selected-character partition rebuild count
         expect(chatRuns).toHaveLength(1)
         expect(chatRuns[0].index).toBe(1)
 
+        // The replaced chat's whole subtree is built once: its fields, its alternatives, its chunk spawn, the one chunk
+        // that holds its messages and a leaf per message.
+        expect(countKind(log, 'chatFields')).toBe(1)
+        expect(countKind(log, 'alts')).toBe(1)
+        expect(countKind(log, 'messageChunks')).toBe(1)
+        expect(countKind(log, 'messageChunk')).toBe(1)
         const messageRuns = log.filter((e) => e.kind === 'message')
         expect(messageRuns).toHaveLength(3) // chat-1-replaced's new message count
         expect(countKind(log, 'chats')).toBe(0)
@@ -1995,14 +2089,15 @@ describe('registerDbChangeEffects — selected-character partition rebuild count
         ['scopedJailbreak', true],
         ['scopedMemory', false],
         ['hideNames', true],
-    ])('a write of the chat key %s: exactly one chat run with its index, no chats or char run, and the character is marked', (key, value) => {
+    ])('a write of the chat key %s: exactly one chatFields run with its index, no chat, chats or char run, and the character is marked', (key, value) => {
         const { markChanged, log } = setupWithLog()
         markChanged.mockClear()
 
         selectedChar().chats[0][key] = value
         flushSync()
 
-        expect(log.filter((e) => e.kind === 'chat')).toEqual([{ kind: 'chat', index: 0 }])
+        expect(log.filter((e) => e.kind === 'chatFields')).toEqual([{ kind: 'chatFields', index: 0 }])
+        expect(countKind(log, 'chat')).toBe(0)
         expect(countKind(log, 'chats')).toBe(0)
         expect(countKind(log, 'char')).toBe(0)
         expect(markChanged.mock.calls.some((call) => call[0] === true)).toBe(true)
@@ -2023,12 +2118,13 @@ describe('registerDbChangeEffects — selected-character partition rebuild count
         expect(markChanged.mock.calls.some((call) => call[0] === true)).toBe(true)
     })
 
-    test("appending a record and giving a chat its first alternatives re-run that chat once and create the new 'alt' children", () => {
+    test("appending a record and giving a chat its first alternatives re-run that chat's alternatives once, not the chat, and create the new 'alt' children", () => {
         const { markChanged, log } = setupWithLog()
 
         selectedChar().chats[0].alt = [altRecord(0)]
         flushSync()
-        expect(log.filter((e) => e.kind === 'chat')).toEqual([{ kind: 'chat', index: 0 }])
+        expect(countKind(log, 'chat')).toBe(0)
+        expect(log.filter((e) => e.kind === 'alts')).toEqual([{ kind: 'alts', index: 0 }])
         expect(log.filter((e) => e.kind === 'alt')).toEqual([{ kind: 'alt', index: 0 }])
         expect(markChanged).toHaveBeenCalled()
 
@@ -2036,12 +2132,13 @@ describe('registerDbChangeEffects — selected-character partition rebuild count
         markChanged.mockClear()
         selectedChar().chats[0].alt.push(altRecord(1))
         flushSync()
-        expect(log.filter((e) => e.kind === 'chat')).toEqual([{ kind: 'chat', index: 0 }])
+        expect(countKind(log, 'chat')).toBe(0)
+        expect(log.filter((e) => e.kind === 'alts')).toEqual([{ kind: 'alts', index: 0 }])
         expect(markChanged).toHaveBeenCalled()
         expect(log.some((e) => e.kind === 'alt' && e.index === 1)).toBe(true)
     })
 
-    // A value that is not a list is snapshotted whole by the chat effect, so narrowing never drops what it holds.
+    // A value that is not a list is snapshotted whole by the alternatives effect, so narrowing never drops what it holds.
     test('an alt that is not a list, mutated in place, still marks the character', () => {
         const { markChanged, log } = setupWithLog()
         selectedChar().chats[0].alt = { holder: { n: 1 } }
@@ -2052,7 +2149,8 @@ describe('registerDbChangeEffects — selected-character partition rebuild count
         selectedChar().chats[0].alt.holder.n = 2
         flushSync()
 
-        expect(countKind(log, 'chat')).toBe(1)
+        expect(countKind(log, 'alts')).toBe(1)
+        expect(countKind(log, 'chat')).toBe(0)
         expect(countKind(log, 'alt')).toBe(0)
         expect(markChanged.mock.calls.some((call) => call[0] === true)).toBe(true)
     })
@@ -2085,17 +2183,14 @@ describe('registerDbChangeEffects — selected-character partition rebuild count
         expect(tracker.character[0]).toBe('char-1')
     })
 
-    // ACCEPTED COST: the per-chat child reads `message.length`
-    // as part of its own body, so a PUSH onto the active chat's message
-    // array re-runs that one chat child once, and (being torn down and
-    // recreated) it recreates EVERY message grandchild of that chat -- not
-    // just the newly appended one. This is the "once per appended message,
-    // not per token" cost this design accepts: a push (new message arriving)
-    // pays for the whole chat's message children; a token append in place
-    // (the 'a streamed token (appending to the last message of the active
-    // chat in place)' test above, not the immediately preceding 'desc' test)
-    // does not.
-    test('a message pushed onto the active chat: the chat child re-runs once and recreates every message child of that chat (accepted cost)', () => {
+    // A PUSH onto the active chat's message array does not re-run the per-chat
+    // child: the chunk that holds the new message reads its own count, so it
+    // re-runs once and recreates only its own leaves. This chat is small, so
+    // its one chunk (capacity 1) holds every message and all of them are
+    // recreated; a long chat recreates at most MESSAGE_CHUNK_SIZE leaves (see
+    // the long-chat describe below). A token append in place (the 'a streamed
+    // token' test above) re-runs one leaf only.
+    test('a message pushed onto the active chat re-runs one chunk and recreates only that chunk\'s leaves', () => {
         const { tracker, log } = setupWithLog()
 
         const activeChat = selectedChar().chats[2]
@@ -2103,12 +2198,12 @@ describe('registerDbChangeEffects — selected-character partition rebuild count
         activeChat.message.push(makeMessage('active-appended'))
         flushSync()
 
-        const chatRuns = log.filter((e) => e.kind === 'chat')
-        expect(chatRuns).toHaveLength(1)
-        expect(chatRuns[0].index).toBe(2)
+        expect(countKind(log, 'chat')).toBe(0)
+        expect(countKind(log, 'messageChunks')).toBe(0)
+        expect(log.filter((e) => e.kind === 'messageChunk')).toEqual([{ kind: 'messageChunk', index: 0 }])
 
         const messageRuns = log.filter((e) => e.kind === 'message')
-        expect(messageRuns).toHaveLength(originalLength + 1) // every message child recreated, not just the new one
+        expect(messageRuns).toHaveLength(originalLength + 1) // the one chunk holds all of them
         expect(countKind(log, 'chats')).toBe(0)
         expect(countKind(log, 'char')).toBe(0)
         expect(tracker.character[0]).toBe('char-1')
@@ -2144,6 +2239,305 @@ describe('registerDbChangeEffects — selected-character partition rebuild count
         expect(countKind(log, 'chat')).toBe(0)
         expect(countKind(log, 'message')).toBe(0)
         expect(tracker.character[0]).toBe('char-1-renamed')
+    })
+})
+
+// A long selected chat. The per-chat child is split by read class: `chatFields` owns the chat's key set and every
+// non-message, non-alt value; `alts` owns `alt` (identity, length, records, a non-array value); the per-chat child owns
+// `chats[i]` and `message` identity; `messageChunks` owns the chunk capacity; a chunk owns its message count; a leaf owns
+// `message[j]`. Splitting never drops a dependency: every write below must still front the character and mark it dirty,
+// while the work it re-runs stays bounded by what changed.
+describe('registerDbChangeEffects — long selected chat: per-chat read-class split and chunked messages', () => {
+    const K = MESSAGE_CHUNK_SIZE
+    const SENTINEL = '__sentinel__'
+
+    type RunKind = Parameters<NonNullable<DbChangeEffectOptions['onPartitionRun']>>[0]
+    type Run = { kind: RunKind; index?: number }
+
+    // Built like the real producers: a message carries its chatId and generation info, and an alternative record is
+    // `{ m, p, a }` (the message, its parent's chatId, its ordinal).
+    function longMessage(n: number): Record<string, unknown> {
+        return { role: n % 2 === 0 ? 'char' : 'user', data: `m${n}`, chatId: `c${n}`, time: n, generationInfo: { model: 'x' } }
+    }
+
+    function altRecord(n: number): Record<string, unknown> {
+        return { m: longMessage(9000 + n), p: 'c0', a: 1 }
+    }
+
+    function setupLong(messageCount: number, withAlt = true) {
+        installDb()
+        const chat: Record<string, unknown> = {
+            id: 'chat-0',
+            message: Array.from({ length: messageCount }, (_, i) => longMessage(i)),
+            scriptstate: { $a: '0' },
+            isStreaming: false,
+        }
+        if (withAlt) {
+            chat.alt = [altRecord(0)]
+        }
+        DBState.db.characters = [{ chaId: 'char-1', chatPage: 0, chats: [chat] }] as unknown as Database['characters']
+        selectedCharID.set(0)
+        const tracker = makeTracker()
+        const markChanged = vi.fn()
+        const log: Run[] = []
+        cleanup = $effect.root(() => {
+            registerDbChangeEffects({ tracker, markChanged, onPartitionRun: (kind, index) => log.push({ kind, index }) })
+        })
+        flushSync()
+        log.length = 0
+        tracker.character = [SENTINEL]
+        markChanged.mockClear()
+        return { tracker, markChanged, log }
+    }
+
+    function liveChat(): Record<string, any> {
+        return (DBState.db.characters[0] as unknown as { chats: Record<string, any>[] }).chats[0]
+    }
+
+    function countsOf(log: Run[]): Record<string, number> {
+        const counts: Record<string, number> = {}
+        for (const entry of log) {
+            counts[entry.kind] = (counts[entry.kind] ?? 0) + 1
+        }
+        return counts
+    }
+
+    // The detachTail-shaped reroll: cut the last message in place, give the chat its alternatives list if it has none,
+    // append the cut record, then write the branch fields.
+    function rerollShape(): void {
+        const chat = liveChat()
+        const cut = chat.message[chat.message.length - 1]
+        chat.message.splice(chat.message.length - 1)
+        chat.alt ??= []
+        chat.alt.push({ m: cut, p: chat.message[chat.message.length - 1]?.chatId ?? null, a: 2 })
+        chat.lastMemory = 'branch'
+        chat.scriptstate = { $a: 'b' }
+    }
+
+    // The switchTo-shaped write: each container assigned once.
+    function switchShape(): void {
+        const chat = liveChat()
+        const messages = chat.message
+        const alt = chat.alt
+        const arriving = alt[alt.length - 1]
+        const nextAlt = alt.slice(0, alt.length - 1)
+        nextAlt.push({ m: messages[messages.length - 1], p: messages[messages.length - 2]?.chatId ?? null, a: 3 })
+        chat.message = messages.slice(0, messages.length - 1).concat([arriving.m])
+        chat.alt = nextAlt
+    }
+
+    // Regression reproducer: a chat-level write re-ran the chat child, which rebuilt the whole message family.
+    test('each chat-level write on a 1,000-message chat re-runs one chatFields and nothing else', () => {
+        const { log } = setupLong(1000)
+        const writes: Array<[string, () => void]> = [
+            ['isStreaming and display mode', () => { liveChat().isStreaming = true; liveChat().activeStreamingDisplayOptimizationMode = 'off' }],
+            ['isStreaming false', () => { liveChat().isStreaming = false; delete liveChat().activeStreamingDisplayOptimizationMode }],
+            ['lastMemory', () => { liveChat().lastMemory = 'c950' }],
+            ['scriptstate variable', () => { liveChat().scriptstate.$a = '2' }],
+            ['hypaV3Data', () => { liveChat().hypaV3Data = { summaries: [] } }],
+        ]
+
+        for (const [name, write] of writes) {
+            log.length = 0
+            write()
+            flushSync()
+            expect(countsOf(log), name).toEqual({ chatFields: 1 })
+        }
+    })
+
+    test('an alternative pushed onto a 1,000-message chat re-runs the alternatives and their records, not the chat or its messages', () => {
+        const { log } = setupLong(1000)
+
+        liveChat().alt.push(altRecord(1))
+        flushSync()
+
+        expect(countsOf(log)).toEqual({ alts: 1, alt: 2 })
+    })
+
+    test('a reroll-shaped write on a 1,000-message chat re-runs no chat and no chunk spawn, and at most one chunk of leaves', () => {
+        const { log } = setupLong(1000)
+
+        rerollShape()
+        flushSync()
+
+        const counts = countsOf(log)
+        expect(counts.chat ?? 0).toBe(0)
+        expect(counts.messageChunks ?? 0).toBe(0)
+        expect((counts.messageChunk ?? 0) + (counts.message ?? 0)).toBeLessThanOrEqual(K + 1)
+    })
+
+    test('a message pushed onto a 1,000-message chat re-runs no chat and no spawn, and one chunk with its leaves', () => {
+        const { log } = setupLong(1000)
+
+        liveChat().message.push(longMessage(5000))
+        flushSync()
+
+        const counts = countsOf(log)
+        expect(counts.chat ?? 0).toBe(0)
+        expect(counts.messageChunks ?? 0).toBe(0)
+        expect(counts.messageChunk).toBe(1)
+        expect((counts.messageChunk ?? 0) + (counts.message ?? 0)).toBeLessThanOrEqual(K + 1)
+    })
+
+    test('a push does not re-snapshot a message outside the chunk that holds the new one', () => {
+        const { log } = setupLong(100)
+
+        liveChat().message.push(longMessage(5000))
+        flushSync()
+
+        expect(log.some((entry) => entry.kind === 'message' && entry.index === 0)).toBe(false)
+    })
+
+    test('a push across a non-doubling chunk boundary re-runs one chunk and one leaf, with no spawn and no chat', () => {
+        const { log } = setupLong(33 * K)
+
+        liveChat().message.push(longMessage(5000))
+        flushSync()
+
+        expect(countsOf(log)).toEqual({ messageChunk: 1, message: 1 })
+    })
+
+    test('64 pushes from 1,000 messages rebuild the chunk spawn at most once and never the chat', () => {
+        const { log } = setupLong(1000)
+
+        for (let i = 0; i < 64; i++) {
+            liveChat().message.push(longMessage(5000 + i))
+            flushSync()
+        }
+
+        const counts = countsOf(log)
+        expect(counts.chat ?? 0).toBe(0)
+        expect(counts.messageChunks ?? 0).toBeLessThanOrEqual(1)
+        expect(counts.message ?? 0).toBeLessThanOrEqual(3176)
+    })
+
+    // Delete-then-send at a capacity doubling point must not thrash: capacity only grows while the chat child lives.
+    test('pop then push at a capacity doubling point rebuilds neither the chunk spawn nor the chat', () => {
+        const { log } = setupLong(32 * K + 1)
+
+        for (let i = 0; i < 10; i++) {
+            liveChat().message.pop()
+            flushSync()
+            liveChat().message.push(longMessage(6000 + i))
+            flushSync()
+        }
+
+        const counts = countsOf(log)
+        expect(counts.messageChunks ?? 0).toBe(0)
+        expect(counts.chat ?? 0).toBe(0)
+        expect(counts.message ?? 0).toBeLessThanOrEqual(10)
+    })
+
+    // Compatibility guard: every mutation family fronts the character and marks it dirty.
+    describe('every mutation fronts the character and marks it dirty', () => {
+        const rows: Array<[string, () => void]> = [
+            ['push', () => { liveChat().message.push(longMessage(500)) }],
+            ['write first.data', () => { liveChat().message[0].data = 'e1' }],
+            ['write mid.generationInfo.model', () => { liveChat().message[50].generationInfo.model = 'zz' }],
+            ['write last.data', () => { const m = liveChat().message; m[m.length - 1].data = 'e3' }],
+            ['replace element 7', () => { liveChat().message[7] = longMessage(700) }],
+            ['replace element 40', () => { liveChat().message[40] = longMessage(740) }],
+            ['add property', () => { liveChat().message[45].newProp = 1 }],
+            ['delete property', () => { delete liveChat().message[45].newProp }],
+            ['splice front', () => { liveChat().message.splice(0, 1) }],
+            ['pop', () => { liveChat().message.pop() }],
+            ['truncate to K+1', () => { liveChat().message.length = K + 1 }],
+            ['pop across boundary', () => { liveChat().message.pop(); liveChat().message.pop() }],
+            ['push across boundary', () => { liveChat().message.push(longMessage(1)); liveChat().message.push(longMessage(2)) }],
+            ['write into new chunk', () => { liveChat().message[K].data = 'nc' }],
+            ['undefined element', () => { liveChat().message[3] = undefined }],
+            ['fill element', () => { liveChat().message[3] = longMessage(3) }],
+            ['chat field isStreaming true', () => { liveChat().isStreaming = true }],
+            ['chat field add key lastMemory', () => { liveChat().lastMemory = 'x1' }],
+            ['chat field change lastMemory', () => { liveChat().lastMemory = 'x2' }],
+            ['chat field deep scriptstate', () => { liveChat().scriptstate.$a = '1' }],
+            ['chat field delete key', () => { delete liveChat().lastMemory }],
+            ['alt push', () => { liveChat().alt.push(altRecord(1)) }],
+            ['alt deep write', () => { liveChat().alt[0].m.data = 'alt' }],
+            ['alt record mem write', () => { liveChat().alt[0].mem = { lastMemory: 'p' } }],
+            ['alt pop', () => { liveChat().alt.pop() }],
+            ['reroll shape', rerollShape],
+            ['switch shape', switchShape],
+            ['alt replace', () => { liveChat().alt = [] }],
+            ['alt delete key', () => { delete liveChat().alt }],
+            ['alt re-add via ??= and push', () => { liveChat().alt ??= []; liveChat().alt.push(altRecord(2)) }],
+            ['alt non-array value', () => { liveChat().alt = { bogus: 1 } }],
+            ['alt non-array deep', () => { liveChat().alt.bogus = 2 }],
+            ['alt back to array', () => { liveChat().alt = [altRecord(3)] }],
+            ['replace whole array', () => { liveChat().message = [longMessage(1), longMessage(2)] }],
+            ['push x70 after replace', () => { for (let i = 0; i < 70; i++) liveChat().message.push(longMessage(i)) }],
+            ['write index 40 after growth', () => { liveChat().message[40].generationInfo.model = 'g' }],
+            ['write index 70 after growth', () => { liveChat().message[70].data = 'g70' }],
+            ['push across capacity doubling to 4K+1', () => { while (liveChat().message.length < 4 * K + 1) liveChat().message.push(longMessage(9)) }],
+            ['write index 4K after doubling', () => { liveChat().message[4 * K].data = 'd' }],
+            ['truncate to 3', () => { liveChat().message.length = 3 }],
+            ['write index 2 after truncate', () => { liveChat().message[2].data = 't2' }],
+            ['regrow x40 inside capacity', () => { for (let i = 0; i < 40; i++) liveChat().message.push(longMessage(i)) }],
+            ['write index 42 after regrow', () => { liveChat().message[42].data = 'r42' }],
+            ['delete message key', () => { delete liveChat().message }],
+            ['re-add message key', () => { liveChat().message = [longMessage(1)] }],
+            ['write after re-add', () => { liveChat().message[0].data = 'ra' }],
+        ]
+
+        function failedRows(list: Array<[string, () => void]>, setup: ReturnType<typeof setupLong>): string[] {
+            const failed: string[] = []
+            for (const [name, write] of list) {
+                setup.tracker.character = [SENTINEL]
+                setup.markChanged.mockClear()
+                write()
+                flushSync()
+                if (setup.tracker.character[0] !== 'char-1' || !setup.markChanged.mock.calls.some((call) => call[0] === true)) {
+                    failed.push(name)
+                }
+            }
+            return failed
+        }
+
+        // The matrix's indices are chosen for 32-message chunks.
+        test('the chunk size the matrix indices assume', () => {
+            expect(K).toBe(32)
+        })
+
+        test('a chat with alternatives', () => {
+            expect(failedRows(rows, setupLong(2 * K + 5))).toEqual([])
+        })
+
+        // A shrink that leaves a chunk empty re-runs only that chunk's effect (no leaf is recreated), so the chunk's
+        // own front is the only thing that makes the save encoder re-encode the character.
+        test('pop the sole message of the last chunk', () => {
+            const setup = setupLong(K + 1)
+            expect(failedRows([['pop sole', () => { liveChat().message.pop() }]], setup)).toEqual([])
+            expect(setup.log.map((entry) => `${entry.kind}:${entry.index}`)).toEqual(['messageChunk:1'])
+        })
+
+        test('truncate to an exact chunk boundary', () => {
+            const setup = setupLong(2 * K + 5)
+            expect(failedRows([['truncate to 2K', () => { liveChat().message.length = 2 * K }]], setup)).toEqual([])
+        })
+
+        test('replace an alternative record in place', () => {
+            const setup = setupLong(10)
+            expect(failedRows([['alt record replace', () => { liveChat().alt[0] = altRecord(3) }]], setup)).toEqual([])
+        })
+
+        // Before its first reroll a chat has no `alt` key at all.
+        test('a chat that has no alternatives yet', () => {
+            const adds: Array<[string, () => void]> = [
+                ['reroll shape (adds alt)', rerollShape],
+                ['alt push after add', () => { liveChat().alt.push(altRecord(4)) }],
+            ]
+            expect(failedRows(adds, setupLong(2 * K + 5, false))).toEqual([])
+        })
+    })
+
+    test('a streamed token on a long chat re-runs one leaf and nothing else', () => {
+        const { log } = setupLong(1000)
+
+        const messages = liveChat().message
+        messages[messages.length - 1].data += '-token'
+        flushSync()
+
+        expect(countsOf(log)).toEqual({ message: 1 })
     })
 })
 
@@ -2253,11 +2647,14 @@ const customStorageEditStep: CounterStep = () => { (DBState.db.pluginCustomStora
 const messageAppendStep: CounterStep = () => {
     ((counterChars()[0].chats as Array<{ message: unknown[] }>)[0].message).push({ role: 'user', data: 'more' })
 }
+const chatLevelWriteStep: CounterStep = () => {
+    ((counterChars()[0].chats as Array<Record<string, unknown>>)[0]).lastMemory = 'memory'
+}
 const selectOtherStep: CounterStep = () => { selectedCharID.set(1) }
 const replaceOtherStep: CounterStep = () => { DBState.db.characters[2] = counterChar('C') as unknown as Database['characters'][number] }
 const replaceSelectedStep: CounterStep = () => { DBState.db.characters[0] = counterChar('A') as unknown as Database['characters'][number] }
-// Out-of-range chatPage: 6b-front throws between its onPartitionRun and its markChanged.
-const throwFrontStep: CounterStep = () => { counterChars()[0].chatPage = 5 }
+// Out-of-range chatPage: 6b-front fronts and marks but records no tracker.chat pair.
+const outOfRangePageStep: CounterStep = () => { counterChars()[0].chatPage = 5 }
 
 describe('registerDbChangeEffects — net-signal counters', () => {
     afterEach(() => {
@@ -2274,6 +2671,7 @@ describe('registerDbChangeEffects — net-signal counters', () => {
         ['identity replacement of a non-selected character', [replaceOtherStep]],
         ['identity replacement of the selected character', [replaceSelectedStep]],
         ['edit then in-place rename', [fieldEditStep, renameSelectedStep]],
+        ['out-of-range chatPage then module edit', [outOfRangePageStep, moduleEditStep]],
     ]
 
     // Compatibility guard: the wrappers are transparent. It passes with the switch off too; it fails if a wrapper
@@ -2352,40 +2750,28 @@ describe('registerDbChangeEffects — net-signal counters', () => {
         expect(on.runs).toEqual(off.runs)
     })
 
-    // T2f: the known leak. Each case starts from a front run that throws between its two calls.
-    describe('a front run that throws between its tag and its markChanged', () => {
-        test('then a module edit: booked as part (the documented leak), tagOverwritten stays 0', () => {
-            const on = runCounterScenario([throwFrontStep, moduleEditStep])
-            expect(on.steps[0].threw).toBe(true)
+    // The split chat pieces tag themselves before they mark, like every other partition piece: a message push and a
+    // chat-level write book part events for the selected character only, and no tag is left unconsumed.
+    test('a message push and a chat-level write book part events for the selected character only, with no stale tag', () => {
+        const on = runCounterScenario([messageAppendStep, chatLevelWriteStep])
+        expect(on.steps.map(step => step.threw)).toEqual([false, false])
+        for (const step of on.steps) {
+            expect(Object.keys(step.part)).toEqual(['A'])
+            expect(step.partGlobal).toBe(0)
+            expect(step.tagOverwritten).toBe(0)
+        }
+        expect(on.steps[1].part.A).toBeGreaterThan(on.steps[0].part.A)
+    })
+
+    // T2f: an out-of-range chatPage still reaches the front run's markChanged, so its tag never goes stale.
+    describe('a front run on an out-of-range chatPage', () => {
+        test('does not throw, books one part for A, and a following module edit books partGlobal with no stale tag', () => {
+            const on = runCounterScenario([outOfRangePageStep, moduleEditStep])
+            expect(on.steps.map(step => step.threw)).toEqual([false, false])
+            expect(on.steps[0].part).toEqual({ A: 1 })
             expect(on.steps[1].part).toEqual({ A: 1 })
+            expect(on.steps[1].partGlobal).toBe(1)
             expect(on.steps[1].tagOverwritten).toBe(0)
-            expect(on.steps[1].partGlobal).toBe(0)
-        })
-
-        test('then a field edit: tagOverwritten is 1', () => {
-            const on = runCounterScenario([throwFrontStep, fieldEditStep])
-            expect(on.steps[1].tagOverwritten).toBe(1)
-            expect(on.steps[1].part).toEqual({ A: 1 })
-        })
-
-        test('then a non-selected identity replacement: identity once and no part; the next global edit books partGlobal', () => {
-            const on = runCounterScenario([throwFrontStep, replaceOtherStep, moduleEditStep])
-            expect(on.steps[1].identity).toEqual({ C: 1 })
-            expect(on.steps[1].part).toEqual({})
-            expect(on.steps[2].partGlobal).toBe(1)
-        })
-
-        test.each([
-            ['module edit', [throwFrontStep, moduleEditStep]],
-            ['field edit', [throwFrontStep, fieldEditStep]],
-            ['identity replacement', [throwFrontStep, replaceOtherStep, moduleEditStep]],
-        ] as Array<[string, CounterStep[]]>)('saving behaviour is identical with the switch on and off: %s', (_name, steps) => {
-            const on = runCounterScenario(steps, { on: true })
-            const off = runCounterScenario(steps, { on: false })
-            expect(on.marks).toEqual(off.marks)
-            expect(on.tracker).toEqual(off.tracker)
-            expect(on.runs).toEqual(off.runs)
-            expect(on.steps.map(step => step.threw)).toEqual(off.steps.map(step => step.threw))
         })
     })
 })

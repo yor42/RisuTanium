@@ -11,7 +11,11 @@
     import BookmarkList from './lib/Others/BookmarkList.svelte';
     import SettingsSurface from './lib/SettingsShell/SettingsSurface.svelte';
     import { installSettingsOrigin } from './ts/settingsShell/settingsOrigin';
+    import { releaseSystemBarsAfterPaint } from './ts/gui/systemBars';
     import { studioOpen } from './ts/studio/studioOpen';
+    import { leaveStudio } from './ts/studio/studioBack.svelte';
+    import { backCloseHandler, registerBackHandler } from './ts/backHandlers';
+    import { get } from 'svelte/store';
     import { showRealmInfoStore } from './ts/characterCards';
     import { getDatabase, setDatabase } from './ts/storage/database.svelte';
     import { importDroppedFile } from './ts/dropImport';
@@ -80,8 +84,11 @@
     // A chunk that cannot load (offline, rotated after a deploy) must not leave Studio open with the chat
     // hidden and no screen: the visit is closed and the failure reported. The handler uses only App's static
     // flag: the subscription installed when the visit opened resets the visit state once the flag goes false, so
-    // the Studio state module is never imported here. A stale rejection only closes a visit whose chunk is also
-    // failing, because it is the same URL with the same outcome.
+    // no lazy import of the Studio state module is made here. That module is a static dependency of App through
+    // the Studio Back module, which is why such an import could not fail on its own; no test pins this. If that
+    // static import is dropped, for example by reverting the Back bridge below to a flag-only close, the rule is
+    // exposed again with no guard, and the throwing-mock test of the failure path must come back. A stale
+    // rejection only closes a visit whose chunk is also failing, because it is the same URL with the same outcome.
     const loadStudioScreen = async () => {
         try {
             return await import('./lib/Studio/StudioScreen.svelte')
@@ -92,6 +99,24 @@
             throw error
         }
     }
+
+    // While the flag is set the visit can be left with Back before the lazy chunk has mounted and registered
+    // Studio's own layers. The bridge ends the visit as Studio's top layer does. It registers when the flag
+    // rises, so it sits above every handler registered before the open and below Studio's layers, which register
+    // later, and it is released whenever the flag falls. The handler reads the store at press time.
+    $effect(() => {
+        if (!$studioOpen) return
+        return registerBackHandler(backCloseHandler({
+            isOpen: () => get(studioOpen),
+            snapshot: () => get(studioOpen),
+            close: leaveStudio,
+        }))
+    })
+
+    // The bars keep the boot canvas colour until the app has replaced the boot screen.
+    $effect(() => {
+        if ($loadedStore) releaseSystemBarsAfterPaint()
+    })
 
 </script>
 

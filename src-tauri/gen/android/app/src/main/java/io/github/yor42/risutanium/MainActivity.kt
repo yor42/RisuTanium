@@ -43,6 +43,9 @@ class MainActivity : TauriActivity() {
   // The message channel's handler while the channel is in use; main thread only.
   private var hostListener: HostMessageListener? = null
 
+  // The chat a notification tap named, held until the page asks for it; main thread only.
+  private var pendingTarget: NoticeTarget? = null
+
   private val replyNotifier by lazy { ReplyNotifier(applicationContext) }
 
   // Registered in the initializer, before the activity starts, as the result API requires.
@@ -141,9 +144,23 @@ class MainActivity : TauriActivity() {
 
     // A file the app was started with. A restored instance and a relaunch from the recents list
     // carry the intent that started the earlier instance, whose file was already handled.
+    // A notification tap is held under the same rule, so a relaunch from the recents list or a
+    // recreation never opens the chat again.
     if (savedInstanceState == null && (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) == 0) {
       OpenedFilesBridge.enqueue(intent)
+      pendingTarget = targetOfIntent(intent)
     }
+  }
+
+  // The intent comes from outside the app (the activity is exported); a read that throws is no target.
+  private fun targetOfIntent(source: Intent): NoticeTarget? =
+    targetFromIntent({ source.action }, { name -> source.getStringExtra(name) })
+
+  // The page asked for the pending target: it is answered once, with null when there is none.
+  private fun answerOpenTarget() {
+    val target = pendingTarget
+    pendingTarget = null
+    callPage("window.__risuTaniumLaunchTarget?.(${encodeChatTarget(target)})")
   }
 
   // A file opened or shared while the app is running (singleTask delivers it here). The queue
@@ -153,6 +170,12 @@ class MainActivity : TauriActivity() {
     setIntent(intent)
     OpenedFilesBridge.enqueue(intent)
     callPage("window.__risuTaniumOpenedFiles?.()")
+    // A later intent that names no chat leaves an earlier, unanswered target alone.
+    val target = targetOfIntent(intent)
+    if (target != null) {
+      pendingTarget = target
+      callPage("window.__risuTaniumLaunchTargetReady?.()")
+    }
   }
 
   // A configuration recreation leaves the superseded WebView alive and running next to the
@@ -172,7 +195,7 @@ class MainActivity : TauriActivity() {
         gestureInsets,
         imeState,
         SystemBarsBridge(::applyBarColor),
-        KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce),
+        KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce, ::answerOpenTarget),
         newReplyNotificationsBridge(),
         OpenedFilesBridge(contentResolver)
       )
@@ -263,7 +286,7 @@ class MainActivity : TauriActivity() {
     webView.addJavascriptInterface(ImeBridge(imeState), "__risuTaniumIme")
     webView.addJavascriptInterface(SystemBarsBridge(::applyBarColor), "__risuTaniumSystemBars")
     webView.addJavascriptInterface(
-      KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce),
+      KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce, ::answerOpenTarget),
       "__risuTaniumKeepAlive"
     )
     webView.addJavascriptInterface(newReplyNotificationsBridge(), "__risuTaniumReplyNotificationsHost")
@@ -450,8 +473,8 @@ class MainActivity : TauriActivity() {
     // A main thread busy for longer than this makes Back exit instead of closing the overlay.
     private const val BACK_TIMEOUT_MS = 1000L
 
-    // The default dark scheme's background, as the page's fallback colour is.
-    private const val DEFAULT_BAR_COLOR = 0xFF282A36.toInt()
+    // The launch canvas (the nexus-canvas token), shared with the splash and WebView base colours until the page reports its scheme.
+    private const val DEFAULT_BAR_COLOR = 0xFF00011C.toInt()
 
     // The navigation-bar rule for the system day/night mode applies from this API level.
     private const val BAR_RULE_API = 35

@@ -1,5 +1,6 @@
 <script lang="ts">
     import { LayoutGridIcon, UsersIcon } from "@lucide/svelte";
+    import { untrack } from "svelte";
     import { language } from "src/lang";
     import type { Database } from "src/ts/storage/database.svelte";
     import CharListAvatar from "../../Others/CharListAvatar.svelte";
@@ -20,13 +21,34 @@
 
     let { characters, current, layout, onpick, onall }: Props = $props();
 
+    let stripEl: HTMLDivElement | undefined = $state();
+    // Focus on an avatar follows its character across a replace or reorder of the strip, and
+    // focus that went elsewhere is never taken back. Svelte moves and removes avatar nodes while it
+    // reconciles, which drops focus to the body. Plain variable: it only hands the captured id from
+    // `shown` to the refocus in the same flush, and must not schedule either effect itself.
+    let refocusChaId: string | null = null;
+
+    function focusedAvatarId(): string | null {
+        const active = document.activeElement;
+        const avatar = active instanceof HTMLElement && stripEl?.contains(active) ? active.closest<HTMLElement>('[data-part="strip-avatar"]') : null;
+        return avatar?.dataset.chaId ?? null;
+    }
+
     const slots = $derived(layout === 'docked' ? 4 : 5);
     const shown = $derived.by(() => {
         const first = characters.slice(0, slots);
-        if (!current || first.includes(current) || !characters.includes(current)) {
-            return first;
-        }
-        return first.length < slots ? [...first, current] : [...first.slice(0, slots - 1), current];
+        const list = !current || first.includes(current) || !characters.includes(current)
+            ? first
+            : first.length < slots ? [...first, current] : [...first.slice(0, slots - 1), current];
+        // Deliberate side effect: the focused avatar is remembered while the list is computed, because
+        // the markup reads `shown` before it touches the DOM in both schedulers, whereas an
+        // `$effect.pre` runs after the block update under the async scheduler and sees focus already
+        // dropped. This holds while: `activeElement` and `stripEl` are read untracked, so the
+        // capture adds no dependency; a single batch computes `shown` once per update, so no second
+        // evaluation can run after the DOM changed (a markup `await`, an async derived or `fork()`
+        // here would need the capture revisited); and the effect below consumes and clears the id.
+        refocusChaId = untrack(focusedAvatarId);
+        return list;
     });
     const showNames = $derived(layout !== 'follow');
 
@@ -34,20 +56,6 @@
         const name = entry.name || language.settingsPage.unnamed;
         return entry.type === 'group' ? language.chatShellGroupName(name) : name;
     }
-
-    let stripEl: HTMLDivElement | undefined = $state();
-    // Focus on an avatar follows its character across a replace or reorder of the strip, and
-    // focus that went elsewhere is never taken back. Svelte moves and removes avatar nodes while it
-    // reconciles, which drops focus to the body. Plain variable: it only hands the captured id from
-    // the capture to the refocus in the same flush, and must not schedule either effect itself.
-    let refocusChaId: string | null = null;
-
-    $effect.pre(() => {
-        void shown;
-        const active = document.activeElement;
-        const avatar = active instanceof HTMLElement && stripEl?.contains(active) ? active.closest<HTMLElement>('[data-part="strip-avatar"]') : null;
-        refocusChaId = avatar?.dataset.chaId ?? null;
-    });
 
     $effect(() => {
         void shown;

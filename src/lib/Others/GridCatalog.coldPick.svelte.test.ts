@@ -18,11 +18,18 @@
  * - C14-C15: an archived group member keeps the group pick waiting; the marker survives the install
  *   replacing the slot object.
  * - W1, E1 (guards): a warm pick closes synchronously with no marker; edit mode only toggles the pick.
+ * - G1: a warm pick whose `changeChar` rejects closes the grid at once, shows the could-not-load
+ *   notice once, records `grid.pick` and leaves no unhandled rejection. It is reported
+ *   unconditionally: a warm `changeChar` throws before any await, so nothing newer can start first.
+ * - G2: a warm pick ends a pending cold pick first; the overtaken cold pick's later throw is
+ *   recorded but shows no notice.
+ * - G3: when both throw there is exactly one notice, with the real generation counter moving.
  *
  * MOCKED: the module set of `GridCatalog.shellPick.svelte.test.ts` (same directory); `changeChar` is a
  * deferred promise the test settles, `supersedeChangeChar`, the two alerts and the caught-error record
  * are spies, and the shell switch is a flag held off. A `selected` settlement writes the selection
- * before it resolves, like the real one. There are no timing values: only ordering and counts.
+ * before it resolves, like the real one. There are no timing values: only ordering and counts. G3
+ * wires the real generation counter through the spies.
  *
  * Tests whose title starts with `guard:` pass with or without a defect (compatibility).
  */
@@ -45,12 +52,14 @@ vi.mock('localforage', () => ({
     },
 }))
 
-const { changeCharSpy, supersedeSpy, alertNormalSpy, alertErrorSpy, recordErrorSpy } = vi.hoisted(() => ({
+const { changeCharSpy, supersedeSpy, alertNormalSpy, alertErrorSpy, recordErrorSpy, realSupersede } = vi.hoisted(() => ({
     changeCharSpy: vi.fn(),
     supersedeSpy: vi.fn(),
     alertNormalSpy: vi.fn(),
     alertErrorSpy: vi.fn(),
     recordErrorSpy: vi.fn(),
+    // The real `supersedeChangeChar`, for the tests that move the real generation counter.
+    realSupersede: { fn: null as null | (() => void) },
 }))
 
 vi.mock(
@@ -145,6 +154,7 @@ vi.mock(import('../../ts/stores.svelte'), () => {
 
 vi.mock(import('../../ts/characters'), async (importOriginal) => {
     const actual = await importOriginal()
+    realSupersede.fn = actual.supersedeChangeChar
     return {
         ...actual,
         changeChar: changeCharSpy,
@@ -187,6 +197,7 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 312 })
 
 import { DBState, selectedCharID } from '../../ts/stores.svelte'
+import { changeCharGeneration } from '../../ts/characters'
 import { doingChat } from '../../ts/process/index.svelte'
 import { isWriting, registerWork } from '../../ts/process/chatOrigin'
 import * as shellSwitchModule from '../../ts/chatShell/shellSwitch.svelte'
@@ -754,6 +765,114 @@ describe('GridCatalog: picks that never wait', { timeout: 60_000 }, () => {
             expect(changeCharSpy).not.toHaveBeenCalled()
             expect(endGrid).not.toHaveBeenCalled()
             expect(busyCount(target)).toBe(0)
+        })
+    })
+})
+
+describe('GridCatalog: a warm pick whose changeChar throws', { timeout: 60_000 }, () => {
+    // Node reports an unhandled rejection after the microtask queue drains, so a check needs a macrotask first.
+    const nextMacrotask = (): Promise<void> => new Promise<void>((resolve) => setTimeout(resolve, 0))
+    let unhandled: unknown[] = []
+    const onUnhandled = (reason: unknown): void => { unhandled.push(reason) }
+
+    beforeEach(() => {
+        unhandled = []
+        process.on('unhandledRejection', onUnhandled)
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+        process.off('unhandledRejection', onUnhandled)
+    })
+
+    test('G1: the grid closes at once, the notice shows once, grid.pick is recorded and nothing is left unhandled', async () => {
+        DBState.db = buildDb([makeCharacter('a', 'Ann'), makeCharacter('b', 'Bob')])
+        const endGrid = vi.fn()
+        const error = new Error('format failed')
+        changeCharSpy.mockImplementationOnce(() => Promise.reject(error))
+
+        await withMounted(endGrid, async (target) => {
+            clickLayoutButton(target, 0)
+            tiles(target)[1].click()
+            expect(endGrid).toHaveBeenCalledTimes(1)
+            expect(changeCharSpy.mock.calls).toEqual([[1]])
+            expect(supersedeSpy).not.toHaveBeenCalled()
+
+            await settle()
+            expect(alertErrorSpy).toHaveBeenCalledTimes(1)
+            expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+            expect(recordErrorSpy).toHaveBeenCalledWith('grid.pick', error)
+            await nextMacrotask()
+            expect(unhandled).toEqual([])
+            expect(markCount(target)).toBe(0)
+            expect(endGrid).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    test('G2: a warm pick ends a pending cold pick; the cold pick throwing later is recorded and shows no notice', async () => {
+        DBState.db = buildDb([makeCharacter('a', 'Ann'), upstreamStub('b', 'Bob')])
+        const endGrid = vi.fn()
+        const error = new Error('read failed')
+
+        await withMounted(endGrid, async (target) => {
+            clickLayoutButton(target, 0)
+            tiles(target)[1].click()
+            await settle()
+            expect(markCount(target)).toBe(1)
+
+            tiles(target)[0].click()
+            flushSync()
+            expect(markCount(target)).toBe(0)
+            expect(supersedeSpy).toHaveBeenCalledTimes(1)
+            expect(endGrid).toHaveBeenCalledTimes(1)
+
+            calls[0].fail(error)
+            await settle()
+            expect(recordErrorSpy).toHaveBeenCalledWith('grid.pick', error)
+            expect(alertErrorSpy).not.toHaveBeenCalled()
+            expect(endGrid).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    test('G3: when the warm pick and the pending cold pick both throw there is exactly one notice, with the real generation counter moving', async () => {
+        DBState.db = buildDb([makeCharacter('a', 'Ann'), upstreamStub('b', 'Bob')])
+        const endGrid = vi.fn()
+        const warmError = new Error('format failed')
+        const coldError = new Error('read failed')
+        // Like the real producer: every call bumps the counter first, and a supersede bumps it too.
+        supersedeSpy.mockImplementation(() => realSupersede.fn!())
+        const deferred = changeCharSpy.getMockImplementation()!
+        changeCharSpy.mockImplementation((index: number) => {
+            realSupersede.fn!()
+            return deferred(index)
+        })
+
+        await withMounted(endGrid, async (target) => {
+            clickLayoutButton(target, 0)
+            tiles(target)[1].click()
+            await settle()
+            expect(markCount(target)).toBe(1)
+
+            // The cold click's own bump is already counted here, so the difference below is only this pick's.
+            const g0 = changeCharGeneration()
+            changeCharSpy.mockImplementationOnce(() => {
+                realSupersede.fn!()
+                return Promise.reject(warmError)
+            })
+            tiles(target)[0].click()
+            await settle()
+            expect(alertErrorSpy).toHaveBeenCalledTimes(1)
+            expect(alertErrorSpy).toHaveBeenCalledWith(language.errors.coldStorageRestoreUnreadable)
+            expect(recordErrorSpy).toHaveBeenCalledWith('grid.pick', warmError)
+            // Fixture self-check: the drop's supersede and the call's own bump both ran, so the counter really moved.
+            expect(changeCharGeneration() - g0).toBe(2)
+
+            calls[0].fail(coldError)
+            await settle()
+            expect(alertErrorSpy).toHaveBeenCalledTimes(1)
+            expect(recordErrorSpy).toHaveBeenCalledWith('grid.pick', coldError)
+            await nextMacrotask()
+            expect(unhandled).toEqual([])
         })
     })
 })

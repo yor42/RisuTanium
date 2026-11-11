@@ -57,12 +57,16 @@ export function cssColorToRgb(value: string): Rgb {
     }
 }
 
-/**
- * Tells the Android host which colour the page's background is, so the bars around the page
- * match the scheme. A no-op where the host bridge is absent (web, desktop, iOS); a failing
- * host never breaks the colour scheme change that called this.
- */
-export function syncSystemBars(color: string): void {
+// From page load until the boot screen hands over, the host keeps its own boot colour on the bars,
+// so a colour the page applies meanwhile is only remembered; the last one wins. The release sends
+// it once, after the frame that paints the app has gone out, so the bars never change while the
+// boot screen is still visible. The wait is approximate and only ever later than that frame,
+// never earlier. Afterwards every colour goes straight to the host.
+let released = false
+let held: string | null = null
+let releaseScheduled = false
+
+function sendToHost(color: string): void {
     try {
         const bridge = systemBarsHost()
         if (!bridge || typeof bridge.setBackground !== 'function') {
@@ -74,4 +78,52 @@ export function syncSystemBars(color: string): void {
     } catch {
         // The bars keep their previous colour.
     }
+}
+
+/**
+ * Tells the Android host which colour the page's background is, so the bars around the page
+ * match the scheme. Before the boot hand-over the colour is only held (see `releaseSystemBars`).
+ * A no-op where the host bridge is absent (web, desktop, iOS); a failing host never breaks the
+ * colour scheme change that called this.
+ */
+export function syncSystemBars(color: string): void {
+    if (!released) {
+        held = color
+        return
+    }
+    sendToHost(color)
+}
+
+/** Ends the hold: sends the last held colour once, if any; later calls do nothing. */
+export function releaseSystemBars(): void {
+    if (released) {
+        return
+    }
+    released = true
+    const color = held
+    held = null
+    if (color !== null) {
+        sendToHost(color)
+    }
+}
+
+/** Releases the hold after the frame that follows this call has painted; only the first call schedules. */
+export function releaseSystemBarsAfterPaint(): void {
+    if (releaseScheduled) {
+        return
+    }
+    releaseScheduled = true
+    // Resolved at call time so a missing or replaced requestAnimationFrame is honoured.
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => { setTimeout(releaseSystemBars, 0) })
+    } else {
+        setTimeout(releaseSystemBars, 0)
+    }
+}
+
+/** Returns the hold to its page-load state. */
+export function resetSystemBarsForTests(): void {
+    released = false
+    held = null
+    releaseScheduled = false
 }

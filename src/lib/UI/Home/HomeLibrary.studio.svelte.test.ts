@@ -2,8 +2,8 @@
 
 /**
  * `HomeLibrary.svelte`, Open in Studio from the library (stage G2). HomeLibrary is the one host that
- * passes the `studio` prop to `GridCatalog`, wired to `homeStudioAvailable` and `openStudioFromHome`
- * (T14, T15, T17); the library reopens on the remembered tab after a visit (T18, the real `gridMemory`);
+ * passes the `studio` prop to `GridCatalog`, wired to `homeStudioAvailable` and `startStudioFromHome`
+ * (T14, T15, T17); the library cancels a pending open when it unmounts (`cancelHomeStudioOpen`, T37a); the library reopens on the remembered tab after a visit (T18, the real `gridMemory`);
  * and a mounted library takes the return-focus request that ends a visit and focuses the character's
  * control, else the library Back button, never `body` (T19).
  *
@@ -32,10 +32,11 @@ vi.mock('localforage', () => ({
     },
 }))
 
-const { changeCharSpy, availableSpy, openSpy } = vi.hoisted(() => ({
+const { changeCharSpy, availableSpy, openSpy, cancelSpy } = vi.hoisted(() => ({
     changeCharSpy: vi.fn(),
     availableSpy: vi.fn<(slot: unknown) => boolean>(),
     openSpy: vi.fn<(index: number, opener: HTMLElement) => boolean>(),
+    cancelSpy: vi.fn<() => void>(),
 }))
 
 vi.mock(
@@ -146,7 +147,8 @@ vi.mock(import('../../../ts/media/avatarThumb'), async (importOriginal) => {
 
 vi.mock(import('./homeStudio.svelte'), () => ({
     homeStudioAvailable: availableSpy,
-    openStudioFromHome: openSpy,
+    startStudioFromHome: openSpy,
+    cancelHomeStudioOpen: cancelSpy,
     resetHomeStudioForTests: vi.fn(),
 }) as unknown as typeof import('./homeStudio.svelte'))
 
@@ -200,6 +202,7 @@ async function settle(): Promise<void> {
         flushSync()
         await Promise.resolve()
     }
+    await tick()
     flushSync()
 }
 
@@ -253,6 +256,7 @@ beforeEach(() => {
     availableSpy.mockReturnValue(true)
     openSpy.mockReset()
     openSpy.mockReturnValue(true)
+    cancelSpy.mockReset()
     showHomeLanding()
     // A request left over from another test must not reach this one.
     takeHomeReturnFocus()
@@ -320,6 +324,21 @@ describe('HomeLibrary: the studio controls', { timeout: 60_000 }, () => {
             await settle()
             expect(studioButtons(target)).toEqual([])
         })
+    })
+})
+
+describe('HomeLibrary: an open still loading', { timeout: 60_000 }, () => {
+    test('(F) T37a unmounting the library cancels the pending open once, and mounting or using it cancels nothing', async () => {
+        const library = await mountLibrary()
+        clickButton(library.target, language.simple)
+        await settle()
+        studioButtons(library.target)[0].click()
+        await settle()
+        expect(cancelSpy).not.toHaveBeenCalled()
+
+        await library.close()
+
+        expect(cancelSpy).toHaveBeenCalledTimes(1)
     })
 })
 

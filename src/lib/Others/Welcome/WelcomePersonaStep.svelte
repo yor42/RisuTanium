@@ -1,6 +1,6 @@
 <script lang="ts">
     import { language } from 'src/lang'
-    import { getCharImage } from 'src/ts/characters'
+    import { useCharImageLookups } from 'src/ts/media/charImageLookups'
     import { createEnterKeyController } from 'src/ts/chatShell/enterKey'
     import { selectUserImg } from 'src/ts/persona'
     import { DBState } from 'src/ts/stores.svelte'
@@ -8,6 +8,9 @@
 
     /** `persona` for stories and both (name, description, picture); `nickname` for tools (a yes or no, then a nickname). */
     let { flow, mode }: { flow: WelcomeFlow, mode: 'persona' | 'nickname' } = $props()
+
+    // The picture keeps one hold until the step goes away.
+    const lookups = useCharImageLookups()
 
     // The name and nickname inputs never coexist, so one controller serves whichever is mounted.
     const enter = createEnterKeyController()
@@ -32,7 +35,7 @@
 
     <div class="mt-4 flex items-center gap-4">
         {#if flow.keepPicture && DBState.db.userIcon !== ''}
-            {#await getCharImage(DBState.db.userIcon, 'css')}
+            {#await lookups.get('user', DBState.db.userIcon, 'css')}
                 <div class="rounded-md h-20 w-20 shrink-0 bg-darkbg"></div>
             {:then style}
                 <div class="rounded-md h-20 w-20 shrink-0 bg-darkbg" style={style ?? undefined} data-persona-picture></div>

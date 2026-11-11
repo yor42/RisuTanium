@@ -25,7 +25,8 @@
  * it names is missing.
  */
 
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { writable } from 'svelte/store'
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import type { Database } from '../../ts/storage/database.svelte'
@@ -186,7 +187,7 @@ function mountAlertComp(): HTMLElement {
 
 async function settle(): Promise<void> {
     flushSync()
-    await tick()
+    await tickFake()
     flushSync()
     await Promise.resolve()
 }

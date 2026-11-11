@@ -9,8 +9,8 @@ import { startKeepAliveService } from "./ts/android/keepAliveService";
 import { flushPageBeforeLeaving, startSaveOnHide } from "./ts/process/saveOnHide";
 import { mount } from "svelte";
 import { installBackGuard } from "./ts/backHandlers";
-import { alertToast } from "./ts/alert";
-import { language } from "./lang";
+import QuitPill from "./lib/Nexus/pattern/QuitPill.svelte";
+import { hideQuitPill, showQuitPill } from "./ts/quitPill.svelte";
 import { registerStore2Boot } from "./ts/storage/store2/bootActive";
 import { dispatchStore2Boot } from "./ts/storage/store2/bootDispatch";
 import { markerOwnerProbeFor } from "./ts/storage/store2/abandonedMarker";
@@ -26,8 +26,11 @@ preLoadCheck()
 let app = mount(App, {
     target: document.getElementById("app"),
 });
+// A second root, so the quit pill's live region is mounted for the page's whole life without touching the app root.
+mount(QuitPill, { target: document.body });
 installBackGuard({
-    showToast: () => alertToast(language.alerts.pressBackAgainToQuit),
+    showToast: showQuitPill,
+    hideToast: hideQuitPill,
     flush: flushPageBeforeLeaving,
 })
 // The import flow is loaded on first use: a boot that never imports does not load the backup code.

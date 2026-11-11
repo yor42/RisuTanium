@@ -26,11 +26,19 @@ export interface DbChangeEffectOptions {
      * body, so a test can count how many times each partition piece re-runs
      * without that count being observable through `tracker`/`markChanged`
      * (e.g. "a chatPage change creates no message children", "replacing chat
-     * i re-runs only chat i's child"). `index` is the array index for the
-     * 'chat', 'message' and 'alt' kinds, and is omitted otherwise.
+     * i re-runs only chat i's child"). `index` is the chat's array index for
+     * the 'chat', 'chatFields', 'alts' and 'messageChunks' kinds, the chunk
+     * number for 'messageChunk', and the array index for 'message' and 'alt';
+     * it is omitted otherwise.
      */
-    onPartitionRun?: (kind: 'front' | 'char' | 'field' | 'chats' | 'chat' | 'message' | 'alt', index?: number) => void
+    onPartitionRun?: (kind: 'front' | 'char' | 'field' | 'chats' | 'chat' | 'chatFields' | 'alts' | 'messageChunks' | 'messageChunk' | 'message' | 'alt', index?: number) => void
 }
+
+/**
+ * How many consecutive messages of the selected chat share one chunk effect. A chunk re-runs when its own message count
+ * changes, so a push recreates at most this many message leaves instead of all of the chat's.
+ */
+export const MESSAGE_CHUNK_SIZE = 32
 
 /** The identity tracker's "already seen" set of the latest registration; null before one exists. */
 let markSeen: ((object: object) => void) | null = null
@@ -205,13 +213,34 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
     // every index (clone.js:73-78), never the array's own `version`.
     //
     // The partition below reads exactly that same set, split across smaller
-    // effects: `Object.keys(chat)` (+ a snapshot of every value except
-    // `message`) reproduces a chat's version/keys/values dependency;
+    // effects. The rule: an effect that creates children reads only what
+    // decides the SET of children; every value that merely needs marking is
+    // read by a leaf effect, so a write to it re-runs that leaf alone.
+    //   - chatFields (per chat) owns the chat's key set and every non-message,
+    //     non-alt value: `Object.keys(chat)` (+ a snapshot of every value
+    //     except `message` and `alt`) reproduces a chat's version/keys/values
+    //     dependency. Through the proxy's descriptor trap it also re-runs on a
+    //     `message` or `alt` identity change; that is an extra mark, never a
+    //     narrowing.
+    //   - alts (per chat) owns `alt`: its identity, its length and its records
+    //     (one child per record), or the whole value when it is not a list.
+    //   - the per-chat child owns `chats[i]` and the `message` identity, and
+    //     creates the three effects above and below.
+    //   - messageChunks (per chat) owns the chunk capacity, and a chunk owns
+    //     its own message count: together they reproduce `message.length`.
+    //     The capacity only grows (by doubling) while the per-chat child
+    //     lives and resets with it, and it is never below
+    //     ceil(length / MESSAGE_CHUNK_SIZE). Growing only, not shrinking with
+    //     the length, keeps a delete-then-send at a doubling point from
+    //     rebuilding the family every time. The capacity derived writes only a
+    //     closure variable (not `$state`) and is idempotent and monotone. A
+    //     derived is read by a child effect, never by its declaring effect,
+    //     and every effect that recreates children marks on its own re-run.
+    //   - leaves own `message[j]` (array case) and the malformed non-array
+    //     case is `$state.snapshot(message)` in the per-chat child.
     // `chats.length` + `chats[i]` on the shape effect and its per-index
-    // children reproduce the chats array's length/index dependency;
-    // `message.length` + `message[j]` (array case) or
-    // `$state.snapshot(message)` (malformed non-array case) reproduce the
-    // message-level dependency the same way. Partition, never narrow.
+    // children reproduce the chats array's length/index dependency.
+    // Partition, never narrow.
     //
     // Duplicate ids: none of the pieces below de-duplicate their
     // front-unshift against ids the identity tracker (or
@@ -223,7 +252,7 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
     // not deleted.
     //
     // Every effect below (front, char outer, field children, chats-shape,
-    // per-chat, per-message) independently does the SAME front-unshift of
+    // per-chat, chatFields, alts, chunk spawn, chunk, per-message) independently does the SAME front-unshift of
     // the selected chaId, then calls `markChanged(ownRanOnce)` -- exactly
     // the modules-partition effect's convention above: children created
     // fresh always pass `false` on their first run, so a SHAPE change (a
@@ -231,14 +260,15 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
     // itself replaced) is covered by the parent's own `markChanged(true)`,
     // never by a recreated child's first run.
     //
-    // Decision on `chats[chatPage].id`: reading
-    // `characters[selIdState]?.chats[...chatPage].id` WITHOUT `?.` on the
-    // `chats` element itself means -- if `chats[chatPage]` is undefined (an
-    // out-of-range or empty `chats`), `.id` throws. That is preserved below,
-    // even though the read is split into local variables: still no `?.` on
-    // that element, so it throws in the same cases. Adding `?.` would
-    // silently change behaviour from "throws today" to "never throws" for a
-    // case this file does not otherwise handle.
+    // The active chat is read with optional reads. When `chatPage` names no
+    // chat (out of range, an empty list or no list), 6b-front still fronts
+    // the selected chaId and calls `markChanged`, because it is the only
+    // piece that tracks `chatPage` and a `chatPage` write must be marked. It
+    // records no `tracker.chat` pair, because there is no chat id to name. A
+    // throw here would abort the effect flush and leave the tracking effects
+    // queued after it dead for the page load. The tracked reads are the
+    // in-range reads up to the missing element: a missing index still gets a
+    // source, so filling it or moving `chatPage` back reruns this effect.
     //
     // chaId re-read at fronting time, not captured: only 6b-front lists
     // `chaId` itself as a tracked read (it needs the CURRENT
@@ -273,11 +303,11 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
 
     // 6b-front: the only piece that reads `chatPage` as a tracked dependency,
     // and the only piece that writes `tracker.chat`. It also reads `chaId`
-    // and `chats[chatPage].id`, but those two are not unique to this effect:
+    // and the active chat's `id` when there is one, but those two are not unique to this effect:
     // the `chaId` field child (in 6b-char below) tracks `chaId` through its
     // own generic `$state.snapshot(char[key])` read, and the per-chat child
-    // for index `chatPage` reads that chat's `id` as part of its own
-    // `Object.keys(chat)` snapshot. Kept separate so a `chatPage` change
+    // for index `chatPage` has its `chatFields` child read that chat's `id` as
+    // part of its own `Object.keys(chat)` snapshot. Kept separate so a `chatPage` change
     // (switching the active chat) never rebuilds any message child.
     let frontRanOnce = false
     $effect(() => {
@@ -288,11 +318,15 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
             frontUnshiftSelected(char)
             const chats = char.chats
             const chatPage = char.chatPage
-            if (
-                opts.tracker.chat[0]?.[0] !== chaId ||
-                opts.tracker.chat[0]?.[1] !== chats[chatPage].id
-            ) {
-                opts.tracker.chat.unshift([chaId, chats[chatPage].id])
+            const activeChat = chats?.[chatPage]
+            if (activeChat) {
+                const chatId = activeChat.id
+                if (
+                    opts.tracker.chat[0]?.[0] !== chaId ||
+                    opts.tracker.chat[0]?.[1] !== chatId
+                ) {
+                    opts.tracker.chat.unshift([chaId, chatId])
+                }
             }
         }
         opts.markChanged(frontRanOnce)
@@ -372,61 +406,118 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
                         opts.onPartitionRun?.('chat', i)
                         const chat = chats[i]
                         if (chat) {
+                            // The chat's own values live in a child of their
+                            // own, so a chat-level write (a streaming flag,
+                            // memory fields, chat variables) re-runs this
+                            // child alone and never rebuilds the alternatives
+                            // or the message family below.
+                            //
                             // Object.keys so the read matches the
                             // closure-equivalence argument above exactly (verified
                             // against Svelte 5.55.1): it goes through the proxy's
                             // `ownKeys` trap (key set / `version` dependency) AND,
                             // per key, the `getOwnPropertyDescriptor` trap
                             // (proxy.js:201-206), which additionally subscribes to
-                            // that key's VALUE source -- unlike the 6b-char
-                            // outer effect above, that extra per-key value
-                            // subscription is harmless here: this child
-                            // already deep-reads every key's value itself
-                            // (via `$state.snapshot(chat[key])` below, plus
-                            // `chat.message` separately), so it costs
-                            // nothing to also depend on those same values
-                            // through the descriptor trap.
-                            for (const key of Object.keys(chat)) {
-                                if (key !== 'message' && key !== 'alt') {
-                                    $state.snapshot(chat[key])
+                            // that key's VALUE source -- so this child also
+                            // re-runs when `message` or `alt` is replaced. That
+                            // is an extra mark, never a narrowing: the
+                            // per-chat child and the alternatives effect
+                            // rebuild their own subtrees on the same change.
+                            let fieldsRanOnce = false
+                            $effect(() => {
+                                opts.onPartitionRun?.('chatFields', i)
+                                for (const key of Object.keys(chat)) {
+                                    if (key !== 'message' && key !== 'alt') {
+                                        $state.snapshot(chat[key])
+                                    }
                                 }
-                            }
+                                frontUnshiftSelected(char)
+                                opts.markChanged(fieldsRanOnce)
+                                fieldsRanOnce = true
+                            })
                             // The alternatives are partitioned like the
                             // messages: a write inside one record re-runs
                             // only that record's child, and a replaced or
                             // resized list re-runs this effect through the
-                            // reads of `chat.alt` and its length. A value
-                            // that is not a list is snapshotted whole, so
-                            // narrowing never drops what it holds.
-                            const alt = chat.alt
-                            if (Array.isArray(alt)) {
-                                const alen = alt.length
-                                for (let k = 0; k < alen; k++) {
-                                    let altRanOnce = false
-                                    $effect(() => {
-                                        opts.onPartitionRun?.('alt', k)
-                                        $state.snapshot(alt[k])
-                                        frontUnshiftSelected(char)
-                                        opts.markChanged(altRanOnce)
-                                        altRanOnce = true
-                                    })
+                            // reads of `chat.alt` and its length, without
+                            // touching the chat's other values or its
+                            // messages. A value that is not a list is
+                            // snapshotted whole, so narrowing never drops
+                            // what it holds.
+                            let altsRanOnce = false
+                            $effect(() => {
+                                opts.onPartitionRun?.('alts', i)
+                                const alt = chat.alt
+                                if (Array.isArray(alt)) {
+                                    const alen = alt.length
+                                    for (let k = 0; k < alen; k++) {
+                                        let altRanOnce = false
+                                        $effect(() => {
+                                            opts.onPartitionRun?.('alt', k)
+                                            $state.snapshot(alt[k])
+                                            frontUnshiftSelected(char)
+                                            opts.markChanged(altRanOnce)
+                                            altRanOnce = true
+                                        })
+                                    }
+                                } else {
+                                    $state.snapshot(alt)
                                 }
-                            } else {
-                                $state.snapshot(alt)
-                            }
+                                frontUnshiftSelected(char)
+                                opts.markChanged(altsRanOnce)
+                                altsRanOnce = true
+                            })
                             const message = chat.message
                             if (Array.isArray(message)) {
-                                const mlen = message.length
-                                for (let j = 0; j < mlen; j++) {
-                                    let msgRanOnce = false
-                                    $effect(() => {
-                                        opts.onPartitionRun?.('message', j)
-                                        $state.snapshot(message[j])
-                                        frontUnshiftSelected(char)
-                                        opts.markChanged(msgRanOnce)
-                                        msgRanOnce = true
-                                    })
-                                }
+                                // The messages are chunked so a push recreates
+                                // one chunk's leaves, not the whole chat's.
+                                // `capacity` is the number of chunk effects:
+                                // never below ceil(length / chunk size), and
+                                // doubled (never halved) while this child
+                                // lives. It writes only a closure variable, so
+                                // it creates no reactive write in an effect;
+                                // the spawn effect reads it and re-runs only
+                                // when it grows.
+                                let chunkCapacity = 1
+                                const capacity = $derived.by(() => {
+                                    const need = Math.ceil(message.length / MESSAGE_CHUNK_SIZE)
+                                    while (chunkCapacity < need) {
+                                        chunkCapacity *= 2
+                                    }
+                                    return chunkCapacity
+                                })
+                                let spawnRanOnce = false
+                                $effect(() => {
+                                    opts.onPartitionRun?.('messageChunks', i)
+                                    const chunks = capacity
+                                    for (let c = 0; c < chunks; c++) {
+                                        // Read by the chunk effect below, never
+                                        // by this one: the spawn effect must not
+                                        // depend on the message count.
+                                        const inChunk = $derived(Math.min(MESSAGE_CHUNK_SIZE, Math.max(0, message.length - c * MESSAGE_CHUNK_SIZE)))
+                                        let chunkRanOnce = false
+                                        $effect(() => {
+                                            opts.onPartitionRun?.('messageChunk', c)
+                                            const count = inChunk
+                                            for (let j = c * MESSAGE_CHUNK_SIZE; j < c * MESSAGE_CHUNK_SIZE + count; j++) {
+                                                let msgRanOnce = false
+                                                $effect(() => {
+                                                    opts.onPartitionRun?.('message', j)
+                                                    $state.snapshot(message[j])
+                                                    frontUnshiftSelected(char)
+                                                    opts.markChanged(msgRanOnce)
+                                                    msgRanOnce = true
+                                                })
+                                            }
+                                            frontUnshiftSelected(char)
+                                            opts.markChanged(chunkRanOnce)
+                                            chunkRanOnce = true
+                                        })
+                                    }
+                                    frontUnshiftSelected(char)
+                                    opts.markChanged(spawnRanOnce)
+                                    spawnRanOnce = true
+                                })
                             } else {
                                 // An archived chat holds a one-element message
                                 // ARRAY, not a bare object (upstream builds and

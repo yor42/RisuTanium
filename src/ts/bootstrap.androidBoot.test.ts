@@ -233,12 +233,32 @@ function pluginFsCommands(): string[] {
     return wire.plugin().filter((cmd) => cmd.startsWith('plugin:fs|'))
 }
 
+/**
+ * The write commands an app_fs page sends. `loadData()` sends none of them before
+ * the write-temp sweep resolves. The check covers `loadData()`'s own command order
+ * only: not listeners installed by main.ts, App's drop handler or component mount
+ * code, which the startup walk's cutoff keeps safe; on a reload, a pre-slot temp
+ * older than the call's arrival minus the margin is still stage 1's exposure (Q1).
+ */
+const WRITE_CLASS_COMMANDS = [
+    'write_durable', 'write_chunk', 'write_chunk_raw', 'put_assets_batch', 'put_assets_batch_b64',
+    'abort_chunked', 'store2_write_top_raw', 'store2_write_top_chunk', 'store2_write_top_chunk_raw',
+    'store2_remove', 'app_fs_remove', 'export_append_b64',
+    'plugin:fs|write_file', 'plugin:fs|write_text_file', 'plugin:fs|rename', 'plugin:fs|remove', 'plugin:fs|truncate',
+]
+
 function expectBootOrderAndNoWaiting(): void {
     const used = wire.plugin()
     expect(used.filter((cmd) => WAITING_PLUGIN_COMMANDS.includes(cmd))).toEqual([])
     const fsCommands = pluginFsCommands()
-    expect(fsCommands.length, 'the boot sweeps the write temps with read_dir').toBeGreaterThan(0)
-    expect(fsCommands[0]).toBe('plugin:fs|read_dir')
+    expect(wire.callsOf('app_fs_sweep_write_temps').length, 'the boot sends the native write-temp sweep exactly once').toBe(1)
+    const commands = wire.calls.map((call) => call.cmd)
+    const sweepAt = commands.indexOf('app_fs_sweep_write_temps')
+    const firstStoreRead = commands.findIndex((cmd) => cmd === 'read_range' || cmd === 'plugin:fs|read_dir')
+    expect(firstStoreRead, 'the boot reads the store').toBeGreaterThan(-1)
+    expect(sweepAt, 'the native sweep runs before the first store read').toBeLessThan(firstStoreRead)
+    expect(commands.slice(0, sweepAt).filter((cmd) => WRITE_CLASS_COMMANDS.includes(cmd)), 'no write-class command is sent before the native sweep').toEqual([])
+    expect(fsCommands.length, 'the boot lists the store through the file plugin').toBeGreaterThan(0)
     expect(new Set(fsCommands)).toEqual(new Set(['plugin:fs|read_dir']))
 }
 

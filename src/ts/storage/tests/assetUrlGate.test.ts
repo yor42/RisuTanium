@@ -8,17 +8,22 @@ vi.mock('../tauriByteTransport', () => ({
 }))
 
 import {
+    ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES,
     ANDROID_LIST_WHOLE_READ_BUDGET_BYTES,
     ANDROID_WHOLE_READ_URL_LIMIT_BYTES,
     androidAssetSizeVerdict,
+    androidWholeReadQueue,
     androidWithholdsUrl,
     assetListElement,
     assetListUse,
+    createInFlightByteGate,
     createWholeReadBudget,
     forgetStoredAssetSizes,
+    rememberWholeReadUrl,
     resetAssetUrlGateForTest,
     rowAssetUrl,
     storeRowAssetUrl,
+    wholeReadBytesOfUrl,
 } from '../assetUrlGate'
 
 const LIMIT = ANDROID_WHOLE_READ_URL_LIMIT_BYTES
@@ -101,6 +106,185 @@ describe('the size cache', () => {
 
         expect(await androidAssetSizeVerdict('k')).toBe('over')
         expect(transport.stat).toHaveBeenCalledTimes(2)
+    })
+})
+
+describe('the size cache bound', () => {
+    const CAP = 20000
+    const statsOf = (key: string) => transport.stat.mock.calls.filter((call) => call[0] === key).length
+
+    test('a hit refreshes its entry and a full cache evicts exactly the least recently used one', async () => {
+        transport.stat.mockResolvedValue(1)
+        for (let i = 0; i < CAP; i++) {
+            await androidAssetSizeVerdict(`k${i}`)
+        }
+        // k0 is the oldest entry until it is used again.
+        await androidAssetSizeVerdict('k0')
+        await androidAssetSizeVerdict('new')
+
+        // k2 is asked before k1: probing k1 stores it and would evict k2 in turn.
+        await androidAssetSizeVerdict('k0')
+        await androidAssetSizeVerdict('k2')
+        expect(statsOf('k0')).toBe(1)
+        expect(statsOf('k2')).toBe(1)
+        await androidAssetSizeVerdict('k1')
+        expect(statsOf('k1')).toBe(2)
+    })
+
+    test('a key used within the last 20,000 distinct keys is never probed again', async () => {
+        transport.stat.mockResolvedValue(1)
+        const hot = Array.from({ length: 10 }, (_, i) => `hot${i}`)
+        for (const key of hot) {
+            await androidAssetSizeVerdict(key)
+        }
+        for (let i = 0; i < 30000; i++) {
+            await androidAssetSizeVerdict(`cold${i}`)
+            if (i % 5000 === 4999) {
+                for (const key of hot) {
+                    await androidAssetSizeVerdict(key)
+                }
+            }
+        }
+        for (const key of hot) {
+            expect(statsOf(key)).toBe(1)
+        }
+    })
+})
+
+describe('the whole-read URL registry', () => {
+    const SIXTY = 60 * 1024 * 1024
+    const urlOf = (key: string) => `http://asset.localhost/${key}`
+
+    test('a registered URL gives the cached size of its key, and nothing once the key is forgotten', async () => {
+        transport.stat.mockResolvedValue(SIXTY)
+        await androidAssetSizeVerdict('k')
+        rememberWholeReadUrl(urlOf('k'), 'k')
+
+        expect(wholeReadBytesOfUrl(urlOf('k'))).toBe(SIXTY)
+        expect(wholeReadBytesOfUrl(urlOf('unknown'))).toBeUndefined()
+
+        forgetStoredAssetSizes(['k'])
+        expect(wholeReadBytesOfUrl(urlOf('k'))).toBeUndefined()
+    })
+
+    test('the registry has its own cap and evicts no size', async () => {
+        transport.stat.mockResolvedValue(SIXTY)
+        await androidAssetSizeVerdict('k')
+        for (let i = 0; i < 20001; i++) {
+            rememberWholeReadUrl(urlOf(`other${i}`), `other${i}`)
+        }
+        rememberWholeReadUrl(urlOf('k'), 'k')
+
+        expect(wholeReadBytesOfUrl(urlOf('k'))).toBe(SIXTY)
+        expect(transport.stat).toHaveBeenCalledTimes(1)
+    })
+
+    test('a lookup keeps the URL and its size recent while other keys are probed', async () => {
+        transport.stat.mockResolvedValue(SIXTY)
+        await androidAssetSizeVerdict('k')
+        rememberWholeReadUrl(urlOf('k'), 'k')
+        for (let i = 0; i < 19999; i++) {
+            await androidAssetSizeVerdict(`other${i}`)
+        }
+        expect(wholeReadBytesOfUrl(urlOf('k'))).toBe(SIXTY)
+
+        await androidAssetSizeVerdict('one more')
+        expect(wholeReadBytesOfUrl(urlOf('k'))).toBe(SIXTY)
+        await androidAssetSizeVerdict('k')
+        expect(transport.stat.mock.calls.filter((call) => call[0] === 'k')).toHaveLength(1)
+    })
+})
+
+describe('the in-flight byte gate', () => {
+    test('a read that fits is granted, one that does not waits for a release', async () => {
+        const gate = createInFlightByteGate(64)
+        const first = await gate.acquire(60)
+        let second = false
+        const secondGrant = gate.acquire(10).then((grant) => { second = true; return grant })
+        await Promise.resolve()
+        expect(second).toBe(false)
+
+        first.release()
+        await secondGrant
+        expect(second).toBe(true)
+    })
+
+    test('a read larger than the budget is granted when nothing is in flight', async () => {
+        const gate = createInFlightByteGate(64)
+        const grant = await gate.acquire(100)
+        let next = false
+        const nextGrant = gate.acquire(1).then(() => { next = true })
+        await Promise.resolve()
+        expect(next).toBe(false)
+
+        grant.release()
+        await nextGrant
+        expect(next).toBe(true)
+    })
+
+    test('grants are first in, first out: a small read does not pass a waiting large one', async () => {
+        const gate = createInFlightByteGate(64)
+        const holder = await gate.acquire(30)
+        let large = false
+        let small = false
+        const largeGrant = gate.acquire(60).then((grant) => { large = true; return grant })
+        const smallGrant = gate.acquire(10).then((grant) => { small = true; return grant })
+        await Promise.resolve()
+        expect(large).toBe(false)
+        expect(small).toBe(false)
+
+        holder.release()
+        const largeHeld = await largeGrant
+        expect(large).toBe(true)
+        await Promise.resolve()
+        expect(small).toBe(false)
+        largeHeld.release()
+        await smallGrant
+        expect(small).toBe(true)
+    })
+
+    test('a second release of the same grant frees nothing more', async () => {
+        const gate = createInFlightByteGate(64)
+        const first = await gate.acquire(60)
+        first.release()
+        first.release()
+        const second = await gate.acquire(60)
+        let third = false
+        const thirdGrant = gate.acquire(60).then(() => { third = true })
+        await Promise.resolve()
+        expect(third).toBe(false)
+
+        second.release()
+        await thirdGrant
+        expect(third).toBe(true)
+    })
+})
+
+describe('the app-wide whole-read queue', () => {
+    test('there is one queue for every caller, and the test reset replaces it with an empty one', async () => {
+        expect(androidWholeReadQueue()).toBe(androidWholeReadQueue())
+        const held = await androidWholeReadQueue().acquire(ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES)
+        let waiting = false
+        void androidWholeReadQueue().acquire(1).then(() => { waiting = true })
+        await Promise.resolve()
+        expect(waiting).toBe(false)
+
+        resetAssetUrlGateForTest()
+        const fresh = await androidWholeReadQueue().acquire(ANDROID_CHAT_IN_FLIGHT_WHOLE_READ_BYTES)
+        expect(fresh).not.toBe(held)
+        fresh.release()
+        held.release()
+    })
+
+    test('the queue keeps the chat budget', async () => {
+        const first = await androidWholeReadQueue().acquire(40 * 1024 * 1024)
+        let second = false
+        void androidWholeReadQueue().acquire(40 * 1024 * 1024).then(() => { second = true })
+        await Promise.resolve()
+        expect(second).toBe(false)
+        first.release()
+        await Promise.resolve()
+        expect(second).toBe(true)
     })
 })
 

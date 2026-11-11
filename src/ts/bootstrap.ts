@@ -15,6 +15,7 @@ import { handleWindowError } from "./windowErrorGuard";
 import { characterURLImport, handlePendingRealmLink } from "./characterCards";
 import { desktopLaunchImport } from "./desktopLaunch";
 import { androidOpenedFilesImport } from "./android/openedFiles";
+import { startLaunchNavigation } from "./android/launchTarget";
 import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from "./storage/defaultPrompts";
 import { decodeRisuSave, encodeRisuSaveLegacy } from "./storage/risuSave";
 import { getPageBlockOwner } from "./storage/pageBlockOwner";
@@ -631,6 +632,10 @@ export async function loadData() {
             if (isTauri) {
                 androidOpenedFilesImport()
             }
+            // Last in the boot, after the saved state is installed and the launch drains have started, so
+            // the restore is a pick like a user's and every arrival that can be known here has been seen.
+            // Not awaited; it never throws.
+            void startLaunchNavigation()
 
         } catch (error) {
             await archiveSession?.release().catch(() => { })

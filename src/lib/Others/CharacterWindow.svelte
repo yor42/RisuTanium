@@ -4,6 +4,7 @@
     import { UNMEASURED_VIEWPORT_PX, WINDOW_MIN_OVERSCAN_ROWS, WINDOW_OVERSCAN_VIEWPORTS } from "../SideBars/railConstants";
     import { anchorAt, buildRowLayout, cardAnchorAt, gridColumns, heightDeltaAbove, scrollTopFor, scrollTopForCard, type CardAnchor, type CharRow, type ScrollAnchor } from "./charListRows";
     import type { GridGeometry } from "./gridTarget";
+    import { createFocusSettle } from "../../ts/focusSettle";
 
     interface Props {
         // With a function, the rows are built from the column count of the container (grid layout only):
@@ -353,19 +354,17 @@
 
     // Focus moves while a keyed each-block moves a focused row, and Chromium fires focusout
     // synchronously inside that block effect, where writing state throws. The pin is
-    // settled in a microtask, from where focus actually is by then.
+    // settled in a microtask (see createFocusSettle), from where focus actually is by then.
     function settleFocus() {
-        queueMicrotask(() => {
-            if (!scroller?.isConnected) {
-                return;
-            }
-            const active = document.activeElement;
-            const holder = active instanceof Element && scroller.contains(active) ? active.closest("[data-charlist-key]") : null;
-            const next = holder?.getAttribute("data-charlist-key") ?? null;
-            if (next !== focusedCard) {
-                focusedCard = next;
-            }
-        });
+        if (!scroller?.isConnected) {
+            return;
+        }
+        const active = document.activeElement;
+        const holder = active instanceof Element && scroller.contains(active) ? active.closest("[data-charlist-key]") : null;
+        const next = holder?.getAttribute("data-charlist-key") ?? null;
+        if (next !== focusedCard) {
+            focusedCard = next;
+        }
     }
 
     // A focused row that leaves the list (deleted, restored, filtered out) takes focus with
@@ -409,8 +408,10 @@
             }
         };
         node.addEventListener("scroll", onScroll);
-        node.addEventListener("focusin", settleFocus);
-        node.addEventListener("focusout", settleFocus);
+        // One settle per scroller node: a later node never inherits a disposed one.
+        const focusSettle = createFocusSettle(settleFocus);
+        node.addEventListener("focusin", focusSettle.schedule);
+        node.addEventListener("focusout", focusSettle.schedule);
         const detach = attach?.(node);
         return {
             destroy() {
@@ -418,8 +419,9 @@
                     detach();
                 }
                 node.removeEventListener("scroll", onScroll);
-                node.removeEventListener("focusin", settleFocus);
-                node.removeEventListener("focusout", settleFocus);
+                node.removeEventListener("focusin", focusSettle.schedule);
+                node.removeEventListener("focusout", focusSettle.schedule);
+                focusSettle.dispose();
                 if (viewFrame !== null) {
                     cancelAnimationFrame(viewFrame);
                     viewFrame = null;

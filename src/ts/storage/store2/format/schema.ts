@@ -863,8 +863,8 @@ export function readUnit(bytes: Uint8Array, expectedType?: UnitType): Parsed<{ t
 }
 
 /** Frames `body` as a unit of `type` with the deterministic payload; fields the build does not know travel with it. */
-export function encodeUnit(type: UnitType, body: object): Uint8Array {
-    return encodeFrame(type, encodeCanonicalJson(body))
+export function encodeUnit(type: UnitType, body: object, prewritten?: ReadonlyMap<object, string>): Uint8Array {
+    return encodeFrame(type, encodeCanonicalJson(body, prewritten))
 }
 
 // ---- req ----

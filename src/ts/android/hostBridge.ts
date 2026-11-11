@@ -8,7 +8,7 @@
  * host: `{event:'gestureInset', value}`, `{event:'ime', visible, height}` and `{id, result, through}` for a take. The host
  * ignores a message it does not understand, so a bad value never throws here either.
  */
-import type { KeepAliveHost } from './keepAliveService'
+import type { KeepAliveHostObject } from './keepAliveService'
 import type { ReplyNotificationsHost } from './replyNotifications.svelte'
 
 interface HostMessageEvent {
@@ -208,7 +208,8 @@ export function systemBarsHost(): Window['__risuTaniumSystemBars'] {
     return legacy
 }
 
-export function keepAliveHost(): Partial<KeepAliveHost> | undefined {
+/** The keep-alive host: over the channel, which carries contract v2 as well, else the separate object (which has v2 methods only when the host does). */
+export function keepAliveHost(): KeepAliveHostObject | undefined {
     const channel = bind()
     const legacy = window.__risuTaniumKeepAlive
     if (channel) {
@@ -221,6 +222,10 @@ export function keepAliveHost(): Partial<KeepAliveHost> | undefined {
             stop: () => call('stop', []),
             stopAfter: (ms: number) => call('stopAfter', [ms]),
             requestNotificationPermissionOnce: () => call('requestNotificationPermissionOnce', []),
+            startState: (json: string) => call('startState', [json]),
+            updateState: (json: string) => call('updateState', [json]),
+            stopAfterWithOutcome: (ms: number, json: string) => call('stopAfterWithOutcome', [ms, json]),
+            requestOpenTarget: () => call('requestOpenTarget', []),
         }
     }
     return legacy
@@ -239,6 +244,7 @@ export function replyNotificationsHost(): Partial<ReplyNotificationsHost> | unde
             enable: () => call('enable', []),
             disable: () => call('disable', []),
             notify: (key: string, title: string, body: string, silent: boolean) => call('notify', [key, title, body, silent]),
+            notifyState: (json: string) => call('notifyState', [json]),
             cancel: (key: string) => call('cancel', [key]),
         }
     }

@@ -4,7 +4,10 @@ import { replaceThoughtsBlocks } from './thoughts';
 import { appVer, getCurrentCharacter, getDatabase, type Database, type character, type customscript, type groupChat, type triggerscript } from '../storage/database.svelte';
 import { DBState, selIdState } from '../stores.svelte';
 import { aiWatermarkingLawApplies, getFileSrc } from '../globalApi.svelte';
-import type { AssetUse } from '../storage/assetUrlGate';
+import {
+    ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES, DEFERRED_IMAGE_PLACEHOLDER_SRC, DEFERRED_IMAGE_SRC_ATTRIBUTE, wholeReadBytesOfUrl,
+    type AssetUse,
+} from '../storage/assetUrlGate';
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { getChatVar, setChatVar, getGlobalChatVar } from './chatVar.svelte';
 import { processScriptFull } from '../process/scripts';
@@ -85,7 +88,32 @@ DOMPurify.addHook("uponSanitizeElement", (node: HTMLElement, data) => {
     }
 });
 
+export { DEFERRED_IMAGE_PLACEHOLDER_SRC }
+
+// Set for the synchronous body of one `trimMarkdown` call that asked for large asset images to wait for the load queue.
+let deferLargeAssetImagesActive = false
+
+DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+    if(!deferLargeAssetImagesActive || node.nodeName !== 'IMG'){
+        return
+    }
+    const src = node.getAttribute('src')
+    if(!src){
+        return
+    }
+    const bytes = wholeReadBytesOfUrl(src)
+    if(bytes !== undefined && bytes >= ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES){
+        node.setAttribute(DEFERRED_IMAGE_SRC_ATTRIBUTE, src)
+        node.setAttribute('src', DEFERRED_IMAGE_PLACEHOLDER_SRC)
+    }
+});
+
 DOMPurify.addHook("uponSanitizeAttribute", (node, data) => {
+    if(deferLargeAssetImagesActive && data.attrName === DEFERRED_IMAGE_SRC_ATTRIBUTE){
+        // Only the hook above may put this attribute in the output; an author's would be promoted as a real source.
+        data.keepAttr = false
+        return
+    }
     switch(data.attrName){
         case 'style':{
             // Remove background-image URLs when hideAllImages is enabled
@@ -117,6 +145,10 @@ DOMPurify.addHook("uponSanitizeAttribute", (node, data) => {
                 break
             }
             data.attrValue = ''
+            break
+        }
+        case 'rel':{
+            data.attrValue = 'noopener noreferrer'
             break
         }
     }
@@ -877,7 +909,23 @@ const trimPurifyConfig = {
     ADD_ATTR: ["allow", "allowfullscreen", "frameborder", "scrolling", "risu-btn", "risu-ctrl", 'risu-form', 'risu-trigger', 'risu-mark', 'risu-id', 'x-hl-lang', 'x-hl-text'],
 }
 
-export function trimMarkdown(data:string){
+/**
+ * Sanitizes `data`. With `deferLargeAssetImages` (Android chat bodies that scan for the result) an `<img>` whose `src` is
+ * a whole-read asset URL of 8 MiB or more keeps that URL in `data-risu-deferred-src` and shows a placeholder source,
+ * and an author's own `data-risu-deferred-src` is dropped. Without it the output is the same for every caller.
+ */
+export function trimMarkdown(data:string, opts?: { deferLargeAssetImages?: boolean }){
+    const previous = deferLargeAssetImagesActive
+    deferLargeAssetImagesActive = opts?.deferLargeAssetImages === true
+    try{
+        return sanitizeTrimmed(data)
+    }
+    finally{
+        deferLargeAssetImagesActive = previous
+    }
+}
+
+function sanitizeTrimmed(data:string){
 
     if(!data){
         return ''
@@ -1678,6 +1726,9 @@ function blockEndMatcher(p1:string,type:{type:blockMatch,type2?:string,mode?:str
     }
 }
 
+// The role tags the parser rewrites to macros; the early return in `risuChatParser` must test the same set, without `g` so `test` keeps no state.
+const ROLE_TAG_PATTERN = /<(?:user|char|bot)>/i
+
 export function risuChatParser(da:string, arg:{
     chatID?:number
     db?:Database
@@ -1730,6 +1781,18 @@ export function risuChatParser(da:string, arg:{
         }
     }
 
+    arg.callStack = (arg.callStack ?? 0) + 1
+
+    if(arg.callStack > 20){
+        return 'ERROR: Call stack limit reached'
+    }
+
+    // Text without a macro, a `{#` or a role tag passes the scan below unchanged. The depth
+    // count above still runs first: callers that reuse one options object depend on it.
+    if(typeof da === 'string' && !da.includes('{{') && !da.includes('{#') && !ROLE_TAG_PATTERN.test(da)){
+        return da
+    }
+
     let pointer = 0;
     let nested:string[] = [""]
     let stackType = new Uint8Array(512)
@@ -1750,12 +1813,6 @@ export function risuChatParser(da:string, arg:{
         data:string,
         arg:string[]
     }> = arg.functions ?? (new Map())
-
-    arg.callStack = (arg.callStack ?? 0) + 1
-
-    if(arg.callStack > 20){
-        return 'ERROR: Call stack limit reached'
-    }
 
     const matcherObj = {
         chatID: chatID,

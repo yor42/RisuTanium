@@ -7,13 +7,16 @@
     import TextAreaInput from "src/lib/UI/GUI/TextAreaInput.svelte";
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import { alertConfirm, alertSelect } from "src/ts/alert";
-    import { getCharImage } from "src/ts/characters";
+    import { useCharImageLookups } from "src/ts/media/charImageLookups";
     import { changeUserPersona, exportUserPersona, importUserPersona, saveUserPersona, selectUserImg } from "src/ts/persona";
     import Sortable from 'sortablejs/modular/sortable.core.esm.js';
     import { onDestroy, onMount } from "svelte";
     import { sleep, sortableOptions } from "src/ts/util";
     import { DBState } from 'src/ts/stores.svelte';
     import { v4 } from "uuid"
+
+    // One hold per persona icon and one for the user icon; they end with the page.
+    const lookups = useCharImageLookups()
 
     let stb: Sortable = null
     let ele: HTMLDivElement = $state()
@@ -77,7 +80,7 @@
             {#if persona.icon === ''}
                 <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" class:ring-3={i === DBState.db.selectedPersona}></div>
             {:else}
-                {#await warnOnReject('PersonaSettings: persona icon rejected', getCharImage(persona.icon, 'css'))}
+                {#await warnOnReject('PersonaSettings: persona icon rejected', lookups.get('persona:' + i, persona.icon, 'css'))}
                     <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" class:ring-3={i === DBState.db.selectedPersona}></div>
                 {:then im} 
                     <div class="rounded-md h-20 w-20 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" style={im} class:ring-3={i === DBState.db.selectedPersona}></div>
@@ -124,7 +127,7 @@
             {#if DBState.db.userIcon === ''}
                 <div class="rounded-md h-28 w-28 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500"></div>
             {:else}
-                {#await warnOnReject('PersonaSettings: user icon rejected', getCharImage(DBState.db.userIcon, DBState.db.personas[DBState.db.selectedPersona].largePortrait ? 'lgcss' : 'css'))}
+                {#await warnOnReject('PersonaSettings: user icon rejected', lookups.get('user', DBState.db.userIcon, DBState.db.personas[DBState.db.selectedPersona].largePortrait ? 'lgcss' : 'css'))}
                     <div class="rounded-md h-28 w-28 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500"></div>
                 {:then im} 
                     <div class="rounded-md h-28 w-28 shadow-lg bg-textcolor2 cursor-pointer hover:text-green-500" style={im}></div>

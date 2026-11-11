@@ -205,6 +205,7 @@ Model catalogs change, so the app does not rely on fixed assumptions about them.
 - The Grid tab sorts by My order, Recent or Name.
 - Under My order, the Grid tab shows folders as tiles. It remembers the open folders on this device.
 - Edit mode can move several characters to the trash at once. It can also group them into a new folder.
+- The trash keeps a character for 30 days. Upstream keeps it for 3 days. The app deletes it for good on the first start after that time. If you open the same data in upstream or in an older build, that build still deletes it after 3 days.
 - Long descriptions have a "Show more" link.
 - The authors traced this in the code and in the language strings. They did not run it.
 

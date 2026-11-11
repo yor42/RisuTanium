@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { mount, tick, unmount } from 'svelte'
+import { mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 
 const control = vi.hoisted(() => ({ cadenceArgs: [] as unknown[] }))
 
@@ -71,10 +72,10 @@ describe('StreamingView reads the low-power marker once at the stream start', ()
         document.documentElement.setAttribute('data-low-power', '')
         const target = start('Open')
         await vi.advanceTimersByTimeAsync(150)
-        await tick()
+        await tickFake()
         expect(openText(target)).toBe('')
         await vi.advanceTimersByTimeAsync(150)
-        await tick()
+        await tickFake()
         expect(openText(target)).toContain('Open')
     })
 
@@ -82,7 +83,7 @@ describe('StreamingView reads the low-power marker once at the stream start', ()
         vi.useFakeTimers()
         const target = start('Open')
         await vi.advanceTimersByTimeAsync(150)
-        await tick()
+        await tickFake()
         expect(openText(target)).toContain('Open')
     })
 })

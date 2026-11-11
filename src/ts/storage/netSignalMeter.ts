@@ -21,10 +21,10 @@ import { inFlightKinds, subscribeInFlight, type InFlightKind } from '../process/
  * in `ensureInstalled`, and the cached value gates every note function, so no event handler reads storage. Nothing is
  * counted before `ensureInstalled` has run (a mark made before the loop starts has no baseline anyway).
  *
- * Known leak (6b-front): the front effect can throw between its partition tag and its `markChanged`; the stale tag then
- * books the next global `markChanged(true)` as `part` for the selected character. That leans toward `marked`, the safe
- * direction. It is counted in `tagOverwritten` only when the next consumer is another partition run, so a leak that a
- * global call consumes is not counted.
+ * Stale-tag direction: a partition effect that threw between its tag and its `markChanged` would book the next global
+ * `markChanged(true)` as `part` for the selected character. That leans toward `marked`, the safe direction. No
+ * partition effect throws there now. `tagOverwritten` counts such a tag only when the next consumer is another
+ * partition run, so a tag that a global call consumes is not counted.
  *
  * The meter never throws into the caller: every entry point swallows its own failures. All state is created on first
  * use, not at module load: a top-level call is a side effect that keeps this module in a normal build.

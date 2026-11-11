@@ -3,7 +3,7 @@ import type { Database, character, groupChat } from '../../database.svelte'
 import { characterCreator, stubDescription, stubTags } from '../../../process/coldCharacter'
 import {
     carryUnknownFields, KNOWN_FIELDS, randomId26, UNIT_TYPE,
-    type ChatEntry, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type ShardEntry, type UnitType,
+    type ChatEntry, type ListRef, type ModuleEntry, type ModuleIndex, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType,
 } from '../format'
 import {
     CONFIG_PARTITIONED_FIELDS, DERIVED_COLD_FIELDS, ENTRY_MOVED_FIELDS, ENTRY_REQUIRED_MOVED_FIELDS, LORE_FIELDS, PLUGIN_LISTS,
@@ -11,14 +11,14 @@ import {
     type CharacterCoreBody, type ConfigBody, type FieldBagBody, type LoadoutsBody, type OrderBody, type PluginBody,
     type PluginList, type PluginValueBody, type PresetBody, type StaticsBody,
 } from './bodies'
-import { assembleChat, splitChat } from './chat'
+import { assembleChat, chunkMessageJson, splitChat } from './chat'
 import { buildManifest, carryManifest } from './manifest'
 import { carryModuleIndex, hasCurrentEntryFields, moduleBodyOf, moduleEntryFields, moduleHandles, taggedUnitRef, uniqueIdHandles } from './modules'
 import { MODULE_INDEX_PARAMS } from './moduleIndexParams'
 import { defineOwn, listOrEmpty, omitFields, pickFields, plainObject, toPlainJson } from './normalize'
 import { bucketOfKey, groupKeysIntoBuckets, PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 import { UnitSink, type UnitKeyKind } from './reuse'
-import { carryShards, chunkRefTuple, groupIntoShards, listRefTuple, refTuple, shardCountFor } from './shard'
+import { carryShards, chunkRefTuple, groupIntoShards, listRefTuple, noteShardDigest, refTuple, shardCountFor, shardDigestOf } from './shard'
 import { assertChatNotPointer, assertNotStub } from './stub'
 import {
     CodecInputError, StubRefusedError, type ConfigOwner, type EncodedTree, type EncodedUnit, type EncodeOptions, type ListDerivation,
@@ -147,15 +147,18 @@ export class Encoder {
         if (MEASURE && split !== undefined) {
             this.split = split
         }
-        this.sink = new UnitSink(options.env, previous, options.keys, MEASURE && split !== undefined ? { split } : {})
+        this.sink = new UnitSink(options.env, previous, options.keys, {
+            ...(MEASURE && split !== undefined ? { split } : {}),
+            ...(options.chunkMemo !== undefined ? { chunkMemo: options.chunkMemo } : {}),
+        })
     }
 
     put(identity: string, type: UnitType, body: object, kind: UnitKeyKind = 'unit'): EncodedUnit {
         return this.sink.put(identity, type, body, kind)
     }
 
-    putReusing(identity: string, type: UnitType, body: object, family: string): EncodedUnit {
-        return this.sink.putReusing(identity, type, body, family)
+    putReusing(identity: string, type: UnitType, body: object, family: string, prewritten?: ReadonlyMap<object, string>): EncodedUnit {
+        return this.sink.putReusing(identity, type, body, family, prewritten)
     }
 
     /** `put` for a unit whose body holds Refs of other units. */
@@ -321,7 +324,10 @@ export function emitCharacter(normalized: NormalizedCharacter, encoder: Encoder)
         const coreUnit = encoder.put(`${IDENTITY.chat}${u}:${cid}:core`, UNIT_TYPE.chatCore, one.core)
         const chunks = one.chunks.map((chunk, k) => {
             const family = `${IDENTITY.chat}${u}:${cid}:chunk:`
-            const unit = encoder.putReusing(`${family}${k}`, UNIT_TYPE.chatChunk, chunk, family)
+            const strings = chunkMessageJson(chunk)
+            // The messages' strings were written by the split that built this chunk; the array is `[` + strings + `]`.
+            const prewritten = strings === undefined ? undefined : new Map<object, string>([[chunk.msgs, '[' + strings.join(',') + ']']])
+            const unit = encoder.putReusing(`${family}${k}`, UNIT_TYPE.chatChunk, chunk, family, prewritten)
             return chunkRefTuple(unit.ref, chunk.msgs.length)
         })
         const entry: ChatEntry = { cid, core: refTuple(coreUnit.ref), chunks }
@@ -734,6 +740,42 @@ export async function encodeModuleSetYielding(db: Database, encoder: Encoder, yi
     return finishModuleSet(moduleEntries, encoder)
 }
 
+/** Whether both lists hold the same entry objects in the same order. */
+function sameEntryObjects(a: readonly ShardEntry[], b: readonly ShardEntry[]): boolean {
+    if (a.length !== b.length) {
+        return false
+    }
+    for (let index = 0; index < a.length; index++) {
+        if (a[index] !== b[index]) {
+            return false
+        }
+    }
+    return true
+}
+
+/**
+ * The unit of shard `index`. A shard whose entries are the previous shard's entry objects, in the same order, is the
+ * previous unit: it is taken without being framed or digested. That holds only when the previous body is one this
+ * encoder framed (`shardDigestOf`) and the previous unit carries that same digest; a body parsed at boot is not
+ * trusted, and the pass encodes it. The new body equals the previous one canonically, because `carryShards` copies the
+ * previous body's unknown fields when the shard count is equal, so `put` would have reused the same unit.
+ */
+function putShard(encoder: Encoder, index: number, shard: Shard, previousShard: Shard | undefined): EncodedUnit {
+    const identity = `shard:${index}`
+    if (previousShard !== undefined) {
+        const trusted = shardDigestOf(previousShard)
+        if (trusted !== undefined && encoder.previous?.units.get(identity)?.digest === trusted
+            && sameEntryObjects(shard.entries, previousShard.entries)) {
+            encoder.parents.set(identity, { type: UNIT_TYPE.shard, body: shard })
+            const unit = encoder.sink.reuseAt(identity, UNIT_TYPE.shard)
+            if (unit !== null) {
+                return unit
+            }
+        }
+    }
+    return encoder.putParent(identity, UNIT_TYPE.shard, shard, 'shard')
+}
+
 /**
  * Completes the tree from the parts the caller produced: the shards of `entries`,
  * the fixed units and the manifest. `carried` are the previous units this
@@ -752,7 +794,13 @@ export function finishTree(
     const { presets, presetPlain, taskPresets, plugins, pluginStorage } = front
     const shardCount = shardCountFor(entries.length, encoder.previous?.objects?.manifest?.shardCount)
     const shardBodies = carryShards(encoder.previous?.objects?.shards, groupIntoShards(entries, shardCount), encoder.stableChats)
-    const shards = shardBodies.map((shard, index) => refTuple(encoder.putParent(`shard:${index}`, UNIT_TYPE.shard, shard, 'shard').ref))
+    const previousShards = encoder.previous?.objects?.shards
+    const shards = shardBodies.map((shard, index) => {
+        const unit = putShard(encoder, index, shard, previousShards?.length === shardCount ? previousShards[index] : undefined)
+        // The unit's digest is the digest of this body's canonical frame, whether it was just framed or taken from the previous unit.
+        noteShardDigest(shard, unit.digest)
+        return refTuple(unit.ref)
+    })
     const fixedStarted = MEASURE && split !== undefined ? split.now() : 0
     if (MEASURE && split !== undefined) {
         split.addMs('splitFinishShardsMs', fixedStarted - shardsStarted)

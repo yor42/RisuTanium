@@ -17,9 +17,10 @@
  * mocked; `requestChatData` is a mock, so nothing here says anything about a
  * native backend.
  *
- * `runCurrentChatFunction` replaces `chat.message` with a new array of the
- * same messages at each send's entry, so every scenario below runs across that
- * replacement. The script cache is reset before every test.
+ * A send expands the messages of `chat.message` in place and keeps the array
+ * object, so every scenario below runs on the array the chat held; one test
+ * replaces the array during the send to check that the pass still addresses the
+ * messages themselves. The script cache is reset before every test.
  *
  * The tests of the first block are reproducers: each fails when the pass
  * addresses a message by its position, because the wrong message is written or
@@ -550,7 +551,7 @@ function proxiedWorld(messages: Message[]): { A: character, chat: Chat } {
 //#endregion
 
 describe('@@inject addresses messages by identity on a proxied database', () => {
-    test('with a disabled message earlier, the prompt pass writes the processed message and no other, across the replacement of the message array', async () => {
+    test('with a disabled message earlier, the prompt pass writes the processed message and no other, and the message array keeps its identity', async () => {
         const { A, chat } = proxiedWorld([
             msg('user', 'u0-text', { disabled: true }),
             msg('char', 'c1-text'),
@@ -562,6 +563,32 @@ describe('@@inject addresses messages by identity on a proxied database', () => 
 
         await sendReply(A, chat, 'reply-proxied-disabled')
 
+        expect(chat.message).toBe(arrayBefore)
+        expect(chat.message.slice(0, 3).map((m, i) => m === before[i])).toEqual([true, true, true])
+        expect(datas(chat).slice(0, 3)).toEqual(['u0-text', 'c1-text', 'INJ u2-text!'])
+        expect(chat.message).toHaveLength(4)
+    })
+
+    test('with a disabled message earlier, the prompt pass writes the processed message and no other, when a hook replaces the message array during the send', async () => {
+        const { A, chat } = proxiedWorld([
+            msg('user', 'u0-text', { disabled: true }),
+            msg('char', 'c1-text'),
+            msg('user', 'INJ u2-text'),
+        ])
+        const arrayBefore = chat.message
+        const before = [...chat.message]
+        let replaced = false
+        pluginV2.editprocess.add(async (data: string) => {
+            if (!replaced && data.includes('INJ')) {
+                replaced = true
+                chat.message = [...chat.message]
+            }
+            return data.includes('INJ') ? `${data}!` : data
+        })
+
+        await sendReply(A, chat, 'reply-proxied-replaced')
+
+        expect(replaced).toBe(true)
         expect(chat.message).not.toBe(arrayBefore)
         expect(chat.message.slice(0, 3).map((m, i) => m === before[i])).toEqual([true, true, true])
         expect(datas(chat).slice(0, 3)).toEqual(['u0-text', 'c1-text', 'INJ u2-text!'])

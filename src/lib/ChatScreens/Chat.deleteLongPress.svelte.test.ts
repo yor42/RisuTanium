@@ -19,7 +19,8 @@
  * real one.
  */
 
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -213,7 +214,7 @@ function touch(type: string, touches: Pt[], changed: Pt[] = touches) {
 
 async function advance(ms: number) {
     vi.advanceTimersByTime(ms)
-    await tick()
+    await tickFake()
 }
 
 /** A finger down and up on the button, then the click a browser sends after a tap. */

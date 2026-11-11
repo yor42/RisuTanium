@@ -19,7 +19,7 @@
  * are asserted as reproducers through the screens in `GridCatalog.window.svelte.test.ts`,
  * `CharacterTrashList.window.svelte.test.ts` and `CharacterSimpleList.window.svelte.test.ts`.
  */
-import { createRawSnippet, flushSync, mount, unmount, type Snippet } from 'svelte'
+import { createRawSnippet, flushSync, mount, tick, unmount, type Snippet } from 'svelte'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { gridRows, listRowKey, listRows, type CharRow, type ScrollAnchor } from './charListRows'
 import CharacterWindow from './CharacterWindow.svelte'
@@ -145,6 +145,8 @@ async function settleMicrotasks(): Promise<void> {
         await Promise.resolve()
         flushSync()
     }
+    await tick()
+    flushSync()
 }
 
 let mounted: { app: Record<string, unknown>; target: HTMLElement } | null = null
@@ -931,6 +933,47 @@ describe('CharacterWindow: grid column changes', () => {
         }
 
         // Card 5 moved from the row starting at 5 to the row starting at 3: its element was re-created.
+        const after = tileOf(target, '5')?.querySelector('button')
+        expect(after).toBeTruthy()
+        expect(after).not.toBe(before)
+        expect(document.activeElement).toBe(after)
+
+        await geometry.scrollAndSettle(80 * GRID_ROW)
+        expect(tileOf(target, '5')).not.toBeNull()
+        expect(document.activeElement).toBe(tileOf(target, '5')!.querySelector('button'))
+    })
+
+    test('(F) a focused tile re-created by the change reports no state-write error, and the pin is still settled afterwards', async () => {
+        const { target } = await mountGrid()
+        const before = tileOf(target, '5')!.querySelector('button')!
+        before.focus()
+        await settleMicrotasks()
+        await geometry.scrollAndSettle(50 * GRID_ROW)
+        expect(tileOf(target, '5')).not.toBeNull()
+
+        // Chromium blurs a focused element, with focusout, while it is still attached and before it is removed. A focus
+        // listener that wrote state at that point would throw inside the block effect that is removing the element.
+        const errors: string[] = []
+        const record = (event: ErrorEvent) => { event.preventDefault(); errors.push(String(event.error?.message ?? event.message)) }
+        window.addEventListener('error', record)
+        const originalRemove = Element.prototype.remove
+        Element.prototype.remove = function (this: Element) {
+            const active = document.activeElement
+            if (active && this.contains(active)) {
+                ;(active as HTMLElement).blur()
+            }
+            originalRemove.call(this)
+        }
+        try {
+            geometry.setWidth(THREE_COLUMNS)
+            await resizeContainer(target)
+            await settleMicrotasks()
+        } finally {
+            Element.prototype.remove = originalRemove
+            window.removeEventListener('error', record)
+        }
+
+        expect(errors).toEqual([])
         const after = tileOf(target, '5')?.querySelector('button')
         expect(after).toBeTruthy()
         expect(after).not.toBe(before)

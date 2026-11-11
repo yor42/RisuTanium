@@ -29,8 +29,10 @@ import { appendIfAbsent, installCharacterSaveMarks } from "./storage/characterSa
 import { createSaveScheduler } from "./storage/saveScheduler";
 import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
 import type { Store2LoopPort } from "./storage/store2/saveLoop";
+import { activeStreamOwners } from "./process/activeStreams";
 import { takeResidentLoaded } from "./storage/store2/residentLoads";
 import { saveFailureStore } from "./storage/store2/saveFailure";
+import { createLiveCheckGate, type LiveCheckSignal } from "./storage/store2/liveCheckGate";
 import { openBootWindow } from "./bootWindow";
 import { AutoStorage } from "./storage/autoStorage";
 import { createStorageTabLocks } from "./storage/storageTabLocks";
@@ -77,7 +79,7 @@ import { hasLocalDrafts } from "./localDrafts";
 import { beginChokePoint, busyKinds } from "./process/memory/busyActions";
 import { installNetHold } from "./storage/measureExportHold";
 import { isAndroidTransport, shouldBypassFrozenPagePaths } from "./storage/tauriByteTransport";
-import { androidWithholdsUrl, forgetStoredAssetSizes, type AssetUse, type WholeReadBudget } from "./storage/assetUrlGate";
+import { androidWithholdsUrl, forgetStoredAssetSizes, rememberWholeReadUrl, type AssetUse, type WholeReadBudget } from "./storage/assetUrlGate";
 import { parseJsonBody } from "./network/frozenBody";
 import { MEASURE } from "./process/memory/measureFlag";
 import { noteChatSelect } from "./process/chatPhaseRing";
@@ -429,6 +431,10 @@ function objectUrlOfAssetBlob(loc: string, blob: Blob): string {
  * @param {string} loc - The location of the file.
  * @param {AssetUse} use - What the URL is for.
  * @param {WholeReadBudget} budget - The whole-read budget of the calling list; used for an `assets` file with a `'whole'` use only.
+ * On Android a `'whole'` URL that is returned is also recorded with its asset
+ * path (`rememberWholeReadUrl`), so the chat sanitizer can learn the stored size
+ * of an image whose markup holds only the URL.
+ *
  * @returns {Promise<string>} - A promise that resolves to the source URL of the file, or `''` when none can be made or it is withheld.
  */
 export async function getFileSrc(loc: string, use: AssetUse = 'whole', budget?: WholeReadBudget) {
@@ -446,7 +452,11 @@ export async function getFileSrc(loc: string, use: AssetUse = 'whole', budget?: 
                 if (store.urlFor === undefined) {
                     throw new Error('The desktop store offers no URL for a file.')
                 }
-                return await store.urlFor(loc)
+                const url = await store.urlFor(loc)
+                if (url && use === 'whole' && isAndroidTransport()) {
+                    rememberWholeReadUrl(url, loc)
+                }
+                return url
             } catch (error) {
                 console.error(error)
                 return ''
@@ -2136,12 +2146,30 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         }
         return report.waitMs
     }
+    // The walk of the character list runs when a reading below moved, a pass failed, or the idle interval passed.
+    const liveCheckGate = createLiveCheckGate()
     const port: Store2LoopPort = {
         tracker: changeTracker,
         reloadFlag: requiresFullEncoderReload,
         getDatabase,
         mergeBack: mergeUnsavedChanges,
         liveCheck() {
+            const db = getDatabase()
+            const list: unknown = db?.characters
+            const signal: LiveCheckSignal = {
+                db,
+                characters: typeof list === 'object' ? list : undefined,
+                length: Array.isArray(list) ? list.length : 0,
+                marks: saveMarkCount,
+                dirty: dirtySinceLastSave,
+                due: changed,
+                failed: get(saveFailureStore) !== null,
+            }
+            const now = Date.now()
+            if (!liveCheckGate.due(signal, now)) {
+                return
+            }
+            liveCheckGate.walked(signal, now)
             // Held ids are not a hold here: any string id is a legal store2 chaId, so they must not suspend order pruning. A repair sets the full-reload flag itself.
             if (liveCharacterCheck({ holds: false }).repaired) {
                 saveMarkCount += 1
@@ -2255,6 +2283,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         takeResidentLoaded: takeResidentLoaded,
         pageHidden: () => document.visibilityState === 'hidden',
         yieldImmediately: shouldBypassFrozenPagePaths,
+        replyOwners: activeStreamOwners,
     }
     if (MEASURE) {
         // A measurement build can hold the idle net while an export runs; dirty passes are not affected.

@@ -6,7 +6,8 @@
  * Guards by construction: the writers are new. Fixtures: the clone models the cold restore copy (same `chaId`, same chat
  * ids, new objects); the stub is the `residency.stubFor` shape (`coldstorage` set, one placeholder chat with a fresh id).
  */
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Chat } from 'src/ts/storage/database.svelte'
 
@@ -92,7 +93,7 @@ async function show(): Promise<void> {
         },
     })
     flushSync()
-    await tick()
+    await tickFake()
 }
 
 const note = () => document.querySelector<HTMLTextAreaElement>('[data-part="this-chat-note"]')!
@@ -107,7 +108,7 @@ function type(value: string): void {
 async function close(): Promise<void> {
     view.open = false
     flushSync()
-    await tick()
+    await tickFake()
 }
 
 /** The owner element is replaced by a structured clone: same chaId, same chat ids, new objects. */
@@ -235,13 +236,43 @@ describe('S2 note autosave and flush', () => {
         expect(h.mark).toHaveBeenCalledTimes(1)
     })
 
+    test('(G6) a focused, edited note whose sheet is removed by the block commits once, with no window error and no alert', async () => {
+        await show()
+        type('typed before removal')
+        expect(document.activeElement).toBe(note())
+
+        // Chromium blurs a focused node, with blur and focusout, while it is still attached and before it is removed.
+        const errors: string[] = []
+        const record = (event: ErrorEvent) => { event.preventDefault(); errors.push(String(event.error?.message ?? event.message)) }
+        window.addEventListener('error', record)
+        const originalRemove = Element.prototype.remove
+        vi.spyOn(Element.prototype, 'remove').mockImplementation(function (this: Element) {
+            const active = this.ownerDocument.activeElement
+            if (active && this.contains(active)) (active as HTMLElement).blur()
+            originalRemove.call(this)
+        })
+        try {
+            await close()
+            vi.advanceTimersByTime(2_000)
+            flushSync()
+        } finally {
+            window.removeEventListener('error', record)
+        }
+
+        expect(errors).toEqual([])
+        expect(chat.note).toBe('typed before removal')
+        expect(h.mark).toHaveBeenCalledTimes(1)
+        expect(h.mark).toHaveBeenCalledWith('char-a')
+        expect(h.alertError).not.toHaveBeenCalled()
+    })
+
     test('the next opening starts from the chat\'s note, not from the last draft', async () => {
         await show()
         type('first')
         await close()
         view.open = true
         flushSync()
-        await tick()
+        await tickFake()
         expect(note().value).toBe('first')
         type('second')
         await close()
@@ -277,7 +308,7 @@ describe('X-I8 deferred writers land on the live chat or are refused visibly', (
         const clone = swapForClone()
         document.querySelector<HTMLElement>('[data-part="this-chat-rename"]')!.click()
         flushSync()
-        await tick()
+        await tickFake()
         const input = document.querySelector<HTMLInputElement>('[data-part="this-chat-name-input"]')!
         input.value = 'On the clone'
         input.dispatchEvent(new Event('input', { bubbles: true }))
@@ -315,7 +346,7 @@ describe('X-I8 deferred writers land on the live chat or are refused visibly', (
         swapForStub()
         document.querySelector<HTMLElement>('[data-part="this-chat-rename"]')!.click()
         flushSync()
-        await tick()
+        await tickFake()
         const input = document.querySelector<HTMLInputElement>('[data-part="this-chat-name-input"]')!
         input.value = 'Lost'
         input.dispatchEvent(new Event('input', { bubbles: true }))

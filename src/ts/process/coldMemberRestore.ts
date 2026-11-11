@@ -44,11 +44,13 @@ export async function restoreColdCharacterByChaId(chaId: string): Promise<boolea
     if (outcome.status !== 'restored') {
         return false
     }
-    if (outcome.installedHere) {
-        const index = DBState.db.characters.indexOf(outcome.character)
-        if (index !== -1) {
-            characterFormatUpdate(index, { updateInteraction: true })
-        }
+    // Every caller that gets `restored` formats, the one that made the install
+    // and one that joined it alike: the answer is true only for a member whose
+    // format has run, and a format that throws rejects every waiting send. The
+    // format is idempotent apart from `lastInteraction`.
+    const index = DBState.db.characters.indexOf(outcome.character)
+    if (index !== -1) {
+        characterFormatUpdate(index, { updateInteraction: true })
     }
     return true
 }

@@ -18,13 +18,35 @@
  */
 export type InFlightKind = 'chat' | 'tts' | 'image' | 'request' | 'translate' | 'embed' | 'busy' | 'save'
 
+/** The chat a unit of work belongs to: the owner (a group by its own id) and the chat. Never the speaking member. */
+export interface InFlightTarget {
+    chaId: string
+    chatId: string
+}
+
+/** How a chat unit ended, as the reply classification reports it. */
+export type InFlightOutcome = 'reply' | 'failed' | 'stopped' | 'none'
+
+/** What the last chat to end says about the run: only a stop or a failure is recorded. */
+export interface RunOutcome {
+    outcome: 'stopped' | 'failed'
+    target: InFlightTarget | null
+}
+
 interface InFlightEntry {
     readonly kind: InFlightKind
+    readonly startedAt: number
+    readonly target: InFlightTarget | null
     timer: ReturnType<typeof setTimeout> | null
 }
 
 const entries = new Set<InFlightEntry>()
 const listeners = new Set<() => void>()
+
+// Set by a chat end, before the subscribers hear of it; reset by every begin of a kind other than
+// 'save' (a hidden reply's save begins after its chat ended and must not erase the outcome), and
+// consumed by `takeRunOutcome`, so it never outlives the all-ended sync that reads it.
+let runOutcome: RunOutcome | null = null
 
 function notify(): void {
     for (const listener of [...listeners]) {
@@ -39,18 +61,35 @@ function notify(): void {
 /**
  * Registers one unit of work of `kind` and returns the function that ends it.
  * Ending is idempotent. With `maxAgeMs` the token ends itself (and logs) once
- * that time has passed.
+ * that time has passed. A chat token may carry its `target`, of which only the
+ * owner's id and the chat's id are kept. Ending a chat token with an outcome
+ * records a stop or a failure as the run outcome; any other end of a chat
+ * clears it, so the last chat to end describes the run.
  */
-export function beginInFlight(kind: InFlightKind, options: { maxAgeMs?: number } = {}): () => void {
-    const entry: InFlightEntry = { kind, timer: null }
+export function beginInFlight(
+    kind: InFlightKind,
+    options: { maxAgeMs?: number, target?: InFlightTarget } = {},
+): (outcome?: InFlightOutcome) => void {
+    const target = kind === 'chat' && options.target
+        ? { chaId: options.target.chaId, chatId: options.target.chatId }
+        : null
+    const entry: InFlightEntry = { kind, startedAt: Date.now(), target, timer: null }
+    if (kind !== 'save') {
+        runOutcome = null
+    }
     entries.add(entry)
-    const end = (): void => {
+    const end = (outcome?: InFlightOutcome): void => {
         if (!entries.delete(entry)) {
             return
         }
         if (entry.timer !== null) {
             clearTimeout(entry.timer)
             entry.timer = null
+        }
+        if (kind === 'chat') {
+            runOutcome = outcome === 'stopped' || outcome === 'failed'
+                ? { outcome, target: entry.target }
+                : null
         }
         notify()
     }
@@ -76,6 +115,35 @@ export function inFlightKinds(): InFlightKind[] {
         }
     }
     return kinds
+}
+
+/** When the earliest live token of `kind` began, in epoch milliseconds; null when none is live. */
+export function inFlightSince(kind: InFlightKind): number | null {
+    let earliest: number | null = null
+    for (const entry of entries) {
+        if (entry.kind === kind && (earliest === null || entry.startedAt < earliest)) {
+            earliest = entry.startedAt
+        }
+    }
+    return earliest
+}
+
+/** The target of the latest-begun live chat token that carries one, or null. */
+export function inFlightChatTarget(): InFlightTarget | null {
+    let latest: InFlightTarget | null = null
+    for (const entry of entries) {
+        if (entry.kind === 'chat' && entry.target) {
+            latest = { chaId: entry.target.chaId, chatId: entry.target.chatId }
+        }
+    }
+    return latest
+}
+
+/** The run outcome, once: reading it clears it. */
+export function takeRunOutcome(): RunOutcome | null {
+    const taken = runOutcome
+    runOutcome = null
+    return taken
 }
 
 /** Calls `callback` after every begin and end; the returned function unsubscribes. */
@@ -104,4 +172,5 @@ export function resetInFlightForTest(): void {
     }
     entries.clear()
     listeners.clear()
+    runOutcome = null
 }

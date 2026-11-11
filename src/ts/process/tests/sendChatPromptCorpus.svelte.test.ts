@@ -281,6 +281,13 @@ vi.mock(import('../transformers'), () => ({
     runImageEmbedding: vi.fn(),
 }) as unknown as typeof import('../transformers'))
 
+// The real derivation, wrapped so a test can count how often a send derives the
+// module reference list.
+vi.mock(import('../moduleRefList'), async (importOriginal) => {
+    const actual = await importOriginal()
+    return { ...actual, moduleRefIdsOf: vi.fn(actual.moduleRefIdsOf) }
+})
+
 // Real: `../../util`, `../scripts`, `../scriptings` (wasmoon), `../modules`,
 // `../lorebook.svelte`, `../../parser/parser.svelte`, `../../parser/chatML`,
 // `../../cbs`, `../../parser/chatVar.svelte`, `../chatOrigin`,
@@ -695,6 +702,116 @@ async function compare(owner: Owner, chat: Chat, member: character | undefined):
 
 //#endregion
 
+/**
+ * A send over messages that mix macro-free text with every text the parser
+ * rewrites, so the prompt the provider receives pins what the parse of each
+ * chat message produces. The marker text is distinct so a dump of the prompt
+ * can be told apart from any other log line.
+ */
+const DUMP_MARKER = 'PROMPTDUMP-714'
+const PINNED_PROMPT: string[][] = [
+    ['system', 'DESC[Alice/PersonaA/VAR-A]\n\nDescription of Alice: PERS[Alice/PersonaA/VAR-A]\n\nCircumstances and context of the dialogue: SCEN[Alice/PersonaA/VAR-A]\n\nPA-PROMPT'],
+    ['system', '[Start a new chat]'],
+    ['user', 'EXU[Alice/PersonaA/{{getvar'],
+    ['assistant', 'EXC[Alice/PersonaA/{{getvar'],
+    ['system', '[Start a new chat]'],
+    ['assistant', 'FIRST[Alice/PersonaA/VAR-A]'],
+    ['user', 'plain'],
+    ['assistant', 'hi PersonaA'],
+    ['user', 'Alice waves'],
+    ['assistant', 'a }} b { c'],
+    ['user', 'a{{b'],
+    ['assistant', '한국어 😀'],
+    ['user', '\\{\\{x\\}\\}'],
+    ['assistant', 'AFTER-PersonaA'],
+    ['user', 'PROMPTDUMP-714 last'],
+    ['system', 'NOTE[Alice/PersonaA/VAR-A]'],
+]
+
+/** The chat messages and note of the send over `moduleMessages`, with module A's two scripts applied. */
+const PINNED_PROMPT_MODULES: string[][] = [
+    ['user', '@@repeat_back end MODA-PersonaA'],
+    ['assistant', 'hi @@repeat_back end'],
+    ['user', 'qTAGa'],
+    ['assistant', 'c MODA-PersonaATAGb'],
+    ['user', 'MODA-PersonaA last'],
+    ['system', 'NOTE[Alice/PersonaA/VAR-A]'],
+]
+
+function dumpWorld(): { A: character, B: character } {
+    return world({
+        messagesA: [
+            msg('user', 'plain'),
+            msg('char', 'hi <user>'),
+            msg('user', '{{char}} waves'),
+            msg('char', 'a }} b { c'),
+            msg('user', 'a{#b'),
+            msg('char', '한국어 \u{1F600}'),
+            msg('user', '\\{\\{x\\}\\}'),
+            msg('char', '<Thoughts>t</Thoughts>after'),
+            msg('user', `${DUMP_MARKER} last`),
+        ],
+        charA: { customscript: [{ comment: 'out', in: 'after', out: 'AFTER-{{user}}', type: 'editprocess', ableFlag: false }] },
+    })
+}
+
+describe('the prompt a send builds from macro-free and macro text', () => {
+    test('T-P1: the first model request holds the pinned prompt', async () => {
+        const { A } = dumpWorld()
+        const result = await sendWith(A, A.chats[0], 0)
+
+        expect(result.outcome).toBe(true)
+        expect(result.prompt.map((e) => [e.role, e.content])).toEqual(PINNED_PROMPT)
+    })
+})
+
+describe('the full-prompt console dumps of a send', () => {
+    let log: ReturnType<typeof vi.spyOn> | null = null
+
+    afterEach(() => {
+        vi.unstubAllEnvs()
+        log?.mockRestore()
+        log = null
+    })
+
+    /** The two dumps: the message list before tokenizing and the final chat list. */
+    function dumpsOf(log: { mock: { calls: unknown[][] } }): { prepared: unknown[][], serialized: string[] } {
+        const prepared = log.mock.calls.filter((c) => c[0] === 'Prepared messages for token calculation:')
+        const serialized = log.mock.calls
+            .filter((c) => c.length === 1 && typeof c[0] === 'string' && c[0].includes(DUMP_MARKER))
+            .map((c) => c[0] as string)
+        return { prepared, serialized }
+    }
+
+    test('T-G1: a build with DEV false prints neither dump', async () => {
+        vi.stubEnv('DEV', false)
+        log = vi.spyOn(console, 'log').mockImplementation(() => {})
+        const { A } = dumpWorld()
+        const result = await sendWith(A, A.chats[0], 0)
+
+        expect(result.outcome).toBe(true)
+        const { prepared, serialized } = dumpsOf(log!)
+        expect(prepared).toHaveLength(0)
+        expect(serialized).toHaveLength(0)
+    })
+
+    test('T-G2: a build with DEV true prints both dumps once, unchanged', async () => {
+        vi.stubEnv('DEV', true)
+        log = vi.spyOn(console, 'log').mockImplementation(() => {})
+        const { A } = dumpWorld()
+        const result = await sendWith(A, A.chats[0], 0)
+
+        expect(result.outcome).toBe(true)
+        const { prepared, serialized } = dumpsOf(log!)
+        expect(prepared).toHaveLength(1)
+        expect(JSON.stringify(prepared[0][1])).toContain(DUMP_MARKER)
+        expect(serialized).toHaveLength(1)
+        const chats = JSON.parse(serialized[0]) as Array<{ role: string, content: string }>
+        expect(chats.every((c) => typeof c.role === 'string' && typeof c.content === 'string')).toBe(true)
+        expect(serialized[0]).toBe(JSON.stringify(chats, null, 2))
+    })
+})
+
 describe('guard: parsing through the send\'s subject changes nothing while the selection is on the send\'s chat', () => {
     test('guard: a character send parses every tag the same with and without its subject', async () => {
         const A = makeChar('char-A', 'Alice', [makeChat('chat-A', [msg('user', 'u0'), msg('char', 'c1'), msg('user', 'u2')], { bindedPersona: 'p-A', modules: ['mod-A'] })])
@@ -739,5 +856,106 @@ describe('guard: parsing through the send\'s subject changes nothing while the s
         handle.end()
 
         expect(differing).toEqual(['{{char}}', '{{user}}', '{{getvar::who}}'])
+    })
+})
+
+describe('the module regex list of one prompt build', () => {
+    /** Alternating macro-free messages that end on a user message. */
+    const plainMessages = (n: number): Message[] => (
+        Array.from({ length: n }, (_, i) => msg((n - 1 - i) % 2 === 0 ? 'user' : 'char', `m${i}`))
+    )
+    const MODULE_R = {
+        id: 'mod-R', name: 'mod-R',
+        regex: [{ comment: 'r', in: 'plain', out: 'REPLACED', type: 'editprocess', ableFlag: false }],
+    }
+    const MODULE_A_REGEX = {
+        ...MODULE_A,
+        regex: [
+            { comment: 'a', in: 'plain', out: 'MODA-{{user}}', type: 'editprocess', ableFlag: false },
+            { comment: 'rb', in: 'TAG\\w+', out: '@@repeat_back end', type: 'editprocess', ableFlag: false },
+        ],
+    }
+    const MODULE_B_REGEX = {
+        ...MODULE_B,
+        regex: [{ comment: 'b', in: 'plain', out: 'MODB', type: 'editprocess', ableFlag: false }],
+    }
+    const moduleMessages = (): Message[] => [
+        msg('user', 'TAGa plain'), msg('char', 'hi TAGb'), msg('user', 'q'), msg('char', 'c plain'), msg('user', 'plain last'),
+    ]
+    const sixPlain = (): Message[] => Array.from({ length: 6 }, (_, i) => msg(i % 2 === 0 ? 'user' : 'char', 'plain'))
+    const regexEntries = (r: Captured): string[] => r.prompt.map((e) => e.content).filter((c) => c === 'plain' || c === 'REPLACED')
+
+    async function refIdCalls(): Promise<number> {
+        const { moduleRefIdsOf } = await import('../moduleRefList')
+        return vi.mocked(moduleRefIdsOf).mock.calls.length
+    }
+
+    async function derivationsOfSend(n: number): Promise<number> {
+        const { A } = world({ messagesA: plainMessages(n) })
+        const before = await refIdCalls()
+        const result = await sendWith(A, A.chats[0], 0)
+        expect(result.outcome).toBe(true)
+        return (await refIdCalls()) - before
+    }
+
+    test('T3-1: a send derives the module reference list as often for 40 messages as for 5', async () => {
+        const few = await derivationsOfSend(5)
+        const many = await derivationsOfSend(40)
+        expect(few).toBeGreaterThan(0)
+        expect(many - few).toBe(0)
+    })
+
+    test('T3-2: a module selected by an editprocess hook during the loop applies from the next send', async () => {
+        const { pluginV2 } = await import('../../plugins/plugins.svelte')
+        const { A } = world({ messagesA: sixPlain(), db: { modules: [MODULE_A, MODULE_B, MODULE_R] } })
+        let calls = 0
+        // Call 1 is the pre-loop pass and call 2 is the first message's pass, which fills the list. The flip has to come
+        // at call 3 or later, after that derivation, or the first message would already see the new module.
+        const hook = async (): Promise<null> => {
+            calls++
+            if (calls === 3) {
+                A.chats[0].modules.push('mod-R')
+            }
+            return null
+        }
+        pluginV2.editprocess.add(hook)
+        let first: Captured
+        try {
+            first = await sendWith(A, A.chats[0], 0)
+        } finally {
+            pluginV2.editprocess.delete(hook)
+        }
+        expect(first.outcome).toBe(true)
+        expect(calls).toBeGreaterThanOrEqual(3)
+        expect(regexEntries(first)).toEqual(Array(6).fill('plain'))
+
+        A.chats[0].message.length = 6
+        const second = await sendWith(A, A.chats[0], 0)
+        expect(second.outcome).toBe(true)
+        expect(regexEntries(second)).toEqual(Array(6).fill('REPLACED'))
+    })
+
+    test('T3-5: guard: the prompt shows each module script of the send\'s chat, with the selection on either chat', async () => {
+        const run = async (selection: number): Promise<string[][]> => {
+            const { A } = world({ messagesA: moduleMessages(), db: { modules: [MODULE_A_REGEX, MODULE_B_REGEX] } })
+            const result = await sendWith(A, A.chats[0], selection)
+            expect(result.outcome).toBe(true)
+            return result.prompt.map((e) => [e.role, e.content])
+        }
+        const onA = await run(0)
+        const onB = await run(1)
+        expect(onB).toEqual(onA)
+        expect(JSON.stringify(onA)).not.toContain('MODB')
+        expect(onA.slice(-PINNED_PROMPT_MODULES.length)).toEqual(PINNED_PROMPT_MODULES)
+    })
+
+    test('T3-6: guard: a module added between two sends applies to the second, not the first', async () => {
+        const { A } = world({ messagesA: sixPlain(), db: { modules: [MODULE_A, MODULE_B, MODULE_R] } })
+        const first = await sendWith(A, A.chats[0], 0)
+        A.chats[0].message.length = 6
+        A.chats[0].modules.push('mod-R')
+        const second = await sendWith(A, A.chats[0], 0)
+        expect(regexEntries(first)).toEqual(Array(6).fill('plain'))
+        expect(regexEntries(second)).toEqual(Array(6).fill('REPLACED'))
     })
 })

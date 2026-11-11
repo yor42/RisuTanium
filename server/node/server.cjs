@@ -676,16 +676,6 @@ async function hashJSON(json){
     return hash.digest('hex');
 }
 
-// The direct-password comparison never authorizes before a password exists: a
-// blank supplied value would otherwise equal the blank configured one.
-function isAuthorizedRequest(req) {
-    if (password.trim() === '') {
-        return false;
-    }
-    const authHeader = normalizeAuthHeader(req.headers['risu-auth']);
-    return !!authHeader && authHeader.trim() === password.trim();
-}
-
 function normalizeAuthHeader(authHeader) {
     if (Array.isArray(authHeader)) {
         return authHeader[0] || '';
@@ -790,20 +780,6 @@ async function isAuthorizedJwtHeader(authHeader) {
         return false;
     }
     return (await verifyJwt(normalized)).ok;
-}
-
-async function isAuthorizedProxyRequest(req) {
-    if (isAuthorizedRequest(req)) {
-        return true;
-    }
-    return await isAuthorizedJwtHeader(req.headers['risu-auth']);
-}
-
-async function checkProxyAuth(req, res) {
-    if (isAuthorizedRequest(req)) {
-        return true;
-    }
-    return await checkAuth(req, res);
 }
 
 // Only RISU_*_KEY / RISU_*_TOKEN or operator-listed names are readable.
@@ -1439,7 +1415,7 @@ function readProxyRequest(req, res, hasBody) {
 }
 
 const reverseProxyFunc = async (req, res, next) => {
-    if(!await checkProxyAuth(req, res)){
+    if(!await checkAuth(req, res)){
         return;
     }
 
@@ -1457,7 +1433,7 @@ const reverseProxyFunc = async (req, res, next) => {
 }
 
 const reverseProxyFunc_get = async (req, res, next) => {
-    if(!await checkProxyAuth(req, res)){
+    if(!await checkAuth(req, res)){
         return;
     }
 
@@ -1532,11 +1508,11 @@ app.get('/proxy', authenticatedRouteLimiter, asyncRoute(reverseProxyFunc_get));
 app.get('/proxy2', authenticatedRouteLimiter, asyncRoute(reverseProxyFunc_get));
 app.get('/hub-proxy/*', authenticatedRouteLimiter, hubProxyFunc);
 
-app.post('/proxy', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, asyncRoute(reverseProxyFunc));
-app.post('/proxy2', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, asyncRoute(reverseProxyFunc));
+app.post('/proxy', authenticatedRouteLimiter, authBeforeBody(checkAuth), authenticatedBodyParsers, asyncRoute(reverseProxyFunc));
+app.post('/proxy2', authenticatedRouteLimiter, authBeforeBody(checkAuth), authenticatedBodyParsers, asyncRoute(reverseProxyFunc));
 app.post('/hub-proxy/*', authenticatedRouteLimiter, hubProxyFunc);
-app.post('/proxy-stream-jobs', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, asyncRoute(async (req, res) => {
-    if (!await checkProxyAuth(req, res)) {
+app.post('/proxy-stream-jobs', authenticatedRouteLimiter, authBeforeBody(checkAuth), authenticatedBodyParsers, asyncRoute(async (req, res) => {
+    if (!await checkAuth(req, res)) {
         return;
     }
 
@@ -1603,8 +1579,8 @@ app.post('/proxy-stream-jobs', authenticatedRouteLimiter, authBeforeBody(checkPr
 }));
 
 // A name that is not allowed and one that is not set answer identically, so names cannot be probed.
-app.post('/api/env-secret', authenticatedRouteLimiter, authBeforeBody(checkProxyAuth), authenticatedBodyParsers, asyncRoute(async (req, res) => {
-    if (!await checkProxyAuth(req, res)) {
+app.post('/api/env-secret', authenticatedRouteLimiter, authBeforeBody(checkAuth), authenticatedBodyParsers, asyncRoute(async (req, res) => {
+    if (!await checkAuth(req, res)) {
         return;
     }
     res.set('Cache-Control', 'no-store');
@@ -1622,7 +1598,7 @@ app.post('/api/env-secret', authenticatedRouteLimiter, authBeforeBody(checkProxy
 }));
 
 app.delete('/proxy-stream-jobs/:jobId', authenticatedRouteLimiter, asyncRoute(async (req, res) => {
-    if (!await checkProxyAuth(req, res)) {
+    if (!await checkAuth(req, res)) {
         return;
     }
     const job = proxyStreamJobs.get(req.params.jobId);
@@ -3088,7 +3064,7 @@ function setupProxyStreamWebSocket(server) {
             const ticket = reqUrl.searchParams.get('ticket');
             const authorized = ticket !== null
                 ? job !== undefined && wsTicketMatches(job.wsTicket, ticket)
-                : await isAuthorizedProxyRequest({ headers: { 'risu-auth': reqUrl.searchParams.get('risu-auth') || req.headers['risu-auth'] } });
+                : await isAuthorizedJwtHeader(reqUrl.searchParams.get('risu-auth') || req.headers['risu-auth']);
             if (!authorized) {
                 socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
                 socket.destroy();

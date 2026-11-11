@@ -12,7 +12,7 @@ import { loadLoreBookV3Prompt } from "./lorebook.svelte";
 import { findCharacterbyId, getUserName, getAuthorNoteDefaultText, getPersonaPrompt, isLastCharPunctuation, trimUntilPunctuation, parseToggleSyntax, prebuiltAssetCommand } from "../util";
 import { requestChatData } from "./request/request";
 import { stableDiff } from "./stableDiff";
-import { processScript, processScriptFull, risuChatParser, type MessageLocator, type MessageRef } from "./scripts";
+import { processScript, processScriptFull, risuChatParser, type MessageLocator, type MessageRef, type PromptModuleScripts } from "./scripts";
 import { exampleMessage } from "./exampleMessages";
 import { firstMessageOf } from "./firstMessage";
 import { sayTTS } from "./tts";
@@ -58,9 +58,9 @@ import { MEASURE } from "./memory/measureFlag";
 import { noteReplyArrived } from "../storage/saveRequestProbe";
 import { beginWork, createSendSubject, isShownChat, registerWork, resolveOriginWithHint, type Origin, type OriginContext, type SendSubject, type WorkHandle, type WorkKind, type WorkStop } from "./chatOrigin";
 import { noteTurnReached, publishUnit, releaseUnit } from "./generationOwnership.svelte";
-import { addActiveStream } from "./activeStreams";
+import { addActiveStream, noteStreamText } from "./activeStreams";
 import { isChatOnScreen } from "./chatOnScreen.svelte";
-import { classifyReplyOutcome, noteUnitFailure, recordReplyOutcome, type ReplyAnnouncement } from "./replyMarks";
+import { classifyReplyOutcome, noteUnitFailure, recordReplyOutcome, type ReplyAnnouncement, type ReplyOutcome } from "./replyMarks";
 import { announceReply, noteReplySound } from "./replyNotice";
 
 export interface OpenAIChat{
@@ -105,11 +105,6 @@ export interface MultiModal{
     width?:number
 }
 
-export interface requestTokenPart{
-    name:string
-    tokens:number
-}
-
 /**
  * True exactly while one outermost `sendChat` call is in progress. That call
  * sets it when it is accepted and clears it when it settles; nothing else
@@ -117,8 +112,6 @@ export interface requestTokenPart{
  */
 export const doingChat = writable(false)
 export const chatProcessStage = writable(0)
-export const abortChat = writable(false)
-export let requestTokenParts:{[key:string]:requestTokenPart[]} = {}
 
 /**
  * Test-only observation of the positions a streamed reply's flush wrote at.
@@ -353,16 +346,19 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     // Held from the moment the unit takes the flag until it releases it, so the
     // page is not cut off while a reply is being produced. Refused sends and the
     // recursion never begin one.
-    let endInFlight: () => void = () => {}
+    let endInFlight: (outcome?: ReplyOutcome) => void = () => {}
     // How the unit ended, for the reply mark (`recordReplyOutcome`).
     let completed = false
     let threw = false
     let modulesFailed = false
     let announcement: ReplyAnnouncement | null = null
+    // The same classification, for the keep-alive notification's Stopped and Failed lingers. A preview send has none.
+    let replyOutcome: ReplyOutcome | undefined
     try {
         callerSignal?.addEventListener('abort', relayAbort)
         publishUnit(unit)
-        endInFlight = beginInFlight('chat')
+        // The target is the owner's chat (a group's own id for a group chat), so a notification can open it.
+        endInFlight = beginInFlight('chat', { target: entry.context.origin })
         doingChat.set(true)
         // Awaited only after the flag is taken, so the check and the take stay one synchronous stretch. The busy
         // button aborts the wait through the unit's signal; a failure alerts once and the finally releases the unit.
@@ -384,13 +380,14 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
                 announcement = recordReplyOutcome(entry.context, facts, isChatOnScreen)
                 // On screen or off: a failed or stopped reply plays no sound, so the composer's chime must know. Never throws.
                 try {
-                    noteReplySound(callerSignal, classifyReplyOutcome(entry.context.subject.resolve() !== null, facts))
+                    replyOutcome = classifyReplyOutcome(entry.context.subject.resolve() !== null, facts)
+                    noteReplySound(callerSignal, replyOutcome)
                 } catch (error) {
                     console.error('The reply sound could not be recorded', error)
                 }
             }
             flushPageReplyEndWhenHidden(entry.context.origin)
-            endInFlight()
+            endInFlight(replyOutcome)
             callerSignal?.removeEventListener('abort', relayAbort)
             releaseUnit(unit)
             doingChat.set(false)
@@ -584,7 +581,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     }
 
     // Every message is expanded at its own chat index, hidden ones included, and
-    // the result is written back.
+    // the result is written back to the message itself. The array object is kept:
+    // a replaced array would rebuild the dirty tracking of every message of the
+    // chat.
     function runCurrentChatFunction():Chat|null{
         const ctx = subject.resolve()
         if(!ctx){
@@ -593,9 +592,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         const split = splitSentMessages(ctx.chat.message)
         const view = promptViewOf(split, firstMessageDecision ?? decideFirstMessageSent(split.resetAt))
         promptView = view
-        ctx.chat.message = ctx.chat.message.map((v, i) => {
+        ctx.chat.message.forEach((v, i) => {
             v.data = risuChatParser(v.data, {chara: currentChar, runVar: true, subject, promptView: promptViewAt(view, i)})
-            return v
         })
         return ctx.chat
     }
@@ -733,9 +731,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     }
     const nowChatroom = entryCtx.owner
     nowChatroom.lastInteraction = Date.now()
-    entryCtx.chat.message = entryCtx.chat.message.map((v) => {
+    entryCtx.chat.message.forEach((v) => {
         v.chatId = v.chatId ?? v4()
-        return v
     })
     
     let promptInfo: MessagePresetInfo = {}
@@ -1416,7 +1413,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         currentTokens += await tokenizer.tokenizeChat(chat)
     }
     
-    console.log('Prepared messages for token calculation:', ms)
+    if(import.meta.env.DEV){
+        console.log('Prepared messages for token calculation:', ms)
+    }
 
     if(abortSignal.aborted){
         return false
@@ -1468,11 +1467,14 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     // and the `@@` branches find the message again by identity should the chat
     // shift.
     const messageLocator = createMessageLocator()
+    // The module regex list is fixed at the first pass of this build: a change to
+    // the module selection during the loop applies from the next send.
+    const moduleScripts: PromptModuleScripts = {}
     for(const msg of ms){
         const chatIndex = msChatIndexes[index]
         let formatedChat = (await processScriptFull(nowChatroom,risuChatParser(msg.data, {chara: currentChar, role: msg.role, subject, promptView: promptViewAt(promptView, chatIndex)}), 'editprocess', chatIndex, {
             chatRole: msg.role,
-        }, undefined, subject, {message: msg, index: chatIndex, locator: messageLocator}, promptView)).data
+        }, undefined, subject, {message: msg, index: chatIndex, locator: messageLocator}, promptView, 'use', moduleScripts)).data
         let name = ''
         if(msg.role === 'char'){
             if(msg.saying){
@@ -1508,8 +1510,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
 
         let multimodal:MultiModal[] = []
-        const modelinfo = getModelInfo(DBState.db.aiModel)
         if(inlays.length > 0){
+            const modelinfo = getModelInfo(DBState.db.aiModel)
             for(const inlay of inlays){
                 const inlayName = inlay.replace('{{inlayed::', '').replace('{{inlay::', '').replace('}}', '').replace('{{inlayeddata::', '')
                 const inlayData = await getInlayAsset(inlayName)
@@ -1627,7 +1629,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         }
         index++
     }
-    console.log(JSON.stringify(chats, null, 2))
+    if(import.meta.env.DEV){
+        console.log(JSON.stringify(chats, null, 2))
+    }
 
     const depthPrompts = lorepmt.actives.filter(v => {
         return (v.pos === 'depth' && v.depth > 0) || v.pos === 'reverse_depth'
@@ -2362,6 +2366,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 return false
             }
             target.ctx.chat.message[target.index].data = data
+            noteStreamText(target.replyId, data)
             if(bumpKeys){
                 target.ctx.owner.reloadKeys += 1
             }

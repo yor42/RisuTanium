@@ -862,3 +862,78 @@ describe('changeChar on a stored character that lacks default fields', () => {
         expect((opened.globalLore as Array<{ content: string, bookVersion: number }>)[0]).toMatchObject({ content: 'say {{user}}', bookVersion: 2 })
     })
 })
+
+describe('changeChar -- a joined restore whose install-format throws', () => {
+    test('guard: with no failure, two joined calls both end selected on the one installed character', async () => {
+        installDb([warmCharacter('before'), upstreamStub('member', 'unit-member')])
+        const pending = holdReads()
+
+        const first = changeChar(1)
+        const second = changeChar(1)
+        await tick()
+        pending[0].resolve(ok(fullCharacter('member', 'restored description')))
+
+        await expect(first).resolves.toBe('superseded')
+        await expect(second).resolves.toBe('selected')
+        expect(slot(1).coldstorage).toBeUndefined()
+        expect(slot(1).desc).toBe('restored description')
+        expect(get(selectedCharID)).toBe(1)
+    })
+
+    test('reproducer: both calls reject, nothing is selected and the character stays installed', async () => {
+        installDb([warmCharacter('before'), upstreamStub('member', 'unit-member')])
+        const pending = holdReads()
+        // The character's data makes the format throw every time it runs.
+        vi.mocked(setCharacterByIndex).mockImplementation(() => { throw new Error('format failed') })
+
+        try {
+            const first = changeChar(1)
+            const second = changeChar(1)
+            const firstSettled = expect(first).rejects.toThrow('format failed')
+            const secondSettled = expect(second).rejects.toThrow('format failed')
+            await tick()
+            pending[0].resolve(ok(fullCharacter('member', 'restored description')))
+            await firstSettled
+            await secondSettled
+
+            expect(get(selectedCharID)).toBe(-1)
+            expect(slot(1).coldstorage).toBeUndefined()
+            expect(slot(1).desc).toBe('restored description')
+        } finally {
+            vi.mocked(setCharacterByIndex).mockImplementation((index: number, char: unknown) => {
+                DBState.db.characters[index] = char as never
+            })
+        }
+    })
+
+    test('reproducer: a group that joins the restore of its archived member does not get selected when the member\'s format throws', async () => {
+        const group = { type: 'group', name: 'The Group', chaId: 'group', image: '', characters: ['member'], chats: [], chatPage: 0, firstMsgIndex: -1 } as unknown as CharacterFixture
+        installDb([group, upstreamStub('member', 'unit-member')])
+        const pending = holdReads()
+        vi.mocked(setCharacterByIndex).mockImplementation((index: number, char: unknown) => {
+            if ((char as character).chaId === 'member') {
+                throw new Error('member format failed')
+            }
+            DBState.db.characters[index] = char as never
+        })
+
+        try {
+            const click = changeChar(1)
+            const clickSettled = expect(click).rejects.toThrow('member format failed')
+            await tick()
+            const groupOpen = changeChar(0)
+            const groupSettled = expect(groupOpen).rejects.toThrow('member format failed')
+            await tick()
+            pending[0].resolve(ok(fullCharacter('member', 'restored description')))
+            await clickSettled
+            await groupSettled
+
+            expect(get(selectedCharID)).toBe(-1)
+            expect(slot(1).coldstorage).toBeUndefined()
+        } finally {
+            vi.mocked(setCharacterByIndex).mockImplementation((index: number, char: unknown) => {
+                DBState.db.characters[index] = char as never
+            })
+        }
+    })
+})

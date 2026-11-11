@@ -1,4 +1,5 @@
 import type { HostIme, ImeState } from '../android/hostBridge'
+import { createFocusSettle } from '../focusSettle'
 
 // Where the host reports no keyboard state (web, desktop), the keyboard is judged open only when a text field has focus
 // and the visual viewport is clearly shorter than the layout window. 120 CSS px clears URL-bar and toolbar changes (about
@@ -54,8 +55,6 @@ export function watchSoftKeyboard(root: HTMLElement, win: Window, onchange: (ope
     const active = root.ownerDocument.activeElement
     let textFocused = !!active && root.contains(active) && isTextField(active)
     let open = false
-    let disposed = false
-    let focusEvaluationPending = false
     // A host close of an open keyboard that is waiting for the size to settle.
     let closing = false
     let widthAtClose = 0
@@ -124,24 +123,16 @@ export function watchSoftKeyboard(root: HTMLElement, win: Window, onchange: (ope
     // Script can dispatch a focus event synchronously from inside a framework DOM update (`focus()`, `blur()`, removing a
     // focused node). The focus flag changes at once, but the change is reported after that update and before the next
     // task, so the consumer may write reactive state. Several focus events in one task report once, from the final focus.
-    const scheduleEvaluate = () => {
-        if (focusEvaluationPending) return
-        focusEvaluationPending = true
-        void Promise.resolve().then(() => {
-            focusEvaluationPending = false
-            if (disposed) return
-            evaluate()
-        })
-    }
-    const onFocusIn = (event: FocusEvent) => { textFocused = isTextField(event.target); scheduleEvaluate() }
-    const onFocusOut = (event: FocusEvent) => { textFocused = insideRoot(event.relatedTarget) && isTextField(event.relatedTarget); scheduleEvaluate() }
+    const focusEvaluation = createFocusSettle(evaluate)
+    const onFocusIn = (event: FocusEvent) => { textFocused = isTextField(event.target); focusEvaluation.schedule() }
+    const onFocusOut = (event: FocusEvent) => { textFocused = insideRoot(event.relatedTarget) && isTextField(event.relatedTarget); focusEvaluation.schedule() }
     root.addEventListener('focusin', onFocusIn)
     root.addEventListener('focusout', onFocusOut)
     viewport?.addEventListener('resize', onResize)
     const unsubscribe = ime ? ime.subscribe(evaluate) : () => {}
     evaluate()
     return () => {
-        disposed = true
+        focusEvaluation.dispose()
         root.removeEventListener('focusin', onFocusIn)
         root.removeEventListener('focusout', onFocusOut)
         viewport?.removeEventListener('resize', onResize)

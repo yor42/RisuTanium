@@ -6,7 +6,8 @@ import type { Database, folder } from '../storage/database.svelte'
 import { asBuffer } from '../util'
 import { isNodeServer, isTauri } from '../platform'
 import { getAppStore } from '../storage/store/appStore'
-import { androidAssetSizeVerdict } from '../storage/assetUrlGate'
+import { ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES, androidAssetSizeVerdict, androidWholeReadQueue, knownStoredAssetSize } from '../storage/assetUrlGate'
+import { isAndroidTransport } from '../storage/tauriByteTransport'
 import { readTauriHeader, readUrlHeader, type ImageHeader } from './avatarThumbHeader'
 
 /**
@@ -48,13 +49,24 @@ interface GenContext {
      *  that was still in flight at timeout doesn't go on to draw and encode
      *  the image for a caller nobody is waiting on any more. */
     isCancelled(): boolean
+    /** Stops the task's timer while the generator waits for something that is
+     *  bounded elsewhere (a grant of the whole-read queue). A no-op once the
+     *  task has settled. */
+    pauseTimeout(): void
+    /** Starts the task's timer again with a fresh `timeoutMs`, whether it was
+     *  paused or still running. A no-op once the task has settled. */
+    restartTimeout(): void
 }
 
 type FullGenerator = (loc: string, ctx: GenContext) => Promise<GenResult>
 
 const DEFAULT_CONCURRENCY = 2
 const DEFAULT_TIMEOUT_MS = 15000
-const DEFAULT_MEMO_MAX_ENTRIES = 1000
+/** Matches the list avatar style cache, so a thumbnail the list still holds is
+ *  not forgotten here and regenerated or re-read when its tile mounts again. */
+const DEFAULT_MEMO_MAX_ENTRIES = 4000
+/** Record reads in flight at once; the rest wait in the read queue. */
+const DEFAULT_READ_CONCURRENCY = 8
 const DEFAULT_MEMO_MAX_BYTES = 16 * 1024 * 1024
 /** Bounds a single `getItem`/`setItem` call, separate from `timeoutMs`
  *  (which bounds the whole read-decode-draw pipeline), so a hung IndexedDB
@@ -68,6 +80,7 @@ const DEFAULT_STORE_TIMEOUT_MS = 5000
 const DEFAULT_MAX_PENDING_WRITES = 4
 
 let concurrency = DEFAULT_CONCURRENCY
+let readConcurrency = DEFAULT_READ_CONCURRENCY
 let timeoutMs = DEFAULT_TIMEOUT_MS
 let memoMaxEntries = DEFAULT_MEMO_MAX_ENTRIES
 let memoMaxBytes = DEFAULT_MEMO_MAX_BYTES
@@ -225,6 +238,8 @@ interface ThumbWaiter {
 interface InFlightEntry {
     promise: Promise<string | null>
     waiters: Set<ThumbWaiter>
+    /** Set once the record read is queued. */
+    read: ReadTask | null
     /** Set once the generation task is queued. */
     task: QueueTask | null
     /** True once every waiter left before the task started; the read that is
@@ -286,7 +301,7 @@ function isWaiterVisible(waiter: ThumbWaiter): boolean {
     }
 }
 
-function isTaskVisible(task: QueueTask): boolean {
+function isTaskVisible(task: { waiters: Set<ThumbWaiter> }): boolean {
     for (const waiter of task.waiters) {
         if (isWaiterVisible(waiter)) {
             return true
@@ -304,6 +319,95 @@ function nextTaskIndex(): number {
         }
     }
     return queue.length - 1
+}
+
+/** Index of the oldest read with a visible waiter, else of the oldest read.
+ *  Read at pop time. Oldest first among equals keeps the order the generation
+ *  queue sees the lookups in: reads that settle in start order enqueue in call
+ *  order, as when every read started at once. */
+function nextReadIndex(): number {
+    for (let i = 0; i < readQueue.length; i++) {
+        if (isTaskVisible(readQueue[i])) {
+            return i
+        }
+    }
+    return 0
+}
+
+// ---------------------------------------------------------------------------
+// Read queue: the record read that precedes generation, started visible-first
+// at bounded concurrency instead of all at once in mount order.
+// ---------------------------------------------------------------------------
+
+type ReadOutcome = { kind: 'record', record: Awaited<ReturnType<typeof readStoreRecord>> } | { kind: 'failed' } | { kind: 'dropped' }
+
+interface ReadTask {
+    loc: string
+    /** The callers still waiting; shared with the in-flight entry. */
+    waiters: Set<ThumbWaiter>
+    /** True from the moment the queue starts the read. */
+    started: boolean
+    resolve: (outcome: ReadOutcome) => void
+}
+
+const readQueue: ReadTask[] = []
+let readsRunning = 0
+/** Bumped by the test reset, so a read started before it neither changes the
+ *  count nor pumps afterwards. */
+let readEpoch = 0
+let readPumpScheduled = false
+
+/** Queues the record read and pumps one microtask later: the tiles of one
+ *  render flush all call in before their waiters exist, and the pump must see
+ *  all of them (and their visibility) before it picks the first. */
+function enqueueRead(loc: string, entry: InFlightEntry): Promise<ReadOutcome> {
+    return new Promise<ReadOutcome>((resolve) => {
+        const task: ReadTask = { loc, waiters: entry.waiters, started: false, resolve }
+        entry.read = task
+        readQueue.push(task)
+        if (!readPumpScheduled) {
+            readPumpScheduled = true
+            const epoch = readEpoch
+            void Promise.resolve().then(() => {
+                if (epoch !== readEpoch) {
+                    return
+                }
+                readPumpScheduled = false
+                pumpReads()
+            })
+        }
+    })
+}
+
+function pumpReads() {
+    while (readsRunning < readConcurrency && readQueue.length > 0) {
+        const [task] = readQueue.splice(nextReadIndex(), 1)
+        if (!task) {
+            break
+        }
+        task.started = true
+        readsRunning++
+        void runRead(task)
+    }
+}
+
+/** The slot is freed when the store race settles: a value, the store timeout
+ *  or a rejection. */
+async function runRead(task: ReadTask) {
+    const epoch = readEpoch
+    let outcome: ReadOutcome
+    try {
+        outcome = { kind: 'record', record: await readStoreRecord(task.loc) }
+    } catch {
+        outcome = { kind: 'failed' }
+    }
+    if (epoch === readEpoch) {
+        readsRunning--
+    }
+    task.resolve(outcome)
+    if (epoch === readEpoch) {
+        pumpReads()
+    }
 }
 
 function pump() {
@@ -336,7 +440,7 @@ async function runTask(task: QueueTask) {
         pump()
     }
 
-    const timer = setTimeout(() => {
+    const onTimeout = () => {
         cancelled = true
         try {
             cleanupFn?.()
@@ -344,7 +448,8 @@ async function runTask(task: QueueTask) {
             // best-effort cleanup only
         }
         finishAndFree(null)
-    }, timeoutMs)
+    }
+    let timer: ReturnType<typeof setTimeout> | undefined = setTimeout(onTimeout, timeoutMs)
 
     const ctx: GenContext = {
         setCleanup(fn) {
@@ -363,6 +468,17 @@ async function runTask(task: QueueTask) {
         },
         isCancelled() {
             return cancelled
+        },
+        pauseTimeout() {
+            if (!settled) {
+                clearTimeout(timer)
+            }
+        },
+        restartTimeout() {
+            if (!settled) {
+                clearTimeout(timer)
+                timer = setTimeout(onTimeout, timeoutMs)
+            }
         }
     }
 
@@ -427,6 +543,14 @@ function dropEntryIfAbandoned(loc: string, entry: InFlightEntry) {
     }
     entry.dropped = true
     forgetEntry(loc, entry)
+    const read = entry.read
+    if (read && !read.started) {
+        const readAt = readQueue.indexOf(read)
+        if (readAt >= 0) {
+            readQueue.splice(readAt, 1)
+        }
+        read.resolve({ kind: 'dropped' })
+    }
     const task = entry.task
     if (task) {
         const at = queue.indexOf(task)
@@ -442,19 +566,23 @@ function dropEntryIfAbandoned(loc: string, entry: InFlightEntry) {
 // ---------------------------------------------------------------------------
 
 async function resolveThumb(loc: string, entry: InFlightEntry): Promise<string | null> {
-    try {
-        const record = await readStoreRecord(loc)
-        if (record.kind === 'src') {
-            memoize(loc, record.src)
-            return record.src
-        }
-        if (record.kind === 'skip') {
-            memoize(loc, null)
-            return null
-        }
-    } catch {
+    const outcome = await enqueueRead(loc, entry)
+    if (outcome.kind === 'failed') {
         // A broken store read must not reject the caller; it also can't be
         // trusted enough to attempt generation this call.
+        return null
+    }
+    if (outcome.kind === 'dropped') {
+        // Every waiter left before the read started: the store is not read.
+        return null
+    }
+    const record = outcome.record
+    if (record.kind === 'src') {
+        memoize(loc, record.src)
+        return record.src
+    }
+    if (record.kind === 'skip') {
+        memoize(loc, null)
         return null
     }
     if (entry.dropped) {
@@ -512,6 +640,7 @@ export async function getAvatarThumbSrc(loc: string, options?: ThumbRequestOptio
     const entry: InFlightEntry = {
         promise: Promise.resolve(null),
         waiters: new Set(),
+        read: null,
         task: null,
         dropped: false
     }
@@ -520,6 +649,17 @@ export async function getAvatarThumbSrc(loc: string, options?: ThumbRequestOptio
     })
     inFlight.set(loc, entry)
     return waitOnEntry(loc, entry, options)
+}
+
+/**
+ * What the in-memory memo holds for `loc` right now, synchronously: a string
+ * is a thumbnail, `null` means there is none (an animated image, or a failed
+ * or skipped lookup), and `undefined` means not known yet. It starts no
+ * lookup, memoizes nothing and does not reorder the memo, so reading it never
+ * changes what a later eviction removes.
+ */
+export function peekAvatarThumb(loc: string): string | null | undefined {
+    return memo.has(loc) ? memo.get(loc) : undefined
 }
 
 /** Only local `assets/` locs are eligible, never more aggressive than the
@@ -922,6 +1062,40 @@ async function generateFromBytes(loc: string, scope: TaskScope): Promise<{ resul
 }
 
 /**
+ * Decodes the still behind `url`. On Android a file of at least
+ * `ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES` first takes a grant of its stored size
+ * from the app-wide whole-read queue, because the WebView holds one Java array of
+ * that size for as long as the decode runs. A size that is no longer cached counts
+ * as that minimum, so no URL decode of unknown size bypasses the queue.
+ *
+ * The grant is held only from its arrival to the settle of this decode, or to the
+ * task's timeout cleanup, whichever comes first: every other await of the task
+ * (size verdict, header, asset URL, the whole-read fallback) happens outside it.
+ * The task timer is paused while the grant is awaited, because the wait is
+ * bounded by the settle timers of the grants ahead, and starts afresh at the
+ * grant. Throws when the decode fails, like `currentRenderThumb`.
+ */
+async function renderFromUrl(loc: string, url: string, scope: TaskScope, ctx: GenContext): Promise<GenResult> {
+    const bytes = knownStoredAssetSize(loc) ?? ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES
+    if (!isAndroidTransport() || bytes < ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES) {
+        return await currentRenderThumb({ kind: 'url', url }, scope)
+    }
+    ctx.pauseTimeout()
+    const grant = await androidWholeReadQueue().acquire(bytes)
+    if (scope.isCancelled()) {
+        grant.release()
+        return null
+    }
+    ctx.restartTimeout()
+    scope.own(() => grant.release())
+    try {
+        return await currentRenderThumb({ kind: 'url', url }, scope)
+    } finally {
+        grant.release()
+    }
+}
+
+/**
  * Where the first 64 KiB can be read without the whole file (Node-hosted
  * pages, Tauri), animation is decided from it and a still is decoded from the
  * asset URL, so no JS copy of the file is made. Everything else, and every
@@ -965,7 +1139,7 @@ async function realGenerate(loc: string, ctx: GenContext): Promise<GenResult> {
                     }
                     if (url !== null) {
                         try {
-                            return await currentRenderThumb({ kind: 'url', url }, scope)
+                            return await renderFromUrl(loc, url, scope, ctx)
                         } catch {
                             if (scope.isCancelled()) {
                                 return null
@@ -1153,12 +1327,15 @@ export const __avatarThumbTestHooks = {
         readbackCheckFn = fn
         readbackChecked = false
     },
-    setLimits(limits: { concurrency?: number, timeoutMs?: number, storeTimeoutMs?: number, memoMaxEntries?: number, memoMaxBytes?: number, maxPendingWrites?: number }) {
+    setLimits(limits: { concurrency?: number, readConcurrency?: number, timeoutMs?: number, storeTimeoutMs?: number, memoMaxEntries?: number, memoMaxBytes?: number, maxPendingWrites?: number }) {
         if (limits.maxPendingWrites !== undefined) {
             maxPendingWrites = limits.maxPendingWrites
         }
         if (limits.concurrency !== undefined) {
             concurrency = limits.concurrency
+        }
+        if (limits.readConcurrency !== undefined) {
+            readConcurrency = limits.readConcurrency
         }
         if (limits.timeoutMs !== undefined) {
             timeoutMs = limits.timeoutMs
@@ -1182,6 +1359,13 @@ export const __avatarThumbTestHooks = {
         }
         inFlight.clear()
         queue.length = 0
+        for (const read of readQueue.splice(0)) {
+            read.resolve({ kind: 'dropped' })
+        }
+        readsRunning = 0
+        readEpoch++
+        readPumpScheduled = false
+        readConcurrency = DEFAULT_READ_CONCURRENCY
         running = 0
         pendingWrites = 0
         writeEpoch++
@@ -1212,7 +1396,9 @@ export const __avatarThumbTestHooks = {
             waiters,
             running,
             pendingWrites,
-            queued: queue.length
+            queued: queue.length,
+            readsRunning,
+            readsQueued: readQueue.length
         }
     }
 }

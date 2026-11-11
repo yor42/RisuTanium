@@ -35,8 +35,8 @@
  * - `read_range_text` is `read_range` clamped to 64 KiB of piece with the response as
  *   one base64 string.
  *
- * `app_fs_exists`, `app_fs_mkdir_all`, `app_fs_remove` and `app_data_dir_path`
- * mirror `src-tauri/src/app_fs.rs`: the key rule of `appFsKey`, a missing path
+ * `app_fs_exists`, `app_fs_mkdir_all`, `app_fs_remove`, `app_fs_sweep_write_temps`
+ * and `app_data_dir_path` mirror `src-tauri/src/app_fs.rs`: the key rule of `appFsKey`, a missing path
  * rejects with a message that ends in `(os error 2)`, an empty directory is
  * removable and a full one is not, and a refusal starts with `refused key:`.
  * They act on the fake's files, so its fault injection (`failRemoves`) and call
@@ -271,7 +271,84 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
         return key
     }
 
-    /** `app_fs_exists`, `app_fs_mkdir_all`, `app_fs_remove` and `app_data_dir_path`, over the same files; see `app_fs.rs` for the rules they mirror. */
+    /** The entries one level below `directory` (empty: the root) as `[name, kind]`, read from the fake's files, directories and links without a `readDir` call. */
+    function levelOf(directory: string): Map<string, 'file' | 'directory' | 'link'> {
+        const prefix = directory === '' ? '' : `${directory}/`
+        const level = new Map<string, 'file' | 'directory' | 'link'>()
+        const note = (key: string, whole: 'file' | 'link') => {
+            if (!key.startsWith(prefix) || key === directory) {
+                return
+            }
+            const rest = key.slice(prefix.length)
+            const slash = rest.indexOf('/')
+            level.set(slash < 0 ? rest : rest.slice(0, slash), slash < 0 ? whole : 'directory')
+        }
+        for (const key of fs.files.keys()) {
+            note(key, 'file')
+        }
+        for (const key of fs.symlinks.keys()) {
+            note(key, 'link')
+        }
+        for (const known of fs.directories) {
+            if (known.startsWith(prefix) && known !== directory) {
+                const rest = known.slice(prefix.length)
+                level.set(rest.includes('/') ? rest.slice(0, rest.indexOf('/')) : rest, 'directory')
+            }
+        }
+        return level
+    }
+
+    /**
+     * `app_fs_sweep_write_temps`, as `app_fs::sweep_write_temps`: the root is swept
+     * without descending, each listed directory with everything below it, a link is
+     * never entered, a missing directory is skipped, and each removal goes through
+     * the fake's `remove` so `failRemoves` applies. The reply is `{ removed, failures }`.
+     */
+    async function sweepWriteTemps(args: Record<string, unknown>): Promise<{ removed: number, failures: string[] }> {
+        const fsModule = fs.module as { remove(path: string): Promise<void> }
+        const report = { removed: 0, failures: [] as string[] }
+        const isTemp = (name: string) => /^risu-write-[0-9a-f]{16}\.tmp$/.test(name)
+        const sweep = async (directory: string, recursive: boolean): Promise<void> => {
+            const temps: string[] = []
+            const subdirectories: string[] = []
+            for (const [name, kind] of levelOf(directory)) {
+                const child = directory === '' ? name : `${directory}/${name}`
+                if (recursive && kind === 'directory') {
+                    subdirectories.push(child)
+                } else if (isTemp(name)) {
+                    temps.push(child)
+                }
+            }
+            for (const temp of temps) {
+                try {
+                    await fsModule.remove(temp)
+                    report.removed++
+                } catch (error) {
+                    report.failures.push(String(error))
+                }
+            }
+            for (const subdirectory of subdirectories) {
+                await sweep(subdirectory, true)
+            }
+        }
+        await sweep('', false)
+        const directories = args.directories
+        if (!Array.isArray(directories) || directories.some((entry) => typeof entry !== 'string')) {
+            throw new Error('directories must be an array of strings')
+        }
+        for (const directory of directories as string[]) {
+            try {
+                appFsKey({ key: directory }, false)
+            } catch (error) {
+                report.failures.push(String(error))
+                continue
+            }
+            await sweep(directory, true)
+        }
+        return report
+    }
+
+    /** `app_fs_exists`, `app_fs_mkdir_all`, `app_fs_remove`, `app_fs_sweep_write_temps` and `app_data_dir_path`, over the same files; see `app_fs.rs` for the rules they mirror. */
     async function appFsCommand(command: string, args: Record<string, unknown>): Promise<unknown> {
         const fsModule = fs.module as {
             exists(path: string): Promise<boolean>
@@ -291,6 +368,8 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
             case 'app_fs_remove':
                 await fsModule.remove(appFsKey(args, false))
                 return undefined
+            case 'app_fs_sweep_write_temps':
+                return await sweepWriteTemps(args)
             default:
                 return fs.getAppDataRoot() ?? '/appdata'
         }
@@ -420,6 +499,7 @@ export function createChunkedInvoke(fs: FakeTauriFs) {
             case 'app_fs_exists':
             case 'app_fs_mkdir_all':
             case 'app_fs_remove':
+            case 'app_fs_sweep_write_temps':
             case 'app_data_dir_path':
                 return await appFsCommand(command, named)
             case 'write_chunk': {

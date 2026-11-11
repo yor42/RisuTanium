@@ -58,30 +58,37 @@ describe('classifyWindowError', () => {
 describe('handleWindowError', () => {
     const sinks = () => ({ warn: vi.fn(), error: vi.fn(), report: vi.fn() })
 
-    test('(R) an event without an error object warns its message and neither logs an error nor shows an alert', () => {
+    test('(R) an event without an error object warns its message and neither logs an error nor shows an alert', async () => {
         const s = sinks()
         handleWindowError({ error: null, message: 'ResizeObserver loop completed with undelivered notifications.' }, s)
         expect(s.warn).toHaveBeenCalledWith('ResizeObserver loop completed with undelivered notifications.')
         expect(s.error).not.toHaveBeenCalled()
         expect(s.report).not.toHaveBeenCalled()
+        await Promise.resolve()
+        expect(s.report).not.toHaveBeenCalled()
     })
 
-    test('(G) an Error is logged and reported, and not warned', () => {
+    test('(G) an Error is logged at once and reported after the raising stack has unwound, and not warned', async () => {
         const s = sinks()
         const error = new Error('boom')
         handleWindowError({ error, message: 'boom' }, s)
         expect(s.error).toHaveBeenCalledWith(error)
+        expect(s.report).not.toHaveBeenCalled()
+        await Promise.resolve()
+        expect(s.report).toHaveBeenCalledTimes(1)
         expect(s.report).toHaveBeenCalledWith(error)
         expect(s.warn).not.toHaveBeenCalled()
     })
 
-    test('(G) a worker error is logged and not reported', () => {
+    test('(G) a worker error is logged and not reported, not even after a microtask', async () => {
         class FakeWorker {}
         vi.stubGlobal('Worker', FakeWorker)
         const s = sinks()
         const error = { target: new FakeWorker() }
         handleWindowError({ error, message: 'worker failed' }, s)
         expect(s.error).toHaveBeenCalledWith(error)
+        expect(s.report).not.toHaveBeenCalled()
+        await Promise.resolve()
         expect(s.report).not.toHaveBeenCalled()
     })
 })

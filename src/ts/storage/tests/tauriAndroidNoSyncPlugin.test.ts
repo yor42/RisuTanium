@@ -157,15 +157,33 @@ describe('the write sweep and the atomic write on Android', () => {
         expect(wire.fs.files.has('database/database.bin')).toBe(true)
     })
 
-    test('the sweep removes a leftover temp through the app command', async () => {
-        const { sweepAllWriteTemps } = await import('src/ts/storage/tauriAtomicWrite')
+    test('the sweep removes a leftover temp through the one native sweep command', async () => {
+        const { sweepAllWriteTemps, WRITE_TEMP_DIRECTORIES } = await import('src/ts/storage/tauriAtomicWrite')
         wire.fs.plant('database/risu-write-0123456789abcdef.tmp', body())
 
         await sweepAllWriteTemps()
 
         expectNoWaitingPluginCommand()
-        expect(appFsKeys('app_fs_remove')).toEqual(['database/risu-write-0123456789abcdef.tmp'])
-        expect(appFsKeys('app_fs_exists')).toContain('database')
+        expect(wire.fs.files.has('database/risu-write-0123456789abcdef.tmp')).toBe(false)
+        const sent = wire.callsOf('app_fs_sweep_write_temps')
+        expect(sent).toHaveLength(1)
+        expect(sent[0].args).toEqual({ directories: [...WRITE_TEMP_DIRECTORIES] })
+    })
+
+    test('the sweep sends no plugin read_dir even with 5,000 asset entries; one app sweep command removes the temp', async () => {
+        const { sweepAllWriteTemps } = await import('src/ts/storage/tauriAtomicWrite')
+        for (let index = 0; index < 5000; index++) {
+            wire.fs.plant(`assets/a-${String(index).padStart(4, '0')}.png`, body(1))
+        }
+        wire.fs.plant('assets/risu-write-0123456789abcdef.tmp', body())
+
+        await sweepAllWriteTemps()
+
+        expectNoWaitingPluginCommand()
+        expect(wire.plugin()).not.toContain('plugin:fs|read_dir')
+        expect(wire.callsOf('app_fs_sweep_write_temps')).toHaveLength(1)
+        expect(wire.fs.files.has('assets/risu-write-0123456789abcdef.tmp')).toBe(false)
+        expect(wire.fs.files.size).toBe(5000)
     })
 
     test('a small atomic write goes as chunks: no plugin write and no rename', async () => {

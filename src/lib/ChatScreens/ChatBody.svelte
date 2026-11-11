@@ -20,6 +20,7 @@
     import { moduleRunVersion, selectedModulesPending } from "src/ts/process/moduleEnsure";
     import { chatSurface } from "./chatSurface.svelte";
     import { UNRESOLVED_IMAGE_SELECTOR } from "./imageRepairSelector";
+    import { createDeferredImageLoader } from "./deferredAssetImages";
     import {
         AWAITING, lookup, pendingDisplay, record, runShowsSpinner, scopeOf, slotKeyOf,
         type CacheLookup, type PendingDisplay, type RenderFingerprint,
@@ -36,6 +37,7 @@
         translating: boolean
         retranslate: boolean
         renderRevision?: number
+        /** `null` until the caller's wrapper is bound; absent when there is none, and then no image is deferred. */
         bodyRoot?: HTMLElement|null
         modelShortName: string
         renderRawStreaming?: boolean
@@ -86,8 +88,10 @@
     // Plain on purpose: a run resuming after a module wait reads it untracked. A module load remounts this component
     // and destroys this instance before its waiting run resumes, so a destroyed run stops and only the new instance sends.
     let destroyed = false
+    const loader = createDeferredImageLoader()
     onDestroy(() => {
         destroyed = true
+        loader.dispose()
     })
 
     function getCbsCondition(){
@@ -257,7 +261,6 @@
 
             imgs.forEach(async (img) => {
                 const name = img.getAttribute('src')?.toLocaleLowerCase() || ''
-                console.log(name)
 
                 if(
                     name.length > 200 ||
@@ -268,11 +271,10 @@
                 }
                 
                 const foundAsset = exactAssets.get(name)
-                console.log('Checking image:', name, 'Assets:', assets)
                 if(foundAsset){
                     img.classList.add('root-loaded-image')
                     img.classList.add('root-loaded-image-' + styl)
-                    img.src = await getFileSrc(foundAsset)
+                    loader.assign(img, await getFileSrc(foundAsset))
                     return
                 }
 
@@ -301,7 +303,7 @@
                     const got = await getFileSrc(currentFound)
                     const name2 = img.getAttribute('src')?.toLocaleLowerCase() || ''
                     if(name === name2){
-                        img.setAttribute('src', got)
+                        loader.assign(img, got)
                     }
 
                     if(img.classList.length === 0){
@@ -469,7 +471,9 @@
     // Two levels on purpose: the string is compared by value, so an equal result neither sanitizes again nor writes the
     // DOM. The sanitize stays a tracked read of the hooks' DB flags (hideAllImages) through `sanitized`.
     let displayHtml = $derived(htmlOf(display))
-    let sanitized = $derived(addMetadataToElement(trimMarkdown(displayHtml), modelShortName))
+    // Large asset images wait for the load queue only where a scan can promote them: a caller that supplies `bodyRoot`.
+    // The read is untracked, so the wrapper binding later does not sanitize again.
+    let sanitized = $derived(addMetadataToElement(trimMarkdown(displayHtml, { deferLargeAssetImages: untrack(() => bodyRoot !== undefined) }), modelShortName))
 
     $effect(() => {
         if(shouldRenderRawStreaming){
@@ -490,6 +494,22 @@
         }
         sanitized
         untrack(() => checkImg())
+    })
+
+    // Hands deferred images to the loader. `sanitized` and `bodyRoot` are tracked: on the first mount the wrapper is
+    // still null, and the effect runs again, with the markup in the document, once it is bound.
+    $effect(() => {
+        if(shouldRenderRawStreaming || display.kind === 'indicator'){
+            return
+        }
+        sanitized
+        const root = bodyRoot
+        if(!root){
+            return
+        }
+        // Only a scan of rendered markup ends this body's wait in an open warm hold; a blank or spinner scan does not.
+        const rendered = display.kind === 'html'
+        untrack(() => loader.scan(root, rendered))
     })
 </script>
 

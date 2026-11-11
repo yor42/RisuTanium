@@ -218,7 +218,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 //#endregion
 
 import { getFileSrc, releaseAssetObjectUrl } from 'src/ts/globalApi.svelte'
-import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES, createWholeReadBudget, resetAssetUrlGateForTest } from 'src/ts/storage/assetUrlGate'
+import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES, androidAssetSizeVerdict, createWholeReadBudget, resetAssetUrlGateForTest, wholeReadBytesOfUrl } from 'src/ts/storage/assetUrlGate'
 
 const MIB = 1024 * 1024
 const URL_OF = (key: string) => `asset://localhost/${key}`
@@ -344,6 +344,40 @@ describe('getFileSrc with the whole-read budget of a list', () => {
 
         expect(await getFileSrc('assets/a')).toBe(URL_OF('assets/a'))
         expect(await getFileSrc('assets/b', 'whole')).toBe(URL_OF('assets/b'))
+    })
+})
+
+describe('getFileSrc and the whole-read URL registry', () => {
+    test('an Android whole URL is registered with the stored size of its asset', async () => {
+        transport.stat.mockResolvedValue(60 * MIB)
+
+        expect(await getFileSrc('assets/big', 'whole')).toBe(URL_OF('assets/big'))
+        expect(wholeReadBytesOfUrl(URL_OF('assets/big'))).toBe(60 * MIB)
+    })
+
+    test('a media URL is not registered, even for a key whose size is cached', async () => {
+        transport.stat.mockResolvedValue(60 * MIB)
+        await androidAssetSizeVerdict('assets/video')
+
+        expect(await getFileSrc('assets/video', 'media')).toBe(URL_OF('assets/video'))
+        expect(wholeReadBytesOfUrl(URL_OF('assets/video'))).toBeUndefined()
+    })
+
+    test('a withheld file asks the store for nothing and registers nothing', async () => {
+        transport.stat.mockResolvedValue(65 * MIB)
+
+        expect(await getFileSrc('assets/huge', 'whole')).toBe('')
+        expect(store.urlFor).not.toHaveBeenCalled()
+        expect(wholeReadBytesOfUrl(URL_OF('assets/huge'))).toBeUndefined()
+    })
+
+    test('guard: off Android nothing is registered, even for a key whose size is cached', async () => {
+        transport.stat.mockResolvedValue(60 * MIB)
+        await androidAssetSizeVerdict('assets/big')
+        transport.android = false
+
+        expect(await getFileSrc('assets/big', 'whole')).toBe(URL_OF('assets/big'))
+        expect(wholeReadBytesOfUrl(URL_OF('assets/big'))).toBeUndefined()
     })
 })
 

@@ -33,11 +33,20 @@ function byDisplayOrder(a: Message, b: Message): number {
  * The sibling counts a row shows, from one pass over the path and one over `alt`. It follows the order
  * and owner rules of `siblingsAt` in `chatTree.ts`: a record's parent resolves to the first path message
  * holding that id, otherwise to the first record holding it (then the record is not a child of the
- * path), otherwise to the root. A chat whose `alt` cannot be read has an empty view: every position
- * holds its own message alone and nothing follows the last one.
+ * path), otherwise to the root. A chat whose `alt` cannot be read, or holds no records, has an empty
+ * view: every position holds its own message alone and nothing follows the last one.
  */
 export function treeView(chat: Chat): TreeView {
     const path = Array.isArray(chat.message) ? chat.message : []
+    if (chat.alt === undefined || !isChatAltReadable(chat) || chat.alt.length === 0) {
+        // No record can share a position, so each path message stands alone and nothing follows the last.
+        return {
+            at(i: number): SiblingPosition | null {
+                return Number.isInteger(i) && i >= 0 && i < path.length ? { index: 1, count: 1 } : null
+            },
+            continuation: 0,
+        }
+    }
     const pathFirst = new Map<string, number>()
     for (let k = 0; k < path.length; k++) {
         const id = path[k].chatId

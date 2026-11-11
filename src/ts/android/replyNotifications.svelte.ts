@@ -16,7 +16,28 @@ export interface ReplyNotificationsHost {
     disable(): unknown
     /** One notification per `key`: a later call with the same key replaces the earlier one. `silent` suppresses the notification's own sound. */
     notify(key: string, title: string, body: string, silent: boolean): unknown
+    /** Contract v2: the notice as the JSON string of a `ReplyNoticeState`. A host without it is an old one and gets `notify`. */
+    notifyState(json: string): unknown
     cancel(key: string): unknown
+}
+
+/**
+ * The contract-v2 reply notice. `key` is the notification's tag: the same key `cancelReplyNotification` removes it by.
+ * Native shows `name` as the title and `text` as the body, and on a locked screen only `publicTitle`; the chat's own name
+ * and anything said in it never travel. `chaId` and `chatId` are the target a tap opens. `avatar` is a thumbnail data URL,
+ * or null for no large icon.
+ */
+export interface ReplyNoticeState {
+    v: 2
+    key: string
+    name: string
+    text: string
+    publicTitle: string
+    chaId: string
+    chatId: string
+    avatar: string | null
+    /** Suppresses the notification's own sound. */
+    silent: boolean
 }
 
 declare global {
@@ -104,12 +125,34 @@ export function disable(): void {
     callHost('disable')
 }
 
+/** Whether a notification for `key` may be posted now: the host reported opted in and enabled, and the key fits. */
+function mayPost(key: string): boolean {
+    return state.known && state.optedIn && state.enabled && isReplyKey(key)
+}
+
 /** Posts the chat's notification; does nothing unless the host reported opted in and enabled. */
 export function notifyReply(key: string, title: string, body: string, silent: boolean): void {
-    if (!state.known || !state.optedIn || !state.enabled || !isReplyKey(key)) {
+    if (!mayPost(key)) {
         return
     }
     callHost('notify', key, title, body, silent)
+}
+
+/** True when the host takes the v2 notice. An old host has only `notify`. */
+export function hasReplyStateHost(): boolean {
+    try {
+        return typeof replyNotificationsHost()?.notifyState === 'function'
+    } catch {
+        return false
+    }
+}
+
+/** Posts the chat's v2 notification under the same gate as `notifyReply`. */
+export function notifyReplyState(notice: ReplyNoticeState): void {
+    if (!mayPost(notice.key)) {
+        return
+    }
+    callHost('notifyState', JSON.stringify(notice))
 }
 
 /** Removes the chat's notification, if any. */

@@ -1,6 +1,7 @@
 import type { JsonObject, JsonValue } from '../../blockFrame'
 import type { AssetList, InlayList, KeyEnv, Manifest, ModuleIndex, Ref, Shard, UnitType } from '../format'
 import type { KeyMint } from '../commit'
+import type { ChunkMemo } from './chunkMemo'
 
 /**
  * Shared types of the unit codec: the pure translation between a `Database`
@@ -245,6 +246,11 @@ export interface EncodeOptions {
      * for a commit are exactly those the commit accepts; absent, keys come from `env` (conversion, goldens).
      */
     keys?: KeyMint
+    /**
+     * The saved chunk texts of the save encoder (see `ChunkMemo`): a chunk whose text is the remembered one and whose
+     * previous unit has the remembered digest is taken without being framed. Absent, every chunk is framed.
+     */
+    chunkMemo?: ChunkMemo
 }
 
 /** Where `assembleDatabase` reads unit bytes from. */

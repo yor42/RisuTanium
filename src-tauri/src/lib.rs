@@ -335,6 +335,25 @@ async fn app_fs_remove(app: AppHandle, key: String) -> Result<(), String> {
         .map_err(|e| format!("the remove task failed: {}", e))?
 }
 
+/// The boot sweep of leftover write temps in the app data directory and in the
+/// listed directories; see `app_fs::StartupSweep::take_or_walk`. The walk and the
+/// removals run natively on a blocking worker thread, so only the small report
+/// crosses to the page. Every walk keeps the temps newer than its trigger minus a
+/// margin: the walk that setup starts at process start, and a fresh walk for the
+/// moment this call arrived. A call waits while the startup walk runs; that
+/// walk's report goes to the boot that waited for it, or else to the first call
+/// after it finished.
+#[tauri::command]
+async fn app_fs_sweep_write_temps(app: AppHandle, directories: Vec<String>) -> Result<app_fs::SweepReport, String> {
+    // Taken before anything else: an earlier arrival only keeps more temps.
+    let arrival = std::time::SystemTime::now();
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    // A `tauri::State` cannot move into the blocking closure, so the closure takes the state from the handle.
+    tauri::async_runtime::spawn_blocking(move || app.state::<app_fs::StartupSweep>().take_or_walk(&base, &directories, arrival))
+        .await
+        .map_err(|e| format!("the sweep task failed: {}", e))
+}
+
 /// The absolute app data directory, for building asset URLs. The page supplies no path.
 #[tauri::command]
 async fn app_data_dir_path(app: AppHandle) -> Result<String, String> {
@@ -889,7 +908,8 @@ pub fn run() {
     let mut builder = tauri::Builder::default()
         .manage(PendingLaunch(Mutex::new(cold_launch)))
         .manage(store2_gate::Store2Gate::new())
-        .manage(streamed_fetch::FetchRegistry::new());
+        .manage(streamed_fetch::FetchRegistry::new())
+        .manage(app_fs::StartupSweep::new());
 
     #[cfg(desktop)]
     {
@@ -920,6 +940,23 @@ pub fn run() {
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
+            // The write-temp walk starts with the process so that the boot does not wait on it.
+            // The base is resolved on the worker: on Android that waits for the UI thread.
+            #[cfg(any(desktop, target_os = "android"))]
+            {
+                let handle = app.handle().clone();
+                let spawned = std::thread::Builder::new().name("risu-startup-sweep".into()).spawn(move || {
+                    handle
+                        .state::<app_fs::StartupSweep>()
+                        .run(|| handle.path().app_data_dir().map_err(|e| e.to_string()));
+                });
+                if let Err(e) = spawned {
+                    app.state::<app_fs::StartupSweep>().fail(format!("could not start the startup sweep thread: {}", e));
+                }
+            }
+            // No startup walk runs on another target: end the wait so calls walk fresh.
+            #[cfg(not(any(desktop, target_os = "android")))]
+            app.state::<app_fs::StartupSweep>().fail("no startup sweep on this target".to_string());
             if let Some(state) = app.try_state::<PendingLaunch>() {
                 let files = lock_pending(&state).files.clone();
                 allow_launch_files(app.handle(), &files);
@@ -943,6 +980,7 @@ pub fn run() {
             app_fs_exists,
             app_fs_mkdir_all,
             app_fs_remove,
+            app_fs_sweep_write_temps,
             app_data_dir_path,
             free_space::app_data_free_bytes,
             write_chunk,
