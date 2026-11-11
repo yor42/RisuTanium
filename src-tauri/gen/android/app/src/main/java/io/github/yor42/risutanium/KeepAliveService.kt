@@ -33,12 +33,20 @@ import androidx.lifecycle.ProcessLifecycleOwner
 // A v2 page sends a whole notice (KeepAliveNotice) that the display machine and noticePlan turn into
 // content; an old page sends a title and a Stop label, which are shown as before. The Stop tap
 // enters Stopping here, before the page is told, and the timeout below ends it if the stoppable work
-// does not, while the app is in the foreground. Every change to the display goes through
-// changeDisplay, which ends by bringing the one Stopping timer in line with the display.
+// does not, while the app is in the foreground. Right after telling the page, the Stop tap also asks
+// native to cancel the chat's in-flight requests, because a hidden page can be frozen and run nothing
+// (MC-1435); a confirmed cancel shows Stopped at once (MC-1470) until the page returns or the app
+// reopens (MC-1471). While the app is hidden, a count line the page
+// has not refreshed for a few seconds is dropped by a single count check (MC-1450). Every change to the
+// display goes through changeDisplay, which ends by bringing the one Stopping timer and the one count
+// check in line with the display.
 class KeepAliveService : Service() {
   private var title = ""
   private var stopLabel = ""
   private val display = KeepAliveDisplay()
+
+  // The count line the last built notification showed; null before the first build.
+  private var shownCountLine: CountLine? = null
 
   // The large icons by identity key, newest last, for the life of this service: the page sends an avatar
   // once per key and service, and the stopped and failed lingers reuse the bitmap by key.
@@ -48,6 +56,17 @@ class KeepAliveService : Service() {
     if (changeDisplay { display.stopTimeout() }) {
       repost()
     }
+  }
+
+  // Fires when the count line is due to drop. A check that fires before the line is due re-arms for the
+  // remaining time through syncCountTimer instead of stalling.
+  private val countLineCheck = Runnable {
+    val pending = display.countDelayMs()
+    if (pending != null && pending > 0L) {
+      Log.i(TAG, "Count check early")
+    }
+    repostIfCountLineChanged()
+    syncCountTimer()
   }
 
   // The app's visibility is the process lifecycle's STARTED state, so a configuration change that
@@ -84,6 +103,7 @@ class KeepAliveService : Service() {
   override fun onDestroy() {
     ProcessLifecycleOwner.get().lifecycle.removeObserver(appVisibility)
     mainHandler.removeCallbacks(stoppingTimeout)
+    mainHandler.removeCallbacks(countLineCheck)
     if (live === this) {
       live = null
     }
@@ -121,20 +141,56 @@ class KeepAliveService : Service() {
       stopSelf()
       return START_NOT_STICKY
     }
-    // A tap while Stopping is stale: the stop is already on its way.
-    if (intent?.action == ACTION_STOP && stopTap != StopTap.STALE && !MainActivity.deliverKeepAliveStop()) {
-      // No live page can act on the stop, so nothing is left to keep alive.
-      stopSelf()
+    if (intent?.action == ACTION_STOP) {
+      // The page is told first and native cancels the chat's requests after it, in this same turn. A
+      // stale tap (already Stopping) sends nothing.
+      val delivery = changeDisplay {
+        deliverStopTap(
+          stopTap,
+          display,
+          { MainActivity.deliverKeepAliveStop() },
+          { NativeStreams.cancelChatStreamsOrNone() }
+        )
+      }
+      Log.i(TAG, "Stop delivered $delivery")
+      if (delivery == StopDelivery.NO_PAGE) {
+        // No live page can act on the stop, so nothing is left to keep alive.
+        stopSelf()
+      } else if (delivery == StopDelivery.CONFIRMED) {
+        repost()
+      }
     }
     return START_NOT_STICKY
   }
 
-  // The single place the display changes, so every change ends with the timer in line with it.
+  // The single place the display changes, so every change ends with the timer and the count check in
+  // line with it.
   private fun <T> changeDisplay(change: () -> T): T {
     val result = change()
     syncStoppingTimer()
+    syncCountTimer()
     return result
   }
+
+  // One count check is pending exactly when countTimerDelayMs wants one; every change re-arms it.
+  private fun syncCountTimer() {
+    mainHandler.removeCallbacks(countLineCheck)
+    val delay = countTimerDelayMs(shownCountLine, display) ?: return
+    mainHandler.postDelayed(countLineCheck, delay)
+  }
+
+  private fun repostIfCountLineChanged() {
+    if (countLineRepostWanted(shownCountLine, display)) {
+      Log.i(TAG, "Count line ${countLineName(display.countLine())}")
+      repost()
+    }
+  }
+
+  private fun countLineName(line: CountLine): String =
+    when (line) {
+      CountLine.Page -> "Page"
+      CountLine.Dropped -> "Dropped"
+    }
 
   // The timer is pending exactly while the display is Stopping and the app is in the foreground. A
   // pending timer is never restarted by another sync.
@@ -148,8 +204,10 @@ class KeepAliveService : Service() {
     Log.i(TAG, "Stopping timer $timerChange")
   }
 
+  // A return to the foreground restores a dropped count line at once, with the page's last count.
   private fun onAppForeground(visible: Boolean) {
     changeDisplay { display.appForeground(visible) }
+    repostIfCountLineChanged()
   }
 
   private fun showV1Notice(newTitle: String, newStopLabel: String) {
@@ -256,7 +314,13 @@ class KeepAliveService : Service() {
 
   private fun buildNotification(): Notification {
     val notice = display.current()
-    val plan = if (notice != null) noticePlan(notice, display.stopping, Build.VERSION.SDK_INT) else null
+    val line = display.countLine()
+    shownCountLine = line
+    val plan = if (notice != null) {
+      noticePlan(notice, display.stopping, Build.VERSION.SDK_INT, display.cancelConfirmed, line)
+    } else {
+      null
+    }
     val shownTitle = plan?.title ?: title
     val builder = NotificationCompat.Builder(this, CHANNEL_ID)
       .setSmallIcon(R.drawable.ic_stat_risutanium)

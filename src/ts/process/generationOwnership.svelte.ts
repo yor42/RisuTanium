@@ -60,17 +60,44 @@ export function readReplyVersion(): number {
 }
 
 let unitController: AbortController | null = null
+let unitTarget: { chaId: string, chatId: string } | null = null
 
-/** Publishes the abort controller of the send that has just taken the flag. */
-export function publishUnit(controller: AbortController): void {
+/**
+ * Publishes the abort controller of the send that has just taken the flag,
+ * with the chat it belongs to (the owner's id and the chat's id, the
+ * keep-alive notice target). Only those two fields are kept, never a
+ * group member's id.
+ */
+export function publishUnit(controller: AbortController, origin?: { chaId: string, chatId: string }): void {
     unitController = controller
+    unitTarget = origin ? { chaId: origin.chaId, chatId: origin.chatId } : null
 }
 
-/** Withdraws `controller` if it is still the published one. */
+/** Withdraws `controller` and its target if it is still the published one. */
 export function releaseUnit(controller: AbortController): void {
     if(unitController === controller){
         unitController = null
+        unitTarget = null
     }
+}
+
+/**
+ * Whether `signal` is the published send unit's own signal. The native
+ * request layer marks a request exactly then, so the chat's Stop (a
+ * notification tap while the page is frozen) may cancel it natively. A signal
+ * derived from the unit's is not the unit's, so a derived signal is never
+ * marked (MC-1435).
+ */
+export function isUnitInProgressSignal(signal?: AbortSignal | null): boolean {
+    return signal != null && unitController !== null && unitController.signal === signal
+}
+
+/** A copy of the published unit's chat target when `signal` is the unit's own, else null. */
+export function unitTargetOfSignal(signal?: AbortSignal | null): { chaId: string, chatId: string } | null {
+    if(!isUnitInProgressSignal(signal) || unitTarget === null){
+        return null
+    }
+    return { ...unitTarget }
 }
 
 /** Aborts the send in progress, if any. */
