@@ -211,7 +211,7 @@ describe('markCharacterForSave — net-signal counters (CHORE-205 counter experi
 })
 
 describe('markDbWrite (the explicit write hook\'s sink)', () => {
-    // T30: `markCharacterForSave` drops non-string ids, so a sink built on it would lose a numeric chaId.
+    // T30: a usable numeric chaId is appended raw, as the tracker holds ids at runtime, not coerced to a string.
     test('T30: a character with a numeric chaId is marked, raw, as the tracker holds ids at runtime', () => {
         const tracker = makeTracker([])
         const schedule = vi.fn()
@@ -235,6 +235,67 @@ describe('markDbWrite (the explicit write hook\'s sink)', () => {
 
         expect(tracker.character).toEqual(['front'])
         expect(schedule).toHaveBeenCalledTimes(3)
+    })
+
+    test('a numeric 0 or -0 id marks no character but still schedules once each', () => {
+        const tracker = makeTracker(['front'])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        markDbWrite({ kind: 'owner', id: 0 })
+        markDbWrite({ kind: 'placed', id: -0 })
+        markDbWrite({ kind: 'fallback', cause: 'error', id: 0 })
+
+        expect(tracker.character).toEqual(['front'])
+        expect(schedule).toHaveBeenCalledTimes(3)
+    })
+
+    test('a reserved string id is a legal store2 handle: it is appended, as markCharacterForSave appends it', () => {
+        const tracker = makeTracker(['front'])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        markDbWrite({ kind: 'fallback', cause: 'error', id: 'config' })
+
+        expect(tracker.character).toEqual(['front', 'config'])
+        expect(schedule).toHaveBeenCalledTimes(1)
+    })
+
+    test('an oversized string id is a legal store2 handle: it is appended, as markCharacterForSave appends it', () => {
+        const tracker = makeTracker(['front'])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+        const oversized = 'x'.repeat(300)
+
+        markDbWrite({ kind: 'owner', id: oversized })
+
+        expect(tracker.character).toEqual(['front', oversized])
+        expect(schedule).toHaveBeenCalledTimes(1)
+    })
+
+    test('a malformed string id (a lone surrogate) is a legal store2 handle: it is appended, as markCharacterForSave appends it', () => {
+        const tracker = makeTracker(['front'])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+        const malformed = 'a\uD800b'
+
+        markDbWrite({ kind: 'placed', id: malformed })
+
+        expect(tracker.character).toEqual(['front', malformed])
+        expect(schedule).toHaveBeenCalledTimes(1)
+    })
+
+    test('markCharacterForSave and markDbWrite accept and refuse the same ids', () => {
+        const ids: unknown[] = ['config', 'x'.repeat(300), 'a\uD800b', 'a', 7, 0, -0, Number.NaN, Infinity, '', undefined, null, {}]
+        for (const id of ids) {
+            const viaApi = makeTracker([])
+            installCharacterSaveMarks({ tracker: viaApi, schedule: vi.fn() })
+            markCharacterForSave(id)
+            const viaHook = makeTracker([])
+            installCharacterSaveMarks({ tracker: viaHook, schedule: vi.fn() })
+            markDbWrite({ kind: 'placed', id })
+            expect(viaHook.character, String(id)).toEqual(viaApi.character)
+        }
     })
 
     test('an id already present is not appended twice, and the front stays the front', () => {

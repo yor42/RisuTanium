@@ -80,6 +80,18 @@ export function appendIfAbsent(tracker: toSaveType, id: string): void {
 }
 
 /**
+ * The one rule for which ids a mark may name: any non-empty string (store2 saves every string as a legal handle,
+ * reserved and oversized ones included), or a number that passes `isUsableCharacterId`. Refuses 0, -0, NaN,
+ * +/-Infinity, '' and every non-string.
+ */
+function isMarkableId(id: unknown): id is string | number {
+    if (typeof id === 'number') {
+        return isUsableCharacterId(id)
+    }
+    return typeof id === 'string' && id !== ''
+}
+
+/**
  * Marks a character for save. No-op for a falsy or non-string id that is not
  * a usable number, so callers can pass `char?.chaId` straight through without
  * their own guard. A usable number is queued as the raw number: the legacy
@@ -88,11 +100,7 @@ export function appendIfAbsent(tracker: toSaveType, id: string): void {
  * (see `pendingQueue` above).
  */
 export function markCharacterForSave(chaId: unknown): void {
-    if (typeof chaId === 'number') {
-        if (!isUsableCharacterId(chaId)) {
-            return
-        }
-    } else if (!chaId || typeof chaId !== 'string') {
+    if (!isMarkableId(chaId)) {
         return
     }
     // toSave.character is declared string[] but holds raw chaIds, numbers included.
@@ -108,15 +116,11 @@ export function markCharacterForSave(chaId: unknown): void {
     installed.schedule()
 }
 
-function usableDbWriteId(id: unknown): id is string | number {
-    return (typeof id === 'string' && id !== '') || (typeof id === 'number' && Number.isFinite(id))
-}
-
 /**
- * Applies one mark of the explicit write hook. A character id is a non-empty string or a finite number; the
- * tracker's declared `string[]` holds the raw id at runtime, as `frontUnshiftSelected` already does. Only the tracker is guaranteed to
- * hold it: a consumer that compares by
- * string (the legacy `RisuSaveEncoder.set`, `String(m)`) sees it, one that keeps only string ids does not.
+ * Applies one mark of the explicit write hook. A character id is one `isMarkableId` accepts, the same rule
+ * `markCharacterForSave` applies; any other id marks no character, but the mark still schedules. The tracker's declared
+ * `string[]` holds the raw id at runtime, as `frontUnshiftSelected` already does, and consumers that compare by string
+ * (the legacy `RisuSaveEncoder.set`, `String(m)`) or key a usable number (store2 `marksOf`) see it.
  * Every mark ends in exactly one `schedule()`.
  *
  * Before the first `installCharacterSaveMarks` nothing is applied: the base page has no marks then either, and a
@@ -132,7 +136,7 @@ export function markDbWrite(mark: DbWriteMark): void {
     switch (mark.kind) {
         case 'owner':
         case 'placed':
-            if (usableDbWriteId(mark.id)) id = mark.id
+            if (isMarkableId(mark.id)) id = mark.id
             break
         case 'setting': {
             const flag = SETTINGS_FLAG_OF_KEY[mark.key]
@@ -143,7 +147,7 @@ export function markDbWrite(mark: DbWriteMark): void {
             if (mark.prop === 'db') flags = ALL_SETTINGS_FLAGS
             break
         case 'fallback':
-            if (usableDbWriteId(mark.id)) id = mark.id
+            if (isMarkableId(mark.id)) id = mark.id
             break
         case 'listShape':
         case 'listWhole':
@@ -152,14 +156,15 @@ export function markDbWrite(mark: DbWriteMark): void {
     if (MEASURE && id !== undefined) {
         noteSignal('api', String(id))
     }
+    // The queue and the tracker hold raw chaIds, numbers included, though both are declared string-typed.
+    const rawId = id as string | undefined
     if (!installed) {
-        // The queue is declared `Set<string>`; a numeric id is queued raw, like the tracker holds it.
-        if (id !== undefined) pendingQueue.add(id as string)
+        if (rawId !== undefined) pendingQueue.add(rawId)
         for (const flag of flags) pendingFlags.add(flag)
         return
     }
-    if (id !== undefined) {
-        appendIfAbsent(installed.tracker, id as string)
+    if (rawId !== undefined) {
+        appendIfAbsent(installed.tracker, rawId)
     }
     for (const flag of flags) {
         installed.tracker[flag] = true
