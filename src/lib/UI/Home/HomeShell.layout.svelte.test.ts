@@ -327,7 +327,7 @@ describe('HomeShell top bar centring and wordmark', () => {
         expect(barClasses).toContain('pl-14')
         expect(barClasses).toContain('pr-4')
         expect(barClasses).not.toContain('pr-14')
-        expect(gridColumnsOf(bar)).toEqual(['minmax(0,1fr)', 'auto'])
+        expect(gridColumnsOf(bar)).toEqual(['minmax(5.75rem,1fr)', 'minmax(0,auto)'])
 
         const switcherWrapper = classesOf(switcherWrapperOf(root))
         expect(switcherWrapper).toContain('col-span-2')
@@ -337,6 +337,79 @@ describe('HomeShell top bar centring and wordmark', () => {
         expect(chipWrapper).toContain('col-start-2')
         expect(chipWrapper).toContain('justify-end')
         expect(chipWrapper).not.toContain('-mr-10')
+    })
+
+    // Class guard, not a layout proof: the hint is clamped to the chip so an unbreakable run (ja, cn)
+    // is ellipsised instead of spilling out; it may still wrap at break points.
+    test.each([360, 900, 1280])('T-G2: at %i the persona hint is clamped to the chip and still wraps', (width) => {
+        const root = mountShellAt(width)
+        const hint = Array.from(chipOf(root)!.querySelectorAll('span')).find((s) => s.textContent === language.homePersonaChipHint)!
+        expect(hint).toBeTruthy()
+        const classes = classesOf(hint)
+        expect(classes).toContain('max-w-full')
+        expect(classes).toContain('overflow-hidden')
+        expect(classes).toContain('text-ellipsis')
+        expect(classes).toContain('break-keep')
+        expect(classes).not.toContain('whitespace-nowrap')
+        expect(classes).not.toContain('truncate')
+    })
+
+    // Class guard, not a layout proof: each wrapped switcher line is centred in mid and wide
+    // (MC-1440); the wrapper centres the fieldset box itself.
+    test.each([900, 1280])('T-G3: at %i the switcher wrapper centres every wrapped line', (width) => {
+        const root = mountShellAt(width)
+        expect(classesOf(switcherWrapperOf(root))).toContain('*:justify-center')
+    })
+
+    // Compatibility guard (passes before and after): the phone wrapper is not centred, and the
+    // fieldset never carries justify-center itself.
+    test.each([360, 900, 1280])('T-G3c: at %i the fieldset has no justify-center and the phone wrapper has none either', (width) => {
+        const root = mountShellAt(width)
+        expect(classesOf(topBarOf(root)!.querySelector('fieldset'))).not.toContain('justify-center')
+        if (width === 360) expect(classesOf(switcherWrapperOf(root))).not.toContain('*:justify-center')
+    })
+
+    // Class guards (MC-1443), not layout proofs: jsdom cannot evaluate container queries. In mid and
+    // wide the brand cell is the container and the wordmark is visually hidden below 3.75rem; the
+    // text stays in the DOM, so the brand keeps its text alternative.
+    test.each([768, 900, 1280])('T-H1: at %i the brand cell is a container and the wordmark hides below 3.75rem', (width) => {
+        const root = mountShellAt(width)
+        const brand = topBarOf(root)!.querySelector('[data-part="home-brand"]')!
+        expect(classesOf(brand)).toContain('@container')
+        const word = brand.querySelector('span')!
+        expect(classesOf(word)).toContain('@max-[3.75rem]:sr-only')
+        expect(classesOf(word)).not.toContain('@max-[3.75rem]:hidden')
+        expect(classesOf(word)).toContain('truncate')
+        expect(word.textContent).toBe('RisuTanium')
+        expect(word.hasAttribute('aria-hidden')).toBe(false)
+    })
+
+    // Compatibility guard (passes before and after): the phone brand has no container and no hide rule.
+    test('T-H1c: at 360 the phone brand has no container and no wordmark hide rule', () => {
+        const root = mountShellAt(360)
+        const brand = topBarOf(root)!.querySelector('[data-part="home-brand"]')!
+        expect(classesOf(brand)).not.toContain('@container')
+        expect(classesOf(brand.querySelector('span')).some((c) => c.startsWith('@max-'))).toBe(false)
+    })
+
+    // Class guard, red on the base (the base first track has a zero minimum): the mid first-track minimum keeps the wordmark
+    // above the hide threshold (en at 1280 open stays "Ris…", MC-1436).
+    test.each([768, 900, 1279])('T-H2: at %i the first track minimum leaves the wordmark above 24 px', (width) => {
+        const root = mountShellAt(width)
+        const first = gridColumnsOf(topBarOf(root)!)[0]
+        const minimumRem = Number(/^minmax\(([\d.]+)rem,/.exec(first)![1])
+        expect(minimumRem).toBeGreaterThanOrEqual(3.75)
+    })
+
+    // Class guards: the chip is capped inside the bar and its name label truncates, so a long
+    // unbroken name is clipped by the chip instead of widening it past the bar.
+    test.each([360, 900, 1280])('T-H3: at %i the chip is width-capped and the name label truncates', (width) => {
+        const root = mountShellAt(width)
+        const chip = chipOf(root)!
+        expect(classesOf(chip)).toContain('max-w-[calc(100%-2rem)]')
+        const label = chip.querySelector('span > span')!
+        expect(label.textContent).not.toBe('')
+        expect(classesOf(label)).toContain('truncate')
     })
 
     // Compatibility guard (passes before and after): the phone bar and its wrappers are unchanged.
