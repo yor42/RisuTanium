@@ -58,7 +58,7 @@ import { MEASURE } from "./memory/measureFlag";
 import { noteReplyArrived } from "../storage/saveRequestProbe";
 import { beginWork, createSendSubject, isShownChat, registerWork, resolveOriginWithHint, type Origin, type OriginContext, type SendSubject, type WorkHandle, type WorkKind, type WorkStop } from "./chatOrigin";
 import { noteTurnReached, publishUnit, releaseUnit } from "./generationOwnership.svelte";
-import { addActiveStream, noteStreamText } from "./activeStreams";
+import { addActiveStream, addReplySpeaker, noteStreamReceived, noteStreamText } from "./activeStreams";
 import { isChatOnScreen } from "./chatOnScreen.svelte";
 import { classifyReplyOutcome, noteUnitFailure, recordReplyOutcome, type ReplyAnnouncement, type ReplyOutcome } from "./replyMarks";
 import { announceReply, noteReplySound } from "./replyNotice";
@@ -223,6 +223,8 @@ interface SendChatCallContext {
 interface SendChatEntry {
     context: SendChatCallContext
     handle: WorkHandle
+    /** Ends the call's registration as the speaker of its group turn; a call with no member registered none. */
+    releaseSpeaker: () => void
 }
 
 /**
@@ -284,7 +286,16 @@ function enterSendChat(chatProcessIndex: number, arg: SendChatArg, stop?: WorkSt
     }
     handle ??= registerWork(origin, stop, kind)
 
-    return { context: { origin, hint, subject: createSendSubject(origin, hint) }, handle }
+    const subject = createSendSubject(origin, hint)
+
+    // The speaker lives exactly as long as the call's work registration, streaming or not, so a turn that
+    // streams nothing still names its member on the keep-alive card (MC-1502). A prompt preview registers
+    // one too: it holds the same in-flight work and shows the same card, and releases it when it settles.
+    const releaseSpeaker = origin.memberChaId
+        ? addReplySpeaker({ chaId: origin.chaId, chatId: origin.chatId, memberChaId: origin.memberChaId })
+        : () => {}
+
+    return { context: { origin, hint, subject }, handle, releaseSpeaker }
 }
 
 /**
@@ -295,6 +306,7 @@ function enterSendChat(chatProcessIndex: number, arg: SendChatArg, stop?: WorkSt
  * saved.
  */
 function settleSendChatCall(entry: SendChatEntry): void {
+    entry.releaseSpeaker()
     entry.handle.end()
     markCharacterForSave(entry.context.origin.chaId)
     markCharacterForSave(entry.context.origin.memberChaId)
@@ -2465,6 +2477,12 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     modelText = result
                     if(coalesceStreamingDisplay){
                         pendingStreamingResult = result
+                        // The display write waits for a frame a hidden page never runs: the received length lets the
+                        // keep-alive count keep rising meanwhile. It is approximate because it precedes formatting and
+                        // the output scripts; the 'off' mode writes per chunk and stays exact (MC-1499, MC-1466).
+                        if(streamedReplyId !== undefined){
+                            noteStreamReceived(streamedReplyId, (prefix + result).length)
+                        }
                         scheduleStreamingDisplayFlush()
                     }
                     else if(!(await processAndWriteReply(reformatContent(prefix + result)))){

@@ -9,7 +9,7 @@
  */
 import { language } from 'src/lang'
 import { getAvatarThumbSrc, isThumbEligible, peekAvatarThumb } from '../media/avatarThumb'
-import { activeStreams } from '../process/activeStreams'
+import { activeStreams, replySpeakerOf } from '../process/activeStreams'
 import { readAt } from '../process/chatOrigin'
 import type { InFlightTarget } from '../process/inFlightWork'
 import { DBState } from '../stores.svelte'
@@ -59,8 +59,9 @@ function capName(name: string): string {
 
 /**
  * The speaker of the chat at `target`, with the images of the speaker and of the owner. In a group the
- * speaker is the member the latest active stream of that group names; with none, or one that no longer
- * resolves, the group itself speaks. Null when the chat is gone.
+ * speaker is the member the latest active stream of that group names, else the member of the latest live
+ * turn registered for the chat, which names its speaker whether or not the reply streams (MC-1502, D-1);
+ * with neither, or one that no longer resolves, the group itself speaks. Null when the chat is gone.
  */
 export function notificationSubjectOf(target: InFlightTarget): KeepAliveSubject | null {
     const streams = activeStreams()
@@ -70,6 +71,7 @@ export function notificationSubjectOf(target: InFlightTarget): KeepAliveSubject 
             memberChaId = stream.memberChaId
         }
     }
+    memberChaId ??= replySpeakerOf(target.chaId, target.chatId)
     const found: { subject: KeepAliveSubject | null } = { subject: null }
     readAt({ chaId: target.chaId, chatId: target.chatId, memberChaId }, (ctx) => {
         const speaker = ctx.member ?? ctx.owner

@@ -45,7 +45,7 @@ vi.mock('../process/tts', () => ({ stopTTS: vi.fn() }))
 
 import { DBState } from '../stores.svelte'
 import { getAvatarThumbSrc } from '../media/avatarThumb'
-import { addActiveStream, noteStreamText, resetActiveStreamsForTest } from '../process/activeStreams'
+import { addActiveStream, addReplySpeaker, noteStreamText, resetActiveStreamsForTest } from '../process/activeStreams'
 import { beginInFlight, resetInFlightForTest } from '../process/inFlightWork'
 import { startKeepAliveService, type KeepAliveConsumer, type KeepAlivePayload } from './keepAliveService'
 import { NOTIFICATION_AVATAR_MAX_DATA_CHARS, notificationAvatarOf, notificationSubjectOf, warmNotificationAvatar } from './notificationAvatar'
@@ -203,6 +203,44 @@ describe('notificationSubjectOf: who speaks, and which images belong to the chat
         addActiveStream({ chaId: 'group', memberChaId: 'm2', replyChatId: 'r2' })
 
         expect(notificationSubjectOf({ chaId: 'group', chatId: 'c1' })?.identity.key).toBe('m2')
+    })
+
+    // T2.7, rule tests (new export): a turn that streams nothing still names its member (MC-1502).
+    test('a group turn with no stream is spoken by its registered member, with the member image and the group image as owner', () => {
+        installCharacters([
+            makeGroup('group', 'The Group', 'assets/group.png', ['member']),
+            makeCharacter('member', 'Member', 'assets/member.png'),
+        ])
+        addReplySpeaker({ chaId: 'group', chatId: 'c1', memberChaId: 'member' })
+
+        expect(notificationSubjectOf({ chaId: 'group', chatId: 'c1' })).toEqual({
+            identity: { key: 'member', name: 'Member' },
+            image: 'assets/member.png',
+            ownerImage: 'assets/group.png',
+        })
+    })
+
+    test('a stream that names a member outranks the registered turn speaker', () => {
+        installCharacters([
+            makeGroup('group', 'The Group', undefined, ['m1', 'm2']),
+            makeCharacter('m1', 'First', undefined),
+            makeCharacter('m2', 'Second', undefined),
+        ])
+        addReplySpeaker({ chaId: 'group', chatId: 'c1', memberChaId: 'm1' })
+        addActiveStream({ chaId: 'group', memberChaId: 'm2', replyChatId: 'r2' })
+
+        expect(notificationSubjectOf({ chaId: 'group', chatId: 'c1' })?.identity.key).toBe('m2')
+    })
+
+    test('a speaker registered for another chat or another owner leaves the group speaking', () => {
+        installCharacters([
+            makeGroup('group', 'The Group', undefined, ['member']),
+            makeCharacter('member', 'Member', undefined),
+        ])
+        addReplySpeaker({ chaId: 'group', chatId: 'other-chat', memberChaId: 'member' })
+        addReplySpeaker({ chaId: 'other-group', chatId: 'c1', memberChaId: 'member' })
+
+        expect(notificationSubjectOf({ chaId: 'group', chatId: 'c1' })?.identity.key).toBe('group')
     })
 
     test('a speaker that is gone falls back to the group, and a chat that is gone gives no subject', () => {
