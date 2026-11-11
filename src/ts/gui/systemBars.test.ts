@@ -12,7 +12,9 @@
  *
  * Test labels: `(R)` tests cannot run on the base (the module they import does not exist),
  * so their red-before-green evidence is the mutant that removes the `syncSystemBars` call from
- * `updateColorScheme`, which fails them; `(G)` is a compatibility guard.
+ * `updateColorScheme`, which fails them; `(G)` is a compatibility guard. The `(G)` blocks that
+ * set up with `resetSystemBarsForTests` also fail on the base, because that export is missing
+ * there; their assertions describe behaviour that is unchanged after the hand-over.
  */
 import { afterEach, beforeEach, describe, expect, test, vi, type Mock } from 'vitest'
 import { writable } from 'svelte/store'
@@ -48,7 +50,7 @@ vi.mock(import('../stores.svelte'), () => ({
     SafeModeStore: writable(false),
 }) as unknown as typeof import('../stores.svelte'))
 
-import { cssColorToRgb, FALLBACK_BAR_COLOR, syncSystemBars } from './systemBars'
+import { cssColorToRgb, FALLBACK_BAR_COLOR, releaseSystemBars, resetSystemBarsForTests, syncSystemBars } from './systemBars'
 import { changeColorScheme, colorSchemePresets, defaultColorScheme, updateColorScheme } from './colorscheme'
 import { isLite } from '../lite'
 import { createHostChannelFake } from '../android/hostChannelFake'
@@ -100,6 +102,12 @@ describe('cssColorToRgb', () => {
 })
 
 describe('syncSystemBars', () => {
+    // These blocks assert the behaviour after the boot hand-over, when every colour goes straight to the host.
+    beforeEach(() => {
+        resetSystemBarsForTests()
+        releaseSystemBars()
+    })
+
     afterEach(() => {
         delete window.__risuTaniumSystemBars
     })
@@ -138,6 +146,11 @@ describe('syncSystemBars', () => {
 })
 
 describe('syncSystemBars over the host channel', () => {
+    beforeEach(() => {
+        resetSystemBarsForTests()
+        releaseSystemBars()
+    })
+
     afterEach(() => {
         delete window.__risuTaniumHost
         delete window.__risuTaniumSystemBars
@@ -175,6 +188,8 @@ describe('updateColorScheme tells the host', () => {
     let setBackground: Mock<(red: number, green: number, blue: number) => unknown>
 
     beforeEach(() => {
+        resetSystemBarsForTests()
+        releaseSystemBars()
         setBackground = vi.fn<(red: number, green: number, blue: number) => unknown>()
         vi.stubGlobal('safeStructuredClone', structuredClone)
         isLite.set(false)
@@ -231,5 +246,166 @@ describe('updateColorScheme tells the host', () => {
 
         expect(setBackground).not.toHaveBeenCalled()
         expect(document.documentElement.style.getPropertyValue('--risu-theme-bgcolor')).toBe('#112233')
+    })
+})
+
+describe('the bars hold the boot colour until the boot screen hands over', () => {
+    let setBackground: Mock<(red: number, green: number, blue: number) => unknown>
+
+    // Fresh modules per test: the hold state lives in the module, so each test starts at page load.
+    async function freshModules() {
+        vi.resetModules()
+        const bars = await import('./systemBars')
+        const scheme = await import('./colorscheme')
+        return { bars, scheme }
+    }
+
+    beforeEach(() => {
+        setBackground = vi.fn<(red: number, green: number, blue: number) => unknown>()
+        vi.stubGlobal('safeStructuredClone', structuredClone)
+        ;(globalThis as unknown as { __testDb: unknown }).__testDb = {
+            colorScheme: { ...colorSchemePresets.dark, bgcolor: '#112233' },
+        }
+        window.__risuTaniumSystemBars = { setBackground }
+    })
+
+    afterEach(() => {
+        delete window.__risuTaniumSystemBars
+        vi.useRealTimers()
+        vi.unstubAllGlobals()
+    })
+
+    test('(RA1, regression reproducer) the scheme applied at boot does not reach the host until the release, then once', async () => {
+        const { bars, scheme } = await freshModules()
+        scheme.updateColorScheme()
+
+        expect(setBackground, 'no colour reaches the host before the hand-over').not.toHaveBeenCalled()
+        bars.releaseSystemBars()
+        expect(setBackground).toHaveBeenCalledTimes(1)
+        expect(setBackground).toHaveBeenCalledWith(17, 34, 51)
+    })
+
+    test('(RA2, regression reproducer) two scheme changes during boot send only the last one at the release', async () => {
+        const { bars, scheme } = await freshModules()
+        scheme.updateColorScheme()
+        scheme.changeColorScheme('light')
+
+        expect(setBackground, 'no colour reaches the host before the hand-over').not.toHaveBeenCalled()
+        bars.releaseSystemBars()
+        expect(setBackground).toHaveBeenCalledTimes(1)
+        expect(setBackground).toHaveBeenCalledWith(255, 255, 255)
+    })
+
+    test('(RA3, reproducer) after the release a scheme change reaches the host at once', async () => {
+        const { bars, scheme } = await freshModules()
+        scheme.updateColorScheme()
+        expect(setBackground, 'held before the release').not.toHaveBeenCalled()
+        bars.releaseSystemBars()
+        expect(setBackground).toHaveBeenCalledTimes(1)
+        scheme.changeColorScheme('light')
+
+        expect(setBackground).toHaveBeenCalledTimes(2)
+        expect(setBackground).toHaveBeenLastCalledWith(255, 255, 255)
+    })
+
+    test('(RA3b, guard) a release with nothing held sends nothing, and a second release sends nothing', async () => {
+        const { bars } = await freshModules()
+        bars.releaseSystemBars()
+        bars.releaseSystemBars()
+
+        expect(setBackground).not.toHaveBeenCalled()
+    })
+
+    test('(RA4, new-behaviour guard) with no bridge nothing is parsed or sent, held or released', async () => {
+        delete window.__risuTaniumSystemBars
+        const { bars } = await freshModules()
+        const create = vi.spyOn(document, 'createElement')
+        try {
+            expect(() => {
+                bars.syncSystemBars('#112233')
+                bars.releaseSystemBars()
+                bars.syncSystemBars('#445566')
+            }).not.toThrow()
+            expect(create).not.toHaveBeenCalled()
+        } finally {
+            create.mockRestore()
+        }
+    })
+
+    test('(RA4b, new-behaviour guard) the host bridge is not looked up while the colour is held, only at the release', async () => {
+        let lookups = 0
+        Object.defineProperty(window, '__risuTaniumSystemBars', {
+            configurable: true,
+            get: () => {
+                lookups += 1
+                return { setBackground }
+            },
+        })
+        const { bars } = await freshModules()
+        bars.syncSystemBars('#112233')
+        bars.syncSystemBars('#445566')
+        expect(lookups, 'no bridge lookup while the colour is held').toBe(0)
+        bars.releaseSystemBars()
+        expect(lookups, 'the bridge is looked up at the release').toBeGreaterThan(0)
+        expect(setBackground).toHaveBeenCalledTimes(1)
+        expect(setBackground).toHaveBeenCalledWith(68, 85, 102)
+    })
+
+    test('(RA5, new behaviour) the post-paint release runs after the frame callback and its timer, once', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        const frames: Array<() => void> = []
+        vi.stubGlobal('requestAnimationFrame', (callback: () => void) => {
+            frames.push(callback)
+            return frames.length
+        })
+        const { bars } = await freshModules()
+        bars.syncSystemBars('#112233')
+        bars.releaseSystemBarsAfterPaint()
+
+        expect(frames).toHaveLength(1)
+        expect(setBackground, 'nothing is sent before the frame').not.toHaveBeenCalled()
+        vi.advanceTimersByTime(1000)
+        expect(setBackground, 'nothing is sent while the frame has not run').not.toHaveBeenCalled()
+        frames[0]()
+        expect(setBackground, 'the frame callback itself sends nothing').not.toHaveBeenCalled()
+        vi.advanceTimersByTime(0)
+        expect(setBackground).toHaveBeenCalledTimes(1)
+        expect(setBackground).toHaveBeenCalledWith(17, 34, 51)
+        bars.releaseSystemBarsAfterPaint()
+        bars.releaseSystemBars()
+        expect(frames, 'a second request schedules nothing').toHaveLength(1)
+        expect(setBackground, 'a second release sends nothing').toHaveBeenCalledTimes(1)
+        vi.advanceTimersByTime(1000)
+        expect(setBackground).toHaveBeenCalledTimes(1)
+    })
+
+    test('(RA5b, guard) without requestAnimationFrame the release falls back to a timer', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        vi.stubGlobal('requestAnimationFrame', undefined)
+        const { bars } = await freshModules()
+        bars.syncSystemBars('#112233')
+        bars.releaseSystemBarsAfterPaint()
+
+        expect(setBackground).not.toHaveBeenCalled()
+        vi.advanceTimersByTime(1000)
+        expect(setBackground).toHaveBeenCalledTimes(1)
+    })
+
+    test('(RA7, guard) a colour set between the hand-over and the post-paint timer is the one sent', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        const frames: Array<() => void> = []
+        vi.stubGlobal('requestAnimationFrame', (callback: () => void) => {
+            frames.push(callback)
+            return frames.length
+        })
+        const { bars } = await freshModules()
+        bars.syncSystemBars('#112233')
+        bars.releaseSystemBarsAfterPaint()
+        bars.syncSystemBars('#ffffff')
+        frames[0]()
+        vi.advanceTimersByTime(0)
+
+        expect(setBackground).toHaveBeenCalledTimes(1)
+        expect(setBackground).toHaveBeenCalledWith(255, 255, 255)
     })
 })

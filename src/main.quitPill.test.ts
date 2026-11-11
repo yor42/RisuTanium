@@ -95,7 +95,7 @@ describe('the Back-quit pill', () => {
         expect(pressBack()).toBe(true)
         const pill = findPill()
         expect(pill, 'the quit pill is mounted after the first Back').not.toBeNull()
-        const region = pill?.closest('[role="status"]')
+        const region = pill?.closest('[aria-live="polite"]')
         expect(region?.getAttribute('aria-live')).toBe('polite')
         expect(pill?.textContent?.trim()).toBe(WARNING)
         const icon = pill?.querySelector('svg')
@@ -195,6 +195,48 @@ describe('the Back-quit pill', () => {
         expect(region?.hasAttribute('tabindex')).toBe(false)
         expect(region?.querySelectorAll(focusable).length, 'nothing inside the region is focusable').toBe(0)
         expect(document.activeElement, 'showing the pill moves no focus').toBe(before)
+    })
+
+    test('RB1 when the pill goes the region stays, empty and with no role, so no role name is spoken alone', () => {
+        const region = findRegion()
+        expect(region).not.toBeNull()
+        pressBack()
+        advance(QUIT_WINDOW)
+        expect(findPill()).toBeNull()
+        expect(findRegion(), 'the region persists').toBe(region)
+        expect(region?.textContent?.trim()).toBe('')
+        expect(region?.getAttribute('role'), 'a named role is read alone when the region empties').toBeNull()
+        expect(region?.getAttribute('aria-live')).toBe('polite')
+        expect(region?.getAttribute('aria-atomic')).toBe('true')
+    })
+
+    test('RB2 (guard) over one warning cycle the region text is the pill text then empty, and leaving changes only data-leaving', () => {
+        const region = findRegion()
+        expect(region).not.toBeNull()
+        // Only content changes are observed: an attribute change such as data-leaving is not one.
+        const observer = new MutationObserver(() => {})
+        observer.observe(region as Element, { childList: true, subtree: true, characterData: true })
+        const steps: Array<{ text: string | undefined, contentChanges: number }> = []
+        const sample = (): void => {
+            steps.push({ text: region?.textContent?.trim(), contentChanges: observer.takeRecords().length })
+        }
+        pressBack()
+        sample()
+        advance(QUIT_WINDOW - 201)
+        sample()
+        advance(1)
+        sample()
+        expect(findPill()?.hasAttribute('data-leaving')).toBe(true)
+        advance(QUIT_WINDOW - 1800)
+        sample()
+        observer.disconnect()
+
+        expect(findPill()).toBeNull()
+        expect(steps.map((step) => step.text)).toEqual([WARNING, WARNING, WARNING, ''])
+        expect(steps[0].contentChanges, 'showing the pill changes the content').toBeGreaterThan(0)
+        expect(steps[1].contentChanges, 'holding changes nothing').toBe(0)
+        expect(steps[2].contentChanges, 'the leaving step changes no content').toBe(0)
+        expect(steps[3].contentChanges, 'removal changes the content').toBeGreaterThan(0)
     })
 
     test('B-R6 the Korean copy is the DD-008 wording', () => {

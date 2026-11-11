@@ -11,6 +11,7 @@
     import BookmarkList from './lib/Others/BookmarkList.svelte';
     import SettingsSurface from './lib/SettingsShell/SettingsSurface.svelte';
     import { installSettingsOrigin } from './ts/settingsShell/settingsOrigin';
+    import { releaseSystemBarsAfterPaint } from './ts/gui/systemBars';
     import { studioOpen } from './ts/studio/studioOpen';
     import { leaveStudio } from './ts/studio/studioBack.svelte';
     import { backCloseHandler, registerBackHandler } from './ts/backHandlers';
@@ -110,6 +111,11 @@
             snapshot: () => get(studioOpen),
             close: leaveStudio,
         }))
+    })
+
+    // The bars keep the boot canvas colour until the app has replaced the boot screen.
+    $effect(() => {
+        if ($loadedStore) releaseSystemBarsAfterPaint()
     })
 
 </script>
