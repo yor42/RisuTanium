@@ -6,6 +6,7 @@
     import { createFocusSettle } from '../focusSettle'
 
     let shown = $state(true)
+    let hideRequested = $state(false)
     let rawSync = $state('none')
     let rawSettled = $state('none')
     let delegated = $state('none')
@@ -16,7 +17,18 @@
     const settle = createFocusSettle(() => { rawSettled = focusNow() })
     onDestroy(() => settle.dispose())
 
+    // A write made inside an effect re-runs the {#if} block eagerly in either scheduler, so the removal stays on the
+    // block effect's stack: that is the dangerous case. `hide()` models it; `hideDirect()` is the event-handler path,
+    // whose removal the async scheduler defers to the batch commit, outside every block effect.
+    $effect(() => {
+        if (hideRequested) shown = false
+    })
+
     export function hide(): void {
+        hideRequested = true
+    }
+
+    export function hideDirect(): void {
         shown = false
     }
 

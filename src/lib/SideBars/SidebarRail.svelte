@@ -173,6 +173,7 @@
       }
     }
     await tick()
+    if (railDestroyed) return
 
     const target = scrollTargetFor(key, 'top')
     if (target === null) return
@@ -599,6 +600,9 @@
   // An entry outside the viewport is scrolled to first, which mounts it, then focused. While
   // the reveal runs its row is pinned; focus makes it the Tab stop, which pins it from then on.
   async function revealEntry(key: string): Promise<boolean> {
+    if (railDestroyed) {
+      return false
+    }
     const index = layout.indexByKey.get(key)
     if (index === undefined) {
       return false
@@ -608,6 +612,9 @@
     const view = scroller.scrollTop
     if (!el || top < view || top + layout.heights[index] > view + viewportHeightNow()) {
       await scrollToKey(key, 'nearest', 'instant')
+      if (railDestroyed) {
+        return false
+      }
       el = entryElement(key)
     }
     // Only the reveal this call owns is released: an arrow key must not drop the pin of a
