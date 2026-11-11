@@ -1,6 +1,7 @@
 import type { toSaveType } from "./risuSave"
 import { MEASURE } from "../process/memory/measureFlag"
 import { noteSignal } from "./netSignalMeter"
+import { isUsableCharacterId } from "./characterIds"
 
 /**
  * Fork-specific internal API (CHORE-01). The maintainer's chosen design only
@@ -42,23 +43,31 @@ export function appendIfAbsent(tracker: toSaveType, id: string): void {
 }
 
 /**
- * Marks a character for save. No-op for a falsy or non-string id, so callers
- * can pass `char?.chaId` straight through without their own guard. Before
+ * Marks a character for save. No-op for a falsy or non-string id that is not
+ * a usable number, so callers can pass `char?.chaId` straight through without
+ * their own guard. A usable number is queued as the raw number: the legacy
+ * loop's no-reload filter compares marks with the raw chaId. Before
  * `installCharacterSaveMarks` has run, the id is queued rather than dropped
  * (see `pendingQueue` above).
  */
 export function markCharacterForSave(chaId: unknown): void {
-    if (!chaId || typeof chaId !== 'string') {
+    if (typeof chaId === 'number') {
+        if (!isUsableCharacterId(chaId)) {
+            return
+        }
+    } else if (!chaId || typeof chaId !== 'string') {
         return
     }
+    // toSave.character is declared string[] but holds raw chaIds, numbers included.
+    const id = chaId as string
     if (MEASURE) {
-        noteSignal('api', chaId)
+        noteSignal('api', String(id))
     }
     if (!installed) {
-        pendingQueue.add(chaId)
+        pendingQueue.add(id)
         return
     }
-    appendIfAbsent(installed.tracker, chaId)
+    appendIfAbsent(installed.tracker, id)
     installed.schedule()
 }
 

@@ -822,3 +822,29 @@ describe('sweepDraftRegistrations', () => {
         expect(hasLocalDrafts()).toBe(false)
     })
 })
+
+describe('NUMID-MARK: legacy loop and a numeric explicit mark', () => {
+    test('L1 (R): markCharacterForSave(7) survives the no-reload filter raw and set() writes block 7', async () => {
+        const tracker = makeTracker()
+        installCharacterSaveMarks({ tracker, schedule: () => {} })
+        const original = { ...makeCharacter('x', 'Original'), chaId: 7 } as unknown as CharacterFixture
+        const encoder = new RisuSaveEncoder()
+        await encoder.init(buildDb([original]), { compression: false })
+        const edited = { ...makeCharacter('x', 'Edited'), chaId: 7 } as unknown as CharacterFixture
+        const db = buildDb([edited])
+        markCharacterForSave(7)
+        const result = await prepareSaveIteration({
+            tracker,
+            encoder,
+            reloadFlag: { state: false },
+            reinitEncoder: vi.fn(),
+            getDatabase: () => db,
+        })
+        expect(result.toSave.character).toEqual([7])
+        await result.encoder.set(db, result.toSave)
+        const decoded = await decodeRisuSave(new Uint8Array(result.encoder.encode()!))
+        const stored = decoded.characters?.find((c: CharacterFixture) => String(c.chaId) === '7')
+        expect(stored?.name).toBe('Edited')
+        expect(stored?.chaId).toBe(7)
+    })
+})
