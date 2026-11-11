@@ -8,7 +8,7 @@ export interface ElementHashCacheLimits {
 
 export const ELEMENT_HASH_CACHE_LIMITS: ElementHashCacheLimits = {
     maxUnits: 2_500_000,
-    maxEntries: 32_768,
+    maxEntries: 4_096,
     maxEntryUnits: 1_250_000,
 }
 

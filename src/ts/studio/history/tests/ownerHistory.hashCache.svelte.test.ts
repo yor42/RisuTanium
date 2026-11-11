@@ -508,6 +508,27 @@ describe('S-X a card larger than the cache', () => {
     })
 })
 
+describe('S-D default-built service (MC-1492)', () => {
+    async function secondDeleteUnits(count: number): Promise<number> {
+        putCharacters(makeCharacter('A', texts(count, 8)))
+        build(false)
+        await service.whenReady(A)
+        expect(service.greetingDelete(A, 0).ok).toBe(true)
+        reset()
+        clock.tick(COALESCE_MS)
+        expect(service.greetingDelete(A, 0).ok).toBe(true)
+        return fp.units
+    }
+
+    test('D3a a card one over the default entry limit reads the whole list at every action', async () => {
+        expect(await secondDeleteUnits(4_098)).toBeGreaterThanOrEqual(4_097 * 8)
+    })
+
+    test('D3b a card at the default entry limit reads nothing on the second action', async () => {
+        expect(await secondDeleteUnits(4_096)).toBe(0)
+    })
+})
+
 describe('S-P the warm-up is one pass', () => {
     test('W11 a warm-up right after other cards were used keeps the card it warmed for its first action', async () => {
         const modulePath = '../elementHashCache'

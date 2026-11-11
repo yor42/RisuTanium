@@ -14,7 +14,7 @@ vi.mock('../listFingerprint', async (importOriginal) => {
     }
 })
 
-import { createElementHashCache } from '../elementHashCache'
+import { createElementHashCache, ELEMENT_HASH_CACHE_LIMITS } from '../elementHashCache'
 import { listFingerprintOf } from '../listFingerprint'
 
 // The reference, read from the real module so the counter above does not see it.
@@ -247,5 +247,31 @@ describe('X1 a list larger than the cache is hashed lookup-only', () => {
         listFingerprintOf(other, cache.forList(other, 'c'))
         expect(cache.stats()).toMatchObject({ entries: 3, units: 90, sweeps: 1 })
         expect(misses(() => listFingerprintOf(card, cache.forList(card, 'c')))).toBe(0)
+    })
+})
+
+describe('D default limits (MC-1492)', () => {
+    const textsOf = (n: number, length: number) => Array.from({ length: n }, (_, i) => `e${i}:`.padEnd(length, 'x'))
+    const twoPasses = (list: readonly string[]) => {
+        const cache = createElementHashCache()
+        listFingerprintOf(list, cache.forList(list, 'A'))
+        const second = misses(() => listFingerprintOf(list, cache.forList(list, 'A')))
+        return { cache, second }
+    }
+
+    test('D1 the default limits are the reviewed ones', () => {
+        expect(ELEMENT_HASH_CACHE_LIMITS).toEqual({ maxUnits: 2_500_000, maxEntries: 4_096, maxEntryUnits: 1_250_000 })
+    })
+
+    test('D2a a list one over the default entry limit is lookup-only', () => {
+        const { cache, second } = twoPasses(textsOf(4_097, 8))
+        expect(cache.stats()).toEqual({ entries: 0, units: 0, sweeps: 0 })
+        expect(second).toBe(4_097)
+    })
+
+    test('D2b a list at the default entry limit is held whole', () => {
+        const { cache, second } = twoPasses(textsOf(4_096, 8))
+        expect(cache.stats()).toEqual({ entries: 4_096, units: 32_768, sweeps: 0 })
+        expect(second).toBe(0)
     })
 })
