@@ -222,7 +222,7 @@ Proposal: one dark canvas from launch to first paint.
 
 - `splash_background` = `#00011C` (`--nexus-canvas`) in both day and night; `splash_light_bars` = false in both.
 - `loading_background` = `#00011C` too, so splash → WebView → boot screen ([mockups/startup.html](../../mockups/startup.html)) is one continuous colour.
-- The system bars keep `#00011C` until the boot screen hands over to the app, then take the scheme's background once; a scheme change during boot is applied at the hand-over (MC-1405).
+- The system bars keep `#00011C` until the boot screen hands over to the app, then take the scheme's background once; a scheme change during boot is applied at the hand-over (MC-1405). On Android the host applies every bar colour only when the WebView's content of that moment is ready to draw (falling back after 250 ms), so the bars and the page change in the same frame or within about a frame.
 - Icon unchanged (`splash_logo`, static). No animated icon: on Android 10 the compat library shows a static icon anyway, and a looping AVD adds start-up work on the slowest devices for no information.
 - **Decided (DD-006):** dark for all schemes.
 
