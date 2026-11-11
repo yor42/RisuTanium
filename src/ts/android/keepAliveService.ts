@@ -9,7 +9,7 @@
 import { language } from 'src/lang'
 import { fillLang } from '../../lang/fill'
 import { lowPowerMarked } from '../chatShell/lowPower'
-import { activeStreamChars } from '../process/activeStreams'
+import { activeStreamChars, subscribeStreamChanges, type StreamChange } from '../process/activeStreams'
 import {
     inFlightChatTarget, inFlightKinds, inFlightSince, subscribeInFlight, takeRunOutcome,
     type InFlightKind, type InFlightTarget, type RunOutcome,
@@ -169,6 +169,10 @@ export interface KeepAliveV2Deps {
     characters?: (target: InFlightTarget) => number | null
     /** True while low-power mode is on: the count then stops updating. */
     lowPower?: () => boolean
+    /** Hears of every stream change (a count note). Without it only the once-a-second tick refreshes the count. */
+    subscribeChanges?: (listener: (change: StreamChange) => void) => () => void
+    /** True while the page is hidden: only then does a stream change push the count, since the tick may not run. */
+    pageHidden?: () => boolean
 }
 
 export interface KeepAliveDeps {
@@ -294,6 +298,8 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
     const avatarSentFor = new Set<string>()
     // Refreshes the live count while the state is generating.
     let countTimer: ReturnType<typeof setInterval> | null = null
+    // When the latest start or update went to the host; the stream-note pushes are spaced from it (MC-1499).
+    let lastNoticeAt = 0
     const numberFormat = new Intl.NumberFormat()
 
     const cancelLinger = (): void => {
@@ -529,9 +535,11 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
     /**
      * Sends the notice for the work in flight: a start when no service runs, else an update when the
      * notice changed or an avatar is ready to go with it. The avatar is left out of the comparison, so
-     * having sent it never makes the next notice look changed.
+     * having sent it never makes the next notice look changed. With `resend` an unchanged notice goes out too:
+     * native drops the count line when no start or update arrived for 5 s, so a count that stays the same
+     * would otherwise vanish while chunks keep arriving (MC-1450).
      */
-    const pushLive = (kinds: InFlightKind[], v2Deps: KeepAliveV2Deps): void => {
+    const pushLive = (kinds: InFlightKind[], v2Deps: KeepAliveV2Deps, resend = false): void => {
         const { payload, record } = livePayload(kinds, v2Deps)
         const comparable = JSON.stringify(payload)
         if (!running) {
@@ -544,9 +552,11 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
             running = true
             shownJson = comparable
             callHost(host, 'requestNotificationPermissionOnce')
+            lastNoticeAt = Date.now()
             callHost(host, 'startState', json)
-        } else if (comparable !== shownJson || avatar !== null) {
+        } else if (comparable !== shownJson || avatar !== null || resend) {
             shownJson = comparable
+            lastNoticeAt = Date.now()
             callHost(host, 'updateState', json)
         }
         // The count is refreshed once a second, and only while a reply is being generated.
@@ -569,7 +579,7 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
         sync()
     }
 
-    const sync = (): void => {
+    const sync = (resend = false): void => {
         const kinds = deps.kinds()
         // Taken before trackChat clears the latch, for the closing notice of a speech that just ended.
         const speechRecord = speechSubject?.record ?? null
@@ -615,7 +625,7 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
         // A begin during the linger cancels it before anything else is decided.
         cancelLinger()
         if (v2 !== null) {
-            pushLive(kinds, v2)
+            pushLive(kinds, v2, resend)
             return
         }
         const notice = noticeFor(kinds, deps.labels())
@@ -632,7 +642,31 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
         }
     }
 
-    const unsubscribe = deps.subscribe(sync)
+    const unsubscribe = deps.subscribe(() => sync())
+
+    /**
+     * A received chunk while the page is hidden. The tick is a page timer a frozen page does not run, but chunk
+     * events still do, so the count is pushed from them, spaced by `Date.now()` and never by a timer. A visible
+     * page keeps the tick as its only source (MC-1499).
+     */
+    const onStreamChange = (change: StreamChange): void => {
+        if (change === 'speaker') {
+            // A turn's speaker renames the card at once: no throttle and no visibility gate, because the
+            // note runs on a frozen page where the tick does not (MC-1502). The avatar follows the name.
+            if (v2 !== null && running && deps.kinds().includes('chat')) {
+                sync()
+            }
+            return
+        }
+        if (change !== 'count' || v2 === null || !running || v2.pageHidden?.() !== true || v2.lowPower?.() === true) {
+            return
+        }
+        if (stateOf(deps.kinds()) !== 'generating' || Date.now() - lastNoticeAt < COUNT_INTERVAL_MS) {
+            return
+        }
+        sync(true)
+    }
+    const unsubscribeChanges = v2?.subscribeChanges?.(onStreamChange)
 
     const stopHook = (): void => {
         const kinds = deps.kinds()
@@ -668,6 +702,7 @@ export function createKeepAliveConsumer(deps: KeepAliveDeps): KeepAliveConsumer 
     return {
         dispose() {
             unsubscribe()
+            unsubscribeChanges?.()
             cancelLinger()
             stopCounting()
             if (window.__risuTaniumKeepAliveStop === stopHook) {
@@ -695,6 +730,11 @@ export function onKeepAliveHost(listener: ((host: KeepAliveHostObject) => void) 
 // service starts rather than imported here: this module stays loadable by a test that mocks only part of the
 // app. Until it has loaded, notices name nobody and carry no avatar; the next sync picks them up.
 let subjectCode: typeof NotificationAvatarModule | null = null
+
+/** A hidden page may freeze its timers; the count then reads the received length, which leads the display (MC-1499). */
+function pageHidden(): boolean {
+    return typeof document !== 'undefined' && document.visibilityState === 'hidden'
+}
 
 /**
  * Starts the consumer in the Android app. A no-op where the host bridge is
@@ -751,8 +791,10 @@ export function startKeepAliveService(): KeepAliveConsumer | null {
                     await subjectCode?.warmNotificationAvatar(image)
                 },
             },
-            characters: (target) => activeStreamChars(target.chaId),
+            characters: (target) => activeStreamChars(target.chaId, pageHidden()),
             lowPower: () => lowPowerMarked(),
+            subscribeChanges: subscribeStreamChanges,
+            pageHidden,
         },
         stopWork: () => {
             void Promise.all([

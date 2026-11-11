@@ -15,6 +15,7 @@ import '../../polyfill'
 //#region module mocks
 
 const requestChatDataMock = vi.hoisted(() => vi.fn())
+const processScriptFullMock = vi.hoisted(() => vi.fn())
 
 vi.mock('localforage', () => ({
     default: {
@@ -121,7 +122,7 @@ vi.mock(import('../stableDiff'), () => ({
 
 vi.mock(import('../scripts'), () => ({
     processScript: vi.fn(async (_char: unknown, text: string) => text),
-    processScriptFull: vi.fn(async (_char: unknown, text: string) => ({ data: text, emoChanged: false })),
+    processScriptFull: processScriptFullMock,
     risuChatParser: vi.fn((text: string) => text ?? ''),
 }) as unknown as typeof import('../scripts'))
 
@@ -216,7 +217,7 @@ vi.mock(import('../../plugins/plugins.svelte'), () => ({
 
 import { sendChat, doingChat, setStreamFlushObserverForTests } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
-import { activeStreamChars } from '../activeStreams'
+import { activeStreamChars, resetActiveStreamsForTest } from '../activeStreams'
 
 //#region fixtures
 
@@ -343,14 +344,35 @@ function cumulative(count: number): string[] {
     return words.map((_, i) => words.slice(0, i + 1).join(' '))
 }
 
+// The frame functions as the environment had them, put back after a test replaced them.
+let originalFrames: { request: typeof requestAnimationFrame, cancel: typeof cancelAnimationFrame } | null = null
+
+function installFrames(request: (callback: () => void) => number, cancel: (handle: number) => void): void {
+    originalFrames ??= { request: globalThis.requestAnimationFrame, cancel: globalThis.cancelAnimationFrame }
+    globalThis.requestAnimationFrame = request as typeof requestAnimationFrame
+    globalThis.cancelAnimationFrame = cancel as typeof cancelAnimationFrame
+}
+
+function restoreFrames(): void {
+    if (originalFrames !== null) {
+        globalThis.requestAnimationFrame = originalFrames.request
+        globalThis.cancelAnimationFrame = originalFrames.cancel
+        originalFrames = null
+    }
+}
+
 beforeEach(() => {
     requestChatDataMock.mockReset()
     requestChatDataMock.mockResolvedValue({ type: 'success', result: 'unexpected request.' })
+    processScriptFullMock.mockReset()
+    processScriptFullMock.mockImplementation(async (_char: unknown, text: string) => ({ data: text, emoChanged: false }))
     doingChat.set(false)
+    resetActiveStreamsForTest()
 })
 
 afterEach(() => {
     selectedCharID.set(-1)
+    restoreFrames()
 })
 
 //#endregion
@@ -376,5 +398,112 @@ describe('the characters a stream has written, as the keep-alive notice reads th
             setStreamFlushObserverForTests(null)
         }
         expect(seen).toEqual(chunks.map((chunk) => chunk.length))
+    })
+})
+
+describe('the received length of a stream while the page is hidden (MC-1499)', () => {
+    /** A frame callback that never runs, as in a hidden page. */
+    function stubFramesNeverRun(): void {
+        installFrames(() => 1, () => {})
+    }
+
+    function stubFramesRunSoon(): void {
+        installFrames((callback) => setTimeout(callback, 0) as unknown as number, (handle) => clearTimeout(handle))
+    }
+
+    function installContinueWorld(earlier: string): void {
+        installDb([makeCharacter('char-0', [makeChat('chat-origin', [msg('user', 'q0'), msg('char', earlier)])])])
+        selectedCharID.set(0)
+    }
+
+    // Regression reproducer: on the pre-fix base the registry has no received length, so the read is null at every push.
+    test.each(['balanced', 'strong'] as const)('T1.2 %s mode: every pushed chunk is counted although no frame ever runs', async (mode) => {
+        installOneCharacterWorld()
+        DBState.db.streamingDisplayOptimizationMode = mode
+        stubFramesNeverRun()
+        const seen: Array<number | null> = []
+        const chunks = cumulative(3)
+        const source = controlledStream()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: source.stream })
+        const outcome = sendChat().catch((error: unknown) => error)
+        await until(() => originChat().message.at(-1)?.role === 'char', 'the reply placeholder')
+        for (const chunk of chunks) {
+            source.push(chunk)
+            await settle()
+            seen.push(activeStreamChars('char-0', true))
+        }
+        const written = activeStreamChars('char-0')
+        source.close()
+        await outcome
+
+        expect(seen).toEqual(chunks.map((chunk) => chunk.length))
+        expect(written).toBeNull()
+    })
+
+    // Regression reproducer (same defect as T1.2): a continue counts the text it extends too.
+    test('T1.5 balanced continue: the received length includes the text being continued', async () => {
+        installContinueWorld('earlier text ')
+        DBState.db.streamingDisplayOptimizationMode = 'balanced'
+        stubFramesNeverRun()
+        const source = controlledStream()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: source.stream })
+        const outcome = sendChat(-1, { continue: true }).catch((error: unknown) => error)
+        await until(() => originChat().message.at(-1)?.interrupted === true, 'the continued reply to stream')
+
+        source.push('w1 w2')
+        await settle()
+        const received = activeStreamChars('char-0', true)
+        source.close()
+        await outcome
+
+        expect(received).toBe('earlier text '.length + 'w1 w2'.length)
+    })
+
+    // Compatibility guard (passes before and after): without the flag the count is the processed, written length.
+    test('T1.3 balanced, read as when visible: null until the first display write, then the processed length', async () => {
+        installOneCharacterWorld()
+        DBState.db.streamingDisplayOptimizationMode = 'balanced'
+        stubFramesRunSoon()
+        processScriptFullMock.mockImplementation(async (_char: unknown, text: string) => ({ data: `[${text}]`, emoChanged: false }))
+        const source = controlledStream()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: source.stream })
+        const outcome = sendChat().catch((error: unknown) => error)
+        await until(() => originChat().message.at(-1)?.role === 'char', 'the reply placeholder')
+
+        source.push('w1 w2')
+        await settle()
+        const beforeFlush = activeStreamChars('char-0')
+        await until(() => activeStreamChars('char-0') !== null, 'the first display write')
+        const afterFlush = activeStreamChars('char-0')
+        source.close()
+        await outcome
+
+        expect(beforeFlush).toBeNull()
+        expect(afterFlush).toBe('[w1 w2]'.length)
+    })
+
+    // Compatibility guard: 'off' mode keeps the exact processed length even when the hidden read is asked for.
+    test('T1.4 off mode: the hidden read at every flush is the processed length, never the raw one', async () => {
+        installOneCharacterWorld()
+        processScriptFullMock.mockImplementation(async (_char: unknown, text: string) => ({ data: `[${text}]`, emoChanged: false }))
+        const seen: Array<number | null> = []
+        const chunks = cumulative(3)
+        setStreamFlushObserverForTests(() => { seen.push(activeStreamChars('char-0', true)) })
+        try {
+            const source = controlledStream()
+            requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: source.stream })
+            const outcome = sendChat().catch((error: unknown) => error)
+            await until(() => originChat().message.at(-1)?.role === 'char', 'the reply placeholder')
+            for (const chunk of chunks) {
+                source.push(chunk)
+                await settle()
+            }
+            source.close()
+            await outcome
+        } finally {
+            setStreamFlushObserverForTests(null)
+        }
+
+        expect(seen).toEqual(chunks.map((chunk) => `[${chunk}]`.length))
     })
 })

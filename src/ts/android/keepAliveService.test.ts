@@ -15,6 +15,7 @@ import {
     type KeepAliveStateLabels, type KeepAliveSubject, type KeepAliveV2Deps,
 } from './keepAliveService'
 import { createHostChannelFake } from './hostChannelFake'
+import { addActiveStream, noteStreamReceived, noteStreamText, resetActiveStreamsForTest, type StreamChange } from '../process/activeStreams'
 
 const platform = vi.hoisted(() => ({ android: true }))
 
@@ -1564,5 +1565,271 @@ describe('contract v2: the live character count (C2b)', () => {
 
         expect(asked).toContainEqual(CHAT_TARGET)
         expect(liveNotice(host).text).toBe('4 characters')
+    })
+})
+
+describe('contract v2: the count pushed by stream notes while the page is hidden (MC-1499, MC-1450)', () => {
+    interface FakeChanges {
+        subscribe: (listener: (change: StreamChange) => void) => () => void
+        emit: (change?: StreamChange) => void
+        listening: () => number
+    }
+
+    function fakeChanges(): FakeChanges {
+        const listeners = new Set<(change: StreamChange) => void>()
+        return {
+            subscribe: (listener) => {
+                listeners.add(listener)
+                return () => { listeners.delete(listener) }
+            },
+            emit: (change = 'count') => {
+                for (const listener of [...listeners]) {
+                    listener(change)
+                }
+            },
+            listening: () => listeners.size,
+        }
+    }
+
+    function generatingWith(count: { value: number | null }, changes: FakeChanges, extra: Partial<KeepAliveV2Deps> = {}): FakeHostV2 {
+        const host = fakeHostV2()
+        attach(host, { characters: () => count.value, subscribeChanges: changes.subscribe, pageHidden: () => true, ...extra })
+        return host
+    }
+
+    /** Moves the clock without running any timer, as a frozen page sees it. */
+    function advanceClockOnly(ms: number): void {
+        vi.setSystemTime(Date.now() + ms)
+    }
+
+    // Supporting reproducer: on the pre-fix base nothing subscribes, so no chunk note ever sends; only the +1000 assertion fails.
+    test('T1.6 a note sends at most once per interval, measured from the last notice sent, with no timer advance', () => {
+        const count = { value: 5 as number | null }
+        const changes = fakeChanges()
+        const host = generatingWith(count, changes)
+        beginInFlight('chat', { target: CHAT_TARGET })
+        expect(host.startState).toHaveBeenCalledTimes(1)
+
+        count.value = 10
+        advanceClockOnly(999)
+        changes.emit()
+        expect(host.updateState).not.toHaveBeenCalled()
+
+        advanceClockOnly(1)
+        changes.emit()
+        expect(host.updateState).toHaveBeenCalledTimes(1)
+        expect(liveNotice(host).text).toBe('10 characters')
+
+        count.value = 20
+        advanceClockOnly(500)
+        changes.emit()
+        expect(host.updateState).toHaveBeenCalledTimes(1)
+
+        advanceClockOnly(500)
+        changes.emit()
+        expect(host.updateState).toHaveBeenCalledTimes(2)
+        expect(liveNotice(host).text).toBe('20 characters')
+    })
+
+    // Guard: the start counts as a notice, so a note 999 ms after it sends nothing.
+    test('T1.6 the start notice begins the interval', () => {
+        const count = { value: 5 as number | null }
+        const changes = fakeChanges()
+        const host = generatingWith(count, changes)
+        beginInFlight('chat', { target: CHAT_TARGET })
+
+        count.value = 6
+        advanceClockOnly(999)
+        changes.emit()
+
+        expect(host.updateState).not.toHaveBeenCalled()
+    })
+
+    // Compatibility guard (passes before and after): a visible page is driven by the 1 s tick only.
+    test('T1.7 a visible page sends nothing for a note', () => {
+        const count = { value: 5 as number | null }
+        const changes = fakeChanges()
+        const host = generatingWith(count, changes, { pageHidden: () => false })
+        beginInFlight('chat', { target: CHAT_TARGET })
+
+        count.value = 50
+        advanceClockOnly(5000)
+        changes.emit()
+
+        expect(host.updateState).not.toHaveBeenCalled()
+    })
+
+    // Compatibility guard: low power shows no count on any path.
+    test('T1.8 low power sends nothing for a note', () => {
+        const count = { value: 5 as number | null }
+        const changes = fakeChanges()
+        const host = generatingWith(count, changes, { lowPower: () => true })
+        beginInFlight('chat', { target: CHAT_TARGET })
+
+        count.value = 50
+        advanceClockOnly(5000)
+        changes.emit()
+
+        expect(host.updateState).not.toHaveBeenCalled()
+    })
+
+    // Compatibility guard: only a generating state shows a count.
+    test('T1.9 speech only sends nothing for a note, and neither does an idle consumer', () => {
+        const count = { value: 5 as number | null }
+        const changes = fakeChanges()
+        const host = generatingWith(count, changes)
+        advanceClockOnly(5000)
+        changes.emit()
+        expect(host.startState).not.toHaveBeenCalled()
+
+        beginInFlight('tts')
+        expect(host.startState).toHaveBeenCalledTimes(1)
+        advanceClockOnly(5000)
+        changes.emit()
+
+        expect(host.updateState).not.toHaveBeenCalled()
+    })
+
+    // Supporting reproducer: native's 5 s clock counts page notices, so an unchanged count is still resent.
+    test('T1.10 an unchanged count is resent as the identical notice once the interval passed', () => {
+        const count = { value: 7 as number | null }
+        const changes = fakeChanges()
+        const host = generatingWith(count, changes)
+        beginInFlight('chat', { target: CHAT_TARGET })
+        const startJson = host.startState.mock.calls[0][0]
+
+        advanceClockOnly(1000)
+        changes.emit()
+
+        expect(host.updateState).toHaveBeenCalledTimes(1)
+        expect(host.updateState.mock.calls[0][0]).toBe(startJson)
+        expect(liveNotice(host).text).toBe('7 characters')
+    })
+
+    // T2.8, rule tests (new change kind): a turn's speaker renames the card at once, with no throttle, no
+    // visibility gate and no timer, because a frozen page runs notes but not its tick (MC-1502).
+    test('T2.8 a speaker change renames a generating card at once, visible or hidden, with no timer advance', () => {
+        let subject = ALICE_SUBJECT
+        const changes = fakeChanges()
+        const host = generatingWith({ value: null }, changes, { subjectOf: () => subject, pageHidden: () => false })
+        beginInFlight('chat', { target: CHAT_TARGET })
+        expect(liveNotice(host).identity).toEqual(ALICE_SUBJECT.identity)
+        const timers = vi.getTimerCount()
+
+        subject = BOB_SUBJECT
+        changes.emit('speaker')
+
+        expect(host.updateState).toHaveBeenCalledTimes(1)
+        expect(liveNotice(host).identity).toEqual(BOB_SUBJECT.identity)
+        expect(vi.getTimerCount()).toBe(timers)
+
+        subject = ALICE_SUBJECT
+        changes.emit('speaker')
+
+        expect(host.updateState).toHaveBeenCalledTimes(2)
+        expect(liveNotice(host).identity).toEqual(ALICE_SUBJECT.identity)
+    })
+
+    test('T2.8 a speaker change with nothing running starts no notice, and neither does one during speech only', () => {
+        const changes = fakeChanges()
+        const host = generatingWith({ value: null }, changes, { subjectOf: () => ALICE_SUBJECT })
+
+        changes.emit('speaker')
+        expect(host.startState).not.toHaveBeenCalled()
+
+        beginInFlight('tts')
+        expect(host.startState).toHaveBeenCalledTimes(1)
+        changes.emit('speaker')
+
+        expect(host.updateState).not.toHaveBeenCalled()
+    })
+
+    test('T2.8 a speaker change after the host ended the service does not start it again', () => {
+        const changes = fakeChanges()
+        const host = generatingWith({ value: null }, changes, { subjectOf: () => ALICE_SUBJECT })
+        beginInFlight('chat', { target: CHAT_TARGET })
+        expect(host.startState).toHaveBeenCalledTimes(1)
+        window.__risuTaniumKeepAliveTimeout?.()
+
+        changes.emit('speaker')
+
+        expect(host.startState).toHaveBeenCalledTimes(1)
+        expect(host.updateState).not.toHaveBeenCalled()
+    })
+
+    test('a note sets no timer, and the consumer unsubscribes when disposed', () => {
+        const count = { value: 5 as number | null }
+        const changes = fakeChanges()
+        generatingWith(count, changes)
+        expect(changes.listening()).toBe(1)
+        const endChat = beginInFlight('chat', { target: CHAT_TARGET })
+        const timers = vi.getTimerCount()
+
+        advanceClockOnly(1000)
+        changes.emit()
+        expect(vi.getTimerCount()).toBe(timers)
+
+        endChat()
+        consumer?.dispose()
+        consumer = null
+        expect(changes.listening()).toBe(0)
+    })
+
+    describe('startKeepAliveService wiring', () => {
+        afterEach(() => {
+            delete window.__risuTaniumHost
+            resetActiveStreamsForTest()
+        })
+
+        function hiddenPage(hidden: boolean): void {
+            vi.spyOn(document, 'visibilityState', 'get').mockReturnValue(hidden ? 'hidden' : 'visible')
+        }
+
+        function lastCountText(fake: ReturnType<typeof createHostChannelFake>): string | null {
+            const messages = [...fake.postedTo('keepAlive', 'startState'), ...fake.postedTo('keepAlive', 'updateState')]
+            const last = messages.at(-1)
+            return last === undefined ? null : (JSON.parse((last.args as [string])[0]) as KeepAlivePayload).text
+        }
+
+        // Regression reproducer: on the pre-fix base only the interval pushes, and it never ran here.
+        test('T1.1 hidden: a stream note pushes the count with no timer advance', () => {
+            resetActiveStreamsForTest()
+            const fake = createHostChannelFake()
+            window.__risuTaniumHost = fake.channel
+            hiddenPage(true)
+            consumer = startKeepAliveService()
+            beginInFlight('chat', { target: CHAT_TARGET })
+            addActiveStream({ chaId: CHAT_TARGET.chaId, replyChatId: 'r1' })
+            expect(fake.postedTo('keepAlive', 'updateState')).toHaveLength(0)
+
+            vi.setSystemTime(Date.now() + 1000)
+            noteStreamText('r1', 'abcdef')
+
+            expect(fake.postedTo('keepAlive', 'updateState')).toHaveLength(1)
+            expect(lastCountText(fake)).toBe('6 characters')
+        })
+
+        // Rule test (new export `noteStreamReceived`, no pre-fix base): hidden reads the received length, visible the written one.
+        test('T1.11 hidden reads the received count; visible reads the written count, null with none', () => {
+            resetActiveStreamsForTest()
+            const fake = createHostChannelFake()
+            window.__risuTaniumHost = fake.channel
+            hiddenPage(true)
+            consumer = startKeepAliveService()
+            beginInFlight('chat', { target: CHAT_TARGET })
+            addActiveStream({ chaId: CHAT_TARGET.chaId, replyChatId: 'r1' })
+
+            vi.setSystemTime(Date.now() + 1000)
+            noteStreamReceived('r1', 12)
+            expect(lastCountText(fake)).toBe('12 characters')
+
+            hiddenPage(false)
+            vi.advanceTimersByTime(1000)
+            expect(lastCountText(fake)).toBe('')
+
+            noteStreamText('r1', 'abc')
+            vi.advanceTimersByTime(1000)
+            expect(lastCountText(fake)).toBe('3 characters')
+        })
     })
 })
