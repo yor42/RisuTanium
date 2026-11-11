@@ -33,6 +33,11 @@ const supaMemoryMock = vi.hoisted(() => vi.fn())
 const isLastCharPunctuationMock = vi.hoisted(() => vi.fn())
 const chatOutputListeners = vi.hoisted(() => new Set<(arg: ChatOutputArg) => unknown>())
 const workSpies = vi.hoisted(() => ({ beginWork: vi.fn(), registerWork: vi.fn() }))
+// What the page told the in-flight registry: each begin's kind and options, and each token's end with the arguments it got.
+const inFlightSpies = vi.hoisted(() => ({
+    begins: [] as Array<{ kind: string, options: unknown }>,
+    ends: [] as Array<{ kind: string, args: unknown[] }>,
+}))
 
 vi.mock('localforage', () => ({
     default: {
@@ -239,6 +244,22 @@ vi.mock('src/ts/process/chatOrigin', async (importOriginal) => {
     workSpies.beginWork.mockImplementation(actual.beginWork)
     workSpies.registerWork.mockImplementation(actual.registerWork)
     return { ...actual, beginWork: workSpies.beginWork, registerWork: workSpies.registerWork }
+})
+
+// The real registry, with `beginInFlight` wrapped so a test sees what each begin and each end passed.
+vi.mock('src/ts/process/inFlightWork', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('src/ts/process/inFlightWork')>()
+    return {
+        ...actual,
+        beginInFlight: (kind: Parameters<typeof actual.beginInFlight>[0], options?: Parameters<typeof actual.beginInFlight>[1]) => {
+            const end = actual.beginInFlight(kind, options)
+            inFlightSpies.begins.push({ kind, options })
+            return (...args: Parameters<typeof end>) => {
+                inFlightSpies.ends.push({ kind, args })
+                end(...args)
+            }
+        },
+    }
 })
 
 //#endregion
@@ -519,6 +540,76 @@ async function countChatBegins(call: () => Promise<boolean>): Promise<{ begins: 
 describe('the chat in-flight token', () => {
     beforeEach(() => {
         resetInFlightForTest()
+        inFlightSpies.begins.length = 0
+        inFlightSpies.ends.length = 0
+    })
+
+    function chatEnds(): unknown[][] {
+        return inFlightSpies.ends.filter((end) => end.kind === 'chat').map((end) => end.args)
+    }
+
+    // P13, regression reproducer: the notification's deep link needs the chat's owner and id at the begin.
+    test('begins with the chat it writes to as its target', async () => {
+        installSingleChat()
+        mockReply('Hello there.')
+
+        await settled(() => sendChat())
+
+        const begin = inFlightSpies.begins.find((candidate) => candidate.kind === 'chat')
+        expect(begin?.options).toEqual(expect.objectContaining({
+            target: expect.objectContaining({ chaId: 'char-0', chatId: 'chat-0' }),
+        }))
+    })
+
+    test('a group send names the group as the owner of its target', async () => {
+        installGroupWorld(['member-a'])
+        mockStreamingReply('A speaks.')
+
+        await settled(() => sendChat())
+
+        const begin = inFlightSpies.begins.find((candidate) => candidate.kind === 'chat')
+        expect(begin?.options).toEqual(expect.objectContaining({
+            target: expect.objectContaining({ chaId: 'group-1', chatId: 'group-chat' }),
+        }))
+    })
+
+    // P7, regression reproducer: the Stopped and Failed lingers need the outcome the reply classification already computes.
+    test('a reply that finishes ends its token as a reply', async () => {
+        installSingleChat()
+        mockReply('Hello there.')
+
+        await settled(() => sendChat())
+
+        expect(chatEnds()).toEqual([['reply']])
+    })
+
+    test('a send the user stops ends its token as stopped', async () => {
+        installSingleChat()
+        const { source, outcome } = await startHeldSend(() => sendChat())
+
+        abortUnitInProgress()
+        source.close()
+        await outcome
+
+        expect(chatEnds()).toEqual([['stopped']])
+    })
+
+    test('a send whose request throws ends its token as failed', async () => {
+        installSingleChat()
+        requestChatDataMock.mockRejectedValueOnce(new Error('provider down'))
+
+        await settled(() => sendChat())
+
+        expect(chatEnds()).toEqual([['failed']])
+    })
+
+    test('a preview send passes no outcome', async () => {
+        installSingleChat()
+        mockReply('Hello there.')
+
+        await settled(() => sendChat(-1, { preview: true }))
+
+        expect(chatEnds()).toEqual([[undefined]])
     })
 
     test.each([

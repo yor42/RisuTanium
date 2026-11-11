@@ -109,12 +109,28 @@ describe('the keep-alive service over the channel', () => {
         ['stop', []],
         ['stopAfter', [10000]],
         ['requestNotificationPermissionOnce', []],
+        // Contract v2: the notice travels as a JSON string, because the host's command parser rejects nested values.
+        ['startState', ['{"v":2,"state":"generating"}']],
+        ['updateState', ['{"v":2,"state":"speaking"}']],
+        ['stopAfterWithOutcome', [10000, '{"v":2,"state":"stopped"}']],
+        // The page asks for the chat a notification tap named; the answer comes back through a window hook.
+        ['requestOpenTarget', []],
     ] as const)('%s goes out as one message', (method, args) => {
         const fake = createHostChannelFake()
         window.__risuTaniumHost = fake.channel
         const host = keepAliveHost() as Record<string, (...values: unknown[]) => unknown>
         host[method](...args)
         expect(fake.postedTo('keepAlive', method)).toEqual([{ bridge: 'keepAlive', method, args }])
+    })
+
+    test('the v2 methods are present on the channel host, so the page uses contract v2', () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        const host = keepAliveHost()
+        expect(typeof host?.startState).toBe('function')
+        expect(typeof host?.updateState).toBe('function')
+        expect(typeof host?.stopAfterWithOutcome).toBe('function')
+        expect(typeof host?.requestOpenTarget).toBe('function')
     })
 
     test('the channel wins over the separate host object', () => {
@@ -137,6 +153,7 @@ describe('the reply notifications over the channel', () => {
         ['disable', []],
         ['notify', ['cha/chat', 'Title', 'Body', true]],
         ['notify', ['cha/chat', 'Title', 'Body', false]],
+        ['notifyState', ['{"v":2,"key":"cha/chat","silent":true}']],
         ['cancel', ['cha/chat']],
     ] as const)('%s goes out as one message', (method, args) => {
         const fake = createHostChannelFake()

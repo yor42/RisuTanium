@@ -4,7 +4,8 @@
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
-    beginInFlight, inFlightKinds, resetInFlightForTest, subscribeInFlight, withInFlight,
+    beginInFlight, inFlightChatTarget, inFlightKinds, inFlightSince, resetInFlightForTest, subscribeInFlight,
+    takeRunOutcome, withInFlight,
 } from './inFlightWork'
 import {
     beginBusy, beginChokePoint, resetBusyActionsForTest, withBusy,
@@ -20,6 +21,120 @@ afterEach(() => {
     resetBusyActionsForTest()
     resetInFlightForTest()
     vi.useRealTimers()
+})
+
+describe('start times, the chat target and the run outcome', () => {
+    // P6, new code: the notification's chronometer, deep link and Stopped/Failed notice read these.
+    test('inFlightSince is the earliest live start of a kind, and null when none is live', () => {
+        vi.setSystemTime(1000)
+        expect(inFlightSince('tts')).toBeNull()
+        const first = beginInFlight('tts')
+        vi.setSystemTime(2500)
+        beginInFlight('tts')
+        expect(inFlightSince('tts')).toBe(1000)
+        first()
+        expect(inFlightSince('tts')).toBe(2500)
+        expect(inFlightSince('chat')).toBeNull()
+    })
+
+    test('a chat token keeps the owner and chat ids and drops the speaking member', () => {
+        beginInFlight('chat', { target: { chaId: 'g', chatId: 'c', memberChaId: 'm' } as { chaId: string, chatId: string } })
+        expect(inFlightChatTarget()).toEqual({ chaId: 'g', chatId: 'c' })
+        expect(Object.keys(inFlightChatTarget() ?? {})).toEqual(['chaId', 'chatId'])
+    })
+
+    test('the latest-begun live chat wins, and none gives null', () => {
+        expect(inFlightChatTarget()).toBeNull()
+        beginInFlight('chat')
+        expect(inFlightChatTarget()).toBeNull()
+        const older = beginInFlight('chat', { target: { chaId: 'a', chatId: '1' } })
+        const newer = beginInFlight('chat', { target: { chaId: 'b', chatId: '2' } })
+        expect(inFlightChatTarget()).toEqual({ chaId: 'b', chatId: '2' })
+        newer()
+        expect(inFlightChatTarget()).toEqual({ chaId: 'a', chatId: '1' })
+        older()
+    })
+
+    test('a target on any other kind is not recorded', () => {
+        beginInFlight('tts', { target: { chaId: 'a', chatId: '1' } })
+        expect(inFlightChatTarget()).toBeNull()
+    })
+
+    test('a chat ended stopped or failed leaves a run outcome that is taken once', () => {
+        const target = { chaId: 'a', chatId: '1' }
+        beginInFlight('chat', { target })('stopped')
+        expect(takeRunOutcome()).toEqual({ outcome: 'stopped', target })
+        expect(takeRunOutcome()).toBeNull()
+        beginInFlight('chat', { target })('failed')
+        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target })
+    })
+
+    test('a chat ended with any other outcome, or none, clears the run outcome', () => {
+        const target = { chaId: 'a', chatId: '1' }
+        for (const outcome of ['reply', 'none', undefined] as const) {
+            beginInFlight('chat', { target })('failed')
+            beginInFlight('chat', { target })(outcome)
+            expect(takeRunOutcome()).toBeNull()
+        }
+    })
+
+    test('the run outcome keeps only the owner and chat ids of the ended chat', () => {
+        const withMember = { chaId: 'g', chatId: 'c', memberChaId: 'm' } as { chaId: string, chatId: string }
+        beginInFlight('chat', { target: withMember })('stopped')
+        const outcome = takeRunOutcome()
+        expect(outcome?.target).toEqual({ chaId: 'g', chatId: 'c' })
+        expect(Object.keys(outcome?.target ?? {})).toEqual(['chaId', 'chatId'])
+    })
+
+    test('the last of two live chats to end describes the run', () => {
+        const target = { chaId: 'a', chatId: '1' }
+        const endFirst = beginInFlight('chat', { target })
+        const endSecond = beginInFlight('chat', { target: { chaId: 'b', chatId: '2' } })
+        endFirst('failed')
+        endSecond('reply')
+        expect(takeRunOutcome()).toBeNull()
+
+        const endThird = beginInFlight('chat', { target })
+        const endFourth = beginInFlight('chat', { target: { chaId: 'b', chatId: '2' } })
+        endThird('reply')
+        endFourth('failed')
+        expect(takeRunOutcome()).toEqual({ outcome: 'failed', target: { chaId: 'b', chatId: '2' } })
+    })
+
+    test('only a chat sets the run outcome', () => {
+        beginInFlight('tts')('stopped')
+        beginInFlight('image')('failed')
+        expect(takeRunOutcome()).toBeNull()
+    })
+
+    test('the outcome survives a save and is reset by every other begin', () => {
+        beginInFlight('chat', { target: { chaId: 'a', chatId: '1' } })('stopped')
+        beginInFlight('save')()
+        expect(takeRunOutcome()).toEqual({ outcome: 'stopped', target: { chaId: 'a', chatId: '1' } })
+        beginInFlight('chat', { target: { chaId: 'a', chatId: '1' } })('failed')
+        beginInFlight('translate')
+        expect(takeRunOutcome()).toBeNull()
+    })
+
+    test('ending a chat twice records only the first end', () => {
+        const end = beginInFlight('chat', { target: { chaId: 'a', chatId: '1' } })
+        end('stopped')
+        end('reply')
+        expect(takeRunOutcome()).toEqual({ outcome: 'stopped', target: { chaId: 'a', chatId: '1' } })
+    })
+
+    test('the outcome is already set when the subscribers hear of the end', () => {
+        const seen: Array<string | null> = []
+        const end = beginInFlight('chat', { target: { chaId: 'a', chatId: '1' } })
+        const unsubscribe = subscribeInFlight(() => {
+            if (inFlightKinds().length === 0) {
+                seen.push(takeRunOutcome()?.outcome ?? null)
+            }
+        })
+        end('failed')
+        unsubscribe()
+        expect(seen).toEqual(['failed'])
+    })
 })
 
 describe('the registry', () => {

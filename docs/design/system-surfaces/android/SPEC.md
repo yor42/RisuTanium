@@ -222,6 +222,7 @@ Proposal: one dark canvas from launch to first paint.
 
 - `splash_background` = `#00011C` (`--nexus-canvas`) in both day and night; `splash_light_bars` = false in both.
 - `loading_background` = `#00011C` too, so splash → WebView → boot screen ([mockups/startup.html](../../mockups/startup.html)) is one continuous colour.
+- The system bars keep `#00011C` until the boot screen hands over to the app, then take the scheme's background once; a scheme change during boot is applied at the hand-over (MC-1405).
 - Icon unchanged (`splash_logo`, static). No animated icon: on Android 10 the compat library shows a static icon anyway, and a looping AVD adds start-up work on the slowest devices for no information.
 - **Decided (DD-006):** dark for all schemes.
 
@@ -233,7 +234,7 @@ Proposal (in-app, not a native Toast):
 
 - A pill centred above the bottom inset (16 dp from the bottom of the page, max width `min(90vw, 360px)`), `--nexus-surface-flat` background, `--nexus-text`, a `log-out` Lucide icon at 18 px before the text.
 - **Visible for exactly the quit window:** 150 ms fade/rise in, hold, 200 ms fade out ending at 2000 ms (`QUIT_WINDOW_MS`). The timing reads from the same constant.
-- `role="status"` with `aria-live="polite"`, so TalkBack reads it once.
+- A persistent polite live region (`aria-live="polite"`, `aria-atomic="true"`) with no `role`, so TalkBack reads the pill text once when it appears and says nothing when it goes. `role="status"` is left out on purpose: TalkBack in the Android WebView speaks its role name ("상태") alone when the region empties (MC-1406).
 - Reduced motion: opacity only, no rise.
 - Copy (locale change, **decided DD-008**): en "Press Back again to quit" (unchanged); ko "종료하려면 뒤로 가기를 한번 더 누르세요" (maintainer's wording; drops "버튼", so it fits gesture navigation and the Note 9's button alike). Spacing note for the translator: standard spelling counts the press as "한 번"; the maintainer wrote "한번" — keep as written unless the maintainer changes it.
 - Accepted limit, stated for the record: the 2 s window is short for TalkBack users (WCAG 2.2.1); it is today's behaviour and not changed here.

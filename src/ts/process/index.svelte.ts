@@ -58,9 +58,9 @@ import { MEASURE } from "./memory/measureFlag";
 import { noteReplyArrived } from "../storage/saveRequestProbe";
 import { beginWork, createSendSubject, isShownChat, registerWork, resolveOriginWithHint, type Origin, type OriginContext, type SendSubject, type WorkHandle, type WorkKind, type WorkStop } from "./chatOrigin";
 import { noteTurnReached, publishUnit, releaseUnit } from "./generationOwnership.svelte";
-import { addActiveStream } from "./activeStreams";
+import { addActiveStream, noteStreamText } from "./activeStreams";
 import { isChatOnScreen } from "./chatOnScreen.svelte";
-import { classifyReplyOutcome, noteUnitFailure, recordReplyOutcome, type ReplyAnnouncement } from "./replyMarks";
+import { classifyReplyOutcome, noteUnitFailure, recordReplyOutcome, type ReplyAnnouncement, type ReplyOutcome } from "./replyMarks";
 import { announceReply, noteReplySound } from "./replyNotice";
 
 export interface OpenAIChat{
@@ -346,16 +346,19 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     // Held from the moment the unit takes the flag until it releases it, so the
     // page is not cut off while a reply is being produced. Refused sends and the
     // recursion never begin one.
-    let endInFlight: () => void = () => {}
+    let endInFlight: (outcome?: ReplyOutcome) => void = () => {}
     // How the unit ended, for the reply mark (`recordReplyOutcome`).
     let completed = false
     let threw = false
     let modulesFailed = false
     let announcement: ReplyAnnouncement | null = null
+    // The same classification, for the keep-alive notification's Stopped and Failed lingers. A preview send has none.
+    let replyOutcome: ReplyOutcome | undefined
     try {
         callerSignal?.addEventListener('abort', relayAbort)
         publishUnit(unit)
-        endInFlight = beginInFlight('chat')
+        // The target is the owner's chat (a group's own id for a group chat), so a notification can open it.
+        endInFlight = beginInFlight('chat', { target: entry.context.origin })
         doingChat.set(true)
         // Awaited only after the flag is taken, so the check and the take stay one synchronous stretch. The busy
         // button aborts the wait through the unit's signal; a failure alerts once and the finally releases the unit.
@@ -377,13 +380,14 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
                 announcement = recordReplyOutcome(entry.context, facts, isChatOnScreen)
                 // On screen or off: a failed or stopped reply plays no sound, so the composer's chime must know. Never throws.
                 try {
-                    noteReplySound(callerSignal, classifyReplyOutcome(entry.context.subject.resolve() !== null, facts))
+                    replyOutcome = classifyReplyOutcome(entry.context.subject.resolve() !== null, facts)
+                    noteReplySound(callerSignal, replyOutcome)
                 } catch (error) {
                     console.error('The reply sound could not be recorded', error)
                 }
             }
             flushPageReplyEndWhenHidden(entry.context.origin)
-            endInFlight()
+            endInFlight(replyOutcome)
             callerSignal?.removeEventListener('abort', relayAbort)
             releaseUnit(unit)
             doingChat.set(false)
@@ -2362,6 +2366,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 return false
             }
             target.ctx.chat.message[target.index].data = data
+            noteStreamText(target.replyId, data)
             if(bumpKeys){
                 target.ctx.owner.reloadKeys += 1
             }

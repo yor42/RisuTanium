@@ -84,9 +84,11 @@ vi.mock('./ts/storage/tauriByteTransport', () => ({ isAndroidTransport: () => tr
 
 import { loadedStore, LoadingStatusState } from './ts/stores.svelte'
 import { askBootScreen, clearBootScreen, resetBootScreenForTests } from './ts/storage/store2/ui/bootScreen.svelte'
+import { resetSystemBarsForTests, syncSystemBars } from './ts/gui/systemBars'
 
 let mountedApp: Record<string, unknown> | null = null
 let target: HTMLElement | null = null
+let releaseRequested = false
 
 beforeEach(() => {
     vi.stubEnv('VITE_RISU_LEGAL_CONFIGURED', 'TRUE')
@@ -106,6 +108,13 @@ afterEach(async () => {
     resetBootScreenForTests()
     vi.useRealTimers()
     vi.unstubAllEnvs()
+    if (releaseRequested) {
+        // A loaded app schedules the system-bar release on a real frame and timer; let it fire
+        // here so it cannot land inside a later test's hold.
+        await new Promise<void>(resolve => setTimeout(resolve, 100))
+        releaseRequested = false
+    }
+    resetSystemBarsForTests()
 })
 
 async function showApp(options: { aprilFools?: boolean, bootScreen?: boolean, loaded?: boolean, legalConfigured?: boolean }) {
@@ -116,6 +125,7 @@ async function showApp(options: { aprilFools?: boolean, bootScreen?: boolean, lo
         vi.setSystemTime(new Date(2026, 3, 1))
     }
     ;(loadedStore as unknown as { set(value: boolean): void }).set(options.loaded === true)
+    releaseRequested = releaseRequested || options.loaded === true
     if (options.bootScreen === true) {
         void askBootScreen({
             title: 'A boot question',
@@ -214,5 +224,49 @@ describe('App shows the boot screen in the right place', () => {
     test('the legal notice still comes first: with it unconfigured the boot screen is not shown over it', async () => {
         const root = await showApp({ bootScreen: true, legalConfigured: false })
         expect(root.textContent).not.toContain('A boot question')
+    })
+})
+
+describe('App releases the system bars when the boot screen hands over', () => {
+    test('RA6 the held colour reaches the host only after the database is loaded and the frame has painted, once', async () => {
+        const setBackground = vi.fn<(red: number, green: number, blue: number) => unknown>()
+        const frames: Array<() => void> = []
+        resetSystemBarsForTests()
+        window.__risuTaniumSystemBars = { setBackground }
+        vi.useRealTimers()
+        vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
+        vi.setSystemTime(new Date(2026, 5, 15))
+        vi.stubGlobal('requestAnimationFrame', (callback: () => void) => {
+            frames.push(callback)
+            return frames.length
+        })
+        try {
+            syncSystemBars('#112233')
+            const root = await showApp({})
+            const flushFrames = (): void => {
+                for (const frame of frames.splice(0)) {
+                    frame()
+                }
+                vi.advanceTimersByTime(0)
+            }
+            flushFrames()
+            expect(root.querySelector('[role=progressbar]'), 'the boot screen is up').not.toBeNull()
+            expect(setBackground, 'nothing is sent while the boot screen is up').not.toHaveBeenCalled()
+
+            ;(loadedStore as unknown as { set(value: boolean): void }).set(true)
+            flushSync()
+            expect(root.querySelector('[role=progressbar]'), 'the boot screen is gone').toBeNull()
+            expect(setBackground, 'nothing is sent before the frame has painted').not.toHaveBeenCalled()
+            flushFrames()
+            expect(setBackground).toHaveBeenCalledTimes(1)
+            expect(setBackground).toHaveBeenCalledWith(17, 34, 51)
+            flushFrames()
+            expect(setBackground, 'the release happens once').toHaveBeenCalledTimes(1)
+        } finally {
+            vi.useRealTimers()
+            vi.unstubAllGlobals()
+            delete window.__risuTaniumSystemBars
+            resetSystemBarsForTests()
+        }
     })
 })

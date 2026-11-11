@@ -4,10 +4,9 @@
     import { quitPill, QUIT_PILL_LEAVE_MS } from '../../../ts/quitPill.svelte'
 </script>
 
-<!-- The region persists, so a screen reader reads each inserted pill once. The pill takes no focus and no pointer. -->
+<!-- The region persists, so a screen reader reads each inserted pill once. It has no role on purpose: a named role is spoken alone when the region empties. The pill takes no focus and no pointer. -->
 <div
     class="quit-pill-region"
-    role="status"
     aria-live="polite"
     aria-atomic="true"
     data-part="quit-pill-region"

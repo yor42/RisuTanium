@@ -54,7 +54,7 @@ describe('appendIfAbsent', () => {
 })
 
 describe('markCharacterForSave', () => {
-    test('falsy or non-string ids are a no-op: does not touch the tracker or call schedule', () => {
+    test('falsy or unusable ids are a no-op: does not touch the tracker or call schedule', () => {
         const tracker = makeTracker(['existing'])
         const schedule = vi.fn()
         installCharacterSaveMarks({ tracker, schedule })
@@ -63,7 +63,7 @@ describe('markCharacterForSave', () => {
         markCharacterForSave(null)
         markCharacterForSave('')
         markCharacterForSave(0 as unknown as string)
-        markCharacterForSave(123 as unknown as string)
+        markCharacterForSave(Infinity)
 
         expect(tracker.character).toEqual(['existing'])
         expect(schedule).not.toHaveBeenCalled()
@@ -184,13 +184,13 @@ describe('markCharacterForSave — net-signal counters (CHORE-205 counter experi
         expect(handleOf()?.signals('b')?.api.n).toBe(1)
     })
 
-    test('falsy and non-string ids are not counted', () => {
+    test('falsy and unusable ids are not counted', () => {
         enable(true)
         installCharacterSaveMarks({ tracker: makeTracker([]), schedule: vi.fn() })
         markCharacterForSave(undefined)
         markCharacterForSave('')
         markCharacterForSave(0 as unknown as string)
-        markCharacterForSave(5 as unknown as string)
+        markCharacterForSave(Infinity)
         expect(handleOf()?.dump().perChar).toEqual([])
     })
 

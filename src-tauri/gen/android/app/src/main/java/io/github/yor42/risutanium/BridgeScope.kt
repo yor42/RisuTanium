@@ -43,7 +43,13 @@ sealed class BridgeCommand {
   data class KeepAliveUpdate(val title: String, val stopLabel: String) : BridgeCommand()
   object KeepAliveStop : BridgeCommand()
   data class KeepAliveStopAfter(val ms: Int) : BridgeCommand()
+  // Contract v2: each carries the page's notice as a JSON string, because toCommand rejects nested values.
+  data class KeepAliveStartState(val json: String) : BridgeCommand()
+  data class KeepAliveUpdateState(val json: String) : BridgeCommand()
+  data class KeepAliveStopAfterWithOutcome(val ms: Int, val json: String) : BridgeCommand()
   object KeepAliveRequestNotificationPermissionOnce : BridgeCommand()
+  // The page asks for the chat a notification tap named; the answer goes to its hook.
+  object KeepAliveRequestOpenTarget : BridgeCommand()
   data class OpenedFilesTake(val id: Int) : BridgeCommand()
   // A take that has an id but a wrong argument list: it is answered with an empty reply.
   data class OpenedFilesMalformedTake(val id: Int) : BridgeCommand()
@@ -52,6 +58,8 @@ sealed class BridgeCommand {
   object ReplyNotificationsEnable : BridgeCommand()
   object ReplyNotificationsDisable : BridgeCommand()
   data class ReplyNotificationsNotify(val key: String, val title: String, val body: String, val silent: Boolean) : BridgeCommand()
+  // Contract v2: carries the page's notice as a JSON string, because toCommand rejects nested values.
+  data class ReplyNotificationsNotifyState(val json: String) : BridgeCommand()
   data class ReplyNotificationsCancel(val key: String) : BridgeCommand()
 }
 
@@ -104,10 +112,24 @@ private fun keepAliveCommand(method: String, args: List<Any?>): BridgeCommand? {
     "stop" -> return if (args.isEmpty()) BridgeCommand.KeepAliveStop else null
     "requestNotificationPermissionOnce" ->
       return if (args.isEmpty()) BridgeCommand.KeepAliveRequestNotificationPermissionOnce else null
+    "requestOpenTarget" ->
+      return if (args.isEmpty()) BridgeCommand.KeepAliveRequestOpenTarget else null
     "stopAfter" -> {
       if (args.size != 1) return null
       val ms = intArg(args[0]) ?: return null
       return BridgeCommand.KeepAliveStopAfter(ms)
+    }
+    "startState", "updateState" -> {
+      if (args.size != 1) return null
+      val json = args[0] as? String ?: return null
+      return if (method == "startState") BridgeCommand.KeepAliveStartState(json) else BridgeCommand.KeepAliveUpdateState(json)
+    }
+    "stopAfterWithOutcome" -> {
+      if (args.size != 2) return null
+      val ms = intArg(args[0]) ?: return null
+      // An outcome that is not a string acts as a plain stopAfter, so the stop is never lost.
+      val json = args[1] as? String ?: return BridgeCommand.KeepAliveStopAfter(ms)
+      return BridgeCommand.KeepAliveStopAfterWithOutcome(ms, json)
     }
   }
   return null
@@ -127,6 +149,11 @@ private fun replyNotificationsCommand(method: String, args: List<Any?>): BridgeC
       val body = args[2] as? String ?: return null
       val silent = args[3] as? Boolean ?: return null
       return if (isReplyKey(key)) BridgeCommand.ReplyNotificationsNotify(key, title, body, silent) else null
+    }
+    "notifyState" -> {
+      if (args.size != 1) return null
+      val json = args[0] as? String ?: return null
+      return BridgeCommand.ReplyNotificationsNotifyState(json)
     }
     "cancel" -> {
       if (args.size != 1) return null

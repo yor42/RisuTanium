@@ -8,6 +8,7 @@ import { MEASURE } from '../../process/memory/measureFlag'
 import { netHeldNow, noteNetHeldTick, noteNetPassTick } from '../measureExportHold'
 import { isModuleStub } from '../moduleStub'
 import { isColdStub, SharedChaIdStubError, StubRefusedError } from './codec'
+import { isUsableCharacterId } from '../characterIds'
 import { namesManifest, type AbandonResult, type CommitResult, type Committer } from './commit'
 import { classifyCommitRead } from './commitKey'
 import { clearAbandonedMarker, type MarkerLiveness, type MarkerOwnerProbe } from './abandonedMarker'
@@ -921,8 +922,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         const startedAt = MEASURE ? performance.now() : 0
         const present = presentChaIds(db)
         const marked = new Set<string>()
-        for (const chaId of snapshot.toSave.character) {
-            if (typeof chaId === 'string' && present.has(chaId)) {
+        // toSave.character is declared string[] but holds raw chaIds: a mark names the block of its text form.
+        for (const mark of snapshot.toSave.character) {
+            const chaId = typeof mark === 'string' ? mark : typeof mark === 'number' && isUsableCharacterId(mark) ? String(mark) : null
+            if (chaId !== null && present.has(chaId)) {
                 marked.add(chaId)
             }
         }
