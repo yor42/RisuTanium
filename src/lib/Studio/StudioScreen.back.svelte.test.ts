@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 interface TestCharacter {
     chaId: string
+    name?: string
     type: string
     chatPage: number
     chats: { id: string }[]
@@ -573,5 +574,226 @@ describe('notice line', () => {
         flushSync()
         click('studio-title')
         expect(studioScreen.notice).toBeNull()
+    })
+})
+
+describe('focus when a layer closes (MC-1504, MC-1507)', () => {
+    function escOn(target: HTMLElement): void {
+        target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+        flushSync()
+    }
+
+    function firstRow(): HTMLElement {
+        const row = part('studio-tree-drawer')?.querySelector<HTMLElement>('[data-part="studio-row"]')
+        expect(row).toBeTruthy()
+        return row!
+    }
+
+    function leafRow(): HTMLElement | null {
+        const rows = Array.from(part('studio-tree-drawer')?.querySelectorAll<HTMLElement>('[data-part="studio-row"]') ?? [])
+        return rows.find((row) => !row.hasAttribute('aria-expanded')) ?? null
+    }
+
+    // The screen's own root focus lands one tick after mount and would mask a missing restore.
+    async function drawerScreen(): Promise<void> {
+        openStudio(ownerTarget, { element: opener })
+        show(800)
+        await settleFocus()
+    }
+
+    async function openDrawerOnLeaf(): Promise<HTMLElement> {
+        await drawerScreen()
+        click('studio-drawer-toggle')
+        for (let i = 0; i < 4 && !leafRow(); i++) {
+            const expandable = part('studio-tree-drawer')!.querySelector<HTMLElement>('[data-part="studio-row"][aria-expanded="false"]')
+            if (!expandable) break
+            expandable.click()
+            flushSync()
+        }
+        const leaf = leafRow()
+        expect(leaf).not.toBeNull()
+        return leaf!
+    }
+
+    test('R-D1 Back with focus in the drawer returns focus to the drawer toggle', async () => {
+        await drawerScreen()
+        const toggle = part('studio-drawer-toggle')!
+        toggle.focus()
+        click('studio-drawer-toggle')
+        const row = firstRow()
+        row.focus()
+        expect(back()).toBe(true)
+        await settleFocus()
+        expect(studioScreen.drawerOpen).toBe(false)
+        expect(row.isConnected).toBe(false)
+        expect(document.activeElement).toBe(toggle)
+    })
+
+    test('R-D1b Back goes to the last control focused outside the drawer, not the drawer toggle', async () => {
+        await drawerScreen()
+        const search = part('studio-search-toggle')!
+        search.focus()
+        click('studio-drawer-toggle')
+        firstRow().focus()
+        back()
+        await settleFocus()
+        expect(document.activeElement).toBe(search)
+    })
+
+    test('R-D2 Escape with focus in the drawer returns focus to the drawer toggle', async () => {
+        await drawerScreen()
+        part('studio-drawer-toggle')!.focus()
+        click('studio-drawer-toggle')
+        const row = firstRow()
+        row.focus()
+        escOn(row)
+        await settleFocus()
+        expect(studioScreen.drawerOpen).toBe(false)
+        expect(document.activeElement).toBe(part('studio-drawer-toggle'))
+    })
+
+    test('R-D3 Back with focus on a control outside the drawer returns it there', async () => {
+        await drawerScreen()
+        click('studio-drawer-toggle')
+        const search = part('studio-search-toggle')!
+        search.focus()
+        back()
+        await settleFocus()
+        expect(document.activeElement).toBe(search)
+    })
+
+    test('R-D4 picking a leaf row in the drawer focuses the detail pane, not the opener', async () => {
+        const leaf = await openDrawerOnLeaf()
+        leaf.focus()
+        leaf.click()
+        flushSync()
+        await settleFocus()
+        expect(studioScreen.drawerOpen).toBe(false)
+        expect(document.activeElement).toBe(part('studio-detail'))
+        expect(document.activeElement).not.toBe(part('studio-drawer-toggle'))
+    })
+
+    test('R-D4b the detail pane a drawer pick focuses is focusable (tabindex -1) and has a non-empty accessible name', async () => {
+        const leaf = await openDrawerOnLeaf()
+        leaf.focus()
+        leaf.click()
+        flushSync()
+        await settleFocus()
+        const pane = document.activeElement as HTMLElement
+        expect(pane).toBe(part('studio-detail'))
+        expect(pane.getAttribute('tabindex')).toBe('-1')
+        const labelledBy = pane.getAttribute('aria-labelledby')
+        const fromTitle = labelledBy === null ? '' : (document.getElementById(labelledBy)?.textContent ?? '').trim()
+        const name = fromTitle !== '' ? fromTitle : (pane.getAttribute('aria-label') ?? '').trim()
+        expect(name).not.toBe('')
+        expect(labelledBy).toBe('studio-detail-title')
+    })
+
+    test('R-D4d a named owner is announced by its title when a drawer pick focuses the detail pane', async () => {
+        db.db.characters = [{ chaId: 'char', name: 'Ada', type: 'character', chatPage: 0, chats: [{ id: 'chat' }] }]
+        const leaf = await openDrawerOnLeaf()
+        leaf.focus()
+        leaf.click()
+        flushSync()
+        await settleFocus()
+        const pane = document.activeElement as HTMLElement
+        expect(pane).toBe(part('studio-detail'))
+        const title = document.getElementById(pane.getAttribute('aria-labelledby')!)
+        expect(title).toBe(part('studio-detail-title'))
+        expect(title?.textContent?.trim()).toBe('Ada')
+    })
+
+    test('R-D4c the detail pane keeps a non-empty name when no owner title renders', async () => {
+        await drawerScreen()
+        setStudioSelection('none:none', null, null)
+        flushSync()
+        const pane = part('studio-detail')!
+        expect(part('studio-detail-title')).toBeNull()
+        expect(pane.getAttribute('aria-label') ?? '').not.toBe('')
+    })
+
+    test('R-D5 leaving the drawer layout with focus in the drawer puts focus on the Studio root', async () => {
+        await drawerScreen()
+        click('studio-drawer-toggle')
+        firstRow().focus()
+        resize(1200)
+        await settleFocus()
+        expect(document.activeElement).toBe(part('studio'))
+    })
+
+    test('R-D7 leaving the drawer layout with the drawer closed and focus lost does not move focus', async () => {
+        await drawerScreen()
+        expect(studioScreen.drawerOpen).toBe(false)
+        ;(document.activeElement as HTMLElement).blur()
+        expect(document.activeElement).toBe(document.body)
+        resize(1200)
+        await settleFocus()
+        expect(studioScreen.layout).not.toBe('drawer')
+        expect(document.activeElement).toBe(document.body)
+    })
+
+    test('R-D6 the drawer toggle activated while focus is inside the drawer follows the rule', async () => {
+        await drawerScreen()
+        click('studio-drawer-toggle')
+        firstRow().focus()
+        click('studio-drawer-toggle')
+        await settleFocus()
+        expect(studioScreen.drawerOpen).toBe(false)
+        expect(document.activeElement).toBe(part('studio-drawer-toggle'))
+    })
+
+    test('G-D6 the drawer toggle pressed twice keeps focus on the toggle (guard: passes before and after)', async () => {
+        await drawerScreen()
+        const toggle = part('studio-drawer-toggle')!
+        toggle.focus()
+        click('studio-drawer-toggle')
+        toggle.focus()
+        click('studio-drawer-toggle')
+        await settleFocus()
+        expect(document.activeElement).toBe(toggle)
+    })
+
+    test('T-4 focus last held inside the drawer is never the target: the earlier outside control wins', async () => {
+        await drawerScreen()
+        const search = part('studio-search-toggle')!
+        search.focus()
+        click('studio-drawer-toggle')
+        const row = firstRow()
+        row.focus()
+        escOn(row)
+        await settleFocus()
+        expect(row.isConnected).toBe(false)
+        expect(document.activeElement).toBe(search)
+    })
+
+    describe('with a stub history service', () => {
+        const stubAck = { display: 'idle', canRetry: () => false, retry: () => false, noteEdit: () => {}, dispose: () => {} } as unknown as SaveAck
+
+        beforeEach(() => {
+            setStudioHistoryServiceForTests({
+                useOwner: () => {}, setAck: () => {}, closeOpenStep: () => {},
+                view: (owner: string) => ({ ownerKey: owner, phase: 'ready', banner: null, restricted: false, editable: true, persisted: true, done: [], undone: [], deleted: [], restore: null }),
+            } as unknown as OwnerHistoryService)
+            setStudioVisitAckForTests(stubAck)
+        })
+
+        test('R-P7 Back from inside the panel with the toggle disabled falls to the Studio root', async () => {
+            openStudio(ownerTarget, { element: opener })
+            show(1200)
+            await settleFocus()
+            setStudioSelection('character:char', null, null)
+            flushSync()
+            const toggle = part('studio-history-toggle')!
+            toggle.focus()
+            click('studio-history-toggle')
+            // The selection moves to an owner with no history while the panel stays open.
+            setStudioSelection('module:none', null, null)
+            flushSync()
+            part('studio-history-close')?.focus()
+            back()
+            await settleFocus()
+            expect((part('studio-history-toggle') as HTMLButtonElement).disabled).toBe(true)
+            expect(document.activeElement).toBe(part('studio'))
+        })
     })
 })
