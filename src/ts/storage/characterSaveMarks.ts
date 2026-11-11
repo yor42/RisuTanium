@@ -30,6 +30,43 @@ let installed: CharacterSaveMarksTarget | null = null
 // `markCharacterForSave` before installing anything don't lose it either.
 const pendingQueue = new Set<string>()
 
+type SettingsFlag = 'botPreset' | 'modules' | 'loadouts' | 'plugins' | 'pluginCustomStorage'
+
+// The explicit write hook's counterpart of `pendingQueue`: settings flags requested after a first install and while
+// nothing is installed. Before the very first install the hook's marks are dropped instead (see `markDbWrite`).
+const pendingFlags = new Set<SettingsFlag>()
+let everInstalled = false
+
+// The tracker flag a top-level `db` key sets. Every other key lives in the root block, which every pass encodes.
+const SETTINGS_FLAG_OF_KEY: Readonly<Record<string, SettingsFlag>> = {
+    botPresets: 'botPreset',
+    botPresetsId: 'botPreset',
+    modules: 'modules',
+    loadouts: 'loadouts',
+    plugins: 'plugins',
+    pluginCustomStorage: 'pluginCustomStorage',
+}
+const ALL_SETTINGS_FLAGS: readonly SettingsFlag[] = ['botPreset', 'modules', 'loadouts', 'plugins', 'pluginCustomStorage']
+
+/**
+ * What the explicit write hook (dbWriteHook.ts) reports for one `DBState` write.
+ * - `owner`: a write under this character's unit.
+ * - `placed`: a value was just put into the list as a new character; `id` is its `chaId`, which may be unusable.
+ * - `setting`: a write under this top-level `db` key.
+ * - `listShape`: the character list changed shape at key `prop` (a move, a truncation, a placement with no usable id).
+ * - `listWhole`: the whole character list was replaced.
+ * - `root`: a write on the root object itself; replacing `db` marks every settings block.
+ * - `fallback`: a write the hook could not pin to a character (`cause`); `id` is the selected character's id, when known.
+ */
+export type DbWriteMark =
+    | { kind: 'owner', id: string | number }
+    | { kind: 'placed', id: unknown }
+    | { kind: 'setting', key: string }
+    | { kind: 'listShape', prop: string }
+    | { kind: 'listWhole' }
+    | { kind: 'root', prop: string }
+    | { kind: 'fallback', cause: 'noCharId' | 'error', id?: unknown }
+
 /**
  * Appends `id` to `tracker.character` at the end, only if it is not already
  * present. Shared by `markCharacterForSave` and the identity tracker effect
@@ -71,6 +108,65 @@ export function markCharacterForSave(chaId: unknown): void {
     installed.schedule()
 }
 
+function usableDbWriteId(id: unknown): id is string | number {
+    return (typeof id === 'string' && id !== '') || (typeof id === 'number' && Number.isFinite(id))
+}
+
+/**
+ * Applies one mark of the explicit write hook. A character id is a non-empty string or a finite number; the
+ * tracker's declared `string[]` holds the raw id at runtime, as `frontUnshiftSelected` already does. Only the tracker is guaranteed to
+ * hold it: a consumer that compares by
+ * string (the legacy `RisuSaveEncoder.set`, `String(m)`) sees it, one that keeps only string ids does not.
+ * Every mark ends in exactly one `schedule()`.
+ *
+ * Before the first `installCharacterSaveMarks` nothing is applied: the base page has no marks then either, and a
+ * boot load that runs before the save wiring must not raise a save. After a first install, a mark made while
+ * nothing is installed is queued like `markCharacterForSave`'s.
+ */
+export function markDbWrite(mark: DbWriteMark): void {
+    if (!installed && !everInstalled) {
+        return
+    }
+    let id: string | number | undefined
+    let flags: readonly SettingsFlag[] = []
+    switch (mark.kind) {
+        case 'owner':
+        case 'placed':
+            if (usableDbWriteId(mark.id)) id = mark.id
+            break
+        case 'setting': {
+            const flag = SETTINGS_FLAG_OF_KEY[mark.key]
+            if (flag !== undefined) flags = [flag]
+            break
+        }
+        case 'root':
+            if (mark.prop === 'db') flags = ALL_SETTINGS_FLAGS
+            break
+        case 'fallback':
+            if (usableDbWriteId(mark.id)) id = mark.id
+            break
+        case 'listShape':
+        case 'listWhole':
+            break
+    }
+    if (MEASURE && id !== undefined) {
+        noteSignal('api', String(id))
+    }
+    if (!installed) {
+        // The queue is declared `Set<string>`; a numeric id is queued raw, like the tracker holds it.
+        if (id !== undefined) pendingQueue.add(id as string)
+        for (const flag of flags) pendingFlags.add(flag)
+        return
+    }
+    if (id !== undefined) {
+        appendIfAbsent(installed.tracker, id as string)
+    }
+    for (const flag of flags) {
+        installed.tracker[flag] = true
+    }
+    installed.schedule()
+}
+
 /**
  * Installs (or re-installs, to swap the scheduler) the tracker/scheduler pair
  * that `markCharacterForSave` writes into. Draining the pre-install queue on
@@ -79,11 +175,16 @@ export function markCharacterForSave(chaId: unknown): void {
  */
 export function installCharacterSaveMarks(opts: CharacterSaveMarksTarget): void {
     installed = opts
-    if (pendingQueue.size > 0) {
+    everInstalled = true
+    if (pendingQueue.size > 0 || pendingFlags.size > 0) {
         for (const id of pendingQueue) {
             appendIfAbsent(opts.tracker, id)
         }
         pendingQueue.clear()
+        for (const flag of pendingFlags) {
+            opts.tracker[flag] = true
+        }
+        pendingFlags.clear()
         opts.schedule()
     }
 }
@@ -100,4 +201,6 @@ export function uninstallCharacterSaveMarks(): void {
 export function resetCharacterSaveMarksForTest(): void {
     installed = null
     pendingQueue.clear()
+    pendingFlags.clear()
+    everInstalled = false
 }

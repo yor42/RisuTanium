@@ -3,10 +3,12 @@ import { svelte, vitePreprocess } from "@sveltejs/vite-plugin-svelte";
 import wasm from "vite-plugin-wasm";
 import strip from '@rollup/plugin-strip';
 import tailwindcss from '@tailwindcss/vite'
+import { svelteProxyPatch } from './patches/svelte-5.57.3/plugin.mjs'
 // https://vitejs.dev/config/
 export default defineConfig(({command, mode}) => {
   return {
     plugins: [
+      svelteProxyPatch(),
       svelte({
         preprocess: vitePreprocess(),
         onwarn: (warning, handler) => {
@@ -51,8 +53,10 @@ export default defineConfig(({command, mode}) => {
     },
     
     optimizeDeps:{
+      // 'svelte' stays out of the dev prebundle so the patched client runtime (patches/svelte-5.57.3) is the one served.
       exclude: [
-        "@browsermt/bergamot-translator"
+        "@browsermt/bergamot-translator",
+        "svelte"
       ],
       needsInterop:[
         "@mlc-ai/web-tokenizers"
