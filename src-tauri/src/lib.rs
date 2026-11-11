@@ -853,6 +853,8 @@ async fn streamed_fetch(
     method: String,
     timeout_secs: Option<u64>,
     policy: Option<net_policy::NetPolicy>,
+    chat_stop: Option<bool>,
+    chat_target: Option<streamed_fetch::ChatTarget>,
 ) -> String {
     let registry = app
         .state::<streamed_fetch::FetchRegistry>()
@@ -866,6 +868,7 @@ async fn streamed_fetch(
         method,
         timeout_secs,
         policy,
+        tags: streamed_fetch::stream_tags(chat_stop, chat_target),
     };
     streamed_fetch::run_registered(&registry, request, |payload| {
         app.emit("streamed_fetch", &payload)
@@ -883,6 +886,21 @@ fn cancel_streamed_fetch(id: String, registry: tauri::State<'_, streamed_fetch::
 #[tauri::command]
 fn cancel_all_streamed_fetch(registry: tauri::State<'_, streamed_fetch::FetchRegistry>) {
     registry.cancel_all();
+}
+
+// Called on the Android main thread by the keep-alive Stop (MC-1435): it aborts
+// only the requests the page marked as the chat's, takes one mutex and does no
+// I/O. It does not touch the JNI environment. A panic gives -1.
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_io_github_yor42_risutanium_NativeStreams_cancelChatStreams(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+) -> i32 {
+    match std::panic::catch_unwind(streamed_fetch::cancel_process_chat_streams) {
+        Ok(count) => i32::try_from(count).unwrap_or(i32::MAX),
+        Err(_) => -1,
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -908,7 +926,7 @@ pub fn run() {
     let mut builder = tauri::Builder::default()
         .manage(PendingLaunch(Mutex::new(cold_launch)))
         .manage(store2_gate::Store2Gate::new())
-        .manage(streamed_fetch::FetchRegistry::new())
+        .manage(streamed_fetch::process_registry())
         .manage(app_fs::StartupSweep::new());
 
     #[cfg(desktop)]

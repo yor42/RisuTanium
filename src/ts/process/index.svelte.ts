@@ -356,7 +356,7 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     let replyOutcome: ReplyOutcome | undefined
     try {
         callerSignal?.addEventListener('abort', relayAbort)
-        publishUnit(unit)
+        publishUnit(unit, entry.context.origin)
         // The target is the owner's chat (a group's own id for a group chat), so a notification can open it.
         endInFlight = beginInFlight('chat', { target: entry.context.origin })
         doingChat.set(true)

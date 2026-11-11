@@ -129,6 +129,18 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
     save: vi.fn(async () => null),
 }))
 
+// No operating-system plugin by default, like the test runner; a test sets `os.kind` to pick a transport.
+const os = vi.hoisted(() => ({ kind: '' }))
+
+vi.mock('@tauri-apps/plugin-os', () => ({
+    type: () => {
+        if (!os.kind) {
+            throw new Error('no operating-system plugin')
+        }
+        return os.kind
+    },
+}))
+
 const streamEvents = vi.hoisted(() => ({ emit: (_payload: string) => {} }))
 
 vi.mock('@tauri-apps/api/event', () => ({
@@ -193,6 +205,12 @@ vi.mock(import('src/ts/hotkey'), () => ({
     initMobileGesture: vi.fn(),
 }) as unknown as typeof import('src/ts/hotkey'))
 
+// The provider module graph reaches the real send, which this suite never runs.
+vi.mock(import('src/ts/process/index.svelte'), () => ({}) as unknown as typeof import('src/ts/process/index.svelte'))
+vi.mock(import('src/ts/process/scripts'), () => ({
+    risuChatParser: vi.fn((text: string) => text),
+}) as unknown as typeof import('src/ts/process/scripts'))
+
 vi.mock(import('src/ts/process/modules'), () => ({
     moduleUpdate: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/process/modules'))
@@ -206,6 +224,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { language } from 'src/lang'
 import { fetchNative, getFetchData } from 'src/ts/globalApi.svelte'
 import { resetInFlightForTest } from 'src/ts/process/inFlightWork'
+import { publishUnit, releaseUnit } from 'src/ts/process/generationOwnership.svelte'
 
 const invokeMock = vi.mocked(invoke)
 
@@ -287,6 +306,7 @@ beforeEach(() => {
 
 afterEach(() => {
     process.off('unhandledRejection', onUnhandled)
+    os.kind = ''
     platform.isTauri = true
     vi.restoreAllMocks()
     resetInFlightForTest()
@@ -528,5 +548,175 @@ describe('fetchNative fetch log', () => {
         await drain(response!.body!.getReader())
 
         expect(getFetchData(chatId)?.response).toBe('before ')
+    })
+})
+
+type StreamedFetchArgs = { id?: string, chatStop?: boolean, chatTarget?: { chaId: string, chatId: string } }
+const streamedFetchArgs = () => invokeMock.mock.calls.find((call) => call[0] === 'streamed_fetch')![1] as StreamedFetchArgs
+
+describe('a non-stream main reply is marked through the real globalFetch chain (MC-1435, MC-1476)', () => {
+    // NS-1 (regression reproducer: on base the invoke carries no marks): the non-stream OpenAI-chat send reaches
+    // `fetchNative` with the caller's own signal through the real `globalFetch` -> `fetchWithNativeEvents` chain,
+    // so the invoke carries the marks. Only the Tauri bridge is mocked.
+    test('requestHTTPOpenAI on the Android transport sends chatStop and chatTarget with the unit signal', async () => {
+        os.kind = 'android'
+        const { requestHTTPOpenAI } = await import('src/ts/process/request/openAI/requests')
+        const unit = new AbortController()
+        publishUnit(unit, { chaId: 'g', chatId: 'c' })
+        invokeMock.mockClear()
+        try {
+            const sending = requestHTTPOpenAI(
+                'https://api.example.invalid/v1/chat/completions',
+                { model: 'm', messages: [] },
+                { Authorization: 'Bearer test-key' },
+                { abortSignal: unit.signal, modelInfo: { flags: [] } } as unknown as Parameters<typeof requestHTTPOpenAI>[3],
+            )
+            for (let i = 0; i < 100 && !invokeMock.mock.calls.some((call) => call[0] === 'streamed_fetch'); i++) {
+                await tick()
+            }
+            const args = streamedFetchArgs()
+            expect(args.chatStop).toBe(true)
+            expect(args.chatTarget).toEqual({ chaId: 'g', chatId: 'c' })
+
+            const id = args.id!
+            emit(id, { type: 'headers', body: { 'content-type': 'application/json' }, status: 200 })
+            emit(id, { type: 'chunk', body: b64(JSON.stringify({ choices: [{ message: { content: 'hi' } }] })) })
+            emit(id, { type: 'end' })
+            const reply = await within(sending)
+            expect(reply.result).toBe('hi')
+        } finally {
+            releaseUnit(unit)
+        }
+    })
+})
+
+describe('fetchNative marks a request for the chat Stop (MC-1435)', () => {
+    // V-1 (regression reproducer): the arguments carried no marks before the keep-alive Stop cancelled natively.
+    test('a request made with the published unit signal carries chatStop and the unit target only', async () => {
+        const unit = new AbortController()
+        const origin = { chaId: 'g', chatId: 'c', memberChaId: 'm' }
+        publishUnit(unit, origin)
+        try {
+            const { pending } = await begin({ signal: unit.signal })
+            const args = streamedFetchArgs()
+            expect(args.chatStop).toBe(true)
+            expect(args.chatTarget).toEqual({ chaId: 'g', chatId: 'c' })
+            expect(Object.keys(args.chatTarget!)).toEqual(['chaId', 'chatId'])
+            unit.abort()
+            await within(pending)
+        } finally {
+            releaseUnit(unit)
+        }
+    })
+
+    // V-1b (guard): a request timeout derives a new request signal, but the marks follow the caller's own signal.
+    test('a request with the unit signal and a request timeout still carries chatStop and the unit target', async () => {
+        const unit = new AbortController()
+        const origin = { chaId: 'g', chatId: 'c', memberChaId: 'm' }
+        publishUnit(unit, origin)
+        try {
+            const { pending } = await begin({ signal: unit.signal, timeoutMs: 60000 })
+            const args = streamedFetchArgs()
+            expect(args.chatStop).toBe(true)
+            expect(args.chatTarget).toEqual({ chaId: 'g', chatId: 'c' })
+            unit.abort()
+            await within(pending)
+        } finally {
+            releaseUnit(unit)
+        }
+    })
+
+    // V-2 (guard on the selection; on base it fails only because the field is absent).
+    // The request is left pending: the stub command never settles and nothing here reads its stream.
+    const expectUnmarked = async (label: string, signal: AbortSignal | undefined) => {
+        await begin({ signal })
+        const args = streamedFetchArgs()
+        expect(args.chatStop, label).toBe(false)
+        expect(args.chatTarget, label).toBeUndefined()
+    }
+
+    test('an unpublished signal is not marked', async () => {
+        const unit = new AbortController()
+        await expectUnmarked('unpublished', unit.signal)
+    })
+
+    test('another controller signal is not marked while a unit is published', async () => {
+        const unit = new AbortController()
+        const other = new AbortController()
+        publishUnit(unit, { chaId: 'g', chatId: 'c' })
+        try {
+            await expectUnmarked('foreign', other.signal)
+        } finally {
+            releaseUnit(unit)
+        }
+    })
+
+    test('no signal and no published unit is not marked', async () => {
+        await expectUnmarked('nothing', undefined)
+    })
+
+    test('no signal is not marked while a unit is published', async () => {
+        const unit = new AbortController()
+        publishUnit(unit, { chaId: 'g', chatId: 'c' })
+        try {
+            await expectUnmarked('absent', undefined)
+        } finally {
+            releaseUnit(unit)
+        }
+    })
+
+    test('the unit signal after its release is not marked', async () => {
+        const unit = new AbortController()
+        publishUnit(unit, { chaId: 'g', chatId: 'c' })
+        releaseUnit(unit)
+        await expectUnmarked('released', unit.signal)
+    })
+
+    // V-3 (compatibility guard): the page is unchanged, so this passes before and after.
+    test('a native-cancelled result then the page Stop ends quietly and keeps what was read', async () => {
+        const controller = new AbortController()
+        const { id, pending } = await begin({ signal: controller.signal })
+        emit(id, { type: 'headers', body: {}, status: 200 })
+        emit(id, { type: 'chunk', body: b64('a') })
+        emit(id, { type: 'chunk', body: b64('b') })
+        const response = await within(pending)
+        const reader: ReadableStreamDefaultReader<Uint8Array> = response!.body!.getReader()
+        let read = ''
+        while (read.length < 2) {
+            read += decoder.decode((await within(reader.read())).value)
+        }
+
+        nativeResult.resolve(JSON.stringify({ success: true, cancelled: true }))
+        await settle()
+        controller.abort()
+        await settle()
+
+        expect(read).toBe('ab')
+        expect(await drain(reader)).toEqual({ text: '', error: null })
+        expect(cancelCalls()).toEqual([['cancel_streamed_fetch', { id }]])
+    })
+
+    // V-4 (compatibility guard): the order of the cancelled result and the page Stop does not matter.
+    test('the page Stop then a native-cancelled result ends the same way', async () => {
+        const controller = new AbortController()
+        const { id, pending } = await begin({ signal: controller.signal })
+        emit(id, { type: 'headers', body: {}, status: 200 })
+        emit(id, { type: 'chunk', body: b64('a') })
+        emit(id, { type: 'chunk', body: b64('b') })
+        const response = await within(pending)
+        const reader: ReadableStreamDefaultReader<Uint8Array> = response!.body!.getReader()
+        let read = ''
+        while (read.length < 2) {
+            read += decoder.decode((await within(reader.read())).value)
+        }
+
+        controller.abort()
+        await settle()
+        nativeResult.resolve(JSON.stringify({ success: true, cancelled: true }))
+        await settle()
+
+        expect(read).toBe('ab')
+        expect(await drain(reader)).toEqual({ text: '', error: null })
+        expect(cancelCalls()).toEqual([['cancel_streamed_fetch', { id }]])
     })
 })

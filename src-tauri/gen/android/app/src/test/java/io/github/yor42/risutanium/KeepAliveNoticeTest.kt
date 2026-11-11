@@ -594,4 +594,334 @@ class KeepAliveNoticeTest {
     display.reset()
     assertEquals(TimerChange.CANCEL, display.takeTimerChange())
   }
+
+  // F5-K: the Stop tap's delivery and a confirmed native cancel (MC-1435, MC-1470, MC-1471). Labels:
+  // KJ-1, KJ-2 are designed reproducers (a delivery that never cancels fails them); the rest are guards.
+
+  private class DeliveryCalls {
+    val calls = mutableListOf<String>()
+  }
+
+  private fun deliver(
+    display: KeepAliveDisplay,
+    tap: StopTap,
+    calls: DeliveryCalls = DeliveryCalls(),
+    pageAccepts: Boolean = true,
+    cancelled: Int = 1
+  ): StopDelivery = deliverStopTap(
+    tap,
+    display,
+    { calls.calls.add("page"); pageAccepts },
+    { calls.calls.add("cancel"); cancelled }
+  )
+
+  private fun confirmedDisplay(foreground: Boolean = false): KeepAliveDisplay {
+    val display = KeepAliveDisplay(foreground = foreground)
+    display.pageNotice(notice())
+    val tap = display.stopTapped()
+    assertEquals(StopTap.ENTERED, tap)
+    assertEquals(StopDelivery.CONFIRMED, deliver(display, tap))
+    return display
+  }
+
+  @Test
+  fun hiddenStopCallsThePageBeforeTheNativeCancel() {
+    val display = KeepAliveDisplay(foreground = false)
+    display.pageNotice(notice())
+    val tap = display.stopTapped()
+    val calls = DeliveryCalls()
+    assertEquals(StopDelivery.CONFIRMED, deliver(display, tap, calls))
+    assertEquals(listOf("page", "cancel"), calls.calls)
+  }
+
+  @Test
+  fun aConfirmedCancelShowsStoppedWithNoTimer() {
+    val display = KeepAliveDisplay()
+    display.pageNotice(notice())
+    val tap = display.stopTapped()
+    assertEquals(TimerChange.ARM, display.takeTimerChange())
+    assertEquals(StopDelivery.CONFIRMED, deliver(display, tap))
+    assertTrue(display.cancelConfirmed)
+    val plan = noticePlan(display.current()!!, display.stopping, 34, display.cancelConfirmed)
+    assertEquals("Stopped", plan.title)
+    assertEquals("Stopped", plan.publicVersion.title)
+    assertNull(plan.actionLabel)
+    assertNull(plan.publicVersion.actionLabel)
+    assertFalse(plan.chronometer)
+    assertEquals(TimerChange.CANCEL, display.takeTimerChange())
+    assertFalse(display.stopTimeout())
+    assertTrue(display.stopping)
+  }
+
+  @Test
+  fun aConfirmedStoppedPlanDiffersFromStoppingOnlyInTheTitle() {
+    val named = notice(identity = alice)
+    for (base in listOf(notice(), named)) {
+      val stopping = noticePlan(base, stopping = true, sdk = 34)
+      val stopped = noticePlan(base, stopping = true, sdk = 34, stopped = true)
+      if (base.identity == null) {
+        assertEquals(stopping.copy(title = "Stopped", publicVersion = stopping.publicVersion.copy(title = "Stopped")), stopped)
+      } else {
+        assertEquals("Alice", stopped.title)
+        assertEquals("Stopped", stopped.text)
+        assertEquals(stopping.copy(text = "Stopped", publicVersion = stopping.publicVersion.copy(title = "Stopped")), stopped)
+      }
+    }
+    val unnamedTitle = notice().copy(stoppedTitle = "")
+    assertEquals("Stopping…", noticePlan(unnamedTitle, stopping = true, sdk = 34, stopped = true).title)
+  }
+
+  @Test
+  fun noMatchKeepsMc1435() {
+    val hidden = KeepAliveDisplay(foreground = false)
+    hidden.pageNotice(notice())
+    assertEquals(StopDelivery.DELIVERED, deliver(hidden, hidden.stopTapped(), cancelled = 0))
+    assertFalse(hidden.cancelConfirmed)
+    assertEquals(TimerChange.NONE, hidden.takeTimerChange())
+    val foreground = KeepAliveDisplay()
+    foreground.pageNotice(notice())
+    assertEquals(StopDelivery.DELIVERED, deliver(foreground, foreground.stopTapped(), cancelled = 0))
+    assertEquals(TimerChange.ARM, foreground.takeTimerChange())
+    assertEquals("Stopping…", noticePlan(foreground.current()!!, foreground.stopping, 34, foreground.cancelConfirmed).title)
+  }
+
+  @Test
+  fun noPageNeverCancels() {
+    val display = KeepAliveDisplay(foreground = false)
+    display.pageNotice(notice())
+    val calls = DeliveryCalls()
+    assertEquals(StopDelivery.NO_PAGE, deliver(display, display.stopTapped(), calls, pageAccepts = false))
+    assertEquals(listOf("page"), calls.calls)
+    assertFalse(display.cancelConfirmed)
+  }
+
+  @Test
+  fun staleAndPlainNeverCancel() {
+    val display = KeepAliveDisplay(foreground = false)
+    display.pageNotice(notice())
+    display.stopTapped()
+    val staleCalls = DeliveryCalls()
+    assertEquals(StopDelivery.IGNORED, deliver(display, display.stopTapped(), staleCalls))
+    assertTrue(staleCalls.calls.isEmpty())
+    val v1 = KeepAliveDisplay(foreground = false)
+    val plainCalls = DeliveryCalls()
+    assertEquals(StopDelivery.DELIVERED, deliver(v1, v1.stopTapped(), plainCalls))
+    assertEquals(listOf("page"), plainCalls.calls)
+  }
+
+  @Test
+  fun speakingDoesNotCancelNatively() {
+    val display = KeepAliveDisplay(foreground = false)
+    display.pageNotice(notice(state = NoticeState.SPEAKING))
+    val calls = DeliveryCalls()
+    assertEquals(StopDelivery.DELIVERED, deliver(display, display.stopTapped(), calls))
+    assertEquals(listOf("page"), calls.calls)
+    assertFalse(display.cancelConfirmed)
+  }
+
+  @Test
+  fun aStoppableUpdateAfterConfirmKeepsStopped() {
+    val display = confirmedDisplay()
+    assertFalse(display.pageNotice(notice(text = "10 characters")))
+    assertTrue(display.stopping)
+    assertTrue(display.cancelConfirmed)
+    assertTrue(display.pageNotice(notice(state = NoticeState.IMAGE, stopLabel = "")))
+    assertFalse(display.stopping)
+    assertFalse(display.cancelConfirmed)
+  }
+
+  @Test
+  fun theOutcomeAfterConfirmFollowsN2AndClears() {
+    val display = confirmedDisplay()
+    assertTrue(display.outcome(notice(state = NoticeState.FINISHING, stopLabel = "")))
+    assertEquals(NoticeState.STOPPED, display.current()?.state)
+    assertFalse(display.cancelConfirmed)
+    display.pageNotice(notice())
+    assertEquals(StopTap.ENTERED, display.stopTapped())
+    assertEquals("Stopping…", noticePlan(display.current()!!, display.stopping, 34, display.cancelConfirmed).title)
+  }
+
+  @Test
+  fun aV1ResetClearsConfirm() {
+    val display = confirmedDisplay()
+    display.reset()
+    assertFalse(display.cancelConfirmed)
+    assertFalse(display.stopping)
+  }
+
+  @Test
+  fun aNegativeCountIsNoMatch() {
+    val display = KeepAliveDisplay(foreground = false)
+    display.pageNotice(notice())
+    assertEquals(StopDelivery.DELIVERED, deliver(display, display.stopTapped(), cancelled = -1))
+    assertFalse(display.cancelConfirmed)
+  }
+
+  // F5-C: the count line while hidden (MC-1450). KC-1 and KC-2 are designed reproducers (a countLine
+  // that is always Page fails them); the rest are guards.
+
+  private val counted = "1,204 characters"
+
+  @Test
+  fun hiddenSilenceDropsTheCountLineAtTheThreshold() {
+    var now = 0L
+    val display = KeepAliveDisplay(foreground = false, clock = { now })
+    val shown = notice(text = counted, identity = alice)
+    display.pageNotice(shown)
+    now = COUNT_STALE_MS - 1
+    assertEquals(CountLine.Page, display.countLine())
+    now = COUNT_STALE_MS
+    assertEquals(CountLine.Dropped, display.countLine())
+    assertEquals("Generating a reply…\n$counted", noticePlan(shown, false, 34, countLine = CountLine.Page).bigText)
+    assertNull(noticePlan(shown, false, 34, countLine = display.countLine()).bigText)
+  }
+
+  @Test
+  fun aPageNoticeBringsTheLineBack() {
+    var now = 0L
+    val display = KeepAliveDisplay(foreground = false, clock = { now })
+    display.pageNotice(notice(text = counted))
+    now = 8000L
+    assertEquals(CountLine.Dropped, display.countLine())
+    display.pageNotice(notice(text = counted))
+    assertEquals(CountLine.Page, display.countLine())
+    assertEquals(COUNT_STALE_MS, display.countDelayMs())
+  }
+
+  @Test
+  fun theForegroundNeverDrops() {
+    var now = 0L
+    val display = KeepAliveDisplay(foreground = true, clock = { now })
+    display.pageNotice(notice(text = counted))
+    now = 60_000L
+    assertEquals(CountLine.Page, display.countLine())
+    assertNull(display.countDelayMs())
+  }
+
+  @Test
+  fun aReturnToTheForegroundAsksForARepost() {
+    var now = 0L
+    val display = KeepAliveDisplay(foreground = false, clock = { now })
+    display.pageNotice(notice(text = counted))
+    now = 8000L
+    assertTrue(countLineRepostWanted(CountLine.Page, display))
+    assertFalse(countLineRepostWanted(CountLine.Dropped, display))
+    display.appForeground(true)
+    assertEquals(CountLine.Page, display.countLine())
+    assertTrue(countLineRepostWanted(CountLine.Dropped, display))
+    val early = KeepAliveDisplay(foreground = false, clock = { now })
+    now = 9000L
+    early.pageNotice(notice(text = counted))
+    assertFalse(countLineRepostWanted(CountLine.Page, early))
+    assertFalse(countLineRepostWanted(null, early))
+  }
+
+  @Test
+  fun stoppingAndStoppedAreUnaffectedByStaleness() {
+    var now = 0L
+    val display = KeepAliveDisplay(foreground = false, clock = { now })
+    val shown = notice(text = counted)
+    display.pageNotice(shown)
+    assertEquals(StopTap.ENTERED, display.stopTapped())
+    now = 10_000L
+    for (stopped in listOf(false, true)) {
+      assertEquals(
+        noticePlan(shown, true, 34, stopped, CountLine.Page),
+        noticePlan(shown, true, 34, stopped, display.countLine())
+      )
+    }
+    assertNull(display.countDelayMs())
+    assertEquals(TimerChange.NONE, display.takeTimerChange())
+  }
+
+  @Test
+  fun theDelayFollowsTheLastPageNotice() {
+    var now = 0L
+    val display = KeepAliveDisplay(foreground = true, clock = { now })
+    display.pageNotice(notice(text = counted))
+    now = 2000L
+    display.appForeground(false)
+    assertEquals(3000L, display.countDelayMs())
+    now = 3000L
+    display.pageNotice(notice(text = counted))
+    assertEquals(COUNT_STALE_MS, display.countDelayMs())
+    var later = 0L
+    val silent = KeepAliveDisplay(foreground = false, clock = { later })
+    silent.pageNotice(notice(text = counted))
+    later = 7000L
+    assertEquals(0L, silent.countDelayMs())
+    assertEquals(CountLine.Dropped, silent.countLine())
+  }
+
+  @Test
+  fun onlyAGeneratingNoticeWithACountIsAffected() {
+    var now = 0L
+    val display = KeepAliveDisplay(foreground = false, clock = { now })
+    display.pageNotice(notice(text = ""))
+    now = 9000L
+    assertEquals(CountLine.Page, display.countLine())
+    assertNull(display.countDelayMs())
+    val speaking = notice(state = NoticeState.SPEAKING, text = counted)
+    display.pageNotice(speaking)
+    now = 20_000L
+    assertEquals(CountLine.Page, display.countLine())
+    assertNull(display.countDelayMs())
+    assertEquals(
+      noticePlan(speaking, false, 34, countLine = CountLine.Page),
+      noticePlan(speaking, false, 34, countLine = CountLine.Dropped)
+    )
+  }
+
+  @Test
+  fun resetAndOutcomeClearTheDrop() {
+    var now = 0L
+    val display = KeepAliveDisplay(foreground = false, clock = { now })
+    display.pageNotice(notice(text = counted))
+    now = 8000L
+    assertEquals(CountLine.Dropped, display.countLine())
+    display.reset()
+    assertEquals(CountLine.Page, display.countLine())
+    display.pageNotice(notice(text = counted))
+    now = 20_000L
+    assertEquals(CountLine.Dropped, display.countLine())
+    display.outcome(notice(state = NoticeState.FINISHING, stopLabel = ""))
+    assertEquals(CountLine.Page, display.countLine())
+    assertNull(display.countDelayMs())
+  }
+
+  @Test
+  fun droppingRemovesOnlyTheNumbers() {
+    for (shown in listOf(notice(text = counted), notice(text = counted, identity = alice))) {
+      val page = noticePlan(shown, false, 34, countLine = CountLine.Page)
+      assertNotNull(page.bigText)
+      assertEquals(page.copy(bigText = null), noticePlan(shown, false, 34, countLine = CountLine.Dropped))
+    }
+  }
+
+  @Test
+  fun aCheckThatFiresEarlyReArms() {
+    var now = 0L
+    val display = KeepAliveDisplay(foreground = false, clock = { now })
+    display.pageNotice(notice(text = counted))
+    now = 3000L
+    assertEquals(CountLine.Page, display.countLine())
+    assertFalse(countLineRepostWanted(CountLine.Page, display))
+    assertEquals(2000L, countTimerDelayMs(CountLine.Page, display))
+    now = COUNT_STALE_MS
+    assertEquals(0L, display.countDelayMs())
+    assertEquals(CountLine.Dropped, display.countLine())
+    assertEquals(0L, countTimerDelayMs(CountLine.Page, display))
+    assertNull(countTimerDelayMs(CountLine.Dropped, display))
+    assertNull(countTimerDelayMs(null, display))
+    display.appForeground(true)
+    assertNull(countTimerDelayMs(CountLine.Dropped, display))
+    // While not Stopping, for one clock value the delay is 0 exactly when the line is dropped.
+    var sampled = 0L
+    val probe = KeepAliveDisplay(foreground = false, clock = { sampled })
+    probe.pageNotice(notice(text = counted))
+    for (at in listOf(0L, COUNT_STALE_MS - 1, COUNT_STALE_MS, 9000L)) {
+      sampled = at
+      assertEquals("at $at", probe.countDelayMs() == 0L, probe.countLine() == CountLine.Dropped)
+    }
+  }
 }

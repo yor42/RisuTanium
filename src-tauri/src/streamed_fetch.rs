@@ -15,10 +15,11 @@ use crate::net_policy::{
 };
 use futures::future::{AbortHandle, AbortRegistration, Abortable};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::error::Error as StdError;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 
 pub const TOMBSTONE_CAP: usize = 64;
@@ -26,9 +27,45 @@ pub const TOMBSTONE_TTL: Duration = Duration::from_secs(10);
 pub const IDLE_TIMEOUT: Duration = Duration::from_secs(600);
 const MAX_REDIRECTS: usize = 10;
 
+/// The chat a request belongs to, as the keep-alive notice names it: the
+/// owner's id (a group by its own id) and the chat's id. It is carried so a
+/// later native count can be matched to the notice (MC-1452). The chat's Stop
+/// does not filter by it.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChatTarget {
+    pub cha_id: String,
+    pub chat_id: String,
+}
+
+/// The page's marks on a request. `chat_stop` means the chat's Stop aborts the
+/// request, so a native cancel may end it while the page is frozen (MC-1435).
+/// The struct grows with further marks, such as native reply ownership
+/// (MC-1451); those can overlap `chat_stop`, which is why it is not an enum.
+/// `chat_target` never decides a cancel.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct StreamTags {
+    pub chat_stop: bool,
+    pub chat_target: Option<ChatTarget>,
+}
+
+/// Maps the `streamed_fetch` command's optional arguments to the request's tags.
+pub fn stream_tags(chat_stop: Option<bool>, chat_target: Option<ChatTarget>) -> StreamTags {
+    StreamTags {
+        chat_stop: chat_stop.unwrap_or(false),
+        chat_target,
+    }
+}
+
+struct LiveEntry {
+    serial: u64,
+    handle: AbortHandle,
+    tags: StreamTags,
+}
+
 struct RegistryState {
     next_serial: u64,
-    live: HashMap<String, (u64, AbortHandle)>,
+    live: HashMap<String, LiveEntry>,
     tombstones: HashMap<String, Instant>,
 }
 
@@ -57,7 +94,7 @@ pub struct RegistrationGuard {
 impl Drop for RegistrationGuard {
     fn drop(&mut self) {
         let mut state = self.registry.lock();
-        let owned = matches!(state.live.get(&self.id), Some((serial, _)) if *serial == self.serial);
+        let owned = matches!(state.live.get(&self.id), Some(entry) if entry.serial == self.serial);
         if owned {
             state.live.remove(&self.id);
         }
@@ -65,7 +102,7 @@ impl Drop for RegistrationGuard {
 }
 
 impl FetchRegistry {
-    pub fn new() -> Self {
+    fn new() -> Self {
         FetchRegistry {
             state: Arc::new(Mutex::new(RegistryState {
                 next_serial: 0,
@@ -85,11 +122,22 @@ impl FetchRegistry {
             .retain(|_, born| now.saturating_duration_since(*born) < TOMBSTONE_TTL);
     }
 
+    // The untagged forms are the registry's plain API; the request path registers tagged.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn register(&self, id: &str) -> Registration {
         self.register_at(id, Instant::now())
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn register_at(&self, id: &str, now: Instant) -> Registration {
+        self.register_tagged_at(id, StreamTags::default(), now)
+    }
+
+    pub fn register_tagged(&self, id: &str, tags: StreamTags) -> Registration {
+        self.register_tagged_at(id, tags, Instant::now())
+    }
+
+    pub fn register_tagged_at(&self, id: &str, tags: StreamTags, now: Instant) -> Registration {
         let mut state = self.lock();
         Self::purge(&mut state, now);
         if state.tombstones.remove(id).is_some() {
@@ -102,7 +150,7 @@ impl FetchRegistry {
         state.next_serial += 1;
         let serial = state.next_serial;
         let (handle, registration) = AbortHandle::new_pair();
-        state.live.insert(id.to_string(), (serial, handle));
+        state.live.insert(id.to_string(), LiveEntry { serial, handle, tags });
         Registration::Live(
             RegistrationGuard {
                 registry: self.clone(),
@@ -120,16 +168,37 @@ impl FetchRegistry {
     /// Aborts entries live at this instant; drained ids may register again.
     pub fn cancel_all(&self) {
         let mut state = self.lock();
-        for (_, (_, handle)) in state.live.drain() {
-            handle.abort();
+        for (_, entry) in state.live.drain() {
+            entry.handle.abort();
         }
+    }
+
+    /// Aborts every live entry the page marked `chat_stop` and returns how many.
+    /// It selects on `chat_stop` alone, whatever the entry's target (the tagged
+    /// set is a subset of what the page Stop also aborts). It writes no
+    /// tombstone and only aborts handles: a cancelled request ends in
+    /// `run_registered`'s aborted branch, which owns the request and its tags.
+    pub fn cancel_chat(&self) -> usize {
+        let mut state = self.lock();
+        let ids: Vec<String> = state
+            .live
+            .iter()
+            .filter(|(_, entry)| entry.tags.chat_stop)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in &ids {
+            if let Some(entry) = state.live.remove(id) {
+                entry.handle.abort();
+            }
+        }
+        ids.len()
     }
 
     pub fn cancel_at(&self, id: &str, now: Instant) {
         let mut state = self.lock();
         Self::purge(&mut state, now);
-        if let Some((_, handle)) = state.live.remove(id) {
-            handle.abort();
+        if let Some(entry) = state.live.remove(id) {
+            entry.handle.abort();
             return;
         }
         if !state.tombstones.contains_key(id) && state.tombstones.len() >= TOMBSTONE_CAP {
@@ -151,6 +220,11 @@ impl FetchRegistry {
     }
 
     #[cfg(test)]
+    fn live_tags(&self, id: &str) -> Option<StreamTags> {
+        self.lock().live.get(id).map(|entry| entry.tags.clone())
+    }
+
+    #[cfg(test)]
     fn tombstone_len(&self) -> usize {
         self.lock().tombstones.len()
     }
@@ -165,6 +239,7 @@ pub struct FetchRequest {
     pub timeout_secs: Option<u64>,
     /// `None` keeps the unrestricted client; only untrusted callers set it.
     pub policy: Option<NetPolicy>,
+    pub tags: StreamTags,
 }
 
 fn failure(message: &str) -> String {
@@ -361,14 +436,37 @@ pub async fn run_registered<F>(registry: &FetchRegistry, request: FetchRequest, 
 where
     F: Fn(String) -> Result<(), String> + Send + Sync,
 {
-    let (_guard, abort_registration) = match registry.register(&request.id) {
-        Registration::AlreadyCancelled => return cancelled(),
-        Registration::Duplicate => return cancelled(),
-        Registration::Live(guard, abort_registration) => (guard, abort_registration),
-    };
+    let (_guard, abort_registration) =
+        match registry.register_tagged(&request.id, request.tags.clone()) {
+            Registration::AlreadyCancelled => return cancelled(),
+            Registration::Duplicate => return cancelled(),
+            Registration::Live(guard, abort_registration) => (guard, abort_registration),
+        };
     match Abortable::new(run_fetch(&request, &emit), abort_registration).await {
         Ok(result) => result,
+        // The one place every abort of a LIVE registration ends (`cancel_chat`,
+        // `cancel_all`, and `cancel` of a registered id): a later terminal
+        // record for a cancelled request belongs here, where the request and
+        // its tags are still owned. A cancel that arrives before registration
+        // ends in the `AlreadyCancelled` arm instead.
         Err(_) => cancelled(),
+    }
+}
+
+static PROCESS_REGISTRY: OnceLock<FetchRegistry> = OnceLock::new();
+
+/// The process-wide registry the app manages and the Android keep-alive Stop
+/// reaches through JNI. Clones share one state.
+pub fn process_registry() -> FetchRegistry {
+    PROCESS_REGISTRY.get_or_init(FetchRegistry::new).clone()
+}
+
+/// Cancels the chat's tagged requests in the process registry. It returns 0
+/// when the registry was never created, so it never creates one.
+pub fn cancel_process_chat_streams() -> usize {
+    match PROCESS_REGISTRY.get() {
+        Some(registry) => registry.cancel_chat(),
+        None => 0,
     }
 }
 
@@ -437,6 +535,7 @@ mod tests {
             method: "GET".to_string(),
             timeout_secs: Some(20),
             policy: None,
+            tags: StreamTags::default(),
         }
     }
 
@@ -1246,5 +1345,228 @@ mod tests {
         let new_id = registry.register("b1");
         assert!(matches!(new_id, Registration::Live(..)));
         for server in servers { server.join().unwrap(); }
+    }
+
+    fn chat_stop_tags(target: Option<ChatTarget>) -> StreamTags {
+        StreamTags { chat_stop: true, chat_target: target }
+    }
+
+    fn target_of(cha_id: &str, chat_id: &str) -> ChatTarget {
+        ChatTarget { cha_id: cha_id.to_string(), chat_id: chat_id.to_string() }
+    }
+
+    // Sends a head and one chunk, then reports whether the client closed the socket.
+    fn serve_until_closed(closed_tx: mpsc::Sender<bool>) -> (u16, thread::JoinHandle<()>) {
+        serve_once(move |mut stream| {
+            write_head(&mut stream);
+            write_chunk(&mut stream, b"first");
+            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut byte = [0u8; 1];
+            let closed = match stream.read(&mut byte) {
+                Ok(0) => true,
+                Err(e) => e.kind() != io::ErrorKind::TimedOut && e.kind() != io::ErrorKind::WouldBlock,
+                Ok(_) => false,
+            };
+            let _ = closed_tx.send(closed);
+        })
+    }
+
+    fn cancelled_json() -> Value {
+        json!({"success": true, "cancelled": true})
+    }
+
+    // RT-1, designed reproducer: a Stop that cancels nothing leaves the socket open.
+    #[test]
+    fn cancel_chat_aborts_a_tagged_live_request_and_closes_its_socket() {
+        let (closed_tx, closed_rx) = mpsc::channel();
+        let (port, server) = serve_until_closed(closed_tx);
+        let registry = FetchRegistry::new();
+        let mut req = request("c1", format!("http://127.0.0.1:{}/", port));
+        req.tags = chat_stop_tags(Some(target_of("g", "c")));
+        let (chunk_tx, chunk_rx) = mpsc::channel();
+        let (result_tx, result_rx) = mpsc::channel();
+        spawn_registered(registry.clone(), req, chunk_tx, result_tx);
+        chunk_rx.recv_timeout(Duration::from_secs(5)).expect("stream did not start");
+        assert_eq!(registry.cancel_chat(), 1);
+        assert_eq!(parse(&result_rx.recv_timeout(Duration::from_secs(5)).expect("fetch was not aborted")), cancelled_json());
+        assert!(closed_rx.recv_timeout(Duration::from_secs(5)).expect("socket stayed open"));
+        assert_eq!(registry.live_len(), 0);
+        server.join().unwrap();
+    }
+
+    // RT-2, guard: an untagged request survives the chat's Stop.
+    #[test]
+    fn cancel_chat_leaves_untagged_requests_running() {
+        let (closed_tx, closed_rx) = mpsc::channel();
+        let (tagged_port, tagged_server) = serve_until_closed(closed_tx);
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let (untagged_port, untagged_server) = serve_once(move |mut stream| {
+            write_head(&mut stream);
+            write_chunk(&mut stream, b"first");
+            let _ = release_rx.recv_timeout(Duration::from_secs(5));
+            let _ = stream.write_all(b"0\r\n\r\n");
+        });
+        let registry = FetchRegistry::new();
+        let (chunk_tx, chunk_rx) = mpsc::channel();
+        let (tagged_result_tx, tagged_result_rx) = mpsc::channel();
+        let (untagged_result_tx, untagged_result_rx) = mpsc::channel();
+        let mut tagged = request("tagged", format!("http://127.0.0.1:{}/", tagged_port));
+        tagged.tags = chat_stop_tags(None);
+        spawn_registered(registry.clone(), tagged, chunk_tx.clone(), tagged_result_tx);
+        spawn_registered(
+            registry.clone(),
+            request("untagged", format!("http://127.0.0.1:{}/", untagged_port)),
+            chunk_tx,
+            untagged_result_tx,
+        );
+        for _ in 0..2 { chunk_rx.recv_timeout(Duration::from_secs(5)).expect("stream did not start"); }
+        assert_eq!(registry.cancel_chat(), 1);
+        assert_eq!(parse(&tagged_result_rx.recv_timeout(Duration::from_secs(5)).expect("tagged fetch was not aborted")), cancelled_json());
+        assert!(closed_rx.recv_timeout(Duration::from_secs(5)).expect("socket stayed open"));
+        assert_eq!(registry.live_len(), 1);
+        release_tx.send(()).unwrap();
+        assert_eq!(parse(&untagged_result_rx.recv_timeout(Duration::from_secs(5)).expect("untagged fetch did not finish")), json!({"success": true}));
+        assert_eq!(registry.live_len(), 0);
+        tagged_server.join().unwrap();
+        untagged_server.join().unwrap();
+    }
+
+    // RT-3, guard: entries leave the registry and no tombstone is written.
+    #[test]
+    fn cancel_chat_twice_counts_once_and_writes_no_tombstone() {
+        let registry = FetchRegistry::new();
+        let _live = registry.register_tagged_at("t3", chat_stop_tags(None), Instant::now());
+        assert_eq!(registry.cancel_chat(), 1);
+        assert_eq!(registry.cancel_chat(), 0);
+        assert_eq!(registry.live_len(), 0);
+        assert_eq!(registry.tombstone_len(), 0);
+    }
+
+    // RT-4, compatibility guard: an untagged registration is not a chat request.
+    #[test]
+    fn untagged_register_keeps_old_behaviour() {
+        let registry = FetchRegistry::new();
+        let _live = registry.register("x");
+        assert_eq!(registry.cancel_chat(), 0);
+        assert_eq!(registry.live_len(), 1);
+        assert_eq!(registry.live_tags("x"), Some(StreamTags::default()));
+    }
+
+    // Tests that register in the process-wide registry assert its global live count and
+    // cancel every chat-tagged entry in it, so they must not interleave.
+    static PROCESS_REGISTRY_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    // RT-5, guard: the registry the Android Stop reaches is the one requests register in.
+    #[test]
+    fn process_registry_is_shared() {
+        let _serial = PROCESS_REGISTRY_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _live = process_registry().register_tagged("rt5-process-id", chat_stop_tags(None));
+        assert_eq!(cancel_process_chat_streams(), 1);
+        assert_eq!(process_registry().live_len(), 0);
+    }
+
+    // RT-5b, guard: the Android Stop never reaches an untagged request (no cancel-all).
+    #[test]
+    fn process_chat_cancel_leaves_untagged_entries_live() {
+        let _serial = PROCESS_REGISTRY_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _tagged = process_registry().register_tagged("rt5b-tagged-id", chat_stop_tags(None));
+        let _untagged = process_registry().register("rt5b-untagged-id");
+        assert_eq!(cancel_process_chat_streams(), 1);
+        assert_eq!(process_registry().live_tags("rt5b-untagged-id"), Some(StreamTags::default()));
+        assert_eq!(process_registry().live_tags("rt5b-tagged-id"), None);
+        assert_eq!(process_registry().live_len(), 1);
+        drop(_untagged);
+        assert_eq!(process_registry().live_len(), 0);
+    }
+
+    // RT-6, guard: a chat-cancelled request ends in the aborted branch and emits no terminal event.
+    #[test]
+    fn a_cancelled_tagged_request_ends_in_the_aborted_branch_once() {
+        let (closed_tx, closed_rx) = mpsc::channel();
+        let (port, server) = serve_until_closed(closed_tx);
+        let registry = FetchRegistry::new();
+        let mut req = request("c6", format!("http://127.0.0.1:{}/", port));
+        req.tags = chat_stop_tags(None);
+        let (events, emit) = collector();
+        let (chunk_tx, chunk_rx) = mpsc::channel::<()>();
+        let (result_tx, result_rx) = mpsc::channel::<String>();
+        let spawn_registry = registry.clone();
+        tauri::async_runtime::spawn(async move {
+            let tapped = move |payload: String| {
+                let sent = emit(payload.clone());
+                if payload.contains("\"chunk\"") { let _ = chunk_tx.send(()); }
+                sent
+            };
+            let _ = result_tx.send(run_registered(&spawn_registry, req, tapped).await);
+        });
+        chunk_rx.recv_timeout(Duration::from_secs(5)).expect("stream did not start");
+        assert_eq!(registry.cancel_chat(), 1);
+        assert_eq!(parse(&result_rx.recv_timeout(Duration::from_secs(5)).expect("fetch was not aborted")), cancelled_json());
+        assert!(closed_rx.recv_timeout(Duration::from_secs(5)).expect("socket stayed open"));
+        assert_eq!(types(&events), vec!["headers".to_string(), "chunk".to_string()]);
+        server.join().unwrap();
+    }
+
+    // RT-7, guard: the target never decides a cancel; only `chat_stop` does.
+    #[test]
+    fn cancel_chat_ignores_the_target() {
+        let registry = FetchRegistry::new();
+        let now = Instant::now();
+        let untagged_with_target = StreamTags { chat_stop: false, chat_target: Some(target_of("a", "1")) };
+        let _a = registry.register_tagged_at("a", chat_stop_tags(Some(target_of("a", "1"))), now);
+        let _b = registry.register_tagged_at("b", chat_stop_tags(Some(target_of("b", "2"))), now);
+        let _c = registry.register_tagged_at("c", chat_stop_tags(None), now);
+        let _d = registry.register_tagged_at("d", untagged_with_target.clone(), now);
+        assert_eq!(registry.cancel_chat(), 3);
+        assert_eq!(registry.live_len(), 1);
+        assert_eq!(registry.live_tags("d"), Some(untagged_with_target));
+    }
+
+    // RT-8, guard: the page's target reaches the live entry and leaves with it.
+    #[test]
+    fn the_target_reaches_the_live_entry() {
+        let (closed_tx, closed_rx) = mpsc::channel();
+        let (port, server) = serve_until_closed(closed_tx);
+        let registry = FetchRegistry::new();
+        let tags = chat_stop_tags(Some(target_of("g", "c")));
+        let mut req = request("t8", format!("http://127.0.0.1:{}/", port));
+        req.tags = tags.clone();
+        let (chunk_tx, chunk_rx) = mpsc::channel();
+        let (result_tx, result_rx) = mpsc::channel();
+        spawn_registered(registry.clone(), req, chunk_tx, result_tx);
+        chunk_rx.recv_timeout(Duration::from_secs(5)).expect("stream did not start");
+        assert_eq!(registry.live_tags("t8"), Some(tags));
+        assert_eq!(registry.cancel_chat(), 1);
+        result_rx.recv_timeout(Duration::from_secs(5)).expect("fetch was not aborted");
+        closed_rx.recv_timeout(Duration::from_secs(5)).expect("socket stayed open");
+        assert_eq!(registry.live_tags("t8"), None);
+        server.join().unwrap();
+    }
+
+    // RT-9, compatibility guard: the target parses the page's camelCase shape and nothing else.
+    #[test]
+    fn chat_target_parses_the_page_shape() {
+        let parse_target = |value: Value| serde_json::from_value::<ChatTarget>(value);
+        assert_eq!(parse_target(json!({"chaId": "g", "chatId": "c"})).unwrap(), target_of("g", "c"));
+        let absent: Option<ChatTarget> = serde_json::from_value(Value::Null).unwrap();
+        assert_eq!(absent, None);
+        assert!(parse_target(json!({"cha_id": "g", "chat_id": "c"})).is_err());
+        assert!(parse_target(json!({"chaId": "g"})).is_err());
+        assert!(parse_target(json!({"chaId": "g", "chatId": "c", "memberChaId": "m"})).is_err());
+        assert!(parse_target(json!({"chaId": 1, "chatId": "c"})).is_err());
+    }
+
+    // RT-10, guard: the command arguments map to the request's tags.
+    #[test]
+    fn stream_tags_maps_the_command_arguments() {
+        assert_eq!(stream_tags(None, None), StreamTags::default());
+        assert_eq!(
+            stream_tags(Some(true), Some(target_of("a", "1"))),
+            StreamTags { chat_stop: true, chat_target: Some(target_of("a", "1")) }
+        );
+        assert_eq!(
+            stream_tags(Some(false), Some(target_of("a", "1"))),
+            StreamTags { chat_stop: false, chat_target: Some(target_of("a", "1")) }
+        );
     }
 }

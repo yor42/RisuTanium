@@ -39,6 +39,7 @@ import { createStorageTabLocks } from "./storage/storageTabLocks";
 import { digestMainFileBytes } from "./storage/mainFileRecord";
 import { didBootPassCommit } from "./process/memory/bootArchiveState";
 import { beginInFlight } from "./process/inFlightWork";
+import { isUnitInProgressSignal, unitTargetOfSignal } from "./process/generationOwnership.svelte";
 import { getAppStore } from "./storage/store/appStore";
 import { nodeAssetRouteViolation } from "./storage/store/keyRules";
 import type { ByteStore, PieceWriter } from "./storage/store/contract";
@@ -4694,6 +4695,10 @@ export async function fetchNative(url: string, arg: {
                 method: arg.method,
                 // Only `internal` carries a policy: it is never read from `arg`, so a plugin cannot set it.
                 policy: internal?.nativePolicy ?? null,
+                // Both marks are derived from the identity of `arg.signal`, never from caller-supplied fields, so a plugin cannot set them.
+                // The chat's Stop may cancel a marked request natively while the page is frozen; the target is the notice's chat.
+                chatStop: isUnitInProgressSignal(arg.signal),
+                chatTarget: unitTargetOfSignal(arg.signal) ?? undefined,
                 // Tauri names the Rust argument `timeout_secs` as `timeoutSecs`. The native limit covers the
                 // whole request, body included; 0 is no limit and an absent value uses the idle limit (no data for 600 s).
                 timeoutSecs: arg.requestTimeoutMs
