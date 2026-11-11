@@ -606,3 +606,85 @@ describe('caught errors are recorded where the console line is printed', () => {
         expect(recordedMessages()).toContain(`${MARK}warning`)
     })
 })
+
+describe('hideToast follows the arm', () => {
+    const hideToast = vi.fn()
+    // Types are stripped under vitest, so the option is passed at runtime on a base that does not declare it.
+    const install = (extra: Record<string, unknown> = {}) =>
+        installBackGuard({ showToast, hideToast, ...extra } as Parameters<typeof installBackGuard>[0])
+    const recordedSites = (): string[] => (window.__risuTaniumErrors ?? []).map((record) => record.site)
+
+    beforeEach(() => {
+        hideToast.mockReset()
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    afterEach(() => {
+        vi.restoreAllMocks()
+    })
+
+    test('(R) B-R9a a handled press while armed hides the warning once', () => {
+        install()
+        dispatchBack()
+        registerBackHandler(() => true)
+        expect(dispatchBack()).toBe(true)
+        expect(hideToast).toHaveBeenCalledTimes(1)
+    })
+
+    test('(R) B-R9b a covered press while armed hides the warning once', () => {
+        install()
+        dispatchBack()
+        covered.mockReturnValue(true)
+        expect(dispatchBack()).toBe(true)
+        expect(hideToast).toHaveBeenCalledTimes(1)
+    })
+
+    test('(R) B-R9c the page going hidden while armed hides the warning once', () => {
+        install()
+        dispatchBack()
+        setVisibility('hidden')
+        expect(hideToast).toHaveBeenCalledTimes(1)
+    })
+
+    test('(R) B-R9d the quitting press hides the warning once', () => {
+        install()
+        dispatchBack()
+        expect(dispatchBack()).toBe(false)
+        expect(hideToast).toHaveBeenCalledTimes(1)
+    })
+
+    test('(G) B-R9e nothing is hidden on the arming press or while unarmed', () => {
+        install()
+        expect(dispatchBack()).toBe(true)
+        expect(hideToast).not.toHaveBeenCalled()
+        hideToast.mockClear()
+        resetBackHandlersForTests()
+        install()
+        registerBackHandler(() => true)
+        dispatchBack()
+        covered.mockReturnValue(true)
+        dispatchBack()
+        setVisibility('hidden')
+        expect(hideToast).not.toHaveBeenCalled()
+    })
+
+    test('(G) B-R9f a failing arming press hides nothing and leaves nothing armed', () => {
+        install({
+            showToast: () => {
+                throw new Error('no toast')
+            },
+        })
+        expect(dispatchBack()).toBe(false)
+        expect(hideToast).not.toHaveBeenCalled()
+    })
+
+    test('(R) B-R10 a throwing hideToast is recorded and the quitting press still quits', () => {
+        hideToast.mockImplementation(() => {
+            throw new Error('hide failed')
+        })
+        install()
+        dispatchBack()
+        expect(dispatchBack()).toBe(false)
+        expect(recordedSites()).toContain('back.hideWarning')
+    })
+})

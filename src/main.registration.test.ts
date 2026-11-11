@@ -18,6 +18,8 @@ const seen = vi.hoisted(() => ({
     loadBackupAtBoot: vi.fn(async (_target: unknown) => ({ kind: 'cancelled' as const })),
     flushPage: vi.fn(),
     installBackGuard: vi.fn(),
+    showQuitPill: vi.fn(),
+    hideQuitPill: vi.fn(),
 }))
 
 vi.mock('./ts/polyfill', () => ({}))
@@ -38,6 +40,8 @@ vi.mock('./ts/process/saveOnHide', () => ({ startSaveOnHide: vi.fn(), flushPageB
 vi.mock('svelte', () => ({ mount: vi.fn(() => ({})) }))
 vi.mock('./ts/backHandlers', () => ({ installBackGuard: seen.installBackGuard }))
 vi.mock('./ts/alert', () => ({ alertToast: vi.fn() }))
+vi.mock('./ts/quitPill.svelte', () => ({ showQuitPill: seen.showQuitPill, hideQuitPill: seen.hideQuitPill }))
+vi.mock('./lib/Nexus/pattern/QuitPill.svelte', () => ({ default: {} }))
 vi.mock('./lang', () => ({ language: { alerts: { pressBackAgainToQuit: 'press back again' } } }))
 vi.mock('./ts/storage/store2/bootDispatch', () => ({
     dispatchStore2Boot: seen.dispatch,
@@ -109,11 +113,12 @@ describe('new behaviour: the entry module registers the store2 boot', () => {
         expect(seen.loadBackupAtBoot).toHaveBeenCalledWith(target)
     })
 
-    test('the Back guard is installed with the page flush, so the first Back press saves unsaved edits', async () => {
+    test('B-R11 the Back guard is installed with the quit pill and the page flush, so the first Back press saves unsaved edits', async () => {
         await loadEntry()
         expect(seen.installBackGuard).toHaveBeenCalledTimes(1)
         expect(seen.installBackGuard).toHaveBeenCalledWith({
-            showToast: expect.any(Function),
+            showToast: seen.showQuitPill,
+            hideToast: seen.hideQuitPill,
             flush: seen.flushPage,
         })
     })

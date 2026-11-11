@@ -518,7 +518,7 @@ export const languageKorean = {
         "noImageInZip": "ZIP 파일에서 이미지를 찾을 수 없습니다"
     },
     "alerts": {
-        "pressBackAgainToQuit": "'뒤로' 버튼을 한 번 더 누르면 종료됩니다.",
+        "pressBackAgainToQuit": "종료하려면 뒤로 가기를 한번 더 누르세요",
         "screenshotTaking": "스크린샷을 찍는 중...",
         "screenshotMerging": "이미지를 합치는 중...",
         "enterNewName": "{name}의 새 이름을 입력하세요",
