@@ -206,5 +206,6 @@ This project is licensed under the GNU General Public License v3.0 (GPLv3).
 - Original work: Copyright (C) 2024 Kwaroran
 - Modified work: Copyright (C) 2026 yor42 (Modified on 2026-11-11)
 
-The home-screen logo uses NanumSquare Neo by NAVER (designed by Sandoll). It has the SIL Open Font License 1.1. The font file and its full license are in [`src/etc/fonts/NanumSquareNeo/`](src/etc/fonts/NanumSquareNeo/).<br>
+The home-screen logo uses NanumSquare Neo by NAVER (designed by Sandoll). It has the SIL Open Font License 1.1. The font file and its full license are in [`src/etc/fonts/NanumSquareNeo/`](src/etc/fonts/NanumSquareNeo/).
+
 이 프로그램에는 네이버에서 제공한 나눔글꼴이 적용되어 있습니다.
