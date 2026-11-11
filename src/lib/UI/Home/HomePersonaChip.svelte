@@ -20,6 +20,6 @@
         <UserRoundIcon size={16} aria-hidden="true" class="shrink-0" />
         <span class="truncate">{name === null ? language.homePersonaChipUnnamed : language.homePersonaChip(name)}</span>
     </span>
-    <span class="break-keep text-xs text-textcolor2">{language.homePersonaChipHint}</span>
+    <span class="max-w-full overflow-hidden text-ellipsis break-keep text-xs text-textcolor2">{language.homePersonaChipHint}</span>
     <span class="sr-only">{language.homePersonaChipGo}</span>
 </button>
