@@ -615,9 +615,9 @@ class KeepAliveNoticeTest {
     { calls.calls.add("cancel"); cancelled }
   )
 
-  private fun confirmedDisplay(foreground: Boolean = false): KeepAliveDisplay {
+  private fun confirmedDisplay(foreground: Boolean = false, base: KeepAliveNotice = notice()): KeepAliveDisplay {
     val display = KeepAliveDisplay(foreground = foreground)
-    display.pageNotice(notice())
+    display.pageNotice(base)
     val tap = display.stopTapped()
     assertEquals(StopTap.ENTERED, tap)
     assertEquals(StopDelivery.CONFIRMED, deliver(display, tap))
@@ -723,11 +723,13 @@ class KeepAliveNoticeTest {
   fun aStoppableUpdateAfterConfirmKeepsStopped() {
     val display = confirmedDisplay()
     assertFalse(display.pageNotice(notice(text = "10 characters")))
+    assertEquals("10 characters", display.current()!!.text)
     assertTrue(display.stopping)
     assertTrue(display.cancelConfirmed)
-    assertTrue(display.pageNotice(notice(state = NoticeState.IMAGE, stopLabel = "")))
-    assertFalse(display.stopping)
-    assertFalse(display.cancelConfirmed)
+    val ended = display.pageNotice(notice(state = NoticeState.IMAGE, stopLabel = ""))
+    assertTrue(display.stopping)
+    assertTrue(display.cancelConfirmed)
+    assertFalse(ended)
   }
 
   @Test
@@ -923,5 +925,619 @@ class KeepAliveNoticeTest {
       sampled = at
       assertEquals("at $at", probe.countDelayMs() == 0L, probe.countLine() == CountLine.Dropped)
     }
+  }
+
+  // F6: Stopped after a confirmed cancel (MC-1496, MC-1497). The fixtures are shaped like the page's
+  // payloads: a save-pending notice has no start, label, identity or target; a closing notice carries the
+  // chat's identity and target. "Return" is the hidden-to-visible transition. The reproducers are
+  // savePendingKeepsConfirmedStopped, aStoppableUpdateAfterConfirmKeepsStopped,
+  // returnClearsConfirmedStoppedToNeutral, returnClearsTheClosingStoppedCard,
+  // theLaterStoppedOutcomeShowsNothing, returnShowsTheRemainingSavePending,
+  // staleGeneratingAfterReturnStaysNeutral, newGenerationAfterReturnShowsNormally,
+  // newWorkAfterReturnCanBeStoppedAgain, newStoppableWorkWhileHiddenEndsStopped,
+  // aFinishingClosingAfterSavePendingShowsStopped, savePendingAfterReturnShowsAndKeepsTheLatch,
+  // newWorkAfterAConfirmRefreshesTheCountClock, aStoppedPageNoticeIsNotShownAtReturn and
+  // aFinishingOutcomeAfterReturnShows: they fail when the display keeps a confirmed Stopped for a
+  // non-stoppable notice, never clears at the return, or lets the cancelled work's later notices show.
+  // The other rows are compatibility guards.
+
+  private fun shownPlan(display: KeepAliveDisplay): NoticePlan =
+    noticePlan(display.current()!!, display.stopping, 34, display.cancelConfirmed, display.countLine())
+
+  private fun savePending() = notice(
+    state = NoticeState.SAVE_PENDING,
+    title = "Saving…",
+    publicTitle = "Saving…",
+    startedAtMs = null,
+    stopLabel = "",
+    target = null
+  )
+
+  private fun stoppedClosing(identity: NoticeIdentity?) = notice(
+    state = NoticeState.STOPPED,
+    title = "Stopped",
+    publicTitle = "Stopped",
+    startedAtMs = null,
+    stopLabel = "",
+    identity = identity
+  )
+
+  private fun failedClosing(identity: NoticeIdentity? = null) = notice(
+    state = NoticeState.FAILED,
+    title = "Reply failed",
+    text = "Open the app to see why.",
+    publicTitle = "Reply failed",
+    startedAtMs = null,
+    stopLabel = "",
+    identity = identity
+  )
+
+  private fun finishingClosing(identity: NoticeIdentity?) = notice(
+    state = NoticeState.FINISHING,
+    title = "Finishing up…",
+    publicTitle = "Finishing up…",
+    startedAtMs = null,
+    stopLabel = "",
+    identity = identity
+  )
+
+  private fun newGeneration() = notice(startedAtMs = 2_000_000L)
+
+  private fun assertNeutral(display: KeepAliveDisplay) {
+    val plan = shownPlan(display)
+    assertEquals("", plan.title)
+    assertEquals("", plan.text)
+    assertNull(plan.actionLabel)
+    assertFalse(plan.chronometer)
+    assertNull(plan.target)
+    assertNull(plan.largeIconKey)
+    assertEquals("", plan.publicVersion.title)
+    assertNull(plan.publicVersion.actionLabel)
+    assertFalse(display.stopping)
+  }
+
+  private fun assertSavePendingPlan(display: KeepAliveDisplay) {
+    val plan = shownPlan(display)
+    assertEquals("Saving…", plan.title)
+    assertEquals("", plan.text)
+    assertNull(plan.actionLabel)
+    assertFalse(plan.chronometer)
+    assertNull(plan.target)
+    assertEquals("Saving…", plan.publicVersion.title)
+  }
+
+  private fun assertGeneratingWithStop(display: KeepAliveDisplay) {
+    val plan = shownPlan(display)
+    assertEquals("Generating a reply…", plan.title)
+    assertEquals("Stop", plan.actionLabel)
+    assertFalse(display.stopping)
+  }
+
+  @Test
+  fun savePendingKeepsConfirmedStopped() {
+    val display = confirmedDisplay(base = notice(identity = alice))
+    val ended = display.pageNotice(savePending())
+    val plan = shownPlan(display)
+    assertEquals("Alice", plan.title)
+    assertEquals("Stopped", plan.text)
+    assertEquals(NoticeTarget("g1", "c1"), plan.target)
+    assertTrue(display.stopping)
+    assertTrue(display.cancelConfirmed)
+    assertFalse(ended)
+  }
+
+  @Test
+  fun returnClearsConfirmedStoppedToNeutral() {
+    val display = confirmedDisplay(base = notice(identity = alice, text = counted))
+    display.appForeground(true)
+    assertNeutral(display)
+    assertFalse(display.cancelConfirmed)
+    assertEquals(NoticeState.FINISHING, display.current()!!.state)
+    assertNull(display.current()!!.identity)
+    assertNull(display.current()!!.target)
+    assertNull(display.current()!!.startedAtMs)
+  }
+
+  @Test
+  fun returnClearsTheClosingStoppedCard() {
+    val display = KeepAliveDisplay(foreground = false)
+    display.pageNotice(notice(identity = alice))
+    display.outcome(stoppedClosing(alice))
+    assertEquals("Alice", shownPlan(display).title)
+    display.appForeground(true)
+    assertNeutral(display)
+  }
+
+  @Test
+  fun theLaterStoppedOutcomeShowsNothing() {
+    for (hiddenAgain in listOf(false, true)) {
+      val display = confirmedDisplay()
+      display.appForeground(true)
+      if (hiddenAgain) display.appForeground(false)
+      display.outcome(stoppedClosing(null))
+      assertNeutral(display)
+    }
+  }
+
+  @Test
+  fun returnShowsTheRemainingSavePending() {
+    val display = confirmedDisplay()
+    display.pageNotice(savePending())
+    display.appForeground(true)
+    assertSavePendingPlan(display)
+    display.outcome(stoppedClosing(null))
+    assertNeutral(display)
+  }
+
+  @Test
+  fun staleGeneratingAfterReturnStaysNeutral() {
+    val display = confirmedDisplay()
+    display.appForeground(true)
+    display.pageNotice(notice(text = "12 characters"))
+    assertNeutral(display)
+  }
+
+  @Test
+  fun newGenerationAfterReturnShowsNormally() {
+    val display = confirmedDisplay()
+    display.appForeground(true)
+    display.pageNotice(newGeneration())
+    assertGeneratingWithStop(display)
+  }
+
+  @Test
+  fun newWorkStopShowsStopped() {
+    val display = confirmedDisplay()
+    display.appForeground(true)
+    display.outcome(stoppedClosing(null))
+    display.pageNotice(newGeneration())
+    assertEquals(StopTap.ENTERED, display.stopTapped())
+    assertEquals(StopDelivery.CONFIRMED, deliver(display, StopTap.ENTERED))
+    display.outcome(stoppedClosing(null))
+    assertEquals(NoticeState.STOPPED, display.current()!!.state)
+    assertEquals("Stopped", shownPlan(display).title)
+  }
+
+  @Test
+  fun newWorkAfterReturnCanBeStoppedAgain() {
+    val display = confirmedDisplay()
+    display.appForeground(true)
+    display.pageNotice(newGeneration())
+    assertEquals(2_000_000L, display.current()!!.startedAtMs)
+    assertEquals(StopTap.ENTERED, display.stopTapped())
+    assertEquals(StopDelivery.CONFIRMED, deliver(display, StopTap.ENTERED))
+    assertEquals("Stopped", shownPlan(display).title)
+    display.outcome(stoppedClosing(null))
+    assertEquals(NoticeState.STOPPED, display.current()!!.state)
+    assertEquals("Stopped", shownPlan(display).title)
+  }
+
+  @Test
+  fun newWorkAfterReturnShowsItsOwnStoppedOutcome() {
+    val display = confirmedDisplay()
+    display.appForeground(true)
+    display.pageNotice(newGeneration())
+    display.outcome(stoppedClosing(null))
+    assertEquals(NoticeState.STOPPED, display.current()!!.state)
+    assertEquals("Stopped", shownPlan(display).title)
+  }
+
+  @Test
+  fun laterFailedAfterReturnShows() {
+    val display = confirmedDisplay()
+    display.appForeground(true)
+    display.outcome(failedClosing())
+    val plan = shownPlan(display)
+    assertEquals("Reply failed", plan.title)
+    assertEquals("Open the app to see why.", plan.text)
+  }
+
+  @Test
+  fun unconfirmedStoppingIsUntouchedByReturn() {
+    val display = KeepAliveDisplay(foreground = false)
+    display.pageNotice(notice())
+    assertEquals(StopDelivery.DELIVERED, deliver(display, display.stopTapped(), cancelled = 0))
+    assertEquals(TimerChange.NONE, display.takeTimerChange())
+    display.appForeground(true)
+    assertEquals("Stopping…", shownPlan(display).title)
+    assertTrue(display.stopping)
+    assertEquals(TimerChange.ARM, display.takeTimerChange())
+    assertTrue(display.pageNotice(savePending()))
+    assertSavePendingPlan(display)
+  }
+
+  @Test
+  fun aConfirmedStopInTheForegroundIsNotCleared() {
+    val display = confirmedDisplay(foreground = true)
+    display.appForeground(true)
+    display.appForeground(true)
+    assertEquals("Stopped", shownPlan(display).title)
+    assertTrue(display.stopping)
+    assertTrue(display.cancelConfirmed)
+  }
+
+  @Test
+  fun newStoppableWorkWhileHiddenEndsStopped() {
+    val display = confirmedDisplay()
+    val speaking = notice(
+      state = NoticeState.SPEAKING,
+      title = "Speaking…",
+      publicTitle = "Speaking…",
+      startedAtMs = 3_000_000L
+    )
+    val ended = display.pageNotice(speaking)
+    val plan = shownPlan(display)
+    assertEquals("Speaking…", plan.title)
+    assertEquals("Stop", plan.actionLabel)
+    assertTrue(ended)
+    assertFalse(display.cancelConfirmed)
+  }
+
+  @Test
+  fun aFinishingClosingAfterSavePendingShowsStopped() {
+    val display = confirmedDisplay(base = notice(identity = alice))
+    display.pageNotice(savePending())
+    display.outcome(finishingClosing(alice))
+    assertEquals(NoticeState.STOPPED, display.current()!!.state)
+    val plan = shownPlan(display)
+    assertEquals("Alice", plan.title)
+    assertEquals("Stopped", plan.text)
+    assertEquals(NoticeTarget("g1", "c1"), plan.target)
+  }
+
+  @Test
+  fun resetDropsTheLatch() {
+    val first = confirmedDisplay()
+    first.appForeground(true)
+    first.reset()
+    first.pageNotice(notice())
+    assertGeneratingWithStop(first)
+    val second = confirmedDisplay()
+    second.appForeground(true)
+    second.reset()
+    second.pageNotice(savePending())
+    second.outcome(stoppedClosing(null))
+    assertEquals(NoticeState.STOPPED, second.current()!!.state)
+    assertEquals("Stopped", shownPlan(second).title)
+  }
+
+  @Test
+  fun savePendingAfterReturnShowsAndKeepsTheLatch() {
+    val first = confirmedDisplay()
+    first.appForeground(true)
+    first.pageNotice(savePending())
+    assertSavePendingPlan(first)
+    first.outcome(stoppedClosing(null))
+    assertNeutral(first)
+    val second = confirmedDisplay()
+    second.appForeground(true)
+    second.pageNotice(savePending())
+    second.pageNotice(notice(text = "12 characters"))
+    assertSavePendingPlan(second)
+  }
+
+  @Test
+  fun returnNeverClearsANonStoppedCard() {
+    val failedNamed = failedClosing(alice)
+    val hiddenFailed = KeepAliveDisplay(foreground = false)
+    hiddenFailed.pageNotice(notice(identity = alice))
+    hiddenFailed.outcome(failedNamed)
+    hiddenFailed.appForeground(true)
+    val failedPlan = shownPlan(hiddenFailed)
+    assertEquals("Alice", failedPlan.title)
+    assertEquals("Reply failed · Open the app to see why.", failedPlan.text)
+    assertEquals(NoticeTarget("g1", "c1"), failedPlan.target)
+    val hiddenSaving = KeepAliveDisplay(foreground = false)
+    hiddenSaving.pageNotice(notice())
+    hiddenSaving.pageNotice(savePending())
+    hiddenSaving.appForeground(true)
+    assertSavePendingPlan(hiddenSaving)
+    val confirmedThenFailed = confirmedDisplay(base = notice(identity = alice))
+    confirmedThenFailed.outcome(failedNamed)
+    confirmedThenFailed.appForeground(true)
+    assertEquals(failedPlan, shownPlan(confirmedThenFailed))
+  }
+
+  @Test
+  fun newWorkAfterAConfirmRefreshesTheCountClock() {
+    var now = 0L
+    val afterClear = KeepAliveDisplay(foreground = false, clock = { now })
+    afterClear.pageNotice(notice())
+    assertEquals(StopDelivery.CONFIRMED, deliver(afterClear, afterClear.stopTapped()))
+    now = 1_000L
+    afterClear.appForeground(true)
+    now = 2_000L
+    afterClear.appForeground(false)
+    now = 20_000L
+    afterClear.pageNotice(notice(startedAtMs = 2_000_000L, text = counted))
+    assertEquals(CountLine.Page, afterClear.countLine())
+    assertEquals(COUNT_STALE_MS, afterClear.countDelayMs())
+    var later = 0L
+    val whileStopped = KeepAliveDisplay(foreground = false, clock = { later })
+    whileStopped.pageNotice(notice())
+    assertEquals(StopDelivery.CONFIRMED, deliver(whileStopped, whileStopped.stopTapped()))
+    later = 20_000L
+    whileStopped.pageNotice(notice(startedAtMs = 2_000_000L, text = counted))
+    assertEquals(CountLine.Page, whileStopped.countLine())
+    assertEquals(COUNT_STALE_MS, whileStopped.countDelayMs())
+  }
+
+  @Test
+  fun aStoppedPageNoticeIsNotShownAtReturn() {
+    val display = confirmedDisplay()
+    display.pageNotice(stoppedClosing(null))
+    display.appForeground(true)
+    assertNeutral(display)
+  }
+
+  @Test
+  fun aClearedClosingCardSetsNoLatch() {
+    val display = KeepAliveDisplay(foreground = false)
+    display.pageNotice(notice(identity = alice))
+    display.outcome(stoppedClosing(alice))
+    display.appForeground(true)
+    display.pageNotice(savePending())
+    display.outcome(stoppedClosing(null))
+    assertEquals(NoticeState.STOPPED, display.current()!!.state)
+    assertEquals("Stopped", shownPlan(display).title)
+  }
+
+  @Test
+  fun aFinishingOutcomeAfterReturnShows() {
+    val display = confirmedDisplay()
+    display.appForeground(true)
+    display.outcome(finishingClosing(alice))
+    val plan = shownPlan(display)
+    assertEquals("Finishing up…", plan.title)
+    assertEquals("", plan.text)
+    assertNull(plan.actionLabel)
+    assertFalse(plan.chronometer)
+    assertNull(plan.target)
+    assertEquals(NoticeState.FINISHING, display.current()!!.state)
+  }
+
+  @Test
+  fun anUnreadableOutcomeAfterReturnKeepsTheCard() {
+    val display = confirmedDisplay()
+    display.pageNotice(savePending())
+    display.appForeground(true)
+    assertSavePendingPlan(display)
+    display.outcome(null)
+    assertSavePendingPlan(display)
+  }
+
+  @Test
+  fun everyOutcomeAfterReturnDropsTheLatch() {
+    val outcomes = listOf(stoppedClosing(null), failedClosing(), finishingClosing(alice), null)
+    for (closing in outcomes) {
+      val display = confirmedDisplay()
+      display.appForeground(true)
+      display.outcome(closing)
+      display.pageNotice(savePending())
+      display.outcome(stoppedClosing(null))
+      assertEquals("for $closing", NoticeState.STOPPED, display.current()!!.state)
+      assertEquals("for $closing", "Stopped", shownPlan(display).title)
+    }
+  }
+
+  // Guards on the F6 API: what the return reports, what the hidden outcome flag marks, and the pure
+  // decisions the service takes from them.
+
+  @Test
+  fun appForegroundReportsAChange() {
+    val confirmed = confirmedDisplay()
+    assertTrue(confirmed.appForeground(true))
+    assertFalse(confirmed.appForeground(true))
+    assertFalse(confirmed.appForeground(false))
+    val closing = KeepAliveDisplay(foreground = false)
+    closing.pageNotice(notice(identity = alice))
+    closing.outcome(stoppedClosing(alice))
+    assertTrue(closing.appForeground(true))
+    val unconfirmed = KeepAliveDisplay(foreground = false)
+    unconfirmed.pageNotice(notice())
+    unconfirmed.stopTapped()
+    assertFalse(unconfirmed.appForeground(true))
+    assertFalse(KeepAliveDisplay(foreground = false).appForeground(true))
+  }
+
+  @Test
+  fun outcomeHiddenMarksOnlyASwallowedStopped() {
+    val display = confirmedDisplay()
+    display.appForeground(true)
+    display.outcome(stoppedClosing(null))
+    assertTrue(display.outcomeHidden)
+    display.pageNotice(savePending())
+    display.outcome(stoppedClosing(null))
+    assertFalse(display.outcomeHidden)
+    val failed = confirmedDisplay()
+    failed.appForeground(true)
+    failed.outcome(failedClosing())
+    assertFalse(failed.outcomeHidden)
+  }
+
+  @Test
+  fun theForegroundRepostFollowsTheClearBeforeTheCountLine() {
+    var now = 0L
+    val display = KeepAliveDisplay(foreground = false, clock = { now })
+    display.pageNotice(notice(text = counted))
+    now = 8000L
+    assertEquals(ForegroundRepost.STOPPED_CLEARED, foregroundRepost(true, CountLine.Dropped, display))
+    assertEquals(ForegroundRepost.STOPPED_CLEARED, foregroundRepost(true, CountLine.Page, display))
+    assertEquals(ForegroundRepost.COUNT_LINE, foregroundRepost(false, CountLine.Page, display))
+    assertEquals(ForegroundRepost.NONE, foregroundRepost(false, CountLine.Dropped, display))
+    assertEquals(ForegroundRepost.NONE, foregroundRepost(false, null, display))
+  }
+
+  @Test
+  fun aPageStateIsLoggedOnlyWhenItChanges() {
+    assertEquals("generating", pageStateToLog(null, notice()))
+    assertNull(pageStateToLog(NoticeState.GENERATING, notice()))
+    assertEquals("savePending", pageStateToLog(NoticeState.GENERATING, savePending()))
+    assertEquals("generating", pageStateToLog(NoticeState.SAVE_PENDING, notice()))
+  }
+
+  // F6 stage 2: early end (MC-1508). Guards on endWanted: it is true only with the app in front, the
+  // page's closing outcome as its latest message and the app-name-only card shown. Each test is one rule
+  // and a guard: it passes on the current source and fails when its rule is broken.
+
+  @Test
+  fun aHiddenAppNeverEndsEarly() {
+    val display = confirmedDisplay()
+    display.appForeground(true)
+    display.appForeground(false)
+    display.outcome(stoppedClosing(null))
+    assertFalse(display.endWanted())
+  }
+
+  @Test
+  fun aSwallowedStoppedOutcomeInFrontEnds() {
+    val display = confirmedDisplay()
+    display.appForeground(true)
+    display.outcome(stoppedClosing(null))
+    assertTrue(display.endWanted())
+  }
+
+  @Test
+  fun aFailedClosingAfterTheClearNeverEnds() {
+    val display = confirmedDisplay()
+    display.appForeground(true)
+    display.outcome(failedClosing())
+    assertFalse(display.endWanted())
+  }
+
+  @Test
+  fun aSavePendingClearEndsOnlyAtTheClosing() {
+    val display = confirmedDisplay()
+    display.pageNotice(savePending())
+    display.appForeground(true)
+    assertSavePendingPlan(display)
+    assertFalse(display.endWanted())
+    display.outcome(stoppedClosing(null))
+    assertTrue(display.endWanted())
+  }
+
+  @Test
+  fun aStoppedCardShownInFrontNeverEnds() {
+    val display = confirmedDisplay(foreground = true)
+    display.outcome(stoppedClosing(null))
+    assertEquals("Stopped", shownPlan(display).title)
+    assertFalse(display.endWanted())
+    display.appForeground(true)
+    assertFalse(display.endWanted())
+  }
+
+  @Test
+  fun aFinishingClosingAfterTheClearNeverEnds() {
+    val withIdentity = confirmedDisplay()
+    withIdentity.appForeground(true)
+    withIdentity.outcome(finishingClosing(alice))
+    assertFalse(withIdentity.endWanted())
+    val withoutIdentity = confirmedDisplay()
+    withoutIdentity.appForeground(true)
+    withoutIdentity.outcome(finishingClosing(null).copy(target = null))
+    assertFalse(withoutIdentity.endWanted())
+  }
+
+  @Test
+  fun aSecondReturnAfterAHiddenClosingEnds() {
+    val display = confirmedDisplay()
+    display.appForeground(true)
+    display.appForeground(false)
+    display.outcome(stoppedClosing(null))
+    assertFalse(display.endWanted())
+    val changed = display.appForeground(true)
+    assertFalse(changed)
+    assertTrue(display.endWanted())
+  }
+
+  @Test
+  fun theThawBetweenTheClearAndTheClosingNeverEnds() {
+    val display = confirmedDisplay()
+    assertTrue(display.appForeground(true))
+    assertFalse(display.endWanted())
+    display.pageNotice(notice(text = counted))
+    assertFalse(display.endWanted())
+  }
+
+  @Test
+  fun anUnreadableClosingAfterTheClearEnds() {
+    val display = confirmedDisplay()
+    display.appForeground(true)
+    display.outcome(null)
+    assertTrue(display.endWanted())
+  }
+
+  @Test
+  fun newWorkAfterAHiddenClosingClearsTheClosing() {
+    val display = confirmedDisplay()
+    display.outcome(stoppedClosing(null))
+    display.pageNotice(newGeneration())
+    val tap = display.stopTapped()
+    assertEquals(StopTap.ENTERED, tap)
+    assertEquals(StopDelivery.CONFIRMED, deliver(display, tap))
+    display.appForeground(true)
+    assertNeutral(display)
+    assertFalse(display.endWanted())
+  }
+
+  @Test
+  fun aStoppedClosingWhileStoppingHiddenClosesForTheReturn() {
+    val display = confirmedDisplay()
+    display.outcome(stoppedClosing(null))
+    assertFalse(display.endWanted())
+    display.appForeground(true)
+    assertNeutral(display)
+    assertTrue(display.endWanted())
+  }
+
+  // Guard: after a clear, a stoppable notice that shares the cancelled work's start time but has another
+  // state or another chat is new work, not the cancelled work's leftovers.
+  @Test
+  fun aSameStartOnAnotherStateOrChatIsNewWorkAfterTheClear() {
+    val speech = confirmedDisplay()
+    speech.appForeground(true)
+    speech.pageNotice(notice(state = NoticeState.SPEAKING, title = "Speaking…", publicTitle = "Speaking…"))
+    assertEquals(NoticeState.SPEAKING, speech.current()!!.state)
+    val otherChat = confirmedDisplay()
+    otherChat.appForeground(true)
+    otherChat.pageNotice(notice(target = NoticeTarget("g2", "c2")))
+    assertEquals("g2", otherChat.current()!!.target!!.chaId)
+  }
+
+  // Guard: a second return keeps the remaining pending-save card; only a Stopped card is cleared.
+  @Test
+  fun aSecondReturnKeepsTheRemainingSavePending() {
+    val display = confirmedDisplay()
+    display.appForeground(true)
+    display.pageNotice(savePending())
+    display.appForeground(false)
+    assertFalse(display.appForeground(true))
+    assertSavePendingPlan(display)
+    assertFalse(display.endWanted())
+  }
+
+  // Guard: the early-end predicate needs the exact neutral card, so a closing card that differs from it
+  // only in target, text, identity or start time never ends the service.
+  @Test
+  fun aClosingCardWithOnlyAnEmptyTitleNeverEnds() {
+    fun empty(text: String, identity: NoticeIdentity?, startedAtMs: Long?, target: NoticeTarget?) = notice(
+      state = NoticeState.FINISHING, title = "", text = text, startedAtMs = startedAtMs, stopLabel = "",
+      publicTitle = "", identity = identity, target = target
+    )
+    val cases = listOf(
+      empty("", null, null, NoticeTarget("g1", "c1")),
+      empty("saving", null, null, null),
+      empty("", alice, 5L, null)
+    )
+    for (closing in cases) {
+      val display = confirmedDisplay()
+      display.appForeground(true)
+      display.outcome(closing)
+      assertFalse(display.endWanted())
+    }
+    val neutral = confirmedDisplay()
+    neutral.appForeground(true)
+    neutral.outcome(empty("", null, null, null))
+    assertTrue(neutral.endWanted())
   }
 }

@@ -22,8 +22,8 @@ import androidx.lifecycle.ProcessLifecycleOwner
 
 // Keeps the process alive while the page has work in flight (a reply, speech, an image, a
 // translation, an import or export). It is started only by KeepAliveBridge.start() and stopped by
-// KeepAliveBridge.stop(), the page's stop action, a timeout, or the activity going away. It holds
-// no work of its own: the page decides when work begins and ends.
+// KeepAliveBridge.stop(), the page's stop action, a timeout, the early end (MC-1508) or the activity
+// going away. It holds no work of its own: the page decides when work begins and ends.
 //
 // The running instance is the only thing that posts its notification, so a notification can never
 // outlive the service: refresh() reaches the instance through the static reference below, which is
@@ -35,11 +35,19 @@ import androidx.lifecycle.ProcessLifecycleOwner
 // enters Stopping here, before the page is told, and the timeout below ends it if the stoppable work
 // does not, while the app is in the foreground. Right after telling the page, the Stop tap also asks
 // native to cancel the chat's in-flight requests, because a hidden page can be frozen and run nothing
-// (MC-1435); a confirmed cancel shows Stopped at once (MC-1470) until the page returns or the app
-// reopens (MC-1471). While the app is hidden, a count line the page
-// has not refreshed for a few seconds is dropped by a single count check (MC-1450). Every change to the
-// display goes through changeDisplay, which ends by bringing the one Stopping timer and the one count
-// check in line with the display.
+// (MC-1435); a confirmed cancel shows Stopped at once (MC-1470) and keeps it until the work ends
+// (MC-1496). The return of the app to the front clears it and reposts at once (MC-1497).
+// With the app in front and the page's closing outcome in, a card that shows only the app name ends
+// the service at once instead of after the linger (MC-1508). In front is the process lifecycle's
+// STARTED state, which lags a real hide by up to 700 ms. Limitation (MC-1508, MC-1511): after a Stop,
+// the stopped reply may finish on screen with no hidden-save hold, and the service then ends at once;
+// neither the linger nor the save hold covers that reply's pending save, so a Home press before that
+// save has landed (its 500 ms debounce plus the write) runs it without a foreground service, as an
+// on-screen edit followed by a quick Home press already does.
+//
+// While the app is hidden, a count line the page has not refreshed for a few seconds is dropped by a
+// single count check (MC-1450). Every change to the display goes through changeDisplay, which ends by
+// bringing the one Stopping timer and the one count check in line with the display.
 class KeepAliveService : Service() {
   private var title = ""
   private var stopLabel = ""
@@ -47,6 +55,13 @@ class KeepAliveService : Service() {
 
   // The count line the last built notification showed; null before the first build.
   private var shownCountLine: CountLine? = null
+
+  // The state of the page's previous update notice, so the diagnostic log names a state only when it
+  // changes. It holds a state name only, never a title or text.
+  private var lastLoggedPageState: NoticeState? = null
+
+  // The id of the latest start command this instance has seen, for the early end (MC-1508).
+  private var lastStartId = 0
 
   // The large icons by identity key, newest last, for the life of this service: the page sends an avatar
   // once per key and service, and the stopped and failed lingers reuse the bitmap by key.
@@ -114,6 +129,7 @@ class KeepAliveService : Service() {
   // command within seconds: the page's start, the stop action and a null intent alike. A start the
   // system refuses ends the service instead of failing the app.
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    lastStartId = startId
     val extraTitle = intent?.getStringExtra(EXTRA_TITLE)
     if (intent != null && intent.getBooleanExtra(EXTRA_V2, false)) {
       // A start whose notice could not be read carries none: the service then shows the app name
@@ -204,10 +220,35 @@ class KeepAliveService : Service() {
     Log.i(TAG, "Stopping timer $timerChange")
   }
 
-  // A return to the foreground restores a dropped count line at once, with the page's last count.
+  // A return to the foreground clears a Stopped card (MC-1497) or restores a dropped count line, at once
+  // and with the page's last count. The repost choice and the log name come from foregroundRepost.
   private fun onAppForeground(visible: Boolean) {
-    changeDisplay { display.appForeground(visible) }
-    repostIfCountLineChanged()
+    val cleared = changeDisplay { display.appForeground(visible) }
+    when (foregroundRepost(cleared, shownCountLine, display)) {
+      ForegroundRepost.STOPPED_CLEARED -> {
+        Log.i(TAG, "Stopped cleared")
+        repost()
+      }
+      ForegroundRepost.COUNT_LINE -> {
+        Log.i(TAG, "Count line ${countLineName(display.countLine())}")
+        repost()
+      }
+      ForegroundRepost.NONE -> Unit
+    }
+    endIfWanted("return")
+  }
+
+  // Ends the service early when the display wants it (MC-1508). It stops only through the latest start
+  // this instance has seen, so a start the page already issued and the system still holds keeps the
+  // service; the bare stopSelf() would drop it. It runs after the repost, so a deferred stop leaves the
+  // current card posted, and nothing posts after a successful stop.
+  private fun endIfWanted(site: String) {
+    if (!display.endWanted()) return
+    if (stopSelfResult(lastStartId)) {
+      Log.i(TAG, "Early end at $site")
+    } else {
+      Log.i(TAG, "Early end deferred")
+    }
   }
 
   private fun showV1Notice(newTitle: String, newStopLabel: String) {
@@ -254,18 +295,25 @@ class KeepAliveService : Service() {
   }
 
   private fun refreshNotice(notice: KeepAliveNotice) {
+    pageStateToLog(lastLoggedPageState, notice)?.let { Log.i(TAG, "Page notice $it") }
+    lastLoggedPageState = notice.state
     showPageNotice(notice)
     repost()
   }
 
   // The closing notice that came with the delayed stop. An unreadable one changes nothing unless
-  // the display was Stopping, where it still ends Stopping as Stopped.
+  // the display was Stopping, where it still ends Stopping as Stopped. After a Stopped cleared at the
+  // return, the cancelled work's Stopped outcome shows the neutral card (MC-1497).
   private fun applyOutcome(notice: KeepAliveNotice?) {
     if (notice != null) keepAvatar(notice)
     val leftStopping = changeDisplay { display.outcome(notice) }
+    if (display.outcomeHidden) {
+      Log.i(TAG, "Stopped outcome hidden")
+    }
     if (notice != null || leftStopping) {
       repost()
     }
+    endIfWanted("outcome")
   }
 
   // getService, not getForegroundService: the stop action goes to a service that is already
