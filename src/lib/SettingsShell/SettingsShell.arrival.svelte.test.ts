@@ -11,7 +11,8 @@
  * modules that `setDatabase` and the Display data import, and the legacy pages other than Display. The profile is
  * built through the real `setDatabase` (MC-329). `scrollIntoView` is a stub because jsdom has none.
  */
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -139,9 +140,15 @@ function setWidth(width: number): void {
 async function settle(): Promise<void> {
     for (let round = 0; round < 3; round++) {
         flushSync()
-        await tick()
+        await tickFake(2)
         await Promise.resolve()
     }
+}
+
+/** The async tick leaves its frame callback pending until the next frame; firing the frame leaves only product timers to count. */
+function productTimerCount(): number {
+    vi.advanceTimersByTime(16)
+    return vi.getTimerCount()
 }
 
 function mountHost(): HTMLElement {
@@ -371,7 +378,7 @@ describe('T-A12h teardown resets the search', () => {
         unmount(mounted.pop()!)
         baselineTarget.remove()
         await settle()
-        const baselineTimers = vi.getTimerCount()
+        const baselineTimers = productTimerCount()
         vi.clearAllTimers()
 
         const target = mountHost()
@@ -384,7 +391,7 @@ describe('T-A12h teardown resets the search', () => {
         target.remove()
         await settle()
 
-        expect(vi.getTimerCount()).toBeLessThanOrEqual(baselineTimers)
+        expect(productTimerCount()).toBeLessThanOrEqual(baselineTimers)
     })
 
     test('unmounting with the search open and a query typed closes the search and clears the query', async () => {
@@ -490,14 +497,14 @@ describe('T-A12g an aborted arrival is inert', () => {
         settingsOpen.set(true)
         const target = mountHost()
         await settle()
-        const afterMount = vi.getTimerCount()
+        const afterMount = productTimerCount()
         await typeQuery(target, 'custom css')
-        expect(vi.getTimerCount()).toBeGreaterThan(afterMount)
+        expect(productTimerCount()).toBeGreaterThan(afterMount)
         result(target, 'display.customCSS').click()
         unmount(mounted.pop()!)
         target.remove()
         await settle()
         expect(scrollIntoView).not.toHaveBeenCalled()
-        expect(vi.getTimerCount()).toBeLessThanOrEqual(afterMount)
+        expect(productTimerCount()).toBeLessThanOrEqual(afterMount)
     })
 })

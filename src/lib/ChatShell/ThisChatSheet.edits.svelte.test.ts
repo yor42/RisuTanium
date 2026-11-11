@@ -6,7 +6,8 @@
  * Guards by construction: the writers are new. Fixtures: the clone models the cold restore copy (same `chaId`, same chat
  * ids, new objects); the stub is the `residency.stubFor` shape (`coldstorage` set, one placeholder chat with a fresh id).
  */
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Chat } from 'src/ts/storage/database.svelte'
 
@@ -92,7 +93,7 @@ async function show(): Promise<void> {
         },
     })
     flushSync()
-    await tick()
+    await tickFake()
 }
 
 const note = () => document.querySelector<HTMLTextAreaElement>('[data-part="this-chat-note"]')!
@@ -107,7 +108,7 @@ function type(value: string): void {
 async function close(): Promise<void> {
     view.open = false
     flushSync()
-    await tick()
+    await tickFake()
 }
 
 /** The owner element is replaced by a structured clone: same chaId, same chat ids, new objects. */
@@ -271,7 +272,7 @@ describe('S2 note autosave and flush', () => {
         await close()
         view.open = true
         flushSync()
-        await tick()
+        await tickFake()
         expect(note().value).toBe('first')
         type('second')
         await close()
@@ -307,7 +308,7 @@ describe('X-I8 deferred writers land on the live chat or are refused visibly', (
         const clone = swapForClone()
         document.querySelector<HTMLElement>('[data-part="this-chat-rename"]')!.click()
         flushSync()
-        await tick()
+        await tickFake()
         const input = document.querySelector<HTMLInputElement>('[data-part="this-chat-name-input"]')!
         input.value = 'On the clone'
         input.dispatchEvent(new Event('input', { bubbles: true }))
@@ -345,7 +346,7 @@ describe('X-I8 deferred writers land on the live chat or are refused visibly', (
         swapForStub()
         document.querySelector<HTMLElement>('[data-part="this-chat-rename"]')!.click()
         flushSync()
-        await tick()
+        await tickFake()
         const input = document.querySelector<HTMLInputElement>('[data-part="this-chat-name-input"]')!
         input.value = 'Lost'
         input.dispatchEvent(new Event('input', { bubbles: true }))

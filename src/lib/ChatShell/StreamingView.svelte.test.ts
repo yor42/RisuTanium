@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 
 const control = vi.hoisted(() => ({ contexts: [] as unknown[], hold: null as null | { source: string, promise: Promise<void> } }))
 
@@ -37,7 +38,7 @@ async function show(props: { text: string, parseContext?: object }) {
     const app = mount(StreamingView, { target, props: state })
     mounted.push({ target, app })
     await vi.advanceTimersByTimeAsync(150)
-    await tick()
+    await tickFake()
     return { state, target }
 }
 
@@ -50,7 +51,7 @@ describe('StreamingView append-only rendering', () => {
         const app = mount(StreamingView, { target, props: state })
         mounted.push({ target, app })
         await vi.advanceTimersByTimeAsync(150)
-        await tick()
+        await tickFake()
         const finished = target.querySelector('[data-part="chat-stream-finished"]')
         const open = target.querySelector('[data-part="chat-stream-open"]')
         expect(finished?.textContent).toContain('Finished.')
@@ -58,7 +59,7 @@ describe('StreamingView append-only rendering', () => {
         state.text = 'Finished.\n\nOpen text'
         flushSync()
         await vi.advanceTimersByTimeAsync(150)
-        await tick()
+        await tickFake()
         expect(target.querySelector('[data-part="chat-stream-finished"]')).toBe(finished)
         expect(target.querySelector('[data-part="chat-stream-open"]')).toBe(open)
         expect(open?.textContent).toContain('Open text')
@@ -89,7 +90,7 @@ describe('StreamingView thinking chip', () => {
         state.text = 'Before.\n\n<Thoughts>one two three four</Thoughts>\n\nAnswer'
         flushSync()
         await vi.advanceTimersByTimeAsync(150)
-        await tick()
+        await tickFake()
         expect(target.querySelector('[data-part="chat-stream-thinking"]')).toBeNull()
         expect(target.querySelector('[data-part="chat-stream-open"]')?.textContent).toContain('Answer')
     })
@@ -115,14 +116,14 @@ describe('StreamingView prefix reset', () => {
         flushSync()
         expect(target.querySelectorAll('[data-part="chat-stream-finished"]').length).toBe(0)
         release()
-        await tick()
+        await tickFake()
         await Promise.resolve()
-        await tick()
+        await tickFake()
         expect(target.textContent).not.toContain('Two.')
         expect(target.querySelectorAll('[data-part="chat-stream-finished"]').length).toBe(0)
         control.hold = null
         await vi.advanceTimersByTimeAsync(300)
-        await tick()
+        await tickFake()
         expect(target.querySelector('[data-part="chat-stream-finished"]')?.textContent).toContain('New.')
     })
 })

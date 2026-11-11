@@ -821,6 +821,7 @@ describe('a cancelled send puts its values back after a switch', () => {
         typeInto(mainTextarea(target), 'A-text')
         sendButton(target).click()
         await first.reached
+        await tick()
         // The take clears the composer; the field is empty until the switch.
         expect(mainTextarea(target).value).toBe('')
 

@@ -7,7 +7,8 @@
  * Mounts the REAL dialog over a `$state` stand-in for `DBState`; this file imports no toast module, so the
  * undo toast the Delete posts is never rendered. MOCKED: the settings data files `utils` imports (emptied).
  */
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
 
@@ -61,7 +62,7 @@ async function deleteRow(index: number): Promise<void> {
     button.focus()
     button.click()
     flushSync()
-    await tick()
+    await tickFake()
     await Promise.resolve()
     flushSync()
 }

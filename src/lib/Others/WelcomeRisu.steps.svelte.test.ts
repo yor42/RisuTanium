@@ -11,6 +11,7 @@
  * reload; those are device checks.
  */
 import { flushSync, mount, tick, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { dispatchBack, resetBackHandlersForTests } from 'src/ts/backHandlers'
 import type { Database } from '../../ts/storage/database.svelte'
@@ -966,8 +967,8 @@ describe('the Welcome restore lock', () => {
     }
 
     async function settled(): Promise<void> {
-        await tick()
-        await tick()
+        await tickFake()
+        await tickFake()
         flushSync()
     }
 

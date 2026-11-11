@@ -202,6 +202,7 @@ async function settle(): Promise<void> {
         flushSync()
         await Promise.resolve()
     }
+    await tick()
     flushSync()
 }
 

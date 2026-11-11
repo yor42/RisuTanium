@@ -10,7 +10,8 @@
  * modules that `setDatabase` and the Display data import, and the legacy pages other than Display. The profile is
  * built through the real `setDatabase` (MC-329).
  */
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -139,9 +140,15 @@ function setWidth(width: number): void {
 async function settle(): Promise<void> {
     for (let round = 0; round < 3; round++) {
         flushSync()
-        await tick()
+        await tickFake()
         await Promise.resolve()
     }
+}
+
+/** The async tick leaves its frame callback pending until the next frame; firing the frame leaves only product timers to count. */
+function productTimerCount(): number {
+    vi.advanceTimersByTime(16)
+    return vi.getTimerCount()
 }
 
 function mountHost(): HTMLElement {
@@ -514,11 +521,11 @@ describe('the polite count (T-A15)', () => {
         settingsOpen.set(true)
         const target = mountHost()
         await settle()
-        const before = vi.getTimerCount()
+        const before = productTimerCount()
         await typeQuery(target, 'custom css')
         const status = target.querySelector('[data-part="settings-search-status"]')!
         unmount(mounted.pop()!)
-        expect(vi.getTimerCount()).toBe(before)
+        expect(productTimerCount()).toBe(before)
         vi.advanceTimersByTime(1000)
         expect(status.textContent).toBe('')
     })

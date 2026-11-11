@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 
 const control = vi.hoisted(() => ({
     yields: 0,
@@ -94,7 +95,7 @@ describe('StreamingView yields to the event loop', () => {
         vi.useFakeTimers()
         const { target } = open({ text: 'One.\n\nTwo.\n\nThree.\n\nopen' })
         await vi.advanceTimersByTimeAsync(150)
-        await tick()
+        await tickFake()
         expect(finishedCount(target)).toBe(3)
         expect(control.conversions).toHaveLength(3 + 1)
         expect(control.yields).toBeGreaterThanOrEqual(1 + 3 + 1)
@@ -104,13 +105,13 @@ describe('StreamingView yields to the event loop', () => {
         vi.useFakeTimers()
         const { state, target } = open({ text: 'One.\n\nTwo.\n\nopen' })
         await vi.advanceTimersByTimeAsync(150)
-        await tick()
+        await tickFake()
         control.conversions = []
         control.yields = 0
         state.text = 'One.\n\nTwo.\n\nThree.\n\nopen more'
         flushSync()
         await vi.advanceTimersByTimeAsync(600)
-        await tick()
+        await tickFake()
         expect(finishedCount(target)).toBe(3)
         expect(control.conversions).toEqual(['Three.\n\n', 'open more'])
         expect(control.yields).toBeGreaterThanOrEqual(1 + 1 + 1)
@@ -120,7 +121,7 @@ describe('StreamingView yields to the event loop', () => {
         vi.useFakeTimers()
         const { state, target } = open({ text: 'Old.\n\nopen' })
         await vi.advanceTimersByTimeAsync(150)
-        await tick()
+        await tickFake()
         expect(finishedCount(target)).toBe(1)
         let reset = false
         let seen = 0
@@ -134,13 +135,13 @@ describe('StreamingView yields to the event loop', () => {
         state.text = 'Old.\n\nTwo.\n\nopen'
         flushSync()
         await vi.advanceTimersByTimeAsync(150)
-        await tick()
+        await tickFake()
         control.onYield = null
         expect(reset).toBe(true)
         expect(target.textContent).not.toContain('Old.')
         expect(target.textContent).not.toContain('Two.')
         await vi.advanceTimersByTimeAsync(600)
-        await tick()
+        await tickFake()
         expect(finishedCount(target)).toBe(1)
         expect(target.querySelector('[data-part="chat-stream-finished"]')?.textContent).toContain('New.')
         expect(target.querySelector('[data-part="chat-stream-open"]')?.textContent).toContain('fresh')
@@ -151,7 +152,7 @@ describe('StreamingView yields to the event loop', () => {
         const { target, app } = open({ text: 'One.\n\nTwo.\n\nopen' })
         control.onYield = () => { void unmount(app) }
         await vi.advanceTimersByTimeAsync(150)
-        await tick()
+        await tickFake()
         control.onYield = null
         mounted.length = 0
         expect(target.querySelector('[data-part="chat-stream-finished"]')).toBeNull()
@@ -171,7 +172,7 @@ describe('StreamingView yields to the event loop', () => {
         state.text = 'One.\n\nopen a b'
         flushSync()
         await vi.advanceTimersByTimeAsync(1500)
-        await tick()
+        await tickFake()
         expect(target.querySelector('[data-part="chat-stream-open"]')?.textContent).toContain('open a b')
         const settled = passes
         await vi.advanceTimersByTimeAsync(1500)
@@ -193,7 +194,7 @@ describe('StreamingView yields to the event loop', () => {
             await vi.advanceTimersByTimeAsync(50)
         }
         await vi.advanceTimersByTimeAsync(2000)
-        await tick()
+        await tickFake()
         // Every pass converts the open paragraph exactly once, so the open conversions count the ticks.
         const ticks = control.conversions.filter((source) => !source.endsWith('\n\n')).length
         expect(ticks).toBeGreaterThan(10)
@@ -217,7 +218,7 @@ describe('StreamingView yields keep the output identical (MC-239)', () => {
         control.microYield = microYield
         const { target } = open({ text })
         await vi.advanceTimersByTimeAsync(400)
-        await tick()
+        await tickFake()
         const html = target.innerHTML
         await unmount(mounted.pop()!.app)
         target.remove()

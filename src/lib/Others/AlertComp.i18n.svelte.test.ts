@@ -12,7 +12,8 @@
  * Tests whose title starts with `guard:` pass with or without the translation work.
  * Tests starting `regression reproducer:` fail while a button label is a hard-coded English literal.
  */
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { writable } from 'svelte/store'
 import { afterAll, afterEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from '../../ts/storage/database.svelte'
@@ -167,7 +168,7 @@ const stopRecording: Array<() => void> = []
 
 async function settle(): Promise<void> {
     flushSync()
-    await tick()
+    await tickFake()
     flushSync()
     await Promise.resolve()
 }

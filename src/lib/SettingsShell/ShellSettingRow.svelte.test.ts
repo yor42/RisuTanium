@@ -9,7 +9,8 @@
  * modules that `setDatabase` and the Display data import, and the legacy pages other than Display. The profile is
  * built through the real `setDatabase` (MC-329).
  */
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -137,7 +138,7 @@ function setWidth(width: number): void {
 async function settle(): Promise<void> {
     for (let round = 0; round < 3; round++) {
         flushSync()
-        await tick()
+        await tickFake()
         await Promise.resolve()
     }
 }
