@@ -2,7 +2,7 @@
 // Plain Node ESM, no src/ imports. Synthetic data only; the one key-like value is the mock's throwaway proxyKey 'mock-key'.
 //
 //   node Agents/Tools/save-gen/make-chat-scene-fixture.mjs --out <dir outside the repo> [--seed 664] [--name c664-scene]
-//        [--mock-url http://127.0.0.1:9471/v1/chat/completions] [--plain-fetch on|off]
+//        [--mock-url http://127.0.0.1:9471/v1/chat/completions] [--plain-fetch on|off] [--messages-n10k]
 //
 // Writes <name>.bin and <name>-manifest.json into <out>. The bin holds five characters with one chat each:
 //   C664 N30, C664 N300, C664 N600   30, 300 and 600 messages; roles alternate starting with char; char turns are heavy messages
@@ -24,6 +24,10 @@
 // The root mock fields follow rootSettings of synth-bin-gen.mjs. Character k (0-based) draws its message bodies from
 // mulberry32((seed ^ 0x664664 ^ Math.imul(k + 1, 0x9E3779B1)) >>> 0), consumed in message order by the heavy and prose bodies.
 // Same seed, name, mock URL and plain-fetch value give byte-identical files.
+// --messages-n10k adds a sixth character, C664 N10000: 10 000 messages from the same heavy and light bodies, and 50 heavy
+// alternate bodies stored the way the app stores them (chat.alt, records { m, p, a } as prereroll.ts addRerolls writes them),
+// attached to the last char reply (message 9998; the last message, 9999, is a user turn). The first five characters, the root
+// settings and the manifest fields stay as without the flag (the manifest gains messagesN10k: true).
 import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
@@ -60,6 +64,9 @@ export const CHARACTERS = [
   { name: 'C664 N600 Prose', messages: 600, kind: 'prose', scripts: false },
   { name: 'C664 R1', messages: 30, kind: 'heavy', scripts: true },
 ]
+
+// Added by --messages-n10k (MC-1331): the 10 000-message chat for the device open row (N1) and the swipe row (SW).
+export const N10K_CHARACTER = { name: 'C664 N10000', messages: 10000, kind: 'heavy', scripts: false, alternates: 50 }
 
 function mulberry32(seed) {
   let a = seed >>> 0
@@ -100,6 +107,23 @@ function messageBodies(spec, rnd) {
   return bodies
 }
 
+// The persisted alternative-memory shape of prereroll.ts addRerolls: the shown reply (the last char turn) and its parent get a
+// chatId, and each alternative is a record { m, p, a } that follows the reply's parent with one shared departure stamp, times
+// above the shown reply's, so isChatAltReadable accepts the list. The ids come from the character's own generator.
+function storedAlternatives(message, texts, rnd) {
+  let shownAt = message.length - 1
+  while (shownAt > 0 && message[shownAt].role !== 'char') shownAt--
+  const shown = message[shownAt]
+  const parent = shownAt > 0 ? message[shownAt - 1] : null
+  shown.chatId = makeUuid(rnd)
+  if (parent) parent.chatId = makeUuid(rnd)
+  return texts.map((data, k) => ({
+    m: { ...shown, data, chatId: makeUuid(rnd), time: shown.time + k + 1 },
+    p: parent ? parent.chatId : null,
+    a: 1,
+  }))
+}
+
 function scriptProfile() {
   const regex = (type, k) => ({ comment: `r1-${type}-${k}`, in: `\\b${SCRIPT_WORDS[k]}\\b`, out: '$&', type, ableFlag: true, flag: 'g' })
   return {
@@ -108,15 +132,23 @@ function scriptProfile() {
   }
 }
 
-function buildDatabase(seed, mockUrl, plainFetch) {
+function buildDatabase(seed, mockUrl, plainFetch, n10k = false) {
   const ids = mulberry32((seed ^ 0xD00D664) >>> 0)
   const characters = []
   const described = []
-  CHARACTERS.forEach((spec, k) => {
+  const specs = n10k ? [...CHARACTERS, N10K_CHARACTER] : CHARACTERS
+  specs.forEach((spec, k) => {
     const rnd = mulberry32((seed ^ 0x664664 ^ Math.imul(k + 1, 0x9E3779B1)) >>> 0)
     const bodies = messageBodies(spec, rnd)
     const message = bodies.map((data, m) => ({ role: m % 2 === 0 ? 'char' : 'user', data, time: T + m * 60000 }))
+    // Alternates are drawn after every body of this character, so no other character's bytes depend on them.
+    let alternativeTexts = null
+    if (spec.alternates) {
+      alternativeTexts = Array.from({ length: spec.alternates }, (_, a) => heavyMessage(spec.messages + a, rnd).text)
+    }
     const chat = { id: makeUuid(ids), name: `${spec.name} chat`, note: '', localLore: [], message }
+    // Stored alternatives go in chat.alt, the persisted shape addRerolls writes; the active path stays chat.message.
+    if (alternativeTexts) chat.alt = storedAlternatives(message, alternativeTexts, rnd)
     const profile = spec.scripts ? scriptProfile() : { customscript: [], triggerscript: [] }
     characters.push({
       type: 'character', chaId: makeUuid(ids), name: spec.name, chatPage: 0, firstMsgIndex: -1, lastInteraction: T + (CHARACTERS.length - k) * 1000,
@@ -130,6 +162,7 @@ function buildDatabase(seed, mockUrl, plainFetch) {
       editoutputScripts: profile.customscript.filter((s) => s.type === 'editoutput').length,
       editdisplayScripts: profile.customscript.filter((s) => s.type === 'editdisplay').length, luaTriggers: profile.triggerscript.length,
       messageBytes: { min: sizes[0], median: sizes[Math.floor(sizes.length / 2)], max: sizes[sizes.length - 1] },
+      ...(spec.alternates ? { storedAlternatesOnLastReply: spec.alternates } : {}),
     })
   })
   const rootSettings = {
@@ -162,37 +195,39 @@ function entry(name, data) {
   return Buffer.concat([u32le(nameBytes.length), nameBytes, u32le(data.length), data])
 }
 
-export function generate({ seed = 664, mockUrl = DEFAULT_MOCK_URL, name = 'c664-scene', plainFetch = true } = {}) {
-  const { database, described } = buildDatabase(seed, mockUrl, plainFetch)
+export function generate({ seed = 664, mockUrl = DEFAULT_MOCK_URL, name = 'c664-scene', plainFetch = true, n10k = false } = {}) {
+  const { database, described } = buildDatabase(seed, mockUrl, plainFetch, n10k)
   const packed = fflate.compressSync(new Packr({ useRecords: false }).encode(database), { mtime: 0 })
   const databaseEntry = Buffer.concat([DATABASE_HEADER, Buffer.from(packed.buffer, packed.byteOffset, packed.length)])
   const buffer = entry('database.risudat', databaseEntry)
   const manifest = {
     format: 'risu-c664-scene-manifest/1', seed, mockUrl, plainFetch, file: `${name}.bin`, bytes: buffer.length, sha256: sha256Hex(buffer),
     replyMarker: REPLY_MARKER, markedReplyMarker: MARKED_REPLY_MARKER, characters: described,
+    ...(n10k ? { messagesN10k: true } : {}),
   }
   return { files: { [`${name}.bin`]: buffer }, manifest }
 }
 
 function main() {
   const argv = process.argv.slice(2)
-  const opt = { out: null, seed: 664, name: 'c664-scene', mockUrl: DEFAULT_MOCK_URL, plainFetch: 'on' }
+  const opt = { out: null, seed: 664, name: 'c664-scene', mockUrl: DEFAULT_MOCK_URL, plainFetch: 'on', n10k: false }
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--out') opt.out = argv[++i]
     else if (argv[i] === '--seed') opt.seed = Number(argv[++i])
     else if (argv[i] === '--name') opt.name = argv[++i]
     else if (argv[i] === '--mock-url') opt.mockUrl = argv[++i]
     else if (argv[i] === '--plain-fetch') opt.plainFetch = argv[++i]
+    else if (argv[i] === '--messages-n10k') opt.n10k = true
     else throw new Error('unknown argument ' + argv[i])
   }
-  if (!opt.out) throw new Error('usage: node make-chat-scene-fixture.mjs --out <dir> [--seed 664] [--name c664-scene] [--mock-url <url>] [--plain-fetch on|off]')
+  if (!opt.out) throw new Error('usage: node make-chat-scene-fixture.mjs --out <dir> [--seed 664] [--name c664-scene] [--mock-url <url>] [--plain-fetch on|off] [--messages-n10k]')
   if (!Number.isInteger(opt.seed) || !/^[A-Za-z0-9._-]{1,64}$/.test(opt.name) || !/^http:\/\/[A-Za-z0-9.-]+:\d+\/v1\/chat\/completions$/.test(opt.mockUrl) || !['on', 'off'].includes(opt.plainFetch)) {
     throw new Error('bad option value: seed integer, name A-Z a-z 0-9 . _ -, mock-url http://<host>:<port>/v1/chat/completions, plain-fetch on|off')
   }
   const out = path.resolve(opt.out)
   const relative = path.relative(REPO_ROOT, out)
   if (relative !== '' && !relative.startsWith('..') && !path.isAbsolute(relative)) throw new Error('--out must be outside the repository')
-  const { files, manifest } = generate({ seed: opt.seed, mockUrl: opt.mockUrl, name: opt.name, plainFetch: opt.plainFetch === 'on' })
+  const { files, manifest } = generate({ seed: opt.seed, mockUrl: opt.mockUrl, name: opt.name, plainFetch: opt.plainFetch === 'on', n10k: opt.n10k })
   fs.mkdirSync(out, { recursive: true })
   for (const [fileName, buffer] of Object.entries(files)) fs.writeFileSync(path.join(out, fileName), buffer)
   fs.writeFileSync(path.join(out, `${opt.name}-manifest.json`), JSON.stringify(manifest, null, 2))
