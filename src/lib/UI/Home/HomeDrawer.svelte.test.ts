@@ -97,6 +97,11 @@ function mountShellAt(width: number): HTMLElement {
 
 const menuButtonOf = (root: HTMLElement): HTMLButtonElement | null => root.querySelector('[data-part="home-menu-button"]')
 const topBarOf = (root: HTMLElement): HTMLElement | null => root.querySelector('[data-part="home-topbar"]')
+const chipOfRoot = (root: HTMLElement): HTMLButtonElement => {
+    const chip = root.querySelector<HTMLButtonElement>('[data-part="home-persona-chip"]')
+    expect(chip).not.toBeNull()
+    return chip!
+}
 const drawerOf = (): HTMLElement | null => document.querySelector('[data-part="home-drawer"]')
 const scrimOf = (): HTMLElement | null => document.querySelector('[data-part="home-drawer-scrim"]')
 const closeButtonOf = (): HTMLElement | null => document.querySelector('[data-part="home-drawer-close"]')
@@ -154,6 +159,204 @@ afterEach(async () => {
     showHomeLanding()
     localStorage.removeItem(UPSTREAM_AGREEMENT_KEY)
     resetUpstreamAgreementForTests()
+})
+
+/**
+ * Focus after a close. The drawer returns focus to the menu button in its effect teardown, and a
+ * late blur to nothing shortly after (a stray tap on empty space) is undone for a bounded window.
+ * Only `setTimeout` and `clearTimeout` are faked: the settle that runs the return is a real
+ * microtask, so each step awaits the fake clock to let it run.
+ */
+describe('HomeDrawer focus after close', () => {
+    // Longer than the hold window and than the late-click delay seen on the device.
+    const AFTER_WINDOW_MS = 2000
+    const LATE_CLICK_MS = 485
+
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    })
+
+    // Leaves no hold timer and no document listener behind for the next test: every hold ends at
+    // the window's end, so running the clock past it must drain the timer queue.
+    afterEach(async () => {
+        await vi.advanceTimersByTimeAsync(AFTER_WINDOW_MS)
+        expect(vi.getTimerCount()).toBe(0)
+        vi.useRealTimers()
+    })
+
+    const advance = async (ms: number): Promise<void> => {
+        await vi.advanceTimersByTimeAsync(ms)
+    }
+
+    function closeBy(how: string): void {
+        if (how === 'x') closeButtonOf()!.click()
+        else if (how === 'scrim') scrimOf()!.click()
+        else if (how === 'escape') press('Escape')
+        else {
+            installBackGuard({ showToast: vi.fn() })
+            expect(dispatchBack()).toBe(true)
+        }
+        flushSync()
+    }
+
+    // Regression reproducer for the focus-to-body defect after a close. The test injects the blur
+    // itself (`blur()` at the late-click delay), so it pins the hold, not the device event: only a
+    // device run shows that the real late tap is caught.
+    test.each(['x', 'scrim', 'escape', 'back'])('T-D1: after a close by %s, a blur to nothing within the window puts focus back on the menu button', async (how) => {
+        const root = mountShellAt(360)
+        const button = openDrawer(root)
+        closeBy(how)
+        expect(drawerOf()).toBeNull()
+        expect(document.activeElement).toBe(button)
+
+        await advance(LATE_CLICK_MS)
+        button.blur()
+        await advance(0)
+        expect(document.activeElement).toBe(button)
+        await advance(AFTER_WINDOW_MS)
+        expect(document.activeElement).toBe(button)
+    })
+
+    // The hold's own steal-back lands focus on its target; that must not end the hold, so a second
+    // late blur inside the window is defended too.
+    test('T-D8: a second blur inside the window is defended after the first was stolen back', async () => {
+        const root = mountShellAt(360)
+        const button = openDrawer(root)
+        closeBy('x')
+        expect(document.activeElement).toBe(button)
+
+        await advance(200)
+        button.blur()
+        await advance(0)
+        expect(document.activeElement).toBe(button)
+
+        await advance(LATE_CLICK_MS - 200)
+        button.blur()
+        await advance(0)
+        expect(document.activeElement).toBe(button)
+    })
+
+    // Compatibility guard: a move to a real control ends the hold, so a later blur is respected.
+    test('T-D3:a move to a real control ends the hold and a later blur leaves focus on the page body', async () => {
+        const root = mountShellAt(360)
+        const button = openDrawer(root)
+        closeBy('x')
+        expect(document.activeElement).toBe(button)
+
+        await advance(100)
+        const chip = chipOfRoot(root)
+        chip.focus()
+        expect(document.activeElement).toBe(chip)
+        await advance(LATE_CLICK_MS - 100)
+        chip.blur()
+        await advance(AFTER_WINDOW_MS)
+        expect(document.activeElement).toBe(document.body)
+    })
+
+    // Resource guard: an early stop cancels the window's timer at once instead of leaving it to
+    // expire on its own.
+    test('T-D9: a move to a real control cancels the hold timer immediately', async () => {
+        const root = mountShellAt(360)
+        const button = openDrawer(root)
+        closeBy('x')
+        expect(document.activeElement).toBe(button)
+
+        await advance(100)
+        chipOfRoot(root).focus()
+        // Zero-delay timers other code scheduled on the focus change fire here; the hold's 750 ms
+        // window timer is not due, so only a leaked hold timer can remain.
+        await advance(0)
+        expect(vi.getTimerCount()).toBe(0)
+    })
+
+    // Resource guard: an early stop removes the hold's document listeners, both the focusin and the
+    // focusout handler it registered.
+    test('T-D10: a move to a real control removes the hold document listeners', async () => {
+        const root = mountShellAt(360)
+        const button = openDrawer(root)
+        const added: Array<{ type: string, handler: EventListenerOrEventListenerObject }> = []
+        const removed: Array<{ type: string, handler: EventListenerOrEventListenerObject }> = []
+        const addSpy = vi.spyOn(document, 'addEventListener')
+        const removeSpy = vi.spyOn(document, 'removeEventListener')
+        try {
+            closeBy('x')
+            expect(document.activeElement).toBe(button)
+            for (const [type, handler] of addSpy.mock.calls) {
+                if ((type === 'focusin' || type === 'focusout') && handler) added.push({ type, handler })
+            }
+            expect(added.map(entry => entry.type).sort()).toEqual(['focusin', 'focusout'])
+
+            await advance(100)
+            chipOfRoot(root).focus()
+            for (const [type, handler] of removeSpy.mock.calls) {
+                if ((type === 'focusin' || type === 'focusout') && handler) removed.push({ type, handler })
+            }
+            for (const entry of added) {
+                expect(removed.some(gone => gone.type === entry.type && gone.handler === entry.handler)).toBe(true)
+            }
+        } finally {
+            addSpy.mockRestore()
+            removeSpy.mockRestore()
+        }
+    })
+
+    // Compatibility guard: the hold ends with its window, so a blur after it is respected.
+    test('T-D4:a blur after the window is respected', async () => {
+        const root = mountShellAt(360)
+        const button = openDrawer(root)
+        closeBy('x')
+        expect(document.activeElement).toBe(button)
+
+        await advance(1000)
+        button.blur()
+        await advance(AFTER_WINDOW_MS)
+        expect(document.activeElement).toBe(document.body)
+    })
+
+    // Compatibility guard: an item's action owns focus next, so the choice arms no hold.
+    test('T-D5: choosing an item arms no hold: a later blur leaves focus on the page body', async () => {
+        const root = mountShellAt(360)
+        const button = openDrawer(root)
+        itemNamed('Plug')!.click()
+        flushSync()
+        expect(pluginCallback).toHaveBeenCalledTimes(1)
+        expect(document.activeElement).toBe(button)
+
+        await advance(LATE_CLICK_MS)
+        button.blur()
+        await advance(AFTER_WINDOW_MS)
+        expect(document.activeElement).toBe(document.body)
+    })
+
+    // Compatibility guard: a cover opened right after the close owns focus, so the hold stands down.
+    test('T-D6: a cover opened after the close stops the hold from taking focus back', async () => {
+        const root = mountShellAt(360)
+        const button = openDrawer(root)
+        closeBy('x')
+        expect(document.activeElement).toBe(button)
+
+        settingsOpen.set(true)
+        flushSync()
+        await advance(LATE_CLICK_MS)
+        button.blur()
+        await advance(AFTER_WINDOW_MS)
+        expect(document.activeElement).not.toBe(button)
+    })
+
+    // Diagnostic: the menu button leaves the page while the hold is armed; nothing throws and the
+    // hold's timer and listeners end with the window.
+    test('T-D7: a resize out of the phone band during the window ends the hold without error and leaves no timer', async () => {
+        const root = mountShellAt(360)
+        const button = openDrawer(root)
+        closeBy('x')
+        expect(document.activeElement).toBe(button)
+
+        await advance(100)
+        expect(() => resizeTo(900)).not.toThrow()
+        await advance(AFTER_WINDOW_MS)
+        expect(menuButtonOf(root)).toBeNull()
+        expect(vi.getTimerCount()).toBe(0)
+    })
 })
 
 describe('HomeDrawer', () => {

@@ -243,6 +243,115 @@ describe('HomeShell layout', () => {
     })
 })
 
+/**
+ * Class guards for the top bar's centring and the wordmark. jsdom does no layout, so these pin the
+ * class strings that produce the geometry (the equal insets and side tracks, the margins that
+ * reclaim the inset difference, the truncating wordmark); the measured offsets are a real-layout
+ * check, not something this file can show.
+ */
+describe('HomeShell top bar centring and wordmark', () => {
+    const classesOf = (element: Element | null): string[] => Array.from(element?.classList ?? [])
+    const gridColumnsOf = (bar: HTMLElement): string[] => {
+        const tokens = classesOf(bar).filter((c) => c.startsWith('grid-cols-['))
+        expect(tokens.length).toBe(1)
+        return tokens[0].slice('grid-cols-['.length, -1).split('_')
+    }
+    const switcherWrapperOf = (root: HTMLElement): Element | null => topBarOf(root)!.querySelector('fieldset')!.parentElement
+    const chipWrapperOf = (root: HTMLElement): Element | null => chipOf(root)!.parentElement
+
+    // Class guard: the wide bar carries equal insets so the content box shares the bar's centre.
+    test('T-F1: the wide bar has equal start and end insets and the end inset follows the band on a resize', () => {
+        const root = mountShellAt(1280)
+        for (const width of [1280, 1920]) {
+            resizeTo(width)
+            const wide = classesOf(topBarOf(root))
+            expect(wide).toContain('pl-14')
+            expect(wide).toContain('pr-14')
+            expect(wide).not.toContain('pr-4')
+        }
+        resizeTo(767)
+        const phone = classesOf(topBarOf(root))
+        expect(phone).toContain('pr-4')
+        expect(phone).not.toContain('pr-14')
+        resizeTo(1280)
+        const wideAgain = classesOf(topBarOf(root))
+        expect(wideAgain).toContain('pr-14')
+        expect(wideAgain).not.toContain('pr-4')
+    })
+
+    // Class guard: equal side tracks with equal fixed minimums put the auto track at the centre.
+    test('T-F2: the wide grid has two identical flexible side tracks around an auto track and no max-content track', () => {
+        const root = mountShellAt(1280)
+        const tracks = gridColumnsOf(topBarOf(root)!)
+        expect(tracks.length).toBe(3)
+        expect(tracks[0]).toBe('minmax(2.75rem,1fr)')
+        expect(tracks[2]).toBe(tracks[0])
+        expect(tracks[1]).toBe('auto')
+        expect(tracks.join('_')).not.toContain('max-content')
+    })
+
+    // Class guard: the negative end margin equals the inset difference, so the chip keeps its
+    // 16 px right edge while the switcher column stays symmetric.
+    test('T-F3: the wide chip wrapper reclaims the inset difference and the switcher wrapper is centred', () => {
+        const root = mountShellAt(1280)
+        const chipWrapper = classesOf(chipWrapperOf(root))
+        expect(chipWrapper).toContain('min-w-0')
+        expect(chipWrapper).toContain('-mr-10')
+        expect(chipWrapper).toContain('justify-end')
+        const switcherWrapper = classesOf(switcherWrapperOf(root))
+        expect(switcherWrapper).toContain('justify-center')
+        expect(switcherWrapper).not.toContain('-ml-10')
+    })
+
+    // Class guard: the wordmark truncates instead of overflowing onto the switcher; the full text
+    // stays in the DOM and the mark stays decorative.
+    test.each([360, 900, 1280])('T-F4: at %i the wordmark truncates, the mark keeps its size and the text is complete', (width) => {
+        const root = mountShellAt(width)
+        const brand = topBarOf(root)!.querySelector('[data-part="home-brand"]')!
+        expect(classesOf(brand)).toContain('min-w-0')
+        const word = brand.querySelector('span')!
+        expect(classesOf(word)).toContain('min-w-0')
+        expect(classesOf(word)).toContain('truncate')
+        expect(word.textContent).toBe('RisuTanium')
+        const mark = brand.querySelector('svg')!
+        expect(classesOf(mark)).toContain('shrink-0')
+        expect(mark.getAttribute('aria-hidden')).toBe('true')
+    })
+
+    // Class guard: in mid only the switcher row is stretched into the start inset; the bar insets
+    // stay unequal and the chip wrapper is untouched.
+    test.each([768, 900, 1279])('T-F5: at %i the mid switcher row reclaims the start inset and the chip wrapper is unchanged', (width) => {
+        const root = mountShellAt(width)
+        const bar = topBarOf(root)!
+        const barClasses = classesOf(bar)
+        expect(barClasses).toContain('pl-14')
+        expect(barClasses).toContain('pr-4')
+        expect(barClasses).not.toContain('pr-14')
+        expect(gridColumnsOf(bar)).toEqual(['minmax(0,1fr)', 'auto'])
+
+        const switcherWrapper = classesOf(switcherWrapperOf(root))
+        expect(switcherWrapper).toContain('col-span-2')
+        expect(switcherWrapper).toContain('-ml-10')
+        expect(switcherWrapper).toContain('justify-center')
+        const chipWrapper = classesOf(chipWrapperOf(root))
+        expect(chipWrapper).toContain('col-start-2')
+        expect(chipWrapper).toContain('justify-end')
+        expect(chipWrapper).not.toContain('-mr-10')
+    })
+
+    // Compatibility guard (passes before and after): the phone bar and its wrappers are unchanged.
+    test('T-F6: at 360 the phone bar keeps its insets and column and no wrapper takes a negative margin', () => {
+        const root = mountShellAt(360)
+        const barClasses = classesOf(topBarOf(root))
+        expect(barClasses).toContain('pl-4')
+        expect(barClasses).toContain('pr-4')
+        expect(barClasses).toContain('flex-col')
+        expect(barClasses).not.toContain('pr-14')
+        expect(classesOf(chipWrapperOf(root))).not.toContain('-mr-10')
+        expect(classesOf(switcherWrapperOf(root))).not.toContain('-ml-10')
+    })
+})
+
 describe('HomeShell phone chrome', () => {
     test('T-B12: the flag is true on the phone landing and false at mid, in the library, with Realm open and after unmount', async () => {
         const chrome = await loadHomeChrome()

@@ -1,5 +1,6 @@
 <script lang="ts">
     import { flushSync, untrack } from 'svelte'
+    import { get } from 'svelte/store'
     import { XIcon } from '@lucide/svelte'
     import { language } from 'src/lang'
     import { backCloseHandler, registerBackHandler } from 'src/ts/backHandlers'
@@ -7,6 +8,7 @@
     import { studioOpen } from 'src/ts/studio/studioOpen'
     import { isTopmostShell, makeInert, registerShell, returnFocus, trapTab, watchFocus } from 'src/lib/Nexus/pattern/patternFocus'
     import PluginDefinedIcon from 'src/lib/Others/PluginDefinedIcon.svelte'
+    import { holdReturnedFocus } from './homeFocusHold'
     import { homeDrawerItems, type HomeDrawerItem } from './homeDrawerItems'
 
     interface Props {
@@ -30,6 +32,8 @@
     // Read by close and by the teardown; neither runs in a tracked context that needs to react.
     let open = true
     let returnOnTeardown = true
+    // An item's action owns focus once the drawer is gone, so a chosen item arms no hold.
+    let holdAfterClose = true
 
     function close(): void {
         if (!open) return
@@ -50,6 +54,7 @@
     // longer inert, no layer is held and focus is on the menu button, so an action that opens a
     // cover captures the menu button as its opener.
     function choose(item: HomeDrawerItem): void {
+        holdAfterClose = false
         close()
         flushSync()
         item.run()
@@ -107,7 +112,11 @@
             unregisterBack()
             unregisterShell()
             restoreInert()
-            if (returnOnTeardown) returnFocus(opener)
+            // A blur to nothing shortly after the return (a late tap on empty space) puts focus back
+            // on the menu button; a move to a real control, a cover or the window's end ends the hold.
+            if (returnOnTeardown && returnFocus(opener) && holdAfterClose) {
+                holdReturnedFocus(opener, () => get(settingsOpen) || get(studioOpen))
+            }
         }
     })
 </script>
