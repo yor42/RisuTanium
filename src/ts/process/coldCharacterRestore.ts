@@ -10,6 +10,7 @@ import { findChaIdHolders, retainOnLoad, retainOnRestore } from "./coldRetained"
 import { getResidency, residencyReadOf } from "../storage/store2/residencyActive"
 import { markIdentitySeen } from "../storage/dbChangeEffects.svelte"
 import { noteResidentLoaded } from "../storage/store2/residentLoads"
+import { withQuietCharacterInstall } from "../storage/dbWriteHook"
 
 /**
  * Reading an archived character's unit back and installing it in place of its
@@ -262,11 +263,17 @@ async function restoreOnce(stub: Slot, options: ColdRestoreOptions): Promise<Col
     }
 
     const restored = applyStubStateOnRestore(target, unit.character)
-    characters[index] = restored
-    // A character became resident: the save loop's idle back-off ends at its next iteration.
-    noteResidentLoaded()
     const loaded = residencyReadOf(result)
     const residency = getResidency()
+    if (loaded !== undefined && residency !== null) {
+        // A store2 entity's own character: its placement is not a change to save, so the write hook marks nothing for
+        // this assignment (a field write of the installed character still marks).
+        withQuietCharacterInstall(() => { characters[index] = restored })
+    } else {
+        characters[index] = restored
+    }
+    // A character became resident: the save loop's idle back-off ends at its next iteration.
+    noteResidentLoaded()
     if (loaded !== undefined && residency !== null) {
         // The character was read from a store2 entity: its units take their digests so that its first pass reuses
         // them all, the load is recorded for the put-back, and the identity tracker is told this is the entity's own

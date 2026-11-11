@@ -12,8 +12,24 @@ vi.mock('../../parser/parser.svelte', () => ({
 }))
 vi.mock('../../parser/chatML', () => ({ parseChatML: vi.fn(() => []) }))
 
-// Limitation pins: each test asserts what a DBState write does TODAY, before a write hook exists. The flip to the
-// required assertion (a synchronous mark) changes the first expectation of each test and nothing else.
+// Passes the real install through and records whether the patched runtime had already linked a record for the root
+// when stores.svelte made the call: it has once anything read `DBState` before the install.
+const install = vi.hoisted(() => ({ rootLinkedBeforeInstall: null as boolean | null }))
+vi.mock('../dbWriteHook', async (importOriginal) => {
+    const original = await importOriginal<typeof import('../dbWriteHook')>()
+    const { stateRecords } = await import('../svelteStatePatch')
+    return {
+        ...original,
+        installDbWriteHook: (root: object, options: Parameters<typeof original.installDbWriteHook>[1]) => {
+            install.rootLinkedBeforeInstall = stateRecords.has(root)
+            return original.installDbWriteHook(root, options)
+        },
+    }
+})
+
+// Required marks: a DBState write reaches the save marks synchronously through the write hook that stores.svelte
+// installs on DBState, with no effect flush in between. Each test asserts that mark at the write, where the effects
+// alone (an effect flush, a thrown effect, a pending markup await, a non-selected character) leave it absent.
 
 let page: ReturnType<typeof startMiniPage>
 let disposers: Array<() => void> = []
@@ -30,26 +46,27 @@ afterEach(() => {
     page.stop()
 })
 
-describe('DBState write marks: limitation pins on the current effect-only marking', () => {
-    it('pin R1: a selected-character message write is not marked until an effect flush', () => {
+describe('DBState write marks: the write hook marks at the write, before any effect runs', () => {
+    it('R1: a selected-character message write is marked before an effect flush', () => {
         page.snapshot()
         DBState.db.characters[0].chats[0].message[0].data = 'edited'
-        expect(page.dirty).toBe(false)
+        expect(page.dirty).toBe(true)
+        expect(page.tracker.character).toContain('cA')
         flushSync()
         expect(page.dirty).toBe(true)
     })
 
-    it('pin R1b: a non-selected character write is never marked, before or after a flush', () => {
+    it('R1b: a non-selected character write is marked at the write and stays marked after a flush', () => {
         page.snapshot()
         DBState.db.characters[1].personality = 'edited'
-        expect(page.dirty).toBe(false)
-        expect(page.tracker.character).not.toContain('cB')
+        expect(page.dirty).toBe(true)
+        expect(page.tracker.character).toContain('cB')
         flushSync()
-        expect(page.dirty).toBe(false)
-        expect(page.tracker.character).not.toContain('cB')
+        expect(page.dirty).toBe(true)
+        expect(page.tracker.character).toContain('cB')
     })
 
-    it('pin R2: a write after a flush in which another effect threw is never marked', () => {
+    it('R2: a write after a flush in which another effect threw is marked at the write', () => {
         const stopThrower = $effect.root(() => {
             $effect.pre(() => {
                 if (DBState.db.characters[0].name === 'trigger') throw new Error('thrower')
@@ -63,15 +80,16 @@ describe('DBState write marks: limitation pins on the current effect-only markin
         DBState.db.characters[0].personality = 'p1'
         expect(() => flushSync()).toThrow('thrower')
         page.snapshot()
-        const effectMarksBefore = page.effectMarks
+        const marksBefore = page.marks
 
         DBState.db.characters[0].personality = 'p2'
+        expect(page.dirty).toBe(true)
+        expect(page.marks - marksBefore).toBeGreaterThanOrEqual(1)
         try { flushSync() } catch { /* the scheduler may keep rethrowing the failed effect */ }
-        expect(page.dirty).toBe(false)
-        expect(page.effectMarks - effectMarksBefore).toBe(0)
+        expect(page.dirty).toBe(true)
     })
 
-    it('pin R3: a write in the same turn as a pending markup await is not marked while it is pending', async () => {
+    it('R3: a write in the same turn as a pending markup await is marked while it is pending', async () => {
         // Loaded through a variable path so the type checker never compiles the fixture without experimental.async.
         const fixturePath = './PendingAwait.asyncFixture.svelte'
         const fixture: { default: Component<{ load: (name: string) => Promise<string> }> } = await import(/* @vite-ignore */ fixturePath)
@@ -86,13 +104,31 @@ describe('DBState write marks: limitation pins on the current effect-only markin
         await new Promise((resolve) => setTimeout(resolve, 60))
         flushSync()
         page.snapshot()
-        const effectMarksBefore = page.effectMarks
+        const marksBefore = page.marks
 
         DBState.db.characters[0].name = 'trigger'
         DBState.db.characters[0].personality = 'p3'
+        expect(page.dirty).toBe(true)
+        expect(page.marks - marksBefore).toBeGreaterThanOrEqual(1)
         await new Promise((resolve) => setTimeout(resolve, 60))
         expect(releaseLoad).toBeTypeOf('function')
-        expect(page.dirty).toBe(false)
-        expect(page.effectMarks - effectMarksBefore).toBe(0)
+        expect(page.dirty).toBe(true)
+    })
+})
+
+describe('the install in stores.svelte', () => {
+    it('I28: the hook is installed before DBState is first read, so every record is linked as it is created', () => {
+        expect(install.rootLinkedBeforeInstall).toBe(false)
+    })
+
+    it('a write the hook cannot pin to a character marks the selected character, whose id the install provides', () => {
+        selectedCharID.set(1)
+        DBState.db.characters.push({ chaId: '', type: 'character', name: 'no usable id', chats: [] } as never)
+        page.snapshot()
+
+        DBState.db.characters[2].name = 'edited'
+
+        expect(page.tracker.character).toContain('cB')
+        expect(page.dirty).toBe(true)
     })
 })

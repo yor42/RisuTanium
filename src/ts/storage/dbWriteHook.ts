@@ -2,6 +2,7 @@ import { untrack } from 'svelte'
 import { recordCaughtError } from '../caughtErrors'
 import { markDbWrite } from './characterSaveMarks'
 import type { DbWriteMark } from './characterSaveMarks'
+import { checkWriteHookLive } from './dbWriteHookSelfCheck.svelte'
 import { STATE_PATCH_ID, linkStateChild, recordOf, setStateWriteHook, stateRecords } from './svelteStatePatch'
 import type { StateRecord, StateRecordLink, StateWriteKind } from './svelteStatePatch'
 
@@ -38,6 +39,11 @@ import type { StateRecord, StateRecordLink, StateWriteKind } from './svelteState
  * A valid id is a non-empty string or a finite number. Arrays are never tagged; an array in a list slot takes the
  * logged per-write fallback.
  *
+ * Residency install. `withQuietCharacterInstall` makes an index write of a character object into the list mark
+ * nothing and schedule nothing while still tagging the value; a field write inside the scope marks as usual.
+ * Install-time check. `installDbWriteHook` writes once to a throwaway `$state` and requires `onWrite` to see it; a
+ * runtime that never calls the callback is recorded as `dbWriteHook.selfCheck`, and nothing is marked in its place.
+ *
  * Known limits, accepted: a proxy reachable only through a raw (not yet proxied) container two or more levels deep
  * resolves to its former owners until a read through the new path links it (the placement of its character is still
  * marked); writes that bypass the proxy (descriptors read by `Object.getOwnPropertyDescriptor`, values stored by
@@ -58,12 +64,21 @@ export const LINK_GROWTH_THRESHOLD = 64
 
 type Owner = { kind: 'char', c: StateRecord } | { kind: 'top', key: string }
 
+// Resolved at call time: modules that suites load with a partial `characterSaveMarks` mock (`coldCharacterRestore`,
+// `stores.svelte`) import this one, and the import must not read the missing export.
+const defaultSink = (mark: DbWriteMark): void => markDbWrite(mark)
+
 let rootRec: StateRecord | null = null
-let sink: (mark: DbWriteMark) => void = markDbWrite
+let sink: (mark: DbWriteMark) => void = defaultSink
 let onError: (error: unknown) => void = defaultOnError
 let selectedChaId: () => unknown = () => undefined
 let reportedLinkGrowth = false
 let quiet = false
+// Depth of `withQuietCharacterInstall` scopes; only an index write of a character into the list consults it.
+let quietInstallDepth = 0
+// The throwaway state proxy of the install-time self-check, set only while that check runs.
+let selfCheckProbe: object | null = null
+let selfCheckSeen = false
 const reportedCauses = new Set<string>()
 let writeDepth = 0
 // One owner list and one visited set serve the outermost write; a write nested inside a mark allocates its own.
@@ -193,6 +208,11 @@ function tagElements(list: unknown): void {
 }
 
 function onWrite(kind: StateWriteKind, owner: object, prop: PropertyKey, value: unknown, stored: unknown): void {
+    // The self-check's own write proves the callback is registered; it is never a database write.
+    if (selfCheckProbe !== null && owner === selfCheckProbe) {
+        selfCheckSeen = true
+        return
+    }
     if (rootRec === null) return
     try {
         // A write that makes a record the db or the list links it first; the tag pass then covers characters linked
@@ -249,6 +269,9 @@ function onWrite(kind: StateWriteKind, owner: object, prop: PropertyKey, value: 
                 if (valueRec !== undefined && validId(placedId)) valueRec.tag = placedId
                 placed = validId(placedId) || (kind === 0 && !underList(value))
             }
+            // A residency install puts a character the store already holds into its slot: the value is known (tagged
+            // above) and nothing is marked or scheduled for the placement itself.
+            if (quietInstallDepth > 0 && object) return
             sink(placed ? { kind: 'placed', id: placedId } : { kind: 'listShape', prop: String(prop) })
         }
 
@@ -278,7 +301,7 @@ function onWrite(kind: StateWriteKind, owner: object, prop: PropertyKey, value: 
  * Installing again replaces the previous registration.
  */
 export function installDbWriteHook<T extends object>(dbRoot: T, options: DbWriteHookOptions): T {
-    sink = options.sink ?? markDbWrite
+    sink = options.sink ?? defaultSink
     onError = options.onError ?? defaultOnError
     selectedChaId = options.selectedChaId
     reportedLinkGrowth = false
@@ -286,7 +309,37 @@ export function installDbWriteHook<T extends object>(dbRoot: T, options: DbWrite
     rootRec = recordOf(dbRoot)
     setStateWriteHook(onWrite, (error) => onError(error), onLink)
     tagElements(untrack(() => (dbRoot as { db?: { characters?: unknown } }).db?.characters))
+    selfCheckDbWriteHook()
     return dbRoot
+}
+
+/**
+ * Install-time check (SC1) that the patched runtime reaches the registered callback: one write to a throwaway
+ * `$state` must be observed by `onWrite`. A hook that is not live is recorded as `dbWriteHook.selfCheck`; nothing
+ * else changes (the effects safety net keeps running and no mark is invented). Returns whether the write was seen.
+ */
+export function selfCheckDbWriteHook(): boolean {
+    selfCheckSeen = false
+    return checkWriteHookLive(
+        (probe) => { selfCheckProbe = probe },
+        () => selfCheckSeen,
+        () => { selfCheckProbe = null },
+    )
+}
+
+/**
+ * Runs `fn`, inside which an index write of a character object into the character list is not marked and schedules
+ * nothing, though its value is still recorded as known (the character tag). Used only where a character the store
+ * already holds is installed in its slot (the store2 residency load). Any other write inside the scope, a nested
+ * field write of that character included, is marked as usual.
+ */
+export function withQuietCharacterInstall<T>(fn: () => T): T {
+    quietInstallDepth++
+    try {
+        return fn()
+    } finally {
+        quietInstallDepth--
+    }
 }
 
 /** Unregisters the hook. Writes are no longer reported; links the patch recorded stay. */

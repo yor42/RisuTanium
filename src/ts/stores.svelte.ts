@@ -1,4 +1,6 @@
+import { untrack } from "svelte";
 import { get, writable } from "svelte/store";
+import { installDbWriteHook } from "./storage/dbWriteHook";
 import type { character, Database, groupChat } from "./storage/database.svelte";
 import { type simpleCharacterArgument } from "./parser/parser.svelte";
 import type { alertData } from "./alert";
@@ -113,6 +115,11 @@ window.addEventListener("resize", updateSize);
 export const DBState = $state({
     db: {} as any as Database
 });
+// Registered before any read of DBState, so every record is linked as it is created. The selected character's id
+// serves the hook's per-write fallback; it is read untracked and the hook module imports nothing from this one.
+installDbWriteHook(DBState, {
+    selectedChaId: () => untrack(() => DBState.db?.characters?.[selIdState.selId]?.chaId),
+})
 
 export const LoadingStatusState = $state({
     text: '',
