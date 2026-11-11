@@ -6,7 +6,7 @@
     import { provideOwnerSource } from '../../ts/studio/ownerSource.svelte'
     import { studioLayoutOf } from '../../ts/studio/studioLayout'
     import { createStudioToasts, refusalText, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
-    import { getStudioHistoryService } from '../../ts/studio/history/studioHistoryService.svelte'
+    import { getStudioHistoryService, noteStudioInput } from '../../ts/studio/history/studioHistoryService.svelte'
     import { closeStudioHistory, closeStudioRestoreSheet, closeStudioSearch, installStudioBack } from '../../ts/studio/studioBack.svelte'
     import { selectedHistoryOwner, setStudioHistoryOpen, setStudioLayout, setStudioNotice, showStudioList, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
@@ -144,7 +144,7 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div bind:this={root} data-part="studio" data-layout={studioScreen.layout} tabindex="-1" class="flex h-full min-h-0 w-full flex-col bg-bgcolor text-textcolor outline-none" {onkeydown} {onmouseup}>
+<div bind:this={root} data-part="studio" data-layout={studioScreen.layout} tabindex="-1" class="flex h-full min-h-0 w-full flex-col bg-bgcolor text-textcolor outline-none" {onkeydown} {onmouseup} oninputcapture={noteStudioInput} oncompositionstartcapture={noteStudioInput}>
     <StudioHeader
         layout={studioScreen.layout}
         drawerOpen={studioScreen.drawerOpen}

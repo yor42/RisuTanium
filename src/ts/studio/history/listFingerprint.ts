@@ -3,7 +3,8 @@
 // The functions are part of the stored format: a different result for the same list would make
 // every stored fingerprint read as a foreign list. A change needs a new stored field name.
 //
-// Pure and total: no imports, and no input can make them throw.
+// Pure, with no imports. `fingerprintElement` and `mixElementHashes` are total; `listFingerprintOf`
+// is total when its `elementHash` is, and the default is.
 
 // cyrb53 over the UTF-16 units of `text`, seeded with `seed`. The result is an integer in [0, 2^53).
 function cyrb53(text: string, seed: number): number {
@@ -53,11 +54,19 @@ export function mixElementHashes(hashes: readonly number[]): number {
     return 4294967296 * (2097151 & h2) + (h1 >>> 0)
 }
 
-// The mix of the element hashes by index; holes read as `undefined`.
-export function listFingerprintOf(list: readonly unknown[]): number {
+// A source of element hashes. It must return `fingerprintElement(value)` for every value (a cache of
+// it); any other function changes the stored format.
+export type ElementHash = (value: unknown) => number
+
+// Chooses the element hash for one pass over `list`. Every function it returns is bound by the
+// `ElementHash` contract above; the choice may depend on the list, never the values.
+export type ListElementHash = (list: readonly unknown[]) => ElementHash
+
+// The mix of the element hashes by index; holes read as `undefined`. Total when `elementHash` is.
+export function listFingerprintOf(list: readonly unknown[], elementHash: ElementHash = fingerprintElement): number {
     const hashes: number[] = new Array<number>(list.length)
     for (let i = 0; i < list.length; i++) {
-        hashes[i] = fingerprintElement(list[i])
+        hashes[i] = elementHash(list[i])
     }
     return mixElementHashes(hashes)
 }

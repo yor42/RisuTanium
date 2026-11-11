@@ -3,7 +3,7 @@
 // items). It never reads a clock, a global or the live character: the live values reach it
 // through a `LiveReader` snapshot, and the writes it decides on leave it as `WriteOp`s.
 
-import { fingerprintElement, listFingerprintOf, mixElementHashes } from './listFingerprint'
+import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
 import { parseOwnerKey, type OwnerKey } from './ownerPhase'
 
 // Typing in one field extends the open step while each write follows the previous one by less
@@ -658,10 +658,10 @@ export interface ListHashTracker {
     hash(list: readonly unknown[]): number
 }
 
-export function createListHashTracker(list: readonly unknown[]): ListHashTracker {
+export function createListHashTracker(list: readonly unknown[], elementHash: ElementHash = fingerprintElement): ListHashTracker {
     const slots: (number | undefined)[] = []
     for (let i = 0; i < list.length; i++) {
-        slots.push(fingerprintElement(list[i]))
+        slots.push(elementHash(list[i]))
     }
     return {
         set(index) {
@@ -688,7 +688,7 @@ export function createListHashTracker(list: readonly unknown[]): ListHashTracker
             for (let i = 0; i < slots.length; i++) {
                 let element = slots[i]
                 if (element === undefined) {
-                    element = fingerprintElement(current[i])
+                    element = elementHash(current[i])
                     slots[i] = element
                 }
                 filled[i] = element
@@ -705,7 +705,7 @@ export const REVERT_HASH_BUDGET_UNITS = 500_000
 // Replays the top step of `done` (undo) or `undone` (redo). Every op is checked against the live
 // value it would overwrite; ops whose precondition fails are skipped, which keeps a value changed
 // elsewhere. When nothing applies the replay is refused and the stacks stay as they are.
-export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live: LiveReader): PlanResult {
+export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live: LiveReader, hashFor?: ListElementHash): PlanResult {
     const stack = direction === 'undo' ? record.done : record.undone
     const step = stack[stack.length - 1]
     if (!step) {
@@ -714,7 +714,7 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
     const working = makeWorking(live)
     const greetingsBefore = working.list ? [...working.list] : null
     // One decision before any op runs, so the hash is of the list the plan starts from.
-    const hash = step.listFingerprint && working.list !== null ? listFingerprintOf(working.list) : undefined
+    const hash = step.listFingerprint && working.list !== null ? listFingerprintOf(working.list, hashFor?.(working.list)) : undefined
     const side: ListSide = step.listFingerprint && hash !== undefined ? sideFromHash(step.listFingerprint, direction, hash) : 'none'
     // Exact or nothing: a fingerprinted step whose list is not the side it was recorded at applies
     // no op, so no chat index or field lands against a list the step never described. The step
@@ -833,8 +833,8 @@ function trackAppliedOp(tracker: ListHashTracker, forward: Op): void {
 // L6: stored list ops are exact: each op's recorded before/value is the value at its index along the
 //     step's before -> after sequence, and every index was in range. A whole expected-side replay
 //     relies on it through `afterListHash`, which takes the step's stored other-side fingerprint.
-function listHashesAcross(before: readonly string[], ops: readonly Op[], after: readonly string[]): ListFingerprint {
-    const tracker = createListHashTracker(before)
+function listHashesAcross(before: readonly string[], ops: readonly Op[], after: readonly string[], hashFor?: ListElementHash): ListFingerprint {
+    const tracker = createListHashTracker(before, hashFor?.(before))
     const beforeHash = tracker.hash(before)
     for (const op of ops) {
         trackAppliedOp(tracker, op)
@@ -845,7 +845,7 @@ function listHashesAcross(before: readonly string[], ops: readonly Op[], after: 
 // One new step that undoes every step above `toStepId`, under the same per-op preconditions. A
 // fingerprinted step is decided on the working list as the steps above it left it. `budgetUnits`
 // is a test seam; callers use the default.
-export function planRevert(record: OwnerRecord, toStepId: string, live: LiveReader, budgetUnits = REVERT_HASH_BUDGET_UNITS): PlanResult {
+export function planRevert(record: OwnerRecord, toStepId: string, live: LiveReader, budgetUnits = REVERT_HASH_BUDGET_UNITS, hashFor?: ListElementHash): PlanResult {
     const index = record.done.findIndex((step) => step.id === toStepId)
     if (index < 0) {
         return { ok: false, reason: 'unknown' }
@@ -871,7 +871,7 @@ export function planRevert(record: OwnerRecord, toStepId: string, live: LiveRead
     // A tracker exists when some reverted step inserts or removes: only then does the list's shape
     // change under the steps above. Its first pass is the revert's `before` hash.
     const list = working.list
-    const tracker = list !== null && above.some((step) => hasInsertOrRemove(step.ops)) ? createListHashTracker(list) : null
+    const tracker = list !== null && above.some((step) => hasInsertOrRemove(step.ops)) ? createListHashTracker(list, hashFor?.(list)) : null
     const liveListHash = tracker && list ? tracker.hash(list) : undefined
     let spent = 0
     let suspended = false
@@ -1468,7 +1468,7 @@ function mergeCoalesced(top: Step, next: Op[]): Op[] | null {
 }
 
 // Records a landed action as a new step (or extends the open one) and clears the redo stack.
-export function commitStep(state: ModelState, commit: StepCommit): ModelState {
+export function commitStep(state: ModelState, commit: StepCommit, hashFor?: ListElementHash): ModelState {
     const { record } = state
     const restore = noteRestoreWrites(record.restore, commit.visitId, commit.at, commit.restoreWrites, commit.replacesRestore)
     const removed = new Set(commit.deletedRemove ?? [])
@@ -1497,7 +1497,7 @@ export function commitStep(state: ModelState, commit: StepCommit): ModelState {
         if (commit.liveListHash !== undefined && commit.afterListHash !== undefined) {
             step.listFingerprint = { before: commit.liveListHash, after: commit.afterListHash }
         } else {
-            const derived = listHashesAcross(listWrite.before, commit.ops, listWrite.after)
+            const derived = listHashesAcross(listWrite.before, commit.ops, listWrite.after, hashFor)
             step.listFingerprint = {
                 before: commit.liveListHash ?? derived.before,
                 after: commit.afterListHash ?? derived.after,
@@ -1526,6 +1526,7 @@ export function applyReplayMove(
     plan: StepPlan,
     at: number,
     visitId: string,
+    hashFor?: ListElementHash,
 ): ModelState {
     const { record } = state
     const from = direction === 'undo' ? record.done : record.undone
@@ -1538,8 +1539,8 @@ export function applyReplayMove(
     const listWrite = hasInsertOrRemove(plan.ops) ? listRestoreWrite(plan.restoreWrites) : null
     if (listWrite) {
         // `before` of the replay's write is the live list at plan time, `after` the list it produces.
-        const live = plan.liveListHash ?? listFingerprintOf(listWrite.before)
-        const produced = plan.afterListHash ?? listFingerprintOf(listWrite.after)
+        const live = plan.liveListHash ?? listFingerprintOf(listWrite.before, hashFor?.(listWrite.before))
+        const produced = plan.afterListHash ?? listFingerprintOf(listWrite.after, hashFor?.(listWrite.after))
         moved.listFingerprint = direction === 'undo' ? { before: produced, after: live } : { before: live, after: produced }
     }
     const rest = from.slice(0, -1)

@@ -60,6 +60,8 @@ import { openStudio, resetStudioScreenForTests, studioScreen } from '../../ts/st
 import { setStudioEnabled } from '../../ts/studio/studioSwitch.svelte'
 import { studioOpen } from '../../ts/studio/studioOpen'
 import StudioScreen from './StudioScreen.svelte'
+import type { OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
+import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 
 class ResizeObserverStub {
     static instances: ResizeObserverStub[] = []
@@ -410,5 +412,48 @@ describe('results', () => {
         // The unmounted search leaves no timer behind that could touch a removed page.
         await new Promise((resolve) => setTimeout(resolve, 20))
         expect(parts('studio-search-result')).toHaveLength(0)
+    })
+})
+
+describe('W13 input in Studio that is not a history write ends the pending warm-up (MC-1432)', () => {
+    // A stand-in service: this suite is about the screen's input wiring; the service's own suite proves that
+    // cancelWarm ends the job and that nothing restarts it.
+    function serviceSpy(): ReturnType<typeof vi.fn> {
+        const cancelWarm = vi.fn()
+        setStudioHistoryServiceForTests({
+            useOwner: () => {},
+            setAck: () => {},
+            closeOpenStep: () => {},
+            cancelWarm,
+            view: (owner: string) => ({
+                ownerKey: owner, phase: 'ready', banner: null, restricted: false, editable: true, persisted: true,
+                done: [], undone: [], deleted: [], restore: null,
+            }),
+        } as unknown as OwnerHistoryService)
+        return cancelWarm
+    }
+
+    afterEach(() => {
+        resetStudioHistoryAccessorForTests()
+    })
+
+    test('typing in the search box cancels it', () => {
+        const cancelWarm = serviceSpy()
+        openStudio(ownerTarget, null)
+        show()
+        openSearch()
+        expect(cancelWarm).not.toHaveBeenCalled()
+        typeQuery('king')
+        expect(cancelWarm).toHaveBeenCalledTimes(1)
+    })
+
+    test('a composition starting in the search box cancels it', () => {
+        const cancelWarm = serviceSpy()
+        openStudio(ownerTarget, null)
+        show()
+        openSearch()
+        field().dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+        flushSync()
+        expect(cancelWarm).toHaveBeenCalledTimes(1)
     })
 })
