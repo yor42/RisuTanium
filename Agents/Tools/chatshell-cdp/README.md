@@ -14,7 +14,7 @@ Every result from this folder is labelled "desktop-emulated, diagnostic" unless 
 | File | Purpose |
 |---|---|
 | `lib.mjs` | CDP connection, phone/desktop emulation, input helpers, `outDir()`, `hostRules()`, `chromeArgs()`. Importing it does nothing. |
-| `launch-chrome.mjs` | Starts Chrome with the host-blocking flags and writes `<out>/chrome.pid`. |
+| `launch-chrome.mjs` | Starts a loopback-only proxy, then Chrome behind it with the host-blocking flags; writes `<out>/chrome.pid`, `proxy.port`, `launcher.pid`, `launch-readback.json` and `proxy-refusals.jsonl`. Stays up while Chrome runs. |
 | `harness.mjs` | Diagnostic scenarios (table below). |
 | `inject.js` | The in-page logger `harness.mjs` injects (`window.__h`). |
 | `nolog.mjs` | Observer-free cross-check of one load-older write: `node nolog.mjs <version> <target> <label>`. |
@@ -27,6 +27,9 @@ Every result from this folder is labelled "desktop-emulated, diagnostic" unless 
 ## Safety rules
 
 - Start Chrome only through `launch-chrome.mjs`. It passes `--host-resolver-rules` from `lib.mjs` as one argument element: `mock.test` maps to 127.0.0.1; `*.risuai.xyz`, `risuai.xyz`, `*.risuai.net`, `risuai.net`, `discord.com`, `*.discord.com`, `discord.gg` and `*.discordapp.com` map to `~NOTFOUND`. It also turns off window-occlusion detection and background throttling, so a covered window still reports `visible` and runs rAF and timers. It prints the arguments it used.
+- Every PC brief requires the proxy belt: Chrome is launched only through `launch-chrome.mjs`, which adds a second layer to the resolver rules. It starts an HTTP proxy on 127.0.0.1 (OS-chosen port, or `--proxy-port`) in the launcher process and gives Chrome `--proxy-server=http://127.0.0.1:<port>` and `--proxy-bypass-list=<-loopback>`, so loopback traffic goes through the proxy too. The proxy forwards only to `localhost`, `127.0.0.1`, `[::1]` and `mock.test` (the alias the resolver rule maps to 127.0.0.1; it is dialled as 127.0.0.1 on the same port), for plain requests and CONNECT. Every other host gets a 403 (CONNECT: a 403 and the socket is destroyed), logged as one JSON line `{time, method, target}` to `<out>/proxy-refusals.jsonl` and stderr. Chrome's own background traffic shows up there too; that is expected. Requests the HTTP parser rejects (clientError) are dropped and logged there as `CLIENT_ERROR` with the error code.
+- Fail closed: the launcher spawns Chrome only after a TCP connect to the proxy succeeds (exit 6 otherwise). After CDP answers it reads back the effective arguments (CDP `Browser.getBrowserCommandLine`, which Chrome answers only with `--enable-automation`; else a CIM query of the spawned PID's command line) into `<out>/launch-readback.json`. If `--proxy-server` or `--host-resolver-rules` is missing, it kills only the spawned PID and exits 7. Check `launch-readback.json` before a run.
+- The proxy lives as long as the launcher. The launcher stays up while Chrome runs and exits 0 when Chrome exits, so start it as a background job. Killing the launcher leaves Chrome with no network. `<out>/proxy.port` and `<out>/launcher.pid` sit next to `chrome.pid`.
 - Plain fetch (the setting 직접 요청 보내기) must be ON before any send, with the custom API at `http://mock.test:9471/v1/chat/completions`. Use throwaway keys only.
 - Never tap unscripted elements on the home page (MC-1092): a stray tap once opened the community links.
 - Diagnostic runs keep `netlog.mjs` attached for the whole session. Report any host other than 127.0.0.1, `mock.test` or `fonts.googleapis.com`.
@@ -38,15 +41,17 @@ Every result from this folder is labelled "desktop-emulated, diagnostic" unless 
 
 ## launch-chrome.mjs
 
-`node launch-chrome.mjs [--port 9470] [--profile <dir>] [--out <dir>]`. Chrome is `CHROME_PATH` or an installed Chrome.
+`node launch-chrome.mjs [--port 9470] [--profile <dir>] [--out <dir>] [--proxy-port <n>]`. Chrome is `CHROME_PATH` or an installed Chrome. Run it as a background job: it stays up as the proxy and exits when Chrome exits.
 
 | Exit | Meaning |
 |---|---|
-| 0 | Started; the spawned child is alive and its `/json/version` answers; `chrome.pid` written |
+| 0 | Chrome was started, confirmed, read back and has since exited (the pid files were written while it ran) |
 | 2 | Bad argument, or the out dir or profile is inside the checkout |
 | 3 | The port is already in use (it answers `/json/version`, or cannot be bound) |
 | 4 | No Chrome found; a `CHROME_PATH` that does not exist never falls back |
 | 5 | The spawned child exited or never answered within 15 s: the port is not ours |
+| 6 | The proxy did not start (for example `--proxy-port` occupied) or refused a TCP connect; Chrome was not spawned |
+| 7 | The read-back arguments lack `--proxy-server` or `--host-resolver-rules`; the spawned PID was killed |
 
 ## Setup
 

@@ -9,7 +9,7 @@
     "amendment": "2026-11-03-parallel-records",
     "authority": "docs/workflow/2026-11-03-parallel-tracks.md",
     "maxRecordsTracks": 1,
-    "maxDeviceTracks": 1,
+    "maxDeviceTracks": 3,
     "recordsPrimary": { "provider": "claude", "role": "record-clerk", "model": "haiku", "effort": "low" },
     "devicePrimary": { "provider": "claude", "role": "sonnet-coder", "model": "sonnet", "effort": "medium" },
     "testPrimary": { "provider": "claude", "role": "test-warrior", "model": "sonnet", "effort": "medium" }

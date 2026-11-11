@@ -24,15 +24,17 @@ function fixture(t) {
   };
   return { root, make };
 }
-test('two code tracks, one records draft, one pinned device and readonly work coexist; third code is refused', async t => {
+test('code tracks up to the policy cap, one records draft, one pinned device and readonly work coexist; one more code is refused', async t => {
   const { root, make } = fixture(t);
-  await registerDispatch(make('code-a'), { root }); await registerDispatch(make('code-b'), { root });
+  const codeCap = JSON.parse(fs.readFileSync(path.join(root, '.claude/workflow-policy.json'), 'utf8')).maxImplementationTracks;
+  assert.ok(Number.isInteger(codeCap) && codeCap >= 1);
+  for (let i = 0; i < codeCap; i++) await registerDispatch(make(`code-${i}`), { root });
   const records = await registerDispatch(make('records', { workClass: 'records', repoRoot: root, allowedWrites: ['Agents/Roadmap.md'] }), { root });
   assert.equal(records.model, 'haiku'); assert.equal(records.role, 'record-clerk');
   await registerDispatch(make('device', { mode: 'scout', workClass: 'device', repoRoot: root, allowedWrites: [], resources: ['device:fixture-serial', 'tcp:6450'], artifact: { sha256: 'a'.repeat(64), sourceRevision: 'fixture-base' } }), { root });
   await registerDispatch(make('readonly', { mode: 'review', workClass: 'code', allowedWrites: [] }), { root });
-  await assert.rejects(registerDispatch(make('code-c'), { root }), /Implementation track cap/);
-  assert.equal(Object.keys(loadState(root).dispatches).length, 5);
+  await assert.rejects(registerDispatch(make('code-over'), { root }), /Implementation track cap/);
+  assert.equal(Object.keys(loadState(root).dispatches).length, codeCap + 3);
 });
 test('same code checkout is exclusive while a disjoint records edit may share it', async t => {
   const { root, make } = fixture(t);
@@ -68,13 +70,17 @@ test('exact destinations and normalized resources stay exclusive across scheduli
   assert.equal(normalizeResource('build:C:\\TEMP\\Owned\\'), normalizeResource('build:c:/temp/owned'));
   assert.throws(() => normalizeResource('tcp:6450-6499'), /individually/);
 });
-test('records and device each have one slot; builds reserve mutable source independently of code caps', async t => {
+test('records has one slot and device the policy cap; builds reserve mutable source independently of code caps', async t => {
   const { root, make } = fixture(t);
+  const deviceCap = JSON.parse(fs.readFileSync(path.join(root, '.claude/workflow-policy.json'), 'utf8')).scheduling.maxDeviceTracks;
+  assert.ok(Number.isInteger(deviceCap) && deviceCap >= 2);
   await registerDispatch(make('records-a', { workClass: 'records', allowedWrites: [] }), { root });
   await assert.rejects(registerDispatch(make('records-b', { workClass: 'records', allowedWrites: [] }), { root }), /Records track cap/);
   await registerDispatch(make('build', { mode: 'scout', workClass: 'device', allowedWrites: [], devicePhase: 'build', resources: ['device:phone', `checkout:${root}`] }), { root });
   await assert.rejects(registerDispatch(make('code', { repoRoot: root }), { root }), /resource ownership overlaps/);
-  await assert.rejects(registerDispatch(make('device-b', { mode: 'scout', workClass: 'device', allowedWrites: [], resources: ['device:other'], artifact: { sha256: 'c'.repeat(64), sourceRevision: 'base' } }), { root }), /Device track cap/);
+  await registerDispatch(make('device-b', { mode: 'scout', workClass: 'device', allowedWrites: [], resources: ['device:other'], artifact: { sha256: 'c'.repeat(64), sourceRevision: 'base' } }), { root });
+  for (let i = 2; i < deviceCap; i++) await registerDispatch(make(`device-x${i}`, { mode: 'scout', workClass: 'device', allowedWrites: [], resources: [`device:extra${i}`], artifact: { sha256: 'e'.repeat(64), sourceRevision: 'base' } }), { root });
+  await assert.rejects(registerDispatch(make('device-c', { mode: 'scout', workClass: 'device', allowedWrites: [], resources: ['device:third'], artifact: { sha256: 'd'.repeat(64), sourceRevision: 'base' } }), { root }), /Device track cap/);
 });
 test('legacy registered and running records keep hashes/routes and do not occupy code slots', async t => {
   const { root, make } = fixture(t);
