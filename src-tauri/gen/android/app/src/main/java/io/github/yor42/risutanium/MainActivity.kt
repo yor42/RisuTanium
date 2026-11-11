@@ -32,6 +32,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import java.lang.ref.WeakReference
 
 class MainActivity : TauriActivity() {
   private var backWebView: WebView? = null
@@ -47,6 +48,46 @@ class MainActivity : TauriActivity() {
   private var pendingTarget: NoticeTarget? = null
 
   private val replyNotifier by lazy { ReplyNotifier(applicationContext) }
+
+  // Declared before barGate, which is built from it. The callback and the timeout it creates are
+  // top-level classes holding only a weak reference to the gate, so the long-lived WebView never
+  // holds this activity.
+  private val barGateEffects: BarColorGateEffects = object : BarColorGateEffects {
+    private var timeoutRunnable: Runnable? = null
+
+    override fun postVisualState(requestId: Long): Boolean {
+      val view = backWebView ?: return false
+      return try {
+        view.postVisualStateCallback(requestId, BarVisualStateCallback(WeakReference(barGate)))
+        true
+      } catch (error: Exception) {
+        Log.w("SystemBars", "visual state callback not posted", error)
+        false
+      }
+    }
+
+    override fun postTimeout(episode: Long, delayMs: Long) {
+      cancelTimeout()
+      val runnable = BarTimeoutRunnable(WeakReference(barGate), episode)
+      timeoutRunnable = runnable
+      mainHandler.postDelayed(runnable, delayMs)
+    }
+
+    override fun cancelTimeout() {
+      timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+      timeoutRunnable = null
+    }
+
+    override fun apply(color: Int, via: BarColorVia) {
+      applyBarColor(color)
+      Log.i("SystemBars", "bar colour applied via=$via")
+    }
+  }
+
+  // Every colour the page sends goes through the gate; main thread only.
+  private val barGate: BarColorGate = BarColorGate(barGateEffects)
+
+  private fun requestBarColor(color: Int) = barGate.request(color)
 
   // Registered in the initializer, before the activity starts, as the result API requires.
   private val replyPermissionRequest =
@@ -194,7 +235,7 @@ class MainActivity : TauriActivity() {
         APP_ORIGIN,
         gestureInsets,
         imeState,
-        SystemBarsBridge(::applyBarColor),
+        SystemBarsBridge(::requestBarColor),
         KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce, ::answerOpenTarget),
         newReplyNotificationsBridge(),
         OpenedFilesBridge(contentResolver)
@@ -284,7 +325,7 @@ class MainActivity : TauriActivity() {
   private fun addSeparateHostObjects(webView: WebView) {
     webView.addJavascriptInterface(GestureInsetBridge(gestureInsets), "__risuTaniumGestureInset")
     webView.addJavascriptInterface(ImeBridge(imeState), "__risuTaniumIme")
-    webView.addJavascriptInterface(SystemBarsBridge(::applyBarColor), "__risuTaniumSystemBars")
+    webView.addJavascriptInterface(SystemBarsBridge(::requestBarColor), "__risuTaniumSystemBars")
     webView.addJavascriptInterface(
       KeepAliveBridge(applicationContext, ::requestKeepAliveNotificationPermissionOnce, ::answerOpenTarget),
       "__risuTaniumKeepAlive"
@@ -374,6 +415,7 @@ class MainActivity : TauriActivity() {
   // The service never outlives its activity. A recreated activity's page stops it at init when no
   // work is in flight and starts it again when work is.
   override fun onDestroy() {
+    barGate.dispose()
     KeepAliveService.stop(applicationContext)
     super.onDestroy()
   }
@@ -486,5 +528,19 @@ class MainActivity : TauriActivity() {
     // Relative luminance above which dark icons contrast better than light ones (equal contrast
     // against white and black).
     private const val LIGHT_BACKGROUND_LUMINANCE = 0.179
+  }
+}
+
+// Top-level, so neither class has an outer activity reference: the WebView outlives the activity
+// and holds the callback until it fires, and the gate is reached only through the weak reference.
+private class BarVisualStateCallback(private val gate: WeakReference<BarColorGate>) : WebView.VisualStateCallback() {
+  override fun onComplete(requestId: Long) {
+    gate.get()?.onReady(requestId)
+  }
+}
+
+private class BarTimeoutRunnable(private val gate: WeakReference<BarColorGate>, private val episode: Long) : Runnable {
+  override fun run() {
+    gate.get()?.onTimeout(episode)
   }
 }

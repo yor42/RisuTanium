@@ -59,9 +59,10 @@ export function cssColorToRgb(value: string): Rgb {
 
 // From page load until the boot screen hands over, the host keeps its own boot colour on the bars,
 // so a colour the page applies meanwhile is only remembered; the last one wins. The release sends
-// it once, after the frame that paints the app has gone out, so the bars never change while the
-// boot screen is still visible. The wait is approximate and only ever later than that frame,
-// never earlier. Afterwards every colour goes straight to the host.
+// it once, after the frame that paints the app has run its main-thread paint. The Android host
+// then applies the colour only when the WebView content of that moment is ready to draw, so the
+// bars change in step with the page and not before it. Afterwards every colour goes straight to
+// the host, which gates each one the same way.
 let released = false
 let held: string | null = null
 let releaseScheduled = false
@@ -107,7 +108,11 @@ export function releaseSystemBars(): void {
     }
 }
 
-/** Releases the hold after the frame that follows this call has painted; only the first call schedules. */
+/**
+ * Releases the hold after the frame that follows this call has run its main-thread paint; only the
+ * first call schedules. This does not mean the frame is presented: the Android host orders the bar
+ * change with the WebView's content.
+ */
 export function releaseSystemBarsAfterPaint(): void {
     if (releaseScheduled) {
         return

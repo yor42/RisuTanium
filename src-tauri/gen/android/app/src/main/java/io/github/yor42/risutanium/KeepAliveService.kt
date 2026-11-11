@@ -16,6 +16,9 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
 
 // Keeps the process alive while the page has work in flight (a reply, speech, an image, a
 // translation, an import or export). It is started only by KeepAliveBridge.start() and stopped by
@@ -30,7 +33,8 @@ import androidx.core.app.NotificationCompat
 // A v2 page sends a whole notice (KeepAliveNotice) that the display machine and noticePlan turn into
 // content; an old page sends a title and a Stop label, which are shown as before. The Stop tap
 // enters Stopping here, before the page is told, and the timeout below ends it if the stoppable work
-// does not.
+// does not, while the app is in the foreground. Every change to the display goes through
+// changeDisplay, which ends by bringing the one Stopping timer in line with the display.
 class KeepAliveService : Service() {
   private var title = ""
   private var stopLabel = ""
@@ -41,8 +45,18 @@ class KeepAliveService : Service() {
   private val avatars = LinkedHashMap<String, Bitmap>()
   private val mainHandler = Handler(Looper.getMainLooper())
   private val stoppingTimeout = Runnable {
-    if (display.stopTimeout()) {
+    if (changeDisplay { display.stopTimeout() }) {
       repost()
+    }
+  }
+
+  // The app's visibility is the process lifecycle's STARTED state, so a configuration change that
+  // recreates the activity does not read as hidden.
+  private val appVisibility = LifecycleEventObserver { _, event ->
+    when (event) {
+      Lifecycle.Event.ON_START -> onAppForeground(true)
+      Lifecycle.Event.ON_STOP -> onAppForeground(false)
+      else -> Unit
     }
   }
 
@@ -60,9 +74,15 @@ class KeepAliveService : Service() {
       channel.setShowBadge(false)
       getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
+    // addObserver replays events only up to the current state, so a service started while the app is
+    // hidden would never see ON_STOP: the current state is read first.
+    val processLifecycle = ProcessLifecycleOwner.get().lifecycle
+    onAppForeground(processLifecycle.currentState.isAtLeast(Lifecycle.State.STARTED))
+    processLifecycle.addObserver(appVisibility)
   }
 
   override fun onDestroy() {
+    ProcessLifecycleOwner.get().lifecycle.removeObserver(appVisibility)
     mainHandler.removeCallbacks(stoppingTimeout)
     if (live === this) {
       live = null
@@ -88,7 +108,7 @@ class KeepAliveService : Service() {
       showV1Notice(extraTitle, intent.getStringExtra(EXTRA_STOP_LABEL) ?: "")
     }
     // The Stop tap enters Stopping before the notification is built and before the page is told.
-    val stopTap = if (intent?.action == ACTION_STOP) display.stopTapped() else StopTap.PLAIN
+    val stopTap = if (intent?.action == ACTION_STOP) changeDisplay { display.stopTapped() } else StopTap.PLAIN
     try {
       val notification = buildNotification()
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -101,9 +121,6 @@ class KeepAliveService : Service() {
       stopSelf()
       return START_NOT_STICKY
     }
-    if (stopTap == StopTap.ENTERED) {
-      armStoppingTimeout()
-    }
     // A tap while Stopping is stale: the stop is already on its way.
     if (intent?.action == ACTION_STOP && stopTap != StopTap.STALE && !MainActivity.deliverKeepAliveStop()) {
       // No live page can act on the stop, so nothing is left to keep alive.
@@ -112,24 +129,38 @@ class KeepAliveService : Service() {
     return START_NOT_STICKY
   }
 
-  private fun armStoppingTimeout() {
+  // The single place the display changes, so every change ends with the timer in line with it.
+  private fun <T> changeDisplay(change: () -> T): T {
+    val result = change()
+    syncStoppingTimer()
+    return result
+  }
+
+  // The timer is pending exactly while the display is Stopping and the app is in the foreground. A
+  // pending timer is never restarted by another sync.
+  private fun syncStoppingTimer() {
+    val timerChange = display.takeTimerChange()
+    if (timerChange == TimerChange.NONE) return
     mainHandler.removeCallbacks(stoppingTimeout)
-    mainHandler.postDelayed(stoppingTimeout, STOPPING_TIMEOUT_MS)
+    if (timerChange == TimerChange.ARM) {
+      mainHandler.postDelayed(stoppingTimeout, STOPPING_TIMEOUT_MS)
+    }
+    Log.i(TAG, "Stopping timer $timerChange")
+  }
+
+  private fun onAppForeground(visible: Boolean) {
+    changeDisplay { display.appForeground(visible) }
   }
 
   private fun showV1Notice(newTitle: String, newStopLabel: String) {
-    display.reset()
-    mainHandler.removeCallbacks(stoppingTimeout)
+    changeDisplay { display.reset() }
     title = newTitle
     stopLabel = newStopLabel
   }
 
-  // Stopping ends, and its timeout is cancelled, when the page reports no stoppable work.
   private fun showPageNotice(notice: KeepAliveNotice) {
     keepAvatar(notice)
-    if (display.pageNotice(notice)) {
-      mainHandler.removeCallbacks(stoppingTimeout)
-    }
+    changeDisplay { display.pageNotice(notice) }
   }
 
   // Decodes the avatar a notice carries and keeps it under the notice's identity key, at most
@@ -173,10 +204,7 @@ class KeepAliveService : Service() {
   // the display was Stopping, where it still ends Stopping as Stopped.
   private fun applyOutcome(notice: KeepAliveNotice?) {
     if (notice != null) keepAvatar(notice)
-    val leftStopping = display.outcome(notice)
-    if (leftStopping) {
-      mainHandler.removeCallbacks(stoppingTimeout)
-    }
+    val leftStopping = changeDisplay { display.outcome(notice) }
     if (notice != null || leftStopping) {
       repost()
     }
