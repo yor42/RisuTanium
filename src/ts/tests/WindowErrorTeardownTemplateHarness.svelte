@@ -10,8 +10,24 @@
     let shown = $state(true)
     const text = $derived($alertLike)
 
+    // The removal is driven from an effect: a write made inside an effect re-runs the {#if} block eagerly in either
+    // scheduler, so the handler throws on the block effect's stack, where the guard must defer its report.
+    // The counter lets a test prove the removal went through this effect and not a direct write.
+    let hideRequested = $state(false)
+    let effectHides = 0
+    $effect(() => {
+        if (hideRequested) {
+            effectHides++
+            shown = false
+        }
+    })
+
     export function hide(): void {
-        shown = false
+        hideRequested = true
+    }
+
+    export function effectHideCount(): number {
+        return effectHides
     }
 </script>
 

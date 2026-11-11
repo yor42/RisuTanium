@@ -8,6 +8,8 @@
  * REAL: `DefaultChatScreen.svelte`, `utilityGate.ts`, the page-mode store. MOCKED: the desktop-transport probe (so a
  * non-desktop page can be simulated) and everything else `DefaultChatScreen` imports, as in
  * `DefaultChatScreen.chatPanel.svelte.test.ts`; the Home shell and `UtilityScreen` are marker stubs.
+ * The marker stubs are raw snippets, which render their own nodes into the branch that owns them: a stub that wrote into
+ * the anchor it is handed would lose its marker when the async scheduler builds a branch created after mount offscreen.
  */
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { writable } from 'svelte/store'
@@ -227,16 +229,14 @@ vi.mock('./Suggestion.svelte', () => ({
 vi.mock('../Playground/PlaygroundMenu.svelte', () => ({
     default: (_anchor: unknown) => {},
 }))
-vi.mock('../UI/Home/HomeShell.svelte', () => ({
-    default: (anchor: Text) => {
-        anchor.data = 'main-menu-stub'
-    },
-}))
-vi.mock('../Utility/UtilityScreen.svelte', () => ({
-    default: (anchor: Text) => {
-        anchor.data = 'utility-screen-stub'
-    },
-}))
+vi.mock('../UI/Home/HomeShell.svelte', async () => {
+    const { createRawSnippet } = await import('svelte')
+    return { default: createRawSnippet(() => ({ render: () => '<span>main-menu-stub</span>' })) }
+})
+vi.mock('../Utility/UtilityScreen.svelte', async () => {
+    const { createRawSnippet } = await import('svelte')
+    return { default: createRawSnippet(() => ({ render: () => '<span>utility-screen-stub</span>' })) }
+})
 
 //#endregion
 

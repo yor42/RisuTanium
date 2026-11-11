@@ -67,6 +67,8 @@ test('(R) a throwing delegated onfocusout handler during block teardown still sh
     flushSync()
     vi.restoreAllMocks()
     expect(target.querySelector('[data-part="field"]')).toBeNull()
+    // The removal must have run from the harness effect; a direct write would not exercise the guarded stack.
+    expect((host as { effectHideCount(): number }).effectHideCount()).toBe(1)
 
     await tick()
     await Promise.resolve()

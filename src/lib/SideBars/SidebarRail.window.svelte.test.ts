@@ -628,13 +628,15 @@ describe('ARIA position', () => {
 })
 
 describe('reveal and press pins', () => {
-    // Geometry is installed but no animation frame has run, so the rail has not read it: its
-    // window is still the unmeasured one (about 768 px plus overscan) while the container is
-    // 2000 px high. A scroll-to-active target 2900 px down is then within the smooth range but
-    // outside the mounted window, and only the reveal pin can keep it mounted.
+    // The rail has read its 600 px viewport and has been scrolled to row 57, so c40 is above the
+    // mounted window. Scrolling to c40 then lies 1156 px away, within the smooth range, while
+    // the target is outside the window: only the reveal pin can keep it mounted. A target
+    // beyond the window cannot be reached with a viewport the rail has not read, so the rail
+    // must already have read it.
     async function startSmoothScrollToActive(focusKey: string | null = null) {
-        await mountRail(ids(200), { height: null, extra: { animationSpeed: 0.2 } })
-        geo = installGeometry(root, 2000)!
+        await mountRail(ids(200), { height: 600, extra: { animationSpeed: 0.2 } })
+        await geo.scrollAndSettle(rowTop(57))
+        expect(entryOf(charKey('c40'))).toBeNull()
         const scrollTo = vi.fn()
         Object.defineProperty(scrollerOf(root), 'scrollTo', { configurable: true, value: scrollTo })
         if (focusKey) {
@@ -662,10 +664,10 @@ describe('reveal and press pins', () => {
     })
 
     test('(G) an arrow key that only moves focus leaves the pin of a scroll-to-active in flight alone', async () => {
-        await startSmoothScrollToActive(charKey('c0'))
+        await startSmoothScrollToActive(charKey('c57'))
         expect(entryOf(charKey('c40'))).not.toBeNull()
         await pressAndSettle(document.activeElement!, 'ArrowDown')
-        expect(focusedKey()).toBe(charKey('c1'))
+        expect(focusedKey()).toBe(charKey('c58'))
         expect(entryOf(charKey('c40'))).not.toBeNull()
     })
 
@@ -690,6 +692,46 @@ describe('reveal and press pins', () => {
         window.dispatchEvent(pointer('pointerup', pressY))
         await settleFrame()
         expect(entryOf(charKey('c2'))).toBeNull()
+    })
+})
+
+describe('a rail unmounted while a reveal or scroll-to-active is pending', () => {
+    // A continuation after an await must not touch the scroller of a destroyed rail: it would
+    // throw as an unhandled rejection. Each test unmounts at a different await.
+    async function expectNothingRaised(start: () => void): Promise<void> {
+        const reasons: unknown[] = []
+        const record = (reason: unknown) => { reasons.push(reason) }
+        process.on('unhandledRejection', record)
+        try {
+            start()
+            await unmountRail()
+            await settleFrame()
+            await settleFrame()
+            expect(reasons).toEqual([])
+        } finally {
+            process.off('unhandledRejection', record)
+        }
+    }
+
+    test('(G) Alt+Arrow whose move awaits a tick before its reveal raises nothing', async () => {
+        await mountRail(ids(200))
+        const el = focusEntry(charKey('c3'))
+        await expectNothingRaised(() => { el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true, bubbles: true, cancelable: true })) })
+    })
+
+    test('(G) End whose reveal scrolls an out-of-view entry first raises nothing', async () => {
+        await mountRail(ids(200))
+        const el = focusEntry(charKey('c3'))
+        await expectNothingRaised(() => { el.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true })) })
+    })
+
+    test('(G) a scroll-to-active still waiting for its folder raises nothing', async () => {
+        await mountRail(ids(200))
+        await expectNothingRaised(() => {
+            selectedCharID.set(40)
+            window.dispatchEvent(new Event('scrollToActiveCharacter'))
+            selectedCharID.set(-1)
+        })
     })
 })
 
