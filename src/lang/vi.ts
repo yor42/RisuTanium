@@ -235,6 +235,8 @@ export const languageVietnamese = {
     keepAliveCharacters: "{count} ký tự",
     replyNoticeText: "Đã phản hồi",
     replyNoticePublicTitle: "Phản hồi mới",
+    notificationsOffNotice: "Thông báo đang tắt nên các phản hồi chạy nền không có nút Dừng trong bảng thông báo.",
+    notificationsOffOpenSettings: "Mở cài đặt",
     chatShellAllCharacters: "Tất cả nhân vật",
     chatShellRecentCharacters: "Nhân vật gần đây",
     chatShellGroupName: (name: string) => `${name} (nhóm)`,

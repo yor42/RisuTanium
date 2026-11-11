@@ -18,7 +18,8 @@ class ReplyNotificationsBridge(
   appContext: Context,
   private val onRefresh: () -> Unit,
   private val onEnable: () -> Unit,
-  private val onDisable: () -> Unit
+  private val onDisable: () -> Unit,
+  private val onOpenSettings: () -> Unit
 ) {
   private val mainHandler = Handler(Looper.getMainLooper())
   private val notifier = ReplyNotifier(appContext)
@@ -36,6 +37,12 @@ class ReplyNotificationsBridge(
   @JavascriptInterface
   fun disable() {
     mainHandler.post { onDisable() }
+  }
+
+  // Opens the app's system notification settings only; it never changes the opt-in.
+  @JavascriptInterface
+  fun openNotificationSettings() {
+    mainHandler.post { onOpenSettings() }
   }
 
   @JavascriptInterface

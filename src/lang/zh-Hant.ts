@@ -235,6 +235,8 @@ export const languageChineseTraditional = {
     "keepAliveCharacters": "{count} 個字元",
     "replyNoticeText": "回覆完成",
     "replyNoticePublicTitle": "新回覆",
+    "notificationsOffNotice": "通知已關閉，因此背景回覆在通知欄中沒有「停止」按鈕。",
+    "notificationsOffOpenSettings": "開啟設定",
     "chatShellAllCharacters": "所有角色",
     "chatShellRecentCharacters": "最近的角色",
     "chatShellGroupName": (name: string) => `${name}（群組）`,

@@ -235,6 +235,8 @@ export const languageChinese = {
     "keepAliveCharacters": "{count} 个字符",
     "replyNoticeText": "回复完成",
     "replyNoticePublicTitle": "新回复",
+    "notificationsOffNotice": "通知已关闭，因此后台回复在通知栏中没有“停止”按钮。",
+    "notificationsOffOpenSettings": "打开设置",
     "chatShellAllCharacters": "所有角色",
     "chatShellRecentCharacters": "最近的角色",
     "chatShellGroupName": (name: string) => `${name}（群组）`,

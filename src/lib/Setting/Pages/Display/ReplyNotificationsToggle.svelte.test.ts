@@ -48,6 +48,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
 import { language } from 'src/lang'
 import { createHostChannelFake, type HostChannelFake } from 'src/ts/android/hostChannelFake'
 import { installReplyNotifications, state } from 'src/ts/android/replyNotifications.svelte'
+import * as replyNotificationsModule from 'src/ts/android/replyNotifications.svelte'
 import { displaySettingsItems } from 'src/ts/setting/displaySettingsData.svelte'
 import { DISPLAY_SHELL_SECTIONS } from 'src/ts/setting/displayShellSettingsData'
 import ReplyNotificationsToggle from './ReplyNotificationsToggle.svelte'
@@ -68,6 +69,15 @@ function show(): HTMLElement {
     return target
 }
 
+/** The host's push as pushReplyNotificationsState sends it, with the app-level field when `appNotifications` is given. */
+function reportStateWithApp(optedIn: boolean, enabled: boolean, appNotifications?: boolean): void {
+    const json = appNotifications === undefined
+        ? JSON.stringify({ optedIn, enabled })
+        : JSON.stringify({ optedIn, enabled, appNotifications })
+    window.__risuTaniumReplyNotificationsState?.(json)
+    flushSync()
+}
+
 const box = (target: HTMLElement): HTMLInputElement => target.querySelector<HTMLInputElement>('input[type="checkbox"]')!
 
 beforeEach(() => {
@@ -75,6 +85,7 @@ beforeEach(() => {
     state.known = false
     state.optedIn = false
     state.enabled = false
+    replyNotificationsModule.resetNotificationsOffNoticeForTests?.()
     fake = createHostChannelFake()
     window.__risuTaniumHost = fake.channel
     installReplyNotifications()
@@ -147,6 +158,73 @@ describe('the switch (T27b)', () => {
         reportState(true, true)
         expect(target.querySelector('[data-part="reply-notifications-status"]')).toBeNull()
         expect(box(target).checked).toBe(true)
+    })
+})
+
+describe('the app-level notifications-off line (DD-009)', () => {
+    const line = (target: HTMLElement) => target.querySelector<HTMLElement>('[data-part="notifications-off-line"]')
+    const status = (target: HTMLElement) => target.querySelector('[data-part="reply-notifications-status"]')
+    const openButton = (target: HTMLElement) => line(target)?.querySelector<HTMLButtonElement>('button[data-action="open-settings"]')
+
+    test('P3: app notifications off shows the line and [Open settings], whatever the reply switch says', () => {
+        const target = show()
+        expect(line(target)).toBeNull()
+
+        reportStateWithApp(false, false, false)
+        expect(line(target)).not.toBeNull()
+        expect(line(target)?.textContent).toContain(language.notificationsOffNotice)
+        expect(openButton(target)?.textContent).toBe(language.notificationsOffOpenSettings)
+        expect(box(target).checked).toBe(false)
+    })
+
+    test('P3b: allowing notifications again removes the line on the next push', () => {
+        const target = show()
+        reportStateWithApp(false, false, false)
+        expect(line(target)).not.toBeNull()
+
+        reportStateWithApp(false, true, true)
+        expect(line(target)).toBeNull()
+    })
+
+    test('P4: [Open settings] asks the host for the settings screen once and never for enable', () => {
+        const target = show()
+        reportStateWithApp(false, false, false)
+        const button = openButton(target)
+        expect(button).toBeTruthy()
+
+        button?.click()
+        flushSync()
+        expect(fake.postedTo('replyNotifications', 'openNotificationSettings')).toHaveLength(1)
+        expect(fake.postedTo('replyNotifications', 'enable')).toEqual([])
+        expect(box(target).checked).toBe(false)
+    })
+
+    test('P5: opted in and blocked at the app level shows only the new line, not the blocked line', () => {
+        const target = show()
+        reportStateWithApp(true, false, false)
+        expect(line(target)).not.toBeNull()
+        expect(status(target)).toBeNull()
+    })
+
+    test('P6 (guard): with the app allowed and the reply channel off only the blocked line shows, as before', () => {
+        const target = show()
+        reportStateWithApp(true, false, true)
+        expect(line(target)).toBeNull()
+        expect(status(target)?.textContent).toBe(language.replyNotificationsBlocked)
+    })
+
+    test('P6b (guard): an old host sends no appNotifications, so the blocked line shows and the new line never does', () => {
+        const target = show()
+        reportStateWithApp(true, false)
+        expect(line(target)).toBeNull()
+        expect(status(target)?.textContent).toBe(language.replyNotificationsBlocked)
+    })
+
+    test('P11 (guard): a fresh state renders no line', () => {
+        const target = show()
+        reportStateWithApp(false, true, true)
+        expect(line(target)).toBeNull()
+        expect(openButton(target)).toBeUndefined()
     })
 })
 

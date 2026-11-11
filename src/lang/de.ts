@@ -235,6 +235,8 @@ export const languageGerman = {
     "keepAliveCharacters": "{count} Zeichen",
     "replyNoticeText": "Antwort fertig",
     "replyNoticePublicTitle": "Neue Antwort",
+    "notificationsOffNotice": "Benachrichtigungen sind ausgeschaltet, daher gibt es für Antworten im Hintergrund keine Stopp-Schaltfläche im Benachrichtigungsbereich.",
+    "notificationsOffOpenSettings": "Einstellungen öffnen",
     "chatShellAllCharacters": "Alle Figuren",
     "chatShellRecentCharacters": "Zuletzt verwendete Figuren",
     "chatShellGroupName": (name: string) => `${name} (Gruppe)`,

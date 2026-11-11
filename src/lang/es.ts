@@ -235,6 +235,8 @@ export const languageSpanish = {
     keepAliveCharacters: "{count} caracteres",
     replyNoticeText: "Respuesta lista",
     replyNoticePublicTitle: "Nueva respuesta",
+    notificationsOffNotice: "Las notificaciones están desactivadas, por lo que las respuestas en segundo plano no tienen botón Detener en el panel de notificaciones.",
+    notificationsOffOpenSettings: "Abrir ajustes",
     chatShellAllCharacters: "Todos los personajes",
     chatShellRecentCharacters: "Personajes recientes",
     chatShellGroupName: (name: string) => `${name} (grupo)`,

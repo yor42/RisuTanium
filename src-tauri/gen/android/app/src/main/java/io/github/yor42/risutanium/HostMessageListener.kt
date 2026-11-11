@@ -141,6 +141,7 @@ class HostMessageListener(
       is BridgeCommand.ReplyNotificationsRefresh -> replyNotifications.refresh()
       is BridgeCommand.ReplyNotificationsEnable -> replyNotifications.enable()
       is BridgeCommand.ReplyNotificationsDisable -> replyNotifications.disable()
+      is BridgeCommand.ReplyNotificationsOpenSettings -> replyNotifications.openNotificationSettings()
       is BridgeCommand.ReplyNotificationsNotify ->
         replyNotifications.notify(command.key, command.title, command.body, command.silent)
       is BridgeCommand.ReplyNotificationsNotifyState -> replyNotifications.notifyState(command.json)

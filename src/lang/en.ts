@@ -235,6 +235,8 @@ export const languageEnglish = {
     keepAliveCharacters: '{count} characters',
     replyNoticeText: 'Replied',
     replyNoticePublicTitle: 'New reply',
+    notificationsOffNotice: 'Notifications are off, so background replies have no Stop button in the notification shade.',
+    notificationsOffOpenSettings: 'Open settings',
     chatShellAllCharacters: 'All characters',
     chatShellRecentCharacters: 'Recent characters',
     chatShellGroupName: (name: string) => `${name} (group)`,
