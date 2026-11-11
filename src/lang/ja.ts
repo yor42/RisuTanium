@@ -2035,6 +2035,7 @@ export const languageJapanese = {
     studioHistoryRevert: "ここまで戻す",
     studioHistoryDeleted: "削除した最初のメッセージ",
     studioHistoryDeletedEmpty: "削除した最初のメッセージはありません。",
+    studioHistoryRevertListSkipped: "最初のメッセージに対する以前の変更の一部は元に戻せませんでした。",
     studioHistoryRestoreItem: "復元",
     studioHistoryRestorePoint: "復元ポイント",
     studioHistoryRestorePointNote: "前回の訪問での最初の編集より前の値です。",

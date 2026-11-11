@@ -3,6 +3,7 @@
 // items). It never reads a clock, a global or the live character: the live values reach it
 // through a `LiveReader` snapshot, and the writes it decides on leave it as `WriteOp`s.
 
+import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
 import { parseOwnerKey, type OwnerKey } from './ownerPhase'
 
 // Typing in one field extends the open step while each write follows the previous one by less
@@ -62,17 +63,27 @@ export type StepLabel =
 export type Op =
     | { op: 'set'; path: SetPath; before: FieldValue; after: FieldValue }
     | { op: 'listSet'; index: number; before: string; after: string }
-    | { op: 'listInsert'; index: number; value: string }
+    // `deletedId` marks an insert that consumes the deleted item with that id; a plain insert has none.
+    | { op: 'listInsert'; index: number; value: string; deletedId?: string }
     // `deletedId` links a delete to its deleted item; a removal made by a restore or a revert has none.
     | { op: 'listRemove'; index: number; value: string; deletedId: string | null }
     // `chatId: null` stands for a chat without a unique id: the side effect happened by index and cannot be replayed.
     | { op: 'chatFm'; chatId: string | null; before: FmValue; after: FmValue }
+
+// Fingerprints of the whole greeting list on the two sides of the step's list ops: `before` is the
+// list its forward ops start from, `after` the list they produce.
+export interface ListFingerprint {
+    before: number
+    after: number
+}
 
 export interface Step {
     id: string
     at: number
     label: StepLabel
     ops: Op[]
+    // Present exactly when the stored ops hold a listInsert or listRemove and the list was known.
+    listFingerprint?: ListFingerprint
 }
 
 export interface DeletedItem {
@@ -224,8 +235,15 @@ function parseOp(value: unknown, kind: OwnerKind): Op | null {
                 ? { op: 'listSet', index: value.index, before: value.before, after: value.after }
                 : null
         case 'listInsert':
-            return isIndex(value.index) && typeof value.value === 'string'
-                ? { op: 'listInsert', index: value.index, value: value.value }
+            if (!isIndex(value.index) || typeof value.value !== 'string') {
+                return null
+            }
+            // Absent on a plain insert. A present value must be a string; null is not a tag.
+            if (value.deletedId === undefined) {
+                return { op: 'listInsert', index: value.index, value: value.value }
+            }
+            return typeof value.deletedId === 'string'
+                ? { op: 'listInsert', index: value.index, value: value.value, deletedId: value.deletedId }
                 : null
         case 'listRemove': {
             const deletedId = nullableString(value.deletedId)
@@ -264,7 +282,24 @@ function parseStep(value: unknown, kind: OwnerKind): Step | null {
         }
         ops.push(op)
     }
-    return { id: value.id, at: value.at, label, ops }
+    // Absent on a step written before the field existed. Any other present value, and any value on a
+    // chat owner, makes the record unreadable.
+    if (value.listFingerprint === undefined) {
+        return { id: value.id, at: value.at, label, ops }
+    }
+    const fingerprint = kind === 'chat' ? null : parseListFingerprint(value.listFingerprint)
+    return fingerprint ? { id: value.id, at: value.at, label, ops, listFingerprint: fingerprint } : null
+}
+
+function isHash(value: unknown): value is number {
+    return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+}
+
+function parseListFingerprint(value: unknown): ListFingerprint | null {
+    if (!isObject(value) || !isHash(value.before) || !isHash(value.after)) {
+        return null
+    }
+    return { before: value.before, after: value.after }
 }
 
 function parseDeleted(value: unknown): DeletedItem | null {
@@ -404,7 +439,9 @@ export interface RestoreWrite {
     after: RestoreValue
 }
 
-export type ModelRefusal = 'empty' | 'unknown' | 'precondition'
+// `unchanged` is returned by planRevert only: the revert's net effect is nothing. It is an in-memory
+// result and is never stored or posted.
+export type ModelRefusal = 'empty' | 'unknown' | 'precondition' | 'unchanged'
 
 export interface StepPlan {
     ok: true
@@ -420,9 +457,20 @@ export interface StepPlan {
     skipped: number
     // True when a chat-side effect could not be replayed (the chat has no unique id).
     fmNotRestored: boolean
+    // Revert only: list ops the revert did not apply because their step's list did not fit or the
+    // per-op check failed. Absent when none.
+    listSkipped?: number
+    // Fingerprints of the live list before the plan's ops and, after them: a revert's final fill, or
+    // for a whole expected-side replay the step's other-side fingerprint. They only let the commit or
+    // the move reuse a hash the plan already holds; they are never stored or posted.
+    liveListHash?: number
+    afterListHash?: number
 }
 
-export type PlanResult = StepPlan | { ok: false; reason: ModelRefusal }
+export type PlanResult =
+    | StepPlan
+    | { ok: false; reason: Exclude<ModelRefusal, 'unchanged'> }
+    | { ok: false; reason: 'unchanged'; listSkipped?: number; fmNotRestored?: boolean }
 
 interface Working {
     field(path: SetPath): FieldValue
@@ -468,9 +516,11 @@ export function invertOp(op: Op): Op {
         case 'listSet':
             return { op: 'listSet', index: op.index, before: op.after, after: op.before }
         case 'listInsert':
-            return { op: 'listRemove', index: op.index, value: op.value, deletedId: null }
+            return { op: 'listRemove', index: op.index, value: op.value, deletedId: op.deletedId ?? null }
         case 'listRemove':
-            return { op: 'listInsert', index: op.index, value: op.value }
+            return op.deletedId === null
+                ? { op: 'listInsert', index: op.index, value: op.value }
+                : { op: 'listInsert', index: op.index, value: op.value, deletedId: op.deletedId }
         case 'chatFm':
             return { op: 'chatFm', chatId: op.chatId, before: op.after, after: op.before }
     }
@@ -557,10 +607,105 @@ function hasDeletedId(record: OwnerRecord, id: string): boolean {
     return record.deleted.some((item) => item.id === id)
 }
 
+// ---------------------------------------------------------------- list fingerprint decision
+
+// Which side of a fingerprinted step the list is on. `none`: the step has no fingerprint (or the
+// list cannot be read), so its list ops keep the per-op checks.
+export type ListSide = 'expected' | 'other' | 'neither' | 'none'
+
+function sideFromHash(fingerprint: ListFingerprint, direction: 'undo' | 'redo', hash: number): ListSide {
+    const expected = direction === 'undo' ? fingerprint.after : fingerprint.before
+    const other = direction === 'undo' ? fingerprint.before : fingerprint.after
+    // Expected first: a step whose two sides are equal must still apply.
+    if (hash === expected) {
+        return 'expected'
+    }
+    return hash === other ? 'other' : 'neither'
+}
+
+export function listSideOf(step: Step, direction: 'undo' | 'redo', list: readonly unknown[] | null): ListSide {
+    if (!step.listFingerprint || list === null) {
+        return 'none'
+    }
+    return sideFromHash(step.listFingerprint, direction, listFingerprintOf(list))
+}
+
+function isListOp(op: Op): boolean {
+    return op.op === 'listSet' || op.op === 'listInsert' || op.op === 'listRemove'
+}
+
+function hasInsertOrRemove(ops: readonly Op[]): boolean {
+    return ops.some((op) => op.op === 'listInsert' || op.op === 'listRemove')
+}
+
+function listRestoreWrite(writes: readonly RestoreWrite[]): { before: string[]; after: string[] } | null {
+    const write = writes.find((entry) => entry.path === LIST_PATH)
+    return write && 'list' in write.before && 'list' in write.after ? { before: write.before.list, after: write.after.list } : null
+}
+
+// ---------------------------------------------------------------- list hash tracker
+
+// Element hashes of a working list kept in step with its ops. An applied listSet or listInsert only
+// marks its slot; a marked slot is hashed when the list is next hashed, so a run of edits to one
+// slot costs one element hash. Never stored or posted; it lives inside one planRevert call.
+export interface ListHashTracker {
+    set(index: number): void
+    insert(index: number): void
+    remove(index: number): void
+    // UTF-16 units that `hash` would have to read now. Hashes nothing.
+    pendingUnits(list: readonly unknown[]): number
+    // Equals `listFingerprintOf(list)` when the marks follow every change made to `list`.
+    hash(list: readonly unknown[]): number
+}
+
+export function createListHashTracker(list: readonly unknown[], elementHash: ElementHash = fingerprintElement): ListHashTracker {
+    const slots: (number | undefined)[] = []
+    for (let i = 0; i < list.length; i++) {
+        slots.push(elementHash(list[i]))
+    }
+    return {
+        set(index) {
+            slots[index] = undefined
+        },
+        insert(index) {
+            slots.splice(index, 0, undefined)
+        },
+        remove(index) {
+            slots.splice(index, 1)
+        },
+        pendingUnits(current) {
+            let units = 0
+            for (let i = 0; i < slots.length; i++) {
+                if (slots[i] === undefined) {
+                    const value = current[i]
+                    units += typeof value === 'string' ? value.length : ('\u0000' + typeof value).length
+                }
+            }
+            return units
+        },
+        hash(current) {
+            const filled: number[] = new Array<number>(slots.length)
+            for (let i = 0; i < slots.length; i++) {
+                let element = slots[i]
+                if (element === undefined) {
+                    element = elementHash(current[i])
+                    slots[i] = element
+                }
+                filled[i] = element
+            }
+            return mixElementHashes(filled)
+        },
+    }
+}
+
+// Hashing units one revert may spend on its step decisions. Once a decision would pass it, the
+// rest of that revert decides by the per-op checks alone.
+export const REVERT_HASH_BUDGET_UNITS = 500_000
+
 // Replays the top step of `done` (undo) or `undone` (redo). Every op is checked against the live
 // value it would overwrite; ops whose precondition fails are skipped, which keeps a value changed
 // elsewhere. When nothing applies the replay is refused and the stacks stay as they are.
-export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live: LiveReader): PlanResult {
+export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live: LiveReader, hashFor?: ListElementHash): PlanResult {
     const stack = direction === 'undo' ? record.done : record.undone
     const step = stack[stack.length - 1]
     if (!step) {
@@ -568,6 +713,17 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
     }
     const working = makeWorking(live)
     const greetingsBefore = working.list ? [...working.list] : null
+    // One decision before any op runs, so the hash is of the list the plan starts from.
+    const hash = step.listFingerprint && working.list !== null ? listFingerprintOf(working.list, hashFor?.(working.list)) : undefined
+    const side: ListSide = step.listFingerprint && hash !== undefined ? sideFromHash(step.listFingerprint, direction, hash) : 'none'
+    // Exact or nothing: a fingerprinted step whose list is not the side it was recorded at applies
+    // no op, so no chat index or field lands against a list the step never described. The step
+    // stays on its stack, so Undo stops at it until the list is repaired by hand or 100 newer
+    // steps push the step out. Steps without a fingerprint keep the per-op checks. An expected-side
+    // replay whose chat op fails stays partial: only the list witnesses a fingerprint.
+    if (side === 'other' || side === 'neither') {
+        return { ok: false, reason: 'precondition' }
+    }
     const order = direction === 'undo' ? [...step.ops].reverse() : step.ops
     const applied: Op[] = []
     const executed: Op[] = []
@@ -578,12 +734,19 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
     let fmNotRestored = false
     for (const original of order) {
         // A delete can be undone only while its deleted item is still listed: restoring the item
-        // from History consumes it, so the two routes exclude each other.
-        if (direction === 'undo' && original.op === 'listRemove' && original.deletedId !== null && !hasDeletedId(record, original.deletedId)) {
+        // from History consumes it, so the two routes exclude each other. On the expected side the
+        // list is the step's after list, so the inverse is a plain insert that consumes nothing.
+        const plainUndo =
+            direction === 'undo' && original.op === 'listRemove' && original.deletedId !== null && !hasDeletedId(record, original.deletedId)
+        if (plainUndo && side !== 'expected') {
             skipped += 1
             continue
         }
         const forward = direction === 'undo' ? invertOp(original) : original
+        if (side === 'none' && skipsOccupiedSlot(forward, working)) {
+            skipped += 1
+            continue
+        }
         const outcome = applyForward(forward, working)
         if (outcome.kind === 'failed') {
             skipped += 1
@@ -597,7 +760,7 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
         real += 1
         executed.push(forward)
         writes.push(outcome.write)
-        if (direction === 'undo' && original.op === 'listRemove' && original.deletedId !== null) {
+        if (direction === 'undo' && original.op === 'listRemove' && original.deletedId !== null && !plainUndo) {
             deletedRemove.push(original.deletedId)
         }
     }
@@ -607,6 +770,8 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
     if (direction === 'undo') {
         applied.reverse()
     }
+    // Count list ops only: a chat op that failed must not cancel the shortcut.
+    const whole = applied.filter(isListOp).length === step.ops.filter(isListOp).length
     return {
         ok: true,
         label: step.label,
@@ -616,11 +781,71 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
         deletedRemove,
         skipped,
         fmNotRestored,
+        ...(hash === undefined ? {} : { liveListHash: hash }),
+        // On the expected side the live list is the side the step was recorded at; with every list op
+        // applied it ends on the list the other side's fingerprint was taken from (invariant L6).
+        ...(side === 'expected' && whole && step.listFingerprint
+            ? { afterListHash: direction === 'undo' ? step.listFingerprint.before : step.listFingerprint.after }
+            : {}),
     }
 }
 
-// One new step that undoes every step above `toStepId`, under the same per-op preconditions.
-export function planRevert(record: OwnerRecord, toStepId: string, live: LiveReader): PlanResult {
+// An unfingerprinted insert whose slot already holds its value is skipped: the list there is
+// already what the insert would produce, so inserting again would duplicate it.
+function skipsOccupiedSlot(forward: Op, working: Working): boolean {
+    return forward.op === 'listInsert' && working.list?.[forward.index] === forward.value
+}
+
+// The item a stored insert consumes: a tagged insert, or the insert of a Restore deleted step.
+function consumedIdOf(label: StepLabel, op: Op): string | null {
+    if (op.op !== 'listInsert') {
+        return null
+    }
+    return label.kind === 'restoreDeleted' ? label.deletedId : (op.deletedId ?? null)
+}
+
+// The op a revert applies for one stored op. A delete whose reopen is in the same revert gets a
+// plain insert, so the pair leaves no trace; a consumer's inverse removes with the item's id.
+function revertForward(original: Op, pairsWithReopen: boolean, consumedId: string | null): Op {
+    if (pairsWithReopen && original.op === 'listRemove') {
+        return { op: 'listInsert', index: original.index, value: original.value }
+    }
+    if (consumedId !== null && original.op === 'listInsert') {
+        return { op: 'listRemove', index: original.index, value: original.value, deletedId: consumedId }
+    }
+    return invertOp(original)
+}
+
+function trackAppliedOp(tracker: ListHashTracker, forward: Op): void {
+    if (forward.op === 'listSet') {
+        tracker.set(forward.index)
+    } else if (forward.op === 'listInsert') {
+        tracker.insert(forward.index)
+    } else if (forward.op === 'listRemove') {
+        tracker.remove(forward.index)
+    }
+}
+
+// Both fingerprints of a list write from one element pass over `before`; `after` hashes only the
+// slots the ops inserted or set. Two premises make the values equal the full hashes:
+// L3: `after` is `before` with the list ops of `ops` applied in order, with the tracker's index and
+//     splice semantics (every caller that passes no plan hashes derives its list write from `ops`).
+// L6: stored list ops are exact: each op's recorded before/value is the value at its index along the
+//     step's before -> after sequence, and every index was in range. A whole expected-side replay
+//     relies on it through `afterListHash`, which takes the step's stored other-side fingerprint.
+function listHashesAcross(before: readonly string[], ops: readonly Op[], after: readonly string[], hashFor?: ListElementHash): ListFingerprint {
+    const tracker = createListHashTracker(before, hashFor?.(before))
+    const beforeHash = tracker.hash(before)
+    for (const op of ops) {
+        trackAppliedOp(tracker, op)
+    }
+    return { before: beforeHash, after: tracker.hash(after) }
+}
+
+// One new step that undoes every step above `toStepId`, under the same per-op preconditions. A
+// fingerprinted step is decided on the working list as the steps above it left it. `budgetUnits`
+// is a test seam; callers use the default.
+export function planRevert(record: OwnerRecord, toStepId: string, live: LiveReader, budgetUnits = REVERT_HASH_BUDGET_UNITS, hashFor?: ListElementHash): PlanResult {
     const index = record.done.findIndex((step) => step.id === toStepId)
     if (index < 0) {
         return { ok: false, reason: 'unknown' }
@@ -636,23 +861,118 @@ export function planRevert(record: OwnerRecord, toStepId: string, live: LiveRead
     const deletedRemove: string[] = []
     let skipped = 0
     let fmNotRestored = false
+    // Items that are listed at this point of the revert, and the position in `ops` of each removal
+    // that re-opened one (a consumer undone), so a later delete's inverse can cancel it.
+    const listed = new Set(record.deleted.map((item) => item.id))
+    const listedAtStart = new Set(listed)
+    const consumedValueOf = new Map<string, string>()
+    let listSkipped = 0
+    const reopened = new Map<string, number>()
+    // A tracker exists when some reverted step inserts or removes: only then does the list's shape
+    // change under the steps above. Its first pass is the revert's `before` hash.
+    const list = working.list
+    const tracker = list !== null && above.some((step) => hasInsertOrRemove(step.ops)) ? createListHashTracker(list, hashFor?.(list)) : null
+    const liveListHash = tracker && list ? tracker.hash(list) : undefined
+    let spent = 0
+    let suspended = false
+    // Set by the first fingerprinted step a hash decision puts off its expected side. Exact or stop:
+    // from there on no older step decides by hash and no older step changes the list, because every
+    // older list op would work against lifecycle state no step recorded. Description and other
+    // fields still revert, and the chat's selected first message counts as one of them for a step
+    // without a fingerprint. A budget suspension does not set it: a step without a fingerprint keeps
+    // its per-op checks after a suspension, so on that route a repeated text can still be applied.
+    let stopped = false
     for (const step of above) {
+        let side: ListSide = 'none'
+        const afterStop = stopped
+        if (step.listFingerprint && tracker && list) {
+            if (!suspended && !afterStop) {
+                const need = tracker.pendingUnits(list)
+                if (spent + need > budgetUnits) {
+                    // Monotone: every later fingerprinted step of this revert skips its list ops. This
+                    // stop is soft: steps without a fingerprint keep the per-op checks.
+                    suspended = true
+                } else {
+                    spent += need
+                    side = sideFromHash(step.listFingerprint, 'undo', tracker.hash(list))
+                    if (side !== 'expected') {
+                        stopped = true
+                    }
+                }
+            }
+            if (suspended || afterStop) {
+                side = 'neither'
+            }
+        }
         for (const original of [...step.ops].reverse()) {
-            if (original.op === 'listRemove' && original.deletedId !== null && !hasDeletedId(record, original.deletedId)) {
+            if (side === 'none' && afterStop && isListOp(original)) {
+                skipped += 1
+                listSkipped += 1
+                continue
+            }
+            if ((side === 'other' || side === 'neither') && isListOp(original)) {
+                skipped += 1
+                // On the other side the list already holds what the op would restore.
+                if (side === 'neither') {
+                    listSkipped += 1
+                }
+                continue
+            }
+            // A chat index points into the list its step's list ops map between: with the list on
+            // neither side it is skipped with them. An inert op (no unique chat) keeps its own note.
+            if (original.op === 'chatFm' && original.chatId !== null && side === 'neither') {
                 skipped += 1
                 continue
             }
-            const forward = invertOp(original)
+            // A delete's inverse pairs with a reopen made earlier in this revert, or consumes the
+            // listed item. An item that is neither is inserted back as a plain insert on the
+            // expected side, where the fingerprint witnesses the inverse; a step without a
+            // fingerprint skips it, as the item has been taken elsewhere.
+            let deleteMode: 'pair' | 'consume' | 'plain' | null = null
+            if (original.op === 'listRemove' && original.deletedId !== null) {
+                deleteMode = reopened.has(original.deletedId) ? 'pair' : listed.has(original.deletedId) ? 'consume' : side === 'expected' ? 'plain' : null
+                if (deleteMode === null) {
+                    skipped += 1
+                    continue
+                }
+            }
+            const consumedId = consumedIdOf(step.label, original)
+            const forward = revertForward(original, deleteMode === 'pair' || deleteMode === 'plain', consumedId)
+            if (side === 'none' && skipsOccupiedSlot(forward, working)) {
+                skipped += 1
+                continue
+            }
             const outcome = applyForward(forward, working)
             if (outcome.kind === 'failed') {
                 skipped += 1
+                if (isListOp(forward)) {
+                    listSkipped += 1
+                }
             } else if (outcome.kind === 'inert') {
                 fmNotRestored = true
             } else {
                 ops.push(forward)
+                // Every applied list op is tracked, whichever path decided the step.
+                if (tracker) {
+                    trackAppliedOp(tracker, forward)
+                }
                 writes.push(outcome.write)
-                if (original.op === 'listRemove' && original.deletedId !== null) {
+                // Only an applied op changes the lifecycle.
+                if (original.op === 'listRemove' && original.deletedId !== null && deleteMode === 'pair') {
+                    const position = reopened.get(original.deletedId)
+                    const reopenedOp = position === undefined ? undefined : ops[position]
+                    if (position !== undefined && reopenedOp && reopenedOp.op === 'listRemove') {
+                        ops[position] = { op: 'listRemove', index: reopenedOp.index, value: reopenedOp.value, deletedId: null }
+                    }
+                    reopened.delete(original.deletedId)
+                    listed.delete(original.deletedId)
+                } else if (original.op === 'listRemove' && original.deletedId !== null && deleteMode === 'consume') {
+                    listed.delete(original.deletedId)
                     deletedRemove.push(original.deletedId)
+                    consumedValueOf.set(original.deletedId, original.value)
+                } else if (consumedId !== null) {
+                    reopened.set(consumedId, ops.length - 1)
+                    listed.add(consumedId)
                 }
             }
         }
@@ -660,16 +980,181 @@ export function planRevert(record: OwnerRecord, toStepId: string, live: LiveRead
     if (ops.length === 0) {
         return { ok: false, reason: 'precondition' }
     }
+    // Item effects are the change of the deleted set: an id consumed and produced again, or produced
+    // while already listed, leaves the set as it was.
+    const consumedNet = deletedRemove.filter((id) => !listed.has(id))
+    const consumedValues = new Map<string, string>()
+    for (const id of consumedNet) {
+        const value = consumedValueOf.get(id)
+        if (value !== undefined) {
+            consumedValues.set(id, value)
+        }
+    }
+    const producedValues = new Map<string, string>()
+    for (const [id, position] of reopened) {
+        const op = ops[position]
+        if (!listedAtStart.has(id) && op && op.op === 'listRemove') {
+            producedValues.set(id, op.value)
+        }
+    }
+    const stored = revertStepOps(ops, greetingsBefore, working.list, consumedValues, producedValues)
+    if (stored.length === 0) {
+        return { ok: false, reason: 'unchanged', ...(listSkipped > 0 ? { listSkipped } : {}), ...(fmNotRestored ? { fmNotRestored } : {}) }
+    }
     return {
         ok: true,
         label: { kind: 'revert', toStepId },
-        ops,
+        ops: stored,
         writes,
         restoreWrites: deriveRestoreWrites(ops, greetingsBefore),
-        deletedRemove,
+        deletedRemove: consumedNet,
         skipped,
+        ...(listSkipped > 0 ? { listSkipped } : {}),
         fmNotRestored,
+        // The final fill hashes only the slots the revert changed and is never budgeted.
+        ...(tracker && list && liveListHash !== undefined ? { liveListHash, afterListHash: tracker.hash(list) } : {}),
     }
+}
+
+// Largest edit distance the shortest-edit-script search explores. A middle that differs by more
+// is emitted as one positional run: same ops, each middle element stored once, bounded memory.
+const MYERS_MAX_D = 1000
+
+// Runs of the middle that differ between the two lists, from a shortest edit script (Myers):
+// [beforeStart, beforeEnd, afterStart, afterEnd) in absolute indexes, in increasing order. Each
+// round keeps only the window of the search frontier it can read back, so memory is quadratic in
+// the distance, not in the list length.
+function editHunks(a: readonly string[], b: readonly string[], start: number, aEnd: number, bEnd: number): [number, number, number, number][] {
+    const n = aEnd - start
+    const m = bEnd - start
+    const limit = Math.min(n + m, MYERS_MAX_D)
+    const offset = limit + 1
+    const v = new Int32Array(2 * limit + 3)
+    const trace: Int32Array[] = []
+    let done = false
+    for (let d = 0; d <= limit && !done; d++) {
+        trace.push(v.slice(offset - d - 1, offset + d + 2))
+        for (let k = -d; k <= d; k += 2) {
+            let x = k === -d || (k !== d && v[k - 1 + offset] < v[k + 1 + offset]) ? v[k + 1 + offset] : v[k - 1 + offset] + 1
+            let y = x - k
+            while (x < n && y < m && a[start + x] === b[start + y]) {
+                x++
+                y++
+            }
+            v[k + offset] = x
+            if (x >= n && y >= m) {
+                done = true
+                break
+            }
+        }
+    }
+    if (!done) {
+        return [[start, aEnd, start, bEnd]]
+    }
+    const matches: [number, number][] = []
+    let x = n
+    let y = m
+    for (let d = trace.length - 1; d >= 0; d--) {
+        const prev = trace[d]
+        const k = x - y
+        let prevX = 0
+        let prevY = 0
+        if (d > 0) {
+            // prev holds the frontier from index -d - 1 on, so diagonal j sits at j + d + 1.
+            const prevK = k === -d || (k !== d && prev[k - 1 + d + 1] < prev[k + 1 + d + 1]) ? k + 1 : k - 1
+            prevX = prev[prevK + d + 1]
+            prevY = prevX - prevK
+        }
+        while (x > prevX && y > prevY) {
+            x--
+            y--
+            matches.push([x, y])
+        }
+        x = prevX
+        y = prevY
+    }
+    matches.reverse()
+    const hunks: [number, number, number, number][] = []
+    let px = 0
+    let py = 0
+    for (const [mx, my] of [...matches, [n, m] as [number, number]]) {
+        if (mx > px || my > py) {
+            hunks.push([start + px, start + mx, start + py, start + my])
+        }
+        px = mx + 1
+        py = my + 1
+    }
+    return hunks
+}
+
+// The ops a revert stores: its net change, not the chain of inverses it applied. One value op per
+// field path and per chat; the list as the differing runs between the common prefix and suffix;
+// each consumed or produced item as an insert and a removal of its value at the end of the list, a
+// slot no equal value can occupy. Applied in order from `before` every op applies and the result is
+// `after`.
+function revertStepOps(
+    applied: readonly Op[],
+    before: readonly string[] | null,
+    after: readonly string[] | null,
+    consumed: ReadonlyMap<string, string>,
+    produced: ReadonlyMap<string, string>,
+): Op[] {
+    const values = new Map<string, Op>()
+    for (const op of applied) {
+        if (op.op === 'set') {
+            const key = 'set:' + op.path
+            const first = values.get(key)
+            values.set(key, first && first.op === 'set' ? { op: 'set', path: op.path, before: first.before, after: op.after } : op)
+        } else if (op.op === 'chatFm' && op.chatId !== null) {
+            const key = 'fm:' + op.chatId
+            const first = values.get(key)
+            values.set(key, first && first.op === 'chatFm' ? { op: 'chatFm', chatId: op.chatId, before: first.before, after: op.after } : op)
+        }
+    }
+    const out: Op[] = []
+    for (const op of values.values()) {
+        if (op.op === 'set' ? !fieldValueEquals(op.before, op.after) : op.op === 'chatFm' && !fmValueEquals(op.before, op.after)) {
+            out.push(op)
+        }
+    }
+    if (before === null || after === null) {
+        return out
+    }
+    let start = 0
+    while (start < before.length && start < after.length && before[start] === after[start]) {
+        start++
+    }
+    let end = 0
+    while (end < before.length - start && end < after.length - start && before[before.length - 1 - end] === after[after.length - 1 - end]) {
+        end++
+    }
+    const fromEnd = before.length - end
+    const toEnd = after.length - end
+    const hunks = start === fromEnd && start === toEnd ? [] : editHunks(before, after, start, fromEnd, toEnd)
+    for (const [x0, x1, y0, y1] of hunks) {
+        const common = Math.min(x1 - x0, y1 - y0)
+        for (let i = 0; i < common; i++) {
+            if (before[x0 + i] !== after[y0 + i]) {
+                out.push({ op: 'listSet', index: y0 + i, before: before[x0 + i], after: after[y0 + i] })
+            }
+        }
+        for (let i = x1 - x0 - 1; i >= common; i--) {
+            out.push({ op: 'listRemove', index: y0 + i, value: before[x0 + i], deletedId: null })
+        }
+        for (let i = common; i < y1 - y0; i++) {
+            out.push({ op: 'listInsert', index: y0 + i, value: after[y0 + i] })
+        }
+    }
+    const tail = after.length
+    for (const [id, value] of consumed) {
+        out.push({ op: 'listInsert', index: tail, value, deletedId: id })
+        out.push({ op: 'listRemove', index: tail, value, deletedId: null })
+    }
+    for (const [id, value] of produced) {
+        out.push({ op: 'listInsert', index: tail, value })
+        out.push({ op: 'listRemove', index: tail, value, deletedId: id })
+    }
+    return out
 }
 
 function restoreValueEquals(a: RestoreValue, b: RestoreValue): boolean {
@@ -726,7 +1211,7 @@ export interface RestorePlan extends StepPlan {
     changedElsewhere: RestorePath[]
 }
 
-export type RestorePlanResult = RestorePlan | { ok: false; reason: ModelRefusal }
+export type RestorePlanResult = RestorePlan | Exclude<PlanResult, StepPlan>
 
 // Restores every tracked field to its recorded `before`. A field whose live value is not the
 // recorded `last` is changed elsewhere: it is restored too unless its path is in `keep`.
@@ -905,6 +1390,46 @@ function deletedFromOps(ops: readonly Op[], at: number): DeletedItem[] {
     return out
 }
 
+// The deleted-items entry for `id` as its delete step made it, so a re-listed item keeps its side
+// chat. Once that step has left both stacks only the op itself is known.
+function deletedEntryFor(record: OwnerRecord, id: string, op: { index: number; value: string }, at: number): DeletedItem {
+    for (const stack of [record.done, record.undone]) {
+        for (const step of stack) {
+            if (step.label.kind !== 'greetingRemove') {
+                continue
+            }
+            const entry = deletedFromOps(step.ops, step.at).find((item) => item.id === id)
+            if (entry) {
+                return entry
+            }
+        }
+    }
+    return { id, at, index: op.index, value: op.value, sideChat: null }
+}
+
+// The entries that applied forward ops list: a delete lists its own item; a removal that carries an
+// id in any other step (a revert re-opening a consumer) re-lists the item as its delete made it.
+// Ids already in `listed` are skipped, so no id is ever listed twice.
+function producedItems(
+    record: OwnerRecord,
+    listed: readonly DeletedItem[],
+    label: StepLabel,
+    ops: readonly Op[],
+    at: number,
+): DeletedItem[] {
+    const items: DeletedItem[] = []
+    if (label.kind === 'greetingRemove') {
+        items.push(...deletedFromOps(ops, at))
+    } else {
+        for (const op of ops) {
+            if (op.op === 'listRemove' && op.deletedId !== null) {
+                items.push(deletedEntryFor(record, op.deletedId, op, at))
+            }
+        }
+    }
+    return items.filter((item, i) => !listed.some((entry) => entry.id === item.id) && items.findIndex((other) => other.id === item.id) === i)
+}
+
 function capped<T>(items: T[], max: number): T[] {
     return items.length > max ? items.slice(items.length - max) : items
 }
@@ -921,6 +1446,10 @@ export interface StepCommit {
     // True for an edit: the first edit of a new visit replaces the restore point.
     replacesRestore: boolean
     deletedRemove?: readonly string[]
+    // Hashes the plan already made of the list before and after the ops (a revert); the commit
+    // reuses them instead of hashing the restore write's lists again.
+    liveListHash?: number
+    afterListHash?: number
 }
 
 function mergeCoalesced(top: Step, next: Op[]): Op[] | null {
@@ -939,7 +1468,7 @@ function mergeCoalesced(top: Step, next: Op[]): Op[] | null {
 }
 
 // Records a landed action as a new step (or extends the open one) and clears the redo stack.
-export function commitStep(state: ModelState, commit: StepCommit): ModelState {
+export function commitStep(state: ModelState, commit: StepCommit, hashFor?: ListElementHash): ModelState {
     const { record } = state
     const restore = noteRestoreWrites(record.restore, commit.visitId, commit.at, commit.restoreWrites, commit.replacesRestore)
     const removed = new Set(commit.deletedRemove ?? [])
@@ -963,10 +1492,20 @@ export function commitStep(state: ModelState, commit: StepCommit): ModelState {
         }
     }
     const step: Step = { id: commit.id, at: commit.at, label: commit.label, ops: commit.ops }
-    const deleted = capped(
-        [...record.deleted.filter((item) => !removed.has(item.id)), ...deletedFromOps(commit.ops, commit.at)],
-        MAX_DELETED,
-    )
+    const listWrite = hasInsertOrRemove(commit.ops) ? listRestoreWrite(commit.restoreWrites) : null
+    if (listWrite) {
+        if (commit.liveListHash !== undefined && commit.afterListHash !== undefined) {
+            step.listFingerprint = { before: commit.liveListHash, after: commit.afterListHash }
+        } else {
+            const derived = listHashesAcross(listWrite.before, commit.ops, listWrite.after, hashFor)
+            step.listFingerprint = {
+                before: commit.liveListHash ?? derived.before,
+                after: commit.afterListHash ?? derived.after,
+            }
+        }
+    }
+    const kept = record.deleted.filter((item) => !removed.has(item.id))
+    const deleted = capped([...kept, ...producedItems(record, kept, commit.label, commit.ops, commit.at)], MAX_DELETED)
     return {
         record: {
             ...record,
@@ -987,6 +1526,7 @@ export function applyReplayMove(
     plan: StepPlan,
     at: number,
     visitId: string,
+    hashFor?: ListElementHash,
 ): ModelState {
     const { record } = state
     const from = direction === 'undo' ? record.done : record.undone
@@ -994,19 +1534,46 @@ export function applyReplayMove(
     if (!step) {
         return state
     }
-    const moved: Step = { ...step, ops: plan.ops }
+    // Built from scratch: the old step's fingerprint describes lists the moved step no longer spans.
+    const moved: Step = { id: step.id, at: step.at, label: step.label, ops: plan.ops }
+    const listWrite = hasInsertOrRemove(plan.ops) ? listRestoreWrite(plan.restoreWrites) : null
+    if (listWrite) {
+        // `before` of the replay's write is the live list at plan time, `after` the list it produces.
+        const live = plan.liveListHash ?? listFingerprintOf(listWrite.before, hashFor?.(listWrite.before))
+        const produced = plan.afterListHash ?? listFingerprintOf(listWrite.after, hashFor?.(listWrite.after))
+        moved.listFingerprint = direction === 'undo' ? { before: produced, after: live } : { before: live, after: produced }
+    }
     const rest = from.slice(0, -1)
     let deleted = record.deleted
     if (direction === 'undo') {
         deleted = deleted.filter((item) => !plan.deletedRemove.includes(item.id))
         if (step.label.kind === 'restoreDeleted') {
             deleted = capped([...deleted, ...restoredItemFromOps(plan.ops, step.at, step.label.deletedId)], MAX_DELETED)
+        } else {
+            // Undoing an applied consumer gives its item back.
+            const relisted: DeletedItem[] = []
+            for (const op of plan.ops) {
+                if (op.op === 'listInsert' && op.deletedId !== undefined && !deleted.some((item) => item.id === op.deletedId)) {
+                    relisted.push(deletedEntryFor(record, op.deletedId, op, step.at))
+                }
+            }
+            deleted = capped([...deleted, ...relisted], MAX_DELETED)
         }
     } else if (step.label.kind === 'restoreDeleted') {
+        // Only an insert that applied consumes the item.
         const id = step.label.deletedId
-        deleted = deleted.filter((item) => item.id !== id)
+        if (plan.ops.some((op) => op.op === 'listInsert')) {
+            deleted = deleted.filter((item) => item.id !== id)
+        }
     } else {
-        deleted = capped([...deleted, ...deletedFromOps(plan.ops, step.at)], MAX_DELETED)
+        const consumed = new Set<string>()
+        for (const op of plan.ops) {
+            if (op.op === 'listInsert' && op.deletedId !== undefined) {
+                consumed.add(op.deletedId)
+            }
+        }
+        deleted = deleted.filter((item) => !consumed.has(item.id))
+        deleted = capped([...deleted, ...producedItems(record, deleted, step.label, plan.ops, step.at)], MAX_DELETED)
     }
     const restore = noteRestoreWrites(record.restore, visitId, at, plan.restoreWrites, false)
     const next: OwnerRecord =

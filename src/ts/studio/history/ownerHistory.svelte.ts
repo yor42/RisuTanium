@@ -22,6 +22,9 @@ import {
     type SetterRefusal,
 } from '../edit/studioSetters'
 import type { SaveAck } from '../edit/saveAck.svelte'
+import { createElementHashCache, WARM_CHUNK_MS, WARM_MAX_YIELDS, WARM_MS_PER_ELEMENT, WARM_MS_PER_UNIT, type ElementHashCache, type IdleScheduler } from './elementHashCache'
+export { browserIdleScheduler } from './elementHashCache'
+import type { ListElementHash } from './listFingerprint'
 import {
     applyReplayMove,
     commitStep,
@@ -79,6 +82,9 @@ export interface StudioWriteNotes {
     fmNotRestored?: boolean
     // Ops of the replayed step that were skipped because the live value had moved on.
     skipped?: number
+    // Revert only: list ops that were not undone because their step's list no longer fit. Also set on
+    // an `unchanged` revert, which lands nothing.
+    listSkipped?: number
     // Restore point only: the paths whose live value was changed outside Studio's history.
     changedElsewhere?: RestorePath[]
 }
@@ -118,6 +124,8 @@ export interface OwnerHistoryDeps {
     getVisitId?: () => string
     // Default: the page's leave rule in saveOnHide.ts, read when the service is created.
     registerLeaveFlush?: (flush: () => void) => () => void
+    elementHashCache?: ElementHashCache
+    scheduleIdle?: IdleScheduler
 }
 
 export interface OwnerHistoryService {
@@ -139,6 +147,9 @@ export interface OwnerHistoryService {
     restoreDeleted(owner: OwnerKey, deletedId: string): StudioResult
     // Blur or a visit close: the next write starts a new step.
     closeOpenStep(owner: OwnerKey): void
+    // Input in Studio that is not a history write: the pending warm-up ends, as at a write, and nothing
+    // restarts it.
+    cancelWarm(): void
 }
 
 interface Entry<T> {
@@ -244,6 +255,82 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     let openEntry: Entry<OpenResult> | null = null
     // Read by `view`, so a view taken before an owner's first use updates when the owner appears.
     let slotCount = $state(0)
+    const elementHashes = deps.elementHashCache ?? createElementHashCache()
+    // The only route to the cache: the warm-up and every action hash a character's first messages
+    // under that character's id, so both see the same scope.
+    function listHashOf(chaId: string): ListElementHash {
+        return (list) => elementHashes.forList(list, chaId)
+    }
+    let warmJob: { owner: OwnerKey; chaId: string; cancel: () => void } | null = null
+
+    // A pending warm-up ends at any write, at Studio input and at the end of its owner's visit; only a later visit
+    // starts another.
+    function cancelWarm(): void {
+        warmJob?.cancel()
+        warmJob = null
+    }
+
+    function startWarm(owner: OwnerKey): void {
+        const schedule = deps.scheduleIdle
+        const parsed = parseOwnerKey(owner)
+        if (!schedule || !parsed || parsed.kind !== 'character') {
+            return
+        }
+        if (warmJob && warmJob.owner === owner) {
+            return
+        }
+        cancelWarm()
+        const resolved = resolveLiveTarget(owner)
+        if (resolved.ok === false) {
+            return
+        }
+        const greetings = createLiveReader(resolved.target).greetings()
+        if (!greetings) {
+            return
+        }
+        const pending = greetings.filter((value): value is string => typeof value === 'string')
+        // The job is one pass over the snapshot; any other pass comes with a write, which ends the job.
+        const warmHash = listHashOf(parsed.chaId)(pending)
+        let index = 0
+        let yields = 0
+        const job = { owner, chaId: parsed.chaId, cancel: () => {} }
+        const run = (remainingMs: () => number): void => {
+            // One chunk spends at most WARM_CHUNK_MS, by the clock and by the estimate: `kept` is the
+            // part of the idle period the chunk leaves alone, `planned` the estimate it has used.
+            const start = remainingMs()
+            const kept = start - Math.min(start, WARM_CHUNK_MS)
+            let planned = 0
+            let first = true
+            while (index < pending.length) {
+                const text = pending[index]
+                const estimate = text.length * WARM_MS_PER_UNIT + WARM_MS_PER_ELEMENT
+                if (estimate > Math.min(remainingMs() - kept, WARM_CHUNK_MS - planned)) {
+                    if (!first) {
+                        break
+                    }
+                    yields += 1
+                    if (yields <= WARM_MAX_YIELDS) {
+                        break
+                    }
+                    index += 1
+                    yields = 0
+                    continue
+                }
+                warmHash(text)
+                planned += estimate
+                index += 1
+                yields = 0
+                first = false
+            }
+            if (index < pending.length && warmJob === job) {
+                job.cancel = schedule(run)
+            } else if (warmJob === job) {
+                warmJob = null
+            }
+        }
+        warmJob = job
+        job.cancel = schedule(run)
+    }
 
     // ---------------------------------------------------------------- queue
 
@@ -512,6 +599,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     function planFor(slot: OwnerSlot, intent: Intent, live: LiveReader, target: LiveTarget, at: number): Planned | StudioResult {
         const visitId = getVisitId()
         const record = slot.record
+        const hashFor = listHashOf(slot.chaId)
         if (intent.kind === 'edit') {
             const id = stepIdFor(pageSession, ++counter)
             const built = intent.build(id, live, target)
@@ -535,11 +623,11 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                         restoreWrites,
                         coalesceKey: built.coalesceKey,
                         replacesRestore: true,
-                    }),
+                    }, hashFor),
             }
         }
         if (intent.kind === 'replay') {
-            const plan = planReplay(record, intent.direction, live)
+            const plan = planReplay(record, intent.direction, live, hashFor)
             if (plan.ok === false) {
                 return refused(plan.reason === 'empty' ? 'empty' : 'precondition')
             }
@@ -547,16 +635,26 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 writes: plan.writes,
                 pageFm: false,
                 notes: replayNotes(plan),
-                land: (state) => applyReplayMove(state, intent.direction, plan, at, visitId),
+                land: (state) => applyReplayMove(state, intent.direction, plan, at, visitId, hashFor),
             }
         }
         const plan =
             intent.kind === 'revert'
-                ? planRevert(record, intent.stepId, live)
+                ? planRevert(record, intent.stepId, live, undefined, hashFor)
                 : intent.kind === 'restore'
                   ? planRestorePoint(record.restore, live, intent.keep)
                   : planRestoreDeleted(record, intent.deletedId, live)
         if (plan.ok === false) {
+            // A net-nothing revert lands nothing: no write, mark, step or save. It may still tell the
+            // caller that older list changes were not undone or that a chat index could not be restored.
+            if (plan.reason === 'unchanged') {
+                return {
+                    ok: true,
+                    unchanged: true,
+                    ...(plan.listSkipped === undefined ? {} : { listSkipped: plan.listSkipped }),
+                    ...(plan.fmNotRestored ? { fmNotRestored: true } : {}),
+                }
+            }
             return refused(plan.reason)
         }
         const id = stepIdFor(pageSession, ++counter)
@@ -579,7 +677,9 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                     coalesceKey: null,
                     replacesRestore: false,
                     deletedRemove: plan.deletedRemove,
-                }),
+                    liveListHash: plan.liveListHash,
+                    afterListHash: plan.afterListHash,
+                }, hashFor),
         }
     }
 
@@ -591,12 +691,16 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         if (plan.fmNotRestored) {
             notes.fmNotRestored = true
         }
+        if (plan.listSkipped !== undefined && plan.listSkipped > 0) {
+            notes.listSkipped = plan.listSkipped
+        }
         return notes
     }
 
     // Every history action is one call of this: phase check, the setter guards, the plan, one
     // marked `writeLive*` call, then the stack move, the visit ack and the save request.
     function applyStudioWrite(owner: OwnerKey, intent: Intent): StudioResult {
+        cancelWarm()
         const slot = useOwner(owner)
         if (!slot || !slot.phase) {
             return refused('gone')
@@ -678,6 +782,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     return {
         useOwner(owner) {
             useOwner(owner)
+            startWarm(owner)
         },
         whenReady,
         view,
@@ -686,6 +791,10 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 acks.set(chaId, ack)
             } else {
                 acks.delete(chaId)
+                // The visit of `chaId` ended.
+                if (warmJob?.chaId === chaId) {
+                    cancelWarm()
+                }
             }
         },
         editField: (owner, path, value) =>
@@ -709,5 +818,6 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 slot.open = null
             }
         },
+        cancelWarm,
     }
 }

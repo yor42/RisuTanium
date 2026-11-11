@@ -10,10 +10,28 @@ import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScr
 import { createOwnerHistoryService, type OwnerHistoryService } from '../ownerHistory.svelte'
 import { characterOwnerKey, chatOwnerKey, SAVE_DEBOUNCE_MS, type OwnerKey } from '../ownerPhase'
 import { COALESCE_MS } from '../historyModel'
+import { listFingerprintOf } from '../listFingerprint'
 import { createFakeClock, type FakeClock } from './historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore, type MemoryStudioStore } from './studioStoreDoubles'
 
 const h = vi.hoisted(() => ({ marks: 0 }))
+// Pass-through counters of the pure fingerprint module, for the revert cost legs.
+const fp = vi.hoisted(() => ({ full: 0, mix: 0 }))
+
+vi.mock('../listFingerprint', async (importOriginal) => {
+    const real = await importOriginal<typeof import('../listFingerprint')>()
+    return {
+        fingerprintElement: real.fingerprintElement,
+        mixElementHashes: (hashes: readonly number[]) => {
+            fp.mix += 1
+            return real.mixElementHashes(hashes)
+        },
+        listFingerprintOf: (list: readonly unknown[]) => {
+            fp.full += 1
+            return real.listFingerprintOf(list)
+        },
+    }
+})
 
 vi.mock('src/ts/globalApi.svelte', () => ({ getSaveMarkCount: () => h.marks }))
 vi.mock('src/ts/stores.svelte', async () => {
@@ -625,5 +643,181 @@ describe('T-R1: private characters get no record', () => {
         expect(harness.store.shared.size).toBe(0)
         expect(harness.store.counts.load).toBe(0)
         expect(harness.store.counts.save).toBe(0)
+    })
+})
+
+describe('list fingerprint through the service (CHORE-690 S1)', () => {
+    test('T13 a list step carries the fingerprint of the lists it spans; typing and field edits carry none', async () => {
+        putCharacters(makeCharacter('A', { alternateGreetings: ['g0', 'g1'] }))
+        await ready()
+        harness.service.editField(A, 'desc', 'typed')
+        harness.service.greetingEdit(A, 0, 'g0b')
+        harness.service.greetingDelete(A, 1)
+        const done = harness.service.view(A).done
+        expect(done.map((step) => Object.keys(step))).toEqual([
+            ['id', 'at', 'label', 'ops'],
+            ['id', 'at', 'label', 'ops'],
+            ['id', 'at', 'label', 'ops', 'listFingerprint'],
+        ])
+        expect(done[2].listFingerprint).toStrictEqual({ before: listFingerprintOf(['g0b', 'g1']), after: listFingerprintOf(['g0b']) })
+    })
+
+    test('T14 an undo of a delete whose owner write was lost is refused; with the write it re-inserts', async () => {
+        putCharacters(makeCharacter('A', { alternateGreetings: ['a', 'a'], chats: [{ id: 'c1', note: '', fmIndex: 1 }] }))
+        await ready()
+        harness.service.greetingDelete(A, 0)
+        live().alternateGreetings.splice(0, live().alternateGreetings.length, 'a', 'a')
+        live().chats[0].fmIndex = 1
+        expect(harness.service.undo(A)).toEqual({ ok: false, reason: 'precondition' })
+        expect(live().alternateGreetings).toEqual(['a', 'a'])
+
+        putCharacters(makeCharacter('A', { alternateGreetings: ['a', 'a'], chats: [{ id: 'c1', note: '', fmIndex: 1 }] }))
+        harness = build()
+        await ready()
+        harness.service.greetingDelete(A, 0)
+        expect(harness.service.undo(A).ok).toBe(true)
+        expect(live().alternateGreetings).toEqual(['a', 'a'])
+    })
+
+    test('T64s (a) a revert across deletes hashes no whole list and stores the exact fingerprint', async () => {
+        const start = Array.from({ length: 20 }, (_, i) => `g${i}`.padEnd(50, 'x'))
+        putCharacters(makeCharacter('A', { alternateGreetings: [...start] }))
+        await ready()
+        harness.service.editField(A, 'desc', 'anchor')
+        const anchor = harness.service.view(A).done[0].id
+        for (let i = 0; i < 10; i++) {
+            harness.clock.tick(COALESCE_MS)
+            harness.service.greetingDelete(A, 0)
+        }
+        const before = [...live().alternateGreetings]
+        fp.full = 0
+        fp.mix = 0
+        expect(harness.service.revertTo(A, anchor).ok).toBe(true)
+        expect(fp.full).toBe(0)
+        expect(live().alternateGreetings).toEqual(start)
+        const top = harness.service.view(A).done.at(-1)!
+        expect(top.listFingerprint).toStrictEqual({ before: listFingerprintOf(before), after: listFingerprintOf(start) })
+    })
+
+    test('T64s (b) the budget reaches the real service: a 200,000-unit slot suspends most decisions', async () => {
+        const start = Array.from({ length: 10 }, (_, i) => `g${i}`.padEnd(50, 'x'))
+        start[1] = 'big'.padEnd(200_000, 'y')
+        putCharacters(makeCharacter('A', { alternateGreetings: [...start] }))
+        await ready()
+        harness.service.editField(A, 'desc', 'anchor')
+        const anchor = harness.service.view(A).done[0].id
+        let salt = 0
+        for (let cycle = 0; cycle < 9; cycle++) {
+            for (let k = 0; k < 10; k++) {
+                harness.clock.tick(COALESCE_MS)
+                salt += 1
+                harness.service.greetingEdit(A, 1, `e${salt}`.padEnd(200_000, 'z'))
+            }
+            harness.clock.tick(COALESCE_MS)
+            harness.service.greetingDelete(A, 0)
+        }
+        fp.full = 0
+        fp.mix = 0
+        expect(harness.service.revertTo(A, anchor).ok).toBe(true)
+        expect(fp.full).toBe(0)
+        expect(fp.mix).toBe(5)
+    })
+
+    test('T64s (c) a delete hashes no whole list; its undo and redo hash the live list once and keep the stored fingerprint', async () => {
+        const start = Array.from({ length: 6 }, (_, i) => `g${i}`.padEnd(40, 'x'))
+        putCharacters(makeCharacter('A', { alternateGreetings: [...start], chats: [{ id: 'c1', note: '', fmIndex: 1 }] }))
+        await ready()
+        fp.full = 0
+        fp.mix = 0
+        expect(harness.service.greetingDelete(A, 1).ok).toBe(true)
+        expect([fp.full, fp.mix]).toEqual([0, 2])
+        const stored = harness.service.view(A).done.at(-1)!.listFingerprint
+        expect(stored).toStrictEqual({ before: listFingerprintOf(start), after: listFingerprintOf(start.filter((_, i) => i !== 1)) })
+        fp.full = 0
+        fp.mix = 0
+        expect(harness.service.undo(A).ok).toBe(true)
+        expect([fp.full, fp.mix]).toEqual([1, 0])
+        expect(live().alternateGreetings).toEqual(start)
+        expect(live().chats[0].fmIndex).toBe(1)
+        expect(harness.service.view(A).undone.at(-1)!.listFingerprint).toStrictEqual(stored)
+        fp.full = 0
+        fp.mix = 0
+        expect(harness.service.redo(A).ok).toBe(true)
+        expect([fp.full, fp.mix]).toEqual([1, 0])
+        expect(harness.service.view(A).done.at(-1)!.listFingerprint).toStrictEqual(stored)
+    })
+
+    test('T85s a revert whose net effect is nothing is reported unchanged and writes, marks, records and saves nothing', async () => {
+        await ready()
+        harness.service.editField(A, 'desc', 'anchor')
+        const anchor = harness.service.view(A).done[0].id
+        harness.clock.tick(COALESCE_MS)
+        harness.service.greetingDelete(A, 1)
+        expect(harness.service.revertTo(A, anchor).ok).toBe(true)
+        expect(live().alternateGreetings).toEqual(['g0', 'g1', 'g2'])
+        await harness.clock.advance(SAVE_DEBOUNCE_MS)
+        const characters = JSON.stringify(DBState.db.characters)
+        const done = harness.service.view(A).done
+        const marks = h.marks
+        const noted = harness.noted.length
+        const saves = JSON.stringify(harness.store.counts)
+        expect(harness.service.revertTo(A, anchor)).toEqual({ ok: true, unchanged: true })
+        await harness.clock.advance(SAVE_DEBOUNCE_MS)
+        expect(JSON.stringify(DBState.db.characters)).toBe(characters)
+        expect(harness.service.view(A).done).toBe(done)
+        expect(h.marks).toBe(marks)
+        expect(harness.noted).toHaveLength(noted)
+        expect(JSON.stringify(harness.store.counts)).toBe(saves)
+    })
+
+    test('T85f an unchanged revert across a chat without an id reports fmNotRestored and writes, marks, records and saves nothing', async () => {
+        putCharacters(makeCharacter('A', { chats: [{ note: '', fmIndex: 1 }] }))
+        await ready()
+        harness.service.editField(A, 'desc', 'a')
+        const anchor = harness.service.view(A).done[0].id
+        harness.clock.tick(COALESCE_MS)
+        expect(harness.service.greetingDelete(A, 1).ok).toBe(true)
+        harness.clock.tick(COALESCE_MS)
+        const deletedId = harness.service.view(A).deleted[0].id
+        expect(harness.service.restoreDeleted(A, deletedId).ok).toBe(true)
+        await harness.clock.advance(SAVE_DEBOUNCE_MS)
+        const characters = JSON.stringify(DBState.db.characters)
+        const done = harness.service.view(A).done
+        const marks = h.marks
+        const noted = harness.noted.length
+        const saves = JSON.stringify(harness.store.counts)
+        expect(harness.service.revertTo(A, anchor)).toEqual({ ok: true, unchanged: true, fmNotRestored: true })
+        await harness.clock.advance(SAVE_DEBOUNCE_MS)
+        expect(JSON.stringify(DBState.db.characters)).toBe(characters)
+        expect(harness.service.view(A).done).toBe(done)
+        expect(h.marks).toBe(marks)
+        expect(harness.noted).toHaveLength(noted)
+        expect(JSON.stringify(harness.store.counts)).toBe(saves)
+    })
+
+    test('T85u an unchanged revert that skipped a list change reports the count and writes, marks, records and saves nothing', async () => {
+        await ready()
+        harness.service.editField(A, 'desc', 'a')
+        const anchor = harness.service.view(A).done[0].id
+        harness.clock.tick(COALESCE_MS)
+        harness.service.editField(A, 'desc', 'b')
+        harness.clock.tick(COALESCE_MS)
+        expect(harness.service.greetingDelete(A, 2).ok).toBe(true)
+        harness.clock.tick(COALESCE_MS)
+        harness.service.editField(A, 'desc', 'a')
+        live().alternateGreetings.push('z')
+        await harness.clock.advance(SAVE_DEBOUNCE_MS)
+        const characters = JSON.stringify(DBState.db.characters)
+        const done = harness.service.view(A).done
+        const marks = h.marks
+        const noted = harness.noted.length
+        const saves = JSON.stringify(harness.store.counts)
+        expect(harness.service.revertTo(A, anchor)).toEqual({ ok: true, unchanged: true, listSkipped: 1 })
+        await harness.clock.advance(SAVE_DEBOUNCE_MS)
+        expect(JSON.stringify(DBState.db.characters)).toBe(characters)
+        expect(harness.service.view(A).done).toBe(done)
+        expect(h.marks).toBe(marks)
+        expect(harness.noted).toHaveLength(noted)
+        expect(JSON.stringify(harness.store.counts)).toBe(saves)
     })
 })

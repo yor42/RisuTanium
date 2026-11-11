@@ -1100,13 +1100,34 @@ describe('first-message rows are keyed by identity', () => {
         const target = rig.service.view(A).done[0].id
         const before = greetingInputs()
         const spy = installValueWriteSpy()
+        const greetingSelector = '[data-part="studio-greeting-input"]'
+        const holdsGreetingInput = (node: Node): boolean =>
+            node instanceof Element && (node.matches(greetingSelector) || node.querySelector(greetingSelector) !== null)
+        const added: Node[] = []
+        const removed: Node[] = []
+        const collect = (records: MutationRecord[]) => {
+            for (const record of records) {
+                added.push(...Array.from(record.addedNodes).filter(holdsGreetingInput))
+                removed.push(...Array.from(record.removedNodes).filter(holdsGreetingInput))
+            }
+        }
+        const observer = new MutationObserver(collect)
+        observer.observe(document.body, { childList: true, subtree: true })
         expect(rig.service.revertTo(A, target).ok).toBe(true)
         await settle()
-        // The revert of one delete is a single insert at the front, not positional rewrites.
+        collect(observer.takeRecords())
+        observer.disconnect()
+        // The revert of one delete is a single insert at the front, not positional rewrites;
+        // the tail listInsert/listRemove pair at |L1| is the MC-1339 lifecycle encoding and cancels out.
         const revertListOps = (rig.service.view(A).done.at(-1)?.ops ?? []).filter((op) => op.op === 'listInsert' || op.op === 'listSet' || op.op === 'listRemove')
-        expect(revertListOps.map((op) => op.op)).toEqual(['listInsert'])
-        expect(revertListOps[0]).toMatchObject({ op: 'listInsert', index: 0 })
+        expect(revertListOps.map((op) => [op.op, op.index])).toEqual([['listInsert', 0], ['listInsert', 3], ['listRemove', 3]])
+        expect(revertListOps[0]).not.toHaveProperty('deletedId')
+        expect(revertListOps[1]).toMatchObject({ deletedId: expect.any(String) })
+        expect(revertListOps[2]).toMatchObject({ deletedId: null })
         const after = greetingInputs()
+        expect(added).toHaveLength(1)
+        expect(removed).toHaveLength(0)
+        expect(added[0].contains(after[0])).toBe(true)
         expect(after).toHaveLength(3)
         expect(after[1]).toBe(before[0])
         expect(after[2]).toBe(before[1])

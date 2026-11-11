@@ -66,7 +66,7 @@ async function build(): Promise<Loaded> {
         console.error(error)
     }
     return {
-        service: history.createOwnerHistoryService({ store, claim, clock: pageClock, tauri: platform.isTauri }),
+        service: history.createOwnerHistoryService({ store, claim, clock: pageClock, tauri: platform.isTauri, scheduleIdle: history.browserIdleScheduler() }),
         createAck: () => ack.createSaveAck(ack.productionSaveAckDeps(pageClock)),
     }
 }
@@ -117,6 +117,17 @@ export function getStudioHistoryService(): OwnerHistoryService | null {
 // Resolves with the service, building it first if needed.
 export async function loadStudioHistoryService(): Promise<OwnerHistoryService> {
     return override ?? (await load()).service
+}
+
+// Input anywhere in Studio that is not a history write (the search box, any later field) ends the pending
+// warm-up, as a history write does; nothing restarts it (MC-1432: never during typing). The visit is
+// remembered too: input can arrive before the service is built or before an owner's first use, and that
+// visit then starts no warm-up (see beginOwnerVisit).
+let inputVisitId: string | null = null
+
+export function noteStudioInput(): void {
+    inputVisitId = studioScreen.visitId
+    getStudioHistoryService()?.cancelWarm()
 }
 
 // ---------------------------------------------------------------- the save ack of the visit
@@ -195,6 +206,10 @@ export function beginOwnerVisit(owner: OwnerKey): SaveAck | null {
     held.owners.add(owner)
     service.setAck(parsed.chaId, held.ack)
     service.useOwner(owner)
+    // Input already happened in this visit: the use above must leave no warm-up pending.
+    if (inputVisitId === visitId) {
+        service.cancelWarm()
+    }
     return held.ack
 }
 
@@ -239,4 +254,5 @@ export function resetStudioHistoryAccessorForTests(): void {
     override = null
     ackOverride = null
     loaderOverride = null
+    inputVisitId = null
 }

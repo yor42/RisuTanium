@@ -7,6 +7,8 @@
     import type { StudioRefusal } from '../../ts/studio/history/ownerHistory.svelte'
     import { getStudioHistoryService } from '../../ts/studio/history/studioHistoryService.svelte'
     import { registerStudioSheetBack } from '../../ts/studio/studioBack.svelte'
+    import { placeFocusAfterHistory } from '../../ts/studio/historyFocus'
+    import { readOwnerFields } from '../../ts/studio/ownerFields'
     import { selectedHistoryOwner, setStudioRestoreSheetOpen } from '../../ts/studio/studioScreen.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
 
@@ -39,6 +41,7 @@
     let overwritten = $state<RestorePath[]>([])
     let refusal = $state<StudioRefusal | null>(null)
     let cancelButton = $state<HTMLButtonElement | undefined>()
+    let layer = $state<HTMLElement | undefined>()
 
     onMount(() => {
         cancelButton?.focus()
@@ -60,18 +63,23 @@
     function confirm(): void {
         if (!service || owner === null) return
         const keep = new Set(changed.filter((path) => !overwritten.includes(path)))
+        const before = readOwnerFields(owner)
         const result = service.restore(owner, keep)
         if (result.ok === false) {
             refusal = result.reason
             return
         }
+        // The sheet unmounts with the close, so the scope is taken from it first; a restore that changed nothing
+        // leaves focus to the panel's opener rule.
+        const scope = layer?.closest('[data-part="studio"]') ?? null
         setStudioRestoreSheetOpen(false)
+        void placeFocusAfterHistory(before, readOwnerFields(owner), () => scope, () => null)
     }
 
     const buttonClass = 'min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer disabled:cursor-default disabled:opacity-50'
 </script>
 
-<div data-part="studio-restore-layer" class="absolute inset-0 z-30 flex items-end justify-center bg-black/40 p-3 sm:items-center">
+<div bind:this={layer} data-part="studio-restore-layer" class="absolute inset-0 z-30 flex items-end justify-center bg-black/40 p-3 sm:items-center">
     <div role="dialog" aria-labelledby="studio-restore-title" data-part="studio-restore-sheet" class="flex max-h-full w-full max-w-md flex-col gap-3 overflow-y-auto rounded-md border border-darkborderc bg-darkbg p-4 text-textcolor">
         <h2 id="studio-restore-title" class="text-lg font-bold">{language.studioRestoreTitle}</h2>
         <p class="text-sm text-textcolor2">{language.studioRestoreBody}</p>

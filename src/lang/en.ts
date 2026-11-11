@@ -2034,6 +2034,7 @@ export const languageEnglish = {
     studioHistoryRevert: "Revert to here",
     studioHistoryDeleted: "Deleted first messages",
     studioHistoryDeletedEmpty: "No deleted first messages.",
+    studioHistoryRevertListSkipped: "Some older changes to the first messages were not undone.",
     studioHistoryRestoreItem: "Restore",
     studioHistoryRestorePoint: "Restore point",
     studioHistoryRestorePointNote: "The values from before your last visit's first edit.",

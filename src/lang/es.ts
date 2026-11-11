@@ -1904,6 +1904,7 @@ export const languageSpanish = {
     "studioHistoryRevert": "Volver a este punto",
     "studioHistoryDeleted": "Primeros mensajes eliminados",
     "studioHistoryDeletedEmpty": "No hay primeros mensajes eliminados.",
+    "studioHistoryRevertListSkipped": "Algunos cambios anteriores en los primeros mensajes no se deshicieron.",
     "studioHistoryRestoreItem": "Restaurar",
     "studioHistoryRestorePoint": "Punto de restauración",
     "studioHistoryRestorePointNote": "Los valores previos a la primera edición de tu última visita.",

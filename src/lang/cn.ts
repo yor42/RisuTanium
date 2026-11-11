@@ -1902,6 +1902,7 @@ export const languageChinese = {
     "studioHistoryRevert": "还原到此处",
     "studioHistoryDeleted": "已删除的初始消息",
     "studioHistoryDeletedEmpty": "没有已删除的初始消息。",
+    "studioHistoryRevertListSkipped": "部分较早的初始消息更改未能撤销。",
     "studioHistoryRestoreItem": "恢复",
     "studioHistoryRestorePoint": "还原点",
     "studioHistoryRestorePointNote": "您上次访问时首次编辑之前的值。",

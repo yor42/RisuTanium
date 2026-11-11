@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { DBState, selIdState } from 'src/ts/stores.svelte'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { characterOwnerKey, chatOwnerKey } from 'src/ts/studio/history/ownerPhase'
+import { commitStep, createModelState, deriveRestoreWrites, emptyRecord, planReplay } from 'src/ts/studio/history/historyModel'
+import { listFingerprintOf } from 'src/ts/studio/history/listFingerprint'
 import type { Chat, character } from 'src/ts/storage/database.svelte'
 import {
     applyCharacterWrites,
@@ -183,6 +185,31 @@ describe('the op builders', () => {
         expect(buildGreetingEdit(1, 'x', reader)).toMatchObject({ ok: true, coalesceKey: 'alternateGreetings:1' })
         expect(buildGreetingEdit(1, 'g1', reader)).toEqual({ ok: false, reason: 'unchanged' })
         expect(buildGreetingEdit(7, 'x', reader)).toEqual({ ok: false, reason: 'precondition' })
+    })
+
+    test('T56d a built greeting add commits a fingerprint, and its undo next to an equal neighbour applies', () => {
+        const live = makeCharacter('A', { alternateGreetings: ['', 'g'] })
+        const reader = createLiveReader(targetOf(live))
+        const built = buildGreetingAdd(reader)
+        if (built.ok === false) throw new Error('the add must build')
+        const greetingsBefore = [...live.alternateGreetings]
+        live.alternateGreetings.push('')
+        const state = commitStep(createModelState(emptyRecord(characterOwnerKey('A'), 0)), {
+            id: 'p:1',
+            at: 1,
+            visitId: 'v1',
+            label: built.label,
+            ops: built.ops,
+            restoreWrites: deriveRestoreWrites(built.ops, greetingsBefore),
+            coalesceKey: built.coalesceKey,
+            replacesRestore: true,
+        })
+        expect(state.record.done[0].listFingerprint).toStrictEqual({
+            before: listFingerprintOf(['', 'g']),
+            after: listFingerprintOf(['', 'g', '']),
+        })
+        const plan = planReplay(state.record, 'undo', createLiveReader(targetOf(live)))
+        expect(plan.ok).toBe(true)
     })
 
     test('a delete carries the fmIndex side op: by chat id when unique, by page index when not', () => {

@@ -446,6 +446,115 @@ describe('the visit ack', () => {
         expect(m.accessor.currentVisitAck()).toBeNull()
         expect(dispose).not.toHaveBeenCalled()
     })
+
+    test('W8 the built service warms the opened card in idle time where the page has requestIdleCallback', async () => {
+        const idle = vi.fn((_run: IdleRequestCallback) => 1)
+        vi.stubGlobal('requestIdleCallback', idle)
+        vi.stubGlobal('cancelIdleCallback', vi.fn())
+        try {
+            const m = await fresh()
+            await m.accessor.loadStudioHistoryService()
+            m.accessor.beginOwnerVisit(m.phase.characterOwnerKey('A'))
+            m.accessor.beginOwnerVisit(m.phase.chatOwnerKey('A', 'c1'))
+            expect(idle).toHaveBeenCalledTimes(1)
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
+
+    test('W8b closing Studio cancels the pending warm-up of the visit', async () => {
+        const idle = vi.fn((_run: IdleRequestCallback) => 7)
+        const cancel = vi.fn()
+        vi.stubGlobal('requestIdleCallback', idle)
+        vi.stubGlobal('cancelIdleCallback', cancel)
+        try {
+            const m = await fresh()
+            await m.accessor.loadStudioHistoryService()
+            m.accessor.beginOwnerVisit(m.phase.characterOwnerKey('A'))
+            expect(idle).toHaveBeenCalledTimes(1)
+            expect(cancel).not.toHaveBeenCalled()
+            m.open.set(false)
+            expect(cancel).toHaveBeenCalledTimes(1)
+            expect(cancel).toHaveBeenCalledWith(7)
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
+})
+
+describe('W12 input in Studio ends the pending warm-up', () => {
+    test('noteStudioInput cancels the idle request of the visit, and nothing requests another', async () => {
+        const idle = vi.fn((_run: IdleRequestCallback) => 9)
+        const cancel = vi.fn()
+        vi.stubGlobal('requestIdleCallback', idle)
+        vi.stubGlobal('cancelIdleCallback', cancel)
+        try {
+            const m = await fresh()
+            await m.accessor.loadStudioHistoryService()
+            m.accessor.beginOwnerVisit(m.phase.characterOwnerKey('A'))
+            expect(idle).toHaveBeenCalledTimes(1)
+            m.accessor.noteStudioInput()
+            expect(cancel).toHaveBeenCalledWith(9)
+            m.accessor.noteStudioInput()
+            expect(cancel).toHaveBeenCalledTimes(1)
+            expect(idle).toHaveBeenCalledTimes(1)
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
+
+    test('W15 input before the service or the owner exists: that visit leaves no warm-up pending, a later visit warms', async () => {
+        const idle = vi.fn((_run: IdleRequestCallback) => 9)
+        const cancel = vi.fn()
+        vi.stubGlobal('requestIdleCallback', idle)
+        vi.stubGlobal('cancelIdleCallback', cancel)
+        try {
+            const m = await fresh()
+            m.accessor.noteStudioInput()
+            await m.accessor.loadStudioHistoryService()
+            m.accessor.beginOwnerVisit(m.phase.characterOwnerKey('A'))
+            // The request the use made is withdrawn before any idle period can run a chunk.
+            expect(idle).toHaveBeenCalledTimes(1)
+            expect(cancel).toHaveBeenCalledWith(9)
+            expect(cancel).toHaveBeenCalledTimes(1)
+            m.screen.studioScreen.visitId = 'v2'
+            m.accessor.beginOwnerVisit(m.phase.characterOwnerKey('A'))
+            expect(idle).toHaveBeenCalledTimes(2)
+            expect(cancel).toHaveBeenCalledTimes(1)
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
+
+    test('W15b input after the job started: no later owner call of the same visit leaves a warm-up pending', async () => {
+        let next = 100
+        const requested: number[] = []
+        const cancelled: number[] = []
+        vi.stubGlobal('requestIdleCallback', vi.fn((_run: IdleRequestCallback) => {
+            next += 1
+            requested.push(next)
+            return next
+        }))
+        vi.stubGlobal('cancelIdleCallback', vi.fn((handle: number) => {
+            cancelled.push(handle)
+        }))
+        const pending = () => requested.filter((handle) => !cancelled.includes(handle))
+        try {
+            const m = await fresh()
+            await m.accessor.loadStudioHistoryService()
+            m.accessor.beginOwnerVisit(m.phase.characterOwnerKey('A'))
+            expect(pending()).toHaveLength(1)
+            m.accessor.noteStudioInput()
+            expect(pending()).toHaveLength(0)
+            // The chat owner is the visit's second owner; the character owner is used again after it.
+            m.accessor.beginOwnerVisit(m.phase.chatOwnerKey('A', 'c1'))
+            expect(pending()).toHaveLength(0)
+            m.accessor.beginOwnerVisit(m.phase.characterOwnerKey('A'))
+            expect(pending()).toHaveLength(0)
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
 })
 
 describe('banner text', () => {
