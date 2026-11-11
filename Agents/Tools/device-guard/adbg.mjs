@@ -26,6 +26,17 @@
 //   Other keyevents: navigation keys only (HOME, BACK, POWER, MENU, ESCAPE, APP_SWITCH, WAKEUP, SLEEP, the four
 //   DPAD arrows, PAGE_UP/DOWN, MOVE_HOME/END); DPAD_CENTER, SPACE, letters and digits are refused.
 //
+//   Restricted serials (2026-11-11, lane A): only the serials in FULL_ACCESS_SERIALS (Note 9 phone 1, Note 9
+//   phone 2, emulator-5580) get everything above. Any other --serial (a personal device) runs RESTRICTED,
+//   fail-closed: allowed are `reverse` and `forward` of an own port (forward only to
+//   localabstract:webview_devtools_remote_*) and their --remove, `exec-out screencap -p --out <png>`, `shell pidof|pm path
+//   <own package>`, `shell sha256sum` of the own package's installed base.apk, `shell getprop` of a few read-only
+//   model/boot keys, and the read-only subcommands locate-css, locate-shot and offset. Everything else (tap, pick,
+//   proc-tasks, input, am, pm clear/install, svc, settings, logcat, push, pull, rm, install ...) exits 95 naming the
+//   serial. The only way to widen is `--scope-file <json>` = {"serial","approvedBy":"maintainer","date","allow":[...]}
+//   with allow from tap|input-text|keyevent|am-start|install, honoured only for that exact serial; every call that
+//   reads it logs the file path and its sha256. The widened classes still pass the normal allowlist and typing chain.
+//
 //   node adbg.mjs pick <common> --state <run>/guard-state.json --name <exact-name>
 //     MC-1438 picker helper. One device-side command dumps the UI to a device file, greps for the exact
 //     text, prints only the bounds, and deletes the dump by its exact name. Output: `match bounds=[l,t][r,b]`
@@ -52,12 +63,19 @@
 //   node adbg.mjs tap <common> --state <state> [--max-age <s, 1-10, default 5>] [--x <px> --y <px>]
 //     Taps the newest locate record (or a point strictly inside it). Refused (exit 99) without a record, when
 //     it is older than --max-age, or when it was already used. Each record allows exactly one tap.
+//
+//   node adbg.mjs tap-home <common> --state <state> --delay-ms <integer 0-500> [--max-age <s>] [--x <px> --y <px>]
+//     The only chained verb (CHORE-719): one tap exactly as `tap` (full-access serials only, a fresh unused locate
+//     that it consumes, same refusal codes), then after the fixed delay `input keyevent KEYCODE_HOME` in the same
+//     process. A failed tap sends no HOME. It logs both steps and a `tap-home timing` line with the tap-to-HOME gap.
+//     It writes no typing grant, so `input text` after it is refused. Restricted serials refuse it even with a scope.
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
 
 const argv = process.argv.slice(2)
-const sub = ['pick', 'locate-css', 'locate-shot', 'offset', 'tap', 'proc-tasks'].includes(argv[0]) ? argv.shift() : 'adb'
+const sub = ['pick', 'locate-css', 'locate-shot', 'offset', 'tap', 'tap-home', 'proc-tasks'].includes(argv[0]) ? argv.shift() : 'adb'
 const sep = argv.indexOf('--')
 const opts = sep < 0 ? argv : argv.slice(0, sep)
 const rest = sep < 0 ? [] : argv.slice(sep + 1)
@@ -206,9 +224,71 @@ function allowedPlain(a) {
   return false
 }
 
+// ---- restricted serials ----
+// Every serial not listed here is a personal device and runs in restricted mode (fail-closed).
+const FULL_ACCESS_SERIALS = new Set(['29f3cde9193f7ece', '2ac80128013f7ece', 'emulator-5580'])
+const restricted = serial !== null && !FULL_ACCESS_SERIALS.has(serial)
+const SCOPE_CLASSES = ['tap', 'input-text', 'keyevent', 'am-start', 'install']
+// Only a maintainer-approved scope file naming exactly this serial opens extra classes; each call that reads
+// it logs its path and sha256 so the independent check can compare it with what the maintainer approved.
+function loadScope() {
+  const p = opt('--scope-file')
+  if (!restricted || p === null) return new Set()
+  let text
+  try { text = readFileSync(p) } catch (e) { die(2, `cannot read --scope-file: ${e.message}`) }
+  logLine(`scope-file ${JSON.stringify(p)} sha256=${createHash('sha256').update(text).digest('hex')}`)
+  let j
+  try { j = JSON.parse(text.toString('utf8')) } catch (e) { die(2, `--scope-file is not valid JSON: ${e.message}`) }
+  const valid = j !== null && typeof j === 'object' && typeof j.serial === 'string' && j.approvedBy === 'maintainer'
+    && typeof j.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(j.date)
+    && Array.isArray(j.allow) && j.allow.every((x) => SCOPE_CLASSES.includes(x))
+  if (!valid) die(2, `--scope-file must be {"serial","approvedBy":"maintainer","date":"YYYY-MM-DD","allow":[subset of ${SCOPE_CLASSES.join(',')}]}`)
+  if (j.serial !== serial) { logLine(`scope-file names ${JSON.stringify(j.serial)}, not ${serial}: nothing widened`); return new Set() }
+  return new Set(j.allow)
+}
+const scopeAllowed = restricted ? loadScope() : new Set()
+const scopeAllows = (cls) => scopeAllowed.has(cls)
+const refuseRestricted = (what) => die(95, `restricted serial ${serial}: ${what} is refused (personal device; only the maintainer can widen it with --scope-file)`)
+// Read-only model/boot keys; no serial number keys.
+const RESTRICTED_PROPS = new Set(['ro.product.model', 'ro.product.manufacturer', 'ro.product.brand', 'ro.product.device', 'ro.build.version.release', 'ro.build.version.sdk', 'ro.boot.hardware', 'sys.boot_completed'])
+function restrictedShell(cmd) {
+  if (typeof cmd !== 'string' || /[^\x20-\x7e]/.test(cmd)) return false
+  const t = cmd.trim().replace(/ +/g, ' ').split(' ')
+  switch (t[0]) {
+    case 'pidof': return t.length === 2 && isOwnPackage(t[1])
+    case 'pm': return t.length === 3 && t[1] === 'path' && isOwnPackage(t[2])
+    case 'sha256sum': return t.length === 2 && ownPackage !== null && /^\/data\/app\/([A-Za-z0-9._=~-]+\/)?[A-Za-z0-9._=~-]+\/base\.apk$/.test(t[1]) && t[1].includes(`/${ownPackage}-`) && !t[1].includes('..')
+    case 'getprop': return t.length === 2 && RESTRICTED_PROPS.has(t[1])
+    case 'input': return (t[1] === 'text' && scopeAllows('input-text')) || (t[1] === 'keyevent' && scopeAllows('keyevent'))
+    // am-start scope opens only the own package's explicit component: no action, category, data or extras,
+    // so CALL/DIAL/VIEW intents stay refused.
+    case 'am': return scopeAllows('am-start') && ownPackage !== null && t[1] === 'start'
+      && ((t.length === 4 && t[2] === '-n' && /^[A-Za-z0-9._]+\/[A-Za-z0-9._$]+$/.test(t[3]) && t[3].startsWith(`${ownPackage}/`))
+        || (t.length === 5 && t[2] === '-W' && t[3] === '-n' && /^[A-Za-z0-9._]+\/[A-Za-z0-9._$]+$/.test(t[4]) && t[4].startsWith(`${ownPackage}/`)))
+    default: return false
+  }
+}
+function restrictedAllows(a) {
+  const [v] = a
+  // Both ends must be own ports: the host end decides which PC service the personal device can reach.
+  if (v === 'reverse') return a[1] === '--remove' || (a.length === 3 && /^tcp:\d+$/.test(a[1]) && /^tcp:\d+$/.test(a[2]) && ownPort(a[1].slice(4)) && ownPort(a[2].slice(4)))
+  if (v === 'forward') return a[1] === '--remove' || (a.length === 3 && /^localabstract:webview_devtools_remote_[A-Za-z0-9_.-]+$/.test(a[2]))
+  if (v === 'exec-out') return a.length === 3 && a[1] === 'screencap' && a[2] === '-p'
+  if (v === 'install') return scopeAllows('install')
+  if (v === 'shell') return a.length === 2 && restrictedShell(a[1])
+  return false
+}
+if (restricted) {
+  if (sub === 'pick' || sub === 'proc-tasks') { needSerial(); refuseRestricted(sub) }
+  if (sub === 'tap') { needSerial(); if (!scopeAllows('tap')) refuseRestricted('tap') }
+  // The chained tap-home verb is full-access only: no scope class opens it.
+  if (sub === 'tap-home') { needSerial(); refuseRestricted('tap-home') }
+}
+
 if (sub === 'adb') {
   needSerial()
   if (rest.length === 0) die(2, 'missing -- <adb args>')
+  if (restricted && !restrictedAllows(rest)) refuseRestricted(`adb ${JSON.stringify(rest)}`)
   if (!allowedPlain(rest)) die(97, `not on the allowlist: adb ${JSON.stringify(rest)}`)
   if (isTypingCall(rest)) {
     if (!statePath) die(99, 'typing (input text or an edit/submit key) needs --state: it must follow a guarded tap on a located field')
@@ -410,8 +490,12 @@ if (sub === 'locate-css') {
   process.exit(0)
 }
 
-if (sub === 'tap') {
+if (sub === 'tap' || sub === 'tap-home') {
   needSerial(); needState()
+  const chained = sub === 'tap-home'
+  const delayRaw = opt('--delay-ms')
+  if (chained && !(delayRaw !== null && /^\d{1,3}$/.test(delayRaw) && +delayRaw <= 500)) die(2, 'tap-home needs --delay-ms as an integer from 0 to 500')
+  const delayMs = chained ? +delayRaw : 0
   const maxAgeRaw = opt('--max-age')
   const maxAge = maxAgeRaw === null ? 5 : Number(maxAgeRaw)
   if (!Number.isFinite(maxAge) || maxAge < 1 || maxAge > 10) die(2, '--max-age must be a number from 1 to 10 seconds')
@@ -430,9 +514,19 @@ if (sub === 'tap') {
     if (!(Number.isInteger(x) && Number.isInteger(y) && x >= b.l && x < b.r && y >= b.t && y < b.b)) die(99, `point ${x},${y} is not strictly inside locate record ${loc.id}`)
   }
   loc.used = true; s.lastShot = null; s.textGrant = null; saveState(s)
-  logLine(`tap uses locate ${loc.id} (${JSON.stringify(loc.label)}, ${age.toFixed(1)} s old, max-age ${maxAge}) at ${x},${y}`)
+  logLine(`tap uses locate ${loc.id} (${JSON.stringify(loc.label)}, ${age.toFixed(1)} s old, max-age ${maxAge}) at ${x},${y}${chained ? ` (tap-home, delay ${delayMs} ms)` : ''}`)
+  const tapStart = Date.now()
   const tapCode = runAdb(['shell', 'input', 'tap', String(x), String(y)], false).code
-  // A successful tap grants one typing chain into the field it hit (see isTypingCall).
-  if (tapCode === 0) { const s2 = loadState(); s2.textGrant = { locate: loc.id, x, y, time: Date.now(), serial, textUsed: false, chain: false }; saveState(s2) }
-  process.exit(tapCode)
+  const tapEnd = Date.now()
+  // A successful tap grants one typing chain into the field it hit (see isTypingCall). tap-home never
+  // grants one: its tap is followed by HOME, so nothing may type after it.
+  if (tapCode === 0 && !chained) { const s2 = loadState(); s2.textGrant = { locate: loc.id, x, y, time: Date.now(), serial, textUsed: false, chain: false }; saveState(s2) }
+  if (!chained || tapCode !== 0) process.exit(tapCode)
+  // The one fixed chained step: HOME after the given delay. No argument can change the keycode.
+  if (delayMs > 0) await new Promise((res) => setTimeout(res, delayMs))
+  const homeStart = Date.now()
+  const homeCode = runAdb(['shell', 'input', 'keyevent', 'KEYCODE_HOME'], false).code
+  const homeEnd = Date.now()
+  logLine(`tap-home timing: tap ${tapStart}-${tapEnd} ms, home ${homeStart}-${homeEnd} ms (epoch), tap-to-home gap ${homeStart - tapEnd} ms after tap end, ${homeStart - tapStart} ms after tap start, delay ${delayMs} ms`)
+  process.exit(homeCode)
 }
