@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onDestroy, tick } from 'svelte'
+    import { onDestroy, tick, untrack } from 'svelte'
     import { SparkleIcon } from '@lucide/svelte'
     import { language } from '../../lang'
     import { additionalSettingsMenu, DBState, easyPanelStore, SettingsMenuIndex } from '../../ts/stores.svelte'
@@ -33,12 +33,33 @@
     }
     let { index, phone, scrollMemory }: Props = $props()
 
-    const located = $derived(pageForIndex(index))
-    const page = $derived(located ? pageEntry(located.page) : null)
-
     let scroller = $state<HTMLElement>()
     let heading = $state<HTMLElement>()
     let shownIndex: number | null = null
+
+    // The view the markup renders. Deliberate side effect: the scroll position of the view being left is
+    // remembered while this is computed, because the markup reads it before it swaps the view in both
+    // schedulers, whereas an `$effect.pre` runs after the block update under the async scheduler, when the
+    // swapped content has already clamped the column's position. The memory stores the index being left.
+    // This holds while: `scroller` and `scrollTop` are read untracked, so the capture adds no dependency;
+    // every DOM-affecting read of the index, including the chip `class:` reads and the page lookup, goes
+    // through this derived; and a single batch computes it once per update (a markup `await`, an async
+    // derived or `fork()` here would need the capture revisited).
+    const current = $derived.by(() => {
+        const next = index
+        if (shownIndex !== null && shownIndex !== next) {
+            const leaving = shownIndex
+            untrack(() => {
+                if (scroller) scrollMemory.set(leaving, scroller.scrollTop)
+            })
+        }
+        shownIndex = next
+        return next
+    })
+
+    const located = $derived(pageForIndex(current))
+    const page = $derived(located ? pageEntry(located.page) : null)
+
     let headBlock = $state<HTMLElement>()
     let showAllAsk = $state<{ trigger: HTMLElement, hidden: HomeMode[] } | null>(null)
 
@@ -47,13 +68,6 @@
         showAllAsk = null
     }
 
-    // Runs before the DOM swaps views, so the column still holds the position of the view being left.
-    $effect.pre(() => {
-        const next = index
-        if (scroller && shownIndex !== null && shownIndex !== next) scrollMemory.set(shownIndex, scroller.scrollTop)
-        shownIndex = next
-    })
-
     // A phone leaves a view by destroying this page, so the position of the view on screen is saved on teardown too.
     onDestroy(() => {
         if (scroller && shownIndex !== null) scrollMemory.set(shownIndex, scroller.scrollTop)
@@ -61,7 +75,7 @@
 
     // A search arrival lands at the top and scrolls to its row itself, so the remembered position yields to it.
     $effect(() => {
-        const target = index
+        const target = current
         const column = scroller
         if (!column) return
         if (arrivalInFlight(target)) return
@@ -91,12 +105,12 @@
                         <button
                             type="button"
                             class="px-3 min-h-11 rounded-md bg-darkbutton hover:text-textcolor"
-                            class:bg-selected={view.legacyIndex === index}
-                            class:text-textcolor={view.legacyIndex === index}
-                            class:text-textcolor2={view.legacyIndex !== index}
+                            class:bg-selected={view.legacyIndex === current}
+                            class:text-textcolor={view.legacyIndex === current}
+                            class:text-textcolor2={view.legacyIndex !== current}
                             data-part="settings-view-chip"
                             data-view={view.id}
-                            aria-pressed={view.legacyIndex === index}
+                            aria-pressed={view.legacyIndex === current}
                             onclick={() => SettingsMenuIndex.set(view.legacyIndex)}
                         >{settingsLabel(view.labelKey)}</button>
                     {/each}
@@ -105,32 +119,32 @@
         </div>
     {/if}
     <div class="grow min-h-0 overflow-y-auto px-4 py-4" bind:this={scroller} data-part="settings-page-scroll">
-        {#key index}
+        {#key current}
             <div class="settings-shell-view flex flex-col" data-part="settings-view">
-                {#if index === 0}
+                {#if current === 0}
                     <UserSettings />
-                {:else if index === 1}
+                {:else if current === 1}
                     <BotSettings goPromptTemplate={() => { SettingsMenuIndex.set(13) }} />
-                {:else if index === 2}
+                {:else if current === 2}
                     <OtherBotSettings />
-                {:else if index === 3}
+                {:else if current === 3}
                     <ModeVisibilityGroup onaskshowall={(trigger, hidden) => { showAllAsk = { trigger, hidden } }} />
                     <DisplayShellPage bind:this={displayPage} {phone} />
-                {:else if index === 4}
+                {:else if current === 4}
                     <PluginSettings />
-                {:else if index === 6}
+                {:else if current === 6}
                     <AdvancedSettings />
-                {:else if index === 10}
+                {:else if current === 10}
                     <LanguageSettings />
-                {:else if index === 11}
+                {:else if current === 11}
                     <AccessibilitySettings />
-                {:else if index === 12}
+                {:else if current === 12}
                     <PersonaSettings />
-                {:else if index === 13}
+                {:else if current === 13}
                     <PromptSettings onGoBack={() => { SettingsMenuIndex.set(1) }} />
-                {:else if index === 14}
+                {:else if current === 14}
                     <ModuleSettings />
-                {:else if index === 15}
+                {:else if current === 15}
                     <HotkeySettings />
                 {/if}
             </div>

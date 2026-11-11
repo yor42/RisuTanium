@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { untrack } from 'svelte'
     import { language } from '../../../lang'
     import { toastHost, type ToastHost, type ToastKind } from '../../../ts/toast/toastHost.svelte'
     import { modalLayerOpen } from './modalLayers.svelte'
@@ -77,10 +78,20 @@
         syncHolds()
     }
 
-    $effect.pre(() => {
-        void host.version
-        const active = document.activeElement
-        before = root !== undefined && active !== null && root.contains(active) ? active : null
+    // Deliberate side effect: the focused element inside the stack is remembered while the visible list is
+    // computed, because the markup reads it before it touches the DOM in both schedulers, whereas an
+    // `$effect.pre` runs after the block update under the async scheduler and sees focus already dropped.
+    // This holds while: `activeElement` and `root` are read untracked, so the capture adds no dependency;
+    // `touch()` in the host publishes `visible` and `version` together, so the capture runs exactly when the
+    // effect below restores; and a single batch computes the list once per update (a markup `await`, an async
+    // derived or `fork()` here would need the capture revisited).
+    const visible = $derived.by(() => {
+        const list = host.visible
+        before = untrack(() => {
+            const active = document.activeElement
+            return root !== undefined && active !== null && root.contains(active) ? active : null
+        })
+        return list
     })
 
     $effect(() => {
@@ -130,7 +141,7 @@
     onfocusin={onFocusIn}
     onfocusout={onFocusOut}
 >
-    {#each host.visible as toast (toast.id)}
+    {#each visible as toast (toast.id)}
         <!-- The pointer handlers only feed the hold derivation; the buttons are the controls. -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
