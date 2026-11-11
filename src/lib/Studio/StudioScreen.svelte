@@ -7,6 +7,8 @@
     import { studioLayoutOf } from '../../ts/studio/studioLayout'
     import { createStudioToasts, refusalText, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
     import { getStudioHistoryService, noteStudioInput } from '../../ts/studio/history/studioHistoryService.svelte'
+    import { placeFocusAfterHistory } from '../../ts/studio/historyFocus'
+    import { readOwnerFields } from '../../ts/studio/ownerFields'
     import { closeStudioHistory, closeStudioRestoreSheet, closeStudioSearch, installStudioBack } from '../../ts/studio/studioBack.svelte'
     import { selectedHistoryOwner, setStudioHistoryOpen, setStudioLayout, setStudioNotice, showStudioList, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
@@ -92,10 +94,12 @@
         const view = service.view(owner)
         if (!view.editable || (direction === 'undo' ? view.done : view.undone).length === 0) return
         event.preventDefault()
+        const before = readOwnerFields(owner)
         const result = runDismissingConsumed(service, toasts, owner, () => (direction === 'undo' ? service.undo(owner) : service.redo(owner)))
         if (result.ok === false) setStudioNotice(refusalText(result.reason))
         // The field now holds the replayed value; the next Ctrl+Z in it continues through the owner's history.
         if (entry !== null) void tick().then(() => { entry.dataset.studioFocusValue = entry.value })
+        void placeFocusAfterHistory(before, readOwnerFields(owner), () => root ?? null, () => root)
     }
 
     // Esc closes one layer and never leaves Studio: the restore sheet, then search, the drawer and the History

@@ -9,6 +9,8 @@
     import { parseOwnerKey, type OwnerKey } from '../../ts/studio/history/ownerPhase'
     import { beginOwnerVisit, ensureStudioHistory, getStudioHistoryService, historyBannerText, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
     import { closeStudioHistory } from '../../ts/studio/studioBack.svelte'
+    import { focusLost, placeFocusAfterHistory } from '../../ts/studio/historyFocus'
+    import { readOwnerFields } from '../../ts/studio/ownerFields'
     import { selectedHistoryOwner, setStudioRestoreSheetOpen, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import { DBState } from '../../ts/stores.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
@@ -97,6 +99,7 @@
     function run(action: (svc: OwnerHistoryService, key: OwnerKey) => StudioResult): void {
         if (!service || historyOwner === null) return
         const key = historyOwner
+        const before = readOwnerFields(key)
         const result = runDismissingConsumed(service, toasts, key, () => action(service, key))
         if (result.ok === false) {
             message = refusalText(result.reason)
@@ -106,6 +109,7 @@
         if (result.listSkipped !== undefined && result.listSkipped > 0) notes.push(language.studioHistoryRevertListSkipped)
         if (result.fmNotRestored) notes.push(language.studioToastRestoredFmNotice)
         message = notes.length > 0 ? notes.join(' ') : null
+        void placeFocusAfterHistory(before, readOwnerFields(key), () => root?.closest('[data-part="studio"]') ?? null, () => root)
     }
 
     function stepText(label: StepLabel): string {
@@ -128,12 +132,13 @@
     }
 
     let restoreOpener = $state<HTMLButtonElement | undefined>()
-    // The sheet unmounts on Cancel, Back and Escape; focus returns to the control that opened it.
+    // The sheet unmounts on Cancel, Back and Escape; focus returns to the control that opened it unless focus
+    // already sits somewhere live (a Confirm that moved it to a changed field, or Escape from outside the sheet).
     let sheetWasOpen = false
     $effect(() => {
         const open = studioScreen.restoreSheetOpen
         if (sheetWasOpen && !open) {
-            void tick().then(() => restoreOpener?.focus())
+            void tick().then(() => { if (focusLost()) restoreOpener?.focus() })
         }
         sheetWasOpen = open
     })
