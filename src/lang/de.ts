@@ -1891,6 +1891,7 @@ export const languageGerman = {
     "studioHistoryRevert": "Auf diesen Stand zurücksetzen",
     "studioHistoryDeleted": "Gelöschte erste Nachrichten",
     "studioHistoryDeletedEmpty": "Keine gelöschten ersten Nachrichten.",
+    "studioHistoryRevertListSkipped": "Einige ältere Änderungen an den ersten Nachrichten wurden nicht rückgängig gemacht.",
     "studioHistoryRestoreItem": "Wiederherstellen",
     "studioHistoryRestorePoint": "Wiederherstellungspunkt",
     "studioHistoryRestorePointNote": "Die Werte vor der ersten Änderung bei deinem letzten Besuch.",

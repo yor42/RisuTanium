@@ -247,6 +247,57 @@ describe('T-W2 / T-W11 port answers and stored bytes are the same through the wo
         )
     })
 
+    test('T16 a fingerprinted list step is saved and loaded equal, with the same bytes on both legs', async () => {
+        const record = removeGreeting(chainState(A, 2), 'st9', 9000, 'del1').record
+        const top = record.done[record.done.length - 1]
+        expect(Object.keys(top)).toEqual(['id', 'at', 'label', 'ops', 'listFingerprint'])
+        await onBothLegs(
+            async (leg) => {
+                await seedStored(leg, record)
+                await leg.store.open()
+                const loaded = await leg.store.load(A)
+                if (loaded.kind !== 'ok') {
+                    return [loaded]
+                }
+                const next = editDesc(createModelState(loaded.record), 'st10', 20000, '2', '3').record
+                return [loaded, await leg.store.save(A, next, protectOnly(A))]
+            },
+            [{ kind: 'ok', record }, OK],
+        )
+    })
+
+    test('T16 a revert that consumes a deleted item is saved and loaded equal, with the same bytes on both legs', async () => {
+        const removed = removeGreeting(chainState(A, 2), 'st9', 9000, 'del1')
+        const consuming = commitStep(removed, {
+            id: 'st10',
+            at: 10000,
+            visitId: 'v1',
+            label: { kind: 'revert', toStepId: 'st1' },
+            ops: [{ op: 'listInsert', index: 0, value: '첫 인사', deletedId: 'del1' }],
+            restoreWrites: [{ path: 'alternateGreetings', before: { list: ['둘째 인사'] }, after: { list: ['첫 인사', '둘째 인사'] } }],
+            coalesceKey: null,
+            replacesRestore: false,
+            deletedRemove: ['del1'],
+        })
+        const record = consuming.record
+        const top = record.done[record.done.length - 1]
+        expect(Object.keys(top.ops[0])).toEqual(['op', 'index', 'value', 'deletedId'])
+        expect(record.deleted).toEqual([])
+        await onBothLegs(
+            async (leg) => {
+                await seedStored(leg, record)
+                await leg.store.open()
+                const loaded = await leg.store.load(A)
+                if (loaded.kind !== 'ok') {
+                    return [loaded]
+                }
+                const next = editDesc(createModelState(loaded.record), 'st11', 20000, '2', '3').record
+                return [loaded, await leg.store.save(A, next, protectOnly(A))]
+            },
+            [{ kind: 'ok', record }, OK],
+        )
+    })
+
     test('unreadable: the later producer header is copied aside and this page writes its own', async () => {
         const record = chain(A, 2)
         await onBothLegs(

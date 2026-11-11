@@ -98,7 +98,14 @@
         if (!service || historyOwner === null) return
         const key = historyOwner
         const result = runDismissingConsumed(service, toasts, key, () => action(service, key))
-        message = result.ok === false ? refusalText(result.reason) : result.fmNotRestored ? language.studioToastRestoredFmNotice : null
+        if (result.ok === false) {
+            message = refusalText(result.reason)
+            return
+        }
+        const notes: string[] = []
+        if (result.listSkipped !== undefined && result.listSkipped > 0) notes.push(language.studioHistoryRevertListSkipped)
+        if (result.fmNotRestored) notes.push(language.studioToastRestoredFmNotice)
+        message = notes.length > 0 ? notes.join(' ') : null
     }
 
     function stepText(label: StepLabel): string {

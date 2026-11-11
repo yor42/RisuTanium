@@ -1934,6 +1934,7 @@ export const languageChineseTraditional = {
     "studioHistoryRevert": "還原到此處",
     "studioHistoryDeleted": "已刪除的開局訊息",
     "studioHistoryDeletedEmpty": "沒有已刪除的開局訊息。",
+    "studioHistoryRevertListSkipped": "部分較早的開局訊息變更未能復原。",
     "studioHistoryRestoreItem": "還原",
     "studioHistoryRestorePoint": "還原點",
     "studioHistoryRestorePointNote": "您上次造訪時第一次編輯之前的值。",

@@ -1889,6 +1889,7 @@ export const languageVietnamese = {
     "studioHistoryRevert": "Quay lại đây",
     "studioHistoryDeleted": "Tin nhắn đầu tiên đã xóa",
     "studioHistoryDeletedEmpty": "Không có tin nhắn đầu tiên nào đã xóa.",
+    "studioHistoryRevertListSkipped": "Một số thay đổi cũ hơn đối với tin nhắn đầu tiên chưa được hoàn tác.",
     "studioHistoryRestoreItem": "Khôi phục",
     "studioHistoryRestorePoint": "Điểm khôi phục",
     "studioHistoryRestorePointNote": "Các giá trị trước lần chỉnh sửa đầu tiên trong lần truy cập trước của bạn.",

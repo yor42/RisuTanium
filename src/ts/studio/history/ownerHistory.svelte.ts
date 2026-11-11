@@ -79,6 +79,9 @@ export interface StudioWriteNotes {
     fmNotRestored?: boolean
     // Ops of the replayed step that were skipped because the live value had moved on.
     skipped?: number
+    // Revert only: list ops that were not undone because their step's list no longer fit. Also set on
+    // an `unchanged` revert, which lands nothing.
+    listSkipped?: number
     // Restore point only: the paths whose live value was changed outside Studio's history.
     changedElsewhere?: RestorePath[]
 }
@@ -557,6 +560,16 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                   ? planRestorePoint(record.restore, live, intent.keep)
                   : planRestoreDeleted(record, intent.deletedId, live)
         if (plan.ok === false) {
+            // A net-nothing revert lands nothing: no write, mark, step or save. It may still tell the
+            // caller that older list changes were not undone or that a chat index could not be restored.
+            if (plan.reason === 'unchanged') {
+                return {
+                    ok: true,
+                    unchanged: true,
+                    ...(plan.listSkipped === undefined ? {} : { listSkipped: plan.listSkipped }),
+                    ...(plan.fmNotRestored ? { fmNotRestored: true } : {}),
+                }
+            }
             return refused(plan.reason)
         }
         const id = stepIdFor(pageSession, ++counter)
@@ -579,6 +592,8 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                     coalesceKey: null,
                     replacesRestore: false,
                     deletedRemove: plan.deletedRemove,
+                    liveListHash: plan.liveListHash,
+                    afterListHash: plan.afterListHash,
                 }),
         }
     }
@@ -590,6 +605,9 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         if (plan.fmNotRestored) {
             notes.fmNotRestored = true
+        }
+        if (plan.listSkipped !== undefined && plan.listSkipped > 0) {
+            notes.listSkipped = plan.listSkipped
         }
         return notes
     }

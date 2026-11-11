@@ -73,6 +73,9 @@ export interface StudioClaimPort {
 // that writes a header, an index or an entry of another version writes all three of that version in
 // one transaction under a fresh gen, or uses new prefixes. A change to the entry data a reader
 // accepts is a new version.
+// An optional, additive step field (such as a step's `listFingerprint`) keeps v1: a v1 reader that
+// does not know it drops it when it rebuilds the step, and an absent field means the behaviour from
+// before the field existed. The field is omitted when absent, never written as undefined or null.
 export const HEADER_PREFIX = 'h:'
 export const ASIDE_MARK_PREFIX = 'xh:'
 export const ENTRY_PREFIX = 'e:'

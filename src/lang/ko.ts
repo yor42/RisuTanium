@@ -1889,6 +1889,7 @@ export const languageKorean = {
     "studioHistoryRevert": "여기로 되돌리기",
     "studioHistoryDeleted": "삭제한 첫 메시지",
     "studioHistoryDeletedEmpty": "삭제한 첫 메시지가 없습니다.",
+    "studioHistoryRevertListSkipped": "이전의 일부 첫 메시지 변경은 되돌리지 못했습니다.",
     "studioHistoryRestoreItem": "복원",
     "studioHistoryRestorePoint": "복원 지점",
     "studioHistoryRestorePointNote": "지난번 방문에서 처음 수정하기 전의 값입니다.",

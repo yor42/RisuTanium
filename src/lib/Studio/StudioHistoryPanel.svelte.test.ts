@@ -52,6 +52,7 @@ import type { toSaveType } from 'src/ts/storage/risuSave'
 import { createSaveAck, type SaveAck, type SaveAckDeps } from 'src/ts/studio/edit/saveAck.svelte'
 import { createStudioToasts } from 'src/ts/studio/edit/studioToasts'
 import type { ChatSource } from 'src/ts/studio/ownerModel'
+import { languageEnglish } from 'src/lang/en'
 import { makeCharacter, makeChat, makeInput, studioDbOf } from 'src/ts/studio/studioFixtures.test-helpers'
 import { openStudio, resetStudioScreenForTests, setStudioHistoryOpen, setStudioSelection, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
@@ -704,6 +705,73 @@ describe('steps, undo, redo and revert', () => {
         await settle()
         expect(part('studio-history-loading')).not.toBeNull()
         expect((part('studio-history-undo') as HTMLButtonElement).disabled).toBe(true)
+    })
+})
+
+// ---------------------------------------------------------------- the skipped-list notice
+
+describe('a revert that did not undo older first-message changes says so', () => {
+    function revertTo(rig: Rig, stepIndex: number): void {
+        const anchor = rig.service.view(A).done[stepIndex].id
+        const row = parts('studio-history-step').find((r) => r.dataset.stepId === anchor)!
+        row.querySelector<HTMLElement>('[data-part="studio-history-revert"]')!.click()
+        flushSync()
+    }
+
+    test('T89 the notice shows after a revert whose delete was skipped', async () => {
+        const rig = makeRig()
+        openPanelState()
+        mountInto(StudioHistoryPanel)
+        await settle()
+        edit(rig, 'a')
+        expect(rig.service.greetingDelete(A, 2).ok).toBe(true)
+        edit(rig, 'b')
+        flushSync()
+        live().alternateGreetings.push('z')
+        flushSync()
+        revertTo(rig, 0)
+        expect(live().desc).toBe('a')
+        expect(part('studio-history-message')?.textContent).toBe('studioHistoryRevertListSkipped')
+        expect(live().alternateGreetings).toEqual(['g0', 'g1', 'z'])
+        expect(live().chats[0].fmIndex).toBe(-1)
+    })
+
+    test('T89b a revert that skipped nothing shows no message', async () => {
+        const rig = makeRig()
+        openPanelState()
+        mountInto(StudioHistoryPanel)
+        await settle()
+        edit(rig, 'a')
+        expect(rig.service.greetingDelete(A, 2).ok).toBe(true)
+        edit(rig, 'b')
+        flushSync()
+        revertTo(rig, 0)
+        expect(live().alternateGreetings).toEqual(['g0', 'g1', 'g2'])
+        expect(part('studio-history-message')).toBeNull()
+    })
+
+    test('T89u an unchanged revert that skipped list changes shows the notice and adds no row', async () => {
+        const rig = makeRig()
+        openPanelState()
+        mountInto(StudioHistoryPanel)
+        await settle()
+        edit(rig, 'a')
+        edit(rig, 'b')
+        expect(rig.service.greetingDelete(A, 2).ok).toBe(true)
+        edit(rig, 'a')
+        flushSync()
+        live().alternateGreetings.push('z')
+        flushSync()
+        const rowsBefore = stepsText()
+        revertTo(rig, 0)
+        expect(part('studio-history-message')?.textContent).toBe('studioHistoryRevertListSkipped')
+        expect(stepsText()).toEqual(rowsBefore)
+        expect(live().desc).toBe('a')
+        expect(live().alternateGreetings).toEqual(['g0', 'g1', 'z'])
+    })
+
+    test('T89t the notice text is the one the maintainer chose', () => {
+        expect(languageEnglish.studioHistoryRevertListSkipped).toBe('Some older changes to the first messages were not undone.')
     })
 })
 
