@@ -19,6 +19,8 @@ export interface ReplyNotificationsHost {
     /** Contract v2: the notice as the JSON string of a `ReplyNoticeState`. A host without it is an old one and gets `notify`. */
     notifyState(json: string): unknown
     cancel(key: string): unknown
+    /** Opens the app's system notification settings. It never changes the reply opt-in. */
+    openNotificationSettings(): unknown
 }
 
 /**
@@ -46,6 +48,8 @@ declare global {
         __risuTaniumReplyNotificationsHost?: Partial<ReplyNotificationsHost>
         /** Called by the host with the opt-in and the real enabled state. */
         __risuTaniumReplyNotificationsState?: (value: unknown) => void
+        /** Called by the host with the answer to the keep-alive notification permission ask. */
+        __risuTaniumNotificationPermissionResult?: (granted: unknown) => void
     }
 }
 
@@ -54,6 +58,18 @@ export const REPLY_KEY_MAX_LENGTH = 200
 
 /** `known` is false until the host has reported once; `enabled` is whether Android would show a notification now. */
 export const state = $state({ known: false, optedIn: false, enabled: false })
+
+/**
+ * The notice after the notification permission is denied (DD-009), held in memory only:
+ * - `appNotifications` is the host's app-level answer, null until a host that reports it has pushed.
+ * - `phase` runs idle -> pending (a denial arrived) -> consumed (one chat instance took it) -> done.
+ *   `done` is terminal for the process: a later denial, a later result and any later push never show
+ *   the notice again. That includes a boot push with notifications already on, so a user who
+ *   granted at the first ask sees the Settings line only if they switch them off later.
+ * Only the instance that consumed the notice shows it; an instance that unmounts takes it with it.
+ */
+export type NotificationsOffPhase = 'idle' | 'pending' | 'consumed' | 'done'
+export const notificationsOff = $state({ appNotifications: null as boolean | null, phase: 'idle' as NotificationsOffPhase })
 
 /** The notification key of a chat: one notification per chat. */
 export function replyNotificationKey(origin: Origin): string {
@@ -76,8 +92,12 @@ function isReplyKey(key: string): boolean {
     return key.length > 0 && key.length <= REPLY_KEY_MAX_LENGTH
 }
 
-/** The host's state as a JSON string or the object itself, or null unless both flags are booleans. */
-function readState(value: unknown): { optedIn: boolean; enabled: boolean } | null {
+/**
+ * The host's state as a JSON string or the object itself, or null unless both flags are booleans.
+ * `appNotifications` is optional: a value that is not a boolean counts as absent (null) and never
+ * rejects the two flags.
+ */
+function readState(value: unknown): { optedIn: boolean; enabled: boolean; appNotifications: boolean | null } | null {
     let parsed: unknown = value
     if (typeof value === 'string') {
         try {
@@ -93,7 +113,11 @@ function readState(value: unknown): { optedIn: boolean; enabled: boolean } | nul
     if (typeof fields.optedIn !== 'boolean' || typeof fields.enabled !== 'boolean') {
         return null
     }
-    return { optedIn: fields.optedIn, enabled: fields.enabled }
+    return {
+        optedIn: fields.optedIn,
+        enabled: fields.enabled,
+        appNotifications: typeof fields.appNotifications === 'boolean' ? fields.appNotifications : null,
+    }
 }
 
 function receiveState(value: unknown): void {
@@ -104,6 +128,53 @@ function receiveState(value: unknown): void {
     state.known = true
     state.optedIn = next.optedIn
     state.enabled = next.enabled
+    notificationsOff.appNotifications = next.appNotifications
+    // Notifications allowed ends the notice in every phase, an idle one included (see notificationsOff).
+    if (next.appNotifications === true) {
+        notificationsOff.phase = 'done'
+    }
+}
+
+/** The keep-alive permission answer: a denial arms the notice once; an allow ends it; anything else is ignored. */
+function receiveNotificationPermissionResult(granted: unknown): void {
+    if (granted === false) {
+        if (notificationsOff.phase === 'idle') {
+            notificationsOff.phase = 'pending'
+        }
+    } else if (granted === true) {
+        notificationsOff.phase = 'done'
+    }
+}
+
+/** Compare-and-set: the first caller while pending takes the notice and gets true; every other call gets false. */
+export function consumeNotificationsOffNotice(): boolean {
+    if (notificationsOff.phase !== 'pending') {
+        return false
+    }
+    notificationsOff.phase = 'consumed'
+    return true
+}
+
+/** Close: the notice is gone for the process. */
+export function dismissNotificationsOffNotice(): void {
+    notificationsOff.phase = 'done'
+}
+
+/** [Open settings]: opens the app's notification settings through the host (never `enable`) and ends the notice. */
+export function openNotificationSettings(): void {
+    callHost('openNotificationSettings')
+    notificationsOff.phase = 'done'
+}
+
+/** The Settings line shows while the host says app notifications are off; an old host reports nothing, so nothing shows. */
+export function notificationsOffLineShown(): boolean {
+    return notificationsOff.appNotifications === false
+}
+
+/** Test-only: returns the notice to its initial state. */
+export function resetNotificationsOffNoticeForTests(): void {
+    notificationsOff.appNotifications = null
+    notificationsOff.phase = 'idle'
 }
 
 /** Listens for the host's state and asks for it once. Safe to call again and where there is no host. */
@@ -112,6 +183,7 @@ export function installReplyNotifications(): void {
         return
     }
     window.__risuTaniumReplyNotificationsState = receiveState
+    window.__risuTaniumNotificationPermissionResult = receiveNotificationPermissionResult
     callHost('refresh')
 }
 

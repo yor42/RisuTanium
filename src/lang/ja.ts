@@ -235,6 +235,8 @@ export const languageJapanese = {
     keepAliveCharacters: "{count}文字",
     replyNoticeText: "応答が完了しました",
     replyNoticePublicTitle: "新しい応答",
+    notificationsOffNotice: "通知がオフのため、バックグラウンドの応答には通知シェードに停止ボタンが表示されません。",
+    notificationsOffOpenSettings: "設定を開く",
     chatShellAllCharacters: "すべてのキャラクター",
     chatShellRecentCharacters: "最近のキャラクター",
     chatShellGroupName: (name: string) => `${name}（グループ）`,

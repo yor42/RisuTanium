@@ -235,6 +235,8 @@ export const languageKorean = {
     keepAliveCharacters: "{count}자",
     replyNoticeText: "답변 완료",
     replyNoticePublicTitle: "새 답변",
+    notificationsOffNotice: "알림이 꺼져 있어 백그라운드 답변을 알림창에서 중지할 수 없습니다.",
+    notificationsOffOpenSettings: "설정 열기",
     chatShellAllCharacters: "모든 캐릭터",
     chatShellRecentCharacters: "최근 캐릭터",
     chatShellGroupName: (name: string) => `${name} (그룹)`,

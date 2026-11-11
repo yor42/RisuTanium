@@ -57,6 +57,7 @@ sealed class BridgeCommand {
   object ReplyNotificationsRefresh : BridgeCommand()
   object ReplyNotificationsEnable : BridgeCommand()
   object ReplyNotificationsDisable : BridgeCommand()
+  object ReplyNotificationsOpenSettings : BridgeCommand()
   data class ReplyNotificationsNotify(val key: String, val title: String, val body: String, val silent: Boolean) : BridgeCommand()
   // Contract v2: carries the page's notice as a JSON string, because toCommand rejects nested values.
   data class ReplyNotificationsNotifyState(val json: String) : BridgeCommand()
@@ -142,6 +143,7 @@ private fun replyNotificationsCommand(method: String, args: List<Any?>): BridgeC
     "refresh" -> return if (args.isEmpty()) BridgeCommand.ReplyNotificationsRefresh else null
     "enable" -> return if (args.isEmpty()) BridgeCommand.ReplyNotificationsEnable else null
     "disable" -> return if (args.isEmpty()) BridgeCommand.ReplyNotificationsDisable else null
+    "openNotificationSettings" -> return if (args.isEmpty()) BridgeCommand.ReplyNotificationsOpenSettings else null
     "notify" -> {
       if (args.size != 4) return null
       val key = args[0] as? String ?: return null

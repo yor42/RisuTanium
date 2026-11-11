@@ -243,6 +243,7 @@ export function replyNotificationsHost(): Partial<ReplyNotificationsHost> | unde
             refresh: () => call('refresh', []),
             enable: () => call('enable', []),
             disable: () => call('disable', []),
+            openNotificationSettings: () => call('openNotificationSettings', []),
             notify: (key: string, title: string, body: string, silent: boolean) => call('notify', [key, title, body, silent]),
             notifyState: (json: string) => call('notifyState', [json]),
             cancel: (key: string) => call('cancel', [key]),

@@ -107,6 +107,7 @@ class BridgeScopeTest {
     assertNotNull(toCommand("replyNotifications", "refresh", emptyList(), null))
     assertNotNull(toCommand("replyNotifications", "enable", emptyList(), null))
     assertNotNull(toCommand("replyNotifications", "disable", emptyList(), null))
+    assertNotNull(toCommand("replyNotifications", "openNotificationSettings", emptyList(), null))
     assertNotNull(toCommand("replyNotifications", "notify", listOf("cha/chat", "Title", "Body", true), null))
     assertNotNull(toCommand("replyNotifications", "notify", listOf("cha/chat", "", "", false), null))
     assertNotNull(toCommand("replyNotifications", "cancel", listOf("cha/chat"), null))
@@ -127,6 +128,19 @@ class BridgeScopeTest {
       toCommand("replyNotifications", "notify", listOf("a/b", "T", "B", false), null)
     )
     assertEquals(BridgeCommand.ReplyNotificationsCancel("a/b"), toCommand("replyNotifications", "cancel", listOf("a/b"), null))
+  }
+
+  // The notification-settings shortcut takes no argument and never maps to enable.
+  @Test
+  fun theOpenNotificationSettingsCallIsItsOwnCommandAndTakesNoArguments() {
+    assertSame(
+      BridgeCommand.ReplyNotificationsOpenSettings,
+      toCommand("replyNotifications", "openNotificationSettings", emptyList(), null)
+    )
+    assertNull(toCommand("replyNotifications", "openNotificationSettings", listOf(1), null))
+    assertNull(toCommand("replyNotifications", "openNotificationSettings", listOf("x"), null))
+    assertNull(toCommand("replyNotifications", "openNotificationSettings", listOf(null), null))
+    assertNull(toCommand("keepAlive", "openNotificationSettings", emptyList(), null))
   }
 
   // Contract v2: the notice travels as one JSON string.

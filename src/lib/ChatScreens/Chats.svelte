@@ -505,4 +505,4 @@
 
 </script>
 
-<div class="flex flex-col-reverse" bind:this={chatBody}></div>
+<div class="flex flex-col-reverse" data-part="chat-messages" bind:this={chatBody}></div>

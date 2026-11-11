@@ -54,6 +54,14 @@ class MainActivity : TauriActivity() {
       applyReplyStep(afterAsk(granted))
     }
 
+  // The keep-alive ask's own launcher: its answer goes to the page after the fresh state push, so
+  // the page reads the app-level state before it learns of a denial.
+  private val keepAlivePermissionRequest =
+    registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+      pushReplyNotificationsState()
+      callPage(notificationPermissionResultScript(granted))
+    }
+
   // A live system day/night switch changes the navigation-bar rule on API 35+; the activity is
   // not recreated (uiMode is in configChanges), so the last colour is applied again.
   // The WebView reads the system font scale only when it is created, and a font change does not
@@ -297,7 +305,8 @@ class MainActivity : TauriActivity() {
     applicationContext,
     ::pushReplyNotificationsState,
     ::enableReplyNotifications,
-    ::disableReplyNotifications
+    ::disableReplyNotifications,
+    ::openAppNotificationSettings
   )
 
   // The real state is read again on every resume: the user may have changed the system settings
@@ -354,7 +363,13 @@ class MainActivity : TauriActivity() {
   }
 
   private fun pushReplyNotificationsState() {
-    val json = encodeReplyNotificationsState(ReplyNotifier.optedIn(applicationContext), replyNotifier.enabled())
+    val appEnabled = try {
+      replyNotifier.appNotificationsEnabled()
+    } catch (error: Exception) {
+      Log.w("MainActivity", "app notification state unreadable", error)
+      null
+    }
+    val json = encodeReplyNotificationsState(ReplyNotifier.optedIn(applicationContext), replyNotifier.enabled(), appEnabled)
     callPage("window.__risuTaniumReplyNotificationsState?.($json)")
   }
 
@@ -387,7 +402,7 @@ class MainActivity : TauriActivity() {
     val prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
     if (prefs.getBoolean(KEY_NOTIFICATION_PERMISSION_ASKED, false)) return
     prefs.edit().putBoolean(KEY_NOTIFICATION_PERMISSION_ASKED, true).apply()
-    requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST)
+    keepAlivePermissionRequest.launch(Manifest.permission.POST_NOTIFICATIONS)
   }
 
   private fun sameId(a: WebView, b: WebView) = a is RustWebView && b is RustWebView && a.id == b.id
@@ -468,7 +483,6 @@ class MainActivity : TauriActivity() {
 
     private const val PREFS_NAME = "keepalive"
     private const val KEY_NOTIFICATION_PERMISSION_ASKED = "notificationPermissionAsked"
-    private const val NOTIFICATION_PERMISSION_REQUEST = 0x4B41
 
     // A main thread busy for longer than this makes Back exit instead of closing the overlay.
     private const val BACK_TIMEOUT_MS = 1000L

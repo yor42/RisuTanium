@@ -52,6 +52,34 @@ class ReplyNotificationsPolicyTest {
   }
 
   @Test
+  fun theStateCarriesTheAppLevelAnswerWhenItIsReadable() {
+    assertEquals(
+      "{\"optedIn\":false,\"enabled\":false,\"appNotifications\":false}",
+      encodeReplyNotificationsState(false, false, false)
+    )
+    assertEquals(
+      "{\"optedIn\":true,\"enabled\":true,\"appNotifications\":true}",
+      encodeReplyNotificationsState(true, true, true)
+    )
+    assertEquals(
+      "{\"optedIn\":true,\"enabled\":false,\"appNotifications\":true}",
+      encodeReplyNotificationsState(true, false, true)
+    )
+  }
+
+  @Test
+  fun anUnreadableAppLevelAnswerLeavesTheFieldOutSoThePushIsTheTwoFieldOne() {
+    assertEquals("{\"optedIn\":true,\"enabled\":false}", encodeReplyNotificationsState(true, false, null))
+    assertEquals("{\"optedIn\":false,\"enabled\":false}", encodeReplyNotificationsState(false, false, null))
+  }
+
+  @Test
+  fun thePermissionResultScriptCallsThePagesHookWithTheAnswer() {
+    assertEquals("window.__risuTaniumNotificationPermissionResult?.(true)", notificationPermissionResultScript(true))
+    assertEquals("window.__risuTaniumNotificationPermissionResult?.(false)", notificationPermissionResultScript(false))
+  }
+
+  @Test
   fun anAppWithNotificationsOffIsNeverEnabled() {
     assertFalse(replyNotificationsEnabled(false, 34, 3))
     assertFalse(replyNotificationsEnabled(false, 34, null))

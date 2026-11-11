@@ -35,9 +35,15 @@ fun afterAsk(granted: Boolean): EnableStep = if (granted) EnableStep.Done else E
 fun replyNotificationsEnabled(appEnabled: Boolean, sdk: Int, channelImportance: Int?): Boolean =
   appEnabled && (sdk < REPLY_CHANNEL_SDK || channelImportance == null || channelImportance != CHANNEL_IMPORTANCE_NONE)
 
-// The state pushed to the page.
-fun encodeReplyNotificationsState(optedIn: Boolean, enabled: Boolean): String =
-  "{\"optedIn\":$optedIn,\"enabled\":$enabled}"
+// The state pushed to the page. appEnabled is the app-level areNotificationsEnabled answer; null
+// (unreadable) leaves the field out, so the push is then byte-identical to the two-field one.
+fun encodeReplyNotificationsState(optedIn: Boolean, enabled: Boolean, appEnabled: Boolean? = null): String =
+  if (appEnabled == null) "{\"optedIn\":$optedIn,\"enabled\":$enabled}"
+  else "{\"optedIn\":$optedIn,\"enabled\":$enabled,\"appNotifications\":$appEnabled}"
+
+// The page's hook for the keep-alive permission answer; the page ignores it when it has not installed one.
+fun notificationPermissionResultScript(granted: Boolean): String =
+  "window.__risuTaniumNotificationPermissionResult?.($granted)"
 
 // The reply notice of contract v2, as the page sends it. The page owns every string and sends it
 // already localised, so native holds none of its own. key is the notification's tag: the page cancels

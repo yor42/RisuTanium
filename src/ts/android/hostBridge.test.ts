@@ -163,6 +163,17 @@ describe('the reply notifications over the channel', () => {
         expect(fake.postedTo('replyNotifications', method)).toEqual([{ bridge: 'replyNotifications', method, args }])
     })
 
+    test('P2: openNotificationSettings is on the channel proxy and goes out as one message with no arguments', () => {
+        const fake = createHostChannelFake()
+        window.__risuTaniumHost = fake.channel
+        const host = replyNotificationsHost()
+        expect(typeof host?.openNotificationSettings).toBe('function')
+        host?.openNotificationSettings?.()
+        expect(fake.postedTo('replyNotifications', 'openNotificationSettings')).toEqual([
+            { bridge: 'replyNotifications', method: 'openNotificationSettings', args: [] },
+        ])
+    })
+
     test('the channel wins over the separate host object', () => {
         const fake = createHostChannelFake()
         const legacy = { notify: vi.fn(), cancel: vi.fn() }

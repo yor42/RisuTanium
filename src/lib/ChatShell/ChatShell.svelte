@@ -4,6 +4,8 @@
     import { DBState, selIdState } from '../../ts/stores.svelte'
     import { language } from '../../lang'
     import type SendFailureCardComponent from './SendFailureCard.svelte'
+    import type NotificationsOffNoticeComponent from '../ChatScreens/NotificationsOffNotice.svelte'
+    import { chatWindowKey } from '../../ts/chatWindowPolicy'
     import type ShellHeaderComponent from './ShellHeader.svelte'
     import type ShellComposerComponent from './ShellComposer.svelte'
     import type PersonaSheetComponent from './PersonaSheet.svelte'
@@ -59,6 +61,8 @@
     let SendFailureCard: typeof SendFailureCardComponent | null = $state(null)
     let sendFailures: typeof import('../../ts/chatShell/sendFailure.svelte') | null = $state.raw(null)
     let settingsRoute: typeof import('../Setting/settingsRoute') | null = null
+    // The notification-permission notice loads on its own so the character-only early return below never skips it.
+    let NotificationsOffNotice: typeof NotificationsOffNoticeComponent | null = $state(null)
     let messageList: ReturnType<typeof ShellMessageListComponent> | undefined = $state()
     // One action sheet and one customize sheet serve every row; they live outside the transcript so a row's clipping cannot cover them.
     let actionRequest: ActionRequest | null = $state.raw(null)
@@ -171,6 +175,15 @@
             actionOpen = false
             customizeOpen = false
         }
+    })
+
+    onMount(() => {
+        let live = true
+        void import('../ChatScreens/NotificationsOffNotice.svelte').then((noticeModule) => {
+            if (!live) return
+            NotificationsOffNotice = noticeModule.default
+        }).catch((error) => console.error('The notifications-off notice did not load:', error))
+        return () => { live = false }
     })
 
     onMount(() => {
@@ -439,6 +452,8 @@
     {#if ShellFloatingButtons}<ShellFloatingButtons visible={unread && !atBottom} onclick={() => messageList?.scrollToLatestMessage?.()} />{/if}
     <div bind:this={composer} data-part="chat-composer-host" inert={switchPending ? true : undefined}>
         {#if SendFailureCard && sendFailure}<SendFailureCard failure={sendFailure} onfix={fixSendFailure} onretry={retryShownSendFailure} />{/if}
+        <!-- The key is block identity only: a chat or character switch remounts the notice, so the instance that showed it is gone. -->
+        {#if NotificationsOffNotice}{#key chatWindowKey(character?.chaId, shownChat)}<NotificationsOffNotice />{/key}{/if}
         {#if ShellComposer}<ShellComposer onplus={openPlus} onpersona={openPersona} bind:stickersOpen onhardwarechange={(seen) => { hardwareKeyboardSeen = seen; if (seen) headerHidden = false }} />{/if}
     </div>
     {#if ActionSheet}<ActionSheet open={actionOpen} opener={actionRequest?.opener ?? null} anchor={actionRequest?.anchor} available={actionOpen ? actionRequest?.available() ?? [] : []} disabled={actionOpen ? actionRequest?.disabled() ?? [] : []} generating={actionOpen && actionRequest?.generating() === true} background={sheetBackground} onaction={(id) => actionRequest?.run(id)} onclose={() => actionOpen = false} />{/if}

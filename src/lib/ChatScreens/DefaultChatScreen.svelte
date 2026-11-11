@@ -3,6 +3,7 @@
     import { isImeComposing } from "src/ts/ime/compositionGuard";
 
     import Suggestion from './Suggestion.svelte';
+    import NotificationsOffNotice from './NotificationsOffNotice.svelte';
     import { CameraIcon, DatabaseIcon, DicesIcon, GlobeIcon, ImagePlusIcon, LanguagesIcon, Laugh, MenuIcon, MicOffIcon, PackageIcon, Plus, RefreshCcwIcon, ReplyIcon, Send, StepForwardIcon, XIcon, BrainIcon, ArrowDown, SparkleIcon } from "@lucide/svelte";
     import { selectedCharID, PlaygroundStore, createSimpleCharacter, hypaV3ModalOpen, ScrollToMessageStore, additionalChatMenu, additionalFloatingActionButtons, easyPanelStore, chatPanelStore } from "../../ts/stores.svelte";
     import { tick, onDestroy, untrack } from 'svelte';
@@ -580,7 +581,9 @@
                 grewWindow = true
             }
             const chatTarget = e.target as HTMLElement;
-            const chatsContainer = (DBState.db.fixedChatTextarea && chatTarget.children[1]) ? chatTarget.children[1] : chatTarget.children[0];
+            // With a fixed composer the message list is found by its data-part marker, never by position or class:
+            // the optional rows around it (notice, translate, files, stickers) shift child indexes and share styling classes.
+            const chatsContainer = (DBState.db.fixedChatTextarea && chatTarget.querySelector(':scope > [data-part="chat-messages"]')) || chatTarget.children[0];
             const lastEl = chatsContainer?.firstElementChild;
             const isAtBottom = lastEl ? lastEl.getBoundingClientRect().top <= chatTarget.getBoundingClientRect().bottom + 100 : true;
             if(isAtBottom){
@@ -751,6 +754,8 @@
                     </div>
                 {/if}
             </div>
+            <!-- The container is flex-col-reverse, so this sibling of the input row sits directly above the composer. The key is block identity only: a chat switch remounts the notice, so the instance that showed it is gone. -->
+            {#key chatWindowKey(currentCharacter?.chaId, currentCharacter?.chats?.[currentCharacter.chatPage])}<NotificationsOffNotice />{/key}
             {#if DBState.db.useAutoTranslateInput && DBState.db.characters[$selectedCharID]?.chaId !== '§playground'}
                 <div class="flex items-center mt-2 mb-2">
                     <label for='messageInputTranslate' class="text-textcolor ml-4">

@@ -238,6 +238,151 @@ describe('notifyReplyState (contract v2) is gated like notifyReply', () => {
     })
 })
 
+// The notice after the notification permission is denied (DD-009). Pushes are host-shaped JSON text, as
+// pushReplyNotificationsState sends them, and the result hook is called as callPage does.
+function stateJson(appNotifications?: boolean | string): string {
+    return appNotifications === undefined
+        ? '{"optedIn":false,"enabled":false}'
+        : JSON.stringify({ optedIn: false, enabled: false, appNotifications })
+}
+
+/** Calls the host's permission-result hook after asserting it exists, so a missing hook fails on an assertion. */
+function permissionResult(value: unknown): void {
+    const hook = window.__risuTaniumNotificationPermissionResult
+    expect(typeof hook).toBe('function')
+    hook?.(value)
+}
+
+describe('the keep-alive permission result hook (DD-009)', () => {
+    afterEach(() => {
+        delete window.__risuTaniumNotificationPermissionResult
+    })
+
+    test('P1: installing sets the hook', async () => {
+        await ready(null)
+        expect(typeof window.__risuTaniumNotificationPermissionResult).toBe('function')
+    })
+
+    test('T1: a denial moves idle to pending', async () => {
+        const { module } = await ready(null)
+        expect(module.notificationsOff.phase).toBe('idle')
+        permissionResult(false)
+        expect(module.notificationsOff.phase).toBe('pending')
+    })
+
+    test('T2: the first consume takes a pending notice, every later one gets false', async () => {
+        const { module } = await ready(null)
+        permissionResult(false)
+        expect(module.consumeNotificationsOffNotice()).toBe(true)
+        expect(module.notificationsOff.phase).toBe('consumed')
+        expect(module.consumeNotificationsOffNotice()).toBe(false)
+        expect(module.notificationsOff.phase).toBe('consumed')
+    })
+
+    test('T3: consuming in idle or done takes nothing', async () => {
+        const { module } = await ready(null)
+        expect(module.consumeNotificationsOffNotice()).toBe(false)
+        expect(module.notificationsOff.phase).toBe('idle')
+        permissionResult(true)
+        expect(module.notificationsOff.phase).toBe('done')
+        expect(module.consumeNotificationsOffNotice()).toBe(false)
+        expect(module.notificationsOff.phase).toBe('done')
+    })
+
+    test.each(['idle', 'pending', 'consumed'] as const)('T4: an allowed push from %s ends the notice for good, and a later denial stays done', async (from) => {
+        const { module } = await ready(null)
+        if (from !== 'idle') permissionResult(false)
+        if (from === 'consumed') expect(module.consumeNotificationsOffNotice()).toBe(true)
+        expect(module.notificationsOff.phase).toBe(from)
+        window.__risuTaniumReplyNotificationsState?.(stateJson(true))
+        expect(module.notificationsOff.phase).toBe('done')
+        permissionResult(false)
+        expect(module.notificationsOff.phase).toBe('done')
+        expect(module.consumeNotificationsOffNotice()).toBe(false)
+    })
+
+    test('T5: an allowed result ends the notice and a result that is not a boolean is ignored', async () => {
+        const { module } = await ready(null)
+        for (const value of ['false', 0, 1, null, undefined, {}]) {
+            permissionResult(value)
+            expect(module.notificationsOff.phase).toBe('idle')
+        }
+        permissionResult(false)
+        permissionResult(true)
+        expect(module.notificationsOff.phase).toBe('done')
+    })
+
+    test('T5b: an allowed result in idle does not arm the notice', async () => {
+        const { module } = await ready(null)
+        permissionResult(true)
+        expect(module.notificationsOff.phase).toBe('done')
+        expect(module.consumeNotificationsOffNotice()).toBe(false)
+    })
+
+    test('T6: a push that says notifications are off changes only appNotifications, in every phase', async () => {
+        const { module } = await ready(null)
+        window.__risuTaniumReplyNotificationsState?.(stateJson(false))
+        expect(module.notificationsOff).toEqual({ appNotifications: false, phase: 'idle' })
+        permissionResult(false)
+        window.__risuTaniumReplyNotificationsState?.(stateJson(false))
+        expect(module.notificationsOff.phase).toBe('pending')
+        expect(module.consumeNotificationsOffNotice()).toBe(true)
+        window.__risuTaniumReplyNotificationsState?.(stateJson(false))
+        expect(module.notificationsOff).toEqual({ appNotifications: false, phase: 'consumed' })
+    })
+
+    test('T6b: dismiss ends the notice and a later denial stays done', async () => {
+        const { module } = await ready(null)
+        permissionResult(false)
+        expect(module.consumeNotificationsOffNotice()).toBe(true)
+        module.dismissNotificationsOffNotice()
+        expect(module.notificationsOff.phase).toBe('done')
+        permissionResult(false)
+        expect(module.notificationsOff.phase).toBe('done')
+    })
+
+    test('T6c: open settings calls the host once, never enable, and ends the notice', async () => {
+        const { fake, module } = await ready(null)
+        permissionResult(false)
+        expect(module.consumeNotificationsOffNotice()).toBe(true)
+        module.openNotificationSettings()
+        expect(fake.postedTo('replyNotifications', 'openNotificationSettings')).toEqual([
+            { bridge: 'replyNotifications', method: 'openNotificationSettings', args: [] },
+        ])
+        expect(fake.postedTo('replyNotifications', 'enable')).toEqual([])
+        expect(module.notificationsOff.phase).toBe('done')
+    })
+
+    test('T7: the Settings line follows appNotifications: only an explicit false shows it', async () => {
+        const { module } = await ready(null)
+        expect(module.notificationsOffLineShown()).toBe(false)
+        window.__risuTaniumReplyNotificationsState?.(stateJson(false))
+        expect(module.notificationsOffLineShown()).toBe(true)
+        window.__risuTaniumReplyNotificationsState?.(stateJson(true))
+        expect(module.notificationsOffLineShown()).toBe(false)
+        window.__risuTaniumReplyNotificationsState?.(stateJson())
+        expect(module.notificationsOffLineShown()).toBe(false)
+    })
+
+    test('P8 (guard): appNotifications that is missing or not a boolean never rejects the two flags', async () => {
+        const { module } = await ready(null)
+        window.__risuTaniumReplyNotificationsState?.('{"optedIn":true,"enabled":false,"appNotifications":"x"}')
+        expect(module.state).toEqual({ known: true, optedIn: true, enabled: false })
+        expect(module.notificationsOff.appNotifications).toBeNull()
+        window.__risuTaniumReplyNotificationsState?.('{"optedIn":true,"enabled":true}')
+        expect(module.state).toEqual({ known: true, optedIn: true, enabled: true })
+        expect(module.notificationsOff.appNotifications).toBeNull()
+    })
+
+    test('I2: a host that has the old object only (no openNotificationSettings) is skipped without a throw', async () => {
+        window.__risuTaniumReplyNotificationsHost = {}
+        const module = await loadModule()
+        module.installReplyNotifications()
+        expect(() => module.openNotificationSettings()).not.toThrow()
+        expect(module.notificationsOff.phase).toBe('done')
+    })
+})
+
 describe('the notification key', () => {
     test('is the character and chat ids joined, whatever the group member', async () => {
         const module = await loadModule()
