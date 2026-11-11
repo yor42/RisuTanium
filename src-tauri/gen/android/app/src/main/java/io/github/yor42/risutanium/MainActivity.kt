@@ -450,8 +450,8 @@ class MainActivity : TauriActivity() {
     // A main thread busy for longer than this makes Back exit instead of closing the overlay.
     private const val BACK_TIMEOUT_MS = 1000L
 
-    // The default dark scheme's background, as the page's fallback colour is.
-    private const val DEFAULT_BAR_COLOR = 0xFF282A36.toInt()
+    // The launch canvas (the nexus-canvas token), shared with the splash and WebView base colours until the page reports its scheme.
+    private const val DEFAULT_BAR_COLOR = 0xFF00011C.toInt()
 
     // The navigation-bar rule for the system day/night mode applies from this API level.
     private const val BAR_RULE_API = 35

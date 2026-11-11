@@ -7,8 +7,8 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
-    <!-- Launch splash background: the app's primary blue. -->
-    <color name="splash_background">#FF3B82F6</color>
-    <!-- Matches the page's loading-screen background, bg-gray-900 in index.html. -->
-    <color name="loading_background">#FF101828</color>
+    <!-- Launch canvas, equal to the nexus-canvas token. On the normal boot path this colour must equal values-night splash_background, loading_background, MainActivity DEFAULT_BAR_COLOR and the index.html preloading background. -->
+    <color name="splash_background">#FF00011C</color>
+    <!-- WebView base and window background until the page paints: the launch canvas. -->
+    <color name="loading_background">#FF00011C</color>
 </resources>
