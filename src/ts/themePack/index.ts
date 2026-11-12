@@ -4,17 +4,18 @@
 // Nothing in the app installs or applies a pack yet; a later stage should load this module lazily and run it off the main
 // thread or in slices, because a large pack takes a noticeable time to judge.
 import { lintPack as lintChat, normalise, type LintError, type LintResult } from './engine'
-import { extractFontFaces } from './fontFace'
+import { extractFontFaces, type FontFaceExtraction } from './fontFace'
 import { packSizeWarning, type PackSizeVerdict } from './packSize'
 import { lintHome } from './registries/home'
 import { lint5b } from './registries/settings5b'
 import { lintPack as lintStudio } from './registries/studio'
-import { canonicalStylesheet } from './canonical'
+import { canonicalStylesheet, type ResourceSpan } from './canonical'
 import { structurePass } from './structure'
 import type { TokenFile } from './tokens'
 import { readAppValues, valueRulesPass } from './valueRules'
 
 export type { LintError, LintResult } from './engine'
+export type { ResourceSpan } from './canonical'
 export type { PackSizeVerdict } from './packSize'
 export { PACK_SIZE_WARN_BYTES } from './packSize'
 
@@ -63,6 +64,62 @@ function appValues(area: ThemeArea): Map<string, string[]> {
  * a font-family may name (MC-1550).
  */
 export function lintAreaPack(area: ThemeArea, source: string, name = '', packFamilies?: ReadonlySet<string>): LintResult {
+    return judgeSheet(area, source, name, packFamilies).result
+}
+
+/** An @font-face block taken out of the canonical text, with its offsets in that text. */
+export type FontFaceBlock = FontFaceExtraction['blocks'][number]
+
+/** One area's stylesheet as the validator read it: the verdict and the canonical text the verdict was judged on, with the locations in that text. */
+export interface AreaSheetJudgement {
+    result: LintResult
+    /** The canonical text every offset below indexes; empty when the sheet could not be checked. */
+    canonical: string
+    /** Every resource the sheet names, in text order. Complete when `result.ok`. */
+    resources: readonly ResourceSpan[]
+    /** The top-level @font-face blocks, in text order. */
+    fontFaceBlocks: readonly FontFaceBlock[]
+}
+
+export interface PackSheetsJudgement {
+    ok: boolean
+    areas: Partial<Record<ThemeArea, AreaSheetJudgement>>
+}
+
+const COULD_NOT_CHECK_REASON = 'the stylesheet could not be checked (the checks stopped on it)'
+
+/**
+ * Judges one area's stylesheet exactly as lintAreaPack does and also returns the canonical text and the resource and
+ * @font-face locations in it. A stylesheet on which the checks throw is refused, never thrown on: the verdict is
+ * `ok: false` with one error and no locations.
+ */
+export function judgeAreaSheet(area: ThemeArea, source: string, packFamilies?: ReadonlySet<string>, name = ''): AreaSheetJudgement {
+    try {
+        return judgeSheet(area, source, name, packFamilies)
+    } catch {
+        return { result: { ok: false, errors: [{ selector: '(stylesheet)', prop: '', why: COULD_NOT_CHECK_REASON }], name }, canonical: '', resources: [], fontFaceBlocks: [] }
+    }
+}
+
+/**
+ * Judges every stylesheet of a pack, each with only the font families its own @font-face blocks register: an area that
+ * names a family another area registers is refused (MC-1609). This is stricter than validateThemePack, which pools
+ * the families of all areas.
+ */
+export function judgePackSheets(files: Partial<Record<ThemeArea, string>>): PackSheetsJudgement {
+    const areas: Partial<Record<ThemeArea, AreaSheetJudgement>> = {}
+    let ok = true
+    for (const area of THEME_AREAS) {
+        const css = files[area]
+        if (css === undefined) continue
+        const judged = judgeAreaSheet(area, css, undefined, area)
+        areas[area] = judged
+        if (!judged.result.ok) ok = false
+    }
+    return { ok, areas }
+}
+
+function judgeSheet(area: ThemeArea, source: string, name: string, packFamilies: ReadonlySet<string> | undefined): AreaSheetJudgement {
     const canonical = canonicalStylesheet(preprocessCss(source))
     const structure = structurePass(canonical.text)
     const fonts = extractFontFaces(canonical.text, normalise)
@@ -76,7 +133,7 @@ export function lintAreaPack(area: ThemeArea, source: string, name = '', packFam
         const key = `${e.selector}|${e.prop}|${e.why}`
         if (!seen.has(key)) { seen.add(key); errors.push(e) }
     }
-    return { ok: errors.length === 0, errors, name }
+    return { result: { ok: errors.length === 0, errors, name }, canonical: canonical.text, resources: canonical.resources, fontFaceBlocks: fonts.blocks }
 }
 
 export interface ThemePackInput {

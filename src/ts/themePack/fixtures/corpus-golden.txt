@@ -1,0 +1,844 @@
+"shipped pack: chat/origin-navy" 6931399cd76b50f2 chat:962d9db586502581 settings:962d9db586502581 studio:f2b4825c55a373b5 home:f9d5c86b0e06fe49
+"shipped pack: chat/banana-cocoa" 4177b7695275086d chat:47dcfa837fc4d849 settings:35f7352db30b251d studio:3ebe9ed7782c081e home:f3946b02fe83ecd5
+"shipped pack: settings/origin-navy" d240e167207aae56 chat:ea99b490198f582c settings:c8c11433fd9e295a studio:ea99b490198f582c home:0671171bef41354b
+"shipped pack: settings/banana-cocoa" e5a7d6f533d6f73d chat:6c5d481d9ecb6c3e settings:1c099ad36e6b7acc studio:06a78026ec1d50c0 home:5955c5b2c5d7033d
+"shipped pack: studio/origin-navy" 37cb52a0097edf29 chat:91653b3b6aaf0fbe settings:91653b3b6aaf0fbe studio:8bb4784aab3e0cb1 home:91653b3b6aaf0fbe
+"shipped pack: studio/banana-cocoa" 4fcefaca7eff4779 chat:f5e9bf983ad68e4a settings:bc6905ae7f90e516 studio:ff54bac87e0d20fd home:915e19e1e4b0f283
+"shipped pack: home/origin-navy" 965645ee8feccd4f chat:c8e854b207155726 settings:c8e854b207155726 studio:c8e854b207155726 home:ab395f5fc1971506
+"shipped pack: home/banana-cocoa" 466c01c95097d757 chat:f4b10ddde035ecd2 settings:611be66102b0acaf studio:78cac93aff540370 home:a7cfdde87c01e8ee
+"home-hostile: A1" 386bcaff1aa3fee1 chat:3c67420edc0f9895 settings:3c67420edc0f9895 studio:3c67420edc0f9895 home:13cc2657ab2aa0b9
+"home-hostile on Navy: A1" ab34939165529e06 chat:fd201fc890fd5ab4 settings:fd201fc890fd5ab4 studio:b4fef67077a76032 home:d78245e6adca7484
+"home-hostile: A2" 1634c7eb7d49a14d chat:3be0a8c1be4c04bd settings:3be0a8c1be4c04bd studio:3be0a8c1be4c04bd home:3be0a8c1be4c04bd
+"home-hostile on Navy: A2" 6caa2504fadff6a8 chat:250d1fc9c0e0f4fc settings:250d1fc9c0e0f4fc studio:d27e3a30f0863a66 home:250d1fc9c0e0f4fc
+"home-hostile: A3" 2414554a93618be0 chat:727a2550a85be431 settings:727a2550a85be431 studio:727a2550a85be431 home:727a2550a85be431
+"home-hostile on Navy: A3" dc30165d1fc9b946 chat:272003e07b7cd10d settings:272003e07b7cd10d studio:b964124fdb4afe09 home:272003e07b7cd10d
+"home-hostile: A4" 496c157f490dfc4a chat:c33fd80077e405dd settings:c33fd80077e405dd studio:c33fd80077e405dd home:c33fd80077e405dd
+"home-hostile on Navy: A4" 5d89e6dd85131922 chat:33b14f75c3156526 settings:33b14f75c3156526 studio:61895812978fa265 home:33b14f75c3156526
+"home-hostile: A5" c7a49c369a4411c4 chat:2d3eaa2136a7a93b settings:2d3eaa2136a7a93b studio:2d3eaa2136a7a93b home:2d3eaa2136a7a93b
+"home-hostile on Navy: A5" 29926562bfaf30a6 chat:34fad63842c5e117 settings:34fad63842c5e117 studio:d9b5f720b9054205 home:34fad63842c5e117
+"home-hostile: A6" ac438f930c0d6119 chat:8ddb2641f60d460f settings:8ddb2641f60d460f studio:8ddb2641f60d460f home:8ddb2641f60d460f
+"home-hostile on Navy: A6" 8a10e2824b22fb3d chat:c75ba72117bfd47c settings:c75ba72117bfd47c studio:eb9728646855229f home:c75ba72117bfd47c
+"home-hostile: A7" 31ae9ad4e35c5efc chat:4a477ec7745fec20 settings:4a477ec7745fec20 studio:4a477ec7745fec20 home:4a477ec7745fec20
+"home-hostile on Navy: A7" b56706ac8f971749 chat:a5d6be9eba57597e settings:a5d6be9eba57597e studio:444b83b43f3b894d home:a5d6be9eba57597e
+"home-hostile: A8" 1a65f511e33040cc chat:50e9ffe84dc74b8b settings:50e9ffe84dc74b8b studio:50e9ffe84dc74b8b home:50e9ffe84dc74b8b
+"home-hostile on Navy: A8" a7195265544d07eb chat:58672ca1822eac31 settings:58672ca1822eac31 studio:9fa5d18841a49efb home:58672ca1822eac31
+"home-hostile: N1" 4888b1eab59598e7 chat:db0ba896031d05a9 settings:db0ba896031d05a9 studio:db0ba896031d05a9 home:db0ba896031d05a9
+"home-hostile on Navy: N1" f39bc211afcef146 chat:718f8210fc7ae137 settings:718f8210fc7ae137 studio:d1ef0d3587b81c00 home:718f8210fc7ae137
+"home-hostile: N2" 7492bd9d784f621a chat:734a9745a919275e settings:734a9745a919275e studio:734a9745a919275e home:734a9745a919275e
+"home-hostile on Navy: N2" 45d1773db3423daf chat:8e90c6690bd612b7 settings:8e90c6690bd612b7 studio:487434c4e21d7f3d home:8e90c6690bd612b7
+"home-hostile: N3" 80fa404b7c121969 chat:68f48bf798781825 settings:68f48bf798781825 studio:68f48bf798781825 home:68f48bf798781825
+"home-hostile on Navy: N3" ae63a00f627ec5ab chat:378ad0c7f14ec881 settings:378ad0c7f14ec881 studio:358aa07554117575 home:378ad0c7f14ec881
+"home-hostile: N4" 465047b2faf51c46 chat:8f1df65da83c50bb settings:8f1df65da83c50bb studio:8f1df65da83c50bb home:8f1df65da83c50bb
+"home-hostile on Navy: N4" 596915d20b372320 chat:6f913143c2ff995b settings:6f913143c2ff995b studio:212929914ec3723b home:6f913143c2ff995b
+"home-hostile: N5" 39a7a37a7a009c68 chat:2c3bec2b26c59766 settings:2c3bec2b26c59766 studio:2c3bec2b26c59766 home:2c3bec2b26c59766
+"home-hostile on Navy: N5" c6bac0bca849c808 chat:f0fcc2172967a997 settings:f0fcc2172967a997 studio:340b564dbc4d8913 home:f0fcc2172967a997
+"home-hostile: N6" dc4da0c8dffb3d6a chat:0815f152eff60835 settings:0815f152eff60835 studio:0815f152eff60835 home:0815f152eff60835
+"home-hostile on Navy: N6" b7fceda06543f4ab chat:77f2af785bbb9364 settings:77f2af785bbb9364 studio:4efb2b5d51dee861 home:77f2af785bbb9364
+"home-hostile: N7" 3fb21e7e22237c98 chat:1234c43cb8cb59f1 settings:1234c43cb8cb59f1 studio:1234c43cb8cb59f1 home:1234c43cb8cb59f1
+"home-hostile on Navy: N7" 405f31bfce955830 chat:88271884103a16aa settings:88271884103a16aa studio:68e02a5225d48e49 home:88271884103a16aa
+"home-hostile: N8" a9e63b35202e8329 chat:9f430c09457d2719 settings:9f430c09457d2719 studio:9f430c09457d2719 home:9f430c09457d2719
+"home-hostile on Navy: N8" 3db208fbe1caca3e chat:a8677d84f70d7fb6 settings:a8677d84f70d7fb6 studio:e92ad74af4544f1d home:a8677d84f70d7fb6
+"home-hostile: N9" 10724724aab54407 chat:bbc318854b2aa59a settings:bbc318854b2aa59a studio:bbc318854b2aa59a home:bbc318854b2aa59a
+"home-hostile on Navy: N9" 848e857940d78d4a chat:844b70a32ddc1b43 settings:844b70a32ddc1b43 studio:972c43714631f341 home:844b70a32ddc1b43
+"home-hostile: N10" 82b8607fe053ad85 chat:8cf8ac4981ef02f7 settings:8cf8ac4981ef02f7 studio:8cf8ac4981ef02f7 home:8cf8ac4981ef02f7
+"home-hostile on Navy: N10" 0fb69f30c1303ad0 chat:15bd310c93a39145 settings:15bd310c93a39145 studio:66f516790a52fb1c home:15bd310c93a39145
+"home-hostile: M1" 9aa2480fd7819de0 chat:1ca314e6f5e6f93a settings:1ca314e6f5e6f93a studio:1ca314e6f5e6f93a home:1ca314e6f5e6f93a
+"home-hostile on Navy: M1" 48079910c0d56e5e chat:82979c833fa4c797 settings:82979c833fa4c797 studio:2697a658e69262e1 home:82979c833fa4c797
+"home-hostile: M2" 3c5180f113a5071a chat:cb1cb41514023d18 settings:cb1cb41514023d18 studio:cb1cb41514023d18 home:cb1cb41514023d18
+"home-hostile on Navy: M2" 661fbf3915337681 chat:761106c8f0fcd502 settings:761106c8f0fcd502 studio:4f71485a0584d157 home:761106c8f0fcd502
+"home-hostile: M3" 68ca1c02e5a18d4a chat:788f29ae1f5946de settings:788f29ae1f5946de studio:788f29ae1f5946de home:788f29ae1f5946de
+"home-hostile on Navy: M3" c9d01e887ea4c745 chat:d24f430ee02e759e settings:d24f430ee02e759e studio:00fe142cfdbc9591 home:d24f430ee02e759e
+"home-hostile: M4" 40627d7376ae4442 chat:b3044ff6c78613fb settings:b3044ff6c78613fb studio:b3044ff6c78613fb home:b3044ff6c78613fb
+"home-hostile on Navy: M4" 0a39e96b3280b0db chat:36e3ad648f296cb3 settings:36e3ad648f296cb3 studio:ec4b9d994fa8d561 home:36e3ad648f296cb3
+"home-hostile: M5" 9cbde5546c93788f chat:81dbc689411f2282 settings:81dbc689411f2282 studio:81dbc689411f2282 home:81dbc689411f2282
+"home-hostile on Navy: M5" bc6ca2efc4715842 chat:cf0dcb6bdbc18248 settings:cf0dcb6bdbc18248 studio:d6f6a84a32afcb10 home:cf0dcb6bdbc18248
+"home-hostile: M6" 4e0cecf19e84f203 chat:7a912964932f017f settings:7a912964932f017f studio:7a912964932f017f home:7a912964932f017f
+"home-hostile on Navy: M6" 39ebc13b35cb5144 chat:1779802df06bd846 settings:1779802df06bd846 studio:26c704cc3b56a4da home:1779802df06bd846
+"home-hostile: M7" be2de73105fbacc9 chat:281f303ca4195ac7 settings:281f303ca4195ac7 studio:281f303ca4195ac7 home:281f303ca4195ac7
+"home-hostile on Navy: M7" 0e42f48ca8c22ec9 chat:18d15638b4e42903 settings:18d15638b4e42903 studio:c81b0f1e9eec4dcd home:18d15638b4e42903
+"home-hostile: M8" 29b7435b24a891d8 chat:ae1195896bf6e1e5 settings:ae1195896bf6e1e5 studio:ae1195896bf6e1e5 home:ae1195896bf6e1e5
+"home-hostile on Navy: M8" 1fc3db96c664a7ee chat:deaa3925d799cb8e settings:deaa3925d799cb8e studio:94987fbb7e2d5f68 home:deaa3925d799cb8e
+"home-hostile: M9" de9b18d02ae02eb1 chat:336edb1d0a0fd184 settings:336edb1d0a0fd184 studio:336edb1d0a0fd184 home:336edb1d0a0fd184
+"home-hostile on Navy: M9" 6130ed7ce64d8d1f chat:080f5c5cfbf3c5b1 settings:080f5c5cfbf3c5b1 studio:3fd7e77bb3c06352 home:080f5c5cfbf3c5b1
+"home-hostile: M10" 36df33162025342c chat:6b11e425c4062cd1 settings:6b11e425c4062cd1 studio:6b11e425c4062cd1 home:6b11e425c4062cd1
+"home-hostile on Navy: M10" 7040a73b602e333a chat:9f0701f3f37bab09 settings:9f0701f3f37bab09 studio:b5a749256623e778 home:9f0701f3f37bab09
+"home-hostile: M11" 1bf8596ca5ed4db2 chat:ba0ce3b8b7573108 settings:ba0ce3b8b7573108 studio:ba0ce3b8b7573108 home:ba0ce3b8b7573108
+"home-hostile on Navy: M11" eed7486a68628a8f chat:22a7d47f449e46ad settings:22a7d47f449e46ad studio:c83dd5bd228e0899 home:22a7d47f449e46ad
+"home-hostile: F1" 3feea8c38d72e3be chat:5d5df4d7bc239a4e settings:5d5df4d7bc239a4e studio:5d5df4d7bc239a4e home:e7878063e60cac65
+"home-hostile on Navy: F1" 4037f61df91abe9f chat:13138154d0a2710c settings:13138154d0a2710c studio:6a93805da4aae869 home:9551b6b2b9ecf930
+"home-hostile: F2" bc39139e55f31b04 chat:7d19e1f7b791ce88 settings:7d19e1f7b791ce88 studio:7d19e1f7b791ce88 home:8a2217dc69fb2ee5
+"home-hostile on Navy: F2" b2ace41e314a74c0 chat:a412294669331655 settings:a412294669331655 studio:21f1404e976b8f3d home:0507453417aa15f4
+"home-hostile: F3" 3c85cb3cf3e724a2 chat:d0d9ae12aa5b1bb4 settings:d0d9ae12aa5b1bb4 studio:d0d9ae12aa5b1bb4 home:60cdaeec4f40ee65
+"home-hostile on Navy: F3" 9822f6d7d20369f1 chat:7f6ccf2561cd9476 settings:7f6ccf2561cd9476 studio:0aa79b69d4bf4c34 home:51b0a191ec91702b
+"home-hostile: F4" ee4530c50ccba2fd chat:180f007c3521dab7 settings:180f007c3521dab7 studio:180f007c3521dab7 home:b695462a2284c461
+"home-hostile on Navy: F4" 1b90154ae327f230 chat:907629e8933a097e settings:907629e8933a097e studio:613664395b43a4a8 home:390f357835363a98
+"home-hostile: F5" a0c4380724085bd3 chat:582b923a5ce5d273 settings:582b923a5ce5d273 studio:582b923a5ce5d273 home:6339984a52261f98
+"home-hostile on Navy: F5" 4b35f9028c33d7fc chat:8fee8c679ec725ca settings:8fee8c679ec725ca studio:c8a81056b1e1ca97 home:1924bb25c645a96b
+"home-hostile: F6" 9f0295c2db89316a chat:c582826b3178e750 settings:c582826b3178e750 studio:c582826b3178e750 home:6006aa7e082fb1bb
+"home-hostile on Navy: F6" 588e588e2ee7e4c5 chat:61eb5b3c32efdd75 settings:61eb5b3c32efdd75 studio:dfd0396c0bab79a0 home:bc1797b87279e8d8
+"home-hostile: F7" fa436b744d3097ed chat:a4303d3d023b0dd1 settings:a4303d3d023b0dd1 studio:a4303d3d023b0dd1 home:9cef85f312baf984
+"home-hostile on Navy: F7" fea502b38522a1e4 chat:28d9e93330a2aef0 settings:28d9e93330a2aef0 studio:2072ed853ce05071 home:caeadb013dee19f1
+"home-hostile: F8" 524dccbcc26e9282 chat:053a26fd63557744 settings:053a26fd63557744 studio:053a26fd63557744 home:a95dabadc76d1ddb
+"home-hostile on Navy: F8" 7b55e0be4d9038b3 chat:77cfcedd6fbb2bb8 settings:77cfcedd6fbb2bb8 studio:7960a9c6c76b5e49 home:179e32288f97b87f
+"home-hostile: F9" ce7d33b258c09b50 chat:142816c90c5a7864 settings:142816c90c5a7864 studio:142816c90c5a7864 home:348e7a7707297c9a
+"home-hostile on Navy: F9" 55b456c605934454 chat:0cd85fc1c990402c settings:0cd85fc1c990402c studio:7621d9a0f6f85a5f home:751f96f7b16dd0d7
+"home-hostile: F10" da59c91f384fed8c chat:030146bbfbe19e08 settings:030146bbfbe19e08 studio:030146bbfbe19e08 home:bbfa48afeeb3cc72
+"home-hostile on Navy: F10" 810cac1d0183de10 chat:a9f51129abb449b6 settings:a9f51129abb449b6 studio:729a80b35b7acddf home:31b3d1613697c6cc
+"home-hostile: F11" 8ac83acce328fd4e chat:4d54e67925181f75 settings:4d54e67925181f75 studio:4d54e67925181f75 home:f6e83a54d85ebcfc
+"home-hostile on Navy: F11" 0eeb4990606f453e chat:5804469d4e61b3bc settings:5804469d4e61b3bc studio:2646c4a13483d3a4 home:3da2ae33882583e1
+"home-hostile: F12" c626f419056eb3a1 chat:2c73c38c933b16de settings:2c73c38c933b16de studio:2c73c38c933b16de home:82a09aa773691cff
+"home-hostile on Navy: F12" 23fabba8fdf34ae7 chat:ac7949e4daee09ef settings:ac7949e4daee09ef studio:e37bd8a35582dd0f home:c7bffbd7d6f6bd4e
+"home-hostile: F13" ac761707d36cda51 chat:1ff5221c803485b0 settings:1ff5221c803485b0 studio:1ff5221c803485b0 home:ea7fd0f6479a19f9
+"home-hostile on Navy: F13" ae8412e3898958a5 chat:e537479d9b927971 settings:e537479d9b927971 studio:71a6695a181520ad home:e4755a833c7f72e7
+"home-hostile: F14" 4980355ed843cd36 chat:f4c915a765eabe94 settings:f4c915a765eabe94 studio:f4c915a765eabe94 home:7e82e1410bfb89fd
+"home-hostile on Navy: F14" 682ca1d81d7bfe1a chat:008fc85e4517a67a settings:008fc85e4517a67a studio:dac9e4eb140556f1 home:a7d1ccd29e85f0d7
+"home-hostile: F15" 02896e521350c064 chat:fef2392bb83c5ca1 settings:fef2392bb83c5ca1 studio:fef2392bb83c5ca1 home:52c507a5c13f5397
+"home-hostile on Navy: F15" 86a2470901603722 chat:8ebcd25d429e3d92 settings:8ebcd25d429e3d92 studio:56fb38c3ccd7f280 home:3860b7dff436c3f8
+"home-hostile: F16" 93a1f7a04f8db3ac chat:19293576ec32d016 settings:19293576ec32d016 studio:19293576ec32d016 home:19293576ec32d016
+"home-hostile on Navy: F16" 07946b575714a7ac chat:81e640c5a0db0956 settings:81e640c5a0db0956 studio:f482852a06fe270d home:81e640c5a0db0956
+"home-hostile: F17" 49ccb2d14e1687a7 chat:ad1b698d30eeea7e settings:ad1b698d30eeea7e studio:ad1b698d30eeea7e home:e6dca0632c4096a4
+"home-hostile on Navy: F17" 4edac8b0036023c0 chat:a0d542a0a9606615 settings:a0d542a0a9606615 studio:4bba65a5f1cd2848 home:1101baa2acc22208
+"home-hostile: F18" 2dbf6051f001a64b chat:9bec8ae82f11ceac settings:9bec8ae82f11ceac studio:9bec8ae82f11ceac home:aa34d06f98cf9737
+"home-hostile on Navy: F18" 96c1220c89c15c4d chat:bbd6f42481a63539 settings:bbd6f42481a63539 studio:91e8d9b3eb23f5ca home:615538d74315d724
+"home-hostile: F19" 29c145711497525b chat:37f5d1b5e05aa675 settings:37f5d1b5e05aa675 studio:37f5d1b5e05aa675 home:88e804bb3aa56282
+"home-hostile on Navy: F19" 17547be00ae9eee2 chat:cbbe2be394aced47 settings:cbbe2be394aced47 studio:e3210bb3026fc81c home:93df132e978452c6
+"home-hostile: F20" c31812c3f59a4445 chat:b58396b23f819185 settings:b58396b23f819185 studio:b58396b23f819185 home:1efcd5abfd6f23f6
+"home-hostile on Navy: F20" b8f16aff646d0e58 chat:1d4fd531bfc65892 settings:1d4fd531bfc65892 studio:bd6e6a2a87049a26 home:11d89e8f192b1870
+"home-hostile: C1" f5e55dbd0b95e2a6 chat:3cd038bbb42254a0 settings:096d1536e54c3ba1 studio:ddfdd1f428b614d8 home:ce74943154c89de0
+"home-hostile on Navy: C1" 2b6cee3c9d48324c chat:d3457fb5d4716b9b settings:3aa246505c804f55 studio:b3dec6adf1054c77 home:e1476b8b67239d42
+"home-hostile: C2" d7c737e378639566 chat:b254d164d0e73889 settings:df7319d2336bf4ec studio:eea0d883ec548cf6 home:af0af69823d95cc3
+"home-hostile on Navy: C2" 7d4ebd37894889ba chat:414a2b03ad65bc37 settings:22efd190fc6079f9 studio:ad8628ed9d5ce5eb home:0dcba180151e16d0
+"home-hostile: C3" ca0dbb078f19752b chat:f383086bdfa81504 settings:f383086bdfa81504 studio:a202b4132307e99a home:f383086bdfa81504
+"home-hostile on Navy: C3" 70717e6210e81fa5 chat:4216588e36d1efde settings:4216588e36d1efde studio:6d570a1a0255b055 home:4216588e36d1efde
+"home-hostile: C4" c5cf0f871fe7a142 chat:ea1ff6cc955da546 settings:496dcd429b796fc1 studio:8bed568d3839b644 home:a1700b499f16f5a2
+"home-hostile on Navy: C4" 0217784d39fcf757 chat:51b234c3e7dae47c settings:517804376c8cfafb studio:e55870c07a428734 home:d14aff3481af4b46
+"home-hostile: C5" 1255d1184482eb53 chat:1cd312d4fcaf25d1 settings:f2c6929cd8b95ece studio:777c52bce9d4f209 home:f395c3ae521346ea
+"home-hostile on Navy: C5" fb9161f1f3e5b975 chat:2f5e11b1425106b7 settings:6f9cfef25e1fe1e5 studio:8ca27f07007e7201 home:63b751b5f7ed469a
+"home-hostile: C6" 7a8b06854544a354 chat:703c2c0253fca8d7 settings:002cbdd0ce1c8811 studio:f70f78efba0e46fb home:693a5a72e36a6f37
+"home-hostile on Navy: C6" 70322b11cd41abc1 chat:0e0168139195c1b0 settings:274df369ebb33dc2 studio:8bab0e8d26bd6567 home:b0c7ed5392cebaef
+"home-hostile: C7" a6deb0a9e7b67b86 chat:05e399a780617ce3 settings:961985b6bd1c10d3 studio:05e399a780617ce3 home:1ed3bd73dfd29f7e
+"home-hostile on Navy: C7" 67281bce6ba7bb64 chat:c3cebfdc7f71c9ad settings:6b7ca54521fd706a studio:a1b8d6437f3149ef home:382fd87a3eeefa64
+"home-hostile: C8" 079d445ab24ee949 chat:b079c6457baa0246 settings:b079c6457baa0246 studio:6d4d41b62baaedef home:b079c6457baa0246
+"home-hostile on Navy: C8" 2788db4500827415 chat:c25de540ad94ab09 settings:c25de540ad94ab09 studio:81765102c7b9ae99 home:c25de540ad94ab09
+"home-hostile: R1" e10e65413ab99885 chat:25a9e7d9db4a6f33 settings:25a9e7d9db4a6f33 studio:25a9e7d9db4a6f33 home:5b547d66b26f04f5
+"home-hostile on Navy: R1" eaddbe5a127909f9 chat:458a3615af65b7cb settings:458a3615af65b7cb studio:b774a421a89ef7f4 home:2dec83bf0d063e84
+"home-hostile: R2" cea318858f725c74 chat:f90dcc3392b3e550 settings:f90dcc3392b3e550 studio:f90dcc3392b3e550 home:fd6cc0cb1cdfbaa0
+"home-hostile on Navy: R2" 569a6e1af787a2b2 chat:05bcf91c3a478076 settings:05bcf91c3a478076 studio:03b33a22047382a8 home:042887e9c5562328
+"home-hostile: R3" 851ae8f7c9baeb6b chat:95eee1de486ac18e settings:95eee1de486ac18e studio:95eee1de486ac18e home:95eee1de486ac18e
+"home-hostile on Navy: R3" 202c2718fb0c1e43 chat:e76a4f596db6f6b2 settings:e76a4f596db6f6b2 studio:a54a988ca7c29eac home:e76a4f596db6f6b2
+"home-hostile: R4" 956fd8eeae8c8353 chat:a7cfba5a2ac50305 settings:a7cfba5a2ac50305 studio:a7cfba5a2ac50305 home:a7cfba5a2ac50305
+"home-hostile on Navy: R4" 06df90963d448899 chat:ae748708d7dacf3d settings:ae748708d7dacf3d studio:6c532dbd0e8debea home:ae748708d7dacf3d
+"home-hostile: R5" 867df489c6532082 chat:dd353f3a78ca88d5 settings:dd353f3a78ca88d5 studio:dd353f3a78ca88d5 home:3ed04807e5e2e91d
+"home-hostile on Navy: R5" 310d98e9a9d01e42 chat:3064731ada63f729 settings:3064731ada63f729 studio:126fc1fc320190f9 home:377c76f1b0599389
+"home-hostile: R6" 7e7262676861357c chat:f2d9ca189844f48f settings:f2d9ca189844f48f studio:f2d9ca189844f48f home:6d6c6260b6e1ce97
+"home-hostile on Navy: R6" 0069067de0e3a313 chat:73742ccb3e36d678 settings:73742ccb3e36d678 studio:f9ed889c2a297663 home:f1a537a4220c7168
+"home-hostile: R7" cd80f8fc65f429ee chat:df2b899261cba759 settings:df2b899261cba759 studio:df2b899261cba759 home:df2b899261cba759
+"home-hostile on Navy: R7" 31f90c5e3c7c00ee chat:9adcf5dd5ba35183 settings:9adcf5dd5ba35183 studio:2dbe51e2229e0e20 home:9adcf5dd5ba35183
+"home-hostile: R8" a495cb73f02c1863 chat:91021e29301e98f5 settings:91021e29301e98f5 studio:91021e29301e98f5 home:91021e29301e98f5
+"home-hostile on Navy: R8" 92fb26e9beb3cd35 chat:37d83ae9ae10c4ed settings:37d83ae9ae10c4ed studio:f48840d95e7bafcb home:37d83ae9ae10c4ed
+"home-hostile: S1" 4436fdd4e270c673 chat:0994a4c5c195b83d settings:0994a4c5c195b83d studio:0994a4c5c195b83d home:0994a4c5c195b83d
+"home-hostile on Navy: S1" 3d2ac05d72158f57 chat:d23a4c413ebd5e3b settings:d23a4c413ebd5e3b studio:f7b310c897871d7e home:d23a4c413ebd5e3b
+"home-hostile: S2" 99796a050049a465 chat:afe31d2ab06e034f settings:afe31d2ab06e034f studio:afe31d2ab06e034f home:afe31d2ab06e034f
+"home-hostile on Navy: S2" fe01898c68beceb2 chat:469bded4e254d00b settings:469bded4e254d00b studio:a87bdeba52997e72 home:469bded4e254d00b
+"home-hostile: S3" e71a1d582fc0ec9a chat:947c26ee41164a41 settings:947c26ee41164a41 studio:947c26ee41164a41 home:947c26ee41164a41
+"home-hostile on Navy: S3" f8021e9419c05a43 chat:90cf1328fecb8c7b settings:90cf1328fecb8c7b studio:2141ab95e11afc08 home:90cf1328fecb8c7b
+"home-hostile: S4" e2f82adcbccb6c71 chat:79cbaccf05279c7f settings:79cbaccf05279c7f studio:79cbaccf05279c7f home:79cbaccf05279c7f
+"home-hostile on Navy: S4" 8f7791b073d7e662 chat:f1b8340ab6b7ceed settings:f1b8340ab6b7ceed studio:697153e5a992fa7a home:f1b8340ab6b7ceed
+"home-hostile: S5" bdc679a9016d5d7d chat:fcd6ad50cba11c96 settings:fcd6ad50cba11c96 studio:fcd6ad50cba11c96 home:fcd6ad50cba11c96
+"home-hostile on Navy: S5" 882b7f6e6c5210f3 chat:b61e7e09c18851bd settings:b61e7e09c18851bd studio:2f58e32311efd0e2 home:b61e7e09c18851bd
+"home-hostile: S6" c9ee203a2760e039 chat:4097707b148a24c2 settings:4097707b148a24c2 studio:4097707b148a24c2 home:4097707b148a24c2
+"home-hostile on Navy: S6" 231cb9e8ceb41116 chat:10b38b38dcb30ff4 settings:10b38b38dcb30ff4 studio:dad37da7efcde047 home:10b38b38dcb30ff4
+"home-hostile: S7" 74b3e638e473c997 chat:aae2d6feda151146 settings:aae2d6feda151146 studio:aae2d6feda151146 home:aae2d6feda151146
+"home-hostile on Navy: S7" ed47daeaefbce2e1 chat:a5220f4a96233c1e settings:a5220f4a96233c1e studio:7bae906a3f92f40a home:a5220f4a96233c1e
+"home-hostile: S8" 8916b9ce5eaf9510 chat:d0d945844c725d83 settings:d0d945844c725d83 studio:d0d945844c725d83 home:5e11b17c28fb9a60
+"home-hostile on Navy: S8" ecf85f9d81a87555 chat:115a8f7575786288 settings:115a8f7575786288 studio:a3144a144b62309b home:8278cb9ed5426e40
+"home-hostile: S9" d79b85ca5c65bf1e chat:25133c5b99ef2c87 settings:25133c5b99ef2c87 studio:25133c5b99ef2c87 home:25133c5b99ef2c87
+"home-hostile on Navy: S9" 885c5af79b75c8f1 chat:133b6fe66791f3ac settings:133b6fe66791f3ac studio:b072da202ae49f6b home:133b6fe66791f3ac
+"home-hostile: S10" f188c896d19aaef1 chat:fa7613b58b49bbac settings:fa7613b58b49bbac studio:fa7613b58b49bbac home:fa7613b58b49bbac
+"home-hostile on Navy: S10" 5ca357b151f33e80 chat:868ed215499aa681 settings:868ed215499aa681 studio:90fa88877902f67f home:868ed215499aa681
+"home-hostile: K1" ca0dbb078f19752b chat:8aa74dcb62249da4 settings:8aa74dcb62249da4 studio:af2b487897bf89ed home:8aa74dcb62249da4
+"home-hostile on Navy: K1" 70717e6210e81fa5 chat:1cfffdd614ae032f settings:1cfffdd614ae032f studio:433c659eab26832d home:1cfffdd614ae032f
+"home-hostile: K2" adde0b134f1c944d chat:931df506e3f8104b settings:931df506e3f8104b studio:a26e8c92ac2c0fba home:931df506e3f8104b
+"home-hostile on Navy: K2" c79284a94021112b chat:91593864fea5de46 settings:91593864fea5de46 studio:bde4d4ac3efd70ca home:91593864fea5de46
+"home-hostile: K3" c2b2c153e1f24acc chat:81f9b0c6bf169f38 settings:8f21c3f52c95cac7 studio:594739df77d627a6 home:1efde37334b26129
+"home-hostile on Navy: K3" fdea2e89134318a8 chat:7729afac9aee526b settings:4a296a03c9ba26c2 studio:63091d3fb81d6575 home:8ba27afbfbdb2cdb
+"home-hostile: K4" 3b2086a3e1859139 chat:502435e9b4723a3a settings:d7b420832411d5a8 studio:c7428e8eb82c7c5f home:b4f4d4d49f95c52b
+"home-hostile on Navy: K4" 6162d5686f36e25b chat:1ada614d94add248 settings:f55df9bad52c5462 studio:f22b011ec4eee5f5 home:644f0964024c7956
+"home-hostile: K5" 921c5b6942accea5 chat:9d55c49bd1437652 settings:9d55c49bd1437652 studio:b48b109eda4ffdc1 home:9d55c49bd1437652
+"home-hostile on Navy: K5" 98d79c1ae01c47fb chat:c813e206980fc981 settings:c813e206980fc981 studio:6c917b9f7a506499 home:c813e206980fc981
+"home-hostile: K6" 630a1116a24c7f7f chat:cd4a543049fde0ac settings:cd4a543049fde0ac studio:8554aff089fe9425 home:cd4a543049fde0ac
+"home-hostile on Navy: K6" aa2565f272ac346b chat:3680f6b483e629fe settings:3680f6b483e629fe studio:6df924c9882cafd7 home:3680f6b483e629fe
+"home-hostile: K7" 496648c84eb1cb12 chat:b28e1d1c1df4256e settings:b28e1d1c1df4256e studio:08e339517e6d0f95 home:b28e1d1c1df4256e
+"home-hostile on Navy: K7" 0f5a3a08db285fd5 chat:8947b9884f5f156c settings:8947b9884f5f156c studio:88a8c787f9ef750c home:8947b9884f5f156c
+"home-hostile: K8" 6fdadd3b8bbc6c03 chat:b6573728e83ce5e6 settings:b6573728e83ce5e6 studio:b514f6ef5070a80c home:b6573728e83ce5e6
+"home-hostile on Navy: K8" fe6694e482844fe1 chat:94c990bb286d135b settings:94c990bb286d135b studio:759daaa5e81483bc home:94c990bb286d135b
+"home-hostile: K9" 079d445ab24ee949 chat:3c726292da268bf7 settings:3c726292da268bf7 studio:43acc19fd859a8f0 home:3c726292da268bf7
+"home-hostile on Navy: K9" 2788db4500827415 chat:63a601119657db5a settings:63a601119657db5a studio:0098ba814e117abf home:63a601119657db5a
+"home-hostile: K10" 5aa486dd43a37947 chat:0838679885828fe4 settings:0838679885828fe4 studio:7f304c81abf6f2f6 home:0838679885828fe4
+"home-hostile on Navy: K10" dbe7359de8ac7770 chat:66190202f050e61d settings:66190202f050e61d studio:9f7ccf53810cb78b home:66190202f050e61d
+"home-hostile: K11" f2d17f6b18a1642e chat:fe98d00412107fff settings:fe98d00412107fff studio:fe98d00412107fff home:fe98d00412107fff
+"home-hostile on Navy: K11" 2242a985bf641ea7 chat:e4b575bce55f77b4 settings:e4b575bce55f77b4 studio:b36b9a07a78fb888 home:e4b575bce55f77b4
+"home-hostile: K12" 9e2c5356adbe4156 chat:231253bbf23890ba settings:231253bbf23890ba studio:231253bbf23890ba home:3ce51f3005f3fab0
+"home-hostile on Navy: K12" c8baebef908a5016 chat:cf7d0e337e1af610 settings:cf7d0e337e1af610 studio:3c6795fbfe5b4e99 home:37e3cfd91d52d651
+"home-hostile: K13" 4968ffac2909cca6 chat:ecfe2beee4f32a4c settings:23b03620b9e8efb8 studio:e755e767fea4baa4 home:733f24a75706fe81
+"home-hostile on Navy: K13" 7d449897a5d60dcf chat:f0b070e195fddb50 settings:418ce3c92c98cc22 studio:525d1891b5bae70b home:324510d29e81a1c1
+"home-hostile: K14" 31ad76316e86956c chat:bb8c1f0ede55e1fa settings:bb8c1f0ede55e1fa studio:bb8c1f0ede55e1fa home:c8801013ca10601f
+"home-hostile on Navy: K14" 3009a564134bcd2c chat:885d31dc41061e73 settings:885d31dc41061e73 studio:a16ae4c66b499335 home:bceb07b252d5ff69
+"home-hostile: K15" 6125d5cc7a1cf709 chat:dcf565721c1fe138 settings:dcf565721c1fe138 studio:dcf565721c1fe138 home:dcf565721c1fe138
+"home-hostile on Navy: K15" 07055cdf292655b0 chat:81f4f7bcadd3a444 settings:81f4f7bcadd3a444 studio:bb2cfa7997773a46 home:81f4f7bcadd3a444
+"home-hostile: K16" d7081a5036ae7de0 chat:93d37052aed0e096 settings:93d37052aed0e096 studio:93d37052aed0e096 home:93d37052aed0e096
+"home-hostile on Navy: K16" 5e82edcab2c20849 chat:0eab3bc59f4415b0 settings:0eab3bc59f4415b0 studio:1436647b93979000 home:0eab3bc59f4415b0
+"home-hostile: K17" 07d521e87beb74e6 chat:86b01be0772a8481 settings:86b01be0772a8481 studio:2d76bcd330f1691b home:f8399ae7b649edaf
+"home-hostile on Navy: K17" c129d15320b9f9fc chat:27e3a7a9acd7f8f2 settings:27e3a7a9acd7f8f2 studio:d4074966039ab5f2 home:1d3ce36c372f7127
+"home-hostile: K18" 0ac6c2a996f7e207 chat:1c8fe8b5011d7c9b settings:1c8fe8b5011d7c9b studio:1c8fe8b5011d7c9b home:1c8fe8b5011d7c9b
+"home-hostile on Navy: K18" 246a60b25d64d740 chat:9ad1108f958fbefc settings:9ad1108f958fbefc studio:c201a7139a385a3d home:9ad1108f958fbefc
+"home-hostile: K19" 11edb1f4114ed8e8 chat:d3a5332d9df12a91 settings:d3a5332d9df12a91 studio:d3a5332d9df12a91 home:d3a5332d9df12a91
+"home-hostile on Navy: K19" d2f2fb0b0e4352dd chat:a0b58139e7eb2d1b settings:a0b58139e7eb2d1b studio:1f786ff020a54a85 home:a0b58139e7eb2d1b
+"home-hostile: K20" 1b06a9882ab30443 chat:83be3c74f528c12e settings:83be3c74f528c12e studio:83be3c74f528c12e home:6e666d6e84d279a7
+"home-hostile on Navy: K20" 11d3bae29cf3a1b2 chat:02cb4ac0c63f40d1 settings:02cb4ac0c63f40d1 studio:0993c2156d87e2f2 home:2ee09a5aad4bae7f
+"home-hostile: K21" 5ff1dc6d1948358b chat:caa9026e1e736203 settings:caa9026e1e736203 studio:92ce0281fbbb442b home:caa9026e1e736203
+"home-hostile on Navy: K21" d96175129448d089 chat:b6aa726b7e1473bd settings:b6aa726b7e1473bd studio:62fc1205abf51177 home:b6aa726b7e1473bd
+"home-hostile: K22" 7ad71215440efbac chat:656b5be8199bc28e settings:656b5be8199bc28e studio:952773b71ae82f9f home:656b5be8199bc28e
+"home-hostile on Navy: K22" 2358f2ab072418e0 chat:15d0a79fc85e2b7c settings:15d0a79fc85e2b7c studio:c7e1da1b5e8bf1a7 home:15d0a79fc85e2b7c
+"home-hostile: K23" a9a07c331a3fc0f7 chat:d7af99c080dc9d41 settings:d7af99c080dc9d41 studio:d7af99c080dc9d41 home:d7af99c080dc9d41
+"home-hostile on Navy: K23" 2b87e5205743d807 chat:4772d4f12cb59438 settings:4772d4f12cb59438 studio:a31d11c42a91cf69 home:4772d4f12cb59438
+"home-hostile: K24" 30f40840f8402802 chat:5695981e5387f569 settings:5695981e5387f569 studio:5695981e5387f569 home:5695981e5387f569
+"home-hostile on Navy: K24" 63d9f942ca3b4150 chat:b38e5b1a07a81469 settings:483b0bf30538aa12 studio:f47638d5a3fcded8 home:cd85682b490e2e4e
+"home-hostile: L1" d5361c00b2422d54 chat:5e9d44f106f3ab55 settings:5e9d44f106f3ab55 studio:5e9d44f106f3ab55 home:5e9d44f106f3ab55
+"home-hostile on Navy: L1" 5b51f3cc306e0ce8 chat:4cb6b6b98ec20057 settings:4cb6b6b98ec20057 studio:4f159909c859425d home:4cb6b6b98ec20057
+"home-hostile: L2" 85bab504e2e2c998 chat:7aba0a9da4ff715e settings:7aba0a9da4ff715e studio:7aba0a9da4ff715e home:7aba0a9da4ff715e
+"home-hostile on Navy: L2" 89fbbe81371b172b chat:df9899d080dc57b8 settings:df9899d080dc57b8 studio:40f91dfa1e560ae0 home:df9899d080dc57b8
+"home-hostile: L3" f53de53c9c27bdba chat:9a59519db683e399 settings:9a59519db683e399 studio:9a59519db683e399 home:9a59519db683e399
+"home-hostile on Navy: L3" 0112e7caea4b79bb chat:74d4fb3d25c4c1b6 settings:74d4fb3d25c4c1b6 studio:a46c784b53d9dfb8 home:74d4fb3d25c4c1b6
+"home-hostile: L4" dc609f27ac661137 chat:acde4b5a0212dc93 settings:acde4b5a0212dc93 studio:acde4b5a0212dc93 home:acde4b5a0212dc93
+"home-hostile on Navy: L4" 9cf674d78db65bfe chat:6b26b5581dba751d settings:6b26b5581dba751d studio:72fbab705421f0bd home:6b26b5581dba751d
+"home-hostile: L5" 2a96fd835a3f8167 chat:4ccd8d10b44669db settings:4ccd8d10b44669db studio:4ccd8d10b44669db home:4ccd8d10b44669db
+"home-hostile on Navy: L5" 8aea7aeabd490002 chat:90fab80a944038d6 settings:90fab80a944038d6 studio:408298a95b99cb4f home:90fab80a944038d6
+"home-hostile: L6" f225ac543c89d09a chat:dfe2cec80397138b settings:dfe2cec80397138b studio:dfe2cec80397138b home:dfe2cec80397138b
+"home-hostile on Navy: L6" 7a2dd5f57692407d chat:38073215fd211979 settings:38073215fd211979 studio:e8780d9c25cc6d9a home:38073215fd211979
+"home-hostile: L7" d23bc9f297170e76 chat:e4330a0b6a90c648 settings:e4330a0b6a90c648 studio:e4330a0b6a90c648 home:e4330a0b6a90c648
+"home-hostile on Navy: L7" 5ac7eb8a36905eba chat:8eea6debdcfd0887 settings:8eea6debdcfd0887 studio:4d9499e9cbbee175 home:8eea6debdcfd0887
+"home-hostile: H1" 94077c03d31577a9 chat:e8b1b8b6254165b6 settings:e8b1b8b6254165b6 studio:e8b1b8b6254165b6 home:e8b1b8b6254165b6
+"home-hostile on Navy: H1" 8659b67d3c2301dc chat:aa933864d818c24a settings:aa933864d818c24a studio:3a0f74216e86de95 home:aa933864d818c24a
+"home-hostile: H2" e7e682cf93a0bc2e chat:740aa2c69ef47e3b settings:740aa2c69ef47e3b studio:740aa2c69ef47e3b home:740aa2c69ef47e3b
+"home-hostile on Navy: H2" 2048e2616b1d2e84 chat:932505636d054963 settings:932505636d054963 studio:431f2c71b9219a45 home:932505636d054963
+"home-hostile: H3" 247d3e584c2e922a chat:951a2d235b025b55 settings:951a2d235b025b55 studio:951a2d235b025b55 home:951a2d235b025b55
+"home-hostile on Navy: H3" b637e0f3a43cf800 chat:7eae4c31c856de40 settings:7eae4c31c856de40 studio:1ffd560bb9b465ca home:7eae4c31c856de40
+"home-hostile: H4" c84eee880c3060bf chat:a40a0437f4d1c835 settings:a40a0437f4d1c835 studio:a40a0437f4d1c835 home:a40a0437f4d1c835
+"home-hostile on Navy: H4" aa115388bd78fd50 chat:9b07fafc689fb097 settings:9b07fafc689fb097 studio:6484ab24527f9952 home:9b07fafc689fb097
+"home-hostile: H5" c03b52adb73d38ce chat:7ab4e10ce6387d92 settings:7ab4e10ce6387d92 studio:7ab4e10ce6387d92 home:7ab4e10ce6387d92
+"home-hostile on Navy: H5" cfd1e22092bc4f82 chat:752fc3a0dcbe0408 settings:752fc3a0dcbe0408 studio:ab21901404bc9652 home:752fc3a0dcbe0408
+"home-hostile: H6" b9b90fea8a3c6537 chat:9ded9bc769d97c9d settings:9ded9bc769d97c9d studio:9ded9bc769d97c9d home:9ded9bc769d97c9d
+"home-hostile on Navy: H6" 178dfabae5b489b1 chat:1d441358407c5bed settings:1d441358407c5bed studio:da53b2199d58fdcd home:1d441358407c5bed
+"home-hostile: H7" f58e22254eda1968 chat:d110b50a34ce3056 settings:d110b50a34ce3056 studio:d110b50a34ce3056 home:d110b50a34ce3056
+"home-hostile on Navy: H7" 83a3481fcf2166e3 chat:7a814c5c7d2ded13 settings:7a814c5c7d2ded13 studio:0132d2d94a38d544 home:7a814c5c7d2ded13
+"home-hostile: H8" 7c31d0f463d56667 chat:f2cb20f72309e9c2 settings:f2cb20f72309e9c2 studio:f2cb20f72309e9c2 home:f2cb20f72309e9c2
+"home-hostile on Navy: H8" dc195b022cef9b22 chat:a63e473a5004f527 settings:a63e473a5004f527 studio:7de9f9ef56f84471 home:a63e473a5004f527
+"home-hostile: H9" aab7346c3bf26f62 chat:1f690a69fe360318 settings:1f690a69fe360318 studio:1f690a69fe360318 home:1f690a69fe360318
+"home-hostile on Navy: H9" f6d388d9d4daa72f chat:537b75547bc3a0e4 settings:537b75547bc3a0e4 studio:a4cf3a078c5a9f12 home:537b75547bc3a0e4
+"home-hostile: H10" f5d0eff4e74c704a chat:2a3099f2119ac761 settings:2a3099f2119ac761 studio:2a3099f2119ac761 home:2a3099f2119ac761
+"home-hostile on Navy: H10" d154b239f929bb15 chat:cc06d545067ae553 settings:cc06d545067ae553 studio:613f711d50e010a7 home:cc06d545067ae553
+"home-hostile: H11" 70a900dfd08867ed chat:c38b4d2d42ed6df1 settings:c38b4d2d42ed6df1 studio:c38b4d2d42ed6df1 home:c38b4d2d42ed6df1
+"home-hostile on Navy: H11" 687542b45c5afea0 chat:393f8f0950a3d1b1 settings:393f8f0950a3d1b1 studio:983a3f948d602620 home:393f8f0950a3d1b1
+"home-hostile: H12" 8451ca79927bd6f1 chat:ba382f3eaf8000f9 settings:ba382f3eaf8000f9 studio:ba382f3eaf8000f9 home:ba382f3eaf8000f9
+"home-hostile on Navy: H12" cf68bb2221bedb3c chat:654664be2a6e7b06 settings:654664be2a6e7b06 studio:7892cbe811e66a3f home:654664be2a6e7b06
+"home-hostile: H13" 8488c830df22e530 chat:051818f20769591a settings:051818f20769591a studio:051818f20769591a home:051818f20769591a
+"home-hostile on Navy: H13" b33d3aba8be85af1 chat:cee5f53a99afaeee settings:cee5f53a99afaeee studio:f96f84fe6580d09a home:cee5f53a99afaeee
+"home-hostile: H14" 2d0efdfe9e1161c5 chat:7afa6e10cb257518 settings:7afa6e10cb257518 studio:7afa6e10cb257518 home:7afa6e10cb257518
+"home-hostile on Navy: H14" d2fdeec3c90923a9 chat:4a6663db1de731d0 settings:4a6663db1de731d0 studio:6726fe6fcb2846b1 home:4a6663db1de731d0
+"home-hostile: H15" fbfce6dea6947d76 chat:4c2fefffa0d8b1b6 settings:4c2fefffa0d8b1b6 studio:4c2fefffa0d8b1b6 home:4c2fefffa0d8b1b6
+"home-hostile on Navy: H15" 9f555ca83720ed42 chat:9aba0712c7c829f8 settings:9aba0712c7c829f8 studio:b60cb9dfeaa2078c home:9aba0712c7c829f8
+"home-hostile: H16" f993be5e9aca3f54 chat:9c79cd8b7eadc93d settings:9c79cd8b7eadc93d studio:9c79cd8b7eadc93d home:9c79cd8b7eadc93d
+"home-hostile on Navy: H16" 5337f751d4087dce chat:88c2d4cc531a015b settings:88c2d4cc531a015b studio:a773584a897f8222 home:88c2d4cc531a015b
+"home-hostile: H17" 705f5393e22ef465 chat:2cf4bbcdba1513eb settings:2cf4bbcdba1513eb studio:2cf4bbcdba1513eb home:2cf4bbcdba1513eb
+"home-hostile on Navy: H17" e7753c1bff29ce1a chat:82e28205a484afec settings:82e28205a484afec studio:bf3b34ae10e4ebf8 home:82e28205a484afec
+"home-hostile: H18" 0427356b7cc926a1 chat:d8b5d647f6bbc50f settings:d8b5d647f6bbc50f studio:d8b5d647f6bbc50f home:d8b5d647f6bbc50f
+"home-hostile on Navy: H18" 1dc421566c99dcc1 chat:4db59ae2fe8ec8d4 settings:4db59ae2fe8ec8d4 studio:e3d4a54e87deb124 home:4db59ae2fe8ec8d4
+"home-hostile: H19" e78dc2f800b57948 chat:677b09dc33973d5f settings:677b09dc33973d5f studio:677b09dc33973d5f home:677b09dc33973d5f
+"home-hostile on Navy: H19" 95c13dc25a47d0cc chat:51b9624c8225d41b settings:51b9624c8225d41b studio:cb891360c15dbf5a home:51b9624c8225d41b
+"home-hostile: H20" bef5699d51095149 chat:3b58a6fea693d7a6 settings:3b58a6fea693d7a6 studio:3b58a6fea693d7a6 home:3b58a6fea693d7a6
+"home-hostile on Navy: H20" 802ebbd121564540 chat:f6119cbaa4468bf5 settings:f6119cbaa4468bf5 studio:cd0bce2975e638ae home:f6119cbaa4468bf5
+"home-hostile: H21" 4f5857d1b8c6a553 chat:6d726944ff890046 settings:6d726944ff890046 studio:6d726944ff890046 home:6d726944ff890046
+"home-hostile on Navy: H21" 1f78ccfedbd3f2e1 chat:09192f2bd80f80cd settings:09192f2bd80f80cd studio:fab85bf2cbe52f40 home:09192f2bd80f80cd
+"home-hostile: H22" d5d01d940ac6a03d chat:b5dce95b85d84f15 settings:b5dce95b85d84f15 studio:b5dce95b85d84f15 home:b5dce95b85d84f15
+"home-hostile on Navy: H22" 27a05a0d9a8894cd chat:ec72e2de9d47a5ab settings:ec72e2de9d47a5ab studio:5467fe38dca78969 home:ec72e2de9d47a5ab
+"home-hostile: H23" 9064da1103d7822c chat:45037ba7b8c9c5fc settings:45037ba7b8c9c5fc studio:45037ba7b8c9c5fc home:45037ba7b8c9c5fc
+"home-hostile on Navy: H23" 86519290c61c845c chat:d85f33900c0638f7 settings:d85f33900c0638f7 studio:6d838825a8938d6b home:d85f33900c0638f7
+"home-hostile: H24" 35a5e8124038c950 chat:e418f36e7433bb79 settings:e418f36e7433bb79 studio:e418f36e7433bb79 home:e418f36e7433bb79
+"home-hostile on Navy: H24" ac0939f8bab742c3 chat:3ec0d306cc451756 settings:3ec0d306cc451756 studio:2a24edb0da71c78f home:3ec0d306cc451756
+"home-hostile: H25" f21acaf725baf0f4 chat:20f145f6eed3682d settings:20f145f6eed3682d studio:20f145f6eed3682d home:20f145f6eed3682d
+"home-hostile on Navy: H25" 9c9d89f490343eef chat:1de982ca700b57a8 settings:1de982ca700b57a8 studio:7def734853cdfd6d home:1de982ca700b57a8
+"home-hostile: H26" 4629e9f3df0cbc91 chat:33f18ac4d68cea16 settings:33f18ac4d68cea16 studio:33f18ac4d68cea16 home:33f18ac4d68cea16
+"home-hostile on Navy: H26" 47a4c330d3186640 chat:074507d3cfa42efe settings:074507d3cfa42efe studio:5708003f267f3d5d home:074507d3cfa42efe
+"home-hostile: H27" 33d12972c3358a25 chat:481f72647341047e settings:481f72647341047e studio:481f72647341047e home:481f72647341047e
+"home-hostile on Navy: H27" 00f16f58eda6b494 chat:0371f7702db0360d settings:0371f7702db0360d studio:5a1bd4213e1c5ec3 home:0371f7702db0360d
+"home-hostile: H28" 88eb696cf83a3345 chat:9b4eeaabfc85e2de settings:9b4eeaabfc85e2de studio:9b4eeaabfc85e2de home:9b4eeaabfc85e2de
+"home-hostile on Navy: H28" e8543731bf058673 chat:477a22abf1764b6d settings:477a22abf1764b6d studio:9a04a838fd605d1f home:477a22abf1764b6d
+"home-hostile: H29" ba90da092a11cbc8 chat:5b645c875ded0c4d settings:5b645c875ded0c4d studio:5b645c875ded0c4d home:5b645c875ded0c4d
+"home-hostile on Navy: H29" 302fc22d158913de chat:322dd5b8c8703b2e settings:322dd5b8c8703b2e studio:f497815d37968325 home:322dd5b8c8703b2e
+"home-hostile: H30" 5aa660a325ae0b45 chat:452a4d12576743f9 settings:452a4d12576743f9 studio:452a4d12576743f9 home:452a4d12576743f9
+"home-hostile on Navy: H30" 665df76622016cd1 chat:3709aa15fe358d94 settings:3709aa15fe358d94 studio:9714e056fac57dac home:3709aa15fe358d94
+"home-hostile: H31" 26c62a49bb6c669a chat:81ead3abc4b279f4 settings:81ead3abc4b279f4 studio:81ead3abc4b279f4 home:81ead3abc4b279f4
+"home-hostile on Navy: H31" c17ad1255501a2f0 chat:e8e5f1115613cf12 settings:e8e5f1115613cf12 studio:4fe82f002e7b3771 home:e8e5f1115613cf12
+"home-hostile: H32" 6433448d2b1846fe chat:cc4d1983f1f65f84 settings:cc4d1983f1f65f84 studio:cc4d1983f1f65f84 home:cc4d1983f1f65f84
+"home-hostile on Navy: H32" 5a9c34010b89ac82 chat:d657c8ee7eae36ef settings:d657c8ee7eae36ef studio:1f7615b8cdfc1af1 home:d657c8ee7eae36ef
+"home-hostile: H33" e7634afb04a28a06 chat:94a350110708ad3a settings:94a350110708ad3a studio:94a350110708ad3a home:94a350110708ad3a
+"home-hostile on Navy: H33" 6e69d4fc500eb706 chat:6268fd718f03907d settings:6268fd718f03907d studio:fea7e11a63231892 home:6268fd718f03907d
+"home-hostile: H34" 519bf496641c4559 chat:f346e6fa02d2109d settings:f346e6fa02d2109d studio:f346e6fa02d2109d home:f346e6fa02d2109d
+"home-hostile on Navy: H34" 2734563e3989f50b chat:63087df66158ebd1 settings:63087df66158ebd1 studio:3d883ac55b6ad273 home:63087df66158ebd1
+"home-hostile: H35" cf6537bc42dfe29a chat:96a6a7d5f0fa8f86 settings:96a6a7d5f0fa8f86 studio:96a6a7d5f0fa8f86 home:96a6a7d5f0fa8f86
+"home-hostile on Navy: H35" cf726523002e7b9b chat:21f221c844c8840f settings:21f221c844c8840f studio:93edd29e70237d3e home:21f221c844c8840f
+"home-hostile: H36" 3af41998397905ae chat:a4fce4b0cc6d6f6a settings:a4fce4b0cc6d6f6a studio:a4fce4b0cc6d6f6a home:a4fce4b0cc6d6f6a
+"home-hostile on Navy: H36" 34a55ec627948d62 chat:cb945dc334ad33be settings:cb945dc334ad33be studio:3f6030ed2e906135 home:cb945dc334ad33be
+"home-hostile: H37" 8685e05977269d4d chat:e05b468fde4eddb5 settings:e05b468fde4eddb5 studio:e05b468fde4eddb5 home:e05b468fde4eddb5
+"home-hostile on Navy: H37" 7ce170be14f67ff0 chat:897843f28deed138 settings:897843f28deed138 studio:fbd7d212085b41de home:897843f28deed138
+"home-hostile: H38" e0e9f3a404bcd9c9 chat:96e76d9276871a35 settings:96e76d9276871a35 studio:96e76d9276871a35 home:96e76d9276871a35
+"home-hostile on Navy: H38" a71deb13d8ac5736 chat:cad0f28629be05a5 settings:cad0f28629be05a5 studio:a48214bd9d5478da home:cad0f28629be05a5
+"home-hostile: H39" ecf13d7e7e1824fe chat:0471150636623e78 settings:0471150636623e78 studio:0471150636623e78 home:0471150636623e78
+"home-hostile on Navy: H39" 8f83e5eda7360834 chat:86b5a0bbdda8ab89 settings:86b5a0bbdda8ab89 studio:e90f39b3be90a50d home:86b5a0bbdda8ab89
+"home-hostile: H40" 993bcb61c554b224 chat:f48c1d535eb2cf9f settings:f48c1d535eb2cf9f studio:f48c1d535eb2cf9f home:f48c1d535eb2cf9f
+"home-hostile on Navy: H40" 4108d9956f6084c2 chat:7ff04500888a4ef8 settings:7ff04500888a4ef8 studio:21167f4c9057f662 home:7ff04500888a4ef8
+"home-hostile: H41" 15b3d8ed9f21e3d9 chat:56b593a0dc0f98f4 settings:56b593a0dc0f98f4 studio:56b593a0dc0f98f4 home:56b593a0dc0f98f4
+"home-hostile on Navy: H41" 524e2e718fc41ee2 chat:bd9ad3955d66a4ab settings:bd9ad3955d66a4ab studio:1b4a342d29199dac home:bd9ad3955d66a4ab
+"home-hostile: H42" 8f2332133b404545 chat:6ba8046ce250b1f6 settings:6ba8046ce250b1f6 studio:6ba8046ce250b1f6 home:6ba8046ce250b1f6
+"home-hostile on Navy: H42" 42be6dde1771d7df chat:9033bb0348bd536c settings:9033bb0348bd536c studio:2470809c8b46c24d home:9033bb0348bd536c
+"home-hostile: H43" 9b7edda02655eaa6 chat:b5a9d9944fc13e88 settings:b5a9d9944fc13e88 studio:b5a9d9944fc13e88 home:b5a9d9944fc13e88
+"home-hostile on Navy: H43" 527f9e93e2287c70 chat:9ec66917e2eb9748 settings:9ec66917e2eb9748 studio:e475eb28d830fa58 home:9ec66917e2eb9748
+"home-hostile: H44" 0150ffa83e8b7abf chat:bee626956621f8ea settings:bee626956621f8ea studio:bee626956621f8ea home:bee626956621f8ea
+"home-hostile on Navy: H44" 5c4cda7417f07811 chat:7733a1a10abc0b41 settings:7733a1a10abc0b41 studio:5de5663fcad490af home:7733a1a10abc0b41
+"home-hostile: H45" 5ee4695ebe1402c9 chat:693c5ea62b4a189b settings:693c5ea62b4a189b studio:693c5ea62b4a189b home:693c5ea62b4a189b
+"home-hostile on Navy: H45" b898588a2315a5b7 chat:5c111432606b94e6 settings:5c111432606b94e6 studio:75410bce2080ca75 home:5c111432606b94e6
+"home-hostile: H46" ef00241ac2de11ab chat:2ab6612d89d546e8 settings:2ab6612d89d546e8 studio:2ab6612d89d546e8 home:2ab6612d89d546e8
+"home-hostile on Navy: H46" 5829d54a6b710bb1 chat:e8afb4ecfccffb19 settings:e8afb4ecfccffb19 studio:4d892c9910cd8555 home:e8afb4ecfccffb19
+"home-hostile: H47" 259b09b1d6f7eb74 chat:0f756d781fa4a26c settings:0f756d781fa4a26c studio:0f756d781fa4a26c home:2346c32124a22058
+"home-hostile on Navy: H47" 6192d9ef2cdfc1bc chat:5cb820c739d45946 settings:5cb820c739d45946 studio:cba3ad8809517a12 home:b0fb037097b89aa7
+"home-hostile: H48" ccad2623a2ef88a2 chat:8f5ec4451b404239 settings:8f5ec4451b404239 studio:8f5ec4451b404239 home:8f5ec4451b404239
+"home-hostile on Navy: H48" 28a290f5a9c40121 chat:46ad90644f480144 settings:46ad90644f480144 studio:98937becbd34b97c home:46ad90644f480144
+"home-hostile: H49" b321040278208c65 chat:91493f8849105ad8 settings:91493f8849105ad8 studio:91493f8849105ad8 home:91493f8849105ad8
+"home-hostile on Navy: H49" 4cc8b51f49e37392 chat:ee67713ecb8f5281 settings:ee67713ecb8f5281 studio:7d112cdf861a0f69 home:ee67713ecb8f5281
+"home-hostile: H50" b6bc9b78853244d6 chat:be2ec0319991634f settings:be2ec0319991634f studio:be2ec0319991634f home:be2ec0319991634f
+"home-hostile on Navy: H50" 8a52ad2cdaf810b8 chat:a247eea65c8df5ae settings:a247eea65c8df5ae studio:f942bc8cdd738445 home:a247eea65c8df5ae
+"home-hostile: H51" 379444ff40a60970 chat:f3e19caecfd5f05d settings:f3e19caecfd5f05d studio:f3e19caecfd5f05d home:f3e19caecfd5f05d
+"home-hostile on Navy: H51" fc4fae6bf5d377f7 chat:f9e4eda42b9676b2 settings:f9e4eda42b9676b2 studio:3b35ec368fc4d511 home:f9e4eda42b9676b2
+"home-hostile: H52" 1b5ffff13a92c043 chat:fa6a8210afb8cc14 settings:fa6a8210afb8cc14 studio:fa6a8210afb8cc14 home:fa6a8210afb8cc14
+"home-hostile on Navy: H52" ed8e64016987e8e9 chat:966f7ccf9c52ba4f settings:966f7ccf9c52ba4f studio:a948cb6872a518a4 home:966f7ccf9c52ba4f
+"home-hostile: H53" a1de1cc274942af6 chat:e83439166daf1a66 settings:e83439166daf1a66 studio:e83439166daf1a66 home:e83439166daf1a66
+"home-hostile on Navy: H53" 097433fa7b8d5397 chat:156d11390837d7f7 settings:156d11390837d7f7 studio:badec83174916bf6 home:156d11390837d7f7
+"home-hostile: H54" 967d8726888c36b1 chat:4b2213fe460060cb settings:4b2213fe460060cb studio:4b2213fe460060cb home:4b2213fe460060cb
+"home-hostile on Navy: H54" f9dfd0f50bd795e5 chat:986b47f36571e0e8 settings:986b47f36571e0e8 studio:c38a6bf63d5653aa home:986b47f36571e0e8
+"home-hostile: V1" 4888b1eab59598e7 chat:5ba11888847fb3a9 settings:5ba11888847fb3a9 studio:5ba11888847fb3a9 home:5ba11888847fb3a9
+"home-hostile on Navy: V1" f39bc211afcef146 chat:16c08f887ce3cbd7 settings:16c08f887ce3cbd7 studio:12ba2f2c3f95223c home:16c08f887ce3cbd7
+"home-hostile: W1" 92a8608d4edb8ffd chat:75eeeb7a7dadf8b4 settings:75eeeb7a7dadf8b4 studio:75eeeb7a7dadf8b4 home:75eeeb7a7dadf8b4
+"home-hostile on Navy: W1" 8f998249cab251d5 chat:3cbb93a8a6662c33 settings:3cbb93a8a6662c33 studio:497f07ca4570b67a home:3cbb93a8a6662c33
+"home-hostile: T1" 465047b2faf51c46 chat:f89fad546b1c8845 settings:f89fad546b1c8845 studio:f89fad546b1c8845 home:f89fad546b1c8845
+"home-hostile on Navy: T1" 596915d20b372320 chat:1b493fdbcaffff2a settings:1b493fdbcaffff2a studio:99d67427803f9372 home:1b493fdbcaffff2a
+"home-hostile: V2" f181839eaf35c1af chat:8c28e03ec329913c settings:8c28e03ec329913c studio:8c28e03ec329913c home:8c28e03ec329913c
+"home-hostile on Navy: V2" 332e37f7978816f2 chat:59919ac057fd401e settings:59919ac057fd401e studio:07d6b231aaf59d0e home:59919ac057fd401e
+"home-hostile: W2" 9560e7273656bea5 chat:d0f6a7a116aff092 settings:d0f6a7a116aff092 studio:d0f6a7a116aff092 home:d0f6a7a116aff092
+"home-hostile on Navy: W2" 8e77d4ea7630c0c2 chat:10866653068bf4b3 settings:10866653068bf4b3 studio:f37ed9b5fafe1e04 home:10866653068bf4b3
+"home-hostile: T2" 13c23b92bc8d56fd chat:214a4b1f43aad83c settings:214a4b1f43aad83c studio:214a4b1f43aad83c home:214a4b1f43aad83c
+"home-hostile on Navy: T2" 673b97c30b9c9e48 chat:647e324edcaa9070 settings:647e324edcaa9070 studio:b7ee62b85580e9a9 home:647e324edcaa9070
+"home-hostile: V3" d23bc9f297170e76 chat:04651b76f3273828 settings:04651b76f3273828 studio:04651b76f3273828 home:04651b76f3273828
+"home-hostile on Navy: V3" 5ac7eb8a36905eba chat:a30e59c92d44cdff settings:a30e59c92d44cdff studio:f763fac19ec1286e home:a30e59c92d44cdff
+"home-hostile: W3" bb58c9e09d5687e8 chat:6a7cfab9cdbd9047 settings:6a7cfab9cdbd9047 studio:6a7cfab9cdbd9047 home:6a7cfab9cdbd9047
+"home-hostile on Navy: W3" 3b7b161cf15f887b chat:8b43a7ae04b2e815 settings:8b43a7ae04b2e815 studio:2d78e8c1e1f9580a home:8b43a7ae04b2e815
+"home-hostile: T3" 67897d516461b710 chat:b9ad40fa92db832a settings:b9ad40fa92db832a studio:b9ad40fa92db832a home:b9ad40fa92db832a
+"home-hostile on Navy: T3" d129c02b35c4e3c2 chat:1be79d644a2015d5 settings:1be79d644a2015d5 studio:688d2def6b27f1f7 home:1be79d644a2015d5
+"home-hostile: V4" a8bedc0cd1063727 chat:4359a3e7c15969b4 settings:4359a3e7c15969b4 studio:4359a3e7c15969b4 home:4359a3e7c15969b4
+"home-hostile on Navy: V4" b606a650abcb70e0 chat:095752fd56e05f78 settings:095752fd56e05f78 studio:463850727ab6e0eb home:095752fd56e05f78
+"home-hostile: W4" 56597eedf6471476 chat:c605ec604b572bbb settings:c605ec604b572bbb studio:c605ec604b572bbb home:c605ec604b572bbb
+"home-hostile on Navy: W4" 1f67bc44051289ad chat:7a43cb47030f906c settings:7a43cb47030f906c studio:a8ff7e1ed55ab7b4 home:7a43cb47030f906c
+"home-hostile: T4" 57f878a0dd007ec4 chat:6e500c461eece6a6 settings:6e500c461eece6a6 studio:6e500c461eece6a6 home:6e500c461eece6a6
+"home-hostile on Navy: T4" 5fc4e97b862934af chat:020db3ac9a7ff1c2 settings:020db3ac9a7ff1c2 studio:465198293bf4b9b7 home:020db3ac9a7ff1c2
+"home-hostile: V5" 347bd70664fa4941 chat:0b8fcb5efe4c4187 settings:0b8fcb5efe4c4187 studio:0b8fcb5efe4c4187 home:0b8fcb5efe4c4187
+"home-hostile on Navy: V5" 1f4600cc60aa892c chat:8d4364c515f11bbd settings:8d4364c515f11bbd studio:ce3e840903ab070c home:8d4364c515f11bbd
+"home-hostile: W5" 2c5c2541eaeb15d5 chat:45220dba329d0365 settings:45220dba329d0365 studio:45220dba329d0365 home:45220dba329d0365
+"home-hostile on Navy: W5" 94169b5ca7ff629d chat:62d32ec74d99762b settings:62d32ec74d99762b studio:f26aeff3710d51ca home:62d32ec74d99762b
+"home-hostile: T5" 1ea9b22b8545dcff chat:728fc873ba43aef3 settings:728fc873ba43aef3 studio:728fc873ba43aef3 home:728fc873ba43aef3
+"home-hostile on Navy: T5" 7eee5142d5478614 chat:4a7e48621c65c06b settings:4a7e48621c65c06b studio:82694aad3e39024b home:4a7e48621c65c06b
+"home-hostile: G1" 6900675263ef013b chat:fa89c6e87363bbe4 settings:fa89c6e87363bbe4 studio:fa89c6e87363bbe4 home:fa89c6e87363bbe4
+"home-hostile on Navy: G1" 3d70f0435c968819 chat:5b98825bfd5282c2 settings:5b98825bfd5282c2 studio:71d99f6312751359 home:5b98825bfd5282c2
+"home-hostile: G2" bc66cb605308d54e chat:0cd41bf6b7866622 settings:0cd41bf6b7866622 studio:0cd41bf6b7866622 home:0cd41bf6b7866622
+"home-hostile on Navy: G2" 462e7aebe48b750b chat:5934441ce6fbaf4f settings:5934441ce6fbaf4f studio:1f67c5da67364f02 home:5934441ce6fbaf4f
+"home-hostile: G3" d9bb2fc3a2f8b911 chat:f37447d8220c99ae settings:f37447d8220c99ae studio:f37447d8220c99ae home:f37447d8220c99ae
+"home-hostile on Navy: G3" 08c2a62ea913c3a5 chat:24e38578be2e7fc5 settings:24e38578be2e7fc5 studio:38e4617145b164af home:24e38578be2e7fc5
+"home-hostile: G4" 337da7ce223c64e3 chat:bafceb4262913d3c settings:bafceb4262913d3c studio:bafceb4262913d3c home:bafceb4262913d3c
+"home-hostile on Navy: G4" 0ae7513e85f4df50 chat:3d326cfa71350adc settings:3d326cfa71350adc studio:18c0c76317db1fae home:3d326cfa71350adc
+"home-hostile: G5" 3d8894fc295b993d chat:dd387ac96ac8d8c5 settings:dd387ac96ac8d8c5 studio:dd387ac96ac8d8c5 home:dd387ac96ac8d8c5
+"home-hostile on Navy: G5" 948dd87463e86e91 chat:cce0eeaf592a873d settings:cce0eeaf592a873d studio:3892d307ac6d4490 home:cce0eeaf592a873d
+"home-hostile: G6" 5e49fb5d6895863e chat:300a0a093deb1f08 settings:300a0a093deb1f08 studio:300a0a093deb1f08 home:300a0a093deb1f08
+"home-hostile on Navy: G6" 31f02c97d0e911d9 chat:13618a56a07a0af6 settings:13618a56a07a0af6 studio:f6319bcc2eae3a69 home:13618a56a07a0af6
+"home-hostile: G7" 7f52f358e76e1b12 chat:bbe912c4b6d71d9c settings:bbe912c4b6d71d9c studio:bbe912c4b6d71d9c home:bbe912c4b6d71d9c
+"home-hostile on Navy: G7" 0a3e5cb90e2cd795 chat:0deeddfde948c382 settings:0deeddfde948c382 studio:c7646ced0a857d23 home:0deeddfde948c382
+"home-hostile: G8" 36638a209abdb59f chat:4942162472d6d726 settings:4942162472d6d726 studio:4942162472d6d726 home:4942162472d6d726
+"home-hostile on Navy: G8" 4e759feae0931542 chat:28d9eabcae1d75bc settings:28d9eabcae1d75bc studio:cf353068b9b94bbc home:28d9eabcae1d75bc
+"home-hostile: G9" 0a1b9cdecc5126d8 chat:0744b4bdec2d9956 settings:0744b4bdec2d9956 studio:0744b4bdec2d9956 home:0744b4bdec2d9956
+"home-hostile on Navy: G9" 04d8c46418a2657e chat:5609a013bea6941c settings:5609a013bea6941c studio:a3f79cfe7a6c4821 home:5609a013bea6941c
+"home-hostile: G10" f55cc4846fe8e678 chat:a1a93f6fb092a20d settings:a1a93f6fb092a20d studio:a1a93f6fb092a20d home:a1a93f6fb092a20d
+"home-hostile on Navy: G10" cf0d864acd7a5f80 chat:920ffb487bdbc520 settings:920ffb487bdbc520 studio:98a40fcce5c19f78 home:920ffb487bdbc520
+"home-hostile: G11" c49537bcc7956f70 chat:08d0419f624da253 settings:08d0419f624da253 studio:08d0419f624da253 home:08d0419f624da253
+"home-hostile on Navy: G11" ca978f0e977e5494 chat:2848a311c8e135db settings:2848a311c8e135db studio:7707ce8ec16ebe96 home:2848a311c8e135db
+"home-hostile: G12" 6fce04b83beca9b9 chat:c83caa300f531cc8 settings:c83caa300f531cc8 studio:c83caa300f531cc8 home:c83caa300f531cc8
+"home-hostile on Navy: G12" a35025c8bed9f1db chat:aa8236759ecd07f9 settings:aa8236759ecd07f9 studio:894cf83aaf90876e home:aa8236759ecd07f9
+"home-hostile: G13" 552c429edf931408 chat:e8f74f7a31c4d357 settings:e8f74f7a31c4d357 studio:e8f74f7a31c4d357 home:e8f74f7a31c4d357
+"home-hostile on Navy: G13" 309bb5d16ffdddb7 chat:5ce20821fee63e72 settings:5ce20821fee63e72 studio:a72a180012b30f07 home:5ce20821fee63e72
+"studio-hostile: H01" e3c8821714b93f76 chat:c9ab65d47483b01f settings:c9ab65d47483b01f studio:6bcc359724d94ce1 home:c9ab65d47483b01f
+"studio-hostile on Navy: H01" 3e8b2e46092390d7 chat:225c2e5d256acc20 settings:225c2e5d256acc20 studio:ba8192dcaa241076 home:225c2e5d256acc20
+"studio-hostile: H02" d2aa4456f9bffe5f chat:345eeec5fbc55ebd settings:345eeec5fbc55ebd studio:a5de09939a4b4752 home:345eeec5fbc55ebd
+"studio-hostile on Navy: H02" ac21b101fd05ff71 chat:acd0a180e0dfaf91 settings:acd0a180e0dfaf91 studio:0cb3c421a05056ff home:acd0a180e0dfaf91
+"studio-hostile: H03" 4e554f2a14c23c5e chat:7dd01d3c33f23d01 settings:7dd01d3c33f23d01 studio:2bd806bc251938c6 home:7dd01d3c33f23d01
+"studio-hostile on Navy: H03" 053cbceaa4de8a5b chat:4920780183c546fe settings:4920780183c546fe studio:ee41262410d60cd5 home:4920780183c546fe
+"studio-hostile: H04" 3f64ba2df962dc0f chat:4fcf0e8b68e30d4b settings:4fcf0e8b68e30d4b studio:4fcf0e8b68e30d4b home:4fcf0e8b68e30d4b
+"studio-hostile on Navy: H04" dc85c5ed4db5f9b0 chat:33397ff37ec7384f settings:33397ff37ec7384f studio:3f9f93855bd168df home:33397ff37ec7384f
+"studio-hostile: H05" 481cd2a9f932b05d chat:41262f09ed66f748 settings:41262f09ed66f748 studio:41262f09ed66f748 home:41262f09ed66f748
+"studio-hostile on Navy: H05" f12fefa8c8e823ae chat:1558d963fb65c4e1 settings:1558d963fb65c4e1 studio:c243de1273141309 home:1558d963fb65c4e1
+"studio-hostile: H06" 0f20fb0e388e7bd4 chat:ce980f744c857674 settings:ce980f744c857674 studio:86b1a18f9b87ea56 home:ce980f744c857674
+"studio-hostile on Navy: H06" d8a6cd23fba540db chat:a2fe6d848e5b24c3 settings:a2fe6d848e5b24c3 studio:2144393fe015cbc3 home:a2fe6d848e5b24c3
+"studio-hostile: H07" c7934ac419dda72a chat:0608471a0474d23e settings:0608471a0474d23e studio:7bf85dcb22e1e04c home:0608471a0474d23e
+"studio-hostile on Navy: H07" 25826eb24f10d53e chat:ba54004f14853f47 settings:ba54004f14853f47 studio:d1f7effafee6a1e3 home:ba54004f14853f47
+"studio-hostile: H08" e02ad1c6e2cac072 chat:682a9255c785eec6 settings:682a9255c785eec6 studio:af8e961a270da9c5 home:682a9255c785eec6
+"studio-hostile on Navy: H08" 2277cc778fd32182 chat:e189a02c49b6567d settings:e189a02c49b6567d studio:a0989875b5196bcb home:e189a02c49b6567d
+"studio-hostile: S01" 0b30be35c1bc4ed7 chat:657bf5bb869d40ec settings:657bf5bb869d40ec studio:657bf5bb869d40ec home:657bf5bb869d40ec
+"studio-hostile on Navy: S01" f1208a7a716960ec chat:dea2d5226635f5fd settings:dea2d5226635f5fd studio:90baa65f377e8b94 home:dea2d5226635f5fd
+"studio-hostile: S02" ba928688ff6931d5 chat:f04349302da9ea85 settings:f04349302da9ea85 studio:f04349302da9ea85 home:f04349302da9ea85
+"studio-hostile on Navy: S02" 357f0d269c12ca73 chat:b3bb4efe357e263f settings:b3bb4efe357e263f studio:0749bb869685def0 home:b3bb4efe357e263f
+"studio-hostile: S03" 8f8dae2ae79cc8ed chat:0dc977faa751c537 settings:0dc977faa751c537 studio:0dc977faa751c537 home:0dc977faa751c537
+"studio-hostile on Navy: S03" 6b1664301665d2a0 chat:f59133b0ac61b5b1 settings:f59133b0ac61b5b1 studio:62329761ff60fbef home:f59133b0ac61b5b1
+"studio-hostile: S04" adc1c42e2cee8b08 chat:3deebf1bf3fa584c settings:3deebf1bf3fa584c studio:3deebf1bf3fa584c home:3deebf1bf3fa584c
+"studio-hostile on Navy: S04" f8f9d4888f4b9b64 chat:ed2e4a574617083b settings:ed2e4a574617083b studio:03687cd522cf96d4 home:ed2e4a574617083b
+"studio-hostile: S05" ed9d595f4897e9b8 chat:b33005fd0c283eb5 settings:b33005fd0c283eb5 studio:5ff87bdfed086535 home:b33005fd0c283eb5
+"studio-hostile on Navy: S05" 24435a3ccf36ed0d chat:7d1682268f7365b5 settings:7d1682268f7365b5 studio:34a0ee82d1d90efd home:7d1682268f7365b5
+"studio-hostile: S06" fdb4bbeee9f1ff19 chat:3f7eb5b53742775f settings:3f7eb5b53742775f studio:3f7eb5b53742775f home:3f7eb5b53742775f
+"studio-hostile on Navy: S06" 2719dde8ca4e5d1c chat:9c872507984ad0dc settings:9c872507984ad0dc studio:abb69f54faf11933 home:9c872507984ad0dc
+"studio-hostile: S07" a8116531e0330a3e chat:c8e6af576f58ed0d settings:c8e6af576f58ed0d studio:c8e6af576f58ed0d home:c8e6af576f58ed0d
+"studio-hostile on Navy: S07" 03d83ab7a92b6eb3 chat:5dc0c0c34b1eeafa settings:5dc0c0c34b1eeafa studio:de394b43ac0e656a home:5dc0c0c34b1eeafa
+"studio-hostile: S08" 247f86db62fe232c chat:31c5cdb250b5ed4c settings:31c5cdb250b5ed4c studio:31c5cdb250b5ed4c home:31c5cdb250b5ed4c
+"studio-hostile on Navy: S08" 406d204ef5383aaa chat:70f4318e42b617bd settings:70f4318e42b617bd studio:ce9ba39516233402 home:70f4318e42b617bd
+"studio-hostile: S09" 9c6d099d684adf89 chat:d28bac69a538a712 settings:d28bac69a538a712 studio:de59f8c749134c17 home:d28bac69a538a712
+"studio-hostile on Navy: S09" 28eda9eaf9605395 chat:aee2ddeedc82af2f settings:aee2ddeedc82af2f studio:ec707de06e6233c5 home:aee2ddeedc82af2f
+"studio-hostile: S10" 2b974678bf2376db chat:f265b019977eea9e settings:f265b019977eea9e studio:816d43b887afa5e3 home:f265b019977eea9e
+"studio-hostile on Navy: S10" ea711768268a9771 chat:d055da3733ff843b settings:d055da3733ff843b studio:ed1e08dc6078dfdb home:d055da3733ff843b
+"studio-hostile: S11" 7b7d81492bfe6c51 chat:700d4def3189a175 settings:700d4def3189a175 studio:700d4def3189a175 home:700d4def3189a175
+"studio-hostile on Navy: S11" 667712a8226e75b6 chat:e434c2942aaa9ed9 settings:e434c2942aaa9ed9 studio:50ac366fbdb1223a home:e434c2942aaa9ed9
+"studio-hostile: S12" f3aa678e5b2309be chat:4f6b75a934e1a3d9 settings:4f6b75a934e1a3d9 studio:4f6b75a934e1a3d9 home:4f6b75a934e1a3d9
+"studio-hostile on Navy: S12" a43d83a14451968a chat:9a72a9acbe0b5388 settings:9a72a9acbe0b5388 studio:98388c9e36d6f9a7 home:9a72a9acbe0b5388
+"studio-hostile: S13" fe28d4196ada1422 chat:d742b80b8d91e774 settings:d742b80b8d91e774 studio:d742b80b8d91e774 home:d742b80b8d91e774
+"studio-hostile on Navy: S13" 5a8f61125c7b435b chat:d4aabfb5f90467d8 settings:d4aabfb5f90467d8 studio:b431ec746e936e4c home:d4aabfb5f90467d8
+"studio-hostile: S14" 3e0355a5b41ba484 chat:a147996532217aca settings:a147996532217aca studio:a147996532217aca home:a147996532217aca
+"studio-hostile on Navy: S14" 64023efb85e1954d chat:c1a7e599f9ac7e90 settings:c1a7e599f9ac7e90 studio:554721a1cf40e015 home:c1a7e599f9ac7e90
+"studio-hostile: S15" 46b65b5067561e13 chat:58b0c38b27b9697f settings:58b0c38b27b9697f studio:58b0c38b27b9697f home:58b0c38b27b9697f
+"studio-hostile on Navy: S15" 1de4f65c0bd28123 chat:32c5f1ce64f37ae3 settings:32c5f1ce64f37ae3 studio:c1edd5bfbdddffd8 home:32c5f1ce64f37ae3
+"studio-hostile: S16" 52a47e0a57912d46 chat:1f7e538a30389f0e settings:1f7e538a30389f0e studio:1f7e538a30389f0e home:1f7e538a30389f0e
+"studio-hostile on Navy: S16" c77607211c04087d chat:cdf822e27ae3cbe8 settings:cdf822e27ae3cbe8 studio:79fc9770633e398e home:cdf822e27ae3cbe8
+"studio-hostile: S17" a20b99f899128431 chat:1ab525ded870ef27 settings:1ab525ded870ef27 studio:1ab525ded870ef27 home:1ab525ded870ef27
+"studio-hostile on Navy: S17" a884b4ee02fd71fd chat:73dbb0b0a39bc92f settings:73dbb0b0a39bc92f studio:bdeb6c617411a192 home:73dbb0b0a39bc92f
+"studio-hostile: S18" f44ae8c401ccacb6 chat:207494329aac6762 settings:207494329aac6762 studio:207494329aac6762 home:207494329aac6762
+"studio-hostile on Navy: S18" 13ac4e3f749cf4c4 chat:463fe96113133510 settings:463fe96113133510 studio:87b1620c95967009 home:463fe96113133510
+"studio-hostile: S19" f159d67da5b1cb3a chat:b994e54da46af12a settings:b994e54da46af12a studio:b994e54da46af12a home:b994e54da46af12a
+"studio-hostile on Navy: S19" 1e771f92e203c644 chat:c5508bc36aa78280 settings:c5508bc36aa78280 studio:0842790248fea035 home:c5508bc36aa78280
+"studio-hostile: P01" 75b9c2702a23043c chat:ec087aaaa690e4f8 settings:ec087aaaa690e4f8 studio:ec087aaaa690e4f8 home:ec087aaaa690e4f8
+"studio-hostile on Navy: P01" 9e44c63796ece4eb chat:3c9bd22a1fdbbe16 settings:3c9bd22a1fdbbe16 studio:3a4d0011ce08a665 home:3c9bd22a1fdbbe16
+"studio-hostile: P02" a81973d45a7997e1 chat:c58e76de5e843fe2 settings:c58e76de5e843fe2 studio:86bff47080468320 home:c58e76de5e843fe2
+"studio-hostile on Navy: P02" 35f4986c92d1f99d chat:4ebe22db896ecc31 settings:4ebe22db896ecc31 studio:eb8186053314ee90 home:4ebe22db896ecc31
+"studio-hostile: P03" d601813603cc7a50 chat:e5118b22c4307abd settings:e5118b22c4307abd studio:998e0eca7983c050 home:e5118b22c4307abd
+"studio-hostile on Navy: P03" f6ba7db116fa4e32 chat:1e00378b46268581 settings:1e00378b46268581 studio:139b95603f8164c8 home:1e00378b46268581
+"studio-hostile: P04" 577465c9e331b172 chat:8f1abd778ddf54e7 settings:8f1abd778ddf54e7 studio:ca0ff55f0c7b279c home:8f1abd778ddf54e7
+"studio-hostile on Navy: P04" 3d7646b8bee288f7 chat:1e9940d89cfb1352 settings:1e9940d89cfb1352 studio:640e2ebd1e35a3f7 home:1e9940d89cfb1352
+"studio-hostile: P05" 1fe609021c049e87 chat:2ec8303f58d48d03 settings:2ec8303f58d48d03 studio:2ec8303f58d48d03 home:2ec8303f58d48d03
+"studio-hostile on Navy: P05" ae6697878bc9a53c chat:717bbe4fce7dbfc4 settings:717bbe4fce7dbfc4 studio:d19eb92f3a00529e home:717bbe4fce7dbfc4
+"studio-hostile: P06" 0de80bb892dc29fb chat:23b4149b3806bd20 settings:23b4149b3806bd20 studio:b189dfdd738879ac home:23b4149b3806bd20
+"studio-hostile on Navy: P06" 031330dd62d80b05 chat:4744c291c55896cf settings:4744c291c55896cf studio:2bb4bfcd8f95cdfd home:4744c291c55896cf
+"studio-hostile: P07" 68a5e0b8961f10a5 chat:ba1aefd10b593d28 settings:ba1aefd10b593d28 studio:03017e1b7eeee080 home:ba1aefd10b593d28
+"studio-hostile on Navy: P07" baeba17759179b99 chat:83bd6f897e50390b settings:83bd6f897e50390b studio:084675e210e4d784 home:83bd6f897e50390b
+"studio-hostile: P08" c2939e56bccbda21 chat:c2b9f952135de597 settings:c2b9f952135de597 studio:3b066e85f28f0d16 home:c2b9f952135de597
+"studio-hostile on Navy: P08" df6ab8e239f483bc chat:61489a11667cd949 settings:61489a11667cd949 studio:66157aa0d55b882f home:61489a11667cd949
+"studio-hostile: P09" 39fefba332897f5c chat:5989a8b824e08d59 settings:5989a8b824e08d59 studio:4ea01369e48cc266 home:5989a8b824e08d59
+"studio-hostile on Navy: P09" 44e87b689d9951bd chat:ec22e889cf43e89b settings:ec22e889cf43e89b studio:1896c1de5c5676af home:ec22e889cf43e89b
+"studio-hostile: P10" 70a9166c3eb9b04b chat:7b018b8d199761e8 settings:7b018b8d199761e8 studio:f73048ec3432fed0 home:7b018b8d199761e8
+"studio-hostile on Navy: P10" 6b1852d1f7d4d545 chat:7de48a39c2afbac4 settings:7de48a39c2afbac4 studio:c4f00f4f6c2e7492 home:7de48a39c2afbac4
+"studio-hostile: P11" 97c0ffe677611d42 chat:52d2480d7b6d7b5f settings:52d2480d7b6d7b5f studio:3c22c4ea8de098c4 home:52d2480d7b6d7b5f
+"studio-hostile on Navy: P11" f6c1615e5238aafc chat:d0e32dc09ab4bf15 settings:d0e32dc09ab4bf15 studio:23913624c2605d0e home:d0e32dc09ab4bf15
+"studio-hostile: P12" 355308c875ee34e5 chat:323e514ab72f0729 settings:323e514ab72f0729 studio:323e514ab72f0729 home:323e514ab72f0729
+"studio-hostile on Navy: P12" 83e2b0bafd71aac5 chat:9ba7cfca78b34167 settings:9ba7cfca78b34167 studio:8281d139a0e9a7ae home:9ba7cfca78b34167
+"studio-hostile: P13" 8083b1f66f7934aa chat:dfadd932903de893 settings:dfadd932903de893 studio:dfadd932903de893 home:dfadd932903de893
+"studio-hostile on Navy: P13" 7e72c755fa415f75 chat:1fa5a340f6c033c3 settings:1fa5a340f6c033c3 studio:d35810ae729a8309 home:1fa5a340f6c033c3
+"studio-hostile: P14" e0e423f5be802b35 chat:c57e2de1e2652c34 settings:c57e2de1e2652c34 studio:c57e2de1e2652c34 home:c57e2de1e2652c34
+"studio-hostile on Navy: P14" e8a62594b7aaf1fb chat:72d254a639612c19 settings:72d254a639612c19 studio:5b9c42a5c6636474 home:72d254a639612c19
+"studio-hostile: P15" 7f28c2795df48d64 chat:385f923f51b9f76b settings:385f923f51b9f76b studio:86a04ac9330da15c home:385f923f51b9f76b
+"studio-hostile on Navy: P15" 15dc4314504cc481 chat:90be42bb1a689e05 settings:90be42bb1a689e05 studio:53fa0f3f98ef4d95 home:90be42bb1a689e05
+"studio-hostile: P16" 36ab36c9e45bb338 chat:aed2edf052af1221 settings:aed2edf052af1221 studio:aed2edf052af1221 home:aed2edf052af1221
+"studio-hostile on Navy: P16" 2151238d4e3b2036 chat:3216b5cca38784ce settings:3216b5cca38784ce studio:553d32dfa6547e9b home:3216b5cca38784ce
+"studio-hostile: P17" 38304ede73179d02 chat:2eac487d5ff70ece settings:2eac487d5ff70ece studio:2eac487d5ff70ece home:2eac487d5ff70ece
+"studio-hostile on Navy: P17" 18423d581b32d2f2 chat:7b654d85871f0815 settings:7b654d85871f0815 studio:680758445871e298 home:7b654d85871f0815
+"studio-hostile: T01" e26ee23828577113 chat:800b7eaa2613a11d settings:800b7eaa2613a11d studio:5c290dd8bf3de6f9 home:800b7eaa2613a11d
+"studio-hostile on Navy: T01" 89fa1acd52ec6b36 chat:3ed5b348e0cd2bf7 settings:3ed5b348e0cd2bf7 studio:cfe728d6b805c282 home:3ed5b348e0cd2bf7
+"studio-hostile: T02" 2a7533863b53bdcf chat:e79c8c4cef47e3d5 settings:e79c8c4cef47e3d5 studio:8294a1191f1d36a5 home:e79c8c4cef47e3d5
+"studio-hostile on Navy: T02" 65afed82f7839b08 chat:5ae96cb993221d8a settings:5ae96cb993221d8a studio:627ad7fc7b4b9edb home:5ae96cb993221d8a
+"studio-hostile: T03" 5e0dacb74e782dc7 chat:41bda813b6bd2499 settings:41bda813b6bd2499 studio:03481d3ce0f79dbe home:41bda813b6bd2499
+"studio-hostile on Navy: T03" 52c4a95e77212d2b chat:0f8d318354229fc8 settings:0f8d318354229fc8 studio:7f6873b39b751902 home:0f8d318354229fc8
+"studio-hostile: T04" c205f4379adb554a chat:a8bd795be4b83609 settings:a8bd795be4b83609 studio:a7e5f4e15ff5e3c7 home:a8bd795be4b83609
+"studio-hostile on Navy: T04" 5e93de46bdf404c9 chat:68f691db25fde8fc settings:68f691db25fde8fc studio:1fdf6323258e2d3b home:68f691db25fde8fc
+"studio-hostile: T05" e1a9e5dbc15ddc60 chat:fd5ca52c1426eba5 settings:fd5ca52c1426eba5 studio:fd5ca52c1426eba5 home:fd5ca52c1426eba5
+"studio-hostile on Navy: T05" 3e3af18dc4629a0f chat:d6ab4c1b64608ff1 settings:d6ab4c1b64608ff1 studio:52a21fb4000dbc8c home:d6ab4c1b64608ff1
+"studio-hostile: T06" d227e0543740f6fd chat:b37ba10f0a2c1a79 settings:b37ba10f0a2c1a79 studio:b37ba10f0a2c1a79 home:b37ba10f0a2c1a79
+"studio-hostile on Navy: T06" 5d6fe0f5d539d733 chat:6c17594d73d0c3cf settings:6c17594d73d0c3cf studio:fb2b15aefde1eb40 home:6c17594d73d0c3cf
+"studio-hostile: T07" 9131e62f11440bcb chat:fabb1286ff50f6ce settings:fabb1286ff50f6ce studio:fabb1286ff50f6ce home:fabb1286ff50f6ce
+"studio-hostile on Navy: T07" 91e56fc1b677fe2d chat:d7d9ce17eab65f76 settings:d7d9ce17eab65f76 studio:c1330fc93987bf2f home:d7d9ce17eab65f76
+"studio-hostile: T08" 553395bd1262e544 chat:dd4797e0807194a9 settings:dd4797e0807194a9 studio:dd4797e0807194a9 home:dd4797e0807194a9
+"studio-hostile on Navy: T08" 51cdbc5d8599c261 chat:482cb9711e0e17ed settings:482cb9711e0e17ed studio:ec74e86d318a9c59 home:482cb9711e0e17ed
+"studio-hostile: T09" 260c0c6a74ce3217 chat:445bd1a991050902 settings:445bd1a991050902 studio:445bd1a991050902 home:445bd1a991050902
+"studio-hostile on Navy: T09" 431053699b5f490a chat:8bc9747f5b93ed3f settings:8bc9747f5b93ed3f studio:2f014e1658e56946 home:8bc9747f5b93ed3f
+"studio-hostile: T10" 9f02a5f47b093156 chat:6504061763d442a8 settings:6504061763d442a8 studio:6504061763d442a8 home:6504061763d442a8
+"studio-hostile on Navy: T10" fbc45a1a2d592212 chat:c02465ee1d027ab9 settings:c02465ee1d027ab9 studio:d99688f90fd803f4 home:c02465ee1d027ab9
+"studio-hostile: T11" a45464ef05657ffc chat:749adf9fb3cf2987 settings:749adf9fb3cf2987 studio:749adf9fb3cf2987 home:749adf9fb3cf2987
+"studio-hostile on Navy: T11" 53778a84b6d87ff7 chat:5039601f1cf520d1 settings:5039601f1cf520d1 studio:f5d975ffd4b6dc49 home:5039601f1cf520d1
+"studio-hostile: T12" 3118149db76dce04 chat:e6d4212beda6b2e7 settings:e6d4212beda6b2e7 studio:e6d4212beda6b2e7 home:e6d4212beda6b2e7
+"studio-hostile on Navy: T12" ecb4effd89f67b40 chat:bc1d37b8799bc76b settings:bc1d37b8799bc76b studio:58c10023654476e6 home:bc1d37b8799bc76b
+"studio-hostile: T13" 871d2608b10284c2 chat:94cf16e177ee1be4 settings:94cf16e177ee1be4 studio:9d6787f2b405faff home:94cf16e177ee1be4
+"studio-hostile on Navy: T13" 4ca247efff655a25 chat:c1f411594344fda3 settings:c1f411594344fda3 studio:45ca79081d996ff2 home:c1f411594344fda3
+"studio-hostile: T14" bf908685fd953184 chat:986f7c155e001dac settings:986f7c155e001dac studio:500f03b41527de8e home:986f7c155e001dac
+"studio-hostile on Navy: T14" 4cc943224bc65934 chat:9c25d692f1bff20a settings:9c25d692f1bff20a studio:a4fa96713de02aaf home:9c25d692f1bff20a
+"studio-hostile: T15" 7958751296a6ff38 chat:b4796de1dbd9f2bd settings:b4796de1dbd9f2bd studio:cc4465186038b313 home:b4796de1dbd9f2bd
+"studio-hostile on Navy: T15" 42969bafeca386f0 chat:46e42fa9cf5ec728 settings:46e42fa9cf5ec728 studio:81fcf31bdfdba05e home:46e42fa9cf5ec728
+"studio-hostile: T16" c0a2f9afc4149cd8 chat:73630bcf2e2e8fc3 settings:cb616f64ae764ef7 studio:5d1bbe6d24c49e1e home:9aee055aa2c10212
+"studio-hostile on Navy: T16" ccf5ac6a679edee5 chat:e4ff3b0d9e12c8b1 settings:3077b153cff343e5 studio:53cb4f4d37bfdfcd home:511c6a2fe7903d6f
+"studio-hostile: T17" 4eab744ddfcee6b7 chat:a15b99bf58e59342 settings:2b291347870d2879 studio:0137a1e37fe3ce60 home:42085525360f6c42
+"studio-hostile on Navy: T17" 30f7e9c68b655cbe chat:54f025e42ce70657 settings:9930e90c86d536ab studio:0802202cfccac74f home:95743d5dd9930b8f
+"studio-hostile: T18" 660c748aefdabcd7 chat:fd5675a0f208dd09 settings:fd5675a0f208dd09 studio:d8ac4e75ceca5876 home:fd5675a0f208dd09
+"studio-hostile on Navy: T18" c0f8d07dc4859422 chat:eb1daa6d64d2bb04 settings:eb1daa6d64d2bb04 studio:ab0a623f8e09aa75 home:eb1daa6d64d2bb04
+"studio-hostile: T19" 663c33ffa0de1db8 chat:03c4bf3f8095549c settings:bfeeabefd509d827 studio:dae4038c5f90f000 home:03c4bf3f8095549c
+"studio-hostile on Navy: T19" 5edb98d434b34d61 chat:1622dbc70bfcdf78 settings:5a101947afcde685 studio:f4bdbd8127f527c4 home:1622dbc70bfcdf78
+"studio-hostile: T20" f6544eeb878a2793 chat:d039a884872d3635 settings:d039a884872d3635 studio:eca6a1c1383a708b home:d039a884872d3635
+"studio-hostile on Navy: T20" db4a0f14a49225c1 chat:c83214e26b706e26 settings:c83214e26b706e26 studio:96a064fc29a300eb home:c83214e26b706e26
+"studio-hostile: T21" aa307b0475dc4b30 chat:070d5a118ad82123 settings:070d5a118ad82123 studio:caf3dadfc9db81f7 home:070d5a118ad82123
+"studio-hostile on Navy: T21" 2300d9a486eb9f6b chat:82af78799a7727d7 settings:82af78799a7727d7 studio:4e9f51ed7165291c home:82af78799a7727d7
+"studio-hostile: T22" c613791f5db95d83 chat:32dca139d56613fd settings:32dca139d56613fd studio:32dca139d56613fd home:32dca139d56613fd
+"studio-hostile on Navy: T22" 2af7a40638e83384 chat:ba9da56038b7da5b settings:ba9da56038b7da5b studio:0d4e90a0703cfbe8 home:ba9da56038b7da5b
+"studio-hostile: T23" 6783eb581bc2a047 chat:bb61a0f9878fc094 settings:bb61a0f9878fc094 studio:bb61a0f9878fc094 home:bb61a0f9878fc094
+"studio-hostile on Navy: T23" 0347793fb6a1e736 chat:b2adab51f9bab935 settings:b2adab51f9bab935 studio:574572bda5b75081 home:b2adab51f9bab935
+"studio-hostile: T24" a96b4cb7fb65dab0 chat:b0d22340c8f0b719 settings:b0d22340c8f0b719 studio:bbca0b1a9350b00d home:b0d22340c8f0b719
+"studio-hostile on Navy: T24" bae13256f5bfb4b5 chat:fb5e47c3dc93c926 settings:fb5e47c3dc93c926 studio:056551066d87727e home:fb5e47c3dc93c926
+"studio-hostile: T25" 32f8c44c8db5e0c6 chat:1927a2a301f3c32c settings:1927a2a301f3c32c studio:5644ac8400d5cf06 home:1927a2a301f3c32c
+"studio-hostile on Navy: T25" 00d2f0af957a3a04 chat:b8736ebf4e9353b1 settings:b8736ebf4e9353b1 studio:3c3c3546f576e1bd home:b8736ebf4e9353b1
+"studio-hostile: T26" b2edd0336bd2ced0 chat:61271bb843d26fb2 settings:a1c68226a6c787af studio:5a5417a387fb8bfa home:a1c68226a6c787af
+"studio-hostile on Navy: T26" 1dc6734726cfff91 chat:b78368a34ca98553 settings:8f5083bf9a6dc087 studio:bec988f35d09ed6a home:8f5083bf9a6dc087
+"HOME_BENIGN: B01 a yellow Send button" c58f7ace7aae0072 chat:f60eabdf1a3a3a50 settings:f60eabdf1a3a3a50 studio:f60eabdf1a3a3a50 home:f6d05a33d3b1a3e2
+"HOME_BENIGN: B02 a card with a radius, padding and a border (reach)" 900671349529ff49 chat:06e5345738eb02f6 settings:06e5345738eb02f6 studio:06e5345738eb02f6 home:06e5345738eb02f6
+"HOME_BENIGN: B03 role tokens inside the floors" d39914797302a664 chat:f24797f19924e759 settings:f24797f19924e759 studio:f24797f19924e759 home:6a077eaa2944965d
+"HOME_BENIGN: B04 a token under data-input" 83ca7089b7ef3f2b chat:a7b211b8ef96dcb9 settings:a7b211b8ef96dcb9 studio:a7b211b8ef96dcb9 home:afb28922197e14cf
+"HOME_BENIGN: B05 a positionable leaf moved by a few pixels" 1a17775a6f7dc7bf chat:7a16880c6c65bfb3 settings:7a16880c6c65bfb3 studio:7a16880c6c65bfb3 home:e82358c06317de99
+"HOME_BENIGN: B06 a safe leaf hidden (the contract allows it)" cb9546831d02b2fe chat:bea259d4f9e9ed34 settings:bea259d4f9e9ed34 studio:bea259d4f9e9ed34 home:2f5bfc83cc12ed66
+"HOME_BENIGN: B07 a hover rule on a safe part" 72afb365a29aebba chat:347c26cfe84dd8ff settings:347c26cfe84dd8ff studio:347c26cfe84dd8ff home:347c26cfe84dd8ff
+"HOME_BENIGN: B08 an @media block with a safe rule" 9991b829e352ce9b chat:6f8799974b8ac3c6 settings:6f8799974b8ac3c6 studio:6f8799974b8ac3c6 home:6f8799974b8ac3c6
+"HOME_BENIGN: B09 a layout rule on a safe part (grid, order)" 7f0f67abed288477 chat:66e5bca783553058 settings:66e5bca783553058 studio:66e5bca783553058 home:9afd0d4599f9494d
+"HOME_BENIGN: B10 a bubble on a reach part" b24168545ad1c235 chat:0afcdd6a003b6889 settings:0afcdd6a003b6889 studio:0afcdd6a003b6889 home:0afcdd6a003b6889
+"HOME_BENIGN: B11 a state selector on a safe part" 9532bcd983eb1de5 chat:91d4ac6d836367f6 settings:91d4ac6d836367f6 studio:91d4ac6d836367f6 home:c1c9c6f611a6ac73
+"HOME_BENIGN: B12 a descendant chain ending at a reach part" ebc6ca667e6607b3 chat:76dc54d3939226e9 settings:76dc54d3939226e9 studio:76dc54d3939226e9 home:11ae6ef387a46977
+"NEW_BENIGN all: derived solids and channels" d304581b53f177b2 chat:d8159df7cd4b5767 settings:d8159df7cd4b5767 studio:d8159df7cd4b5767 home:d8159df7cd4b5767
+"NEW_BENIGN all: hsl and named colours" b1e3652d74479c7a chat:da577ebdf7a86998 settings:da577ebdf7a86998 studio:da577ebdf7a86998 home:da577ebdf7a86998
+"NEW_BENIGN all: the decorative blooms switched off" da88539a29e477fb chat:8263414c230e7f66 settings:8263414c230e7f66 studio:8263414c230e7f66 home:8263414c230e7f66
+"NEW_BENIGN all: the new shared tokens inside their limits" 79e2ec034b8b413d chat:71e484f9b2088b91 settings:71e484f9b2088b91 studio:71e484f9b2088b91 home:71e484f9b2088b91
+"NEW_BENIGN all: a field border at 40%" 8526e6a2da06816d chat:30d9afebff8e42ef settings:30d9afebff8e42ef studio:30d9afebff8e42ef home:30d9afebff8e42ef
+"NEW_BENIGN all: an opaque sheet and toast" 060e79dda5cc4920 chat:16bd16a6be4dc6b6 settings:16bd16a6be4dc6b6 studio:16bd16a6be4dc6b6 home:16bd16a6be4dc6b6
+"NEW_BENIGN all: a focus colour on a focus rule" d081dc755f276d14 chat:b92837b3eccd42ec settings:b92837b3eccd42ec studio:b92837b3eccd42ec home:b92837b3eccd42ec
+"NEW_BENIGN chat: recolour and reshape Send (reach)" f6bf91da670198a0 chat:04d4fbf2f7e91584 settings:04d4fbf2f7e91584 studio:04d4fbf2f7e91584 home:04d4fbf2f7e91584
+"NEW_BENIGN chat: respace the composer (reach)" e6adef0d5861858e chat:4dffe3d6b1580065 settings:4dffe3d6b1580065 studio:4dffe3d6b1580065 home:4dffe3d6b1580065
+"NEW_BENIGN chat: recolour a list row (reach)" 4953d14605cb615e chat:1504f5eb512da3a8 settings:1504f5eb512da3a8 studio:1504f5eb512da3a8 home:1504f5eb512da3a8
+"NEW_BENIGN chat: a safe leaf hidden" bce13f69b99fbf6c chat:b68cdf9ca2f6e015 settings:b68cdf9ca2f6e015 studio:b68cdf9ca2f6e015 home:b68cdf9ca2f6e015
+"NEW_BENIGN home: recolour the rail item (reach)" 390484af5c9e2330 chat:02b00bd3a0eca61e settings:02b00bd3a0eca61e studio:02b00bd3a0eca61e home:02b00bd3a0eca61e
+"NEW_BENIGN home: persona chip recolour (reach)" f2ba2f73fbd0897f chat:14c56b87965d4496 settings:14c56b87965d4496 studio:14c56b87965d4496 home:3e4a705fada09171
+"NEW_BENIGN studio: recolour Apply (reach)" 95a450c9e07788e5 chat:c0a6fbbe3ad8b40e settings:c0a6fbbe3ad8b40e studio:467d887bd4c9fc92 home:c0a6fbbe3ad8b40e
+"NEW_BENIGN studio: recolour the save slot (reach)" f1d7c27417d57515 chat:cf7a529f6aa0348b settings:cf7a529f6aa0348b studio:cf7a529f6aa0348b home:cf7a529f6aa0348b
+"NEW_BENIGN settings: recolour the index item (reach)" c521d9a0c6c9a98e chat:13078a265a9c6318 settings:13078a265a9c6318 studio:13078a265a9c6318 home:13078a265a9c6318
+"NEW_BENIGN settings: a safe leaf hidden" 20fc69e3e5072670 chat:c4581b9a85766a46 settings:9e1c4683ec49c4de studio:c4581b9a85766a46 home:c4581b9a85766a46
+"NEW_HOSTILE all: color-mix on text" d08b91544ef476ca chat:88b8b1355c3de30b settings:88b8b1355c3de30b studio:c3bb880304c51c86 home:88b8b1355c3de30b
+"NEW_HOSTILE all: oklch on danger" adde0b134f1c944d chat:75cec95960e4af96 settings:75cec95960e4af96 studio:cdcf5ab9f2c8b34f home:75cec95960e4af96
+"NEW_HOSTILE all: light-dark on muted" a321451c609db7dc chat:966e5d0e87669b5e settings:966e5d0e87669b5e studio:966e5d0e87669b5e home:966e5d0e87669b5e
+"NEW_HOSTILE all: relative colour on text" 921c5b6942accea5 chat:bfad0bc4c8aa3621 settings:bfad0bc4c8aa3621 studio:2bb6124dffc32d05 home:bfad0bc4c8aa3621
+"NEW_HOSTILE all: currentcolor on text" 630a1116a24c7f7f chat:bcc30c9a673e4b43 settings:bcc30c9a673e4b43 studio:d224662add420a87 home:bcc30c9a673e4b43
+"NEW_HOSTILE all: inherit on warm" c1c81b0e28b778e1 chat:3a53850f8efe6361 settings:3a53850f8efe6361 studio:3a53850f8efe6361 home:3a53850f8efe6361
+"NEW_HOSTILE all: unknown function on edge" b7ddcd66ea05853f chat:dabb82fb494a9cb6 settings:dabb82fb494a9cb6 studio:dabb82fb494a9cb6 home:dabb82fb494a9cb6
+"NEW_HOSTILE all: unresolved var on text" 4b399701a6d6c107 chat:10d5513dcd030e38 settings:10d5513dcd030e38 studio:97899aefa8ef3cd3 home:10d5513dcd030e38
+"NEW_HOSTILE all: hwb on accent" 13b1bb7b3dea9c3f chat:736b6e1e40c92798 settings:736b6e1e40c92798 studio:736b6e1e40c92798 home:2510cb0d072b1bd0
+"NEW_HOSTILE all: channel that is not a triple" 50270b8378c55c0e chat:9aebb3bd203b39e3 settings:9aebb3bd203b39e3 studio:9aebb3bd203b39e3 home:66ee71376f158700
+"NEW_HOSTILE all: channel out of range" 6aae4b0599206bbc chat:537d1067239cc215 settings:537d1067239cc215 studio:537d1067239cc215 home:2d7b2c211bf24be8
+"NEW_HOSTILE all: transparent edge" 30f40840f8402802 chat:02c0e0a1a5f8cc23 settings:02c0e0a1a5f8cc23 studio:02c0e0a1a5f8cc23 home:02c0e0a1a5f8cc23
+"NEW_HOSTILE all: alpha 0 ring" be6dd96e0382d8bf chat:fdc02e73df041f9c settings:1f79ee37b8f970cb studio:e42cbd5ca919b224 home:5a76c3f2513ca2e8
+"NEW_HOSTILE all: transparent sheet" 6125d5cc7a1cf709 chat:bb523b31e03a688c settings:bb523b31e03a688c studio:bb523b31e03a688c home:bb523b31e03a688c
+"NEW_HOSTILE all: translucent sheet" 12f727d65dde7836 chat:a5afeb1116d9934d settings:a5afeb1116d9934d studio:a5afeb1116d9934d home:a5afeb1116d9934d
+"NEW_HOSTILE all: translucent toast" 17c51aa3411e754a chat:3a0feea010d3d92e settings:3a0feea010d3d92e studio:3a0feea010d3d92e home:3a0feea010d3d92e
+"NEW_HOSTILE all: sheet derived from a glass token" 594975db67411813 chat:db25b7b7a74bef34 settings:db25b7b7a74bef34 studio:db25b7b7a74bef34 home:db25b7b7a74bef34
+"NEW_HOSTILE all: sheet equal to the text colour" d963cf0dc03f408d chat:fe6f87ecf95a4010 settings:8f120dfd32a42fe2 studio:c749f1d61e2e2398 home:5a233ac48ecb7c5b
+"NEW_HOSTILE all: muted text on the sheet" 09b4559a54fa4fa9 chat:2ec5ce43bb503d6d settings:926c9869daa0b155 studio:2ec5ce43bb503d6d home:cfde67d0d334c452
+"NEW_HOSTILE all: colour hidden in an @media branch (worst case)" fe076f11dc62d4ee chat:d12c73cb6a6f89a6 settings:13c437309e470bf7 studio:d12c73cb6a6f89a6 home:a368522e8b6fd793
+"NEW_HOSTILE all: colour hidden in a root attribute" beca94477490c01d chat:a16194fec5abbf84 settings:140d90b9a0aa3cd5 studio:290e5ae9e558997a home:6fc345b2435f6586
+"NEW_HOSTILE all: good colour declared last, bad one first" 9db6554c65a5e342 chat:807ced644becf00a settings:e33388665a493826 studio:badf8e781dd26703 home:108a4c220212ddd3
+"NEW_HOSTILE all: ring invisible on the sheet" 705a588147991ffc chat:cdfbae1bbc84b37d settings:35b0b0e5587a6857 studio:a32c25ab220a2acf home:233daf61f13872f7
+"NEW_HOSTILE all: ladder token" 9a5666e7f45788d1 chat:9cd17f1a8b0acca1 settings:9cd17f1a8b0acca1 studio:9cd17f1a8b0acca1 home:9cd17f1a8b0acca1
+"NEW_HOSTILE all: animation speed" e1a9e5dbc15ddc60 chat:650cf1d016ed8fb4 settings:650cf1d016ed8fb4 studio:650cf1d016ed8fb4 home:650cf1d016ed8fb4
+"NEW_HOSTILE all: private variable" 78f7d6e3b3b18cc9 chat:9b5c4344d2f40bd8 settings:9b5c4344d2f40bd8 studio:9b5c4344d2f40bd8 home:9b5c4344d2f40bd8
+"NEW_HOSTILE all: focus ring width 0" daf9acaef903e16c chat:b86a79bf6a42d8b8 settings:7ff734973b451667 studio:b86a79bf6a42d8b8 home:3782c285884aae33
+"NEW_HOSTILE all: focus ring offset 99" eda3061c0c8ecf09 chat:de05642bb9f21e8f settings:de05642bb9f21e8f studio:de05642bb9f21e8f home:ae8361441ea7bbdd
+"NEW_HOSTILE all: touch size 10" 3099a25a3437763e chat:e72f94aa177c814b settings:3527afecbeb850c9 studio:e72f94aa177c814b home:b2409d95dd686135
+"NEW_HOSTILE all: duration 60s" 48e1e5df19c843c2 chat:0e62fa88577bd878 settings:0e62fa88577bd878 studio:0e62fa88577bd878 home:0e62fa88577bd878
+"NEW_HOSTILE all: outline on any part" 119fed5a473033f9 chat:7e93252c3eee3827 settings:7e93252c3eee3827 studio:7e93252c3eee3827 home:7e93252c3eee3827
+"NEW_HOSTILE all: outline-color transparent" bc0c617110b3377e chat:dd7307a003884b21 settings:dd7307a003884b21 studio:dd7307a003884b21 home:dd7307a003884b21
+"NEW_HOSTILE all: focus shadow none" cf019b85f3548527 chat:4e508560ed98ff0c settings:4e508560ed98ff0c studio:4e508560ed98ff0c home:4e508560ed98ff0c
+"NEW_HOSTILE all: focus border transparent" a67197763227017c chat:ec3ceaf69b028210 settings:ec3ceaf69b028210 studio:ec3ceaf69b028210 home:ec3ceaf69b028210
+"NEW_HOSTILE all: background on a kind selector" 28859fccf9c71dbf chat:b833865589ee6e67 settings:b833865589ee6e67 studio:b833865589ee6e67 home:b833865589ee6e67
+"NEW_HOSTILE chat: hide Send" e7ccaa39e1a9a9f8 chat:3c0517fa46fb9ebe settings:3c0517fa46fb9ebe studio:3c0517fa46fb9ebe home:3c0517fa46fb9ebe
+"NEW_HOSTILE chat: hide the composer field" e2d3328d742bd431 chat:50ba91224561dd8c settings:50ba91224561dd8c studio:50ba91224561dd8c home:50ba91224561dd8c
+"NEW_HOSTILE chat: hide the composer" 3e749f045745e39d chat:ee1547c0c33a5593 settings:ee1547c0c33a5593 studio:ee1547c0c33a5593 home:ee1547c0c33a5593
+"NEW_HOSTILE chat: hide the sidebar" 909552038906835a chat:0115776d094f2bba settings:0115776d094f2bba studio:0115776d094f2bba home:0115776d094f2bba
+"NEW_HOSTILE chat: hide the sidebar toggle" bdd253d0d860c7bc chat:88641f19df75f458 settings:88641f19df75f458 studio:88641f19df75f458 home:88641f19df75f458
+"NEW_HOSTILE chat: hide the chat list" 90b3aed8639a8cf7 chat:99b91a679bc66c39 settings:99b91a679bc66c39 studio:99b91a679bc66c39 home:99b91a679bc66c39
+"NEW_HOSTILE chat: hide the header menu" 3f18f0b07fd73c91 chat:03185d0e064d7f1d settings:03185d0e064d7f1d studio:03185d0e064d7f1d home:03185d0e064d7f1d
+"NEW_HOSTILE chat: hide the generation strip (Stop)" 73f94ba954820bc2 chat:3ec6ac27e04ac8ce settings:3ec6ac27e04ac8ce studio:3ec6ac27e04ac8ce home:3ec6ac27e04ac8ce
+"NEW_HOSTILE chat: hide the toast (Undo)" 74f7793ab5b8fb2f chat:d24ef3d347bd3508 settings:d24ef3d347bd3508 studio:d24ef3d347bd3508 home:d24ef3d347bd3508
+"NEW_HOSTILE chat: hide the status row (Undo)" 3c028b9fd4e20be5 chat:fe1683b4d9994735 settings:fe1683b4d9994735 studio:fe1683b4d9994735 home:fe1683b4d9994735
+"NEW_HOSTILE chat: pointer-events none on Send" 6647d0fd849725c7 chat:36093d921582f6c8 settings:36093d921582f6c8 studio:36093d921582f6c8 home:36093d921582f6c8
+"NEW_HOSTILE settings: hide the header (back)" 1558a7af1f5e1840 chat:9923310e196b0d9a settings:9923310e196b0d9a studio:9923310e196b0d9a home:9923310e196b0d9a
+"NEW_HOSTILE settings: hide the index items" 6e88d7b2517c5580 chat:b3ea4a8e95cf06ad settings:b3ea4a8e95cf06ad studio:b3ea4a8e95cf06ad home:b3ea4a8e95cf06ad
+"NEW_HOSTILE settings: hide the index link" b9b0d3a6b4e915e3 chat:e0863384814da711 settings:e0863384814da711 studio:e0863384814da711 home:e0863384814da711
+"NEW_HOSTILE settings: hide the Undo toast" 952252377d68b3e7 chat:51a58ac0996f3737 settings:51a58ac0996f3737 studio:51a58ac0996f3737 home:51a58ac0996f3737
+"NEW_HOSTILE settings: warning on the row glass unreadable" 15224f740c4d2464 chat:1deb8970bb195dc9 settings:3ea2e2385d5018ac studio:6c1172d00661f357 home:1deb8970bb195dc9
+"NEW_HOSTILE studio: hide Undo" 953ac60255f075ea chat:39a1cfb1c0c71e4c settings:39a1cfb1c0c71e4c studio:39a1cfb1c0c71e4c home:39a1cfb1c0c71e4c
+"NEW_HOSTILE studio: hide Redo in focus mode" 875dfa2b4b2f5361 chat:035c5f86f67fdc36 settings:035c5f86f67fdc36 studio:035c5f86f67fdc36 home:035c5f86f67fdc36
+"NEW_HOSTILE studio: hide the tree" ad5f842ecbf323ee chat:2b526c72b80c25e2 settings:2b526c72b80c25e2 studio:2b526c72b80c25e2 home:2b526c72b80c25e2
+"NEW_HOSTILE studio: hide the header back" abaa5db410172c97 chat:46db65e0595cd8b4 settings:46db65e0595cd8b4 studio:46db65e0595cd8b4 home:46db65e0595cd8b4
+"NEW_HOSTILE studio: hide the stop of a test run" 3e9b4edc3413d91c chat:ec10963465d080b2 settings:ec10963465d080b2 studio:ec10963465d080b2 home:ec10963465d080b2
+"NEW_HOSTILE studio: hide the save retry" cb6efaa840b43571 chat:b5d6ca307d4a7649 settings:b5d6ca307d4a7649 studio:36f7c50b652dd0f8 home:b5d6ca307d4a7649
+"NEW_HOSTILE studio: diff pair near the sheet" 8e6aed2e60145f21 chat:eff5b6891a96f4af settings:eff5b6891a96f4af studio:d24e7815a25e58fd home:eff5b6891a96f4af
+"NEW_HOSTILE studio: on-danger equal to danger" 42d732c1f6dbc08f chat:6bbd19d9924ffbee settings:6bbd19d9924ffbee studio:7fd9ef111c7b2249 home:6bbd19d9924ffbee
+"NEW_HOSTILE home: hide the rail label" 67f9268220f748ce chat:e774afdbec739c64 settings:e774afdbec739c64 studio:e774afdbec739c64 home:e774afdbec739c64
+"NEW_HOSTILE home: hide the send label" 42dadc3a93130ed3 chat:66d65f7131bcfeca settings:66d65f7131bcfeca studio:66d65f7131bcfeca home:66d65f7131bcfeca
+"NEW_HOSTILE home: hide the persona chip" 3fb21e7e22237c98 chat:7d43b3013bb9e454 settings:7d43b3013bb9e454 studio:7d43b3013bb9e454 home:7d43b3013bb9e454
+"NEW_HOSTILE home: hide the composer bar" ff76f85ea9303662 chat:5e273af8468218f0 settings:5e273af8468218f0 studio:5e273af8468218f0 home:5e273af8468218f0
+"NEW_HOSTILE home: hide the task Open" 534c99427bd4096c chat:8ad4a7ff98bd4e76 settings:8ad4a7ff98bd4e76 studio:8ad4a7ff98bd4e76 home:8ad4a7ff98bd4e76
+"NEW_HOSTILE home: bloom alpha 1" b776f473809d443d chat:73a5bfa7b8645bef settings:73a5bfa7b8645bef studio:73a5bfa7b8645bef home:e6b5773d5792dda5
+"NEW_HOSTILE home: cursor none on Send" d5d01d940ac6a03d chat:600aec911f1126e2 settings:600aec911f1126e2 studio:600aec911f1126e2 home:600aec911f1126e2
+"HOSTILE: R1 choices of the delete confirmation by their ordinary part name" 974fb07ae8d98b9c chat:569e1127f17d809a settings:569e1127f17d809a studio:569e1127f17d809a home:569e1127f17d809a
+"HOSTILE: R2 generic selector on every critical element" a18a51bfdcf8031a chat:0615f6e7859982c6 settings:0615f6e7859982c6 studio:0615f6e7859982c6 home:0615f6e7859982c6
+"HOSTILE: R3 universal descendant of the message body (removes the failed card)" 357abb54e7889364 chat:1e0759e2f9ce58e3 settings:1e0759e2f9ce58e3 studio:1e0759e2f9ce58e3 home:1e0759e2f9ce58e3
+"HOSTILE: R4 ancestor clipped to zero height (clips the failed card)" 35a61b8bd8617f1d chat:25c344452824666a settings:25c344452824666a studio:25c344452824666a home:25c344452824666a
+"HOSTILE: R5 the state attribute that marks a failed message" 5063ce90f1f74886 chat:2a342455ac99dfb5 settings:2a342455ac99dfb5 studio:2a342455ac99dfb5 home:2a342455ac99dfb5
+"HOSTILE: R6 class descendant inside a sheet" b1ee33cab62df957 chat:d1493ed326bbb8c4 settings:d1493ed326bbb8c4 studio:d1493ed326bbb8c4 home:d1493ed326bbb8c4
+"HOSTILE: H1 generic control kind (matches the critical actions)" a0eb14f56c9912cf chat:61fec081fca1f594 settings:61fec081fca1f594 studio:61fec081fca1f594 home:61fec081fca1f594
+"HOSTILE: H2 protected child by its own part name" de129d393514d9a7 chat:ee14b8c2f40702a5 settings:ee14b8c2f40702a5 studio:ee14b8c2f40702a5 home:ee14b8c2f40702a5
+"HOSTILE: H3 protected card by name" 9eef4368ebeb759a chat:fbc31f6a44d440ce settings:fbc31f6a44d440ce studio:fbc31f6a44d440ce home:fbc31f6a44d440ce
+"HOSTILE: H4 protected child through an ancestor" 472ba3f291511dd2 chat:1536915ed431bb16 settings:1536915ed431bb16 studio:1536915ed431bb16 home:1536915ed431bb16
+"HOSTILE: H5 text of the message body made invisible" e99ae4b03134e7c0 chat:e9dc533e601d8a9e settings:e9dc533e601d8a9e studio:e9dc533e601d8a9e home:e9dc533e601d8a9e
+"HOSTILE: H6 the sheet itself faded out" af818da860e835f7 chat:44e2ad9e318d75be settings:44e2ad9e318d75be studio:44e2ad9e318d75be home:44e2ad9e318d75be
+"HOSTILE: H7 the bubble scaled away" 5ca6178b02be0594 chat:d5df9f44a002c79f settings:d5df9f44a002c79f studio:d5df9f44a002c79f home:d5df9f44a002c79f
+"HOSTILE: H8 token scoped inside a part (restyles a protected child differently)" 0137be3f9788c31d chat:f12e0578c40f97cf settings:9241f69deef5f726 studio:a4d2fdb66f749d75 home:60418c41a33a3ec2
+"HOSTILE: H9 message moved off screen" 071055e945a8e24e chat:9e119440c4ec9bb6 settings:9e119440c4ec9bb6 studio:9e119440c4ec9bb6 home:9e119440c4ec9bb6
+"HOSTILE: H10 root attribute subject hides everything" 90acd3233bcc4db3 chat:8c175ad9caab4373 settings:8c175ad9caab4373 studio:8c175ad9caab4373 home:8c175ad9caab4373
+"HOSTILE: H11 a pointer-events switch on the transcript" 2a2ec4a6540bd04d chat:f438be55857051db settings:f438be55857051db studio:f438be55857051db home:f438be55857051db
+"HOSTILE: H12 tag selector" f7e7fd00cfe72206 chat:2412bfa634b0243a settings:2412bfa634b0243a studio:2412bfa634b0243a home:2412bfa634b0243a
+"HOSTILE: H13 :not() and :has() reach" 51dd73263573d136 chat:bd81098dcf8ed02e settings:bd81098dcf8ed02e studio:bd81098dcf8ed02e home:bd81098dcf8ed02e
+"HOSTILE: H14 negative margin pulls the sheet away" ae5d725925991020 chat:844a65e67f910059 settings:844a65e67f910059 studio:844a65e67f910059 home:844a65e67f910059
+"HOSTILE: H15 a fixed width of zero on the sheet body" 48b4a6af05882de9 chat:c6b8849f22c0aed3 settings:c6b8849f22c0aed3 studio:c6b8849f22c0aed3 home:c6b8849f22c0aed3
+"HOSTILE: H16 pseudo-element" abb1c12abdecc3be chat:a919eec98c8ee60f settings:a919eec98c8ee60f studio:a919eec98c8ee60f home:a919eec98c8ee60f
+"HOSTILE: H17 @import of a stylesheet" cea318858f725c74 chat:0b3f9a74a0764563 settings:0b3f9a74a0764563 studio:0b3f9a74a0764563 home:5f58ecd3ce68bd0e
+"HOSTILE_2: overlay by non-ancestor part (fixed, z-index)" 35cf78491231cf9b chat:27e3ffbc8622c4ca settings:27e3ffbc8622c4ca studio:27e3ffbc8622c4ca home:27e3ffbc8622c4ca
+"HOSTILE_2: overlay by header" 4f8fbadda6ab9405 chat:17f27ed7f8492f13 settings:17f27ed7f8492f13 studio:17f27ed7f8492f13 home:17f27ed7f8492f13
+"HOSTILE_2: keyframes + animation on sheet" b7f95747ba492d6f chat:a0bea729583bdafd settings:a0bea729583bdafd studio:a0bea729583bdafd home:a0bea729583bdafd
+"HOSTILE_2: redefine app keyframes (nexus-enter)" 4f1ec4019d45ebfd chat:e2bbf6f0d089a732 settings:e2bbf6f0d089a732 studio:e2bbf6f0d089a732 home:e2bbf6f0d089a732
+"HOSTILE_2: transition-delay hiding" c3af9115822755c5 chat:dc03185f72e8fe7b settings:dc03185f72e8fe7b studio:dc03185f72e8fe7b home:dc03185f72e8fe7b
+"HOSTILE_2: flex-direction reverse sheet body" fe49a0b3eac9f6c4 chat:d91c8b5afd8d7c19 settings:d91c8b5afd8d7c19 studio:d91c8b5afd8d7c19 home:d91c8b5afd8d7c19
+"HOSTILE_2: column-reverse" e6d2188f3ce89916 chat:5df1d491fb3304c5 settings:5df1d491fb3304c5 studio:5df1d491fb3304c5 home:5df1d491fb3304c5
+"HOSTILE_2: direction rtl" f20caea649c27bdf chat:dde6030d5d7eef46 settings:dde6030d5d7eef46 studio:dde6030d5d7eef46 home:dde6030d5d7eef46
+"HOSTILE_2: order on sheet item" 73b3a579ad0a9ea1 chat:0ec0ebed2086333f settings:0ec0ebed2086333f studio:0ec0ebed2086333f home:0ec0ebed2086333f
+"HOSTILE_2: padding pushes content" 78c41758c3e5dfa8 chat:78b09382dc42f6a8 settings:78b09382dc42f6a8 studio:78b09382dc42f6a8 home:78b09382dc42f6a8
+"HOSTILE_2: positive margin pushes sheet" bb35016f1edfd18e chat:e3ac03a11e5525ef settings:e3ac03a11e5525ef studio:e3ac03a11e5525ef home:e3ac03a11e5525ef
+"HOSTILE_2: min-height pushes" 7abd2362086d2ced chat:088507e231fdb1e7 settings:088507e231fdb1e7 studio:088507e231fdb1e7 home:088507e231fdb1e7
+"HOSTILE_2: font-size 1px" c8518ea58993c203 chat:09bc04dc294b952d settings:09bc04dc294b952d studio:09bc04dc294b952d home:09bc04dc294b952d
+"HOSTILE_2: font-size calc 0" 2f3599a33333df75 chat:09a27ee9d28efecd settings:09a27ee9d28efecd studio:09a27ee9d28efecd home:09a27ee9d28efecd
+"HOSTILE_2: line-height tiny" 4dba3d7adce6dc46 chat:1b9bf0d0fca39a66 settings:1b9bf0d0fca39a66 studio:1b9bf0d0fca39a66 home:1b9bf0d0fca39a66
+"HOSTILE_2: text-indent" 567b418b7726367a chat:aadcb45d48d77230 settings:aadcb45d48d77230 studio:aadcb45d48d77230 home:aadcb45d48d77230
+"HOSTILE_2: letter-spacing" ac636104c39c13ff chat:d460d949ca3dbd2e settings:d460d949ca3dbd2e studio:d460d949ca3dbd2e home:d460d949ca3dbd2e
+"HOSTILE_2: color rgb alpha 0%" b9cd4393a31f9b59 chat:617675d44a539b70 settings:617675d44a539b70 studio:617675d44a539b70 home:617675d44a539b70
+"HOSTILE_2: color #0000" c9c5ecd49adfd8e6 chat:91eaba1dac91abbb settings:91eaba1dac91abbb studio:91eaba1dac91abbb home:91eaba1dac91abbb
+"HOSTILE_2: color hsl / 0" 82e15afdbb3ecdd3 chat:4835db07a958e99b settings:4835db07a958e99b studio:4835db07a958e99b home:4835db07a958e99b
+"HOSTILE_2: color = bg token" 1a5bfa9364f21aec chat:c2cca81f80e7caf1 settings:c2cca81f80e7caf1 studio:c2cca81f80e7caf1 home:c2cca81f80e7caf1
+"HOSTILE_2: -webkit-text-fill-color transparent" c650f151c758593b chat:071c56491c347ccc settings:071c56491c347ccc studio:071c56491c347ccc home:071c56491c347ccc
+"HOSTILE_2: text-shadow trick" e1ec472014b61188 chat:379d654cc99ce0e0 settings:379d654cc99ce0e0 studio:379d654cc99ce0e0 home:379d654cc99ce0e0
+"HOSTILE_2: float" c75c2b68095a54aa chat:4796ac634d289147 settings:4796ac634d289147 studio:4796ac634d289147 home:4796ac634d289147
+"HOSTILE_2: z-index negative + relative" ab7857b83332adbe chat:8543c21a351ae687 settings:8543c21a351ae687 studio:8543c21a351ae687 home:8543c21a351ae687
+"HOSTILE_2: position sticky off" f6d26372d0cb0218 chat:cef4767fbbeea6cb settings:cef4767fbbeea6cb studio:cef4767fbbeea6cb home:cef4767fbbeea6cb
+"HOSTILE_2: width 50% (min)" 71a827709dcc9515 chat:986482c727705f73 settings:986482c727705f73 studio:986482c727705f73 home:986482c727705f73
+"HOSTILE_2: width calc(0px+0px)" b00deb636cd594c7 chat:9b2170665baf1fb0 settings:9b2170665baf1fb0 studio:9b2170665baf1fb0 home:9b2170665baf1fb0
+"HOSTILE_2: max-width: 1%" 8255d934f45a0e53 chat:e5684e7bb546fc95 settings:e5684e7bb546fc95 studio:e5684e7bb546fc95 home:e5684e7bb546fc95
+"HOSTILE_2: contain size" 3337536a4d62d486 chat:c6954cfbbffea8c5 settings:c6954cfbbffea8c5 studio:c6954cfbbffea8c5 home:c6954cfbbffea8c5
+"HOSTILE_2: aspect-ratio/zero via grid" 2c04f749bd73672a chat:a826de218c36e66c settings:a826de218c36e66c studio:a826de218c36e66c home:a826de218c36e66c
+"HOSTILE_2: flex-basis 0 + overflow hidden handled" 665cd7bb246a7898 chat:9eeede791bc55388 settings:9eeede791bc55388 studio:9eeede791bc55388 home:9eeede791bc55388
+"HOSTILE_2: scale prop" 4fa67a37af72f3ed chat:b4735d401a8063ce settings:b4735d401a8063ce studio:b4735d401a8063ce home:b4735d401a8063ce
+"HOSTILE_2: hover reveal only" 3d9cc9e9ec467341 chat:390a89fe280e949c settings:390a89fe280e949c studio:390a89fe280e949c home:390a89fe280e949c
+"HOSTILE_2: subject non-ancestor part inside critical: sheet-title" a95f6cf1fdc91069 chat:a673fa13231eaccf settings:a673fa13231eaccf studio:a673fa13231eaccf home:a673fa13231eaccf
+"HOSTILE_2: sheet header" 8cdabec3d2dd0e6c chat:30961b4d9188c59c settings:30961b4d9188c59c studio:30961b4d9188c59c home:30961b4d9188c59c
+"HOSTILE_2: sheet handle" ed745aa9439c7418 chat:6a57b2c437ca32a2 settings:6a57b2c437ca32a2 studio:6a57b2c437ca32a2 home:6a57b2c437ca32a2
+"HOSTILE_2: font-family icon font" 8f4719d33e864995 chat:353661f7ec26d3d4 settings:353661f7ec26d3d4 studio:353661f7ec26d3d4 home:353661f7ec26d3d4
+"HOSTILE_2: appearance/ resize" f469427c31104f81 chat:2a268525b9e301b6 settings:2a268525b9e301b6 studio:2a268525b9e301b6 home:2a268525b9e301b6
+"HOSTILE_2: cursor/user-select" a40b7f445c06149e chat:cf4ac16d514e90cc settings:cf4ac16d514e90cc studio:cf4ac16d514e90cc home:cf4ac16d514e90cc
+"HOSTILE_2: visibility via collapse caught?" 0bb58764c67957e9 chat:ec3520c7416fb9b6 settings:ec3520c7416fb9b6 studio:ec3520c7416fb9b6 home:ec3520c7416fb9b6
+"HOSTILE_2: token on root: text = surface" 568fbfd929a25c0d chat:242784e08e698a1b settings:8c671527a3428c51 studio:653fff3b4ca92e23 home:f179028d84d6b8c3
+"HOSTILE_2: token on root: sheet padding huge" 5e8ff03f7ab1fcaa chat:cede0070d0d7c808 settings:cede0070d0d7c808 studio:cede0070d0d7c808 home:cede0070d0d7c808
+"HOSTILE_2: token touch zero" c204818bc5fe5eb8 chat:66d1a5c377309d0f settings:66d1a5c377309d0f studio:66d1a5c377309d0f home:66d1a5c377309d0f
+"HOSTILE_2: token display" 3ecbc79511773e22 chat:41b2eb7c63518f02 settings:41b2eb7c63518f02 studio:41b2eb7c63518f02 home:41b2eb7c63518f02
+"HOSTILE_2: @keyframes only (declared ignored)" 540d91dc78cd357f chat:ef35349ec9531ccb settings:ef35349ec9531ccb studio:ef35349ec9531ccb home:ef35349ec9531ccb
+"HOSTILE_2: @media wrapped overlay" 5729ac4167930cdf chat:d22783a91646f9a1 settings:d22783a91646f9a1 studio:d22783a91646f9a1 home:d22783a91646f9a1
+"HOSTILE_2: @supports wrapped" f1a05a7fa13d06cc chat:caf38715f2a910cd settings:caf38715f2a910cd studio:caf38715f2a910cd home:caf38715f2a910cd
+"HOSTILE_2: @layer wrapped" 23fa69a84145ab18 chat:474100cba65cc324 settings:474100cba65cc324 studio:474100cba65cc324 home:474100cba65cc324
+"HOSTILE_2: @namespace/@page/@property" 06ba1c0294ee3d99 chat:6f8ed553fb4ea834 settings:6f8ed553fb4ea834 studio:6f8ed553fb4ea834 home:6f8ed553fb4ea834
+"HOSTILE_2: @starting-style" 92759981fb557c10 chat:ef3bac842f183586 settings:ef3bac842f183586 studio:ef3bac842f183586 home:ef3bac842f183586
+"HOSTILE_2: nested rule hides" d4b03abf32c6a311 chat:8115ad5e4ffdc972 settings:8115ad5e4ffdc972 studio:8115ad5e4ffdc972 home:8115ad5e4ffdc972
+"HOSTILE_2: uppercase attr" 1d5257833b760ed7 chat:c3f11cd457a40d13 settings:c3f11cd457a40d13 studio:c3f11cd457a40d13 home:c3f11cd457a40d13
+"HOSTILE_2: uppercase value" e15fa6eb68f2312f chat:fbd969a2ebcae023 settings:fbd969a2ebcae023 studio:fbd969a2ebcae023 home:fbd969a2ebcae023
+"HOSTILE_2: attr ~= / ^=" 0d270165f6ec052a chat:d6cd5edcd755c837 settings:d6cd5edcd755c837 studio:d6cd5edcd755c837 home:d6cd5edcd755c837
+"HOSTILE_2: attr no value" f7cd84d13244bddc chat:00701b8f2705d92c settings:00701b8f2705d92c studio:00701b8f2705d92c home:00701b8f2705d92c
+"HOSTILE_2: attr-critical via different name" 7ff9341fbb02448d chat:060ef171bbdd2cea settings:060ef171bbdd2cea studio:060ef171bbdd2cea home:060ef171bbdd2cea
+"HOSTILE_2: comma list partial" 1bcc7d1b2b52a62b chat:f56025a4432bd8ce settings:f56025a4432bd8ce studio:f56025a4432bd8ce home:f56025a4432bd8ce
+"HOSTILE_2: semicolon in value trick" 6cb75f9426d55cfe chat:df38b0a0d22339d6 settings:df38b0a0d22339d6 studio:df38b0a0d22339d6 home:df38b0a0d22339d6
+"HOSTILE_2: important" dffb01530e4a65b0 chat:d2f3837d5baad31b settings:d2f3837d5baad31b studio:d2f3837d5baad31b home:d2f3837d5baad31b
+"HOSTILE_2: css comment hiding" 6ad7846be2d5ff9e chat:245db3fed8e2092a settings:245db3fed8e2092a studio:245db3fed8e2092a home:245db3fed8e2092a
+"HOSTILE_2: comment in selector" 4d1844ca1f60aad7 chat:08769c9c42a73492 settings:08769c9c42a73492 studio:08769c9c42a73492 home:08769c9c42a73492
+"HOSTILE_2: escape in prop" 5049f966a453be61 chat:ed91e6a743800a78 settings:ed91e6a743800a78 studio:ed91e6a743800a78 home:ed91e6a743800a78
+"HOSTILE_2: unicode escape in value" 89e38bfeddb0fa4e chat:384fe704a196857f settings:384fe704a196857f studio:384fe704a196857f home:384fe704a196857f
+"HOSTILE_2: trailing prop w/o semicolon+brace" a572f6c71e8af50d chat:0fb8c30ecfafdbaf settings:0fb8c30ecfafdbaf studio:0fb8c30ecfafdbaf home:0fb8c30ecfafdbaf
+"HOSTILE_2: body of nested media in selector w/ no space" 3e8473380b107a54 chat:386a373405f13f7a settings:386a373405f13f7a studio:386a373405f13f7a home:386a373405f13f7a
+"HOSTILE_2: sibling combinator on root" 2bc4397ce580d71a chat:5348c7446d8b14f0 settings:5348c7446d8b14f0 studio:5348c7446d8b14f0 home:5348c7446d8b14f0
+"HOSTILE_2: pseudo-class :focus-within on ancestor" 6bcb2508320c08b6 chat:8f42544cfebba935 settings:8f42544cfebba935 studio:8f42544cfebba935 home:8f42544cfebba935
+"HOSTILE_2: clip via contain paint" d1d7446530bc55cd chat:c3ca66101abf741a settings:c3ca66101abf741a studio:c3ca66101abf741a home:c3ca66101abf741a
+"HOSTILE_2: height 1px hmm" d3bbece7792e2697 chat:aed44274c9d51718 settings:aed44274c9d51718 studio:aed44274c9d51718 home:aed44274c9d51718
+"HOSTILE_2: mix-blend-mode on non-ancestor part" 6749abce552b3eb6 chat:00257b88b91fc7e0 settings:00257b88b91fc7e0 studio:00257b88b91fc7e0 home:00257b88b91fc7e0
+"HOSTILE_2: backdrop-filter overlay non-ancestor" ba11b90845a74e86 chat:14ab6e23584682d9 settings:14ab6e23584682d9 studio:14ab6e23584682d9 home:14ab6e23584682d9
+"HOSTILE_2: outline huge overlay" 759e0f05c62a24e2 chat:a134feada0e70bf0 settings:a134feada0e70bf0 studio:a134feada0e70bf0 home:a134feada0e70bf0
+"HOSTILE_2: box-shadow overlay (spread) non-ancestor" 71ad9de7e2bd1038 chat:d5e56b7fcd98beb4 settings:d5e56b7fcd98beb4 studio:d5e56b7fcd98beb4 home:d5e56b7fcd98beb4
+"HOSTILE_2: border-image none" db581ce3ea3c1d8e chat:80dd3df1f3f685e3 settings:80dd3df1f3f685e3 studio:80dd3df1f3f685e3 home:80dd3df1f3f685e3
+"HOSTILE_3: X7 accent channel so dark the derived accent is unreadable on the sheet" bca24012fde8fb39 chat:9e815a2c04598856 settings:9e815a2c04598856 studio:849af3ae84f25b66 home:67472dc3420200c2
+"HOSTILE_3: X8 danger channel equal to the sheet" f4e8554ed3471fd2 chat:7c7b18c9a804adc0 settings:02b1caa3f8365c26 studio:0acb40baa63fb140 home:279291f50dea632b
+"HOSTILE_3: X1 root attribute rule with a layout declaration" 90acd3233bcc4db3 chat:2df445d83495eac9 settings:2df445d83495eac9 studio:2df445d83495eac9 home:2df445d83495eac9
+"HOSTILE_3: X2 bare attribute selector sets tokens (not the root)" b579c0b5bd9c5218 chat:eca9e6716fb149f5 settings:eca9e6716fb149f5 studio:eca9e6716fb149f5 home:eca9e6716fb149f5
+"HOSTILE_3: X3 token on a root attribute that makes the sheet unusable" a33c6b1e2e646295 chat:ba95aee9280e13c7 settings:ba95aee9280e13c7 studio:ba95aee9280e13c7 home:ba95aee9280e13c7
+"HOSTILE_3: X4 token on a root attribute that makes critical text invisible" 9d509b350432e327 chat:35d19b1406480593 settings:a64bf6b68365354d studio:27ccd1a588a8a17c home:b2a4bf3587d55334
+"HOSTILE_3: X5 root attribute that is not input or layout" 6cc5a556452f4361 chat:4647c9ff0ff8511a settings:4647c9ff0ff8511a studio:4647c9ff0ff8511a home:4647c9ff0ff8511a
+"HOSTILE_3: X6 root attribute descendant reaching a part" 8e76ce1a845d2a70 chat:e54d2664e8694c66 settings:e54d2664e8694c66 studio:e54d2664e8694c66 home:e54d2664e8694c66
+"BENIGN: B1 bubble fill" 8937e26358746dc6 chat:f6e2ba462dbfa4c7 settings:f6e2ba462dbfa4c7 studio:f6e2ba462dbfa4c7 home:f6e2ba462dbfa4c7
+"BENIGN: B2 tail corner on run starts" 31c29f703839402f chat:403463de55a990ae settings:403463de55a990ae studio:403463de55a990ae home:403463de55a990ae
+"BENIGN: B3 failed bubble takes the column" c3875ff767248cf4 chat:ba78b7f231866eea settings:ba78b7f231866eea studio:ba78b7f231866eea home:ba78b7f231866eea
+"BENIGN: B4 compact actions on hover" 1c262ca66f57889c chat:c161bfde1d73aab2 settings:c161bfde1d73aab2 studio:c161bfde1d73aab2 home:c161bfde1d73aab2
+"BENIGN: B5 token block" d33296b2763c0081 chat:425c6dfa3aa1eae6 settings:425c6dfa3aa1eae6 studio:425c6dfa3aa1eae6 home:425c6dfa3aa1eae6
+"BENIGN: B6 own actions beside the bubble" c6d3080b79191e0d chat:527c91a55b1d531b settings:527c91a55b1d531b studio:527c91a55b1d531b home:527c91a55b1d531b
+"BENIGN: B7 forced colours outline" fdcffc6179c55cfa chat:ad4faf552c1514cb settings:ad4faf552c1514cb studio:ad4faf552c1514cb home:ad4faf552c1514cb
+"BENIGN: B8 header title colour" b5ed9551fe6c46f9 chat:2da5f428484a1e0e settings:2da5f428484a1e0e studio:2da5f428484a1e0e home:2da5f428484a1e0e
+"BENIGN_2: D1 touch density" 47ebb26d1cf81f56 chat:2c00f2e70e078f4d settings:2c00f2e70e078f4d studio:2c00f2e70e078f4d home:2c00f2e70e078f4d
+"BENIGN_2: D2 wide layout" 5e41b0e81cb08c7e chat:23510dac71ee258a settings:23510dac71ee258a studio:23510dac71ee258a home:23510dac71ee258a
+"BENIGN_2: D3 both attributes" e22b4a1f8321ff89 chat:31431360da71780d settings:31431360da71780d studio:31431360da71780d home:31431360da71780d
+"BENIGN_2: D4 :root with an attribute" 4d4956e9d0fe6c3a chat:fba31aa7e53894bb settings:fba31aa7e53894bb studio:fba31aa7e53894bb home:fba31aa7e53894bb
+"values ACCEPT: card-row" 60f796f083411633 chat:d9cf2d363dc9bd31 settings:d9cf2d363dc9bd31 studio:d9cf2d363dc9bd31 home:d9cf2d363dc9bd31
+"values ACCEPT: shell-gap" 3929915b8aadebbc chat:31751d8a5b0c2f4a settings:31751d8a5b0c2f4a studio:31751d8a5b0c2f4a home:31751d8a5b0c2f4a
+"values ACCEPT: header-colour" 2d5a865fb561350f chat:57c8bc0673a3724a settings:077317de6493da4c studio:57c8bc0673a3724a home:57c8bc0673a3724a
+"values ACCEPT: safe-opacity" 43fdb258d2a38d72 chat:a4b7bd8001a52df7 settings:a4b7bd8001a52df7 studio:a4b7bd8001a52df7 home:a4b7bd8001a52df7
+"values ACCEPT: safe-width-100" 2285268b4abb3b6e chat:d1202f0e9e8fd8e0 settings:8799e4236ac278e8 studio:d1202f0e9e8fd8e0 home:d1202f0e9e8fd8e0
+"values ACCEPT: safe-relative" 7802ff5c6cc361d3 chat:ea5516877e285190 settings:ea5516877e285190 studio:ea5516877e285190 home:ea5516877e285190
+"values ACCEPT: dur-300" ab6b5267a899163e chat:c280c7f275e76575 settings:c280c7f275e76575 studio:c280c7f275e76575 home:c280c7f275e76575
+"values ACCEPT: dur-zero" 3cd1986c6eabaf9d chat:9155d063b41ad9a9 settings:9155d063b41ad9a9 studio:9155d063b41ad9a9 home:9155d063b41ad9a9
+"values ACCEPT: padding-24" c419feee00c857e0 chat:ea30526e010e1358 settings:ea30526e010e1358 studio:ea30526e010e1358 home:ea30526e010e1358
+"values ACCEPT: width-wide" 0ed64c645f9d76ce chat:5af6039420d23eca settings:5af6039420d23eca studio:5af6039420d23eca home:5af6039420d23eca
+"values ACCEPT: index-right" e359193835ed2220 chat:e3d5d73da4c21b04 settings:e3d5d73da4c21b04 studio:e3d5d73da4c21b04 home:e3d5d73da4c21b04
+"values ACCEPT: selection-hint" 840752bdadb463bc chat:736dbaeb21410835 settings:736dbaeb21410835 studio:736dbaeb21410835 home:736dbaeb21410835
+"values ACCEPT: part-colour-dark-on-light" d16f421fd3dc6371 chat:8426eb8601bc99d8 settings:a74abb871a90fee4 studio:9ec0e45d1617e559 home:134cf56e05b1557b
+"values REJECT: tok-dialog-padding-400" 72bb59566f677397 chat:057c8390b14aa56c settings:057c8390b14aa56c studio:057c8390b14aa56c home:057c8390b14aa56c
+"values REJECT: tok-dialog-actions-gap" 2a8ac2f4de019f79 chat:c0d186694ea90aae settings:c0d186694ea90aae studio:c0d186694ea90aae home:c0d186694ea90aae
+"values REJECT: tok-dialog-actions-margin" 3cc70d554f5159a0 chat:c96ed6c3111a1726 settings:c96ed6c3111a1726 studio:c96ed6c3111a1726 home:c96ed6c3111a1726
+"values REJECT: tok-dur-60s" b2264bf7df8fe204 chat:6d7b8b4a1110bbc8 settings:6d7b8b4a1110bbc8 studio:6d7b8b4a1110bbc8 home:6d7b8b4a1110bbc8
+"values REJECT: tok-dur-fast-60s" 07dbfb0e06bf769f chat:1d86004edd6fd544 settings:1d86004edd6fd544 studio:1d86004edd6fd544 home:1d86004edd6fd544
+"values REJECT: tok-dur-slow-ms" 69b4465171edba3e chat:258238f4c0bfe544 settings:258238f4c0bfe544 studio:258238f4c0bfe544 home:258238f4c0bfe544
+"values REJECT: tok-dialog-width-120" df553b6a5d474f5a chat:27c1e36c6ed8c6b2 settings:27c1e36c6ed8c6b2 studio:27c1e36c6ed8c6b2 home:27c1e36c6ed8c6b2
+"values REJECT: tok-dialog-width-5000" 5452d3edd6e9ebed chat:fee7a8064afb5fd7 settings:fee7a8064afb5fd7 studio:fee7a8064afb5fd7 home:fee7a8064afb5fd7
+"values REJECT: layout-dialog-width-120" c01d367f4ad135e7 chat:a50cb68e75d063e7 settings:a50cb68e75d063e7 studio:a50cb68e75d063e7 home:a50cb68e75d063e7
+"values REJECT: tok-page-max-10" 6531cce41504e90b chat:06555325bf959708 settings:06555325bf959708 studio:06555325bf959708 home:06555325bf959708
+"values REJECT: tok-body-columns-5000" c831d31123b35477 chat:8c9e33127960d24d settings:8c9e33127960d24d studio:8c9e33127960d24d home:8c9e33127960d24d
+"values REJECT: tok-body-columns-0" 29a6450a7777c662 chat:b09f083c471340f9 settings:b09f083c471340f9 studio:b09f083c471340f9 home:b09f083c471340f9
+"values REJECT: tok-index-column-3" ee0ba990be0c2be7 chat:a3a82a265bdcbe6c settings:a3a82a265bdcbe6c studio:a3a82a265bdcbe6c home:a3a82a265bdcbe6c
+"values REJECT: tok-rows-gap-300" 817134cf7e01cf9b chat:b7123bf6b428f47e settings:b7123bf6b428f47e studio:b7123bf6b428f47e home:b7123bf6b428f47e
+"values REJECT: tok-row-min-3000" e9be5a82f40e43dd chat:a94988e624124759 settings:a94988e624124759 studio:a94988e624124759 home:a94988e624124759
+"values REJECT: tok-header-0" f37bb9d547248439 chat:d8d4eb9e360c4623 settings:d8d4eb9e360c4623 studio:d8d4eb9e360c4623 home:d8d4eb9e360c4623
+"values REJECT: tok-field-min-1" fb5b2aa72f3f791e chat:3897e9f7badb0789 settings:3897e9f7badb0789 studio:3897e9f7badb0789 home:3897e9f7badb0789
+"values REJECT: tok-section-title-2" 24dd19a90705555d chat:aec51d808c256caa settings:aec51d808c256caa studio:aec51d808c256caa home:aec51d808c256caa
+"values REJECT: tok-hairline-100" 6104250067d08804 chat:9dbb8e3ff49cc294 settings:9dbb8e3ff49cc294 studio:9dbb8e3ff49cc294 home:9dbb8e3ff49cc294
+"values REJECT: tok-radius-900" cdfaaeea8215d5ac chat:40da682e2eaaa558 settings:40da682e2eaaa558 studio:40da682e2eaaa558 home:40da682e2eaaa558
+"values REJECT: tok-icon-0" 0a3d157fb5815da5 chat:3bb236d707b0120f settings:3bb236d707b0120f studio:3bb236d707b0120f home:3bb236d707b0120f
+"values REJECT: tok-field-border-transparent" b265707ef0c53493 chat:3281d3da651f5baa settings:d36c7ea8c2a88627 studio:3281d3da651f5baa home:9140e89ab4897761
+"values REJECT: tok-accent-tint-1" 9c31c4361499fe35 chat:0c8bdb71045ecb7f settings:0c8bdb71045ecb7f studio:0c8bdb71045ecb7f home:0c8bdb71045ecb7f
+"values REJECT: tok-ring-transparent" 4968ffac2909cca6 chat:26f44a242518318c settings:6c8fa7f8007c2d90 studio:16edc50bc090ac22 home:49059f2b927958ae
+"values REJECT: tok-selection-hidden" 6992ac42cde2586d chat:dd57fa6e17abfd27 settings:dd57fa6e17abfd27 studio:dd57fa6e17abfd27 home:dd57fa6e17abfd27
+"values REJECT: tok-alpha-dim-0" 97fdf98030b23442 chat:340d83b10fe402fc settings:340d83b10fe402fc studio:340d83b10fe402fc home:340d83b10fe402fc
+"values REJECT: tok-danger-on-canvas" caeac7ebfb5ac0fe chat:92ba3f45ddac70a3 settings:6385c290fb2644cf studio:f80c1da614bc6765 home:76ebc5d2e79eda04
+"values REJECT: tok-text-low" 17e1474252e3a81a chat:e0bbce223f3ff9b9 settings:5e131dae9cd9033f studio:ffb94dd7e9347eb6 home:d062b3f94aef8f60
+"values REJECT: safe-header-cover" 34ccd9d5b7b44530 chat:73e2d885f73acf16 settings:73e2d885f73acf16 studio:73e2d885f73acf16 home:73e2d885f73acf16
+"values REJECT: safe-header-inset" b881dc5cf4af435a chat:782cefb92ae7b0f1 settings:782cefb92ae7b0f1 studio:782cefb92ae7b0f1 home:782cefb92ae7b0f1
+"values REJECT: safe-header-position-only" 2b08a9fcd6a52d3d chat:73d2febfbe7ef09e settings:73d2febfbe7ef09e studio:73d2febfbe7ef09e home:73d2febfbe7ef09e
+"values REJECT: safe-header-height-big" da1f8cce2dc5f0de chat:6b41387235e598b6 settings:6b41387235e598b6 studio:6b41387235e598b6 home:6b41387235e598b6
+"values REJECT: safe-search-cover" e1ef3ca084031c44 chat:55af81db3867c298 settings:9c945c21bd15539d studio:55af81db3867c298 home:55af81db3867c298
+"values REJECT: safe-results-cover" 0a73a661d6371910 chat:4e2353b36634be93 settings:4b6f0a02ba34a568 studio:4e2353b36634be93 home:4e2353b36634be93
+"values REJECT: safe-jumpchips-cover" dc6f84c71294277f chat:9ee8a6afdced23d6 settings:9ee8a6afdced23d6 studio:9ee8a6afdced23d6 home:9ee8a6afdced23d6
+"values REJECT: safe-scrim-cover" 55746082cfc24fd1 chat:e8b72d81d1a18b70 settings:ba0b39c4891c0bad studio:e8b72d81d1a18b70 home:e8b72d81d1a18b70
+"values REJECT: safe-index-neg-margin" d7eedb6ac946218e chat:e16bcb5a2ef5dc96 settings:e16bcb5a2ef5dc96 studio:e16bcb5a2ef5dc96 home:e16bcb5a2ef5dc96
+"values REJECT: safe-header-width-2000" 3dcb9b6ba7f7bcff chat:5945b62e575eeca0 settings:5945b62e575eeca0 studio:5945b62e575eeca0 home:5945b62e575eeca0
+"values REJECT: color-black-cancel" 592f09cb5ba8f7c8 chat:de27dcea601d8dc8 settings:de27dcea601d8dc8 studio:de27dcea601d8dc8 home:de27dcea601d8dc8
+"values REJECT: color-black-dlg" cb88aca3f8e745de chat:1e6fb4e673fe79d0 settings:1e6fb4e673fe79d0 studio:1e6fb4e673fe79d0 home:1e6fb4e673fe79d0
+"values REJECT: color-black-row" 25528a373e97be60 chat:a1a31720df5c7c22 settings:a1a31720df5c7c22 studio:a1a31720df5c7c22 home:a1a31720df5c7c22
+"values REJECT: color-black-body" 3da1a471d1ce798f chat:9eb718fe0d8306e8 settings:9eb718fe0d8306e8 studio:9eb718fe0d8306e8 home:9eb718fe0d8306e8
+"values REJECT: color-black-shell" f0db070447add544 chat:512e31a181d2f0d1 settings:512e31a181d2f0d1 studio:512e31a181d2f0d1 home:512e31a181d2f0d1
+"values REJECT: color-black-page" e2776090fa04e2b5 chat:feb6f339381ee576 settings:feb6f339381ee576 studio:feb6f339381ee576 home:feb6f339381ee576
+"values REJECT: color-name-navy" 3ee31cd1328f9d30 chat:fafb49cfc056766f settings:fafb49cfc056766f studio:fafb49cfc056766f home:fafb49cfc056766f
+"values REJECT: color-hsl-black" 33f03720f944020c chat:38c67619ab1fd7f1 settings:38c67619ab1fd7f1 studio:38c67619ab1fd7f1 home:38c67619ab1fd7f1
+"values REJECT: bg-white-row" 48b2c9adc55960e4 chat:3485fbe915cee6f2 settings:3485fbe915cee6f2 studio:3485fbe915cee6f2 home:3485fbe915cee6f2
+"values REJECT: bg-white-name-row" 0e3d5f51b100594c chat:5308683e52df63a0 settings:5308683e52df63a0 studio:5308683e52df63a0 home:5308683e52df63a0
+"values REJECT: bg-gradient-row" 471e44fde3e2a1f7 chat:bacd158f2a8a4e4f settings:bacd158f2a8a4e4f studio:bacd158f2a8a4e4f home:bacd158f2a8a4e4f
+"values REJECT: bg-white-overlay" 3ed225e3dc31abe3 chat:4f9947adc5a0ec64 settings:4f9947adc5a0ec64 studio:4f9947adc5a0ec64 home:4f9947adc5a0ec64
+"values REJECT: bg-white-own-pair" 551ac728550986a8 chat:af427e2940a44f89 settings:af427e2940a44f89 studio:af427e2940a44f89 home:af427e2940a44f89
+"values REJECT: bg-white-shell" 02d06b01889308fa chat:ccb82489e997724b settings:ccb82489e997724b studio:ccb82489e997724b home:ccb82489e997724b
+"values REJECT: bg-white-dialog-btn" faa1e7067402c0e1 chat:7af17a24e033ca57 settings:7af17a24e033ca57 studio:7af17a24e033ca57 home:7af17a24e033ca57
+"values REJECT: name-connection-warning" 4c0ef6e8b113b35f chat:883cb92f20d7fdb5 settings:415f6deea8aa7925 studio:883cb92f20d7fdb5 home:883cb92f20d7fdb5
+"values REJECT: name-card-status-hidden" 2f630d80d39b1179 chat:3410b83346f4218f settings:22bee880116d78ac studio:3410b83346f4218f home:3410b83346f4218f
+"values REJECT: name-card-status-transparent" 47cab2aec07b7d38 chat:394fa60334d8c9a2 settings:3f4a6a9306efa230 studio:394fa60334d8c9a2 home:394fa60334d8c9a2
+"values REJECT: name-warning-banner-hidden" b4653a308b29fe6c chat:612fc04ab1c315ec settings:8d0ea6862fb69f5e studio:612fc04ab1c315ec home:612fc04ab1c315ec
+"values REJECT: name-picker-warning" 368b7dcc446eb22a chat:76983bc9f814e665 settings:5ae37faf512619f6 studio:76983bc9f814e665 home:76983bc9f814e665
+"values REJECT: name-test-result" 89ccaf232d1772c2 chat:60f599efa25d8940 settings:78ddec80d8ae1ea3 studio:60f599efa25d8940 home:60f599efa25d8940
+"values REJECT: name-preset-warning" 645090baabb27216 chat:28520a015904ac73 settings:e413fbfb79a318e3 studio:28520a015904ac73 home:28520a015904ac73
+"legacy settings: backdrop-hidden" ea7c83da47dae884 chat:14d439baa97a1b28 settings:8931b9d8ee89d9d8 studio:14d439baa97a1b28 home:14d439baa97a1b28
+"legacy settings: backdrop-top" 620619d3fa2da286 chat:2471d64f7dee94d5 settings:304c7b631f7e9bf0 studio:2471d64f7dee94d5 home:2471d64f7dee94d5
+"legacy settings: cancel-hidden" 324d9f97ed244456 chat:95bb11792aabfffc settings:95bb11792aabfffc studio:95bb11792aabfffc home:95bb11792aabfffc
+"legacy settings: footer-row-reverse" 6b0b2a9634878ac8 chat:c81e7377987dc4a7 settings:8f57084e330dc367 studio:c81e7377987dc4a7 home:c81e7377987dc4a7
+"legacy settings: retry-hidden" 22c2e08f83daef0a chat:6fd30fba7bcc34f6 settings:18c575e018223a1b studio:6fd30fba7bcc34f6 home:6fd30fba7bcc34f6
+"legacy settings: row-hidden" 5503f6bdc9bf0f98 chat:9fdb60ed94872588 settings:9fdb60ed94872588 studio:9fdb60ed94872588 home:9fdb60ed94872588
+"legacy settings: toast-faded" df9e55ef297b3a0d chat:b121a460035cb31f settings:b121a460035cb31f studio:b121a460035cb31f home:b121a460035cb31f
+"legacy settings: index-right" ce671290388ce83e chat:40185980d215aad5 settings:2ad15760d5aba14b studio:40185980d215aad5 home:40185980d215aad5
+"studio reach: R1 sheet-root padding+font" 41e6f658d4e49135 chat:5ff8b9258e5b6799 settings:5ff8b9258e5b6799 studio:c73698ebed5f2826 home:5ff8b9258e5b6799
+"studio reach: R2 form-host padding+font" fd48fb1cefbf895f chat:f204f831e1553970 settings:f204f831e1553970 studio:08133f11b886594a home:f204f831e1553970
+"studio reach: R3 main padding" d0cda4eb345a4031 chat:bf8e386012797e5c settings:bf8e386012797e5c studio:67d5547f31d2bb0c home:bf8e386012797e5c
+"studio reach: R4 toast-box padding/gap/width" 9a976ed223f893fa chat:a99ed4f059fe93a7 settings:a99ed4f059fe93a7 studio:370f505bbe6d22f3 home:a99ed4f059fe93a7
+"studio reach: R5 toast-box border 16px" ee33740dd541c44f chat:87f979902f3d26ce settings:87f979902f3d26ce studio:87f979902f3d26ce home:87f979902f3d26ce
+"studio reach: R6 sheet-root border 16 + shadow 64" 30fe44546bdf5550 chat:936234823aa506ec settings:936234823aa506ec studio:936234823aa506ec home:936234823aa506ec
+"studio reach: R7 shell font-size 40" d28476a59ea6a343 chat:ed2fa4f302dbce75 settings:ed2fa4f302dbce75 studio:ed2fa4f302dbce75 home:ed2fa4f302dbce75
+"studio reach: R8 sheet-root letter-spacing/text-decoration/transform" 315a89546659caee chat:b9085ed846e6ce82 settings:b9085ed846e6ce82 studio:b9085ed846e6ce82 home:b9085ed846e6ce82
+"studio reach: R9 sheet-root font-family dingbat" 539945aa418dfe84 chat:b2b9fa6de5953797 settings:b2b9fa6de5953797 studio:b2b9fa6de5953797 home:b2b9fa6de5953797
+"studio reach: R10 toast-box text-align + width 100%" ba1eadeb1e50cc57 chat:f4f19cd3cb3a1a5e settings:f4f19cd3cb3a1a5e studio:f4f19cd3cb3a1a5e home:f4f19cd3cb3a1a5e
+"studio reach: R11 alert via data-kind box" ede77a0381513ceb chat:e188e6194765e4ed settings:e188e6194765e4ed studio:e188e6194765e4ed home:e188e6194765e4ed
+"studio reach: R12 data-kind=conflict padding" 983b9690cb463a5b chat:5c812330d84476d4 settings:5c812330d84476d4 studio:5c812330d84476d4 home:5c812330d84476d4
+"studio reach: R13 color on ancestors" bd109318348a0310 chat:63e1bfed69613e7f settings:63e1bfed69613e7f studio:63e1bfed69613e7f home:63e1bfed69613e7f
+"studio reach: R14 data-kind=restore color/background close to bg" 0a0354fe33c22c04 chat:7b8a9a30dc7c1208 settings:7b8a9a30dc7c1208 studio:7b8a9a30dc7c1208 home:7b8a9a30dc7c1208
+"studio reach: R15 data-state=ask outline" cfaba86a44e197c6 chat:ec256debf470d4ec settings:ec256debf470d4ec studio:ec256debf470d4ec home:ec256debf470d4ec
+"studio reach: R16 font-size 11 on sheet + width 50%" dc2394be54f3e950 chat:8095ecf14426239a settings:8095ecf14426239a studio:ce90a12db0a39d8c home:8095ecf14426239a
+"resource forms: unquoted" 0907fbc38948bfbc chat:52c294e974b6b62d settings:52c294e974b6b62d studio:52c294e974b6b62d home:def31a5e3024f5b9
+"resource forms: unquoted with whitespace" 3df6189b8ff7f97d chat:6da8b17f4090944d settings:6da8b17f4090944d studio:6da8b17f4090944d home:d04e5083ee0fd4e0
+"resource forms: double quoted" 28a29f89ca3cf276 chat:0287b246f873bee0 settings:0287b246f873bee0 studio:0287b246f873bee0 home:ba06afd36d89599c
+"resource forms: single quoted" 812c0d1053625d6c chat:823daedb9b3820b7 settings:823daedb9b3820b7 studio:823daedb9b3820b7 home:27c1e60c22b34a9b
+"resource forms: quoted with whitespace" e996a34221bad575 chat:7ce41ce9f65fe27b settings:7ce41ce9f65fe27b studio:7ce41ce9f65fe27b home:4cbfc71ebec88f5a
+"resource forms: image-set strings" 2c7dbcf3346e2ddf chat:56a74e242c73b03d settings:56a74e242c73b03d studio:56a74e242c73b03d home:fcd3142a44ad4642
+"resource forms: vendor image-set" a9fb23a6f14f85b7 chat:7e39592bd1509a6f settings:7e39592bd1509a6f studio:7e39592bd1509a6f home:7e39592bd1509a6f
+"resource forms: after a comment" 5098f795cceca215 chat:ea4f72220450276f settings:ea4f72220450276f studio:ea4f72220450276f home:666b03703b7e0fde
+"resource forms: font face sources" ad3590d2608016b8 chat:910877fdf99859bc settings:910877fdf99859bc studio:910877fdf99859bc home:97a058a72d10d91f
+"resource forms: remote and broken" bdd849c525037ce1 chat:7f6f1bc947b02561 settings:7f6f1bc947b02561 studio:7f6f1bc947b02561 home:bd0ebdaa93ffd2a9
