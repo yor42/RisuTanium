@@ -42,6 +42,22 @@ function reducedMotionSelectors(source: string): { query: string, selectors: str
     return out
 }
 
+/** Every rule selector of the source at any depth, split at top-level commas. */
+function allSelectors(source: string): string[] {
+    const out: string[] = []
+    let start = 0
+    for (let at = 0; at < source.length; at++) {
+        const ch = source[at]
+        if (ch === '{') {
+            out.push(...source.slice(start, at).split(',').map((part) => part.trim()).filter(Boolean))
+            start = at + 1
+        } else if (ch === '}' || ch === ';') {
+            start = at + 1
+        }
+    }
+    return out
+}
+
 describe('the reduce-motion "off" choice reaches every OS rule', () => {
     test.each(FILES)('%s scopes each reduce rule by rm-off and has no no-preference rule', (file) => {
         const blocks = reducedMotionSelectors(readFileSync(file, 'utf8'))
@@ -60,6 +76,20 @@ describe('the reduce-motion "off" choice reaches every OS rule', () => {
         const lowPower = source.indexOf(':global(html[data-low-power])')
         expect(media).toBeGreaterThan(-1)
         expect(lowPower).toBeGreaterThan(media)
+    })
+
+    // Each OS rule has an `rm` twin with the same target, so the setting's "on" reduces exactly what the OS query does.
+    test.each(FILES)('%s gives each reduce rule an rm counterpart', (file) => {
+        const source = readFileSync(file, 'utf8')
+        const all = new Set(allSelectors(source))
+        for (const block of reducedMotionSelectors(source)) {
+            for (const selector of block.selectors) {
+                const twins = selector.startsWith(':root:not(.rm-off)')
+                    ? [selector.replace(':root:not(.rm-off)', ':root.rm'), selector.replace(':root:not(.rm-off)', 'html.rm')]
+                    : [selector.replace(':global(html:not(.rm-off)', ':global(html.rm')]
+                expect(twins.some((twin) => all.has(twin)), `${file}: ${selector}`).toBe(true)
+            }
+        }
     })
 
     test('the scan sees a scoped rule and rejects an unscoped one', () => {
