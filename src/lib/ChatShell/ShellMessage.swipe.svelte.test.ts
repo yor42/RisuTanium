@@ -48,7 +48,7 @@ vi.mock('../ChatScreens/chatSurface.svelte', () => ({ chatSurface: { rebuildEpoc
 vi.mock('../../ts/characters', () => ({ getCharImage: async () => null }))
 vi.mock('../../ts/model/modellist', () => ({ getModelInfo: () => ({ shortName: 'model' }) }))
 vi.mock('../../lang', () => ({ language: {
-    chatShellMoreActions: 'More actions', chatShellNewReply: 'New reply', bookmark: 'Bookmark',
+    chatShellMoreActions: 'More actions', chatShellNewReply: 'New reply', bookmark: 'Bookmark', chatShellFirstReply: 'First reply', chatShellEndControl: (count: number) => `Bring back ${count}`,
     chatShellStillWriting: 'Still writing the reply', chatShellNoSavedReplies: 'No more saved replies',
     chatShellReleaseNewReply: 'Let go to generate a new reply', chatShellGenerateReply: 'Generate a reply',
     chatShellReplyOf: (index: number, total: number) => `Reply ${index} of ${total}`,
@@ -63,7 +63,7 @@ let target: HTMLElement
 let app: ReturnType<typeof ShellMessage> | undefined
 let body: HTMLElement
 
-interface Options { role?: Message['role']; index?: number; count?: number; streaming?: boolean; busy?: boolean }
+interface Options { role?: Message['role']; index?: number; count?: number; streaming?: boolean; busy?: boolean; continuation?: number; tree?: { index: number, count: number }; stepRow?: (idx: number, step: () => Promise<void> | void) => Promise<void> }
 function show(options: Options = {}) {
     const message: Message = { role: options.role ?? 'char', data: 'Reply', chatId: 'm' }
     DBState.db.characters[0].chats[0].message = [message]
@@ -71,7 +71,7 @@ function show(options: Options = {}) {
     document.body.appendChild(target)
     const index = options.index ?? 2
     const count = options.count ?? 2
-    app = mount(ShellMessage, { target, props: { idx: 0, chatId: 'm', name: 'Ari', message: DBState.db.characters[0].chats[0].message[0], streaming: options.streaming ?? false, getBusy: () => options.busy ?? false, getTreeView: () => ({ at: () => ({ index, count }), continuation: 0 }) } })
+    app = mount(ShellMessage, { target, props: { idx: 0, chatId: 'm', name: 'Ari', message: DBState.db.characters[0].chats[0].message[0], streaming: options.streaming ?? false, getBusy: () => options.busy ?? false, stepRow: options.stepRow, getTreeView: () => ({ at: () => (options.tree ? { index: options.tree.index, count: options.tree.count } : { index, count }), continuation: options.continuation ?? 0 }) } })
     flushSync()
     body = target.querySelector<HTMLElement>('[data-part="chat-message-body"]')!
     Object.defineProperty(body, 'clientWidth', { value: 300 })
@@ -397,16 +397,22 @@ describe('C4 the sideways scroll exemption follows the event target', () => {
 })
 
 describe('C10 swipe feedback', () => {
-    test('a committed step marks the slide direction until the animation ends', () => {
-        show({ index: 2, count: 3 })
-        pointer('pointerdown', 100, 0)
-        pointer('pointermove', 220, 100)
-        pointer('pointerup', 220, 200)
-        expect(stepSibling).toHaveBeenCalledWith(expect.anything(), 0, 'm', 'back', { generate: false })
-        expect(body.getAttribute('data-commit')).toBe('back')
-        body.dispatchEvent(new Event('animationend', { bubbles: true }))
-        flushSync()
-        expect(body.hasAttribute('data-commit')).toBe(false)
+    // COMPATIBILITY GUARD (passes before and after CHORE-727): where motion is reduced the step lands at release with the crossfade.
+    test('under reduced motion a committed step lands at once and marks the slide direction until the animation ends', () => {
+        document.documentElement.classList.add('rm')
+        try {
+            show({ index: 2, count: 3 })
+            pointer('pointerdown', 100, 0)
+            pointer('pointermove', 220, 100)
+            pointer('pointerup', 220, 200)
+            expect(stepSibling).toHaveBeenCalledWith(expect.anything(), 0, 'm', 'back', { generate: false })
+            expect(body.getAttribute('data-commit')).toBe('back')
+            body.dispatchEvent(new Event('animationend', { bubbles: true }))
+            flushSync()
+            expect(body.hasAttribute('data-commit')).toBe(false)
+        } finally {
+            document.documentElement.classList.remove('rm')
+        }
     })
     test('a release that commits nothing springs back, and the next touch removes the spring', () => {
         show({ index: 2, count: 3 })
@@ -436,7 +442,9 @@ describe('C10 swipe feedback', () => {
         const pulled = dragged()
         expect(pulled).toBeGreaterThan(0)
         expect(pulled).toBeLessThan(24)
-        expect(target.querySelector('[data-part="chat-swipe-arm"]')).toBeNull()
+        // SLICE1_SPEC §3.2 "At 1 / N, swiping right": the chip names the first reply and nothing peeks in.
+        expect(target.querySelector('[data-part="chat-swipe-arm"]')!.textContent).toBe('First reply')
+        expect(target.querySelector('[data-part="chat-swipe-peek"]')).toBeNull()
     })
     test('a streaming reply shows the still writing message and only a rubber band', () => {
         show({ streaming: true, index: 1, count: 2 })
@@ -468,5 +476,305 @@ describe('C10 swipe feedback', () => {
         unmount(app!); target.remove()
         show({ role: 'char' })
         expect(target.querySelector('[data-part="chat-generate-reply"]')).toBeNull()
+    })
+})
+
+describe('CHORE-727 swipe feedback: peek, slide-out, meter and long-press ring', () => {
+    const root = document.documentElement
+    const chat = () => DBState.db.characters[0].chats[0] as { message: Message[], alt?: { p: string | null, a: number, m: Message }[] }
+    // The shown reply sits between an earlier and a later take at the same position, in display (time) order.
+    function withSiblings(): void {
+        chat().alt = [
+            { p: null, a: 1, m: { role: 'char', data: '**Earlier** take {{char}}', chatId: 'e', time: -1 } },
+            { p: null, a: 1, m: { role: 'char', data: 'Later <img src=x onerror="alert(1)"> reply\nsecond line', chatId: 'l', time: 9 } },
+        ]
+    }
+    function stageEl(): HTMLElement { return target.querySelector<HTMLElement>('[data-part="chat-message-stage"]')! }
+    function peekEl(): HTMLElement | null { return target.querySelector<HTMLElement>('[data-part="chat-swipe-peek"]') }
+    function meter(): HTMLElement | null { return target.querySelector<HTMLElement>('[data-part="chat-swipe-meter"]') }
+    function key(name: string): void {
+        target.querySelector('article')!.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }))
+        flushSync()
+    }
+    afterEach(() => {
+        delete chat().alt
+        root.classList.remove('rm', 'nexus-low-power')
+        root.removeAttribute('data-low-power')
+    })
+
+    test('the body sits in the registered swipe stage', () => {
+        show()
+        expect(body.parentElement).toBe(stageEl())
+    })
+
+    test('dragging toward the next reply peeks it in: its position chip and its first lines as plain text, following the finger', () => {
+        withSiblings()
+        show({ index: 2, count: 3 })
+        pointer('pointerdown', 500, 0)
+        pointer('pointermove', 440, 100)
+        const peek = peekEl()!
+        expect(peek.dataset.from).toBe('right')
+        expect(peek.querySelector('[data-part="chat-swipe-peek-chip"]')!.textContent).toBe('3 / 3')
+        expect(peek.querySelector('[data-part="chat-swipe-peek-text"]')!.textContent).toBe('Later reply second line')
+        expect(peek.querySelector('img')).toBeNull()
+        expect(peek.getAttribute('aria-hidden')).toBe('true')
+        expect(peek.style.transform).toBe(`translateX(calc(${dragged()}px + (100% + 16px)))`)
+        pointer('pointermove', 420, 120)
+        expect(peek.style.transform).toBe(`translateX(calc(${dragged()}px + (100% + 16px)))`)
+    })
+
+    test('dragging toward the previous reply peeks it in from the other side, macros and marks removed', () => {
+        withSiblings()
+        show({ index: 2, count: 3 })
+        pointer('pointerdown', 500, 0)
+        pointer('pointermove', 560, 100)
+        const peek = peekEl()!
+        expect(peek.dataset.from).toBe('left')
+        expect(peek.querySelector('[data-part="chat-swipe-peek-chip"]')!.textContent).toBe('1 / 3')
+        expect(peek.querySelector('[data-part="chat-swipe-peek-text"]')!.textContent).toBe('Earlier take')
+        expect(peek.style.transform).toBe(`translateX(calc(${dragged()}px - (100% + 16px)))`)
+    })
+
+    test('under low power the peek is the chip only', () => {
+        withSiblings()
+        root.setAttribute('data-low-power', '')
+        show({ index: 2, count: 3 })
+        pointer('pointerdown', 500, 0)
+        pointer('pointermove', 440, 100)
+        expect(peekEl()!.querySelector('[data-part="chat-swipe-peek-chip"]')!.textContent).toBe('3 / 3')
+        expect(peekEl()!.querySelector('[data-part="chat-swipe-peek-text"]')).toBeNull()
+    })
+
+    test('a committed step slides the body out across the whole stage, the peek lands at the centre, and the step lands after the slow duration', () => {
+        vi.useFakeTimers()
+        withSiblings()
+        show({ index: 2, count: 3 })
+        Object.defineProperty(stageEl(), 'clientWidth', { value: 1000 })
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 520, 100)
+        pointer('pointerup', 520, 200)
+        expect(body.hasAttribute('data-settle')).toBe(true)
+        expect(dragged()).toBe(1016)
+        expect(peekEl()!.style.transform).toBe('translateX(calc(1016px - (100% + 16px)))')
+        expect(body.hasAttribute('data-commit')).toBe(false)
+        vi.advanceTimersByTime(259)
+        expect(stepSibling).not.toHaveBeenCalled()
+        vi.advanceTimersByTime(1)
+        expect(stepSibling).toHaveBeenCalledTimes(1)
+        expect(stepSibling).toHaveBeenCalledWith(expect.anything(), 0, 'm', 'back', { generate: false })
+    })
+
+    test('under low power a committed step lands at once with the crossfade and nothing slides', () => {
+        root.setAttribute('data-low-power', '')
+        show({ index: 2, count: 3 })
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 520, 100)
+        pointer('pointerup', 520, 200)
+        expect(stepSibling).toHaveBeenCalledTimes(1)
+        expect(body.getAttribute('data-commit')).toBe('back')
+        expect(body.hasAttribute('data-settle')).toBe(false)
+        expect(dragged()).toBe(0)
+    })
+
+    test('while the body is out, the keys, the pager and another touch take no step, and exactly one step lands', async () => {
+        vi.useFakeTimers()
+        show({ index: 2, count: 3 })
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 520, 100)
+        pointer('pointerup', 520, 200)
+        key('ArrowLeft')
+        key('ArrowRight')
+        target.querySelector<HTMLButtonElement>('[data-step="prev"]')!.click()
+        flushSync()
+        pointer('pointerdown', 400, 300)
+        pointer('pointermove', 520, 350)
+        pointer('pointerup', 520, 400)
+        expect(stepSibling).not.toHaveBeenCalled()
+        await vi.advanceTimersByTimeAsync(260)
+        expect(stepSibling).toHaveBeenCalledTimes(1)
+    })
+
+    test('a key pressed after the slide-out ends but before its step has landed takes no second step', async () => {
+        vi.useFakeTimers()
+        const pending: (() => Promise<void>)[] = []
+        const stepRow = (_idx: number, step: () => Promise<void> | void) => new Promise<void>((resolve) => { pending.push(async () => { await step(); resolve() }) })
+        show({ index: 2, count: 3, stepRow })
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 520, 100)
+        pointer('pointerup', 520, 200)
+        await vi.advanceTimersByTimeAsync(260)
+        expect(pending).toHaveLength(1)
+        key('ArrowLeft')
+        expect(pending).toHaveLength(1)
+        await pending[0]()
+        await vi.advanceTimersByTimeAsync(0)
+        expect(stepSibling).toHaveBeenCalledTimes(1)
+        key('ArrowLeft')
+        expect(pending).toHaveLength(2)
+    })
+
+    test('a second touch while the body is out starts nothing: the body and the peek stay where the slide-out put them', () => {
+        vi.useFakeTimers()
+        withSiblings()
+        show({ index: 2, count: 3 })
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 520, 100)
+        pointer('pointerup', 520, 200)
+        const out = dragged()
+        const peekTransform = peekEl()!.style.transform
+        pointer('pointerdown', 300, 300)
+        pointer('pointermove', 100, 350)
+        expect(dragged()).toBe(out)
+        expect(peekEl()!.style.transform).toBe(peekTransform)
+        expect(meter()).toBeNull()
+        expect(target.querySelector('[data-part="chat-swipe-arm"]')).toBeNull()
+    })
+
+    test('the end control while the body is out brings nothing back', async () => {
+        vi.useFakeTimers()
+        show({ index: 2, count: 3, continuation: 2 })
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 520, 100)
+        pointer('pointerup', 520, 200)
+        target.querySelector<HTMLButtonElement>('[data-action="endControl"]')!.click()
+        flushSync()
+        expect(stepSibling).not.toHaveBeenCalled()
+        await vi.advanceTimersByTimeAsync(260)
+        expect(stepSibling).toHaveBeenCalledTimes(1)
+        expect(stepSibling).toHaveBeenCalledWith(expect.anything(), 0, 'm', 'back', { generate: false })
+    })
+
+    test('a row whose position moved some other way while the body was out springs back and takes no step', () => {
+        vi.useFakeTimers()
+        const tree = $state({ index: 2, count: 3 })
+        show({ tree })
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 520, 100)
+        pointer('pointerup', 520, 200)
+        tree.index = 3
+        flushSync()
+        vi.advanceTimersByTime(260)
+        flushSync()
+        expect(stepSibling).not.toHaveBeenCalled()
+        expect(body.hasAttribute('data-settle')).toBe(false)
+        expect(body.hasAttribute('data-spring')).toBe(true)
+    })
+
+    test('New reply pressed while the body is out generates once it can, and the pending step is dropped', () => {
+        vi.useFakeTimers()
+        const options: Options = { index: 2, count: 2 }
+        show(options)
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 520, 100)
+        pointer('pointerup', 520, 200)
+        // The New reply button generates on its own; the reply that starts makes the row busy, so the slide-out's step is refused at landing.
+        target.querySelector<HTMLButtonElement>('[data-action="newReply"]')!.click()
+        expect(regenerateNewest).toHaveBeenCalledTimes(1)
+        options.busy = true
+        vi.advanceTimersByTime(260)
+        flushSync()
+        expect(stepSibling).not.toHaveBeenCalled()
+        expect(body.hasAttribute('data-spring')).toBe(true)
+    })
+
+    test('a message gone from the chat while the body is out takes no step', () => {
+        vi.useFakeTimers()
+        show({ index: 2, count: 3 })
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 520, 100)
+        pointer('pointerup', 520, 200)
+        chat().message[0] = { role: 'char', data: 'Other', chatId: 'other' }
+        vi.advanceTimersByTime(260)
+        flushSync()
+        expect(stepSibling).not.toHaveBeenCalled()
+    })
+
+    test('a step the row cannot take at release springs back and never slides out', () => {
+        show({ index: 2, count: 3, busy: true })
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 520, 100)
+        pointer('pointerup', 520, 200)
+        expect(body.hasAttribute('data-settle')).toBe(false)
+        expect(body.hasAttribute('data-spring')).toBe(true)
+        expect(dragged()).toBe(0)
+        expect(stepSibling).not.toHaveBeenCalled()
+    })
+
+    test('a reply that starts generating while the body is out cancels the step: the body springs back', () => {
+        vi.useFakeTimers()
+        const options: Options = { index: 2, count: 3 }
+        show(options)
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 520, 100)
+        pointer('pointerup', 520, 200)
+        options.busy = true
+        vi.advanceTimersByTime(260)
+        flushSync()
+        expect(stepSibling).not.toHaveBeenCalled()
+        expect(body.hasAttribute('data-settle')).toBe(false)
+        expect(body.hasAttribute('data-spring')).toBe(true)
+        expect(dragged()).toBe(0)
+    })
+
+    test('past the last reply the meter fills with the pull and turns the refresh icon', () => {
+        show()
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 320, 100)
+        const m = meter()!
+        expect(m.getAttribute('aria-hidden')).toBe('true')
+        expect(Number(m.dataset.fill)).toBeCloseTo(0.35, 2)
+        expect(m.hasAttribute('data-armed')).toBe(false)
+        expect(m.querySelector<HTMLElement>('.meter-icon')!.style.transform).toBe('rotate(126deg)')
+        expect(m.querySelector<SVGCircleElement>('.meter-arc')!.style.strokeDashoffset).not.toBe('')
+    })
+
+    test('a still hold fills the meter from 70 % to full and arms it, accent on', () => {
+        vi.useFakeTimers()
+        show()
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 200, 100)
+        const fills: number[] = []
+        for (let step = 0; step < 6; step++) {
+            fills.push(Number(meter()!.dataset.fill))
+            vi.advanceTimersByTime(50)
+            flushSync()
+        }
+        expect(fills[0]).toBeCloseTo(0.7, 2)
+        for (let at = 1; at < fills.length; at++) expect(fills[at]).toBeGreaterThan(fills[at - 1])
+        expect(fills.some((fill) => fill > 0.75 && fill < 0.95)).toBe(true)
+        vi.advanceTimersByTime(50)
+        flushSync()
+        expect(meter()!.dataset.fill).toBe('1.00')
+        expect(meter()!.hasAttribute('data-armed')).toBe(true)
+        expect(tickHaptic.mock.calls.filter((call) => call[0] === 'arm')).toHaveLength(1)
+    })
+
+    test.each([
+        ['reduced motion', () => root.classList.add('rm')],
+        ['low power', () => root.setAttribute('data-low-power', '')],
+    ])('under %s the meter fills in quarter steps and the icon does not turn', (_name, on) => {
+        on()
+        show()
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 320, 100)
+        expect(meter()!.dataset.fill).toBe('0.25')
+        expect(meter()!.querySelector<HTMLElement>('.meter-icon')!.style.transform).toBe('')
+    })
+
+    test('the long-press ring appears under the finger after 200 ms', () => {
+        vi.useFakeTimers()
+        show({ index: 2, count: 3 })
+        stageEl().getBoundingClientRect = () => ({ left: 10, top: 20, right: 310, bottom: 220, width: 300, height: 200, x: 10, y: 20, toJSON: () => ({}) })
+        pointer('pointerdown', 100, 0)
+        vi.advanceTimersByTime(199)
+        flushSync()
+        expect(target.querySelector('[data-part="chat-long-press-ring"]')).toBeNull()
+        vi.advanceTimersByTime(1)
+        flushSync()
+        const ring = target.querySelector<HTMLElement>('[data-part="chat-long-press-ring"]')!
+        expect(ring.style.left).toBe('90px')
+        expect(ring.style.top).toBe('80px')
+        expect(ring.parentElement).toBe(stageEl())
+        expect(ring.textContent).toBe('')
     })
 })

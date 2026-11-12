@@ -144,11 +144,14 @@ describe('an older row with three alternatives', () => {
         expect(regenerateNewest).not.toHaveBeenCalled()
         expect(stepSibling).not.toHaveBeenCalled()
     })
-    test('a right swipe, the wheel and the arrow key step back through the alternatives', () => {
+    test('a right swipe, the wheel and the arrow key step back through the alternatives', async () => {
+        vi.useFakeTimers()
         const body = show()
         pointer(body, 'pointerdown', 100, 0)
         pointer(body, 'pointermove', 260, 100)
         pointer(body, 'pointerup', 260, 200)
+        // The swipe's step lands once the body has slid out (CHORE-727), and the row takes other steps once it has.
+        await vi.advanceTimersByTimeAsync(260)
         expect(stepSibling).toHaveBeenCalledTimes(1)
         expect(stepSibling).toHaveBeenLastCalledWith(expect.anything(), 1, 'a1', 'back', { generate: false })
         key('ArrowLeft')
@@ -234,6 +237,7 @@ describe('every step of a row runs inside the list hold when the row is given on
         expect(stepSibling).toHaveBeenCalledWith(expect.anything(), 1, 'a1', 'forward', { generate: false })
     })
     test('the arrow key, the wheel and the swipe go through the runner as well', () => {
+        vi.useFakeTimers()
         const { steps, stepRow } = pendingRunner()
         const body = show({ stepRow })
         key('ArrowLeft')
@@ -241,6 +245,7 @@ describe('every step of a row runs inside the list hold when the row is given on
         pointer(body, 'pointerdown', 100, 0)
         pointer(body, 'pointermove', 260, 100)
         pointer(body, 'pointerup', 260, 200)
+        vi.advanceTimersByTime(260)
         expect(steps.map((entry) => entry.idx)).toEqual([1, 1, 1])
         expect(stepSibling).not.toHaveBeenCalled()
     })

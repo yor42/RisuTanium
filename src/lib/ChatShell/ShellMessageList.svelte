@@ -557,7 +557,7 @@
         {#if chat && win.firstMounted && character.type === 'character'}
             <div data-part="chat-first-message">
                 <svelte:boundary onerror={(error) => recordCaughtError('chat.message', error)}>
-                    <ShellMessage idx={-1} message={{ role: 'char', data: firstMessageOf(character, chat) }} name={character.name} img={character.image} character={createSimpleCharacter(character)} firstMessage getTreeView={firstMessageTreeView} onReroll={() => stepFirstMessage(1)} unReroll={() => stepFirstMessage(-1)} stepRow={runStep} {onOpenActions} {onCloseActions} {onOpenCustomize} />
+                    <ShellMessage idx={-1} message={{ role: 'char', data: firstMessageOf(character, chat) }} name={character.name} img={character.image} character={createSimpleCharacter(character)} firstMessage getTreeView={firstMessageTreeView} neighbourText={(index) => chat ? firstMessageOf(character, { fmIndex: index - 2 }) : null} onReroll={() => stepFirstMessage(1)} unReroll={() => stepFirstMessage(-1)} stepRow={runStep} {onOpenActions} {onCloseActions} {onOpenCustomize} />
                     {#snippet failed(_error, reset)}<div role="note">{language.messageRenderFailed}<button onclick={reset}>{language.messageRenderRetry}</button></div>{/snippet}
                 </svelte:boundary>
             </div>
