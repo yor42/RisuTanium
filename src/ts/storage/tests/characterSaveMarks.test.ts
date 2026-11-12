@@ -11,6 +11,7 @@ import {
     appendIfAbsent,
     installCharacterSaveMarks,
     markCharacterForSave,
+    markDbWrite,
     resetCharacterSaveMarksForTest,
     uninstallCharacterSaveMarks,
 } from '../characterSaveMarks'
@@ -206,5 +207,188 @@ describe('markCharacterForSave — net-signal counters (CHORE-205 counter experi
         expect(tracker.character).toEqual(['front', 'queued', 'b'])
         expect(schedule).toHaveBeenCalledTimes(3)
         expect(handleOf() !== undefined).toBe(on)
+    })
+})
+
+describe('markDbWrite (the explicit write hook\'s sink)', () => {
+    // T30: a usable numeric chaId is appended raw, as the tracker holds ids at runtime, not coerced to a string.
+    test('T30: a character with a numeric chaId is marked, raw, as the tracker holds ids at runtime', () => {
+        const tracker = makeTracker([])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        markDbWrite({ kind: 'owner', id: 7 })
+        markDbWrite({ kind: 'placed', id: 8 })
+
+        expect(tracker.character as unknown[]).toEqual([7, 8])
+        expect(schedule).toHaveBeenCalledTimes(2)
+    })
+
+    test('an unusable id marks no character but still schedules once', () => {
+        const tracker = makeTracker(['front'])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        markDbWrite({ kind: 'placed', id: undefined })
+        markDbWrite({ kind: 'owner', id: '' })
+        markDbWrite({ kind: 'owner', id: Number.NaN })
+
+        expect(tracker.character).toEqual(['front'])
+        expect(schedule).toHaveBeenCalledTimes(3)
+    })
+
+    test('a numeric 0 or -0 id marks no character but still schedules once each', () => {
+        const tracker = makeTracker(['front'])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        markDbWrite({ kind: 'owner', id: 0 })
+        markDbWrite({ kind: 'placed', id: -0 })
+        markDbWrite({ kind: 'fallback', cause: 'error', id: 0 })
+
+        expect(tracker.character).toEqual(['front'])
+        expect(schedule).toHaveBeenCalledTimes(3)
+    })
+
+    test('a reserved string id is a legal store2 handle: it is appended, as markCharacterForSave appends it', () => {
+        const tracker = makeTracker(['front'])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        markDbWrite({ kind: 'fallback', cause: 'error', id: 'config' })
+
+        expect(tracker.character).toEqual(['front', 'config'])
+        expect(schedule).toHaveBeenCalledTimes(1)
+    })
+
+    test('an oversized string id is a legal store2 handle: it is appended, as markCharacterForSave appends it', () => {
+        const tracker = makeTracker(['front'])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+        const oversized = 'x'.repeat(300)
+
+        markDbWrite({ kind: 'owner', id: oversized })
+
+        expect(tracker.character).toEqual(['front', oversized])
+        expect(schedule).toHaveBeenCalledTimes(1)
+    })
+
+    test('a malformed string id (a lone surrogate) is a legal store2 handle: it is appended, as markCharacterForSave appends it', () => {
+        const tracker = makeTracker(['front'])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+        const malformed = 'a\uD800b'
+
+        markDbWrite({ kind: 'placed', id: malformed })
+
+        expect(tracker.character).toEqual(['front', malformed])
+        expect(schedule).toHaveBeenCalledTimes(1)
+    })
+
+    test('markCharacterForSave and markDbWrite accept and refuse the same ids', () => {
+        const ids: unknown[] = ['config', 'x'.repeat(300), 'a\uD800b', 'a', 7, 0, -0, Number.NaN, Infinity, '', undefined, null, {}]
+        for (const id of ids) {
+            const viaApi = makeTracker([])
+            installCharacterSaveMarks({ tracker: viaApi, schedule: vi.fn() })
+            markCharacterForSave(id)
+            const viaHook = makeTracker([])
+            installCharacterSaveMarks({ tracker: viaHook, schedule: vi.fn() })
+            markDbWrite({ kind: 'placed', id })
+            expect(viaHook.character, String(id)).toEqual(viaApi.character)
+        }
+    })
+
+    test('an id already present is not appended twice, and the front stays the front', () => {
+        const tracker = makeTracker(['front', 'b'])
+        installCharacterSaveMarks({ tracker, schedule: vi.fn() })
+
+        markDbWrite({ kind: 'owner', id: 'b' })
+        markDbWrite({ kind: 'owner', id: 'c' })
+
+        expect(tracker.character).toEqual(['front', 'b', 'c'])
+    })
+
+    test.each([
+        ['botPresets', 'botPreset'],
+        ['botPresetsId', 'botPreset'],
+        ['modules', 'modules'],
+        ['loadouts', 'loadouts'],
+        ['plugins', 'plugins'],
+        ['pluginCustomStorage', 'pluginCustomStorage'],
+    ] as const)('a write under db.%s sets the %s flag', (key, flag) => {
+        const tracker = makeTracker([])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        markDbWrite({ kind: 'setting', key })
+
+        expect(tracker[flag]).toBe(true)
+        expect(schedule).toHaveBeenCalledTimes(1)
+    })
+
+    test('a write under any other db key sets no flag (the root block is encoded by every pass) and schedules', () => {
+        const tracker = makeTracker([])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        markDbWrite({ kind: 'setting', key: 'theme' })
+
+        expect([tracker.botPreset, tracker.modules, tracker.loadouts, tracker.plugins, tracker.pluginCustomStorage]).toEqual([false, false, false, false, false])
+        expect(schedule).toHaveBeenCalledTimes(1)
+    })
+
+    test('replacing db marks every settings block; other root writes only schedule', () => {
+        const tracker = makeTracker([])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        markDbWrite({ kind: 'root', prop: 'other' })
+        expect([tracker.botPreset, tracker.modules, tracker.loadouts, tracker.plugins, tracker.pluginCustomStorage]).toEqual([false, false, false, false, false])
+
+        markDbWrite({ kind: 'root', prop: 'db' })
+        expect([tracker.botPreset, tracker.modules, tracker.loadouts, tracker.plugins, tracker.pluginCustomStorage]).toEqual([true, true, true, true, true])
+        expect(schedule).toHaveBeenCalledTimes(2)
+    })
+
+    test('list shape, whole-list and fallback marks schedule; a fallback appends the selected id when it is usable', () => {
+        const tracker = makeTracker([])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        markDbWrite({ kind: 'listShape', prop: '1' })
+        markDbWrite({ kind: 'listWhole' })
+        markDbWrite({ kind: 'fallback', cause: 'noCharId' })
+        expect(tracker.character).toEqual([])
+        markDbWrite({ kind: 'fallback', cause: 'error', id: 'selected' })
+
+        expect(tracker.character).toEqual(['selected'])
+        expect(schedule).toHaveBeenCalledTimes(4)
+    })
+
+    test('before the first install nothing is applied and nothing is queued (the base page has no marks then either)', () => {
+        markDbWrite({ kind: 'owner', id: 'early' })
+        markDbWrite({ kind: 'setting', key: 'modules' })
+        const tracker = makeTracker([])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        expect(tracker.character).toEqual([])
+        expect(tracker.modules).toBe(false)
+        expect(schedule).not.toHaveBeenCalled()
+    })
+
+    test('after an install, a mark made while nothing is installed is queued and drained by the next install', () => {
+        installCharacterSaveMarks({ tracker: makeTracker([]), schedule: vi.fn() })
+        uninstallCharacterSaveMarks()
+
+        markDbWrite({ kind: 'owner', id: 'late' })
+        markDbWrite({ kind: 'setting', key: 'plugins' })
+        const tracker = makeTracker(['front'])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        expect(tracker.character).toEqual(['front', 'late'])
+        expect(tracker.plugins).toBe(true)
+        expect(schedule).toHaveBeenCalledTimes(1)
     })
 })

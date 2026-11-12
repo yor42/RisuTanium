@@ -1,14 +1,20 @@
 import { svelte } from "@sveltejs/vite-plugin-svelte"
 import { configDefaults, defineConfig } from 'vitest/config'
+import { svelteProxyPatch } from './patches/svelte-5.57.3/plugin.mjs'
 
 export default defineConfig({
   plugins: [
+    svelteProxyPatch(),
     svelte({
       compilerOptions: {
         experimental: {
           // Off in this fork: matches vite.config.ts so tests run the shipped scheduler (the async scheduler runs $effect.pre after block updates).
           async: false
         }
+      },
+      // Only *.asyncFixture.svelte files compile with the async scheduler, so a test can observe a pending markup await.
+      dynamicCompileOptions({ filename }) {
+        if (filename.endsWith('.asyncFixture.svelte')) return { experimental: { async: true } }
       }
     }),
   ],
