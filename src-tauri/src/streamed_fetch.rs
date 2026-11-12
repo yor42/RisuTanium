@@ -60,6 +60,9 @@ pub fn stream_tags(chat_stop: Option<bool>, chat_target: Option<ChatTarget>) -> 
 struct LiveEntry {
     serial: u64,
     handle: AbortHandle,
+    // Read only by the Android keep-alive Stop (`cancel_chat`) and the tests; every
+    // target still stores it so a registration keeps its marks.
+    #[cfg_attr(not(any(target_os = "android", test)), allow(dead_code))]
     tags: StreamTags,
 }
 
@@ -178,6 +181,7 @@ impl FetchRegistry {
     /// set is a subset of what the page Stop also aborts). It writes no
     /// tombstone and only aborts handles: a cancelled request ends in
     /// `run_registered`'s aborted branch, which owns the request and its tags.
+    #[cfg(any(target_os = "android", test))]
     pub fn cancel_chat(&self) -> usize {
         let mut state = self.lock();
         let ids: Vec<String> = state
@@ -463,6 +467,7 @@ pub fn process_registry() -> FetchRegistry {
 
 /// Cancels the chat's tagged requests in the process registry. It returns 0
 /// when the registry was never created, so it never creates one.
+#[cfg(any(target_os = "android", test))]
 pub fn cancel_process_chat_streams() -> usize {
     match PROCESS_REGISTRY.get() {
         Some(registry) => registry.cancel_chat(),
