@@ -60,6 +60,11 @@ describe('swipe feedback CSS', () => {
         expect(style).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ :global\(html:not\(\.rm-off\)\) \[data-part="chat-long-press-ring"\]/)
     })
 
+    test('an armed meter turns the accent colour', () => {
+        const armed = feedback.find((rule) => rule.selector === '[data-part="chat-swipe-meter"][data-armed]')!
+        expect(armed.body).toContain('color: var(--nexus-accent)')
+    })
+
     test('the peek is a cue only: it never takes pointer input', () => {
         const peek = feedback.find((rule) => rule.selector === '[data-part="chat-swipe-peek"]')!
         expect(peek.body).toContain('pointer-events: none')
