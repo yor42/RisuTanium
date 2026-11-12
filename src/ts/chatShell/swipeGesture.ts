@@ -5,10 +5,18 @@ export const SWIPE_COMMIT_FRACTION = 0.3
 export const SWIPE_FLING_PX_MS = 0.5
 // The release velocity runs from an anchor to the lift. The anchor is the newest sample at or before this window prior to the lift, so the span covers the window even when moves are sparse and the last one sits at the lift's position; a drag shorter than the window is anchored on its down sample. Samples are added only on a move, so a finger that rested longer than the window leaves an anchor at the lift's position and has velocity 0.
 export const SWIPE_VELOCITY_WINDOW_MS = 80
+// A stream with an event interval of a frame or two puts the anchor just before the window start, and the true span reads the finger. An anchor older than the window start by more than this lag means no event arrived across the window start: the finger reported no move there, so it counts as resting at the anchor until the window start and the release speed is measured over the window alone. Consequence: a rest followed by a short fast flick reads the flick, not the rest averaged into it; a finger moving uniformly through an event hole longer than this lag reads fast.
+export const SWIPE_REST_LAG_MS = 34
 const SWIPE_SAMPLE_LIMIT = 64
 export const ARM_DISTANCE_DP = 160
 export const ARM_HOLD_MS = 300
 export const ARM_STILL_PX_MS = 0.15
+// A move resets the hold only if it is at least ARM_STILL_PX_MS fast and also longer than ARM_TREMOR_PX, at least ARM_TREMOR_PX_MS fast, or ends more than ARM_CREEP_PX from where the hold began. Small slow steps are tremor, but the net bound keeps a steady slow creep from arming: the decelerating end of a deliberate pull drifts less than the bound within one hold, so the cue can arm during creep slower than ARM_CREEP_PX per ARM_HOLD_MS.
+export const ARM_TREMOR_PX = 4
+export const ARM_TREMOR_PX_MS = 0.3
+export const ARM_CREEP_PX = 56
+// Once the pull has reached ARM_DISTANCE_DP it stays in the hold zone until it drops under ARM_DISTANCE_DP - ARM_SLACK_DP, so a wobble around the arm distance neither disarms nor restarts the fill; entry stays at ARM_DISTANCE_DP.
+export const ARM_SLACK_DP = 8
 export const WHEEL_DISTANCE_PX = 40
 export const RUBBER_BAND_PX = 24
 export const WHEEL_GAP_MS = 160
@@ -25,6 +33,8 @@ export function createSwipeGesture(options: SwipeOptions) {
     let axis: 'pending' | 'horizontal' | 'vertical' = 'pending'
     let armed = false
     let holdStart: number | null = null
+    let holdX: number | null = null
+    let zone = false
     let progress = 0
     let samples: PointerSample[] = []
     const scale = options.dpPerPx > 0 ? options.dpPerPx : 1
@@ -37,8 +47,15 @@ export function createSwipeGesture(options: SwipeOptions) {
         axis = 'pending'
         armed = false
         holdStart = null
+        holdX = null
+        zone = false
         progress = 0
         samples = []
+    }
+
+    // The arm cue, the hold timer and the release all measure the pull against this one floor.
+    function floorDp(): number {
+        return zone ? ARM_DISTANCE_DP - ARM_SLACK_DP : ARM_DISTANCE_DP
     }
 
     // A pull past the last alternative can only generate on a row that owns the newest reply.
@@ -67,6 +84,7 @@ export function createSwipeGesture(options: SwipeOptions) {
         const dy = sample.y - start.y
         const elapsed = sample.time - previous.time
         const velocity = elapsed > 0 ? (sample.x - previous.x) / elapsed : 0
+        const step = sample.x - previous.x
         previous = sample
         record(sample)
         if (axis === 'pending' && (Math.abs(dx) > SWIPE_SLOP_PX || Math.abs(dy) > SWIPE_SLOP_PX)) {
@@ -76,20 +94,27 @@ export function createSwipeGesture(options: SwipeOptions) {
         if (!reachesEnd(dx)) {
             armed = false
             holdStart = null
+            holdX = null
+            zone = false
             progress = 0
             return result()
         }
         const distanceDp = -dx * scale
-        if (distanceDp < ARM_DISTANCE_DP) {
+        if (distanceDp < floorDp()) {
             armed = false
             holdStart = null
+            holdX = null
+            zone = false
             progress = Math.max(0, 0.7 * distanceDp / ARM_DISTANCE_DP)
             return result()
         }
+        zone = true
         // Once armed, jitter of the finger cannot lower the cue: the release generates exactly as the armed cue says.
         if (armed) { progress = 1; return result() }
-        if (Math.abs(velocity) >= ARM_STILL_PX_MS) holdStart = null
-        else if (holdStart === null) holdStart = sample.time
+        const speed = Math.abs(velocity)
+        const tremor = Math.abs(step) <= ARM_TREMOR_PX && speed < ARM_TREMOR_PX_MS && (holdX === null || Math.abs(sample.x - holdX) <= ARM_CREEP_PX)
+        if (speed >= ARM_STILL_PX_MS && !tremor) { holdStart = null; holdX = null }
+        else if (holdStart === null) { holdStart = sample.time; holdX = sample.x }
         progress = 0.7 + (holdStart === null ? 0 : 0.3 * Math.min(1, (sample.time - holdStart) / ARM_HOLD_MS))
         if (!armed && holdStart !== null && sample.time - holdStart >= ARM_HOLD_MS) {
             armed = true
@@ -103,8 +128,8 @@ export function createSwipeGesture(options: SwipeOptions) {
     function tick(now: number): SwipeResult {
         if (!start || !previous || axis !== 'horizontal' || armed) return result()
         const dx = previous.x - start.x
-        if (!reachesEnd(dx) || -dx * scale < ARM_DISTANCE_DP) return result()
-        if (holdStart === null) holdStart = previous.time
+        if (!zone || !reachesEnd(dx) || -dx * scale < floorDp()) return result()
+        if (holdStart === null) { holdStart = previous.time; holdX = previous.x }
         // A still finger sends no events, so the hold is recorded at its position: a release after the hold is measured from the hold, not averaged over it.
         if (now > samples[samples.length - 1].time) record({ x: previous.x, y: previous.y, time: now })
         progress = 0.7 + 0.3 * Math.min(1, Math.max(0, now - holdStart) / ARM_HOLD_MS)
@@ -122,8 +147,12 @@ export function createSwipeGesture(options: SwipeOptions) {
         let anchor = samples[0]
         for (const moved of samples) if (moved.time <= sample.time - SWIPE_VELOCITY_WINDOW_MS) anchor = moved
         const elapsed = sample.time - anchor.time
-        const velocity = elapsed > 0 ? (sample.x - anchor.x) / elapsed : 0
-        const canGenerate = armed && dx < 0 && -dx * scale >= ARM_DISTANCE_DP && Math.abs(velocity) <= SWIPE_FLING_PX_MS
+        // An anchor older than the window start by more than the rest lag means the finger reported no move across the window start, so it counts as resting at the anchor until then and the span is the window; otherwise the true span is used.
+        const lag = sample.time - SWIPE_VELOCITY_WINDOW_MS - anchor.time
+        const span = lag > SWIPE_REST_LAG_MS ? SWIPE_VELOCITY_WINDOW_MS : elapsed
+        const velocity = elapsed > 0 ? (sample.x - anchor.x) / span : 0
+        // The release matches the armed cue, which holds down to the slack floor.
+        const canGenerate = armed && dx < 0 && -dx * scale >= ARM_DISTANCE_DP - ARM_SLACK_DP && Math.abs(velocity) <= SWIPE_FLING_PX_MS
         let event: SwipeEvent = 'none'
         if (canGenerate) event = 'generate'
         else if (!options.streaming && (Math.abs(dx) > options.widthPx * SWIPE_COMMIT_FRACTION || Math.abs(velocity) > SWIPE_FLING_PX_MS && Math.sign(velocity) === Math.sign(dx))) {

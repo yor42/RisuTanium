@@ -7,6 +7,13 @@ const stepSibling = vi.hoisted(() => vi.fn())
 const regenerateNewest = vi.hoisted(() => vi.fn())
 const tickHaptic = vi.hoisted(() => vi.fn())
 const hostInset = vi.hoisted(() => ({ value: 0 as unknown }))
+const editorFlags = vi.hoisted(() => ({ editMode: false, editTranslationMode: false }))
+const createSwipeGesture = vi.hoisted(() => vi.fn())
+vi.mock('../../ts/chatShell/swipeGesture', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../../ts/chatShell/swipeGesture')>()
+    createSwipeGesture.mockImplementation(actual.createSwipeGesture)
+    return { ...actual, createSwipeGesture }
+})
 vi.mock('../../ts/stores.svelte', async () => {
     const { writable } = await import('svelte/store')
     const DBState = $state({ db: { characters: [{ chaId: 'c', chatPage: 0, chats: [{ id: 'room', message: [] as Message[] }] }], translator: '', swipe: true } })
@@ -36,7 +43,7 @@ vi.mock('../../ts/process/messageActions.svelte', () => ({
     branchMessage: vi.fn(), toggleMessageDisabled: vi.fn(), toggleBookmark: vi.fn(),
 }))
 vi.mock('../../ts/process/messageEditorController.svelte', () => ({ createMessageEditorController: () => ({
-    editMode: false, editTranslationMode: false, discardConfirmOpen: false, translationViewControlsDisabled: false,
+    get editMode() { return editorFlags.editMode }, get editTranslationMode() { return editorFlags.editTranslationMode }, discardConfirmOpen: false, translationViewControlsDisabled: false,
     translationEditControlDisabled: false, originalEditControlDisabled: false, dispose: () => {},
 }) }))
 vi.mock('../ChatScreens/PartialEditController.svelte', () => ({ default: () => ({}) }))
@@ -63,7 +70,7 @@ let target: HTMLElement
 let app: ReturnType<typeof ShellMessage> | undefined
 let body: HTMLElement
 
-interface Options { role?: Message['role']; index?: number; count?: number; streaming?: boolean; busy?: boolean; continuation?: number; tree?: { index: number, count: number }; stepRow?: (idx: number, step: () => Promise<void> | void) => Promise<void> }
+interface Options { role?: Message['role']; index?: number; count?: number; streaming?: boolean; busy?: boolean; continuation?: number; tree?: { index: number, count: number }; stepRow?: (idx: number, step: () => Promise<void> | void) => Promise<void>; onOpenActions?: (request: { opener: HTMLElement | null }) => void }
 function show(options: Options = {}) {
     const message: Message = { role: options.role ?? 'char', data: 'Reply', chatId: 'm' }
     DBState.db.characters[0].chats[0].message = [message]
@@ -71,14 +78,14 @@ function show(options: Options = {}) {
     document.body.appendChild(target)
     const index = options.index ?? 2
     const count = options.count ?? 2
-    app = mount(ShellMessage, { target, props: { idx: 0, chatId: 'm', name: 'Ari', message: DBState.db.characters[0].chats[0].message[0], streaming: options.streaming ?? false, getBusy: () => options.busy ?? false, stepRow: options.stepRow, getTreeView: () => ({ at: () => (options.tree ? { index: options.tree.index, count: options.tree.count } : { index, count }), continuation: options.continuation ?? 0 }) } })
+    app = mount(ShellMessage, { target, props: { idx: 0, chatId: 'm', name: 'Ari', message: DBState.db.characters[0].chats[0].message[0], streaming: options.streaming ?? false, getBusy: () => options.busy ?? false, stepRow: options.stepRow, onOpenActions: options.onOpenActions, getTreeView: () => ({ at: () => (options.tree ? { index: options.tree.index, count: options.tree.count } : { index, count }), continuation: options.continuation ?? 0 }) } })
     flushSync()
     body = target.querySelector<HTMLElement>('[data-part="chat-message-body"]')!
     Object.defineProperty(body, 'clientWidth', { value: 300 })
 }
-function pointer(kind: string, x: number, time: number, on: Element = body, y = 100) {
+function pointer(kind: string, x: number, time: number, on: Element = body, y = 100, pointerType = 'touch') {
     const event = new MouseEvent(kind, { bubbles: true, clientX: x, clientY: y })
-    Object.defineProperties(event, { pointerType: { value: 'touch' }, timeStamp: { value: time }, pointerId: { value: 1 } })
+    Object.defineProperties(event, { pointerType: { value: pointerType }, timeStamp: { value: time }, pointerId: { value: 1 } })
     on.dispatchEvent(event)
     flushSync()
 }
@@ -88,6 +95,7 @@ function dragged(): number {
 }
 beforeEach(() => {
     hostInset.value = 0
+    editorFlags.editMode = false; editorFlags.editTranslationMode = false
     Object.defineProperty(window, 'innerWidth', { value: WIDTH, configurable: true })
 })
 afterEach(async () => {
@@ -95,7 +103,7 @@ afterEach(async () => {
     if (app) await unmount(app)
     app = undefined
     target?.remove()
-    stepSibling.mockClear(); regenerateNewest.mockClear(); tickHaptic.mockClear()
+    stepSibling.mockClear(); regenerateNewest.mockClear(); tickHaptic.mockClear(); createSwipeGesture.mockClear()
 })
 
 describe('C1 the pull arms from the hold timer', () => {
@@ -776,5 +784,580 @@ describe('CHORE-727 swipe feedback: peek, slide-out, meter and long-press ring',
         expect(ring.style.top).toBe('80px')
         expect(ring.parentElement).toBe(stageEl())
         expect(ring.textContent).toBe('')
+    })
+})
+
+describe('MC-1571 the swipe starts anywhere on the message except on interactive descendants', () => {
+    function article(): HTMLElement { return target.querySelector<HTMLElement>('article')! }
+    function part(selector: string): HTMLElement { return target.querySelector<HTMLElement>(selector)! }
+    // A pull toward the previous reply by 0.4 of the body width, started on `on`.
+    function pullFrom(on: Element, pointerType = 'touch'): void {
+        pointer('pointerdown', 400, 0, on, 100, pointerType)
+        pointer('pointermove', 520, 100, on, 100, pointerType)
+    }
+    function inBody<T extends HTMLElement>(node: T): T {
+        body.append(node)
+        return node
+    }
+    function withAttributes(node: HTMLElement, attributes: Record<string, string>): HTMLElement {
+        for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value)
+        return node
+    }
+
+    // REGRESSION REPRODUCER (T-BA-START): before the move, only the body listened, so these starts dragged nothing.
+    test.each([
+        ['the article padding', () => article()],
+        ['the name row', () => part('[data-part="chat-message-name-row"]')],
+        ['the name', () => part('[data-part="chat-message-name"]')],
+        ['the avatar', () => part('[data-part="chat-message-avatar"]')],
+    ])('a touch drag that starts on %s drags the body and takes the step', async (_name, pick) => {
+        vi.useFakeTimers()
+        show({ index: 2, count: 3 })
+        await Promise.resolve()
+        flushSync()
+        const start = pick()
+        expect(start).not.toBeNull()
+        pullFrom(start)
+        expect(dragged()).toBeGreaterThan(0)
+        pointer('pointerup', 520, 200, start)
+        vi.advanceTimersByTime(260)
+        expect(stepSibling).toHaveBeenCalledTimes(1)
+        expect(stepSibling).toHaveBeenCalledWith(expect.anything(), 0, 'm', 'back', { generate: false })
+    })
+    // REGRESSION REPRODUCER (T-BA-START, pen variant)
+    test('a pen drag that starts on the name row drags the body and takes the step', () => {
+        vi.useFakeTimers()
+        show({ index: 2, count: 3 })
+        const row = part('[data-part="chat-message-name-row"]')
+        pullFrom(row, 'pen')
+        expect(dragged()).toBeGreaterThan(0)
+        pointer('pointerup', 520, 200, row, 100, 'pen')
+        vi.advanceTimersByTime(260)
+        expect(stepSibling).toHaveBeenCalledTimes(1)
+    })
+    // COMPATIBILITY GUARD (G-BA-MOUSE): passes before and after.
+    test('a mouse press starts nothing, on the name row or on the body: no drag, no ring, no long press', () => {
+        vi.useFakeTimers()
+        const onOpenActions = vi.fn<(request: { opener: HTMLElement | null }) => void>()
+        show({ index: 2, count: 3, onOpenActions })
+        for (const on of [part('[data-part="chat-message-name-row"]'), body]) {
+            pullFrom(on, 'mouse')
+            expect(dragged()).toBe(0)
+            vi.advanceTimersByTime(600)
+            flushSync()
+            expect(target.querySelector('[data-part="chat-long-press-ring"]')).toBeNull()
+            pointer('pointerup', 520, 700, on, 100, 'mouse')
+        }
+        expect(onOpenActions).not.toHaveBeenCalled()
+        expect(createSwipeGesture).not.toHaveBeenCalled()
+    })
+    // GUARD (single listener set): a pointer event that bubbles from the body or the name row is handled once.
+    test('each touch creates one gesture and every pointer event is handled once', () => {
+        show({ index: 2, count: 3 })
+        pointer('pointerdown', 400, 0)
+        expect(createSwipeGesture).toHaveBeenCalledTimes(1)
+        pointer('pointermove', 380, 20)
+        pointer('pointerup', 380, 40)
+        pointer('pointerdown', 400, 100, part('[data-part="chat-message-name-row"]'))
+        expect(createSwipeGesture).toHaveBeenCalledTimes(2)
+    })
+
+    // REGRESSION REPRODUCER (T-BA-EXCL-NEW): the earlier exclusion list missed these kinds, so each one started a drag.
+    const ROLES = ['button', 'link', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'slider', 'scrollbar', 'tab', 'checkbox', 'radio', 'switch', 'option', 'combobox', 'textbox', 'spinbutton']
+    const NEW_KINDS: [string, () => HTMLElement][] = [
+        ['select', () => inBody(document.createElement('select'))],
+        ['summary in details', () => {
+            const details = inBody(document.createElement('details'))
+            const summary = document.createElement('summary')
+            details.append(summary)
+            return summary
+        }],
+        ['label', () => inBody(document.createElement('label'))],
+        ['audio with controls', () => inBody(withAttributes(document.createElement('audio'), { controls: '' }))],
+        ['video with controls', () => inBody(withAttributes(document.createElement('video'), { controls: '' }))],
+        ...ROLES.map((role): [string, () => HTMLElement] => [`role ${role}`, () => inBody(withAttributes(document.createElement('div'), { role }))]),
+    ]
+    test.each(NEW_KINDS)('no swipe starts on %s', (_name, make) => {
+        show({ index: 2, count: 3 })
+        const node = make()
+        pullFrom(node)
+        expect(dragged()).toBe(0)
+        pointer('pointerup', 520, 200, node)
+        expect(stepSibling).not.toHaveBeenCalled()
+    })
+    // COMPATIBILITY GUARD (G-BA-EXCL-OLD): passes before and after; the pager counter and the end row are covered by their own parts.
+    test.each([
+        ['a link', () => inBody(withAttributes(document.createElement('a'), { href: '#somewhere' }))],
+        ['a button', () => inBody(document.createElement('button'))],
+        ['an input', () => inBody(document.createElement('input'))],
+        ['a textarea', () => inBody(document.createElement('textarea'))],
+        ['a contenteditable block', () => inBody(withAttributes(document.createElement('div'), { contenteditable: 'true' }))],
+    ] as [string, () => HTMLElement][])('no swipe starts on %s', (_name, make) => {
+        show({ index: 2, count: 3 })
+        const node = make()
+        pullFrom(node)
+        expect(dragged()).toBe(0)
+        pointer('pointerup', 520, 200, node)
+        expect(stepSibling).not.toHaveBeenCalled()
+    })
+    test('no swipe starts on the pager counter, on the pager buttons or inside the end row', () => {
+        show({ index: 2, count: 3, continuation: 1 })
+        const counter = part('[data-part="chat-message-alts"] span[aria-live]')
+        const endChild = document.createElement('span')
+        part('[data-part="chat-message-end"]').append(endChild)
+        for (const node of [counter, part('[data-step="next"]'), part('[data-part="chat-message-end"]'), part('[data-action="endControl"]'), endChild]) {
+            pullFrom(node)
+            expect(dragged()).toBe(0)
+            pointer('pointerup', 520, 200, node)
+        }
+        expect(stepSibling).not.toHaveBeenCalled()
+    })
+    // COMPATIBILITY GUARD (G-BA-SCROLL): body starts keep the sideways-scroller rule; a start outside the body never looks at the elements above the article.
+    test('a start on the name row ignores a scrollable ancestor above the article', () => {
+        show({ index: 2, count: 3 })
+        Object.defineProperties(target, { scrollWidth: { value: 600 }, clientWidth: { value: 200 } })
+        pullFrom(part('[data-part="chat-message-name-row"]'))
+        expect(dragged()).toBeGreaterThan(0)
+    })
+
+    // COMPATIBILITY GUARD (G-BA-ANCESTOR): an interactive ancestor above the article is not a control inside the message and never blocks the start.
+    test('a start is allowed when an interactive ancestor sits above the article', () => {
+        show({ index: 2, count: 3 })
+        target.setAttribute('role', 'button')
+        pullFrom(part('[data-part="chat-message-name-row"]'))
+        expect(dragged()).toBeGreaterThan(0)
+    })
+
+    // REGRESSION REPRODUCER (T-BA-EDIT): the editors replace the body, so the chrome around them must not start a reply swipe.
+    describe.each([
+        ['the message editor', 'editMode'],
+        ['the translation editor', 'editTranslationMode'],
+    ] as const)('%s is open', (_name, flag) => {
+        function editorChrome(): HTMLElement {
+            const controls = document.createElement('div')
+            controls.setAttribute('data-part', 'chat-message-editor-controls')
+            article().append(controls)
+            return controls
+        }
+        test('a touch drag that starts on the editor controls strip drags nothing and takes no step', () => {
+            vi.useFakeTimers()
+            show({ index: 2, count: 3 })
+            editorFlags[flag] = true
+            const controls = editorChrome()
+            pullFrom(controls)
+            expect(dragged()).toBe(0)
+            pointer('pointerup', 520, 200, controls)
+            vi.advanceTimersByTime(260)
+            expect(stepSibling).not.toHaveBeenCalled()
+            expect(createSwipeGesture).not.toHaveBeenCalled()
+        })
+        // COMPATIBILITY GUARD (G-BA-EDIT-OFF): with the editor closed the same start is still handled.
+        test('with the editor closed a drag from the name row is handled', () => {
+            vi.useFakeTimers()
+            show({ index: 2, count: 3 })
+            const row = part('[data-part="chat-message-name-row"]')
+            pullFrom(row)
+            expect(dragged()).toBeGreaterThan(0)
+            pointer('pointerup', 520, 200, row)
+            vi.advanceTimersByTime(260)
+            expect(stepSibling).toHaveBeenCalledTimes(1)
+        })
+        // GUARD (T-BA-BUSY-DOWN): the busy predicate alone stops a press on an allowed part.
+        test('a press on the name row while the editor is open starts nothing', () => {
+            vi.useFakeTimers()
+            show({ index: 2, count: 3 })
+            editorFlags[flag] = true
+            const row = part('[data-part="chat-message-name-row"]')
+            pullFrom(row)
+            expect(dragged()).toBe(0)
+            pointer('pointerup', 520, 200, row)
+            expect(createSwipeGesture).not.toHaveBeenCalled()
+            expect(stepSibling).not.toHaveBeenCalled()
+        })
+        // REGRESSION REPRODUCER (T-BA-OPEN-MID): the editor opens while a gesture is already down; the release must not step the row.
+        test('an editor that opens after the press cancels the gesture: no drag on move, no step on release', () => {
+            vi.useFakeTimers()
+            show({ index: 2, count: 3 })
+            const row = part('[data-part="chat-message-name-row"]')
+            pointer('pointerdown', 400, 0, row)
+            editorFlags[flag] = true
+            pointer('pointermove', 520, 100, row)
+            expect(dragged()).toBe(0)
+            expect(target.querySelector('[data-part="chat-long-press-ring"]')).toBeNull()
+            pointer('pointerup', 520, 200, row)
+            vi.advanceTimersByTime(260)
+            expect(stepSibling).not.toHaveBeenCalled()
+        })
+        test('an editor that opens after the move cancels the release: no step', () => {
+            vi.useFakeTimers()
+            show({ index: 2, count: 3 })
+            const row = part('[data-part="chat-message-name-row"]')
+            pullFrom(row)
+            expect(dragged()).toBeGreaterThan(0)
+            editorFlags[flag] = true
+            pointer('pointerup', 520, 200, row)
+            vi.advanceTimersByTime(260)
+            expect(stepSibling).not.toHaveBeenCalled()
+            expect(dragged()).toBe(0)
+        })
+    })
+
+    // The fail-closed start area: only the row's own parts start a swipe.
+    describe('the start area is an allow list', () => {
+        function appendToArticle(markup: string): HTMLElement {
+            const holder = document.createElement('div')
+            holder.innerHTML = markup
+            const node = holder.firstElementChild as HTMLElement
+            article().append(node)
+            return node
+        }
+        // REGRESSION REPRODUCER (T-BA-PARTIAL-MODAL): the partial-edit modal renders inside the article; a start on it must not swipe or step the row.
+        test.each([
+            ['the modal header', '.partial-edit-header'],
+            ['the modal', '.partial-edit-modal'],
+            ['the backdrop', '.partial-edit-overlay'],
+        ])('a drag that starts on %s starts nothing', async (_name, selector) => {
+            vi.useFakeTimers()
+            Object.assign(DBState.db, { enableBlockPartialEdit: true })
+            try {
+                show({ index: 2, count: 3 })
+                const overlay = appendToArticle('<div class="partial-edit-overlay"><div class="partial-edit-modal"><div class="partial-edit-header">Edit</div></div></div>')
+                await Promise.resolve()
+                const on = overlay.matches(selector) ? overlay : overlay.querySelector<HTMLElement>(selector)!
+                pullFrom(on)
+                expect(dragged()).toBe(0)
+                pointer('pointerup', 520, 200, on)
+                vi.advanceTimersByTime(260)
+                expect(stepSibling).not.toHaveBeenCalled()
+                expect(createSwipeGesture).not.toHaveBeenCalled()
+            } finally { Reflect.deleteProperty(DBState.db, 'enableBlockPartialEdit') }
+        })
+        // GUARD (T-BA-BUSY-DOWN): with the modal open, a press on an allowed part starts nothing either.
+        test('a press on the name row while a partial-edit modal is open starts nothing', async () => {
+            vi.useFakeTimers()
+            Object.assign(DBState.db, { enableBlockPartialEdit: true })
+            try {
+                show({ index: 2, count: 3 })
+                appendToArticle('<div class="partial-edit-overlay"></div>')
+                await Promise.resolve()
+                const row = part('[data-part="chat-message-name-row"]')
+                pullFrom(row)
+                expect(dragged()).toBe(0)
+                pointer('pointerup', 520, 200, row)
+                expect(createSwipeGesture).not.toHaveBeenCalled()
+                expect(stepSibling).not.toHaveBeenCalled()
+            } finally { Reflect.deleteProperty(DBState.db, 'enableBlockPartialEdit') }
+        })
+        // REGRESSION REPRODUCER (T-BA-PARTIAL-MID): the modal opens while a gesture is already down; the busy predicate cancels it at move and at release.
+        test('a partial-edit modal that opens after the press cancels the gesture: no drag, no step', async () => {
+            vi.useFakeTimers()
+            Object.assign(DBState.db, { enableBlockPartialEdit: true })
+            try {
+                show({ index: 2, count: 3 })
+                const row = part('[data-part="chat-message-name-row"]')
+                pointer('pointerdown', 400, 0, row)
+                appendToArticle('<div class="partial-edit-overlay"></div>')
+                await Promise.resolve()
+                pointer('pointermove', 520, 100, row)
+                expect(dragged()).toBe(0)
+                pointer('pointerup', 520, 200, row)
+                vi.advanceTimersByTime(260)
+                expect(stepSibling).not.toHaveBeenCalled()
+            } finally { Reflect.deleteProperty(DBState.db, 'enableBlockPartialEdit') }
+        })
+        test('a partial-edit modal that opens after the move cancels the release: no step', async () => {
+            vi.useFakeTimers()
+            Object.assign(DBState.db, { enableBlockPartialEdit: true })
+            try {
+                show({ index: 2, count: 3 })
+                const row = part('[data-part="chat-message-name-row"]')
+                pullFrom(row)
+                expect(dragged()).toBeGreaterThan(0)
+                appendToArticle('<div class="partial-edit-overlay"></div>')
+                await Promise.resolve()
+                pointer('pointerup', 520, 200, row)
+                vi.advanceTimersByTime(260)
+                expect(stepSibling).not.toHaveBeenCalled()
+            } finally { Reflect.deleteProperty(DBState.db, 'enableBlockPartialEdit') }
+        })
+        // REGRESSION REPRODUCER (T-BA-FAIL-CLOSED): a layer the row does not know about, with or without a part of its own, starts nothing.
+        test.each([
+            ['an unknown part', '<div data-part="some-future-overlay"><span>x</span></div>'],
+            ['a plain div with no part', '<div><span>x</span></div>'],
+            ['the editor controls strip', '<div data-part="chat-message-editor-controls"><span>x</span></div>'],
+        ])('a drag that starts on %s inside the article starts nothing', (_name, markup) => {
+            vi.useFakeTimers()
+            show({ index: 2, count: 3 })
+            const node = appendToArticle(markup)
+            for (const on of [node, node.firstElementChild!]) {
+                pullFrom(on)
+                expect(dragged()).toBe(0)
+                pointer('pointerup', 520, 200, on)
+            }
+            vi.advanceTimersByTime(260)
+            expect(stepSibling).not.toHaveBeenCalled()
+            expect(createSwipeGesture).not.toHaveBeenCalled()
+        })
+        // COMPATIBILITY GUARD (G-BA-OWN-PARTS): passes before and after; every part the row owns keeps starting the swipe.
+        test.each([
+            ['the message stage', '[data-part="chat-message-stage"]'],
+            ['the message body', '[data-part="chat-message-body"]'],
+            ['the meta group', '[data-part="chat-message-meta"]'],
+        ])('a drag that starts on %s takes the step', (_name, selector) => {
+            vi.useFakeTimers()
+            show({ index: 2, count: 3 })
+            const on = part(selector)
+            pullFrom(on)
+            expect(dragged()).toBeGreaterThan(0)
+            pointer('pointerup', 520, 200, on)
+            vi.advanceTimersByTime(260)
+            expect(stepSibling).toHaveBeenCalledTimes(1)
+        })
+        test.each([
+            'chat-message-name-row', 'chat-message-meta', 'chat-message-name', 'chat-message-avatar', 'chat-message-badges',
+            'chat-message-stage', 'chat-message-body', 'chat-streaming-view', 'chat-stream-finished', 'chat-stream-open', 'chat-stream-thinking',
+            'chat-swipe-peek', 'chat-swipe-peek-chip', 'chat-swipe-peek-text', 'chat-swipe-meter', 'chat-swipe-arm', 'chat-long-press-ring',
+            'chat-status-row', 'chat-message-delete-pending', 'chat-message-render-failed', 'chat-message-interrupted', 'chat-message-memory-limit', 'chat-message-divider',
+        ])('a drag that starts on the row part %s takes the step', (partName) => {
+            vi.useFakeTimers()
+            show({ index: 2, count: 3 })
+            const on = appendToArticle(`<span data-part="${partName}"></span>`)
+            pullFrom(on)
+            expect(dragged()).toBeGreaterThan(0)
+            pointer('pointerup', 520, 200, on)
+            vi.advanceTimersByTime(260)
+            expect(stepSibling).toHaveBeenCalledTimes(1)
+        })
+        // GUARD (MC-1601, MC-1602): the translation block and plain inline images or assets are rendered into the body as markup without a part of their own, so they belong to the body; a tap-to-open one is a link or button and stays excluded.
+        test.each([
+            ['the translation block', () => { const block = inBody(document.createElement('div')); const paragraph = document.createElement('p'); block.append(paragraph); return paragraph }],
+            ['a plain inline image', () => inBody(document.createElement('img'))],
+            ['an inlay image inside its wrapper', () => { const wrapper = inBody(document.createElement('div')); wrapper.className = 'risu-inlay-image'; const image = document.createElement('img'); wrapper.append(image); return image }],
+        ])('a drag that starts on %s inside the body takes the step', (_name, make) => {
+            vi.useFakeTimers()
+            show({ index: 2, count: 3 })
+            const on = make()
+            pullFrom(on)
+            expect(dragged()).toBeGreaterThan(0)
+            pointer('pointerup', 520, 200, on)
+            vi.advanceTimersByTime(260)
+            expect(stepSibling).toHaveBeenCalledTimes(1)
+        })
+        test.each([['a link', 'a'], ['a button', 'button']])('a drag that starts on an image wrapped in %s starts nothing', (_name, tag) => {
+            show({ index: 2, count: 3 })
+            const wrapper = inBody(document.createElement(tag))
+            const image = document.createElement('img')
+            wrapper.append(image)
+            pullFrom(image)
+            expect(dragged()).toBe(0)
+            pointer('pointerup', 520, 200, image)
+            expect(stepSibling).not.toHaveBeenCalled()
+        })
+        test('a drag that starts on plain content inside the body takes the step', () => {
+            vi.useFakeTimers()
+            show({ index: 2, count: 3 })
+            const on = inBody(document.createElement('p'))
+            pullFrom(on)
+            expect(dragged()).toBeGreaterThan(0)
+            pointer('pointerup', 520, 200, on)
+            vi.advanceTimersByTime(260)
+            expect(stepSibling).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    // REGRESSION REPRODUCER (T-BA-PANY)
+    test('the article asks for vertical panning only, like the body', () => {
+        show()
+        expect(article().getAttribute('style')).toContain('touch-action: pan-y')
+        expect(body.getAttribute('style')).toContain('touch-action: pan-y')
+    })
+    // REGRESSION REPRODUCER (T-BA-LONGPRESS)
+    test('a long press on the name row opens the actions once, with the body as the opener', () => {
+        vi.useFakeTimers()
+        const onOpenActions = vi.fn<(request: { opener: HTMLElement | null }) => void>()
+        show({ index: 2, count: 3, onOpenActions })
+        pointer('pointerdown', 400, 0, part('[data-part="chat-message-name-row"]'))
+        vi.advanceTimersByTime(499)
+        expect(onOpenActions).not.toHaveBeenCalled()
+        vi.advanceTimersByTime(1)
+        expect(onOpenActions).toHaveBeenCalledTimes(1)
+        expect(onOpenActions.mock.calls[0][0].opener).toBe(body)
+        vi.advanceTimersByTime(2000)
+        expect(onOpenActions).toHaveBeenCalledTimes(1)
+    })
+    // COMPATIBILITY GUARD (G-BA-LINK): passes before and after.
+    test('a tap on a link starts no drag and no long press, and the click is not prevented', () => {
+        vi.useFakeTimers()
+        const onOpenActions = vi.fn<(request: { opener: HTMLElement | null }) => void>()
+        show({ index: 2, count: 3, onOpenActions })
+        const link = inBody(withAttributes(document.createElement('a'), { href: '#somewhere' }))
+        pointer('pointerdown', 400, 0, link)
+        vi.advanceTimersByTime(200)
+        flushSync()
+        expect(target.querySelector('[data-part="chat-long-press-ring"]')).toBeNull()
+        pointer('pointerup', 400, 250, link)
+        const click = new MouseEvent('click', { bubbles: true, cancelable: true })
+        link.dispatchEvent(click)
+        expect(click.defaultPrevented).toBe(false)
+        vi.advanceTimersByTime(1000)
+        expect(onOpenActions).not.toHaveBeenCalled()
+        expect(dragged()).toBe(0)
+    })
+    // GUARD (single listener set): a pointer event that reaches the article through the body is handled once, so a fast fling past the arm distance never arms or generates.
+    test('a fast fling that starts on the body is handled once: no arm, no generate', () => {
+        vi.useFakeTimers()
+        show()
+        pointer('pointerdown', 400, 0)
+        pointer('pointermove', 0, 20)
+        pointer('pointerup', -40, 30)
+        vi.advanceTimersByTime(2000)
+        expect(regenerateNewest).not.toHaveBeenCalled()
+        expect(tickHaptic).not.toHaveBeenCalledWith('arm', 'touch', true)
+    })
+})
+
+describe('W2 the recorded rest-then-flick through the host', () => {
+    // Recorded touch pull: [ms after down, x, y]; row 0 is the pointerdown and the last row is the lift.
+    const PULL_327: [number, number, number][] = [
+        [0, 327.96, 317.92],
+        [41, 327.66, 317.71],
+        [91, 327.35, 317.71],
+        [141.2, 326.4, 317.82],
+        [174.5, 324.59, 318.23],
+        [191.3, 322.1, 318.75],
+        [208, 316.8, 320.1],
+        [224.8, 312.99, 320.81],
+        [241.4, 309.93, 321.64],
+        [258.1, 307.27, 322.26],
+        [274.7, 305.01, 323.08],
+        [291.5, 302.8, 323.49],
+        [308.1, 300.44, 324.22],
+        [324.9, 298.48, 324.73],
+        [341.6, 296.32, 325.25],
+        [358.2, 294.06, 325.66],
+        [374.9, 292, 326.28],
+        [391.6, 290.24, 326.8],
+        [408.3, 288.43, 327.11],
+        [425, 286.72, 327.52],
+        [441.7, 285.67, 327.62],
+        [458.5, 284.26, 327.93],
+        [475.2, 282.91, 328.35],
+        [491.8, 281.45, 328.76],
+        [508.6, 280.09, 329.07],
+        [525.2, 278.84, 329.38],
+        [542, 277.53, 329.59],
+        [558.6, 276.08, 329.79],
+        [575.3, 274.37, 330.2],
+        [592, 272.21, 330.62],
+        [608.8, 270.2, 330.93],
+        [625.5, 268.34, 331.03],
+        [642.2, 266.48, 331.24],
+        [658.9, 264.43, 331.44],
+        [675.6, 262.11, 331.65],
+        [692.3, 259.35, 331.96],
+        [708.9, 256.64, 332.17],
+        [725.8, 254.03, 332.37],
+        [742.4, 251.67, 332.58],
+        [759.2, 249.66, 332.79],
+        [775.9, 248.05, 332.99],
+        [792.5, 247, 332.99],
+        [809.2, 246.04, 332.99],
+        [825.9, 244.99, 333.2],
+        [842.7, 243.73, 333.3],
+        [859.3, 242.23, 333.51],
+        [876.1, 240.52, 333.71],
+        [892.9, 238.81, 333.82],
+        [909.5, 237.81, 334.02],
+        [926.1, 236.6, 334.13],
+        [942.9, 235.25, 334.33],
+        [959.6, 233.84, 334.64],
+        [976.3, 232.53, 334.85],
+        [993, 231.53, 335.06],
+        [1009.7, 230.73, 335.16],
+        [1026.5, 229.92, 335.26],
+        [1043.1, 228.87, 335.47],
+        [1059.9, 227.31, 335.78],
+        [1076.5, 225.25, 335.99],
+        [1093.3, 223.19, 336.3],
+        [1110, 221.03, 336.61],
+        [1126.7, 219.17, 336.71],
+        [1143.4, 217.87, 336.92],
+        [1160.1, 216.91, 336.92],
+        [1176.7, 215.91, 337.12],
+        [1193.5, 213.95, 337.33],
+        [1210.2, 211.69, 337.43],
+        [1226.9, 209.48, 337.64],
+        [1243.6, 207.07, 337.74],
+        [1260.3, 204.16, 338.05],
+        [1277, 200.49, 338.46],
+        [1293.7, 196.93, 338.88],
+        [1310.4, 193.41, 339.29],
+        [1327, 189.94, 339.81],
+        [1343.8, 186.43, 340.12],
+        [1360.6, 183.42, 340.53],
+        [1377.2, 180.9, 340.63],
+        [1394, 178.44, 340.84],
+        [1410.7, 176.23, 341.04],
+        [1427.3, 173.82, 341.25],
+        [1444.1, 171.46, 341.35],
+        [1460.8, 169.5, 341.56],
+        [1477.5, 167.54, 341.66],
+        [1494.2, 165.84, 341.77],
+        [1511, 163.68, 341.87],
+        [1527.6, 162.17, 342.08],
+        [1544.3, 160.71, 342.08],
+        [1561, 159.21, 342.18],
+        [1577.7, 157.3, 342.28],
+        [1594.4, 155.14, 342.49],
+        [1611.1, 152.83, 342.49],
+        [1627.8, 150.87, 342.7],
+        [1644.5, 149.01, 342.7],
+        [1661.2, 147.3, 342.7],
+        [1677.9, 145.75, 342.7],
+        [1694.7, 144.64, 342.7],
+        [1711.4, 143.99, 342.7],
+        [1728.1, 143.69, 342.7],
+        [1744.8, 143.29, 342.7],
+        [1761.5, 142.53, 342.7],
+        [1778.2, 141.93, 342.7],
+        [1803.3, 141.18, 342.49],
+        [1811.6, 140.93, 342.49],
+        [1828.3, 140.32, 342.28],
+        [1845, 139.37, 342.18],
+        [1861.8, 138.42, 341.97],
+        [1878.4, 137.51, 341.66],
+        [1895.2, 137.11, 341.46],
+        [1920.3, 136.71, 341.46],
+        [1937, 136.59, 341.25],
+        [1945.3, 136.61, 341.25],
+        [2112.3, 128.82, 341.91],
+        [2129.1, 104, 344.83],
+        [2145.8, 62.2, 351.95],
+        [2162.3, 18.95, 357.94],
+        [2179.1, 18.68, 357.98],
+        [2187.8, 18.68, 357.98],
+    ]
+    // REGRESSION REPRODUCER (T-W2-HOST): a finger that rests after the arm and then flicks left must not generate.
+    test('the real pull 327 replayed through the host timers does not generate and takes no step', () => {
+        vi.useFakeTimers()
+        show({ index: 3, count: 3 })
+        let clock = 0
+        const advanceTo = (time: number) => {
+            vi.advanceTimersByTime(Math.max(0, time - clock))
+            flushSync()
+            clock = Math.max(clock, time)
+        }
+        const last = PULL_327.length - 1
+        PULL_327.forEach(([time, x, y], row) => {
+            advanceTo(time)
+            if (row === 0) pointer('pointerdown', x, time, body, y)
+            else if (row === last) {
+                expect(tickHaptic.mock.calls.filter((call) => call[0] === 'arm')).toHaveLength(1)
+                pointer('pointerup', x, time, body, y)
+            } else pointer('pointermove', x, time, body, y)
+        })
+        advanceTo(5000)
+        expect(regenerateNewest).not.toHaveBeenCalled()
+        expect(stepSibling).not.toHaveBeenCalled()
     })
 })

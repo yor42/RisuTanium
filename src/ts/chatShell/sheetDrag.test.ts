@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createSheetDrag, SHEET_CLOSE_FRACTION, SHEET_FLING_PX_MS, SHEET_SLOP_PX, SHEET_VELOCITY_WINDOW_MS } from './sheetDrag'
+import { createSheetDrag, SHEET_CLOSE_FRACTION, SHEET_FLING_PX_MS, SHEET_REST_LAG_MS, SHEET_SLOP_PX, SHEET_VELOCITY_WINDOW_MS } from './sheetDrag'
 
 describe('sheet drag-down gesture (CHORE-726)', () => {
     it('uses the mockup thresholds', () => {
@@ -154,5 +154,68 @@ describe('sheet drag-down gesture (CHORE-726)', () => {
         drag.move(300, 10)
         drag.up(300, 20, 400)
         expect(drag.move(400, 30)).toBe(0)
+    })
+})
+
+describe('sheet release after a rest (round 3 W2)', () => {
+    it('uses the constants of the lag rule', () => {
+        expect(SHEET_REST_LAG_MS).toBe(34)
+        expect(SHEET_VELOCITY_WINDOW_MS).toBe(80)
+    })
+    // reproducer
+    it('T-SH-REST: a rest on the handle followed by a short fast flick closes, the rest is not averaged into the flick', () => {
+        const drag = createSheetDrag()
+        drag.down(0, 0)
+        for (const [y, t] of [[6, 16.7], [12, 33.4], [18, 50.1], [22, 66.8]]) drag.move(y, t)
+        for (const [y, t] of [[30, 233.8], [55, 250.6], [97, 267.3], [140, 283.8], [140, 300.6]]) drag.move(y, t)
+        expect(drag.up(140, 309.3, 600)).toBe('close')
+    })
+    // reproducer
+    it('T-SH-LAG40: an anchor 40 ms older than the window start reads over the window and closes', () => {
+        const drag = createSheetDrag()
+        drag.down(0, 1000)
+        for (const [y, t] of [[5, 1010], [10, 1020], [20, 1070], [40, 1100], [60, 1130]]) drag.move(y, t)
+        expect(drag.up(60, 1140, 1000)).toBe('close')
+    })
+    // guard
+    it('G-SH-LAG30: an anchor 30 ms older than the window start keeps the true span and stays', () => {
+        const drag = createSheetDrag()
+        drag.down(0, 1000)
+        for (const [y, t] of [[5, 1010], [10, 1020], [20, 1060], [40, 1090], [60, 1120]]) drag.move(y, t)
+        expect(drag.up(60, 1130, 1000)).toBe('stay')
+    })
+    // guard
+    it('G-SH-DENSE: a dense 16.7 ms stream reads the true span and stays', () => {
+        const drag = createSheetDrag()
+        drag.down(0, 0)
+        for (let k = 1; k <= 18; k++) drag.move(7.5 * k, 16.7 * k)
+        expect(drag.up(140.6, 313, 600)).toBe('stay')
+    })
+    // guard
+    it('G-SHORT: a drag shorter than the window keeps its own span', () => {
+        const drag = createSheetDrag()
+        drag.down(0, 1000)
+        drag.move(10, 1010)
+        drag.move(22, 1020)
+        drag.move(30, 1030)
+        expect(drag.up(30, 1034, 400)).toBe('close')
+    })
+    // guard (boundary): a lag of exactly the rest lag keeps the true span; one millisecond more reads over the window.
+    it('G-SH-LAG-EDGE: a lag of exactly 34 ms keeps the true span and stays, 35 ms reads over the window and closes', () => {
+        const release = (liftAt: number) => {
+            const drag = createSheetDrag()
+            drag.down(0, 0)
+            drag.move(40, 100)
+            return drag.up(50, liftAt, 1000)
+        }
+        expect(release(114)).toBe('stay')
+        expect(release(115)).toBe('close')
+    })
+    // guard
+    it('G-REST-NOFLICK: a rest longer than the window that lifts at the rest position never flings', () => {
+        const drag = createSheetDrag()
+        drag.down(0, 0)
+        for (const [y, t] of [[20, 20], [60, 40], [100, 60]]) drag.move(y, t)
+        expect(drag.up(100, 400, 1000)).toBe('stay')
     })
 })

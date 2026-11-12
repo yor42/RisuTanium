@@ -9,6 +9,8 @@ export const SHEET_CLOSE_FRACTION = 0.3
 export const SHEET_FLING_PX_MS = 0.5
 export const SHEET_SLOP_PX = 4
 export const SHEET_VELOCITY_WINDOW_MS = 80
+// An anchor older than the window start by more than this lag means no event arrived across the window start: the finger reported no move there, so it counts as resting at the anchor until the window start and the release speed is measured over the window alone. A denser stream keeps the true span. Consequence: a rest on the handle followed by a short fast flick reads the flick, not the rest averaged into it; a finger moving uniformly through an event hole longer than this lag reads fast.
+export const SHEET_REST_LAG_MS = 34
 const SHEET_SAMPLE_LIMIT = 64
 
 export type SheetRelease = 'close' | 'stay'
@@ -49,7 +51,8 @@ export function createSheetDrag() {
         let anchor = samples[0]
         for (const sample of samples) if (sample.time <= time - SHEET_VELOCITY_WINDOW_MS) anchor = sample
         const elapsed = time - anchor.time
-        const velocity = elapsed > 0 ? (y - anchor.y) / elapsed : 0
+        const span = time - SHEET_VELOCITY_WINDOW_MS - anchor.time > SHEET_REST_LAG_MS ? SHEET_VELOCITY_WINDOW_MS : elapsed
+        const velocity = elapsed > 0 ? (y - anchor.y) / span : 0
         const offset = Math.max(0, y - start.y)
         clear()
         // A fling back up keeps the sheet whatever the distance; a fling down closes it whatever the distance.

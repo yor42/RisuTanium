@@ -24,11 +24,24 @@
     // The successor of a stepped row has no rendered body yet; it keeps the predecessor's height until the body arrives or this many milliseconds pass, so the transcript never collapses under the reader.
     const HEIGHT_FLOOR_MS = 1500
     let heightHandover: { idx: number; chatId: string | undefined; height: number; until: number } | null = null
+    // A swipe that commits where motion is reduced or power is low steps the row, which mounts a successor under a new key; the commit animation belongs to the element that stays in the document, so the successor takes it.
+    // It is taken at most once, only by the row that replaces the stepped one at the same position, and only while the window is open: a body that renders later gets no fade.
+    const COMMIT_HANDOVER_MS = HEIGHT_FLOOR_MS
+    let commitHandover: { idx: number; chatId: string | undefined; direction: 'back' | 'forward'; until: number } | null = null
     // The pending body is empty or one of ChatBody's loading indicators (the parse placeholder with role="status", the translation spinner with its animated element); anything else is the rendered message.
     function bodyRendered(body: HTMLElement): boolean {
         if (body.querySelector('[role="status"], [style*="animation: spin"]') !== null) return false
         return (body.textContent ?? '').trim() !== '' || body.querySelector('*') !== null
     }
+    // A swipe starts only where the nearest part of the row is one of the message's own parts. Editors, modal layers, the pager and the end row, and anything rendered into the row later, are not listed, so they start nothing until they are named here.
+    const SWIPE_START_PARTS: ReadonlySet<string> = new Set([
+        'chat-message', 'chat-message-name-row', 'chat-message-meta', 'chat-message-name', 'chat-message-avatar', 'chat-message-badges',
+        'chat-message-stage', 'chat-message-body', 'chat-streaming-view', 'chat-stream-finished', 'chat-stream-open', 'chat-stream-thinking',
+        'chat-swipe-peek', 'chat-swipe-peek-chip', 'chat-swipe-peek-text', 'chat-swipe-meter', 'chat-swipe-arm', 'chat-long-press-ring',
+        'chat-status-row', 'chat-message-delete-pending', 'chat-message-render-failed', 'chat-message-interrupted', 'chat-message-memory-limit', 'chat-message-divider',
+    ])
+    // Inside an allowed part these keep their own touch behaviour (taps, text entry, media controls, sliders, the pager and the end control).
+    const SWIPE_INTERACTIVE = 'a, button, input, textarea, select, summary, label, [contenteditable], audio[controls], video[controls], [role="button"], [role="link"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="slider"], [role="scrollbar"], [role="tab"], [role="checkbox"], [role="radio"], [role="switch"], [role="option"], [role="combobox"], [role="textbox"], [role="spinbutton"], [data-part="chat-message-alts"], [data-part="chat-message-end"]'
     // The control inside the row that has focus, as a selector the successor row can resolve; null when the row itself or nothing in it has focus.
     function focusedControl(row: HTMLElement): string | null {
         const active = document.activeElement
@@ -226,6 +239,26 @@
         }
         timer = setTimeout(release, HEIGHT_FLOOR_MS)
         return release
+    })
+    // The successor of a row stepped by a committed swipe shows the commit animation once its own body has rendered, so the fade never plays on an empty body.
+    onMount(() => {
+        const handover = commitHandover
+        if (!handover || handover.idx !== idx || handover.chatId === chatId || performance.now() > handover.until || !bodyRoot) return
+        commitHandover = null
+        const body = bodyRoot
+        if (bodyRendered(body)) { commitSlide(handover.direction); return }
+        let observer: MutationObserver | undefined
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const stop = () => { observer?.disconnect(); clearTimeout(timer) }
+        if (typeof MutationObserver === 'undefined') return
+        observer = new MutationObserver(() => {
+            if (!bodyRendered(body)) return
+            stop()
+            if (performance.now() <= handover.until) commitSlide(handover.direction)
+        })
+        observer.observe(body, { childList: true, subtree: true, characterData: true })
+        timer = setTimeout(stop, Math.max(0, handover.until - performance.now()))
+        return stop
     })
     // A modal layer of the row (the partial-edit overlays are position: fixed inside the row) must not be clipped by the row's own containment, so the list is told while one is open.
     $effect(() => {
@@ -459,20 +492,38 @@
             return typeof value === 'number' && Number.isFinite(value) ? Math.min(Math.max(value, 0), HOST_INSET_PROBE_PX) : 0
         } catch { return 0 }
     }
-    // A wide table or code block scrolls sideways by itself: a drag that starts inside one belongs to it, not to the swipe.
+    // A wide table or code block scrolls sideways by itself: a drag that starts inside one belongs to it, not to the swipe. A start outside the body has no scroller of its own, so the walk never climbs above the article.
     function startsInHorizontalScroller(target: HTMLElement): boolean {
         const body = target.closest<HTMLElement>('[data-part="chat-message-body"]')
+        if (body === null) return false
         for (let node: HTMLElement | null = target; node && node !== body; node = node.parentElement) {
             if (node.scrollWidth > node.clientWidth) return true
         }
         return false
     }
     function sample(event: PointerEvent) { return { x: event.clientX, y: event.clientY, time: event.timeStamp } }
+    // A step remounts the row, which would destroy an open editor and its unsaved text, so no phase of a gesture runs while one is open.
+    function swipeBlocked(): boolean {
+        return editor.editMode || editor.editTranslationMode || overlayOpen
+    }
+    // Content with no part of its own belongs to the part that holds it, except directly under the article, where only the article's own padding counts: a layer rendered into the row without a part must not inherit the row.
+    function startsInOwnPart(target: HTMLElement): boolean {
+        const owner = target.closest('[data-part]')
+        if (owner === null || article === null || !article.contains(owner)) return false
+        if (owner === article && target !== article) return false
+        return SWIPE_START_PARTS.has(owner.getAttribute('data-part') ?? '')
+    }
+    function onPointerUp(event: PointerEvent): void {
+        if (swipe) finishSwipe(swipeBlocked() ? swipe.cancel() : swipe.up(sample(event)))
+    }
     function onPointerDown(event: PointerEvent): void {
         if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return
+        if (swipeBlocked()) return
         if (settling) return
         const target = event.target as HTMLElement
-        if (target.closest('button, a, input, textarea, [contenteditable]')) return
+        if (!startsInOwnPart(target)) return
+        const interactive = target.closest(SWIPE_INTERACTIVE)
+        if (interactive !== null && article?.contains(interactive)) return
         pointerType = event.pointerType
         pointerStart = { x: event.clientX, y: event.clientY }
         clearTimeout(springTimer)
@@ -486,7 +537,7 @@
         swipe = createSwipeGesture({ widthPx: bodyRoot?.clientWidth ?? 320, dpPerPx: 1, index: position.index - 1, count: position.count, edge: edge || startsInHorizontalScroller(target), streaming, firstMessage, canGenerate: newestCharacter, enabled: DBState.db.swipe && showPager, pointerType: event.pointerType })
         swipe.down(sample(event))
         clearTimeout(longPressTimer)
-        const opener = event.currentTarget as HTMLElement
+        const opener = bodyRoot ?? (event.currentTarget as HTMLElement)
         longPressTimer = setTimeout(() => { if (swipe) { swipe.cancel(); clearTimeout(armTimer); armTimer = undefined; longPressRing = false; peek = null; openActions(opener, pointerStart) } }, 500)
         setTimeout(() => { if (longPressTimer) longPressRing = true }, 200)
     }
@@ -501,6 +552,7 @@
     }
     function onPointerMove(event: PointerEvent): void {
         if (!swipe) return
+        if (swipeBlocked()) { finishSwipe(swipe.cancel()); return }
         spring = false
         if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 10) { clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false }
         const stamp = sample(event)
@@ -567,7 +619,10 @@
                 dragX = 0
                 peek = null
                 commitSlide(direction)
-                void act(result.event)
+                // The first message never remounts and keeps its own commit above. Any other row hands the animation to its successor, and a step that mounts none leaves nothing behind for a later row.
+                const handover: typeof commitHandover = firstMessage ? null : { idx, chatId, direction: result.event === 'stepPrev' ? 'back' : 'forward', until: performance.now() + COMMIT_HANDOVER_MS }
+                if (handover) commitHandover = handover
+                void act(result.event).finally(() => { if (handover && commitHandover === handover) commitHandover = null })
             } else slideOut(direction)
         } else if (result.event === 'generate') {
             // The pulled body springs back to the centre while the new reply starts.
@@ -718,9 +773,9 @@
     }
 </script>
 
-<!-- The article keeps the transcript semantics and is a tab stop and the focus target of message navigation, so its key and context-menu events and the captured clicks and submits of rich message content must reach it; the swipe gesture listens on the body. -->
+<!-- The article keeps the transcript semantics and is a tab stop and the focus target of message navigation, so its key and context-menu events and the captured clicks and submits of rich message content must reach it; the swipe gesture listens here too, so it starts on the message's own parts (SWIPE_START_PARTS) except on an interactive descendant, and the body moves. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
-<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta={namesHidden ? 'hidden' : 'shown'} data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="0" bind:this={article} onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
+<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta={namesHidden ? 'hidden' : 'shown'} data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="0" bind:this={article} style:touch-action="pan-y" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onpointercancel={() => { if (swipe) finishSwipe(swipe.cancel()) }} onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
     {#if disabled === true}<div data-part="chat-message-divider" data-kind="disabled"></div>{/if}
     <div data-part="chat-message-name-row">
         <div data-part="chat-message-meta">
@@ -756,7 +811,7 @@
                 {#if peek.text}<span data-part="chat-swipe-peek-text">{peek.text}</span>{/if}
             </div>
         {/if}
-        <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" class:prose-invert={$ColorSchemeTypeStore} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={dragX !== 0 || spring ? `translateX(${dragX}px)` : undefined} style:touch-action="pan-y" data-spring={spring ? '' : undefined} data-settle={settle ? '' : undefined} data-commit={commitDirection ?? undefined} onanimationend={() => { commitDirection = null }} ontransitionend={() => { spring = false }} onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={(event) => { if (swipe) finishSwipe(swipe.up(sample(event))) }} onpointercancel={() => { if (swipe) finishSwipe(swipe.cancel()) }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
+        <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" class:prose-invert={$ColorSchemeTypeStore} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={dragX !== 0 || spring ? `translateX(${dragX}px)` : undefined} style:touch-action="pan-y" data-spring={spring ? '' : undefined} data-settle={settle ? '' : undefined} data-commit={commitDirection ?? undefined} onanimationend={() => { commitDirection = null }} ontransitionend={() => { spring = false }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
             {#if editor.editMode || editor.editTranslationMode}<!-- the editors replace the body while open -->
             {:else if message.isComment}
                 {#if msgDisplay.startsWith('{{specialcomment') && msgDisplay.split('::')[1] === 'branchedfrom'}
