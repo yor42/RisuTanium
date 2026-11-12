@@ -5,8 +5,8 @@
  * pressed button is removed, suspension and the Back guard's independence.
  *
  * The host is a real `createToastHost` on a fake clock, so timers advance only when a test says so. The harness
- * and the focus suite live in `ToastHost.scenarios.test-helpers.svelte.ts`; `ToastHost.asyncOrder.svelte.test.ts`
- * runs the focus suite again under the async scheduler.
+ * and the focus suite live in `ToastHost.scenarios.test-helpers.svelte.ts`; they run under the async scheduler
+ * the app ships.
  */
 import { flushSync } from 'svelte'
 import { describe, expect, test, vi } from 'vitest'

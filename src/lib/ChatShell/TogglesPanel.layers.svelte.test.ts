@@ -373,6 +373,6 @@ describe('the panel opened from the + menu (nothing under it)', () => {
     })
 })
 
-// The panel opened at a row (R1) lives in `TogglesPanel.layers.scenarios.test-helpers.svelte.ts` and also runs under
-// the async scheduler in `TogglesPanel.layers.asyncOrder.svelte.test.ts`.
+// The panel opened at a row (R1) lives in `TogglesPanel.layers.scenarios.test-helpers.svelte.ts` and runs here under
+// the async scheduler the app ships.
 registerTogglesPanelOpenAtSuite(plus)

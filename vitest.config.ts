@@ -1,6 +1,20 @@
 import { svelte } from "@sveltejs/vite-plugin-svelte"
 import { configDefaults, defineConfig } from 'vitest/config'
+import type { Plugin } from 'vite'
 import { svelteProxyPatch } from './patches/svelte-5.57.3/plugin.mjs'
+
+// Every svelte instance in a test run, including one re-created by vi.resetModules, starts on the async scheduler the app ships. The compiler enables it only from compiled components; this covers module-only graphs and resets. Fails loudly if svelte renames the function.
+const svelteAsyncFlagDefault: Plugin = {
+  name: 'svelte-async-flag-default',
+  enforce: 'pre',
+  transform(code, id) {
+    if (!/[\\/]svelte[\\/]src[\\/]internal[\\/]flags[\\/]index\.js$/.test(id.split('?')[0])) return
+    if (!/export function enable_async_mode_flag\(\)/.test(code)) {
+      throw new Error(`svelte-async-flag-default: enable_async_mode_flag not found in ${id}`)
+    }
+    return { code: `${code}\nenable_async_mode_flag();\n`, map: null }
+  },
+}
 
 export default defineConfig({
   plugins: [
@@ -8,15 +22,12 @@ export default defineConfig({
     svelte({
       compilerOptions: {
         experimental: {
-          // Off in this fork: matches vite.config.ts so tests run the shipped scheduler (the async scheduler runs $effect.pre after block updates).
-          async: false
+          // On, as upstream: vitest matches so tests run the shipped scheduler.
+          async: true
         }
-      },
-      // Only *.asyncFixture.svelte files compile with the async scheduler, so a test can observe a pending markup await.
-      dynamicCompileOptions({ filename }) {
-        if (filename.endsWith('.asyncFixture.svelte')) return { experimental: { async: true } }
       }
     }),
+    svelteAsyncFlagDefault,
   ],
   resolve: {
     alias: {

@@ -160,7 +160,9 @@
     let favRows = $derived(filtering ? [] : favouriteRows(sources, favourites.items))
     // The uid of the Favourites copy this opening is aimed at; null when it is not aimed at one. The aim is
     // taken when the opening is read, so the sheet's first render and its one-shot initial focus see it in
-    // either scheduler; it recomputes only when the panel opens or closes.
+    // either scheduler; it recomputes only when the panel opens or closes. The aim at a Favourites row can be
+    // computed before the opening effect's syncFavourites(); if another tab removed the star in between, no row is
+    // aimed and focus falls to the sheet section instead of the title. Accepted limitation (MC-1557).
     let openedAt = $derived.by(() => {
         const opening = open
         return untrack(() => {

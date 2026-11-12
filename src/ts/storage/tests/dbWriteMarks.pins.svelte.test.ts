@@ -90,9 +90,7 @@ describe('DBState write marks: the write hook marks at the write, before any eff
     })
 
     it('R3: a write in the same turn as a pending markup await is marked while it is pending', async () => {
-        // Loaded through a variable path so the type checker never compiles the fixture without experimental.async.
-        const fixturePath = './PendingAwait.asyncFixture.svelte'
-        const fixture: { default: Component<{ load: (name: string) => Promise<string> }> } = await import(/* @vite-ignore */ fixturePath)
+        const fixture: { default: Component<{ load: (name: string) => Promise<string> }> } = await import('./PendingAwait.asyncFixture.svelte')
         let releaseLoad!: (value: string) => void
         const load = (name: string) => name === 'A'
             ? Promise.resolve('ready')

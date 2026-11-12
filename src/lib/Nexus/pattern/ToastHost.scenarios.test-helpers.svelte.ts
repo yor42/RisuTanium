@@ -1,7 +1,6 @@
 /**
- * The shared harness and the focus-return scenarios of `ToastHost.svelte`. `ToastHost.svelte.test.ts` (the
- * shipped scheduler) and `ToastHost.asyncOrder.svelte.test.ts` (the async scheduler) both install the harness and
- * register the focus suite, so each focus scenario runs under both schedulers with no copy.
+ * The shared harness and the focus-return scenarios of `ToastHost.svelte`. `ToastHost.svelte.test.ts` (which runs
+ * under the async scheduler the app ships) installs the harness and registers the focus suite.
  *
  * The host is a real `createToastHost` on a fake clock, so timers advance only when a test says so. The caller
  * owns the module mocks (`alertPrompts`, `alertBack`): `vi.mock` is file-scoped.

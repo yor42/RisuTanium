@@ -93,8 +93,26 @@ async function settle() {
     }
     await tick()
 }
+/**
+ * Animation frames are stepped by hand. Under the async scheduler Svelte's tick races a real frame against a timer, so
+ * with real frames any await could end a two-frame hold early on a loaded machine.
+ */
+let pendingFrames = new Map<number, FrameRequestCallback>()
+let nextFrameId = 1
+function stubFrames() {
+    pendingFrames = new Map()
+    nextFrameId = 1
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        pendingFrames.set(nextFrameId, callback)
+        return nextFrameId++
+    })
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => { pendingFrames.delete(id) })
+}
+/** Runs the frames requested so far, as one browser frame does: a request made by a callback waits for the next. */
 async function frame() {
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    const due = Array.from(pendingFrames.entries())
+    pendingFrames.clear()
+    for (const [, callback] of due) callback(performance.now())
     await tick()
 }
 async function showList() {
@@ -201,6 +219,7 @@ function switchRoom() {
 beforeEach(async () => {
     vi.stubGlobal('ResizeObserver', class { observe(): void {} disconnect(): void {} })
     vi.stubGlobal('IntersectionObserver', FakeObserver)
+    stubFrames()
     vi.spyOn(console, 'log').mockImplementation(() => {})
     FakeObserver.instances = []
     transport.sizes = {}
@@ -268,7 +287,6 @@ describe('the hold ends with the list signal', () => {
         expect(await gateIsOn()).toBe(false)
 
         switchRoom()
-        // A flush, not a tick: the async tick waits for a frame, which would use up one of the two the hold lasts.
         flushSync()
         await frame()
         expect(await gateIsOn()).toBe(true)

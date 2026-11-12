@@ -30,6 +30,6 @@
     "sourceMap": true
   },
   "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte", "public/sw.js"],
-  "exclude": ["src/**/web/*.ts", "src/**/*.asyncFixture.svelte"],
+  "exclude": ["src/**/web/*.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }

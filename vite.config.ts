@@ -18,8 +18,8 @@ export default defineConfig(({command, mode}) => {
         },
         compilerOptions: {
           experimental: {
-            // Off in this fork: the async scheduler runs $effect.pre after block updates, which the fork's focus and scroll captures need first; vitest.config.ts matches so tests run the shipped scheduler.
-            async: false
+            // On, as upstream: vitest matches so tests run the shipped scheduler.
+            async: true
           }
         }
       }),

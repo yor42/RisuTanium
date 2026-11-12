@@ -1121,7 +1121,7 @@ describe('a summary\'s own re-roll waits for the chat\'s referenced modules', ()
 })
 
 describe('a chat switch to a chat without hypaV3Data', () => {
-    test('guard: the chat gets the default hypaV3Data and the empty state shows without throwing (a chat shaped like createNewChat adds)', async () => {
+    test('regression reproducer: the chat gets the default hypaV3Data and the empty state shows without throwing (a chat shaped like createNewChat adds)', async () => {
         installDb(['s0', 's1'])
         DBState.db.characters[0].chats.push({ id: 'chat-b', message: [], note: '', name: 'New Chat 2', localLore: [], fmIndex: -1 } as never)
         const target = mountModal()

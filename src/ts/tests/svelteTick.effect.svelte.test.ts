@@ -1,4 +1,3 @@
-import './asyncScheduler.test-helpers'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { flushSync, tick } from 'svelte'
 import { tickFake } from './svelteTick.test-helpers'

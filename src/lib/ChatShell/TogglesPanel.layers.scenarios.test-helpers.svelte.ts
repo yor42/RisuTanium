@@ -1,7 +1,6 @@
 /**
  * The "panel opened at a row" scenarios (R1) of the toggles panel, registered by both
- * `TogglesPanel.layers.svelte.test.ts` (the shipped scheduler) and `TogglesPanel.layers.asyncOrder.svelte.test.ts`
- * (the async scheduler), so each scenario runs under both schedulers with no copy.
+ * `TogglesPanel.layers.svelte.test.ts`, which runs under the async scheduler the app ships.
  *
  * The REAL ChatShell, ShellSheet, TogglesPanel and ToggleRow run. A star handed over by the + menu aims the opening
  * at that row: the panel's first render marks it and the sheet's one-shot initial focus lands on its text button; an
