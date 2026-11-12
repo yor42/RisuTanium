@@ -86,7 +86,7 @@ const HOME_RIGHT = (id: string): RegExp => {
     if (/^[ARS]\d+$/.test(id)) return /protected part|data-part-critical|not allowed|allowlist|url|@|transform|position|animation|transition|content|z-index|background|opaque/
     return /./
 }
-const HOME_DECIDED_ACCEPT = new Set(['H52']);   // a font family is a pack's freedom (fonts are out of scope for lint)
+const HOME_FONT_REFUSED = new Set(['H52']);   // a font family outside the pack's own @font-face families and the generic ones is refused (MC-1550)
 
 // Private variables (--pack-*) cannot launder a value: [name, css, accepted?, reason].
 const PRIV: [string, string, boolean, RegExp?][] = [
@@ -196,8 +196,8 @@ describe('2 studio review packs', () => {
 describe('3 home review packs', () => {
     for (const f of readReviewPacks('home-hostile.json')) {
         const key = f.id
-        if (HOME_DECIDED_ACCEPT.has(key)) {
-            it(`${key} is accepted by decision (a font family is free): ${f.name}`, () => { expectAccepted(lint('home', f.css, key)) })
+        if (HOME_FONT_REFUSED.has(key)) {
+            it(`${key} is refused by decision (a system font family, MC-1550): ${f.name}`, () => { expectRejected(lint('home', f.css, key), /MC-1550/) })
             continue
         }
         const re = HOME_RIGHT(key)
@@ -213,9 +213,9 @@ describe('3 home review packs', () => {
             it(`${key} with its helper variables listed is still rejected by the floor and ceiling logic`, () => { expectRejected(lintOpenHome(f.css, key), /critical m|cannot be/) })
         }
     }
-    it('every decided-accept id is a pack of the home review list', () => {
+    it('every font-refused id is a pack of the home review list', () => {
         const ids = new Set(readReviewPacks('home-hostile.json').map((f) => f.id))
-        for (const id of HOME_DECIDED_ACCEPT) expect(ids.has(id), id).toBe(true)
+        for (const id of HOME_FONT_REFUSED) expect(ids.has(id), id).toBe(true)
     })
 })
 
@@ -284,16 +284,31 @@ describe('4b private variables, studio fix round, reach packs, ceilings and chai
 
 // ---- 5. benign fixtures
 describe('5 benign fixtures', () => {
-    for (const [n, css] of benign.HOME_BENIGN) it(`home: ${n} is accepted`, () => { expectAccepted(lint('home', css, n)) })
+    // Named exceptions (MC-1565, MC-1566): the reference accepts these, the app does not. A token other than --pack-* is
+    // set only on plain :root; a state-dependent value goes through a --pack-* helper. Each is refused with that reason.
+    const TOKEN_OFF_ROOT = /MC-1565/
+    const HOME_BENIGN_REFUSED = new Set(['B04 a token under data-input'])
+    const CHAT_BENIGN_REFUSED = new Set(['D1 touch density', 'D2 wide layout', 'D3 both attributes', 'D4 :root with an attribute'])
+    for (const [n, css] of benign.HOME_BENIGN) {
+        if (HOME_BENIGN_REFUSED.has(n)) it(`home: ${n} is refused by name (a token off :root, MC-1565)`, () => { expectRejected(lint('home', css, n), TOKEN_OFF_ROOT) })
+        else it(`home: ${n} is accepted`, () => { expectAccepted(lint('home', css, n)) })
+    }
     for (const a of THEME_AREAS) {
         for (const [n, css] of [...benign.NEW_BENIGN.all, ...(benign.NEW_BENIGN[a] || [])]) it(`${a}: ${n} is accepted`, () => { expectAccepted(lint(a, css, n)) })
     }
-    for (const [n, css] of [...hostile.BENIGN, ...hostile.BENIGN_2]) it(`chat: ${n} is accepted`, () => { expectAccepted(lint('chat', css, n)) })
+    for (const [n, css] of [...hostile.BENIGN, ...hostile.BENIGN_2]) {
+        if (CHAT_BENIGN_REFUSED.has(n)) it(`chat: ${n} is refused by name (a token off :root, MC-1565)`, () => { expectRejected(lint('chat', css, n), TOKEN_OFF_ROOT) })
+        else it(`chat: ${n} is accepted`, () => { expectAccepted(lint('chat', css, n)) })
+    }
+    it('the named exceptions exist in the reference fixtures', () => {
+        expect(benign.HOME_BENIGN.filter(([n]) => HOME_BENIGN_REFUSED.has(n))).toHaveLength(HOME_BENIGN_REFUSED.size)
+        expect([...hostile.BENIGN, ...hostile.BENIGN_2].filter(([n]) => CHAT_BENIGN_REFUSED.has(n))).toHaveLength(CHAT_BENIGN_REFUSED.size)
+    })
     for (const [k, [css]] of Object.entries(values.ACCEPT)) {
         // The value-space fixtures are judged by the chat engine under the Settings part registry they were written for.
         it(`settings value fixture ${k} is accepted under its registry`, () => { expectAccepted(lintEngine(css, k, values.SETTINGS_REGISTRY)) })
     }
-    it('the Settings index on the right through role tokens is accepted', () => { expectAccepted(lint('settings', read('settings/checks/th/fixtures/index-right.css'), 'index-right')) })
+    it('the Settings index on the right through role tokens is refused by name (a token under data-layout, MC-1565)', () => { expectRejected(lint('settings', read('settings/checks/th/fixtures/index-right.css'), 'index-right'), TOKEN_OFF_ROOT) })
     {
         const decls = (m: Record<string, string | number>, keep: (k: string) => boolean = () => true): string => ':root{' + Object.entries(m).filter(([k]) => keep(k)).map(([k, v]) => `${k}:${v}`).join(';') + '}'
         const sheetToks = /^--studio-(space-5|font-xl|font-base|size-touch-lg|space-3)$/

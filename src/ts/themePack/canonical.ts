@@ -3,8 +3,10 @@
 // differences are many (escapes, comments as token boundaries, bad strings and bad urls, unusual whitespace). So the
 // validator does not try to model each one: it tokenises the preprocessed stylesheet itself, refuses every construct
 // whose reading is ambiguous (the strict profile below), and hands the other passes a canonical text in which the
-// patterns and the browser must agree: no escapes, no comments (each becomes one space, the token boundary a browser
-// keeps), no bad tokens. A pack that needs none of these constructs loses nothing; the acceptance packs use none.
+// patterns and the browser must agree: no escapes, no comments (each becomes one space), no bad tokens. A comment is a
+// token boundary to a browser, not whitespace, so the one-space reading is only equal where a space means the same thing:
+// a comment may stand only beside whitespace, a brace, `;` or `,` (or at either end of the text). A pack that needs none
+// of these constructs loses nothing; the acceptance packs use none.
 //
 // The same tokens give the resource policy (MC-1351) its targets: every url token, and every string argument of a
 // resource function, judged where it is written; a resource function may not take var(), attr() or env(), so no
@@ -30,6 +32,7 @@ const BAD_URL_REASON = 'an unquoted url() may not hold a quote, a parenthesis, a
 const COMMENT_IN_STRING_REASON = 'a string or a url() may not contain /* or */ (the validator would read a comment the browser does not)'
 const UNTERMINATED_COMMENT_REASON = 'an unterminated comment is not allowed'
 const COMMENT_JOIN_REASON = 'a comment between two parts of a word or value is not allowed: write a space instead (it reads as one word to the validator and as two to the browser)'
+const commentPlacementReason = (excerpt: string): string => `a comment needs a space, a line end, {, }, ; or , on at least one side (${JSON.stringify(excerpt)}): the browser reads a comment as nothing and the checks read it as a space, so html/**/[x] means html[x] to the browser and "html [x]" to the checks; put a space beside the comment or remove it (MC-1549)`
 const CDO_CDC_REASON = 'the <!-- and --> markers are not allowed in a pack stylesheet'
 const CONTROL_REASON = 'a control character other than tab and line feed is not allowed in a pack stylesheet'
 const NON_ASCII_REASON = 'a character outside ASCII is only allowed inside a string or a comment (identifiers and values must be plain ASCII)'
@@ -51,6 +54,9 @@ const IDENT_CHAR = /[A-Za-z0-9_-]/
 const WHITESPACE = /[ \t\n]/
 // Characters that continue a word or value on either side of a comment.
 const WORD_CHAR = /[A-Za-z0-9_\-#.%!@]/
+// A comment may stand next to one of these (or at either end of the text): there a space means the same to the browser.
+// `:`, `(`, `)`, `[` and `]` are not in the set: `x/**/:hover` and `calc/**/(` differ from their spaced forms.
+const COMMENT_NEIGHBOUR = /[ \t\n{};,]/
 // The units a number may carry. The size checks measure lengths in exactly the length units listed here, in lower
 // case, so a length in any other unit, or with an exponent, would be measured as something smaller than the browser
 // draws; such a number is refused rather than measured. `n` and `n-<digits>` are the an+b forms of :nth-child().
@@ -85,9 +91,23 @@ export function canonicalStylesheet(css: string): CanonicalStylesheet {
         if (ch === '/' && css[i + 1] === '*') {
             const end = css.indexOf('*/', i + 2)
             if (end < 0) { fail('', UNTERMINATED_COMMENT_REASON); text += css.slice(i); break }
-            if (WORD_CHAR.test(css[i - 1] ?? '') && WORD_CHAR.test(css[end + 2] ?? '')) fail('', COMMENT_JOIN_REASON)
-            text += ' '
-            i = end + 2
+            // A run of adjacent comments is one placement: the browser reads the run as nothing, the checks as spaces.
+            let runEnd = end + 2
+            let spaces = ' '
+            while (css[runEnd] === '/' && css[runEnd + 1] === '*') {
+                const next = css.indexOf('*/', runEnd + 2)
+                if (next < 0) break
+                runEnd = next + 2
+                spaces += ' '
+            }
+            const before = css[i - 1]
+            const after = css[runEnd]
+            if (!COMMENT_NEIGHBOUR.test(before ?? '') && !COMMENT_NEIGHBOUR.test(after ?? '') && before !== undefined && after !== undefined) {
+                if (WORD_CHAR.test(before) && WORD_CHAR.test(after)) fail('', COMMENT_JOIN_REASON)
+                else fail('', commentPlacementReason(css.slice(Math.max(0, i - 12), i) + '/*...*/' + css.slice(runEnd, runEnd + 12)))
+            }
+            text += spaces
+            i = runEnd
             continue
         }
         if (css.startsWith('<!--', i) || css.startsWith('-->', i)) { fail('', CDO_CDC_REASON); text += ch; i++; continue }

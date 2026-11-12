@@ -29,6 +29,8 @@
   --pack-cocoa-dark: #3a2412;
   --pack-avatar: 56px;                      /* the round avatar of a chat-list row */
   --pack-avatar-small: 44px;
+  --pack-row-height: 56px;                  /* a chat-list row; the app default of --home-row-height (home-tokens.css) */
+  --home-row-height: var(--pack-row-height);
       
   /* canvas and surfaces (the same as chat's pack) */
   --nexus-canvas: #b2c7da;
@@ -90,8 +92,8 @@
   --home-mode-option-radius: 20px;
 }
 /* two input classes: a mouse gets denser rows, a finger taller ones (DD-213 keeps 44 / 40 dp controls) */
-html[data-input="hover"] { --home-row-height: 52px; --pack-avatar: 52px; }
-html[data-input="touch"] { --home-row-height: 60px; }
+html[data-input="hover"] { --pack-row-height: 52px; --pack-avatar: 52px; }
+html[data-input="touch"] { --pack-row-height: 60px; }
 
 /* ---- the rail: a white strip, a yellow tab for the current item ---- */
 html[data-theme="banana-cocoa"] [data-part="home-rail"] { background: var(--nexus-surface-flat); }
