@@ -70,7 +70,7 @@ let target: HTMLElement
 let app: ReturnType<typeof ShellMessage> | undefined
 let body: HTMLElement
 
-interface Options { role?: Message['role']; index?: number; count?: number; streaming?: boolean; busy?: boolean; continuation?: number; tree?: { index: number, count: number }; stepRow?: (idx: number, step: () => Promise<void> | void) => Promise<void>; onOpenActions?: (request: { opener: HTMLElement | null }) => void }
+interface Options { role?: Message['role']; isLastMemory?: boolean; disabled?: boolean | 'allBefore'; index?: number; count?: number; streaming?: boolean; busy?: boolean; continuation?: number; tree?: { index: number, count: number }; stepRow?: (idx: number, step: () => Promise<void> | void) => Promise<void>; onOpenActions?: (request: { opener: HTMLElement | null }) => void }
 function show(options: Options = {}) {
     const message: Message = { role: options.role ?? 'char', data: 'Reply', chatId: 'm' }
     DBState.db.characters[0].chats[0].message = [message]
@@ -78,7 +78,7 @@ function show(options: Options = {}) {
     document.body.appendChild(target)
     const index = options.index ?? 2
     const count = options.count ?? 2
-    app = mount(ShellMessage, { target, props: { idx: 0, chatId: 'm', name: 'Ari', message: DBState.db.characters[0].chats[0].message[0], streaming: options.streaming ?? false, getBusy: () => options.busy ?? false, stepRow: options.stepRow, onOpenActions: options.onOpenActions, getTreeView: () => ({ at: () => (options.tree ? { index: options.tree.index, count: options.tree.count } : { index, count }), continuation: options.continuation ?? 0 }) } })
+    app = mount(ShellMessage, { target, props: { idx: 0, chatId: 'm', name: 'Ari', message: DBState.db.characters[0].chats[0].message[0], streaming: options.streaming ?? false, isLastMemory: options.isLastMemory, disabled: options.disabled, getBusy: () => options.busy ?? false, stepRow: options.stepRow, onOpenActions: options.onOpenActions, getTreeView: () => ({ at: () => (options.tree ? { index: options.tree.index, count: options.tree.count } : { index, count }), continuation: options.continuation ?? 0 }) } })
     flushSync()
     body = target.querySelector<HTMLElement>('[data-part="chat-message-body"]')!
     Object.defineProperty(body, 'clientWidth', { value: 300 })
@@ -1127,6 +1127,40 @@ describe('MC-1571 the swipe starts anywhere on the message except on interactive
             pointer('pointerup', 520, 200, on)
             vi.advanceTimersByTime(260)
             expect(stepSibling).toHaveBeenCalledTimes(1)
+        })
+        // GUARD (G-MC1606-MARKERS, MC-1606): the memory-limit line and both divider kinds are rendered by the row itself and stay swipe starts.
+        test.each([
+            ['the memory-limit line', { isLastMemory: true }, '[data-part="chat-message-memory-limit"]'],
+            ['the disabled divider', { disabled: true }, '[data-part="chat-message-divider"][data-kind="disabled"]'],
+            ['the all-before divider', { disabled: 'allBefore' as const }, '[data-part="chat-message-divider"][data-kind="all-before"]'],
+        ])('G-MC1606-MARKERS a drag that starts on the rendered %s takes the step', (_name, options, selector) => {
+            vi.useFakeTimers()
+            show({ index: 2, count: 3, ...options })
+            const on = part(selector)
+            expect(on).not.toBeNull()
+            pullFrom(on)
+            expect(dragged()).toBeGreaterThan(0)
+            pointer('pointerup', 520, 200, on)
+            vi.advanceTimersByTime(260)
+            expect(stepSibling).toHaveBeenCalledTimes(1)
+        })
+        // GUARD (G-MC1606-ACTIONS, MC-1606): the action cluster rendered by MessageMeta, its gaps and its plain non-interactive nodes (time, model name) never start a swipe; the buttons inside stay excluded as interactive.
+        test.each([
+            ['the cluster itself', () => part('[data-part="chat-message-actions"]')],
+            ['the cluster spacer gap', () => part('[data-part="chat-message-actions"] .spacer')],
+            ['a plain label inside the cluster', () => { const label = document.createElement('span'); label.className = 'model'; label.textContent = 'model'; part('[data-part="chat-message-actions"]').append(label); return label }],
+            ['a time node inside the cluster', () => { const time = document.createElement('time'); time.textContent = '12:00'; part('[data-part="chat-message-actions"]').append(time); return time }],
+        ])('G-MC1606-ACTIONS a drag that starts on %s starts nothing', (_name, pick) => {
+            vi.useFakeTimers()
+            show({ index: 2, count: 3 })
+            const on = pick()
+            expect(on).not.toBeNull()
+            pullFrom(on)
+            expect(dragged()).toBe(0)
+            pointer('pointerup', 520, 200, on)
+            vi.advanceTimersByTime(260)
+            expect(stepSibling).not.toHaveBeenCalled()
+            expect(createSwipeGesture).not.toHaveBeenCalled()
         })
         // GUARD (MC-1601, MC-1602): the translation block and plain inline images or assets are rendered into the body as markup without a part of their own, so they belong to the body; a tap-to-open one is a link or button and stays excluded.
         test.each([
