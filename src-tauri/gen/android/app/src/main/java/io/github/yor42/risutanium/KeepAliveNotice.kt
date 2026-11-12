@@ -10,8 +10,10 @@ package io.github.yor42.risutanium
 // app is in the foreground a timeout also ends it, so a Stop that did not take never leaves a user who
 // can see the app without a control; in the background Stopping has no timeout. When native itself
 // cancelled the chat's in-flight request on the Stop tap (MC-1435), Stopping shows Stopped at once with
-// no button and no timeout (MC-1470); it clears when the page returns or the app reopens (MC-1471). Native also drops a Generating count line the page has not refreshed for a few seconds
-// while the app is hidden (MC-1450).
+// no button and no timeout (MC-1470). That Stopped stays until the work ends: a page notice without
+// stoppable work never replaces it (MC-1496). It clears when the app comes to the front, and the
+// cancelled work's later Stopped outcome then shows nothing (MC-1497). Native also drops a Generating
+// count line the page has not refreshed for a few seconds while the app is hidden (MC-1450).
 
 const val KEEP_ALIVE_ACCENT_COLOR = 0xFF587BFF.toInt()
 
@@ -174,6 +176,22 @@ fun deliverStopTap(
 fun countLineRepostWanted(shownLine: CountLine?, display: KeepAliveDisplay): Boolean =
   shownLine != null && shownLine != display.countLine()
 
+// What the service reposts when the app's visibility changes: the display's own change (a Stopped card
+// cleared at the return, MC-1497) wins over a restored count line (MC-1450); NONE when neither applies.
+enum class ForegroundRepost { NONE, STOPPED_CLEARED, COUNT_LINE }
+
+fun foregroundRepost(cleared: Boolean, shownLine: CountLine?, display: KeepAliveDisplay): ForegroundRepost =
+  when {
+    cleared -> ForegroundRepost.STOPPED_CLEARED
+    countLineRepostWanted(shownLine, display) -> ForegroundRepost.COUNT_LINE
+    else -> ForegroundRepost.NONE
+  }
+
+// The diagnostic name of a page notice's state, only when it differs from the previous page notice's
+// state; null when nothing is to be logged. It is a state name, never a title, name or text.
+fun pageStateToLog(previous: NoticeState?, notice: KeepAliveNotice): String? =
+  if (previous == notice.state) null else notice.state.wire
+
 // The delay of the next count check. It is null when no check is wanted: the line is not applicable, or
 // it is due and no notification shows its count (already shown dropped, or none built yet). A due line
 // that is still shown with its count gets an immediate check, so a check never stalls between two
@@ -192,8 +210,24 @@ class KeepAliveDisplay(
   private var timerArmed = false
   private var lastPageNoticeAtMs = 0L
 
+  // The page's latest notice. The page sends an unchanged save-pending notice only once, so native keeps
+  // it to show what remains when a confirmed Stopped clears (MC-1497).
+  private var lastPage: KeepAliveNotice? = null
+
+  // The stoppable notice native confirmed a cancel for: the work a later update is recognised against.
+  private var cancelledWork: KeepAliveNotice? = null
+
+  // A confirmed Stopped was cleared at the return: the cancelled work's leftovers (its stale updates and
+  // its Stopped outcome) show nothing, until new work, an outcome or a reset (MC-1497).
+  private var clearedStop = false
+
+  // The page's closing outcome is its latest message (MC-1508). Every outcome sets it, an unreadable one
+  // and every branch included; every page notice and a reset clear it, so new work never reads as closed.
+  private var closed = false
+
   // Native cancelled the chat's request on this Stopping: the display shows Stopped with no timer until
-  // the page's outcome or a non-stoppable notice ends Stopping (MC-1470, MC-1471).
+  // the work's outcome, new stoppable work, a reset or the return to the app ends it (MC-1470, MC-1496,
+  // MC-1497). A page notice without stoppable work does not end it.
   var cancelConfirmed: Boolean = false
     private set
 
@@ -203,9 +237,49 @@ class KeepAliveDisplay(
   var stopping: Boolean = false
     private set
 
+  // Whether the last outcome call was the cancelled work's Stopped outcome, hidden after the clear. It
+  // is for the service's diagnostic log only.
+  var outcomeHidden: Boolean = false
+    private set
+
   // The app became visible or hidden. Whether that changes the timer is answered by takeTimerChange.
-  fun appForeground(visible: Boolean) {
+  // Only the hidden-to-visible transition clears, and only a Stopped card: the confirmed one (the work's
+  // outcome not yet in) or the closing one the outcome already showed (MC-1497). It leaves an unconfirmed
+  // Stopping (MC-1435), Failed and every other state untouched. The card then shows the page's last
+  // notice when that is neither stoppable nor Stopped (a pending save), else the neutral card. Returns
+  // true when the display changed, so the service reposts.
+  fun appForeground(visible: Boolean): Boolean {
+    val becameVisible = visible && !foreground
     foreground = visible
+    if (!becameVisible) return false
+    val current = shown ?: return false
+    if (stopping && cancelConfirmed) {
+      stopping = false
+      cancelConfirmed = false
+      clearedStop = true
+      val page = lastPage
+      shown = if (page != null && !page.stoppable && page.state != NoticeState.STOPPED) page else neutralFrom(current)
+      return true
+    }
+    if (!stopping && current.state == NoticeState.STOPPED) {
+      shown = neutralFrom(current)
+      return true
+    }
+    return false
+  }
+
+  // The service ends now (MC-1508): the app is in front, the page's closing outcome is its latest message
+  // and the card is the app name only, exactly the card neutralFrom builds. In front is the process
+  // lifecycle's STARTED state, which lags a real hide by up to 700 ms. A hidden app does not end early,
+  // because the linger and the page's hidden-save hold keep the service for a hidden save; Stopping
+  // (MC-1435), Stopped, Failed, Finishing, a pending save and every work card never end early. It tests
+  // the shown card, so a clear and a swallowed Stopped outcome both qualify.
+  // Limitation (MC-1508, MC-1511): a stopped reply that finishes on screen holds no hidden-save token, so
+  // its pending save is covered by neither the linger nor a hold once this ends the service; a Home press
+  // before that save has landed (its 500 ms debounce plus the write) runs it without a foreground service.
+  fun endWanted(): Boolean {
+    val current = shown ?: return false
+    return foreground && !stopping && closed && current == neutralFrom(current)
   }
 
   // The timer is wanted exactly while Stopping, in the foreground and not confirmed cancelled by native
@@ -233,20 +307,56 @@ class KeepAliveDisplay(
     shown = null
     stopping = false
     cancelConfirmed = false
+    lastPage = null
+    cancelledWork = null
+    clearedStop = false
+    closed = false
+    outcomeHidden = false
   }
 
-  // A start or an update from the page. While Stopping, a stoppable notice only changes the data
-  // (numbers, title text) and keeps a confirmed cancel; a notice without stoppable work ends Stopping,
-  // in the background too. Only a page start or update refreshes the count line's clock (MC-1450).
+  // A start or an update from the page. Only a page start or update refreshes the count line's clock
+  // (MC-1450). The notice is always remembered as the page's latest.
+  // - Confirmed Stopped: a notice without stoppable work changes nothing shown (MC-1496); a stoppable
+  //   notice for the cancelled work only changes the data; a stoppable notice for other work is new work,
+  //   which ends Stopped and shows.
+  // - Unconfirmed Stopping (MC-1435): a stoppable notice only changes the data; a notice without
+  //   stoppable work ends Stopping, in the background too.
+  // - After the clear: a stoppable notice for the cancelled work is stale and shows nothing; other
+  //   stoppable work is new work and ends the clear; a notice without stoppable work shows as the
+  //   remaining work (MC-1497).
   // Returns true when Stopping ended.
   fun pageNotice(notice: KeepAliveNotice): Boolean {
-    shown = notice
+    lastPage = notice
+    closed = false
     lastPageNoticeAtMs = clock()
-    if (stopping && !notice.stoppable) {
+    if (stopping && cancelConfirmed) {
+      if (!notice.stoppable) return false
+      if (sameWork(notice, cancelledWork)) {
+        shown = notice
+        return false
+      }
+      shown = notice
       stopping = false
       cancelConfirmed = false
+      cancelledWork = null
       return true
     }
+    if (stopping) {
+      shown = notice
+      if (!notice.stoppable) {
+        stopping = false
+        return true
+      }
+      return false
+    }
+    if (clearedStop && notice.stoppable) {
+      if (sameWork(notice, cancelledWork)) return false
+      shown = notice
+      clearedStop = false
+      cancelledWork = null
+      return false
+    }
+    shown = notice
     return false
   }
 
@@ -265,9 +375,12 @@ class KeepAliveDisplay(
 
   // Records the count native's cancel returned. Only a positive count confirms: zero (nothing matched)
   // and a negative one (a failed call) leave Stopping as MC-1435 has it. Returns whether it confirmed.
+  // A confirm records the stoppable notice it cancelled, so the work's later notices are recognised.
   fun nativeCancelled(count: Int): Boolean {
     if (!stopping || count <= 0) return false
     cancelConfirmed = true
+    cancelledWork = shown
+    clearedStop = false
     return true
   }
 
@@ -303,11 +416,15 @@ class KeepAliveDisplay(
   // The closing notice that comes with the delayed stop; null when it could not be read. While
   // Stopping, the user's Stop decides what the work ended as: a stopped or failed notice shows as
   // sent, and a finishing one (or an unreadable one) shows Stopped, because the work ended after
-  // the user's Stop. An image or a pending save that ended Stopping earlier falls back to its own
-  // state instead, so this rule applies only when the stoppable work is the last to end. Outside
-  // Stopping the notice shows as sent. Returns true when Stopping ended, in the background too.
+  // the user's Stop. An unconfirmed Stopping that an image or a pending save ended earlier falls back to
+  // its own state instead, so this rule applies only when the stoppable work is the last to end. Outside
+  // Stopping the notice shows as sent, except after the clear (MC-1497): there the cancelled work's
+  // Stopped outcome shows the neutral card instead, and a failed or finishing one shows as sent. Every
+  // outcome after the clear ends it. Returns true when Stopping ended, in the background too.
   fun outcome(notice: KeepAliveNotice?): Boolean {
     val wasStopping = stopping
+    outcomeHidden = false
+    closed = true
     if (wasStopping) {
       val base = notice ?: shown
       shown = when {
@@ -316,12 +433,47 @@ class KeepAliveDisplay(
         else -> null
       }
       stopping = false
+    } else if (clearedStop) {
+      if (notice != null) {
+        if (notice.state == NoticeState.STOPPED) {
+          shown = neutralFrom(shown ?: notice)
+          outcomeHidden = true
+        } else {
+          shown = notice
+        }
+      }
+      clearedStop = false
+      cancelledWork = null
     } else if (notice != null) {
       shown = notice
     }
     cancelConfirmed = false
     return wasStopping
   }
+
+  // The same stoppable work as the cancelled one: same state, start and chat. The page gives each kind of
+  // work its own start token, so a different start or state is new work.
+  private fun sameWork(notice: KeepAliveNotice, work: KeepAliveNotice?): Boolean =
+    work != null &&
+      notice.state == work.state &&
+      notice.startedAtMs == work.startedAtMs &&
+      notice.target == work.target
+
+  // The card after a Stopped clears with no other work to show: the app name only (the service falls
+  // back to it for an empty title), with no name, avatar, target, chronometer or action. Native holds no
+  // string of its own, so every text is empty.
+  private fun neutralFrom(base: KeepAliveNotice): KeepAliveNotice =
+    base.copy(
+      state = NoticeState.FINISHING,
+      title = "",
+      text = "",
+      startedAtMs = null,
+      stopLabel = "",
+      publicTitle = "",
+      identity = null,
+      avatar = null,
+      target = null
+    )
 
   // Keeps the base notice's identity and target, so the converted notice names the same chat a
   // stopped notice from the page would.

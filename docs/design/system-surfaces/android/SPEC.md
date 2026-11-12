@@ -4,7 +4,7 @@ Status: **draft for review** (2026-10-25). Task: [tasks/2026-10-25-android-syste
 
 The family: the generation notification (§1–§6), the launcher icon (§7), the splash screen (§8) and the Back/quit toast (§9). Everything here is a proposal unless it cites a DD entry in [DECISIONS.md](../../DECISIONS.md). Items marked **OPEN** need the maintainer.
 
-What exists today, with sources, is in the task file's "Source facts" table. The short version: one ongoing, silent, low-importance notification whose only content is a title ("Generating a reply…" / "답변 생성 중…" or "Working…" / "작업 중…"), the Material sync glyph as small icon, no accent colour, no body text, no progress, and a Stop action for chat and TTS. **Today it carries no live state (no token count, rate or elapsed time).** It lingers 2 s after the last work ends.
+What exists today, with sources, is in the task file's "Source facts" table. The short version: one ongoing, silent, low-importance notification whose only content is a title ("Generating a reply…" / "답변 생성 중…" or "Working…" / "작업 중…"), the Material sync glyph as small icon, no accent colour, no body text, no progress, and a Stop action for chat and TTS. **Today it carries no live state (no token count, rate or elapsed time).** It lingers 10 s after the last work ends.
 
 ## 0. Device baseline (Tab S9 Ultra, One UI 8.5, today's build) — observed
 
@@ -54,7 +54,7 @@ From [device request 01](../../tasks/2026-10-25-device-request-01-tab-s9-baselin
 
 ### 2.1 Unchanged behaviour
 
-Channel `keepalive` (IMPORTANCE_LOW, silent, no badge), ongoing, `setOnlyAlertOnce`, `FOREGROUND_SERVICE_IMMEDIATE`, CATEGORY_SERVICE, FGS type `dataSync`, the 2 s linger and the once-only permission request all stay. The channel name gains a Korean string: "Background work" / "백그라운드 작업" (new `values-ko/strings.xml`; today it is English-only).
+Channel `keepalive` (IMPORTANCE_LOW, silent, no badge), ongoing, `setOnlyAlertOnce`, `FOREGROUND_SERVICE_IMMEDIATE`, CATEGORY_SERVICE, FGS type `dataSync`, the 10 s linger and the once-only permission request all stay. The channel name gains a Korean string: "Background work" / "백그라운드 작업" (new `values-ko/strings.xml`; today it is English-only).
 
 ### 2.2 Small icon
 
@@ -76,7 +76,7 @@ Contrast numbers are computed sRGB relative-luminance ratios against the stated 
 
 ## 3. States
 
-Kinds come from `inFlightKinds()` (`chat`, `tts`, `image`, `request`, `translate`, `embed`, `busy`). When several are in flight the highest row wins: **stopping > chat > tts > image > translate > other**. Failed and Stopped exist only inside the 2 s linger (§3.6). Normal completion has no state of its own: the last title stays for the linger, as today.
+Kinds come from `inFlightKinds()` (`chat`, `tts`, `image`, `request`, `translate`, `embed`, `busy`). When several are in flight the highest row wins: **stopping > chat > tts > image > translate > other**. Failed exists only inside the 10 s linger, and Stopped is shown until the work ends and then for the linger (§3.6). Normal completion has no state of its own: the last title stays for the linger, as today.
 
 | State | When | Title (en / ko) | Text (en / ko) | Chronometer | Progress | Action |
 |---|---|---|---|---|---|---|
@@ -87,7 +87,7 @@ Kinds come from `inFlightKinds()` (`chat`, `tts`, `image`, `request`, `translate
 | Other work | `request`, `embed`, `busy` | Working… / 작업 중… *(existing key)* | — | from start | none | none |
 | Stopping | Stop tapped, stoppable work not yet ended | Stopping… / 중지하는 중… | — | hidden (`setUsesChronometer(false)`, `setShowWhen(false)`) | none | none; Stop returns 10 s after the tap in the foreground, or 10 s after the app returns to the foreground; Stopped at once when native cancelled the chat's request (§3.3) |
 | Failed (linger) | a `chat` unit ended with an error (reply kinds only) | Reply failed / 답변 생성 실패 | Open the app to see why. / 앱을 열어 확인하세요. | hidden | none | none |
-| Stopped (linger) | the work ended after the user's Stop | Stopped / 중지됨 | — | hidden | none | none |
+| Stopped (linger) | the work ended after the user's Stop; if the app comes to the front first, it clears to the remaining work's state or the app-name card, and the page's later Stopped for that work does not show (MC-1497) | Stopped / 중지됨 | — | hidden | none | none |
 
 New locale keys (all locales; en and ko given above, others translator-owned): `keepAliveSpeaking`, `keepAliveImage`, `keepAliveTranslating`, `keepAliveStopping`, `keepAliveFailed`, `keepAliveFailedHint`, `keepAliveStopped`. (No "Reply ready" string: that would pre-empt D-8.) Existing: `keepAliveGenerating`, `keepAliveWorking`, `keepAliveStop`.
 
@@ -116,15 +116,16 @@ Not shown today (the page never sends them). If wanted:
 - The **native service** switches to Stopping on the tap itself (it rebuilds its own notification before forwarding the stop to the page), so the change does not wait for a WebView round trip and a second tap cannot race. Today the action stays until the work ends.
 - Stopping lasts until the stoppable kinds (`chat`, `tts`) are gone. If other work is still running (an image, say), the notification then falls back to that work's state.
 - **Timeout (MC-1435):** the 10 s timeout runs only while the app is in the foreground (visible: also split screen and the shade pulled over the app; not Home, recents, another app, the lock screen or screen off). A Stop tapped in the foreground arms it at the tap. A Stop tapped while the app is in the background keeps "Stopping…" with no timeout until the page reports the stoppable work gone or the app returns to the foreground; the full 10 s starts then. Going to the background again while Stopping cancels it, and the next return starts a full 10 s again. When it ends, the native side restores the previous state with its Stop action, so a user who can see the app is never left with a stuck "Stopping…" and no control. While Stopping, a tap on the notice still opens the chat. Today's no-page case (the service stops itself) is unchanged.
-- **Native cancel:** on a Stop tap while the notice is Generating, native first forwards the stop to the page as before, then cancels the chat's in-flight native requests itself (those the page marked as aborted by the chat's Stop), because a page hidden for about a minute is frozen and runs nothing until it is shown. When at least one request was cancelled the notification shows Stopped at once, with no action and no timeout, in the foreground or not (MC-1470); it clears when the page returns or the app reopens (MC-1471); the page's own stop-with-outcome still follows when it runs and replaces it. When none was found, Stopping and its timeout behave as above. Other work (speech, images, translation, plugin requests) is never cancelled natively. Accepted limit: if the page's stop never takes effect (a broken page), the notice stays Stopped with no action until the app is opened and the reply is stopped there; the in-app Stop does not depend on the notification path.
+- **Native cancel:** on a Stop tap while the notice is Generating, native first forwards the stop to the page as before, then cancels the chat's in-flight native requests itself (those the page marked as aborted by the chat's Stop), because a page hidden for about a minute is frozen and runs nothing until it is shown. When at least one request was cancelled the notification shows Stopped at once, with no action and no timeout, in the foreground or not (MC-1470). That Stopped stays until the work ends: a page notice without stoppable work (a pending save, say) does not replace it (MC-1496). It clears when the app comes to the front (MC-1497): the card then shows the remaining work's state, or the app-name card when none remains, and the page's later Stopped outcome for that work shows nothing. The page's own stop-with-outcome still follows when it runs and replaces the Stopped, except after that clear; a Failed outcome and new work show as usual. When none was found, Stopping and its timeout behave as above. Other work (speech, images, translation, plugin requests) is never cancelled natively. Accepted limit: if the page's stop never takes effect (a broken page), the notice stays Stopped with no action until the app comes to the front, where it clears; the in-app Stop does not depend on the notification path.
+- **Early end (MC-1508):** after the return clears Stopped and no work is left, the card shows only the app name. When the page's closing outcome arrives while the app is in front, or the app returns after it arrived while hidden, the service ends at once instead of after the 10 s linger. "In front" means the process lifecycle's STARTED state, which lags a real hide by up to 700 ms. While the app is hidden, the linger and the page's hidden-save hold keep the service as before. The service ends only through its latest start, so work the page has just started keeps it. Accepted limitation (MC-1508, MC-1511): after a Stop, the stopped reply may finish on screen with no hidden-save hold, and the service then ends at once; neither the linger nor the save hold covers that reply's pending save. A Home press before that save has landed (its 500 ms debounce plus the write) runs it without a foreground service, the same as an on-screen edit followed by a quick Home press. Known edge: when the stopped work closes as Finishing (the run reported no outcome), "Finishing up…" shows for the linger and does not end early.
 - **Count line while hidden (MC-1450):** while the app is in the background, a Generating count line that the page has not refreshed for 5 s is dropped by native, because a frozen page cannot clear a number that is no longer current. The title, chronometer and Stop action stay. The line returns with the page's next notice, and at once when the app returns to the foreground (with the page's last count). A page that is alive but sends no update for 5 s (a count that did not change, or updates the system's background throttling delayed) also loses the line until its next update. Stopping and Stopped show no count, so they are unaffected. A native count source may later replace the dropped line (MC-1452).
-- **Who owns the state while Stopping (re-review N1):** native. Page `update`s that arrive during Stopping may change data (title text, live numbers) but never the state or the actions; native leaves Stopping only when the page reports the stoppable kinds gone (its next notice without `chat`/`tts`, or the stop with outcome) or on the timeout (foreground only, above), or when native confirms it cancelled the chat's request (shown as Stopped until the page's outcome).
+- **Who owns the state while Stopping (re-review N1):** native. Page `update`s that arrive during Stopping may change data (title text, live numbers) but never the state or the actions; native leaves Stopping only when the page reports the stoppable kinds gone (its next notice without `chat`/`tts`, or the stop with outcome) or on the timeout (foreground only, above), or when native confirms it cancelled the chat's request. That Stopped stays until the work ends (MC-1496) and clears when the app comes to the front (MC-1497); after the clear the card shows the remaining work's state or the app-name card, never the cancelled work's Stopped again.
 - **Races (N2):** a `stop` or the stop-with-outcome ends Stopping and cancels any pending timeout, whether or not the app is in the foreground. A Stop restored by the timeout is an ordinary Stop again; a second tap sends a second abort, which must be harmless (`abortChat()`/`stopTTS()` on finished work are no-ops; lane A to confirm).
 - Stop on non-stoppable kinds (image, translate, other) stays absent, as today. **OPEN, D-7:** whether image generation should become stoppable is a product/behaviour question outside this surface.
 
 ### 3.4 Speaking
 
-TTS after a reply keeps the same notification (the 2 s linger already bridges the gap): the title changes from Generating to Speaking, the chronometer restarts at speech start. If identity is on, the avatar and names stay.
+TTS after a reply keeps the same notification (the 10 s linger already bridges the gap): the title changes from Generating to Speaking, the chronometer restarts at speech start. If identity is on, the avatar and names stay.
 
 ### 3.5 Other work
 
@@ -132,15 +133,15 @@ Image and Translating get their own titles because users start them deliberately
 
 ### 3.6 Failed and Stopped inside the linger
 
-Today the 2 s linger keeps the last title, so a failed or stopped reply still reads "Generating a reply…" for 2 s.
+Today the 10 s linger keeps the last title, so a failed or stopped reply still reads "Generating a reply…" for 10 s.
 
-- **Normal completion: no change.** The last title stays for the linger. A "done" state here would flip the notification between a reply and its speech (Generating → done → Speaking within 2 s), which is the flapping the linger exists to prevent, and a "Reply ready" string would pre-empt D-8.
+- **Normal completion: no change.** The last title stays for the linger. A "done" state here would flip the notification between a reply and its speech (Generating → done → Speaking within 10 s), which is the flapping the linger exists to prevent, and a "Reply ready" string would pre-empt D-8.
 - **No action during the linger:** whatever the title, the linger card carries no Stop (the work has ended).
-- **After the user's Stop:** Stopped / 중지됨 for the linger.
+- **After the user's Stop:** Stopped / 중지됨 for the linger, unless the app comes to the front first: then it clears at once and the page's later Stopped for that work does not show again (MC-1497). When the app is in front and no work is left, the card then ends at the page's closing outcome (MC-1508, §3.3).
 - **After a failed reply:** Failed for the linger, only for `chat` units and only once the page can tell a failure from an abort (it cannot today: `inFlightWork.ts` records no outcome; this is new page work).
 - **Transport (review F2, N3):** the outcome travels **inside** the delayed stop, through a new bridge method `stopAfterWithOutcome(ms, outcome)` (not an overload of `stopAfter` on the JavascriptInterface; `stopAfter(ms)` stays for old pages). The page owns the outcome; native only displays it. `KeepAliveBridge.update` cancels a pending delayed stop (`KeepAliveBridge.kt:55-58`), so an `update` sent after `stopAfter` would leave the service running. Native test: `stopAfter` with an outcome rebuilds once and keeps the delayed stop.
 
-This is **not** a reply-ready notification: it disappears with the service after 2 s. A persistent one is D-8 (§12).
+This is **not** a reply-ready notification: it disappears with the service after 10 s. A persistent one is D-8 (§12).
 
 ## 4. Lock screen and privacy
 
