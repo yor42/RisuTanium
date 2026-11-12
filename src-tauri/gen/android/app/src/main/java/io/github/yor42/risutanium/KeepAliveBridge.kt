@@ -5,7 +5,6 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.webkit.JavascriptInterface
-import androidx.core.content.ContextCompat
 import org.json.JSONObject
 
 // Exposed to the page as window.__risuTaniumKeepAlive. Kept by name in proguard-rules.pro: the
@@ -42,7 +41,7 @@ class KeepAliveBridge(
   fun start(title: String, stopLabel: String) {
     mainHandler.post {
       try {
-        ContextCompat.startForegroundService(appContext, KeepAliveService.intentFor(appContext, title, stopLabel))
+        KeepAliveService.launch(appContext, KeepAliveService.intentFor(appContext, title, stopLabel))
         running = true
         // Only a start that succeeded may drop a pending stop.
         mainHandler.removeCallbacks(delayedStop)
@@ -93,7 +92,7 @@ class KeepAliveBridge(
     mainHandler.post {
       val readable = parseKeepAliveNoticeJson(json) != null
       try {
-        ContextCompat.startForegroundService(appContext, KeepAliveService.intentForNotice(appContext, if (readable) json else null))
+        KeepAliveService.launch(appContext, KeepAliveService.intentForNotice(appContext, if (readable) json else null))
         running = true
         // Only a start that succeeded may drop a pending stop.
         mainHandler.removeCallbacks(delayedStop)
