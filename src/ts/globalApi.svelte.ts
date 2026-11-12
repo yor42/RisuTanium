@@ -80,6 +80,7 @@ import { hasLocalDrafts } from "./localDrafts";
 import { beginChokePoint, busyKinds } from "./process/memory/busyActions";
 import { installNetHold } from "./storage/measureExportHold";
 import { isAndroidTransport, shouldBypassFrozenPagePaths } from "./storage/tauriByteTransport";
+import { decidePlainFetch } from "./network/androidHttp";
 import { androidWithholdsUrl, forgetStoredAssetSizes, rememberWholeReadUrl, type AssetUse, type WholeReadBudget } from "./storage/assetUrlGate";
 import { parseJsonBody } from "./network/frozenBody";
 import { MEASURE } from "./process/memory/measureFlag";
@@ -3390,9 +3391,20 @@ export async function globalFetch(url: string, arg: GlobalFetchArgs = {}, intern
         const db = getDatabase();
         if (arg.abortSignal?.aborted) { return { ok: false, data: 'aborted', headers: {}, status: 400 }; }
 
-        const urlHost = new URL(url).hostname
+        const parsedUrl = new URL(url)
+        const urlHost = parsedUrl.hostname
         const useLocalNetworkRoute = arg.networkRoute === 'local_network' && isLocalNetworkUrl(url)
-        const forcePlainFetch = ((knownHostes.includes(urlHost) && !isTauri) || db.usePlainFetch || arg.plainFetchForce) && !arg.plainFetchDeforce && !useLocalNetworkRoute
+        // On Android an http request never takes the WebView fetch: the release cleartext policy refuses it.
+        const forcePlainFetch = decidePlainFetch({
+            knownHost: knownHostes.includes(urlHost),
+            isTauri,
+            usePlainFetch: db.usePlainFetch,
+            plainFetchForce: arg.plainFetchForce,
+            plainFetchDeforce: arg.plainFetchDeforce,
+            localNetworkRoute: useLocalNetworkRoute,
+            android: isAndroidTransport(),
+            protocol: parsedUrl.protocol,
+        })
 
         if (useLocalNetworkRoute && !isTauri && !isNodeServer) {
             return { ok: false, headers: {}, status: 400, data: webLocalNetworkBlockedMessage };

@@ -361,6 +361,7 @@ export const languageChinese = {
         "networkFetch": "这通常是由于网络连接不稳定或服务器故障引起的。",
         "networkFetchWeb": "这可能是由 CORS 错误引起的。这种情况只会在使用网页版时发生，因为浏览器存在一些限制。请尝试使用本地版或其他版本的 RisuTanium。",
         "networkFetchPlain": "这可能是一次数据抓取（Fetch）错误。请尝试在设置中关闭强制抓取选项。",
+        "androidHttpBlocked": "Android 会拦截使用未加密 http:// 地址的请求。请改用 https:// 地址。",
         "requestTimedOut": "请求超时。",
         "realmUploadNoAnswer": "RisuRealm 没有响应，因此未上传任何内容。请检查网络连接后重试。",
         "requestLogRemoved": "该请求记录已被删除。",

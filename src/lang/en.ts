@@ -361,6 +361,7 @@ export const languageEnglish = {
         networkFetchWeb:
             "This can be a CORS error. this only happens when using web version due to limitations of the browser. try using desktop local version, or other version of RisuTanium.",
         networkFetchPlain: "This can be a plain fetch error. try disabling force plain fetch option in settings.",
+        androidHttpBlocked: "Android blocks this request because it uses an unencrypted http:// address. Use an https:// address instead.",
         requestTimedOut: "Request timed out",
         realmUploadNoAnswer: "RisuRealm did not respond, so nothing was uploaded. Check your connection and try again.",
         requestLogRemoved: "This request log is removed.",

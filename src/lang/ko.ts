@@ -361,6 +361,7 @@ export const languageKorean = {
         "networkFetch": "네트워크가 불안정하거나 서버가 응답하지 않을 때 자주 발생합니다.",
         "networkFetchWeb": "이것은 CORS 오류일 수 있습니다. 이는 브라우저의 제한으로 인해 웹 버전을 사용할 때만 발생합니다. 데스크톱 로컬 버전이나 다른 버전의 RisuTanium을 사용해보세요.",
         "networkFetchPlain": "이것은 요청 오류일 수 있습니다. 설정에서 직접 요청 보내기 옵션을 비활성화해 보세요.",
+        "androidHttpBlocked": "Android는 암호화되지 않은 http:// 주소를 사용하는 요청을 차단합니다. 대신 https:// 주소를 사용해 주세요.",
         "requestTimedOut": "요청 시간이 초과되었습니다.",
         "realmUploadNoAnswer": "RisuRealm이 응답하지 않아 아무것도 업로드되지 않았습니다. 연결 상태를 확인한 뒤 다시 시도하세요.",
         "requestLogRemoved": "요청 로그가 삭제되었습니다.",

@@ -361,6 +361,7 @@ export const languageVietnamese = {
         "networkFetch": "Điều này xảy ra khi mạng không ổn định hoặc máy chủ đang gặp sự cố.",
         "networkFetchWeb": "Đây có thể là lỗi CORS. Lỗi này chỉ xảy ra khi sử dụng phiên bản web do giới hạn của trình duyệt. Hãy thử dùng phiên bản desktop cục bộ, hoặc một phiên bản khác của RisuTanium.",
         "networkFetchPlain": "Đây có thể là lỗi plain fetch. Hãy thử tắt tùy chọn buộc dùng plain fetch trong cài đặt.",
+        "androidHttpBlocked": "Android chặn yêu cầu này vì nó dùng địa chỉ http:// không được mã hóa. Hãy dùng địa chỉ https:// thay thế.",
         "requestTimedOut": "Yêu cầu đã hết thời gian chờ.",
         "realmUploadNoAnswer": "RisuRealm không phản hồi nên chưa có gì được tải lên. Hãy kiểm tra kết nối của bạn rồi thử lại.",
         "requestLogRemoved": "Nhật ký yêu cầu này đã bị xóa.",

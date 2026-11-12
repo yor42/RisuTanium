@@ -18,6 +18,7 @@ import {
 } from "./ttsHooks";
 import { createFishSpeechDefaults, createNovelAIVoiceDefaults, createVoicevoxDefaults } from "./ttsDefaults";
 import { SecretRefError, isSecretRef, resolveSecret, secretRefName } from "../secretRef";
+import { AndroidHttpBlockedError, directFetch } from "../network/androidHttp";
 
 /**
  * True only for an `https:` URL whose hostname is exactly `api.openai.com` (any port, path or
@@ -260,7 +261,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                 if(signal.aborted){
                     return
                 }
-                const query = await fetch(`${db.voicevoxUrl}/audio_query?text=${jpText}&speaker=${character.ttsSpeech}`, {
+                const query = await directFetch(`${db.voicevoxUrl}/audio_query?text=${jpText}&speaker=${character.ttsSpeech}`, {
                     method: 'POST',
                     headers: { "Content-Type": "application/json"},
                     signal,
@@ -285,7 +286,7 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
                         outputStereo: queryJson.outputStereo,
                         kana: queryJson.kana,
                     }
-                    const getVoice = await fetch(`${db.voicevoxUrl}/synthesis?speaker=${character.ttsSpeech}`, {
+                    const getVoice = await directFetch(`${db.voicevoxUrl}/synthesis?speaker=${character.ttsSpeech}`, {
                         method: 'POST',
                         headers: { "Content-Type": "application/json"},
                         body: JSON.stringify(bodyData),
@@ -616,7 +617,8 @@ export async function sayTTS(character:character,text:string, options?: { skipTe
         if(signal.aborted){
             return
         }
-        alertError(fillLang(language.errors.ttsError, { error: `${error}` }))
+        // The cause text has no "Failed to fetch", so the alert adds no plain-fetch hint to it.
+        alertError(fillLang(language.errors.ttsError, { error: error instanceof AndroidHttpBlockedError ? error.message : `${error}` }))
     } finally {
         endInFlight()
     }

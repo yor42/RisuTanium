@@ -65,6 +65,16 @@ vi.mock('uuid', () => ({
     v4: () => `uuid-${++h.uuid}`,
 }))
 
+/** What the operating-system plugin answers; 'throw' (the default) models a page without the plugin. */
+const osBox = vi.hoisted(() => ({ os: 'throw' }))
+
+vi.mock('@tauri-apps/plugin-os', () => ({
+    type: () => {
+        if (osBox.os === 'throw') throw new Error('no operating-system plugin')
+        return osBox.os
+    },
+}))
+
 vi.mock(import('src/ts/platform'), () => ({
     get isTauri() { return h.isTauri },
     isNodeServer: false,
@@ -411,6 +421,7 @@ afterEach(() => {
     vi.stubGlobal('fetch', originalFetch)
     vi.restoreAllMocks()
     delete (window as unknown as { launchQueue?: unknown }).launchQueue
+    osBox.os = 'throw'
     setUrl('/')
 })
 
@@ -474,6 +485,35 @@ describe('#import= links', () => {
         expect(reads).toEqual({ arrayBuffer: 0, blob: 0, other: 0 })
         expect(parseArgs).toEqual([])
         expect(h.characters).toEqual([])
+    })
+
+    test('R7 a refused fetch of an http link on Android shows the cause instead of noData', async () => {
+        osBox.os = 'android'
+        routes.set('http://files.test/dl', () => { throw new TypeError('Failed to fetch') })
+        setUrl('/#import=http://files.test/dl')
+        await characterURLImport()
+        expect(h.errors).toHaveLength(1)
+        expect(h.errors).not.toContain(language.errors.noData)
+        expect(h.errors).toEqual([language.errors.androidHttpBlocked])
+        expect(h.characters).toEqual([])
+    })
+
+    test('G6 the same refusal without Android keeps noData', async () => {
+        routes.set('http://files.test/dl', () => { throw new TypeError('Failed to fetch') })
+        setUrl('/#import=http://files.test/dl')
+        await characterURLImport()
+        expect(h.errors).toEqual([language.errors.noData])
+    })
+
+    test('guard: on Android a refused https link and an http link that answers with an error status keep noData', async () => {
+        osBox.os = 'android'
+        routes.set('https://files.test/dl', () => { throw new TypeError('Failed to fetch') })
+        setUrl('/#import=https://files.test/dl')
+        await characterURLImport()
+        routes.set('http://files.test/gone', () => new Response('gone', { status: 404 }))
+        setUrl('/#import=http://files.test/gone')
+        await characterURLImport()
+        expect(h.errors).toEqual([language.errors.noData, language.errors.noData])
     })
 
     test('a .json card link imports as a card and a .preset link reaches the preset importer', async () => {
