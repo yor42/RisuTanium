@@ -1,9 +1,10 @@
 <script lang="ts">
-    import { untrack, type Snippet } from 'svelte'
+    import { tick, untrack, type Snippet } from 'svelte'
     import { language } from 'src/lang'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
     import { isTopmostShell, makeInert, registerShell, returnFocus, trapTab, watchFocus } from '../Nexus/pattern/patternFocus'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
+    import { createSheetDrag, type SheetRelease } from '../../ts/chatShell/sheetDrag'
 
     interface Props {
         open: boolean
@@ -81,6 +82,90 @@
             document.removeEventListener('pointercancel', up, true)
         }
     })
+    // Drag down by the handle (CHORE-726). The section follows the finger; `moved` stays set for the rest of this open so the entry
+    // animation can never take the transform back; a release travels to rest or off screen, then the sheet closes the normal way.
+    const drag = createSheetDrag()
+    let dragPointer: number | null = null
+    let dragHeight = 0
+    let dragY = $state(0)
+    let dragging = $state(false)
+    let moved = $state(false)
+    let settle = $state<SheetRelease | null>(null)
+    let settleTimer: ReturnType<typeof setTimeout> | undefined
+    function resetDrag(): void {
+        clearTimeout(settleTimer)
+        settleTimer = undefined
+        drag.cancel()
+        dragPointer = null
+        dragHeight = 0
+        dragY = 0
+        dragging = false
+        moved = false
+        settle = null
+    }
+    function onHandleDown(event: PointerEvent): void {
+        if (event.pointerType === 'mouse' || dragPointer !== null || settle !== null || closing) return
+        dragPointer = event.pointerId
+        dragHeight = panel?.offsetHeight ?? 0
+        ;(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
+        drag.down(event.clientY, event.timeStamp)
+    }
+    function onHandleMove(event: PointerEvent): void {
+        if (event.pointerId !== dragPointer) return
+        const offset = drag.move(event.clientY, event.timeStamp)
+        if (!drag.engaged()) return
+        dragging = true
+        moved = true
+        dragY = offset
+    }
+    function onHandleUp(event: PointerEvent): void {
+        if (event.pointerId !== dragPointer) return
+        dragPointer = null
+        const release = drag.up(event.clientY, event.timeStamp, dragHeight)
+        if (dragging) void finishDrag(release)
+    }
+    // A cancel or a lost capture ends only the gesture still in progress; after a release the pointer is no longer the sheet's.
+    function onHandleCancel(event: PointerEvent): void {
+        if (event.pointerId !== dragPointer) return
+        dragPointer = null
+        drag.cancel()
+        if (dragging) void finishDrag('stay')
+    }
+    // The longest transition the section now has, read after the settle state is applied; 0 when none resolves.
+    function settleMs(): number {
+        if (!panel) return 0
+        const values = getComputedStyle(panel).transitionDuration.split(',').map((part) => {
+            const text = part.trim()
+            const amount = parseFloat(text)
+            return Number.isFinite(amount) ? (text.endsWith('ms') ? amount : amount * 1000) : 0
+        })
+        return Math.max(0, ...values)
+    }
+    async function finishDrag(release: SheetRelease): Promise<void> {
+        dragging = false
+        settle = release
+        if (release === 'stay') dragY = 0
+        await tick()
+        if (settle !== release) return
+        const done = () => {
+            settleTimer = undefined
+            if (release === 'close') close()
+            else { settle = null; dragY = 0 }
+        }
+        const ms = settleMs()
+        if (ms > 0) settleTimer = setTimeout(done, ms)
+        else done()
+    }
+    function sheetTransform(): string | undefined {
+        if (settle === 'close') return 'translateY(100%)'
+        return dragging || settle !== null ? `translateY(${dragY}px)` : undefined
+    }
+    function scrimDrag(): string | undefined {
+        if (settle === 'close') return '1'
+        if (!dragging || dragHeight <= 0) return undefined
+        return String(Math.min(1, dragY / dragHeight))
+    }
+
     function scrimClick(): void {
         const fromOpeningTouch = touchStartedAt <= openedAt && (touchActive || performance.now() - touchEndedAt < SCRIM_TOUCH_GRACE_MS)
         if (!fromOpeningTouch) close()
@@ -90,6 +175,7 @@
         const shell = open ? panel : undefined
         if (!shell) return
         closing = false
+        untrack(() => resetDrag())
         openedAt = performance.now()
         const savedOpener = untrack(() => opener)
         const restoreInert = makeInert(untrack(() => inertOutside ? outsideLayer(shell) : background))
@@ -114,6 +200,7 @@
         }
         window.addEventListener('keydown', onKeyDown, true)
         return () => {
+            untrack(() => resetDrag())
             window.removeEventListener('keydown', onKeyDown, true)
             stopWatching()
             unregisterBack()
@@ -126,9 +213,14 @@
 </script>
 
 {#if open}
-    <div bind:this={layer} data-part="chat-sheet-layer" data-mode={mode}>
+    <div bind:this={layer} data-part="chat-sheet-layer" data-mode={mode} data-settle={settle ?? undefined} style:--sheet-drag={scrimDrag()}>
         <button data-part="chat-sheet-scrim" aria-label={language.cancel} onclick={scrimClick}></button>
-        <section bind:this={panel} data-part="chat-sheet" data-mode={mode} style:left={mode === 'wide-menu' ? `${popupPosition.left}px` : undefined} style:top={mode === 'wide-menu' ? `${popupPosition.top}px` : undefined} role={kind === 'menu' ? 'menu' : 'dialog'} aria-label={label} aria-modal={kind === 'menu' ? undefined : 'true'} tabindex="-1">
+        <section bind:this={panel} data-part="chat-sheet" data-mode={mode} style:left={mode === 'wide-menu' ? `${popupPosition.left}px` : undefined} style:top={mode === 'wide-menu' ? `${popupPosition.top}px` : undefined} role={kind === 'menu' ? 'menu' : 'dialog'} aria-label={label} aria-modal={kind === 'menu' ? undefined : 'true'} tabindex="-1" style:transform={sheetTransform()} data-dragging={dragging ? '' : undefined} data-moved={moved ? '' : undefined}>
+            {#if mode !== 'wide-menu'}
+                <!-- The handle is a touch affordance only: Back, Escape and the scrim stay the accessible ways to close. -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div data-part="chat-sheet-handle" aria-hidden="true" onpointerdown={onHandleDown} onpointermove={onHandleMove} onpointerup={onHandleUp} onpointercancel={onHandleCancel} onlostpointercapture={onHandleCancel}></div>
+            {/if}
             {@render children()}
         </section>
     </div>
@@ -136,7 +228,7 @@
 
 <style>
     [data-part="chat-sheet-layer"] { position: fixed; inset: 0; z-index: var(--pattern-z-layer); display: flex; align-items: end; justify-content: center; }
-    [data-part="chat-sheet-scrim"] { position: absolute; inset: 0; width: 100%; background: var(--color-scrim); opacity: var(--opacity-scrim); border: 0; }
+    [data-part="chat-sheet-scrim"] { position: absolute; inset: 0; width: 100%; background: var(--color-scrim); opacity: calc(var(--opacity-scrim) * (1 - var(--sheet-drag, 0))); border: 0; }
     [data-part="chat-sheet"] { position: relative; width: 100%; max-height: 100%; overflow: auto; padding: var(--sheet-padding-bottom) var(--sheet-padding-x); border-radius: var(--radius-sheet) var(--radius-sheet) 0 0; background: var(--color-surface-sheet); color: var(--nexus-text); border: 1px solid var(--nexus-edge); animation: sheet-in var(--chat-dur-base) var(--chat-ease-out) both; }
     [data-part="chat-sheet"][data-mode="action"] { max-height: 60%; }
     [data-part="chat-sheet"][data-mode="tall"], [data-part="chat-sheet"][data-mode="side"] { height: 92%; max-height: 92%; }
@@ -152,4 +244,18 @@
     @media (prefers-reduced-motion: reduce) { :global(html:not(.rm-off)[data-low-power]) [data-part="chat-sheet"] { animation: sheet-fade var(--chat-dur-fast) var(--chat-ease-out) both; } }
     :global(html.rm[data-low-power]) [data-part="chat-sheet"] { animation: sheet-fade var(--chat-dur-fast) var(--chat-ease-out) both; }
     :global(html.rm.nexus-low-power) [data-part="chat-sheet"] { animation: sheet-fade var(--chat-dur-fast) var(--chat-ease-out) both; }
+    /* Drag down by the handle (CHORE-726): only transform and opacity move. */
+    /* The handle scrolls with the content: callers keep their own sticky title bars at the top of the sheet. */
+    [data-part="chat-sheet-handle"] { height: var(--size-touch); margin: calc(-1 * var(--sheet-padding-bottom)) calc(-1 * var(--sheet-padding-x)) 0; display: flex; align-items: center; justify-content: center; background: var(--color-surface-sheet); touch-action: none; }
+    [data-part="chat-sheet-handle"]::before { content: ''; width: var(--size-19); height: var(--stroke-heavy); border-radius: var(--radius-pill); background: var(--nexus-edge-strong); }
+    @media (min-width: 900px) { [data-part="chat-sheet"][data-mode="side"] [data-part="chat-sheet-handle"] { display: none; } }
+    [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet"], [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet-scrim"] { transition: transform var(--chat-dur-base) var(--chat-ease-out), opacity var(--chat-dur-base) var(--chat-ease-out); }
+    @media (prefers-reduced-motion: reduce) { :global(html:not(.rm-off)) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet"], :global(html:not(.rm-off)) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet-scrim"] { transition-duration: var(--chat-dur-fast); } }
+    :global(html.rm) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet"], :global(html.rm) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet-scrim"] { transition-duration: var(--chat-dur-fast); }
+    :global(html[data-low-power]) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet"], :global(html[data-low-power]) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet-scrim"], :global(html.nexus-low-power) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet"], :global(html.nexus-low-power) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet-scrim"] { transition-duration: var(--dur-lowpower-cap); }
+    @media (prefers-reduced-motion: reduce) { :global(html:not(.rm-off)[data-low-power]) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet"], :global(html:not(.rm-off)[data-low-power]) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet-scrim"], :global(html:not(.rm-off).nexus-low-power) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet"], :global(html:not(.rm-off).nexus-low-power) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet-scrim"] { transition-duration: var(--chat-dur-fast); } }
+    :global(html.rm[data-low-power]) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet"], :global(html.rm[data-low-power]) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet-scrim"], :global(html.rm.nexus-low-power) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet"], :global(html.rm.nexus-low-power) [data-part="chat-sheet-layer"][data-settle] [data-part="chat-sheet-scrim"] { transition-duration: var(--chat-dur-fast); }
+    [data-part="chat-sheet"][data-dragging] { transition: none; }
+    /* Once moved, the entry animation stays off for this open: it must lose to nothing, or its fill would take the transform back. */
+    [data-part="chat-sheet"][data-moved] { animation: none !important; }
 </style>
