@@ -332,6 +332,7 @@
   --icon-mask-users: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2'/><circle cx='9' cy='7' r='4'/><path d='M22 21v-2a4 4 0 0 0-3-3.87'/><path d='M16 3.13a4 4 0 0 1 0 7.75'/></svg>");   /* the users glyph of a group avatar (an alpha mask; only its shape matters) */
   --stop-shimmer-start: 20%; --stop-shimmer-mid: 50%; --stop-shimmer-end: 80%;     /* the sweep of the image-loading shimmer */
   --swipe-nudge: 24px;                                                             /* how far the next reply's edge peeks while the card is dragged */
+  --swipe-peek-opacity: var(--opacity-soft);   /* the neighbour alternative that peeks in during a reply swipe */
   --scrub-thumb-height: var(--size-27);                                            /* the position scrubber's grab handle (the long list) */
   --edge-zone-extra: 24px;                                                         /* the debug edge-zone strip is the inset plus this */
 }

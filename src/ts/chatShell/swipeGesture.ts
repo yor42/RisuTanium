@@ -149,3 +149,34 @@ export function createWheelSteps(initialIndex: number, initialCount: number): Wh
     }
     return Object.assign(step, { set(nextIndex: number, nextCount: number): void { index = nextIndex; count = nextCount } })
 }
+
+// SLICE1_SPEC §3.2 feedback. The meter fills with the pull; where motion is reduced or power is low it is a static
+// ring that fills in quarter steps. An armed meter is full.
+export function meterFill(progress: number, armed: boolean, stepped: boolean): number {
+    if (armed) return 1
+    const fill = Math.max(0, Math.min(1, progress))
+    return stepped ? Math.floor(fill * 4) / 4 : fill
+}
+
+/** The alternative a horizontal drag reveals, as its 1-based position, or null where none can come in. */
+export function peekNeighbour(dx: number, index: number, count: number, streaming: boolean): number | null {
+    if (streaming || dx === 0) return null
+    if (dx > 0) return index > 1 ? index - 1 : null
+    return index < count ? index + 1 : null
+}
+
+const PEEK_TEXT_MAX = 200
+
+/**
+ * A raw message reduced to plain text for the peek: macros (innermost first, so nested ones go too), tags and
+ * markdown marks removed, whitespace collapsed. It is shown as text only; nothing here is parsed or rendered.
+ */
+export function peekText(raw: string): string {
+    // Only the start can be shown, so only the start is cleaned; this bounds the macro loop on a long or deeply nested message.
+    let text = raw.slice(0, PEEK_TEXT_MAX * 4)
+    for (let previous = ''; previous !== text;) {
+        previous = text
+        text = text.replace(/\{\{[^{}]*\}\}/g, ' ')
+    }
+    return text.replace(/<[^>]*>?/g, ' ').replace(/[*_`#>~|]/g, '').replace(/\s+/g, ' ').trim().slice(0, PEEK_TEXT_MAX)
+}

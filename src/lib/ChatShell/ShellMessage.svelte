@@ -61,7 +61,10 @@
     import { requestStopDelete, isStopDeletePending } from '../../ts/chatShell/stopDelete.svelte'
     import type { CopyOutcome } from '../../ts/chatCopy'
     import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, type CardReport } from '../../ts/chatCard'
-    import { createSwipeGesture, createWheelSteps, ARM_HOLD_MS, RUBBER_BAND_PX, type SwipeResult, type WheelSteps } from '../../ts/chatShell/swipeGesture'
+    import { createSwipeGesture, createWheelSteps, meterFill, peekNeighbour, peekText, ARM_HOLD_MS, RUBBER_BAND_PX, type SwipeResult, type WheelSteps } from '../../ts/chatShell/swipeGesture'
+    import { lowPowerMarked } from '../../ts/chatShell/lowPower'
+    import { siblingsAt } from '../../ts/process/chatTree'
+    import { RefreshCwIcon } from '@lucide/svelte'
     import { classifyEdge, EDGE_ZONE_DP } from '../../ts/chatShell/edgeZones'
     import { tickHaptic, readHaptics } from '../../ts/chatShell/haptics'
     import { createMessageKeys } from '../../ts/chatShell/messageKeys'
@@ -124,6 +127,8 @@
         stepRow?: StepRowRunner
         onBranch?: (index: number, expectedId: string | undefined) => void
         getTreeView?: () => TreeView | null
+        // The raw text of the alternative at a 1-based position, for rows whose alternatives are not chat siblings (the first message's greetings).
+        neighbourText?: (index: number) => string | null
         getBusy?: () => boolean
         onOpenActions?: (request: ActionRequest) => void
         // Called when this row goes away while its own action request may still be shown by the host.
@@ -132,7 +137,7 @@
         // Reports whether a modal layer of the row (the partial-edit overlays) is open, so the list can lift the row's containment.
         onOverlay?: (open: boolean) => void
     }
-    let { idx, message, chatId, name, img = '', character = null, firstMessage = false, expectedId, stepRow, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize, onOverlay,
+    let { idx, message, chatId, name, img = '', character = null, firstMessage = false, expectedId, stepRow, onBranch, getTreeView, neighbourText, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize, onOverlay,
         isLastMemory = false, messageGenerationInfo, interrupted = message.interrupted === true,
         deferAutoTranslate = false, streaming = false, run = 'single', disabled = false, guiRevision = 0 }: Props = $props()
     let translated = $state(false)
@@ -160,6 +165,19 @@
     let dragX = $state(0)
     let armed = $state(false)
     let swipeLocked = $state(false)
+    // Swipe feedback (SLICE1_SPEC §3.2): the neighbour that peeks in, the slide-out that lands a step, the meter and the long-press ring.
+    let stage = $state<HTMLElement | null>(null)
+    let peek = $state<{ index: number, from: 'left' | 'right', text: string } | null>(null)
+    let settle = $state(false)
+    // Set from the start of a slide-out until its step has landed; every other step of the row waits it out.
+    let settling: { direction: 'back' | 'forward', index: number } | null = null
+    let settleTimer: ReturnType<typeof setTimeout> | undefined
+    let gestureStepped = $state(false)
+    let lowPowerGesture = $state(false)
+    let ringAt = $state<{ x: number, y: number } | null>(null)
+    const PEEK_GAP_PX = 16
+    const ARM_POLL_MS = 16
+    const METER_RING = 2 * Math.PI * 15
     let spring = $state(false)
     let commitDirection = $state<'back' | 'forward' | null>(null)
     let commitTimer: ReturnType<typeof setTimeout> | undefined
@@ -170,7 +188,6 @@
     let lastSampleAt = { time: 0, wall: 0 }
     let article = $state<HTMLElement | null>(null)
     let lastGenerate = -Infinity
-    const ARM_RETRY_MS = 10
     const keys = createMessageKeys()
     let destroyed = false
     let hostedRequest: ActionRequest | null = null
@@ -227,7 +244,7 @@
         }
     })
     onDestroy(() => {
-        destroyed = true; clearTimeout(longPressTimer); clearTimeout(armTimer); clearTimeout(commitTimer); clearTimeout(springTimer); clearTimeout(statusTimer); unregisterEditorBack(); editor.dispose()
+        destroyed = true; clearTimeout(longPressTimer); clearTimeout(armTimer); clearTimeout(settleTimer); clearTimeout(commitTimer); clearTimeout(springTimer); clearTimeout(statusTimer); unregisterEditorBack(); editor.dispose()
         if (hostedRequest) onCloseActions?.(hostedRequest)
         hostedRequest = null
         if (overlayOpen) onOverlay?.(false)
@@ -342,6 +359,10 @@
         else await step()
     }
     async function browse(direction: 'back' | 'forward'): Promise<void> {
+        if (settling) return
+        await stepNow(direction)
+    }
+    async function stepNow(direction: 'back' | 'forward'): Promise<void> {
         if (firstMessage) {
             if (direction === 'back' ? position.index > 1 : position.index < position.count) await holdStep(() => (direction === 'back' ? unReroll : onReroll)?.())
             return
@@ -354,6 +375,7 @@
     }
     // The end control brings back a detached continuation; its row stays where it is, so the same hold applies.
     async function bringBackContinuation(): Promise<void> {
+        if (settling) return
         await holdStep(() => stepSibling(source, idx + 1, expectedId, 'back', { generate: false }))
     }
     // The reply list is rendered newest first, so the message above a row is the later element.
@@ -389,6 +411,7 @@
         // A row that is gone, or whose message left the chat while the sheet stayed open, has nothing left to act on.
         if (destroyed || (idx >= 0 && liveIndex() < 0)) return
         if ((unavailable as readonly SheetAction[]).includes(id)) return
+        if (settling && (id === 'stepPrev' || id === 'stepNext' || id === 'newReply')) return
         switch (id) {
             case 'copy': {
                 const selection = window.getSelection()
@@ -446,18 +469,24 @@
     function sample(event: PointerEvent) { return { x: event.clientX, y: event.clientY, time: event.timeStamp } }
     function onPointerDown(event: PointerEvent): void {
         if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return
+        if (settling) return
         const target = event.target as HTMLElement
         if (target.closest('button, a, input, textarea, [contenteditable]')) return
         pointerType = event.pointerType
         pointerStart = { x: event.clientX, y: event.clientY }
         clearTimeout(springTimer)
         spring = false
+        peek = null
+        gestureStepped = motionReduced() || lowPowerMarked()
+        lowPowerGesture = lowPowerMarked()
+        const box = stage?.getBoundingClientRect()
+        ringAt = box ? { x: event.clientX - box.left, y: event.clientY - box.top } : null
         const edge = classifyEdge({ xPx: event.clientX, viewportWidthPx: window.innerWidth, dpPerPx: 1, hostInsetDp: readHostInset(event.clientX), rtl: document.dir === 'rtl' }) === 'edge'
         swipe = createSwipeGesture({ widthPx: bodyRoot?.clientWidth ?? 320, dpPerPx: 1, index: position.index - 1, count: position.count, edge: edge || startsInHorizontalScroller(target), streaming, firstMessage, canGenerate: newestCharacter, enabled: DBState.db.swipe && showPager, pointerType: event.pointerType })
         swipe.down(sample(event))
         clearTimeout(longPressTimer)
         const opener = event.currentTarget as HTMLElement
-        longPressTimer = setTimeout(() => { if (swipe) { swipe.cancel(); longPressRing = false; openActions(opener, pointerStart) } }, 500)
+        longPressTimer = setTimeout(() => { if (swipe) { swipe.cancel(); clearTimeout(armTimer); armTimer = undefined; longPressRing = false; peek = null; openActions(opener, pointerStart) } }, 500)
         setTimeout(() => { if (longPressTimer) longPressRing = true }, 200)
     }
     // The body follows the finger one to one where a reply exists, pulls with resistance toward a new reply, and stops at a rubber band where nothing can happen.
@@ -480,10 +509,11 @@
         swipeLocked = result.locked
         armed = result.armed
         if (result.locked) dragX = dragFor(event.clientX - pointerStart.x)
+        updatePeek(result.locked)
         if (result.event === 'arm') tickHaptic('arm', pointerType, readHaptics())
-        // A finger that holds still sends no more events, so the arm is re-evaluated when the hold time has passed.
+        // A finger that holds still sends no more events: past the arm distance the hold is polled so the meter fills and arms on time; otherwise it is looked at again when the hold time has passed.
         clearTimeout(armTimer)
-        armTimer = setTimeout(onArmTimer, ARM_HOLD_MS)
+        armTimer = setTimeout(onArmTimer, holding(result) ? nextPollMs(result.progress) : ARM_HOLD_MS)
     }
     function onArmTimer(): void {
         armTimer = undefined
@@ -492,8 +522,28 @@
         swipeProgress = result.progress
         armed = result.armed
         if (result.event === 'arm') tickHaptic('arm', pointerType, readHaptics())
-        // A timer that fires a hair before the hold has fully passed looks again shortly instead of leaving a still finger unarmed.
-        else if (!result.armed && result.progress >= 0.7) armTimer = setTimeout(onArmTimer, ARM_RETRY_MS)
+        else if (holding(result)) armTimer = setTimeout(onArmTimer, nextPollMs(result.progress))
+    }
+    // A pull held past the arm distance and not armed yet: the meter's last 30 % is the hold.
+    function holding(result: SwipeResult): boolean {
+        return !result.armed && result.progress >= 0.7
+    }
+    // The next look at a held pull: one frame, or exactly when the hold completes if that is sooner, so the arm is never late.
+    function nextPollMs(progress: number): number {
+        return Math.max(1, Math.min(ARM_POLL_MS, Math.floor((1 - progress) / 0.3 * ARM_HOLD_MS)))
+    }
+    // The neighbour that peeks in is looked up once per direction of a gesture, as plain text.
+    function updatePeek(locked: boolean): void {
+        if (!locked || settling) return
+        const neighbour = peekNeighbour(dragX, position.index, position.count, streaming)
+        if (neighbour === null) { peek = null; return }
+        if (peek?.index === neighbour) return
+        peek = { index: neighbour, from: neighbour > position.index ? 'right' : 'left', text: lowPowerGesture ? '' : neighbourTextOf(neighbour) }
+    }
+    function neighbourTextOf(index: number): string {
+        if (neighbourText) return peekText(neighbourText(index) ?? '')
+        if (idx < 0 || !chat) return ''
+        return peekText(siblingsAt(chat, idx)[index - 1]?.data ?? '')
     }
     // The new content slides in from the side the swipe came from; a release that commits nothing springs back.
     function commitSlide(direction: 'back' | 'forward'): void {
@@ -505,23 +555,69 @@
         clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false
         clearTimeout(armTimer); armTimer = undefined
         const wasDragged = dragX !== 0
-        swipe = null; swipeProgress = 0; dragX = 0; armed = false; swipeLocked = false
+        swipe = null; swipeProgress = 0; armed = false; swipeLocked = false
         if (result.event === 'stepPrev' || result.event === 'stepNext') {
-            commitSlide(result.event === 'stepPrev' ? 'back' : 'forward')
+            const direction = result.event === 'stepPrev' ? 'back' : 'forward'
+            // A step the row cannot take right now (a reply is being generated) is not committed: the body springs back.
+            if ((unavailable as readonly SheetAction[]).includes(result.event)) { dragX = 0; startSpring(wasDragged); return }
             tickHaptic('commit', pointerType, readHaptics())
-            void act(result.event === 'stepPrev' ? 'stepPrev' : 'stepNext')
+            // Where motion is reduced or power is low the step lands at once with the crossfade; otherwise the body slides out while the neighbour settles, and the step lands after.
+            if (motionReduced() || lowPowerMarked()) {
+                dragX = 0
+                peek = null
+                commitSlide(direction)
+                void act(result.event)
+            } else slideOut(direction)
         } else if (result.event === 'generate') {
             // The pulled body springs back to the centre while the new reply starts.
+            dragX = 0
             startSpring(wasDragged)
             alternatives?.requestNewReply()
-        } else startSpring(wasDragged)
+        } else {
+            dragX = 0
+            startSpring(wasDragged)
+        }
+    }
+    // The body travels the stage's width, so a narrow bubble leaves the stage too; the peek, offset by the same width, lands at the centre.
+    function slideOut(direction: 'back' | 'forward'): void {
+        const distance = (stage?.clientWidth || bodyRoot?.clientWidth || 320) + PEEK_GAP_PX
+        settling = { direction, index: position.index }
+        settle = true
+        dragX = direction === 'forward' ? -distance : distance
+        clearTimeout(settleTimer)
+        settleTimer = setTimeout(() => { void landStep() }, springDurationMs())
+    }
+    async function landStep(): Promise<void> {
+        const pending = settling
+        settleTimer = undefined
+        if (!pending || destroyed) { settling = null; return }
+        const id = pending.direction === 'back' ? 'stepPrev' : 'stepNext'
+        try {
+            // The busy state is asked again at landing: a reply may have started while the body was out.
+            if (getBusy?.() === true || (unavailable as readonly SheetAction[]).includes(id) || position.index !== pending.index || (idx >= 0 && liveIndex() < 0)) {
+                // Refused, moved some other way, or gone from the chat while the body was out: it springs back and nothing steps.
+                settle = false
+                dragX = 0
+                startSpring(true)
+                return
+            }
+            await stepNow(pending.direction)
+        } finally {
+            settling = null
+            // A row that did not remount (the first message) shows its new content in place, with no travel back.
+            if (!destroyed && !spring) {
+                settle = false
+                dragX = 0
+                peek = null
+            }
+        }
     }
     // The spring exists only for a body that was displaced and only where motion is allowed; a timer owns its end so a missing transitionend never leaves a transform behind.
     function startSpring(wasDragged: boolean): void {
         clearTimeout(springTimer)
         if (!wasDragged || motionReduced()) { spring = false; return }
         spring = true
-        springTimer = setTimeout(() => { spring = false }, springDurationMs() + SPRING_MARGIN_MS)
+        springTimer = setTimeout(() => { spring = false; peek = null }, springDurationMs() + SPRING_MARGIN_MS)
     }
     function motionReduced(): boolean {
         if (document.documentElement.classList.contains('rm')) return true
@@ -655,26 +751,44 @@
     <TranslationEditor {editor} />
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" class:prose-invert={$ColorSchemeTypeStore} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={dragX !== 0 || spring ? `translateX(${dragX}px)` : undefined} style:touch-action="pan-y" data-spring={spring ? '' : undefined} data-commit={commitDirection ?? undefined} onanimationend={() => { commitDirection = null }} ontransitionend={() => { spring = false }} onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={(event) => { if (swipe) finishSwipe(swipe.up(sample(event))) }} onpointercancel={() => { if (swipe) finishSwipe(swipe.cancel()) }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
-        {#if editor.editMode || editor.editTranslationMode}<!-- the editors replace the body while open -->
-        {:else if message.isComment}
-            {#if msgDisplay.startsWith('{{specialcomment') && msgDisplay.split('::')[1] === 'branchedfrom'}
-                <button type="button" data-part="chat-message-branch-origin" onclick={() => { const parts = msgDisplay.split('::'); changeChatTo(parts[2] ?? ''); foldChatToMessage(parts[4]) }}>{language.branchedText.replace('{}', msgDisplay.split('::')[3] ?? '')}</button>
-            {:else}
-                {msgDisplay}
-            {/if}
-        {:else if firstMessage && (message.data === '' || message.data === '{{blank}}' || message.data === '{{none}}')}
-            {language.noMessage}
-        {:else if streaming}
-            <StreamingView text={message.data} {modelShortName} {character} parseContext={{ chatID: idx, cbsConditions: cbsConditions(), displayOptions: buildDisplayParseOptions({ chara: name, chatID: idx, firstmsg: firstMessage, chatRole: chat?.message?.[idx]?.role ?? null }) }} />
-        {:else}
-            <ChatBody {character} {firstMessage} {idx} {msgDisplay} {name} role={message.role}
-                {bodyRoot} {modelShortName} renderRevision={guiRevision + bodyRevision} {deferAutoTranslate}
-                {surfaceEpoch} bind:translated bind:translating bind:retranslate />
+    <!-- The stage holds the body and its swipe feedback; the peek, the meter and the ring are cues only and never take input. -->
+    <div data-part="chat-message-stage" bind:this={stage} data-settle={settle ? '' : undefined} data-spring={spring ? '' : undefined}>
+        {#if peek && (swipeLocked || settle || spring)}
+            <div data-part="chat-swipe-peek" aria-hidden="true" data-from={peek.from} style:transform={`translateX(calc(${dragX}px ${peek.from === 'right' ? '+' : '-'} (100% + ${PEEK_GAP_PX}px)))`}>
+                <span data-part="chat-swipe-peek-chip">{peek.index} / {position.count}</span>
+                {#if peek.text}<span data-part="chat-swipe-peek-text">{peek.text}</span>{/if}
+            </div>
         {/if}
+        <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" class:prose-invert={$ColorSchemeTypeStore} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={dragX !== 0 || spring ? `translateX(${dragX}px)` : undefined} style:touch-action="pan-y" data-spring={spring ? '' : undefined} data-settle={settle ? '' : undefined} data-commit={commitDirection ?? undefined} onanimationend={() => { commitDirection = null }} ontransitionend={() => { spring = false }} onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={(event) => { if (swipe) finishSwipe(swipe.up(sample(event))) }} onpointercancel={() => { if (swipe) finishSwipe(swipe.cancel()) }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
+            {#if editor.editMode || editor.editTranslationMode}<!-- the editors replace the body while open -->
+            {:else if message.isComment}
+                {#if msgDisplay.startsWith('{{specialcomment') && msgDisplay.split('::')[1] === 'branchedfrom'}
+                    <button type="button" data-part="chat-message-branch-origin" onclick={() => { const parts = msgDisplay.split('::'); changeChatTo(parts[2] ?? ''); foldChatToMessage(parts[4]) }}>{language.branchedText.replace('{}', msgDisplay.split('::')[3] ?? '')}</button>
+                {:else}
+                    {msgDisplay}
+                {/if}
+            {:else if firstMessage && (message.data === '' || message.data === '{{blank}}' || message.data === '{{none}}')}
+                {language.noMessage}
+            {:else if streaming}
+                <StreamingView text={message.data} {modelShortName} {character} parseContext={{ chatID: idx, cbsConditions: cbsConditions(), displayOptions: buildDisplayParseOptions({ chara: name, chatID: idx, firstmsg: firstMessage, chatRole: chat?.message?.[idx]?.role ?? null }) }} />
+            {:else}
+                <ChatBody {character} {firstMessage} {idx} {msgDisplay} {name} role={message.role}
+                    {bodyRoot} {modelShortName} renderRevision={guiRevision + bodyRevision} {deferAutoTranslate}
+                    {surfaceEpoch} bind:translated bind:translating bind:retranslate />
+            {/if}
+        </div>
+        {#if swipeProgress > 0 && !(swipeLocked && streaming)}
+            {@const fill = meterFill(swipeProgress, armed, gestureStepped)}
+            <!-- The arc follows the pull directly (no transition on it); only the icon turns, and not where motion is reduced or power is low. -->
+            <div data-part="chat-swipe-meter" aria-hidden="true" data-armed={armed ? '' : undefined} data-fill={fill.toFixed(2)}>
+                <svg viewBox="0 0 40 40" width="40" height="40" focusable="false"><circle class="meter-track" cx="20" cy="20" r="15" /><circle class="meter-arc" cx="20" cy="20" r="15" style:stroke-dashoffset={String(METER_RING * (1 - fill))} /></svg>
+                <span class="meter-icon" style:transform={gestureStepped ? undefined : `rotate(${Math.round(fill * 360)}deg)`}><RefreshCwIcon size={18} aria-hidden="true" /></span>
+            </div>
+        {/if}
+        {#if longPressRing}<span data-part="chat-long-press-ring" aria-hidden="true" style:left={ringAt ? `${ringAt.x}px` : undefined} style:top={ringAt ? `${ringAt.y}px` : undefined}></span>{/if}
     </div>
-    {#if longPressRing}<span data-part="chat-long-press-ring" aria-hidden="true">◌</span>{/if}
     {#if swipeLocked && streaming}<span data-part="chat-swipe-arm" role="status">{language.chatShellStillWriting}</span>
+    {:else if swipeLocked && dragX > 0 && position.index <= 1 && !firstMessage}<span data-part="chat-swipe-arm" role="status">{language.chatShellFirstReply}</span>
     {:else if swipeProgress > 0}<span data-part="chat-swipe-arm" role="status" style:opacity={swipeProgress}>{armed ? language.chatShellReleaseNewReply : language.chatShellNoSavedReplies}</span>{/if}
     {#if userLast && !streaming}<button type="button" data-part="chat-generate-reply" disabled={getBusy?.() === true} onclick={generateAfterUser}>⟳ {language.chatShellGenerateReply}</button>{/if}
     {#if showPager || continuation > 0}
@@ -717,6 +831,28 @@
     :global(html.rm) [data-part="chat-message-body"][data-commit] { animation: commit-fade var(--chat-dur-fast) var(--chat-ease-out) both; }
     :global(html[data-low-power]) [data-part="chat-message-body"][data-spring] { transition-duration: var(--dur-lowpower-cap); }
     :global(html[data-low-power]) [data-part="chat-message-body"][data-commit] { animation-duration: var(--dur-lowpower-cap); }
+    /* Swipe feedback (SLICE1_SPEC §2, §3.2, §5.2): only transform and opacity animate. */
+    [data-part="chat-message-stage"] { position: relative; overflow-x: clip; }
+    [data-part="chat-message-body"][data-settle] { transition: transform var(--chat-dur-slow) var(--chat-ease-out); }
+    [data-part="chat-swipe-peek"] { position: absolute; inset: 0 0 auto 0; max-height: 100%; overflow: hidden; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-8); opacity: var(--swipe-peek-opacity); pointer-events: none; color: var(--nexus-text); }
+    [data-part="chat-message-stage"][data-settle] [data-part="chat-swipe-peek"] { opacity: 1; transition: transform var(--chat-dur-slow) var(--chat-ease-out), opacity var(--chat-dur-slow) var(--chat-ease-out); }
+    [data-part="chat-message-stage"][data-spring] [data-part="chat-swipe-peek"] { transition: transform var(--chat-dur-slow) var(--chat-ease-spring); }
+    :global(html[data-low-power]) [data-part="chat-message-stage"][data-spring] [data-part="chat-swipe-peek"], :global(html.nexus-low-power) [data-part="chat-message-stage"][data-spring] [data-part="chat-swipe-peek"] { transition-duration: var(--dur-lowpower-cap); }
+    [data-part="chat-swipe-peek-chip"] { align-self: flex-start; padding: 0 var(--space-6); border-radius: var(--radius-pill); background: var(--nexus-surface-flat); color: var(--nexus-text-secondary); font-size: var(--font-size-xs); }
+    [data-part="chat-swipe-peek"][data-from="left"] [data-part="chat-swipe-peek-chip"] { align-self: flex-end; }
+    [data-part="chat-swipe-peek-text"] { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+    [data-part="chat-swipe-meter"] { position: absolute; right: var(--offset-5); top: 50%; width: var(--size-19); height: var(--size-19); margin-top: calc(var(--size-19) / -2); display: grid; place-items: center; border-radius: var(--radius-circle); background: var(--nexus-surface-flat); color: var(--nexus-text-secondary); pointer-events: none; }
+    [data-part="chat-swipe-meter"][data-armed] { color: var(--nexus-accent); }
+    [data-part="chat-swipe-meter"] svg { position: absolute; inset: 0; transform: rotate(var(--angle-start)); fill: none; stroke-width: var(--stroke-heavy); }
+    .meter-track { stroke: var(--nexus-edge-strong); }
+    .meter-arc { stroke: currentColor; stroke-linecap: round; stroke-dasharray: var(--meter-circumference); }
+    .meter-icon { display: grid; place-items: center; }
+    [data-part="chat-long-press-ring"] { position: absolute; width: var(--size-27); height: var(--size-27); margin: calc(var(--size-27) / -2) 0 0 calc(var(--size-27) / -2); border: var(--stroke-heavy) solid var(--nexus-accent); border-radius: var(--radius-circle); pointer-events: none; animation: lp-fill var(--dur-ring) var(--ease-linear) both; }
+    @media (prefers-reduced-motion: reduce) { :global(html:not(.rm-off)) [data-part="chat-long-press-ring"] { animation-name: lp-fade; } }
+    :global(html.rm) [data-part="chat-long-press-ring"] { animation-name: lp-fade; }
+    :global(html[data-low-power]) [data-part="chat-long-press-ring"], :global(html.nexus-low-power) [data-part="chat-long-press-ring"] { animation: none; }
+    @keyframes lp-fill { from { transform: scale(var(--scale-ring-start)); opacity: var(--opacity-faint); } to { transform: scale(1); opacity: 1; } }
+    @keyframes lp-fade { from { opacity: var(--opacity-faint); } to { opacity: 1; } }
     [data-part="chat-message-interrupted"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
     [data-part="chat-status-row"] { color: var(--nexus-text-secondary); font-size: var(--font-size-xs); }
     [data-part="chat-message-delete-pending"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }

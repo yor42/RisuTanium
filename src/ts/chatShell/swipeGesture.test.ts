@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createSwipeGesture, createWheelSteps, type SwipeOptions } from './swipeGesture'
+import { createSwipeGesture, createWheelSteps, meterFill, peekNeighbour, peekText, type SwipeOptions } from './swipeGesture'
 
 const base: SwipeOptions = { widthPx: 300, dpPerPx: 1, index: 1, count: 3, pointerType: 'touch' }
 const p = (x: number, y: number, time: number) => ({ x, y, time })
@@ -162,5 +162,33 @@ describe('T10 swipe gesture', () => {
         wheel.set(0, 1)
         expect(wheel({ dx: -80, dy: 0, time: 1000 })).toBe('none')
         expect(wheel({ dx: 80, dy: 0, time: 2000 })).toBe('none')
+    })
+})
+
+describe('swipe feedback helpers (CHORE-727)', () => {
+    it('fills the meter continuously, in quarter steps where motion is reduced or power is low, and full when armed', () => {
+        expect(meterFill(0.35, false, false)).toBeCloseTo(0.35)
+        expect(meterFill(0.35, false, true)).toBe(0.25)
+        expect(meterFill(0.74, false, true)).toBe(0.5)
+        expect(meterFill(0.99, false, true)).toBe(0.75)
+        expect(meterFill(0.2, true, false)).toBe(1)
+        expect(meterFill(0.2, true, true)).toBe(1)
+        expect(meterFill(-1, false, false)).toBe(0)
+        expect(meterFill(3, false, false)).toBe(1)
+    })
+    it('names the neighbour a drag reveals by its 1-based position, and none past an end or while streaming', () => {
+        expect(peekNeighbour(-30, 2, 3, false)).toBe(3)
+        expect(peekNeighbour(30, 2, 3, false)).toBe(1)
+        expect(peekNeighbour(30, 1, 3, false)).toBeNull()
+        expect(peekNeighbour(-30, 3, 3, false)).toBeNull()
+        expect(peekNeighbour(-30, 2, 3, true)).toBeNull()
+        expect(peekNeighbour(0, 2, 3, false)).toBeNull()
+    })
+    it('reduces a raw message to plain text: no macros, tags or markdown marks, whitespace collapsed, bounded', () => {
+        expect(peekText('**Hello** {{char}} <img src=x onerror="alert(1)">there\n\n# Title `code` > quote')).toBe('Hello there Title code quote')
+        expect(peekText('{{#if {{getvar::x}}}}a{{/if}} b')).toBe('a b')
+        expect(peekText('x'.repeat(500))).toHaveLength(200)
+        expect(peekText('')).toBe('')
+        expect(peekText(`${'{{'.repeat(5000)}x${'}}'.repeat(5000)}`).length).toBeLessThanOrEqual(200)
     })
 })

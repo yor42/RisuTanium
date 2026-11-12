@@ -128,12 +128,20 @@ describe('message action wiring', () => {
 
 describe('message gesture wiring', () => {
     test('horizontal commit browses and ticks once', () => {
-        show()
-        pointer('pointerdown', 100, 0)
-        pointer('pointermove', 220, 100)
-        pointer('pointerup', 220, 200)
-        expect(stepSibling).toHaveBeenCalledWith(expect.anything(), 0, 'm', 'back', { generate: false })
-        expect(tickHaptic).toHaveBeenCalledWith('commit', 'touch', true)
+        vi.useFakeTimers()
+        try {
+            show()
+            pointer('pointerdown', 100, 0)
+            pointer('pointermove', 220, 100)
+            pointer('pointerup', 220, 200)
+            expect(tickHaptic).toHaveBeenCalledWith('commit', 'touch', true)
+            // The step lands once the body has slid out (CHORE-727).
+            vi.advanceTimersByTime(260)
+            expect(stepSibling).toHaveBeenCalledWith(expect.anything(), 0, 'm', 'back', { generate: false })
+            expect(tickHaptic.mock.calls.filter((call) => call[0] === 'commit')).toHaveLength(1)
+        } finally {
+            vi.useRealTimers()
+        }
     })
     test('edge start, cancel and wheel cannot generate', () => {
         show()
