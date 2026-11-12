@@ -68,6 +68,6 @@ describe('swipe feedback CSS', () => {
     test('the peek is a cue only: it never takes pointer input', () => {
         const peek = feedback.find((rule) => rule.selector === '[data-part="chat-swipe-peek"]')!
         expect(peek.body).toContain('pointer-events: none')
-        expect(peek.body).toContain('opacity: var(--swipe-peek-opacity)')
+        expect(peek.body).toContain('opacity: var(--opacity-soft)')
     })
 })

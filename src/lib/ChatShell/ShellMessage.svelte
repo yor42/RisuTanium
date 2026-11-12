@@ -834,7 +834,7 @@
     /* Swipe feedback (SLICE1_SPEC §2, §3.2, §5.2): only transform and opacity animate. */
     [data-part="chat-message-stage"] { position: relative; overflow-x: clip; }
     [data-part="chat-message-body"][data-settle] { transition: transform var(--chat-dur-slow) var(--chat-ease-out); }
-    [data-part="chat-swipe-peek"] { position: absolute; inset: 0 0 auto 0; max-height: 100%; overflow: hidden; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-8); opacity: var(--swipe-peek-opacity); pointer-events: none; color: var(--nexus-text); }
+    [data-part="chat-swipe-peek"] { position: absolute; inset: 0 0 auto 0; max-height: 100%; overflow: hidden; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-8); opacity: var(--opacity-soft); pointer-events: none; color: var(--nexus-text); }
     [data-part="chat-message-stage"][data-settle] [data-part="chat-swipe-peek"] { opacity: 1; transition: transform var(--chat-dur-slow) var(--chat-ease-out), opacity var(--chat-dur-slow) var(--chat-ease-out); }
     [data-part="chat-message-stage"][data-spring] [data-part="chat-swipe-peek"] { transition: transform var(--chat-dur-slow) var(--chat-ease-spring); }
     :global(html[data-low-power]) [data-part="chat-message-stage"][data-spring] [data-part="chat-swipe-peek"], :global(html.nexus-low-power) [data-part="chat-message-stage"][data-spring] [data-part="chat-swipe-peek"] { transition-duration: var(--dur-lowpower-cap); }
