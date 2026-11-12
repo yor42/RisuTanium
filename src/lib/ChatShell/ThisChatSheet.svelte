@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onDestroy, tick, untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
     import { DBState, additionalChatMenu, hypaV3ModalOpen, settingsOpen } from '../../ts/stores.svelte'
     import type { Chat, character, groupChat } from '../../ts/storage/database.svelte'
@@ -138,7 +139,7 @@
                 refused()
             }
         }
-        if (refocus) void tick().then(() => renameEl?.focus())
+        if (refocus) void afterFlush().then(() => renameEl?.focus())
     }
 
     function flushPending(at: Session): void {
@@ -161,7 +162,7 @@
         nameDraft = lastName
         renameActive = true
         renaming = true
-        await tick()
+        await afterFlush()
         nameEl?.focus()
         nameEl?.select()
     }
@@ -169,7 +170,7 @@
     function cancelRename(): void {
         renameActive = false
         renaming = false
-        void tick().then(() => renameEl?.focus())
+        void afterFlush().then(() => renameEl?.focus())
     }
 
     function onNameKey(event: KeyboardEvent): void {

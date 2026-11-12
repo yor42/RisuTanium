@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, tick, untrack } from "svelte";
+  import { afterFlush } from "../../ts/afterFlush";
   import { DBState, selectedCharID } from "src/ts/stores.svelte";
   import { FolderIcon, FolderOpenIcon } from "@lucide/svelte";
   import { addCharacter, visibleCharacterIds } from "../../ts/characters";
@@ -172,7 +173,7 @@
         break
       }
     }
-    await tick()
+    await afterFlush()
     if (railDestroyed) return
 
     const target = scrollTargetFor(key, 'top')
@@ -441,7 +442,7 @@
 
   async function applyRestore() {
     // The spacers for the rows are in the DOM after this, so the container can reach the target.
-    await tick()
+    await afterFlush()
     restoreScheduled = false
     const saved = pendingRestore
     if (saved === null || railDestroyed || !scroller.isConnected || scroller.clientHeight <= 0) {
@@ -518,7 +519,7 @@
     pinReveal(key, target, false)
     scroller.scrollTop = target
     readViewport(scroller)
-    await tick()
+    await afterFlush()
   }
 
   //#endregion
@@ -676,7 +677,7 @@
   $effect(() => {
     void rows
     untrack(() => {
-      void tick().then(() => {
+      void afterFlush().then(() => {
         if (!railHasFocus) {
           return
         }
@@ -769,7 +770,7 @@
       applyOrderChange(() => result.order)
       setCurrent(movedKey)
       announcePosition(result.order, result.ref)
-      await tick()
+      await afterFlush()
       await revealEntry(movedKey)
     }
   }

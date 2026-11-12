@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { tick, untrack, onDestroy } from "svelte";
+  import { untrack, onDestroy } from "svelte";
+  import { afterFlush } from "src/ts/afterFlush";
   import { v4 } from "uuid";
   import { HYPA_DRAFT_KIND, registerDraft, unregisterDraft } from "src/ts/localDrafts";
   import {
@@ -138,7 +139,7 @@
     translation = language.loadingEllipsis;
 
     // Focus on translation element after it's rendered
-    await tick();
+    await afterFlush();
 
     if (summaryItemState.translationRef) {
       summaryItemState.translationRef.focus();
@@ -298,7 +299,7 @@
     rerolledTranslation = language.loadingEllipsis;
 
     // Focus on rerolled translation element after it's rendered
-    await tick();
+    await afterFlush();
 
     if (summaryItemState.rerolledTranslationRef) {
       summaryItemState.rerolledTranslationRef.focus();
@@ -349,7 +350,7 @@
     expandedMessageState.translation = language.loadingEllipsis;
 
     // Focus on translation element after it's rendered
-    await tick();
+    await afterFlush();
 
     if (expandedMessageState.translationRef) {
       expandedMessageState.translationRef.focus();

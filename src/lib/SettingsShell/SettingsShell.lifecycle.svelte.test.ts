@@ -56,6 +56,7 @@ import { setShellBackHandler } from '../../ts/settingsShell/settingsNavigation'
 import { openSettingsForFix, resetSettingsRouteForTests } from '../Setting/settingsRoute'
 import SettingsShell from './SettingsShell.svelte'
 import Host from './SettingsShell.testHost.svelte'
+import { drainMicrotasks, installFrameQueue, readAtFirstFrame, runFrame, uninstallFrameQueue } from '../../ts/tests/firstFrame.test-helpers'
 
 const mounted: Array<ReturnType<typeof mount>> = []
 const originalWidth = window.innerWidth
@@ -268,5 +269,28 @@ describe('T20 the wide layout never sits on index -1', () => {
         await settle()
         expect(get(SettingsMenuIndex)).toBe(-1)
         expect(target.querySelector('[data-part="settings-shell"]')).toBeNull()
+    })
+})
+
+describe('T8 opener focus on close, before the first frame', () => {
+    afterEach(() => {
+        uninstallFrameQueue()
+    })
+
+    test('closing Settings returns focus to the opener before the first frame', async () => {
+        mountHost()
+        const opener = document.getElementById('host-header')!
+        opener.focus()
+        settingsOpen.set(true)
+        await settle()
+        expect(document.activeElement).not.toBe(opener)
+
+        installFrameQueue()
+        settingsOpen.set(false)
+        const focusAtFirstFrame = readAtFirstFrame(() => document.activeElement)
+        // Only microtasks run: a focus return that waits for an animation frame or a timer has not happened yet.
+        await drainMicrotasks()
+        runFrame()
+        expect(await focusAtFirstFrame).toBe(opener)
     })
 })

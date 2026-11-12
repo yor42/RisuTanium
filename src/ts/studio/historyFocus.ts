@@ -3,7 +3,7 @@
 // the other fields; among first messages the first changed position wins. When nothing changed, or the field is
 // not on screen, focus is left where it is unless it was lost (removed, disabled or on the body); then it goes to
 // the fallback the caller names.
-import { tick } from 'svelte'
+import { afterFlush } from '../afterFlush'
 import type { OwnerFields } from './ownerFields'
 
 export type FocusTarget =
@@ -58,7 +58,7 @@ export function focusLost(): boolean {
 // focus then goes to the fallback.
 export async function placeFocusAfterHistory(before: OwnerFields | null, after: OwnerFields | null, scope: () => ParentNode | null, fallback: () => HTMLElement | null | undefined): Promise<void> {
     const target = before && after ? changedFieldTarget(before, after) : null
-    await tick()
+    await afterFlush()
     const element = target ? elementFor(scope() ?? document, target) : null
     if (element && element.isConnected) {
         element.focus()

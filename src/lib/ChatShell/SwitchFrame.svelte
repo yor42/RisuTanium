@@ -1,6 +1,6 @@
 <script lang="ts">
-    import { tick } from 'svelte'
     import { get } from 'svelte/store'
+    import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
     import { abandonPendingSwitch, backToPrevious, retrySwitch, switchTarget } from '../../ts/chatShell/switchTarget.svelte'
@@ -56,7 +56,7 @@
     })
 
     async function restoreFocus(): Promise<void> {
-        await tick()
+        await afterFlush()
         const active = document.activeElement
         if (!active || active === document.body) transcript?.focus({ preventScroll: true })
     }
@@ -65,7 +65,7 @@
         holdsFocus = false
         if (event.relatedTarget) return
         const frame = event.currentTarget as HTMLElement
-        void tick().then(() => {
+        void afterFlush().then(() => {
             if (!frame.isConnected) void restoreFocus()
         })
     }

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { tick } from 'svelte';
+    import { afterFlush } from '../../../ts/afterFlush';
     interface SegmentOption {
         value: string | number;
         label: string;
@@ -47,7 +47,7 @@
     // Re-calculate indicator when activeIndex changes or on mount
     $effect(() => {
         void activeIndex;
-        tick().then(() => {
+        afterFlush().then(() => {
             updateIndicator();
             if (!mounted) {
                 requestAnimationFrame(() => {

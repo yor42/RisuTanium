@@ -6,7 +6,8 @@
     import NotificationsOffNotice from './NotificationsOffNotice.svelte';
     import { CameraIcon, DatabaseIcon, DicesIcon, GlobeIcon, ImagePlusIcon, LanguagesIcon, Laugh, MenuIcon, MicOffIcon, PackageIcon, Plus, RefreshCcwIcon, ReplyIcon, Send, StepForwardIcon, XIcon, BrainIcon, ArrowDown, SparkleIcon } from "@lucide/svelte";
     import { selectedCharID, PlaygroundStore, createSimpleCharacter, hypaV3ModalOpen, ScrollToMessageStore, additionalChatMenu, additionalFloatingActionButtons, easyPanelStore, chatPanelStore } from "../../ts/stores.svelte";
-    import { tick, onDestroy, untrack } from 'svelte';
+    import { onDestroy, untrack } from 'svelte';
+    import { afterFlush } from '../../ts/afterFlush';
     import Chat from "./Chat.svelte";
     import { DBState } from 'src/ts/stores.svelte';
     import { useCharImageLookups } from "../../ts/media/charImageLookups";
@@ -240,7 +241,7 @@
 
             if(loadPages < neededLoadPages){
                 loadPages = neededLoadPages
-                await tick()
+                await afterFlush()
             }
 
             let element: Element | null = null;

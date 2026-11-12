@@ -1,5 +1,5 @@
-import { tick } from 'svelte'
 import { get } from 'svelte/store'
+import { afterFlush } from '../afterFlush'
 import { alertStore, sideBarClosing, sideBarStore } from '../stores.svelte'
 import { keyEventBlocked } from '../keyEventBlocked'
 import { hasOpenShell } from '../../lib/Nexus/pattern/patternFocus'
@@ -56,7 +56,7 @@ function onSearchKey(event: KeyboardEvent): void {
     sideBarClosing.set(false)
     sideBarStore.set(true)
     // The field exists once the panel has drawn.
-    void tick().then(focusSearch)
+    void afterFlush().then(focusSearch)
 }
 
 function onKeydown(event: KeyboardEvent): void {

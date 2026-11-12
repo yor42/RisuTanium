@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onDestroy, onMount, tick, untrack } from "svelte";
+    import { afterFlush } from "../../../ts/afterFlush";
     import { get } from "svelte/store";
     import { ChevronDownIcon, EllipsisIcon, HomeIcon, SettingsIcon } from "@lucide/svelte";
     import { language } from "src/lang";
@@ -68,7 +69,7 @@
                 if (open) {
                     // Already open: remount it so it starts on the requested view.
                     moreOpen = false;
-                    void tick().then(() => { moreStartView = 'settings'; moreOpen = true; });
+                    void afterFlush().then(() => { moreStartView = 'settings'; moreOpen = true; });
                 } else {
                     moreStartView = 'settings';
                     moreOpen = true;
@@ -217,7 +218,7 @@
     // toggle that is gone or sits in a sidebar that is closing.
     async function leaveEditOrder() {
         reorder = null;
-        await tick();
+        await afterFlush();
         const active = document.activeElement;
         if ((active === null || active === document.body) && editOrderButton?.isConnected && !$sideBarClosing && $sideBarStore) {
             editOrderButton.focus({ preventScroll: true });
@@ -399,7 +400,7 @@
                 return;
             }
             // The deleted row held the focus; the open chat's row is where the user continues.
-            await tick();
+            await afterFlush();
             const active = document.activeElement;
             if (!active || active === document.body) {
                 content?.querySelector<HTMLElement>('[data-part="chat-row"][aria-current="page"]')?.focus();

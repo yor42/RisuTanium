@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { tick, untrack } from 'svelte'
+    import { untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { XIcon } from '@lucide/svelte'
     import { language } from '../../lang'
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
@@ -82,7 +83,7 @@
         if (loadFailed) {
             if (retrying) {
                 retrying = false
-                void tick().then(() => {
+                void afterFlush().then(() => {
                     if (root && document.activeElement === root) retryButton?.focus()
                 })
             }
@@ -138,7 +139,7 @@
     $effect(() => {
         const open = studioScreen.restoreSheetOpen
         if (sheetWasOpen && !open) {
-            void tick().then(() => { if (focusLost()) restoreOpener?.focus() })
+            void afterFlush().then(() => { if (focusLost()) restoreOpener?.focus() })
         }
         sheetWasOpen = open
     })

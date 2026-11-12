@@ -48,6 +48,7 @@ import { dispatchBack, resetBackHandlersForTests } from '../../ts/backHandlers'
 import { DBState } from '../../ts/stores.svelte'
 import SettingsShellPage from './SettingsShellPage.svelte'
 import { registerSettingsScrollMemorySuite } from './SettingsShellPage.scenarios.test-helpers.svelte'
+import { drainMicrotasks, installFrameQueue, readAtFirstFrame, runFrame, uninstallFrameQueue } from '../../ts/tests/firstFrame.test-helpers'
 
 const mounted: Array<ReturnType<typeof mount>> = []
 
@@ -171,3 +172,58 @@ describe('the Show-all confirm', () => {
 })
 
 registerSettingsScrollMemorySuite()
+
+describe('scroll memory, before the first frame', () => {
+    const restores: Array<() => void> = []
+
+    // The test DOM has no layout: the column keeps the scrollTop it is given until its keyed view node leaves, then reads 0.
+    function modelClampingColumn(target: HTMLElement): HTMLElement {
+        const column = target.querySelector<HTMLElement>('[data-part="settings-page-scroll"]')!
+        let position = 0
+        Object.defineProperty(column, 'scrollTop', {
+            configurable: true,
+            get: () => position,
+            set: (value: number) => { position = value },
+        })
+        const realRemove = Element.prototype.remove
+        Element.prototype.remove = function (this: Element) {
+            if (this.parentElement === column && this.getAttribute('data-part') === 'settings-view') {
+                position = 0
+            }
+            realRemove.call(this)
+        }
+        restores.push(() => { Element.prototype.remove = realRemove })
+        return column
+    }
+
+    afterEach(() => {
+        for (const restore of restores.splice(0).reverse()) restore()
+        uninstallFrameQueue()
+    })
+
+    test('T5 returning to a view restores its remembered position before the first frame', async () => {
+        installFrameQueue()
+        const state = $state({ index: 1 })
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        mounted.push(mount(SettingsShellPage, {
+            target,
+            props: { get index() { return state.index }, phone: false, scrollMemory: new Map<number, number>() },
+        }))
+        flushSync()
+        const column = modelClampingColumn(target)
+        // The first render's own restore settles before the test moves the column.
+        await drainMicrotasks()
+        column.scrollTop = 500
+        state.index = 13
+        flushSync()
+        await drainMicrotasks()
+        state.index = 1
+        flushSync()
+        const scrollAtFirstFrame = readAtFirstFrame(() => column.scrollTop)
+        // Only microtasks run: a restore that waits for an animation frame or a timer has not happened yet.
+        await drainMicrotasks()
+        runFrame()
+        expect(await scrollAtFirstFrame).toBe(500)
+    })
+})

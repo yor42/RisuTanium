@@ -13,6 +13,7 @@
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
+import { drainMicrotasks, installFrameQueue, readAtFirstFrame, runFrame, uninstallFrameQueue } from '../../ts/tests/firstFrame.test-helpers'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -321,6 +322,28 @@ describe('T-A12c page and view targets', () => {
         expect(get(SettingsMenuIndex)).toBe(1)
         expect(document.activeElement).toBe(pageHeading(target))
         expect(scrollIntoView).not.toHaveBeenCalled()
+    })
+
+    test('T10 a view target focuses the heading before the first frame', async () => {
+        SettingsMenuIndex.set(3)
+        settingsOpen.set(true)
+        const target = mountHost()
+        await settle()
+        await typeQuery(target, language.chatFormating)
+        const hit = result(target, 'chatFormat.template')
+
+        installFrameQueue()
+        try {
+            hit.click()
+            flushSync()
+            const focusAtFirstFrame = readAtFirstFrame(() => document.activeElement?.getAttribute('data-part'))
+            // Only microtasks run: an arrival that waits for an animation frame or a timer has not landed yet.
+            await drainMicrotasks()
+            runFrame()
+            expect(await focusAtFirstFrame).toBe('settings-page-heading')
+        } finally {
+            uninstallFrameQueue()
+        }
     })
 
     test('a row the page no longer has focuses the heading and throws nothing', async () => {

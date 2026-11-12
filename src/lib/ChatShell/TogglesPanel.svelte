@@ -41,7 +41,8 @@
 </script>
 
 <script lang="ts">
-    import { onDestroy, tick, untrack } from 'svelte'
+    import { onDestroy, untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { ChevronDownIcon, FileTextIcon, FunnelIcon, PuzzleIcon, SearchIcon, StarIcon, UserIcon, XIcon } from '@lucide/svelte'
     import { ReloadGUIPointer } from '../../ts/stores.svelte'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
@@ -269,7 +270,7 @@
 
     // Focus goes back to the control of the row that had the layer, once the layer is gone.
     async function refocus(uid: string, selector = '[data-row-control]'): Promise<void> {
-        await tick()
+        await afterFlush()
         layer?.querySelector<HTMLElement>(`[data-part="toggle-row"][data-uid="${uid}"] ${selector}`)?.focus()
     }
 
@@ -417,7 +418,7 @@
             if (!uid) return
             event.preventDefault()
             menuUid = uid
-            void tick().then(() => rowElement.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus())
+            void afterFlush().then(() => rowElement.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus())
         } else if (event.key === 'ArrowRight' && target.matches('[data-row-control]:not([role="radio"])')) {
             const button = rowElement.querySelector<HTMLElement>('[data-part="toggle-menu-button"]')
             if (!button) return

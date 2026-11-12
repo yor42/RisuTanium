@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onDestroy, setContext, tick, untrack } from "svelte";
+    import { afterFlush } from "../../ts/afterFlush";
     import { v4 } from "uuid";
     import { archivedMemberIds, changeChar, getCharImage, removeChar, supersedeChangeChar, trashCharacters, type ChangeCharOutcome } from "../../ts/characters";
     import { useCharImageLookups } from "../../ts/media/charImageLookups";
@@ -464,7 +465,7 @@
     // row that is already fully in view, or none at all, leaves the scroll alone.
     async function scrollToHeld(held: GridEntry, generation: number) {
         try {
-            await tick()
+            await afterFlush()
             const geometry = geometryNow()
             if (generation !== enterGeneration || !editing || sort !== 'order' || !gridScroller || !geometry) {
                 return
@@ -503,7 +504,7 @@
     let groupGeneration = 0
     async function scrollToNewFolder(id: string, generation: number) {
         try {
-            await tick()
+            await afterFlush()
             const geometry = geometryNow()
             if (generation !== groupGeneration || !editing || sort !== 'order' || !gridScroller || !geometry) {
                 return
@@ -1208,7 +1209,7 @@
     // Focus goes back to the moved tile once the rows are rebuilt (its element is new when it changed rows),
     // after scrolling its row into view if the move took it out of sight.
     async function focusTile(ref: ItemRef) {
-        await tick()
+        await afterFlush()
         const geometry = geometryNow()
         const key = tileKeyOfRef(entries, ref)
         const scroller = gridScroller
@@ -1218,7 +1219,7 @@
         const index = rowIndexOf(key)
         if (index >= 0) {
             centreRowIfHidden(geometry, index, scroller)
-            await tick()
+            await afterFlush()
         }
         const tile = Array.from(scroller.querySelectorAll('[data-charlist-key]')).find((el) => el.getAttribute('data-charlist-key') === key)
         tile?.querySelector('button')?.focus({ preventScroll: true })
@@ -1496,7 +1497,7 @@
         if (heldKey === null || list === null) {
             return
         }
-        await tick()
+        await afterFlush()
         const active = document.activeElement
         if (active && active !== document.body && active.isConnected) {
             return

@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { onDestroy, tick, untrack } from 'svelte'
+    import { onDestroy, untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { get } from 'svelte/store'
     import { language } from '../../lang'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
@@ -83,7 +84,7 @@
         previousIndex = index
         if (!open) return
         untrack(() => {
-            void tick().then(() => {
+            void afterFlush().then(() => {
                 const now = get(SettingsMenuIndex)
                 if (before === null) {
                     if (isPhone && now !== -1) pagePane?.focusHeading()
@@ -103,7 +104,7 @@
     onDestroy(() => {
         resetSearch()
         if (get(settingsOpen)) return
-        void tick().then(() => {
+        void afterFlush().then(() => {
             if (!get(settingsOpen)) restoreOpenerFocus()
         })
     })
@@ -153,12 +154,12 @@
         const wasOpen = searchWasOpen
         searchWasOpen = open
         if (!wasOpen || open || !isPhone || arrivalInFlight(get(SettingsMenuIndex))) return
-        void tick().then(() => root?.querySelector<HTMLElement>('[data-part="settings-search-open"]')?.focus())
+        void afterFlush().then(() => root?.querySelector<HTMLElement>('[data-part="settings-search-open"]')?.focus())
     })
 
     function focusSearchField(): void {
         if (!settingsSearchState.open) openSearch()
-        void tick().then(() => header?.focusSearch())
+        void afterFlush().then(() => header?.focusSearch())
     }
 
     function isTextEntry(target: EventTarget | null): boolean {
@@ -212,7 +213,7 @@
             {
                 setIndex: (index) => SettingsMenuIndex.set(index),
                 closeSearch,
-                tick,
+                tick: afterFlush,
                 page: () => pagePane,
                 setHighlight,
                 reducedMotion,
