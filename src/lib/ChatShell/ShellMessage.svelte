@@ -64,6 +64,7 @@
     import { createSwipeGesture, createWheelSteps, ARM_HOLD_MS, RUBBER_BAND_PX, type SwipeResult, type WheelSteps } from '../../ts/chatShell/swipeGesture'
     import { classifyEdge, EDGE_ZONE_DP } from '../../ts/chatShell/edgeZones'
     import { tickHaptic, readHaptics } from '../../ts/chatShell/haptics'
+    import { reducedMotionActive } from '../../ts/chatShell/motionPrefs.svelte'
     import { createMessageKeys } from '../../ts/chatShell/messageKeys'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
     import type { StepRowRunner } from '../../ts/chatShell/stepHold'
@@ -519,13 +520,9 @@
     // The spring exists only for a body that was displaced and only where motion is allowed; a timer owns its end so a missing transitionend never leaves a transform behind.
     function startSpring(wasDragged: boolean): void {
         clearTimeout(springTimer)
-        if (!wasDragged || motionReduced()) { spring = false; return }
+        if (!wasDragged || reducedMotionActive()) { spring = false; return }
         spring = true
         springTimer = setTimeout(() => { spring = false }, springDurationMs() + SPRING_MARGIN_MS)
-    }
-    function motionReduced(): boolean {
-        if (document.documentElement.classList.contains('rm')) return true
-        return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
     }
     function springDurationMs(): number {
         // The nominal slow duration times the unitless motion factor the page sets on the root; the same product the CSS token computes.
@@ -710,8 +707,8 @@
     @keyframes commit-in-back { from { transform: translateX(calc(-1 * var(--swipe-nudge))); opacity: var(--opacity-half); } }
     @keyframes commit-fade { from { opacity: var(--opacity-half); } }
     @media (prefers-reduced-motion: reduce) {
-        [data-part="chat-message-body"][data-spring] { transition: none; }
-        [data-part="chat-message-body"][data-commit] { animation: commit-fade var(--chat-dur-fast) var(--chat-ease-out) both; }
+        :global(html:not(.rm-off)) [data-part="chat-message-body"][data-spring] { transition: none; }
+        :global(html:not(.rm-off)) [data-part="chat-message-body"][data-commit] { animation: commit-fade var(--chat-dur-fast) var(--chat-ease-out) both; }
     }
     :global(html.rm) [data-part="chat-message-body"][data-spring] { transition: none; }
     :global(html.rm) [data-part="chat-message-body"][data-commit] { animation: commit-fade var(--chat-dur-fast) var(--chat-ease-out) both; }

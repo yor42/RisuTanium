@@ -12,7 +12,9 @@
     import { settingsLabel } from '../../ts/settingsShell/settingsPages'
     import { DBState } from '../../ts/stores.svelte'
     import AssetWidthRow from './display/AssetWidthRow.svelte'
+    import LowPowerRow from './display/LowPowerRow.svelte'
     import QuoteBoxesRow from './display/QuoteBoxesRow.svelte'
+    import ReducedMotionRow from './display/ReducedMotionRow.svelte'
     import ThemeCards from './display/ThemeCards.svelte'
     import ShellSettingRow from './ShellSettingRow.svelte'
 
@@ -26,6 +28,8 @@
         ThemeCards,
         AssetWidthRow,
         QuoteBoxesRow,
+        LowPowerRow,
+        ReducedMotionRow,
     }
 
     // One context for every row, built like the legacy renderer's.

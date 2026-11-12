@@ -146,10 +146,10 @@
     @media (min-width: 900px) { [data-part="chat-sheet-layer"][data-mode="side"] { justify-content: flex-end; align-items: stretch; } [data-part="chat-sheet"][data-mode="side"] { width: var(--sheet-width-panel); max-width: var(--sheet-width-panel); height: 100%; max-height: 100%; margin-bottom: 0; border-radius: var(--radius-sheet) 0 0 var(--radius-sheet); } }
     @keyframes sheet-in { from { transform: translateY(var(--space-16)); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
     @keyframes sheet-fade { from { opacity: 0; } to { opacity: 1; } }
-    @media (prefers-reduced-motion: reduce) { [data-part="chat-sheet"] { animation: sheet-fade var(--chat-dur-fast) var(--chat-ease-out) both; } }
+    @media (prefers-reduced-motion: reduce) { :global(html:not(.rm-off)) [data-part="chat-sheet"] { animation: sheet-fade var(--chat-dur-fast) var(--chat-ease-out) both; } }
     :global(html.rm) [data-part="chat-sheet"] { animation: sheet-fade var(--chat-dur-fast) var(--chat-ease-out) both; }
     :global(html[data-low-power]) [data-part="chat-sheet"], :global(html.nexus-low-power) [data-part="chat-sheet"] { animation: sheet-fade var(--dur-lowpower-cap) var(--chat-ease-out) both; }
-    @media (prefers-reduced-motion: reduce) { :global(html[data-low-power]) [data-part="chat-sheet"] { animation: sheet-fade var(--chat-dur-fast) var(--chat-ease-out) both; } }
+    @media (prefers-reduced-motion: reduce) { :global(html:not(.rm-off)[data-low-power]) [data-part="chat-sheet"] { animation: sheet-fade var(--chat-dur-fast) var(--chat-ease-out) both; } }
     :global(html.rm[data-low-power]) [data-part="chat-sheet"] { animation: sheet-fade var(--chat-dur-fast) var(--chat-ease-out) both; }
     :global(html.rm.nexus-low-power) [data-part="chat-sheet"] { animation: sheet-fade var(--chat-dur-fast) var(--chat-ease-out) both; }
 </style>
