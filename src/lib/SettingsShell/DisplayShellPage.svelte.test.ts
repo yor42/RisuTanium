@@ -550,3 +550,84 @@ describe('labels come from the language keys (T-B10)', () => {
         expect(slider(target, 'display.textAreaTextSize').getAttribute('aria-valuetext')).toBe('STEP-BIG-SENTINEL')
     })
 })
+
+describe('device motion rows (CHORE-585, MC-1529)', () => {
+    const root = document.documentElement
+
+    /** The radio of a mode; a radio's own default value is "on", so the choices are found by position. */
+    function choice(target: HTMLElement, mode: 'system' | 'on' | 'off'): HTMLInputElement {
+        return row(target, 'display.reducedMotion').querySelectorAll<HTMLInputElement>('input[type="radio"]')[['system', 'on', 'off'].indexOf(mode)]
+    }
+
+    function reason(target: HTMLElement): string | null {
+        return row(target, 'display.animationSpeed').querySelector('[data-part="setting-row-reason"]')?.textContent ?? null
+    }
+
+    beforeEach(async () => {
+        localStorage.clear()
+        const { setLowPower, setReducedMotion } = await import('src/ts/chatShell/motionPrefs.svelte')
+        setLowPower(false)
+        setReducedMotion('system')
+        localStorage.clear()
+    })
+    afterEach(() => {
+        root.classList.remove('nexus-low-power', 'rm', 'rm-off')
+        root.removeAttribute('data-low-power')
+    })
+
+    test('low power and reduced motion sit before the animation speed in the motion section, low power with its device chip', async () => {
+        const { target } = showPage()
+        await settle()
+        const ids = [...target.querySelectorAll<HTMLElement>('[data-section="display.motion"] [data-setting-row]')].map((el) => el.dataset.settingRow)
+        expect(ids).toEqual(['display.lowPower', 'display.reducedMotion', 'display.animationSpeed'])
+        expect(row(target, 'display.lowPower').textContent).toContain(language.settingsShellLowPower)
+        expect(row(target, 'display.lowPower').querySelector('[data-part="device-chip"]')!.textContent).toBe(language.chatShellOnThisDevice)
+        expect(choice(target, 'system').checked).toBe(true)
+        expect(row(target, 'display.reducedMotion').querySelector('[data-part="device-chip"]')).toBeNull()
+    })
+
+    test('the switches write this device only: storage and the root marks change, the profile does not', async () => {
+        const before = dbSnapshot()
+        const { target } = showPage()
+        await settle()
+        checkbox(target, 'display.lowPower').click()
+        await settle()
+        expect(localStorage.getItem('risuChatShell.lowPower')).toBe('1')
+        expect(root.classList.contains('nexus-low-power')).toBe(true)
+        expect(root.hasAttribute('data-low-power')).toBe(true)
+        expect(checkbox(target, 'display.lowPower').checked).toBe(true)
+        choice(target, 'on').click()
+        await settle()
+        expect(localStorage.getItem('risuChatShell.reducedMotion')).toBe('on')
+        expect(root.classList.contains('rm')).toBe(true)
+        choice(target, 'off').click()
+        await settle()
+        expect(localStorage.getItem('risuChatShell.reducedMotion')).toBe('off')
+        expect(root.classList.contains('rm')).toBe(false)
+        expect(root.classList.contains('rm-off')).toBe(true)
+        checkbox(target, 'display.lowPower').click()
+        await settle()
+        expect(root.classList.contains('nexus-low-power')).toBe(false)
+        expect(changedKeys(before, dbSnapshot())).toEqual([])
+        expect(Object.keys(dbSnapshot()).filter((key) => /lowPower|reducedMotion/i.test(key))).toEqual([])
+    })
+
+    test('the animation speed dims with the reason that applies and follows each change while mounted', async () => {
+        const { target } = showPage()
+        await settle()
+        expect(row(target, 'display.animationSpeed').dataset.dimmed).toBeUndefined()
+        expect(reason(target)).toBeNull()
+        choice(target, 'on').click()
+        await settle()
+        expect(row(target, 'display.animationSpeed').dataset.dimmed).toBe('true')
+        expect(reason(target)).toBe(language.settingsShellAnimationDimReduced)
+        checkbox(target, 'display.lowPower').click()
+        await settle()
+        expect(reason(target)).toBe(language.settingsShellAnimationDimLowPower)
+        checkbox(target, 'display.lowPower').click()
+        choice(target, 'off').click()
+        await settle()
+        expect(row(target, 'display.animationSpeed').dataset.dimmed).toBeUndefined()
+        expect(slider(target, 'display.animationSpeed')).not.toBeNull()
+    })
+})

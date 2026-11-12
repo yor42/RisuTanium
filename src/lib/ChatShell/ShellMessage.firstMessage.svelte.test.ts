@@ -168,3 +168,56 @@ describe('first message alternatives', () => {
         DBState.db.characters[0].alternateGreetings = original
     })
 })
+
+describe('first message swipe feedback (CHORE-727)', () => {
+    function body(): HTMLElement { return row().querySelector<HTMLElement>('[data-part="chat-message-body"]')! }
+    function pointer(kind: string, x: number, time: number): void {
+        const event = new MouseEvent(kind, { bubbles: true, clientX: x, clientY: 100 })
+        Object.defineProperties(event, { pointerType: { value: 'touch' }, timeStamp: { value: time }, pointerId: { value: 1 } })
+        body().dispatchEvent(event)
+        flushSync()
+    }
+    function peek(): HTMLElement | null { return row().querySelector<HTMLElement>('[data-part="chat-swipe-peek"]') }
+
+    test('the next greeting peeks in from the list: position 2 is the first alternate greeting', async () => {
+        Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true })
+        await show()
+        pointer('pointerdown', 500, 0)
+        pointer('pointermove', 440, 100)
+        expect(peek()!.querySelector('[data-part="chat-swipe-peek-chip"]')!.textContent).toBe('2 / 3')
+        expect(peek()!.querySelector('[data-part="chat-swipe-peek-text"]')!.textContent).toBe('Second hello')
+        pointer('pointercancel', 440, 150)
+    })
+
+    test('from the first alternate greeting the previous one is the default first message', async () => {
+        Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true })
+        DBState.db.characters[0].chats[0].fmIndex = 0
+        await show()
+        pointer('pointerdown', 500, 0)
+        pointer('pointermove', 560, 100)
+        expect(peek()!.querySelector('[data-part="chat-swipe-peek-chip"]')!.textContent).toBe('1 / 3')
+        expect(peek()!.querySelector('[data-part="chat-swipe-peek-text"]')!.textContent).toBe('Default hello')
+        pointer('pointercancel', 560, 150)
+    })
+
+    test('a committed swipe on the first message lands after the slide-out and leaves the row at rest in place', async () => {
+        Object.defineProperty(window, 'innerWidth', { value: 1024, configurable: true })
+        vi.useFakeTimers()
+        try {
+            await show()
+            pointer('pointerdown', 500, 0)
+            pointer('pointermove', 300, 100)
+            pointer('pointerup', 300, 200)
+            expect(body().hasAttribute('data-settle')).toBe(true)
+            expect(fmIndex()).toBe(-1)
+            await vi.advanceTimersByTimeAsync(260)
+            flushSync()
+            expect(fmIndex()).toBe(0)
+            expect(body().hasAttribute('data-settle')).toBe(false)
+            expect(body().style.transform).toBe('')
+            expect(peek()).toBeNull()
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+})

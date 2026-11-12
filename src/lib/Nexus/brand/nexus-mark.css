@@ -288,10 +288,14 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nexus-mark * {
+  :root:not(.rm-off) .nexus-mark * {
     animation: none !important;
     transition-property: opacity !important;
   }
+}
+:root.rm .nexus-mark * {
+  animation: none !important;
+  transition-property: opacity !important;
 }
 
 @media (forced-colors: active) {
