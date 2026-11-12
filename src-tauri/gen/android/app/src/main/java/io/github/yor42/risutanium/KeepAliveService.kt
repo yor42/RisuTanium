@@ -16,6 +16,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ProcessLifecycleOwner
@@ -26,8 +27,11 @@ import androidx.lifecycle.ProcessLifecycleOwner
 // going away. It holds no work of its own: the page decides when work begins and ends.
 //
 // The running instance is the only thing that posts its notification, so a notification can never
-// outlive the service: refresh() reaches the instance through the static reference below, which is
-// set in onCreate and cleared in onDestroy, and does nothing when there is none. Every field here
+// outlive the service: the page's updates and outcomes reach the instance through the static reference
+// below, which is set in onCreate and cleared in onDestroy. A message the instance cannot apply yet (no
+// instance, or one whose latest start command is still pending) is held and replayed in arrival order
+// when that start's command is handled, so the start's own notice never overwrites it (MC-1517, MC-091;
+// KeepAliveHandOff). The old page's refresh() still does nothing without an instance. Every field here
 // is read and written on the main thread only.
 //
 // A v2 page sends a whole notice (KeepAliveNotice) that the display machine and noticePlan turn into
@@ -121,6 +125,9 @@ class KeepAliveService : Service() {
     mainHandler.removeCallbacks(countLineCheck)
     if (live === this) {
       live = null
+      // Held messages stay for the next instance of the same start.
+      handOff.instanceGone()
+      Log.i(TAG, "Instance gone")
     }
     super.onDestroy()
   }
@@ -130,6 +137,31 @@ class KeepAliveService : Service() {
   // system refuses ends the service instead of failing the app.
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     lastStartId = startId
+    val start = intent?.getIntExtra(EXTRA_START, 0) ?: 0
+    val stopAction = intent?.action == ACTION_STOP
+    val host = object : StartCommandHost {
+      override fun showIntentNotice() = showStartIntentNotice(intent)
+
+      override fun applyHeld(message: HeldMessage) = replayHeld(message)
+
+      // The Stop tap enters Stopping before the notification is built and before the page is told.
+      override fun enterStopTap(): StopTap = changeDisplay { display.stopTapped() }
+
+      override fun startForeground(): Boolean = startForegroundNow()
+
+      override fun endIfWanted() = this@KeepAliveService.endIfWanted("held outcome")
+
+      override fun deliverStop(tap: StopTap) = deliverStopCommand(tap)
+    }
+    runStartCommand(handOff, start, stopAction, host)
+    if (handOff.lastSkipped > 0) {
+      Log.i(TAG, "Held dropped: skipped start")
+    }
+    return START_NOT_STICKY
+  }
+
+  // The notice the start intent carries: a v2 one, or an old page's title and Stop label.
+  private fun showStartIntentNotice(intent: Intent?) {
     val extraTitle = intent?.getStringExtra(EXTRA_TITLE)
     if (intent != null && intent.getBooleanExtra(EXTRA_V2, false)) {
       // A start whose notice could not be read carries none: the service then shows the app name
@@ -143,8 +175,25 @@ class KeepAliveService : Service() {
     } else if (intent != null && extraTitle != null) {
       showV1Notice(extraTitle, intent.getStringExtra(EXTRA_STOP_LABEL) ?: "")
     }
-    // The Stop tap enters Stopping before the notification is built and before the page is told.
-    val stopTap = if (intent?.action == ACTION_STOP) changeDisplay { display.stopTapped() } else StopTap.PLAIN
+  }
+
+  // A replayed message changes the display like its live counterpart but never reposts: the foreground
+  // start that follows posts the one card for all of them.
+  private fun replayHeld(message: HeldMessage) {
+    when (message) {
+      is HeldUpdate -> {
+        Log.i(TAG, "Held replayed update")
+        applyPageUpdate(message.notice)
+      }
+      is HeldOutcome -> {
+        Log.i(TAG, "Held replayed outcome")
+        outcomeChange(message.notice)
+      }
+    }
+  }
+
+  // False when the system refused the foreground start; the service has then ended itself.
+  private fun startForegroundNow(): Boolean {
     try {
       val notification = buildNotification()
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -155,28 +204,29 @@ class KeepAliveService : Service() {
     } catch (error: Exception) {
       Log.w(TAG, "startForeground refused; ending the keep-alive service", error)
       stopSelf()
-      return START_NOT_STICKY
+      return false
     }
-    if (intent?.action == ACTION_STOP) {
-      // The page is told first and native cancels the chat's requests after it, in this same turn. A
-      // stale tap (already Stopping) sends nothing.
-      val delivery = changeDisplay {
-        deliverStopTap(
-          stopTap,
-          display,
-          { MainActivity.deliverKeepAliveStop() },
-          { NativeStreams.cancelChatStreamsOrNone() }
-        )
-      }
-      Log.i(TAG, "Stop delivered $delivery")
-      if (delivery == StopDelivery.NO_PAGE) {
-        // No live page can act on the stop, so nothing is left to keep alive.
-        stopSelf()
-      } else if (delivery == StopDelivery.CONFIRMED) {
-        repost()
-      }
+    return true
+  }
+
+  private fun deliverStopCommand(stopTap: StopTap) {
+    // The page is told first and native cancels the chat's requests after it, in this same turn. A
+    // stale tap (already Stopping) sends nothing.
+    val delivery = changeDisplay {
+      deliverStopTap(
+        stopTap,
+        display,
+        { MainActivity.deliverKeepAliveStop() },
+        { NativeStreams.cancelChatStreamsOrNone() }
+      )
     }
-    return START_NOT_STICKY
+    Log.i(TAG, "Stop delivered $delivery")
+    if (delivery == StopDelivery.NO_PAGE) {
+      // No live page can act on the stop, so nothing is left to keep alive.
+      stopSelf()
+    } else if (delivery == StopDelivery.CONFIRMED) {
+      repost()
+    }
   }
 
   // The single place the display changes, so every change ends with the timer and the count check in
@@ -294,22 +344,34 @@ class KeepAliveService : Service() {
     repost()
   }
 
-  private fun refreshNotice(notice: KeepAliveNotice) {
+  // The display change of a page update, shared by the live update and the replay of a held one.
+  private fun applyPageUpdate(notice: KeepAliveNotice) {
     pageStateToLog(lastLoggedPageState, notice)?.let { Log.i(TAG, "Page notice $it") }
     lastLoggedPageState = notice.state
     showPageNotice(notice)
+  }
+
+  private fun refreshNotice(notice: KeepAliveNotice) {
+    applyPageUpdate(notice)
     repost()
+  }
+
+  // The display change of the closing outcome, shared by the live outcome and the replay of a held one.
+  // It returns whether Stopping ended.
+  private fun outcomeChange(notice: KeepAliveNotice?): Boolean {
+    if (notice != null) keepAvatar(notice)
+    val leftStopping = changeDisplay { display.outcome(notice) }
+    if (display.outcomeHidden) {
+      Log.i(TAG, "Stopped outcome hidden")
+    }
+    return leftStopping
   }
 
   // The closing notice that came with the delayed stop. An unreadable one changes nothing unless
   // the display was Stopping, where it still ends Stopping as Stopped. After a Stopped cleared at the
   // return, the cancelled work's Stopped outcome shows the neutral card (MC-1497).
   private fun applyOutcome(notice: KeepAliveNotice?) {
-    if (notice != null) keepAvatar(notice)
-    val leftStopping = changeDisplay { display.outcome(notice) }
-    if (display.outcomeHidden) {
-      Log.i(TAG, "Stopped outcome hidden")
-    }
+    val leftStopping = outcomeChange(notice)
     if (notice != null || leftStopping) {
       repost()
     }
@@ -425,23 +487,52 @@ class KeepAliveService : Service() {
     private const val EXTRA_STOP_LABEL = "stopLabel"
     private const val EXTRA_V2 = "v2"
     private const val EXTRA_NOTICE = "notice"
+    private const val EXTRA_START = "start"
     private const val MAX_CACHED_AVATARS = 8
 
     // The running instance, or null; main thread only.
     private var live: KeepAliveService? = null
 
+    // The start numbers and the messages held between a start and its command; main thread only.
+    private val handOff = KeepAliveHandOff<KeepAliveService>()
+
     fun intentFor(context: Context, title: String, stopLabel: String): Intent =
       Intent(context, KeepAliveService::class.java)
         .putExtra(EXTRA_TITLE, title)
         .putExtra(EXTRA_STOP_LABEL, stopLabel)
+        .putExtra(EXTRA_START, handOff.nextStart())
 
     // A v2 start; noticeJson is null when the page's notice could not be read.
     fun intentForNotice(context: Context, noticeJson: String?): Intent {
-      val intent = Intent(context, KeepAliveService::class.java).putExtra(EXTRA_V2, true)
+      val intent = Intent(context, KeepAliveService::class.java)
+        .putExtra(EXTRA_V2, true)
+        .putExtra(EXTRA_START, handOff.nextStart())
       if (noticeJson != null) {
         intent.putExtra(EXTRA_NOTICE, noticeJson)
       }
       return intent
+    }
+
+    // Starts the service with an intent from intentFor or intentForNotice. The start counts as accepted
+    // only when the system took it; a refusal throws and changes nothing.
+    fun launch(context: Context, intent: Intent) {
+      handOff.launchStart(intent.getIntExtra(EXTRA_START, 0)) {
+        ContextCompat.startForegroundService(context, intent)
+      }
+      Log.i(TAG, "Start accepted")
+    }
+
+    private fun heldRouteName(route: OfferRoute): String? =
+      when (route) {
+        OfferRoute.APPLY -> null
+        OfferRoute.HELD_NO_INSTANCE -> "no instance"
+        OfferRoute.HELD_START_PENDING -> "start pending"
+      }
+
+    private fun logCapDrops(before: Int) {
+      if (handOff.capDrops > before) {
+        Log.i(TAG, "Held capped")
+      }
     }
 
     // Does nothing without a running instance: a bare notify() here could orphan a notification.
@@ -449,15 +540,30 @@ class KeepAliveService : Service() {
       live?.refresh(title, stopLabel)
     }
 
+    // The live instance takes the update only when it has handled the latest start; otherwise the update
+    // is held for that start's command.
     fun refreshNotice(notice: KeepAliveNotice) {
-      live?.refreshNotice(notice)
+      val capBefore = handOff.capDrops
+      val route = handOff.offerUpdate(live, notice) { instance, held -> instance.refreshNotice(held) }
+      heldRouteName(route)?.let { Log.i(TAG, "Notice held: $it") }
+      logCapDrops(capBefore)
     }
 
     fun applyOutcome(notice: KeepAliveNotice?) {
-      live?.applyOutcome(notice)
+      val capBefore = handOff.capDrops
+      val route = handOff.offerOutcome(live, notice) { instance, held -> instance.applyOutcome(held) }
+      heldRouteName(route)?.let { Log.i(TAG, "Outcome held: $it") }
+      logCapDrops(capBefore)
     }
 
+    // A stop clears the held messages. It matters only when a start's command is still pending at the
+    // stop (before the instance is created, or a lingering instance with a newer start pending): the
+    // system still delivers that command to an instance that is about to stop; any later start already
+    // drops the messages of older starts.
     fun stop(context: Context) {
+      if (handOff.stopped() > 0) {
+        Log.i(TAG, "Held dropped: stop")
+      }
       context.stopService(Intent(context, KeepAliveService::class.java))
     }
   }
