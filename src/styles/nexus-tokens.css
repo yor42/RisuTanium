@@ -93,11 +93,16 @@
   --nexus-scrim-duration: 200ms;                      /* scrim fade in */
 }
 
+/* The app's reduce-motion setting: `rm` turns it on whatever the OS says, `rm-off` keeps the OS query out. */
 @media (prefers-reduced-motion: reduce) {
-  :root {
+  :root:not(.rm-off) {
     --nexus-animate-enter: nexus-fade var(--nexus-duration-enter) var(--nexus-ease) both;
     --nexus-animate-breathe: none;
   }
+}
+:root.rm {
+  --nexus-animate-enter: nexus-fade var(--nexus-duration-enter) var(--nexus-ease) both;
+  --nexus-animate-breathe: none;
 }
 
 @keyframes nexus-enter {

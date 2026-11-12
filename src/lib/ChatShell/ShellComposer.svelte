@@ -228,7 +228,8 @@
     [data-part="chat-composer-tools"] { display: flex; justify-content: space-between; font-size: var(--font-size-xs); }
     [data-part="chat-composer-tools"] button, [data-part="chat-composer-tools"] select { min-height: var(--size-14); color: inherit; }
     [data-part="chat-composer-progress"] { display: inline-block; width: var(--size-7); height: var(--size-7); border: var(--stroke-bold) solid currentColor; border-radius: var(--radius-circle); }
-    @media (prefers-reduced-motion: no-preference) { [data-part="chat-composer-progress"] { animation: progress var(--dur-spin) var(--ease-linear) infinite; } }
+    [data-part="chat-composer-progress"] { animation: progress var(--dur-spin) var(--ease-linear) infinite; }
+    @media (prefers-reduced-motion: reduce) { :global(html:not(.rm-off)) [data-part="chat-composer-progress"] { animation: none; } }
     :global(html.rm) [data-part="chat-composer-progress"], :global(html[data-low-power]) [data-part="chat-composer-progress"], :global(html.nexus-low-power) [data-part="chat-composer-progress"] { animation: none; }
     @keyframes progress { to { transform: rotate(var(--angle-turn)); } }
 </style>

@@ -104,6 +104,9 @@ const WRAPPERS = [
     /^:root$/,
     /^:root, :host$/,
     /^html\[data-input="hover"\]$/,
+    // The device reduce-motion setting scopes token overrides on the root: on (`rm`) and the OS rule stepping aside for off (`rm-off`).
+    /^:root\.rm$/,
+    /^:root:not\(\.rm-off\)$/,
     /^@media /,
     /^@layer [\w-]+$/,
     /^@supports /,

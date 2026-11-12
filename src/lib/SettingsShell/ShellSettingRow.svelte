@@ -71,7 +71,7 @@
             <p class="text-xs text-textcolor2 mb-2" data-part="setting-row-hint">{settingsLabel(hintKey)}</p>
         {/if}
         {#if dimmed && dim}
-            <p class="text-sm text-textcolor2 mt-1" data-part="setting-row-reason">{settingsLabel(dim.reasonKey)}</p>
+            <p class="text-sm text-textcolor2 mt-1" data-part="setting-row-reason">{settingsLabel(dim.reasonKeyOf?.() ?? dim.reasonKey)}</p>
             {#if dim.jump}
                 {@const jump = dim.jump}
                 <button type="button" class="self-start min-h-11 px-1 text-sm text-textcolor2 underline hover:text-textcolor" data-part="setting-row-jump" onclick={() => SettingsMenuIndex.set(jump.index)}>{settingsLabel(jump.labelKey)}</button>

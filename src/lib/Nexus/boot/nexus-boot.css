@@ -60,9 +60,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nexus-boot-fill {
+  :root:not(.rm-off) .nexus-boot-fill {
     transition: none;
   }
+}
+:root.rm .nexus-boot-fill {
+  transition: none;
 }
 
 /* Sweep, tier 1, base: motion inside the current share. Without a count there is nothing honest to fill. */
@@ -101,12 +104,18 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nexus-boot-sweep::before {
+  :root:not(.rm-off) .nexus-boot-sweep::before {
     animation: none;
     transform: none;
     opacity: 1;
     background: rgb(127 233 255 / 0.5);
   }
+}
+:root.rm .nexus-boot-sweep::before {
+  animation: none;
+  transform: none;
+  opacity: 1;
+  background: rgb(127 233 255 / 0.5);
 }
 
 /* Tier 4, failed: the step it stopped at turns red, visible even at the first step where nothing is filled. */

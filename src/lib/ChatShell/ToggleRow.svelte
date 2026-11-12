@@ -156,7 +156,7 @@
     [data-part="toggle-row"] { display: flex; flex-direction: column; gap: var(--space-3); min-height: var(--size-touch); padding: var(--space-3) var(--space-10); border-bottom: 1px solid var(--nexus-edge); content-visibility: auto; contain-intrinsic-size: auto var(--size-touch); position: relative; }
     [data-part="toggle-row"][data-opened-at]::after { content: ''; position: absolute; inset: 0; border: var(--stroke-bold) solid var(--nexus-accent); border-radius: var(--radius-control); pointer-events: none; opacity: 0; animation: toggle-opened var(--dur-highlight) var(--ease-linear) both; }
     @keyframes toggle-opened { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
-    @media (prefers-reduced-motion: reduce) { [data-part="toggle-row"][data-opened-at]::after { animation-timing-function: steps(1, end); } }
+    @media (prefers-reduced-motion: reduce) { :global(html:not(.rm-off)) [data-part="toggle-row"][data-opened-at]::after { animation-timing-function: steps(1, end); } }
     :global(html.rm) [data-part="toggle-row"][data-opened-at]::after, :global(html[data-low-power]) [data-part="toggle-row"][data-opened-at]::after, :global(html.nexus-low-power) [data-part="toggle-row"][data-opened-at]::after { animation-timing-function: steps(1, end); }
     [data-part="toggle-row-line"] { display: flex; align-items: center; gap: var(--space-5); }
     [data-part="toggle-row-main"] { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-7); min-height: var(--size-touch); }
