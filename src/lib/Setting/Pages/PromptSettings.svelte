@@ -27,7 +27,7 @@
     let draggedIndex = $state(-1)
     let dragOverIndex = $state(-1)
     let openedItemIndices = $state(new Set<number>())
-    executeTokenize(DBState.db.promptTemplate)
+    executeTokenize(DBState.db.promptTemplate ?? [])
   interface Props {
     onGoBack?: () => void;
     mode?: 'independent'|'inline';
@@ -45,11 +45,11 @@
     warns = templateCheck(DBState.db)
   });
   $effect.pre(() => {
-    executeTokenize(DBState.db.promptTemplate)
+    executeTokenize(DBState.db.promptTemplate ?? [])
   });
 
   function getDisplayTemplate() {
-    return DBState.db.promptTemplate.map((item, i) => ({
+    return (DBState.db.promptTemplate ?? []).map((item, i) => ({
       item,
       originalIndex: i,
       displayIndex: i
@@ -114,10 +114,10 @@
       return
     }
     if (e.ctrlKey && e.altKey && e.key === 'o') {
-      if (openedItemIndices.size === DBState.db.promptTemplate.length) {
+      if (openedItemIndices.size === (DBState.db.promptTemplate ?? []).length) {
         openedItemIndices = new Set<number>()
       } else {
-        openedItemIndices = new Set(DBState.db.promptTemplate.map((_, i) => i))
+        openedItemIndices = new Set((DBState.db.promptTemplate ?? []).map((_, i) => i))
       }
     }
   }
@@ -163,7 +163,7 @@
 
 {#if subMenu === 0}
     <div class="contain w-full max-w-full mt-4 flex flex-col p-3 rounded-md">
-        {#if DBState.db.promptTemplate.length === 0}
+        {#if (DBState.db.promptTemplate ?? []).length === 0}
                 <div class="text-textcolor2">{language.settingsPage.noFormat}</div>
         {/if}
         {#key sorted}
