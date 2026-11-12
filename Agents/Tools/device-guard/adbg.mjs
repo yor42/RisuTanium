@@ -69,13 +69,35 @@
 //     that it consumes, same refusal codes), then after the fixed delay `input keyevent KEYCODE_HOME` in the same
 //     process. A failed tap sends no HOME. It logs both steps and a `tap-home timing` line with the tap-to-HOME gap.
 //     It writes no typing grant, so `input text` after it is refused. Restricted serials refuse it even with a scope.
+//
+//   node adbg.mjs swipe <common> --own-package <app id> --state <state> --duration-ms <50-5000>
+//        (--dx <px> --dy <px> | --to-x <px> --to-y <px>) [--max-age <s>]
+//     MC-1539. Starts at the centre of the newest fresh, unused, same-serial locate (the same checks as `tap`, and
+//     the locate is consumed). The end is the start plus --dx/--dy (integers, |dx| and |dy| at most the screen
+//     size the locate recorded, else 3000) or an explicit --to-x/--to-y inside the screen (0 up to the recorded
+//     size, else 3000). Sends exactly `input swipe x1 y1 x2 y2 ms`. Before it sends, a read-only foreground check
+//     (`pidof <own package>`, then `cat /proc/<pid>/oom_score_adj` must read 0, the top app) must find our own
+//     package in front; otherwise exit 93 and nothing is sent. It writes no typing grant.
+//   node adbg.mjs hold <common> --own-package <app id> --state <state> --duration-ms <100-5000> [--max-age <s>]
+//     A long press: `input swipe x y x y ms` (zero distance) at the centre of the locate, same rules as `swipe`.
+//   Restricted serials always refuse swipe and hold (exit 95), even with a tap scope.
+//
+//   HARD STOP after a failed locate (MC-1539). When pick, locate-css or locate-shot exits non-zero for a serial, the
+//   guard records an input lock for that serial in --state and as an INPUT-LOCK line in --log. While it is set,
+//   every input-sending command (tap, tap-home, swipe, hold, `input keyevent` of any key including BACK, HOME,
+//   DPAD and PAGE_DOWN, `input text`, the edit keys) is refused with exit 92 and the log line
+//   `refused: input after failed locate`. Only a later SUCCESSFUL locate for that serial clears it. Read-only
+//   commands (screencap, locate, reads) stay allowed. A restricted-serial refusal of the verb itself (exit 95)
+//   attempted no locate and sets no lock. A locate that fails without a valid --serial
+//   never reached a device and sets no lock; the lock is strictly per serial. This closes the 2026-11-12 cloud UI run breach (guard log line 409): a failed locate followed by
+//   KEYCODE_BACK before any fresh locate. Exit codes added: 92 input lock, 93 own package not in front.
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
 
 const argv = process.argv.slice(2)
-const sub = ['pick', 'locate-css', 'locate-shot', 'offset', 'tap', 'tap-home', 'proc-tasks'].includes(argv[0]) ? argv.shift() : 'adb'
+const sub = ['pick', 'locate-css', 'locate-shot', 'offset', 'tap', 'tap-home', 'swipe', 'hold', 'proc-tasks'].includes(argv[0]) ? argv.shift() : 'adb'
 const sep = argv.indexOf('--')
 const opts = sep < 0 ? argv : argv.slice(0, sep)
 const rest = sep < 0 ? [] : argv.slice(sep + 1)
@@ -107,6 +129,42 @@ const needSerial = () => { if (!serial || !/^[A-Za-z0-9._:-]+$/.test(serial)) di
 const needState = () => { if (!statePath) die(2, 'need --state') }
 const ownPort = (p) => ownPorts.includes(p)
 
+// ---- hard stop after a failed locate (MC-1539) ----
+// A locate verb that exits non-zero locks input for its serial (state and log); only a later successful locate for
+// the same serial clears it. The log copy lets an input call without --state see the lock too.
+const LOCATE_VERBS = ['pick', 'locate-css', 'locate-shot']
+// The lock is strictly per serial. A locate without a valid --serial never reached a device, so it sets no lock.
+const validSerial = (ser) => !!ser && /^[A-Za-z0-9._:-]+$/.test(ser)
+const lockKey = (ser) => ser
+const logLocked = (key) => {
+  if (!existsSync(log)) return false
+  let v = false
+  for (const l of readFileSync(log, 'utf8').split(/\r?\n/)) { const m = l.match(/^\S+ INPUT-(LOCK|UNLOCK) serial=(\S+)/); if (m && m[2] === key) v = m[1] === 'LOCK' }
+  return v
+}
+const inputLocked = (s) => validSerial(serial) && [lockKey(serial)].some((k) => (s?.inputLock && s.inputLock[k]) || logLocked(k))
+const refuseIfLocked = (s) => { if (inputLocked(s)) die(92, 'refused: input after failed locate (a locate for this serial failed; run a successful locate before any input)') }
+if (LOCATE_VERBS.includes(sub)) {
+  process.on('exit', (code) => {
+    try {
+      if (!validSerial(serial)) return
+      const key = lockKey(serial)
+      const s = loadState()
+      // Exit 95 is the restricted-serial refusal of the verb itself: no locate was attempted, so nothing failed.
+      if (code === 95) return
+      if (code !== 0) {
+        s.inputLock = { ...(s.inputLock ?? {}), [key]: { time: now(), verb: sub, exit: code } }
+        if (statePath) saveState(s)
+        logLine(`INPUT-LOCK serial=${key} verb=${sub} exit=${code}`)
+      } else if ((s.inputLock && s.inputLock[key]) || logLocked(key)) {
+        if (s.inputLock) delete s.inputLock[key]
+        if (statePath) saveState(s)
+        logLine(`INPUT-UNLOCK serial=${key} verb=${sub}`)
+      }
+    } catch { /* the exit code is what the caller sees; a lock write failure must not change it */ }
+  })
+}
+
 // ---- plain allowlist ----
 const META = /[;&`$()<>\\'"]/
 // One file directly inside /sdcard/Download or /data/local/tmp; the name cannot start with a dot, so no
@@ -136,7 +194,7 @@ const TEXT_KEYS = new Set(['61', '66', '67', '112', 'KEYCODE_TAB', 'KEYCODE_ENTE
 // the grant that tap wrote. Typing into whatever happens to have focus is how agents typed blind.
 const isTypingCall = (a) => a[0] === 'shell' && typeof a[1] === 'string' && (/^input text /.test(a[1].trim().replace(/ +/g, ' '))
   || (/^input keyevent /.test(a[1].trim().replace(/ +/g, ' ')) && a[1].trim().split(/ +/).slice(2).some((k) => TEXT_KEYS.has(k))))
-const ACTION_LINE = /^\S+ (intent:|exit=|locate |tap |offset |REFUSED|PICK-LOCK|match |no-match)/
+const ACTION_LINE = /^\S+ (intent:|exit=|locate |tap |swipe |hold |offset |REFUSED|PICK-LOCK|match |no-match)/
 const lastActionLine = () => {
   if (!existsSync(log)) return ''
   const lines = readFileSync(log, 'utf8').split(/\r?\n/).filter((l) => ACTION_LINE.test(l))
@@ -283,6 +341,8 @@ if (restricted) {
   if (sub === 'tap') { needSerial(); if (!scopeAllows('tap')) refuseRestricted('tap') }
   // The chained tap-home verb is full-access only: no scope class opens it.
   if (sub === 'tap-home') { needSerial(); refuseRestricted('tap-home') }
+  // swipe and hold are full-access only as well, even with a tap scope.
+  if (sub === 'swipe' || sub === 'hold') { needSerial(); refuseRestricted(sub) }
 }
 
 if (sub === 'adb') {
@@ -290,6 +350,8 @@ if (sub === 'adb') {
   if (rest.length === 0) die(2, 'missing -- <adb args>')
   if (restricted && !restrictedAllows(rest)) refuseRestricted(`adb ${JSON.stringify(rest)}`)
   if (!allowedPlain(rest)) die(97, `not on the allowlist: adb ${JSON.stringify(rest)}`)
+  // Every input-sending call (keyevent of any key, text) stops while a failed locate is unanswered.
+  if (rest[0] === 'shell' && /^input /.test(rest[1].trim())) refuseIfLocked(statePath ? loadState() : null)
   if (isTypingCall(rest)) {
     if (!statePath) die(99, 'typing (input text or an edit/submit key) needs --state: it must follow a guarded tap on a located field')
     const s = loadState()
@@ -490,16 +552,33 @@ if (sub === 'locate-css') {
   process.exit(0)
 }
 
-if (sub === 'tap' || sub === 'tap-home') {
+if (sub === 'tap' || sub === 'tap-home' || sub === 'swipe' || sub === 'hold') {
   needSerial(); needState()
   const chained = sub === 'tap-home'
+  const gesture = sub === 'swipe' || sub === 'hold'
+  const s = loadState()
+  refuseIfLocked(s)
   const delayRaw = opt('--delay-ms')
   if (chained && !(delayRaw !== null && /^\d{1,3}$/.test(delayRaw) && +delayRaw <= 500)) die(2, 'tap-home needs --delay-ms as an integer from 0 to 500')
   const delayMs = chained ? +delayRaw : 0
+  // swipe and hold: the duration is required; the end point of a swipe is one of two exclusive forms.
+  const durRaw = opt('--duration-ms')
+  const durMin = sub === 'hold' ? 100 : 50
+  if (gesture && !(durRaw !== null && /^\d{1,4}$/.test(durRaw) && +durRaw >= durMin && +durRaw <= 5000)) die(2, `${sub} needs --duration-ms as an integer from ${durMin} to 5000`)
+  const durationMs = gesture ? +durRaw : 0
+  const INT = /^-?\d{1,5}$/
+  const offsetForm = opt('--dx') !== null || opt('--dy') !== null
+  const toForm = opt('--to-x') !== null || opt('--to-y') !== null
+  if (sub === 'swipe') {
+    if (offsetForm === toForm) die(2, 'swipe needs either --dx and --dy, or --to-x and --to-y')
+    const names = offsetForm ? ['--dx', '--dy'] : ['--to-x', '--to-y']
+    if (!names.every((n) => INT.test(opt(n) ?? ''))) die(2, `swipe ${names.join(' and ')} must be integers in pixels`)
+  } else if (gesture && (offsetForm || toForm || opt('--x') !== null || opt('--y') !== null)) die(2, 'hold takes no end point or point option; it presses the centre of the locate')
+  if (gesture && sub === 'swipe' && (opt('--x') !== null || opt('--y') !== null)) die(2, 'swipe starts at the centre of the locate; --x and --y are not accepted')
+  if (gesture && (!ownPackage || !/^[A-Za-z0-9._]+$/.test(ownPackage))) die(2, `${sub} needs --own-package for the foreground check`)
   const maxAgeRaw = opt('--max-age')
   const maxAge = maxAgeRaw === null ? 5 : Number(maxAgeRaw)
   if (!Number.isFinite(maxAge) || maxAge < 1 || maxAge > 10) die(2, '--max-age must be a number from 1 to 10 seconds')
-  const s = loadState()
   const loc = s.locates[s.locates.length - 1]
   if (!loc) die(99, 'no locate record; run pick or locate-css first')
   if (loc.used) die(99, `locate record ${loc.id} (${loc.label}) was already used; locate again`)
@@ -512,6 +591,33 @@ if (sub === 'tap' || sub === 'tap-home') {
   if (opt('--x') !== null || opt('--y') !== null) {
     x = Number(opt('--x')); y = Number(opt('--y'))
     if (!(Number.isInteger(x) && Number.isInteger(y) && x >= b.l && x < b.r && y >= b.t && y < b.b)) die(99, `point ${x},${y} is not strictly inside locate record ${loc.id}`)
+  }
+  if (gesture) {
+    // The screen size a locate may record bounds the gesture; without one the fixed bound is 3000 px.
+    const sw = Number.isInteger(loc.screen?.w) && loc.screen.w > 0 ? loc.screen.w : 3000
+    const sh = Number.isInteger(loc.screen?.h) && loc.screen.h > 0 ? loc.screen.h : 3000
+    let x2 = x, y2 = y
+    if (sub === 'swipe' && offsetForm) {
+      const dx = Number(opt('--dx')), dy = Number(opt('--dy'))
+      if (Math.abs(dx) > sw || Math.abs(dy) > sh) die(2, `swipe offset ${dx},${dy} is larger than the screen (${sw}x${sh})`)
+      x2 = x + dx; y2 = y + dy
+    } else if (sub === 'swipe') {
+      x2 = Number(opt('--to-x')); y2 = Number(opt('--to-y'))
+      if (x2 < 0 || y2 < 0 || x2 > sw || y2 > sh) die(2, `swipe end ${x2},${y2} is outside the screen (${sw}x${sh})`)
+    }
+    // Read-only foreground check through allowlisted commands: our package must hold the top oom_score_adj (0).
+    // It runs before the locate is consumed, so a refusal leaves the locate usable until it ages out.
+    const front = () => {
+      const ps = runAdb(['shell', `pidof ${ownPackage}`], true)
+      const pids = ps.code === 0 ? ps.out.trim().split(/\s+/).filter((p) => /^\d{1,7}$/.test(p)) : []
+      return pids.some((p) => { const adj = runAdb(['shell', `cat /proc/${p}/oom_score_adj`], true); return adj.code === 0 && adj.out.trim() === '0' })
+    }
+    if (!front()) die(93, `${sub} refused: ${ownPackage} is not the foreground package`)
+    loc.used = true; s.lastShot = null; s.textGrant = null; saveState(s)
+    logLine(sub === 'swipe'
+      ? `swipe uses locate ${loc.id} (${JSON.stringify(loc.label)}, ${age.toFixed(1)} s old, max-age ${maxAge}) from ${x},${y} to ${x2},${y2} over ${durationMs} ms`
+      : `hold uses locate ${loc.id} (${JSON.stringify(loc.label)}, ${age.toFixed(1)} s old, max-age ${maxAge}) at ${x},${y} for ${durationMs} ms`)
+    process.exit(runAdb(['shell', 'input', 'swipe', String(x), String(y), String(x2), String(y2), String(durationMs)], false).code)
   }
   loc.used = true; s.lastShot = null; s.textGrant = null; saveState(s)
   logLine(`tap uses locate ${loc.id} (${JSON.stringify(loc.label)}, ${age.toFixed(1)} s old, max-age ${maxAge}) at ${x},${y}${chained ? ` (tap-home, delay ${delayMs} ms)` : ''}`)
