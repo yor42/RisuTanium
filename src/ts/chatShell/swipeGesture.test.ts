@@ -124,6 +124,31 @@ describe('T10 swipe gesture', () => {
         swipe.move(p(-60, 0, 505))
         expect(swipe.up(p(-100, 0, 510)).event).toBe('none')
     })
+    it('a short fast flick steps although the lift lands at the last move position a few ms later', () => {
+        const swipe = createSwipeGesture(base)
+        swipe.down(p(200, 0, 0)); swipe.move(p(180, 0, 10)); swipe.move(p(165, 0, 30)); swipe.move(p(150, 0, 50))
+        expect(swipe.up(p(150, 0, 54)).event).toBe('stepNext')
+        const back = createSwipeGesture(base)
+        back.down(p(100, 0, 0)); back.move(p(120, 0, 10)); back.move(p(135, 0, 30)); back.move(p(150, 0, 50))
+        expect(back.up(p(150, 0, 54)).event).toBe('stepPrev')
+    })
+    it('guard: a flick whose lift shares the last move time and position still steps', () => {
+        const swipe = createSwipeGesture(base)
+        swipe.down(p(200, 0, 0)); swipe.move(p(180, 0, 10)); swipe.move(p(165, 0, 30)); swipe.move(p(150, 0, 50))
+        expect(swipe.up(p(150, 0, 50)).event).toBe('stepNext')
+    })
+    it('an armed pull followed by a fast flick whose lift lands at the last move position does not generate', () => {
+        const swipe = createSwipeGesture({ ...base, index: 2 })
+        swipe.down(p(300, 0, 0)); swipe.move(p(100, 0, 100))
+        expect(swipe.tick(500).event).toBe('arm')
+        swipe.move(p(-20, 0, 505)); swipe.move(p(-60, 0, 515))
+        expect(swipe.up(p(-60, 0, 519)).event).toBe('none')
+    })
+    it('guard: a drag that rests longer than the velocity window before the lift neither steps nor flings', () => {
+        const swipe = createSwipeGesture(base)
+        swipe.down(p(200, 0, 0)); swipe.move(p(170, 0, 5)); swipe.move(p(115, 0, 10))
+        expect(swipe.up(p(115, 0, 95)).event).toBe('none')
+    })
     it('wheel accumulation steps once per gesture and never generates at N/N', () => {
         const wheel = createWheelSteps(1, 3)
         expect(wheel({ dx: -20, dy: 0, time: 0 })).toBe('none')

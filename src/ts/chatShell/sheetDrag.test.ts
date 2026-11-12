@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createSheetDrag, SHEET_CLOSE_FRACTION, SHEET_FLING_PX_MS, SHEET_SLOP_PX } from './sheetDrag'
+import { createSheetDrag, SHEET_CLOSE_FRACTION, SHEET_FLING_PX_MS, SHEET_SLOP_PX, SHEET_VELOCITY_WINDOW_MS } from './sheetDrag'
 
 describe('sheet drag-down gesture (CHORE-726)', () => {
     it('uses the mockup thresholds', () => {
@@ -42,6 +42,52 @@ describe('sheet drag-down gesture (CHORE-726)', () => {
         back.move(300, 1000)
         back.move(280, 1010)
         expect(back.up(260, 1020, 400)).toBe('stay')
+    })
+    it('closes on a fast short flick whose lift lands at the last move position a few ms later', () => {
+        const drag = createSheetDrag()
+        drag.down(0, 1000)
+        drag.move(30, 1020)
+        drag.move(60, 1040)
+        drag.move(60, 1050)
+        expect(drag.up(60, 1055, 400)).toBe('close')
+    })
+    it('closes on a fast short flick whose lift has the same position and time as the last move', () => {
+        const drag = createSheetDrag()
+        drag.down(0, 1000)
+        drag.move(30, 1020)
+        drag.move(60, 1040)
+        drag.move(60, 1050)
+        expect(drag.up(60, 1050, 400)).toBe('close')
+    })
+    it('stays after a slow drag, and after a fast drag that rests longer than the window before the lift', () => {
+        const slow = createSheetDrag()
+        slow.down(0, 0)
+        slow.move(50, 100)
+        slow.move(60, 200)
+        expect(slow.up(60, 210, 400)).toBe('stay')
+        const paused = createSheetDrag()
+        paused.down(0, 1000)
+        paused.move(50, 1005)
+        paused.move(100, 1010)
+        expect(paused.up(100, 1010 + SHEET_VELOCITY_WINDOW_MS + 40, 400)).toBe('stay')
+    })
+    it('stays on a fast upward flick ending at the last move position, even past 30 % of the height', () => {
+        const drag = createSheetDrag()
+        drag.down(0, 0)
+        drag.move(300, 1000)
+        drag.move(250, 1020)
+        drag.move(200, 1040)
+        expect(drag.up(200, 1045, 400)).toBe('stay')
+    })
+    it('keeps a bounded sample buffer without losing the release velocity on a dense stream', () => {
+        const drag = createSheetDrag()
+        drag.down(0, 0)
+        for (let t = 1; t <= 5000; t++) drag.move(t * 0.02, t)
+        expect(drag.up(100, 5000, 100000)).toBe('stay')
+        const flick = createSheetDrag()
+        flick.down(0, 0)
+        for (let t = 1; t <= 5000; t++) flick.move(t < 4950 ? 0 : (t - 4949) * 1, t)
+        expect(flick.up(51, 5001, 100000)).toBe('close')
     })
     it('treats a press that never passes the slop as a tap, and a cancel as stay', () => {
         const tap = createSheetDrag()

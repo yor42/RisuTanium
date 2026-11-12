@@ -3,6 +3,9 @@ export const SWIPE_SLOP_PX = 10
 export const SWIPE_AXIS_RATIO = 1.5
 export const SWIPE_COMMIT_FRACTION = 0.3
 export const SWIPE_FLING_PX_MS = 0.5
+// The release velocity runs from the oldest move within this window before the lift to the lift itself, so a lift delivered at the last move's position still carries the flick; a finger that rested longer than the window has velocity 0.
+export const SWIPE_VELOCITY_WINDOW_MS = 80
+const SWIPE_SAMPLE_LIMIT = 64
 export const ARM_DISTANCE_DP = 160
 export const ARM_HOLD_MS = 300
 export const ARM_STILL_PX_MS = 0.15
@@ -23,7 +26,7 @@ export function createSwipeGesture(options: SwipeOptions) {
     let armed = false
     let holdStart: number | null = null
     let progress = 0
-    let lastVelocity = 0
+    let samples: PointerSample[] = []
     const scale = options.dpPerPx > 0 ? options.dpPerPx : 1
     const usable = options.enabled !== false && !options.edge && options.pointerType !== 'mouse'
     const result = (event: SwipeEvent = 'none'): SwipeResult => ({ event, progress, locked: axis === 'horizontal', armed })
@@ -35,7 +38,7 @@ export function createSwipeGesture(options: SwipeOptions) {
         armed = false
         holdStart = null
         progress = 0
-        lastVelocity = 0
+        samples = []
     }
 
     // A pull past the last alternative can only generate on a row that owns the newest reply.
@@ -56,7 +59,12 @@ export function createSwipeGesture(options: SwipeOptions) {
         const elapsed = sample.time - previous.time
         const velocity = elapsed > 0 ? (sample.x - previous.x) / elapsed : 0
         previous = sample
-        lastVelocity = velocity
+        samples.push(sample)
+        // Only the newest window of moves can reach a later release; the cap bounds a very dense stream.
+        let drop = 0
+        while (drop < samples.length - 1 && samples[drop].time < sample.time - SWIPE_VELOCITY_WINDOW_MS) drop++
+        drop = Math.max(drop, samples.length - SWIPE_SAMPLE_LIMIT)
+        if (drop > 0) samples.splice(0, drop)
         if (axis === 'pending' && (Math.abs(dx) > SWIPE_SLOP_PX || Math.abs(dy) > SWIPE_SLOP_PX)) {
             axis = Math.abs(dx) > SWIPE_SLOP_PX && Math.abs(dx) > SWIPE_AXIS_RATIO * Math.abs(dy) ? 'horizontal' : 'vertical'
         }
@@ -104,8 +112,9 @@ export function createSwipeGesture(options: SwipeOptions) {
     function up(sample: PointerSample): SwipeResult {
         if (!start || axis !== 'horizontal') { clear(); return result() }
         const dx = sample.x - start.x
-        const elapsed = previous ? sample.time - previous.time : 0
-        const velocity = elapsed > 0 && previous ? (sample.x - previous.x) / elapsed : sample.time - (previous?.time ?? 0) <= 80 ? lastVelocity : 0
+        const oldest = samples.find(moved => moved.time >= sample.time - SWIPE_VELOCITY_WINDOW_MS)
+        const elapsed = oldest ? sample.time - oldest.time : 0
+        const velocity = oldest && elapsed > 0 ? (sample.x - oldest.x) / elapsed : 0
         const canGenerate = armed && dx < 0 && -dx * scale >= ARM_DISTANCE_DP && Math.abs(velocity) <= SWIPE_FLING_PX_MS
         let event: SwipeEvent = 'none'
         if (canGenerate) event = 'generate'
