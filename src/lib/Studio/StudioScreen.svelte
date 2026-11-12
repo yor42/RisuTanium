@@ -9,7 +9,8 @@
     import { getStudioHistoryService, noteStudioInput } from '../../ts/studio/history/studioHistoryService.svelte'
     import { placeFocusAfterHistory } from '../../ts/studio/historyFocus'
     import { readOwnerFields } from '../../ts/studio/ownerFields'
-    import { closeStudioHistory, closeStudioRestoreSheet, closeStudioSearch, installStudioBack } from '../../ts/studio/studioBack.svelte'
+    import { trackStudioFocus } from '../../ts/studio/layerFocus'
+    import { closeStudioDrawer, closeStudioHistory, closeStudioRestoreSheet, closeStudioSearch, installStudioBack } from '../../ts/studio/studioBack.svelte'
     import { selectedHistoryOwner, setStudioHistoryOpen, setStudioLayout, setStudioNotice, showStudioList, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
     import StudioHeader from './StudioHeader.svelte'
@@ -46,6 +47,11 @@
         void tick().then(() => {
             if (root && !root.contains(document.activeElement)) root.focus()
         })
+    })
+
+    // A layer's close returns focus to the last element focused outside it (MC-1504).
+    $effect(() => {
+        if (root) return trackStudioFocus(root)
     })
 
     // The layout follows the width of the screen itself, not the window, so a docked pane lays out right.
@@ -130,12 +136,11 @@
             // The field that held focus is gone; the button that opened the search takes it.
             void tick().then(() => root?.querySelector<HTMLElement>('[data-part="studio-search-toggle"]')?.focus())
         } else if (studioScreen.drawerOpen) {
-            studioScreen.drawerOpen = false
+            closeStudioDrawer()
             event.preventDefault()
         } else if (studioScreen.historyOpen) {
             closeStudioHistory()
             event.preventDefault()
-            void tick().then(() => root?.querySelector<HTMLElement>('[data-part="studio-history-toggle"]')?.focus())
         }
     }
 
@@ -155,11 +160,11 @@
         searchOpen={studioScreen.searchOpen}
         onback={() => { dispatchBack() }}
         ontitle={showStudioList}
-        ondrawer={() => { studioScreen.drawerOpen = !studioScreen.drawerOpen }}
+        ondrawer={() => { if (studioScreen.drawerOpen) closeStudioDrawer(); else studioScreen.drawerOpen = true }}
         onsearch={() => { studioScreen.searchOpen = !studioScreen.searchOpen }}
         historyOpen={studioScreen.historyOpen}
         historyAvailable={selectedHistoryOwner() !== null}
-        onhistory={() => { setStudioHistoryOpen(!studioScreen.historyOpen) }}
+        onhistory={() => { if (studioScreen.historyOpen) closeStudioHistory(); else setStudioHistoryOpen(true) }}
     />
     <StudioNotice message={studioScreen.notice} ondismiss={() => setStudioNotice(null)} />
     {#if studioScreen.searchOpen}
@@ -179,7 +184,8 @@
                     {#if tree}{@render tree()}{:else}<StudioTree />{/if}
                 </aside>
             {/if}
-            <main data-part="studio-detail" class="min-w-0 flex-1 overflow-y-auto">
+            <!-- A drawer pick lands focus here (MC-1507): named by the owner title when the detail shows one, else by the screen title. -->
+            <main data-part="studio-detail" tabindex="-1" aria-labelledby="studio-detail-title" aria-label={language.studioTitle} class="min-w-0 flex-1 overflow-y-auto outline-none">
                 {#if detail}{@render detail()}{:else}<StudioDetail />{/if}
             </main>
         {:else if studioScreen.detailShown}

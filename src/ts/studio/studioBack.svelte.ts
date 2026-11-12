@@ -1,5 +1,6 @@
 import { tick } from 'svelte'
 import { backCloseHandler, registerBackHandler } from '../backHandlers'
+import { returnFocusAfterClose } from './layerFocus'
 import {
     closeStudio,
     setStudioHistoryOpen,
@@ -47,7 +48,7 @@ export function leaveStudio(): void {
 /** The Back layers of the screen, called once while the Studio root is created. */
 export function installStudioBack(): void {
     registerStudioBackLayer({ isOpen: () => studioScreen.open, close: leaveStudio })
-    registerStudioBackLayer({ isOpen: () => studioScreen.drawerOpen, close: () => { studioScreen.drawerOpen = false } })
+    registerStudioBackLayer({ isOpen: () => studioScreen.drawerOpen, close: closeStudioDrawer })
     registerStudioBackLayer({ isOpen: () => studioScreen.searchOpen, close: closeStudioSearch })
     registerStudioBackLayer({ isOpen: () => studioScreen.historyOpen, close: closeStudioHistory })
     // Detail to list sits below search, the drawer and the History panel, whichever of them opened last: it
@@ -73,6 +74,12 @@ export function closeStudioSearch(): void {
 
 export function closeStudioHistory(): void {
     setStudioHistoryOpen(false)
+    void returnFocusAfterClose('history', () => studioScreen.historyOpen)
+}
+
+export function closeStudioDrawer(): void {
+    studioScreen.drawerOpen = false
+    void returnFocusAfterClose('drawer', () => studioScreen.drawerOpen)
 }
 
 export function closeStudioRestoreSheet(): void {

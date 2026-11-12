@@ -50,7 +50,7 @@ import type { toSaveType } from 'src/ts/storage/risuSave'
 import { createSaveAck, type SaveAck, type SaveAckDeps } from 'src/ts/studio/edit/saveAck.svelte'
 import type { ChatSource } from 'src/ts/studio/ownerModel'
 import { makeCharacter, makeChat, makeInput, studioDbOf } from 'src/ts/studio/studioFixtures.test-helpers'
-import { openStudio, resetStudioScreenForTests, setStudioSelection, studioScreen } from 'src/ts/studio/studioScreen.svelte'
+import { openStudio, resetStudioScreenForTests, setStudioHistoryOpen, setStudioSelection, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { resetToastHostForTests } from 'src/ts/toast/toastHost.svelte'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
@@ -478,5 +478,211 @@ describe('F: focus lands on the first message an Undo, Redo or Restore put back 
         expect(part('studio-restore-sheet')).not.toBeNull()
         expect(live().desc).toBe('outside')
         expect(document.activeElement).toBe(confirm)
+    })
+})
+
+// ---------------------------------------------------------------- focus when the History panel closes (MC-1504)
+
+describe('focus when the History panel closes', () => {
+    const desc = () => part('studio-form-desc') as HTMLTextAreaElement
+    const toggle = () => part('studio-history-toggle')
+
+    async function panelOverField(width: number): Promise<HTMLTextAreaElement> {
+        await screenWithPanel({ width })
+        const field = desc()
+        field.focus()
+        await settle()
+        expect(document.activeElement).toBe(field)
+        return field
+    }
+
+    async function backClose(): Promise<void> {
+        expect(dispatchBack()).toBe(true)
+        flushSync()
+        await settle()
+        await settle()
+    }
+
+    test.each([1200, 400])('R-P1 Back at %i px returns focus to the field focused behind the panel', async (width) => {
+        const field = await panelOverField(width)
+        await backClose()
+        expect(studioScreen.historyOpen).toBe(false)
+        expect(document.activeElement).toBe(field)
+    })
+
+    test('R-P2 the panel X returns focus to the field focused behind the panel', async () => {
+        const field = await panelOverField(1200)
+        await press('studio-history-close')
+        expect(studioScreen.historyOpen).toBe(false)
+        expect(document.activeElement).toBe(field)
+    })
+
+    test('R-P3 Escape typed in the field behind the panel leaves focus on that field', async () => {
+        const field = await panelOverField(1200)
+        keyOn(field, { key: 'Escape' })
+        await settle()
+        await settle()
+        expect(studioScreen.historyOpen).toBe(false)
+        expect(document.activeElement).toBe(field)
+    })
+
+    test('R-P4 Escape from inside the panel goes to the field focused behind it', async () => {
+        const field = await panelOverField(1200)
+        const close = part('studio-history-close')!
+        close.focus()
+        keyOn(close, { key: 'Escape' })
+        await settle()
+        await settle()
+        expect(studioScreen.historyOpen).toBe(false)
+        expect(document.activeElement).toBe(field)
+    })
+
+    test('R-P5 Back from inside the panel goes to the History toggle focused before it', async () => {
+        await screenWithPanel({ width: 1200 })
+        const opener = toggle()!
+        opener.focus()
+        part('studio-history-close')!.focus()
+        await settle()
+        await backClose()
+        expect(studioScreen.historyOpen).toBe(false)
+        expect(document.activeElement).toBe(opener)
+    })
+
+    test('R-P5b the field behind is replaced while the panel is open: Back goes to the History toggle', async () => {
+        const field = await panelOverField(1200)
+        setStudioSelection('chat:c1', null, null)
+        flushSync()
+        await settle()
+        expect(field.isConnected).toBe(false)
+        part('studio-history-close')!.focus()
+        await backClose()
+        expect(document.activeElement).toBe(toggle())
+    })
+
+    test('R-P6 with nothing focused outside the panel since it opened, X goes to the History toggle', async () => {
+        await screenWithPanel({ width: 1200 })
+        await press('studio-history-close')
+        expect(document.activeElement).toBe(toggle())
+    })
+
+    test('R-P8 Escape while focus sits outside Studio leaves it there', async () => {
+        await screenWithPanel({ width: 1200 })
+        desc().focus()
+        const outside = document.createElement('button')
+        document.body.appendChild(outside)
+        outside.focus()
+        keyOn(part('studio')!, { key: 'Escape' })
+        await settle()
+        await settle()
+        expect(studioScreen.historyOpen).toBe(false)
+        expect(document.activeElement).toBe(outside)
+        outside.remove()
+    })
+
+    test('R-P9 a later focus on the Studio root forgets the field: X goes to the History toggle', async () => {
+        await screenWithPanel({ width: 1200 })
+        desc().focus()
+        part('studio')!.focus()
+        await press('studio-history-close')
+        expect(document.activeElement).toBe(toggle())
+    })
+
+    test('R-P10 the History toggle activated while focus is inside the panel follows the same rule', async () => {
+        await screenWithPanel({ width: 1200 })
+        desc().focus()
+        part('studio-history-close')!.focus()
+        click('studio-history-toggle')
+        await settle()
+        await settle()
+        expect(studioScreen.historyOpen).toBe(false)
+        expect(document.activeElement).toBe(desc())
+    })
+
+    test('R-P11 focus that visited the restore sheet does not replace the field behind the panel', async () => {
+        const rig = await screenWithPanel({ width: 1200 })
+        const field = desc()
+        field.focus()
+        edit(rig, 'e1')
+        flushSync()
+        await press('studio-history-restore-open')
+        expect(document.activeElement).toBe(part('studio-restore-cancel'))
+        click('studio-restore-cancel')
+        await settle()
+        await settle()
+        expect(document.activeElement).toBe(part('studio-history-restore-open'))
+        await press('studio-history-close')
+        expect(document.activeElement).toBe(field)
+    })
+
+    test('G-P8 Undo moves focus behind the open panel (CHORE-690); a later Back restores that box', async () => {
+        const rig = await screenWithPanel({ width: 400 })
+        expect(rig.service.greetingDelete(A, 1).ok).toBe(true)
+        flushSync()
+        await press('studio-history-undo')
+        expect(studioScreen.historyOpen).toBe(true)
+        expect(document.activeElement).toBe(inputs()[1])
+        await backClose()
+        expect(document.activeElement).toBe(inputs()[1])
+    })
+
+    test('G-P9 the toggle pressed twice keeps focus on the toggle (guard: passes before and after)', async () => {
+        await screenWithPanel({ width: 1200 })
+        await press('studio-history-toggle')
+        expect(studioScreen.historyOpen).toBe(false)
+        expect(document.activeElement).toBe(toggle())
+    })
+
+    test('G-P12 a Back close that is reopened in the same turn moves no focus (guard: passes before and after)', async () => {
+        await screenWithPanel({ width: 1200 })
+        const field = desc()
+        field.focus()
+        expect(dispatchBack()).toBe(true)
+        setStudioHistoryOpen(true)
+        flushSync()
+        await settle()
+        await settle()
+        expect(studioScreen.historyOpen).toBe(true)
+        expect(document.activeElement).not.toBe(field)
+    })
+
+    test('T-1 focus last held inside the panel is never the target: the earlier outside field wins, the removed node is not used', async () => {
+        const field = await panelOverField(1200)
+        const undo = part('studio-history-undo')!
+        undo.focus()
+        await backClose()
+        expect(undo.isConnected).toBe(false)
+        expect(document.activeElement).toBe(field)
+    })
+
+    test('T-2 with only focus inside the panel on record, Back goes to the History toggle, not the removed node', async () => {
+        await screenWithPanel({ width: 1200 })
+        const close = part('studio-history-close')!
+        close.focus()
+        await backClose()
+        expect(close.isConnected).toBe(false)
+        expect(document.activeElement).toBe(toggle())
+    })
+
+    test('T-3 a second Studio visit does not use the first visit record, and the first listener is removed', async () => {
+        await screenWithPanel({ width: 1200 })
+        const firstRoot = part('studio')!
+        const removed = vi.spyOn(firstRoot, 'removeEventListener')
+        const first = desc()
+        first.focus()
+        await settle()
+        await unmountAll()
+        expect(removed).toHaveBeenCalledWith('focusin', expect.any(Function))
+        expect(first.isConnected).toBe(false)
+
+        resetStudioScreenForTests()
+        openStudio(basicTarget, null)
+        mountInto(StudioScreen)
+        await settle()
+        click('studio-history-toggle')
+        await settle()
+        expect(document.activeElement).not.toBe(first)
+        await press('studio-history-close')
+        expect(document.activeElement).toBe(toggle())
+        expect(document.activeElement).not.toBe(first)
     })
 })

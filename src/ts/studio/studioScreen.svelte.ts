@@ -1,5 +1,6 @@
 import { untrack } from 'svelte'
 import { get } from 'svelte/store'
+import { returnFocusAfterClose } from './layerFocus'
 import { DBState, selIdState, settingsOpen } from '../stores.svelte'
 import { studioEligible } from './studioSwitch.svelte'
 import { studioOpen } from './studioOpen'
@@ -157,15 +158,23 @@ export function closeStudio(): void {
  * that layout closes it and its Back handler goes with it.
  */
 export function setStudioLayout(next: StudioLayout): void {
-    if (studioScreen.layout === 'drawer' && next !== 'drawer') studioScreen.drawerOpen = false
+    if (studioScreen.layout === 'drawer' && next !== 'drawer' && studioScreen.drawerOpen) {
+        studioScreen.drawerOpen = false
+        void returnFocusAfterClose('drawer', () => studioScreen.drawerOpen)
+    }
     studioScreen.layout = next
 }
 
-/** An item chosen from the tree or the list. */
+/**
+ * An item chosen from the tree or the list. A pick from the open drawer ends on the detail pane that shows it
+ * (MC-1507), not on the control that opened the drawer.
+ */
 export function pickStudioItem(): void {
+    const fromDrawer = studioScreen.drawerOpen
     studioScreen.pickedInVisit = true
     studioScreen.detailShown = true
     studioScreen.drawerOpen = false
+    if (fromDrawer) void returnFocusAfterClose('drawer', () => studioScreen.drawerOpen, () => document.querySelector<HTMLElement>('[data-part="studio"] [data-part="studio-detail"]'))
     studioScreen.notice = null
 }
 
