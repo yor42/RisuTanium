@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createSwipeGesture, createWheelSteps, meterFill, peekNeighbour, peekText, type SwipeOptions } from './swipeGesture'
+import { createSwipeGesture, createWheelSteps, meterFill, peekNeighbour, peekText, SWIPE_VELOCITY_WINDOW_MS, type SwipeOptions } from './swipeGesture'
 
 const base: SwipeOptions = { widthPx: 300, dpPerPx: 1, index: 1, count: 3, pointerType: 'touch' }
 const p = (x: number, y: number, time: number) => ({ x, y, time })
@@ -20,6 +20,7 @@ describe('T10 swipe gesture', () => {
     it('commits a neighbour by fling but never steps past an edge', () => {
         const swipe = createSwipeGesture(base)
         swipe.down(p(100, 0, 0))
+        swipe.move(p(98, 0, 40))
         swipe.move(p(80, 0, 100))
         expect(swipe.up(p(50, 0, 120)).event).toBe('stepNext')
         const first = createSwipeGesture({ ...base, index: 0 })
@@ -55,7 +56,8 @@ describe('T10 swipe gesture', () => {
         const swipe = createSwipeGesture({ ...base, index: 2 })
         swipe.down(p(300, 0, 0)); swipe.move(p(120, 0, 100)); swipe.move(p(120, 0, 200))
         expect(swipe.move(p(120, 0, 500)).event).toBe('arm')
-        expect(swipe.up(p(0, 0, 510)).event).toBe('none')
+        swipe.move(p(80, 0, 520)); swipe.move(p(40, 0, 550)); swipe.move(p(10, 0, 580))
+        expect(swipe.up(p(0, 0, 590)).event).toBe('none')
         const first = createSwipeGesture({ ...base, index: 2, firstMessage: true })
         first.down(p(300, 0, 0)); first.move(p(120, 0, 100)); first.move(p(120, 0, 200))
         expect(first.move(p(120, 0, 500)).event).toBe('none')
@@ -122,7 +124,7 @@ describe('T10 swipe gesture', () => {
         swipe.down(p(300, 0, 0)); swipe.move(p(100, 0, 100))
         expect(swipe.tick(500).event).toBe('arm')
         swipe.move(p(-60, 0, 505))
-        expect(swipe.up(p(-100, 0, 510)).event).toBe('none')
+        expect(swipe.up(p(-200, 0, 510)).event).toBe('none')
     })
     it('a short fast flick steps although the lift lands at the last move position a few ms later', () => {
         const swipe = createSwipeGesture(base)
@@ -141,13 +143,82 @@ describe('T10 swipe gesture', () => {
         const swipe = createSwipeGesture({ ...base, index: 2 })
         swipe.down(p(300, 0, 0)); swipe.move(p(100, 0, 100))
         expect(swipe.tick(500).event).toBe('arm')
-        swipe.move(p(-20, 0, 505)); swipe.move(p(-60, 0, 515))
-        expect(swipe.up(p(-60, 0, 519)).event).toBe('none')
+        swipe.move(p(-120, 0, 505)); swipe.move(p(-200, 0, 515))
+        expect(swipe.up(p(-200, 0, 519)).event).toBe('none')
     })
     it('guard: a drag that rests longer than the velocity window before the lift neither steps nor flings', () => {
         const swipe = createSwipeGesture(base)
         swipe.down(p(200, 0, 0)); swipe.move(p(170, 0, 5)); swipe.move(p(115, 0, 10))
         expect(swipe.up(p(115, 0, 95)).event).toBe('none')
+    })
+    it('steps on a fast flick whose moves are sparse and whose last move sits at the lift position', () => {
+        const sparse = createSwipeGesture(base)
+        sparse.down(p(300, 0, 0)); sparse.move(p(270, 0, 50)); sparse.move(p(220, 0, 130))
+        expect(sparse.up(p(220, 0, 140)).event).toBe('stepNext')
+        const batched = createSwipeGesture(base)
+        batched.down(p(300, 0, 0)); batched.move(p(285, 0, 40)); batched.move(p(260, 0, 80)); batched.move(p(225, 0, 120))
+        expect(batched.up(p(225, 0, 130)).event).toBe('stepNext')
+        const settled = createSwipeGesture(base)
+        settled.down(p(300, 0, 0)); settled.move(p(285, 0, 20)); settled.move(p(220, 0, 100)); settled.move(p(215, 0, 140))
+        expect(settled.up(p(215, 0, 150)).event).toBe('stepNext')
+    })
+    it('steps on a fast drag of one move whose lift comes 90 ms after the press', () => {
+        const swipe = createSwipeGesture(base)
+        swipe.down(p(200, 0, 0)); swipe.move(p(130, 0, 50))
+        expect(swipe.up(p(130, 0, 90)).event).toBe('stepNext')
+    })
+    it('guard: a fast burst followed by a short gap before the lift at the last move position still steps', () => {
+        const swipe = createSwipeGesture(base)
+        swipe.down(p(300, 0, 0))
+        for (let step = 1; step <= 10; step++) swipe.move(p(300 - step * 9, 0, step * 10))
+        expect(swipe.up(p(210, 0, 130)).event).toBe('stepNext')
+    })
+    it('guard: a long slow drag, and a fast drag, followed by a pause longer than the window, do not fling', () => {
+        const slow = createSwipeGesture(base)
+        slow.down(p(200, 0, 0))
+        for (let step = 1; step <= 10; step++) slow.move(p(200 - step * 6, 0, step * 100))
+        expect(slow.up(p(140, 0, 1000 + SWIPE_VELOCITY_WINDOW_MS + 40)).event).toBe('none')
+        const fast = createSwipeGesture(base)
+        fast.down(p(200, 0, 0)); fast.move(p(155, 0, 50)); fast.move(p(112, 0, 60))
+        expect(fast.up(p(112, 0, 60 + SWIPE_VELOCITY_WINDOW_MS + 5)).event).toBe('none')
+    })
+    it('guard: an armed pull released fast after sparse moves still does not generate', () => {
+        const swipe = createSwipeGesture({ ...base, index: 2 })
+        swipe.down(p(300, 0, 0)); swipe.move(p(100, 0, 100))
+        expect(swipe.tick(500).event).toBe('arm')
+        swipe.move(p(60, 0, 505)); swipe.move(p(-100, 0, 590))
+        expect(swipe.up(p(-100, 0, 600)).event).toBe('none')
+    })
+    it('an armed hold followed by a short fast release does not generate although the span over the hold reads slow', () => {
+        const swipe = createSwipeGesture({ ...base, index: 2 })
+        swipe.down(p(300, 0, 0)); swipe.move(p(100, 0, 100))
+        for (const now of [200, 300]) expect(swipe.tick(now).event).toBe('none')
+        expect(swipe.tick(400).event).toBe('arm')
+        swipe.move(p(-40, 0, 505))
+        expect(swipe.up(p(-100, 0, 510)).event).toBe('none')
+    })
+    it('an armed hold followed by a 200 px release over 30 ms (lift 431 ms after the last move) does not generate', () => {
+        const swipe = createSwipeGesture({ ...base, index: 2 })
+        swipe.down(p(300, 0, 0)); swipe.move(p(100, 0, 100))
+        for (const now of [200, 300]) expect(swipe.tick(now).event).toBe('none')
+        expect(swipe.tick(400).event).toBe('arm')
+        swipe.move(p(-20, 0, 510)); swipe.move(p(-60, 0, 520)); swipe.move(p(-100, 0, 530))
+        expect(swipe.up(p(-100, 0, 531)).event).toBe('none')
+    })
+    it('guard: a slow deliberate release after an armed hold still generates', () => {
+        const swipe = createSwipeGesture({ ...base, index: 2 })
+        swipe.down(p(300, 0, 0)); swipe.move(p(100, 0, 100))
+        for (const now of [200, 300]) swipe.tick(now)
+        expect(swipe.tick(400).event).toBe('arm')
+        swipe.move(p(90, 0, 600))
+        expect(swipe.up(p(80, 0, 700)).event).toBe('generate')
+    })
+    it('guard: a frequently ticked hold released at the hold position still generates', () => {
+        const swipe = createSwipeGesture({ ...base, index: 2 })
+        swipe.down(p(300, 0, 0)); swipe.move(p(100, 0, 100))
+        for (let now = 110; now <= 290; now += 10) swipe.tick(now)
+        expect(swipe.tick(400).event).toBe('arm')
+        expect(swipe.up(p(100, 0, 1000)).event).toBe('generate')
     })
     it('wheel accumulation steps once per gesture and never generates at N/N', () => {
         const wheel = createWheelSteps(1, 3)

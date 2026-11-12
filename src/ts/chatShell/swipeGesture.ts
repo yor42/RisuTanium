@@ -3,7 +3,7 @@ export const SWIPE_SLOP_PX = 10
 export const SWIPE_AXIS_RATIO = 1.5
 export const SWIPE_COMMIT_FRACTION = 0.3
 export const SWIPE_FLING_PX_MS = 0.5
-// The release velocity runs from the oldest move within this window before the lift to the lift itself, so a lift delivered at the last move's position still carries the flick; a finger that rested longer than the window has velocity 0.
+// The release velocity runs from an anchor to the lift. The anchor is the newest sample at or before this window prior to the lift, so the span covers the window even when moves are sparse and the last one sits at the lift's position; a drag shorter than the window is anchored on its down sample. Samples are added only on a move, so a finger that rested longer than the window leaves an anchor at the lift's position and has velocity 0.
 export const SWIPE_VELOCITY_WINDOW_MS = 80
 const SWIPE_SAMPLE_LIMIT = 64
 export const ARM_DISTANCE_DP = 160
@@ -46,9 +46,18 @@ export function createSwipeGesture(options: SwipeOptions) {
         return dx < 0 && options.index >= options.count - 1 && !options.firstMessage && !options.streaming && options.canGenerate !== false
     }
 
+    // Only the newest sample at or before the window start, and everything after it, can reach a later release; the cap bounds a very dense stream.
+    function record(sample: PointerSample): void {
+        samples.push(sample)
+        let drop = 0
+        while (drop < samples.length - 1 && samples[drop + 1].time <= sample.time - SWIPE_VELOCITY_WINDOW_MS) drop++
+        drop = Math.max(drop, samples.length - SWIPE_SAMPLE_LIMIT)
+        if (drop > 0) samples.splice(0, drop)
+    }
+
     function down(sample: PointerSample): SwipeResult {
         clear()
-        if (usable) start = previous = sample
+        if (usable) { start = previous = sample; samples = [sample] }
         return result()
     }
 
@@ -59,12 +68,7 @@ export function createSwipeGesture(options: SwipeOptions) {
         const elapsed = sample.time - previous.time
         const velocity = elapsed > 0 ? (sample.x - previous.x) / elapsed : 0
         previous = sample
-        samples.push(sample)
-        // Only the newest window of moves can reach a later release; the cap bounds a very dense stream.
-        let drop = 0
-        while (drop < samples.length - 1 && samples[drop].time < sample.time - SWIPE_VELOCITY_WINDOW_MS) drop++
-        drop = Math.max(drop, samples.length - SWIPE_SAMPLE_LIMIT)
-        if (drop > 0) samples.splice(0, drop)
+        record(sample)
         if (axis === 'pending' && (Math.abs(dx) > SWIPE_SLOP_PX || Math.abs(dy) > SWIPE_SLOP_PX)) {
             axis = Math.abs(dx) > SWIPE_SLOP_PX && Math.abs(dx) > SWIPE_AXIS_RATIO * Math.abs(dy) ? 'horizontal' : 'vertical'
         }
@@ -101,6 +105,8 @@ export function createSwipeGesture(options: SwipeOptions) {
         const dx = previous.x - start.x
         if (!reachesEnd(dx) || -dx * scale < ARM_DISTANCE_DP) return result()
         if (holdStart === null) holdStart = previous.time
+        // A still finger sends no events, so the hold is recorded at its position: a release after the hold is measured from the hold, not averaged over it.
+        if (now > samples[samples.length - 1].time) record({ x: previous.x, y: previous.y, time: now })
         progress = 0.7 + 0.3 * Math.min(1, Math.max(0, now - holdStart) / ARM_HOLD_MS)
         if (now - holdStart >= ARM_HOLD_MS) {
             armed = true
@@ -112,9 +118,11 @@ export function createSwipeGesture(options: SwipeOptions) {
     function up(sample: PointerSample): SwipeResult {
         if (!start || axis !== 'horizontal') { clear(); return result() }
         const dx = sample.x - start.x
-        const oldest = samples.find(moved => moved.time >= sample.time - SWIPE_VELOCITY_WINDOW_MS)
-        const elapsed = oldest ? sample.time - oldest.time : 0
-        const velocity = oldest && elapsed > 0 ? (sample.x - oldest.x) / elapsed : 0
+        // The fallback to the oldest retained sample (the down sample) applies only when none reaches back to the window start, which is a drag shorter than the window; a pause leaves an older sample, so it is never turned into a fling.
+        let anchor = samples[0]
+        for (const moved of samples) if (moved.time <= sample.time - SWIPE_VELOCITY_WINDOW_MS) anchor = moved
+        const elapsed = sample.time - anchor.time
+        const velocity = elapsed > 0 ? (sample.x - anchor.x) / elapsed : 0
         const canGenerate = armed && dx < 0 && -dx * scale >= ARM_DISTANCE_DP && Math.abs(velocity) <= SWIPE_FLING_PX_MS
         let event: SwipeEvent = 'none'
         if (canGenerate) event = 'generate'
