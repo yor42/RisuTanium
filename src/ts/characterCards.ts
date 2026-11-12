@@ -13,6 +13,7 @@ import { ASSET_PIECE_SAVE_MIN_BYTES } from "./assetHash"
 import { buildCardJsonTemplate, streamCardJson } from "./cardJsonStream"
 import { AppendableBuffer, AssetSourceChangedError, BlankWriter, checkCharOrder, loadAsset, LocalWriter, readImage, saveAsset, saveAssetFromPieces, VirtualWriter } from "./globalApi.svelte"
 import { isTauri, isNodeServer } from "src/ts/platform"
+import { AndroidHttpBlockedError, directFetch } from "./network/androidHttp"
 import { ExportCancelledError, ExportCancelToken, createExportWaitGate, type ExportWaitGate } from "./exportCancel"
 import { exportFileState, withFileIncompleteSentence } from "./exportWriters"
 import { compressImage, getImageType } from "./media"
@@ -1074,7 +1075,7 @@ export async function characterURLImport() {
         const url = hash.replace('#import=', '')
         const busy = beginBusy('import')
         try {
-            const res = await fetch(url, {
+            const res = await directFetch(url, {
                 method: 'GET',
             })
             if(!res.ok){
@@ -1087,7 +1088,7 @@ export async function characterURLImport() {
                 await importFiles([classifiedImport(fileName, fileName, '', async () => new File([blob], fileName, {type: blob.type}), newImportArchiveRun())])
             }
         } catch (error) {
-            alertError(language.errors.noData)
+            alertError(error instanceof AndroidHttpBlockedError ? error.message : language.errors.noData)
         } finally {
             busy.end()
         }

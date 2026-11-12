@@ -361,6 +361,7 @@ export const languageSpanish = {
         "networkFetch": "Esto ocurre cuando la red es inestable o el servidor está caído.",
         "networkFetchWeb": "Esto puede ser un error de CORS. Esto solo ocurre al usar la versión web debido a las limitaciones del navegador. Intenta usar la versión local de escritorio u otra versión de RisuTanium.",
         "networkFetchPlain": "Esto puede ser un error de fetch simple. Intenta desactivar la opción de forzar fetch simple en la configuración.",
+        "androidHttpBlocked": "Android bloquea esta solicitud porque usa una dirección http:// sin cifrar. Usa una dirección https:// en su lugar.",
         "requestTimedOut": "Se agotó el tiempo de espera de la solicitud.",
         "realmUploadNoAnswer": "RisuRealm no respondió, por lo que no se subió nada. Comprueba tu conexión e inténtalo de nuevo.",
         "requestLogRemoved": "Este registro de solicitud ha sido eliminado.",

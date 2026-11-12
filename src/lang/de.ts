@@ -361,6 +361,7 @@ export const languageGerman = {
         "networkFetch": "Dies passiert, wenn das Netzwerk instabil ist oder der Server ausgefallen ist.",
         "networkFetchWeb": "Dies kann ein CORS-Fehler sein. Dies geschieht nur bei Verwendung der Webversion aufgrund von Browserbeschränkungen. Versuchen Sie, die lokale Desktop-Version oder eine andere Version von RisuTanium zu verwenden.",
         "networkFetchPlain": "Dies kann ein einfacher Abruffehler sein. Versuchen Sie, die Option 'Erzwinge einfachen Abruf' in den Einstellungen zu deaktivieren.",
+        "androidHttpBlocked": "Android blockiert diese Anfrage, weil sie eine unverschlüsselte http://-Adresse verwendet. Verwenden Sie stattdessen eine https://-Adresse.",
         "requestTimedOut": "Zeitüberschreitung der Anfrage.",
         "realmUploadNoAnswer": "RisuRealm hat nicht geantwortet, daher wurde nichts hochgeladen. Überprüfe deine Verbindung und versuche es erneut.",
         "requestLogRemoved": "Dieses Anfrage-Protokoll wurde entfernt.",
