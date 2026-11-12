@@ -168,15 +168,16 @@ function projectDef(def: Definition): Projected[] {
             for (const member of info?.members ?? []) {
                 push(children, leaf(member))
             }
-            if (children.some((child) => child.type === 'row')) {
-                items.push({ type: 'group', label: line.parts[1], children })
-            }
+            // A group is present for the divider dedupe even when it holds no row; hidden groups leave only at the end.
+            items.push({ type: 'group', label: line.parts[1], children })
         } else if (roleOf(line) === 'leaf' && !def.outline.parentOf.has(line.id)) {
             push(items, leaf(line.id))
         }
     }
-    return items
+    return items.filter((item) => item.type !== 'group' || item.children.some((child) => child.type === 'row'))
 }
+
+const dividerAroundEmptyGroup = '==divider\na=a=group\na_end=a=groupEnd\n==divider'
 
 const panelOf = (text: string): PanelItem[] => buildPanelModel([{ id: 't', kind: 'module', name: 't', text }]).sources[0].items
 
@@ -195,7 +196,13 @@ describe('1-11 panel projection (A10)', () => {
             const groups = def.outline.groups.length
             const empty = def.outline.groups.filter((info) => (def.diagnostics.get(info.group) ?? []).some((diagnostic) => diagnostic.code === 'emptyGroup')).length
             expect(groups - empty).toBe(shown)
-        }), { numRuns: 200 })
+        }), { numRuns: 200, examples: [[dividerAroundEmptyGroup]] })
+    })
+
+    test('an empty group between equal dividers keeps both dividers, in the outline and in the panel', () => {
+        const expected = [{ type: 'divider', label: '' }, { type: 'divider', label: '' }]
+        expect(projectPanel(panelOf(dividerAroundEmptyGroup))).toEqual(expected)
+        expect(projectDef(parseDefinition(dividerAroundEmptyGroup))).toEqual(expected)
     })
 })
 
@@ -546,9 +553,21 @@ describe('O-S no silent re-parenting', () => {
     })
 })
 
+/** The structure after an edit, in the model's canonical form: a last line that is exactly '' is the trailing newline, not a row, unless the definition already had a trailing newline. */
+function oracleAfterEdit(def: Definition, lines: readonly DefLine[]) {
+    const kept = !def.trailingNewline && lines.length > 0 && lines[lines.length - 1].raw === '' ? lines.slice(0, -1) : lines
+    return oracleStructure(parseToggleSyntax, kept.map((line) => line.raw), kept.map((line) => line.id))
+}
+
+/** A setRaw to '' followed by a group move that leaves that blank line last: the model drops it into the trailing newline. */
+const blankLastExample: [string, OpSpec[]] = ['g=G=group\r\na=a=group', [
+    { op: 1, a: 0, b: 0, draft: { kind: 'select', key: 'a', label: 'a', options: [] }, raw: '', fragment: '\n\n' },
+    { op: 5, a: 3, b: 0, draft: { kind: 'divider', label: '' }, raw: 'x=y=group', fragment: '\n' },
+]]
+
 function legalSplice(def: Definition, index: number, removeCount: number, inserted: readonly DefLine[], exempt: StructureExemption): boolean {
     const lines = [...def.lines.slice(0, index), ...inserted, ...def.lines.slice(index + removeCount)]
-    return oracleSameStructure(oracleOf(def), oracleStructure(parseToggleSyntax, lines.map((line) => line.raw), lines.map((line) => line.id)), exempt)
+    return oracleSameStructure(oracleOf(def), oracleAfterEdit(def, lines), exempt)
 }
 
 /** The first position after `index` where the unchecked splice keeps the structure, or null. */
@@ -648,11 +667,11 @@ describe('O-R exact refusals', () => {
                     const moved = def.lines.slice(start, stop + 1)
                     const rest = [...def.lines.slice(0, start), ...def.lines.slice(stop + 1)]
                     rest.splice(target > stop ? target - moved.length : target, 0, ...moved)
-                    const legal = oracleSameStructure(oracleOf(def), oracleStructure(parseToggleSyntax, rest.map((line) => line.raw), rest.map((line) => line.id)), step.exempt)
+                    const legal = oracleSameStructure(oracleOf(def), oracleAfterEdit(def, rest), step.exempt)
                     expect(result.ok).toBe(legal)
                 }
             })
-        }), { numRuns: 400 })
+        }), { numRuns: 400, examples: [[blankLastExample]] })
     })
 
     test('W-SI4 and W-MV literals', () => {
@@ -661,6 +680,54 @@ describe('O-R exact refusals', () => {
         const stray = parseDefinition('a=A\nx_end=X=groupEnd\nb=B\ng=G=group\nc=C\ng_end=G=groupEnd')
         expect(moveRow(stray, id(1), { before: id(4) })).toMatchObject({ ok: false, refusal: { code: 'changesStructure', firstLegal: null } })
         expect(moveRow(stray, id(1), { before: id(3) }).ok).toBe(true)
+    })
+
+    test('W-MV blank-last literal: a moved group that leaves a blank line last drops it into the trailing newline', () => {
+        const lf = parseDefinition('\na=a=group')
+        const moved = moveRow(lf, id(1), { before: id(0) })
+        expect(moved.ok).toBe(true)
+        expect(oracleSameStructure(oracleOf(lf), oracleAfterEdit(lf, [lf.lines[1], lf.lines[0]]), {})).toBe(true)
+        const crlfBase = parseDefinition('g=G=group\r\na=a=group')
+        const emptied = setRaw(crlfBase, id(0), '')
+        expect(emptied.ok).toBe(true)
+        if (emptied.ok) {
+            const again = moveRow(emptied.def, id(1), { before: id(0) })
+            expect(again.ok).toBe(true)
+            expect(oracleSameStructure(oracleOf(emptied.def), oracleAfterEdit(emptied.def, [emptied.def.lines[1], emptied.def.lines[0]]), {})).toBe(true)
+        }
+    })
+
+    test('W-MV flag literal: with a trailing newline already present a last blank line stays a row, so the move is refused', () => {
+        const first = setRaw(parseDefinition('g=G=group\na=a\nh=H=group\nb=b'), id(1), '')
+        expect(first.ok).toBe(true)
+        if (!first.ok) {
+            return
+        }
+        const second = setRaw(first.def, id(3), '')
+        expect(second.ok).toBe(true)
+        if (!second.ok) {
+            return
+        }
+        const def = second.def
+        expect(def.trailingNewline).toBe(true)
+        expect(moveRow(def, id(2), { before: id(1) })).toMatchObject({ ok: false, refusal: { code: 'changesStructure' } })
+        const moved = [def.lines[0], def.lines[2], def.lines[1]]
+        expect(oracleSameStructure(oracleOf(def), oracleAfterEdit(def, moved), {})).toBe(false)
+    })
+
+    test('W-MV exact-empty literal: a whitespace-only last line is a row, not the trailing newline', () => {
+        const first = setRaw(parseDefinition('g=G=group\na=a\nh=H=group'), id(1), '  ')
+        expect(first.ok).toBe(true)
+        if (!first.ok) {
+            return
+        }
+        const def = first.def
+        expect(def.trailingNewline).toBe(false)
+        const result = moveRow(def, id(2), { before: id(1) })
+        const moved = [def.lines[0], def.lines[2], def.lines[1]]
+        const legal = oracleSameStructure(oracleOf(def), oracleAfterEdit(def, moved), {})
+        expect(result.ok).toBe(legal)
+        expect(legal).toBe(false)
     })
 
     test('W-OAE literal: removing the last group leaves an earlier group open at the end', () => {
