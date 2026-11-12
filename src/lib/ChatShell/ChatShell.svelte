@@ -28,6 +28,7 @@
     import { bindReaderIntent, canHostMove, createReaderIntent } from '../../ts/chatShell/readerIntent'
     import { watchSoftKeyboard } from '../../ts/chatShell/softKeyboard'
     import { lowPowerMarked } from '../../ts/chatShell/lowPower'
+    import { reducedMotionActive } from '../../ts/chatShell/motionPrefs.svelte'
     import { hostIme } from '../../ts/android/hostBridge'
     import { treeView } from '../../ts/process/chatTreeView'
 
@@ -155,11 +156,10 @@
         fade = fadeAllowed() ? (fadeFlip ? 'a' : 'b') : undefined
     })
 
-    // The fade is an animation: reduced motion (the OS setting or the app's `rm` class) and low power switch it off, so the attribute that starts it is never set.
+    // The fade is an animation: reduced motion (the app's setting, or the OS while it follows the system) and low power switch it off, so the attribute that starts it is never set.
     function fadeAllowed(): boolean {
         const root = document.documentElement
-        if (root.classList.contains('rm') || lowPowerMarked(root)) return false
-        return !(typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+        return !lowPowerMarked(root) && !reducedMotionActive(root)
     }
 
     $effect(() => {

@@ -457,4 +457,20 @@ describe('fade under reduced motion', () => {
         expect(main.hasAttribute('data-fade')).toBe(true)
         await unmount(app)
     })
+
+    test('reduce motion set to off (rm-off) starts the fade while the OS asks for reduced motion', async () => {
+        const { target, app } = await mountShell()
+        const main = target.querySelector('[data-part="chat-transcript"]')!
+        mediaReduced(true)
+        document.documentElement.classList.add('rm-off')
+        try {
+            show(0)
+            show(1)
+            expect(main.hasAttribute('data-fade')).toBe(true)
+        } finally {
+            document.documentElement.classList.remove('rm-off')
+            vi.unstubAllGlobals()
+        }
+        await unmount(app)
+    })
 })

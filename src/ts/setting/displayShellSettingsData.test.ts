@@ -57,6 +57,7 @@ import { basicParameterItems, modelSpecificParameterItems, penaltyParameterItems
 import { chatFormatSettingsItems } from './chatFormatSettingsData'
 import { displaySettingsItems } from './displaySettingsData.svelte'
 import {
+    DEVICE_MOTION_ROW_IDS,
     DISPLAY_NOT_OFFERED_IDS,
     DISPLAY_SHELL_SECTIONS,
     displaySectionOfRow,
@@ -66,6 +67,7 @@ import {
     unplacedLegacyDisplayIds,
     type DisplayRowSpec,
 } from './displayShellSettingsData'
+import { setLowPower, setReducedMotion } from '../chatShell/motionPrefs.svelte'
 import { getFullSettingsData } from './utils'
 import { CURLY_QUOTES, DEAD_DISPLAY_IDS, storedAnimationOf } from '../settingsShell/displayPresentation'
 
@@ -131,9 +133,35 @@ describe('placement of the legacy Display ids (T-B5)', () => {
         expect(DEAD_DISPLAY_IDS.has('display.memoryLimitThickness')).toBe(true)
     })
 
-    test('the page only names ids the legacy list has', () => {
+    test('the page only names ids the legacy list has, besides the quote boxes and the device motion rows', () => {
         const legacy = new Set(displaySettingsItems.map((candidate) => candidate.id))
-        expect(displayShellRowIds().filter((id) => !legacy.has(id) && id !== 'display.quoteBoxes')).toEqual([])
+        const own = new Set(['display.quoteBoxes', ...DEVICE_MOTION_ROW_IDS])
+        expect(displayShellRowIds().filter((id) => !legacy.has(id) && !own.has(id))).toEqual([])
+    })
+
+    test('the motion section starts with the device rows (low power, reduced motion), then the animation speed (MC-1529)', () => {
+        expect(rowIdsOf('display.motion')).toEqual(['display.lowPower', 'display.reducedMotion', 'display.animationSpeed'])
+        expect(DEVICE_MOTION_ROW_IDS).toEqual(['display.lowPower', 'display.reducedMotion'])
+    })
+
+    test('the animation speed dims under low power or reduced motion with the reason that applies', () => {
+        const row = DISPLAY_SHELL_SECTIONS.flatMap((section) => section.rows).find((candidate) => candidate.kind === 'setting' && candidate.item.id === 'display.animationSpeed')
+        if (row?.kind !== 'setting' || !row.dim) throw new Error('the animation speed row has no dim rule')
+        const dim = row.dim
+        const db = asDb({})
+        try {
+            setLowPower(false)
+            setReducedMotion('off')
+            expect(dim.when(db)).toBe(false)
+            setReducedMotion('on')
+            expect(dim.when(db)).toBe(true)
+            expect(dim.reasonKeyOf?.()).toBe('settingsShellAnimationDimReduced')
+            setLowPower(true)
+            expect(dim.reasonKeyOf?.()).toBe('settingsShellAnimationDimLowPower')
+        } finally {
+            setLowPower(false)
+            setReducedMotion('system')
+        }
     })
 
     test('a quote box belongs to the chat section, an unknown row to none', () => {
@@ -163,6 +191,7 @@ describe('keys the rows name', () => {
         if (row.kind !== 'setting') return []
         return [
             row.dim?.reasonKey,
+            ...(row.dim?.reasonKeyOf ? ['settingsShellAnimationDimLowPower', 'settingsShellAnimationDimSystem', 'settingsShellAnimationDimReduced'] : []),
             row.dim?.jump?.labelKey,
             row.phoneNoteKey,
             row.ends?.startKey,

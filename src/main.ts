@@ -16,11 +16,14 @@ import { dispatchStore2Boot } from "./ts/storage/store2/bootDispatch";
 import { markerOwnerProbeFor } from "./ts/storage/store2/abandonedMarker";
 import { holdsOwnTabPresence } from "./ts/globalApi.svelte";
 import { createProductionBootUi } from "./ts/storage/store2/ui/productionBootUi";
+import { installMotionPrefs } from "./ts/chatShell/motionPrefs.svelte";
 
 window.addEventListener('vite:preloadError', (event) => {
     console.error("Chunk load error detected:", event);
     alert("The server has been updated or the network connection has been lost. Please refresh the page.");
 });
+// The device's low-power and reduced-motion marks are on the root before anything paints.
+installMotionPrefs()
 
 preLoadCheck()
 let app = mount(App, {

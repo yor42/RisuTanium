@@ -1,4 +1,5 @@
 import { getDatabase } from "../storage/database.svelte";
+import { animationDimReason, motionPrefs, onMotionChange, type MotionState } from "../chatShell/motionPrefs.svelte";
 
 const DEFAULT_ANIMATION_SPEED = 0.4;
 
@@ -9,8 +10,19 @@ function motionFactor(speed: number | undefined): number {
     return Math.min(10, Math.max(0, factor));
 }
 
+// Low power and reduced motion replace the chosen speed with the nominal one; their own rules then shorten or remove the motion.
+export function effectiveAnimationSpeed(stored: number | undefined, motion: MotionState): number | undefined {
+    return animationDimReason(motion) === null ? stored : DEFAULT_ANIMATION_SPEED;
+}
+
 export function updateAnimationSpeed(){
     const db = getDatabase();
-    document.documentElement.style.setProperty('--risu-animation-speed', db.animationSpeed  + 's');
-    document.documentElement.style.setProperty('--chat-motion', String(motionFactor(db.animationSpeed)));
+    const speed = effectiveAnimationSpeed(db.animationSpeed, motionPrefs);
+    document.documentElement.style.setProperty('--risu-animation-speed', speed  + 's');
+    document.documentElement.style.setProperty('--chat-motion', String(motionFactor(speed)));
 }
+
+// A device change before the profile holds a speed waits for the load, which applies it.
+onMotionChange(() => {
+    if (getDatabase()?.animationSpeed !== undefined) updateAnimationSpeed();
+});

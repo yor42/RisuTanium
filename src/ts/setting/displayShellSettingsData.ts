@@ -5,11 +5,13 @@
  * so the page and the sidebar picker agree), a same-id override that changes only how the value is shown, or a
  * shell component named by id. Every legacy Display id is placed once, left out as dead, or not offered.
  *
- * Import-pure: TypeScript modules only, no component import. The `settingLabelKeys` guard loads this file under a
- * fixed mock set, so a component row is a `ShellRowComponent` string that the page resolves.
+ * Import-pure: TypeScript and `.svelte.ts` modules only, no component import. The `settingLabelKeys` guard loads this
+ * file under a fixed mock set, so a component row is a `ShellRowComponent` string that the page resolves. The motion
+ * rows read this device's choices (`motionPrefs`), which live outside the profile (MC-1529).
  */
 
 import { language } from 'src/lang';
+import { animationDimReason, motionPrefs, type AnimationDimReason } from '../chatShell/motionPrefs.svelte';
 import {
     animationPositionOf,
     blockquoteDimmed,
@@ -32,12 +34,14 @@ export type DisplaySectionId =
     | 'display.advanced';
 
 /** Shell components a row can name; the page maps each to its component. */
-export type ShellRowComponent = 'ThemeCards' | 'AssetWidthRow' | 'QuoteBoxesRow';
+export type ShellRowComponent = 'ThemeCards' | 'AssetWidthRow' | 'QuoteBoxesRow' | 'LowPowerRow' | 'ReducedMotionRow';
 
 /** A row that has no effect in the current state: it stays operable and says why. */
 export interface DimRule {
     when(db: Database): boolean;
     reasonKey: string;
+    /** Overrides `reasonKey` when the reason depends on the current state. */
+    reasonKeyOf?: () => string;
     /** A link to the setting that decides the state, as a legacy index. */
     jump?: { labelKey: string; index: number };
 }
@@ -151,6 +155,22 @@ export const quoteBoxItems: readonly SettingItem[] = [
 
 const QUOTE_BOX_IDS: readonly string[] = quoteBoxItems.map((item) => item.id);
 
+const ANIMATION_DIM_KEYS: Readonly<Record<AnimationDimReason, string>> = {
+    lowPower: 'settingsShellAnimationDimLowPower',
+    system: 'settingsShellAnimationDimSystem',
+    reduced: 'settingsShellAnimationDimReduced',
+};
+
+/** The rows of this device's own motion choices; they are not legacy Display items. */
+export const DEVICE_MOTION_ROW_IDS: readonly string[] = ['display.lowPower', 'display.reducedMotion'];
+
+/** The animation speed has no effect while low power or reduced motion is on (the engine uses the nominal speed then). */
+const animationDim: DimRule = {
+    when: () => animationDimReason(motionPrefs) !== null,
+    reasonKey: ANIMATION_DIM_KEYS.reduced,
+    reasonKeyOf: () => ANIMATION_DIM_KEYS[animationDimReason(motionPrefs) ?? 'reduced'],
+};
+
 export const DISPLAY_SHELL_SECTIONS: readonly DisplaySection[] = [
     {
         id: 'display.themeColor',
@@ -241,9 +261,12 @@ export const DISPLAY_SHELL_SECTIONS: readonly DisplaySection[] = [
         labelKey: 'settingsShellDisplayMotion',
         collapsed: false,
         rows: [
+            { kind: 'shell', id: 'display.lowPower', component: 'LowPowerRow' },
+            { kind: 'shell', id: 'display.reducedMotion', component: 'ReducedMotionRow' },
             {
                 kind: 'setting',
                 item: animationSpeedItem,
+                dim: animationDim,
                 ends: { startKey: 'settingsShellAnimationSlow', endKey: 'settingsShellAnimationFast' },
                 hintKey: 'settingsShellAnimationHint',
             },

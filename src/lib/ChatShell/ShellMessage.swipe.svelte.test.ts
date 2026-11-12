@@ -265,6 +265,22 @@ describe('R5 the message body carries a transform only while it moves', () => {
             window.matchMedia = original
         }
     })
+    test('reduce motion set to off (rm-off) keeps the spring even while the OS asks for reduced motion', () => {
+        const original = window.matchMedia
+        window.matchMedia = ((query: string) => ({ matches: query.includes('prefers-reduced-motion'), media: query, addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false, onchange: null })) as typeof window.matchMedia
+        document.documentElement.classList.add('rm-off')
+        try {
+            show({ index: 2, count: 3 })
+            pointer('pointerdown', 100, 0)
+            pointer('pointermove', 160, 100)
+            pointer('pointerup', 160, 200)
+            flushSync()
+            expect(body.hasAttribute('data-spring')).toBe(true)
+        } finally {
+            document.documentElement.classList.remove('rm-off')
+            window.matchMedia = original
+        }
+    })
     test('the next touch cancels the pending spring timer', () => {
         vi.useFakeTimers()
         show({ index: 2, count: 3 })

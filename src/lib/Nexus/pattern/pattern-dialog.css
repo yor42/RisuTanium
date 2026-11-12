@@ -92,9 +92,12 @@
   --pm-move: 0; --pm-cap: var(--nexus-duration-lowpower-cap); --pm-stagger: 0; --pm-scale: 0; --pm-detail-on: 0; --pm-halo-anim: none;
 }
 @media (prefers-reduced-motion: reduce) {
-  [data-part="pattern-layer"], [data-part="pattern-layer"][data-low-power] {
+  :root:not(.rm-off) [data-part="pattern-layer"] {
     --pm-move: 0; --pm-cap: var(--nexus-duration-press); --pm-stagger: 0; --pm-scale: 0; --pm-detail-on: 0; --pm-press: 1; --pm-halo-anim: none;
   }
+}
+:root.rm [data-part="pattern-layer"] {
+  --pm-move: 0; --pm-cap: var(--nexus-duration-press); --pm-stagger: 0; --pm-scale: 0; --pm-detail-on: 0; --pm-press: 1; --pm-halo-anim: none;
 }
 
 :where([data-part="pattern-layer"], [data-part="pattern-layer"] [data-part^="pattern-"]) {

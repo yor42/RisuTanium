@@ -324,4 +324,4 @@
 html.rm, html.nexus-low-power { --studio-dur-fast: 0s; }
 html.rm { --studio-dur-quick: 0s; --studio-dur-base: 0s; }   /* reduced motion removes the animation (0 s), it does not shorten it; a pack that sets --chat-motion cannot bring it back */
 html.nexus-low-power { --studio-dur-base: min(calc(200ms * var(--chat-motion, 1)), 120ms); }
-@media (prefers-reduced-motion: reduce) { :root { --studio-dur-quick: 0s; --studio-dur-base: 0s; } }
+@media (prefers-reduced-motion: reduce) { :root:not(.rm-off) { --studio-dur-quick: 0s; --studio-dur-base: 0s; } }
