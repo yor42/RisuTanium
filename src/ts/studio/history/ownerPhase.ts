@@ -9,11 +9,12 @@ export const READY_DEADLINE_MS = 5000
 export const SAVE_DEBOUNCE_MS = 1000
 export const SAVE_MAX_WAIT_MS = 5000
 
-export type OwnerKey = `character:${string}` | `chat:${string}/${string}`
+export type OwnerKey = `character:${string}` | `chat:${string}/${string}` | `module:${string}`
 
 export type ParsedOwnerKey =
     | { kind: 'character'; chaId: string }
     | { kind: 'chat'; chaId: string; chatId: string }
+    | { kind: 'module'; moduleId: string }
 
 // Owner keys are built from ids only. A chat without an id has no owner key (it never uses chatPage).
 export function characterOwnerKey(chaId: string): OwnerKey {
@@ -24,7 +25,15 @@ export function chatOwnerKey(chaId: string, chatId: string): OwnerKey {
     return `chat:${chaId}/${chatId}`
 }
 
+export function moduleOwnerKey(moduleId: string): OwnerKey {
+    return `module:${moduleId}`
+}
+
 export function parseOwnerKey(key: string): ParsedOwnerKey | null {
+    if (key.startsWith('module:')) {
+        const moduleId = key.slice('module:'.length)
+        return moduleId === '' ? null : { kind: 'module', moduleId }
+    }
     if (key.startsWith('character:')) {
         const chaId = key.slice('character:'.length)
         return chaId === '' ? null : { kind: 'character', chaId }

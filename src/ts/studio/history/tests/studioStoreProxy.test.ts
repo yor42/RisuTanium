@@ -14,9 +14,12 @@ import {
     emptyRecord,
     type FieldValue,
     type ModelState,
+    type Op,
     type OwnerRecord,
+    type Step,
+    type StepPlan,
 } from '../historyModel'
-import { characterOwnerKey, type OwnerKey } from '../ownerPhase'
+import { characterOwnerKey, moduleOwnerKey, type OwnerKey } from '../ownerPhase'
 import {
     asideMarkKey,
     headerKey,
@@ -209,7 +212,7 @@ async function onBothLegs(scenario: (leg: Leg) => Promise<unknown[]>, expected: 
 }
 
 // A later producer's header: stands for data this build cannot read.
-const LATER_HEADER = JSON.stringify({ v: 2, wid: 'later:1', ownerKey: A, size: 5, touchedAt: 1 })
+const LATER_HEADER = JSON.stringify({ v: 3, wid: 'later:1', ownerKey: A, size: 5, touchedAt: 1 })
 
 function otherPage(leg: Leg): StudioHistoryStore {
     return createStudioStoreIdb({ factory: leg.factory, pageSession: 'other' })
@@ -1470,5 +1473,204 @@ describe('T-W10 the channel double isolates the two sides', () => {
         const posted = lastSave(rig.channel).put.find((entry) => entry.k === 's' && entry.value.id === 'st0')
         expect(posted?.value).toMatchObject({ at: original })
         expect(storedRecord(await readStoredMap(rig.channel.factory), A)?.record.done[0].at).toBe(original)
+    })
+})
+
+describe('asset steps and moved steps through the worker', () => {
+    const M = moduleOwnerKey('m1')
+    const assetOps = (text: string): Op[] => [
+        { op: 'assetRowRemove', array: 'additionalAssets', index: 1, tuple: ['a', 'assets/p1.png'], count: 2 },
+        { op: 'assetRowInsert', array: 'emotionImages', index: 0, tuple: ['b', 'assets/p2.png'], count: 0 },
+        { op: 'assetRowSet', array: 'assets', index: 2, before: ['c', 'assets/p3.png'], after: ['d', 'assets/p3.png'] },
+        { op: 'assetFolderSet', name: 'a', before: { had: false }, after: { had: true, value: '폴더' } },
+        { op: 'assetFolderOrder', before: [], after: ['폴더'] },
+        { op: 'textEdit', target: 'lore/0/content', offset: 0, from: text, to: `${text}!` },
+    ]
+
+    function assetCommit(state: ModelState, id: string, at: number, text: string): ModelState {
+        return commitStep(state, {
+            id,
+            at,
+            visitId: 'v1',
+            label: { kind: 'assetDelete', count: 2, name: null },
+            ops: assetOps(text),
+            restoreWrites: [],
+            coalesceKey: null,
+            replacesRestore: false,
+        })
+    }
+
+    // A replay move as the model makes it: `plan` says which ops the moved step carries and how it moved.
+    function moveWith(state: ModelState, direction: 'undo' | 'redo', at: number, plan: Partial<StepPlan> = {}): ModelState {
+        const from = direction === 'undo' ? state.record.done : state.record.undone
+        const top = from[from.length - 1]
+        return applyReplayMove(
+            state,
+            direction,
+            { ok: true, label: top.label, ops: top.ops, writes: [], restoreWrites: [], deletedRemove: [], skipped: 0, fmNotRestored: false, ...plan },
+            at,
+            'v1',
+        )
+    }
+
+    async function sameOnBothLegs(owner: OwnerKey, states: ModelState[]): Promise<void> {
+        const direct = directLeg()
+        const viaWorker = workerLeg()
+        for (const leg of [direct, viaWorker]) {
+            await leg.store.open()
+            await leg.store.load(owner)
+        }
+        for (const next of states) {
+            expect(await direct.store.save(owner, next.record, protectOnly(owner))).toEqual(OK)
+            expect(await viaWorker.store.save(owner, next.record, protectOnly(owner))).toEqual(OK)
+            const bytes = await readStoredMap(direct.factory)
+            expect(await readStoredMap(viaWorker.factory)).toEqual(bytes)
+            expect(storedRecord(bytes, owner)?.record).toEqual(next.record)
+        }
+    }
+
+    test('a module owner with every asset op kind, a partial move, a moved-past step and a dropped step: the worker leg stores the direct leg bytes', async () => {
+        let state = createModelState(emptyRecord(M, 0))
+        const states: ModelState[] = []
+        state = assetCommit(state, 'a1', 1000, hangul(LONG, 'a'))
+        states.push(state)
+        state = assetCommit(state, 'a2', 5000, '짧은 글')
+        states.push(state)
+        // Moved past: nothing was written, the step moves with its ops by reference.
+        const topOps = state.record.done[state.record.done.length - 1].ops
+        state = moveWith(state, 'undo', 6000, { already: 'undo' })
+        expect(state.record.undone[0].ops).toBe(topOps)
+        states.push(state)
+        state = moveWith(state, 'redo', 7000, { already: 'redo' })
+        states.push(state)
+        // A partial move: two of the six ops applied.
+        const partial = state.record.done[state.record.done.length - 1].ops.slice(0, 2)
+        state = moveWith(state, 'undo', 8000, { ops: partial, skipped: 4 })
+        expect(state.record.undone[0].ops).toHaveLength(2)
+        states.push(state)
+        state = moveWith(state, 'redo', 9000, { ops: partial })
+        states.push(state)
+        // A dropped step leaves its list and goes nowhere.
+        state = moveWith(state, 'undo', 10000, { dropStep: true })
+        expect(state.record.done).toHaveLength(1)
+        expect(state.record.undone).toHaveLength(0)
+        states.push(state)
+        await sameOnBothLegs(M, states)
+    })
+
+    test('a character owner with the list fingerprint and a deleted id: a moved-past step keeps its fingerprint and the legs agree', async () => {
+        let state = removeGreeting(chainState(A, 2), 'st9', 9000, 'del1')
+        const states: ModelState[] = [state]
+        state = moveWith(state, 'undo', 10000, { already: 'undo' })
+        expect(state.record.undone[0].listFingerprint).toBeDefined()
+        states.push(state)
+        state = commitStep(state, {
+            id: 'st10',
+            at: 11000,
+            visitId: 'v1',
+            label: { kind: 'revert', toStepId: 'st1' },
+            ops: [{ op: 'listInsert', index: 0, value: '첫 인사', deletedId: 'del1' }],
+            restoreWrites: [{ path: 'alternateGreetings', before: { list: ['둘째 인사'] }, after: { list: ['첫 인사', '둘째 인사'] } }],
+            coalesceKey: null,
+            replacesRestore: false,
+            deletedRemove: ['del1'],
+        })
+        states.push(state)
+        state = moveWith(state, 'undo', 12000, { already: 'undo' })
+        states.push(state)
+        await sameOnBothLegs(A, states)
+    })
+
+    // The host over an adapter double, as in the mirror-loss block below, with the asset step already mirrored.
+    test('a delta for an asset step against a base whose tuple has another length is refused with mirrorLost, the next asset save is whole and is stored', async () => {
+        const acks: FromWorker[] = []
+        const saved: OwnerRecord[] = []
+        const adapter: StudioHistoryStore = {
+            open: async () => 'ok',
+            load: async () => ABSENT,
+            save: async (_owner, record) => {
+                saved.push(record)
+                return OK
+            },
+            onClosed: () => {},
+        }
+        const host = createStudioStoreHost(adapter, (message) => acks.push(message))
+        const send = async (message: SaveMessage): Promise<FromWorker> => {
+            const before = acks.length
+            host.handle(message)
+            await new Promise<void>((resolve) => setTimeout(resolve, 0))
+            return acks[before]
+        }
+        const step = (tuple: string[], at: number): Step => ({
+            id: 's:1',
+            at,
+            label: { kind: 'assetDelete', count: 1, name: 'a' },
+            ops: [{ op: 'assetRowRemove', array: 'assets', index: 0, tuple, count: 1 }],
+        })
+        const message = (seq: number, put: SaveMessage['put'], delta: DeltaEntry[], done: string): SaveMessage => ({
+            t: 'save',
+            seq,
+            owner: M,
+            ownerKey: M,
+            touchedAt: 1,
+            protect: [M],
+            done: [done],
+            undone: [],
+            deleted: [],
+            restore: null,
+            put,
+            delta,
+        })
+        // The worker mirrors a step whose tuple holds one element.
+        expect(await send(message(1, [{ k: 's', tok: 'b0', value: step(['a'], 1) }], [], 'b0'))).toMatchObject({ reply: OK })
+        // The proxy believed the base tuple held two, so its edit names the second slot.
+        const edits = diffEntry(step(['a', 'p2'], 1), step(['a', 'p1'], 1)) ?? []
+        expect(edits.length).toBeGreaterThan(0)
+        expect(await send(message(2, [], [{ k: 's', tok: 'n1', base: 'b0', edits }], 'n1'))).toEqual({
+            t: 'ack',
+            seq: 2,
+            op: 'save',
+            reply: { kind: 'unwritable', mirrorLost: true },
+        })
+        expect(saved).toHaveLength(1)
+        // The mirror is gone, so the owner's next save is whole and stored.
+        expect(await send(message(3, [{ k: 's', tok: 'b1', value: step(['a', 'p2'], 1) }], [], 'b1'))).toMatchObject({ reply: OK })
+        expect(saved).toHaveLength(2)
+        expect(saved[1].done[0].ops[0]).toMatchObject({ tuple: ['a', 'p2'] })
+        // A base of the length the proxy believed takes the same edit.
+        const fits = await send(message(4, [], [{ k: 's', tok: 'n2', base: 'b1', edits: diffEntry(step(['a', 'p3'], 1), step(['a', 'p2'], 1)) ?? [] }], 'n2'))
+        expect(fits).toMatchObject({ reply: OK })
+        expect(saved[2].done[0].ops[0]).toMatchObject({ tuple: ['a', 'p3'] })
+    })
+
+    test('after a mirror loss the proxy forgets the owner: the next asset save posts every entry whole and is stored', async () => {
+        const factory = new IDBFactory()
+        const real = createStudioStoreIdb({ factory, pageSession: PAGE })
+        const calls = { save: 0 }
+        const adapter: StudioHistoryStore = {
+            open: () => real.open(),
+            load: (owner) => real.load(owner),
+            save: (owner, record, protect) => {
+                calls.save += 1
+                return real.save(owner, record, protect)
+            },
+            onClosed: (callback) => real.onClosed(callback),
+        }
+        const rig = proxyRig({ factory, adapter })
+        await openAndLoad(rig, M)
+        let state = assetCommit(createModelState(emptyRecord(M, 0)), 'a1', 100, hangul(LONG, 'a'))
+        expect(await rig.proxy.save(M, state.record, protectOnly(M))).toEqual(OK)
+        state = moveWith(state, 'undo', 300, { already: 'undo' })
+        rig.channel.dropNext('save')
+        void rig.proxy.save(M, state.record, protectOnly(M))
+        state = moveWith(state, 'redo', 500, { already: 'redo' })
+        expect(await rig.proxy.save(M, state.record, protectOnly(M))).toEqual({ kind: 'unwritable' })
+        expect(calls.save).toBe(1)
+        expect(await rig.proxy.save(M, state.record, protectOnly(M))).toEqual(OK)
+        const last = lastSave(rig.channel)
+        expect(last.delta).toEqual([])
+        expect(last.put).toHaveLength(state.record.done.length)
+        expect(calls.save).toBe(2)
+        expect(storedRecord(await readStoredMap(factory), M)?.record).toEqual(state.record)
     })
 })

@@ -52,7 +52,8 @@ export function uniqueChatById(chats: readonly Chat[] | undefined, chatId: strin
 // The guards of every Studio write, in their fixed order. A failed guard writes and marks nothing.
 export function resolveLiveTarget(owner: OwnerKey): { ok: true; target: LiveTarget } | { ok: false; reason: SetterRefusal } {
     const parsed = parseOwnerKey(owner)
-    if (!parsed) {
+    // A module owner has no character or chat to resolve here; its live target is the asset write's.
+    if (!parsed || parsed.kind === 'module') {
         return { ok: false, reason: 'gone' }
     }
     const chaId = parsed.chaId
@@ -107,6 +108,69 @@ export function createLiveReader(target: LiveTarget): LiveReader {
             const found = uniqueChatById(live.chats, chatId)
             return found ? fmValueOf(found) : null
         },
+        text(target) {
+            return readTextAt('character', live, target)
+        },
+    }
+}
+
+// ---------------------------------------------------------------- text targets of a registry path
+
+export type TextOwnerKind = 'character' | 'module'
+
+export interface TextSlot {
+    list: 'globalLore' | 'customscript' | 'lorebook' | 'regex'
+    index: number
+    field: 'content' | 'out'
+}
+
+const TEXT_PATH = /^(lore|regex)\/(0|[1-9][0-9]*)\/(content|out)$/
+
+// The list and field that hold the text a registry path names, by owner kind: a character keeps its lorebook in
+// `globalLore` and its scripts in `customscript`, a module in `lorebook` and `regex`. Any other path, including
+// `desc` and the greeting entries, is refused: the owner write handles those itself.
+export function textSlotOf(kind: TextOwnerKind, path: string): TextSlot | null {
+    const match = TEXT_PATH.exec(path)
+    if (!match) {
+        return null
+    }
+    const index = Number(match[2])
+    if (match[1] === 'lore' && match[3] === 'content') {
+        return { list: kind === 'character' ? 'globalLore' : 'lorebook', index, field: 'content' }
+    }
+    if (match[1] === 'regex' && match[3] === 'out') {
+        return { list: kind === 'character' ? 'customscript' : 'regex', index, field: 'out' }
+    }
+    return null
+}
+
+// The lists an owner of either kind may hold; a character or a module is assignable to it.
+export interface TextHolder {
+    readonly globalLore?: readonly { readonly content?: string }[]
+    readonly customscript?: readonly { readonly out?: string }[]
+    readonly lorebook?: readonly { readonly content?: string }[]
+    readonly regex?: readonly { readonly out?: string }[]
+}
+
+function stringOrNull(value: unknown): string | null {
+    return typeof value === 'string' ? value : null
+}
+
+// The text at `path` in the owner's own lists; null when the path is refused or the entry holds no string.
+export function readTextAt(kind: TextOwnerKind, holder: TextHolder, path: string): string | null {
+    const slot = textSlotOf(kind, path)
+    if (!slot) {
+        return null
+    }
+    switch (slot.list) {
+        case 'globalLore':
+            return stringOrNull(holder.globalLore?.[slot.index]?.content)
+        case 'lorebook':
+            return stringOrNull(holder.lorebook?.[slot.index]?.content)
+        case 'customscript':
+            return stringOrNull(holder.customscript?.[slot.index]?.out)
+        case 'regex':
+            return stringOrNull(holder.regex?.[slot.index]?.out)
     }
 }
 
@@ -255,6 +319,8 @@ export function applyCharacterWrites(live: character | groupChat, writes: readon
                 }
                 break
             }
+            // Asset and registry-text writes belong to the asset owner write, which lands rows, folders
+            // and texts together; this body writes none of them.
         }
     }
     if (pageFm) {

@@ -357,6 +357,9 @@ export interface ClaimDouble extends StudioClaimPort {
     // Every request, in order.
     readonly calls: string[]
     hook: ClaimHook | null
+    // A bare string names a character, as the double's earlier callers wrote it; a module is recorded
+    // and held as `m:<id>`, apart from every character id.
+    tryClaim(subject: string | { kind: 'character' | 'module'; id: string }): Promise<ClaimResult>
     // When true the page has no Web Locks: every claim answers `unsupported`.
     unsupported: boolean
     // When set, the next requests answer this without taking a lock.
@@ -382,7 +385,8 @@ export function createClaimWorld(): ClaimWorld {
                 hook: null,
                 unsupported: false,
                 forced: null,
-                async tryClaim(chaId): Promise<ClaimResult> {
+                async tryClaim(subject): Promise<ClaimResult> {
+                    const chaId = typeof subject === 'string' ? subject : subject.kind === 'module' ? 'm:' + subject.id : subject.id
                     calls.push(chaId)
                     await Promise.resolve()
                     await page.hook?.(chaId)

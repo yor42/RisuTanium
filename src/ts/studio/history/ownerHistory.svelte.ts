@@ -82,6 +82,13 @@ export interface StudioWriteNotes {
     fmNotRestored?: boolean
     // Ops of the replayed step that were skipped because the live value had moved on.
     skipped?: number
+    // Replay only: every change was already in the state the replay would produce, so nothing was written
+    // and the step moved to the other list. Excludes `dropped` and `unchanged`.
+    already?: 'undo' | 'redo'
+    // Replay only: the step can no longer be replayed here and was removed from its list.
+    dropped?: true
+    // Revert only: asset rows whose file is gone and that were not re-inserted.
+    goneRows?: string[]
     // Revert only: list ops that were not undone because their step's list no longer fit. Also set on
     // an `unchanged` revert, which lands nothing.
     listSkipped?: number
@@ -198,9 +205,13 @@ class OwnerSlot {
     tail: Promise<void> = Promise.resolve()
     waiters: (() => void)[] = []
 
+    // `chaId` is null for a module owner. The claim key names what is claimed: `c:<chaId>` for the
+    // character and chat owners of a character, `m:<id>` for a module, so the two never share an entry.
     constructor(
         readonly key: OwnerKey,
-        readonly chaId: string,
+        readonly chaId: string | null,
+        readonly claimKey: string,
+        readonly claimSubject: { kind: 'character' | 'module'; id: string },
     ) {}
 }
 
@@ -363,14 +374,14 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     }
 
     function claimEntryFor(slot: OwnerSlot): Entry<ClaimResult> {
-        const known = claims.get(slot.chaId)
+        const known = claims.get(slot.claimKey)
         if (known) {
             return known
         }
         const entry = createEntry<ClaimResult>(slot.key, clock)
-        claims.set(slot.chaId, entry)
+        claims.set(slot.claimKey, entry)
         try {
-            claim.tryClaim(slot.chaId).then(
+            claim.tryClaim(slot.claimSubject).then(
                 (result) => entry.settle(result),
                 () => entry.settle('failed'),
             )
@@ -406,7 +417,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         slot.deadline = null
         if (slot.phase?.kind === 'claiming') {
             // Only the owner that created the claim request settles its entry.
-            const entry = claims.get(slot.chaId)
+            const entry = claims.get(slot.claimKey)
             if (entry && !entry.settled && entry.creator === slot.key) {
                 entry.settle('failed')
             }
@@ -514,11 +525,14 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         let slot = slots.get(owner)
         if (!slot) {
-            slot = new OwnerSlot(owner, parsed.chaId)
+            slot =
+                parsed.kind === 'module'
+                    ? new OwnerSlot(owner, null, 'm:' + parsed.moduleId, { kind: 'module', id: parsed.moduleId })
+                    : new OwnerSlot(owner, parsed.chaId, 'c:' + parsed.chaId, { kind: 'character', id: parsed.chaId })
             slot.record = emptyRecord(owner, clock.now())
             slots.set(owner, slot)
             slotCount += 1
-            deliver(slot, { type: 'firstUse', restricted: isRestrictedChaId(parsed.chaId) })
+            deliver(slot, { type: 'firstUse', restricted: parsed.kind !== 'module' && isRestrictedChaId(parsed.chaId) })
         }
         return slot
     }
@@ -539,7 +553,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             return
         }
         // A timer or job armed before the character became private or a group writes nothing.
-        if (isRestrictedChaId(slot.chaId)) {
+        if (slot.chaId !== null && isRestrictedChaId(slot.chaId)) {
             return
         }
         let result: SaveResult
@@ -591,6 +605,8 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     interface Planned {
         writes: readonly WriteOp[]
         pageFm: boolean
+        // The plan changes no live value: the owner is neither written nor marked.
+        noWrite?: true
         // Applies the landed action to the owner's model state.
         land(state: ModelState): ModelState
         notes: StudioWriteNotes
@@ -599,7 +615,8 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     function planFor(slot: OwnerSlot, intent: Intent, live: LiveReader, target: LiveTarget, at: number): Planned | StudioResult {
         const visitId = getVisitId()
         const record = slot.record
-        const hashFor = listHashOf(slot.chaId)
+        // A module owner has no greeting list, so no element hashes.
+        const hashFor = slot.chaId === null ? undefined : listHashOf(slot.chaId)
         if (intent.kind === 'edit') {
             const id = stepIdFor(pageSession, ++counter)
             const built = intent.build(id, live, target)
@@ -634,6 +651,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             return {
                 writes: plan.writes,
                 pageFm: false,
+                ...(plan.already !== undefined || plan.dropStep ? { noWrite: true as const } : {}),
                 notes: replayNotes(plan),
                 land: (state) => applyReplayMove(state, intent.direction, plan, at, visitId, hashFor),
             }
@@ -653,6 +671,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                     unchanged: true,
                     ...(plan.listSkipped === undefined ? {} : { listSkipped: plan.listSkipped }),
                     ...(plan.fmNotRestored ? { fmNotRestored: true } : {}),
+                    ...(plan.goneRows === undefined ? {} : { goneRows: plan.goneRows }),
                 }
             }
             return refused(plan.reason)
@@ -694,6 +713,15 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         if (plan.listSkipped !== undefined && plan.listSkipped > 0) {
             notes.listSkipped = plan.listSkipped
         }
+        if (plan.already !== undefined) {
+            notes.already = plan.already
+        }
+        if (plan.dropStep) {
+            notes.dropped = true
+        }
+        if (plan.goneRows !== undefined) {
+            notes.goneRows = plan.goneRows
+        }
         return notes
     }
 
@@ -723,6 +751,21 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             return planned
         }
         const chaId = slot.chaId
+        if (planned.noWrite) {
+            // A step that is already in place, or dropped: no live write, mark, ack or recompute. The stack
+            // move still lands and is saved.
+            const moved = planned.land({ record: slot.record, open: slot.open })
+            slot.record = moved.record
+            slot.open = moved.open
+            if (phase.kind === 'ready') {
+                requestSave(slot)
+            }
+            return { ok: true, ...planned.notes }
+        }
+        if (chaId === null) {
+            // A module owner's live write is the asset write's; it has no history intent here.
+            return refused('gone')
+        }
         const before = getMarkCount()
         const landed = target.chat
             ? writeLiveChat(chaId, target.chat, (live) => {
@@ -749,7 +792,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         void slotCount
         const slot = slots.get(owner)
         const parsed = parseOwnerKey(owner)
-        const restricted = parsed !== null && isRestrictedChaId(parsed.chaId)
+        const restricted = parsed !== null && parsed.kind !== 'module' && isRestrictedChaId(parsed.chaId)
         const phase = slot?.phase ?? null
         const kind = phase ? phase.kind : 'unused'
         const shown = slot !== undefined && !restricted

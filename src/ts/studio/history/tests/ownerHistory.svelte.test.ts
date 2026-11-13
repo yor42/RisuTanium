@@ -6,13 +6,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { DBState, selIdState } from 'src/ts/stores.svelte'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { toSaveType } from 'src/ts/storage/risuSave'
+import { readTextAt, textSlotOf } from 'src/ts/studio/edit/studioSetters'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../ownerHistory.svelte'
-import { characterOwnerKey, chatOwnerKey, SAVE_DEBOUNCE_MS, type OwnerKey } from '../ownerPhase'
-import { COALESCE_MS } from '../historyModel'
+import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, SAVE_DEBOUNCE_MS, type OwnerKey } from '../ownerPhase'
+import { COALESCE_MS, type Step } from '../historyModel'
 import { listFingerprintOf } from '../listFingerprint'
 import { createFakeClock, type FakeClock } from './historyTestKit.test-helpers'
-import { createClaimDouble, createMemoryStudioStore, type MemoryStudioStore } from './studioStoreDoubles'
+import { createClaimDouble, createMemoryStudioStore, seedOwner, storedRecord, type ClaimDouble, type MemoryStudioStore } from './studioStoreDoubles'
 
 const h = vi.hoisted(() => ({ marks: 0 }))
 // Pass-through counters of the pure fingerprint module, for the revert cost legs.
@@ -87,6 +88,7 @@ const chatA = (chatId: string): OwnerKey => chatOwnerKey('A', chatId)
 interface Harness {
     clock: FakeClock
     store: MemoryStudioStore
+    claim: ClaimDouble
     service: OwnerHistoryService
     tracked: string[]
     noted: { chaId: string; before: number }[]
@@ -116,7 +118,7 @@ function build(shared?: Map<string, string>): Harness {
     })
     const noted: Harness['noted'] = []
     service.setAck('A', { noteEdit: (chaId, before) => noted.push({ chaId, before }) })
-    return { clock, store, service, tracked: [], noted, visit, removers }
+    return { clock, store, claim, service, tracked: [], noted, visit, removers }
 }
 
 async function ready(owner: OwnerKey = A): Promise<void> {
@@ -511,6 +513,49 @@ describe('deleted items', () => {
         expect(reloaded.service.restoreDeleted(A, item.id).ok).toBe(true)
         expect(live().alternateGreetings).toEqual(['g0', 'g1', 'g2'])
     })
+
+    test('an Undo that moves past a step without writing is saved: a reload shows the step undone and the item released', async () => {
+        putCharacters(makeCharacter('A', { alternateGreetings: ['a', 'a'], chats: [{ id: 'c1', note: '', fmIndex: 1 }] }))
+        await ready()
+        harness.service.greetingDelete(A, 0)
+        await harness.clock.advance(SAVE_DEBOUNCE_MS)
+        expect(harness.service.view(A).deleted).toHaveLength(1)
+        // The delete's owner write was lost: the list and the chat index already read as the Undo would leave them.
+        live().alternateGreetings.splice(0, live().alternateGreetings.length, 'a', 'a')
+        live().chats[0].fmIndex = 1
+        expect(harness.service.undo(A)).toEqual({ ok: true, already: 'undo' })
+        await harness.clock.advance(SAVE_DEBOUNCE_MS)
+        const reloaded = build(harness.store.shared)
+        await reloaded.service.whenReady(A)
+        expect(reloaded.service.view(A).done).toHaveLength(0)
+        expect(reloaded.service.view(A).undone).toHaveLength(1)
+        expect(reloaded.service.view(A).deleted).toEqual([])
+    })
+
+    test('an Undo that drops a step that cannot be checked is saved: a reload shows the step in neither stack', async () => {
+        putCharacters(makeCharacter('A', { alternateGreetings: ['g0', 'g1', 'g1'] }))
+        await ready()
+        harness.service.greetingDelete(A, 1)
+        await harness.clock.advance(SAVE_DEBOUNCE_MS)
+        const stored = storedRecord(harness.store.shared, A)
+        if (stored === null) throw new Error('the delete was not saved')
+        // The record as written before steps carried a list fingerprint: the delete cannot be checked.
+        const unfingerprinted: Step[] = stored.record.done.map((step) => ({ id: step.id, at: step.at, label: step.label, ops: step.ops }))
+        const shared = new Map<string, string>()
+        seedOwner(shared, { ...stored.record, done: unfingerprinted, undone: [] }, 'w:unfingerprinted')
+        harness = build(shared)
+        await ready()
+        // The chat's first-message index is back where the Undo would put it.
+        live().chats[0].fmIndex = 2
+        expect(harness.service.view(A).done).toHaveLength(1)
+        expect(harness.service.undo(A).ok).toBe(true)
+        expect(harness.service.view(A).done).toHaveLength(0)
+        await harness.clock.advance(SAVE_DEBOUNCE_MS)
+        const reloaded = build(harness.store.shared)
+        await reloaded.service.whenReady(A)
+        expect(reloaded.service.view(A).done).toHaveLength(0)
+        expect(reloaded.service.view(A).undone).toHaveLength(0)
+    })
 })
 
 describe('T-SM5: every history action takes the marked write path', () => {
@@ -662,13 +707,13 @@ describe('list fingerprint through the service (CHORE-690 S1)', () => {
         expect(done[2].listFingerprint).toStrictEqual({ before: listFingerprintOf(['g0b', 'g1']), after: listFingerprintOf(['g0b']) })
     })
 
-    test('T14 an undo of a delete whose owner write was lost is refused; with the write it re-inserts', async () => {
+    test('T14 an undo of a delete whose owner write was lost moves past the step; with the write it re-inserts', async () => {
         putCharacters(makeCharacter('A', { alternateGreetings: ['a', 'a'], chats: [{ id: 'c1', note: '', fmIndex: 1 }] }))
         await ready()
         harness.service.greetingDelete(A, 0)
         live().alternateGreetings.splice(0, live().alternateGreetings.length, 'a', 'a')
         live().chats[0].fmIndex = 1
-        expect(harness.service.undo(A)).toEqual({ ok: false, reason: 'precondition' })
+        expect(harness.service.undo(A)).toEqual({ ok: true, already: 'undo' })
         expect(live().alternateGreetings).toEqual(['a', 'a'])
 
         putCharacters(makeCharacter('A', { alternateGreetings: ['a', 'a'], chats: [{ id: 'c1', note: '', fmIndex: 1 }] }))
@@ -679,6 +724,35 @@ describe('list fingerprint through the service (CHORE-690 S1)', () => {
         expect(live().alternateGreetings).toEqual(['a', 'a'])
     })
 
+    test('T76 a step that moves past without writing marks nothing, notes no edit and is saved', async () => {
+        putCharacters(makeCharacter('A', { alternateGreetings: ['a', 'a'], chats: [{ id: 'c1', note: '', fmIndex: 1 }] }))
+        await ready()
+        harness.service.greetingDelete(A, 0)
+        live().alternateGreetings.splice(0, live().alternateGreetings.length, 'a', 'a')
+        live().chats[0].fmIndex = 1
+        const noted = harness.noted.length
+        const marks = h.marks
+        const marked = tracker.character.length
+        expect(harness.service.undo(A)).toEqual({ ok: true, already: 'undo' })
+        expect(harness.noted).toHaveLength(noted)
+        expect(h.marks).toBe(marks)
+        expect(tracker.character).toHaveLength(marked)
+        expect(harness.service.view(A).done).toHaveLength(0)
+        expect(harness.service.view(A).undone).toHaveLength(1)
+        expect(live().alternateGreetings).toEqual(['a', 'a'])
+    })
+
+    test('T72 a module owner claims apart from a character of the same id, is never restricted and writes nothing live', async () => {
+        const module = moduleOwnerKey('A')
+        harness.service.useOwner(A)
+        harness.service.useOwner(module)
+        await harness.service.whenReady(module)
+        expect(harness.claim.calls).toEqual(['A', 'm:A'])
+        const view = harness.service.view(module)
+        expect(view.restricted).toBe(false)
+        expect(view.phase).toBe('ready')
+        expect(harness.service.undo(module)).toEqual({ ok: false, reason: 'gone' })
+    })
     test('T64s (a) a revert across deletes hashes no whole list and stores the exact fingerprint', async () => {
         const start = Array.from({ length: 20 }, (_, i) => `g${i}`.padEnd(50, 'x'))
         putCharacters(makeCharacter('A', { alternateGreetings: [...start] }))
@@ -819,5 +893,62 @@ describe('list fingerprint through the service (CHORE-690 S1)', () => {
         expect(h.marks).toBe(marks)
         expect(harness.noted).toHaveLength(noted)
         expect(JSON.stringify(harness.store.counts)).toBe(saves)
+    })
+})
+
+describe('the text target resolver maps a registry path per owner kind', () => {
+    // Owners shaped as the importers produce them. The decoy lists hold the other kind's name, so a
+    // resolver that mixes the kinds up reads a different text.
+    const character = {
+        globalLore: [{ content: 'c-lore0' }, { content: 'c-lore1' }],
+        customscript: [{ out: 'c-out0' }],
+        lorebook: [{ content: 'decoy' }],
+        regex: [{ out: 'decoy' }],
+    }
+    const module = {
+        lorebook: [{ content: 'm-lore0' }, { content: 'm-lore1' }],
+        regex: [{ out: 'm-out0' }],
+        globalLore: [{ content: 'decoy' }],
+        customscript: [{ out: 'decoy' }],
+    }
+
+    test('a character holds its lore in globalLore and its regex out in customscript', () => {
+        expect(textSlotOf('character', 'lore/1/content')).toEqual({ list: 'globalLore', index: 1, field: 'content' })
+        expect(textSlotOf('character', 'regex/0/out')).toEqual({ list: 'customscript', index: 0, field: 'out' })
+        expect(readTextAt('character', character, 'lore/1/content')).toBe('c-lore1')
+        expect(readTextAt('character', character, 'regex/0/out')).toBe('c-out0')
+    })
+
+    test('a module holds its lore in lorebook and its regex out in regex, never in the character lists', () => {
+        expect(textSlotOf('module', 'lore/1/content')).toEqual({ list: 'lorebook', index: 1, field: 'content' })
+        expect(textSlotOf('module', 'regex/0/out')).toEqual({ list: 'regex', index: 0, field: 'out' })
+        expect(readTextAt('module', module, 'lore/0/content')).toBe('m-lore0')
+        expect(readTextAt('module', module, 'regex/0/out')).toBe('m-out0')
+    })
+
+    test('any other path is refused, and so is an entry that holds no string', () => {
+        const refused = [
+            'desc',
+            'alternateGreetings/1',
+            'lore/0/comment',
+            'lore/0/out',
+            'regex/0/content',
+            'lore/01/content',
+            'lore/-1/content',
+            'lore//content',
+            'trigger/0/effect/1/value',
+            'lore/0/content/extra',
+            'x/lore/0/content',
+            '',
+        ]
+        for (const kind of ['character', 'module'] as const) {
+            for (const path of refused) {
+                expect(textSlotOf(kind, path), `${kind} ${path}`).toBeNull()
+                expect(readTextAt(kind, kind === 'character' ? character : module, path), `${kind} ${path}`).toBeNull()
+            }
+            expect(readTextAt(kind, {}, 'lore/0/content')).toBeNull()
+            expect(readTextAt(kind, { globalLore: [{}], lorebook: [{}] }, 'lore/0/content')).toBeNull()
+            expect(readTextAt(kind, character, 'lore/9/content')).toBeNull()
+        }
     })
 })

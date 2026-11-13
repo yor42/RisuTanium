@@ -102,7 +102,11 @@
         event.preventDefault()
         const before = readOwnerFields(owner)
         const result = runDismissingConsumed(service, toasts, owner, () => (direction === 'undo' ? service.undo(owner) : service.redo(owner)))
+        // Exactly one message: the refusal, or the note of a step that moved or dropped without a write.
         if (result.ok === false) setStudioNotice(refusalText(result.reason))
+        else if (result.already === 'undo') setStudioNotice(language.studioHistoryAlreadyUndone)
+        else if (result.already === 'redo') setStudioNotice(language.studioHistoryAlreadyRedone)
+        else if (result.dropped) setStudioNotice(language.studioHistoryStepDropped)
         // The field now holds the replayed value; the next Ctrl+Z in it continues through the owner's history.
         if (entry !== null) void tick().then(() => { entry.dataset.studioFocusValue = entry.value })
         void placeFocusAfterHistory(before, readOwnerFields(owner), () => root ?? null, () => root)

@@ -106,6 +106,9 @@
             return
         }
         const notes: string[] = []
+        if (result.already === 'undo') notes.push(language.studioHistoryAlreadyUndone)
+        else if (result.already === 'redo') notes.push(language.studioHistoryAlreadyRedone)
+        else if (result.dropped) notes.push(language.studioHistoryStepDropped)
         if (result.listSkipped !== undefined && result.listSkipped > 0) notes.push(language.studioHistoryRevertListSkipped)
         if (result.fmNotRestored) notes.push(language.studioToastRestoredFmNotice)
         message = notes.length > 0 ? notes.join(' ') : null
@@ -122,6 +125,8 @@
             case 'restorePoint': return language.studioStepRestorePoint
             case 'revert': return language.studioStepRevert
             case 'restoreDeleted': return language.studioStepRestoreDeleted
+            // The asset step labels have their texts with the asset lists; until then the kind names the step.
+            default: return label.kind
         }
     }
 

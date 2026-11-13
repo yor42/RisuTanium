@@ -3,6 +3,8 @@
 // items). It never reads a clock, a global or the live character: the live values reach it
 // through a `LiveReader` snapshot, and the writes it decides on leave it as `WriteOp`s.
 
+import { applyFolderOps, folderOpAtTarget, invertFolderOp, type FolderFieldValue, type FolderOp } from '../assets/folderCodec'
+import type { AssetArrayName } from '../assets/mergePreview'
 import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
 import { parseOwnerKey, type OwnerKey } from './ownerPhase'
 
@@ -59,6 +61,26 @@ export type StepLabel =
     | { kind: 'restorePoint' }
     | { kind: 'revert'; toStepId: string }
     | { kind: 'restoreDeleted'; deletedId: string }
+    | { kind: 'assetDelete'; count: number; name: string | null }
+    | { kind: 'assetRemoveExtras'; count: number; name: string }
+    | { kind: 'assetMerge'; from: string; to: string }
+    | { kind: 'assetRename'; from: string; to: string }
+    | { kind: 'assetMove'; count: number; folder: string | null }
+    | { kind: 'folderRename'; from: string; to: string }
+    | { kind: 'folderDelete'; name: string }
+
+// Asset ops carry fresh plain copies of their rows and lists, never a live array or proxy. `count` is the
+// number of tuples element-wise equal to `tuple` in the array before the op. They carry no deleted-item id:
+// an asset step creates, consumes and re-lists no History deleted item.
+export type AssetOp =
+    | { op: 'assetRowRemove'; array: AssetArrayName; index: number; tuple: string[]; count: number }
+    | { op: 'assetRowInsert'; array: AssetArrayName; index: number; tuple: string[]; count: number }
+    | { op: 'assetRowSet'; array: AssetArrayName; index: number; before: string[]; after: string[] }
+    | { op: 'assetFolderSet'; name: string; before: FolderFieldValue; after: FolderFieldValue }
+    | { op: 'assetFolderOrder'; before: string[]; after: string[] }
+
+// `target` is a registry path of the owner's texts (`desc`, `alternateGreetings/<i>`, `lore/<i>/content`, ...).
+export type TextEditOp = { op: 'textEdit'; target: string; offset: number; from: string; to: string }
 
 export type Op =
     | { op: 'set'; path: SetPath; before: FieldValue; after: FieldValue }
@@ -69,6 +91,8 @@ export type Op =
     | { op: 'listRemove'; index: number; value: string; deletedId: string | null }
     // `chatId: null` stands for a chat without a unique id: the side effect happened by index and cannot be replayed.
     | { op: 'chatFm'; chatId: string | null; before: FmValue; after: FmValue }
+    | AssetOp
+    | TextEditOp
 
 // Fingerprints of the whole greeting list on the two sides of the step's list ops: `before` is the
 // list its forward ops start from, `after` the list they produce.
@@ -203,19 +227,107 @@ function parseLabel(value: unknown): StepLabel | null {
             return typeof value.toStepId === 'string' ? { kind: 'revert', toStepId: value.toStepId } : null
         case 'restoreDeleted':
             return typeof value.deletedId === 'string' ? { kind: 'restoreDeleted', deletedId: value.deletedId } : null
+        case 'assetDelete': {
+            const name = nullableString(value.name)
+            return isCount(value.count) && name !== undefined ? { kind: 'assetDelete', count: value.count, name } : null
+        }
+        case 'assetRemoveExtras':
+            return isCount(value.count) && typeof value.name === 'string'
+                ? { kind: 'assetRemoveExtras', count: value.count, name: value.name }
+                : null
+        case 'assetMerge':
+        case 'assetRename':
+        case 'folderRename':
+            return typeof value.from === 'string' && typeof value.to === 'string'
+                ? { kind: value.kind, from: value.from, to: value.to }
+                : null
+        case 'assetMove': {
+            const folder = nullableString(value.folder)
+            return isCount(value.count) && folder !== undefined ? { kind: 'assetMove', count: value.count, folder } : null
+        }
+        case 'folderDelete':
+            return typeof value.name === 'string' ? { kind: 'folderDelete', name: value.name } : null
         default:
             return null
     }
 }
 
-type OwnerKind = 'character' | 'chat'
+type OwnerKind = 'character' | 'chat' | 'module'
+
+const ASSET_ARRAYS: readonly string[] = ['additionalAssets', 'emotionImages', 'assets']
+const TEXT_TARGET = /^[A-Za-z0-9_]+(\/[A-Za-z0-9_]+)*$/
+
+function isCount(value: unknown): value is number {
+    return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+function isAssetArray(value: unknown): value is AssetArrayName {
+    return typeof value === 'string' && ASSET_ARRAYS.includes(value)
+}
+
+// A fresh plain copy of a string array, or null when the value is not one.
+function parseStringArray(value: unknown): string[] | null {
+    return Array.isArray(value) && value.every((item) => typeof item === 'string') ? [...(value as string[])] : null
+}
+
+function parseFolderField(value: unknown): FolderFieldValue | null {
+    if (!isObject(value)) {
+        return null
+    }
+    if (value.had === false) {
+        return { had: false }
+    }
+    return value.had === true && typeof value.value === 'string' ? { had: true, value: value.value } : null
+}
+
+// The asset ops and `textEdit`; undefined when `value.op` is none of them.
+function parseAssetOp(value: Record<string, unknown>): Op | null | undefined {
+    switch (value.op) {
+        case 'assetRowRemove':
+        case 'assetRowInsert': {
+            const tuple = parseStringArray(value.tuple)
+            if (!isAssetArray(value.array) || !isIndex(value.index) || !tuple || !isCount(value.count)) {
+                return null
+            }
+            return { op: value.op, array: value.array, index: value.index, tuple, count: value.count }
+        }
+        case 'assetRowSet': {
+            const before = parseStringArray(value.before)
+            const after = parseStringArray(value.after)
+            if (!isAssetArray(value.array) || !isIndex(value.index) || !before || !after) {
+                return null
+            }
+            return { op: 'assetRowSet', array: value.array, index: value.index, before, after }
+        }
+        case 'assetFolderSet': {
+            const before = parseFolderField(value.before)
+            const after = parseFolderField(value.after)
+            return typeof value.name === 'string' && before && after ? { op: 'assetFolderSet', name: value.name, before, after } : null
+        }
+        case 'assetFolderOrder': {
+            const before = parseStringArray(value.before)
+            const after = parseStringArray(value.after)
+            return before && after ? { op: 'assetFolderOrder', before, after } : null
+        }
+        case 'textEdit':
+            return typeof value.target === 'string' &&
+                TEXT_TARGET.test(value.target) &&
+                isIndex(value.offset) &&
+                typeof value.from === 'string' &&
+                typeof value.to === 'string'
+                ? { op: 'textEdit', target: value.target, offset: value.offset, from: value.from, to: value.to }
+                : null
+        default:
+            return undefined
+    }
+}
 
 function parseOp(value: unknown, kind: OwnerKind): Op | null {
     if (!isObject(value)) {
         return null
     }
     if (value.op === 'set') {
-        if (!isSetPath(value.path)) {
+        if (kind === 'module' || !isSetPath(value.path)) {
             return null
         }
         const allowed = kind === 'chat' ? CHAT_SET_PATHS : CHARACTER_SET_PATHS
@@ -227,6 +339,13 @@ function parseOp(value: unknown, kind: OwnerKind): Op | null {
         return before && after ? { op: 'set', path: value.path, before, after } : null
     }
     if (kind === 'chat') {
+        return null
+    }
+    const asset = parseAssetOp(value)
+    if (asset !== undefined) {
+        return asset
+    }
+    if (kind === 'module') {
         return null
     }
     switch (value.op) {
@@ -287,7 +406,7 @@ function parseStep(value: unknown, kind: OwnerKind): Step | null {
     if (value.listFingerprint === undefined) {
         return { id: value.id, at: value.at, label, ops }
     }
-    const fingerprint = kind === 'chat' ? null : parseListFingerprint(value.listFingerprint)
+    const fingerprint = kind !== 'character' ? null : parseListFingerprint(value.listFingerprint)
     return fingerprint ? { id: value.id, at: value.at, label, ops, listFingerprint: fingerprint } : null
 }
 
@@ -349,7 +468,7 @@ function parseRestore(value: unknown, kind: OwnerKind): RestorePoint | null {
     ) {
         return null
     }
-    const allowed: readonly RestorePath[] = kind === 'chat' ? ['note'] : ['desc', 'hideChatIcon', LIST_PATH]
+    const allowed: readonly RestorePath[] = kind === 'chat' ? ['note'] : kind === 'module' ? [] : ['desc', 'hideChatIcon', LIST_PATH]
     const fields: Partial<Record<RestorePath, RestoreField>> = {}
     for (const key of Object.keys(value.fields)) {
         if (!(allowed as readonly string[]).includes(key)) {
@@ -400,7 +519,7 @@ export function parseOwnerRecord(value: unknown, ownerKey: OwnerKey): OwnerRecor
     }
     for (const raw of value.deleted) {
         const item = parseDeleted(raw)
-        if (!item || kind === 'chat') {
+        if (!item || kind !== 'character') {
             return null
         }
         deleted.push(item)
@@ -424,6 +543,13 @@ export interface LiveReader {
     greetings(): readonly string[] | null
     // The live `fmIndex` of the chat with this unique id, or null when no such chat is found.
     fmIndex(chatId: string): FmValue | null
+    // The owner's rows of one asset array, or null when it cannot be read. Absent on a reader that serves
+    // no asset ops, which then cannot apply or recognise one.
+    assetRows?(array: AssetArrayName): readonly (readonly string[])[] | null
+    // The owner's stored folder value, undefined when absent.
+    folderValue?(): unknown
+    // The text at a registry path other than `desc` and the greeting entries, or null when unreadable.
+    text?(target: string): string | null
 }
 
 export type WriteOp =
@@ -432,6 +558,9 @@ export type WriteOp =
     | { op: 'listInsert'; index: number; value: string }
     | { op: 'listRemove'; index: number }
     | { op: 'chatFm'; chatId: string; value: FmValue }
+    // An asset or text write is the op itself; the owner write applies it (`textEdit` on `desc` is a `set`).
+    | AssetOp
+    | TextEditOp
 
 export interface RestoreWrite {
     path: RestorePath
@@ -465,12 +594,19 @@ export interface StepPlan {
     // the move reuse a hash the plan already holds; they are never stored or posted.
     liveListHash?: number
     afterListHash?: number
+    // Replay only: every change of the step is already in the state the replay would produce, so nothing is
+    // written and the step moves to the other list with `ops` by reference.
+    already?: 'undo' | 'redo'
+    // Replay only: the step can no longer be replayed here and is removed from its list instead of moved.
+    dropStep?: true
+    // Revert only: asset rows whose file is gone and that the revert did not re-insert.
+    goneRows?: string[]
 }
 
 export type PlanResult =
     | StepPlan
     | { ok: false; reason: Exclude<ModelRefusal, 'unchanged'> }
-    | { ok: false; reason: 'unchanged'; listSkipped?: number; fmNotRestored?: boolean }
+    | { ok: false; reason: 'unchanged'; listSkipped?: number; fmNotRestored?: boolean; goneRows?: string[] }
 
 interface Working {
     field(path: SetPath): FieldValue
@@ -478,13 +614,48 @@ interface Working {
     list: string[] | null
     fm(chatId: string): FmValue | null
     setFm(chatId: string, value: FmValue): void
+    // Copies of the live asset rows, read once per array; null when unreadable.
+    rows(array: AssetArrayName): string[][] | null
+    // The stored folder value as the step's earlier ops left it. `readable` is false without a reader.
+    folder(): { readable: boolean; value: unknown }
+    setFolder(value: unknown): void
+    text(target: string): string | null
+    setText(target: string, value: string): void
 }
 
 function makeWorking(live: LiveReader): Working {
     const fields = new Map<SetPath, FieldValue>()
     const fms = new Map<string, FmValue | null>()
+    const arrays = new Map<AssetArrayName, string[][] | null>()
+    const texts = new Map<string, string | null>()
+    let folderState: { readable: boolean; value: unknown } | null = null
     const greetings = live.greetings()
     return {
+        rows(array) {
+            if (!arrays.has(array)) {
+                const rows = live.assetRows ? live.assetRows(array) : null
+                arrays.set(array, rows === null ? null : rows.map((row) => [...row]))
+            }
+            return arrays.get(array) ?? null
+        },
+        folder() {
+            if (!folderState) {
+                folderState = live.folderValue ? { readable: true, value: live.folderValue() } : { readable: false, value: undefined }
+            }
+            return folderState
+        },
+        setFolder(value) {
+            folderState = { readable: true, value }
+        },
+        text(target) {
+            if (!texts.has(target)) {
+                texts.set(target, live.text ? live.text(target) : null)
+            }
+            return texts.get(target) ?? null
+        },
+        setText(target, value) {
+            texts.set(target, value)
+        },
         field(path) {
             let value = fields.get(path)
             if (!value) {
@@ -523,7 +694,84 @@ export function invertOp(op: Op): Op {
                 : { op: 'listInsert', index: op.index, value: op.value, deletedId: op.deletedId }
         case 'chatFm':
             return { op: 'chatFm', chatId: op.chatId, before: op.after, after: op.before }
+        case 'assetRowRemove':
+            return { op: 'assetRowInsert', array: op.array, index: op.index, tuple: [...op.tuple], count: op.count - 1 }
+        case 'assetRowInsert':
+            return { op: 'assetRowRemove', array: op.array, index: op.index, tuple: [...op.tuple], count: op.count + 1 }
+        case 'assetRowSet':
+            return { op: 'assetRowSet', array: op.array, index: op.index, before: [...op.after], after: [...op.before] }
+        case 'assetFolderSet':
+        case 'assetFolderOrder':
+            return fromFolderOp(invertFolderOp(toFolderOp(op)))
+        case 'textEdit':
+            return { op: 'textEdit', target: op.target, offset: op.offset, from: op.to, to: op.from }
     }
+}
+
+// The folder codec's own op shape (`kind`) and this model's (`op`) carry the same fields.
+function toFolderOp(op: Extract<Op, { op: 'assetFolderSet' | 'assetFolderOrder' }>): FolderOp {
+    return op.op === 'assetFolderSet'
+        ? { kind: 'assetFolderSet', name: op.name, before: op.before, after: op.after }
+        : { kind: 'assetFolderOrder', before: op.before, after: op.after }
+}
+
+function fromFolderOp(op: FolderOp): Extract<Op, { op: 'assetFolderSet' | 'assetFolderOrder' }> {
+    return op.kind === 'assetFolderSet'
+        ? { op: 'assetFolderSet', name: op.name, before: op.before, after: op.after }
+        : { op: 'assetFolderOrder', before: [...op.before], after: [...op.after] }
+}
+
+const GREETING_TARGET = /^alternateGreetings\/(\d+)$/
+
+function greetingIndexOf(target: string): number | null {
+    const match = GREETING_TARGET.exec(target)
+    return match ? Number(match[1]) : null
+}
+
+function tupleEquals(a: readonly string[], b: readonly string[]): boolean {
+    return a.length === b.length && a.every((item, i) => item === b[i])
+}
+
+function countOf(rows: readonly (readonly string[])[], tuple: readonly string[]): number {
+    let count = 0
+    for (const row of rows) {
+        if (tupleEquals(row, tuple)) {
+            count += 1
+        }
+    }
+    return count
+}
+
+// The text a `textEdit` reads and writes: the field for `desc`, the list entry for a greeting, the owner's
+// registry text otherwise. Null when it cannot be read.
+function textOf(target: string, working: Working): string | null {
+    if (target === 'desc') {
+        const field = working.field('desc')
+        return field.had && typeof field.value === 'string' ? field.value : null
+    }
+    const greeting = greetingIndexOf(target)
+    if (greeting !== null) {
+        const value = working.list ? working.list[greeting] : undefined
+        return typeof value === 'string' ? value : null
+    }
+    return working.text(target)
+}
+
+function storeText(target: string, text: string, working: Working): void {
+    if (target === 'desc') {
+        working.setField('desc', { had: true, value: text })
+        return
+    }
+    const greeting = greetingIndexOf(target)
+    if (greeting !== null && working.list) {
+        working.list[greeting] = text
+        return
+    }
+    working.setText(target, text)
+}
+
+function spliceText(text: string, edit: { offset: number; from: string; to: string }): string {
+    return text.slice(0, edit.offset) + edit.to + text.slice(edit.offset + edit.from.length)
 }
 
 type ApplyOutcome = { kind: 'applied'; write: WriteOp } | { kind: 'inert' } | { kind: 'failed' }
@@ -566,16 +814,130 @@ function applyForward(op: Op, working: Working): ApplyOutcome {
             working.setFm(op.chatId, op.after)
             return { kind: 'applied', write: { op: 'chatFm', chatId: op.chatId, value: op.after } }
         }
+        case 'assetRowRemove': {
+            const rows = working.rows(op.array)
+            if (!rows || countOf(rows, op.tuple) !== op.count || !rows[op.index] || !tupleEquals(rows[op.index], op.tuple)) {
+                return { kind: 'failed' }
+            }
+            rows.splice(op.index, 1)
+            return { kind: 'applied', write: { ...op, tuple: [...op.tuple] } }
+        }
+        case 'assetRowInsert': {
+            const rows = working.rows(op.array)
+            if (!rows || countOf(rows, op.tuple) !== op.count || op.index > rows.length) {
+                return { kind: 'failed' }
+            }
+            rows.splice(op.index, 0, [...op.tuple])
+            return { kind: 'applied', write: { ...op, tuple: [...op.tuple] } }
+        }
+        case 'assetRowSet': {
+            const rows = working.rows(op.array)
+            if (!rows || !rows[op.index] || !tupleEquals(rows[op.index], op.before)) {
+                return { kind: 'failed' }
+            }
+            rows[op.index] = [...op.after]
+            return { kind: 'applied', write: { ...op, before: [...op.before], after: [...op.after] } }
+        }
+        case 'assetFolderSet':
+        case 'assetFolderOrder': {
+            const folder = working.folder()
+            if (!folder.readable) {
+                return { kind: 'failed' }
+            }
+            const result = applyFolderOps(folder.value, [toFolderOp(op)])
+            if (!result.ok) {
+                return { kind: 'failed' }
+            }
+            working.setFolder(result.doc ?? undefined)
+            return { kind: 'applied', write: fromFolderOp(toFolderOp(op)) }
+        }
+        case 'textEdit': {
+            const text = textOf(op.target, working)
+            if (text === null || text.slice(op.offset, op.offset + op.from.length) !== op.from) {
+                return { kind: 'failed' }
+            }
+            const next = spliceText(text, op)
+            storeText(op.target, next, working)
+            // The field is the owner's own: the write is a plain `set`.
+            return op.target === 'desc'
+                ? { kind: 'applied', write: { op: 'set', path: 'desc', value: { had: true, value: next } } }
+                : { kind: 'applied', write: { ...op } }
+        }
+    }
+}
+
+// Whether the working copy positively holds what `op` produces, for an op that failed to apply. An
+// unreadable value is never at the target.
+function holdsResultOf(op: Op, working: Working): boolean {
+    switch (op.op) {
+        case 'set':
+            return fieldValueEquals(working.field(op.path), op.after)
+        case 'listSet':
+            return !!working.list && working.list[op.index] === op.after
+        case 'listInsert':
+            return false
+        case 'listRemove':
+            return !!working.list && !working.list.includes(op.value)
+        case 'chatFm': {
+            if (op.chatId === null) {
+                return false
+            }
+            const current = working.fm(op.chatId)
+            return !!current && fmValueEquals(current, op.after)
+        }
+        case 'assetRowRemove':
+        case 'assetRowInsert': {
+            const rows = working.rows(op.array)
+            return !!rows && countOf(rows, op.tuple) === (op.op === 'assetRowRemove' ? op.count - 1 : op.count + 1)
+        }
+        case 'assetRowSet': {
+            const rows = working.rows(op.array)
+            return !!rows && !!rows[op.index] && tupleEquals(rows[op.index], op.after)
+        }
+        case 'assetFolderSet':
+        case 'assetFolderOrder': {
+            const folder = working.folder()
+            return folder.readable && folderOpAtTarget(folder.value, toFolderOp(op))
+        }
+        case 'textEdit': {
+            const text = textOf(op.target, working)
+            return text !== null && text.slice(op.offset, op.offset + op.to.length) === op.to
+        }
     }
 }
 
 // What the restore point must learn from a set of forward ops. List ops collapse into one
 // whole-array write because the restore point stores the whole greeting list.
-export function deriveRestoreWrites(forwardOps: readonly Op[], greetingsBefore: readonly string[] | null): RestoreWrite[] {
+// `descBefore` is the `desc` text before the ops (the plan carries it); without it a `textEdit` on `desc`
+// contributes nothing. A `textEdit` on a greeting entry splices that entry of the list copy.
+export function deriveRestoreWrites(
+    forwardOps: readonly Op[],
+    greetingsBefore: readonly string[] | null,
+    descBefore?: string,
+): RestoreWrite[] {
     const byPath = new Map<SetPath, RestoreWrite>()
     let list: string[] | null = greetingsBefore === null ? null : [...greetingsBefore]
     let listTouched = false
     for (const op of forwardOps) {
+        if (op.op === 'textEdit') {
+            if (op.target === 'desc') {
+                const known = byPath.get('desc')
+                const current = known ? (known.after as FieldValue) : descBefore === undefined ? null : ({ had: true, value: descBefore } as FieldValue)
+                if (current && current.had && typeof current.value === 'string') {
+                    const before: FieldValue = known ? (known.before as FieldValue) : current
+                    byPath.set('desc', { path: 'desc', before, after: { had: true, value: spliceText(current.value, op) } })
+                }
+                continue
+            }
+            const greeting = greetingIndexOf(op.target)
+            if (greeting !== null) {
+                listTouched = true
+                if (list && typeof list[greeting] === 'string') {
+                    list[greeting] = spliceText(list[greeting], op)
+                }
+            }
+            continue
+        }
         if (op.op === 'set') {
             const known = byPath.get(op.path)
             byPath.set(op.path, {
@@ -632,6 +994,16 @@ export function listSideOf(step: Step, direction: 'undo' | 'redo', list: readonl
 
 function isListOp(op: Op): boolean {
     return op.op === 'listSet' || op.op === 'listInsert' || op.op === 'listRemove'
+}
+
+// A greeting-list op: a list op, or a `textEdit` on an entry of the greeting list. One predicate serves the
+// unreadable-list gate of a replay and the side and stop rules of a revert.
+function touchesGreetingList(op: Op): boolean {
+    return isListOp(op) || (op.op === 'textEdit' && greetingIndexOf(op.target) !== null)
+}
+
+function descTextOf(field: FieldValue | null): string | undefined {
+    return field !== null && field.had && typeof field.value === 'string' ? field.value : undefined
 }
 
 function hasInsertOrRemove(ops: readonly Op[]): boolean {
@@ -721,7 +1093,12 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
     // stays on its stack, so Undo stops at it until the list is repaired by hand or 100 newer
     // steps push the step out. Steps without a fingerprint keep the per-op checks. An expected-side
     // replay whose chat op fails stays partial: only the list witnesses a fingerprint.
-    if (side === 'other' || side === 'neither') {
+    if (side === 'neither') {
+        return { ok: false, reason: 'precondition' }
+    }
+    // A step that holds a greeting-list op is refused whole when the list cannot be read, with or
+    // without a fingerprint, so no chat index or field lands against a list nobody could check.
+    if (working.list === null && step.ops.some(touchesGreetingList)) {
         return { ok: false, reason: 'precondition' }
     }
     const order = direction === 'undo' ? [...step.ops].reverse() : step.ops
@@ -729,9 +1106,14 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
     const executed: Op[] = []
     const writes: WriteOp[] = []
     const deletedRemove: string[] = []
+    const kept: Op[] = []
     let skipped = 0
     let real = 0
+    let consumed = 0
+    let unverifiable = 0
+    let failed = 0
     let fmNotRestored = false
+    const descBefore = step.ops.some((op) => op.op === 'textEdit' && op.target === 'desc') ? working.field('desc') : null
     for (const original of order) {
         // A delete can be undone only while its deleted item is still listed: restoring the item
         // from History consumes it, so the two routes exclude each other. On the expected side the
@@ -739,17 +1121,53 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
         const plainUndo =
             direction === 'undo' && original.op === 'listRemove' && original.deletedId !== null && !hasDeletedId(record, original.deletedId)
         if (plainUndo && side !== 'expected') {
+            // The list is readable here: the item is gone from History, so its removal cannot be undone.
+            consumed += 1
             skipped += 1
             continue
         }
         const forward = direction === 'undo' ? invertOp(original) : original
+        // Side `other`: the list already holds what a list op would produce.
+        if (side === 'other' && isListOp(original)) {
+            kept.push(original)
+            continue
+        }
+        if (original.op === 'chatFm' && original.chatId === null) {
+            kept.push(original)
+            applied.push(original)
+            fmNotRestored = true
+            continue
+        }
         if (side === 'none' && skipsOccupiedSlot(forward, working)) {
             skipped += 1
+            if (direction === 'undo') {
+                unverifiable += 1
+            } else {
+                failed += 1
+            }
+            continue
+        }
+        if (side === 'other') {
+            // Past the list ops, a step on side `other` only moves: nothing is applied to a list the step
+            // did not describe.
+            if (holdsResultOf(forward, working)) {
+                kept.push(original)
+            } else {
+                failed += 1
+                skipped += 1
+            }
             continue
         }
         const outcome = applyForward(forward, working)
         if (outcome.kind === 'failed') {
             skipped += 1
+            // On the expected side a failed list op stays failed: the fingerprint witnesses the list.
+            const atTarget = !(side === 'expected' && isListOp(original)) && !(side === 'none' && forward.op === 'listInsert') && holdsResultOf(forward, working)
+            if (atTarget) {
+                kept.push(original)
+            } else {
+                failed += 1
+            }
             continue
         }
         applied.push(original)
@@ -765,7 +1183,33 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
         }
     }
     if (real === 0) {
-        return { ok: false, reason: 'precondition' }
+        // Nothing applied: the step moves when every change is already in place (R1), is dropped when the
+        // only changes that did not apply cannot be replayed here (R1c), and is refused otherwise (R2).
+        const inPlace = kept.length - kept.filter((op) => op.op === 'chatFm' && op.chatId === null).length
+        const unreplayable = consumed + unverifiable
+        if (failed > 0 || (inPlace === 0 && unreplayable === 0)) {
+            return { ok: false, reason: 'precondition' }
+        }
+        const items: string[] = []
+        if (direction === 'undo') {
+            for (const op of kept) {
+                if (op.op === 'listRemove' && op.deletedId !== null && hasDeletedId(record, op.deletedId)) {
+                    items.push(op.deletedId)
+                }
+            }
+        }
+        const keptOps = step.ops.filter((op) => kept.includes(op))
+        return {
+            ok: true,
+            label: step.label,
+            ops: unreplayable > 0 ? keptOps : step.ops,
+            writes: [],
+            restoreWrites: [],
+            deletedRemove: items,
+            skipped: 0,
+            fmNotRestored: false,
+            ...(unreplayable > 0 ? { dropStep: true as const } : { already: direction }),
+        }
     }
     if (direction === 'undo') {
         applied.reverse()
@@ -777,7 +1221,7 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
         label: step.label,
         ops: applied,
         writes,
-        restoreWrites: deriveRestoreWrites(executed, greetingsBefore),
+        restoreWrites: deriveRestoreWrites(executed, greetingsBefore, descTextOf(descBefore)),
         deletedRemove,
         skipped,
         fmNotRestored,
@@ -816,8 +1260,56 @@ function revertForward(original: Op, pairsWithReopen: boolean, consumedId: strin
     return invertOp(original)
 }
 
+// The target a revert stores a chain for: an asset array, the folder document, or a registry text other than
+// `desc` (a `set` carries it) and a greeting entry (the list hunks carry it). Null for every other op.
+type TargetKey = { kind: 'rows'; array: AssetArrayName } | { kind: 'folder' } | { kind: 'text'; target: string }
+
+// The text a revert's maps use to tell targets apart; the typed key is what the snapshot reads.
+function targetKeyText(key: TargetKey): string {
+    switch (key.kind) {
+        case 'rows':
+            return 'rows:' + key.array
+        case 'folder':
+            return 'folder'
+        case 'text':
+            return 'text:' + key.target
+    }
+}
+
+function targetKeyOf(op: Op): TargetKey | null {
+    switch (op.op) {
+        case 'assetRowRemove':
+        case 'assetRowInsert':
+        case 'assetRowSet':
+            return { kind: 'rows', array: op.array }
+        case 'assetFolderSet':
+        case 'assetFolderOrder':
+            return { kind: 'folder' }
+        case 'textEdit':
+            return op.target === 'desc' || greetingIndexOf(op.target) !== null ? null : { kind: 'text', target: op.target }
+        default:
+            return null
+    }
+}
+
+function snapshotOf(key: TargetKey, working: Working): string {
+    switch (key.kind) {
+        case 'folder':
+            return JSON.stringify(working.folder().value ?? null)
+        case 'rows':
+            return JSON.stringify(working.rows(key.array))
+        case 'text':
+            return JSON.stringify(working.text(key.target))
+    }
+}
+
 function trackAppliedOp(tracker: ListHashTracker, forward: Op): void {
-    if (forward.op === 'listSet') {
+    if (forward.op === 'textEdit') {
+        const greeting = greetingIndexOf(forward.target)
+        if (greeting !== null) {
+            tracker.set(greeting)
+        }
+    } else if (forward.op === 'listSet') {
         tracker.set(forward.index)
     } else if (forward.op === 'listInsert') {
         tracker.insert(forward.index)
@@ -845,7 +1337,15 @@ function listHashesAcross(before: readonly string[], ops: readonly Op[], after: 
 // One new step that undoes every step above `toStepId`, under the same per-op preconditions. A
 // fingerprinted step is decided on the working list as the steps above it left it. `budgetUnits`
 // is a test seam; callers use the default.
-export function planRevert(record: OwnerRecord, toStepId: string, live: LiveReader, budgetUnits = REVERT_HASH_BUDGET_UNITS, hashFor?: ListElementHash): PlanResult {
+export function planRevert(
+    record: OwnerRecord,
+    toStepId: string,
+    live: LiveReader,
+    budgetUnits = REVERT_HASH_BUDGET_UNITS,
+    hashFor?: ListElementHash,
+    // Asset rows (by their path, `tuple[1]`) whose file is gone: a re-insert of one is not applied.
+    goneRows?: ReadonlySet<string>,
+): PlanResult {
     const index = record.done.findIndex((step) => step.id === toStepId)
     if (index < 0) {
         return { ok: false, reason: 'unknown' }
@@ -867,6 +1367,13 @@ export function planRevert(record: OwnerRecord, toStepId: string, live: LiveRead
     const listedAtStart = new Set(listed)
     const consumedValueOf = new Map<string, string>()
     let listSkipped = 0
+    // Per asset array, the folder document and each registry text the revert touches: the value before its
+    // first applied op, so a target that ends where it started stores and writes nothing. `writeTargets`
+    // names the target of each entry of `writes`.
+    const startOf = new Map<string, { key: TargetKey; start: string }>()
+    const writeTargets: (string | null)[] = []
+    const goneSeen = new Set<string>()
+    let failedOther = 0
     const reopened = new Map<string, number>()
     // A tracker exists when some reverted step inserts or removes: only then does the list's shape
     // change under the steps above. Its first pass is the revert's `before` hash.
@@ -905,12 +1412,12 @@ export function planRevert(record: OwnerRecord, toStepId: string, live: LiveRead
             }
         }
         for (const original of [...step.ops].reverse()) {
-            if (side === 'none' && afterStop && isListOp(original)) {
+            if (side === 'none' && afterStop && touchesGreetingList(original)) {
                 skipped += 1
                 listSkipped += 1
                 continue
             }
-            if ((side === 'other' || side === 'neither') && isListOp(original)) {
+            if ((side === 'other' || side === 'neither') && touchesGreetingList(original)) {
                 skipped += 1
                 // On the other side the list already holds what the op would restore.
                 if (side === 'neither') {
@@ -942,16 +1449,34 @@ export function planRevert(record: OwnerRecord, toStepId: string, live: LiveRead
                 skipped += 1
                 continue
             }
+            if (forward.op === 'assetRowInsert' && goneRows?.has(forward.tuple[1])) {
+                goneSeen.add(forward.tuple[1])
+                skipped += 1
+                continue
+            }
+            const targetKey = targetKeyOf(forward)
+            const targetText = targetKey === null ? null : targetKeyText(targetKey)
+            if (targetKey !== null && targetText !== null && !startOf.has(targetText)) {
+                startOf.set(targetText, { key: targetKey, start: snapshotOf(targetKey, working) })
+            }
+            const descBeforeOp = forward.op === 'textEdit' && forward.target === 'desc' ? working.field('desc') : null
             const outcome = applyForward(forward, working)
             if (outcome.kind === 'failed') {
                 skipped += 1
-                if (isListOp(forward)) {
+                failedOther += 1
+                if (touchesGreetingList(forward)) {
                     listSkipped += 1
                 }
             } else if (outcome.kind === 'inert') {
                 fmNotRestored = true
             } else {
-                ops.push(forward)
+                writeTargets.push(targetText)
+                // A `desc` edit is stored as the net `set` of the field, with the rest of the field ops.
+                ops.push(
+                    descBeforeOp
+                        ? { op: 'set', path: 'desc', before: descBeforeOp, after: working.field('desc') }
+                        : forward,
+                )
                 // Every applied list op is tracked, whichever path decided the step.
                 if (tracker) {
                     trackAppliedOp(tracker, forward)
@@ -977,8 +1502,32 @@ export function planRevert(record: OwnerRecord, toStepId: string, live: LiveRead
             }
         }
     }
+    const gone = goneSeen.size > 0 ? { goneRows: [...goneSeen].sort() } : {}
     if (ops.length === 0) {
+        // Nothing applied: a revert whose only failures are re-inserts of gone rows lands nothing but
+        // names them; any other failure refuses.
+        if (goneSeen.size > 0 && failedOther === 0) {
+            return { ok: false, reason: 'unchanged', ...gone, ...(listSkipped > 0 ? { listSkipped } : {}), ...(fmNotRestored ? { fmNotRestored } : {}) }
+        }
         return { ok: false, reason: 'precondition' }
+    }
+    // A target that ends where it started drops out of the stored ops and of the writes.
+    const netZero = new Set<string>()
+    for (const [text, { key, start }] of startOf) {
+        if (snapshotOf(key, working) === start) {
+            netZero.add(text)
+        }
+    }
+    if (netZero.size > 0) {
+        const kept: WriteOp[] = []
+        writes.forEach((write, at) => {
+            const key = writeTargets[at]
+            if (key === null || !netZero.has(key)) {
+                kept.push(write)
+            }
+        })
+        writes.length = 0
+        writes.push(...kept)
     }
     // Item effects are the change of the deleted set: an id consumed and produced again, or produced
     // while already listed, leaves the set as it was.
@@ -997,9 +1546,9 @@ export function planRevert(record: OwnerRecord, toStepId: string, live: LiveRead
             producedValues.set(id, op.value)
         }
     }
-    const stored = revertStepOps(ops, greetingsBefore, working.list, consumedValues, producedValues)
+    const stored = revertStepOps(ops, greetingsBefore, working.list, consumedValues, producedValues, netZero)
     if (stored.length === 0) {
-        return { ok: false, reason: 'unchanged', ...(listSkipped > 0 ? { listSkipped } : {}), ...(fmNotRestored ? { fmNotRestored } : {}) }
+        return { ok: false, reason: 'unchanged', ...gone, ...(listSkipped > 0 ? { listSkipped } : {}), ...(fmNotRestored ? { fmNotRestored } : {}) }
     }
     return {
         ok: true,
@@ -1008,6 +1557,7 @@ export function planRevert(record: OwnerRecord, toStepId: string, live: LiveRead
         writes,
         restoreWrites: deriveRestoreWrites(ops, greetingsBefore),
         deletedRemove: consumedNet,
+        ...gone,
         skipped,
         ...(listSkipped > 0 ? { listSkipped } : {}),
         fmNotRestored,
@@ -1098,6 +1648,7 @@ function revertStepOps(
     after: readonly string[] | null,
     consumed: ReadonlyMap<string, string>,
     produced: ReadonlyMap<string, string>,
+    netZero: ReadonlySet<string>,
 ): Op[] {
     const values = new Map<string, Op>()
     for (const op of applied) {
@@ -1117,8 +1668,33 @@ function revertStepOps(
             out.push(op)
         }
     }
+    // Chains of the asset and text targets, in applied order, after the value ops, hunks and pairs. The
+    // chain applies op by op from the value the target had at the start.
+    const chains: Op[] = []
+    const chainFor = (): void => {
+        const order: string[] = []
+        const byTarget = new Map<string, Op[]>()
+        for (const op of applied) {
+            const target = targetKeyOf(op)
+            const key = target === null ? null : targetKeyText(target)
+            if (key === null || netZero.has(key)) {
+                continue
+            }
+            const chain = byTarget.get(key)
+            if (chain) {
+                chain.push(op)
+            } else {
+                byTarget.set(key, [op])
+                order.push(key)
+            }
+        }
+        for (const key of order) {
+            chains.push(...(byTarget.get(key) ?? []))
+        }
+    }
+    chainFor()
     if (before === null || after === null) {
-        return out
+        return [...out, ...chains]
     }
     let start = 0
     while (start < before.length && start < after.length && before[start] === after[start]) {
@@ -1154,7 +1730,7 @@ function revertStepOps(
         out.push({ op: 'listInsert', index: tail, value })
         out.push({ op: 'listRemove', index: tail, value, deletedId: id })
     }
-    return out
+    return [...out, ...chains]
 }
 
 function restoreValueEquals(a: RestoreValue, b: RestoreValue): boolean {
@@ -1537,7 +2113,13 @@ export function applyReplayMove(
     // Built from scratch: the old step's fingerprint describes lists the moved step no longer spans.
     const moved: Step = { id: step.id, at: step.at, label: step.label, ops: plan.ops }
     const listWrite = hasInsertOrRemove(plan.ops) ? listRestoreWrite(plan.restoreWrites) : null
-    if (listWrite) {
+    if (plan.already !== undefined) {
+        // Nothing was written, so the step still spans the lists it was recorded on: the fingerprint
+        // carries over, else a later replay would take the per-op path and refuse a legitimate re-insert.
+        if (step.listFingerprint) {
+            moved.listFingerprint = step.listFingerprint
+        }
+    } else if (listWrite) {
         // `before` of the replay's write is the live list at plan time, `after` the list it produces.
         const live = plan.liveListHash ?? listFingerprintOf(listWrite.before, hashFor?.(listWrite.before))
         const produced = plan.afterListHash ?? listFingerprintOf(listWrite.after, hashFor?.(listWrite.after))
@@ -1548,7 +2130,10 @@ export function applyReplayMove(
     if (direction === 'undo') {
         deleted = deleted.filter((item) => !plan.deletedRemove.includes(item.id))
         if (step.label.kind === 'restoreDeleted') {
-            deleted = capped([...deleted, ...restoredItemFromOps(plan.ops, step.at, step.label.deletedId)], MAX_DELETED)
+            const id = step.label.deletedId
+            deleted = deleted.some((item) => item.id === id)
+                ? deleted
+                : capped([...deleted, ...restoredItemFromOps(plan.ops, step.at, id)], MAX_DELETED)
         } else {
             // Undoing an applied consumer gives its item back.
             const relisted: DeletedItem[] = []
@@ -1576,6 +2161,14 @@ export function applyReplayMove(
         deleted = capped([...deleted, ...producedItems(record, deleted, step.label, plan.ops, step.at)], MAX_DELETED)
     }
     const restore = noteRestoreWrites(record.restore, visitId, at, plan.restoreWrites, false)
+    if (plan.dropStep) {
+        // The step leaves its list and goes nowhere; the deleted bookkeeping above is the move's.
+        const next: OwnerRecord =
+            direction === 'undo'
+                ? { ...record, touchedAt: at, done: rest, deleted, restore }
+                : { ...record, touchedAt: at, undone: rest, deleted, restore }
+        return { record: next, open: null }
+    }
     const next: OwnerRecord =
         direction === 'undo'
             ? {

@@ -179,6 +179,11 @@ export function beginOwnerVisit(owner: OwnerKey): SaveAck | null {
     if (!parsed || !service) {
         return null
     }
+    if (parsed.kind === 'module') {
+        // A module owner has no character visit ack: it is used, and its writes mark through the asset write.
+        service.useOwner(owner)
+        return null
+    }
     const visitId = studioScreen.visitId
     if (held && (held.visitId !== visitId || held.chaId !== parsed.chaId)) {
         endVisitAck()

@@ -3,6 +3,7 @@ import {
     characterOwnerKey,
     chatOwnerKey,
     isOwnerKey,
+    moduleOwnerKey,
     nextPhase,
     parseOwnerKey,
     type MemoryOnlyReason,
@@ -173,6 +174,13 @@ describe('owner keys', () => {
 
     test('two chats of one character have distinct keys, independent of any page index', () => {
         expect(chatOwnerKey('c1', 'a')).not.toBe(chatOwnerKey('c1', 'b'))
+    })
+
+    test('T72 a module owner key parses to its id, round-trips and stays apart from a character key of the same id', () => {
+        expect(parseOwnerKey('module:')).toBeNull()
+        expect(parseOwnerKey(moduleOwnerKey('a/b|c'))).toEqual({ kind: 'module', moduleId: 'a/b|c' })
+        expect(moduleOwnerKey('x')).not.toBe(characterOwnerKey('x'))
+        expect(isOwnerKey('module:x')).toBe(true)
     })
 
     test('malformed keys are not owner keys', () => {

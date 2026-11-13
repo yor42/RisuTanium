@@ -5,7 +5,8 @@
 // ownerHistory.storeDelta.svelte.test.ts.
 import { describe, expect, test } from 'vitest'
 import type { DeletedItem, OwnerRecord, RestorePoint, Step } from '../historyModel'
-import { characterOwnerKey, type Expectation, type OwnerKey } from '../ownerPhase'
+import { characterOwnerKey, moduleOwnerKey, type Expectation, type OwnerKey } from '../ownerPhase'
+import { applyEdits, diffEntry } from '../studioStoreProtocol'
 import {
     CAP_BYTES,
     ENTRY_OVERHEAD,
@@ -625,7 +626,7 @@ describe('each owner keeps at most half the store (double)', () => {
     const CAP = 10000
     const owned = (owner: OwnerKey, touchedAt: number, count = 8, fill = 100) => recordOf(owner, touchedAt, steps(`${owner.slice(10)}:`, count, fill))
 
-    test('T-OC1 the cap pins: the owner cap is half the store and the sizing constants are the pinned v1 numbers', () => {
+    test('T-OC1 the cap pins: the owner cap is half the store and the sizing constants are the pinned numbers', () => {
         expect(OWNER_CAP_BYTES).toBe(CAP_BYTES / 2)
         expect(ownerCapFor(CAP_BYTES)).toBe(OWNER_CAP_BYTES)
         expect(ENTRY_OVERHEAD).toBe(144)
@@ -875,5 +876,48 @@ describe('the sizing the stored header carries', () => {
         expect(stored.header.size).toBe(storedSizeOf(stored.record, A, Infinity))
         expect(stored.header.size).toBeLessThan(sizeOf(record))
         expect(serializeHeader(stored.header)).toBe(store.shared.get(headerKey(A)))
+    })
+})
+
+describe('T70 / T71 the delta of a step with asset ops', () => {
+    function assetStep(id: string, tuple: string[], extra: Partial<Step> = {}): Step {
+        return {
+            id,
+            at: 1,
+            label: { kind: 'assetDelete', count: 1, name: 'a' },
+            ops: [
+                { op: 'assetRowRemove', array: 'assets', index: 0, tuple, count: 1 },
+                { op: 'assetFolderSet', name: 'a', before: { had: false }, after: { had: true, value: 'F' } },
+                { op: 'assetFolderOrder', before: [], after: ['F'] },
+                { op: 'textEdit', target: 'lore/0/content', offset: 0, from: 'a', to: 'b' },
+            ],
+            ...extra,
+        }
+    }
+
+    test('T70 the edits of a moved or changed asset step rebuild the step exactly, in the direct leg and the delta leg', () => {
+        const base = assetStep('s:1', ['a', 'p1'])
+        const next = assetStep('s:1', ['a', 'p2'], { at: 9 })
+        const edits = diffEntry(next, base)
+        expect(edits).not.toBeNull()
+        const rebuilt = applyEdits(base, edits ?? [])
+        expect(JSON.stringify(rebuilt)).toBe(JSON.stringify(next))
+        expect(base.ops[0]).toEqual({ op: 'assetRowRemove', array: 'assets', index: 0, tuple: ['a', 'p1'], count: 1 })
+    })
+
+    test('T71 a base whose tuple has another length does not accept the edits, so the host would answer mirrorLost', () => {
+        const base = assetStep('s:1', ['a', 'p1'])
+        const next = assetStep('s:1', ['a', 'p2'])
+        const edits = diffEntry(next, base) ?? []
+        const other = assetStep('s:1', ['a'])
+        expect(() => applyEdits(other, edits)).toThrow()
+    })
+
+    test('a module owner record is saved whole and read back by the strict reader', () => {
+        const owner = moduleOwnerKey('m1')
+        const record: OwnerRecord = { ownerKey: owner, touchedAt: 1, done: [assetStep('s:1', ['a', 'p1'])], undone: [], deleted: [], restore: null }
+        const shared = new Map<string, string>()
+        seedOwner(shared, record, 'w:1')
+        expect(storedRecord(shared, owner)?.record).toEqual(record)
     })
 })

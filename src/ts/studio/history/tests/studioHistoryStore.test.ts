@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { OwnerRecord, Step } from '../historyModel'
-import { characterOwnerKey, chatOwnerKey, type OwnerKey } from '../ownerPhase'
+import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type OwnerKey } from '../ownerPhase'
 import {
     CAP_BYTES,
     ENTRY_OVERHEAD,
@@ -16,6 +16,7 @@ import {
     planFull,
     readHeader,
     serializeHeader,
+    stepPart,
     storedSizeOf,
     type StoredHeader,
 } from '../studioHistoryStore'
@@ -98,7 +99,7 @@ const Z = characterOwnerKey('Z')
 const P = characterOwnerKey('P')
 const Q = characterOwnerKey('Q')
 
-// ---------------------------------------------------------------- the v1 layout
+// ---------------------------------------------------------------- the pinned layout
 
 describe('stored layout', () => {
     test('T-S1 a record written by the store reads back equal, with its header, its keys and its size', () => {
@@ -117,12 +118,13 @@ describe('stored layout', () => {
         expect(readHeader(shared.get(headerKey(A)), A)).toEqual(written)
     })
 
-    test('T-S2 the header reader needs v 1, a valid owner key equal to the expected one, finite numbers and a gen without a bar', () => {
+    test('T-S2 the header reader needs v 2, a valid owner key equal to the expected one, finite numbers and a gen without a bar', () => {
         const record = recordOf(A, 1, [descStep('p:1', 'a', 'b')])
         const good = JSON.parse(serializeHeader(seedOwner(new Map(), record, 'w:1')))
         // These values are hand-written on purpose: they stand for a later or a broken producer.
         for (const bad of [
-            { ...good, v: 2 },
+            { ...good, v: 3 },
+            { ...good, v: 1 },
             { ...good, ownerKey: 'nonsense' },
             { ...good, size: 'big' },
             { ...good, size: -1 },
@@ -331,7 +333,7 @@ describe('memory double: save transaction', () => {
             [headerKey(zBad), '{not json'],
             [entryKey(zBad, 'zz-foreign:1', 'i'), hugeValue],
             // A hand-written later-producer header with a huge size, and an entry under it.
-            [headerKey(zV2), JSON.stringify({ v: 2, wid: 'w', gen: 'zz-foreign:2', ownerKey: zV2, size: 999999, touchedAt: 1 })],
+            [headerKey(zV2), JSON.stringify({ v: 3, wid: 'w', gen: 'zz-foreign:2', ownerKey: zV2, size: 999999, touchedAt: 1 })],
             [entryKey(zV2, 'zz-foreign:2', 'i'), hugeValue],
             // The aside marker of another owner.
             [asideMarkKey(A), hugeValue],
@@ -431,7 +433,7 @@ describe('memory double: save transaction', () => {
         expect(CAP_BYTES).toBe(4 * 1024 * 1024)
         expect(OWNER_CAP_BYTES).toBe(CAP_BYTES / 2)
         expect(ownerCapFor(CAP_BYTES)).toBe(OWNER_CAP_BYTES)
-        // Part of the v1 format: a stored header's size is checked against them when it is read.
+        // Part of the pinned layout: a stored header's size is checked against them when it is read.
         expect(ENTRY_OVERHEAD).toBe(144)
         expect(OWNER_OVERHEAD).toBe(512)
     })
@@ -503,30 +505,30 @@ describe('memory double: S4 guard and aside rule', () => {
         expect(shared.has(asideMarkKey(X))).toBe(false)
     })
 
-    test('T-S3 an unreadable v2 header is copied aside byte-equal, later saves persist, a new page loads the v1 record', async () => {
+    test('T-S3 an unreadable later-version header is copied aside byte-equal, later saves persist, a new page loads the version 2 record', async () => {
         const shared = new Map<string, string>()
         const first = createMemoryStudioStore({ shared })
-        // Hand-written v2 header: stands for a later producer.
-        const v2Header = JSON.stringify({ v: 2, wid: 'later:1', ownerKey: X, size: 5, touchedAt: 1 })
-        shared.set(headerKey(X), v2Header)
+        // Hand-written later-version header: stands for a later producer.
+        const laterHeader = JSON.stringify({ v: 3, wid: 'later:1', ownerKey: X, size: 5, touchedAt: 1 })
+        shared.set(headerKey(X), laterHeader)
 
         expect(await first.load(X)).toEqual({ kind: 'unreadable' })
         const mine = sized(X, 9, 800, 'm')
         expect(await first.save(X, mine, new Set([X]))).toEqual({ kind: 'ok', asided: true, trimmed: false })
-        expect(shared.get(asideMarkKey(X))).toBe(v2Header)
+        expect(shared.get(asideMarkKey(X))).toBe(laterHeader)
         const later = { ...mine, touchedAt: 12 }
         expect(await first.save(X, later, new Set([X]))).toMatchObject({ kind: 'ok', asided: false })
 
         const second = createMemoryStudioStore({ shared })
         // The marker being taken does not matter once the owner is readable again.
         expect(await second.load(X)).toEqual({ kind: 'ok', record: later })
-        expect(shared.get(asideMarkKey(X))).toBe(v2Header)
+        expect(shared.get(asideMarkKey(X))).toBe(laterHeader)
     })
 
     test('T-S3b an unreadable header with the marker present is kept: both values stay byte-identical', async () => {
         const shared = new Map<string, string>()
         const store = createMemoryStudioStore({ shared })
-        shared.set(headerKey(X), JSON.stringify({ v: 2, wid: 'later:1', ownerKey: X, size: 5, touchedAt: 1 }))
+        shared.set(headerKey(X), JSON.stringify({ v: 3, wid: 'later:1', ownerKey: X, size: 5, touchedAt: 1 }))
         shared.set(asideMarkKey(X), 'earlier header')
         const before = snapshot(shared)
 
@@ -571,7 +573,7 @@ describe('memory double: S4 guard and aside rule', () => {
         expect(await createMemoryStudioStore({ shared }).load(chat)).toEqual({ kind: 'ok', record })
     })
 
-    test('every key the double writes uses the pinned v1 forms', async () => {
+    test('every key the double writes uses the pinned forms', async () => {
         const store = createMemoryStudioStore()
         const record = sized(X, 1, 600)
         await loadThenSave(store, record)
@@ -728,5 +730,113 @@ describe('claim double', () => {
         page.forced = 'failed'
         expect(await page.tryClaim('c1')).toBe('failed')
         expect(page.holds('c1')).toBe(false)
+    })
+})
+
+describe('format version 2', () => {
+    test('T59 every stored part of a save is written at version 2, and a module owner round-trips with its asset ops', async () => {
+        const owner = moduleOwnerKey('m1')
+        const step: Step = {
+            id: 'p:1',
+            at: 1,
+            label: { kind: 'assetDelete', count: 1, name: 'a' },
+            ops: [{ op: 'assetRowRemove', array: 'assets', index: 0, tuple: ['a', 'p1'], count: 1 }],
+        }
+        const record = recordOf(owner, 3, [step])
+        const plan = planFull(record, 'w:1', OWNER_CAP_BYTES, new WeakMap())
+        const versions = plan.requests.flatMap((request) => (request.op === 'put' ? [(JSON.parse(String(request.value)) as { v: number }).v] : []))
+        expect(versions.length).toBeGreaterThan(2)
+        expect(new Set(versions)).toEqual(new Set([2]))
+        const store = createMemoryStudioStore()
+        await loadThenSave(store, record)
+        const reopened = createMemoryStudioStore({ shared: store.shared })
+        expect(await reopened.load(owner)).toEqual({ kind: 'ok', record })
+    })
+
+    test('a record stored at an older version with no aside marker is not recognised, never crashes the reader and does not block a version 2 write', async () => {
+        const owner = characterOwnerKey('V1')
+        const record = recordOf(owner, 2, [descStep('p:1', 'a', 'b')])
+        const first = createMemoryStudioStore()
+        await loadThenSave(first, record)
+        const shared = new Map<string, string>()
+        for (const [key, value] of first.shared) {
+            shared.set(key, value.replace('"v":2', '"v":1'))
+        }
+        const second = createMemoryStudioStore({ shared })
+        expect(await second.load(owner)).toEqual({ kind: 'unreadable' })
+        expect(await second.save(owner, record, new Set([owner]))).toEqual({ kind: 'ok', asided: true, trimmed: false })
+        const third = createMemoryStudioStore({ shared })
+        expect(await third.load(owner)).toEqual({ kind: 'ok', record })
+    })
+
+    test('a record stored at an older version behind an existing aside marker is kept unreadable and its stored bytes stay untouched', async () => {
+        const owner = characterOwnerKey('V1Marked')
+        const record = recordOf(owner, 2, [descStep('p:1', 'a', 'b')])
+        const first = createMemoryStudioStore()
+        await loadThenSave(first, record)
+        const shared = new Map<string, string>()
+        for (const [key, value] of first.shared) {
+            shared.set(key, value.replace('"v":2', '"v":1'))
+        }
+        shared.set(asideMarkKey(owner), 'earlier header')
+        const before = snapshot(shared)
+        const second = createMemoryStudioStore({ shared })
+        expect(await second.load(owner)).toEqual({ kind: 'keptUnreadable' })
+        expect(await second.save(owner, record, new Set([owner]))).toEqual({ kind: 'kept' })
+        expect(shared).toEqual(before)
+    })
+
+    test('a version 2 header over an index or an entry of another version in its generation reads as unreadable', async () => {
+        const owner = characterOwnerKey('MixedVersions')
+        const record = recordOf(owner, 2, [descStep('p:1', 'a', 'b')])
+        const first = createMemoryStudioStore()
+        await loadThenSave(first, record)
+        const gen = storedRecord(first.shared, owner)?.header.gen as string
+        for (const part of ['i', stepPart('p:1')]) {
+            const shared = new Map(first.shared)
+            const key = entryKey(owner, gen, part)
+            const text = shared.get(key) as string
+            expect(text).toContain('"v":2')
+            shared.set(key, text.replace('"v":2', '"v":1'))
+            expect(await createMemoryStudioStore({ shared }).load(owner), part).toEqual({ kind: 'unreadable' })
+        }
+    })
+})
+
+describe('the strict reader and the folder ops of a stored step', () => {
+    const owner = characterOwnerKey('c1')
+
+    // The record is built from JSON so a malformed op reaches the writer as stored text would.
+    function readBack(op: object): OwnerRecord | null {
+        const record: OwnerRecord = JSON.parse(
+            JSON.stringify({ ownerKey: owner, touchedAt: 1, done: [{ id: 'p:1', at: 1, label: { kind: 'folderDelete', name: 'F' }, ops: [op] }], undone: [], deleted: [], restore: null }),
+        )
+        const shared = new Map<string, string>()
+        seedOwner(shared, record, 'w:1')
+        return storedRecord(shared, owner)?.record ?? null
+    }
+
+    test('a well-formed folder set and order op read back equal', () => {
+        const set = { op: 'assetFolderSet', name: 'a', before: { had: false }, after: { had: true, value: 'F' } }
+        const order = { op: 'assetFolderOrder', before: [], after: ['F'] }
+        expect(readBack(set)?.done[0].ops).toEqual([set])
+        expect(readBack(order)?.done[0].ops).toEqual([order])
+    })
+
+    test('a document as the before, a boolean value and a non-string order array are refused', () => {
+        const document = { v: 1, additional: { order: ['F'], of: [['a', 'F']] } }
+        const bad: object[] = [
+            { op: 'assetFolderSet', name: 'a', before: document, after: { had: false } },
+            { op: 'assetFolderSet', name: 'a', before: { had: true, value: document }, after: { had: false } },
+            { op: 'assetFolderSet', name: 'a', before: { had: false }, after: { had: true, value: true } },
+            { op: 'assetFolderSet', name: 'a', before: { had: true, value: false }, after: { had: false } },
+            { op: 'assetFolderOrder', before: [], after: [1] },
+            { op: 'assetFolderOrder', before: [true], after: [] },
+            { op: 'assetFolderOrder', before: document, after: [] },
+            { op: 'assetFolderOrder', before: [], after: 'F' },
+        ]
+        for (const op of bad) {
+            expect(readBack(op), JSON.stringify(op)).toBeNull()
+        }
     })
 })
