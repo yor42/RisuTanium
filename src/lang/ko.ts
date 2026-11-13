@@ -2537,6 +2537,8 @@ export const languageKorean = {
         `채팅 ${count}개에 다른 답변이 있으며, 백업 파일에는 이를 담을 공간이 없어 이 백업에서 제외됩니다 (채팅과 메시지는 저장됩니다). 다른 답변은 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `작업 프리셋 ${count}개는 이 기기에만 저장되어 있으며, 백업 파일에는 이를 담을 공간이 없어 이 백업에서 제외됩니다. 작업 프리셋은 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "backupThemePacksConfirm": (count: number, names: string[]) =>
+        `테마 팩 ${count}개는 이 기기에만 저장되어 있으며, 백업 파일에는 이와 그 파일을 담을 공간이 없어 이 백업에서 제외됩니다. 테마 팩은 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupAlternativesLeftOut": (count: number, names: string[]) =>
         `백업이 진행되는 동안 채팅 ${count}개에서 다른 답변이 발견되었으며, 백업 파일에는 이를 담을 공간이 없어 백업에 포함되지 않았습니다 (채팅과 메시지는 저장됩니다):\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupForkChatDataConfirm": (count: number, names: string[]) =>

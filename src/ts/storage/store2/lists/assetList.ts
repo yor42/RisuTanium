@@ -1,10 +1,12 @@
 import { ASSET_REF_V, assetRefKey, hexStemToBase64url, type AssetList } from '../format'
+import { collectPackAssetRefs } from '../../../themePack/packRefs'
 import { isPlainRecord, sortedUnique, type PlainRecord } from './scan'
 
 /**
  * Asset lists (type 15): a pure function of an owner's core fields. Every field
  * the boot-time keep-set collector (`getUncleanablesSync`) reads is read here, so
- * a list never holds fewer assets than that collector would keep.
+ * a list never holds fewer assets than that collector would keep. The installed
+ * theme packs' stored archives are among them (`themePacks`, any entry shape).
  */
 
 const HEX_STEM = /^[0-9a-f]{64}$/
@@ -142,6 +144,7 @@ export function collectConfigAssets(
             }
         }
     }
+    collectPackAssetRefs(db.themePacks, (name) => collector.add(name))
 }
 
 export function deriveCharacterAssets(character: object): AssetList {

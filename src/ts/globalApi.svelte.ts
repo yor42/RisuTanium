@@ -14,6 +14,7 @@ import { open } from '@tauri-apps/plugin-shell'
 import { TauriWriter, openWebExportWriter, writeBackupEntry, encodeBackupEntryHeader, type ExportByteWriter } from "./exportWriters";
 import { ExportCancelledError, type ExportCancelToken } from "./exportCancel";
 import { type Database, defaultSdDataFunc, getDatabase, appVer, getCurrentCharacter, type character, type groupChat, type Chat, appSubVer } from "./storage/database.svelte";
+import { collectPackAssetRefs } from "./themePack/packRefs";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
 import { botMakerMode, loadedStore, DBState, LoadingStatusState, selIdState, selectedCharID, ReloadGUIPointer, bodyIntercepterStore, savingStoppedReason, frozenSaveKeysStore, type FrozenSaveKeyInfo } from "./stores.svelte";
@@ -3896,6 +3897,9 @@ export function getUncleanablesSync(db: Database, options?:{
             }
         })
     }
+    // An installed theme pack keeps its stored archive. Every entry is walked, whatever its version or shape, so an
+    // entry this build cannot read still keeps its files.
+    collectPackAssetRefs(db.themePacks, addUncleanable);
     return Array.from(uncleanable);
 }
 

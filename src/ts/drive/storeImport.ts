@@ -20,6 +20,8 @@ import { getActiveStore2Save } from '../storage/store2/saveActive'
 import { incompleteList } from '../storage/store2/ui/bootText'
 import { readColdStorageItem } from '../process/coldstorage.svelte'
 import { importableTaskPresets } from '../process/utility/taskPreset'
+import { toPlainJson } from '../storage/store2/codec/normalize'
+import type { JsonValue } from '../storage/blockFrame'
 import { noteMeasurePhase } from './importPhaseRing'
 import { estimateImportSeconds, IMPORT_TIME_WARNING_BYTES, importAssetBytes, importFreeGigabytesText, importFreeSpaceBytes, importGigabytesText, importSpaceVerdict, roundImportMinutes } from './importEstimate'
 import { transportKind } from '../storage/tauriByteTransport'
@@ -514,6 +516,19 @@ function refused(cause: Store2ImportRefusal, message: string | null): Store2Impo
 const IMPORT_ATTEMPTS = 2
 
 /**
+ * The page's installed theme packs and active pack id as the import keeps them: plain values read through the reactive
+ * proxy (a copy that does not follow later edits, with every key kept), the list only when the page holds one and the id
+ * only when it is a string. Each is independent of the other.
+ */
+function pageThemePacks(db: Database): { themePacks: readonly JsonValue[] | undefined, activeThemePack: string | undefined } {
+    const plain = toPlainJson(db.themePacks)
+    return {
+        themePacks: Array.isArray(plain) ? plain : undefined,
+        activeThemePack: typeof db.activeThemePack === 'string' ? db.activeThemePack : undefined,
+    }
+}
+
+/**
  * Imports the decoded tree `request.decode()` yields: resolve, plan and one forced commit over a fresh read of the
  * commit key (`importLegacyTree`). Run under `dbWriteLock`. A conflict, or a bulk marker this page load left, is
  * answered once by a rebuild from a fresh decode and a fresh read; a second one is unconfirmed. Any throw after the
@@ -527,6 +542,9 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
     // A `.bin` carries no task presets, so the profile keeps the page's own, by value and as they are now (an unsaved edit
     // included). Taken once: every attempt imports the same list.
     const taskPresets = importableTaskPresets(getDatabase().taskPresets)
+    // The same for the installed theme packs and the active pack id: neither is in a `.bin`, so the profile keeps the
+    // page's own, by value (a copy that is structured-cloneable and does not follow later edits).
+    const { themePacks, activeThemePack } = pageThemePacks(getDatabase())
     for (let attempt = 1; ; attempt++) {
         // The library releases the tree it is handed once the tree is resolved; nothing here may keep another reference.
         let source: ImportSource
@@ -543,7 +561,7 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
         noteImportPhase(`decoded, attempt ${attempt}`)
         try {
             outcome = await importLegacyTree(
-                { source, reader: request.reader, committer, backend: request.target.backend, lists: getActiveStore2Save()?.lists ?? createListDerivation(), taskPresets },
+                { source, reader: request.reader, committer, backend: request.target.backend, lists: getActiveStore2Save()?.lists ?? createListDerivation(), taskPresets, themePacks, activeThemePack },
                 {
                     onPhase: (phase) => noteImportPhase(`${phase}, attempt ${attempt}`),
                     async confirmIncomplete(items) {
