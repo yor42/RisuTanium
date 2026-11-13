@@ -174,6 +174,8 @@
     const ownWheel = createWheelSteps(0, 1)
     let pointerType = ''
     let pointerStart = { x: 0, y: 0 }
+    // A swipe follows only the pointer that started it: another pointer's move, lift or cancel is ignored until that pointer lifts or is cancelled. The id is read only while `swipe` is set, and every new swipe sets it.
+    let activePointerId: number | null = null
     let longPressTimer: ReturnType<typeof setTimeout> | undefined
     let longPressRing = $state(false)
     let swipeProgress = $state(0)
@@ -526,10 +528,18 @@
         return SWIPE_START_PARTS.has(owner.getAttribute('data-part') ?? '')
     }
     function onPointerUp(event: PointerEvent): void {
-        if (swipe) finishSwipe(swipeBlocked() ? swipe.cancel() : swipe.up(sample(event)))
+        if (!swipe || event.pointerId !== activePointerId) return
+        finishSwipe(swipeBlocked() ? swipe.cancel() : swipe.up(sample(event)))
+    }
+    function onPointerCancel(event: PointerEvent): void {
+        if (!swipe || event.pointerId !== activePointerId) return
+        finishSwipe(swipe.cancel())
     }
     function onPointerDown(event: PointerEvent): void {
         if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return
+        // Strict comparison: only a pointer reported as non-primary is a later finger; synthetic events without the field count as the first.
+        if (event.isPrimary === false) return
+        if (swipe && event.pointerType !== pointerType) return
         if (swipeBlocked()) return
         if (settling) return
         const target = event.target as HTMLElement
@@ -537,6 +547,7 @@
         const interactive = target.closest(SWIPE_INTERACTIVE)
         if (interactive !== null && article?.contains(interactive)) return
         pointerType = event.pointerType
+        activePointerId = event.pointerId
         pointerStart = { x: event.clientX, y: event.clientY }
         clearTimeout(springTimer)
         spring = false
@@ -565,7 +576,7 @@
         return Math.sign(delta) * (Math.min(distance, easy) + Math.max(0, distance - easy) * 0.35)
     }
     function onPointerMove(event: PointerEvent): void {
-        if (!swipe) return
+        if (!swipe || event.pointerId !== activePointerId) return
         if (swipeBlocked()) { finishSwipe(swipe.cancel()); return }
         spring = false
         if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 10) { clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false }
@@ -795,7 +806,7 @@
 
 <!-- The article keeps the transcript semantics and is a tab stop and the focus target of message navigation, so its key and context-menu events and the captured clicks and submits of rich message content must reach it; the swipe gesture listens here too, so it starts on the message's own parts (SWIPE_START_PARTS) except on an interactive descendant, and the body moves. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
-<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta={namesHidden ? 'hidden' : 'shown'} data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="0" bind:this={article} style:touch-action="pan-y" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onpointercancel={() => { if (swipe) finishSwipe(swipe.cancel()) }} onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
+<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta={namesHidden ? 'hidden' : 'shown'} data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="0" bind:this={article} style:touch-action="pan-y" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onpointercancel={onPointerCancel} onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
     {#if disabled === true}<div data-part="chat-message-divider" data-kind="disabled"></div>{/if}
     <div data-part="chat-message-name-row">
         <div data-part="chat-message-meta">
