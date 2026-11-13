@@ -3,6 +3,7 @@ import { formatByteLimit } from './formatByteLimit'
 export const languageVietnamese = {
     chatShellBack: "Quay lại",
     chatShellChoosePersona: "Chọn Persona",
+    chatShellPersonaSettings: "Cài đặt Persona",
     chatShellMoreActions: "Thêm thao tác",
     chatShellReadAloud: "Đọc to",
     chatShellBranch: "Tạo nhánh từ đây",

@@ -12,6 +12,8 @@
         // `tall` fills 92 % of the height; `side` is a 380 px panel on the right from 900 px up and `tall` below it.
         mode?: 'bottom' | 'action' | 'wide-menu' | 'tall' | 'side'
         anchor?: { x: number; y: number }
+        // Read only by `wide-menu`: `above` anchors the panel's bottom edge to the opener's top edge instead of hanging it below.
+        placement?: 'below' | 'above'
         label: string
         opener?: HTMLElement | null
         background?: readonly HTMLElement[]
@@ -24,21 +26,30 @@
         children: Snippet
     }
 
-    let { open, kind, mode = 'bottom', anchor, label, opener = null, background = [], inertOutside = false, innerescape, layer = $bindable(), onclose, children }: Props = $props()
+    let { open, kind, mode = 'bottom', anchor, placement = 'below', label, opener = null, background = [], inertOutside = false, innerescape, layer = $bindable(), onclose, children }: Props = $props()
     let panel = $state<HTMLElement>()
-    let popupPosition = $state({ left: 0, top: 0 })
+    let popupPosition = $state<{ left: number; top?: number; bottom?: number; maxHeight?: number }>({ left: 0, top: 0 })
     const token = {}
     let closing = false
 
+    // Above placement anchors the panel's bottom edge to the opener's top edge; the list scrolls inside the panel.
+    // Anchoring by `bottom` keeps the panel on the opener when the window height changes, and the resize listener re-reads the opener's rect.
     $effect(() => {
         if (!open || mode !== 'wide-menu' || !panel) return
-        const point = anchor ?? (opener ? { x: opener.getBoundingClientRect().left, y: opener.getBoundingClientRect().bottom } : { x: 0, y: 0 })
-        const width = panel.offsetWidth
-        const height = panel.offsetHeight
-        popupPosition = {
-            left: Math.max(0, Math.min(point.x, window.innerWidth - width)),
-            top: Math.max(0, Math.min(point.y, window.innerHeight - height)),
+        const shell = panel
+        const above = placement === 'above'
+        const place = () => {
+            const bounds = opener?.getBoundingClientRect()
+            const point = anchor ?? (bounds ? { x: bounds.left, y: above ? bounds.top : bounds.bottom } : { x: 0, y: 0 })
+            const left = Math.max(0, Math.min(point.x, window.innerWidth - shell.offsetWidth))
+            popupPosition = above
+                ? { left, bottom: window.innerHeight - point.y, maxHeight: point.y }
+                : { left, top: Math.max(0, Math.min(point.y, window.innerHeight - shell.offsetHeight)) }
         }
+        place()
+        if (!above) return
+        window.addEventListener('resize', place)
+        return () => window.removeEventListener('resize', place)
     })
 
     // Everything that shares an ancestor with the layer but is not on its path, so a sheet hosted where the caller has no list stays modal.
@@ -215,7 +226,7 @@
 {#if open}
     <div bind:this={layer} data-part="chat-sheet-layer" data-mode={mode} data-settle={settle ?? undefined} style:--sheet-drag={scrimDrag()}>
         <button data-part="chat-sheet-scrim" aria-label={language.cancel} onclick={scrimClick}></button>
-        <section bind:this={panel} data-part="chat-sheet" data-mode={mode} style:left={mode === 'wide-menu' ? `${popupPosition.left}px` : undefined} style:top={mode === 'wide-menu' ? `${popupPosition.top}px` : undefined} role={kind === 'menu' ? 'menu' : 'dialog'} aria-label={label} aria-modal={kind === 'menu' ? undefined : 'true'} tabindex="-1" style:transform={sheetTransform()} data-dragging={dragging ? '' : undefined} data-moved={moved ? '' : undefined}>
+        <section bind:this={panel} data-part="chat-sheet" data-mode={mode} style:left={mode === 'wide-menu' ? `${popupPosition.left}px` : undefined} style:top={mode === 'wide-menu' && popupPosition.top !== undefined ? `${popupPosition.top}px` : undefined} style:bottom={mode === 'wide-menu' && popupPosition.bottom !== undefined ? `${popupPosition.bottom}px` : undefined} style:max-height={mode === 'wide-menu' && popupPosition.maxHeight !== undefined ? `${popupPosition.maxHeight}px` : undefined} role={kind === 'menu' ? 'menu' : 'dialog'} aria-label={label} aria-modal={kind === 'menu' ? undefined : 'true'} tabindex="-1" style:transform={sheetTransform()} data-dragging={dragging ? '' : undefined} data-moved={moved ? '' : undefined}>
             {#if mode !== 'wide-menu'}
                 <!-- The handle is a touch affordance only: Back, Escape and the scrim stay the accessible ways to close. -->
                 <!-- svelte-ignore a11y_no_static_element_interactions -->
