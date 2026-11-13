@@ -56,6 +56,8 @@ export interface RisuModule{
     customModuleToggle?:string
     mcp?:MCPModule
     icon?:string
+    /** The asset folder document, copied verbatim by the CharX converters; the typed reader narrows it. */
+    risutanium_asset_folders?:unknown
 }
 
 export function exportModule(module:RisuModule, arg:{

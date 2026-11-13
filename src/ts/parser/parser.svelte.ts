@@ -737,7 +737,7 @@ async function parseAdditionalAssets(data:string, char:simpleCharacterArgument|c
     return data
 }
 
-function getClosestMatch(char: simpleCharacterArgument|character, name:string, assetPaths:AssetPaths){   
+function getClosestMatch(char: simpleCharacterArgument|character, name:string, _assetPaths:AssetPaths){   
     if(!char.additionalAssets) return null
 
     let closest = ''
@@ -761,12 +761,12 @@ function getClosestMatch(char: simpleCharacterArgument|character, name:string, a
         return null
     }
 
-    assetPaths[closest] = {
+    // A near miss never writes the pool: overwriting the closest name's entry would shrink its
+    // multi-path pool to one path for every later exact-name lookup.
+    return {
         srcPaths: [targetPath],
         ext: targetExt
     }
-
-    return assetPaths[closest]
 }
 
 //Levenshtein distance, new with 1d array
