@@ -3,6 +3,7 @@ import { formatByteLimit } from './formatByteLimit'
 export const languageChinese = {
     "chatShellBack": "返回",
     "chatShellChoosePersona": "选择人设",
+    "chatShellPersonaSettings": "人设设置",
     "chatShellMoreActions": "更多操作",
     "chatShellReadAloud": "朗读",
     "chatShellBranch": "从此处创建分支",
