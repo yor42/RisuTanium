@@ -12,7 +12,7 @@ $log = Join-Path $testDir 'log.txt'
 $st = Join-Path $testDir 'state.json'
 $shot = Join-Path $testDir 'shot.png'
 $script:failures = 0
-$phone = '29f3cde9193f7ece'
+$phone = 'emulator-5580'
 $phone2 = '2ac80128013f7ece'
 $pkg = 'io.example.app'
 function Test-Result([string]$label, [bool]$ok, [string]$detail) {
@@ -25,7 +25,7 @@ function Invoke-GuardCase([string]$label, [string]$want, [string[]]$guardArgs) {
 }
 function Get-Calls { if (Test-Path $calls) { @(Get-Content $calls) } else { @() } }
 function Reset-Calls { if (Test-Path $calls) { Remove-Item $calls } }
-function Set-LocateRecord([string]$loc = '29f3cde9193f7ece') {
+function Set-LocateRecord([string]$loc = 'emulator-5580') {
     $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
     $o = @{ picks = @(); pickErrors = 0; offset = $null; pickLocked = $false; locates = @(@{ id = 1; time = $now; label = 'css:#thing'; bounds = @{ l = 10; t = 10; r = 110; b = 60 }; used = $false; serial = $loc }) }
     ConvertTo-Json $o -Depth 5 | Set-Content $st

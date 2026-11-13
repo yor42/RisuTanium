@@ -37,6 +37,32 @@
 //   with allow from tap|input-text|keyevent|am-start|install, honoured only for that exact serial; every call that
 //   reads it logs the file path and its sha256. The widened classes still pass the normal allowlist and typing chain.
 //
+//   Playground mode (2026-11-13, MC-1666): the two spare Note 9s, 29f3cde9193f7ece and 2ac80128013f7ece, hold only
+//   synthetic data. Those two serials, and no other, run in PLAYGROUND mode. Membership is the exact --serial string
+//   against the constant PLAYGROUND_SERIALS below: no flag, env var, state file or log content can add a serial or
+//   turn it on (emulator-5580 stays a plain full-access serial; a near-miss serial is restricted). The guard stays
+//   mandatory as the audit log: every call is logged, a playground-allowed call also gets a `PLAYGROUND serial=...`
+//   line, the serial lock stays (an adb call is always sent `-s <--serial>`; `-s`/`-P` inside the adb args is refused),
+//   and everything r11 allows still applies. On a playground serial only, in addition:
+//     input tap X Y | input swipe X1 Y1 X2 Y2 [ms] | input keyevent [--longpress] <KEYCODE_* or number>... | input text ...
+//       with no locate, no typing grant and no failed-locate input lock (exit 92 never applies; no lock is recorded);
+//     dumpsys [<service> [args]] (read-only: set, reset, unplug, enable, disable, force-*, unforce, whitelist, step,
+//       write, suppress and similar state-changing words are refused);
+//     logcat with any filter/format/buffer arguments (no --pid needed) but it must carry -d, -t or -T (also for the
+//       r11 `--pid` form); clearing or resizing the buffer (-c, -G, -P) and writing it to a device file (-f, -r, -n)
+//       are refused;
+//     uiautomator dump [--compressed] [/dev/tty | /sdcard/<name> | /sdcard/Download/<name> | /data/local/tmp/<name>];
+//     ls [-alhRdF1] <path under /sdcard> and cat <one file under /sdcard>  (plain path segments, no `..`);
+//     pm clear io.github.yor42.risutanium only, and only when --own-package is that same id (else refused, exit 97);
+//       screencap as in r11 (full frame, no crop is ever required).
+//   Known limits (kept as is): the dumpsys refuse list is best-effort; uiautomator dump may write a file on /sdcard or
+//   /data/local/tmp; install follows r11 (any local .apk); verbs not listed here stay refused. r11 still allows
+//   `svc wifi|data enable|disable` and `settings get|put|delete` on these serials (parity; the briefs enforce the Wi-Fi rule).
+//   Still refused on playground serials exactly as in r11 (the tests keep them refused): `pm clear` of any other package,
+//   uninstall, install of anything but a local .apk (r11 rule), reboot, root, remount, disable-verity, su, rm of anything
+//   but one file in /sdcard/Download or /data/local/tmp (r11 rule), cmd wifi, forward/reverse to ports outside
+//   --own-ports, and push outside /sdcard/Download/<name>.
+//
 //   node adbg.mjs pick <common> --state <run>/guard-state.json --name <exact-name>
 //     MC-1438 picker helper. One device-side command dumps the UI to a device file, greps for the exact
 //     text, prints only the bounds, and deletes the dump by its exact name. Output: `match bounds=[l,t][r,b]`
@@ -142,12 +168,13 @@ const logLocked = (key) => {
   for (const l of readFileSync(log, 'utf8').split(/\r?\n/)) { const m = l.match(/^\S+ INPUT-(LOCK|UNLOCK) serial=(\S+)/); if (m && m[2] === key) v = m[1] === 'LOCK' }
   return v
 }
-const inputLocked = (s) => validSerial(serial) && [lockKey(serial)].some((k) => (s?.inputLock && s.inputLock[k]) || logLocked(k))
+// Playground serials (MC-1666) have no failed-locate input lock: none is recorded and none is enforced.
+const inputLocked = (s) => validSerial(serial) && !playground && [lockKey(serial)].some((k) => (s?.inputLock && s.inputLock[k]) || logLocked(k))
 const refuseIfLocked = (s) => { if (inputLocked(s)) die(92, 'refused: input after failed locate (a locate for this serial failed; run a successful locate before any input)') }
 if (LOCATE_VERBS.includes(sub)) {
   process.on('exit', (code) => {
     try {
-      if (!validSerial(serial)) return
+      if (!validSerial(serial) || playground) return
       const key = lockKey(serial)
       const s = loadState()
       // Exit 95 is the restricted-serial refusal of the verb itself: no locate was attempted, so nothing failed.
@@ -282,10 +309,81 @@ function allowedPlain(a) {
   return false
 }
 
+// ---- playground additions (MC-1666): consulted only when `playground` is true, after allowedPlain refused ----
+const PG_INT = /^\d{1,5}$/
+const PG_KEY = /^(KEYCODE_[A-Z0-9_]+|\d{1,3})$/
+// Plain path segments only: no `..`, no `.` segment, no hidden-name tricks, no globbing or metacharacters.
+const PG_SDCARD_DIR = /^\/sdcard(\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*\/?$/
+const PG_SDCARD_FILE = /^\/sdcard(\/[A-Za-z0-9_-][A-Za-z0-9._-]*)+$/
+const PG_DUMP_TARGET = /^(\/dev\/tty|\/sdcard(\/Download)?\/[A-Za-z0-9_-][A-Za-z0-9._-]*|\/data\/local\/tmp\/[A-Za-z0-9_-][A-Za-z0-9._-]*)$/
+// dumpsys is read-only except for a few services that take a state-changing word (battery set, deviceidle force-idle ...).
+const PG_DUMPSYS_REFUSED = new Set(['set', 'reset', 'unplug', 'enable', 'disable', 'unforce', 'whitelist', 'step', 'write', 'suppress', 'clear', 'remove', 'kill', 'restart', 'stop', 'send', 'delete', 'add', 'override', 'trim', 'crash', 'sleep', 'wake', '--reset', '--clear', '--enable', '--disable', 'suspend_input'])
+const pgDumpsysArg = (x) => /^[A-Za-z0-9._:-]+$/.test(x) && !PG_DUMPSYS_REFUSED.has(x.toLowerCase()) && !/^(set-|force-|unforce)/i.test(x)
+// logcat: reading only. -c/--clear, -G/--buffer-size, -P/--prune (change the buffer) and -f/--file, -r, -n (write a device file) are refused,
+// as is any long option not listed, and a short cluster containing one of those letters.
+const PG_LOGCAT_LONG = new Set(['--pid', '--uid', '--dividers', '--last', '--format', '--buffer', '--tail', '--since'])
+function playgroundLogcat(args) {
+  for (const x of args) {
+    if (x.startsWith('--')) { if (!PG_LOGCAT_LONG.has(x)) return false; continue }
+    if (/^-[A-Za-z]+$/.test(x)) { if (/[cGPfrn]/.test(x)) return false; continue }
+    if (/^(\*|[A-Za-z0-9_.:-]+):[VDIWEFS]$/.test(x) || /^[A-Za-z0-9_.:-]+$/.test(x)) continue
+    return false
+  }
+  return true
+}
+function playgroundShell(cmd) {
+  if (typeof cmd !== 'string' || /[^\x20-\x7e]/.test(cmd)) return false
+  const c = cmd.trim().replace(/ +/g, ' ')
+  if (META.test(c) || c.includes('|') || c.includes('*') || c.includes('?')) return false
+  const t = c.split(' ')
+  switch (t[0]) {
+    case 'input':
+      if (t[1] === 'tap') return t.length === 4 && PG_INT.test(t[2]) && PG_INT.test(t[3])
+      if (t[1] === 'swipe') return (t.length === 6 || t.length === 7) && t.slice(2).every((x) => PG_INT.test(x))
+      if (t[1] === 'keyevent') { const keys = t[2] === '--longpress' ? t.slice(3) : t.slice(2); return keys.length >= 1 && keys.every((k) => PG_KEY.test(k)) }
+      return false
+    case 'dumpsys': return t.length <= 8 && t.slice(1).every(pgDumpsysArg)
+    case 'uiautomator': {
+      if (t[1] !== 'dump') return false
+      const r = t.slice(2)
+      if (r[0] === '--compressed') r.shift()
+      return r.length === 0 || (r.length === 1 && PG_DUMP_TARGET.test(r[0]))
+    }
+    case 'ls': {
+      const r = t.slice(1)
+      if (r.length > 0 && /^-[alhRdF1]+$/.test(r[0])) r.shift()
+      return r.length === 1 && PG_SDCARD_DIR.test(r[0])
+    }
+    case 'cat': return t.length === 2 && PG_SDCARD_FILE.test(t[1])
+    default: return false
+  }
+}
+function allowedPlayground(a) {
+  if (a[0] === 'shell') return a.length === 2 && playgroundShell(a[1])
+  if (a[0] === 'logcat') return playgroundLogcat(a.slice(1))
+  return false
+}
+// Playground pins: pm clear only of the hard-coded app id (and only when --own-package names it too), and logcat is
+// bounded by -d, -t or -T. These apply on top of the r11 rules, to r11-allowed forms as well.
+const PG_PACKAGE = 'io.github.yor42.risutanium'
+function playgroundPinned(a) {
+  if (a[0] === 'logcat') return a.some((x) => ['-d', '-t', '-T'].includes(x))
+  if (a[0] === 'shell' && typeof a[1] === 'string') {
+    const t = a[1].trim().replace(/ +/g, ' ').split(' ')
+    if (t[0] === 'pm' && t[1] === 'clear') return t.length === 3 && t[2] === PG_PACKAGE && ownPackage === PG_PACKAGE
+  }
+  return true
+}
+const logPlayground =(cls, args) => logLine(`PLAYGROUND serial=${serial} allow=${cls} adb ${JSON.stringify(args)}`)
+
 // ---- restricted serials ----
 // Every serial not listed here is a personal device and runs in restricted mode (fail-closed).
 const FULL_ACCESS_SERIALS = new Set(['29f3cde9193f7ece', '2ac80128013f7ece', 'emulator-5580'])
 const restricted = serial !== null && !FULL_ACCESS_SERIALS.has(serial)
+// Playground mode (MC-1666): exactly the two spare Note 9s, matched against the --serial string exactly (no prefix,
+// case or substring match). This constant is the only source: no flag, env var, state file or log can extend it.
+const PLAYGROUND_SERIALS = new Set(['29f3cde9193f7ece', '2ac80128013f7ece'])
+const playground = !restricted && serial !== null && PLAYGROUND_SERIALS.has(serial)
 const SCOPE_CLASSES = ['tap', 'input-text', 'keyevent', 'am-start', 'install']
 // Only a maintainer-approved scope file naming exactly this serial opens extra classes; each call that reads
 // it logs its path and sha256 so the independent check can compare it with what the maintainer approved.
@@ -349,10 +447,14 @@ if (sub === 'adb') {
   needSerial()
   if (rest.length === 0) die(2, 'missing -- <adb args>')
   if (restricted && !restrictedAllows(rest)) refuseRestricted(`adb ${JSON.stringify(rest)}`)
-  if (!allowedPlain(rest)) die(97, `not on the allowlist: adb ${JSON.stringify(rest)}`)
+  const plainOk = allowedPlain(rest)
+  if (!plainOk && !(playground && allowedPlayground(rest))) die(97, `not on the allowlist: adb ${JSON.stringify(rest)}`)
+  if (playground && !playgroundPinned(rest)) die(97, `playground: refused (pm clear only of ${PG_PACKAGE} with --own-package ${PG_PACKAGE}; logcat needs -d, -t or -T): adb ${JSON.stringify(rest)}`)
+  if (playground) logPlayground(plainOk ? 'r11' : 'extended', rest)
   // Every input-sending call (keyevent of any key, text) stops while a failed locate is unanswered.
   if (rest[0] === 'shell' && /^input /.test(rest[1].trim())) refuseIfLocked(statePath ? loadState() : null)
-  if (isTypingCall(rest)) {
+  // Playground serials need no typing grant: input goes out without a prior locate.
+  if (!playground && isTypingCall(rest)) {
     if (!statePath) die(99, 'typing (input text or an edit/submit key) needs --state: it must follow a guarded tap on a located field')
     const s = loadState()
     const g = s.textGrant
@@ -556,6 +658,7 @@ if (sub === 'tap' || sub === 'tap-home' || sub === 'swipe' || sub === 'hold') {
   needSerial(); needState()
   const chained = sub === 'tap-home'
   const gesture = sub === 'swipe' || sub === 'hold'
+  if (playground) logLine(`PLAYGROUND serial=${serial} allow=r11 verb=${sub}`)
   const s = loadState()
   refuseIfLocked(s)
   const delayRaw = opt('--delay-ms')
