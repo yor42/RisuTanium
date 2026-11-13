@@ -130,7 +130,7 @@ vi.mock('../UI/GUI/MultiLangInput.svelte', () => ({ default: (_target: unknown) 
 //#endregion
 
 import { CharConfigSubMenu, DBState } from 'src/ts/stores.svelte'
-import { changeLanguage } from 'src/lang'
+import { changeLanguage, language } from 'src/lang'
 import { languageKorean } from 'src/lang/ko'
 import CharConfig from './CharConfig.svelte'
 
@@ -547,7 +547,7 @@ describe('a mode switch on a character without the mode\'s config', () => {
         { mode: 'fishspeech', configKey: 'fishSpeechConfig', firstLabel: 'Chunk Length' },
     ]
 
-    test.each(GATED)('compatibility guard: switching to $mode creates its config and renders its first label without throwing', async (c) => {
+    test.each(GATED)('regression reproducer: switching to $mode creates its config and renders its first label without throwing', async (c) => {
         changeLanguage('en')
         install('', { naittsConfig: undefined, oaiTTSConfig: undefined, gptSoVitsConfig: undefined, fishSpeechConfig: undefined })
         const root = await mountConfig()
@@ -561,6 +561,35 @@ describe('a mode switch on a character without the mode\'s config', () => {
 
         expect(chara[0][c.configKey]).toBeDefined()
         expect(labelTexts(root)).toContain(c.firstLabel)
+    })
+
+    // These modes bind no config created by an effect; their forms must render straight after the switch.
+    const UNGATED: Array<{ mode: string, label: () => string[] }> = [
+        { mode: 'VOICEVOX', label: () => [language.sidebarUi.ttsSpeaker] },
+        { mode: 'huggingface', label: () => [language.model] },
+        { mode: 'webspeech', label: () => [language.Speech] },
+        { mode: 'elevenlab', label: () => [language.ttsElevenLabsKeyHint] },
+    ]
+
+    test.each(UNGATED)('compatibility guard: switching to $mode renders its form without the gate', async (c) => {
+        changeLanguage('en')
+        // The Web Speech form reads the browser global, which happy-dom does not define.
+        vi.stubGlobal('speechSynthesis', {})
+        try {
+            install('', { naittsConfig: undefined, oaiTTSConfig: undefined, gptSoVitsConfig: undefined, fishSpeechConfig: undefined })
+            const root = await mountConfig()
+            const chara = DBState.db.characters as unknown as Array<{ ttsMode: string }>
+
+            chara[0].ttsMode = c.mode
+            expect(() => flushSync(), `the first flush after switching to ${c.mode}`).not.toThrow()
+            await new Promise((resolve) => setTimeout(resolve, 20))
+            expect(() => flushSync(), `the second flush after switching to ${c.mode}`).not.toThrow()
+
+            const texts = [...root.querySelectorAll('span')].map((el) => el.textContent?.trim() ?? '')
+            expect(c.label().some((label) => texts.includes(label)), `a ${c.mode} label among ${JSON.stringify(c.label())}`).toBe(true)
+        } finally {
+            vi.unstubAllGlobals()
+        }
     })
 })
 

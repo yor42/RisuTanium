@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { onDestroy, tick, untrack } from "svelte";
+    import { onDestroy, untrack } from "svelte";
+    import { afterFlush } from "../../../ts/afterFlush";
     import { ChevronDownIcon, ChevronUpIcon, EllipsisIcon, GripVerticalIcon, PencilIcon } from "@lucide/svelte";
     import { language } from "src/lang";
     import type { Chat } from "src/ts/storage/database.svelte";
@@ -133,14 +134,14 @@
             if (now) {
                 fieldLive = true;
                 wasRenaming = true;
-                void tick().then(tick).then(() => {
+                void afterFlush().then(afterFlush).then(() => {
                     nameInput?.focus();
                     nameInput?.select();
                 });
             } else if (wasRenaming) {
                 wasRenaming = false;
                 fieldLive = false;
-                void tick().then(() => {
+                void afterFlush().then(() => {
                     const active = document.activeElement;
                     if (!active || active === document.body) {
                         rowButton?.focus();

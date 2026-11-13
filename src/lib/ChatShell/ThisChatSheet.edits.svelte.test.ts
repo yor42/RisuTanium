@@ -8,6 +8,7 @@
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
+import { drainMicrotasks, installFrameQueue, readAtFirstFrame, runFrame, uninstallFrameQueue } from '../../ts/tests/firstFrame.test-helpers'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Chat } from 'src/ts/storage/database.svelte'
 
@@ -374,5 +375,25 @@ describe('X-I8 deferred writers land on the live chat or are refused visibly', (
         vi.advanceTimersByTime(600)
         flushSync()
         expect(note().value).toBe('kept in the field')
+    })
+})
+
+describe('T6 rename focus, before the first frame', () => {
+    afterEach(() => {
+        uninstallFrameQueue()
+    })
+
+    test('starting a rename focuses the name field before the first frame', async () => {
+        // The first-frame harness needs real timers: the timer arm of a Svelte tick must not be advanced by a fake clock.
+        vi.useRealTimers()
+        await show()
+        installFrameQueue()
+        document.querySelector<HTMLElement>('[data-part="this-chat-rename"]')!.click()
+        flushSync()
+        const focusAtFirstFrame = readAtFirstFrame(() => document.activeElement?.getAttribute('data-part'))
+        // Only microtasks run: a focus move that waits for an animation frame or a timer has not happened yet.
+        await drainMicrotasks()
+        runFrame()
+        expect(await focusAtFirstFrame).toBe('this-chat-name-input')
     })
 })

@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount, tick, untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import '../../styles/chat-tokens.css'
     import { DBState, selIdState } from '../../ts/stores.svelte'
     import { language } from '../../lang'
@@ -342,7 +343,7 @@
 
     async function afterChatDeleted(): Promise<void> {
         closeThisChat()
-        await tick()
+        await afterFlush()
         list?.focus({ preventScroll: true })
     }
 

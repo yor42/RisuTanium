@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { onDestroy, tick, untrack } from 'svelte'
+    import { onDestroy, untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { SparkleIcon } from '@lucide/svelte'
     import { language } from '../../lang'
     import { additionalSettingsMenu, DBState, easyPanelStore, SettingsMenuIndex } from '../../ts/stores.svelte'
@@ -79,7 +80,7 @@
         const column = scroller
         if (!column) return
         if (arrivalInFlight(target)) return
-        void tick().then(() => { column.scrollTop = scrollMemory.get(target) ?? 0 })
+        void afterFlush().then(() => { column.scrollTop = scrollMemory.get(target) ?? 0 })
     })
 
     /** Moves focus to the page heading, where a phone drill-in lands. */

@@ -1,4 +1,4 @@
-import { tick } from 'svelte'
+import { afterFlush } from '../../../ts/afterFlush'
 
 /**
  * Which part of Home is showing. Home owns this state; it is not persisted and no stored field
@@ -27,13 +27,13 @@ export function showHomeLanding(): void {
 
 /**
  * Shows the library after a Home-opened Studio visit ended. Two halves, each needed for a different
- * creation order inside the close's own tick: the view serves a HomeShell that already exists, the
+ * creation order inside the close's own flush: the view serves a HomeShell that already exists, the
  * pending intent serves one that is created after the close.
  */
 export function requestHomeLibrary(): void {
     homeView.view = 'library'
     pendingResume = true
-    void tick().then(() => {
+    void afterFlush().then(() => {
         pendingResume = false
     })
 }
@@ -57,9 +57,10 @@ export function takeHomeReturnFocus(): string | null {
 /**
  * Called once when a HomeShell is created: the library when a visit just ended, else the landing.
  *
- * The pending library intent lives only until the `tick()` after the visit's close. That tick flushes the
- * Home branch the close dirtied, so a shell created by that flush still sees the intent. The intent is cleared
- * before any remount flush that `onSettingsClosed` schedules, so a `{#key}` remount after a visit has ended
+ * The pending library intent lives only until the `afterFlush()` wait after the visit's close. That wait
+ * flushes the Home branch the close dirtied, so a shell created by that flush still sees the intent. The
+ * intent is cleared before any remount flush that `onSettingsClosed` schedules, so a `{#key}` remount after
+ * a visit has ended
  * starts at the landing, like every other cover. The same holds for a creation moved into a later batch (an
  * `{#await}` around HomeShell). The view half of `requestHomeLibrary`, not this intent, serves a shell that
  * already exists.

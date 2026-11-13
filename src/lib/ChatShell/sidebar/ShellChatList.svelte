@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { flushSync, onDestroy, tick, untrack } from "svelte";
+    import { flushSync, onDestroy, untrack } from "svelte";
+    import { afterFlush } from "../../../ts/afterFlush";
     import { ChevronDownIcon, ChevronRightIcon, ChevronUpIcon, EllipsisIcon, GripVerticalIcon } from "@lucide/svelte";
     import { language } from "src/lang";
     import type { Chat, ChatFolder, Database } from "src/ts/storage/database.svelte";
@@ -224,7 +225,7 @@
     });
 
     function focusRowAt(index: number) {
-        void tick().then(() => {
+        void afterFlush().then(() => {
             const active = document.activeElement;
             if (!active || active === document.body) {
                 scroller?.querySelector<HTMLElement>(`[data-index="${index}"]`)?.focus();
@@ -264,7 +265,7 @@
 
     // Focuses and selects a field when it appears, after the menu that opened it has returned its own focus.
     function focusField(node: HTMLInputElement) {
-        void tick().then(tick).then(() => {
+        void afterFlush().then(afterFlush).then(() => {
             node.focus();
             node.select();
         });

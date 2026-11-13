@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { onMount, tick, untrack, type Snippet } from 'svelte'
+    import { onMount, untrack, type Snippet } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import '../../styles/studio-tokens.css'
     import { language } from '../../lang'
     import { dispatchBack } from '../../ts/backHandlers'
@@ -44,7 +45,7 @@
     // On open, focus moves into Studio so Esc and Ctrl+K reach the root handler without a click first.
     // Focus that is already inside Studio is left alone.
     onMount(() => {
-        void tick().then(() => {
+        void afterFlush().then(() => {
             if (root && !root.contains(document.activeElement)) root.focus()
         })
     })
@@ -104,7 +105,7 @@
         const result = runDismissingConsumed(service, toasts, owner, () => (direction === 'undo' ? service.undo(owner) : service.redo(owner)))
         if (result.ok === false) setStudioNotice(refusalText(result.reason))
         // The field now holds the replayed value; the next Ctrl+Z in it continues through the owner's history.
-        if (entry !== null) void tick().then(() => { entry.dataset.studioFocusValue = entry.value })
+        if (entry !== null) void afterFlush().then(() => { entry.dataset.studioFocusValue = entry.value })
         void placeFocusAfterHistory(before, readOwnerFields(owner), () => root ?? null, () => root)
     }
 
@@ -118,7 +119,7 @@
         if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k') {
             event.preventDefault()
             studioScreen.searchOpen = true
-            void tick().then(() => root?.querySelector<HTMLElement>('[data-part="studio-search-input"]')?.focus())
+            void afterFlush().then(() => root?.querySelector<HTMLElement>('[data-part="studio-search-input"]')?.focus())
             return
         }
         const direction = historyDirectionOf(event)
@@ -134,7 +135,7 @@
             closeStudioSearch()
             event.preventDefault()
             // The field that held focus is gone; the button that opened the search takes it.
-            void tick().then(() => root?.querySelector<HTMLElement>('[data-part="studio-search-toggle"]')?.focus())
+            void afterFlush().then(() => root?.querySelector<HTMLElement>('[data-part="studio-search-toggle"]')?.focus())
         } else if (studioScreen.drawerOpen) {
             closeStudioDrawer()
             event.preventDefault()

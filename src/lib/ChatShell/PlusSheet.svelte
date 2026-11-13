@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { tick, untrack } from 'svelte'
+    import { untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { v4 } from 'uuid'
     import { DBState, selIdState, selectedCharID, additionalChatMenu, easyPanelStore, hypaV3ModalOpen } from '../../ts/stores.svelte'
     import { pageStorageModeStore } from '../../ts/storage/pageStorageMode'
@@ -125,7 +126,7 @@
 
     async function openPicker(entry: FavouriteRow): Promise<void> {
         picker = entry
-        await tick()
+        await afterFlush()
         const options = Array.from(body?.querySelectorAll<HTMLElement>('[data-part="plus-chip-options"] [role="menuitemradio"]') ?? [])
         const checked = options.find((option) => option.getAttribute('aria-checked') === 'true')
         ;(checked ?? options[0])?.focus()
@@ -135,7 +136,7 @@
     async function leavePicker(): Promise<void> {
         const uid = picker?.row.uid
         picker = null
-        await tick()
+        await afterFlush()
         if (uid) chipElement(uid)?.focus()
     }
 
@@ -171,7 +172,7 @@
             event.preventDefault()
             event.stopPropagation()
             onclose()
-            void tick().then(() => next?.focus())
+            void afterFlush().then(() => next?.focus())
             return
         }
         const items = Array.from((event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[role^="menuitem"]:not([disabled])'))

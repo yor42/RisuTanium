@@ -107,7 +107,8 @@
     import { getCharImage } from '../../ts/characters'
     import { isAndroidTransport } from '../../ts/storage/tauriByteTransport'
     import { getModelInfo } from '../../ts/model/modellist'
-    import { onDestroy, onMount, tick, untrack } from 'svelte'
+    import { onDestroy, onMount, untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
 
     interface Props {
         idx: number
@@ -434,7 +435,7 @@
         const neighbour = at < 0 ? null : mode === 'one' ? rows[at - 1] ?? rows[at + 1] ?? null : rows[at + 1] ?? null
         const mine = article
         await removeMessage(mode)
-        await tick()
+        await afterFlush()
         const active = document.activeElement
         if (mine && !mine.isConnected && neighbour?.isConnected && (!active || active === document.body || !document.contains(active))) asShellFocus(() => neighbour.focus())
     }

@@ -22,8 +22,7 @@
  * exercised here, but the component needs it to import and mount.
  *
  * The scenarios live in `AlertComp.scenarios.test-helpers.svelte.ts`, shared
- * with `AlertComp.asyncOrder.svelte.test.ts`, which runs them again under the
- * async scheduler. Tests whose title starts with `guard:` pass with or without
+ * and run here under the async scheduler the app ships. Tests whose title starts with `guard:` pass with or without
  * the fix: they pin behaviour that must be preserved. Every other test fails
  * while the behaviour it names is missing.
  */

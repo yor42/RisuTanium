@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { afterFlush } from "src/ts/afterFlush";
   import { get } from "svelte/store";
   import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
   import {
@@ -64,7 +64,7 @@
       };
 
       // Focus on search element after it's rendered
-      await tick();
+      await afterFlush();
 
       if (searchState.ref) {
         searchState.ref.focus();

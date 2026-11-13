@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { tick } from 'svelte'
+    import { afterFlush } from '../../../ts/afterFlush'
     import GridCatalog from '../../Others/GridCatalog.svelte'
     import type { LibraryStudio } from '../../Others/CharacterSimpleList.svelte'
     import { DBState, OpenRealmStore } from 'src/ts/stores.svelte'
@@ -56,7 +56,7 @@
             return
         }
         let current = true
-        void tick().then(() => {
+        void afterFlush().then(() => {
             if (!current || !root) {
                 return
             }

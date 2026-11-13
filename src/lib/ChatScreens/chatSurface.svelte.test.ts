@@ -27,6 +27,7 @@ import { noteTopLevelChange, resetTopLevelChangesForTests } from '../../ts/stora
 import { changeLanguage } from '../../lang'
 import { studioOpen } from '../../ts/studio/studioOpen'
 import { chatSurface, installChatSurface, isChatSurfaceInstalled, onSurfaceHiding, resetChatSurfaceForTests } from './chatSurface.svelte'
+import { drainMicrotasks, installFrameQueue, readAtFirstFrame, runFrame, uninstallFrameQueue } from '../../ts/tests/firstFrame.test-helpers'
 
 let stopTeardownStandIn: (() => void) | null = null
 
@@ -370,5 +371,25 @@ describe('held pointers while visible', () => {
         expect(chatSurface.heldChat).not.toBe(get(ReloadChatPointer))
         ReloadChatPointer.update((value) => { value[1] = 5; return value })
         expect(chatSurface.heldChat).toEqual({ 1: 5 })
+    })
+})
+
+describe('release timing', () => {
+    afterEach(() => {
+        uninstallFrameQueue()
+    })
+
+    test('T14 Settings closing over a hidden surface releases it before the first frame', async () => {
+        installFrameQueue()
+        settingsOpen.set(true)
+        await drainMicrotasks()
+        expect(chatSurface.hidden).toBe(true)
+
+        settingsOpen.set(false)
+        const hiddenAtFirstFrame = readAtFirstFrame(() => chatSurface.hidden)
+        // Only microtasks run: a release that waits for an animation frame or a timer has not happened yet.
+        await drainMicrotasks()
+        runFrame()
+        expect(await hiddenAtFirstFrame).toBe(false)
     })
 })

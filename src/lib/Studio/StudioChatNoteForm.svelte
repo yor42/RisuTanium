@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { onDestroy, tick, untrack } from 'svelte'
+    import { onDestroy, untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
     import { refusalText } from '../../ts/studio/edit/studioToasts'
@@ -66,7 +67,7 @@
         if (loadFailed) {
             if (retrying) {
                 retrying = false
-                void tick().then(() => {
+                void afterFlush().then(() => {
                     if (root && document.activeElement === root) retryButton?.focus()
                 })
             }

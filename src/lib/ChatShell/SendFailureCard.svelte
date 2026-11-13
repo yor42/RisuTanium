@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { tick } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
     import { fixPending } from '../Setting/settingsRoute'
     import type { SendFailure } from '../../ts/chatShell/sendFailure.svelte'
@@ -20,7 +20,7 @@
         if (!$fixPending || !retryButton) return
         const button = retryButton
         fixPending.set(false)
-        void tick().then(() => button.focus({ preventScroll: true }))
+        void afterFlush().then(() => button.focus({ preventScroll: true }))
     })
 </script>
 

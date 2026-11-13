@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { tick, type Component } from 'svelte'
+    import type { Component } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { ChevronDownIcon, ChevronRightIcon } from '@lucide/svelte'
     import { getModelInfo } from '../../ts/model/modellist'
     import {
@@ -52,7 +53,7 @@
         const sectionId = displaySectionOfRow(rowId)
         if (sectionId === null) return null
         if (DISPLAY_SHELL_SECTIONS.some((section) => section.id === sectionId && section.collapsed)) opened[sectionId] = true
-        await tick()
+        await afterFlush()
         const rows = root ? [...root.querySelectorAll<HTMLElement>('[data-setting-row]')] : []
         return rows.find((el) => el.dataset.settingRow === rowId) ?? null
     }

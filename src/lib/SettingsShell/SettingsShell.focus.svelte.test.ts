@@ -56,6 +56,7 @@ import { setShellBackHandler } from '../../ts/settingsShell/settingsNavigation'
 import { fixPending, resetSettingsRouteForTests } from '../Setting/settingsRoute'
 import Host from './SettingsShell.testHost.svelte'
 import { installChatSurface, resetChatSurfaceForTests } from '../ChatScreens/chatSurface.svelte'
+import { drainMicrotasks, installFrameQueue, readAtFirstFrame, runFrame, uninstallFrameQueue } from '../../ts/tests/firstFrame.test-helpers'
 
 const mounted: Array<ReturnType<typeof mount>> = []
 const originalWidth = window.innerWidth
@@ -199,6 +200,30 @@ describe('T9 opener focus', () => {
         } finally {
             document.removeEventListener('focusin', record)
         }
+    })
+})
+
+describe('T7 phone drill-in focus, before the first frame', () => {
+    afterEach(() => {
+        uninstallFrameQueue()
+    })
+
+    test('a drill-in from the index puts focus on the page heading before the first frame', async () => {
+        setWidth(412)
+        settingsOpen.set(true)
+        const target = mountHost()
+        await settle()
+        const display = target.querySelector<HTMLButtonElement>('[data-part="settings-index-entry"][data-page="display"]')!
+        expect(document.activeElement).toBe(target.querySelector('[data-part="settings-index-entry"]'))
+
+        installFrameQueue()
+        display.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+        flushSync()
+        const focusAtFirstFrame = readAtFirstFrame(() => document.activeElement?.getAttribute('data-part'))
+        // Only microtasks run: a focus move that waits for an animation frame or a timer has not happened yet.
+        await drainMicrotasks()
+        runFrame()
+        expect(await focusAtFirstFrame).toBe('settings-page-heading')
     })
 })
 

@@ -1,4 +1,4 @@
-import { tick } from 'svelte'
+import { afterFlush } from '../afterFlush'
 import { focusLost } from './historyFocus'
 
 export type StudioLayer = 'history' | 'drawer'
@@ -63,7 +63,7 @@ function tryFocus(element: HTMLElement | null | undefined): boolean {
  */
 export async function returnFocusAfterClose(layer: StudioLayer, isOpen: () => boolean, picked?: () => HTMLElement | null): Promise<void> {
     const scope = root
-    await tick()
+    await afterFlush()
     if (isOpen() || !focusLost() || !scope || !scope.isConnected) return
     const candidates = picked
         ? [picked()]

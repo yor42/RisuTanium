@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { flushSync, onDestroy, tick, untrack } from 'svelte'
+    import { flushSync, onDestroy, untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { get } from 'svelte/store'
     import type { character as Character, Message } from '../../ts/storage/database.svelte'
     import type { TreeView } from '../../ts/process/chatTreeView'
@@ -150,7 +151,7 @@
         },
         row: (idx) => rows?.querySelector<HTMLElement>(`article[data-chat-index="${idx}"]`) ?? null,
         intentSeq: () => intentSeq,
-        tick,
+        tick: afterFlush,
         requestFrame,
         cancelFrame,
     })
@@ -288,7 +289,7 @@
             loadPages = jumped.pages
             if (!folded) bottom = jumped.bottom
         }
-        void tick().then(() => {
+        void afterFlush().then(() => {
             if (installed && chatSurface.hidden) { ScrollToMessageStore.value = index; return }
             const target = rows?.querySelector(`[data-chat-index="${Math.max(0, index - 3)}"]`)
             if (!target) return
@@ -314,7 +315,7 @@
         const same = room === previousRoom
         if (!same) { replyUnread = false; atBottom = true; restAtNewest(room) }
         if (same && length > previousLength && messages[length - 1]?.role === 'char' && DBState.db.autoScrollToNewMessage) {
-            if (atBottom || DBState.db.alwaysScrollToNewMessage) void tick().then(scrollToLatestMessage)
+            if (atBottom || DBState.db.alwaysScrollToNewMessage) void afterFlush().then(scrollToLatestMessage)
             else replyUnread = true
         }
         previousLength = length
@@ -416,7 +417,7 @@
     function restAtNewest(forRoom: string | null): void {
         // This pass signals only the hold that was pending when it was asked for; a newer key change owns a newer hold.
         const forHold = openWarmHold
-        void tick().then(() => {
+        void afterFlush().then(() => {
             if (destroyed || room() !== forRoom) return
             const placed = placeAtNewest()
             if (placed === null || typeof requestAnimationFrame === 'undefined') { releaseOpenWarmHold(forHold); return }
@@ -467,7 +468,7 @@
             follower?.sync()
             return { target, wrote }
         }
-        void tick().then(() => {
+        void afterFlush().then(() => {
             if (destroyed) { pendingBottomDistance = null; return }
             const { target: placed } = restore()
             if (typeof requestAnimationFrame === 'undefined') { pendingBottomDistance = null; realign.start(); return }
@@ -508,7 +509,7 @@
             if (Math.abs(delta) > WRITE_EPSILON) current.scrollTop += delta
             follower?.sync()
         }
-        void tick().then(() => {
+        void afterFlush().then(() => {
             if (destroyed) { newerPending = false; return }
             correct()
             if (typeof requestAnimationFrame === 'undefined') { newerPending = false; return }

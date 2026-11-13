@@ -11,6 +11,7 @@ import type { character as Character, Chat, ChatAlt, Message } from '../../ts/st
 import type { TreeView } from '../../ts/process/chatTreeView'
 import { siblingsAt, switchTo } from '../../ts/process/chatTree'
 import { applyMotionClasses, type MotionState } from '../../ts/chatShell/motionPrefs.svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 
 const stepSibling = vi.hoisted(() => vi.fn())
 const regenerateNewest = vi.hoisted(() => vi.fn())
@@ -540,7 +541,7 @@ describe('the wait for the successor body ends cleanly', () => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
         try {
             swipeCommit(bodyOf(2), 100, 250)
-            await tick()
+            await tickFake()
             await vi.advanceTimersByTimeAsync(0)
             flushSync()
             const after = bodyOf(2)

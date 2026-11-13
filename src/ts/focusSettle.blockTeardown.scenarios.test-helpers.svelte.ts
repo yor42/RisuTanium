@@ -1,7 +1,6 @@
 /**
- * The block-teardown focus scenarios, registered by both `focusSettle.blockTeardown.svelte.test.ts` (the shipped
- * scheduler) and `focusSettle.blockTeardown.asyncOrder.svelte.test.ts` (the async scheduler), so each scenario runs
- * under both schedulers with no copy.
+ * The block-teardown focus scenarios, registered by `focusSettle.blockTeardown.svelte.test.ts`, which runs
+ * under the async scheduler the app ships.
  *
  * Focus listeners write `$state` while a Svelte block removes the focused field. Chromium fires focusout
  * synchronously during that removal, on the stack of the block effect, where a state write throws. Two listener kinds
@@ -9,9 +8,9 @@
  * template handler (`onfocusout`, `onblur`) is run by Svelte outside the reactive context and may write at once.
  *
  * Two triggers remove the field. The effect trigger (`hide()`) writes the block's condition inside an effect, which
- * re-runs the block eagerly in either scheduler, so the removal stays on the block effect's stack. The direct trigger
- * (`hideDirect()`) writes it from an event-handler position: the shipped scheduler removes the field on the block
- * effect's stack, the async scheduler defers the removal to the batch commit, outside every block effect.
+ * re-runs the block eagerly, so the removal stays on the block effect's stack. The direct trigger (`hideDirect()`)
+ * writes it from an event-handler position: the async scheduler defers the removal to the batch commit, outside every
+ * block effect.
  *
  * (D1) Positive control, a diagnostic that asserts the failure: a raw listener writing at once records
  * `state_unsafe_mutation` when the effect trigger removes the field, which proves the harness dispatches inside the
@@ -19,8 +18,8 @@
  * (G2) A raw listener writing through the settle records nothing, and the state is the final focus.
  * (G3) Framework pin: both template handler forms write at once without error. It fails if a Svelte upgrade drops the
  * handler-context rule that the audit of the commit-on-blur handlers rests on.
- * G2 and G3 also run under the direct trigger as compatibility guards: no throw and the same final-focus values
- * under both schedulers, so a teardown defect on the event-handler path is still caught.
+ * G2 and G3 also run under the direct trigger as compatibility guards: no throw and the expected final focus, so a
+ * teardown defect on the event-handler path is still caught.
  * Removal is emulated as Chromium orders it: the focused node is blurred (focusout) while still attached, then removed.
  */
 import { flushSync, mount, tick, unmount } from 'svelte'
