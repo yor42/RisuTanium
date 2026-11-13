@@ -35,6 +35,11 @@ const lint = (area: ThemeArea, css: string, name: string): LintResult => lintAre
 const expectRejected = (r: LintResult, re: RegExp): void => { expect(rejectedFor(r, re), `${re} against ${detail(r)}`).toBe(true) }
 const expectAccepted = (r: LintResult): void => { expect(r.ok, why(r)).toBe(true) }
 const areasOf = (area: ThemeArea | 'all'): readonly ThemeArea[] => (area === 'all' ? THEME_AREAS : [area])
+// Rule SCOPE (MC-1586, MC-1608): a chat or Studio stylesheet may name only its own screen's parts, so a fixture written for chat's
+// parts is refused as a Studio sheet, and a selector that names no part is refused in both.
+const SCOPE_STUDIO_PART = /is not a part of the studio screen/
+const SCOPE_NO_PART = /names no part/
+const namesChatPartInStudio = (area: ThemeArea, css: string): boolean => area === 'studio' && /data-part="chat-/.test(css)
 
 // Helper variables: a hostile pack that chains through --x, --a ... is also judged with those names listed, so the
 // underlying floor logic is shown to still work.
@@ -247,7 +252,8 @@ describe('4b private variables, studio fix round, reach packs, ceilings and chai
             if (n.includes('studio') && a !== 'studio') continue
             it(`${a}: ${n} is ${want ? 'accepted' : `rejected (${re})`}`, () => {
                 const r = lint(a, css, n)
-                if (want) expectAccepted(r)
+                if (want && namesChatPartInStudio(a, css)) expectRejected(r, SCOPE_STUDIO_PART)
+                else if (want) expectAccepted(r)
                 else expectRejected(r, re as RegExp)
             })
         }
@@ -275,7 +281,8 @@ describe('4b private variables, studio fix round, reach packs, ceilings and chai
     for (const a of THEME_AREAS) {
         for (const [n, css] of [['colour and radius on a kind selector', '[data-kind="peer"]{border-color:#f8f8f2;border-radius:12px;color:#fff}'], ['a width of auto or 100% on a sheet root', '[data-part="studio-sheet-root"]{width:100%;max-width:none}']] as Named[]) {
             if (/sheet root/.test(n) && a !== 'studio') continue
-            it(`${a}: ${n} is accepted`, () => { expectAccepted(lint(a, css, n)) })
+            if (/kind selector/.test(n) && (a === 'chat' || a === 'studio')) it(`${a}: ${n} is refused (it names no part, MC-1586)`, () => { expectRejected(lint(a, css, n), SCOPE_NO_PART) })
+            else it(`${a}: ${n} is accepted`, () => { expectAccepted(lint(a, css, n)) })
         }
     }
     for (const [a, n, css, re] of CEIL_PACKS) it(`${a}: ${n} is rejected (${re})`, () => { expectRejected(lint(a, css, n), re) })
@@ -294,7 +301,10 @@ describe('5 benign fixtures', () => {
         else it(`home: ${n} is accepted`, () => { expectAccepted(lint('home', css, n)) })
     }
     for (const a of THEME_AREAS) {
-        for (const [n, css] of [...benign.NEW_BENIGN.all, ...(benign.NEW_BENIGN[a] || [])]) it(`${a}: ${n} is accepted`, () => { expectAccepted(lint(a, css, n)) })
+        for (const [n, css] of [...benign.NEW_BENIGN.all, ...(benign.NEW_BENIGN[a] || [])]) {
+            if (namesChatPartInStudio(a, css)) it(`${a}: ${n} is refused (it names a chat part, MC-1586)`, () => { expectRejected(lint(a, css, n), SCOPE_STUDIO_PART) })
+            else it(`${a}: ${n} is accepted`, () => { expectAccepted(lint(a, css, n)) })
+        }
     }
     for (const [n, css] of [...hostile.BENIGN, ...hostile.BENIGN_2]) {
         if (CHAT_BENIGN_REFUSED.has(n)) it(`chat: ${n} is refused by name (a token off :root, MC-1565)`, () => { expectRejected(lint('chat', css, n), TOKEN_OFF_ROOT) })

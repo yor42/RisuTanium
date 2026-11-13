@@ -261,6 +261,60 @@ const NAMED_REFUSALS: readonly string[] = [
     ...THEME_AREAS.flatMap((area) => ['BENIGN_2: D1 touch density', 'BENIGN_2: D2 wide layout', 'BENIGN_2: D3 both attributes', 'BENIGN_2: D4 :root with an attribute', 'values ACCEPT: index-right'].map((label) => `${label}|${area}`)),
     'legacy settings: index-right|settings',
 ]
+// Rule SCOPE (MC-1586, MC-1608): a chat or Studio stylesheet may name only its own screen's parts and tokens, so the corpus inputs written for
+// another screen (Home and Studio rules judged as chat, chat rules judged as Studio, and so on) are refused there. The list is the census of
+// the corpus (T0a-8): 49 (input, area) pairs of 38 inputs, every one a sheet for another area or a hostile input; no own-area benign pair is in it.
+const SCOPE_REFUSALS: readonly string[] = [
+    'BENIGN: B1 bubble fill|studio',
+    'BENIGN: B2 tail corner on run starts|studio',
+    'BENIGN: B3 failed bubble takes the column|studio',
+    'BENIGN: B4 compact actions on hover|studio',
+    'BENIGN: B6 own actions beside the bubble|studio',
+    'BENIGN: B7 forced colours outline|studio',
+    'BENIGN: B8 header title colour|studio',
+    'HOME_BENIGN: B02 a card with a radius, padding and a border (reach)|chat',
+    'HOME_BENIGN: B02 a card with a radius, padding and a border (reach)|studio',
+    'HOME_BENIGN: B07 a hover rule on a safe part|chat',
+    'HOME_BENIGN: B07 a hover rule on a safe part|studio',
+    'HOME_BENIGN: B08 an @media block with a safe rule|chat',
+    'HOME_BENIGN: B08 an @media block with a safe rule|studio',
+    'HOME_BENIGN: B10 a bubble on a reach part|chat',
+    'HOME_BENIGN: B10 a bubble on a reach part|studio',
+    'HOSTILE_2: font-family icon font|studio',
+    'NEW_BENIGN all: a focus colour on a focus rule|studio',
+    'NEW_BENIGN chat: a safe leaf hidden|studio',
+    'NEW_BENIGN chat: recolour a list row (reach)|studio',
+    'NEW_BENIGN chat: recolour and reshape Send (reach)|studio',
+    'NEW_BENIGN chat: respace the composer (reach)|studio',
+    'NEW_BENIGN home: recolour the rail item (reach)|chat',
+    'NEW_BENIGN home: recolour the rail item (reach)|studio',
+    'NEW_BENIGN settings: recolour the index item (reach)|chat',
+    'NEW_BENIGN settings: recolour the index item (reach)|studio',
+    'NEW_BENIGN studio: recolour the save slot (reach)|chat',
+    'studio reach: R1 sheet-root padding+font|chat',
+    'studio reach: R10 toast-box text-align + width 100%|chat',
+    'studio reach: R13 color on ancestors|chat',
+    'studio reach: R16 font-size 11 on sheet + width 50%|chat',
+    'studio reach: R2 form-host padding+font|chat',
+    'studio reach: R3 main padding|chat',
+    'studio reach: R4 toast-box padding/gap/width|chat',
+    'studio reach: R5 toast-box border 16px|chat',
+    'studio reach: R6 sheet-root border 16 + shadow 64|chat',
+    'studio reach: R7 shell font-size 40|chat',
+    'studio reach: R8 sheet-root letter-spacing/text-decoration/transform|chat',
+    'studio-hostile: P17|chat',
+    'values ACCEPT: card-row|chat',
+    'values ACCEPT: card-row|studio',
+    'values ACCEPT: padding-24|chat',
+    'values ACCEPT: padding-24|studio',
+    'values ACCEPT: part-colour-dark-on-light|chat',
+    'values ACCEPT: shell-gap|chat',
+    'values ACCEPT: shell-gap|studio',
+    'values ACCEPT: width-wide|chat',
+    'values ACCEPT: width-wide|studio',
+    'values REJECT: name-connection-warning|chat',
+    'values REJECT: name-connection-warning|studio',
+]
 describe('PT1: comment placement keeps a verdict (A19)', () => {
     // A comment only stands where a space means the same to the browser, so deleting every comment outside strings keeps the
     // verdict of an accepted input. A compatibility guard over the corpus; the NF17 reproducers are in packRules.test.ts.
@@ -290,7 +344,7 @@ describe('P2: the corpus sweep of where lintAreaPack is stricter than the refere
         }
         const fontPacks = flips.filter((f) => /H52|studio reach: R9/.test(f))
         const others = flips.filter((f) => !fontPacks.includes(f))
-        expect(others.sort()).toEqual([...NAMED_REFUSALS].sort())
+        expect(others.sort()).toEqual([...NAMED_REFUSALS, ...SCOPE_REFUSALS].sort())
         // The census of system-font packs the reference accepts and the app refuses: a new one is a stop-and-report.
         expect(fontPacks).toHaveLength(9)
         // The system-font packs are refused for the font rule, in every area that accepts them.
@@ -301,8 +355,26 @@ describe('P2: the corpus sweep of where lintAreaPack is stricter than the refere
         }
     })
 
+    // T0a-8: the census of Rule SCOPE over the corpus. It refuses 49 (input, area) pairs of 38 inputs, every one an input written for
+    // another area or a hostile input, each for the scope reasons alone; no shipped pack and no benign input of the area itself.
+    it('the Rule SCOPE census: 49 pairs of 38 inputs, none an own-area benign pair', { timeout: 120_000 }, () => {
+        expect(SCOPE_REFUSALS).toHaveLength(49)
+        expect(new Set(SCOPE_REFUSALS.map((e) => e.split('|')[0])).size).toBe(38)
+        for (const entry of SCOPE_REFUSALS) {
+            const [label, area] = entry.split('|')
+            const input = inputs.find((i) => i.label === label)
+            expect(input, label).toBeDefined()
+            expect(label.startsWith('shipped pack'), entry).toBe(false)
+            expect(label.startsWith(`NEW_BENIGN ${area}:`), entry).toBe(false)
+            expect(label.startsWith(`NEW_BENIGN all:`) && area === 'chat', entry).toBe(false)
+            const result = lintAreaPack(area as ThemeArea, input!.css, label)
+            expect(result.ok, entry).toBe(false)
+            expect(result.errors.every((e) => /MC-1586/.test(e.why)), `${entry}: ${JSON.stringify(result.errors.map((e) => e.why))}`).toBe(true)
+        }
+    })
+
     it('every named entry is still refused (no stale entries)', { timeout: 120_000 }, () => {
-        for (const entry of NAMED_REFUSALS) {
+        for (const entry of [...NAMED_REFUSALS, ...SCOPE_REFUSALS]) {
             const [label, area] = entry.split('|')
             const input = inputs.find((i) => i.label === label)
             expect(input, label).toBeDefined()

@@ -19,11 +19,30 @@ export interface ProfileError {
     why: string
 }
 
+/**
+ * One resource the stylesheet names, located in the canonical text. It is metadata only: the canonical text, the errors and
+ * the verdict are the same with or without it. A url token or string that is broken or unterminated has no span; it carries
+ * an error, so a stylesheet without errors lists every resource it names.
+ */
+export interface ResourceSpan {
+    /** `text.slice(start, end)` is the whole `url(...)` token or the whole string token, delimiters included. */
+    start: number
+    end: number
+    /** The target exactly as written between the delimiters (in a stylesheet without errors the canonical text holds no escapes, so it is also the decoded target). */
+    raw: string
+    /** The value the URL policy judged. */
+    target: string
+    /** `url-token` for an unquoted `url(...)`; `string` for a quoted argument of a resource function, `url("...")` included. */
+    form: 'url-token' | 'string'
+}
+
 export interface CanonicalStylesheet {
     /** The stylesheet with every comment replaced by one space; equal to the input when there is none. */
     text: string
     /** Constructs the strict profile refuses, and resources that are not bundled files. */
     errors: ProfileError[]
+    /** Every well-formed resource, in text order, as offsets into `text`. */
+    resources: ResourceSpan[]
 }
 
 const ESCAPE_REASON = 'a backslash escape is not allowed in a pack stylesheet: write the character itself (escapes read differently to the validator and to the browser)'
@@ -65,6 +84,7 @@ const NUMBER_UNIT = /^(?:|px|rem|em|vw|vh|vmin|vmax|pt|cm|mm|in|ch|ex|deg|rad|gr
 /** Tokenises a preprocessed stylesheet (CR, FF and NUL already rewritten) under the strict profile. */
 export function canonicalStylesheet(css: string): CanonicalStylesheet {
     const errors: ProfileError[] = []
+    const resources: ResourceSpan[] = []
     const seen = new Set<string>()
     const fail = (prop: string, why: string) => {
         const key = `${prop}|${why}`
@@ -127,7 +147,9 @@ export function canonicalStylesheet(css: string): CanonicalStylesheet {
             if (!closed) fail('', BAD_STRING_REASON)
             if (value.includes('/*') || value.includes('*/')) fail('', COMMENT_IN_STRING_REASON)
             if (inResourceFunction()) judgeTarget(value)
+            const stringStart = text.length
             text += css.slice(i, closed ? j + 1 : j)
+            if (closed && inResourceFunction()) resources.push({ start: stringStart, end: text.length, raw: value, target: value, form: 'string' })
             i = closed ? j + 1 : j
             continue
         }
@@ -137,6 +159,7 @@ export function canonicalStylesheet(css: string): CanonicalStylesheet {
             while (j < n && IDENT_CHAR.test(css[j])) j++
             const word = css.slice(i, j)
             // A word starting with a digit is a number (after '#' it is a colour, after 'u+' a unicode-range).
+            const wordStart = text.length
             const digits = /^-?\d+/.exec(word)
             if (digits && css[i - 1] !== '#' && css.slice(i - 2, i).toLowerCase() !== 'u+' && !NUMBER_UNIT.test(word.slice(digits[0].length))) fail('', NUMBER_REASON)
             text += word
@@ -167,6 +190,7 @@ export function canonicalStylesheet(css: string): CanonicalStylesheet {
                 continue
             }
             text += css.slice(i, k + 1)
+            resources.push({ start: wordStart, end: text.length, raw: target, target, form: 'url-token' })
             i = k + 1
             continue
         }
@@ -199,5 +223,5 @@ export function canonicalStylesheet(css: string): CanonicalStylesheet {
         i++
     }
     if (blocks.length || stack.length) fail('', UNCLOSED_REASON)
-    return { text, errors }
+    return { text, errors, resources }
 }

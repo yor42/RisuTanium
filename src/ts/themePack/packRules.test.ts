@@ -229,7 +229,7 @@ describe('the validator reads the stylesheet as a browser does (Gate 2 round 1)'
 })
 
 describe('MC-1351: bundled fonts through @font-face', () => {
-    const FACE = '@font-face{font-family:"pack serif";src:url(fonts/serif.woff2) format("woff2"),url("fonts/serif.woff") format("woff");font-weight:400 700;font-style:normal;font-display:swap;unicode-range:U+0000-00FF}'
+    const FACE = '@font-face{font-family:"pack-serif";src:url(fonts/serif.woff2) format("woff2"),url("fonts/serif.woff") format("woff");font-weight:400 700;font-style:normal;font-display:swap;unicode-range:U+0000-00FF}'
 
     test('a top-level @font-face with bundled sources is accepted in every area, and the rest is judged as before', () => {
         for (const area of THEME_AREAS) {
@@ -673,9 +673,9 @@ describe('A16 case-significant spans, A19 comment placement (MC-1568, MC-1549)',
 
 describe('GN: compatibility guards (accepted before and after)', () => {
     test.each([
-        ['a single root token', ':root{--nexus-pad:12px}' + `${SAFE_LEAF}{padding:var(--nexus-pad)}`],
-        ['a duplicate root token, last wins', ':root{--nexus-pad:1000px}:root{--nexus-pad:12px}' + `${SAFE_LEAF}{padding:var(--nexus-pad)}`],
-        ['a font size token', `:root{--nexus-fs:14px}${TEXT_LEAF}{font-size:var(--nexus-fs)}`],
+        ['a single root token', ':root{--pack-pad:12px}' + `${SAFE_LEAF}{padding:var(--pack-pad)}`],
+        ['a duplicate root token', ':root{--pack-pad:10px}:root{--pack-pad:12px}' + `${SAFE_LEAF}{padding:var(--pack-pad)}`],
+        ['a font size token', `:root{--pack-fs:14px}${TEXT_LEAF}{font-size:var(--pack-fs)}`],
         ['a negative margin by negation', `${SAFE_LEAF}{margin-right:calc(var(--space-3) * -1)}`],
         ['a negation of a number', `${SAFE_LEAF}{margin-right:calc(-1 * 8px)}`],
         ['a helper with a root default and a state value', `:root{--pack-a:12px}html[data-input="touch"]{--pack-a:10px}${SAFE_LEAF}{padding:var(--pack-a)}`],
@@ -690,7 +690,7 @@ describe('GN: compatibility guards (accepted before and after)', () => {
         ['a keyword span in any case', `${SAFE_LEAF}{border:1px solid CanvasText;color:#FFFFFF;OPACITY:1}HTML ${SAFE_LEAF}{opacity:1}`],
         [':ROOT as a keyword span', ':ROOT{--focus-ring-w:2px}'],
         ['an upper-case @MEDIA and property name', `@MEDIA (MIN-WIDTH:1px){${SAFE_LEAF}{OPACITY:0}}`],
-        ['a lower-case family registered and used in several spellings', '@font-face{font-family:"pack serif";src:url(fonts/s.woff2)}' + `${SAFE_LEAF}{font-family:"pack serif"}[data-part="chat-message-name"]{font-family:pack serif}[data-part="chat-message-badges"]{font:bold 16px/1.5 "pack serif", serif}`],
+        ['a lower-case family registered and used in several spellings', '@font-face{font-family:"pack-serif";src:url(fonts/s.woff2)}' + `${SAFE_LEAF}{font-family:"pack-serif"}[data-part="chat-message-name"]{font-family:pack-serif}[data-part="chat-message-badges"]{font:bold 16px/1.5 "pack-serif", serif}`],
         ['comments on their own line, after a comma, a semicolon, a brace and between rules', `${SAFE_LEAF}{opacity:1}\n/* own line */\n${SAFE_LEAF},/* c */[data-part="chat-message-name"]{opacity:1;/* d */padding:1px}/* e */[data-part="chat-message-badges"]{/* f */opacity:1}`],
         ['a run of comments beside a space', `${SAFE_LEAF}{opacity:1} /**//**/${SAFE_LEAF}{opacity:1}`],
         ['a grid function in a token', ':root{--nexus-ease:cubic-bezier(0.2, 0, 0, 1)}'],
@@ -783,7 +783,7 @@ describe('MC-1550 and the font rules', () => {
     })
 
     test.each([
-        ['italic bold shorthand with a generic', `${SAFE_LEAF}{font:italic bold 12px/1.5 "pack serif", serif}` , '@font-face{font-family:"pack serif";src:url(f.woff2)}'],
+        ['italic bold shorthand with a generic', `${SAFE_LEAF}{font:italic bold 12px/1.5 "pack-serif", serif}` , '@font-face{font-family:"pack-serif";src:url(f.woff2)}'],
     ])('F guard: %s', (_name, css, face) => { expectAcceptedPack('chat', face + css) })
 })
 
