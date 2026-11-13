@@ -99,6 +99,50 @@ describe('sources and groups', () => {
         expect(rows[1].options).toEqual(['one', 'two', 'three'])
     })
 
+    test('a same-label divider repeated around an empty group shows once', () => {
+        const model = buildPanelModel([input('s', [
+            '-=Part=divider',
+            'e=Empty group=group',
+            'e=end=groupEnd',
+            '-=Part=divider',
+            'a=Check',
+        ].join('\n'))])
+        expect(model.sources[0].items.map((item) => item.type)).toEqual(['divider', 'row'])
+    })
+
+    test('a same-label divider repeated around a caption-only group shows once', () => {
+        const model = buildPanelModel([input('s', [
+            '-=Part=divider',
+            'g=Note group=group',
+            'x=Note=caption',
+            'g=end=groupEnd',
+            '-=Part=divider',
+            'a=Check',
+        ].join('\n'))])
+        expect(model.sources[0].items.map((item) => item.type)).toEqual(['divider', 'row'])
+    })
+
+    test('dividers with different labels around an empty group both show', () => {
+        const model = buildPanelModel([input('s', [
+            '-=One=divider',
+            'e=Empty group=group',
+            'e=end=groupEnd',
+            '-=Two=divider',
+        ].join('\n'))])
+        expect(model.sources[0].items.map((item) => item.type === 'divider' && item.label)).toEqual(['One', 'Two'])
+    })
+
+    test('a group with a toggle row between two same-label dividers keeps both dividers', () => {
+        const model = buildPanelModel([input('s', [
+            '-=Part=divider',
+            'g=Full group=group',
+            'g1=In group',
+            'g=end=groupEnd',
+            '-=Part=divider',
+        ].join('\n'))])
+        expect(model.sources[0].items.map((item) => item.type)).toEqual(['divider', 'group', 'divider'])
+    })
+
     test('a source with no text has no items and counts nothing', () => {
         const model = buildPanelModel([{ id: 'character:c', kind: 'character', name: 'Ari', text: undefined }])
         expect(model.sources[0].items).toEqual([])

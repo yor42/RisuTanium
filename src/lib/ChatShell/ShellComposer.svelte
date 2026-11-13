@@ -22,9 +22,11 @@
         onpersona: (opener: HTMLElement) => void
         onhardwarechange?: (seen: boolean) => void
         stickersOpen?: boolean
+        // True while the persona menu this tab opens is showing.
+        personaexpanded?: boolean
     }
 
-    let { onplus, onpersona, onhardwarechange, stickersOpen = $bindable(false) }: Props = $props()
+    let { onplus, onpersona, onhardwarechange, stickersOpen = $bindable(false), personaexpanded = false }: Props = $props()
     let character = $derived(DBState.db.characters[selIdState.selId])
     let chat = $derived(character?.chats?.[character.chatPage])
     let personaName = $derived.by(() => {
@@ -45,6 +47,7 @@
     const source: ComposerActionsSource = shellGenerationSource(() => {})
     const composerDraftKey = v4()
     const blockedReasonId = `chat-send-blocked-${composerDraftKey}`
+    const personaHintId = `chat-persona-hint-${composerDraftKey}`
     let input = $state<HTMLTextAreaElement>()
     let translateInput = $state<HTMLTextAreaElement>()
     let popupTimer: ReturnType<typeof setInterval> | null = null
@@ -190,6 +193,9 @@
 </script>
 
 <div data-part="chat-composer">
+    <!-- The tab is the root's first child and is positioned against the root, so it stays above the extras strip and the translate box. -->
+    <button type="button" data-part="chat-composer-persona" data-kind="tab" aria-haspopup="menu" aria-expanded={personaexpanded} aria-describedby={personaHintId} onclick={(event) => onpersona(event.currentTarget)}><span>{language.asPersona(personaName)}</span><span aria-hidden="true">^</span></button>
+    <span id={personaHintId} hidden>{language.chatShellChoosePersona}</span>
     <ExtrasStrip files={shownDraft.fileInput} currentCharacter={character} {stickersOpen} showSuggestions={DBState.db.useAutoSuggestions} translatePreview={shownDraft.messageInputTranslate} onremove={(index) => surface.writeDraft((record) => { record.fileInput.splice(index, 1) })} onselect={selectSticker}>
         <Suggestion messageInput={(message) => surface.writeDraft((record) => { record.messageInput = (
             (DBState.db.subModel === 'textgen_webui' || DBState.db.subModel === 'mancer' || DBState.db.subModel.startsWith('local_')) && DBState.db.autoSuggestClean
@@ -201,7 +207,6 @@
     {/if}
     <div data-part="chat-composer-row">
         <button data-part="chat-composer-plus" data-kind="icon-button" aria-label={language.chatShellMoreActions} onclick={(event) => onplus(event.currentTarget)}>+</button>
-        <button data-part="chat-composer-persona" data-kind="chip" aria-label={language.chatShellChoosePersona} onclick={(event) => onpersona(event.currentTarget)}>{language.asPersona(personaName)}</button>
         <textarea bind:this={input} data-part="chat-composer-input" data-kind="field" aria-label={language.chatShellMessage} placeholder={language.chatShellMessage} value={shownDraft.messageInput} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInput = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, false) }} onpaste={paste} onkeydown={keydown} oncontextmenu={openPopup}></textarea>
         {#if shownBusy && shownOrigin}
             <button data-part="chat-composer-stop" data-kind="icon-button" aria-label={language.chatShellStop} onclick={() => stopComposerWorkIn(shownOrigin)}><span data-part="chat-composer-progress" data-stage={$chatProcessStage}></span>■</button>
@@ -219,7 +224,7 @@
 </div>
 
 <style>
-    [data-part="chat-composer"] { flex: none; padding: var(--space-3) var(--space-7) max(var(--space-7), env(safe-area-inset-bottom)); background: var(--nexus-canvas); color: var(--nexus-text); border-top: 1px solid var(--nexus-edge); }
+    [data-part="chat-composer"] { position: relative; margin-block-start: var(--size-touch); flex: none; padding: var(--space-3) var(--space-7) max(var(--space-7), env(safe-area-inset-bottom)); background: var(--nexus-canvas); color: var(--nexus-text); border-top: 1px solid var(--nexus-edge); }
     [data-part="chat-composer-row"] { display: flex; align-items: end; gap: var(--space-3); }
     [data-part="chat-composer-row"] > button { min-width: var(--size-touch); min-height: var(--size-touch); color: inherit; }
     [data-part="chat-composer-input"], [data-part="chat-composer-translate"] { min-width: 0; min-height: var(--size-touch); max-height: calc(5 * var(--leading-field-22) + 2 * var(--composer-field-padding-y)); resize: none; overflow-y: auto; padding: var(--composer-field-padding-y) var(--composer-field-padding-x); line-height: var(--leading-field-22); background: var(--nexus-surface-raised); color: var(--nexus-text); border: 1px solid var(--nexus-edge); border-radius: var(--radius-field); }
@@ -227,6 +232,10 @@
     [data-part="chat-composer-translate"] { display: block; width: 100%; margin-bottom: var(--space-3); }
     [data-part="chat-composer-tools"] { display: flex; justify-content: space-between; font-size: var(--font-size-xs); }
     [data-part="chat-composer-tools"] button, [data-part="chat-composer-tools"] select { min-height: var(--size-14); color: inherit; }
+    [data-part="chat-composer-persona"] { position: absolute; inset-block-end: 100%; inset-inline-start: var(--space-7); isolation: isolate; display: inline-flex; align-items: center; gap: var(--space-3); max-inline-size: 70%; min-block-size: var(--size-touch); padding-inline: var(--space-7); color: var(--nexus-text); }
+    [data-part="chat-composer-persona"] > :first-child { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    [data-part="chat-composer-persona"]::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--nexus-canvas); border: 1px solid var(--nexus-edge); border-block-end: 0; border-start-start-radius: var(--radius-field); clip-path: polygon(0 0, calc(100% - var(--space-7)) 0, 100% 100%, 0 100%); }
+    [data-part="chat-composer-persona"]:dir(rtl)::before { clip-path: polygon(var(--space-7) 0, 100% 0, 100% 100%, 0 100%); }
     [data-part="chat-composer-progress"] { display: inline-block; width: var(--size-7); height: var(--size-7); border: var(--stroke-bold) solid currentColor; border-radius: var(--radius-circle); }
     [data-part="chat-composer-progress"] { animation: progress var(--dur-spin) var(--ease-linear) infinite; }
     @media (prefers-reduced-motion: reduce) { :global(html:not(.rm-off)) [data-part="chat-composer-progress"] { animation: none; } }

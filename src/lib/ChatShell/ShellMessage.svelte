@@ -27,7 +27,7 @@
     // A swipe that commits where motion is reduced or power is low steps the row, which mounts a successor under a new key; the commit animation belongs to the element that stays in the document, so the successor takes it.
     // It is taken at most once, only by the row that replaces the stepped one at the same position, and only while the window is open: a body that renders later gets no fade.
     const COMMIT_HANDOVER_MS = HEIGHT_FLOOR_MS
-    let commitHandover: { idx: number; chatId: string | undefined; direction: 'back' | 'forward'; until: number } | null = null
+    let commitHandover: { idx: number; chatId: string | undefined; direction: 'back' | 'forward'; until: number; mark: boolean } | null = null
     // The pending body is empty or one of ChatBody's loading indicators (the parse placeholder with role="status", the translation spinner with its animated element); anything else is the rendered message.
     function bodyRendered(body: HTMLElement): boolean {
         if (body.querySelector('[role="status"], [style*="animation: spin"]') !== null) return false
@@ -37,7 +37,7 @@
     const SWIPE_START_PARTS: ReadonlySet<string> = new Set([
         'chat-message', 'chat-message-name-row', 'chat-message-meta', 'chat-message-name', 'chat-message-avatar', 'chat-message-badges',
         'chat-message-stage', 'chat-message-body', 'chat-streaming-view', 'chat-stream-finished', 'chat-stream-open', 'chat-stream-thinking',
-        'chat-swipe-peek', 'chat-swipe-peek-chip', 'chat-swipe-peek-text', 'chat-swipe-meter', 'chat-swipe-arm', 'chat-long-press-ring',
+        'chat-swipe-peek', 'chat-swipe-peek-chip', 'chat-swipe-peek-text', 'chat-swipe-meter', 'chat-swipe-arm', 'chat-swipe-commit-mark', 'chat-long-press-ring',
         'chat-status-row', 'chat-message-delete-pending', 'chat-message-render-failed', 'chat-message-interrupted', 'chat-message-memory-limit', 'chat-message-divider',
     ])
     // Inside an allowed part these keep their own touch behaviour (taps, text entry, media controls, sliders, the pager and the end control).
@@ -78,7 +78,7 @@
     import { lowPowerMarked } from '../../ts/chatShell/lowPower'
     import { siblingsAt } from '../../ts/process/chatTree'
     import { RefreshCwIcon } from '@lucide/svelte'
-    import { classifyEdge, EDGE_ZONE_DP } from '../../ts/chatShell/edgeZones'
+    import { inFollowOpenZone, INSET_MAX_CSS, INSET_PROBE_MAX_CSS } from '../SideBars/panelGesture'
     import { tickHaptic, readHaptics } from '../../ts/chatShell/haptics'
     import { reducedMotionActive } from '../../ts/chatShell/motionPrefs.svelte'
     import { createMessageKeys } from '../../ts/chatShell/messageKeys'
@@ -195,6 +195,9 @@
     let spring = $state(false)
     let commitDirection = $state<'back' | 'forward' | null>(null)
     let commitTimer: ReturnType<typeof setTimeout> | undefined
+    let commitMark = $state(false)
+    let markTimer: ReturnType<typeof setTimeout> | undefined
+    const MARK_FALLBACK_MS = 2000
     let springTimer: ReturnType<typeof setTimeout> | undefined
     const SPRING_DEFAULT_MS = 260
     const SPRING_MARGIN_MS = 150
@@ -246,7 +249,7 @@
         if (!handover || handover.idx !== idx || handover.chatId === chatId || performance.now() > handover.until || !bodyRoot) return
         commitHandover = null
         const body = bodyRoot
-        if (bodyRendered(body)) { commitSlide(handover.direction); return }
+        if (bodyRendered(body)) { commitSlide(handover.direction, handover.mark); return }
         let observer: MutationObserver | undefined
         let timer: ReturnType<typeof setTimeout> | undefined
         const stop = () => { observer?.disconnect(); clearTimeout(timer) }
@@ -254,7 +257,7 @@
         observer = new MutationObserver(() => {
             if (!bodyRendered(body)) return
             stop()
-            if (performance.now() <= handover.until) commitSlide(handover.direction)
+            if (performance.now() <= handover.until) commitSlide(handover.direction, handover.mark)
         })
         observer.observe(body, { childList: true, subtree: true, characterData: true })
         timer = setTimeout(stop, Math.max(0, handover.until - performance.now()))
@@ -278,7 +281,7 @@
         }
     })
     onDestroy(() => {
-        destroyed = true; clearTimeout(longPressTimer); clearTimeout(armTimer); clearTimeout(settleTimer); clearTimeout(commitTimer); clearTimeout(springTimer); clearTimeout(statusTimer); unregisterEditorBack(); editor.dispose()
+        destroyed = true; clearTimeout(longPressTimer); clearTimeout(armTimer); clearTimeout(settleTimer); clearTimeout(commitTimer); clearTimeout(markTimer); clearTimeout(springTimer); clearTimeout(statusTimer); unregisterEditorBack(); editor.dispose()
         if (hostedRequest) onCloseActions?.(hostedRequest)
         hostedRequest = null
         if (overlayOpen) onOverlay?.(false)
@@ -482,15 +485,23 @@
         snapshot: () => `${editor.editMode}:${editor.editTranslationMode}:${editor.discardConfirmOpen}`,
         close: () => { if (editor.editTranslationMode) editor.closeTranslationKeep(); else void editor.requestDiscardOriginalEdit() },
     }))
-    const HOST_INSET_PROBE_PX = 64
-    // The host reports one inset and the edge zones apply it on both sides, so it is read near either edge.
-    function readHostInset(xPx: number): number {
-        const reach = HOST_INSET_PROBE_PX + EDGE_ZONE_DP
-        if (xPx > reach && xPx < window.innerWidth - reach) return 0
+    // The inset is clamped exactly as the sidebar's gesture clamps it, so both agree on where its opening strip starts.
+    function readHostInset(): number {
         try {
             const value: unknown = gestureInsetLeft()
-            return typeof value === 'number' && Number.isFinite(value) ? Math.min(Math.max(value, 0), HOST_INSET_PROBE_PX) : 0
+            return typeof value === 'number' && Number.isFinite(value) ? Math.min(Math.max(value, 0), INSET_MAX_CSS) : 0
         } catch { return 0 }
+    }
+    // The direction is read from the same two sources as the sidebar's gesture, so a start is never claimed by both.
+    function documentRtl(): boolean {
+        const root = document.documentElement
+        return root.dir === 'rtl' || getComputedStyle(root).direction === 'rtl'
+    }
+    // The swipe yields exactly where the sidebar's follow-mode gesture opens: the host is asked only for a start inside the sidebar's probe window, as the sidebar does.
+    function drawerOwnsStart(xPx: number): boolean {
+        const rtl = documentRtl()
+        const nearEdge = rtl ? xPx > window.innerWidth - INSET_PROBE_MAX_CSS : xPx < INSET_PROBE_MAX_CSS
+        return nearEdge && inFollowOpenZone({ xPx, viewportWidthPx: window.innerWidth, dpPerPx: 1, hostInsetDp: readHostInset(), rtl })
     }
     // A wide table or code block scrolls sideways by itself: a drag that starts inside one belongs to it, not to the swipe. A start outside the body has no scroller of its own, so the walk never climbs above the article.
     function startsInHorizontalScroller(target: HTMLElement): boolean {
@@ -533,7 +544,9 @@
         lowPowerGesture = lowPowerMarked()
         const box = stage?.getBoundingClientRect()
         ringAt = box ? { x: event.clientX - box.left, y: event.clientY - box.top } : null
-        const edge = classifyEdge({ xPx: event.clientX, viewportWidthPx: window.innerWidth, dpPerPx: 1, hostInsetDp: readHostInset(event.clientX), rtl: document.dir === 'rtl' }) === 'edge'
+        commitMark = false
+        clearTimeout(markTimer)
+        const edge = drawerOwnsStart(event.clientX)
         swipe = createSwipeGesture({ widthPx: bodyRoot?.clientWidth ?? 320, dpPerPx: 1, index: position.index - 1, count: position.count, edge: edge || startsInHorizontalScroller(target), streaming, firstMessage, canGenerate: newestCharacter, enabled: DBState.db.swipe && showPager, pointerType: event.pointerType })
         swipe.down(sample(event))
         clearTimeout(longPressTimer)
@@ -599,10 +612,15 @@
         return peekText(siblingsAt(chat, idx)[index - 1]?.data ?? '')
     }
     // The new content slides in from the side the swipe came from; a release that commits nothing springs back.
-    function commitSlide(direction: 'back' | 'forward'): void {
+    // A commit mark is a still outline that outlives the slide's own animation, so it is a sibling of the body and has its own fallback clear.
+    function commitSlide(direction: 'back' | 'forward', mark: boolean): void {
         clearTimeout(commitTimer)
         commitDirection = direction
         commitTimer = setTimeout(() => { commitDirection = null }, 1000)
+        if (!mark) return
+        clearTimeout(markTimer)
+        commitMark = true
+        markTimer = setTimeout(() => { commitMark = false }, MARK_FALLBACK_MS)
     }
     function finishSwipe(result: SwipeResult): void {
         clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false
@@ -615,12 +633,13 @@
             if ((unavailable as readonly SheetAction[]).includes(result.event)) { dragX = 0; startSpring(wasDragged); return }
             tickHaptic('commit', pointerType, readHaptics())
             // Where motion is reduced or power is low the step lands at once with the crossfade; otherwise the body slides out while the neighbour settles, and the step lands after.
-            if (reducedMotionActive() || lowPowerMarked()) {
+            const reduced = reducedMotionActive()
+            if (reduced || lowPowerMarked()) {
                 dragX = 0
                 peek = null
-                commitSlide(direction)
+                commitSlide(direction, reduced)
                 // The first message never remounts and keeps its own commit above. Any other row hands the animation to its successor, and a step that mounts none leaves nothing behind for a later row.
-                const handover: typeof commitHandover = firstMessage ? null : { idx, chatId, direction: result.event === 'stepPrev' ? 'back' : 'forward', until: performance.now() + COMMIT_HANDOVER_MS }
+                const handover: typeof commitHandover = firstMessage ? null : { idx, chatId, direction: result.event === 'stepPrev' ? 'back' : 'forward', until: performance.now() + COMMIT_HANDOVER_MS, mark: reduced }
                 if (handover) commitHandover = handover
                 void act(result.event).finally(() => { if (handover && commitHandover === handover) commitHandover = null })
             } else slideOut(direction)
@@ -829,6 +848,7 @@
                     {surfaceEpoch} bind:translated bind:translating bind:retranslate />
             {/if}
         </div>
+        {#if commitMark}<span data-part="chat-swipe-commit-mark" aria-hidden="true" onanimationend={() => { commitMark = false }}></span>{/if}
         {#if swipeProgress > 0 && !(swipeLocked && streaming)}
             {@const fill = meterFill(swipeProgress, armed, gestureStepped)}
             <!-- The arc follows the pull directly (no transition on it); only the icon turns, and not where motion is reduced or power is low. -->
@@ -905,6 +925,9 @@
     :global(html[data-low-power]) [data-part="chat-long-press-ring"], :global(html.nexus-low-power) [data-part="chat-long-press-ring"] { animation: none; }
     @keyframes lp-fill { from { transform: scale(var(--scale-ring-start)); opacity: var(--opacity-faint); } to { transform: scale(1); opacity: 1; } }
     @keyframes lp-fade { from { opacity: var(--opacity-faint); } to { opacity: 1; } }
+    [data-part="chat-swipe-commit-mark"] { position: absolute; inset: 0; border: var(--stroke-bold) solid var(--nexus-accent); border-radius: var(--radius-4); pointer-events: none; opacity: 0; animation: commit-mark var(--dur-highlight) var(--ease-linear) both; }
+    :global(html[data-low-power]) [data-part="chat-swipe-commit-mark"], :global(html.nexus-low-power) [data-part="chat-swipe-commit-mark"] { animation-timing-function: steps(1, end); }
+    @keyframes commit-mark { 0%, 50% { opacity: 1; } 100% { opacity: 0; } }
     [data-part="chat-message-interrupted"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
     [data-part="chat-status-row"] { color: var(--nexus-text-secondary); font-size: var(--font-size-xs); }
     [data-part="chat-message-delete-pending"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }

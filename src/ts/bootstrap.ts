@@ -38,6 +38,7 @@ import { language } from "src/lang";
 import { markBootWrite } from "./bootWindow";
 import { startObserveDom } from "./observer.svelte";
 import { updateGuisize } from "./gui/guisize";
+import { startRootAttributeMirror } from "./gui/rootAttributes";
 import { repairModuleListLorebooks } from "./process/moduleLorebookRepair";
 import { startCharacterPutBack } from "./process/memory/characterPutBack";
 import { noteBootArchiveSession, noteBootPassCommitted } from "./process/memory/bootArchiveState";
@@ -566,6 +567,7 @@ export async function loadData() {
             LoadingStatusState.text = "Updating States..."
             updateColorScheme()
             updateTextThemeAndCSS()
+            startRootAttributeMirror(window, document)
             updateAnimationSpeed()
             updateHeightMode()
             updateErrorHandling()

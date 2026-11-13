@@ -3,6 +3,7 @@ import { formatByteLimit } from './formatByteLimit'
 export const languageSpanish = {
     chatShellBack: "Atrás",
     chatShellChoosePersona: "Elegir persona",
+    chatShellPersonaSettings: "Ajustes de persona",
     chatShellMoreActions: "Más acciones",
     chatShellReadAloud: "Leer en voz alta",
     chatShellBranch: "Ramificar desde aquí",

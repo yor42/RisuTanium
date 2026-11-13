@@ -31,6 +31,7 @@
     import { reducedMotionActive } from '../../ts/chatShell/motionPrefs.svelte'
     import { hostIme } from '../../ts/android/hostBridge'
     import { treeView } from '../../ts/process/chatTreeView'
+    import { inputOf, layoutOf } from '../../ts/gui/rootAttributes'
 
     interface Props {
         openChatList?: boolean
@@ -188,8 +189,8 @@
 
     onMount(() => {
         const updateRootState = () => {
-            layout = window.innerWidth >= 900 ? 'wide' : window.innerWidth >= 600 ? 'mid' : 'phone'
-            inputMode = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches ? 'hover' : 'touch'
+            layout = layoutOf(window.innerWidth)
+            inputMode = inputOf(window)
         }
         updateRootState()
         window.addEventListener('resize', updateRootState)
@@ -454,13 +455,13 @@
         {#if SendFailureCard && sendFailure}<SendFailureCard failure={sendFailure} onfix={fixSendFailure} onretry={retryShownSendFailure} />{/if}
         <!-- The key is block identity only: a chat or character switch remounts the notice, so the instance that showed it is gone. -->
         {#if NotificationsOffNotice}{#key chatWindowKey(character?.chaId, shownChat)}<NotificationsOffNotice />{/key}{/if}
-        {#if ShellComposer}<ShellComposer onplus={openPlus} onpersona={openPersona} bind:stickersOpen onhardwarechange={(seen) => { hardwareKeyboardSeen = seen; if (seen) headerHidden = false }} />{/if}
+        {#if ShellComposer}<ShellComposer onplus={openPlus} onpersona={openPersona} personaexpanded={personaOpen && !personaOverSheet} bind:stickersOpen onhardwarechange={(seen) => { hardwareKeyboardSeen = seen; if (seen) headerHidden = false }} />{/if}
     </div>
     {#if ActionSheet}<ActionSheet open={actionOpen} opener={actionRequest?.opener ?? null} anchor={actionRequest?.anchor} available={actionOpen ? actionRequest?.available() ?? [] : []} disabled={actionOpen ? actionRequest?.disabled() ?? [] : []} generating={actionOpen && actionRequest?.generating() === true} background={sheetBackground} onaction={(id) => actionRequest?.run(id)} onclose={() => actionOpen = false} />{/if}
     {#if CustomizeButtonsSheet}<CustomizeButtonsSheet open={customizeOpen} opener={customizeRequest?.opener ?? null} background={sheetBackground} onchange={() => customizeRequest?.onchange()} onclose={() => customizeOpen = false} />{/if}
     {#if PlusSheet}<PlusSheet open={plusOpen} {opener} background={[header, list, composer].filter((element): element is HTMLElement => !!element)} onclose={() => plusOpen = false} onstickers={() => stickersOpen = !stickersOpen} onchatlist={() => openChatList = true} onmodules={() => openModuleList = true} ontoggles={togglesModule ? (row) => openToggles(opener, false, row ?? null) : undefined} {togglesSummary} />{/if}
     {#if ThisChatSheet}<ThisChatSheet open={thisChatOpen} {opener} background={sheetBackground} target={thisChatTarget} bind:layer={sheetLayer} {confirmDelete} onpersona={openPersonaFromSheet} {togglesSummary} ontoggles={togglesModule ? (element) => openToggles(element, true) : undefined} onmodules={() => openModuleList = true} onremoved={afterChatDeleted} onclose={closeThisChat} />{/if}
-    {#if PersonaSheet}<PersonaSheet open={personaOpen} opener={personaOpener} inertOutside={personaOverSheet} background={sheetBackground} onclose={() => { personaOpen = false; personaOverSheet = false }} />{/if}
+    {#if PersonaSheet}<PersonaSheet open={personaOpen} opener={personaOpener} inertOutside={personaOverSheet} variant={personaOverSheet ? 'sheet' : 'dropup'} background={sheetBackground} onclose={() => { personaOpen = false; personaOverSheet = false }} />{/if}
     {#if TogglesPanel}<TogglesPanel open={togglesOpen} opener={togglesOpener} target={togglesTarget} openAt={togglesAt} onclose={closeToggles} />{/if}
     {#if ChatDeleteConfirm && deleteRequest}<ChatDeleteConfirm chat={deleteRequest.chat} busy={deleteRequest.busy} trigger={deleteRequest.trigger} background={confirmBackground} onanswer={(answer: PatternAnswer) => void settleDelete(answer === 'confirm')} />{/if}
 </div>
