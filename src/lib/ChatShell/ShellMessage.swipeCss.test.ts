@@ -41,9 +41,35 @@ describe('swipe feedback CSS', () => {
         }
         for (const rule of feedback) {
             for (const match of rule.body.matchAll(/animation(?:-name)?\s*:\s*([^;]+)/g)) {
-                expect(match[1].trim() === 'none' || /^lp-(fill|fade)\b/.test(match[1].trim()), `${rule.selector}: ${match[0]}`).toBe(true)
+                expect(match[1].trim() === 'none' || /^(lp-(fill|fade)|commit-mark)\b/.test(match[1].trim()), `${rule.selector}: ${match[0]}`).toBe(true)
             }
         }
+    })
+
+    test('the commit mark keyframes change opacity only', () => {
+        const block = /@keyframes commit-mark\s*\{([\s\S]*?\})\s*\}/.exec(style)
+        expect(block).not.toBeNull()
+        const properties = [...block![1].matchAll(/([a-z-]+)\s*:/g)].map((match) => match[1])
+        expect(properties.length).toBeGreaterThan(0)
+        for (const property of properties) expect(property).toBe('opacity')
+    })
+
+    // GUARD (G-CSS-MARK, a source scan): the commit mark is a cue only, uses tokens, animates opacity only, and is stepped under both low-power markers.
+    test('the commit mark takes no input, uses tokens, fades by opacity over the highlight duration and is stepped under both low-power markers', () => {
+        const mark = feedback.find((rule) => rule.selector === '[data-part="chat-swipe-commit-mark"]')!
+        expect(mark.body).toContain('position: absolute')
+        expect(mark.body).toContain('inset: 0')
+        expect(mark.body).toContain('border: var(--stroke-bold) solid var(--nexus-accent)')
+        expect(mark.body).toContain('border-radius: var(--radius-4)')
+        expect(mark.body).toContain('pointer-events: none')
+        expect(mark.body).toContain('opacity: 0')
+        expect(mark.body).toMatch(/animation:\s*commit-mark var\(--dur-highlight\) var\(--ease-linear\) both/)
+        expect(mark.body).not.toMatch(/transform|scale|translate/)
+        const stepped = feedback.filter((rule) => rule.selector.includes('chat-swipe-commit-mark') && /steps\(1, end\)/.test(rule.body))
+        const selectors = stepped.map((rule) => rule.selector).join('\n')
+        expect(selectors).toContain(':global(html[data-low-power]) [data-part="chat-swipe-commit-mark"]')
+        expect(selectors).toContain(':global(html.nexus-low-power) [data-part="chat-swipe-commit-mark"]')
+        for (const rule of stepped) expect(rule.body).toMatch(/animation-timing-function:\s*steps\(1, end\)/)
     })
 
     test('the meter arc offset is never transitioned or animated', () => {

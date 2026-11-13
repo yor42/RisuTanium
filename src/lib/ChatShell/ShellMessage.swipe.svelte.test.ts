@@ -346,30 +346,66 @@ describe('C2 vertical scroll stays with the browser', () => {
     })
 })
 
-describe('C3 the right edge uses the host inset like the left edge', () => {
-    test('with a 16 dp host inset a start 30 px from the right edge belongs to the host, 60 px does not', () => {
+describe('C3 the swipe yields only where the sidebar opens', () => {
+    // A drag of 120 px from `x`; true when the body followed the finger.
+    function dragsFrom(x: number, direction: 1 | -1 = 1): boolean {
+        show()
+        pointer('pointerdown', x, 0)
+        pointer('pointermove', x + direction * 120, 100)
+        const moved = dragged() !== 0
+        unmount(app!); target.remove(); app = undefined
+        return moved
+    }
+    function withDirection<T>(run: () => T, apply: (root: HTMLElement) => void, restore: (root: HTMLElement) => void): T {
+        const root = document.documentElement
+        apply(root)
+        try { return run() } finally { restore(root) }
+    }
+    // REPRODUCER (R-SA1-RIGHT, R-SA1-RIGHT0): the right edge is not the sidebar's side, so a start there is a swipe, with or without a host inset.
+    test('a start near the right edge swipes', () => {
         hostInset.value = 16
-        show()
-        pointer('pointerdown', WIDTH - 30, 0)
-        pointer('pointermove', WIDTH - 150, 100)
-        expect(dragged()).toBe(0)
-        pointer('pointerup', WIDTH - 150, 200)
-        pointer('pointerdown', WIDTH - 60, 300)
-        pointer('pointermove', WIDTH - 180, 400)
-        expect(Math.abs(dragged())).toBeGreaterThan(0)
+        expect(dragsFrom(WIDTH - 30, -1)).toBe(true)
+        hostInset.value = 0
+        expect(dragsFrom(WIDTH - 10, -1)).toBe(true)
     })
-    test('without a host inset the plain 24 dp zone applies on the right', () => {
-        show()
-        pointer('pointerdown', WIDTH - 30, 0)
-        pointer('pointermove', WIDTH - 150, 100)
-        expect(Math.abs(dragged())).toBeGreaterThan(0)
-    })
-    test('the left edge still reserves the inset', () => {
+    // REPRODUCER (R-SA1-STRIP): a start inside the OS back-gesture strip is not the sidebar's strip, so it is a swipe start.
+    test('a start left of the host inset swipes', () => {
         hostInset.value = 16
-        show()
-        pointer('pointerdown', 30, 0)
-        pointer('pointermove', 150, 100)
-        expect(dragged()).toBe(0)
+        expect(dragsFrom(8)).toBe(true)
+    })
+    // REPRODUCER (R-SA1-BOUND): the inset is honoured up to the sidebar's own bound, not a smaller one.
+    test('an 80 px host inset puts the sidebar strip at 80 to 104', () => {
+        hostInset.value = 80
+        expect(dragsFrom(100)).toBe(false)
+        expect(dragsFrom(70)).toBe(true)
+    })
+    // COMPATIBILITY GUARD (G-SA1-LEFT): passes before and after; the left strip keeps yielding to the sidebar.
+    test('the left strip is the 24 dp zone just inside the host inset', () => {
+        hostInset.value = 16
+        expect(dragsFrom(16)).toBe(false)
+        expect(dragsFrom(40)).toBe(false)
+        expect(dragsFrom(41)).toBe(true)
+        hostInset.value = 0
+        expect(dragsFrom(0)).toBe(false)
+        expect(dragsFrom(24)).toBe(false)
+        expect(dragsFrom(25)).toBe(true)
+    })
+    // REPRODUCER (R-SA1-RTL): in a right-to-left document the strip mirrors, so the left edge swipes.
+    test('in a right-to-left document a start near the left edge swipes and the right strip yields', () => {
+        hostInset.value = 16
+        withDirection(() => {
+            expect(dragsFrom(30)).toBe(true)
+            expect(dragsFrom(8)).toBe(true)
+            expect(dragsFrom(WIDTH - 30, -1)).toBe(false)
+        }, (root) => { root.dir = 'rtl' }, (root) => { root.removeAttribute('dir') })
+    })
+    // The direction is read like the sidebar reads it: a computed direction alone also mirrors the strip.
+    test('a computed direction alone makes the right edge yield', () => {
+        hostInset.value = 16
+        withDirection(() => {
+            expect(dragsFrom(WIDTH - 30, -1)).toBe(false)
+            expect(dragsFrom(30)).toBe(true)
+        }, (root) => { root.style.direction = 'rtl' }, (root) => { root.style.removeProperty('direction') })
     })
 })
 
@@ -485,6 +521,114 @@ describe('C10 swipe feedback', () => {
         show({ role: 'char' })
         expect(target.querySelector('[data-part="chat-generate-reply"]')).toBeNull()
     })
+})
+
+describe('CHORE-736 the reduced-motion commit mark', () => {
+    const MARK = '[data-part="chat-swipe-commit-mark"]'
+    function mark(): HTMLElement | null { return target.querySelector<HTMLElement>(MARK) }
+    function commit(from = 100, to = 220, start = 0): void {
+        pointer('pointerdown', from, start)
+        pointer('pointermove', to, start + 100)
+        pointer('pointerup', to, start + 200)
+    }
+    function withReduced(run: () => void): void {
+        document.documentElement.classList.add('rm')
+        try { run() } finally { document.documentElement.classList.remove('rm') }
+    }
+    // REPRODUCER (R-D11-OWN): a committed swipe under reduced motion outlines the new reply.
+    test('a committed swipe under reduced motion shows the mark', () => {
+        withReduced(() => {
+            show({ index: 2, count: 3 })
+            commit()
+            expect(stepSibling).toHaveBeenCalled()
+            expect(mark()).not.toBeNull()
+            expect(mark()!.getAttribute('aria-hidden')).toBe('true')
+        })
+    })
+    // GUARD (G-D11-OUTLIVE, new): the body's own animation ending does not remove the mark; the mark's own does.
+    test('the mark outlives the body animation and goes on its own animationend', () => {
+        withReduced(() => {
+            show({ index: 2, count: 3 })
+            commit()
+            body.dispatchEvent(new Event('animationend', { bubbles: true }))
+            flushSync()
+            expect(body.hasAttribute('data-commit')).toBe(false)
+            expect(mark()).not.toBeNull()
+            mark()!.dispatchEvent(new Event('animationend', { bubbles: true }))
+            flushSync()
+            expect(mark()).toBeNull()
+        })
+    })
+    // GUARD (G-D11-FALLBACK, new): jsdom and hidden tabs fire no animationend, so a timer clears the mark.
+    test('without an animationend the mark is gone after 2 s', () => {
+        vi.useFakeTimers()
+        withReduced(() => {
+            show({ index: 2, count: 3 })
+            commit()
+            vi.advanceTimersByTime(1400)
+            flushSync()
+            expect(mark()).not.toBeNull()
+            vi.advanceTimersByTime(700)
+            flushSync()
+            expect(mark()).toBeNull()
+        })
+    })
+    // GUARD (G-D11-TOUCH, new): the next accepted touch clears the mark, and that clear is also what lets a second commit replay on a fresh element.
+    test('the next touch removes the mark and a second commit shows a new one', () => {
+        withReduced(() => {
+            show({ index: 2, count: 3 })
+            commit()
+            const first = mark()
+            expect(first).not.toBeNull()
+            pointer('pointerdown', 100, 400)
+            expect(mark()).toBeNull()
+            pointer('pointerup', 100, 450)
+            commit(100, 220, 600)
+            expect(mark()).not.toBeNull()
+            expect(mark()).not.toBe(first)
+        })
+    })
+    // COMPATIBILITY GUARD (G-D11-FULL): passes before and after; full motion has the slide and the peek and no mark.
+    test('full motion shows no mark', () => {
+        vi.useFakeTimers()
+        show({ index: 2, count: 3 })
+        commit()
+        vi.advanceTimersByTime(600)
+        flushSync()
+        expect(mark()).toBeNull()
+    })
+    // COMPATIBILITY GUARD (G-D11-LP): passes before and after; low power alone steps the row at once with no mark.
+    test('low power without reduced motion shows no mark', () => {
+        document.documentElement.setAttribute('data-low-power', '')
+        try {
+            show({ index: 2, count: 3 })
+            commit()
+            expect(stepSibling).toHaveBeenCalled()
+            expect(body.getAttribute('data-commit')).toBe('back')
+            expect(mark()).toBeNull()
+        } finally {
+            document.documentElement.removeAttribute('data-low-power')
+        }
+    })
+    // COMPATIBILITY GUARD (G-D11-KEYS): passes before and after; an arrow key and a pager tap step without a mark.
+    test('key and pager steps show no mark', async () => {
+        await withReducedAsync(async () => {
+            show({ index: 2, count: 3 })
+            target.querySelector('article')!.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'ArrowLeft' }))
+            await Promise.resolve(); await Promise.resolve()
+            expect(stepSibling).toHaveBeenCalledTimes(1)
+            expect(mark()).toBeNull()
+            target.querySelector<HTMLButtonElement>('[data-step="prev"]')!.click()
+            await Promise.resolve(); await Promise.resolve()
+            expect(stepSibling).toHaveBeenCalledTimes(2)
+            flushSync()
+            expect(mark()).toBeNull()
+        })
+    })
+    async function withReducedAsync(run: () => Promise<void>): Promise<void> {
+        document.documentElement.classList.add('rm')
+        try { await run() } finally { document.documentElement.classList.remove('rm') }
+    }
 })
 
 describe('CHORE-727 swipe feedback: peek, slide-out, meter and long-press ring', () => {
@@ -1116,7 +1260,7 @@ describe('MC-1571 the swipe starts anywhere on the message except on interactive
         test.each([
             'chat-message-name-row', 'chat-message-meta', 'chat-message-name', 'chat-message-avatar', 'chat-message-badges',
             'chat-message-stage', 'chat-message-body', 'chat-streaming-view', 'chat-stream-finished', 'chat-stream-open', 'chat-stream-thinking',
-            'chat-swipe-peek', 'chat-swipe-peek-chip', 'chat-swipe-peek-text', 'chat-swipe-meter', 'chat-swipe-arm', 'chat-long-press-ring',
+            'chat-swipe-peek', 'chat-swipe-peek-chip', 'chat-swipe-peek-text', 'chat-swipe-meter', 'chat-swipe-arm', 'chat-swipe-commit-mark', 'chat-long-press-ring',
             'chat-status-row', 'chat-message-delete-pending', 'chat-message-render-failed', 'chat-message-interrupted', 'chat-message-memory-limit', 'chat-message-divider',
         ])('a drag that starts on the row part %s takes the step', (partName) => {
             vi.useFakeTimers()

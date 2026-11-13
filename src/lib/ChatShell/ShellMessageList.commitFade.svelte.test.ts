@@ -721,3 +721,78 @@ describe('a list that is not active', () => {
         expect(after.hasAttribute('data-commit')).toBe(false)
     })
 })
+
+describe('CHORE-736 the reduced-motion commit mark on the successor', () => {
+    const MARK = '[data-part="chat-swipe-commit-mark"]'
+    function markOf(index: number): HTMLElement | null { return articleAt(index).querySelector<HTMLElement>(MARK) }
+    // REPRODUCER (R-D11-SUCC): the mark belongs to the row that stays in the document after the step remounts the row.
+    test('R-D11-SUCC a committed swipe under reduced motion shows the mark on the successor row once its body has rendered', async () => {
+        setMotion(REDUCED)
+        seedNewestReply(2)
+        await show()
+        const before = swipeCommit(bodyOf(2), 100, 250)
+        await settle()
+        const after = bodyOf(2)
+        expect(after).not.toBe(before)
+        expect(markOf(2)).toBeNull()
+        await fillBody(after)
+        expect(after.getAttribute('data-commit')).toBe('back')
+        expect(markOf(2)).not.toBeNull()
+    })
+    // REPRODUCER (R-D11-OS): the OS query alone selects the mark, like the fade.
+    test('R-D11-OS the OS query alone shows the mark', async () => {
+        const reportOsReduced = (query: string): Partial<MediaQueryList> => ({ matches: query.includes('prefers-reduced-motion'), media: query, addEventListener: () => {}, removeEventListener: () => {} })
+        Object.defineProperty(window, 'matchMedia', { value: reportOsReduced, configurable: true, writable: true })
+        seedNewestReply(2)
+        await show()
+        swipeCommit(bodyOf(2), 100, 250)
+        await settle()
+        await fillBody(bodyOf(2))
+        expect(markOf(2)).not.toBeNull()
+    })
+    // COMPATIBILITY GUARD (G-D11-FULL): passes before and after.
+    test('G-D11-FULL full motion has no mark on the successor', async () => {
+        setMotion(FULL)
+        seedNewestReply(2)
+        await show()
+        swipeCommit(bodyOf(2), 100, 250)
+        await new Promise((resolve) => setTimeout(resolve, 400))
+        await settle()
+        await fillBody(bodyOf(2))
+        expect(markOf(2)).toBeNull()
+    })
+    // COMPATIBILITY GUARD (G-D11-LP): passes before and after; low power keeps its directional animation and gets no mark.
+    test('G-D11-LP low power without reduced motion has no mark on the successor', async () => {
+        setMotion(LOW_POWER)
+        seedNewestReply(2)
+        await show()
+        swipeCommit(bodyOf(2), 100, 250)
+        await settle()
+        await fillBody(bodyOf(2))
+        expect(bodyOf(2).getAttribute('data-commit')).toBe('back')
+        expect(markOf(2)).toBeNull()
+    })
+    // COMPATIBILITY GUARD (G-D11-RMOFF): passes before and after; the app setting Off wins over the OS preference, so a bare query must not show the mark.
+    test('G-D11-RMOFF reduced motion off with the OS reducing motion has no mark', async () => {
+        const reportOsReduced = (query: string): Partial<MediaQueryList> => ({ matches: query.includes('prefers-reduced-motion'), media: query, addEventListener: () => {}, removeEventListener: () => {} })
+        Object.defineProperty(window, 'matchMedia', { value: reportOsReduced, configurable: true, writable: true })
+        setMotion({ lowPower: true, reducedMotion: 'off', systemReduced: true })
+        seedNewestReply(2)
+        await show()
+        swipeCommit(bodyOf(2), 100, 250)
+        await settle()
+        await fillBody(bodyOf(2))
+        expect(bodyOf(2).getAttribute('data-commit')).toBe('back')
+        expect(markOf(2)).toBeNull()
+    })
+    // COMPATIBILITY GUARD (G-D11-KEYS): passes before and after; a pager tap steps with no mark.
+    test('G-D11-KEYS a pager tap under reduced motion shows no mark', async () => {
+        setMotion(REDUCED)
+        seedNewestReply(2)
+        await show()
+        tapStep(2, 'prev')
+        await settle()
+        await fillBody(bodyOf(2))
+        expect(markOf(2)).toBeNull()
+    })
+})
