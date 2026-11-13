@@ -67,8 +67,20 @@ function itemsOf(sourceId: string, text: string | undefined): PanelItem[] {
             target.push({ type: 'row', uid: next(), key: toggle.key, label: toggle.value, kind: kindOf(toggle), options: toggle.type === 'select' ? toggle.options : [] })
         }
     }
-    // A group without a toggle in it is not shown.
-    return items.filter((item) => item.type !== 'group' || item.children.some((child) => child.type === 'row'))
+    // A group without a toggle in it is not shown, and a same-label divider that it separated is then adjacent to its twin: shown once.
+    // Group children are never removed, so their own collapse at push time is already final.
+    const shown: PanelItem[] = []
+    for (const item of items) {
+        if (item.type === 'group' && !item.children.some((child) => child.type === 'row')) {
+            continue
+        }
+        const before = shown.at(-1)
+        if (item.type === 'divider' && before?.type === 'divider' && before.label === item.label) {
+            continue
+        }
+        shown.push(item)
+    }
+    return shown
 }
 
 /** Each source parsed on its own; a source whose text holds nothing still appears with no items (callers hide it). */
