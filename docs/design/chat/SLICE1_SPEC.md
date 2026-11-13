@@ -46,7 +46,7 @@ No open decisions remain in this slice (§9). Marked **(design default)** = chos
 - **Reading-space targets** (acceptance): at 360×740 without keyboard the transcript gets ≥ 70 % of the height (header shown) and ≥ 78 % hidden; with a 300 px keyboard ≥ 35 % of the full height with a one- or two-line draft. Revision 1 measured 85 % and 45 % (review).
 - **Keyboard:** when the textarea gains focus and the viewport shrinks, keep the newest message's bottom edge in view if the user was at the bottom. The textarea grows to 5 lines, then scrolls; with the keyboard up its max is 30 % of the remaining height.
 - **Wide layout (≥ 900 px):** header always shown; sidebar docked. Pinned buttons stay; the hover/focus row (§5.3) adds the rest. On a touch-only wide screen `⋯` and long-press are the paths.
-- **Edge zones (both sides, design default):** a gesture that starts within 24 dp of either screen edge (or the host inset, `__risuTaniumGestureInset`, mirrored to the right when the host gives only the left) belongs to the system Back gesture or to the sidebar (left, §4); it never starts a message swipe and never arms. Zones are **not overlays**: the decision is made in a document-level `pointerdown` from the start x; nothing is laid over content, no element gets `touch-action: none`, and controls inside the zone (the `+` button, header buttons) take taps and scrolls as normal (fixes P1-1).
+- **Edge zone (amended 2026-11-13, MC-1624):** a message swipe yields only where the sidebar opens: the 24 dp strip just inside the host inset (`__risuTaniumGestureInset`) on the sidebar's side (left; right in RTL), the same test as §4; a start there never starts a message swipe and never arms. Anywhere else, including the opposite edge and the OS gesture strip, a touch starts a swipe; the OS keeps its strip where it claims the touch. Zones are **not overlays**: the decision is made in a document-level `pointerdown` from the start x; nothing is laid over content, no element gets `touch-action: none`, and controls inside the zone (the `+` button, header buttons) take taps and scrolls as normal (fixes P1-1).
 
 ### 1.1 Message presentation: prose, not bubbles (DD-018)
 
@@ -95,7 +95,7 @@ The **first message** (첫 메시지) with alternatives: the alternatives row re
 
 | Phase | Behaviour |
 |---|---|
-| Start | Horizontal pan on the message body, touch or pen. Slop 10 px; axis lock when \|dx\| > 1.5·\|dy\|, otherwise vertical scroll wins. Ignored when it starts in an edge zone (§1), inside a child that actually scrolls sideways (`scrollWidth > clientWidth`), or after a long-press began (§5.2). |
+| Start | Horizontal pan on the message body, touch or pen. Slop 10 px; axis lock when \|dx\| > 1.5·\|dy\|, otherwise vertical scroll wins. Ignored when it starts in the sidebar's edge zone (§1), inside a child that actually scrolls sideways (`scrollWidth > clientWidth`), or after a long-press began (§5.2). |
 | Drag | The block moves 1:1 up to 40 % of its width, then with resistance (0.35×). The neighbour alternative peeks in (first two lines, 60 % opacity) with a "3 / 5" chip. |
 | Commit | Release beyond 30 % of the width, or a fling > 0.5 px/ms that way → slide out (`--chat-dur-slow`), neighbour settles, counter updates, haptic tick. |
 | Cancel | Otherwise → spring back. |
@@ -103,7 +103,7 @@ The **first message** (첫 메시지) with alternatives: the alternatives row re
 | **Past the last** (N / N, swiping left; DD-021, DD-033) | Like pull-to-refresh, sideways. Resistance from the start, and a **fill meter** (a ring beside the message's trailing edge, `refresh-cw` inside) with the chip "저장된 답변 없음" (No more saved replies). The meter fills with the pull: 0 → 70 % as the finger travels to **160 dp** past the start, then 70 → 100 % while the finger is **held** there for **300 ms** at a speed under 0.15 px/ms. Full = **armed**: the ring turns accent, the chip reads "놓으면 새 답변 생성" (Let go to generate a new reply), haptic tick. **Sliding back** toward the centre drains the meter and, inside 160 dp, disarms (no tick, no generation). **Letting go while armed:** the message **springs back to the centre** (`--chat-dur-slow`, spring) and the new reply N+1 starts streaming in it (counter `N+1 / N+1`). Letting go unarmed: spring back, nothing generated. A release faster than 0.5 px/ms never generates, armed or not; a fling never arms. `pointercancel` never generates. The distance is fixed in dp, the same on phone and tablet. Reduced motion: the meter still fills (opacity steps, no rotation), the return is a 120 ms move. Low power: the meter is a static ring that fills without animation between steps. |
 | On a streaming message | A 24 dp rubber-band and a short note "답변을 아직 쓰는 중이에요" (Still writing the reply); no commit. |
 
-- Reduced motion: drag still follows the finger; commit is a 120 ms crossfade, cancel instant.
+- Reduced motion: drag still follows the finger and the neighbour still peeks (both unchanged); commit is a 120 ms crossfade plus a commit mark, a 2 px accent outline round the new reply that holds and then fades by opacity over 1.4 s and never moves (amended 2026-11-13, MC-1625; with low power also on it shows without the fade); cancel instant. Only a swipe commit shows the mark, not a key, pager or wheel step.
 - Low power: no peek (chip only); commit is a 120 ms crossfade.
 - **Mouse / trackpad:** no click-drag swipe. A horizontal trackpad swipe or Shift+wheel over the message steps one alternative per gesture when the gesture's accumulated \|dx\| ≥ 40 px and \|dx\| > 2·\|dy\| (a gesture ends after 160 ms without wheel events; further steps locked for 450 ms). It **never** generates, even at N / N.
 - **Keyboard:** ← / → step alternatives when the message has focus (at N/N → says "마지막 답변", never generates); "새 답변" is reached by Tab or by the hotkey (§5.5).
@@ -289,7 +289,7 @@ Touch-only, mouse-only and keyboard-only passes; a mixed pass (touch + hardware 
 | P2-2 header hide on wide / inert | §1 header hiding |
 | P2-3 focus in sheets, confirm focus, which message, undo | §5.2, §5.4, §5.6, DD-023 |
 | P2-4 right-click on a selection | §5.2 |
-| P2-5 right-edge Back | §1 edge zones; device check §9a |
+| P2-5 right-edge Back | §1 edge zones; device check §9a (MC-1624: the right edge no longer yields the swipe) |
 | P2-6 streaming coverage, selection | §6 rows, DD-025, append-only |
 | P2-7 floor performance, blur | §6 cadence/containment/acceptance; §2 rule 6 |
 | P2-8 Enter contradiction | §7.2, DD-026 |
