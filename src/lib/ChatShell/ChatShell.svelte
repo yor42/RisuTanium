@@ -33,6 +33,7 @@
     import { hostIme } from '../../ts/android/hostBridge'
     import { treeView } from '../../ts/process/chatTreeView'
     import { inputOf, layoutOf } from '../../ts/gui/rootAttributes'
+    import { declareSurface } from '../../ts/themePack/surfaceGate.svelte'
 
     interface Props {
         openChatList?: boolean
@@ -135,6 +136,9 @@
     // Reported by the header itself, so the scroll padding agrees with what the reader sees (hardware keyboard, focus, wide layout).
     // The header floats over the transcript, so showing or hiding it never changes the transcript's geometry.
     let headerConcealed = $state(false)
+
+    // A mounted shell is the one surface a theme pack's chat sheet may style; the release is the teardown.
+    $effect(() => declareSurface('chat'))
 
     onMount(() => {
         if (!shell) return
