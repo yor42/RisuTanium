@@ -114,7 +114,7 @@ describe('Ts-2: a resource span indexes the canonical text exactly', () => {
     })
 
     it('the @font-face blocks hold exactly the src resources of their blocks, with offsets into the same canonical text', () => {
-        const face = '@font-face{font-family:"pack serif";src:url(fonts/serif.woff2) format("woff2"),url("fonts/serif.woff") format("woff")}'
+        const face = '@font-face{font-family:"pack-serif";src:url(fonts/serif.woff2) format("woff2"),url("fonts/serif.woff") format("woff")}'
         const judged = judgeAreaSheet('chat', `${face}${LEAF}{background-image:url(images/a.png)}`)
         expect(judged.result.errors).toEqual([])
         expect(judged.fontFaceBlocks).toHaveLength(1)
@@ -130,8 +130,8 @@ describe('Ts-2: a resource span indexes the canonical text exactly', () => {
     })
 
     it('a sheet with a regular and a bold @font-face block is judged, with both blocks listed and each resource inside its block', () => {
-        const regular = '@font-face{font-family:"pack serif";font-weight:400;src:url(fonts/serif.woff2) format("woff2")}'
-        const bold = '@font-face{font-family:"pack serif";font-weight:700;src:url(fonts/serif-bold.woff2) format("woff2")}'
+        const regular = '@font-face{font-family:"pack-serif";font-weight:400;src:url(fonts/serif.woff2) format("woff2")}'
+        const bold = '@font-face{font-family:"pack-serif";font-weight:700;src:url(fonts/serif-bold.woff2) format("woff2")}'
         const judged = judgeAreaSheet('chat', `${regular}${bold}${LEAF}{background-image:url(images/a.png)}`)
         expect(judged.result.errors).toEqual([])
         expect(judged.result.ok).toBe(true)
@@ -189,8 +189,8 @@ describe('Ts-2: a resource span indexes the canonical text exactly', () => {
 })
 
 describe('Ts-3: judgePackSheets judges each sheet with its own font families', () => {
-    const SETTINGS_SHEET = '[data-part="settings-section-title"]{font-family:pack}'
-    const FACE_SHEET = '@font-face{font-family:pack;src:url(f.woff2)}'
+    const SETTINGS_SHEET = '[data-part="settings-section-title"]{font-family:pack-f}'
+    const FACE_SHEET = '@font-face{font-family:pack-f;src:url(f.woff2)}'
 
     it('a family registered only in another sheet is refused for the sheet that uses it', () => {
         const pooled = validateThemePack({ files: { chat: FACE_SHEET, settings: SETTINGS_SHEET }, totalBytes: 1 })
@@ -204,7 +204,7 @@ describe('Ts-3: judgePackSheets judges each sheet with its own font families', (
     })
 
     it('a sheet that registers and uses its own family is accepted', () => {
-        const own = `${FACE_SHEET}[data-part="settings-section-title"]{font-family:pack}`
+        const own = `${FACE_SHEET}[data-part="settings-section-title"]{font-family:pack-f}`
         const judged = judgePackSheets({ settings: own })
         expect(judged.ok).toBe(true)
         expect(judged.areas.settings?.fontFaceBlocks).toHaveLength(1)

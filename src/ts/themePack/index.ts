@@ -3,15 +3,17 @@
 // MC-1549 sizes the checks can measure, MC-1550 font families a pack bundles, MC-1564 to MC-1568 the pack normal form).
 // Nothing in the app installs or applies a pack yet; a later stage should load this module lazily and run it off the main
 // thread or in slices, because a large pack takes a noticeable time to judge.
-import { lintPack as lintChat, normalise, type LintError, type LintResult } from './engine'
+import { chatLiveChainErrors, lintPack as lintChat, normalise, type LintError, type LintResult } from './engine'
 import { extractFontFaces, type FontFaceExtraction } from './fontFace'
 import { packSizeWarning, type PackSizeVerdict } from './packSize'
 import { lintHome } from './registries/home'
 import { lint5b } from './registries/settings5b'
 import { lintPack as lintStudio } from './registries/studio'
+import { APP_TOKEN_FILES } from './appThemeNames'
 import { canonicalStylesheet, type ResourceSpan } from './canonical'
+import { cascadePass } from './cascade'
+import { scopePass } from './scope'
 import { structurePass } from './structure'
-import type { TokenFile } from './tokens'
 import { readAppValues, valueRulesPass } from './valueRules'
 
 export type { LintError, LintResult } from './engine'
@@ -40,13 +42,6 @@ export function preprocessCss(css: string): string {
     return css.replace(/\r\n|\r|\f/g, '\n').replace(/\u0000/g, '\ufffd')
 }
 
-/** The token stylesheets each area's engine reads as the app's own tokens (engine APP merged with the registry's tokens). */
-const APP_TOKEN_FILES: Readonly<Record<ThemeArea, readonly TokenFile[]>> = {
-    chat: ['chat/theme-tokens.css', 'theme/nexus-tokens.css'],
-    settings: ['chat/theme-tokens.css', 'theme/nexus-tokens.css', 'settings/theme-tokens.css'],
-    studio: ['chat/theme-tokens.css', 'theme/nexus-tokens.css', 'studio/studio-tokens.css', 'studio/st4.css'],
-    home: ['chat/theme-tokens.css', 'theme/nexus-tokens.css', 'home/home-tokens.css'],
-}
 const appValueCache = new Map<ThemeArea, Map<string, string[]>>()
 function appValues(area: ThemeArea): Map<string, string[]> {
     let values = appValueCache.get(area)
@@ -61,7 +56,8 @@ function appValues(area: ThemeArea): Map<string, string[]> {
  * @font-face blocks leave it (structure.ts); top-level @font-face blocks are judged on their own, the rest goes to the
  * area's reference lint unchanged, and the value rules (valueRules.ts) then judge it with the area's app tokens. The
  * families the pack registers (this sheet's, plus `packFamilies` from its other sheets) are the only non-generic ones
- * a font-family may name (MC-1550).
+ * a font-family may name (MC-1550). A chat or Studio stylesheet that all of these accept is then judged by Rule S
+ * (cascade.ts, the colour pairs the stylesheet's blocks can combine) and Rule SCOPE (scope.ts, what it can reach).
  */
 export function lintAreaPack(area: ThemeArea, source: string, name = '', packFamilies?: ReadonlySet<string>): LintResult {
     return judgeSheet(area, source, name, packFamilies).result
@@ -133,6 +129,10 @@ function judgeSheet(area: ThemeArea, source: string, name: string, packFamilies:
         const key = `${e.selector}|${e.prop}|${e.why}`
         if (!seen.has(key)) { seen.add(key); errors.push(e) }
     }
+    // Rule S and Rule SCOPE judge a stylesheet the passes above accept; a stylesheet refused for another reason reports those reasons first.
+    if (!errors.length) errors.push(...cascadePass(area, fonts.remainder), ...scopePass(area, fonts.remainder, fonts.families))
+    // The live chat shell is judged only on a sheet every pass above accepted, so a Rule S or SCOPE refusal never gains a geometry error.
+    if (area === 'chat' && !errors.length) errors.push(...chatLiveChainErrors(fonts.remainder))
     return { result: { ok: errors.length === 0, errors, name }, canonical: canonical.text, resources: canonical.resources, fontFaceBlocks: fonts.blocks }
 }
 

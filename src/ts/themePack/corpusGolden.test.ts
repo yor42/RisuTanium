@@ -78,7 +78,7 @@ const RESOURCE_FORMS: readonly Entry2[] = [
     ['image-set strings', `${RESOURCE_LEAF}{background-image:image-set('a.png' 1x,"b.png" 2x)}`],
     ['vendor image-set', `${RESOURCE_LEAF}{background-image:-webkit-image-set('a.png' 1x)}`],
     ['after a comment', `/* note */${RESOURCE_LEAF}{background-image:url('images/a.png')}`],
-    ['font face sources', `@font-face{font-family:'pack serif';src:url('fonts/a.woff2') format('woff2'),url(fonts/a.woff) format("woff")}${RESOURCE_LEAF}{background-image:url('images/a.png')}`],
+    ['font face sources', `@font-face{font-family:'pack-serif';src:url('fonts/a.woff2') format('woff2'),url(fonts/a.woff) format("woff")}${RESOURCE_LEAF}{background-image:url('images/a.png')}`],
     ['remote and broken', `${RESOURCE_LEAF}{background-image:url('https://example.test/a.png')} ${RESOURCE_LEAF}{background-image:url(a.png}`],
 ]
 for (const [name, css] of RESOURCE_FORMS) add('resource forms', name, css)
