@@ -21,6 +21,22 @@
     import { get } from "svelte/store";
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
     import { settingsBackClose } from "./settingsBack";
+    import { onDestroy } from "svelte";
+    import { afterFlush } from "src/ts/afterFlush";
+    import { restoreOpenerFocus } from "src/ts/settingsShell/settingsOrigin";
+
+    // After the close has flushed, focus goes back to what opened Settings; the helper decides where.
+    // The Settings shell does the same for its own screen, and only one of the two is mounted per open.
+    onDestroy(() => {
+        if(get(settingsOpen)){
+            return
+        }
+        void afterFlush().then(() => {
+            if(!get(settingsOpen)){
+                restoreOpenerFocus()
+            }
+        })
+    })
 
     // Only an open overlay answers Back, so nothing registers while settingsOpen is false.
     // The effect reads only the gate.
