@@ -31,6 +31,7 @@
     import { reducedMotionActive } from '../../ts/chatShell/motionPrefs.svelte'
     import { hostIme } from '../../ts/android/hostBridge'
     import { treeView } from '../../ts/process/chatTreeView'
+    import { inputOf, layoutOf } from '../../ts/gui/rootAttributes'
 
     interface Props {
         openChatList?: boolean
@@ -188,8 +189,8 @@
 
     onMount(() => {
         const updateRootState = () => {
-            layout = window.innerWidth >= 900 ? 'wide' : window.innerWidth >= 600 ? 'mid' : 'phone'
-            inputMode = window.matchMedia?.('(hover: hover) and (pointer: fine)').matches ? 'hover' : 'touch'
+            layout = layoutOf(window.innerWidth)
+            inputMode = inputOf(window)
         }
         updateRootState()
         window.addEventListener('resize', updateRootState)
