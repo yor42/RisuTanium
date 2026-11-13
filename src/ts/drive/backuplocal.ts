@@ -63,6 +63,7 @@ import { emptyImportFacts, outcomeOfBootFinish, type ExportFile, type ExportOmit
 import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmImportScale, confirmLeftOut, createBinImportReader, hasDatabaseEntry, IMPORT_COPY_PHASE_EVERY, noteImportPhase, readBinDatabaseOmitted, readBinDatabaseTree, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
 
 import { forkOnlyChatLabels, forkOnlyConfirmKeys, lateForkOnlyChats, withoutForkOnlyChatData, type ForkOnlyChatLabel, type ForkOnlyKind } from "./exportAlternatives";
+import { isPackAssetName } from "../themePack/packRefs";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -241,6 +242,10 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     const plain = { ...db, account: undefined }
     // A `.bin` carries no task presets (the export confirm names them first); the key is removed, not set to undefined.
     delete plain.taskPresets
+    // Installed theme packs and the active pack id are fork-only and device-local, and their files are never exported
+    // (the export confirm names the packs first); both keys are removed, not set to undefined.
+    delete plain.themePacks
+    delete plain.activeThemePack
     // Set before either return below, so every encoder gets the module list read before the export opened, never the live one.
     if (modules !== null) {
         plain.modules = modules
@@ -317,6 +322,20 @@ async function listAssetsForBackup(store: ByteStore): Promise<{ keys: string[]; 
         }
     }
     return { keys: await store.list('assets/'), sized: null }
+}
+
+/**
+ * The listing without the theme packs' own files: a `.bin` never carries a pack file, so none is written and none is
+ * named by the left-out prompt. The upstream-oversize prompt filters pack keys itself, because on a Node page it lists
+ * the server again instead of reading this listing. `keys` and `sized` stay index-aligned (the batch reader finds an asset by its index in the sized list):
+ * where the sized listing answers, `keys` is derived from the filtered sized one.
+ */
+function withoutPackAssets(listing: { keys: string[]; sized: SizedAssetKey[] | null }): { keys: string[]; sized: SizedAssetKey[] | null } {
+    if (listing.sized !== null) {
+        const sized = listing.sized.filter((item) => !isPackAssetName(item.key))
+        return { keys: sized.map((item) => item.key), sized }
+    }
+    return { keys: listing.keys.filter((key) => !isPackAssetName(key)), sized: null }
 }
 
 /** The sized asset listing where the desktop and Android command answers, else `null`; never falls back to the store's listing. */
@@ -640,7 +659,7 @@ async function upstreamOversizeNames(
         cancel: session.cancel,
         onProgress: (done, total) => session.gate.wait(`Checking asset sizes... (${done} / ${total})`),
     })
-    return assets.map((item) => `${describeBackupAsset(assetMap, item.key)} (${formatMiB(item.size)})`)
+    return assets.filter((item) => !isPackAssetName(item.key)).map((item) => `${describeBackupAsset(assetMap, item.key)} (${formatMiB(item.size)})`)
 }
 
 /**
@@ -698,6 +717,23 @@ function taskPresetLabels(db: Database): string[] {
  */
 async function confirmOmitTaskPresets(session: ExportSession, labels: readonly string[]): Promise<boolean> {
     return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupTaskPresetsConfirm(labels.length, shownPromptNames(labels))))
+}
+
+/** The labels of the theme packs a `.bin` leaves out: each entry's name, or its position when it has no readable name. */
+function themePackLabels(db: Database): string[] {
+    const packs: unknown[] = Array.isArray(db.themePacks) ? db.themePacks : []
+    return packs.map((pack, index) => {
+        const name = typeof pack === 'object' && pack !== null ? (pack as { name?: unknown }).name : undefined
+        return typeof name === 'string' && name.trim() !== '' ? name : `#${index + 1}`
+    })
+}
+
+/**
+ * Asks, before the writer opens, whether to create the backup without the named theme packs (a `.bin` has no place for
+ * them or their files). `true` when there are none or the person confirms; declining writes nothing.
+ */
+async function confirmOmitThemePacks(session: ExportSession, labels: readonly string[]): Promise<boolean> {
+    return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupThemePacksConfirm(labels.length, shownPromptNames(labels))))
 }
 
 /**
@@ -900,7 +936,8 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     // temp file of an atomic write; a dangling link is not listed. A key that
     // reads as absent or fails to read is reported as missing and the backup goes on.
     const store = await getAppStore()
-    let listing = await listAssetsForBackup(store)
+    // Before the left-out prompt, so no pack file is named in it and none is written; the upstream-oversize prompt filters pack keys itself.
+    let listing = withoutPackAssets(await listAssetsForBackup(store))
     noteImportPhase(`export listed, ${listing.keys.length} assets`)
 
     // Before the writer opens, name everything a backup entry cannot hold and ask. Assets are sized only where the
@@ -939,6 +976,10 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     }
     // Task presets are fork-only and device-local; a `.bin` has no place for them, so they are named before the writer opens.
     if (!await confirmOmitTaskPresets(session, taskPresetLabels(db))) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
+    // Installed theme packs are fork-only and device-local, and neither they nor their files are in a `.bin`.
+    if (!await confirmOmitThemePacks(session, themePackLabels(db))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
@@ -1273,6 +1314,9 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     if (!await confirmOmitTaskPresets(session, taskPresetLabels(db))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
+    if (!await confirmOmitThemePacks(session, themePackLabels(db))) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
 
     session.cancel.throwIfCancelled()
     await ensureGestureForWriter(session)
@@ -1468,7 +1512,8 @@ function checkIndexedEntry(bytes: Uint8Array, entry: BackupIndexEntry, expectedL
  * request, with their names. Judged from the walk's index alone: a cold-storage
  * unit is stored compressed, so its length in the backup says nothing about
  * what is written, and the database is not an asset. An inlay part is not an
- * asset either: it is judged by `listOversizedInlays`. The walk kept the name
+ * asset either: it is judged by `listOversizedInlays`. A theme pack's file is
+ * not restored from a backup at all, so it is not listed. The walk kept the name
  * (its first `OVERSIZED_NAME_READ_BYTES` bytes for a longer one) of every
  * entry over `assetLimit` when it was asked to.
  */
@@ -1482,7 +1527,10 @@ function listOversizedAssets(entries: readonly BackupIndexEntry[], names: Readon
         if (name === undefined) {
             throw new Error(`The walk kept no name for the oversized entry at ${entry.headerOffset}.`);
         }
-        if (entry.nameLength <= OVERSIZED_NAME_READ_BYTES && (name === 'database.risudat' || getColdStorageBackupKey(name) || parseInlayEntryName(name) !== null)) {
+        // A pack file is never restored from a `.bin`, so an oversized one is not asked about either. Only a whole name is
+        // judged: a name longer than the walk's bound is held as its prefix, and a prefix can look like a pack name while
+        // the full name is an ordinary asset that the Node server cannot take.
+        if (entry.nameLength <= OVERSIZED_NAME_READ_BYTES && (name === 'database.risudat' || getColdStorageBackupKey(name) || parseInlayEntryName(name) !== null || isPackAssetName(name))) {
             continue;
         }
         found.push({ entry, name });
@@ -2088,6 +2136,13 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
                         // cold-storage entries from the file on demand: neither is
                         // read or stored by this pass.
                         if (store2Import !== null && (name === 'database.risudat' || getColdStorageBackupKey(name))) {
+                            await yieldBudget.maybeYield();
+                            continue;
+                        }
+                        // A backup never installs a theme pack's file, and the page's own file under that name is never
+                        // replaced by one: the entry is dropped here, before it is noted, sent or written on any route
+                        // below, and it is not reported as skipped.
+                        if (isPackAssetName(name)) {
                             await yieldBudget.maybeYield();
                             continue;
                         }

@@ -1,6 +1,6 @@
 import { repairDatabaseIds } from '../../../process/chatIds'
 import type { TaskPreset } from '../../../process/utility/taskPreset'
-import type { JsonObject } from '../../blockFrame'
+import type { JsonObject, JsonValue } from '../../blockFrame'
 import type { Database } from '../../database.svelte'
 import { repairBotPresetsId } from '../../botPresetRepair'
 import { repairCharacterTree, summarizeRepair, type RepairRefusal } from '../../characterTreeRepair'
@@ -74,6 +74,16 @@ export interface ImportRequest {
      * tree. Absent or empty: the imported profile has none. The tree's own `taskPresets` key is removed either way.
      */
     taskPresets?: readonly JsonObject[]
+    /**
+     * The page's own installed theme packs, kept by value: a `.bin` carries none, so the list the page holds is set on the
+     * imported tree. Absent or empty: the imported profile has none. The tree's own `themePacks` key is removed either way.
+     */
+    themePacks?: readonly JsonValue[]
+    /**
+     * The page's own active theme pack id (a record id or a `builtin:<slug>`), kept as it is. Carried on its own: it is set
+     * whether or not the page holds any record. Absent: the imported profile has none; the tree's own key is removed either way.
+     */
+    activeThemePack?: string
 }
 
 export interface ImportHooks {
@@ -248,7 +258,7 @@ export type PrepareStop = Extract<ImportOutcome, { status: 'declined' | 'read-fa
  * question, the plan. Nothing is written. The decoded tree is released once resolved.
  */
 export async function prepareImport(
-    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets'>, hooks: ImportHooks,
+    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'themePacks' | 'activeThemePack'>, hooks: ImportHooks,
 ): Promise<PreparedImport | PrepareStop> {
     let tree = request.source.tree
     if (tree === null) {
@@ -270,6 +280,16 @@ export async function prepareImport(
         if (request.taskPresets !== undefined && request.taskPresets.length > 0) {
             // The objects stay open: the type names the fields this build reads, the stored object keeps every key.
             resolved.database.taskPresets = request.taskPresets.map(preset => structuredClone(preset) as unknown as TaskPreset)
+        }
+        // The same for the installed theme packs and the active pack id: a `.bin` carries neither (its export leaves them
+        // out), so a key of that name in the file is dropped, and only what the caller passed is set, on the copy.
+        delete resolved.database.themePacks
+        delete resolved.database.activeThemePack
+        if (request.activeThemePack !== undefined) {
+            resolved.database.activeThemePack = request.activeThemePack
+        }
+        if (request.themePacks !== undefined && request.themePacks.length > 0) {
+            resolved.database.themePacks = request.themePacks.map(pack => structuredClone(pack))
         }
         incomplete = resolved.incomplete
         hold.resolved = resolved

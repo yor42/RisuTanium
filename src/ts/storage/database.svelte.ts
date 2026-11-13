@@ -909,6 +909,10 @@ export interface Database{
     botPresetsId:number
     /** Desktop-only Utility task presets. Absent unless the user has made one; a fork-only field that no `.bin` or config carries. */
     taskPresets?:TaskPreset[]
+    /** Installed theme packs, read only through `readPackRecord`. Absent until the first install; a fork-only field that no `.bin` carries. */
+    themePacks?:unknown[]
+    /** The active theme pack's record id, or a built-in theme's `builtin:<slug>`. Absent until a pack is activated; fork-only, never in a `.bin`. */
+    activeThemePack?:string
     sdProvider: string
     webUiUrl:string
     sdSteps:number

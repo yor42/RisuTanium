@@ -2538,6 +2538,8 @@ export const languageChinese = {
         `有 ${count} 个聊天含有备选回复，而备份文件中没有存放它们的位置，因此它们将不会包含在此备份中（聊天及其消息会被保存）。备选回复仍保留在本应用中，只是备份里没有。是否创建不含它们的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `有 ${count} 个任务预设仅保存在此设备上，而备份文件中没有存放它们的位置，因此它们将不会包含在此备份中。它们仍保留在本应用中，只是备份里没有。是否创建不含它们的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "backupThemePacksConfirm": (count: number, names: string[]) =>
+        `有 ${count} 个主题包仅保存在此设备上，而备份文件中没有存放它们及其文件的位置，因此它们将不会包含在此备份中。它们仍保留在本应用中，只是备份里没有。是否创建不含它们的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "backupAlternativesLeftOut": (count: number, names: string[]) =>
         `备份运行期间发现有 ${count} 个聊天含有备选回复，而备份文件中没有存放它们的位置，因此它们不在备份中（聊天及其消息已保存）：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "backupForkChatDataConfirm": (count: number, names: string[]) =>

@@ -2676,6 +2676,8 @@ export const languageJapanese = {
         `${count}件のチャットに代替の返信がありますが、バックアップファイルにはそれらを格納する場所がないため、このバックアップには含まれません（チャットとメッセージは保存されます）。代替の返信はこのアプリに残り、バックアップにのみ含まれません。これらを除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
     backupTaskPresetsConfirm: (count: number, names: string[]) =>
         `${count}件のタスクプリセットはこのデバイスにのみ保存されており、バックアップファイルには保存できる場所がないため、このバックアップから除外されます。タスクプリセットはこのアプリに残り、バックアップにだけ含まれません。除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n...ほか${count - names.length}件` : ''}`,
+    backupThemePacksConfirm: (count: number, names: string[]) =>
+        `${count}件のテーマパックはこのデバイスにのみ保存されており、バックアップファイルにはそれらとそのファイルを保存できる場所がないため、このバックアップから除外されます。テーマパックはこのアプリに残り、バックアップにだけ含まれません。除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n...ほか${count - names.length}件` : ''}`,
     backupAlternativesLeftOut: (count: number, names: string[]) =>
         `バックアップの実行中に、${count}件のチャットで代替の返信が見つかりました。バックアップファイルにはそれらを格納する場所がないため、バックアップには含まれていません（チャットとメッセージは保存されます）：\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
     backupForkChatDataConfirm: (count: number, names: string[]) =>
