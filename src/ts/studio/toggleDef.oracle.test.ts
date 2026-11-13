@@ -168,13 +168,20 @@ function projectDef(def: Definition): Projected[] {
             for (const member of info?.members ?? []) {
                 push(children, leaf(member))
             }
-            // A group is present for the divider dedupe even when it holds no row; hidden groups leave only at the end.
             items.push({ type: 'group', label: line.parts[1], children })
         } else if (roleOf(line) === 'leaf' && !def.outline.parentOf.has(line.id)) {
             push(items, leaf(line.id))
         }
     }
-    return items.filter((item) => item.type !== 'group' || item.children.some((child) => child.type === 'row'))
+    // A group without a row is hidden, and a same-label divider it separated is then adjacent to its twin: shown once.
+    const shown: Projected[] = []
+    for (const item of items) {
+        if (item.type === 'group' && !item.children.some((child) => child.type === 'row')) {
+            continue
+        }
+        push(shown, item)
+    }
+    return shown
 }
 
 const dividerAroundEmptyGroup = '==divider\na=a=group\na_end=a=groupEnd\n==divider'
@@ -199,8 +206,8 @@ describe('1-11 panel projection (A10)', () => {
         }), { numRuns: 200, examples: [[dividerAroundEmptyGroup]] })
     })
 
-    test('an empty group between equal dividers keeps both dividers, in the outline and in the panel', () => {
-        const expected = [{ type: 'divider', label: '' }, { type: 'divider', label: '' }]
+    test('an empty group between equal dividers leaves one divider, in the outline and in the panel', () => {
+        const expected = [{ type: 'divider', label: '' }]
         expect(projectPanel(panelOf(dividerAroundEmptyGroup))).toEqual(expected)
         expect(projectDef(parseDefinition(dividerAroundEmptyGroup))).toEqual(expected)
     })
