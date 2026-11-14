@@ -1012,3 +1012,23 @@ describe('parkedClean: Reload asks the loop to check before it reloads', () => {
         expect(reload).not.toHaveBeenCalled()
     })
 })
+
+describe('describeSaveFailure: a CodecInputError that no skip rule covers is told once, at the fifth attempt, and retried slowly', () => {
+    // The error is matched by its name through a real instance of the codec's class.
+    test('reproducer: attempts 1 to 7 show the retry toast once, the raw error once at attempt 5, and wait 5 s every time', async () => {
+        const { CodecInputError } = await import('src/ts/storage/store2/codec')
+        const { describeSaveFailure } = await import('src/ts/storage/store2/ui/peerUi')
+        const reports = [1, 2, 3, 4, 5, 6, 7].map(attempts => describeSaveFailure(new CodecInputError('x'), attempts, false))
+        expect(reports.map(report => report.showRaw)).toEqual([false, false, false, false, true, false, false])
+        expect(reports.map(report => report.waitMs)).toEqual([5000, 5000, 5000, 5000, 5000, 5000, 5000])
+        expect(reports.map(report => report.toast)).toEqual([language.saveRetrying, null, null, null, null, null, null])
+        expect(reports.every(report => report.alert === null)).toBe(true)
+    })
+
+    test('guard (passes before and after): another error keeps the escalation from attempt 5 and the 1 s wait', async () => {
+        const { describeSaveFailure } = await import('src/ts/storage/store2/ui/peerUi')
+        const reports = [4, 5, 6].map(attempts => describeSaveFailure(new Error('x'), attempts, false))
+        expect(reports.map(report => report.showRaw)).toEqual([false, true, true])
+        expect(reports.map(report => report.waitMs)).toEqual([1000, 1000, 1000])
+    })
+})

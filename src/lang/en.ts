@@ -3025,6 +3025,19 @@ export const languageEnglish = {
         `RisuTanium cannot save ${name} right now: its data is not valid, and a plugin may have changed it. Your latest changes to it are not being saved, and they will be lost if the tab closes or reloads before it is fixed. The last saved copy is kept, everything else is still saved, and RisuTanium keeps trying quietly.`,
     saveCharacterNeverSavedNotice: (name: string) =>
         `RisuTanium cannot save ${name} at all: it has never been saved, and its data is not valid (a plugin may have changed it). It is not being saved, so it will be lost if the tab closes or reloads before it is fixed. Everything else is still saved, and RisuTanium keeps trying quietly.`,
+    saveItemUnsavedNotice: (what: string) =>
+        `RisuTanium cannot save ${what} right now: its data is not valid, and a plugin may have changed it. Your latest changes to it are not being saved, and they will be lost if the tab closes or reloads before it is fixed. The last saved copy is kept, everything else is still saved, and RisuTanium keeps trying quietly.`,
+    saveItemNeverSavedNotice: (what: string) =>
+        `RisuTanium cannot save ${what} at all: it has never been saved, and its data is not valid (a plugin may have changed it). It is not being saved, so it will be lost if the tab closes or reloads before it is fixed. Everything else is still saved, and RisuTanium keeps trying quietly.`,
+    saveModulesHeldNotice: (name: string) =>
+        `RisuTanium cannot save the module ${name}: its data is not valid, and a plugin may have changed it. Your characters, chats and settings are still saved, but changes to modules are not saved until it is fixed, and they will be lost if the tab closes or reloads before then. The last saved modules are kept.`,
+    savePresetsHeldNotice: (name: string) =>
+        `RisuTanium cannot save the preset ${name}: its data is not valid, and a plugin may have changed it. Everything else is still saved, but changes to presets are not saved until it is fixed, and they will be lost if the tab closes or reloads before then. The last saved presets are kept. If the page reloads before then, your current settings are kept as a new preset.`,
+    saveTaskPresetsHeldNotice: (name: string) =>
+        `RisuTanium cannot save the preset ${name}: its data is not valid, and a plugin may have changed it. Everything else is still saved, but changes to presets are not saved until it is fixed, and they will be lost if the tab closes or reloads before then. The last saved presets are kept.`,
+    saveItemModuleLabel: (name: string) => `the module "${name}"`,
+    saveItemSettingLabel: (field: string) => `the setting "${field}"`,
+    saveItemPluginDataLabel: (key: string) => `the plugin data "${key}"`,
     personasRepairedNotice: (count: number) =>
         `RisuTanium left out ${count} persona${count === 1 ? '' : 's'} that ${count === 1 ? 'was' : 'were'} not valid data. A plugin may have written ${count === 1 ? 'it' : 'them'}.`,
     personaListEmptyNotice: `No usable persona was left in the persona list, so RisuTanium added one from your user name and icon and selected it.`,

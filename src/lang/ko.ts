@@ -2884,6 +2884,19 @@ export const languageKorean = {
         `RisuTanium이 지금 ${name}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 이 캐릭터에 한 최신 변경 사항은 저장되지 않고 있으며, 문제가 해결되기 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 사본은 유지되고, 그 외의 모든 것은 계속 저장되며, RisuTanium은 조용히 계속 시도합니다.`,
     saveCharacterNeverSavedNotice: (name: string) =>
         `RisuTanium이 ${name}을(를) 전혀 저장할 수 없습니다. 한 번도 저장된 적이 없고 데이터가 유효하지 않습니다(플러그인이 변경했을 수 있습니다). 저장되지 않고 있으므로 문제가 해결되기 전에 탭을 닫거나 새로고침하면 사라집니다. 그 외의 모든 것은 계속 저장되며, RisuTanium은 조용히 계속 시도합니다.`,
+    saveItemUnsavedNotice: (what: string) =>
+        `RisuTanium이 지금 ${what}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 이 항목에 한 최신 변경 사항은 저장되지 않고 있으며, 문제가 해결되기 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 사본은 유지되고, 그 외의 모든 것은 계속 저장되며, RisuTanium은 조용히 계속 시도합니다.`,
+    saveItemNeverSavedNotice: (what: string) =>
+        `RisuTanium이 ${what}을(를) 전혀 저장할 수 없습니다. 한 번도 저장된 적이 없고 데이터가 유효하지 않습니다(플러그인이 변경했을 수 있습니다). 저장되지 않고 있으므로 문제가 해결되기 전에 탭을 닫거나 새로고침하면 사라집니다. 그 외의 모든 것은 계속 저장되며, RisuTanium은 조용히 계속 시도합니다.`,
+    saveModulesHeldNotice: (name: string) =>
+        `RisuTanium이 모듈 ${name}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 캐릭터, 채팅, 설정은 계속 저장되지만, 문제가 해결되기 전까지 모듈 변경 사항은 저장되지 않으며, 그 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 모듈은 유지됩니다.`,
+    savePresetsHeldNotice: (name: string) =>
+        `RisuTanium이 프리셋 ${name}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 그 외의 모든 것은 계속 저장되지만, 문제가 해결되기 전까지 프리셋 변경 사항은 저장되지 않으며, 그 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 프리셋은 유지됩니다. 그 전에 페이지를 새로고침하면 현재 설정이 새 프리셋으로 보관됩니다.`,
+    saveTaskPresetsHeldNotice: (name: string) =>
+        `RisuTanium이 프리셋 ${name}을(를) 저장할 수 없습니다. 데이터가 유효하지 않으며, 플러그인이 변경했을 수 있습니다. 그 외의 모든 것은 계속 저장되지만, 문제가 해결되기 전까지 프리셋 변경 사항은 저장되지 않으며, 그 전에 탭을 닫거나 새로고침하면 사라집니다. 마지막으로 저장된 프리셋은 유지됩니다.`,
+    saveItemModuleLabel: (name: string) => `모듈 "${name}"`,
+    saveItemSettingLabel: (field: string) => `설정 "${field}"`,
+    saveItemPluginDataLabel: (key: string) => `플러그인 데이터 "${key}"`,
     personasRepairedNotice: (count: number) =>
         `RisuTanium이 유효하지 않은 데이터인 페르소나 ${count}개를 제외했습니다. 플러그인이 기록했을 수 있습니다.`,
     personaListEmptyNotice: `페르소나 목록에 사용할 수 있는 페르소나가 남아 있지 않아, RisuTanium이 사용자 이름과 아이콘으로 페르소나를 하나 추가하고 선택했습니다.`,

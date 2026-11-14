@@ -2886,6 +2886,19 @@ export const languageGerman = {
         `RisuTanium kann ${name} gerade nicht speichern: Die Daten sind ungültig, und ein Plugin hat sie möglicherweise verändert. Ihre neuesten Änderungen daran werden nicht gespeichert und gehen verloren, wenn der Tab geschlossen oder neu geladen wird, bevor das Problem behoben ist. Die zuletzt gespeicherte Kopie bleibt erhalten, alles andere wird weiterhin gespeichert, und RisuTanium versucht es still weiter.`,
     "saveCharacterNeverSavedNotice": (name: string) =>
         `RisuTanium kann ${name} überhaupt nicht speichern: Es wurde noch nie gespeichert, und die Daten sind ungültig (möglicherweise hat ein Plugin sie verändert). Es wird nicht gespeichert und geht daher verloren, wenn der Tab geschlossen oder neu geladen wird, bevor das Problem behoben ist. Alles andere wird weiterhin gespeichert, und RisuTanium versucht es still weiter.`,
+    "saveItemUnsavedNotice": (what: string) =>
+        `RisuTanium kann ${what} gerade nicht speichern: Die Daten sind ungültig, und ein Plugin hat sie möglicherweise verändert. Ihre neuesten Änderungen daran werden nicht gespeichert und gehen verloren, wenn der Tab geschlossen oder neu geladen wird, bevor das Problem behoben ist. Die zuletzt gespeicherte Kopie bleibt erhalten, alles andere wird weiterhin gespeichert, und RisuTanium versucht es still weiter.`,
+    "saveItemNeverSavedNotice": (what: string) =>
+        `RisuTanium kann ${what} überhaupt nicht speichern: Es wurde noch nie gespeichert, und die Daten sind ungültig (möglicherweise hat ein Plugin sie verändert). Es wird nicht gespeichert und geht daher verloren, wenn der Tab geschlossen oder neu geladen wird, bevor das Problem behoben ist. Alles andere wird weiterhin gespeichert, und RisuTanium versucht es still weiter.`,
+    "saveModulesHeldNotice": (name: string) =>
+        `RisuTanium kann das Modul ${name} nicht speichern: Die Daten sind ungültig, und ein Plugin hat sie möglicherweise verändert. Ihre Charaktere, Chats und Einstellungen werden weiterhin gespeichert, Änderungen an Modulen werden jedoch erst gespeichert, wenn das Problem behoben ist, und gehen verloren, wenn der Tab zuvor geschlossen oder neu geladen wird. Die zuletzt gespeicherten Module bleiben erhalten.`,
+    "savePresetsHeldNotice": (name: string) =>
+        `RisuTanium kann das Preset ${name} nicht speichern: Die Daten sind ungültig, und ein Plugin hat sie möglicherweise verändert. Alles andere wird weiterhin gespeichert, Änderungen an Presets werden jedoch erst gespeichert, wenn das Problem behoben ist, und gehen verloren, wenn der Tab zuvor geschlossen oder neu geladen wird. Die zuletzt gespeicherten Presets bleiben erhalten. Wird die Seite zuvor neu geladen, bleiben Ihre aktuellen Einstellungen als neues Preset erhalten.`,
+    "saveTaskPresetsHeldNotice": (name: string) =>
+        `RisuTanium kann das Preset ${name} nicht speichern: Die Daten sind ungültig, und ein Plugin hat sie möglicherweise verändert. Alles andere wird weiterhin gespeichert, Änderungen an Presets werden jedoch erst gespeichert, wenn das Problem behoben ist, und gehen verloren, wenn der Tab zuvor geschlossen oder neu geladen wird. Die zuletzt gespeicherten Presets bleiben erhalten.`,
+    "saveItemModuleLabel": (name: string) => `das Modul „${name}“`,
+    "saveItemSettingLabel": (field: string) => `die Einstellung „${field}“`,
+    "saveItemPluginDataLabel": (key: string) => `die Plugin-Daten „${key}“`,
     "personasRepairedNotice": (count: number) =>
         `RisuTanium hat ${count} ${count === 1 ? 'Persona' : 'Personas'} ausgelassen, deren Daten ungültig waren. Möglicherweise hat ein Plugin sie geschrieben.`,
     "personaListEmptyNotice": `In der Persona-Liste war keine verwendbare Persona mehr vorhanden, daher hat RisuTanium aus Ihrem Benutzernamen und Symbol eine hinzugefügt und ausgewählt.`,

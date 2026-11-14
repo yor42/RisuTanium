@@ -9,15 +9,15 @@ import type { BuildContext, BuiltCommit, KeyMint } from '../commit'
 import { defineOwn } from './normalize'
 import { isUnchanged, unitDigest, UnitNotReusedError, UnitSink, type UnitKeyKind } from './reuse'
 import {
-    checkDatabase, emitCharacter, encodeCharacter, encodeFront, encodeModuleSetYielding, Encoder, finishTree, IDENTITY,
+    checkDatabase, emitCharacter, encodeCharacter, encodeFront, encodeModuleSetYielding, Encoder, finishTree, IDENTITY, isSkippableFault,
     normalizeCharacter, normalizeCharacterFromPlain, type ModuleSet, type NormalizedCharacter,
 } from './split'
 import { noteShardDigest } from './shard'
 import { isColdStub } from './stub'
 import {
-    CodecAssembleError, CodecError, CodecInputError, isWrittenUnit, SharedChaIdStubError, StubRefusedError, type EncodedTree,
-    type EncodedUnit, type EncodeOptions, type ListDerivation, type PreviousEncoding, type ReusableUnit, type SplitRecorder,
-    type WrittenUnit,
+    CodecError, CodecInputError, isWrittenUnit, SharedChaIdStubError, StubRefusedError, type EncodedTree,
+    type EncodedUnit, type EncodeOptions, type ListDerivation, type PreviousEncoding, type PreviousObjects, type ReusableUnit,
+    type SkippedItem, type SplitRecorder, type WrittenUnit,
 } from './types'
 import { MEASURE } from '../../../process/memory/measureFlag'
 
@@ -49,6 +49,13 @@ export interface EncodeScope {
      * it; an import or an install, which have no earlier copy to fall back on, fail on such a character.
      */
     skipUnsavableCharacters?: boolean
+    /**
+     * A module, a preset list, a settings field or a plugin-data key whose data cannot be read as plain JSON is skipped
+     * instead of failing the pass: its last saved copy is carried when `previous` holds it, and it is reported in
+     * `skippedItems`. A fault with no saved copy to fall back on, a plugin of either plugin list, and every other list
+     * of the database still fail the pass. Only the save encoder sets it.
+     */
+    skipUnsavableItems?: boolean
     /** Measurement builds only: the recorder the pass's hooks write into. Set by the save encoder under `MEASURE`, never read back. */
     split?: SplitRecorder
 }
@@ -73,7 +80,7 @@ export interface SkippedCharacter {
  * must reach the caller.
  */
 export function isSkippableCharacterFault(error: unknown): boolean {
-    return !(error instanceof StubRefusedError || error instanceof CodecAssembleError)
+    return isSkippableFault(error)
 }
 
 interface ParentBody {
@@ -352,6 +359,8 @@ interface ScopedParts {
     owners: ReadonlyMap<string, string>
     /** The names (else ids) of the module stubs carried from the previous encoding. */
     modules: readonly string[]
+    /** The modules, preset lists, settings fields and plugin-data keys the pass went on without. */
+    skippedItems: readonly SkippedItem[]
 }
 
 /** A carried entry's display name, captured at the carry site so naming it later never reads the previous encoding. */
@@ -364,7 +373,7 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
     const previous = options.previous ?? null
     const split = MEASURE ? scope.split : undefined
     const sinkStarted = readClock(split)
-    const encoder = new Encoder(options, previous, split)
+    const encoder = new Encoder(options, previous, split, scope.skipUnsavableItems === true)
     if (MEASURE && split !== undefined) {
         split.addMs('splitSinkMs', split.now() - sinkStarted)
     }
@@ -487,7 +496,7 @@ async function encodeScopedParts(db: Database, options: EncodeOptions, scope: En
     if (MEASURE && split !== undefined) {
         split.addMs('splitFinishTreeMs', split.now() - finishStarted)
     }
-    return { tree, parents: encoder.parents, skipped, encoded, owners: carriedOwners, modules: encoder.carriedModuleNames }
+    return { tree, parents: encoder.parents, skipped, encoded, owners: carriedOwners, modules: encoder.carriedModuleNames, skippedItems: encoder.skippedItems }
 }
 
 /**
@@ -620,7 +629,13 @@ function rekey(tree: EncodedTree, parents: ReadonlyMap<string, ParentBody>, cont
     const manifest = rewrittenOr('manifest', tree.manifest)
     const shards = (before?.shards ?? []).map((shard: Shard, index) => rewrittenOr(`shard:${index}`, shard))
     const moduleIndex = before?.moduleIndex === undefined ? undefined : rewriteRefs(before.moduleIndex, finalRefs)
-    const objects = moduleIndex === undefined ? { manifest, shards } : { manifest, shards, moduleIndex }
+    const objects: PreviousObjects = { manifest, shards }
+    if (moduleIndex !== undefined) {
+        objects.moduleIndex = moduleIndex
+    }
+    if (before?.config !== undefined) {
+        objects.config = before.config
+    }
     return {
         manifestKey: units[units.length - 1].key,
         manifest,
@@ -639,7 +654,17 @@ export interface ScopedPlan {
     /** The `chaId` of every character the pass encoded. */
     encoded: readonly string[]
     /** Existing units the tree names without writing them (reused by digest or carried by key), and the names of the characters and module stubs carried by key. */
-    carried: { units: number, owners: ReadonlyMap<string, string>, modules: readonly string[] }
+    carried: {
+        units: number
+        owners: ReadonlyMap<string, string>
+        modules: readonly string[]
+        /** The quoted names of the items carried from the previous encoding because their live data could not be read; absent means none. */
+        items?: readonly string[]
+    }
+    /** The modules, preset lists, settings fields and plugin-data keys the pass could not read and went on without (only under `skipUnsavableItems`). */
+    skippedItems: readonly SkippedItem[]
+    /** The pass encoded the modules (`scope.modules`); false means it carried them whole, so it said nothing about any module. */
+    modulesEncoded: boolean
     /**
      * The tree under the keys of `context.mint`, its manifest carrying `context.seq` and `context.now`. Pure over the
      * plan: a commit that builds again on a retry calls it again with the retry's own context, and every call gives a
@@ -658,7 +683,7 @@ export interface ScopedPlan {
  * is ignored: the plan owns the keys.
  */
 export async function planScopedEncode(db: Database, options: EncodeOptions, scope: EncodeScope): Promise<ScopedPlan> {
-    const { tree, parents, skipped, encoded, owners, modules } = await encodeScopedParts(db, { ...options, keys: placeholderMint() }, scope)
+    const { tree, parents, skipped, encoded, owners, modules, skippedItems } = await encodeScopedParts(db, { ...options, keys: placeholderMint() }, scope)
     const split = MEASURE ? scope.split : undefined
     const tailStarted = readClock(split)
     const newUnits = tree.units.filter(unit => !unit.reused).length
@@ -671,7 +696,9 @@ export async function planScopedEncode(db: Database, options: EncodeOptions, sco
         unchanged,
         skipped,
         encoded,
-        carried: { units: tree.index.units.size - newUnits, owners, modules },
+        carried: { units: tree.index.units.size - newUnits, owners, modules, items: skippedItems.filter(item => item.saved).map(item => item.label) },
+        skippedItems,
+        modulesEncoded: scope.modules,
         finalize: context => rekey(tree, parents, context),
     }
 }

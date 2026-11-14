@@ -2884,6 +2884,19 @@ export const languageChinese = {
         `RisuTanium 目前无法保存 ${name}：它的数据无效，可能是插件修改了它。你对它所做的最新更改没有被保存，如果在问题解决之前关闭或刷新标签页，这些更改将丢失。最后一次保存的副本会保留，其他所有内容仍会正常保存，RisuTanium 会在后台持续重试。`,
     "saveCharacterNeverSavedNotice": (name: string) =>
         `RisuTanium 完全无法保存 ${name}：它从未被保存过，且数据无效（可能是插件修改了它）。它没有被保存，因此如果在问题解决之前关闭或刷新标签页，它将丢失。其他所有内容仍会正常保存，RisuTanium 会在后台持续重试。`,
+    "saveItemUnsavedNotice": (what: string) =>
+        `RisuTanium 目前无法保存${what}：它的数据无效，可能是插件修改了它。你对它所做的最新更改没有被保存，如果在问题解决之前关闭或刷新标签页，这些更改将丢失。最后一次保存的副本会保留，其他所有内容仍会正常保存，RisuTanium 会在后台持续重试。`,
+    "saveItemNeverSavedNotice": (what: string) =>
+        `RisuTanium 完全无法保存${what}：它从未被保存过，且数据无效（可能是插件修改了它）。它没有被保存，因此如果在问题解决之前关闭或刷新标签页，它将丢失。其他所有内容仍会正常保存，RisuTanium 会在后台持续重试。`,
+    "saveModulesHeldNotice": (name: string) =>
+        `RisuTanium 无法保存模块 ${name}：它的数据无效，可能是插件修改了它。你的角色、聊天和设置仍会正常保存，但在问题解决之前，对模块的更改不会被保存，如果在此之前关闭或刷新标签页，这些更改将丢失。最后一次保存的模块会保留。`,
+    "savePresetsHeldNotice": (name: string) =>
+        `RisuTanium 无法保存预设 ${name}：它的数据无效，可能是插件修改了它。其他所有内容仍会正常保存，但在问题解决之前，对预设的更改不会被保存，如果在此之前关闭或刷新标签页，这些更改将丢失。最后一次保存的预设会保留。如果页面在此之前重新加载，你当前的设置会作为新预设保留。`,
+    "saveTaskPresetsHeldNotice": (name: string) =>
+        `RisuTanium 无法保存预设 ${name}：它的数据无效，可能是插件修改了它。其他所有内容仍会正常保存，但在问题解决之前，对预设的更改不会被保存，如果在此之前关闭或刷新标签页，这些更改将丢失。最后一次保存的预设会保留。`,
+    "saveItemModuleLabel": (name: string) => `模块“${name}”`,
+    "saveItemSettingLabel": (field: string) => `设置“${field}”`,
+    "saveItemPluginDataLabel": (key: string) => `插件数据“${key}”`,
     "personasRepairedNotice": (count: number) =>
         `RisuTanium 排除了 ${count} 个不是有效数据的人设。这可能是插件写入的。`,
     "personaListEmptyNotice": `人设列表中没有剩余的可用人设，因此 RisuTanium 根据你的用户名和图标添加了一个人设并将其选中。`,
