@@ -9,7 +9,39 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({ marks: 0 }))
 
+// What the page's error alert was asked to show.
+const alerts = vi.hoisted(() => ({ errors: [] as (string | Error)[] }))
+
+// What the file reader of the history service answers, for the rigs that read files and for the service the accessor
+// builds: a path is present unless listed; each question first waits for the next entry of `waits`.
+const files = vi.hoisted(() => ({
+    states: new Map<string, 'present' | 'gone' | 'unknown'>(),
+    waits: [] as (Promise<void> | null)[],
+    opened: 0,
+}))
+
 vi.mock('src/ts/globalApi.svelte', () => ({ getSaveMarkCount: () => h.marks }))
+// The service the accessor builds runs over these stand-ins for the device store and the claim.
+vi.mock('src/ts/studio/history/studioStoreProxy', async () => {
+    const doubles = await import('src/ts/studio/history/tests/studioStoreDoubles')
+    return { createStudioStoreProxy: () => doubles.createMemoryStudioStore() }
+})
+vi.mock('src/ts/studio/history/studioClaimLocks', () => ({ createStudioClaimLocks: () => ({ tryClaim: async () => 'granted' }) }))
+vi.mock('src/ts/studio/assets/assetFileState', () => ({
+    openAssetFileReader: async () => {
+        files.opened += 1
+        return {
+            concurrency: 1,
+            stateOf: async (path: string) => {
+                const wait = files.waits.shift()
+                if (wait) {
+                    await wait
+                }
+                return files.states.get(path) ?? 'present'
+            },
+        }
+    },
+}))
 
 const db = $state({ db: fixtureDb() })
 const selection = $state({ selId: 0 })
@@ -40,9 +72,16 @@ vi.mock('src/ts/process/moduleRefList', () => ({ moduleListOf: () => [] }))
 vi.mock('src/ts/alertPrompts', () => ({ pageCovered: () => false }))
 vi.mock('src/ts/alertBack', () => ({ closeDialogForBack: vi.fn() }))
 vi.mock('src/ts/caughtErrors', () => ({ recordCaughtError: vi.fn() }))
+vi.mock('src/ts/alert', () => ({ alertError: (message: string | Error) => { alerts.errors.push(message) } }))
 vi.mock('src/lang', async () => {
     const helpers = await import('src/ts/studio/studioFixtures.test-helpers')
-    return { language: helpers.studioLanguageMock() }
+    const base = helpers.studioLanguageMock()
+    // The two texts that name a row answer with the key and the name.
+    const named: Record<string, unknown> = {
+        studioAssetFileGone: (name: string) => `studioAssetFileGone(${name})`,
+        studioAssetFileUnchecked: (name: string) => `studioAssetFileUnchecked(${name})`,
+    }
+    return { language: new Proxy(named, { get: (target, key) => (typeof key === 'symbol' ? undefined : key in target ? target[key] : base[key]) }) }
 })
 
 import { resetBackHandlersForTests } from 'src/ts/backHandlers'
@@ -55,9 +94,9 @@ import { openStudio, resetStudioScreenForTests, studioScreen } from 'src/ts/stud
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { resetToastHostForTests } from 'src/ts/toast/toastHost.svelte'
 import { emptyRecord, type OwnerRecord, type Step } from '../../ts/studio/history/historyModel'
-import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
+import { createOwnerHistoryService, type OwnerHistoryService, type StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
 import { characterOwnerKey, SAVE_DEBOUNCE_MS } from '../../ts/studio/history/ownerPhase'
-import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
+import { loadStudioHistoryService, resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, drainMicrotasks, type FakeClock } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore, seedOwner, storedRecord } from '../../ts/studio/history/tests/studioStoreDoubles'
 import StudioScreen from './StudioScreen.svelte'
@@ -71,6 +110,7 @@ interface Live {
     desc: string
     alternateGreetings: string[]
     chats: LiveChat[]
+    additionalAssets: string[][]
 }
 
 function fixtureDb() {
@@ -116,11 +156,19 @@ interface Rig {
 
 let rigCount = 0
 
-function makeRig(shared: Map<string, string> = new Map()): Rig {
+// `reading` gives the service the file reader double above; without it nothing is checked.
+function makeRig(shared: Map<string, string> = new Map(), reading = false): Rig {
     const clock = createFakeClock()
     const store = createMemoryStudioStore({ shared })
     const claim = createClaimDouble()
-    const service = createOwnerHistoryService({ store, claim, clock, pageSession: `p${++rigCount}`, registerLeaveFlush: () => () => {} })
+    const service = createOwnerHistoryService({
+        store,
+        claim,
+        clock,
+        pageSession: `p${++rigCount}`,
+        registerLeaveFlush: () => () => {},
+        ...(reading ? { openAssetFileReader: async () => (await import('src/ts/studio/assets/assetFileState')).openAssetFileReader() } : {}),
+    })
     setStudioHistoryServiceForTests(service)
     setStudioVisitAckForTests(makeAck(clock))
     return { clock, shared, service }
@@ -212,6 +260,7 @@ const stepsUndone = () => parts('studio-history-step').filter((row) => row.datas
 
 beforeEach(() => {
     h.marks = 0
+    alerts.errors.length = 0
     tracker.character.length = 0
     resetCharacterSaveMarksForTest()
     installCharacterSaveMarks({ tracker, schedule: () => { h.marks += 1 } })
@@ -219,6 +268,9 @@ beforeEach(() => {
     resetStudioScreenForTests()
     db.db = fixtureDb()
     selection.selId = 0
+    files.states.clear()
+    files.waits.length = 0
+    files.opened = 0
     setStudioEnabled(true)
     vi.stubGlobal('ResizeObserver', ResizeObserverStub)
 })
@@ -329,6 +381,8 @@ describe('a replay that finds the field already at the replayed value says so on
         const first = rig.service.view(A).done[0].id
         parts('studio-history-step').find((row) => row.dataset.stepId === first)!.querySelector<HTMLElement>('[data-part="studio-history-revert"]')!.click()
         flushSync()
+        // A revert runs in the replay queue, so its outcome arrives a few microtasks later.
+        await settle()
         expect(shownMessages()).toEqual({ notice: null, panel: 'studioRefusalPrecondition' })
         expect(rig.service.view(A).done).toHaveLength(3)
         expect(live().desc).toBe('changed outside Studio')
@@ -434,4 +488,246 @@ describe('focus after an Undo of a text-merge step', () => {
         expect(document.activeElement).toBe(part('studio-form-desc'))
         expect(studioRoot).not.toHaveBeenCalled()
     })
+})
+
+// ---------------------------------------------------------------- asset rows: the files are asked first
+
+describe('Ctrl+Z over asset rows asks the files first', () => {
+    const SMILE = ['smile', 'assets/smile.png', 'png']
+    const GRIN = ['grin', 'assets/grin.png', 'png']
+    const names = (): string[] => live().additionalAssets.map((row) => row[0])
+
+    function giveAssets(): void {
+        live().additionalAssets = [[...SMILE], [...GRIN]]
+        flushSync()
+    }
+
+    function deleteGrin(service: OwnerHistoryService): void {
+        expect(service.assetDelete(A, 'additionalAssets', [1]).ok).toBe(true)
+        flushSync()
+    }
+
+    test('on the service the accessor builds, a gone file leaves the row out and the notice says the file is gone, not that the step dropped', async () => {
+        setStudioVisitAckForTests(makeAck(createFakeClock()))
+        giveAssets()
+        await mountScreen({ panel: false })
+        const service = await loadStudioHistoryService()
+        await service.whenReady(A)
+        deleteGrin(service)
+        files.states.set('assets/grin.png', 'gone')
+        expect((await ctrl({ key: 'z' })).defaultPrevented).toBe(true)
+        expect(shownMessages()).toEqual({ notice: 'studioAssetFileGone(grin)', panel: null })
+        expect(names()).toEqual(['smile'])
+        expect(service.view(A).done).toHaveLength(0)
+    })
+
+    test('a file that cannot be checked refuses with the line that names the row and changes nothing', async () => {
+        const rig = makeRig(undefined, true)
+        giveAssets()
+        await mountScreen({ panel: false })
+        await rig.service.whenReady(A)
+        deleteGrin(rig.service)
+        files.states.set('assets/grin.png', 'unknown')
+        const marks = h.marks
+        await ctrl({ key: 'z' })
+        expect(shownMessages()).toEqual({ notice: 'studioAssetFileUnchecked(grin)', panel: null })
+        expect(names()).toEqual(['smile'])
+        expect(rig.service.view(A).done).toHaveLength(1)
+        expect(h.marks).toBe(marks)
+    })
+
+    test('a present file puts the row back and a text step asks no file at all', async () => {
+        const rig = makeRig(undefined, true)
+        giveAssets()
+        await mountScreen({ panel: false })
+        await rig.service.whenReady(A)
+        deleteGrin(rig.service)
+        await ctrl({ key: 'z' })
+        expect(names()).toEqual(['smile', 'grin'])
+        expect(files.opened).toBe(1)
+        edit(rig, 'typed')
+        await ctrl({ key: 'z' })
+        expect(live().desc).toBe('d0')
+        expect(files.opened).toBe(1)
+    })
+
+    test('a step that lands while the files are asked is not undone, and the notice names the row', async () => {
+        const rig = makeRig(undefined, true)
+        giveAssets()
+        await mountScreen({ panel: false })
+        await rig.service.whenReady(A)
+        deleteGrin(rig.service)
+        let release!: () => void
+        files.waits.push(new Promise<void>((done) => { release = done }))
+        const pressed = ctrl({ key: 'z' })
+        await drainMicrotasks()
+        expect(rig.service.editField(A, 'desc', 'typed').ok).toBe(true)
+        release()
+        await pressed
+        await settle()
+        expect(shownMessages().notice).toBe('studioAssetFileUnchecked(grin)')
+        expect(names()).toEqual(['smile'])
+        expect(live().desc).toBe('typed')
+    })
+
+    test('a second Ctrl+Z queued behind the first finds nothing left and says nothing', async () => {
+        const rig = makeRig(undefined, true)
+        giveAssets()
+        await mountScreen({ panel: false })
+        await rig.service.whenReady(A)
+        deleteGrin(rig.service)
+        const press = (): KeyboardEvent => {
+            const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ctrlKey: true, key: 'z' })
+            part('studio')!.dispatchEvent(event)
+            return event
+        }
+        expect(press().defaultPrevented).toBe(true)
+        expect(press().defaultPrevented).toBe(true)
+        await settle()
+        await settle()
+        expect(names()).toEqual(['smile', 'grin'])
+        expect(rig.service.view(A).done).toHaveLength(0)
+        expect(studioScreen.notice).toBeNull()
+    })
+
+    test('a replay that finishes after the selection moved leaves the new screen without a notice', async () => {
+        const rig = makeRig(undefined, true)
+        giveAssets()
+        await mountScreen({ panel: false })
+        await rig.service.whenReady(A)
+        deleteGrin(rig.service)
+        files.states.set('assets/grin.png', 'gone')
+        let release!: () => void
+        files.waits.push(new Promise<void>((done) => { release = done }))
+        const pressed = ctrl({ key: 'z' })
+        await drainMicrotasks()
+        studioScreen.selectedOwnerKey = null
+        flushSync()
+        release()
+        await pressed
+        await settle()
+        expect(studioScreen.notice).toBeNull()
+        expect(names()).toEqual(['smile'])
+    })
+})
+
+describe('the History panel over asset rows asks the files first', () => {
+    const SMILE = ['smile', 'assets/smile.png', 'png']
+    const GRIN = ['grin', 'assets/grin.png', 'png']
+    const names = (): string[] => live().additionalAssets.map((row) => row[0])
+
+    async function panelRig(): Promise<Rig> {
+        const rig = makeRig(undefined, true)
+        live().additionalAssets = [[...SMILE], [...GRIN]]
+        flushSync()
+        await mountScreen({ panel: true })
+        await rig.service.whenReady(A)
+        return rig
+    }
+
+    test('Undo with the file gone says so, leaves the row out and drops the step', async () => {
+        const rig = await panelRig()
+        expect(rig.service.assetDelete(A, 'additionalAssets', [1]).ok).toBe(true)
+        flushSync()
+        files.states.set('assets/grin.png', 'gone')
+        await press('studio-history-undo')
+        expect(shownMessages().panel).toContain('studioAssetFileGone(grin)')
+        expect(names()).toEqual(['smile'])
+        expect(rig.service.view(A).done).toHaveLength(0)
+    })
+
+    test('Redo of an insert whose file is gone says so and leaves the row out', async () => {
+        const rig = await panelRig()
+        expect(rig.service.assetInsert(A, 'additionalAssets', [['fresh', 'assets/fresh.png', 'png']]).ok).toBe(true)
+        expect(rig.service.undo(A).ok).toBe(true)
+        flushSync()
+        files.states.set('assets/fresh.png', 'gone')
+        await press('studio-history-redo')
+        expect(shownMessages().panel).toContain('studioAssetFileGone(fresh)')
+        expect(names()).toEqual(['smile', 'grin'])
+    })
+
+    test('Revert across a delete of a gone file lands nothing and says so', async () => {
+        const rig = await panelRig()
+        expect(rig.service.assetRename(A, 'additionalAssets', 0, 'smile1').ok).toBe(true)
+        expect(rig.service.assetDelete(A, 'additionalAssets', [1]).ok).toBe(true)
+        flushSync()
+        files.states.set('assets/grin.png', 'gone')
+        await settle()
+        await press('studio-history-revert')
+        expect(shownMessages().panel).toContain('studioAssetFileGone(grin)')
+        expect(names()).toEqual(['smile1'])
+        expect(rig.service.view(A).done).toHaveLength(2)
+    })
+
+    test('a file that cannot be checked refuses with the line that names the row and changes nothing', async () => {
+        const rig = await panelRig()
+        expect(rig.service.assetDelete(A, 'additionalAssets', [1]).ok).toBe(true)
+        flushSync()
+        files.states.set('assets/grin.png', 'unknown')
+        await press('studio-history-undo')
+        expect(shownMessages().panel).toBe('studioAssetFileUnchecked(grin)')
+        expect(names()).toEqual(['smile'])
+        expect(rig.service.view(A).done).toHaveLength(1)
+    })
+
+    test('a step that lands while the files are asked is refused with the same line and nothing is undone', async () => {
+        const rig = await panelRig()
+        expect(rig.service.assetDelete(A, 'additionalAssets', [1]).ok).toBe(true)
+        flushSync()
+        let release!: () => void
+        files.waits.push(new Promise<void>((done) => { release = done }))
+        const pressed = press('studio-history-undo')
+        await drainMicrotasks()
+        expect(rig.service.editField(A, 'desc', 'typed').ok).toBe(true)
+        release()
+        await pressed
+        expect(shownMessages().panel).toBe('studioAssetFileUnchecked(grin)')
+        expect(names()).toEqual(['smile'])
+        expect(live().desc).toBe('typed')
+    })
+})
+
+// ---------------------------------------------------------------- a replay that rejects
+
+describe('a replay that rejects reaches the error alert', () => {
+    async function rejectingRig(): Promise<Rig> {
+        const rig = makeRig()
+        await mountScreen({ panel: false })
+        await rig.service.whenReady(A)
+        edit(rig, 'typed')
+        return rig
+    }
+
+    test('Ctrl+Z shows the error once and no notice', async () => {
+        const rig = await rejectingRig()
+        const failure = new Error('replay failed')
+        vi.spyOn(rig.service, 'replay').mockRejectedValue(failure)
+        expect((await ctrl({ key: 'z' })).defaultPrevented).toBe(true)
+        expect(alerts.errors).toEqual([failure])
+        expect(studioScreen.notice).toBeNull()
+    })
+
+    test('a value that is not an Error is shown as its text', async () => {
+        const rig = await rejectingRig()
+        vi.spyOn(rig.service, 'replay').mockRejectedValue('plain refusal')
+        await ctrl({ key: 'z' })
+        expect(alerts.errors).toEqual(['plain refusal'])
+    })
+
+    test('Ctrl+Z shows the error even when the selected owner changed before the rejection', async () => {
+        const rig = await rejectingRig()
+        const failure = new Error('late failure')
+        let fail!: (error: Error) => void
+        vi.spyOn(rig.service, 'replay').mockImplementation(() => new Promise<StudioResult>((_resolve, reject) => { fail = reject }))
+        const pressed = ctrl({ key: 'z' })
+        await drainMicrotasks()
+        studioScreen.selectedOwnerKey = null
+        flushSync()
+        fail(failure)
+        await pressed
+        await settle()
+        expect(alerts.errors).toEqual([failure])
+    })
+
 })

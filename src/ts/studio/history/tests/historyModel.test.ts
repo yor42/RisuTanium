@@ -17,6 +17,8 @@ import {
     MAX_DELETED,
     MAX_DONE,
     applyReplayMove,
+    assetPathsReplayMayInsert,
+    isStoredAssetPath,
     closeOpenStep,
     commitStep,
     createListHashTracker,
@@ -3848,6 +3850,9 @@ const ASSET_LABELS: StepLabel[] = [
     { kind: 'assetMove', count: 1, folder: null },
     { kind: 'folderRename', from: 'F', to: 'G' },
     { kind: 'folderDelete', name: 'F' },
+    { kind: 'assetAdd', count: 3 },
+    { kind: 'folderCreate', name: 'Poses' },
+    { kind: 'folderReorder' },
 ]
 
 const ALL_ASSET_OPS: Op[] = [
@@ -3922,6 +3927,27 @@ describe('asset ops: inverse, parse and copies', () => {
         ]
         for (const op of bad) {
             const record = { ownerKey: key, touchedAt: 1, done: [{ id: 's', at: 1, label: ASSET_LABELS[0], ops: [op] }], undone: [], deleted: [], restore: null }
+            expect(parseOwnerRecord(record, key)).toBeNull()
+        }
+    })
+
+    test('the strict reader refuses a malformed or unknown step label, including each added kind', () => {
+        const key = characterOwnerKey('c1')
+        const bad: object[] = [
+            { kind: 'assetAdd' },
+            { kind: 'assetAdd', count: -1 },
+            { kind: 'assetAdd', count: 1.5 },
+            { kind: 'assetAdd', count: '2' },
+            { kind: 'assetAdd', count: 2, name: 'x' },
+            { kind: 'folderCreate' },
+            { kind: 'folderCreate', name: 3 },
+            { kind: 'folderCreate', name: 'F', count: 1 },
+            { kind: 'folderReorder', name: 'F' },
+            { kind: 'folderReorder', count: 0 },
+            { kind: 'folderMystery' },
+        ]
+        for (const label of bad) {
+            const record = { ownerKey: key, touchedAt: 1, done: [{ id: 's', at: 1, label, ops: [] }], undone: [], deleted: [], restore: null }
             expect(parseOwnerRecord(record, key)).toBeNull()
         }
     })
@@ -4902,5 +4928,48 @@ describe('apply the replay move', () => {
         expect(next.record.done).toEqual([])
         expect(next.record.undone).toEqual([])
         expect(next.record.deleted).toEqual(withoutTop.deleted)
+    })
+})
+
+describe('the asset paths a replay may put a row over', () => {
+    const row = (path: string): string[] => ['n', path, 'png']
+    const stepWith = (id: string, ...ops: Op[]): Step => ({ id, at: 0, label: { kind: 'assetDelete', count: 1, name: null }, ops })
+    const removeOp = (path: string): Op => ({ op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: row(path), count: 1 })
+    const insertOp = (path: string): Op => ({ op: 'assetRowInsert', array: 'additionalAssets', index: 0, tuple: row(path), count: 0 })
+    const setOp = (before: string, after: string): Op => ({ op: 'assetRowSet', array: 'additionalAssets', index: 0, before: row(before), after: row(after) })
+
+    test('an undo puts back what the step removed, a redo what it inserted; the other half is not a path to ask', () => {
+        const step = stepWith('s', removeOp('assets/b.png'), insertOp('assets/a.png'))
+        expect(assetPathsReplayMayInsert([step], 'undo')).toEqual(['assets/b.png'])
+        expect(assetPathsReplayMayInsert([step], 'redo')).toEqual(['assets/a.png'])
+    })
+
+    test('a re-point asks only its new path, and a rename in place asks none', () => {
+        const repoint = stepWith('s', setOp('assets/old.png', 'assets/new.png'))
+        expect(assetPathsReplayMayInsert([repoint], 'redo')).toEqual(['assets/new.png'])
+        expect(assetPathsReplayMayInsert([repoint], 'undo')).toEqual(['assets/old.png'])
+        expect(assetPathsReplayMayInsert([stepWith('s', setOp('assets/same.png', 'assets/same.png'))], 'undo')).toEqual([])
+    })
+
+    test('the paths of several steps are sorted and unique, and text and folder ops name none', () => {
+        const steps = [
+            stepWith('a', removeOp('assets/z.png'), { op: 'textEdit', target: 'desc', offset: 0, from: '', to: 'x' }),
+            stepWith('b', removeOp('assets/m.png'), removeOp('assets/z.png'), { op: 'assetFolderOrder', before: [], after: ['f'] }),
+        ]
+        expect(assetPathsReplayMayInsert(steps, 'undo')).toEqual(['assets/m.png', 'assets/z.png'])
+        expect(assetPathsReplayMayInsert([], 'undo')).toEqual([])
+    })
+
+    test('a path not under assets/ is not a path to ask, whether inserted or re-pointed', () => {
+        const mixed = stepWith('s', removeOp('assets/b.png'), removeOp('https://example.invalid/a.png'), removeOp('x/assets/a.png'), setOp('assets/old.png', 'blob:synthetic'))
+        expect(assetPathsReplayMayInsert([mixed], 'undo')).toEqual(['assets/b.png', 'assets/old.png'])
+        expect(assetPathsReplayMayInsert([stepWith('s', setOp('assets/old.png', 'https://example.invalid/b.png'))], 'redo')).toEqual([])
+    })
+
+    test('only a path that starts with assets/ is a stored file', () => {
+        expect(isStoredAssetPath('assets/a.png')).toBe(true)
+        expect(isStoredAssetPath('x/assets/a.png')).toBe(false)
+        expect(isStoredAssetPath('https://example.invalid/a.png')).toBe(false)
+        expect(isStoredAssetPath('')).toBe(false)
     })
 })

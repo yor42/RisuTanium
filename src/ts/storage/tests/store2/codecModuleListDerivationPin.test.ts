@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { describe, expect, test } from 'vitest'
-import { hexStemToBase64url } from '../../store2/format'
+import { ASSET_REF_V, hexStemToBase64url } from '../../store2/format'
 import { createListDerivation } from '../../store2/lists'
+import { ASSET_RETAINED_KEY } from '../../../studio/assets/assetOwnerKeys'
 
 /**
  * Compatibility guard (CHORE-225 stage A): it passes on the code that introduced the carry and pins what the real
@@ -15,7 +16,9 @@ import { createListDerivation } from '../../store2/lists'
  * the cleanup can then delete an asset the module still names.
  *
  * What is pinned, from the derivation source:
- * - the asset derivation (`collectModuleAssets`) reads `assets` (the second element of each row) and `icon` only;
+ * - the asset derivation (`collectModuleAssets`) reads `assets` (the second element of each row), `icon` and the
+ *   retained-paths field (the second element of each pair) only; `ASSET_REF_V` stays 1 because no earlier build wrote
+ *   that field, so a list stored without it is what the derivation gives an owner that lacks it;
  * - the inlay derivation (`deriveInlayList` over `forEachString`) reads no named field: it walks every own enumerable
  *   key and every string value of the whole module to any depth. So the pin is that it scans the whole body: ids in
  *   top-level and nested keys and values are all found, and every own key is read.
@@ -74,25 +77,36 @@ const HEX = {
 }
 const png = (hex: string): string => `assets/${hex}.png`
 
-describe('guard: the module asset derivation reads only assets and icon', () => {
+describe('guard: the module asset derivation reads only assets, icon and the retained paths', () => {
     // Every other field is present, so a derivation that starts reading one of them is seen.
     const MODULE = {
         id: 'p', name: 'Pin', description: 'd', namespace: 'n', lowLevelAccess: true, hideIcon: false,
         lorebook: [{ content: png(HEX.D) }], regex: [{ in: 'a', out: 'b' }], trigger: [{ effect: png(HEX.C) }],
         assets: [['a', png(HEX.A)], ['b', 'Voice.WAV']],
         icon: png(HEX.B),
+        [ASSET_RETAINED_KEY]: [['gone', png(HEX.E)]],
     }
 
     test('A1: the exact set of properties read, with no `in` check or key enumeration', () => {
         const seen = readsOf(createListDerivation().moduleAssets, MODULE)
-        expect(seen.get).toEqual(['assets', 'assets.*', 'assets.*.*', 'assets.length', 'icon'])
+        expect(seen.get).toEqual([
+            'assets', 'assets.*', 'assets.*.*', 'assets.length', 'icon',
+            'risutanium_asset_retained', 'risutanium_asset_retained.*', 'risutanium_asset_retained.*.*',
+            'risutanium_asset_retained.*.length', 'risutanium_asset_retained.length',
+        ])
         expect(seen.has).toEqual([])
         expect(seen.ownKeys).toEqual([])
     })
 
-    test('A2: the top-level fields read are exactly assets and icon', () => {
+    test('A2: the top-level fields read are exactly assets, icon and the retained paths', () => {
         const seen = readsOf(createListDerivation().moduleAssets, MODULE)
-        expect(seen.get.filter(path => !path.includes('.'))).toEqual(['assets', 'icon'])
+        expect(seen.get.filter(path => !path.includes('.'))).toEqual(['assets', 'icon', 'risutanium_asset_retained'])
+    })
+
+    test('A3: the retained path is part of the derived list, and the list version stays 1', () => {
+        const list = createListDerivation().moduleAssets(MODULE)
+        expect(list.h).toBe([HEX.A, HEX.B, HEX.E].map(hexStemToBase64url).sort().join(''))
+        expect(ASSET_REF_V).toBe(1)
     })
 })
 

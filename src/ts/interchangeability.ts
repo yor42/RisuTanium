@@ -3,7 +3,7 @@ import type { RisuModule} from './process/modules.ts'
 import type { character, RisuPersona } from './storage/database.svelte.js';
 import { createBlankChar } from "src/ts/characters";
 import { language } from "src/lang";
-import { ASSET_FOLDER_KEY } from './studio/assets/assetOwnerKeys';
+import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from './studio/assets/assetOwnerKeys';
 
 export function convertModuleToCharacter(m: RisuModule): character {
     const char = createBlankChar()
@@ -163,6 +163,8 @@ export function convertPersonaToModule(p: RisuPersona): RisuModule {
     if(p.embeddedModule){
         baseModule = safeStructuredClone(p.embeddedModule)
     }
+    // The retained paths belong to the device and owner they were recorded on; a new module starts with none.
+    Reflect.deleteProperty(baseModule, ASSET_RETAINED_KEY)
 
     baseModule.name = p.name
     baseModule.description = p.note || ""
@@ -188,6 +190,8 @@ export function convertModuleToPersona(m: RisuModule): RisuPersona {
         embeddedModule: safeStructuredClone(m)
     }
 
+    // The retained paths belong to the device and owner they were recorded on; a new persona starts with none.
+    Reflect.deleteProperty(basePersona.embeddedModule, ASSET_RETAINED_KEY)
     basePersona.name = m.name
     basePersona.embeddedModule.lorebook ??= []
     basePersona.embeddedModule.lorebook = basePersona?.embeddedModule?.lorebook?.filter((a) => {

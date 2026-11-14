@@ -6,6 +6,8 @@
 
 import { language } from '../../../lang'
 import type { SaveAck } from '../edit/saveAck.svelte'
+import type { ModuleSlotReplaced } from '../edit/studioSetters'
+import { resetStudioToastsForTests, retireAssetToasts } from '../edit/studioToasts'
 import { studioOpen } from '../studioOpen'
 import { studioScreen } from '../studioScreen.svelte'
 import type { HistoryClock } from './historyModel'
@@ -44,6 +46,44 @@ const failedStore: StudioHistoryStore = {
     onClosed: () => {},
 }
 
+// What follows a Studio module slot write, in the module loader's order: the `getModules` memo is reset first, so the
+// screens the bump reloads read the new module. The two functions are passed in because `process/modules` is never
+// imported here at load: it pulls in most of the app and is not needed by a page that edits no module.
+export function createModuleSlotPort(refreshModules: () => void, bumpModuleGui: () => void): ModuleSlotReplaced {
+    return () => {
+        refreshModules()
+        bumpModuleGui()
+    }
+}
+
+let moduleSlotPort: ModuleSlotReplaced | null = null
+let moduleSlotPortLoading: Promise<void> | null = null
+
+// Loads `process/modules` and builds the port. Started when a module owner is first used, so the port is ready before
+// that owner's first write; a failed load is forgotten and tried again.
+function primeModuleSlotPort(): Promise<void> {
+    moduleSlotPortLoading ??= Promise.all([import('../../process/modules'), import('../../process/moduleGuiBump')]).then(
+        ([modules, moduleGui]) => {
+            moduleSlotPort = createModuleSlotPort(modules.refreshModules, moduleGui.bumpModuleGui)
+        },
+        (error: unknown) => {
+            moduleSlotPortLoading = null
+            console.error(error)
+        },
+    )
+    return moduleSlotPortLoading
+}
+
+// The port the production service is given. Normally the port is ready and runs at once; a write that comes first runs
+// it as soon as the load ends.
+const productionModuleSlotPort: ModuleSlotReplaced = () => {
+    if (moduleSlotPort) {
+        moduleSlotPort()
+    } else {
+        void primeModuleSlotPort().then(() => moduleSlotPort?.())
+    }
+}
+
 // Builds the service: the modules load, then the device store and the Web Locks claim are created and the
 // service is created once over them. `tauri` makes a page without Web Locks the one live page, as on a Tauri
 // build. No `registerLeaveFlush` is passed, so the service registers its flush with the page's leave rule
@@ -66,7 +106,18 @@ async function build(): Promise<Loaded> {
         console.error(error)
     }
     return {
-        service: history.createOwnerHistoryService({ store, claim, clock: pageClock, tauri: platform.isTauri, scheduleIdle: history.browserIdleScheduler() }),
+        service: history.createOwnerHistoryService({
+            store,
+            claim,
+            clock: pageClock,
+            tauri: platform.isTauri,
+            scheduleIdle: history.browserIdleScheduler(),
+            onModuleSlotReplaced: productionModuleSlotPort,
+            // Loaded when a replay first needs it: the asset file reader reaches the storage layer.
+            openAssetFileReader: async () => (await import('../assets/assetFileState')).openAssetFileReader(),
+            // Any landed step ends the Undo toasts of that owner that are no longer on top, whichever instance posted them.
+            onLanded: retireAssetToasts,
+        }),
         createAck: () => ack.createSaveAck(ack.productionSaveAckDeps(pageClock)),
     }
 }
@@ -181,6 +232,7 @@ export function beginOwnerVisit(owner: OwnerKey): SaveAck | null {
     }
     if (parsed.kind === 'module') {
         // A module owner has no character visit ack: it is used, and its writes mark through the asset write.
+        void primeModuleSlotPort()
         service.useOwner(owner)
         return null
     }
@@ -260,4 +312,7 @@ export function resetStudioHistoryAccessorForTests(): void {
     ackOverride = null
     loaderOverride = null
     inputVisitId = null
+    moduleSlotPort = null
+    moduleSlotPortLoading = null
+    resetStudioToastsForTests()
 }

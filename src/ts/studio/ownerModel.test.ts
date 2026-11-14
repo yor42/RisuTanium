@@ -222,7 +222,7 @@ describe('3j a stub is never asked for a body key', () => {
     test('the body key list covers every key a module has and its entry lacks', () => {
         expect(bodyKeyListIsComplete).toBe(true)
         expect([...STUB_BODY_KEYS].sort()).toEqual(
-            ['assets', 'backgroundEmbedding', 'cjs', 'customModuleToggle', 'lorebook', 'regex', 'risutanium_asset_folders', 'trigger'],
+            ['assets', 'backgroundEmbedding', 'cjs', 'customModuleToggle', 'lorebook', 'regex', 'risutanium_asset_folders', 'risutanium_asset_retained', 'trigger'],
         )
     })
 
@@ -234,7 +234,8 @@ describe('3j a stub is never asked for a body key', () => {
         void watched.lorebook
         expect('assets' in watched).toBe(false)
         expect(Object.hasOwn(watched, 'risutanium_asset_folders')).toBe(false)
-        expect(reads).toEqual(['lorebook', 'assets', 'risutanium_asset_folders'])
+        expect(Object.hasOwn(watched, 'risutanium_asset_retained')).toBe(false)
+        expect(reads).toEqual(['lorebook', 'assets', 'risutanium_asset_folders', 'risutanium_asset_retained'])
     })
 
     test('building, expanding, merging and resolving over watched stubs reads no body key', () => {

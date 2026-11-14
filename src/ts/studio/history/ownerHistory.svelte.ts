@@ -7,6 +7,26 @@ import { getSaveMarkCount } from '../../globalApi.svelte'
 import { writeLiveCharacter, writeLiveChat } from '../../liveCharacterWrite'
 import { registerLeaveFlush as registerPageLeaveFlush } from '../../process/saveOnHide'
 import { studioScreen } from '../studioScreen.svelte'
+import type { AssetFileReader, AssetFileState } from '../assets/assetFileState'
+import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../assets/assetOwnerKeys'
+import { applyFolderOps } from '../assets/folderCodec'
+import type { AssetArrayName, MergePreview } from '../assets/mergePreview'
+import {
+    buildAssetDelete,
+    buildAssetInsert,
+    buildAssetMerge,
+    buildAssetRemoveExtras,
+    buildAssetRename,
+    buildFolderIntent,
+    folderOpsOf,
+    readRetainedPairs,
+    recomputeRetained,
+    removesAssetRow,
+    touchesAssets,
+    type AssetBuildResult,
+    type FolderIntent,
+    type SurvivorDeps,
+} from '../edit/assetSetters'
 import {
     applyCharacterWrites,
     applyChatWrites,
@@ -14,11 +34,17 @@ import {
     buildGreetingAdd,
     buildGreetingDelete,
     buildGreetingEdit,
+    buildWrittenModule,
     createLiveReader,
+    createModuleLiveReader,
+    isModuleTarget,
     isRestrictedChaId,
     resolveLiveTarget,
+    writeLiveModule,
+    type AssetWriteExtras,
     type EditBuildResult,
     type LiveTarget,
+    type ModuleSlotReplaced,
     type SetterRefusal,
 } from '../edit/studioSetters'
 import type { SaveAck } from '../edit/saveAck.svelte'
@@ -27,10 +53,13 @@ export { browserIdleScheduler } from './elementHashCache'
 import type { ListElementHash } from './listFingerprint'
 import {
     applyReplayMove,
+    assetPathsReplayMayInsert,
+    isStoredAssetPath,
     commitStep,
     createPageSession,
     deriveRestoreWrites,
     emptyRecord,
+    invertOp,
     planReplay,
     planRestoreDeleted,
     planRestorePoint,
@@ -46,6 +75,7 @@ import {
     type RestorePlan,
     type RestorePoint,
     type SetPath,
+    type Op,
     type Step,
     type StepPlan,
     type WriteOp,
@@ -63,6 +93,7 @@ import {
     type OwnerPhase,
     type ReadyReason,
 } from './ownerPhase'
+import { nameOfPathIn, stepNamesAssetPath, stepsOf } from './retainedPaths'
 import type {
     ClaimResult,
     LoadResult,
@@ -72,7 +103,15 @@ import type {
     StudioHistoryStore,
 } from './studioHistoryStore'
 
-export type StudioRefusal = 'loading' | SetterRefusal | 'empty' | 'unknown'
+// The asset refusals: a removal-type write needs a working undo, and these are the states that cannot give one. A
+// replay that would put a row back is refused too when the file's state could not be confirmed.
+export type AssetRefusal = 'asset-no-undo' | 'asset-other-tab-character' | 'asset-other-tab-module' | 'asset-file-unchecked'
+
+// How long a replay may spend asking whether the files it would put back are there, counted from the call. A toast's
+// Undo is given up by its host after 10 s, so a queued replay must reach its answer well before that.
+export const REPLAY_BUDGET_MS = 8000
+
+export type StudioRefusal = 'loading' | SetterRefusal | AssetRefusal | 'empty' | 'unknown'
 
 // What a landed action tells the caller. `unchanged` means the value already was the requested one:
 // nothing was written, marked or recorded.
@@ -89,14 +128,28 @@ export interface StudioWriteNotes {
     dropped?: true
     // Revert only: asset rows whose file is gone and that were not re-inserted.
     goneRows?: string[]
+    // The name the first of `goneRows` went by in the replayed steps, for the line shown to the user. Set with `goneRows`,
+    // also on an `unchanged` revert.
+    goneName?: string
     // Revert only: list ops that were not undone because their step's list no longer fit. Also set on
     // an `unchanged` revert, which lands nothing.
     listSkipped?: number
     // Restore point only: the paths whose live value was changed outside Studio's history.
     changedElsewhere?: RestorePath[]
+    // An asset intent that landed: the id of the step it recorded.
+    stepId?: string
 }
 
-export type StudioResult = ({ ok: true } & StudioWriteNotes) | { ok: false; reason: StudioRefusal }
+// `name` is the row a refusal is about (`asset-file-unchecked`). `targetChanged` says the steps the replay was asked for
+// are no longer the ones on top while it waited for its answers, so nothing was applied.
+export type StudioResult = ({ ok: true } & StudioWriteNotes) | { ok: false; reason: StudioRefusal; name?: string; targetChanged?: true }
+
+// What a replay is asked to do. `expectTop` makes an undo or a redo apply only while that step is still the one it
+// would replay.
+export type ReplayDesc = { kind: 'undo' | 'redo'; expectTop?: string } | { kind: 'revert'; stepId: string }
+
+// Wraps the replay's synchronous apply. It must call `apply` exactly once, synchronously, and return its result.
+export type ReplayAround = (apply: () => StudioResult) => StudioResult
 
 export type OwnerAck = Pick<SaveAck, 'noteEdit'>
 
@@ -133,6 +186,20 @@ export interface OwnerHistoryDeps {
     registerLeaveFlush?: (flush: () => void) => () => void
     elementHashCache?: ElementHashCache
     scheduleIdle?: IdleScheduler
+    // The id of the module whose asset panel is open, or null. A module owner is selected only while this returns its
+    // id; the module panel supplies it. Default: no module is open.
+    openModuleId?: () => string | null
+    // Called after every landed action of any kind (edit, undo, redo, revert, restore point, restore of a deleted
+    // item, and a step that only moved or was dropped) with the id of the step now on top of `done`, or null.
+    onLanded?: (owner: OwnerKey, topStepId: string | null) => void
+    // Opens the reader of file states that `replay` asks before it puts an asset row back. Present: a row is put back
+    // only over a file read as present, a gone file's row is left out, and anything else refuses (a synchronous
+    // undo, redo or revert never has an answer, so it refuses every insert). Absent: nothing is checked (suites that
+    // do not test files). A rejection is an unanswered question.
+    openAssetFileReader?: () => Promise<AssetFileReader>
+    // Called after a module's slot is replaced by a Studio write: the production port resets the `getModules` memo and
+    // tells module screens, as the module loader does. Default: nothing (a service with no module reads).
+    onModuleSlotReplaced?: ModuleSlotReplaced
 }
 
 export interface OwnerHistoryService {
@@ -147,13 +214,31 @@ export interface OwnerHistoryService {
     greetingAdd(owner: OwnerKey): StudioResult
     greetingEdit(owner: OwnerKey, index: number, value: string): StudioResult
     greetingDelete(owner: OwnerKey, index: number): StudioResult
+    // Synchronous replays. With a file reader configured they refuse every row they would put back, because they have
+    // no answers: callers use `replay`.
     undo(owner: OwnerKey): StudioResult
     redo(owner: OwnerKey): StudioResult
     revertTo(owner: OwnerKey, stepId: string): StudioResult
+    // The undo, redo or revert every entry point uses. Calls run one at a time in call order (text-only ones too). Where
+    // the replay would put asset rows back, the files are asked for first, within `REPLAY_BUDGET_MS` of the call; the
+    // target is read when the job starts and checked again after the answers, and the apply (inside `around`, if given)
+    // is one synchronous segment. A job that throws rejects its own promise only; the next job still runs.
+    replay(owner: OwnerKey, desc: ReplayDesc, around?: ReplayAround): Promise<StudioResult>
     restore(owner: OwnerKey, keep: ReadonlySet<RestorePath>): StudioResult
     restoreDeleted(owner: OwnerKey, deletedId: string): StudioResult
+    // The asset intents of a character or module owner. Each is one step, one owner write and one save request; a
+    // removal-type one is refused when history cannot persist, and a refusal changes nothing.
+    assetDelete(owner: OwnerKey, array: AssetArrayName, indexes: readonly number[]): StudioResult
+    assetRemoveExtras(owner: OwnerKey, array: AssetArrayName, name: string, indexes: readonly number[], survivors: SurvivorDeps): StudioResult
+    assetMerge(owner: OwnerKey, model: MergePreview, survivors: SurvivorDeps): StudioResult
+    assetRename(owner: OwnerKey, array: AssetArrayName, index: number, newName: string): StudioResult
+    // The step is always labelled as an addition with its row count.
+    assetInsert(owner: OwnerKey, array: AssetArrayName, tuples: readonly (readonly string[])[]): StudioResult
+    assetFolder(owner: OwnerKey, intent: FolderIntent): StudioResult
     // Blur or a visit close: the next write starts a new step.
     closeOpenStep(owner: OwnerKey): void
+    // Test seam; no production reader: how many asset steps this owner holds as unsettled retention roots.
+    unsettledStepCountForTests(owner: OwnerKey): number
     // Input in Studio that is not a history write: the pending warm-up ends, as at a write, and nothing
     // restarts it.
     cancelWarm(): void
@@ -196,6 +281,11 @@ function createEntry<T>(creator: OwnerKey | null, clock: HistoryClock): Entry<T>
 class OwnerSlot {
     phase = $state.raw<OwnerPhase | null>(null)
     record = $state.raw<OwnerRecord>(emptyRecord('character:_', 0))
+    // The record the store last acknowledged (`ok`, or what a load returned): its asset steps are retention roots
+    // even after memory has dropped them.
+    acked: OwnerRecord = emptyRecord('character:_', 0)
+    // The asset steps handed to a save that has not been acknowledged since: such a save may have stored them.
+    readonly unsettled = new Set<Step>()
     open: OpenStep | null = null
     deadline: unknown = null
     debounce: unknown = null
@@ -251,6 +341,7 @@ type Intent =
     | { kind: 'revert'; stepId: string }
     | { kind: 'restore'; keep: ReadonlySet<RestorePath> }
     | { kind: 'restoreDeleted'; deletedId: string }
+    | { kind: 'asset'; build: (live: LiveReader) => AssetBuildResult }
 
 export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryService {
     const { store, claim, clock } = deps
@@ -258,7 +349,10 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     const getMarkCount = deps.getMarkCount ?? getSaveMarkCount
     const getVisitId = deps.getVisitId ?? (() => studioScreen.visitId)
     const pageSession = deps.pageSession ?? createPageSession((bytes) => crypto.getRandomValues(bytes))
+    const openModuleId = deps.openModuleId ?? (() => null)
     let counter = 0
+    // The file states one replay read, set only while that replay's synchronous apply runs and cleared when it ends.
+    let answers: Map<string, AssetFileState> | null = null
 
     const slots = new Map<OwnerKey, OwnerSlot>()
     const claims = new Map<string, Entry<ClaimResult>>()
@@ -438,13 +532,19 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         switch (result.kind) {
             case 'absent':
+                // Nothing is stored, so nothing stored names a step.
+                slot.acked = emptyRecord(slot.key, clock.now())
                 deliver(slot, { type: 'load:absent' })
                 break
             case 'ok':
                 slot.record = result.record
+                // The loaded record is what the store holds: its steps are roots until a later `ok` replaces it.
+                slot.acked = result.record
                 deliver(slot, { type: 'load:ok' })
                 break
             case 'unreadable':
+                // The unreadable bytes are copied aside, and the next save replaces them.
+                slot.acked = emptyRecord(slot.key, clock.now())
                 deliver(slot, { type: 'load:unreadable' })
                 break
             case 'keptUnreadable':
@@ -530,6 +630,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                     ? new OwnerSlot(owner, null, 'm:' + parsed.moduleId, { kind: 'module', id: parsed.moduleId })
                     : new OwnerSlot(owner, parsed.chaId, 'c:' + parsed.chaId, { kind: 'character', id: parsed.chaId })
             slot.record = emptyRecord(owner, clock.now())
+            slot.acked = slot.record
             slots.set(owner, slot)
             slotCount += 1
             deliver(slot, { type: 'firstUse', restricted: parsed.kind !== 'module' && isRestrictedChaId(parsed.chaId) })
@@ -556,11 +657,24 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         if (slot.chaId !== null && isRestrictedChaId(slot.chaId)) {
             return
         }
+        // Records are replaced, never mutated, and one owner's saves run one at a time: `saved` is what an `ok`
+        // committed. A step a save may have stored stays a retention root until a later `ok` replaces it, whatever
+        // this save answers: a reply can be lost or turned into `unwritable` after the commit.
+        const saved = slot.record
+        for (const step of [...saved.done, ...saved.undone]) {
+            if (stepNamesAssetPath(step)) {
+                slot.unsettled.add(step)
+            }
+        }
         let result: SaveResult
         try {
-            result = await store.save(slot.key, slot.record, new Set<OwnerKey>([slot.key]))
+            result = await store.save(slot.key, saved, new Set<OwnerKey>([slot.key]))
         } catch {
             result = { kind: 'unwritable' }
+        }
+        if (result.kind === 'ok') {
+            slot.acked = saved
+            slot.unsettled.clear()
         }
         deliver(slot, saveEvent(result))
     }
@@ -607,17 +721,130 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         pageFm: boolean
         // The plan changes no live value: the owner is neither written nor marked.
         noWrite?: true
+        // A step that only moves because its change is already in place: its forward ops still get the removal
+        // check, conservatively, so a removal-type step is not moved where it could not be written.
+        forwardOps?: readonly Op[]
         // Applies the landed action to the owner's model state.
         land(state: ModelState): ModelState
         notes: StudioWriteNotes
     }
 
-    function planFor(slot: OwnerSlot, intent: Intent, live: LiveReader, target: LiveTarget, at: number): Planned | StudioResult {
+    // The ops of an asset build as the writes the owner write applies: a `desc` text edit is the field's value after
+    // the splice (the rest of the plan's edits of it follow the running value), every other op is its own write.
+    function writesOfAssetOps(ops: readonly Op[], live: LiveReader): WriteOp[] {
+        const writes: WriteOp[] = []
+        const field = live.field('desc')
+        let desc = field.had && typeof field.value === 'string' ? field.value : null
+        for (const op of ops) {
+            if (op.op === 'textEdit' && op.target === 'desc') {
+                if (desc !== null) {
+                    desc = desc.slice(0, op.offset) + op.to + desc.slice(op.offset + op.from.length)
+                    writes.push({ op: 'set', path: 'desc', value: { had: true, value: desc } })
+                }
+            } else if (op.op === 'textEdit' || op.op === 'assetRowRemove' || op.op === 'assetRowInsert' || op.op === 'assetRowSet' || op.op === 'assetFolderSet' || op.op === 'assetFolderOrder') {
+                writes.push(op)
+            }
+        }
+        return writes
+    }
+
+    // The steps a replay or a revert would replay, and the direction their ops are applied in: an undo and a revert
+    // undo, a redo redoes. Null for every other intent.
+    function replayedSteps(slot: OwnerSlot, intent: Intent): { steps: readonly Step[]; direction: 'undo' | 'redo' } | null {
+        if (intent.kind === 'replay') {
+            const top = (intent.direction === 'undo' ? slot.record.done : slot.record.undone).at(-1)
+            return { steps: top ? [top] : [], direction: intent.direction }
+        }
+        if (intent.kind === 'revert') {
+            const index = slot.record.done.findIndex((step) => step.id === intent.stepId)
+            return { steps: index < 0 ? [] : slot.record.done.slice(index + 1), direction: 'undo' }
+        }
+        return null
+    }
+
+    // The paths a replay may put a row over that this replay's answers read as gone.
+    function goneRowsFor(slot: OwnerSlot, intent: Intent): ReadonlySet<string> | undefined {
+        const replayed = deps.openAssetFileReader && answers ? replayedSteps(slot, intent) : null
+        if (!replayed || !answers) {
+            return undefined
+        }
+        const gone = new Set<string>()
+        for (const path of assetPathsReplayMayInsert(replayed.steps, replayed.direction)) {
+            if (answers.get(path) === 'gone') {
+                gone.add(path)
+            }
+        }
+        return gone.size > 0 ? gone : undefined
+    }
+
+    // The name `rows[0]` went by in the replayed steps, or undefined when no row is gone.
+    function goneNameOf(slot: OwnerSlot, intent: Intent, rows: readonly string[] | undefined): string | undefined {
+        return rows === undefined || rows.length === 0 ? undefined : nameOfPathIn(replayedSteps(slot, intent)?.steps ?? [], rows[0])
+    }
+
+    // The first path (sorted) the writes would put a row over without this replay having read its file as present. A
+    // replay that was not asked has no answers, so every such path is unconfirmed.
+    function unconfirmedInsert(writes: readonly WriteOp[]): string | null {
+        const paths = new Set<string>()
+        for (const write of writes) {
+            if (write.op === 'assetRowInsert') {
+                paths.add(typeof write.tuple[1] === 'string' ? write.tuple[1] : '')
+            } else if (write.op === 'assetRowSet' && write.after[1] !== write.before[1]) {
+                paths.add(typeof write.after[1] === 'string' ? write.after[1] : '')
+            }
+        }
+        for (const path of [...paths].sort()) {
+            if (isStoredAssetPath(path) && answers?.get(path) !== 'present') {
+                return path
+            }
+        }
+        return null
+    }
+
+    function planFor(slot: OwnerSlot, intent: Intent, live: LiveReader, target: LiveTarget | null, at: number, goneRows?: ReadonlySet<string>): Planned | StudioResult {
         const visitId = getVisitId()
         const record = slot.record
         // A module owner has no greeting list, so no element hashes.
         const hashFor = slot.chaId === null ? undefined : listHashOf(slot.chaId)
+        if (intent.kind === 'asset') {
+            // Asset intents belong to a character or a module owner, never to one of a character's chats.
+            if (parseOwnerKey(slot.key)?.kind === 'chat') {
+                return refused('unknown')
+            }
+            const built = intent.build(live)
+            if (built.ok === false) {
+                return built.reason === 'unchanged' ? { ok: true, unchanged: true } : refused('precondition')
+            }
+            const id = stepIdFor(pageSession, ++counter)
+            const greetings = live.greetings()
+            const descField = live.field('desc')
+            const restoreWrites = deriveRestoreWrites(
+                built.ops,
+                greetings === null ? null : [...greetings],
+                descField.had && typeof descField.value === 'string' ? descField.value : undefined,
+            )
+            return {
+                writes: writesOfAssetOps(built.ops, live),
+                pageFm: false,
+                notes: {},
+                // An asset step never joins an open step and never replaces the restore point, as a revert does not.
+                land: (state) =>
+                    commitStep(state, {
+                        id,
+                        at,
+                        visitId,
+                        label: built.label,
+                        ops: built.ops,
+                        restoreWrites,
+                        coalesceKey: null,
+                        replacesRestore: false,
+                    }, hashFor),
+            }
+        }
         if (intent.kind === 'edit') {
+            if (target === null) {
+                return refused('gone')
+            }
             const id = stepIdFor(pageSession, ++counter)
             const built = intent.build(id, live, target)
             if (built.ok === false) {
@@ -644,7 +871,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             }
         }
         if (intent.kind === 'replay') {
-            const plan = planReplay(record, intent.direction, live, hashFor)
+            const plan = planReplay(record, intent.direction, live, hashFor, goneRows)
             if (plan.ok === false) {
                 return refused(plan.reason === 'empty' ? 'empty' : 'precondition')
             }
@@ -652,13 +879,14 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 writes: plan.writes,
                 pageFm: false,
                 ...(plan.already !== undefined || plan.dropStep ? { noWrite: true as const } : {}),
-                notes: replayNotes(plan),
+                ...(plan.already !== undefined ? { forwardOps: intent.direction === 'undo' ? plan.ops.map(invertOp) : plan.ops } : {}),
+                notes: replayNotes(plan, goneNameOf(slot, intent, plan.goneRows)),
                 land: (state) => applyReplayMove(state, intent.direction, plan, at, visitId, hashFor),
             }
         }
         const plan =
             intent.kind === 'revert'
-                ? planRevert(record, intent.stepId, live, undefined, hashFor)
+                ? planRevert(record, intent.stepId, live, undefined, hashFor, goneRows)
                 : intent.kind === 'restore'
                   ? planRestorePoint(record.restore, live, intent.keep)
                   : planRestoreDeleted(record, intent.deletedId, live)
@@ -666,18 +894,20 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             // A net-nothing revert lands nothing: no write, mark, step or save. It may still tell the
             // caller that older list changes were not undone or that a chat index could not be restored.
             if (plan.reason === 'unchanged') {
+                const goneName = goneNameOf(slot, intent, plan.goneRows)
                 return {
                     ok: true,
                     unchanged: true,
                     ...(plan.listSkipped === undefined ? {} : { listSkipped: plan.listSkipped }),
                     ...(plan.fmNotRestored ? { fmNotRestored: true } : {}),
                     ...(plan.goneRows === undefined ? {} : { goneRows: plan.goneRows }),
+                    ...(goneName === undefined ? {} : { goneName }),
                 }
             }
             return refused(plan.reason)
         }
         const id = stepIdFor(pageSession, ++counter)
-        const notes = replayNotes(plan)
+        const notes = replayNotes(plan, goneNameOf(slot, intent, plan.goneRows))
         if (isRestorePlan(plan)) {
             notes.changedElsewhere = plan.changedElsewhere
         }
@@ -702,7 +932,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
     }
 
-    function replayNotes(plan: StepPlan): StudioWriteNotes {
+    function replayNotes(plan: StepPlan, goneName: string | undefined): StudioWriteNotes {
         const notes: StudioWriteNotes = {}
         if (plan.skipped > 0) {
             notes.skipped = plan.skipped
@@ -722,6 +952,9 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         if (plan.goneRows !== undefined) {
             notes.goneRows = plan.goneRows
         }
+        if (goneName !== undefined) {
+            notes.goneName = goneName
+        }
         return notes
     }
 
@@ -729,6 +962,14 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     // marked `writeLive*` call, then the stack move, the visit ack and the save request.
     function applyStudioWrite(owner: OwnerKey, intent: Intent): StudioResult {
         cancelWarm()
+        // A module owner that is not selected, shares its id or is a stub is refused before its lifecycle starts, so
+        // no claim, load or save is made for it.
+        if (parseOwnerKey(owner)?.kind === 'module') {
+            const early = resolveLiveTarget(owner, openModuleId)
+            if (early.ok === false) {
+                return refused(early.reason)
+            }
+        }
         const slot = useOwner(owner)
         if (!slot || !slot.phase) {
             return refused('gone')
@@ -740,50 +981,254 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         if (phase.kind === 'excluded') {
             return refused('restricted')
         }
-        const resolved = resolveLiveTarget(owner)
+        const resolved = resolveLiveTarget(owner, openModuleId)
         if (resolved.ok === false) {
             return refused(resolved.reason)
         }
         const target = resolved.target
         const at = clock.now()
-        const planned = planFor(slot, intent, createLiveReader(target), target, at)
+        const characterTarget = isModuleTarget(target) ? null : target
+        const live = isModuleTarget(target) ? createModuleLiveReader(target.module) : createLiveReader(target)
+        const planned = planFor(slot, intent, live, characterTarget, at, goneRowsFor(slot, intent))
         if (!('writes' in planned)) {
             return planned
         }
+        // A replay puts a row back only over a file this replay read as present; a gone file's row was left out by the
+        // plan. The check runs before anything changes, so a refusal leaves record, stacks, field and marks as they were.
+        if (deps.openAssetFileReader && (intent.kind === 'replay' || intent.kind === 'revert')) {
+            const unconfirmed = unconfirmedInsert(planned.writes)
+            if (unconfirmed !== null) {
+                return { ok: false, reason: 'asset-file-unchecked', name: nameOfPathIn(replayedSteps(slot, intent)?.steps ?? [], unconfirmed) }
+            }
+        }
         const chaId = slot.chaId
         if (planned.noWrite) {
+            if (planned.forwardOps && removesAssetRow(planned.forwardOps)) {
+                const stored = isModuleTarget(target) ? target.module[ASSET_RETAINED_KEY] : target.character[ASSET_RETAINED_KEY]
+                const refusal = removalRefusal(phase, stored, isModuleTarget(target))
+                if (refusal) {
+                    return refused(refusal)
+                }
+            }
             // A step that is already in place, or dropped: no live write, mark, ack or recompute. The stack
             // move still lands and is saved.
             const moved = planned.land({ record: slot.record, open: slot.open })
             slot.record = moved.record
             slot.open = moved.open
+            landedNotice(owner, slot)
             if (phase.kind === 'ready') {
                 requestSave(slot)
             }
             return { ok: true, ...planned.notes }
         }
-        if (chaId === null) {
-            // A module owner's live write is the asset write's; it has no history intent here.
-            return refused('gone')
+        // The asset path: every write that changes an asset list or a folder entry carries the retained paths.
+        const assetWrite = touchesAssets(planned.writes)
+        const removal = removesAssetRow(planned.writes)
+        let extras: AssetWriteExtras | null = null
+        if (assetWrite) {
+            // A removal-type write needs an undo that survives: refused before anything changes, and the open
+            // step stays open.
+            const stored = isModuleTarget(target) ? target.module[ASSET_RETAINED_KEY] : target.character[ASSET_RETAINED_KEY]
+            const refusal = removal ? removalRefusal(phase, stored, isModuleTarget(target)) : null
+            if (refusal) {
+                return refused(refusal)
+            }
+            // The folder document is computed from the value stored now, before any write: a failed precondition
+            // refuses the whole intent.
+            let folder: AssetWriteExtras['folder'] = { kind: 'keep' }
+            const folderOps = folderOpsOf(planned.writes)
+            if (folderOps.length > 0) {
+                const storedFolder = isModuleTarget(target) ? target.module[ASSET_FOLDER_KEY] : target.character.extentions?.[ASSET_FOLDER_KEY]
+                const applied = applyFolderOps(storedFolder, folderOps)
+                if (applied.ok === false) {
+                    return refused('precondition')
+                }
+                folder = applied.doc === null ? { kind: 'remove' } : { kind: 'set', doc: applied.doc }
+            }
+            extras = { folder, retained: null }
+        }
+        if (intent.kind === 'asset') {
+            // An asset intent never joins an open step.
+            slot.open = null
+        }
+        const next = planned.land({ record: slot.record, open: slot.open })
+        if (extras) {
+            const kind = phase.kind === 'ready' ? 'ready' : 'memoryOnly'
+            // `ready` keeps exactly what memory, the acknowledged save and the unsettled saves name; `memoryOnly`
+            // adds to what the field holds and never drops.
+            const roots = stepsOf(next.record, ...(kind === 'ready' ? [slot.acked] : []))
+            if (kind === 'ready') {
+                for (const step of slot.unsettled) {
+                    roots.add(step)
+                }
+            }
+            extras.retained = (existing) => recomputeRetained(existing, kind, roots)
         }
         const before = getMarkCount()
-        const landed = target.chat
-            ? writeLiveChat(chaId, target.chat, (live) => {
-                  applyChatWrites(live, planned.writes)
-                  return true
-              })
-            : writeLiveCharacter(chaId, (live) => applyCharacterWrites(live, planned.writes, planned.pageFm))
+        let landed: boolean
+        if (isModuleTarget(target)) {
+            const moduleExtras = extras ?? { folder: { kind: 'keep' as const }, retained: null }
+            landed = writeLiveModule(slot.claimSubject.id, (module) => buildWrittenModule(module, planned.writes, moduleExtras), deps.onModuleSlotReplaced)
+        } else if (chaId === null) {
+            landed = false
+        } else if (target.chat) {
+            landed = writeLiveChat(chaId, target.chat, (liveChat) => {
+                applyChatWrites(liveChat, planned.writes)
+                return true
+            })
+        } else {
+            const writeExtras = extras ?? undefined
+            landed = writeLiveCharacter(chaId, (liveCharacter) => applyCharacterWrites(liveCharacter, planned.writes, planned.pageFm, writeExtras))
+        }
         if (!landed) {
             return refused('gone')
         }
-        const next = planned.land({ record: slot.record, open: slot.open })
         slot.record = next.record
         slot.open = next.open
-        acks.get(chaId)?.noteEdit(chaId, before)
-        if (phase.kind === 'ready') {
-            requestSave(slot)
+        if (chaId !== null) {
+            acks.get(chaId)?.noteEdit(chaId, before)
         }
-        return { ok: true, ...planned.notes }
+        landedNotice(owner, slot)
+        if (phase.kind === 'ready') {
+            // A removal-type write saves at once; any other waits for the debounce.
+            if (assetWrite && removal) {
+                fireSave(slot)
+            } else {
+                requestSave(slot)
+            }
+        }
+        return { ok: true, ...planned.notes, ...(intent.kind === 'asset' ? { stepId: slot.record.done.at(-1)?.id } : {}) }
+    }
+
+    function landedNotice(owner: OwnerKey, slot: OwnerSlot): void {
+        deps.onLanded?.(owner, slot.record.done.at(-1)?.id ?? null)
+    }
+
+    // The states in which a removal-type write cannot be undone later; `memoryOnly` and an unwritable store keep no
+    // history, and an unreadable retained field cannot be extended without losing what it holds.
+    function removalRefusal(phase: OwnerPhase, retained: unknown, moduleOwner: boolean): AssetRefusal | null {
+        if (phase.kind === 'memoryOnly') {
+            if (phase.reason === 'otherTab') {
+                return moduleOwner ? 'asset-other-tab-module' : 'asset-other-tab-character'
+            }
+            return 'asset-no-undo'
+        }
+        if (phase.kind === 'ready' && phase.reason === 'unwritable') {
+            return 'asset-no-undo'
+        }
+        // The caller passes the field's value: `undefined` is an absent key, because no writer stores `undefined`.
+        if (retained !== undefined && readRetainedPairs(retained) === null) {
+            return 'asset-no-undo'
+        }
+        return null
+    }
+
+    // ---------------------------------------------------------------- replay
+
+    // The one tail every replay runs on: a job starts when the one before it has ended, whatever it ended with.
+    let replayTail: Promise<void> = Promise.resolve()
+
+    // What a replay targets, as ids: the top of the list it replays, or the target step and every step above it. Null
+    // when there is no such slot or step.
+    function replayTargetIds(slot: OwnerSlot | undefined, desc: ReplayDesc): string[] | null {
+        if (!slot) {
+            return null
+        }
+        if (desc.kind === 'revert') {
+            const index = slot.record.done.findIndex((step) => step.id === desc.stepId)
+            return index < 0 ? null : slot.record.done.slice(index).map((step) => step.id)
+        }
+        const top = (desc.kind === 'undo' ? slot.record.done : slot.record.undone).at(-1)
+        return top ? [top.id] : []
+    }
+
+    function sameIds(a: readonly string[] | null, b: readonly string[] | null): boolean {
+        return a === null || b === null ? a === b : a.length === b.length && a.every((id, index) => id === b[index])
+    }
+
+    // Asks for the state of each path, `reader.concurrency` at a time, and records each answer as it arrives. Once
+    // `cancelled` says so, no further path is asked and a late answer is dropped.
+    async function readStates(reader: AssetFileReader, paths: readonly string[], states: Map<string, AssetFileState>, cancelled: () => boolean): Promise<void> {
+        let next = 0
+        const worker = async (): Promise<void> => {
+            while (next < paths.length && !cancelled()) {
+                const path = paths[next++]
+                let state: AssetFileState
+                try {
+                    state = await reader.stateOf(path)
+                } catch {
+                    state = 'unknown'
+                }
+                if (cancelled()) {
+                    return
+                }
+                states.set(path, state)
+            }
+        }
+        await Promise.all(Array.from({ length: Math.max(1, reader.concurrency) }, () => worker()))
+    }
+
+    // The synchronous end of a replay: `answers` hold the file states for exactly this apply.
+    function applyReplay(owner: OwnerKey, intent: Intent, around: ReplayAround | undefined, read: Map<string, AssetFileState> | null): StudioResult {
+        answers = read
+        try {
+            const apply = (): StudioResult => applyStudioWrite(owner, intent)
+            return around ? around(apply) : apply()
+        } finally {
+            answers = null
+        }
+    }
+
+    async function runReplay(owner: OwnerKey, desc: ReplayDesc, around: ReplayAround | undefined, deadline: number): Promise<StudioResult> {
+        const intent: Intent = desc.kind === 'revert' ? { kind: 'revert', stepId: desc.stepId } : { kind: 'replay', direction: desc.kind }
+        // The target is read now, when this job's turn comes, not when it was asked for.
+        const slot = slots.get(owner)
+        const ids = replayTargetIds(slot, desc)
+        if (desc.kind !== 'revert' && desc.expectTop !== undefined && ids?.[0] !== desc.expectTop) {
+            return { ok: false, reason: 'precondition', targetChanged: true }
+        }
+        const replayed = slot ? replayedSteps(slot, intent) : null
+        const paths = replayed ? assetPathsReplayMayInsert(replayed.steps, replayed.direction) : []
+        const openReader = deps.openAssetFileReader
+        if (!openReader || paths.length === 0) {
+            return applyReplay(owner, intent, around, null)
+        }
+        const nameOf = (path: string): string => nameOfPathIn(replayed?.steps ?? [], path)
+        const states = new Map<string, AssetFileState>()
+        let ended = false
+        let timer: unknown = null
+        const timedOut = new Promise<false>((resolve) => {
+            timer = clock.setTimeout(() => resolve(false), Math.max(0, deadline - clock.now()))
+        })
+        const answered: Promise<boolean> = (async () => {
+            await readStates(await openReader(), paths, states, () => ended)
+            return true
+        })().catch(() => false)
+        const completed = await Promise.race([answered, timedOut])
+        // The job ends here: a late answer is dropped and the apply is never reached.
+        ended = true
+        clock.clearTimeout(timer)
+        if (!completed) {
+            return { ok: false, reason: 'asset-file-unchecked', name: nameOf(paths.find((path) => !states.has(path)) ?? paths[0]) }
+        }
+        // No await from this check to the end of the apply: nothing else can change the target in between.
+        if (!sameIds(ids, replayTargetIds(slots.get(owner), desc))) {
+            return { ok: false, reason: 'asset-file-unchecked', name: nameOf(paths[0]), targetChanged: true }
+        }
+        return applyReplay(owner, intent, around, states)
+    }
+
+    function replay(owner: OwnerKey, desc: ReplayDesc, around?: ReplayAround): Promise<StudioResult> {
+        const deadline = clock.now() + REPLAY_BUDGET_MS
+        const result = replayTail.then(() => runReplay(owner, desc, around, deadline))
+        // A failure reaches this caller through `result` and is logged here; the next job still runs.
+        replayTail = result.then(
+            () => {},
+            (error: unknown) => {
+                console.error(error)
+            },
+        )
+        return result
     }
 
     // ---------------------------------------------------------------- views
@@ -853,14 +1298,23 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         undo: (owner) => applyStudioWrite(owner, { kind: 'replay', direction: 'undo' }),
         redo: (owner) => applyStudioWrite(owner, { kind: 'replay', direction: 'redo' }),
         revertTo: (owner, stepId) => applyStudioWrite(owner, { kind: 'revert', stepId }),
+        replay,
         restore: (owner, keep) => applyStudioWrite(owner, { kind: 'restore', keep }),
         restoreDeleted: (owner, deletedId) => applyStudioWrite(owner, { kind: 'restoreDeleted', deletedId }),
+        assetDelete: (owner, array, indexes) => applyStudioWrite(owner, { kind: 'asset', build: (live) => buildAssetDelete(array, indexes, live) }),
+        assetRemoveExtras: (owner, array, name, indexes, survivors) =>
+            applyStudioWrite(owner, { kind: 'asset', build: (live) => buildAssetRemoveExtras(array, name, indexes, live, survivors) }),
+        assetMerge: (owner, model, survivors) => applyStudioWrite(owner, { kind: 'asset', build: (live) => buildAssetMerge(model, live, survivors) }),
+        assetRename: (owner, array, index, newName) => applyStudioWrite(owner, { kind: 'asset', build: (live) => buildAssetRename(array, index, newName, live) }),
+        assetInsert: (owner, array, tuples) => applyStudioWrite(owner, { kind: 'asset', build: (live) => buildAssetInsert(array, tuples, live) }),
+        assetFolder: (owner, intent) => applyStudioWrite(owner, { kind: 'asset', build: (live) => buildFolderIntent(intent, live) }),
         closeOpenStep(owner) {
             const slot = slots.get(owner)
             if (slot) {
                 slot.open = null
             }
         },
+        unsettledStepCountForTests: (owner) => slots.get(owner)?.unsettled.size ?? 0,
         cancelWarm,
     }
 }

@@ -18,6 +18,7 @@ import { withoutModuleStubDowngrades } from "./moduleStubGuard";
 import { databaseWriteProblem, selectedCharacterMismatch, singleCharacterProblem } from "./characterWriteCheck";
 import { hasLightEntry, LIGHT_ENTRY_WRAPPER_MESSAGE, swapLightEntries, type LightWriteCounts } from "./lightCharacters";
 import { keepLiveAlt, overwritesPlaceholder, placeholderAgainMessage, placeholderTargets, restoreArchivedTargets } from "./chatAltBridge";
+import { keepLiveRetained, withLiveRetained } from "./retainedCarry";
 import { isCharacterEntry } from "../storage/characterIds";
 import { PLUGIN_STORAGE_INDEX_KEY, PLUGIN_STORAGE_LEGACY_MAP_KEY } from "../process/pluginStorageIndex";
 import { AssetList, type AssetTuple } from "../storage/assetList";
@@ -629,6 +630,9 @@ function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginN
         // live list as it is now, and the incoming characters carry them into the new list.
         keepLiveAlt(db.characters, newDb.characters)
         rec?.lap('keepLiveAltMs')
+        // Beside keepLiveAlt and before the light swap: the live retained paths are read from the live list as it is
+        // now, and a light entry is skipped here because its live holder replaces it afterwards.
+        keepLiveRetained(db.characters, newDb.characters, 'chaId')
         // After keepLiveAlt, so a swapped-in live holder keeps its own alternatives untouched.
         if (hasLightEntry(newDb.characters)) {
             newDb = { ...newDb, characters: swapLightEntries(db.characters, newDb.characters, lightCounts ?? { lightKept: 0, lightLeftOut: 0 }) }
@@ -646,7 +650,7 @@ function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginN
             db.pluginCustomStorage = keepPluginStorageInternals(db.pluginCustomStorage, newDb[key]);
         }
         else if (key === 'modules') {
-            db.modules = withHeldAssetLists(db, newDb[key]);
+            db.modules = withHeldAssetLists(db, withLiveRetained(db.modules, newDb[key], 'id'));
         }
         else if (allowedDbKeys.includes(key)) {
             (db as any)[key] = newDb[key];
@@ -811,6 +815,7 @@ export const getV2PluginAPIs = () => {
                 warnIfCharacterInstallDuplicatesChatIds(char?.chats, char?.chaId, db.characters, replaced?.chats, pluginName)
             }
             keepLiveAlt([replaced], [char])
+            keepLiveRetained([replaced], [char], 'chaId')
             db.characters[charid] = char
             noteIdlessCopyWrite(pluginName ?? '', replaced, char, wasIdless)
             clearSupaMemoryIfEmptyIn([db.characters[charid]])

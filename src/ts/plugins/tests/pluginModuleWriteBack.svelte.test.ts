@@ -206,6 +206,7 @@ import { registerDbChangeEffects } from '../../storage/dbChangeEffects.svelte'
 import { RisuSaveEncoder, listEncodedBlocks, RisuSaveType, type toSaveType } from '../../storage/risuSave'
 import { AssetList, toAssetList, type AssetTuple } from '../../storage/assetList'
 import type { RisuModule } from '../../process/modules'
+import { stubModule, watchBodyKeys } from '../../studio/studioFixtures.test-helpers'
 
 //#region fixtures
 
@@ -498,5 +499,90 @@ describe('the conversion rule', () => {
         }
         expect(JSON.stringify(getDatabase().modules)).toBe(expectedJson)
         expect(Buffer.from(await blockOf(getDatabase().modules)).equals(Buffer.from(await blockOf(JSON.parse(expectedJson))))).toBe(true)
+    })
+})
+
+describe('a plugin write-back of modules keeps the live retained field', () => {
+    const LIVE = [['x', 'assets/K.png'], ['y', 'assets/Y.png']]
+    const STALE = [['x', 'assets/K.png']]
+    const FOREIGN = [['z', 'assets/Z.png']]
+    const KEY = 'risutanium_asset_retained'
+
+    /** The module as a plugin holds it: a copy taken at read time. */
+    const copyOf = (seed: string, extra: Record<string, unknown> = {}): RisuModule => ({ ...makeModule(seed), ...extra }) as RisuModule
+    const plain = (value: unknown) => JSON.parse(JSON.stringify(value)) as unknown
+    const installedKey = (index: number) => plain((liveModules()[index] as unknown as Record<string, unknown>)[KEY])
+
+    function installLive(): void {
+        installDb([makeModule('m1'), makeModule('m2')])
+        ;(liveModules()[0] as unknown as Record<string, unknown>)[KEY] = structuredClone(LIVE)
+    }
+
+    test.each(SETTERS)('%s: a copy that lacks the field takes the live value, and the plugin object stays as it was', async (setter) => {
+        installLive()
+        const own = copyOf('m1')
+
+        await write(setter, { modules: [own, copyOf('m2')] })
+
+        expect(installedKey(0)).toEqual(LIVE)
+        expect(Object.hasOwn(own, KEY)).toBe(false)
+    })
+
+    test.each(SETTERS)('%s: a live module passed through with its list lacking the key still takes the live value', async (setter) => {
+        installLive()
+        const liveFirst = liveModules()[0]
+        const passThrough = { ...liveFirst, assets: liveFirst.assets } as unknown as Record<string, unknown>
+        delete passThrough[KEY]
+
+        await write(setter, { modules: [passThrough, copyOf('m2')] })
+
+        expect(installedKey(0)).toEqual(LIVE)
+        expect(Object.hasOwn(passThrough, KEY)).toBe(false)
+    })
+
+    test.each(SETTERS)('%s: a stale copy loses to the live value and the plugin object keeps its own', async (setter) => {
+        installLive()
+        const own = copyOf('m1', { [KEY]: structuredClone(STALE) })
+
+        await write(setter, { modules: [own, copyOf('m2')] })
+
+        expect(installedKey(0)).toEqual(LIVE)
+        expect(plain((own as unknown as Record<string, unknown>)[KEY])).toEqual(STALE)
+    })
+
+    test.each(SETTERS)('%s: a live module without the field leaves the installed module without one', async (setter) => {
+        installLive()
+
+        await write(setter, { modules: [copyOf('m1'), copyOf('m2', { [KEY]: structuredClone(FOREIGN) })] })
+
+        expect(Object.hasOwn(liveModules()[1], KEY)).toBe(false)
+    })
+
+    test.each(SETTERS)('%s: a module whose id is not in the live list keeps the value it holds', async (setter) => {
+        installLive()
+
+        await write(setter, { modules: [copyOf('m1'), copyOf('new', { [KEY]: structuredClone(FOREIGN) })] })
+
+        expect(installedKey(1)).toEqual(FOREIGN)
+    })
+
+    test.each(SETTERS)('%s: the live array passed back keeps the field', async (setter) => {
+        installLive()
+
+        await write(setter, { modules: getDatabase().modules })
+
+        expect(installedKey(0)).toEqual(LIVE)
+    })
+
+    test.each(SETTERS)('%s: over a live module stub the incoming value is kept, and the stub is never asked for the field', async (setter) => {
+        installDb([makeModule('m1')])
+        const reads: string[] = []
+        liveModules()[0] = watchBodyKeys(stubModule('stub-1'), reads)
+        const incoming = copyOf('stub-1', { id: 'stub-1', [KEY]: structuredClone(FOREIGN) })
+
+        await write(setter, { modules: [incoming] })
+
+        expect(installedKey(0)).toEqual(FOREIGN)
+        expect(reads).not.toContain(KEY)
     })
 })

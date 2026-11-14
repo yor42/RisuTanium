@@ -1,4 +1,5 @@
 import { ASSET_REF_V, assetRefKey, hexStemToBase64url, type AssetList } from '../format'
+import { ASSET_RETAINED_KEY } from '../../../studio/assets/assetOwnerKeys'
 import { isPlainRecord, sortedUnique, type PlainRecord } from './scan'
 
 /**
@@ -65,7 +66,75 @@ function recordOf(value: unknown): PlainRecord | null {
     return isPlainRecord(value) ? value : null
 }
 
-/** Character (and group) fields: image, emotion images, additional assets, TTS files, reference audio, card assets. */
+/** Containers entered above a leaf at most this many for the leaf to count. */
+const RETAINED_WALK_DEPTH = 8
+
+/** True for a pair row: an array of exactly two strings. */
+function isNamePair(row: unknown): row is [string, string] {
+    return Array.isArray(row) && row.length === 2 && typeof row[0] === 'string' && typeof row[1] === 'string'
+}
+
+/** The second string of every row when `value` is a list of pair rows, else null. Reads by index only. */
+function pairPathsOf(value: unknown): string[] | null {
+    if (!Array.isArray(value)) {
+        return null
+    }
+    const paths: string[] = []
+    for (let index = 0; index < value.length; index++) {
+        const row: unknown = value[index]
+        if (!isNamePair(row)) {
+            return null
+        }
+        paths.push(row[1])
+    }
+    return paths
+}
+
+function isPlainContainer(value: unknown): value is object {
+    if (Array.isArray(value)) {
+        return true
+    }
+    if (typeof value !== 'object' || value === null) {
+        return false
+    }
+    const prototype = Object.getPrototypeOf(value)
+    return prototype === Object.prototype || prototype === null
+}
+
+function collectStringLeaves(value: unknown, depth: number, into: string[]): void {
+    if (typeof value === 'string') {
+        into.push(value)
+        return
+    }
+    if (depth >= RETAINED_WALK_DEPTH || !isPlainContainer(value)) {
+        return
+    }
+    for (const child of Object.values(value)) {
+        collectStringLeaves(child, depth + 1, into)
+    }
+}
+
+/**
+ * The paths an owner's retained field names. A list of `[name, path]` pairs yields each path. Any other shape that is
+ * present yields every string leaf of its plain objects and arrays, to a depth of 8 and with no count cap, so a value
+ * this build did not write still keeps the files it can be read to name. Other objects (maps, class instances, typed
+ * arrays), numbers, null and undefined yield nothing. It never throws.
+ */
+export function retainedNamesOf(value: unknown): string[] {
+    const names: string[] = []
+    try {
+        const paths = pairPathsOf(value)
+        if (paths !== null) {
+            return paths
+        }
+        collectStringLeaves(value, 0, names)
+    } catch {
+        // A getter or proxy trap that throws ends the walk with what was read so far.
+    }
+    return names
+}
+
+/** Character (and group) fields: image, emotion images, additional assets, TTS files, reference audio, card assets and the retained paths. */
 export function collectCharacterAssets(collector: AssetRefCollector, character: object): void {
     const cha = character as PlainRecord
     collector.add(cha.image)
@@ -83,13 +152,21 @@ export function collectCharacterAssets(collector: AssetRefCollector, character: 
             collector.add(recordOf(asset)?.uri)
         }
     }
+    addRetainedNames(collector, cha[ASSET_RETAINED_KEY])
 }
 
-/** Module fields: asset rows and icon. */
+/** Module fields: asset rows, icon and the retained paths. */
 export function collectModuleAssets(collector: AssetRefCollector, module: object): void {
     const mod = module as PlainRecord
     addRowNames(collector, mod.assets)
     collector.add(mod.icon)
+    addRetainedNames(collector, mod[ASSET_RETAINED_KEY])
+}
+
+function addRetainedNames(collector: AssetRefCollector, retained: unknown): void {
+    for (const name of retainedNamesOf(retained)) {
+        collector.add(name)
+    }
 }
 
 /**

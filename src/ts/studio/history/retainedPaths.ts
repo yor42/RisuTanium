@@ -5,31 +5,63 @@
 
 import type { OwnerRecord, Step } from './historyModel'
 
-const pathsOfStep = new WeakMap<Step, readonly string[]>()
+// A step's named paths, each with the name of the first op that names it: `[name, path]`, in first-named order.
+export type PathPair = readonly [string, string]
 
-// The path of a row is its second element. Every asset op names at least one; nothing else names one.
-function stepPaths(step: Step): readonly string[] {
+interface StepPaths {
+    pairs: readonly PathPair[]
+    paths: readonly string[]
+}
+
+const pathsOfStep = new WeakMap<Step, StepPaths>()
+
+// The path of a row is its second element. Every asset op names at least one; nothing else names one. This is the one
+// walk of "the paths a step names": the unsettled filter, the retained recompute and the toast's row name all read it.
+function stepPathsOf(step: Step): StepPaths {
     const known = pathsOfStep.get(step)
     if (known) {
         return known
     }
-    const found = new Set<string>()
+    const found = new Map<string, string>()
+    const note = (tuple: readonly string[]): void => {
+        if (typeof tuple[1] === 'string' && !found.has(tuple[1])) {
+            found.set(tuple[1], typeof tuple[0] === 'string' ? tuple[0] : '')
+        }
+    }
     for (const op of step.ops) {
         if (op.op === 'assetRowRemove' || op.op === 'assetRowInsert') {
-            if (typeof op.tuple[1] === 'string') {
-                found.add(op.tuple[1])
-            }
+            note(op.tuple)
         } else if (op.op === 'assetRowSet') {
-            for (const tuple of [op.before, op.after]) {
-                if (typeof tuple[1] === 'string') {
-                    found.add(tuple[1])
-                }
+            note(op.before)
+            note(op.after)
+        }
+    }
+    const paths = [...found.keys()]
+    const made: StepPaths = { pairs: paths.map((path): PathPair => [found.get(path) ?? '', path]), paths }
+    pathsOfStep.set(step, made)
+    return made
+}
+
+function stepPaths(step: Step): readonly string[] {
+    return stepPathsOf(step).paths
+}
+
+// The `[name, path]` pairs the step names, each path once.
+export function stepPathPairs(step: Step): readonly PathPair[] {
+    return stepPathsOf(step).pairs
+}
+
+// The name a row went by in the first of `steps` that names `path`, for a line shown to the user; the path itself when
+// no step names it.
+export function nameOfPathIn(steps: readonly Step[], path: string): string {
+    for (const step of steps) {
+        for (const [name, named] of stepPathPairs(step)) {
+            if (named === path) {
+                return name === '' ? path : name
             }
         }
     }
-    const paths = [...found]
-    pathsOfStep.set(step, paths)
-    return paths
+    return path
 }
 
 // Every `done` and `undone` step of each record, as one identity set: a step held by two records is one

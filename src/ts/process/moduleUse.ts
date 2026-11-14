@@ -3,6 +3,7 @@ import { alertError } from '../alert'
 import { isModuleStub } from '../storage/moduleStub'
 import { DBState } from '../stores.svelte'
 import { acquireModule } from '../storage/store2/moduleAcquire'
+import { ASSET_RETAINED_KEY } from '../studio/assets/assetOwnerKeys'
 import type { RisuModule } from './modules'
 
 /** A module whose body is resident, and the release the caller owes once it stops using the module. */
@@ -47,8 +48,11 @@ export async function realmModuleJson(index: number): Promise<{ json: string, na
         return null
     }
     try {
+        // The retained paths name this device's files and never leave it: the payload is a copy that lacks them.
+        const payload = { ...usable.module, type: 'risuModule' }
+        Reflect.deleteProperty(payload, ASSET_RETAINED_KEY)
         return {
-            json: JSON.stringify({ ...usable.module, type: 'risuModule' }),
+            json: JSON.stringify(payload),
             name: usable.module.name
         }
     }

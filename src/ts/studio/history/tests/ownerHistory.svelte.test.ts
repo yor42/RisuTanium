@@ -751,7 +751,8 @@ describe('list fingerprint through the service (CHORE-690 S1)', () => {
         const view = harness.service.view(module)
         expect(view.restricted).toBe(false)
         expect(view.phase).toBe('ready')
-        expect(harness.service.undo(module)).toEqual({ ok: false, reason: 'gone' })
+        // No module panel is open, so the module owner is not selected and nothing is read or written.
+        expect(harness.service.undo(module)).toEqual({ ok: false, reason: 'not-selected' })
     })
     test('T64s (a) a revert across deletes hashes no whole list and stores the exact fingerprint', async () => {
         const start = Array.from({ length: 20 }, (_, i) => `g${i}`.padEnd(50, 'x'))

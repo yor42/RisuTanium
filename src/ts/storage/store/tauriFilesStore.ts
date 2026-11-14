@@ -84,9 +84,10 @@ function errorText(error: unknown): string {
  * A key is absent only when the file call says so AND `exists` agrees. `exists`
  * is false for any error that stops the metadata lookup, so it alone cannot
  * tell an absent file from a denied one, and the error code alone would turn a
- * mislabelled failure into "no value". Any other error is a failure.
+ * mislabelled failure into "no value". Any other error is a failure. Exported so a caller that has its own file
+ * call's error (a size stat) applies the store's rule and not a weaker one.
  */
-async function isAbsent(error: unknown, key: string): Promise<boolean> {
+export async function confirmedAbsent(error: unknown, key: string): Promise<boolean> {
     if (!MISSING_FILE_ERROR.test(errorText(error))) {
         return false
     }
@@ -119,7 +120,7 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
         try {
             await appFsRemove(key)
         } catch (error) {
-            if (!(await isAbsent(error, key))) {
+            if (!(await confirmedAbsent(error, key))) {
                 throw error
             }
         }
@@ -141,7 +142,7 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
         try {
             entries = await readDir(path, APP_DATA)
         } catch (error) {
-            if (await isAbsent(error, directory)) {
+            if (await confirmedAbsent(error, directory)) {
                 return
             }
             throw error
@@ -174,7 +175,7 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
                 const bytes = transportKind() === 'other' ? await readFile(path, APP_DATA) : await readRanged(key, undefined, { frozenSafe: isFrozenSafeKey(key) })
                 return { bytes: ownBytes(bytes), version: null }
             } catch (error) {
-                if (await isAbsent(error, key)) {
+                if (await confirmedAbsent(error, key)) {
                     return { bytes: null, version: null }
                 }
                 throw error

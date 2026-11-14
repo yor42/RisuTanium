@@ -2,13 +2,16 @@
     import { onMount, tick, untrack, type Snippet } from 'svelte'
     import '../../styles/studio-tokens.css'
     import { language } from '../../lang'
+    import { alertError } from '../../ts/alert'
     import { dispatchBack } from '../../ts/backHandlers'
     import { provideOwnerSource } from '../../ts/studio/ownerSource.svelte'
     import { studioLayoutOf } from '../../ts/studio/studioLayout'
-    import { createStudioToasts, refusalText, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
+    import { createStudioToasts, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
+    import type { OwnerHistoryService, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
+    import type { OwnerKey } from '../../ts/studio/history/ownerPhase'
     import { getStudioHistoryService, noteStudioInput } from '../../ts/studio/history/studioHistoryService.svelte'
     import { placeFocusAfterHistory } from '../../ts/studio/historyFocus'
-    import { readOwnerFields } from '../../ts/studio/ownerFields'
+    import { readOwnerFields, type OwnerFields } from '../../ts/studio/ownerFields'
     import { trackStudioFocus } from '../../ts/studio/layerFocus'
     import { closeStudioDrawer, closeStudioHistory, closeStudioRestoreSheet, closeStudioSearch, installStudioBack } from '../../ts/studio/studioBack.svelte'
     import { selectedHistoryOwner, setStudioHistoryOpen, setStudioLayout, setStudioNotice, showStudioList, studioScreen } from '../../ts/studio/studioScreen.svelte'
@@ -100,16 +103,38 @@
         const view = service.view(owner)
         if (!view.editable || (direction === 'undo' ? view.done : view.undone).length === 0) return
         event.preventDefault()
-        const before = readOwnerFields(owner)
-        const result = runDismissingConsumed(service, toasts, owner, () => (direction === 'undo' ? service.undo(owner) : service.redo(owner)))
-        // Exactly one message: the refusal, or the note of a step that moved or dropped without a write.
-        if (result.ok === false) setStudioNotice(refusalText(result.reason))
+        void replayAndNotify(service, owner, direction, entry)
+    }
+
+    // The replay runs in the service's queue and may ask whether asset files are still there, so its outcome arrives
+    // later. The fields are read inside the replay's own synchronous segment, so `before` is what the apply changed.
+    async function replayAndNotify(service: OwnerHistoryService, owner: OwnerKey, direction: 'undo' | 'redo', entry: HTMLInputElement | HTMLTextAreaElement | null): Promise<void> {
+        const read: { before: OwnerFields | null } = { before: null }
+        let result: StudioResult
+        try {
+            result = await service.replay(owner, { kind: direction }, (apply) => {
+                read.before = readOwnerFields(owner)
+                return runDismissingConsumed(service, toasts, owner, apply)
+            })
+        } catch (error) {
+            // A rejected replay may already have landed its write; the error is shown.
+            alertError(error instanceof Error ? error : String(error))
+            return
+        }
+        // A replay that outlasts a switch to another owner has nothing to say on the new screen.
+        if (selectedHistoryOwner() !== owner) return
+        // Exactly one message: the refusal, a gone file, or the note of a step that moved or dropped without a write. A gone
+        // file comes first, because it is the reason a step was dropped. A queued replay that finds nothing left to replay
+        // says nothing: the key was already taken.
+        if (result.ok === false) {
+            if (result.reason !== 'empty') setStudioNotice(refusalTextOf(result))
+        } else if (result.goneRows !== undefined && result.goneRows.length > 0) setStudioNotice(language.studioAssetFileGone(result.goneName ?? result.goneRows[0]))
         else if (result.already === 'undo') setStudioNotice(language.studioHistoryAlreadyUndone)
         else if (result.already === 'redo') setStudioNotice(language.studioHistoryAlreadyRedone)
         else if (result.dropped) setStudioNotice(language.studioHistoryStepDropped)
         // The field now holds the replayed value; the next Ctrl+Z in it continues through the owner's history.
         if (entry !== null) void tick().then(() => { entry.dataset.studioFocusValue = entry.value })
-        void placeFocusAfterHistory(before, readOwnerFields(owner), () => root ?? null, () => root)
+        void placeFocusAfterHistory(read.before, readOwnerFields(owner), () => root ?? null, () => root)
     }
 
     // Esc closes one layer and never leaves Studio: the restore sheet, then search, the drawer and the History

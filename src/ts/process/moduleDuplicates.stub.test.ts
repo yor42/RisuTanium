@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import type { RisuModule } from 'src/ts/process/modules'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE } from 'src/ts/storage/moduleStub'
+import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from 'src/ts/studio/assets/assetOwnerKeys'
 import { registerModuleLoader, unregisterModuleLoader } from 'src/ts/storage/store2/moduleAcquire'
 
 vi.mock(import('src/ts/stores.svelte'), () => ({
@@ -42,5 +43,22 @@ describe('import duplicate flow over a module stub', () => {
 
     test('guard: a stub that carries the MCP flag is never a duplicate target', () => {
         expect(findDuplicateIndex([stub('a', 'Same', { mcp: true })], 'Same')).toBe(-1)
+    })
+})
+
+describe('a replace onto a module stub never reads a device-side field by a plain get', () => {
+    test('guard: the placement probes the stub by own key only, which creates no source on a reactive proxy', () => {
+        const reads: string[] = []
+        const target = stub('t', 'Target')
+        const watched = new Proxy(target, {
+            get(object, key, receiver) {
+                if (key === ASSET_RETAINED_KEY || key === ASSET_FOLDER_KEY) reads.push(String(key))
+                return Reflect.get(object, key, receiver)
+            },
+        })
+        const list = [watched]
+        applyModulePlacement(list, { id: 'n', name: 'Target', description: '' } as RisuModule, { choice: 'replace', targetId: 't' })
+        expect(reads).toEqual([])
+        expect(Object.hasOwn(list[0], ASSET_RETAINED_KEY)).toBe(false)
     })
 })

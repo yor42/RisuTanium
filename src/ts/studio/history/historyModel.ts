@@ -68,6 +68,9 @@ export type StepLabel =
     | { kind: 'assetMove'; count: number; folder: string | null }
     | { kind: 'folderRename'; from: string; to: string }
     | { kind: 'folderDelete'; name: string }
+    | { kind: 'assetAdd'; count: number }
+    | { kind: 'folderCreate'; name: string }
+    | { kind: 'folderReorder' }
 
 // Asset ops carry fresh plain copies of their rows and lists, never a live array or proxy. `count` is the
 // number of tuples element-wise equal to `tuple` in the array before the op. They carry no deleted-item id:
@@ -211,6 +214,11 @@ function parseFmValue(value: unknown): FmValue | null {
     return value.had === true && isFiniteNumber(value.value) ? { had: true, value: value.value } : null
 }
 
+// The labels added with the folder and add steps carry exactly their listed fields: an extra field is a refusal.
+function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+    return Object.keys(value).every((key) => keys.includes(key))
+}
+
 function parseLabel(value: unknown): StepLabel | null {
     if (!isObject(value)) {
         return null
@@ -247,6 +255,12 @@ function parseLabel(value: unknown): StepLabel | null {
         }
         case 'folderDelete':
             return typeof value.name === 'string' ? { kind: 'folderDelete', name: value.name } : null
+        case 'assetAdd':
+            return hasOnlyKeys(value, ['kind', 'count']) && isCount(value.count) ? { kind: 'assetAdd', count: value.count } : null
+        case 'folderCreate':
+            return hasOnlyKeys(value, ['kind', 'name']) && typeof value.name === 'string' ? { kind: 'folderCreate', name: value.name } : null
+        case 'folderReorder':
+            return hasOnlyKeys(value, ['kind']) ? { kind: 'folderReorder' } : null
         default:
             return null
     }
@@ -708,6 +722,28 @@ export function invertOp(op: Op): Op {
     }
 }
 
+// Only a path under `assets/` names a file in the byte store; any other row path is put back as it was, never probed (MC-1833).
+export function isStoredAssetPath(path: string): boolean {
+    return path.startsWith('assets/')
+}
+
+// The asset paths a replay of `steps` may put a row over: the path of every row it inserts, and the new path of a row
+// it re-points. Each step's ops are walked as the replay applies them (inverted for an undo or a revert). Sorted, unique.
+export function assetPathsReplayMayInsert(steps: readonly Step[], direction: 'undo' | 'redo'): string[] {
+    const paths = new Set<string>()
+    for (const step of steps) {
+        for (const stored of step.ops) {
+            const op = direction === 'undo' ? invertOp(stored) : stored
+            if (op.op === 'assetRowInsert' && typeof op.tuple[1] === 'string' && isStoredAssetPath(op.tuple[1])) {
+                paths.add(op.tuple[1])
+            } else if (op.op === 'assetRowSet' && op.after[1] !== op.before[1] && typeof op.after[1] === 'string' && isStoredAssetPath(op.after[1])) {
+                paths.add(op.after[1])
+            }
+        }
+    }
+    return [...paths].sort()
+}
+
 // The folder codec's own op shape (`kind`) and this model's (`op`) carry the same fields.
 function toFolderOp(op: Extract<Op, { op: 'assetFolderSet' | 'assetFolderOrder' }>): FolderOp {
     return op.op === 'assetFolderSet'
@@ -1077,7 +1113,14 @@ export const REVERT_HASH_BUDGET_UNITS = 500_000
 // Replays the top step of `done` (undo) or `undone` (redo). Every op is checked against the live
 // value it would overwrite; ops whose precondition fails are skipped, which keeps a value changed
 // elsewhere. When nothing applies the replay is refused and the stacks stay as they are.
-export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live: LiveReader, hashFor?: ListElementHash): PlanResult {
+export function planReplay(
+    record: OwnerRecord,
+    direction: 'undo' | 'redo',
+    live: LiveReader,
+    hashFor?: ListElementHash,
+    // Asset rows (by their path, `tuple[1]`) whose file is gone: a forward insert of one is left out, in either direction.
+    goneRows?: ReadonlySet<string>,
+): PlanResult {
     const stack = direction === 'undo' ? record.done : record.undone
     const step = stack[stack.length - 1]
     if (!step) {
@@ -1113,6 +1156,7 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
     let unverifiable = 0
     let failed = 0
     let fmNotRestored = false
+    const goneSeen = new Set<string>()
     const descBefore = step.ops.some((op) => op.op === 'textEdit' && op.target === 'desc') ? working.field('desc') : null
     for (const original of order) {
         // A delete can be undone only while its deleted item is still listed: restoring the item
@@ -1127,6 +1171,12 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
             continue
         }
         const forward = direction === 'undo' ? invertOp(original) : original
+        // A row whose file is gone is never re-inserted, whichever step direction produced the insert.
+        if (forward.op === 'assetRowInsert' && goneRows?.has(forward.tuple[1])) {
+            goneSeen.add(forward.tuple[1])
+            skipped += 1
+            continue
+        }
         // Side `other`: the list already holds what a list op would produce.
         if (side === 'other' && isListOp(original)) {
             kept.push(original)
@@ -1186,7 +1236,7 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
         // Nothing applied: the step moves when every change is already in place (R1), is dropped when the
         // only changes that did not apply cannot be replayed here (R1c), and is refused otherwise (R2).
         const inPlace = kept.length - kept.filter((op) => op.op === 'chatFm' && op.chatId === null).length
-        const unreplayable = consumed + unverifiable
+        const unreplayable = consumed + unverifiable + goneSeen.size
         if (failed > 0 || (inPlace === 0 && unreplayable === 0)) {
             return { ok: false, reason: 'precondition' }
         }
@@ -1209,6 +1259,7 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
             skipped: 0,
             fmNotRestored: false,
             ...(unreplayable > 0 ? { dropStep: true as const } : { already: direction }),
+            ...(goneSeen.size > 0 ? { goneRows: [...goneSeen].sort() } : {}),
         }
     }
     if (direction === 'undo') {
@@ -1225,6 +1276,7 @@ export function planReplay(record: OwnerRecord, direction: 'undo' | 'redo', live
         deletedRemove,
         skipped,
         fmNotRestored,
+        ...(goneSeen.size > 0 ? { goneRows: [...goneSeen].sort() } : {}),
         ...(hash === undefined ? {} : { liveListHash: hash }),
         // On the expected side the live list is the side the step was recorded at; with every list op
         // applied it ends on the list the other side's fingerprint was taken from (invariant L6).

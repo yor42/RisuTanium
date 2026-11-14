@@ -1,6 +1,7 @@
 import { alertSelect } from "../alert"
 import { language } from "src/lang"
 import type { RisuModule } from "./modules"
+import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from "../studio/assets/assetOwnerKeys"
 
 /**
  * Duplicate handling for the Module button: a module is a duplicate of an installed one when the trimmed, case-sensitive
@@ -40,13 +41,28 @@ export type ModulePlacement =
  * The one write of an incoming module into the list, with no await. A replace looks the target up again by its id and
  * stores the incoming module under that id at the target's position, so the position and the references that key on the
  * id stay; the rest comes from the incoming module. A target that is gone makes it an add.
+ *
+ * Two device-side fields outlive a replace. The retained paths always stay the target's, whatever shape they have, and a
+ * file never supplies them. The folder document stays the target's when the incoming module has none; an incoming
+ * document wins whatever its shape. Presence is read by own key, so a stub target (which holds neither) is not read as a
+ * body.
  */
 export function applyModulePlacement(modules:RisuModule[], incoming:RisuModule, decision:DuplicateDecision):ModulePlacement {
     if(decision.choice === 'replace'){
         const index = modules.findIndex((m) => m.id === decision.targetId)
         if(index !== -1){
             const previous = modules[index]
-            modules[index] = {...incoming, id: previous.id}
+            const placed:RisuModule = {...incoming, id: previous.id}
+            if(Object.hasOwn(previous, ASSET_RETAINED_KEY)){
+                placed[ASSET_RETAINED_KEY] = previous[ASSET_RETAINED_KEY]
+            }
+            else{
+                delete placed[ASSET_RETAINED_KEY]
+            }
+            if(!Object.hasOwn(incoming, ASSET_FOLDER_KEY) && Object.hasOwn(previous, ASSET_FOLDER_KEY)){
+                placed[ASSET_FOLDER_KEY] = previous[ASSET_FOLDER_KEY]
+            }
+            modules[index] = placed
             return {kind: 'replaced', previous}
         }
     }

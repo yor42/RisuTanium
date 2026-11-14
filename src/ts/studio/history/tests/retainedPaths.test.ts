@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import { emptyRecord, type Op, type OwnerRecord, type Step } from '../historyModel'
 import { characterOwnerKey } from '../ownerPhase'
-import { createRetainedPaths, retainedPathsOf, stepNamesAssetPath, stepsOf } from '../retainedPaths'
+import { createRetainedPaths, nameOfPathIn, retainedPathsOf, stepNamesAssetPath, stepsOf } from '../retainedPaths'
 
 function step(id: string, ops: Op[]): Step {
     return { id, at: 0, label: { kind: 'assetDelete', count: 1, name: null }, ops }
@@ -120,3 +120,20 @@ describe('retainedPaths across two records and an unsettled set', () => {
         expect(tracker.update(stepsOf(record([]), record([])))).toEqual([])
     })
 })
+
+describe('nameOfPathIn', () => {
+    test('is the name the first step naming the path gave it, and the path when no step names it or the name is empty', () => {
+        const named = step('a', [{ op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: ['grin', 'p1'], count: 1 }])
+        const later = step('b', [{ op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: ['other', 'p1'], count: 1 }])
+        const blank = step('c', [assetRowRemoveOp('', 'p2')])
+        expect(nameOfPathIn([named, later], 'p1')).toBe('grin')
+        expect(nameOfPathIn([later, named], 'p1')).toBe('other')
+        expect(nameOfPathIn([named], 'missing')).toBe('missing')
+        expect(nameOfPathIn([blank], 'p2')).toBe('p2')
+        expect(nameOfPathIn([], 'p1')).toBe('p1')
+    })
+})
+
+function assetRowRemoveOp(name: string, path: string): Op {
+    return { op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: [name, path], count: 1 }
+}

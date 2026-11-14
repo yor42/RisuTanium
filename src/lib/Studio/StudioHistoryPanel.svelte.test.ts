@@ -10,6 +10,9 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({ marks: 0 }))
 
+// What the page's error alert was asked to show.
+const alerts = vi.hoisted(() => ({ errors: [] as (string | Error)[] }))
+
 vi.mock('src/ts/globalApi.svelte', () => ({ getSaveMarkCount: () => h.marks }))
 
 const db = $state({ db: fixtureDb() })
@@ -41,6 +44,7 @@ vi.mock('src/ts/process/moduleRefList', () => ({ moduleListOf: () => [] }))
 vi.mock('src/ts/alertPrompts', () => ({ pageCovered: () => false }))
 vi.mock('src/ts/alertBack', () => ({ closeDialogForBack: vi.fn() }))
 vi.mock('src/ts/caughtErrors', () => ({ recordCaughtError: vi.fn() }))
+vi.mock('src/ts/alert', () => ({ alertError: (message: string | Error) => { alerts.errors.push(message) } }))
 vi.mock('src/lang', async () => {
     const helpers = await import('src/ts/studio/studioFixtures.test-helpers')
     return { language: helpers.studioLanguageMock() }
@@ -57,7 +61,7 @@ import { makeCharacter, makeChat, makeInput, studioDbOf } from 'src/ts/studio/st
 import { openStudio, resetStudioScreenForTests, setStudioHistoryOpen, setStudioSelection, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { DEFAULT_TOAST_CONFIG, createToastHost, resetToastHostForTests, type ToastClock, type ToastHost } from 'src/ts/toast/toastHost.svelte'
-import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
+import { createOwnerHistoryService, type OwnerHistoryService, type StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
 import { characterOwnerKey, chatOwnerKey, READY_DEADLINE_MS, SAVE_DEBOUNCE_MS, SAVE_MAX_WAIT_MS } from '../../ts/studio/history/ownerPhase'
 import { ensureStudioHistory, resetStudioHistoryAccessorForTests, setStudioHistoryLoaderForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { asideMarkKey, headerKey, ownerCapFor } from '../../ts/studio/history/studioHistoryStore'
@@ -251,6 +255,7 @@ function stepsText(): string[] {
 
 beforeEach(() => {
     h.marks = 0
+    alerts.errors.length = 0
     tracker.character.length = 0
     resetCharacterSaveMarksForTest()
     installCharacterSaveMarks({ tracker, schedule: () => { h.marks += 1 } })
@@ -654,11 +659,13 @@ describe('steps, undo, redo and revert', () => {
     test('Undo and Redo replay the top step, and an undone step is marked', async () => {
         await openWithSteps()
         click('studio-history-undo')
+        await settle()
         expect(live().desc).toBe('b')
         const undone = parts('studio-history-step').filter((row) => row.dataset.undone === 'true')
         expect(undone).toHaveLength(1)
         expect(undone[0].querySelector('[data-part="studio-history-undone"]')?.textContent).toBe('studioHistoryUndone')
         click('studio-history-redo')
+        await settle()
         expect(live().desc).toBe('c')
         expect(parts('studio-history-step').filter((row) => row.dataset.undone === 'true')).toHaveLength(0)
     })
@@ -683,6 +690,7 @@ describe('steps, undo, redo and revert', () => {
         const first = parts('studio-history-step').find((row) => row.dataset.stepId === done[0].id)!
         first.querySelector<HTMLElement>('[data-part="studio-history-revert"]')!.click()
         flushSync()
+        await settle()
         expect(live().desc).toBe('a')
         // The revert is one new step on top.
         expect(rig.service.view(A).done.at(-1)?.label.kind).toBe('revert')
@@ -693,8 +701,33 @@ describe('steps, undo, redo and revert', () => {
         live().desc = 'changed outside Studio'
         flushSync()
         click('studio-history-undo')
+        await settle()
         expect(part('studio-history-message')?.textContent).toBe('studioRefusalPrecondition')
         expect(live().desc).toBe('changed outside Studio')
+    })
+
+    test('an action whose replay rejects shows the error once and no message', async () => {
+        const rig = await openWithSteps()
+        const failure = new Error('replay failed')
+        vi.spyOn(rig.service, 'replay').mockRejectedValue(failure)
+        click('studio-history-undo')
+        await settle()
+        expect(alerts.errors).toEqual([failure])
+        expect(part('studio-history-message')).toBeNull()
+    })
+
+    test('a rejection is shown even when the selected owner changed before it', async () => {
+        const rig = await openWithSteps()
+        const failure = new Error('late failure')
+        let fail!: (error: Error) => void
+        vi.spyOn(rig.service, 'replay').mockImplementation(() => new Promise<StudioResult>((_resolve, reject) => { fail = reject }))
+        click('studio-history-undo')
+        await settle()
+        setStudioSelection('module:res', null, null)
+        flushSync()
+        fail(failure)
+        await settle()
+        expect(alerts.errors).toEqual([failure])
     })
 
     test('while the owner loads nothing can be pressed', async () => {
@@ -711,11 +744,13 @@ describe('steps, undo, redo and revert', () => {
 // ---------------------------------------------------------------- the skipped-list notice
 
 describe('a revert that did not undo older first-message changes says so', () => {
-    function revertTo(rig: Rig, stepIndex: number): void {
+    async function revertTo(rig: Rig, stepIndex: number): Promise<void> {
         const anchor = rig.service.view(A).done[stepIndex].id
         const row = parts('studio-history-step').find((r) => r.dataset.stepId === anchor)!
         row.querySelector<HTMLElement>('[data-part="studio-history-revert"]')!.click()
         flushSync()
+        // A revert runs in the replay queue, so its outcome arrives a few microtasks later.
+        await settle()
     }
 
     test('T89 the notice shows after a revert whose delete was skipped', async () => {
@@ -729,7 +764,7 @@ describe('a revert that did not undo older first-message changes says so', () =>
         flushSync()
         live().alternateGreetings.push('z')
         flushSync()
-        revertTo(rig, 0)
+        await revertTo(rig, 0)
         expect(live().desc).toBe('a')
         expect(part('studio-history-message')?.textContent).toBe('studioHistoryRevertListSkipped')
         expect(live().alternateGreetings).toEqual(['g0', 'g1', 'z'])
@@ -745,7 +780,7 @@ describe('a revert that did not undo older first-message changes says so', () =>
         expect(rig.service.greetingDelete(A, 2).ok).toBe(true)
         edit(rig, 'b')
         flushSync()
-        revertTo(rig, 0)
+        await revertTo(rig, 0)
         expect(live().alternateGreetings).toEqual(['g0', 'g1', 'g2'])
         expect(part('studio-history-message')).toBeNull()
     })
@@ -763,7 +798,7 @@ describe('a revert that did not undo older first-message changes says so', () =>
         live().alternateGreetings.push('z')
         flushSync()
         const rowsBefore = stepsText()
-        revertTo(rig, 0)
+        await revertTo(rig, 0)
         expect(part('studio-history-message')?.textContent).toBe('studioHistoryRevertListSkipped')
         expect(stepsText()).toEqual(rowsBefore)
         expect(live().desc).toBe('a')
@@ -871,6 +906,7 @@ describe('an Undo toast ends when its delete is undone another way (M56)', () =>
     test('undoing the delete step from History ends its toast', async () => {
         const { host } = await deleteWithToast()
         click('studio-history-undo')
+        await settle()
         expect(live().alternateGreetings).toEqual(['g0', 'g1', 'g2'])
         expect(host.visible).toHaveLength(0)
     })
@@ -883,6 +919,7 @@ describe('an Undo toast ends when its delete is undone another way (M56)', () =>
         live().chats[0].fmIndex = 5
         flushSync()
         click('studio-history-undo')
+        await settle()
         expect(part('studio-history-message')?.textContent).toBe('studioRefusalPrecondition')
         expect(host.visible).toHaveLength(1)
         expect(rig.service.view(A).deleted).toHaveLength(1)
@@ -897,10 +934,12 @@ describe('T-UI3 Ctrl+Z and the Studio screen', () => {
         mountInto(StudioScreen, host ? { toastHost: host } : {})
     }
 
-    function key(target: HTMLElement, init: KeyboardEventInit): KeyboardEvent {
+    // A replay runs in the service's queue, so the key's outcome arrives a few microtasks after the press.
+    async function key(target: HTMLElement, init: KeyboardEventInit): Promise<KeyboardEvent> {
         const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init })
         target.dispatchEvent(event)
         flushSync()
+        await settle()
         return event
     }
 
@@ -920,14 +959,14 @@ describe('T-UI3 Ctrl+Z and the Studio screen', () => {
         desc().blur()
         flushSync()
         expect(live().desc).toBe('typed')
-        const undo = key(root(), { key: 'z', ctrlKey: true })
+        const undo = await key(root(), { key: 'z', ctrlKey: true })
         expect(undo.defaultPrevented).toBe(true)
         expect(live().desc).toBe('d0')
-        expect(key(root(), { key: 'z', ctrlKey: true, shiftKey: true }).defaultPrevented).toBe(true)
+        expect((await key(root(), { key: 'z', ctrlKey: true, shiftKey: true })).defaultPrevented).toBe(true)
         expect(live().desc).toBe('typed')
-        key(root(), { key: 'z', ctrlKey: true })
+        await key(root(), { key: 'z', ctrlKey: true })
         expect(live().desc).toBe('d0')
-        expect(key(root(), { key: 'y', ctrlKey: true }).defaultPrevented).toBe(true)
+        expect((await key(root(), { key: 'y', ctrlKey: true })).defaultPrevented).toBe(true)
         expect(live().desc).toBe('typed')
     })
 
@@ -935,7 +974,7 @@ describe('T-UI3 Ctrl+Z and the Studio screen', () => {
         await openForm()
         type(desc(), 'typed')
         desc().blur()
-        key(root(), { key: 'z', metaKey: true })
+        await key(root(), { key: 'z', metaKey: true })
         expect(live().desc).toBe('d0')
     })
 
@@ -943,7 +982,7 @@ describe('T-UI3 Ctrl+Z and the Studio screen', () => {
         await openForm()
         desc().focus()
         type(desc(), 'typed')
-        const event = key(desc(), { key: 'z', ctrlKey: true })
+        const event = await key(desc(), { key: 'z', ctrlKey: true })
         expect(event.defaultPrevented).toBe(false)
         expect(live().desc).toBe('typed')
     })
@@ -955,16 +994,16 @@ describe('T-UI3 Ctrl+Z and the Studio screen', () => {
         flushSync()
         desc().focus()
         expect(desc().dataset.studioFocusValue).toBe('e2')
-        expect(key(desc(), { key: 'z', ctrlKey: true }).defaultPrevented).toBe(true)
+        expect((await key(desc(), { key: 'z', ctrlKey: true })).defaultPrevented).toBe(true)
         expect(live().desc).toBe('e1')
         expect(desc().value).toBe('e1')
         await settle()
         // The next Ctrl+Z in the same field continues through the history.
-        expect(key(desc(), { key: 'z', ctrlKey: true }).defaultPrevented).toBe(true)
+        expect((await key(desc(), { key: 'z', ctrlKey: true })).defaultPrevented).toBe(true)
         expect(live().desc).toBe('d0')
         await settle()
         // Nothing left to undo: the key goes back to the browser.
-        expect(key(desc(), { key: 'z', ctrlKey: true }).defaultPrevented).toBe(false)
+        expect((await key(desc(), { key: 'z', ctrlKey: true })).defaultPrevented).toBe(false)
     })
 
     test('a key typed in the search field is the browser\'s', async () => {
@@ -972,7 +1011,7 @@ describe('T-UI3 Ctrl+Z and the Studio screen', () => {
         edit(rig, 'e1')
         click('studio-search-toggle')
         const field = part('studio-search-input') as HTMLInputElement
-        const event = key(field, { key: 'z', ctrlKey: true })
+        const event = await key(field, { key: 'z', ctrlKey: true })
         expect(event.defaultPrevented).toBe(false)
         expect(live().desc).toBe('e1')
     })
@@ -981,7 +1020,7 @@ describe('T-UI3 Ctrl+Z and the Studio screen', () => {
         await openForm()
         type(desc(), 'typed')
         desc().blur()
-        expect(key(root(), { key: 'z', ctrlKey: true, isComposing: true }).defaultPrevented).toBe(false)
+        expect((await key(root(), { key: 'z', ctrlKey: true, isComposing: true })).defaultPrevented).toBe(false)
         expect(live().desc).toBe('typed')
     })
 
@@ -991,7 +1030,7 @@ describe('T-UI3 Ctrl+Z and the Studio screen', () => {
         desc().blur()
         setStudioSelection('module:res', null, null)
         flushSync()
-        expect(key(root(), { key: 'z', ctrlKey: true }).defaultPrevented).toBe(false)
+        expect((await key(root(), { key: 'z', ctrlKey: true })).defaultPrevented).toBe(false)
         expect(live().desc).toBe('typed')
     })
 
@@ -1001,7 +1040,7 @@ describe('T-UI3 Ctrl+Z and the Studio screen', () => {
         desc().blur()
         live().desc = 'changed outside Studio'
         flushSync()
-        key(root(), { key: 'z', ctrlKey: true })
+        await key(root(), { key: 'z', ctrlKey: true })
         expect(studioScreen.notice).toBe('studioRefusalPrecondition')
     })
 
@@ -1016,7 +1055,7 @@ describe('T-UI3 Ctrl+Z and the Studio screen', () => {
         createStudioToasts({ service: () => rig.service, host }).postDeleted(A, op.deletedId)
         flushSync()
         expect(host.visible).toHaveLength(1)
-        key(root(), { key: 'z', ctrlKey: true })
+        await key(root(), { key: 'z', ctrlKey: true })
         expect(live().alternateGreetings).toEqual(['g0', 'g1', 'g2'])
         expect(host.visible).toHaveLength(0)
     })

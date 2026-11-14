@@ -31,6 +31,7 @@ import { registerMCPModule, registeredCustomPluginMCPs, unregisterMCPModule } fr
 import { setColdStorageItem, readColdStorageItem } from "src/ts/process/coldstorage.svelte";
 import { readArchivedCharacter, restoreArchivedForWrite } from "src/ts/process/coldCharacterAccess";
 import { captureChatAlt, keepCapturedChatAlt, keepLiveAlt, overwritesPlaceholder, placeholderAgainMessage, restoreArchivedTargets, withoutAlt, withoutAltChat, withoutAltIn } from "src/ts/plugins/chatAltBridge";
+import { keepLiveRetained } from "src/ts/plugins/retainedCarry";
 import { MEASURE } from "src/ts/process/memory/measureFlag";
 import { startPluginRecord, type PluginRecordBuilder } from "../pluginCostMeter";
 import { incomingCharacterRefusal } from "../stubDowngrade";
@@ -1298,6 +1299,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 warnIfCharacterChaIdDuplicated(db.characters, index, char?.chaId, replaced?.chaId, plugin.name)
                 warnIfCharacterInstallDuplicatesChatIds(char?.chats, char?.chaId, db.characters, replaced?.chats, plugin.name)
                 keepLiveAlt([replaced], [char])
+                keepLiveRetained([replaced], [char], 'chaId')
                 DBState.db.characters[charId] = char
                 noteIdlessCopyWrite(plugin.name, replaced, char, wasIdless)
                 clearSupaMemoryIfEmptyIn([DBState.db.characters[charId]])

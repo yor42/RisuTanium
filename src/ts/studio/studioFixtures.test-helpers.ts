@@ -108,6 +108,7 @@ export function stubModule(id: string, overrides: Partial<ModuleEntry> = {}): Ri
 /** Keys of a module that its index entry does not carry: a stub must never be asked for any of them. */
 export const STUB_BODY_KEYS = [
     'lorebook', 'regex', 'cjs', 'trigger', 'backgroundEmbedding', 'assets', 'customModuleToggle', 'risutanium_asset_folders',
+    'risutanium_asset_retained',
 ] as const satisfies readonly Exclude<keyof RisuModule, keyof ModuleEntry>[]
 
 // Fails to compile if a body key is added to RisuModule and not listed above.

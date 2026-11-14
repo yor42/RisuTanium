@@ -13,14 +13,25 @@ export function refusalText(reason: StudioRefusal): string {
         case 'loading': return language.studioRefusalLoading
         case 'not-selected': return language.studioRefusalNotSelected
         case 'duplicate-id': return language.studioRefusalDuplicateId
+        case 'duplicate-module-id': return language.studioAssetModuleSharedId
         case 'group':
         case 'restricted': return language.studioRefusalRestricted
         case 'gone': return language.studioRefusalGone
         case 'no-unique-chat': return language.studioRefusalNoUniqueChat
         case 'precondition': return language.studioRefusalPrecondition
+        case 'asset-no-undo': return language.studioAssetRefusalNoUndo
+        case 'asset-other-tab-character': return language.studioAssetRefusalOtherTabCharacter
+        case 'asset-other-tab-module': return language.studioAssetRefusalOtherTabModule
+        // Without the row's name; `refusalTextOf` has it.
+        case 'asset-file-unchecked':
         case 'empty':
         case 'unknown': return language.studioRefusalUnknown
     }
+}
+
+// The text of a refused result: the refusal's own, and for an unchecked file the line that names the row.
+export function refusalTextOf(result: { reason: StudioRefusal; name?: string }): string {
+    return result.reason === 'asset-file-unchecked' && result.name !== undefined ? language.studioAssetFileUnchecked(result.name) : refusalText(result.reason)
 }
 
 /**
@@ -50,7 +61,7 @@ export function runDismissingConsumed(
 export interface StudioToastDeps {
     // Read when an Undo runs, so the toast outlives whichever service instance posted it. Null while no
     // service is built; an Undo then reports that history is still loading.
-    service: () => Pick<OwnerHistoryService, 'restoreDeleted'> | null
+    service: () => Pick<OwnerHistoryService, 'restoreDeleted' | 'view' | 'replay'> | null
     host?: ToastHost
 }
 
@@ -59,13 +70,88 @@ export interface StudioToasts {
     postDeleted(owner: OwnerKey, deletedId: string): ToastId
     // The delete was undone another way (Ctrl+Z or a History restore): its toast no longer offers Undo.
     dismissDeleted(deletedId: string): void
+    // One Undo toast for one landed asset step. Its Undo runs only while that step is still on top of the owner's
+    // history, and the toast ends as soon as another step lands.
+    postAssetAction(owner: OwnerKey, stepId: string, text: string, sub?: string): ToastId
+    // Wire this to the service's `onLanded`: ends the asset toasts of `owner` whose step is no longer on top.
+    retireAssetToasts(owner: OwnerKey, topStepId: string | null): void
     // Holds the toast stack back until the calling component is destroyed. Call during component initialisation.
     suspendWhileMounted(): void
+}
+
+interface AssetToastRecord {
+    owner: OwnerKey
+    stepId: string
+    // The host that shows it, so a landing seen by another instance still ends it.
+    host: ToastHost
+    // Its own Undo is running: the landing it causes must not end the entry that is showing the outcome.
+    running: boolean
+}
+
+// Every asset toast on the page, whichever instance posted it: the service's `onLanded` is one function for the page,
+// so the registry it retires from is too.
+const assetRecords = new Map<string, AssetToastRecord>()
+
+/** Ends the asset toasts of `owner` whose step is no longer on top (`topStepId`); an Undo that is running is left alone. */
+export function retireAssetToasts(owner: OwnerKey, topStepId: string | null): void {
+    for (const [actionId, record] of [...assetRecords]) {
+        if (record.owner === owner && !record.running && record.stepId !== topStepId) {
+            assetRecords.delete(actionId)
+            record.host.dismissUndo(actionId)
+        }
+    }
+}
+
+export function resetStudioToastsForTests(): void {
+    assetRecords.clear()
 }
 
 export function createStudioToasts(deps: StudioToastDeps): StudioToasts {
     const host = deps.host ?? toastHost
     return {
+        postAssetAction(owner, stepId, text, sub) {
+            const actionId = 'asset:' + owner + '\0' + stepId
+            const record: AssetToastRecord = { owner, stepId, host, running: false }
+            assetRecords.set(actionId, record)
+            return host.postUndo({
+                text,
+                ...(sub === undefined ? {} : { sub }),
+                actionLabel: language.studioToastUndo,
+                action: {
+                    id: actionId,
+                    failedText: language.studioAssetUndoFailed,
+                    async run(): Promise<UndoOutcome> {
+                        const service = deps.service()
+                        if (!service) {
+                            assetRecords.delete(actionId)
+                            return { ok: false, text: refusalText('loading') }
+                        }
+                        record.running = true
+                        let result: StudioResult
+                        try {
+                            // Undo undoes whatever is on top, so it applies only while this toast's own step is.
+                            result = await service.replay(owner, { kind: 'undo', expectTop: stepId })
+                        } finally {
+                            assetRecords.delete(actionId)
+                        }
+                        if (result.ok === false) {
+                            if (result.targetChanged) {
+                                return { ok: false, text: language.studioAssetToastUseHistory, after: 'close' }
+                            }
+                            return { ok: false, text: refusalTextOf(result) }
+                        }
+                        if (result.goneRows !== undefined && result.goneRows.length > 0) {
+                            return { ok: true, text: language.studioAssetFileGone(result.goneName ?? result.goneRows[0]) }
+                        }
+                        if (result.already !== undefined) {
+                            return { ok: true, text: language.studioHistoryAlreadyUndone }
+                        }
+                        return { ok: true, text: language.studioAssetUndone }
+                    },
+                },
+            })
+        },
+        retireAssetToasts,
         postDeleted(owner, deletedId) {
             return host.postUndo({
                 text: language.studioToastGreetingDeleted,

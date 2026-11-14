@@ -25,6 +25,8 @@ import { defaultJailbreak, defaultMainPrompt, oldJailbreak, oldMainPrompt } from
 import { encodeRisuSaveLegacy, RisuSaveEncoder, type SaveLayout, type toSaveType } from "./storage/risuSave";
 import { registerDbChangeEffects } from "./storage/dbChangeEffects.svelte";
 import { isModuleStub } from "./storage/moduleStub";
+import { retainedNamesOf } from "./storage/store2/lists/assetList";
+import { ASSET_RETAINED_KEY } from "./studio/assets/assetOwnerKeys";
 import { appendIfAbsent, installCharacterSaveMarks } from "./storage/characterSaveMarks";
 import { createSaveScheduler } from "./storage/saveScheduler";
 import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
@@ -3841,6 +3843,10 @@ export function getUncleanablesSync(db: Database, options?:{
         // "lazy hack for typechecking" category as vits/additionalAssets above), so
         // protected unconditionally for the same reason those are.
         addUncleanable(cha.gptSoVitsConfig?.ref_audio_data?.assetId);
+        // Outside the group branch: a group slot can hold the retained paths too, and a path an Undo may restore is kept.
+        for (const retained of retainedNamesOf(Reflect.get(cha, ASSET_RETAINED_KEY))) {
+            addUncleanable(retained);
+        }
         if (cha.type !== 'group') {
             if (cha.ccAssets) {
                 for (const asset of cha.ccAssets) {
@@ -3868,6 +3874,9 @@ export function getUncleanablesSync(db: Database, options?:{
             if(module.icon){
                 addUncleanable(module.icon)
             }
+            for (const retained of retainedNamesOf(module[ASSET_RETAINED_KEY])) {
+                addUncleanable(retained)
+            }
         }
     }
 
@@ -3884,6 +3893,9 @@ export function getUncleanablesSync(db: Database, options?:{
                 }
                 if(v.embeddedModule.icon){
                     addUncleanable(v.embeddedModule.icon)
+                }
+                for (const retained of retainedNamesOf(v.embeddedModule[ASSET_RETAINED_KEY])) {
+                    addUncleanable(retained)
                 }
             }
         });

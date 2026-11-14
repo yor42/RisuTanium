@@ -1,0 +1,47 @@
+{
+  "chaId": "laned-char-1",
+  "type": "character",
+  "name": "Profile character",
+  "image": "assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
+  "emotionImages": [
+    [
+      "happy",
+      "assets/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.webp"
+    ],
+    [
+      "sad",
+      "assets/Sad_Face.PNG"
+    ]
+  ],
+  "additionalAssets": [
+    [
+      "Smile",
+      "assets/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.png",
+      "png"
+    ],
+    [
+      "Voice",
+      "assets/VoiceFile.WAV",
+      "wav"
+    ]
+  ],
+  "vits": {
+    "files": {
+      "a": "assets/vits-one.onnx"
+    }
+  },
+  "gptSoVitsConfig": {
+    "ref_audio_data": {
+      "fileName": "ref.wav",
+      "assetId": "assets/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd.wav"
+    }
+  },
+  "ccAssets": [
+    {
+      "type": "icon",
+      "uri": "assets/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.png",
+      "name": "main",
+      "ext": "png"
+    }
+  ]
+}
