@@ -69,7 +69,7 @@
             }}
             onkeydown={async (e) => {
                 if(
-                    (e.ctrlKey || e.shiftKey || e.altKey)    
+                    (e.ctrlKey || e.shiftKey || e.altKey || e.metaKey)    
                     && hotkeyMatches(DBState.db.hotkeys.find(hk => hk.action === 'popupEditor'), e)
                 ){
                     e.preventDefault()
