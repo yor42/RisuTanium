@@ -79,7 +79,7 @@ export const selIdState = $state({
 
 CustomCSSStore.subscribe((css) => {
     console.log(css)
-    const q = document.querySelector('#customcss')
+    const q = document.querySelector('body > #customcss')
     if(q){
         q.innerHTML = css
     }
