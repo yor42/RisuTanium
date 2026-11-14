@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
-import { describe, expect, test, vi } from 'vitest'
+import { beforeAll, describe, expect, test, vi } from 'vitest'
 
 vi.mock('../../ts/stores.svelte', () => {
     const DBState = $state({ db: {
@@ -74,6 +74,11 @@ vi.mock('../../ts/process/coldstorageData', () => ({ matchColdStorageLoadErrorKe
 vi.mock('../../ts/alertBack', () => ({ closeDialogForBack: vi.fn() }))
 vi.mock('../../ts/alertPrompts', () => ({ pageCovered: () => false }))
 vi.mock('../../ts/caughtErrors', () => ({ recordCaughtError: vi.fn() }))
+
+// The shell's lazy children import the icon-library barrel, which costs tens of seconds to transform cold; paying it here keeps it out of the mount wait.
+beforeAll(async () => {
+    await import('@lucide/svelte')
+}, 300000)
 
 describe('ChatShell plus composition', () => {
     test('the composer plus button opens the menu sheet', async () => {
