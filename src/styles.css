@@ -351,6 +351,17 @@ body {
   font-family: var(--risu-font-family);
 }
 
+/* The message body takes the pack's message font, or the user's font when no pack sets it; code stays in the user's font. Both rules have zero
+   specificity and follow `*`, so every card, inline and Custom CSS font rule that beats `*` beats them. */
+:where([data-part="chat-message-body"], [data-part="chat-message-body"] *) {
+  font-family: var(--chat-message-font, var(--risu-font-family));
+}
+
+:where([data-part="chat-message-body"]) :where(pre, code, kbd, samp),
+:where([data-part="chat-message-body"]) :where(pre, code, kbd, samp) * {
+  font-family: var(--risu-font-family);
+}
+
 .chattext p:first-child {
   margin-top: 0.3rem;
 }

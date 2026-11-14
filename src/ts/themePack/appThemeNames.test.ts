@@ -100,6 +100,14 @@ describe('A_tok: the tokens a stylesheet of the area may declare', () => {
         // a name the registry bounds is settable even where no token stylesheet declares it
         expect(allowedTokenNames('studio').has('--studio-tab-size')).toBe(true)
     })
+
+    // UI-S6 I4a (MC-1708): the chat message font is a shared pack-settable name, declared for the validator and not reserved.
+    it('the chat message font token is allowed in the chat and Studio areas and is not reserved', () => {
+        for (const area of ['chat', 'studio'] as const) {
+            expect(allowedTokenNames(area).has('--chat-message-font'), area).toBe(true)
+        }
+        expect(reservedNameReason('--chat-message-font')).toBe('')
+    })
 })
 
 describe('R-e: a pack declares no app theme name', () => {
