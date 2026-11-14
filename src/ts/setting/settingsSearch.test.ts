@@ -401,7 +401,7 @@ describe('cross-language matching (T-A4)', () => {
 describe('source lists and view targets (T-A5)', () => {
     const everything = buildSearchSources(contextWith('chatml'))
 
-    test('every legacy list opens its explicit view, and only the Display list names rows', () => {
+    test('every legacy list opens its explicit view, and the lists of a native page name rows', () => {
         const indexOfList: Record<string, number> = {
             accessibility: 11, advanced: 6, language: 10, basicParameters: 1, seed: 1,
             samplingParameters: 1, penaltyParameters: 1, modelSpecificParameters: 1, chatFormat: 1, display: 3,
@@ -410,13 +410,16 @@ describe('source lists and view targets (T-A5)', () => {
         expect(lists.map((list) => list.name).sort()).toEqual(Object.keys(indexOfList).sort())
         for (const list of lists) {
             expect(list.index, list.name).toBe(indexOfList[list.name])
-            expect(list.rows, list.name).toBe(list.name === 'display')
+            expect(list.rows, list.name).toBe(['display', 'accessibility', 'language', 'advanced'].includes(list.name))
         }
     })
 
-    test('accessibility items open the input view and display items name their row', () => {
+    test('R1: accessibility items name their row on the Input page and display items name their row', () => {
         const byId = new Map(everything.map((source) => [source.id, source]))
-        expect(byId.get('acc.sendWithEnter')?.target).toEqual({ index: 11, rowId: null })
+        expect(byId.get('acc.sendWithEnter')?.target).toEqual({ index: 11, rowId: 'acc.sendWithEnter' })
+        expect(byId.get('lang.translatorLang')?.target).toEqual({ index: 10, rowId: 'lang.translatorLang' })
+        expect(byId.get('adv.genTime')?.target).toEqual({ index: 6, rowId: 'adv.genTime' })
+        expect(byId.get('acc.requestInfoInsideChat')?.target).toEqual({ index: 6, rowId: 'acc.requestInfoInsideChat' })
         expect(byId.get('display.customCSS')?.target).toEqual({ index: 3, rowId: 'display.customCSS' })
         expect(byId.get('page.display')?.target).toEqual({ index: 3, rowId: null })
     })
@@ -443,6 +446,36 @@ describe('source lists and view targets (T-A5)', () => {
         const font = entries.find((entry) => entry.id === 'display.customFont')
         expect(font?.label).toBe(languageEnglish.settingsShellFontName)
         expect(font?.target).toEqual({ index: 3, rowId: 'display.customFont' })
+    })
+
+    test('an Input row the page renames is found by the page name and opens that row', () => {
+        changeLanguage('en')
+        const tables: LanguageTables = { current: language, english: languageEnglish, korean: languageKorean }
+        const entries = buildSearchEntries(buildSearchSources(contextWith('chatml')), tables)
+        const instant = entries.find((entry) => entry.id === 'acc.instantRemove')
+        expect(instant?.label).toBe(languageEnglish.settingsShellInputInstantRemove)
+        expect(instant?.label).toBe('Ask what to delete')
+        expect(instant?.target).toEqual({ index: 11, rowId: 'acc.instantRemove' })
+    })
+
+    test('T8: the streaming row is not searchable, and the old media finder follows the unrecommended gate', () => {
+        const gated = contextWith('chatml')
+        gated.db.useExperimental = true
+        gated.db.showUnrecommended = false
+        const idsOn = buildSearchSources(gated).map((source) => source.id)
+        expect(idsOn).not.toContain('adv.streamingDisplayOpt')
+        expect(idsOn).toContain('adv.exp.cachePoint')
+        expect(idsOn).not.toContain('adv.legacyMedia')
+        gated.db.showUnrecommended = true
+        expect(buildSearchSources(gated).map((source) => source.id)).toContain('adv.legacyMedia')
+    })
+
+    test('an Advanced row the page renames is found by the page name', () => {
+        changeLanguage('en')
+        const tables: LanguageTables = { current: language, english: languageEnglish, korean: languageKorean }
+        const entries = buildSearchEntries(buildSearchSources(contextWith('chatml')), tables)
+        expect(entries.find((entry) => entry.id === 'adv.genTime')?.label).toBe(languageEnglish.settingsShellAdvGenTime)
+        expect(entries.find((entry) => entry.id === 'acc.requestInfoInsideChat')?.label).toBe(languageEnglish.settingsShellAdvRequestInfo)
     })
 
     test('dead fields are not searchable and headers are not settings', () => {
