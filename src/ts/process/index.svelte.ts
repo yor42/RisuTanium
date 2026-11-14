@@ -1483,7 +1483,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     // The module regex list is fixed at the first pass of this build: a change to
     // the module selection during the loop applies from the next send.
     const moduleScripts: PromptModuleScripts = {}
-    // Attachments left out for their size, by id, so one toast per send names each once.
+    // Attachments left out for their size, by id. The one toast per send lists each name once,
+    // since the same file attached in two messages has two ids.
     const tooLarge = new Map<string, string>()
     for(const msg of ms){
         const chatIndex = msChatIndexes[index]
@@ -1653,7 +1654,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     }
     if(tooLarge.size > 0){
         alertToast(fillLang(language.inlaySendTooLarge, {
-            names: [...tooLarge.values()].join(', '),
+            names: [...new Set(tooLarge.values())].join(', '),
             size: INLAY_SEND_LIMIT_BYTES / (1024 * 1024)
         }))
     }

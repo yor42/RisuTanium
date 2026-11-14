@@ -1946,6 +1946,23 @@ describe('guard: the trim over the other inputs the context takes', () => {
             expect(alertToastMock).toHaveBeenCalledWith(tooLargeToast('one.mp4, two.mp4'))
         })
 
+        test('the same file attached in two messages under two ids is named once', async () => {
+            h.modelInfo = { flags: [VIDEO_FLAG] }
+            stage({
+                first: { type: 'video', name: 'clip.mp4', size: 30 * MIB },
+                again: { type: 'video', name: 'clip.mp4', size: 30 * MIB },
+            })
+            const messages = [
+                msg('user', 'first {{inlay::first}}'),
+                msg('char', 'reply'),
+                msg('user', 'again {{inlay::again}}'),
+            ]
+            await runChat({}, {}, messages)
+            expect(getInlayAssetMock).not.toHaveBeenCalled()
+            expect(alertToastMock).toHaveBeenCalledTimes(1)
+            expect(alertToastMock).toHaveBeenCalledWith(tooLargeToast('clip.mp4'))
+        })
+
         test('an image then a video in one message: the image is sent, the video finds the slot taken and is not read, with no toast', async () => {
             h.modelInfo = { flags: [IMAGE_FLAG, VIDEO_FLAG] }
             stage({
