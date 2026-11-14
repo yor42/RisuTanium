@@ -30,6 +30,7 @@ import { appendIfAbsent, installCharacterSaveMarks } from "./storage/characterSa
 import { createSaveScheduler } from "./storage/saveScheduler";
 import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
 import type { Store2LoopPort } from "./storage/store2/saveLoop";
+import type { SkippedItem } from "./storage/store2/codec";
 import { activeStreamOwners } from "./process/activeStreams";
 import { takeResidentLoaded } from "./storage/store2/residentLoads";
 import { saveFailureStore } from "./storage/store2/saveFailure";
@@ -1259,6 +1260,8 @@ let requestSaveNowImpl: (() => void) | null = null
 let unsavableCharacterCount = 0
 /** Which characters those are, replaced whole at each store2 pass; empty on a page without a store2 loop. */
 let unsavableCharacterIds: ReadonlySet<string> = new Set()
+/** How many modules, preset lists, settings fields and plugin-data keys the store2 loop's passes cannot encode now; 0 on a page without a store2 loop. */
+let unsavableItemCount = 0
 
 /** True while the store2 loop reports the character as unsavable; always false on the legacy loop. */
 export function isCharacterUnsavable(chaId: string): boolean {
@@ -1367,8 +1370,8 @@ export function getSaveMarkCount(): number {
  * True only when everything marked so far is in the store: the last
  * iteration committed, no mark has arrived since its snapshot, and no save is
  * running, debounced, queued, stopped or held back by a frozen chaId, and no
- * character is unsavable (its latest data is in memory only). `hasUnsavedSaveMarks`
- * does not count unsavable characters: a new save request cannot help them.
+ * character or other item is unsavable (its latest data is in memory only). `hasUnsavedSaveMarks`
+ * does not count unsavable characters or items: a new save request cannot help them.
  */
 export function isSaveClean(): boolean {
     if (!saveLoopPending || !lastIterationCommitted) {
@@ -1376,6 +1379,7 @@ export function isSaveClean(): boolean {
     }
     return saveMarkCount === snapshotMarkCount
         && unsavableCharacterCount === 0
+        && unsavableItemCount === 0
         && !saving.state
         && !requiresFullEncoderReload.state
         && !saveLoopPending()
@@ -2033,6 +2037,32 @@ function unsavableCharacterLabel(chaId: string): string {
     }
 }
 
+/**
+ * The notice of one item the store2 loop cannot save. The labels are the raw names, quoted (the item's `label` is the
+ * quoted name; a setting or plugin-data key is its own key). Total: a hostile name must not reach the save loop.
+ */
+function unsavableItemNotice(item: SkippedItem): string {
+    try {
+        if (item.scope === 'presets') {
+            return language.savePresetsHeldNotice(item.label)
+        }
+        if (item.scope === 'taskPresets') {
+            return language.saveTaskPresetsHeldNotice(item.label)
+        }
+        if (item.scope === 'moduleSet') {
+            return language.saveModulesHeldNotice(item.label)
+        }
+        const what = item.scope === 'module'
+            ? language.saveItemModuleLabel(item.label.slice(1, -1))
+            : item.scope === 'settings'
+                ? language.saveItemSettingLabel(item.key)
+                : language.saveItemPluginDataLabel(item.key)
+        return item.saved ? language.saveItemUnsavedNotice(what) : language.saveItemNeverSavedNotice(what)
+    } catch {
+        return item.saved ? language.saveItemUnsavedNotice(`"${item.key}"`) : language.saveItemNeverSavedNotice(`"${item.key}"`)
+    }
+}
+
 /** What a park for unwritable data names to the person: the character, or the kind of data. */
 function describeParkedData(error: SaveParkError | BlockSetGateError): string {
     if (error instanceof BlockSetGateError) {
@@ -2213,6 +2243,13 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
                 console.error(entry.cause)
                 const label = unsavableCharacterLabel(entry.chaId)
                 alertToast(entry.saved ? language.saveCharacterUnsavedNotice(label) : language.saveCharacterNeverSavedNotice(label))
+            }
+        },
+        unsavableItems(current, newly) {
+            unsavableItemCount = current.length
+            for (const item of newly) {
+                console.error(item.cause)
+                alertToast(unsavableItemNotice(item))
             }
         },
         saved() {
