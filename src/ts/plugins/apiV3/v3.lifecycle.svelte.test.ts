@@ -82,9 +82,10 @@ vi.mock(import('../plugins.svelte'), () => ({
 }) as unknown as typeof import('../plugins.svelte'))
 
 const hostTerminateMock = vi.hoisted(() => vi.fn())
+const hostedApis = vi.hoisted(() => [] as unknown[])
 vi.mock(import('./factory'), () => ({
     SandboxHost: class {
-        constructor(_api: unknown) {}
+        constructor(api: unknown) { hostedApis.push(api) }
         run() {}
         terminate() {
             hostTerminateMock()
@@ -209,7 +210,9 @@ vi.mock(import('../../process/ttsHooks'), () => ({
 
 //#endregion
 
-import { bodyIntercepterStore } from '../../stores.svelte'
+import { additionalFloatingActionButtons, bodyIntercepterStore } from '../../stores.svelte'
+import { sleep } from '../../util'
+import { unregisterTTSPreprocessor } from '../../process/ttsHooks'
 import { executePluginV3, getV3PluginInstance, loadV3Plugins, makeRisuaiAPIV3 } from './v3.svelte'
 
 //#region fixtures
@@ -247,6 +250,7 @@ beforeEach(() => {
     chatListeners.clear()
     mcpClients.clear()
     bodyIntercepterStore.length = 0
+    additionalFloatingActionButtons.length = 0
     alertConfirmMock.mockReset()
     alertConfirmMock.mockImplementation(async () => true)
     vi.stubGlobal('ImageBitmap', class {})
@@ -416,6 +420,20 @@ describe('registration after unload', () => {
         expect(bodyIntercepterStore).toHaveLength(0)
     })
 
+    test('G-h: the API object handed to the host of a live instance registers a replacer, and unload removes it', async () => {
+        const plugin = makePlugin()
+        hostedApis.length = 0
+        await executePluginV3(plugin)
+        const api = hostedApis[0] as ReturnType<typeof makeApi>
+        const replacer = async (content: string) => content
+
+        await api.addRisuReplacer('beforeRequest', replacer)
+        expect(replacers.beforeRequest.has(replacer)).toBe(true)
+
+        await loadV3Plugins([])
+        expect(replacers.beforeRequest.has(replacer)).toBe(false)
+    })
+
     test('G-e: a grant that arrives while the plugin is live registers the hook, and unload removes it', async () => {
         const plugin = makePlugin()
         await executePluginV3(plugin)
@@ -474,6 +492,117 @@ describe('MCP client unload', () => {
         await loadV3Plugins([])
 
         expect(mcpClients.get('plugin:gg')).toBe(replacement)
+    })
+})
+
+//#endregion
+
+//#region registrations made while an unload is in progress
+
+/**
+ * Opens the unload window of a running plugin: its pending `onUnload` callback
+ * and the held `sleep` keep `unloadV3Plugin` waiting before it terminates the
+ * host. `finish` releases the wait and settles the whole `loadV3Plugins` call.
+ */
+async function openUnloadWindow(plugin: RisuPlugin, next: RisuPlugin[]) {
+    await executePluginV3(plugin)
+    const api = makeApi(plugin)
+    api.onUnload(() => new Promise<void>(() => {}))
+    let release: () => void = () => {}
+    const held = new Promise<void>((resolve) => { release = resolve })
+    vi.mocked(sleep).mockImplementationOnce(() => held)
+    const unloading = loadV3Plugins(next)
+    return {
+        api,
+        finish: async () => {
+            release()
+            await unloading
+        },
+    }
+}
+
+const hasButton = (id: string) => additionalFloatingActionButtons.some((item) => item.id === id)
+
+describe('registration during unload', () => {
+    test('T594-1: a button registered in the unload window is gone by termination', async () => {
+        const plugin = makePlugin()
+        const window = await openUnloadWindow(plugin, [])
+        let presentAtTerminate: boolean | undefined
+        hostTerminateMock.mockImplementation(() => { presentAtTerminate = hasButton('late-btn') })
+        try {
+            window.api.registerButton({ name: 'late', icon: '', iconType: 'none', id: 'late-btn' }, () => {})
+        } finally {
+            await window.finish()
+        }
+
+        expect(presentAtTerminate).toBe(false)
+        expect(hasButton('late-btn')).toBe(false)
+    })
+
+    test('T594-1b: a TTS preprocessor registered in the unload window is unregistered by termination', async () => {
+        const plugin = makePlugin()
+        const window = await openUnloadWindow(plugin, [])
+        const func = vi.fn()
+        let unregisteredAtTerminate: boolean | undefined
+        hostTerminateMock.mockImplementation(() => {
+            unregisteredAtTerminate = vi.mocked(unregisterTTSPreprocessor).mock.calls.some(([fn]) => fn === func)
+        })
+        try {
+            await window.api.addTTSPreprocessor(func)
+        } finally {
+            await window.finish()
+        }
+
+        expect(unregisteredAtTerminate).toBe(true)
+    })
+
+    test('T594-2: an onUnload registered in the window of a reload does not run when the reloaded instance unloads', async () => {
+        const plugin = makePlugin()
+        const window = await openUnloadWindow(plugin, [plugin])
+        const late = vi.fn()
+        try {
+            window.api.onUnload(late)
+        } finally {
+            await window.finish()
+        }
+        const callsAfterReload = late.mock.calls.length
+
+        await loadV3Plugins([])
+
+        expect(late.mock.calls.length).toBe(callsAfterReload)
+    })
+
+    test('T594-3: a button of the reloaded instance with the same id stays while it is live and goes at its own unload', async () => {
+        const plugin = makePlugin()
+        const window = await openUnloadWindow(plugin, [plugin])
+        try {
+            window.api.registerButton({ name: 'old', icon: '', iconType: 'none', id: 'g3-btn' }, () => {})
+        } finally {
+            await window.finish()
+        }
+        const cb2 = () => {}
+        makeApi(plugin).registerButton({ name: 'new', icon: '', iconType: 'none', id: 'g3-btn' }, cb2)
+
+        const live = additionalFloatingActionButtons.find((item) => item.id === 'g3-btn')
+        expect(live?.callback).toBe(cb2)
+
+        await loadV3Plugins([])
+
+        expect(hasButton('g3-btn')).toBe(false)
+    })
+
+    test('T594-4: a late onUnload that rejects is logged with the plugin name and termination still runs', async () => {
+        const plugin = makePlugin()
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+        const window = await openUnloadWindow(plugin, [])
+        try {
+            window.api.onUnload(() => Promise.reject(new Error('late')))
+        } finally {
+            await window.finish()
+        }
+
+        expect(errorSpy.mock.calls.some(([first]) => String(first).includes(plugin.name))).toBe(true)
+        expect(hostTerminateMock).toHaveBeenCalledTimes(1)
     })
 })
 
