@@ -25,7 +25,13 @@ export const charxLimits = {
     backlogBytes: 32 * MIB,
     // received bytes of an asset entry past which it is saved in pieces instead of being collected whole (a store that writes in pieces)
     streamAfterBytes: 4 * MIB,
+    // the largest piece handed to the ZIP reader in one call; the reader recurses about twice per entry of 31 bytes or
+    // more it finds in one call, so this bounds the stack depth
+    feedSliceBytes: 16 * 1024,
 };
+
+// The most bytes `PieceQueue` joins into one piece when its consumer takes queued chunks.
+const PIECE_JOIN_BYTES = 4 * MIB;
 
 /**
  * One streamed entry's decoded bytes on their way from fflate's synchronous `ondata` to the asynchronous piece
@@ -33,7 +39,8 @@ export const charxLimits = {
  * takes them. The queue ends in one of two ways: `end()` after the entry's last chunk, so the consumer finishes
  * normally; or `fail(error)`, after which the consumer's next read throws, so a save of a cut-short entry aborts and
  * never takes a valid key. `dispose()` is the consumer being done (finished or failed): whatever is still queued is
- * released and later pushes are dropped.
+ * released and later pushes are dropped. Whatever the consumer's join does, the bytes released by `next()` plus those
+ * released by `#release()` equal the bytes queued, and each byte is released once.
  */
 export class PieceQueue implements AsyncIterable<Uint8Array> {
     #chunks: Uint8Array[] = []
@@ -100,6 +107,26 @@ export class PieceQueue implements AsyncIterable<Uint8Array> {
                 for (;;) {
                     if (this.#failure) {
                         throw this.#failure
+                    }
+                    if (this.#chunks.length > 1) {
+                        // Chunks queued while the consumer was busy go out as one piece, at most PIECE_JOIN_BYTES
+                        // (the first chunk always goes, whatever its size).
+                        let count = 1
+                        let total = this.#chunks[0].byteLength
+                        while (count < this.#chunks.length && total + this.#chunks[count].byteLength <= PIECE_JOIN_BYTES) {
+                            total += this.#chunks[count].byteLength
+                            count++
+                        }
+                        const taken = this.#chunks.splice(0, count)
+                        const joined = new Uint8Array(total)
+                        let at = 0
+                        for (const part of taken) {
+                            joined.set(part, at)
+                            at += part.byteLength
+                        }
+                        this.#queuedBytes -= total
+                        this.onReleased(total)
+                        return { done: false, value: joined }
                     }
                     const chunk = this.#chunks.shift()
                     if (chunk) {
@@ -1598,8 +1625,17 @@ export class CharXImporter{
      * A throw from the parser is a ZIP failure; the importer's own handlers never throw out of it.
      */
     #feedChunk(data:Uint8Array, final:boolean){
+        const slice = charxLimits.feedSliceBytes
         try {
-            this.unzip.push(data, final)
+            if(data.byteLength <= slice){
+                this.unzip.push(data, final)
+                return
+            }
+            // Only the last slice carries `final`; nothing more is pushed once a failure is recorded.
+            for(let at = 0; at < data.byteLength && !this.#failure; at += slice){
+                const end = Math.min(at + slice, data.byteLength)
+                this.unzip.push(data.subarray(at, end), final && end === data.byteLength)
+            }
         } catch (error) {
             this.#record('zip', error)
         }
@@ -1692,7 +1728,7 @@ export class CharXImporter{
                     }
                     if(out.length > 0){
                         // One chunk per source chunk, as an unspliced source gives it: the entries a chunk holds are
-                        // started in one push, so the count of queued saves and the failure order do not depend on the splice.
+                        // started in one synchronous feed, so the count of queued saves and the failure order do not depend on the splice.
                         controller.enqueue(out.length === 1 ? out[0] : joinBytes(out))
                         return
                     }
