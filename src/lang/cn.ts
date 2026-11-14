@@ -37,6 +37,8 @@ export const languageChinese = {
     "chatShellNoSavedReplies": "没有更多已保存的回复",
     "chatShellReleaseNewReply": "松开以生成新回复",
     "chatShellMessages": "消息",
+    "chatShellJumpLatest": "跳到最新消息",
+    "chatShellNewCount": (count: number) => `${count} 条新消息`,
     "chatShellThinking": (words: number) => `思考中… ${words} 词`,
     "chatShellMessage": "消息",
     "chatShellRemoveAttachment": "移除附件",

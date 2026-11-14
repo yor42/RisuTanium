@@ -37,6 +37,8 @@ export const languageVietnamese = {
     chatShellNoSavedReplies: "Không còn phản hồi đã lưu nào nữa",
     chatShellReleaseNewReply: "Thả ra để tạo phản hồi mới",
     chatShellMessages: "Tin nhắn",
+    chatShellJumpLatest: "Đến tin nhắn mới nhất",
+    chatShellNewCount: (count: number) => `${count} mới`,
     chatShellThinking: (words: number) => `Đang suy nghĩ… ${words} từ`,
     chatShellMessage: "Tin nhắn",
     chatShellRemoveAttachment: "Gỡ tệp đính kèm",

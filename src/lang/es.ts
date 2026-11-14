@@ -37,6 +37,8 @@ export const languageSpanish = {
     chatShellNoSavedReplies: "No hay más respuestas guardadas",
     chatShellReleaseNewReply: "Suelta para generar una nueva respuesta",
     chatShellMessages: "Mensajes",
+    chatShellJumpLatest: "Ir al último mensaje",
+    chatShellNewCount: (count: number) => `${count} ${count === 1 ? 'nuevo' : 'nuevos'}`,
     chatShellThinking: (words: number) => `Pensando… ${words} ${words === 1 ? 'palabra' : 'palabras'}`,
     chatShellMessage: "Mensaje",
     chatShellRemoveAttachment: "Quitar adjunto",

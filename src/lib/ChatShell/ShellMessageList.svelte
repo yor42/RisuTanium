@@ -19,6 +19,7 @@
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
     import { offscreenRowCounts } from '../../ts/chatShell/offscreenRows'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
+    import { appendedReplies, createTravel, distanceFromEnd, isAtBottom, isFar, travelPlan } from '../../ts/chatShell/jumpTarget'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { holdWarmAsks } from '../ChatScreens/deferredAssetImages'
     import { language } from '../../lang'
@@ -29,6 +30,10 @@
         host: HTMLElement | undefined
         unread?: boolean
         atBottom?: boolean
+        // Character replies that arrived while the reader was away from the bottom; it clears at the bottom and with a chat switch.
+        newCount?: number
+        // The reader is more than one screen from the newest message, or the window does not mount it.
+        farFromLatest?: boolean
         // The shell's reader-intent source; a list mounted on its own binds one to its host.
         readerIntent?: ReaderIntentSource
         onBranch?: (index: number, expectedId: string | undefined) => void
@@ -40,7 +45,7 @@
         onCloseActions?: (request: ActionRequest) => void
         onOpenCustomize?: (request: CustomizeRequest) => void
     }
-    let { character, host, unread = $bindable(false), atBottom = $bindable(true), readerIntent, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize }: Props = $props()
+    let { character, host, unread = $bindable(false), atBottom = $bindable(true), newCount = $bindable(0), farFromLatest = $bindable(false), readerIntent, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize }: Props = $props()
     // Rows with a modal layer open (the partial-edit overlays are fixed-position inside the row) leave content-visibility so the layer is not clipped to the row.
     let overlayRows = $state<Record<string, true>>({})
     function setOverlay(key: string, open: boolean): void {
@@ -313,10 +318,17 @@
         const room = chat?.id ?? null
         const length = messages.length
         const same = room === previousRoom
-        if (!same) { replyUnread = false; atBottom = true; restAtNewest(room) }
-        if (same && length > previousLength && messages[length - 1]?.role === 'char' && DBState.db.autoScrollToNewMessage) {
-            if (atBottom || DBState.db.alwaysScrollToNewMessage) void afterFlush().then(scrollToLatestMessage)
-            else replyUnread = true
+        if (!same) { replyUnread = false; atBottom = true; newCount = 0; farFromLatest = false; restAtNewest(room) }
+        if (same && length > previousLength) {
+            const resting = untrack(() => atBottom)
+            // The auto-scroll setting decides only whether a reader at the bottom is followed; a reply the reader is not following is counted either way.
+            const follows = messages[length - 1]?.role === 'char' && DBState.db.autoScrollToNewMessage && (resting || DBState.db.alwaysScrollToNewMessage)
+            if (follows) void afterFlush().then(scrollToLatestMessage)
+            else if (!resting) {
+                replyUnread = true
+                const replies = appendedReplies(messages, previousLength)
+                untrack(() => { newCount += replies })
+            }
         }
         previousLength = length
         previousRoom = room
@@ -346,7 +358,7 @@
     $effect.pre(() => {
         const slid = win.slid
         unread = replyUnread || slid
-        if (slid) atBottom = false
+        if (slid) { atBottom = false; farFromLatest = true }
     })
     $effect(() => {
         if (!host || !rows) return
@@ -369,18 +381,105 @@
         // Rebuilding a slid window unmounts rows, which an open editor forbids; the new-message button stays until the editor closes.
         if (win.slid && hasMessageEditorDrafts()) return
         replyUnread = false
+        newCount = 0
         // A slid window is rebuilt around the newest messages first, so the cut lands on a mounted newest row.
-        if (win.slid) {
-            const fresh = newestWindow(initialPages(), CAP)
-            bottom = fresh.bottom
-            loadPages = fresh.pages
-            flushSync()
-        }
+        if (win.slid) rebuildNewestWindow()
         atBottom = true
+        farFromLatest = false
         realign.cancel()
         rows?.firstElementChild?.scrollIntoView({ behavior: 'instant', block: 'start' })
         follower?.sync()
         follower?.follow()
+    }
+
+    function rebuildNewestWindow(): void {
+        const fresh = newestWindow(initialPages(), CAP)
+        bottom = fresh.bottom
+        loadPages = fresh.pages
+        flushSync()
+    }
+
+    // The button and the End key travel to the newest message. A step hold owns the position while it runs, so a jump waits for it
+    // (a bounded number of frames) instead of writing under its pin; reader input, a chat switch, a hidden surface or a newer jump drop the wait.
+    const HOLD_WAIT_FRAMES = 30
+    let jumpGeneration = 0
+    let traveling = false
+    // The glide re-reads the live end every frame: the content under the reader keeps growing while a reply streams.
+    let travelStops: () => boolean = () => true
+    const travel = createTravel({
+        requestFrame,
+        cancelFrame,
+        now: () => performance.now(),
+        read: () => ({ top: host?.scrollTop ?? 0, end: host ? Math.max(0, host.scrollHeight - host.clientHeight) : 0 }),
+        write: (value) => { if (host) host.scrollTop = value },
+        stop: () => travelStops(),
+    })
+    onDestroy(() => travel.cancel())
+
+    function waitForHold(abandoned: () => boolean): Promise<boolean> {
+        return new Promise((resolve) => {
+            let waited = 0
+            const check = (): void => {
+                if (abandoned()) { resolve(false); return }
+                if (!hold.isInFlight() && pin === null) { resolve(true); return }
+                waited += 1
+                if (waited > HOLD_WAIT_FRAMES) { resolve(false); return }
+                requestFrame(check)
+            }
+            requestFrame(check)
+        })
+    }
+
+    function readPosition(): void {
+        if (!host) return
+        const distance = distanceFromEnd(host)
+        atBottom = isAtBottom(distance, win.slid)
+        farFromLatest = isFar(distance, host.clientHeight, win.slid)
+        if (atBottom) { replyUnread = false; newCount = 0 }
+    }
+
+    export async function jumpToLatest({ animate, focusNewest }: { animate: boolean, focusNewest: boolean }): Promise<void> {
+        if (installed && chatSurface.hidden) return
+        // Rebuilding a slid window unmounts rows, which an open editor forbids; the new-message button stays until the editor closes.
+        if (win.slid && hasMessageEditorDrafts()) return
+        const mine = ++jumpGeneration
+        travel.cancel()
+        traveling = false
+        const forRoom = room()
+        // Taken now, so the reader's input between the tap and the first write ends the jump.
+        const intentAtStart = intentSeq
+        const abandoned = (): boolean => destroyed || mine !== jumpGeneration || room() !== forRoom || intentSeq !== intentAtStart || (installed && chatSurface.hidden)
+        if (hold.isInFlight() || pin !== null) {
+            if (!await waitForHold(abandoned)) return
+            if (win.slid && hasMessageEditorDrafts()) return
+        }
+        if (abandoned() || !host) return
+        const scroller = host
+        realign.cancel()
+        if (win.slid) rebuildNewestWindow()
+        const plan = travelPlan({ distance: distanceFromEnd(scroller), viewport: scroller.clientHeight, reduced: !animate })
+        if (plan.cutTo !== null) scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight - plan.cutTo)
+        const land = (): void => {
+            traveling = false
+            readPosition()
+            follower?.sync()
+            follower?.follow()
+            if (!focusNewest) return
+            // The newest row is the first article in document order; the focus scroll is suppressed so it cannot move the landing.
+            const newest = rows?.querySelector<HTMLElement>('article[data-part="chat-message"]')
+            if (newest) asShellFocus(() => newest.focus({ preventScroll: true }))
+        }
+        if (plan.duration === 0) {
+            scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+            land()
+            return
+        }
+        traveling = true
+        travelStops = () => abandoned() || hold.isInFlight()
+        travel.run(plan.duration, (completed) => {
+            if (completed) land()
+            else if (mine === jumpGeneration) { traveling = false; readPosition() }
+        })
     }
 
     export function anchorNewestBottom() {
@@ -409,7 +508,9 @@
             host.scrollTop = Math.max(0, host.scrollHeight - host.clientHeight)
         }
         replyUnread = false
+        newCount = 0
         atBottom = true
+        farFromLatest = false
         follower?.sync()
         follower?.follow()
         return host.scrollTop
@@ -523,12 +624,12 @@
     export function onScroll() {
         if (!host || (installed && chatSurface.hidden)) return
         follower?.sync()
-        if (host.scrollTop < 100 && win.hasOlder) loadOlder()
-        else loadNewer()
-        const newest = rows?.firstElementChild
-        // The bottom of a slid window's rows is not the bottom of the conversation.
-        atBottom = !win.slid && (!newest || newest.getBoundingClientRect().top <= host.getBoundingClientRect().bottom + 100)
-        if (atBottom) replyUnread = false
+        // The travel to the newest message owns the position: older and newer rows are not loaded under it.
+        if (!traveling) {
+            if (host.scrollTop < 100 && win.hasOlder) loadOlder()
+            else loadNewer()
+        }
+        readPosition()
     }
 </script>
 

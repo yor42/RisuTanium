@@ -37,6 +37,8 @@ export const languageKorean = {
     chatShellNoSavedReplies: "저장된 답변이 더 없습니다",
     chatShellReleaseNewReply: "손을 떼면 새 답변을 생성합니다",
     chatShellMessages: "메시지",
+    chatShellJumpLatest: "최신 메시지로",
+    chatShellNewCount: (count: number) => `새 메시지 ${count}`,
     chatShellThinking: (words: number) => `생각 중… ${words}단어`,
     chatShellMessage: "메시지",
     chatShellRemoveAttachment: "첨부 파일 제거",
