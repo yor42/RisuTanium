@@ -6,6 +6,7 @@
 /** Token name to the source files outside the chat and Studio screens that read it, sorted. */
 export const SHARED_TOKEN_CONSUMERS: Readonly<Record<string, readonly string[]>> = {
     '--alpha-switch-off': ['src/styles/chat-tokens.css'],
+    '--chat-message-font': ['src/styles.css'],
     '--color-hit-rgb': ['src/styles/chat-tokens.css'],
     '--color-scheme': ['src/styles/chat-tokens.css'],
     '--color-scope-all-rgb': ['src/styles/chat-tokens.css'],
