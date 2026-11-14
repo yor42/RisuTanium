@@ -504,6 +504,26 @@ describe('the budget of one commit', () => {
     })
 })
 
+describe('a fire on a stalled thread', () => {
+    test('new behaviour: the first candidate is judged in the fire even when every clock read is past the time budget', async () => {
+        archiveAll([fullCharacter('A'), fullCharacter('B'), fullCharacter('C')])
+        begin()
+        await open('A')
+        await open('B')
+        await open('C')
+        let clock = 0
+        vi.spyOn(performance, 'now').mockImplementation(() => {
+            clock += 9
+            return clock
+        })
+
+        commit()
+
+        expect(isStub('A')).toBe(true)
+        expect(getPutBackCounters().clean).toBe(1)
+    })
+})
+
 describe('the state a put-back carries onto the stub', () => {
     test('acceptance: the live lastInteraction and trashTime, and their absence', async () => {
         archiveAll([fullCharacter('A'), fullCharacter('B'), fullCharacter('C'), fullCharacter('D')])

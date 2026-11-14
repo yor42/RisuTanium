@@ -207,7 +207,8 @@ describe('retire', () => {
         expect(await snapshotKeys(fx)).not.toContain(hexOfKey(retired))
     }, 60_000)
 
-    describe('replay of delete records, with hand-built files while the server is stopped', () => {
+    // Each test launches the server twice, and each launch alone may take up to the fixture's ready timeout.
+    describe('replay of delete records, with hand-built files while the server is stopped', { timeout: 60_000 }, () => {
         const K = unit('replay')
         const kHex = hexOfKey(K)
 
