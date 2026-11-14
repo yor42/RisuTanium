@@ -28,6 +28,8 @@
     import { shouldAnchorBottom } from '../../ts/chatShell/bottomAnchor'
     import { bindReaderIntent, canHostMove, createReaderIntent } from '../../ts/chatShell/readerIntent'
     import { watchSoftKeyboard } from '../../ts/chatShell/softKeyboard'
+    import { latestButtonVisible } from '../../ts/chatShell/jumpTarget'
+    import { installTranscriptEndKey } from '../../ts/chatShell/shellJumpKeys'
     import { lowPowerMarked } from '../../ts/chatShell/lowPower'
     import { reducedMotionActive } from '../../ts/chatShell/motionPrefs.svelte'
     import { hostIme } from '../../ts/android/hostBridge'
@@ -75,6 +77,8 @@
     let customizeOpen = $state(false)
     let unread = $state(false)
     let atBottom = $state(true)
+    let newCount = $state(0)
+    let farFromLatest = $state(false)
     let surface = $state<{ hidden: boolean; closeEpoch: number } | null>(null)
     let surfaceHidden = $state(false)
     let busy = $state(false)
@@ -292,6 +296,18 @@
         return bindReaderIntent(list, readerIntent)
     })
 
+    // The End key is taken at the shell root before the transcript's reader-intent listener, so it does not cancel its own travel
+    // and the header rule never sees it (the travel is programmatic, so the header stays as it is).
+    onMount(() => {
+        if (!shell) return
+        return installTranscriptEndKey(shell, { transcript: () => list, run: () => void messageList?.jumpToLatest?.({ animate: fadeAllowed(), focusNewest: true }) })
+    })
+    // Focus moves to the newest message only when the button holds focus at the tap; a tap that did not focus the button leaves focus where it is.
+    function jumpFromButton(): void {
+        const active = document.activeElement
+        void messageList?.jumpToLatest?.({ animate: fadeAllowed(), focusNewest: active instanceof Element && active.matches('[data-part="chat-new-message"]') })
+    }
+
     function openPersona(element: HTMLElement): void {
         if (surfaceHidden) return
         personaOverSheet = false
@@ -451,11 +467,11 @@
     </div>
     <main bind:this={list} data-part="chat-transcript" tabindex="-1" aria-label={language.chatShellMessages} data-fade={fade} inert={switchPending ? true : undefined} onscroll={scroll}>
         {#if ShellNotices && character?.type === 'character'}<ShellNotices />{/if}
-        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom {readerIntent} {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
+        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom bind:newCount bind:farFromLatest {readerIntent} {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
     </main>
     {#if SwitchFrame}<SwitchFrame transcript={list} />{/if}
     <div data-part="chat-announcer" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
-    {#if ShellFloatingButtons}<ShellFloatingButtons visible={unread && !atBottom} onclick={() => messageList?.scrollToLatestMessage?.()} />{/if}
+    {#if ShellFloatingButtons}<ShellFloatingButtons visible={latestButtonVisible({ atBottom, far: farFromLatest, unread, count: newCount })} count={newCount} onclick={jumpFromButton} />{/if}
     <div bind:this={composer} data-part="chat-composer-host" inert={switchPending ? true : undefined}>
         {#if SendFailureCard && sendFailure}<SendFailureCard failure={sendFailure} onfix={fixSendFailure} onretry={retryShownSendFailure} />{/if}
         <!-- The key is block identity only: a chat or character switch remounts the notice, so the instance that showed it is gone. -->

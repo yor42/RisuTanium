@@ -37,6 +37,8 @@ export const languageJapanese = {
     chatShellNoSavedReplies: "保存された返信はこれ以上ありません",
     chatShellReleaseNewReply: "指を離すと新しい返信を生成します",
     chatShellMessages: "メッセージ",
+    chatShellJumpLatest: "最新のメッセージへ",
+    chatShellNewCount: (count: number) => `新着 ${count}`,
     chatShellThinking: (words: number) => `考え中… ${words}語`,
     chatShellMessage: "メッセージ",
     chatShellRemoveAttachment: "添付ファイルを削除",

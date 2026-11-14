@@ -37,6 +37,8 @@ export const languageChineseTraditional = {
     "chatShellNoSavedReplies": "沒有更多已儲存的回覆",
     "chatShellReleaseNewReply": "放開以產生新回覆",
     "chatShellMessages": "訊息",
+    "chatShellJumpLatest": "跳到最新訊息",
+    "chatShellNewCount": (count: number) => `${count} 則新訊息`,
     "chatShellThinking": (words: number) => `思考中… ${words} 個詞`,
     "chatShellMessage": "訊息",
     "chatShellRemoveAttachment": "移除附件",

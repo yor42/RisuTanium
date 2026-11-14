@@ -37,6 +37,8 @@ export const languageGerman = {
     "chatShellNoSavedReplies": "Keine weiteren gespeicherten Antworten",
     "chatShellReleaseNewReply": "Loslassen, um eine neue Antwort zu erzeugen",
     "chatShellMessages": "Nachrichten",
+    "chatShellJumpLatest": "Zur neuesten Nachricht",
+    "chatShellNewCount": (count: number) => `${count} neu`,
     "chatShellThinking": (words: number) => `Denkt nach… ${words} ${words === 1 ? 'Wort' : 'Wörter'}`,
     "chatShellMessage": "Nachricht",
     "chatShellRemoveAttachment": "Anhang entfernen",
