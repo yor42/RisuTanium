@@ -68,7 +68,7 @@ import {
     type DisplayRowSpec,
 } from './displayShellSettingsData'
 import { setLowPower, setReducedMotion } from '../chatShell/motionPrefs.svelte'
-import { getFullSettingsData } from './utils'
+import { getFullSettingsData, SIDEBAR_EXCLUDED_IDS } from './utils'
 import { CURLY_QUOTES, DEAD_DISPLAY_IDS, storedAnimationOf } from '../settingsShell/displayPresentation'
 
 const english = languageEnglish as unknown as Record<string, unknown>
@@ -170,7 +170,9 @@ describe('placement of the legacy Display ids (T-B5)', () => {
         expect(displaySectionOfRow('display.nothing')).toBeNull()
     })
 
-    test('the sidebar picker list is the union of its nine lists and gains nothing from the shell page', () => {
+    test('the sidebar picker list is the union of its nine lists minus the rows that are not sidebar controls, and gains nothing from the shell page', () => {
+        expect([...SIDEBAR_EXCLUDED_IDS]).toEqual(['display.themePack'])
+        expect(displaySettingsItems.map((candidate) => candidate.id)).toContain('display.themePack')
         const nine = [
             ...accessibilitySettingsItems,
             ...advancedSettingsItems,
@@ -181,8 +183,11 @@ describe('placement of the legacy Display ids (T-B5)', () => {
             ...modelSpecificParameterItems,
             ...chatFormatSettingsItems,
             ...displaySettingsItems,
-        ]
+        ].filter((candidate) => !SIDEBAR_EXCLUDED_IDS.has(candidate.id))
         expect(getFullSettingsData().map((candidate) => candidate.id)).toEqual(nine.map((candidate) => candidate.id))
+        expect(getFullSettingsData().map((candidate) => candidate.id)).not.toContain('display.themePack')
+        expect(getFullSettingsData('theme').map((candidate) => candidate.id)).not.toContain('display.themePack')
+        expect(getFullSettingsData('theme').map((candidate) => candidate.id)).toContain('display.theme')
     })
 })
 

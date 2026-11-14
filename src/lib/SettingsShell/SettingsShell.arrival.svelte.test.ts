@@ -124,9 +124,11 @@ import { setDatabase, type Database } from 'src/ts/storage/database.svelte'
 import { DBState, SettingsMenuIndex, settingsOpen } from 'src/ts/stores.svelte'
 import { setShellBackHandler } from '../../ts/settingsShell/settingsNavigation'
 import { installSettingsOrigin, resetSettingsOriginForTests } from '../../ts/settingsShell/settingsOrigin'
-import { resetSearch, settingsSearchState } from '../../ts/settingsShell/settingsSearchState.svelte'
+import { HIGHLIGHT_MS, resetSearch, settingsSearchState } from '../../ts/settingsShell/settingsSearchState.svelte'
 import { setSettingsShellEnabled } from '../../ts/settingsShell/settingsShellSwitch.svelte'
 import { resetSettingsRouteForTests } from '../Setting/settingsRoute'
+import { resetThemePackRowLoaderForTests } from '../Setting/Pages/Display/ThemePackRowLoader.svelte'
+import ThemePackRowStub from '../Setting/Pages/Display/ThemePackRowStub.svelte'
 import Host from './SettingsShell.testHost.svelte'
 
 const mounted: Array<ReturnType<typeof mount>> = []
@@ -219,6 +221,8 @@ beforeEach(() => {
     settingsOpen.set(false)
     scrollIntoView.mockReset()
     Element.prototype.scrollIntoView = scrollIntoView
+    // The Display page now holds the Theme pack row; the stub keeps the real row's graph out of this file.
+    resetThemePackRowLoaderForTests(async () => ({ default: ThemePackRowStub }))
     setWidth(1280)
 })
 
@@ -530,5 +534,153 @@ describe('T-A12g an aborted arrival is inert', () => {
         await settle()
         expect(scrollIntoView).not.toHaveBeenCalled()
         expect(productTimerCount()).toBeLessThanOrEqual(afterMount)
+    })
+})
+
+describe('T4-1b the Theme pack row lands with focus on its first radio, warm or cold', () => {
+    const ROW_ID = 'display.themePack'
+
+    /** A row import the test settles by hand; the loader's own import function returns this promise unchanged. */
+    function deferredRow(): { importRow: () => Promise<{ default: typeof ThemePackRowStub }>, resolve: () => void } {
+        let release: () => void = () => {}
+        const promise = new Promise<{ default: typeof ThemePackRowStub }>((resolve) => {
+            release = () => resolve({ default: ThemePackRowStub })
+        })
+        return { importRow: () => promise, resolve: release }
+    }
+
+    function stubRadio(target: HTMLElement): HTMLInputElement | null {
+        return displayRow(target, ROW_ID)?.querySelector<HTMLInputElement>('[data-part="theme-pack-stub-none"]') ?? null
+    }
+
+    /** Moves the selection to the Theme pack hit with the arrow keys, then presses Enter in the real field. */
+    function openHitWithEnter(target: HTMLElement): void {
+        const field = searchField(target)
+        for (let step = 0; step < 30 && result(target, ROW_ID).getAttribute('aria-selected') !== 'true'; step++) {
+            field.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }))
+            flushSync()
+        }
+        expect(result(target, ROW_ID).getAttribute('aria-selected')).toBe('true')
+        field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+    }
+
+    /** Cold wide arrival up to the precondition: the field still holds focus, the row is highlighted and holds no control. */
+    async function arriveWideCold(deferred: ReturnType<typeof deferredRow>): Promise<HTMLElement> {
+        vi.useFakeTimers()
+        resetThemePackRowLoaderForTests(deferred.importRow)
+        SettingsMenuIndex.set(6)
+        settingsOpen.set(true)
+        const target = mountHost()
+        await settle()
+        searchField(target).focus()
+        await typeQuery(target, 'theme pack')
+        openHitWithEnter(target)
+        await settle()
+        expect(get(SettingsMenuIndex)).toBe(3)
+        expect(displayRow(target, ROW_ID)!.dataset.arrived).toBe('true')
+        expect(stubRadio(target)).toBeNull()
+        expect(document.activeElement).toBe(searchField(target))
+        return target
+    }
+
+    test('wide, cold: Enter in the search field, the field keeps focus until the row loads, then the first radio is focused', async () => {
+        const deferred = deferredRow()
+        const target = await arriveWideCold(deferred)
+        deferred.resolve()
+        await settle()
+        expect(stubRadio(target)).not.toBeNull()
+        expect(document.activeElement).toBe(stubRadio(target))
+    })
+
+    test('phone, cold: focus is on the page body when the row loads, then the first radio is focused', async () => {
+        vi.useFakeTimers()
+        const deferred = deferredRow()
+        resetThemePackRowLoaderForTests(deferred.importRow)
+        setWidth(400)
+        SettingsMenuIndex.set(-1)
+        settingsOpen.set(true)
+        const target = mountHost()
+        await settle()
+        await openSearchOnPhone(target)
+        await typeQuery(target, 'theme pack')
+        result(target, ROW_ID).click()
+        await settle()
+        expect(get(SettingsMenuIndex)).toBe(3)
+        expect(displayRow(target, ROW_ID)!.dataset.arrived).toBe('true')
+        expect(stubRadio(target)).toBeNull()
+        expect(document.activeElement).toBe(document.body)
+        deferred.resolve()
+        await settle()
+        expect(document.activeElement).toBe(stubRadio(target))
+    })
+
+    test('the latch outlives the two-second highlight', async () => {
+        const deferred = deferredRow()
+        const target = await arriveWideCold(deferred)
+        vi.advanceTimersByTime(HIGHLIGHT_MS + 1)
+        flushSync()
+        expect(settingsSearchState.highlightedRow).toBeNull()
+        expect(displayRow(target, ROW_ID)!.dataset.arrived).toBeUndefined()
+        deferred.resolve()
+        await settle()
+        expect(document.activeElement).toBe(stubRadio(target))
+    })
+
+    test('the row import settling inside the arrival itself (between reveal and highlight) still ends on the first radio', async () => {
+        vi.useFakeTimers()
+        const deferred = deferredRow()
+        resetThemePackRowLoaderForTests(deferred.importRow)
+        SettingsMenuIndex.set(6)
+        settingsOpen.set(true)
+        const target = mountHost()
+        await settle()
+        searchField(target).focus()
+        await typeQuery(target, 'theme pack')
+        // Behaviour guard: the import settles during the arrival's scroll step and the row must still end on its first radio.
+        // It does not discriminate the late-focus predicate in jsdom, which does not realise the order in which the row
+        // assignment lands in the same flush as the highlight (an accepted limitation). The arrival scrolls the row just
+        // before it highlights it, so the import settles between reveal and highlight. Pending
+        // renders are flushed first, so the continuation that assigns the row and the highlight land in one flush.
+        scrollIntoView.mockImplementation(function (this: Element) {
+            if (this instanceof HTMLElement && this.dataset.settingRow === ROW_ID) {
+                flushSync()
+                deferred.resolve()
+            }
+        })
+        openHitWithEnter(target)
+        await settle()
+        expect(stubRadio(target)).not.toBeNull()
+        expect(document.activeElement).toBe(stubRadio(target))
+    })
+
+    test('focus the person moved elsewhere before the row loaded stays where they put it', async () => {
+        const deferred = deferredRow()
+        const target = await arriveWideCold(deferred)
+        const back = target.querySelector<HTMLButtonElement>('[data-part="settings-back"]')!
+        back.focus()
+        expect(document.activeElement).toBe(back)
+        deferred.resolve()
+        await settle()
+        expect(stubRadio(target)).not.toBeNull()
+        expect(document.activeElement).toBe(back)
+        expect(document.activeElement).not.toBe(stubRadio(target))
+    })
+
+    test.each([['wide', 1280], ['phone', 400]] as const)('%s, warm: the shell itself focuses the first radio of a row that is already loaded', async (_name, width) => {
+        setWidth(width)
+        SettingsMenuIndex.set(3)
+        settingsOpen.set(true)
+        const target = mountHost()
+        await settle()
+        expect(stubRadio(target)).not.toBeNull()
+        SettingsMenuIndex.set(width < 600 ? -1 : 6)
+        await settle()
+        if (width < 600) await openSearchOnPhone(target)
+        await typeQuery(target, 'theme pack')
+        result(target, ROW_ID).click()
+        await settle()
+        expect(get(SettingsMenuIndex)).toBe(3)
+        expect(displayRow(target, ROW_ID)!.dataset.arrived).toBe('true')
+        expect(document.activeElement).toBe(stubRadio(target))
     })
 })
