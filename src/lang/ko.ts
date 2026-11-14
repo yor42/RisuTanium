@@ -2437,6 +2437,7 @@ export const languageKorean = {
     "showPromptComparison": "프롬프트 비교 보기",
     "inlayErrorResponse": "인레이 오류 응답",
     "inlayFileTooLarge": "{name} 파일이 {size} MB보다 커서 첨부하지 않았습니다.",
+    "inlaySendTooLarge": "파일당 {size} MB 제한을 넘어 모델에 보내지 않았어요: {names}",
     "triggerOn": "활성화 조건",
     "noConfig": "설정 없음",
     "var": "변수",

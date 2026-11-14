@@ -31,7 +31,8 @@ import { placeReverseDepth, type ReverseDepthEntry } from "./depthPlacement";
 import { runTrigger } from "./triggers";
 import { HypaProcesser } from "./memory/hypamemory";
 import { additionalInformations } from "./embedding/addinfo";
-import { getInlayAsset } from "./files/inlays";
+import { getInlayAsset, getInlaySummary } from "./files/inlays";
+import { INLAY_SEND_LIMIT_BYTES, inlaySendVerdict } from "./files/inlaySendGate";
 import { getGenerationModelString } from "./models/modelString";
 import { runInlayScreen } from "./inlayScreen";
 import { addRerolls, renameContinuedMessage } from "./prereroll";
@@ -1482,6 +1483,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     // The module regex list is fixed at the first pass of this build: a change to
     // the module selection during the loop applies from the next send.
     const moduleScripts: PromptModuleScripts = {}
+    // Attachments left out for their size, by id, so one toast per send names each once.
+    const tooLarge = new Map<string, string>()
     for(const msg of ms){
         const chatIndex = msChatIndexes[index]
         let formatedChat = (await processScriptFull(nowChatroom,risuChatParser(msg.data, {chara: currentChar, role: msg.role, subject, promptView: promptViewAt(promptView, chatIndex)}), 'editprocess', chatIndex, {
@@ -1526,7 +1529,14 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             const modelinfo = getModelInfo(DBState.db.aiModel)
             for(const inlay of inlays){
                 const inlayName = inlay.replace('{{inlayed::', '').replace('{{inlay::', '').replace('}}', '').replace('{{inlayeddata::', '')
-                const inlayData = await getInlayAsset(inlayName)
+                // The summary holds no body: a video or an audio the model cannot take, the message
+                // cannot hold or the limit rules out is never read, and does not take the message's slot.
+                const summary = await getInlaySummary(inlayName)
+                const verdict = summary === null ? 'not-sent' : inlaySendVerdict(summary, modelinfo.flags, multimodal.length > 0)
+                if(summary !== null && verdict === 'too-large'){
+                    tooLarge.set(inlayName, summary.name || inlayName)
+                }
+                const inlayData = verdict === 'read' ? await getInlayAsset(inlayName) : null
                 if(inlayData?.type === 'image'){
                     if(modelinfo.flags.includes(LLMFlags.hasImageInput)){
                         multimodal.push({
@@ -1640,6 +1650,12 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             countedMessages.set(chat, await tokenizer.tokenizeChat(chat))
         }
         index++
+    }
+    if(tooLarge.size > 0){
+        alertToast(fillLang(language.inlaySendTooLarge, {
+            names: [...tooLarge.values()].join(', '),
+            size: INLAY_SEND_LIMIT_BYTES / (1024 * 1024)
+        }))
     }
     if(import.meta.env.DEV){
         console.log(JSON.stringify(chats, null, 2))

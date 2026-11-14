@@ -174,6 +174,7 @@ vi.mock(import('../command'), () => ({
 
 vi.mock(import('../files/inlays'), () => ({
     getInlayAsset: vi.fn(),
+    getInlaySummary: vi.fn(async () => ({ type: 'image', name: 'pic.png', ext: 'png', size: 1024 })),
     getInlayAssetBlob: vi.fn(async () => undefined),
     writeInlayImage: vi.fn(async () => 'inlay-id'),
 }) as unknown as typeof import('../files/inlays'))

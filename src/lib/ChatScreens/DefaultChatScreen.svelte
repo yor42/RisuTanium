@@ -25,7 +25,8 @@
     import { aiLawApplies, chatFoldedState, chatFoldedStateMessageIndex, downloadFile } from 'src/ts/globalApi.svelte';
     import { v4 } from 'uuid';
     import { postChatFile } from 'src/ts/process/files/multisend';
-    import { getInlayAsset } from 'src/ts/process/files/inlays';
+    import { forgetInlayRender, getInlayDraftPreview } from 'src/ts/process/files/inlays';
+    import { formatMiB } from 'src/ts/drive/backupUpstreamSizes';
     import { coldStorageHeader, preLoadChat, retryLegacyColdChatLoad } from 'src/ts/process/coldstorage.svelte';
     import { coldChatNoticeText, legacyRetryStateFor, legacyRetryView, matchColdStorageLoadErrorKey, type LegacyRetryState } from 'src/ts/process/coldstorageData';
     import { getPageStorageMode, pageStorageModeStore } from 'src/ts/storage/pageStorageMode';
@@ -788,26 +789,35 @@
             {#if shownDraft.fileInput.length > 0}
                 <div class="flex items-center ml-4 flex-wrap p-2 m-2 border-darkborderc border rounded-md">
                     {#each shownDraft.fileInput as file, i}
-                        {#await warnOnReject('DefaultChatScreen: draft attachment rejected', getInlayAsset(file)) then inlayAsset}
+                        {#await warnOnReject('DefaultChatScreen: draft attachment rejected', getInlayDraftPreview(file)) then preview}
                             <div class="relative">
-                                {#if inlayAsset.type === 'image'}
-                                    <img src={inlayAsset.data} alt={language.uiCommon.inlayAlt} class="max-w-48 max-h-48 border border-darkborderc">
-                                {:else if inlayAsset.type === 'video'}
+                                {#if preview === null}
+                                    <div class="max-w-24 max-h-24">{file}</div>
+                                {:else if preview.kind === 'file'}
+                                    <div class="max-w-48 p-2 border border-darkborderc rounded-md text-textcolor2 break-all">
+                                        <div>{preview.name}</div>
+                                        {#if preview.size !== null}
+                                            <div class="text-sm">{formatMiB(preview.size)}</div>
+                                        {/if}
+                                    </div>
+                                {:else if preview.type === 'image'}
+                                    <img src={preview.url} alt={language.uiCommon.inlayAlt} class="max-w-48 max-h-48 border border-darkborderc">
+                                {:else if preview.type === 'video'}
                                     <video controls class="max-w-48 max-h-48 border border-darkborderc">
-                                        <source src={inlayAsset.data} type="video/mp4" />
+                                        <source src={preview.url} />
                                         <track kind="captions" />
                                         {language.uiCommon.videoTagUnsupported}
                                     </video>
-                                {:else if inlayAsset.type === 'audio'}
+                                {:else}
                                     <audio controls class="max-w-48 max-h-24 border border-darkborderc">
-                                        <source src={inlayAsset.data} type="audio/mpeg" />
+                                        <source src={preview.url} />
                                         {language.uiCommon.audioTagUnsupported}
                                     </audio>
-                                {:else}
-                                    <div class="max-w-24 max-h-24">{file}</div>
                                 {/if}
                                 <button class="absolute -right-1 -top-1 p-1 bg-darkbg text-textcolor rounded-md transition-colors hover:text-draculared focus:text-draculared" onclick={() => {
+                                    const id = file
                                     writeDraft((record) => { record.fileInput.splice(i, 1) })
+                                    warnOnReject('DefaultChatScreen: draft render release failed', forgetInlayRender(id))
                                 }}>
                                     <XIcon size={18} />
                                 </button>
@@ -816,7 +826,9 @@
                             <div class="relative">
                                 <div class="max-w-24 max-h-24">{file}</div>
                                 <button class="absolute -right-1 -top-1 p-1 bg-darkbg text-textcolor rounded-md transition-colors hover:text-draculared focus:text-draculared" onclick={() => {
+                                    const id = file
                                     writeDraft((record) => { record.fileInput.splice(i, 1) })
+                                    warnOnReject('DefaultChatScreen: draft render release failed', forgetInlayRender(id))
                                 }}>
                                     <XIcon size={18} />
                                 </button>

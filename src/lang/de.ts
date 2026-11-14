@@ -2438,6 +2438,7 @@ export const languageGerman = {
     "showPromptComparison": "Anweisungsvergleich anzeigen",
     "inlayErrorResponse": "Fehlerantwort einfügen",
     "inlayFileTooLarge": "{name} ist größer als {size} MB und wurde nicht angehängt.",
+    "inlaySendTooLarge": "Nicht an das Modell gesendet (über dem Limit von {size} MB pro Datei): {names}",
     "triggerOn": "Trigger ein",
     "noConfig": "Keine Konfiguration",
     "var": "Variable",

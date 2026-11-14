@@ -2436,6 +2436,7 @@ export const languageVietnamese = {
     "showPromptComparison": "Hiển thị so sánh lời nhắc",
     "inlayErrorResponse": "Phản hồi lỗi Inlay",
     "inlayFileTooLarge": "{name} lớn hơn {size} MB nên không được đính kèm.",
+    "inlaySendTooLarge": "Không gửi cho mô hình (vượt giới hạn {size} MB mỗi tệp): {names}",
     "triggerOn": "Kích hoạt bật",
     "noConfig": "Không có cấu hình",
     "var": "Biến",

@@ -2436,6 +2436,7 @@ export const languageChinese = {
     "showPromptComparison": "显示提示词比较",
     "inlayErrorResponse": "嵌入错误响应",
     "inlayFileTooLarge": "{name} 超过 {size} MB，未能附加。",
+    "inlaySendTooLarge": "未发送给模型（单个文件超过 {size} MB 限制）：{names}",
     "triggerOn": "触发于",
     "noConfig": "无配置",
     "var": "变量",
