@@ -204,7 +204,7 @@ export function commitPackSheet(next: { text: string; blobs: readonly string[] }
     const previous = current
     let created: CurrentElement | null = null
     if (next !== null) {
-        const anchor = document.getElementById('customcss')
+        const anchor = document.querySelector('body > #customcss')
         if (anchor === null) {
             revokeAll(next.blobs)
             return { ok: false, reason: 'couldNotCheck' }

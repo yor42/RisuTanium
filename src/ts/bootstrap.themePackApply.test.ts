@@ -246,8 +246,15 @@ async function boot(): Promise<{ resolved: boolean; loaded: boolean }> {
 }
 
 let errorLog: ReturnType<typeof vi.spyOn>
+let unhandled: unknown[] = []
+
+function recordUnhandled(reason: unknown): void {
+    unhandled.push(reason)
+}
 
 beforeEach(() => {
+    unhandled = []
+    process.on('unhandledRejection', recordUnhandled)
     localStorage.clear()
     world.items.clear()
     world.db = {}
@@ -261,6 +268,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    process.off('unhandledRejection', recordUnhandled)
     errorLog.mockRestore()
     vi.unstubAllGlobals()
     vi.unstubAllEnvs()
@@ -284,6 +292,7 @@ describe('loadData() starts the theme pack driver', () => {
         expect(loaded).toBe(true)
         expect(startThemePackApplyMock).not.toHaveBeenCalled()
         expect(errorLog).toHaveBeenCalled()
+        expect(unhandled).toEqual([])
     })
 
     test('T3D-10: a driver start that throws is logged and does not reject loadData()', async () => {
@@ -295,5 +304,6 @@ describe('loadData() starts the theme pack driver', () => {
         expect(loaded).toBe(true)
         expect(startThemePackApplyMock).toHaveBeenCalledTimes(1)
         expect(errorLog).toHaveBeenCalled()
+        expect(unhandled).toEqual([])
     })
 })

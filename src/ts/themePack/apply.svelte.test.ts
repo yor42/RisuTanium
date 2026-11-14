@@ -394,6 +394,39 @@ describe('T3-1 document order', () => {
     })
 })
 
+describe('T3-1b the anchor is the app style element', () => {
+    it('inserts before the body-level #customcss, never before a card element carrying the same id', () => {
+        document.body.innerHTML = ''
+        const app = document.createElement('div')
+        app.id = 'app'
+        const card = document.createElement('div')
+        card.id = 'customcss'
+        app.appendChild(card)
+        const appStyle = document.createElement('style')
+        appStyle.id = 'customcss'
+        document.body.append(app, appStyle)
+        expect(commitPackSheet({ text: LEAF, blobs: [] })).toEqual({ ok: true })
+        const [element] = packElements()
+        expect(packElements()).toHaveLength(1)
+        expect(element.parentElement).toBe(document.body)
+        expect(element.nextElementSibling).toBe(appStyle)
+        expect(card.previousElementSibling).toBeNull()
+        expect(app.contains(element)).toBe(false)
+    })
+
+    it('a card element alone does not count as the anchor: nothing inserted, couldNotCheck', () => {
+        document.body.innerHTML = ''
+        const app = document.createElement('div')
+        app.id = 'app'
+        const card = document.createElement('div')
+        card.id = 'customcss'
+        app.appendChild(card)
+        document.body.appendChild(app)
+        expect(commitPackSheet({ text: LEAF, blobs: [] })).toEqual({ ok: false, reason: 'couldNotCheck' })
+        expect(packElements()).toHaveLength(0)
+    })
+})
+
 describe('T3-2 the text is text', () => {
     it('keeps a closing style tag inside a string as text and creates no element from it', () => {
         const text = '[data-part="chat-message-avatar"]{content:"</style><img src=x onerror=1>"}'
@@ -472,6 +505,16 @@ describe('T3-4 a pack that cannot apply', () => {
         expect(rig.spawns()).toBe(0)
     })
 
+    it('archive key that differs from the stored bytes digest in the last hex character only: files, never judged', async () => {
+        const bytes = packOf(PLAIN_CHAT_SHEET)
+        const digest = createHash('sha256').update(bytes).digest('hex')
+        const lastDiffers = `${digest.slice(0, -1)}${digest.endsWith('0') ? '1' : '0'}`
+        const rig = judgeRig()
+        const prepared = await prepare({ kind: 'archive', key: store(bytes, `assets/tp-${lastDiffers}.risutheme`) }, rig)
+        expect(prepared).toEqual({ ok: false, reason: 'files' })
+        expect(rig.spawns()).toBe(0)
+    })
+
     it('archive missing: files', async () => {
         const prepared = await prepare({ kind: 'archive', key: `assets/tp-${'1'.repeat(64)}.risutheme` })
         expect(prepared).toEqual({ ok: false, reason: 'files' })
@@ -516,6 +559,16 @@ describe('T3-4 a pack that cannot apply', () => {
         const builtin: BuiltinPack = { id: 'builtin:ok', slug: 'ok', name: 'Ok', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: PLAIN_CHAT_SHEET }
         const prepared = accepted(await prepare({ kind: 'builtin', pack: builtin }))
         expect(prepared).toEqual({ ok: true, text: judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical, blobs: [], skippedAreas: [] })
+    })
+
+    it('a built-in whose raw text differs from its canonical text applies the judged canonical text, never the raw one', async () => {
+        const raw = `/* note */ ${PLAIN_CHAT_SHEET}`
+        const builtin: BuiltinPack = { id: 'builtin:commented', slug: 'commented', name: 'Commented', version: '1.0.0', license: 'MIT', attribution: 'x', modes: ['dark'], chatCss: raw }
+        const canonical = judgeAreaSheet('chat', raw, undefined, 'chat').canonical
+        expect(canonical).not.toBe(raw)
+        const prepared = accepted(await prepare({ kind: 'builtin', pack: builtin }))
+        expect(prepared).toEqual({ ok: true, text: canonical, blobs: [], skippedAreas: [] })
+        expect(prepared.text).not.toContain('note')
     })
 })
 

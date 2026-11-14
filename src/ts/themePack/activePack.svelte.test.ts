@@ -688,6 +688,23 @@ describe('T3D-6 races', () => {
         expect(channel.spawns - spawnsBefore).toBe(2)
         expectOnlyAppliedBlobsLive()
     })
+
+    it('(e) returning to the applied empty pack while another is in flight keeps it empty in the status', async () => {
+        addRecord(archiveRecord('rec-e', packOf('/* nothing */', [], {}, 'Pack E')))
+        addRecord(archiveRecord('rec-a', PACK_A, [FONT_A]))
+        startThemePackApply()
+        activate('rec-e')
+        await until(() => status().phase === 'applied', 'E applied')
+        expect(status().empty).toBe(true)
+        channel.deferred = true
+        activate('rec-a')
+        await until(() => channel.held.length === 1, 'A at its judge')
+        activate('rec-e')
+        release(0)
+        await macroTicks(5)
+        expect(status()).toMatchObject({ phase: 'applied', activeId: 'rec-e', empty: true })
+        expect(packElements()).toHaveLength(0)
+    })
 })
 
 describe('T3D-7 a broken key', () => {
@@ -714,6 +731,8 @@ describe('T3D-7 a broken key', () => {
         expect(status().refusals).toBeUndefined()
         expect(status().skippedAreas).toEqual([])
         expect(status().empty).toBe(false)
+        expect(packElements()).toHaveLength(1)
+        expect(blobs.minted).toHaveLength(2)
 
         activate('rec-c')
         await until(() => status().phase === 'broken', 'C broken')
