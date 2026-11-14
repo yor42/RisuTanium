@@ -22,6 +22,23 @@ export type PluginColdStorageDb = {
 }
 
 /**
+ * True when another plugin slot than `slotKey` is mapped to the unit id `coldId`.
+ * This is the only link a store2 write can collide with: its target
+ * `pluginCustomStorage[<id>]` is named by no character, chat or retained stub.
+ */
+export function isPluginUnitAliasedByOtherSlot(db: PluginColdStorageDb, slotKey: string, coldId: string): boolean {
+    const mapping = db.pluginCustomStorage?._coldplugin
+    if (mapping && typeof mapping === 'object') {
+        for (const otherKey of Object.keys(mapping)) {
+            if (otherKey !== slotKey && mapping[otherKey] === coldId) {
+                return true
+            }
+        }
+    }
+    return false
+}
+
+/**
  * True when the unit `coldId`, which the plugin slot `slotKey` maps to, is
  * linked from anything else in `db`: a character's `coldstorage`, an entry of
  * its `coldStoragedChats`, a chat's first-message pointer or legacy
@@ -34,13 +51,8 @@ export type PluginColdStorageDb = {
  * by a saved copy of the database, are not visible here.
  */
 export function isPluginUnitLinkedElsewhere(db: PluginColdStorageDb, slotKey: string, coldId: string): boolean {
-    const mapping = db.pluginCustomStorage?._coldplugin
-    if (mapping && typeof mapping === 'object') {
-        for (const otherKey of Object.keys(mapping)) {
-            if (otherKey !== slotKey && mapping[otherKey] === coldId) {
-                return true
-            }
-        }
+    if (isPluginUnitAliasedByOtherSlot(db, slotKey, coldId)) {
+        return true
     }
     const pointerText = coldStorageHeader + coldId
     const characters = Array.isArray(db.characters) ? db.characters : []
@@ -123,7 +135,9 @@ export async function readPluginStorageValue(
  *   decided), or is the unit of a stub the character put-back can reinstall
  *   (`retainedUnitKeys`), is not written at all: it throws exactly as a failed write does
  *   and leaves the mapping and that unit as they are. A slot whose unit
- *   nothing else links is updated in place.
+ *   nothing else links is updated in place. With `store2` the write target is
+ *   `pluginCustomStorage[<id>]`, which no character or chat link names, so only
+ *   a unit another slot also maps (`isPluginUnitAliasedByOtherSlot`) blocks it.
  * - a brand-new key's mapping is written only after the write succeeds, and
  *   into whatever `pluginCustomStorage._coldplugin` object `getLiveDb()`
  *   returns AT THAT POINT, not the one read from `db` at the top of this
@@ -142,6 +156,7 @@ export async function writePluginStorageValue(
     value: unknown,
     setColdStorageItemFn: (coldId: string, value: unknown) => boolean | Promise<boolean>,
     newColdId: () => string,
+    store2: boolean,
 ): Promise<void> {
     db.pluginCustomStorage ??= {}
     db.pluginCustomStorage._coldplugin ??= {}
@@ -151,9 +166,16 @@ export async function writePluginStorageValue(
     const existingColdId = db.pluginCustomStorage._coldplugin[key]
     // The units of retained stubs are checked here, not in the database check:
     // a loaded character that can be put back has no link to its unit in the
-    // database, but the stub it returns to does.
-    if (existingColdId && (retainedUnitKeys().has(existingColdId) || isPluginUnitLinkedElsewhere(getLiveDb(), key, existingColdId))) {
-        throw new Error(`Failed to write plugin storage for key: ${key}`)
+    // database, but the stub it returns to does. A store2 write targets
+    // `pluginCustomStorage[<id>]`, which no character, chat or stub names, so
+    // only another slot's alias is checked there.
+    if (existingColdId) {
+        const blocked = store2
+            ? isPluginUnitAliasedByOtherSlot(getLiveDb(), key, existingColdId)
+            : retainedUnitKeys().has(existingColdId) || isPluginUnitLinkedElsewhere(getLiveDb(), key, existingColdId)
+        if (blocked) {
+            throw new Error(`Failed to write plugin storage for key: ${key}`)
+        }
     }
     const coldId = existingColdId || newColdId()
 

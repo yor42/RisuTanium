@@ -52,7 +52,7 @@ $allowedShell = @(
     'input tap 100 200', 'input swipe 10 20 30 40', 'input swipe 10 20 10 20 800',
     'input keyevent KEYCODE_ENTER', 'input keyevent KEYCODE_A', 'input keyevent KEYCODE_SPACE', 'input keyevent 29', 'input keyevent --longpress KEYCODE_A', 'input keyevent KEYCODE_DEL KEYCODE_DEL',
     'input text hello', 'input text hello%sworld',
-    'dumpsys', 'dumpsys activity activities', ('dumpsys meminfo ' + $pkg), 'dumpsys battery',
+    'dumpsys', 'dumpsys activity activities', ('dumpsys meminfo ' + $pkg), 'dumpsys battery', ('dumpsys gfxinfo ' + $pkg + ' reset'),
     'uiautomator dump', 'uiautomator dump /dev/tty', 'uiautomator dump /sdcard/w.xml', 'uiautomator dump --compressed /sdcard/Download/w.xml', 'uiautomator dump /data/local/tmp/w.xml',
     'ls /sdcard', 'ls -la /sdcard/Download', 'ls /sdcard/Download/', 'cat /sdcard/Download/a.txt', 'cat /sdcard/notes.txt',
     ('pm clear ' + $pkg)
@@ -153,6 +153,7 @@ $stillRefused = @(
     @('push', 'x.txt', '/sdcard/DCIM/x.txt'), @('push', 'x.txt', '/data/local/tmp/x.txt'), @('push', 'x.txt', '/sdcard/Download/sub/x.txt'),
     @('shell', 'dumpsys battery set level 5'), @('shell', 'dumpsys battery reset'), @('shell', 'dumpsys battery unplug'), @('shell', 'dumpsys deviceidle force-idle'), @('shell', 'dumpsys deviceidle whitelist +io.example.app'), @('shell', 'dumpsys activity set-debug-app x'),
     @('shell', 'dumpsys | grep x'), @('shell', 'dumpsys meminfo; reboot'),
+    @('shell', 'dumpsys gfxinfo io.example.app reset'), @('shell', 'dumpsys gfxinfo reset'), @('shell', ('dumpsys gfxinfo ' + $pkg + ' reset extra')), @('shell', ('dumpsys gfxinfo ' + $pkg + ' framestats reset')), @('shell', ('dumpsys SurfaceFlinger ' + $pkg + ' reset')), @('shell', ('dumpsys gfxinfo ' + $pkg + ' RESET')),
     @('logcat', '-c'), @('logcat', '-d', '-c'), @('logcat', '-dc'), @('logcat', '--clear'), @('logcat', '-G', '16M'), @('logcat', '-P', 'x'), @('logcat', '-f', '/sdcard/x.log'), @('logcat', '-r', '100', '-n', '3'), @('logcat', '--file=/sdcard/x'), @('logcat', '--bogus'), @('logcat', 'Tag;reboot'),
     @('shell', 'ls /data'), @('shell', 'ls /sdcard/../data'), @('shell', 'ls /data/data/io.example.app'), @('shell', 'ls /sdcard /data'), @('shell', 'ls'), @('shell', 'ls /sdcard/*'),
     @('shell', 'cat /data/data/io.example.app/x'), @('shell', 'cat /sdcard/../data/x'), @('shell', 'cat /sdcard'), @('shell', 'cat /sdcard/a /sdcard/b'), @('shell', 'cat /sdcard/*'), @('shell', 'cat /sdcard/.hidden'),
@@ -224,6 +225,25 @@ foreach ($s in @('emulator-5580', 'R58M12345AB')) {
     Invoke-Guard $s @('shell', 'input tap 1 2') | Out-Null
 }
 Test-Result 'non-playground serials never log PLAYGROUND' (-not ((Get-LogText) -match 'PLAYGROUND')) ''
+
+# ---- gfxinfo reset (r13): only the own package, only on playground serials ----
+Test-Refused 'emulator-5580 refuses gfxinfo reset' 'emulator-5580' @('shell', ('dumpsys gfxinfo ' + $pkg + ' reset')) '97'
+Test-Refused 'a restricted serial refuses gfxinfo reset' 'R58M12345AB' @('shell', ('dumpsys gfxinfo ' + $pkg + ' reset')) '95'
+foreach ($s in $pg) {
+    Reset-Calls
+    & node $GuardPath --serial $s --log $log --own-package 'io.example.app' --own-ports '9465' -- shell ('dumpsys gfxinfo ' + $pkg + ' reset') 2>$null | Out-Null
+    $rcOther = [string]$LASTEXITCODE
+    Test-Result ($s + ' gfxinfo reset refused when --own-package is another app') ($rcOther -eq '97' -and (Get-Calls).Count -eq 0) ('-> ' + $rcOther)
+    Reset-Calls
+    & node $GuardPath --serial $s --log $log --own-ports '9465' -- shell ('dumpsys gfxinfo ' + $pkg + ' reset') 2>$null | Out-Null
+    $rcNone = [string]$LASTEXITCODE
+    Test-Result ($s + ' gfxinfo reset refused without --own-package') ($rcNone -eq '97' -and (Get-Calls).Count -eq 0) ('-> ' + $rcNone)
+    # The package is pinned to RisuTanium: a matching --own-package for another app does not open the reset.
+    Reset-Calls
+    & node $GuardPath --serial $s --log $log --own-package 'io.example.app' --own-ports '9465' -- shell 'dumpsys gfxinfo io.example.app reset' 2>$null | Out-Null
+    $rcPin = [string]$LASTEXITCODE
+    Test-Result ($s + ' gfxinfo reset refused for another app even when --own-package matches it') ($rcPin -eq '97' -and (Get-Calls).Count -eq 0) ('-> ' + $rcPin)
+}
 
 Remove-Item Env:ADBG_FAKE_ADB_SCRIPT; Remove-Item Env:FAKE_CALLS
 'failures=' + $script:failures

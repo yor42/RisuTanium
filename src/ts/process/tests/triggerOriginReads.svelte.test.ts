@@ -219,9 +219,8 @@ vi.mock(import('../request/request'), () => ({
 
 // `../../parser/parser.svelte`'s own `ParseMarkdown` (not exercised by this
 // suite) calls `processScriptFull` for its `editdisplay` step; real
-// `../scripts` pulls in `../../plugins/plugins.svelte`, whose `SafeDocument`
-// reads `document` at module load, unavailable under this file's Node
-// environment.
+// `../scripts` pulls in `../../plugins/plugins.svelte`, whose module
+// graph is browser-only and not loadable under this file's Node environment.
 vi.mock(import('../scripts'), () => ({
     processScript: vi.fn(async (_char: unknown, data: string) => data),
     processScriptFull: vi.fn(async (_char: unknown, data: string) => ({ data, emoChanged: false })),

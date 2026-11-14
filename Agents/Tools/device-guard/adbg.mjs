@@ -47,7 +47,8 @@
 //     input tap X Y | input swipe X1 Y1 X2 Y2 [ms] | input keyevent [--longpress] <KEYCODE_* or number>... | input text ...
 //       with no locate, no typing grant and no failed-locate input lock (exit 92 never applies; no lock is recorded);
 //     dumpsys [<service> [args]] (read-only: set, reset, unplug, enable, disable, force-*, unforce, whitelist, step,
-//       write, suppress and similar state-changing words are refused);
+//       write, suppress and similar state-changing words are refused), except the exact form
+//       `dumpsys gfxinfo io.github.yor42.risutanium reset` when --own-package is that same id (frame counters, CHORE-743);
 //     logcat with any filter/format/buffer arguments (no --pid needed) but it must carry -d, -t or -T (also for the
 //       r11 `--pid` form); clearing or resizing the buffer (-c, -G, -P) and writing it to a device file (-f, -r, -n)
 //       are refused;
@@ -342,7 +343,11 @@ function playgroundShell(cmd) {
       if (t[1] === 'swipe') return (t.length === 6 || t.length === 7) && t.slice(2).every((x) => PG_INT.test(x))
       if (t[1] === 'keyevent') { const keys = t[2] === '--longpress' ? t.slice(3) : t.slice(2); return keys.length >= 1 && keys.every((k) => PG_KEY.test(k)) }
       return false
-    case 'dumpsys': return t.length <= 8 && t.slice(1).every(pgDumpsysArg)
+    case 'dumpsys':
+      // The one state-changing dumpsys form allowed: resetting the own app's frame counters, so frame stats can be
+      // read per measurement window. Exact shape only, and only for the --own-package app.
+      if (t.length === 4 && t[1] === 'gfxinfo' && t[3] === 'reset') return t[2] === 'io.github.yor42.risutanium' && isOwnPackage(t[2])
+      return t.length <= 8 && t.slice(1).every(pgDumpsysArg)
     case 'uiautomator': {
       if (t[1] !== 'dump') return false
       const r = t.slice(2)

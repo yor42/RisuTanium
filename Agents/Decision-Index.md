@@ -1377,3 +1377,225 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-1480](Maintainer-Context.md#mc-1480--native-reply-stage-0c-built-after-the-non-stream-stages-2026-11-11) | NATIVE-REPLY stage 0c built after the non-stream stages, 2026-11-11 |
 | [MC-1481](Maintainer-Context.md#mc-1481--chore-690-s2m-plan-r4-residuals-accepted-2026-11-11) | CHORE-690 S2M plan r4 residuals accepted, 2026-11-11 |
 | [MC-1482](Maintainer-Context.md#mc-1482--remove-the-uise2-worktree-2026-11-11) | Remove the uise2 worktree, 2026-11-11 |
+| [MC-1483](Maintainer-Context.md#mc-1483--records-66-part-1-committed-and-pushed-2026-11-11) | Records 66 part 1 committed and pushed, 2026-11-11 |
+| [MC-1484](Maintainer-Context.md#mc-1484--tools-commit-to-main-with-device-cap-3-2026-11-11) | Tools commit to main with device cap 3, 2026-11-11 |
+| [MC-1485](Maintainer-Context.md#mc-1485--tab-s9-ultra-available-as-a-device-track-2026-11-11) | Tab S9 Ultra available as a device track, 2026-11-11 |
+| [MC-1486](Maintainer-Context.md#mc-1486--phone-1-hand-checks-run-now-talkback-and-s2-screen-off-2026-11-11) | Phone 1 hand checks run now, TalkBack and S2 screen-off, 2026-11-11 |
+| [MC-1487](Maintainer-Context.md#mc-1487--chore-722-s2-runs-with-wi-fi-on-and-the-lan-mock-2026-11-11) | CHORE-722 S2 runs with Wi-Fi on and the LAN mock, 2026-11-11 |
+| [MC-1488](Maintainer-Context.md#mc-1488--ui-s5-follow-up-5-committed-on-f5-wip-2026-11-11) | UI-S5 follow-up 5 committed on f5-wip, 2026-11-11 |
+| [MC-1489](Maintainer-Context.md#mc-1489--chore-719-phone-2-rows-n3-and-n4b-decided-by-controlled-re-run-2026-11-11) | CHORE-719 phone 2 rows N3 and N4b decided by controlled re-run, 2026-11-11 |
+| [MC-1490](Maintainer-Context.md#mc-1490--native-stop-fix-merged-to-main-as-aaeebe42a-2026-11-11) | Native Stop fix merged to main as aaeebe42a, 2026-11-11 |
+| [MC-1491](Maintainer-Context.md#mc-1491--chore-690-checkpoint-commits-on-branch-chore-690-2026-11-11) | CHORE-690 checkpoint commits on branch chore-690, 2026-11-11 |
+| [MC-1492](Maintainer-Context.md#mc-1492--chore-690-s2m-maxentries-lowered-to-4096-2026-11-11) | CHORE-690 S2M maxEntries lowered to 4,096, 2026-11-11 |
+| [MC-1493](Maintainer-Context.md#mc-1493--chore-690-s2m-r5-committed-as-bcd778861-2026-11-11) | CHORE-690 S2M r5 committed as bcd778861, 2026-11-11 |
+| [MC-1494](Maintainer-Context.md#mc-1494--chore-690-merged-to-main-as-f80157066-2026-11-11) | CHORE-690 merged to main as f80157066, 2026-11-11 |
+| [MC-1495](Maintainer-Context.md#mc-1495--file-chore-723-for-studio-focus-after-panel-close-2026-11-12) | File CHORE-723 for Studio focus after panel close, 2026-11-12 |
+| [MC-1496](Maintainer-Context.md#mc-1496--f5-notice-중지됨-stays-until-the-work-ends-2026-11-12) | F5 notice: 중지됨 stays until the work ends, 2026-11-12 |
+| [MC-1497](Maintainer-Context.md#mc-1497--f5-notice-clear-중지됨-when-the-app-returns-to-the-front-2026-11-12) | F5 notice: clear 중지됨 when the app returns to the front, 2026-11-12 |
+| [MC-1498](Maintainer-Context.md#mc-1498--chore-722-r1-stages-2-to-6-parked-2026-11-12) | CHORE-722 R1: stages 2 to 6 parked, 2026-11-12 |
+| [MC-1499](Maintainer-Context.md#mc-1499--chore-722-r2-page-only-throttled-count-update-2026-11-12) | CHORE-722 R2: page-only throttled count update, 2026-11-12 |
+| [MC-1500](Maintainer-Context.md#mc-1500--chore-722-r3-page-side-stop-module-preload-dropped-2026-11-12) | CHORE-722 R3: page-side Stop module preload dropped, 2026-11-12 |
+| [MC-1501](Maintainer-Context.md#mc-1501--chore-722-r4-no-partial-wake-lock-2026-11-12) | CHORE-722 R4: no partial wake lock, 2026-11-12 |
+| [MC-1502](Maintainer-Context.md#mc-1502--chore-722-r5-non-stream-keep-alive-card-names-the-speaker-2026-11-12) | CHORE-722 R5: non-stream keep-alive card names the speaker, 2026-11-12 |
+| [MC-1503](Maintainer-Context.md#mc-1503--device-guard-r9-and-r10-committed-to-main-2026-11-12) | Device guard r9 and r10 committed to main, 2026-11-12 |
+| [MC-1504](Maintainer-Context.md#mc-1504--chore-723-q1-and-q3-every-close-restores-focus-2026-11-12) | CHORE-723 Q1 and Q3: every close restores focus, 2026-11-12 |
+| [MC-1505](Maintainer-Context.md#mc-1505--chore-723-q2-restore-to-the-textarea-after-back-2026-11-12) | CHORE-723 Q2: restore to the textarea after Back, 2026-11-12 |
+| [MC-1506](Maintainer-Context.md#mc-1506--chore-723-q4-other-studio-view-endings-out-of-scope-2026-11-12) | CHORE-723 Q4: other Studio view endings out of scope, 2026-11-12 |
+| [MC-1507](Maintainer-Context.md#mc-1507--chore-723-q5-picked-items-target-gets-focus-2026-11-12) | CHORE-723 Q5: picked item's target gets focus, 2026-11-12 |
+| [MC-1508](Maintainer-Context.md#mc-1508--f6-stage-2-keep-alive-card-goes-away-after-stop-handling-2026-11-12) | F6 stage 2: keep-alive card goes away after Stop handling, 2026-11-12 |
+| [MC-1509](Maintainer-Context.md#mc-1509--dirty-rc-tools-committed-on-dirtyrc-laned-2026-11-12) | DIRTY-RC tools committed on dirtyrc-laned, 2026-11-12 |
+| [MC-1510](Maintainer-Context.md#mc-1510--lane-c-pc-ticket-committed-on-pc-wip-2026-11-12) | Lane C PC ticket committed on pc-wip, 2026-11-12 |
+| [MC-1511](Maintainer-Context.md#mc-1511--f6-notice-trade-off-accepted-as-a-named-limitation-2026-11-12) | F6 notice trade-off accepted as a named limitation, 2026-11-12 |
+| [MC-1512](Maintainer-Context.md#mc-1512--pc-merged-to-main-as-d48f1deb5-2026-11-12) | PC merged to main as d48f1deb5, 2026-11-12 |
+| [MC-1513](Maintainer-Context.md#mc-1513--f6-committed-on-f6-wip-2026-11-12) | F6 committed on f6-wip, 2026-11-12 |
+| [MC-1514](Maintainer-Context.md#mc-1514--f6-merge-waits-for-dv-f6-device-rows-2026-11-12) | F6 merge waits for DV-F6 device rows, 2026-11-12 |
+| [MC-1515](Maintainer-Context.md#mc-1515--chore-723-committed-on-chore-723-2026-11-12) | CHORE-723 committed on chore-723, 2026-11-12 |
+| [MC-1516](Maintainer-Context.md#mc-1516--chore-723-merged-to-main-as-6d686e425-2026-11-12) | CHORE-723 merged to main as 6d686e425, 2026-11-12 |
+| [MC-1517](Maintainer-Context.md#mc-1517--d2-3-fix-folded-into-pc-as-a-shared-cause-correction-2026-11-12) | D2-3 fix folded into PC as a shared-cause correction, 2026-11-12 |
+| [MC-1518](Maintainer-Context.md#mc-1518--file-chore-724-for-cleartext-with-force-plain-fetch-2026-11-12) | File CHORE-724 for cleartext with Force Plain Fetch, 2026-11-12 |
+| [MC-1519](Maintainer-Context.md#mc-1519--f6-merged-to-main-as-6f2d37cc0-2026-11-12) | F6 merged to main as 6f2d37cc0, 2026-11-12 |
+| [MC-1520](Maintainer-Context.md#mc-1520--after-history-restore-the-keyboard-may-reappear-accepted-2026-11-12) | After History restore the keyboard may reappear, accepted, 2026-11-12 |
+| [MC-1521](Maintainer-Context.md#mc-1521--mc-1517-d2-3-fix-committed-on-d23-wip-2026-11-12) | MC-1517 D2-3 fix committed on d23-wip, 2026-11-12 |
+| [MC-1522](Maintainer-Context.md#mc-1522--d2-3-merge-waits-for-d1-to-d5-device-rows-2026-11-12) | D2-3 merge waits for D1 to D5 device rows, 2026-11-12 |
+| [MC-1523](Maintainer-Context.md#mc-1523--narrow-exception-for-chore-719-n7-savepass-write-2026-11-12) | Narrow exception for CHORE-719 N7 savepass write, 2026-11-12 |
+| [MC-1524](Maintainer-Context.md#mc-1524--d2-3-fix-merged-to-main-as-2665ccb05-2026-11-12) | D2-3 fix merged to main as 2665ccb05, 2026-11-12 |
+| [MC-1525](Maintainer-Context.md#mc-1525--size-chore-724-and-file-chore-725-for-desktop-warnings-2026-11-12) | Size CHORE-724 and file CHORE-725 for desktop warnings, 2026-11-12 |
+| [MC-1526](Maintainer-Context.md#mc-1526--seven-clean-merged-worktrees-removed-branches-kept-2026-11-12) | Seven clean merged worktrees removed, branches kept, 2026-11-12 |
+| [MC-1527](Maintainer-Context.md#mc-1527--four-multi-select-items-delegated-to-cloud-sessions-2026-11-12) | Four multi-select items delegated to cloud sessions, 2026-11-12 |
+| [MC-1528](Maintainer-Context.md#mc-1528--file-chore-728-and-chore-729-unscheduled-2026-11-12) | File CHORE-728 and CHORE-729, unscheduled, 2026-11-12 |
+| [MC-1529](Maintainer-Context.md#mc-1529--chore-585-low-power-and-reduced-motion-are-device-local-2026-11-12) | CHORE-585 low power and reduced motion are device-local, 2026-11-12 |
+| [MC-1530](Maintainer-Context.md#mc-1530--android-http-ai-requests-use-the-native-path-2026-11-12) | Android http AI requests use the native path, 2026-11-12 |
+| [MC-1531](Maintainer-Context.md#mc-1531--chore-725-committed-merged-and-pushed-to-main-2026-11-12) | CHORE-725 committed, merged and pushed to main, 2026-11-12 |
+| [MC-1532](Maintainer-Context.md#mc-1532--chore-724-committed-on-c724-lanec-as-843f4daa6-2026-11-12) | CHORE-724 committed on c724-lanec as 843f4daa6, 2026-11-12 |
+| [MC-1533](Maintainer-Context.md#mc-1533--chore-724-merge-waits-for-device-rows-d1-d4-2026-11-12) | CHORE-724 merge waits for device rows D1-D4, 2026-11-12 |
+| [MC-1534](Maintainer-Context.md#mc-1534--chore-724-merged-to-main-as-f1a4d5754-2026-11-12) | CHORE-724 merged to main as f1a4d5754, 2026-11-12 |
+| [MC-1535](Maintainer-Context.md#mc-1535--keep-cloud-ui-merge-commits-and-commit-chore-585-translator-strings-2026-11-12) | Keep cloud UI merge commits and commit CHORE-585 Translator strings, 2026-11-12 |
+| [MC-1536](Maintainer-Context.md#mc-1536--remove-worktrees-risu-code-track-c724-and-risu-code-track-c725-2026-11-12) | Remove worktrees risu-code-track-c724 and risu-code-track-c725, 2026-11-12 |
+| [MC-1537](Maintainer-Context.md#mc-1537--cloud-ui-merge-waits-for-lane-bs-device-rows-2026-11-12) | Cloud UI merge waits for lane B's device rows, 2026-11-12 |
+| [MC-1538](Maintainer-Context.md#mc-1538--file-and-fix-chore-730-toggledef-oracle-trailing-line-gap-2026-11-12) | File and fix CHORE-730 toggleDef oracle trailing-line gap, 2026-11-12 |
+| [MC-1539](Maintainer-Context.md#mc-1539--build-guard-r11-with-fresh-locate-swipe-and-hold-verbs-2026-11-12) | Build guard r11 with fresh-locate swipe and hold verbs, 2026-11-12 |
+| [MC-1540](Maintainer-Context.md#mc-1540--cloudui-merge-waits-for-gesture-rows-on-guard-r11-2026-11-12) | cloudui merge waits for gesture rows on guard r11, 2026-11-12 |
+| [MC-1541](Maintainer-Context.md#mc-1541--chore-730-also-fixes-the-a10-panel-projection-oracle-gap-2026-11-12) | CHORE-730 also fixes the A10 panel projection oracle gap, 2026-11-12 |
+| [MC-1542](Maintainer-Context.md#mc-1542--file-chore-731-studio-toggle-panel-divider-issue-for-later-2026-11-12) | File CHORE-731 Studio toggle panel divider issue for later, 2026-11-12 |
+| [MC-1543](Maintainer-Context.md#mc-1543--commit-and-push-guard-r11-to-main-2026-11-12) | Commit and push guard r11 to main, 2026-11-12 |
+| [MC-1544](Maintainer-Context.md#mc-1544--commit-chore-730-toggledef-oracle-test-on-branch-chore-730-2026-11-12) | Commit CHORE-730 toggleDef oracle test on branch chore-730, 2026-11-12 |
+| [MC-1545](Maintainer-Context.md#mc-1545--theme-packs-refuse-data-and-blob-urls-2026-11-12) | Theme packs refuse data: and blob: URLs, 2026-11-12 |
+| [MC-1546](Maintainer-Context.md#mc-1546--ui-s6-stage-1-bypass-hunt-before-integration-2026-11-12) | UI-S6 stage 1 bypass hunt before integration, 2026-11-12 |
+| [MC-1547](Maintainer-Context.md#mc-1547--chore-719-dirtyrc-laned-merged-to-main-as-25e2e9a13-2026-11-12) | CHORE-719 dirtyrc-laned merged to main as 25e2e9a13, 2026-11-12 |
+| [MC-1548](Maintainer-Context.md#mc-1548--pin-patchessvelte-5573-to-lf-in-gitattributes-2026-11-12) | Pin patches/svelte-5.57.3 to LF in .gitattributes, 2026-11-12 |
+| [MC-1549](Maintainer-Context.md#mc-1549--fix-all-5-ui-s6-stage-1-findings-before-merge-2026-11-12) | Fix all 5 UI-S6 stage 1 findings before merge, 2026-11-12 |
+| [MC-1550](Maintainer-Context.md#mc-1550--theme-pack-font-family-limited-to-bundled-and-generic-families-2026-11-12) | Theme-pack font-family limited to bundled and generic families, 2026-11-12 |
+| [MC-1551](Maintainer-Context.md#mc-1551--commit-chore-726727-flick-remediation-on-cloudui-int-lanec-2026-11-12) | Commit CHORE-726/727 flick remediation on cloudui-int-lanec, 2026-11-12 |
+| [MC-1552](Maintainer-Context.md#mc-1552--maintainer-real-finger-run-on-phone-2-before-cloudui-merge-2026-11-12) | Maintainer real-finger run on phone 2 before cloudui merge, 2026-11-12 |
+| [MC-1553](Maintainer-Context.md#mc-1553--chore-730-merged-to-main-as-86c81b9e0-2026-11-12) | CHORE-730 merged to main as 86c81b9e0, 2026-11-12 |
+| [MC-1554](Maintainer-Context.md#mc-1554--mc-1550-applies-to-app-font-tokens-set-by-a-pack-2026-11-12) | MC-1550 applies to app font tokens set by a pack, 2026-11-12 |
+| [MC-1555](Maintainer-Context.md#mc-1555--unmeasurable-ui-s6-sizes-fail-closed-2026-11-12) | Unmeasurable UI-S6 sizes fail closed, 2026-11-12 |
+| [MC-1556](Maintainer-Context.md#mc-1556--accept-ui-s6-o2-to-o5-and-whole-pack-own-family-scope-2026-11-12) | Accept UI-S6 O2 to O5 and whole-pack own-family scope, 2026-11-12 |
+| [MC-1557](Maintainer-Context.md#mc-1557--r1-stays-an-accepted-limitation-with-experimentalasync-in-production-2026-11-12) | R1 stays an accepted limitation with experimental.async in production, 2026-11-12 |
+| [MC-1558](Maintainer-Context.md#mc-1558--ui-s6-r1-option-b-for-var-in-measured-contexts-2026-11-12) | UI-S6 R1 option (b) for var() in measured contexts, 2026-11-12 |
+| [MC-1559](Maintainer-Context.md#mc-1559--refuse-vwvhvminvmax-in-all-ui-s6-measured-contexts-2026-11-12) | Refuse vw/vh/vmin/vmax in all UI-S6 measured contexts, 2026-11-12 |
+| [MC-1560](Maintainer-Context.md#mc-1560--commit-chore-688-a1-studio-test-fix-on-c688-studio-2026-11-12) | Commit CHORE-688 A1 Studio test fix on c688-studio, 2026-11-12 |
+| [MC-1561](Maintainer-Context.md#mc-1561--commit-chore-726727-flick-round-2-on-cloudui-int-lanec-2026-11-12) | Commit CHORE-726/727 flick round 2 on cloudui-int-lanec, 2026-11-12 |
+| [MC-1562](Maintainer-Context.md#mc-1562--log-only-pointer-listeners-during-the-mc-1552-finger-run-2026-11-12) | Log-only pointer listeners during the MC-1552 finger run, 2026-11-12 |
+| [MC-1563](Maintainer-Context.md#mc-1563--commit-chore-688-a1-37-paths-on-c688a1-laned-2026-11-12) | Commit CHORE-688 A1 37 paths on c688a1-laned, 2026-11-12 |
+| [MC-1564](Maintainer-Context.md#mc-1564--accept-ui-s6-normal-form-p-a-to-p-j-2026-11-12) | Accept UI-S6 normal form P-a to P-j, 2026-11-12 |
+| [MC-1565](Maintainer-Context.md#mc-1565--packs-declare-custom-properties-on-plain-root-only-2026-11-12) | Packs declare custom properties on plain :root only, 2026-11-12 |
+| [MC-1566](Maintainer-Context.md#mc-1566--allow-pack-private---pack--custom-properties-to-vary-2026-11-12) | Allow pack-private --pack-* custom properties to vary, 2026-11-12 |
+| [MC-1567](Maintainer-Context.md#mc-1567--chore-688-a1-and-studio-merge-wait-for-phone-1-a4-rows-2026-11-12) | CHORE-688 A1 and Studio merge wait for phone 1 A4 rows, 2026-11-12 |
+| [MC-1568](Maintainer-Context.md#mc-1568--ui-s6-a-z-rule-applies-only-to-case-significant-spans-2026-11-12) | UI-S6 A-Z rule applies only to case-significant spans, 2026-11-12 |
+| [MC-1569](Maintainer-Context.md#mc-1569--ui-s6-cascade-split-colour-pairs-gate-the-install-stage-2026-11-12) | UI-S6 cascade-split colour pairs gate the install stage, 2026-11-12 |
+| [MC-1570](Maintainer-Context.md#mc-1570--chore-727-tremor-tolerance-and-disarm-hysteresis-on-the-armed-hold-2026-11-12) | CHORE-727 tremor tolerance and disarm hysteresis on the armed hold, 2026-11-12 |
+| [MC-1571](Maintainer-Context.md#mc-1571--chore-727-reply-swipe-starts-anywhere-on-the-bubble-2026-11-12) | CHORE-727 reply swipe starts anywhere on the bubble, 2026-11-12 |
+| [MC-1572](Maintainer-Context.md#mc-1572--chore-732-mobile-composer-redesign-with-persona-tab-2026-11-12) | CHORE-732 mobile composer redesign with persona tab, 2026-11-12 |
+| [MC-1573](Maintainer-Context.md#mc-1573--chore-732-drop-up-lists-personas-and-a-manage-link-2026-11-12) | CHORE-732 drop-up lists personas and a manage link, 2026-11-12 |
+| [MC-1574](Maintainer-Context.md#mc-1574--chore-732-persona-tab-at-the-top-edge-of-the-composer-2026-11-12) | CHORE-732 persona tab at the top edge of the composer, 2026-11-12 |
+| [MC-1575](Maintainer-Context.md#mc-1575--persona-tab-stays-visible-own-strip-focus-returns-to-tab-2026-11-12) | Persona tab stays visible, own strip, focus returns to tab, 2026-11-12 |
+| [MC-1576](Maintainer-Context.md#mc-1576--persona-tab-cut-off-wrapped-list-as-name-hint-accept-all-2026-11-12) | Persona tab cut-off, wrapped list, as-name hint, accept all, 2026-11-12 |
+| [MC-1577](Maintainer-Context.md#mc-1577--chore-732-device-check-is-dv1-to-dv6-on-phone-2-no-talkback-2026-11-12) | CHORE-732 device check is DV1 to DV6 on phone 2, no TalkBack, 2026-11-12 |
+| [MC-1578](Maintainer-Context.md#mc-1578--reduced-motion-fades-only-the-swipe-release-chore-727-2026-11-12) | Reduced motion fades only the swipe release, CHORE-727, 2026-11-12 |
+| [MC-1579](Maintainer-Context.md#mc-1579--slow-creep-partly-resets-the-hold-fill-no-freeze-chore-727-2026-11-12) | Slow creep partly resets the hold fill, no freeze, CHORE-727, 2026-11-12 |
+| [MC-1580](Maintainer-Context.md#mc-1580--no-return-spring-on-generate-release-out-of-scope-chore-727-2026-11-12) | No return spring on generate release, out of scope, CHORE-727, 2026-11-12 |
+| [MC-1581](Maintainer-Context.md#mc-1581--low-power-commit-animation-kept-no-fade-past-1500-ms-chore-727-2026-11-12) | Low-power commit animation kept, no fade past 1500 ms, CHORE-727, 2026-11-12 |
+| [MC-1582](Maintainer-Context.md#mc-1582--ui-s6-stage-1-committed-as-is-r2-editorials-left-2026-11-12) | UI-S6 stage 1 committed as is, r2 editorials left, 2026-11-12 |
+| [MC-1583](Maintainer-Context.md#mc-1583--chat-pack-may-hide-message-name-chrome-policy-hit-expected-2026-11-12) | Chat pack may hide message name, Chrome policy hit expected, 2026-11-12 |
+| [MC-1584](Maintainer-Context.md#mc-1584--font-face-family-names-fall-under-the-lower-case-rule-2026-11-12) | @font-face family names fall under the lower-case rule, 2026-11-12 |
+| [MC-1585](Maintainer-Context.md#mc-1585--ui-s6-stage-1-merged-and-pushed-to-main-2026-11-12) | UI-S6 stage 1 merged and pushed to main, 2026-11-12 |
+| [MC-1586](Maintainer-Context.md#mc-1586--ui-s6-installer-themes-chat-and-studio-only-fonts-and-images-kept-2026-11-12) | UI-S6 installer themes chat and studio only, fonts and images kept, 2026-11-12 |
+| [MC-1587](Maintainer-Context.md#mc-1587--ui-s6-pack-record-is-fork-only-data-under-mc-774-2026-11-12) | UI-S6 pack record is fork-only data under MC-774, 2026-11-12 |
+| [MC-1588](Maintainer-Context.md#mc-1588--zip-bomb-decompression-limits-for-ui-s6-packs-not-a-size-cap-2026-11-12) | Zip-bomb decompression limits for UI-S6 packs, not a size cap, 2026-11-12 |
+| [MC-1589](Maintainer-Context.md#mc-1589--ui-s6-installer-defaults-accepted-storage-route-left-to-the-plan-2026-11-12) | UI-S6 installer defaults accepted, storage route left to the plan, 2026-11-12 |
+| [MC-1590](Maintainer-Context.md#mc-1590--chore-733-crash-fixed-first-chore-734-filed-and-waiting-2026-11-12) | CHORE-733 crash fixed first, CHORE-734 filed and waiting, 2026-11-12 |
+| [MC-1591](Maintainer-Context.md#mc-1591--talkback-check-of-the-chore-688-d3s-gap-allowed-then-withdrawn-2026-11-12) | TalkBack check of the CHORE-688 D3s gap allowed, then withdrawn, 2026-11-12 |
+| [MC-1592](Maintainer-Context.md#mc-1592--chore-688-a4-gaps-fixed-before-a1-merges-2026-11-12) | CHORE-688 A4 gaps fixed before A1 merges, 2026-11-12 |
+| [MC-1593](Maintainer-Context.md#mc-1593--promptsettings-treats-missing-prompttemplate-as-an-empty-list-2026-11-12) | PromptSettings treats missing promptTemplate as an empty list, 2026-11-12 |
+| [MC-1594](Maintainer-Context.md#mc-1594--pinch-zoom-blocked-on-message-bubbles-by-pan-y-accepted-2026-11-12) | Pinch-zoom blocked on message bubbles by pan-y, accepted, 2026-11-12 |
+| [MC-1595](Maintainer-Context.md#mc-1595--ui-s6-bin-import-keeps-the-pages-installed-packs-2026-11-12) | UI-S6 .bin import keeps the page's installed packs, 2026-11-12 |
+| [MC-1596](Maintainer-Context.md#mc-1596--ui-s6-layout-decided-by-note-9-cold-start-measurement-2026-11-12) | UI-S6 layout decided by Note 9 cold-start measurement, 2026-11-12 |
+| [MC-1597](Maintainer-Context.md#mc-1597--no-touch-reachable-recovery-from-a-broken-ui-s6-pack-on-android-2026-11-12) | No touch-reachable recovery from a broken UI-S6 pack on Android, 2026-11-12 |
+| [MC-1598](Maintainer-Context.md#mc-1598--ui-s6-risutheme-pack-format-accepted-2026-11-12) | UI-S6 .risutheme pack format accepted, 2026-11-12 |
+| [MC-1599](Maintainer-Context.md#mc-1599--ui-s6-p2-p4-p5-p6-defaults-and-c2-per-file-limits-accepted-2026-11-12) | UI-S6 P2, P4, P5, P6 defaults and C2 per-file limits accepted, 2026-11-12 |
+| [MC-1600](Maintainer-Context.md#mc-1600--sign-installps1-may-make-three-adb-calls-this-m2-run-only-2026-11-12) | sign-install.ps1 may make three adb calls, this M2 run only, 2026-11-12 |
+| [MC-1601](Maintainer-Context.md#mc-1601--reply-swipe-may-start-on-the-translation-block-inside-the-bubble-2026-11-12) | Reply swipe may start on the translation block inside the bubble, 2026-11-12 |
+| [MC-1602](Maintainer-Context.md#mc-1602--reply-swipe-may-start-on-a-plain-inline-image-or-asset-surface-2026-11-12) | Reply swipe may start on a plain inline image or asset surface, 2026-11-12 |
+| [MC-1603](Maintainer-Context.md#mc-1603--seven-non-focus-tick-sites-stay-on-tick-run-one-frame-later-2026-11-12) | Seven non-focus tick sites stay on tick, run one frame later, 2026-11-12 |
+| [MC-1604](Maintainer-Context.md#mc-1604--ui-s6-m2-measurement-on-phone-2-with-synthetic-profile-re-import-2026-11-12) | UI-S6 M2 measurement on phone 2 with synthetic profile re-import, 2026-11-12 |
+| [MC-1605](Maintainer-Context.md#mc-1605--cloud-ui-r3-committed-on-cloudui-int-lanec-2026-11-13) | Cloud UI r3 committed on cloudui-int-lanec, 2026-11-13 |
+| [MC-1606](Maintainer-Context.md#mc-1606--swipe-start-parts-kept-chat-message-actions-gaps-no-longer-start-a-swipe-2026-11-13) | Swipe-start parts kept, chat-message-actions gaps no longer start a swipe, 2026-11-13 |
+| [MC-1607](Maintainer-Context.md#mc-1607--chore-688-a4-fix-stages-1a-and-2-committed-before-1b-2026-11-13) | CHORE-688 A4-fix stages 1a and 2 committed before 1b, 2026-11-13 |
+| [MC-1608](Maintainer-Context.md#mc-1608--ui-s6-installer-surface-gate-chat-only-theming-studio-skipped-2026-11-13) | UI-S6 installer surface gate, chat-only theming, studio skipped, 2026-11-13 |
+| [MC-1609](Maintainer-Context.md#mc-1609--ui-s6-pack-font-families-named-pack--per-sheet-registration-2026-11-13) | UI-S6 pack font families named pack-, per-sheet registration, 2026-11-13 |
+| [MC-1610](Maintainer-Context.md#mc-1610--ui-s6-residue-accepted-dialogs-take-pack-colours-keyframes-refused-2026-11-13) | UI-S6 residue accepted, dialogs take pack colours, @keyframes refused, 2026-11-13 |
+| [MC-1611](Maintainer-Context.md#mc-1611--chore-733-committed-on-chore-733-2026-11-13) | CHORE-733 committed on chore-733, 2026-11-13 |
+| [MC-1612](Maintainer-Context.md#mc-1612--mc-1606-pinning-tests-committed-on-cloudui-int-lanec-2026-11-13) | MC-1606 pinning tests committed on cloudui-int-lanec, 2026-11-13 |
+| [MC-1613](Maintainer-Context.md#mc-1613--cloud-ui-r3-and-mc-1606-pins-merged-and-pushed-to-main-as-f4dfdc1dd-2026-11-13) | Cloud UI r3 and MC-1606 pins merged and pushed to main as f4dfdc1dd, 2026-11-13 |
+| [MC-1614](Maintainer-Context.md#mc-1614--mc-1562-pointer-trace-renewed-for-cloud-ui-r3-finger-session-2026-11-13) | MC-1562 pointer trace renewed for cloud UI r3 finger session, 2026-11-13 |
+| [MC-1615](Maintainer-Context.md#mc-1615--optional-row-d15-pre-fix-comparison-skipped-for-cloud-ui-r3-2026-11-13) | Optional row D15 pre-fix comparison skipped for cloud UI r3, 2026-11-13 |
+| [MC-1616](Maintainer-Context.md#mc-1616--ui-s6-stored-layout-a-one-archive-per-pack-kept-2026-11-13) | UI-S6 stored layout A, one archive per pack, kept, 2026-11-13 |
+| [MC-1617](Maintainer-Context.md#mc-1617--chore-733-merged-and-pushed-to-main-as-95c7481fe-2026-11-13) | CHORE-733 merged and pushed to main as 95c7481fe, 2026-11-13 |
+| [MC-1618](Maintainer-Context.md#mc-1618--three-commits-chore-732-ui-s6-i0s-and-chore-688-1b-2026-11-13) | Three commits: CHORE-732, UI-S6 I0s and CHORE-688 1b, 2026-11-13 |
+| [MC-1619](Maintainer-Context.md#mc-1619--cloud-ui-r3-finger-session-on-phone-2-started-2026-11-13) | Cloud UI r3 finger session on phone 2 started, 2026-11-13 |
+| [MC-1620](Maintainer-Context.md#mc-1620--refuse-studio-only-theme-packs-at-install-2026-11-13) | Refuse studio-only theme packs at install, 2026-11-13 |
+| [MC-1621](Maintainer-Context.md#mc-1621--one-run-sign-install-exception-for-the-esc-r3-device-recipe-2026-11-13) | One-run sign-install exception for the esc-r3 device recipe, 2026-11-13 |
+| [MC-1622](Maintainer-Context.md#mc-1622--leave-the-synthetic-p2r-s-profilebin-on-phone-2-2026-11-13) | Leave the synthetic p2r-s-profile.bin on phone 2, 2026-11-13 |
+| [MC-1623](Maintainer-Context.md#mc-1623--merge-chore-732-to-main-as-3581b4a50-and-push-2026-11-13) | Merge CHORE-732 to main as 3581b4a50 and push, 2026-11-13 |
+| [MC-1624](Maintainer-Context.md#mc-1624--fix-the-chore-727-sa1-reply-swipe-edge-test-2026-11-13) | Fix the CHORE-727 SA1 reply-swipe edge test, 2026-11-13 |
+| [MC-1625](Maintainer-Context.md#mc-1625--reduced-motion-reply-follow-and-highlight-for-chore-727-d11-2026-11-13) | Reduced-motion reply follow and highlight for CHORE-727 D11, 2026-11-13 |
+| [MC-1626](Maintainer-Context.md#mc-1626--judge-translucent-pack-fills-at-451-for-text-2026-11-13) | Judge translucent pack fills at 4.5:1 for text, 2026-11-13 |
+| [MC-1627](Maintainer-Context.md#mc-1627--accept-40-px-pattern-dialog-controls-on-fine-pointer-desktops-2026-11-13) | Accept 40 px pattern dialog controls on fine-pointer desktops, 2026-11-13 |
+| [MC-1628](Maintainer-Context.md#mc-1628--commit-chore-735-and-the-p10-test-only-fix-2026-11-13) | Commit CHORE-735 and the P10 test-only fix, 2026-11-13 |
+| [MC-1629](Maintainer-Context.md#mc-1629--merge-ui-s6-i0c-to-main-as-8d1831217-and-push-2026-11-13) | Merge UI-S6 I0c to main as 8d1831217 and push, 2026-11-13 |
+| [MC-1630](Maintainer-Context.md#mc-1630--count-side-margins-record-width-and-shadow-gaps-2026-11-13) | Count side margins; record width and shadow gaps, 2026-11-13 |
+| [MC-1631](Maintainer-Context.md#mc-1631--commit-chore-736-as-91c79a9d5-2026-11-13) | Commit CHORE-736 as 91c79a9d5, 2026-11-13 |
+| [MC-1632](Maintainer-Context.md#mc-1632--merge-chore-736-to-main-as-ac0be9603-and-push-2026-11-13) | Merge CHORE-736 to main as ac0be9603 and push, 2026-11-13 |
+| [MC-1633](Maintainer-Context.md#mc-1633--accept-i0a-pq-1-v1-residue-items-r12-and-e-2-to-chore-738-2026-11-13) | Accept I0a PQ-1 v1 residue items; R12 and E-2 to CHORE-738, 2026-11-13 |
+| [MC-1634](Maintainer-Context.md#mc-1634--studio-next-four-items-to-lane-d-2026-11-13) | Studio next: four items to Lane D, 2026-11-13 |
+| [MC-1635](Maintainer-Context.md#mc-1635--split-s3c-into-two-sub-batches-2026-11-13) | Split S3c into two sub-batches, 2026-11-13 |
+| [MC-1636](Maintainer-Context.md#mc-1636--s3c-history-parity-and-module-scope-save-confirmation-2026-11-13) | S3c history parity and module-scope save confirmation, 2026-11-13 |
+| [MC-1637](Maintainer-Context.md#mc-1637--s3c-stub-loading-kinds-and-module-info-2026-11-13) | S3c stub loading, kinds and module info, 2026-11-13 |
+| [MC-1638](Maintainer-Context.md#mc-1638--s3c-new-module-default-management-and-classic-gap-2026-11-13) | S3c new-module default, management and classic gap, 2026-11-13 |
+| [MC-1639](Maintainer-Context.md#mc-1639--s3c-unsafe-module-editing-low-level-flag-and-shared-notice-2026-11-13) | S3c unsafe-module editing, low-level flag and shared notice, 2026-11-13 |
+| [MC-1640](Maintainer-Context.md#mc-1640--s3e-a2-advisory-kinds-and-pq-answers-2026-11-13) | S3e-A2 advisory kinds and PQ answers, 2026-11-13 |
+| [MC-1641](Maintainer-Context.md#mc-1641--merge-chore-731-to-main-as-a4aa28d91-2026-11-13) | Merge CHORE-731 to main as a4aa28d91, 2026-11-13 |
+| [MC-1642](Maintainer-Context.md#mc-1642--asset-undoredo-focus-rule-for-removed-rows-2026-11-13) | Asset Undo/Redo focus rule for removed rows, 2026-11-13 |
+| [MC-1643](Maintainer-Context.md#mc-1643--no-fmindex-reset-on-studio-asset-delete-2026-11-13) | No fmIndex reset on Studio asset delete, 2026-11-13 |
+| [MC-1644](Maintainer-Context.md#mc-1644--keep-the-slice-4-preview-setting-2026-11-13) | Keep the slice 4 preview setting, 2026-11-13 |
+| [MC-1645](Maintainer-Context.md#mc-1645--accept-five-slice-4-limitations-2026-11-13) | Accept five slice 4 limitations, 2026-11-13 |
+| [MC-1646](Maintainer-Context.md#mc-1646--rename-note-adds-a-clause-for-old-asset-references-2026-11-13) | Rename note adds a clause for old asset references, 2026-11-13 |
+| [MC-1647](Maintainer-Context.md#mc-1647--leave-removedquotes-unchanged-on-merge-rewrite-2026-11-13) | Leave removedQuotes unchanged on merge rewrite, 2026-11-13 |
+| [MC-1648](Maintainer-Context.md#mc-1648--merge-s3e-a2-with-its-message-cited-to-mc-1640-2026-11-13) | Merge S3e-A2 with its message cited to MC-1640, 2026-11-13 |
+| [MC-1649](Maintainer-Context.md#mc-1649--commit-the-slice-4-spec-fix-as-d9521af15-2026-11-13) | Commit the slice 4 spec fix as d9521af15, 2026-11-13 |
+| [MC-1650](Maintainer-Context.md#mc-1650--fold-i0a-r5-test-gaps-into-one-test-only-remediation-2026-11-13) | Fold I0a r5 test gaps into one test-only remediation, 2026-11-13 |
+| [MC-1651](Maintainer-Context.md#mc-1651--module-folder-rule-when-a-file-replaces-a-module-with-folders-2026-11-13) | Module folder rule when a file replaces a module with folders, 2026-11-13 |
+| [MC-1652](Maintainer-Context.md#mc-1652--bin-carries-module-folders-under-a-fork-prefixed-field-name-2026-11-13) | .bin carries module folders under a fork-prefixed field name, 2026-11-13 |
+| [MC-1653](Maintainer-Context.md#mc-1653--no-folder-reset-for-an-unreadable-folder-document-2026-11-13) | No folder reset for an unreadable folder document, 2026-11-13 |
+| [MC-1654](Maintainer-Context.md#mc-1654--plugin-write-back-keeps-the-live-assetretained-value-2026-11-13) | Plugin write-back keeps the live assetRetained value, 2026-11-13 |
+| [MC-1655](Maintainer-Context.md#mc-1655--rewrite-and-note-for-same-file-different-name-merge-2026-11-13) | Rewrite and note for same-file different-name merge, 2026-11-13 |
+| [MC-1656](Maintainer-Context.md#mc-1656--accept-and-document-the-d4-lite-stub-limitation-2026-11-13) | Accept and document the D4-lite stub limitation, 2026-11-13 |
+| [MC-1657](Maintainer-Context.md#mc-1657--commit-ui-s6-installer-i0a-as-48549240d-2026-11-13) | Commit UI-S6 installer I0a as 48549240d, 2026-11-13 |
+| [MC-1658](Maintainer-Context.md#mc-1658--commit-slice-4-spec-hunk-as-2fd6a7990-and-push-2026-11-13) | Commit slice 4 spec hunk as 2fd6a7990 and push, 2026-11-13 |
+| [MC-1659](Maintainer-Context.md#mc-1659--commit-i0a-integration-fix-as-9d97d6695-2026-11-13) | Commit I0a integration fix as 9d97d6695, 2026-11-13 |
+| [MC-1660](Maintainer-Context.md#mc-1660--merge-ui-s6-installer-i0s-i0a-and-fix-as-2823df467-2026-11-13) | Merge UI-S6 installer I0s, I0a and fix as 2823df467, 2026-11-13 |
+| [MC-1661](Maintainer-Context.md#mc-1661--ignore-a-second-finger-during-a-reply-swipe-2026-11-13) | Ignore a second finger during a reply swipe, 2026-11-13 |
+| [MC-1662](Maintainer-Context.md#mc-1662--continue-phone-2-r3-with-sa7-as-the-chore-741-baseline-2026-11-13) | Continue phone 2 r3 with SA7 as the CHORE-741 baseline, 2026-11-13 |
+| [MC-1663](Maintainer-Context.md#mc-1663--chore-741-second-finger-tap-first-finger-rules-2026-11-13) | CHORE-741 second-finger tap: first finger rules, 2026-11-13 |
+| [MC-1664](Maintainer-Context.md#mc-1664--accept-resting-finger-block-on-reply-swipe-2026-11-13) | Accept resting-finger block on reply swipe, 2026-11-13 |
+| [MC-1665](Maintainer-Context.md#mc-1665--merge-a1-and-drop-d9b79a5bd-2026-11-13) | Merge A1 and drop d9b79a5bd, 2026-11-13 |
+| [MC-1666](Maintainer-Context.md#mc-1666--note-9-playground-rules-for-two-spare-phones-2026-11-13) | Note 9 playground rules for two spare phones, 2026-11-13 |
+| [MC-1667](Maintainer-Context.md#mc-1667--chore-732-dv4-back-route-two-backs-are-fine-2026-11-13) | CHORE-732 DV4 Back route: two Backs are fine, 2026-11-13 |
+| [MC-1668](Maintainer-Context.md#mc-1668--chore-742-focus-fix-filed-and-approved-2026-11-13) | CHORE-742 focus fix filed and approved, 2026-11-13 |
+| [MC-1669](Maintainer-Context.md#mc-1669--chore-732-dv1b-run-once-adbg-r12-is-live-2026-11-13) | CHORE-732 DV1b: run once adbg r12 is live, 2026-11-13 |
+| [MC-1670](Maintainer-Context.md#mc-1670--tab-s9-scope-for-chore-736-dd3-keys-session-2026-11-13) | Tab S9 scope for CHORE-736 DD3 keys session, 2026-11-13 |
+| [MC-1671](Maintainer-Context.md#mc-1671--chore-741-commit-2026-11-13) | CHORE-741 commit, 2026-11-13 |
+| [MC-1672](Maintainer-Context.md#mc-1672--adbg-r12-commit-and-push-2026-11-13) | adbg r12 commit and push, 2026-11-13 |
+| [MC-1673](Maintainer-Context.md#mc-1673--slice-4-batch-1-merges-with-the-whole-slice-2026-11-13) | Slice 4 batch 1 merges with the whole slice, 2026-11-13 |
+| [MC-1674](Maintainer-Context.md#mc-1674--d3-lite-start-studio-history-format-v1-to-v2-2026-11-13) | D3-lite start, Studio history format v1 to v2, 2026-11-13 |
+| [MC-1675](Maintainer-Context.md#mc-1675--d3-lite-drops-v1-support-studio-history-v2-only-2026-11-13) | D3-lite drops v1 support, Studio history v2-only, 2026-11-13 |
+| [MC-1676](Maintainer-Context.md#mc-1676--autonomy-experiment-from-2026-11-14-1100-2026-11-13) | Autonomy experiment from 2026-11-14 11:00, 2026-11-13 |
+| [MC-1677](Maintainer-Context.md#mc-1677--autonomy-experiment-covers-all-lanes-2026-11-13) | Autonomy experiment covers all lanes, 2026-11-13 |
+| [MC-1678](Maintainer-Context.md#mc-1678--ui-s6-i3g-commit-2026-11-13) | UI-S6 I3g commit, 2026-11-13 |
+| [MC-1679](Maintainer-Context.md#mc-1679--chore-741-merge-and-push-2026-11-13) | CHORE-741 merge and push, 2026-11-13 |
+| [MC-1680](Maintainer-Context.md#mc-1680--chore-742-commit-2026-11-13) | CHORE-742 commit, 2026-11-13 |
+| [MC-1681](Maintainer-Context.md#mc-1681--ui-s6-i3g-merge-and-push-2026-11-13) | UI-S6 I3g merge and push, 2026-11-13 |
+| [MC-1682](Maintainer-Context.md#mc-1682--chore-742-merge-and-push-2026-11-13) | CHORE-742 merge and push, 2026-11-13 |
+| [MC-1683](Maintainer-Context.md#mc-1683--tab-s9-risutanium-build-holds-no-data-2026-11-13) | Tab S9 RisuTanium build holds no data, 2026-11-13 |
+| [MC-1684](Maintainer-Context.md#mc-1684--lane-c-next-ui-s6-i1-and-i2-2026-11-13) | Lane C next: UI-S6 I1 and I2, 2026-11-13 |
+| [MC-1685](Maintainer-Context.md#mc-1685--worktree-cleanup-remove-clean-merged-ones-2026-11-13) | Worktree cleanup: remove clean merged ones, 2026-11-13 |
+| [MC-1686](Maintainer-Context.md#mc-1686--lane-b-build-tree-cleanup-remove-all-but-e9ff-2026-11-13) | Lane B build-tree cleanup: remove all but e9ff, 2026-11-13 |
+| [MC-1687](Maintainer-Context.md#mc-1687--ui-s6-i1i2-product-questions-answered-2026-11-13) | UI-S6 I1/I2 product questions answered, 2026-11-13 |
+| [MC-1688](Maintainer-Context.md#mc-1688--d3-lite-s1-accepted-as-dev-only-limit-2026-11-13) | D3-lite S1 accepted as dev-only limit, 2026-11-13 |
+| [MC-1689](Maintainer-Context.md#mc-1689--g2-item-5-accepted-as-limitation-i3-proceeds-2026-11-14) | G2 item 5 accepted as limitation, I3 proceeds, 2026-11-14 |
+| [MC-1690](Maintainer-Context.md#mc-1690--ui-s6-i1-commit-2026-11-14) | UI-S6 I1 commit, 2026-11-14 |
+| [MC-1691](Maintainer-Context.md#mc-1691--ui-s6-i2-commit-2026-11-14) | UI-S6 I2 commit, 2026-11-14 |
+| [MC-1692](Maintainer-Context.md#mc-1692--ui-s6-i1i2-merge-and-push-2026-11-14) | UI-S6 I1+I2 merge and push, 2026-11-14 |
+| [MC-1693](Maintainer-Context.md#mc-1693--i3-local-commit-allowed-as-device-harness-snapshot-2026-11-14) | I3 local commit allowed as device-harness snapshot, 2026-11-14 |
+| [MC-1694](Maintainer-Context.md#mc-1694--sign-installps1-one-run-on-phone-2-for-i3-2026-11-14) | sign-install.ps1 one run on phone 2 for I3, 2026-11-14 |
+| [MC-1695](Maintainer-Context.md#mc-1695--one-more-sign-install-run-for-an-i3-rerun-2026-11-14) | One more sign-install run for an I3 rerun, 2026-11-14 |
+| [MC-1696](Maintainer-Context.md#mc-1696--i3-second-local-commit-for-the-first-install-harness-2026-11-14) | I3 second local commit for the first-install harness, 2026-11-14 |
+| [MC-1697](Maintainer-Context.md#mc-1697--foreground-cpu-drain-and-heat-on-the-daily-phone-2026-11-14) | Foreground CPU drain and heat on the daily phone, 2026-11-14 |
+| [MC-1698](Maintainer-Context.md#mc-1698--persona-tab-restyle-note-folded-into-ui-s7-backlog-2026-11-14) | Persona tab restyle note folded into UI-S7 backlog, 2026-11-14 |
+| [MC-1699](Maintainer-Context.md#mc-1699--open-ui-s7-final-restyle-2026-11-14) | Open UI-S7 final restyle, 2026-11-14 |
+| [MC-1700](Maintainer-Context.md#mc-1700--asset-undoredo-fail-closed-when-file-state-is-unknown-2026-11-14) | Asset Undo/Redo fail-closed when file state is unknown, 2026-11-14 |
+| [MC-1701](Maintainer-Context.md#mc-1701--refusal-copy-for-an-unchecked-asset-file-2026-11-14) | Refusal copy for an unchecked asset file, 2026-11-14 |
+| [MC-1702](Maintainer-Context.md#mc-1702--per-file-existence-probe-before-replay-measure-it-2026-11-14) | Per-file existence probe before replay, measure it, 2026-11-14 |
+| [MC-1703](Maintainer-Context.md#mc-1703--asset-replay-probe-deadline-8000-ms-2026-11-14) | Asset replay probe deadline 8000 ms, 2026-11-14 |
+| [MC-1704](Maintainer-Context.md#mc-1704--new-sessions-for-ui-batches-and-records-2026-11-14) | New sessions for UI, batches and records, 2026-11-14 |

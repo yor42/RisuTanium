@@ -546,13 +546,50 @@ class SafeMutationObserver {
 
 }
 
-const pluginUnloadCallbacks: Map<string, Function[]> = new Map();
+// One scope per plugin instance, bound when its API object is created. The map
+// holds open scopes only: unloading closes the scope and removes it first, so a
+// registration made later through that API object is undone at once and a
+// reloaded instance of the same name never inherits it.
+type UnloadScope = {
+    name: string;
+    callbacks: Function[];
+    closed: boolean;
+}
 
-const addPluginUnloadCallback = (pluginName: string, callback: Function) => {
-    if(!pluginUnloadCallbacks.has(pluginName)){
-        pluginUnloadCallbacks.set(pluginName, []);
+const pluginUnloadScopes: Map<string, UnloadScope> = new Map();
+
+const getUnloadScope = (pluginName: string): UnloadScope => {
+    const existing = pluginUnloadScopes.get(pluginName);
+    if(existing && !existing.closed){
+        return existing;
     }
-    pluginUnloadCallbacks.get(pluginName)?.push(callback);
+    const scope: UnloadScope = { name: pluginName, callbacks: [], closed: false };
+    pluginUnloadScopes.set(pluginName, scope);
+    return scope;
+}
+
+// A synchronously-throwing callback is logged and never propagates; a returned
+// promise is handed back for the caller to collect.
+const runUnloadCallback = (scope: UnloadScope, callback: Function): Promise<void> | undefined => {
+    try {
+        const result = callback();
+        if(result instanceof Promise){
+            return result;
+        }
+    } catch (error) {
+        console.error(`Error in unload callback for plugin ${scope.name}:`, error);
+    }
+}
+
+const addPluginUnloadCallback = (scope: UnloadScope, callback: Function) => {
+    if(scope.closed){
+        const result = runUnloadCallback(scope, callback);
+        result?.catch((error) => {
+            console.error(`Error in unload callback for plugin ${scope.name}:`, error);
+        });
+        return;
+    }
+    scope.callbacks.push(callback);
 }
 
 const makeMenuUnloadCallback = (menuId:string, menuStore: MenuDef[]) =>{
@@ -593,7 +630,7 @@ const removePluginChatPanels = (pluginName: string) => {
 }
 
 const unloadV3Plugin = async (pluginName: string) => {
-    const callbacks = pluginUnloadCallbacks.get(pluginName);
+    const scope = pluginUnloadScopes.get(pluginName);
     const instance = v3PluginInstances.find(p => p.name === pluginName);
     if(instance){
         const index = v3PluginInstances.findIndex(p => p.name === pluginName);
@@ -602,20 +639,19 @@ const unloadV3Plugin = async (pluginName: string) => {
         }
     }
     try {
-        if(callbacks){
-            pluginUnloadCallbacks.delete(pluginName);
+        if(scope){
+            // Closing before the loop makes a callback that registers again during
+            // the loop run at once instead of growing the array being iterated.
+            pluginUnloadScopes.delete(pluginName);
+            scope.closed = true;
             let promises: Promise<void>[] = [];
-            for(const callback of callbacks){
+            for(const callback of scope.callbacks){
                 // A synchronously-throwing callback must not abort this function before
                 // termination below runs — that would leave the plugin's iframe/host
                 // registration alive with no cleanup.
-                try {
-                    const result = callback();
-                    if(result instanceof Promise){
-                        promises.push(result);
-                    }
-                } catch (error) {
-                    console.error(`Error in unload callback for plugin ${pluginName}:`, error);
+                const result = runUnloadCallback(scope, callback);
+                if(result){
+                    promises.push(result);
                 }
             }
 
@@ -910,7 +946,8 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
     // its host wrapper would never settle. A reloaded instance of the same name
     // gets its own API object and its own flag.
     let pluginUnloaded = false
-    addPluginUnloadCallback(plugin.name, () => { pluginUnloaded = true })
+    const unloadScope = getUnloadScope(plugin.name)
+    addPluginUnloadCallback(unloadScope, () => { pluginUnloaded = true })
     // Fork-specific: unlike the V2 `setChar`, which ignores an archived-character
     // placeholder that may not replace the selected character, the V3 call
     // rejects.
@@ -1040,13 +1077,13 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             func: TTSHookFn<BeforeTTSContext, BeforeTTSResult>,
         ) => {
             registerTTSPreprocessor(func);
-            addPluginUnloadCallback(plugin.name, () => unregisterTTSPreprocessor(func));
+            addPluginUnloadCallback(unloadScope,() => unregisterTTSPreprocessor(func));
         },
         addTTSPostprocessor: async (
             func: TTSHookFn<AfterTTSContext, AfterTTSResult>,
         ) => {
             registerTTSPostprocessor(func);
-            addPluginUnloadCallback(plugin.name, () => unregisterTTSPostprocessor(func));
+            addPluginUnloadCallback(unloadScope,() => unregisterTTSPostprocessor(func));
         },
         addRisuScriptHandler: oldApis.addRisuScriptHandler,
         removeRisuScriptHandler: oldApis.removeRisuScriptHandler,
@@ -1057,7 +1094,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 return;
             }
             oldApis.addRisuReplacer(name, func as any);
-            addPluginUnloadCallback(plugin.name, () => oldApis.removeRisuReplacer(name, func as any));
+            addPluginUnloadCallback(unloadScope,() => oldApis.removeRisuReplacer(name, func as any));
         },
         removeRisuReplacer: oldApis.removeRisuReplacer,
         addRisuChatListener: async (mode:'output', func:Function) => {
@@ -1067,7 +1104,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 return;
             }
             oldApis.addRisuChatListener(mode, func as any);
-            addPluginUnloadCallback(plugin.name, () => oldApis.removeRisuChatListener(mode, func as any));
+            addPluginUnloadCallback(unloadScope,() => oldApis.removeRisuChatListener(mode, func as any));
         },
         removeRisuChatListener: oldApis.removeRisuChatListener,
         // Fork-specific: both setters resolve how many light character entries were kept and left out
@@ -1466,14 +1503,14 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             if(existingIndex !== -1){
                 additionalSettingsMenu[existingIndex] = menuDef
                 addPluginUnloadCallback(
-                    plugin.name,
+                    unloadScope,
                     makeMenuUnloadCallback(menuId, additionalSettingsMenu)
                 )
                 return {id: menuId}
             }
             additionalSettingsMenu.push(menuDef)
             addPluginUnloadCallback(
-                plugin.name,
+                unloadScope,
                 makeMenuUnloadCallback(menuId, additionalSettingsMenu)
             )
             return {id: menuId};
@@ -1489,7 +1526,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 id,
                 callback
             })
-            addPluginUnloadCallback(plugin.name, () => {
+            addPluginUnloadCallback(unloadScope,() => {
                 const index = bodyIntercepterStore.findIndex(item => item.id === id);
                 if(index !== -1){
                     bodyIntercepterStore.splice(index, 1);
@@ -1541,7 +1578,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 if(existingIndex !== -1){
                     store[existingIndex] = menuDef
                     addPluginUnloadCallback(
-                        plugin.name,
+                        unloadScope,
                         makeMenuUnloadCallback(id, store)
                     )
                     return {id}
@@ -1552,7 +1589,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 case 'action':{
                     additionalFloatingActionButtons.push(menuDef)
                     addPluginUnloadCallback(
-                        plugin.name,
+                        unloadScope,
                         makeMenuUnloadCallback(menuDef.id, additionalFloatingActionButtons)
                     )
                     break
@@ -1560,7 +1597,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 case 'hamburger':{
                     additionalHamburgerMenu.push(menuDef)
                     addPluginUnloadCallback(
-                        plugin.name,
+                        unloadScope,
                         makeMenuUnloadCallback(menuDef.id, additionalHamburgerMenu)
                     )
                     break
@@ -1568,7 +1605,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 case 'chat':{
                     additionalChatMenu.push(menuDef)
                     addPluginUnloadCallback(
-                        plugin.name,
+                        unloadScope,
                         makeMenuUnloadCallback(menuDef.id, additionalChatMenu)
                     )
                     break
@@ -1621,7 +1658,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             else{
                 chatPanelStore.push(panel);
             }
-            addPluginUnloadCallback(plugin.name, () => removePluginChatPanels(plugin.name));
+            addPluginUnloadCallback(unloadScope,() => removePluginChatPanels(plugin.name));
 
             if(hasStyle){
                 void (async () => {
@@ -1649,7 +1686,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             // since replaced under the same identifier stays.
             const registration = registerMCPModule(arg, getToolList, callTool);
             const client = registeredCustomPluginMCPs.get(arg.identifier);
-            addPluginUnloadCallback(plugin.name, () => {
+            addPluginUnloadCallback(unloadScope,() => {
                 if (registeredCustomPluginMCPs.get(arg.identifier) === client) {
                     return unregisterMCPModule(arg.identifier);
                 }
@@ -1676,13 +1713,13 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         },
         createMutationObserver(callback: SafeMutationCallback): SafeMutationObserver {
             const observer = new SafeMutationObserver(callback)
-            addPluginUnloadCallback(plugin.name, () => {
+            addPluginUnloadCallback(unloadScope,() => {
                 observer.disconnect()
             })
             return observer
         },
         onUnload: (callback: () => void) => {
-            addPluginUnloadCallback(plugin.name, callback);
+            addPluginUnloadCallback(unloadScope,callback);
         },
         getFetchLogs: async () => {
             const unsafeFetchLog = getFetchLogs()
@@ -1761,7 +1798,8 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             return await readPluginStorageValue(getDatabase(), key, getResidency() !== null ? readPluginUnitFromDb(getDatabase) : readColdStorageItem)
         },
         _setPluginStorage: async (key: string, value: any) => {
-            await writePluginStorageValue(getDatabase(), getDatabase, key, value, getResidency() !== null ? writePluginUnitToDb(getDatabase) : setColdStorageItem, v4)
+            const store2 = getResidency() !== null
+            await writePluginStorageValue(getDatabase(), getDatabase, key, value, store2 ? writePluginUnitToDb(getDatabase) : setColdStorageItem, v4, store2)
         },
         _removePluginStorage: async (key: string) => {
             removePluginStorageValue(getDatabase(), key, getResidency() !== null)
@@ -1897,7 +1935,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         },
         addPluginChannelListener: (channelName: string, callback: Function) => {
             pluginChannel.set(plugin.name + channelName, callback);
-            addPluginUnloadCallback(plugin.name, () => {
+            addPluginUnloadCallback(unloadScope,() => {
                 pluginChannel.delete(plugin.name + channelName);
             })
         },
