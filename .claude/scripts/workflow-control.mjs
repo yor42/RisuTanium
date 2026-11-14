@@ -4,14 +4,29 @@ import crypto from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+// Each controller call resolves the root many times and a git spawn costs seconds under load, so the
+// common directory is read from the .git layout once per process; git stays the fallback for other layouts.
+const rootCache = new Map();
+function commonDirFromLayout(root) {
+  const dotGit = path.join(root, '.git'); const stat = fs.statSync(dotGit);
+  if (stat.isDirectory()) return fs.existsSync(path.join(dotGit, 'commondir')) ? null : dotGit;
+  const pointer = /^gitdir:\s*(.+?)\s*$/m.exec(fs.readFileSync(dotGit, 'utf8'));
+  if (!pointer) return null;
+  const gitDir = path.resolve(root, pointer[1]); const commondir = path.join(gitDir, 'commondir');
+  return fs.existsSync(commondir) ? path.resolve(gitDir, fs.readFileSync(commondir, 'utf8').trim()) : null;
+}
 export function canonicalRoot(root) {
   root = path.resolve(root);
+  if (rootCache.has(root)) return rootCache.get(root);
   if (!fs.existsSync(path.join(root, '.git'))) return root;
-  const result = spawnSync('git', ['-C', root, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', windowsHide: true });
-  if (result.status !== 0) throw Error('Cannot resolve shared workflow root');
-  const common = result.stdout.trim();
+  let common = commonDirFromLayout(root);
+  if (common == null) {
+    const result = spawnSync('git', ['-C', root, 'rev-parse', '--path-format=absolute', '--git-common-dir'], { encoding: 'utf8', windowsHide: true });
+    if (result.status !== 0) throw Error('Cannot resolve shared workflow root');
+    common = result.stdout.trim();
+  }
   if (path.basename(common) !== '.git') throw Error('Unsupported git-common directory; shared ledger root must be explicit before paid use');
-  return fs.realpathSync(path.dirname(common));
+  const resolved = fs.realpathSync(path.dirname(common)); rootCache.set(root, resolved); return resolved;
 }
 export const defaultRoot = canonicalRoot(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..'));
 const ident = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,95}$/;
@@ -25,12 +40,61 @@ export function relativePath(value) {
   if (typeof value !== 'string' || !value || value.includes('\\') || value.includes(':') || value.startsWith('/') || value.split('/').some(s => !s || s === '.' || s === '..') || /[\x00-\x1f*?]/.test(value)) throw Error('Expected exact relative path');
   return value;
 }
-export function atomicWrite(file, value) {
+// Lock windows are mutable so tests can shorten them; a lock older than staleMs belongs to a killed writer.
+// fsOps is the seam tests use to provoke transient Windows rename refusals.
+// breakerStaleMs stays below waitMs so a killed breaker cannot outlast every waiter's deadline.
+export const lockOptions = { waitMs: 8000, staleMs: 60000, breakerStaleMs: 5000 };
+export const fsOps = { renameSync: (from, to) => fs.renameSync(from, to) };
+const sleepSync = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const jitter = (lo, hi) => lo + Math.floor(Math.random() * (hi - lo));
+const errCode = (e, ...codes) => codes.includes(e?.code);
+const transient = e => errCode(e, 'EPERM', 'EBUSY', 'EACCES');
+// beforeRename runs after the temp is durable and immediately before it replaces the target, so a check
+// placed there leaves only the rename itself unguarded.
+export function atomicWrite(file, value, beforeRename) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const temp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
   const fd = fs.openSync(temp, 'wx');
-  try { fs.writeFileSync(fd, JSON.stringify(value, null, 2) + '\n'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-  fs.renameSync(temp, file);
+  try {
+    try { fs.writeFileSync(fd, JSON.stringify(value, null, 2) + '\n'); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    beforeRename?.();
+    // Windows refuses a rename over a file another process has open; retry briefly.
+    for (let attempt = 1; ; attempt++) {
+      try { fsOps.renameSync(temp, file); return; } catch (e) { if (!transient(e) || attempt >= 10) throw e; sleepSync(jitter(20, 100)); }
+    }
+  } catch (e) { try { fs.unlinkSync(temp); } catch {} throw e; }
+}
+// Only one process at a time may break a stale lock, and it re-checks staleness while holding the breaker
+// directory, so a lock created after an earlier break is never removed as stale.
+export function breakStaleLock(lock) {
+  const breaker = `${lock}.break`;
+  try { fs.mkdirSync(breaker); } catch (e) {
+    if (!errCode(e, 'EEXIST')) { if (transient(e)) return; throw e; }
+    try { if (Date.now() - fs.statSync(breaker).mtimeMs > lockOptions.breakerStaleMs) fs.rmdirSync(breaker); } catch {}
+    return;
+  }
+  try { if (Date.now() - fs.statSync(lock).mtimeMs > lockOptions.staleMs) fs.unlinkSync(lock); } catch (e) { if (!errCode(e, 'ENOENT') && !transient(e)) throw e; }
+  finally { try { fs.rmdirSync(breaker); } catch {} }
+}
+function acquireLock(lock) {
+  const deadline = Date.now() + lockOptions.waitMs; const token = `${process.pid} ${crypto.randomUUID()}`;
+  for (;;) {
+    let fd = null;
+    try { fd = fs.openSync(lock, 'wx'); fs.writeFileSync(fd, token); return { fd, token }; } catch (e) {
+      if (fd != null) { try { fs.closeSync(fd); fs.unlinkSync(lock); } catch {} throw e; }
+      if (!errCode(e, 'EEXIST') && !transient(e)) throw e;
+    }
+    try { if (Date.now() - fs.statSync(lock).mtimeMs > lockOptions.staleMs) breakStaleLock(lock); } catch (e) { if (!errCode(e, 'ENOENT') && !transient(e)) throw e; }
+    if (Date.now() >= deadline) throw Error(`EEXIST: workflow state lock still held after ${lockOptions.waitMs} ms: ${lock}`);
+    sleepSync(jitter(25, 250));
+  }
+}
+const ownsLock = (lock, token) => { try { return fs.readFileSync(lock, 'utf8') === token; } catch { return false; } };
+// Release is best effort: an error here must not mask the action's own error, and a leftover lock is
+// broken after the stale window.
+function releaseLock(lock, { fd, token }) {
+  try { fs.closeSync(fd); } catch {}
+  try { if (ownsLock(lock, token)) fs.unlinkSync(lock); } catch {}
 }
 export function loadPolicy(root = defaultRoot) {
   root = canonicalRoot(root);
@@ -45,12 +109,16 @@ export function loadState(root = defaultRoot) {
 }
 export function mutateState(root, expectedGeneration, action) {
   const file = stateFile(root); const lock = `${file}.lock`;
-  const fd = fs.openSync(lock, 'wx');
+  const held = acquireLock(lock);
   try {
-    const s = loadState(root);
+    const s = loadState(root); const loaded = s.generation;
     if (expectedGeneration != null && s.generation !== expectedGeneration) throw Error('Stale state generation');
-    const result = action(s); s.generation++; atomicWrite(file, s); return result;
-  } finally { fs.closeSync(fd); fs.unlinkSync(lock); }
+    const result = action(s); s.generation++;
+    // Re-checked just before the rename: if the lock was taken from us or another writer moved the
+    // generation, this write must not replace theirs.
+    atomicWrite(file, s, () => { if (!ownsLock(lock, held.token) || read(file).generation !== loaded) throw Error('Concurrent state write'); });
+    return result;
+  } finally { releaseLock(lock, held); }
 }
 export async function paidActivation(root, policy) {
   root = canonicalRoot(root);
@@ -221,8 +289,10 @@ export async function registerDispatch(input, { root = defaultRoot } = {}) {
     const manifestBytes = fs.readFileSync(d.manifestFile);
     d.manifestHash = crypto.createHash('sha256').update(manifestBytes).digest('hex');
   }
-  const state = loadState(root);
-  return mutateState(root, state.generation, s => {
+  const state = loadState(root); const receipt = path.join(dispatchDir(root), `${d.id}.json`); let wroteReceipt = false;
+  // The receipt is written inside the mutation; if the state write then fails, a leftover receipt would
+  // make every retry fail as "already used".
+  try { return mutateState(root, state.generation, s => {
     if (s.activation !== 'active' || s.activeRevision !== p.revision) throw Error('Workflow is frozen');
     if (s.dispatches[d.id] || fs.existsSync(path.join(dispatchDir(root), `${d.id}.json`))) throw Error('Dispatch ID already used');
     const job = s.jobs[d.logicalJobId] ?? { mode: d.mode, role: d.requestedRole, changedContracts, correctionCount: 0, failedRoutes: [], attempts: [] };
@@ -250,11 +320,11 @@ export async function registerDispatch(input, { root = defaultRoot } = {}) {
       const prior = s.dispatches[d.independentOf];
       if (!prior || active.has(prior.status) || prior.owner === d.owner) throw Error('Independent review requires a finished different owner');
     }
-    atomicWrite(path.join(dispatchDir(root), `${d.id}.json`), d);
+    atomicWrite(receipt, d); wroteReceipt = true;
     s.dispatches[d.id] = { hash: digest(d), logicalJobId: d.logicalJobId, mode: d.mode, provider: d.provider, model: d.model, role: d.role, owner: d.owner, workdir: d.workdir, repoRoot: d.repoRoot, allowedWrites: d.allowedWrites, workClass: d.workClass, resources: d.resources, status: 'registered' };
     job.workClass = d.workClass; job.attempts.push(d.id); job.status = 'registered'; s.jobs[d.logicalJobId] = job;
     return d;
-  });
+  }); } catch (e) { if (wroteReceipt) { try { fs.unlinkSync(receipt); } catch {} } throw e; }
 }
 export async function validateDispatch(d, { root = defaultRoot, claim = false } = {}) {
   const p = loadPolicy(root); const s = loadState(root); const entry = s.dispatches[safeId(d.id)];
