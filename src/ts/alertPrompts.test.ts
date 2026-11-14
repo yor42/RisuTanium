@@ -61,7 +61,6 @@ import {
     alertModuleSelect,
     alertNormal,
     alertNormalWait,
-    alertPluginConfirm,
     alertSelect,
     alertSelectChar,
     alertStaleAccountNotice,
@@ -127,7 +126,6 @@ interface PromptSpec {
 /** Every prompt `alert.ts` can put up, with an answer for it and what its caller gets for that answer. */
 const PROMPTS: PromptSpec[] = [
     { name: 'confirm', ask: () => alertConfirm('Proceed?'), type: 'ask', answer: 'no', expected: false },
-    { name: 'plugin confirm', ask: () => alertPluginConfirm('Import the plugin?'), type: 'pluginconfirm', answer: 'yes', expected: true },
     { name: 'select', ask: () => alertSelect(['first', 'second']), type: 'select', answer: '1', expected: '1' },
     { name: 'input', ask: () => alertInput('Name?'), type: 'input', answer: 'Ann', expected: 'Ann' },
     { name: 'character picker', ask: () => alertSelectChar(), type: 'selectChar', answer: 'char-1', expected: 'char-1' },

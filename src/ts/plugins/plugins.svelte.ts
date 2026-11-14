@@ -6,10 +6,10 @@ import { alertConfirm, alertError } from "../alert";
 import { noteIdlessCopyWrite } from "./idlessCopyNotice";
 import { selectFileByDom, sleep } from "../util";
 import type { OpenAIChat } from "../process/index.svelte";
-import { fetchNative, globalFetch, readImage, saveAsset, toGetter } from "../globalApi.svelte";
+import { fetchNative, globalFetch, readImage, saveAsset } from "../globalApi.svelte";
 import { DBState, hotReloading, selectedCharID } from "../stores.svelte";
 import type { ScriptMode } from "../process/scripts";
-import { SafeDocument, SafeIdbFactory, SafeLocalStorage } from "./pluginSafeClass";
+import { SafeLocalStorage } from "./pluginSafeClass";
 import { loadV3Plugins } from "./apiV3/v3.svelte";
 import { pluginCodeTranspiler } from "./apiV3/transpiler";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
@@ -883,90 +883,7 @@ export const getV2PluginAPIs = () => {
                 }
             }
         },
-        safeGlobalThis: {} as any,
-        getSafeGlobalThis: () => {
-            if(Object.keys(globalThis.__pluginApis__.safeGlobalThis).length > 0){
-                return globalThis.__pluginApis__.safeGlobalThis;
-            }
-            //safeGlobalThis
-            const keys = Object.keys(globalThis);
-            const safeGlobal: any = {};
-            const allowedKeys = [
-                'console',
-                'TextEncoder',
-                'TextDecoder',
-                'URL',
-                'URLSearchParams',
-            ]
-            for (const key of keys) {
-                if(allowedKeys.includes(key)){
-                    safeGlobal[key] = (globalThis as any)[key];
-                }
-            }
-
-            //compatibility layer with old unsafe APIs
-
-            //from PBV2
-            safeGlobal.showDirectoryPicker = window.showDirectoryPicker
-
-            safeGlobal.DBState = {
-                db: toGetter(
-                    globalThis.__pluginApis__.getDatabase
-                )
-            }
-            safeGlobal.setInterval = (...args: any[]) => {
-                //@ts-expect-error spreading any[] into setInterval params causes type mismatch with TimerHandler signature
-                return globalThis.setInterval(...args);
-            }
-            safeGlobal.setTimeout = (...args: any[]) => {
-                //@ts-expect-error spreading any[] into setTimeout params causes type mismatch with TimerHandler signature
-                return globalThis.setTimeout(...args);
-            }
-            safeGlobal.clearInterval = (...args: any[]) => {
-                //@ts-expect-error spreading any[] into clearInterval - first arg should be number | undefined
-                return globalThis.clearInterval(...args);
-            }
-            safeGlobal.clearTimeout = (...args: any[]) => {
-                //@ts-expect-error spreading any[] into clearTimeout - first arg should be number | undefined
-                return globalThis.clearTimeout(...args);
-            }
-            safeGlobal.alert = globalThis.alert;
-            safeGlobal.confirm = globalThis.confirm;
-            safeGlobal.prompt = globalThis.prompt;
-            safeGlobal.innerWidth = window.innerWidth;
-            safeGlobal.innerHeight = window.innerHeight;
-            safeGlobal.getComputedStyle = window.getComputedStyle
-            safeGlobal.navigator = window.navigator;
-            safeGlobal.localStorage = globalThis.__pluginApis__.safeLocalStorage;
-            safeGlobal.indexedDB = globalThis.__pluginApis__.safeIdbFactory;
-            safeGlobal.__pluginApis__ = globalThis.__pluginApis__
-            safeGlobal.Object = Object;
-            safeGlobal.Array = Array;
-            safeGlobal.String = String;
-            safeGlobal.Number = Number;
-            safeGlobal.Boolean = Boolean;
-            safeGlobal.Math = Math;
-            safeGlobal.Date = Date;
-            safeGlobal.RegExp = RegExp;
-            safeGlobal.Error = Error;
-            safeGlobal.Function = globalThis.__pluginApis__.SafeFunction;
-            safeGlobal.document = globalThis.__pluginApis__.safeDocument;
-            safeGlobal.addEventListener = (...args: any[]) => {
-                //@ts-expect-error spreading any[] into addEventListener - expects (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions)
-                window.addEventListener(...args);
-            }
-            safeGlobal.removeEventListener = (...args: any[]) => {
-                //@ts-expect-error spreading any[] into removeEventListener - expects (type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions)
-                window.removeEventListener(...args);
-            }
-            return safeGlobal;
-        },
         safeLocalStorage: new SafeLocalStorage(),
-        safeIdbFactory: SafeIdbFactory,
-        safeDocument: SafeDocument,
-        alertStore: {
-            set: (msg: string) => {}
-        },
         apiVersion: "2.1",
         apiVersionCompatibleWith: ["2.0","2.1"],
         getDatabase: () => {
@@ -1209,21 +1126,6 @@ export const getV2PluginAPIs = () => {
                 throw failure
             }
         },
-        SafeFunction: new Proxy(Function, {
-            construct(target, args) {
-                return function() {
-                    return globalThis.__pluginApis__.getSafeGlobalThis();
-                }
-            },
-            
-            //call too
-            apply(target, thisArg, args) {
-                return function() {
-                    return globalThis.__pluginApis__.getSafeGlobalThis();
-                }
-            }
-
-        }),
         loadPlugins: loadPlugins,
         readImage: (path:string) => {
             if(path.startsWith('assets/')){
@@ -1259,8 +1161,6 @@ export async function loadV2Plugin(plugins: RisuPlugin[]) {
     }
 
     pluginV2.loaded = true
-
-    globalThis.__pluginApis__ = getV2PluginAPIs()
 
     for (const plugin of plugins) {
         console.log('Loading V2.0 Plugin', plugin.name)
