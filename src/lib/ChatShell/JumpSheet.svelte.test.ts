@@ -20,7 +20,7 @@ vi.mock('../../lang', () => ({
         chatShellJumpDate: 'Go to date', chatShellJumpNumber: 'Go to message number', chatShellJumpGo: 'Go',
         chatShellNoTimeSkipped: 'Untimed skipped', chatShellNumberError: (count: number) => `Enter 1 to ${count}`,
         chatShellBookmarksHeading: (count: number) => `Bookmarks ${count}`, chatShellBookmarksFirst: (count: number) => `First ${count}`,
-        chatShellJumpDateAfterLast: 'After last', noBookmarks: 'No Bookmarks',
+        chatShellJumpDateAfterLast: 'After last', noBookmarks: 'No Bookmarks', chatShellSearchInChat: 'Search in chat',
     },
 }))
 
@@ -35,12 +35,12 @@ type Message = { role: 'user' | 'char', data: string, chatId?: string, time?: nu
 const chatOf = (messages: Message[], extra: Partial<Chat> = {}): Chat => ({ message: messages, note: '', name: 'c', localLore: [], id: 'chat', ...extra }) as Chat
 const plain = (count: number): Message[] => Array.from({ length: count }, (_, index) => ({ role: 'char', data: `m${index}`, chatId: `id${index}`, time: new Date(2026, 0, 1 + index, 12).getTime() }))
 
-function show(chat: Chat): void {
+function show(chat: Chat, onsearch?: () => void): void {
     target = document.createElement('div')
     document.body.appendChild(target)
     onjump = vi.fn<(index: number) => void>()
     onclose = vi.fn<() => void>()
-    app = mount(JumpSheet, { target, props: { open: true, opener: null, background: [], chat, onjump, onclose } })
+    app = mount(JumpSheet, { target, props: { open: true, opener: null, background: [], chat, onjump, onsearch, onclose } })
     flushSync()
 }
 
@@ -77,6 +77,26 @@ describe('JumpSheet rows', () => {
         show(chatOf([]))
         expect(target.querySelector('[data-part="chat-jump-number"]')).toBeNull()
         expect(target.querySelector('[data-part="chat-jump-date"]')).toBeNull()
+    })
+})
+
+describe('the search row', () => {
+    test('B2d-7: the row follows "Newest message" and calls onsearch, not onjump', () => {
+        const onsearch = vi.fn<() => void>()
+        show(chatOf(plain(5)), onsearch)
+        const items = [...target.querySelectorAll<HTMLButtonElement>(':scope > div > [data-part="chat-sheet-item"]')]
+        expect(items.map((item) => item.textContent)).toEqual(['First message', 'Newest message', 'Search in chat'])
+        items[2].click()
+        expect(onsearch).toHaveBeenCalledOnce()
+        expect(onjump).not.toHaveBeenCalled()
+    })
+    test('B2d-7: the row is absent without onsearch and present for an empty chat', () => {
+        show(chatOf(plain(5)))
+        expect(target.textContent).not.toContain('Search in chat')
+        void unmount(app!)
+        document.body.replaceChildren()
+        show(chatOf([]), vi.fn<() => void>())
+        expect(target.textContent).toContain('Search in chat')
     })
 })
 

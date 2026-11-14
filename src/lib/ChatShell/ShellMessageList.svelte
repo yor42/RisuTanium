@@ -22,6 +22,7 @@
     import { alignDelta, appendedReplies, createTravel, distanceFromEnd, isAtBottom, isFar, parseInset, travelPlan, type JumpAlign, type JumpOptions, type JumpOrigin, type JumpResult, type JumpStatus } from '../../ts/chatShell/jumpTarget'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { holdWarmAsks } from '../ChatScreens/deferredAssetImages'
+    import type { SearchHit } from '../../ts/chatShell/inChatSearch'
     import { language } from '../../lang'
     import ShellMessage, { type ActionRequest, type CustomizeRequest } from './ShellMessage.svelte'
 
@@ -36,6 +37,10 @@
         farFromLatest?: boolean
         // The shell's reader-intent source; a list mounted on its own binds one to its host.
         readerIntent?: ReaderIntentSource
+        // The in-chat search hit on display, by message reference (index -1 and a null message are the first message); null shows none.
+        searchHit?: SearchHit | null
+        // The note shown inside the hit: the match may be in text that is not visible.
+        searchHitNote?: string
         onBranch?: (index: number, expectedId: string | undefined) => void
         getTreeView?: () => TreeView | null
         getBusy?: () => boolean
@@ -45,7 +50,7 @@
         onCloseActions?: (request: ActionRequest) => void
         onOpenCustomize?: (request: CustomizeRequest) => void
     }
-    let { character, host, unread = $bindable(false), atBottom = $bindable(true), newCount = $bindable(0), farFromLatest = $bindable(false), readerIntent, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize }: Props = $props()
+    let { character, host, unread = $bindable(false), atBottom = $bindable(true), newCount = $bindable(0), farFromLatest = $bindable(false), readerIntent, searchHit = null, searchHitNote = '', onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize }: Props = $props()
     // Rows with a modal layer open (the partial-edit overlays are fixed-position inside the row) leave content-visibility so the layer is not clipped to the row.
     let overlayRows = $state<Record<string, true>>({})
     function setOverlay(key: string, open: boolean): void {
@@ -313,6 +318,7 @@
         index: number
         align: JumpAlign
         recordOrigin: boolean
+        focus: boolean
         generation: number
         forRoom: string | null
         intentAtStart: number
@@ -515,7 +521,7 @@
     // Brings message `index` (-1 is the first message) to the upper third of the visible area, focuses it and holds it against late layout.
     // The answer says whether it ran: a hidden surface defers (and replays when shown), an editor that forbids the window change blocks,
     // and a request that a newer jump, reader input, a chat switch or a long step hold overtook is cancelled.
-    export function jumpTo(index: number, { align = 'third', recordOrigin = true }: JumpOptions = {}): Promise<JumpResult> {
+    export function jumpTo(index: number, { align = 'third', recordOrigin = true, focus = true }: JumpOptions = {}): Promise<JumpResult> {
         settlePendingJump('cancelled')
         const generation = ++jumpGeneration
         travel.cancel()
@@ -523,7 +529,7 @@
         return new Promise((resolve) => {
             const deferred = installed && chatSurface.hidden
             if (deferred) resolve({ status: 'deferred', from: null, to: index })
-            pendingJump = { index, align, recordOrigin, generation, forRoom: room(), intentAtStart: intentSeq, settle: deferred ? null : resolve }
+            pendingJump = { index, align, recordOrigin, focus, generation, forRoom: room(), intentAtStart: intentSeq, settle: deferred ? null : resolve }
             jumpRequestToken += 1
         })
     }
@@ -556,8 +562,14 @@
         return { index: Number(article.dataset.chatIndex), offset: top.getBoundingClientRect().top - scroller.getBoundingClientRect().top, atBottom: isAtBottom(distanceFromEnd(scroller), win.slid) }
     }
 
+    // Where the reader is now: the message at the top of the screen. Null while the surface is hidden or no row is mounted.
+    export function readOrigin(): JumpOrigin | null {
+        if (!host || (installed && chatSurface.hidden)) return null
+        return captureOrigin(host)
+    }
+
     async function performJump(request: PendingJump): Promise<JumpResult> {
-        const { index, align, recordOrigin, generation, forRoom, intentAtStart } = request
+        const { index, align, recordOrigin, focus, generation, forRoom, intentAtStart } = request
         const outcome = (status: JumpStatus, from: JumpOrigin | null = null): JumpResult => ({ status, from, to: index })
         const abandoned = (): boolean => destroyed || generation !== jumpGeneration || room() !== forRoom || intentSeq !== intentAtStart || (installed && chatSurface.hidden)
         // A request overtaken before it ran (a chat switch changes the length it is judged against) is cancelled, not out of range.
@@ -592,7 +604,7 @@
         // a focus scroll, so it cannot undo the alignment, and the hold starts last so it captures the written position.
         follower?.release()
         follower?.sync()
-        asShellFocus(() => article.focus({ preventScroll: true }))
+        if (focus) asShellFocus(() => article.focus({ preventScroll: true }))
         realign.start({ row: container, ms: JUMP_HOLD_MS })
         readPosition()
         return outcome('done', from)
@@ -752,7 +764,7 @@
 <div data-part="chat-message-list" class="flex flex-col-reverse" role="log" aria-live="off" bind:this={rows}>
     {#key rebuildEpoch}
         {#each renderRows as row (row.key)}
-            <div class="chat-message-container" class:older={row.idx < messages.length - 3 && !overlayRows[row.key]} data-part="chat-message-container">
+            <div class="chat-message-container" class:older={row.idx < messages.length - 3 && !overlayRows[row.key]} class:search-hit={searchHit !== null && searchHit.message === row.message} data-part="chat-message-container">
                 <svelte:boundary onerror={(error) => recordCaughtError('chat.message', error)}>
                     <ShellMessage idx={row.idx} message={row.message} chatId={row.message.chatId} name={row.message.role === 'user' ? DBState.db.username : character.name}
                         img={row.message.role === 'user' ? DBState.db.userIcon : character.image}
@@ -770,14 +782,16 @@
                         <div data-part="chat-message-failed" role="note">{row.message.data}<p>{language.messageRenderFailed}</p><button onclick={reset}>{language.messageRenderRetry}</button></div>
                     {/snippet}
                 </svelte:boundary>
+                {#if searchHit !== null && searchHit.message === row.message}<p class="search-hit-note" role="note">{searchHitNote}</p>{/if}
             </div>
         {/each}
         {#if chat && win.firstMounted && character.type === 'character'}
-            <div data-part="chat-first-message">
+            <div data-part="chat-first-message" class:search-hit={searchHit !== null && searchHit.message === null}>
                 <svelte:boundary onerror={(error) => recordCaughtError('chat.message', error)}>
                     <ShellMessage idx={-1} message={{ role: 'char', data: firstMessageOf(character, chat) }} name={character.name} img={character.image} character={createSimpleCharacter(character)} firstMessage getTreeView={firstMessageTreeView} neighbourText={(index) => chat ? firstMessageOf(character, { fmIndex: index - 2 }) : null} onReroll={() => stepFirstMessage(1)} unReroll={() => stepFirstMessage(-1)} stepRow={runStep} {onOpenActions} {onCloseActions} {onOpenCustomize} />
                     {#snippet failed(_error, reset)}<div role="note">{language.messageRenderFailed}<button onclick={reset}>{language.messageRenderRetry}</button></div>{/snippet}
                 </svelte:boundary>
+                {#if searchHit !== null && searchHit.message === null}<p class="search-hit-note" role="note">{searchHitNote}</p>{/if}
             </div>
         {/if}
     {/key}
@@ -788,4 +802,9 @@
 
 <style>
     [data-part="chat-message-container"].older { content-visibility: auto; contain-intrinsic-size: auto var(--size-39); }
+    /* The search hit takes no layout space: the outline is drawn inside the box and the note is absolutely positioned, so decorating
+       or undecorating a row never moves the rows around it and the scroll anchor holds while stepping. */
+    .search-hit { position: relative; outline: var(--stroke-bold) solid var(--nexus-ring); outline-offset: calc(var(--stroke-bold) * -1); }
+    .search-hit-note { position: absolute; inset-block-start: var(--stroke-bold); inset-inline-end: var(--stroke-bold); max-width: calc(100% - var(--stroke-bold) * 2); margin: 0; padding: 0 var(--space-6);
+        overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--font-size-xs); color: var(--nexus-text-secondary); background: var(--color-surface-bar); pointer-events: none; z-index: 1; }
 </style>
