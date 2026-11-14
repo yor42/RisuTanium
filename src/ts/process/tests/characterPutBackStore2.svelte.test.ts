@@ -557,6 +557,27 @@ describe('the budget of one commit', () => {
     })
 })
 
+describe('a fire on a stalled thread', () => {
+    test('new behaviour: the first candidate is judged in the fire even when every clock read is past the time budget', () => {
+        archiveAll([fullCharacter('A'), fullCharacter('B'), fullCharacter('C')])
+        begin()
+        open('A')
+        open('B')
+        open('C')
+        let clock = 0
+        vi.spyOn(performance, 'now').mockImplementation(() => {
+            clock += 9
+            return clock
+        })
+
+        commit()
+
+        expect(h.verdictCalls).toEqual(['A'])
+        expect(isStub('A')).toBe(true)
+        expect(getPutBackCounters().clean).toBe(1)
+    })
+})
+
 describe('the stub that takes the slot', () => {
     test('acceptance: the stub is made from the live character, so what changed since the commit survives, and its absence', () => {
         archiveAll([fullCharacter('A'), fullCharacter('B'), fullCharacter('C'), fullCharacter('D')])
