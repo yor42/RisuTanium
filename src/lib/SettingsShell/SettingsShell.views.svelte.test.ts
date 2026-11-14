@@ -42,6 +42,7 @@ vi.mock('../Setting/Pages/BotSettings.svelte', () => ({ default: (_anchor: unkno
 vi.mock('../Setting/Pages/OtherBotSettings.svelte', () => ({ default: () => {} }))
 vi.mock('./DisplayShellPage.svelte', () => ({ default: () => { seen.displayMounts++ } }))
 vi.mock('../Setting/Pages/PluginSettings.svelte', () => ({ default: () => {} }))
+vi.mock('./PluginsShellPage.svelte', () => ({ default: () => {} }))
 vi.mock('../Setting/Pages/AdvancedSettings.svelte', () => ({ default: () => {} }))
 vi.mock('../Setting/Pages/LanguageSettings.svelte', () => ({ default: () => {} }))
 vi.mock('../Setting/Pages/AccessibilitySettings.svelte', () => ({ default: () => {} }))

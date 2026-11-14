@@ -241,6 +241,8 @@ const DIVERGENCES: readonly { label: string, area: ThemeArea, css: string, why: 
     { label: 'calc-product', area: 'chat', css: `${TEXT_PART}{margin:calc(10px * 100)}`, why: /calc\(\) is not allowed in a pack/ },
     { label: 'font-1000pct', area: 'chat', css: `${TEXT_PART}{font-size:1000%}`, why: /font size must be one px or rem length above 0/ },
     { label: 'sysfont', area: 'chat', css: `${TEXT_PART}{font-family:"Wingdings"}`, why: /MC-1550/ },
+    { label: 'chatfont-sysfont', area: 'chat', css: ':root{--chat-message-font:Wingdings}', why: /MC-1550/ },
+    { label: 'chatfont-apptoken', area: 'chat', css: ':root{--chat-message-font:var(--font)}', why: /font family "var\(--font\)" is not allowed/ },
 ]
 
 describe('P1: lintAreaPack refuses, for the listed reason, what the reference lint accepts', () => {

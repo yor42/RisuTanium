@@ -10,15 +10,15 @@
     import UserSettings from '../Setting/Pages/UserSettings.svelte'
     import BotSettings from '../Setting/Pages/BotSettings.svelte'
     import OtherBotSettings from '../Setting/Pages/OtherBotSettings.svelte'
-    import PluginSettings from '../Setting/Pages/PluginSettings.svelte'
-    import AdvancedSettings from '../Setting/Pages/AdvancedSettings.svelte'
-    import LanguageSettings from '../Setting/Pages/LanguageSettings.svelte'
-    import AccessibilitySettings from '../Setting/Pages/AccessibilitySettings.svelte'
     import PersonaSettings from '../Setting/Pages/PersonaSettings.svelte'
     import PromptSettings from '../Setting/Pages/PromptSettings.svelte'
     import ModuleSettings from '../Setting/Pages/Module/ModuleSettings.svelte'
     import HotkeySettings from '../Setting/Pages/HotkeySettings.svelte'
+    import AdvancedShellPage from './AdvancedShellPage.svelte'
     import DisplayShellPage from './DisplayShellPage.svelte'
+    import InputShellPage from './InputShellPage.svelte'
+    import LanguageShellPage from './LanguageShellPage.svelte'
+    import PluginsShellPage from './PluginsShellPage.svelte'
     import ModeVisibilityGroup from './ModeVisibilityGroup.svelte'
     import ModeVisibilityConfirm from './ModeVisibilityConfirm.svelte'
     import { showAllModes, type HomeMode } from '../../ts/storage/homeModes'
@@ -89,10 +89,14 @@
     }
 
     let displayPage = $state<ReturnType<typeof DisplayShellPage>>()
+    let inputPage = $state<ReturnType<typeof InputShellPage>>()
+    let languagePage = $state<ReturnType<typeof LanguageShellPage>>()
+    let advancedPage = $state<ReturnType<typeof AdvancedShellPage>>()
 
     /** Opens whatever hides the row and returns its element; null when the shown view has no such row. */
     export async function reveal(rowId: string): Promise<HTMLElement | null> {
-        return displayPage ? displayPage.reveal(rowId) : null
+        const native = current === 3 ? displayPage : current === 11 ? inputPage : current === 10 ? languagePage : current === 6 ? advancedPage : undefined
+        return native ? native.reveal(rowId) : null
     }
 </script>
 
@@ -132,13 +136,13 @@
                     <ModeVisibilityGroup onaskshowall={(trigger, hidden) => { showAllAsk = { trigger, hidden } }} />
                     <DisplayShellPage bind:this={displayPage} {phone} />
                 {:else if current === 4}
-                    <PluginSettings />
+                    <PluginsShellPage />
                 {:else if current === 6}
-                    <AdvancedSettings />
+                    <AdvancedShellPage bind:this={advancedPage} />
                 {:else if current === 10}
-                    <LanguageSettings />
+                    <LanguageShellPage bind:this={languagePage} />
                 {:else if current === 11}
-                    <AccessibilitySettings />
+                    <InputShellPage bind:this={inputPage} />
                 {:else if current === 12}
                     <PersonaSettings />
                 {:else if current === 13}
