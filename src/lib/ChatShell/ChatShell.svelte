@@ -22,6 +22,9 @@
     import type ShellNoticesComponent from './ShellNotices.svelte'
     import type ShellFloatingButtonsComponent from './ShellFloatingButtons.svelte'
     import type JumpSheetComponent from './JumpSheet.svelte'
+    import type FindBarComponent from './FindBar.svelte'
+    import type FindFiltersSheetComponent from './FindFiltersSheet.svelte'
+    import type FindResultsSheetComponent from './FindResultsSheet.svelte'
     import type ReturnChipComponent from './ReturnChip.svelte'
     import type ShellMessageListComponent from './ShellMessageList.svelte'
     import type SwitchFrameComponent from './SwitchFrame.svelte'
@@ -32,9 +35,15 @@
     import { shouldAnchorBottom } from '../../ts/chatShell/bottomAnchor'
     import { bindReaderIntent, canHostMove, createReaderIntent } from '../../ts/chatShell/readerIntent'
     import { watchSoftKeyboard } from '../../ts/chatShell/softKeyboard'
-    import { isLongJump, latestButtonVisible, type JumpResult } from '../../ts/chatShell/jumpTarget'
+    import { isLongJump, latestButtonVisible, type JumpResult, type JumpStatus } from '../../ts/chatShell/jumpTarget'
     import { createReturnChip, type ReturnChipState } from '../../ts/chatShell/returnChip'
-    import { installJumpSheetKey, installTranscriptEndKey } from '../../ts/chatShell/shellJumpKeys'
+    import { installFindKey, installJumpSheetKey, installTranscriptEndKey } from '../../ts/chatShell/shellJumpKeys'
+    import { DEFAULT_FILTERS, createFindSession, sameFingerprint, searchFingerprint, type FindSession, type FindSessionState, type SearchFingerprint } from '../../ts/chatShell/findSession'
+    import { createFindRun, type FindRun } from '../../ts/chatShell/findRun'
+    import { createSearchCache, dayBoundsOf, matchesQuery, passesFilters, type DayBounds, type SearchFilters, type SearchHit } from '../../ts/chatShell/inChatSearch'
+    import { firstMessageOf } from '../../ts/process/firstMessage'
+    import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
+    import { hasOpenShell } from '../Nexus/pattern/patternFocus'
     import { lowPowerMarked } from '../../ts/chatShell/lowPower'
     import { reducedMotionActive } from '../../ts/chatShell/motionPrefs.svelte'
     import { hostIme } from '../../ts/android/hostBridge'
@@ -64,6 +73,10 @@
     // The jump sheet and the return chip load with the This-chat sheet and never hold the composer back.
     let JumpSheet: typeof JumpSheetComponent | null = $state(null)
     let ReturnChip: typeof ReturnChipComponent | null = $state(null)
+    // The search bar loads with them: search is opened by the reader, never at first paint.
+    let FindBar: typeof FindBarComponent | null = $state(null)
+    let FindFiltersSheet: typeof FindFiltersSheetComponent | null = $state(null)
+    let FindResultsSheet: typeof FindResultsSheetComponent | null = $state(null)
     let ShellMessageList: typeof ShellMessageListComponent | null = $state(null)
     // The switch frame and the pending-switch state load after the shell is up; neither holds the first paint back.
     let SwitchFrame: typeof SwitchFrameComponent | null = $state(null)
@@ -189,6 +202,7 @@
             plusOpen = false
             closeThisChat()
             closeJump()
+            void closeFind('surface')
             closeToggles()
             stickersOpen = false
             actionOpen = false
@@ -236,10 +250,13 @@
             ThisChatSheet = sheetModule.default
             ChatDeleteConfirm = confirmModule.default
         }).catch((error) => console.error('The This-chat sheet did not load:', error))
-        void Promise.all([import('./JumpSheet.svelte'), import('./ReturnChip.svelte')]).then(([jumpModule, chipModule]) => {
+        void Promise.all([import('./JumpSheet.svelte'), import('./ReturnChip.svelte'), import('./FindBar.svelte'), import('./FindFiltersSheet.svelte'), import('./FindResultsSheet.svelte')]).then(([jumpModule, chipModule, findModule, filtersModule, resultsModule]) => {
             if (!live) return
             JumpSheet = jumpModule.default
             ReturnChip = chipModule.default
+            FindBar = findModule.default
+            FindFiltersSheet = filtersModule.default
+            FindResultsSheet = resultsModule.default
         }).catch((error) => console.error('The jump sheet did not load:', error))
         void Promise.all([import('./SwitchFrame.svelte'), import('../../ts/chatShell/switchTarget.svelte')]).then(([frameModule, targetModule]) => {
             if (!live) return
@@ -396,6 +413,295 @@
         if (!origin) return
         const result = await messageList?.returnTo?.(origin)
         if (result) reportJump(result)
+    }
+
+    // ---- in-chat search
+    // Everything one opening owns lives in `findCtx`, a plain variable: the open flag below is the only reactive copy, so no handler or effect
+    // that closes search picks up a dependency by asking whether it is open.
+    interface FindContext {
+        session: FindSession
+        run: FindRun
+        chat: Chat
+        // Where focus was when search opened; it returns there at a close the reader asked for.
+        opener: HTMLElement | null
+    }
+    let findCtx: FindContext | null = null
+    let findOpen = $state(false)
+    let findChat = $state.raw<Chat | null>(null)
+    let findState = $state.raw<FindSessionState | null>(null)
+    let searchHit = $state.raw<SearchHit | null>(null)
+    let findBar: ReturnType<typeof FindBarComponent> | undefined = $state()
+    let findFingerprint: SearchFingerprint | null = null
+    let noResultsFor: string | null = null
+    // The filters and results sheets belong to one opening of the bar: closing the bar takes them along.
+    let filtersOpen = $state(false)
+    let filtersOpener = $state<HTMLElement | null>(null)
+    let resultsOpen = $state(false)
+    let resultsOpener = $state<HTMLElement | null>(null)
+    let resultsImages = $state<{ user: string, char: string }>({ user: '', char: '' })
+
+    function dayBoundsMemo(): (filters: SearchFilters) => DayBounds {
+        let last: { filters: SearchFilters, bounds: DayBounds } | null = null
+        return (filters) => {
+            if (last?.filters !== filters) last = { filters, bounds: dayBoundsOf(filters.from, filters.to) }
+            return last.bounds
+        }
+    }
+
+    // The session reads the shown chat through these accessors at scan and show time, never ahead of it.
+    function createFindContext(owner: Character | groupChat, chat: Chat): FindContext {
+        const cache = createSearchCache()
+        // The first message is not in the array; this object is its cache key and its text is its identity.
+        const firstKey = {}
+        const boundsOf = dayBoundsMemo()
+        const firstText = (): string => firstMessageOf(owner, chat)
+        // A chat that shrank under a scan slice reads as no message: the fingerprint effect restarts the scan right after.
+        const textAt = (index: number, thinking: boolean): string => {
+            if (index < 0) return cache.textFor(firstKey, firstText(), thinking)
+            const message = chat.message[index]
+            return message ? cache.textFor(message, message.data, thinking) : ''
+        }
+        const passes = (index: number, filters: SearchFilters): boolean => {
+            const message = index < 0 ? { role: 'char' as const, data: firstText(), time: undefined } : chat.message[index]
+            return message !== undefined && passesFilters(message, filters, boundsOf(filters))
+        }
+        const run = createFindRun({
+            readOrigin: () => messageList?.readOrigin?.() ?? null,
+            jumpTo: async (index) => (await messageList?.jumpTo?.(index, { recordOrigin: false, focus: false })) ?? { status: 'cancelled', from: null, to: index },
+            chatKey: chatKeyNow,
+        })
+        const context: FindContext = {
+            run,
+            chat,
+            opener: null,
+            session: createFindSession({
+                count: () => chat.message.length,
+                includeFirst: true,
+                messageAt: (index) => chat.message[index],
+                firstText,
+                textAt,
+                passes,
+                stillMatches: (hit, query, filters) => {
+                    const thinking = filters.thinking
+                    const index = hit.index
+                    return matchesQuery(textAt(index, thinking), query) && passes(index, filters)
+                },
+                lowPower: () => lowPowerMarked(),
+                onShow: (hit, index) => showHit(context, hit, index),
+                onChange: () => { if (findCtx === context) findStateChanged(context) },
+            }),
+        }
+        return context
+    }
+
+    function findStateChanged(context: FindContext): void {
+        const state = context.session.state
+        findState = state
+        const key = state.query === '' ? null : `${state.query}\n${state.filters.speaker}${state.filters.hasImage}${state.filters.thinking}${state.filters.from}${state.filters.to}`
+        if (key !== null && state.complete && state.hits.length === 0) {
+            if (noResultsFor !== key) {
+                noResultsFor = key
+                void say(language.chatShellFindNoResults)
+            }
+        }
+        else noResultsFor = null
+    }
+
+    // Clear then set, so the same text announces again.
+    async function say(text: string): Promise<void> {
+        announcement = ''
+        await tick()
+        announcement = text
+    }
+
+    // A hit jump never records an origin, shows no chip and takes no focus: the reader keeps typing, and the run keeps the pre-search place.
+    async function showHit(context: FindContext, target: SearchHit, index: number): Promise<JumpStatus> {
+        if (surfaceHidden) return 'deferred'
+        if (!context.run.live) return 'cancelled'
+        searchHit = target
+        const result = await context.run.show(index)
+        if (result === null) return 'cancelled'
+        reportJump(result)
+        // A query typed while the jump ran has cleared the hit; the old match is not announced.
+        if (result.status === 'done' && searchHit === target && findCtx === context) {
+            const state = context.session.state
+            const position = ((state.current ?? 0) + 1).toLocaleString()
+            const total = state.hits.length.toLocaleString()
+            void say(state.complete ? language.chatShellFindMatchLabel(position, total) : language.chatShellFindMatchLabelPartial(position, total))
+        }
+        return result.status
+    }
+
+    function openFind(active: Element | null): void {
+        if (surfaceHidden || !FindBar) return
+        if (findCtx) {
+            findBar?.focusField(true)
+            return
+        }
+        const owner = character
+        const chat = owner?.chats?.[owner.chatPage]
+        if (!owner || owner.type !== 'character' || !chat) return
+        const context = createFindContext(owner, chat)
+        context.opener = active instanceof HTMLElement && shell?.contains(active) ? active : null
+        findCtx = context
+        findFingerprint = null
+        noResultsFor = null
+        findState = context.session.state
+        findChat = chat
+        searchHit = null
+        const resting = untrack(() => atBottom)
+        findOpen = true
+        void settleAfterReserveChange(resting).then(() => findBar?.focusField())
+    }
+
+    // The bar swap changes the transcript's top reserve by one row once; a reader resting at the newest message stays there.
+    async function settleAfterReserveChange(resting: boolean): Promise<void> {
+        await tick()
+        if (resting) messageList?.anchorNewestBottom?.()
+    }
+
+    // "Search in chat" from the jump sheet: the sheet is gone (focus restored) before the bar opens, so the bar's opener is the sheet's own.
+    async function searchFromJump(): Promise<void> {
+        const from = jumpOpener
+        closeJump()
+        await tick()
+        openFind(from)
+    }
+
+    function openFindFilters(element: HTMLElement): void {
+        if (!findCtx) return
+        filtersOpener = element
+        filtersOpen = true
+    }
+
+    function openFindResults(element: HTMLElement): void {
+        const context = findCtx
+        if (!context) return
+        resultsOpener = element
+        resultsOpen = true
+        void loadResultImages(context)
+    }
+
+    // The sheet draws an initial until the avatars resolve; a sheet closed or a bar reopened meanwhile drops the late answer.
+    async function loadResultImages(context: FindContext): Promise<void> {
+        const owner = character
+        if (!owner) return
+        try {
+            const { getCharImage } = await import('../../ts/characters')
+            const [user, char] = await Promise.all([getCharImage(DBState.db.userIcon ?? '', 'plain'), getCharImage(owner.image ?? '', 'plain')])
+            if (findCtx === context) resultsImages = { user: user ?? '', char: char ?? '' }
+        } catch (error) {
+            console.error('The search result avatars did not load:', error)
+        }
+    }
+
+    // The sheet is gone (focus and inert restored) before the hit is shown, so nothing is shown under an inert layer.
+    async function showFromResults(position: number): Promise<void> {
+        const context = findCtx
+        resultsOpen = false
+        await tick()
+        if (context && findCtx === context) await context.session.show(position)
+    }
+
+    function onFindFilters(patch: Partial<SearchFilters>): void {
+        searchHit = null
+        findCtx?.session.setFilters(patch)
+    }
+
+    let resultsFirstText = $derived(resultsOpen && character?.type === 'character' && shownChat ? firstMessageOf(character, shownChat) : '')
+
+    function returnFindFocus(context: FindContext): void {
+        const opener = context.opener
+        const target = opener?.isConnected && shell?.contains(opener) ? opener : header?.querySelector<HTMLElement>('[data-part="chat-header-menu"]') ?? list
+        target?.focus({ preventScroll: true })
+    }
+
+    // `user`: Esc, the close button, Back, mouse button 3 (focus returns, a long move offers the return chip). `surface` (Settings or Studio
+    // opened) and `chat` (another chat is shown) take neither: the chip belongs to a place the reader has left, and focus stays where it is.
+    // Closing never scrolls; a hit jump already requested settles first and the chip is judged from where the reader actually is.
+    async function closeFind(cause: 'user' | 'surface' | 'chat'): Promise<void> {
+        const context = findCtx
+        if (!context) return
+        findCtx = null
+        findChat = null
+        findState = null
+        searchHit = null
+        const resting = untrack(() => atBottom)
+        findOpen = false
+        filtersOpen = false
+        resultsOpen = false
+        context.session.dispose()
+        const closing = context.run.close()
+        void settleAfterReserveChange(resting)
+        if (cause !== 'user') return
+        const owed = await closing
+        if (findCtx) return
+        await tick()
+        returnFindFocus(context)
+        if (owed) {
+            chip.show(owed.origin, owed.key)
+            void say(language.chatShellJumpedBack)
+        }
+    }
+
+    onMount(() => {
+        if (!shell) return
+        return installFindKey({
+            shellRoot: shell,
+            surfaceVisible: () => !surfaceHidden && character?.type === 'character' && !!shownChat,
+            sidebarOpen: () => get(sideBarStore),
+            alertType: () => get(alertStore).type,
+            onopen: openFind,
+            findBar: () => findBar?.element(),
+            onrefocus: () => findBar?.focusField(true),
+        })
+    })
+
+    // The shown chat is the one search was opened for.
+    $effect(() => {
+        if (!findOpen) return
+        if (shownChat !== findChat) void closeFind('chat')
+    })
+
+    // A change under the scan restarts it silently: the array, its length, the last message once streaming ends, or the first message.
+    // While a reply streams the last message's text is not read, so chunks neither restart the scan nor make it a dependency.
+    $effect(() => {
+        if (!findOpen) return
+        const chat = shownChat
+        const owner = character
+        if (!chat || !owner || owner.type !== 'character') return
+        const next = searchFingerprint({ messages: chat.message, streaming: chat.isStreaming === true, firstText: firstMessageOf(owner, chat) })
+        const previous = findFingerprint
+        findFingerprint = next
+        if (previous && !sameFingerprint(previous, next)) untrack(() => findCtx?.session.restart())
+    })
+
+    // Back closes in one step with no history entry; the mouse's back button does the same.
+    $effect(() => {
+        if (!findOpen) return
+        const unregister = registerBackHandler(backCloseHandler({
+            isOpen: () => findOpen,
+            snapshot: () => findOpen,
+            close: () => { void closeFind('user') },
+        }))
+        const onMouseUp = (event: MouseEvent): void => {
+            if (event.button !== 3 || hasOpenShell()) return
+            event.preventDefault()
+            void closeFind('user')
+        }
+        window.addEventListener('mouseup', onMouseUp)
+        return () => { unregister(); window.removeEventListener('mouseup', onMouseUp) }
+    })
+
+    // A new query or new filters clear the displayed hit in the same flush, before the new scan can show another.
+    function onFindQuery(value: string, options: { composing: boolean }): void {
+        searchHit = null
+        findCtx?.session.setQuery(value, options)
+    }
+
+    function onFindClearFilters(): void {
+        searchHit = null
+        findCtx?.session.clearFilters()
     }
 
     onMount(() => {
@@ -563,13 +869,14 @@
 
 </script>
 
-<div bind:this={shell} class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" data-header-concealed={headerConcealed ? '' : undefined} style={customStyle}>
+<div bind:this={shell} class="default-chat-screen" data-part="chat-shell" data-layout={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-layout') ? undefined : layout} data-input={typeof document !== 'undefined' && document.documentElement.hasAttribute('data-input') ? undefined : inputMode} data-testid="chat-shell-stub" data-find-open={findOpen ? '' : undefined} data-header-concealed={headerConcealed && !findOpen ? '' : undefined} style={customStyle}>
     <div bind:this={header} data-part="chat-header-host">
-        {#if ShellHeader}<ShellHeader name={headerName} chatName={headerChatName} hidden={headerHiddenNow} {hardwareKeyboardSeen} onthischat={openThisChat} onconcealed={(concealed) => headerConcealed = concealed} />{/if}
+        {#if findOpen && FindBar && findState}<FindBar bind:this={findBar} query={findState.query} count={findState.hits.length} current={findState.current} complete={findState.complete} filters={findState.filters} characterName={character?.name ?? ''} onquery={onFindQuery} oncomposing={(on) => findCtx?.session.setComposing(on)} onstep={(direction) => findCtx?.session.step(direction)} onclose={() => void closeFind('user')} onclearfilters={onFindClearFilters} onfilters={openFindFilters} onseeall={openFindResults} />
+        {:else if ShellHeader}<ShellHeader name={headerName} chatName={headerChatName} hidden={headerHiddenNow} {hardwareKeyboardSeen} onthischat={openThisChat} onconcealed={(concealed) => headerConcealed = concealed} />{/if}
     </div>
     <main bind:this={list} data-part="chat-transcript" tabindex="-1" aria-label={language.chatShellMessages} data-fade={fade} inert={switchPending ? true : undefined} onscroll={scroll}>
         {#if ShellNotices && character?.type === 'character'}<ShellNotices />{/if}
-        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom bind:newCount bind:farFromLatest {readerIntent} {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
+        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom bind:newCount bind:farFromLatest {readerIntent} {searchHit} searchHitNote={language.chatShellFindMatchInside} {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
     </main>
     {#if SwitchFrame}<SwitchFrame transcript={list} />{/if}
     <div data-part="chat-announcer" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
@@ -586,8 +893,10 @@
     {#if ActionSheet}<ActionSheet open={actionOpen} opener={actionRequest?.opener ?? null} anchor={actionRequest?.anchor} available={actionOpen ? actionRequest?.available() ?? [] : []} disabled={actionOpen ? actionRequest?.disabled() ?? [] : []} generating={actionOpen && actionRequest?.generating() === true} background={sheetBackground} onaction={(id) => actionRequest?.run(id)} onclose={() => actionOpen = false} />{/if}
     {#if CustomizeButtonsSheet}<CustomizeButtonsSheet open={customizeOpen} opener={customizeRequest?.opener ?? null} background={sheetBackground} onchange={() => customizeRequest?.onchange()} onclose={() => customizeOpen = false} />{/if}
     {#if PlusSheet}<PlusSheet open={plusOpen} {opener} background={[header, list, composer].filter((element): element is HTMLElement => !!element)} onclose={() => plusOpen = false} onstickers={() => stickersOpen = !stickersOpen} onchatlist={() => openChatList = true} onmodules={() => openModuleList = true} ontoggles={togglesModule ? (row) => openToggles(opener, false, row ?? null) : undefined} {togglesSummary} />{/if}
-    {#if ThisChatSheet}<ThisChatSheet open={thisChatOpen} {opener} background={sheetBackground} target={thisChatTarget} bind:layer={sheetLayer} {confirmDelete} onpersona={openPersonaFromSheet} {togglesSummary} ontoggles={togglesModule ? (element) => openToggles(element, true) : undefined} onmodules={() => openModuleList = true} onjumpsheet={JumpSheet ? openJump : undefined} onremoved={afterChatDeleted} onclose={closeThisChat} />{/if}
-    {#if JumpSheet}<JumpSheet open={jumpOpen} opener={jumpOpener} background={sheetBackground} chat={jumpChat} onjump={(index) => void runJump(index)} onclose={closeJump} />{/if}
+    {#if ThisChatSheet}<ThisChatSheet open={thisChatOpen} {opener} background={sheetBackground} target={thisChatTarget} bind:layer={sheetLayer} {confirmDelete} onpersona={openPersonaFromSheet} {togglesSummary} ontoggles={togglesModule ? (element) => openToggles(element, true) : undefined} onmodules={() => openModuleList = true} onjumpsheet={JumpSheet ? openJump : undefined} onsearch={FindBar ? openFind : undefined} onremoved={afterChatDeleted} onclose={closeThisChat} />{/if}
+    {#if JumpSheet}<JumpSheet open={jumpOpen} opener={jumpOpener} background={sheetBackground} chat={jumpChat} onjump={(index) => void runJump(index)} onsearch={FindBar ? () => void searchFromJump() : undefined} onclose={closeJump} />{/if}
+    {#if FindFiltersSheet}<FindFiltersSheet open={filtersOpen && findOpen} opener={filtersOpener} background={sheetBackground} filters={findState?.filters ?? DEFAULT_FILTERS} characterName={character?.name ?? ''} onfilters={onFindFilters} onclear={onFindClearFilters} onclose={() => filtersOpen = false} />{/if}
+    {#if FindResultsSheet}<FindResultsSheet open={resultsOpen && findOpen} opener={resultsOpener} background={sheetBackground} messages={shownChat?.message ?? []} hits={findState?.hits ?? []} query={findState?.query ?? ''} complete={findState?.complete ?? false} thinking={findState?.filters.thinking ?? false} firstText={resultsFirstText} userName={DBState.db.username ?? ''} charName={character?.name ?? ''} userImage={resultsImages.user} charImage={resultsImages.char} onpick={(position) => void showFromResults(position)} onclose={() => resultsOpen = false} />{/if}
     {#if PersonaSheet}<PersonaSheet open={personaOpen} opener={personaOpener} inertOutside={personaOverSheet} variant={personaOverSheet ? 'sheet' : 'dropup'} background={sheetBackground} onclose={() => { personaOpen = false; personaOverSheet = false }} />{/if}
     {#if TogglesPanel}<TogglesPanel open={togglesOpen} opener={togglesOpener} target={togglesTarget} openAt={togglesAt} onclose={closeToggles} />{/if}
     {#if ChatDeleteConfirm && deleteRequest}<ChatDeleteConfirm chat={deleteRequest.chat} busy={deleteRequest.busy} trigger={deleteRequest.trigger} background={confirmBackground} onanswer={(answer: PatternAnswer) => void settleDelete(answer === 'confirm')} />{/if}
@@ -600,6 +909,9 @@
     [data-part="chat-header-host"] { position: absolute; inset: 0 0 auto 0; z-index: 1; pointer-events: none; }
     [data-part="chat-transcript"] { flex: 1; min-height: 0; overflow-y: auto; padding-top: var(--header-height); scroll-padding-top: var(--header-height); }
     [data-part="chat-shell"][data-header-concealed] [data-part="chat-transcript"] { scroll-padding-top: 0; }
+    /* While the bar is open both of its rows are reserved: nothing under it is covered, and typing or stepping never moves the view. */
+    [data-part="chat-shell"][data-find-open] [data-part="chat-transcript"] { padding-top: calc(var(--header-height) + var(--size-17)); scroll-padding-top: calc(var(--header-height) + var(--size-17)); }
+    [data-part="chat-shell"][data-find-open] :global([data-part="chat-switch-frame"]) { top: calc(var(--header-height) + var(--size-17)); }
     [data-part="chat-announcer"] { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
     [data-part="chat-transcript"][data-fade="a"] { animation: chat-switch-fade-a var(--chat-dur-fast) var(--chat-ease-out); }
     [data-part="chat-transcript"][data-fade="b"] { animation: chat-switch-fade-b var(--chat-dur-fast) var(--chat-ease-out); }

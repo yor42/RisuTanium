@@ -18,9 +18,11 @@
         background: readonly HTMLElement[]
         chat: Chat | null
         onjump: (index: number) => void
+        // The "Search in chat" row after "Newest": absent unless the shell can open search. The shell closes the sheet first.
+        onsearch?: () => void
         onclose: () => void
     }
-    let { open, opener, background, chat, onjump, onclose }: Props = $props()
+    let { open, opener, background, chat, onjump, onsearch, onclose }: Props = $props()
 
     const BOOKMARKS_SHOWN = 60
 
@@ -75,6 +77,9 @@
             <h2 data-part="chat-sheet-title" tabindex="-1">{language.chatShellJumpSheet}</h2>
             <button type="button" data-part="chat-sheet-item" data-kind="button" data-sheet-initial onclick={() => onjump(-1)}>{language.chatShellJumpFirst}</button>
             <button type="button" data-part="chat-sheet-item" data-kind="button" disabled={count === 0} onclick={() => onjump(count - 1)}>{language.chatShellJumpNewest}</button>
+            {#if onsearch}
+                <button type="button" data-part="chat-sheet-item" data-kind="button" onclick={() => onsearch()}>{language.chatShellSearchInChat}</button>
+            {/if}
             {#if count > 0}
                 <div data-part="chat-jump-number" class="jump-row">
                     <label for="jump-number-field">{language.chatShellJumpNumber}</label>

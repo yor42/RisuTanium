@@ -137,6 +137,8 @@ export interface JumpResult {
 export interface JumpOptions {
     align?: JumpAlign
     recordOrigin?: boolean
+    // Whether the target takes focus after it is placed; true unless a caller keeps focus where it is (the search field).
+    focus?: boolean
 }
 
 // The scroll distance that brings `targetTop` to the line one third down the visible area. The area starts below `topInset`
