@@ -1,4 +1,4 @@
-import { autoscrollDelta } from './chatOrder'
+import { autoscrollDelta } from './autoscroll'
 
 /**
  * One pointer drag over a scrolling list, DOM only.
