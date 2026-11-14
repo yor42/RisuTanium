@@ -332,6 +332,21 @@ describe.each(COMMIT_BACKENDS.map(fixture => [fixture.name, fixture] as const))(
             expect((failure as Store2BulkAbortError).cleared?.status).toBe('failed')
             expect((await parsedCommit(raw)).staging?.owner).toBe(a.owner)
         })
+
+        test('a refused build reports what the own-marker clear came to, and a failed clear leaves the marker standing', async () => {
+            const hooks: Hooks = {}
+            const { raw, a } = await setup(hooks)
+            hooks.before = (call, count) => {
+                if (call === 'casCommit' && count === 2) {
+                    throw new Store2BackendFailureError('Injected failure.')
+                }
+            }
+            const request = treeRequest(BULK_MIN)
+            const result = await a.commit(await a.readCommit(), { ...request, newUnits: request.newUnits + 1 })
+            expect(result.status === 'refused' && result.reason).toBe('bad-unit-set')
+            expect(result.status === 'refused' && result.cleared?.status).toBe('failed')
+            expect((await parsedCommit(raw)).staging?.owner).toBe(a.owner)
+        })
     })
 
     describe('abandon-clear', () => {
