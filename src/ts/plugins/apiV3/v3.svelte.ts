@@ -1761,7 +1761,8 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             return await readPluginStorageValue(getDatabase(), key, getResidency() !== null ? readPluginUnitFromDb(getDatabase) : readColdStorageItem)
         },
         _setPluginStorage: async (key: string, value: any) => {
-            await writePluginStorageValue(getDatabase(), getDatabase, key, value, getResidency() !== null ? writePluginUnitToDb(getDatabase) : setColdStorageItem, v4)
+            const store2 = getResidency() !== null
+            await writePluginStorageValue(getDatabase(), getDatabase, key, value, store2 ? writePluginUnitToDb(getDatabase) : setColdStorageItem, v4, store2)
         },
         _removePluginStorage: async (key: string) => {
             removePluginStorageValue(getDatabase(), key, getResidency() !== null)
