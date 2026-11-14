@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { BOTTOM_PX, LONG_JUMP_MESSAGES, TRAVEL_MS, alignDelta, appendedReplies, badgeText, bookmarkEntries, createTravel, distanceFromEnd, hasUntimed, indexForDay, isAtBottom, isFar, isLongJump, latestButtonVisible, localDayStart, parseInset, parseMessageNumber, travelPlan } from './jumpTarget'
+import { BOTTOM_PX, LONG_JUMP_MESSAGES, TRAVEL_FRAME_CAP_MS, TRAVEL_MAX_MS, TRAVEL_MS, alignDelta, appendedReplies, badgeText, bookmarkEntries, createTravel, distanceFromEnd, hasUntimed, indexForDay, isAtBottom, isFar, isLongJump, jumpReach, latestButtonVisible, localDayStart, parseInset, parseMessageNumber, travelPlan, travelReach } from './jumpTarget'
 
 describe('the at-bottom rule', () => {
     test('A1-1: the end is within 100 px of the bottom, a slid window is never at it', () => {
@@ -52,6 +52,33 @@ describe('travelPlan', () => {
     test('A1-5: reduced motion is one instant cut', () => {
         expect(travelPlan({ distance: 6000, viewport: 600, reduced: true })).toEqual({ cutTo: null, duration: 0 })
     })
+    test('T-plan: a rebuilt window always cuts to two screens, whatever the distance', () => {
+        expect(travelPlan({ distance: 0, viewport: 600, reduced: false, rebuilt: true })).toEqual({ cutTo: 1200, duration: 260 })
+        expect(travelPlan({ distance: 300, viewport: 600, reduced: false, rebuilt: true })).toEqual({ cutTo: 1200, duration: 260 })
+        expect(travelPlan({ distance: 6000, viewport: 600, reduced: false, rebuilt: true })).toEqual({ cutTo: 1200, duration: 260 })
+    })
+    test('T-plan: a window that was not rebuilt keeps the distance rule, and reduced motion never cuts', () => {
+        expect(travelPlan({ distance: 300, viewport: 600, reduced: false, rebuilt: false })).toEqual({ cutTo: null, duration: 260 })
+        expect(travelPlan({ distance: 6000, viewport: 600, reduced: true, rebuilt: true })).toEqual({ cutTo: null, duration: 0 })
+    })
+})
+
+describe('the settle reach', () => {
+    test('A3-5: a return jump reaches its offset above the target and the rest of the screen below', () => {
+        expect(jumpReach({ offset: 120 }, 600, 0)).toEqual({ above: 120, below: 480 })
+    })
+    test('A3-5: the upper third line sits a third of the area below the inset', () => {
+        // The line is at 60 + (600 - 60) / 3 = 240.
+        expect(jumpReach('third', 600, 60)).toEqual({ above: 240, below: 360 })
+        expect(jumpReach('third', 600, 0)).toEqual({ above: 200, below: 400 })
+    })
+    test('A3-5: an offset outside the screen reaches nothing above, or nothing below', () => {
+        expect(jumpReach({ offset: -30 }, 600, 0)).toEqual({ above: 0, below: 630 })
+        expect(jumpReach({ offset: 700 }, 600, 0)).toEqual({ above: 700, below: 0 })
+    })
+    test('A3-5: a glide settles four screens above the end', () => {
+        expect(travelReach(600)).toBe(2400)
+    })
 })
 
 describe('createTravel', () => {
@@ -79,13 +106,58 @@ describe('createTravel', () => {
         const results: boolean[] = []
         travel.run(260, (completed: boolean) => results.push(completed))
         advance(0)
-        advance(100)
-        state.end = 1400
-        advance(100)
-        advance(100)
+        for (let step = 0; step < 14; step++) {
+            if (step === 7) state.end = 1400
+            advance(20)
+        }
         expect(results).toEqual([true])
+        expect(writes.length).toBeGreaterThanOrEqual(8)
         for (let i = 1; i < writes.length; i++) expect(writes[i]).toBeGreaterThanOrEqual(writes[i - 1])
         expect(writes[writes.length - 1]).toBe(1400)
+    })
+    test('A3-T3: on 16 ms frames the glide is done once 260 ms have passed', () => {
+        expect(TRAVEL_FRAME_CAP_MS).toBe(50)
+        expect(TRAVEL_MAX_MS).toBe(1000)
+        const { travel, advance } = rig(0, 1000)
+        const results: boolean[] = []
+        travel.run(260, (completed: boolean) => results.push(completed))
+        for (let step = 0; step < 16; step++) advance(16)
+        expect(results).toEqual([])
+        advance(16)
+        expect(results).toEqual([true])
+    })
+    test('A3-T1: a first frame that comes late does not finish the glide', () => {
+        const { writes, travel, advance } = rig(0, 1000)
+        const results: boolean[] = []
+        travel.run(260, (completed: boolean) => results.push(completed))
+        advance(300)
+        expect(results).toEqual([])
+        expect(writes).toHaveLength(1)
+        expect(writes[0]).toBeLessThan(1000)
+        let steps = 0
+        while (results.length === 0 && steps < 40) { advance(16); steps += 1 }
+        expect(steps).toBeGreaterThanOrEqual(10)
+        expect(results).toEqual([true])
+    })
+    test('A3-T2: a stalled frame after a normal one advances the glide by the cap only', () => {
+        const { writes, travel, advance } = rig(0, 1000)
+        const results: boolean[] = []
+        travel.run(260, (completed: boolean) => results.push(completed))
+        advance(16)
+        advance(100)
+        expect(results).toEqual([])
+        // 16 + 50 of 260 has elapsed, eased: 1 - (1 - 66 / 260) ^ 3.
+        const progress = 66 / 260
+        expect(writes[writes.length - 1]).toBeCloseTo(1000 * (1 - (1 - progress) ** 3), 6)
+    })
+    test('A3-T5: stalled frames end the glide at the wall ceiling, not before', () => {
+        const { travel, advance } = rig(0, 1000)
+        const results: boolean[] = []
+        travel.run(260, (completed: boolean) => results.push(completed))
+        for (let step = 0; step < 3; step++) advance(250)
+        expect(results).toEqual([])
+        advance(250)
+        expect(results).toEqual([true])
     })
     test('A1-6: stop() is checked before every write and ends the travel without one', () => {
         const { state, writes, travel, advance, pending } = rig(0, 1000)

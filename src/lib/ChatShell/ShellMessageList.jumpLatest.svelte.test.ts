@@ -7,6 +7,7 @@ import { flushSync, mount, tick, unmount } from 'svelte'
 import type { character as Character, Chat, ChatAlt, Message } from '../../ts/storage/database.svelte'
 import type { StepRowRunner } from '../../ts/chatShell/stepHold'
 import type { IntentDirection, ReaderIntentListener, ReaderIntentSource } from '../../ts/chatShell/readerIntent'
+import { CvLayoutModel } from './cvLayoutModel.test-helpers'
 
 const editors = vi.hoisted(() => ({ open: false }))
 const capturedStepRows = vi.hoisted(() => [] as (StepRowRunner | undefined)[])
@@ -64,6 +65,12 @@ const writes: number[] = []
 const frames = new Map<number, () => void>()
 let frameId = 0
 const scrolledTo: string[] = []
+// A test that opts in lays the list out with the skipped-row model: `older` rows are estimated until something resolves them.
+let layoutModel: CvLayoutModel | null = null
+// A test that opts in reads the scroll position clamped to the current end, as the engine does after content shrinks.
+let clampReads = false
+// Called with every scrollHeight read.
+let heightProbe: (() => void) | null = null
 const character = $state({ chaId: 'c', type: 'character', name: 'Ari', image: '', chatPage: 0, alternateGreetings: ['Second'],
     chats: [{ id: 'room', message: [] as Message[], alt: [] as ChatAlt[] }, { id: 'other', message: [] as Message[], alt: [] as ChatAlt[] }] }) as unknown as Character
 
@@ -118,6 +125,7 @@ function rect(rectTop: number, height: number): DOMRect {
     return { x: 0, y: rectTop, top: rectTop, left: 0, right: 0, bottom: rectTop + height, width: 0, height, toJSON: () => ({}) }
 }
 function runFrames(): void {
+    layoutModel?.runFrame()
     for (const [id, callback] of [...frames]) { frames.delete(id); callback() }
 }
 async function settle(withFrames = true): Promise<void> {
@@ -137,18 +145,23 @@ async function playFrames(step = 20, limit = 40): Promise<void> {
         await tick()
     }
 }
-async function show(initial: number, additional: number, height = 600): Promise<void> {
+async function show(initial: number, additional: number, height = 600, withModel = false): Promise<void> {
     DBState.db.chatLoadInitialPages = initial
     DBState.db.chatLoadAdditionalPages = additional
     hostHeight = height
     DBState.db.characters = [character]
     target = document.createElement('div')
     host = document.createElement('main')
-    Object.defineProperty(host, 'scrollHeight', { get: () => contentHeight(), configurable: true })
+    layoutModel = withModel ? new CvLayoutModel({ list: host, hostHeight: () => hostHeight, realHeight: rowHeight }) : null
+    Object.defineProperty(host, 'scrollHeight', { get: () => { heightProbe?.(); return layoutModel ? layoutModel.scrollHeight : contentHeight() }, configurable: true })
     Object.defineProperty(host, 'clientHeight', { get: () => hostHeight, configurable: true })
     Object.defineProperty(host, 'scrollTop', {
-        get: () => top,
-        set: (value: number) => { const clamped = Math.max(0, Math.min(value, Math.max(0, contentHeight() - hostHeight))); writes.push(clamped); top = clamped },
+        get: () => layoutModel ? layoutModel.scrollTop : clampReads ? Math.min(top, bottomTop()) : top,
+        set: (value: number) => {
+            const clamped = layoutModel ? layoutModel.write(value) : Math.max(0, Math.min(value, Math.max(0, contentHeight() - hostHeight)))
+            writes.push(clamped)
+            top = clamped
+        },
         configurable: true,
     })
     target.appendChild(host)
@@ -205,8 +218,16 @@ beforeEach(() => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
         if (this === host) return rect(0, hostHeight)
         const index = modelIndexOf(this)
-        return index === null ? rect(0, 0) : rect(rowTop(index), rowHeight(index))
+        if (index === null) return rect(0, 0)
+        if (layoutModel) {
+            const placed = layoutModel.rectOf(index)
+            return rect(placed.top, placed.height)
+        }
+        return rect(rowTop(index), rowHeight(index))
     })
+    layoutModel = null
+    clampReads = false
+    heightProbe = null
     top = 0
     character.chatPage = 0
     DBState.db.autoScrollToNewMessage = true
@@ -578,5 +599,73 @@ describe('jumpToLatest and an alternative step in flight', () => {
         writes.length = 0
         await playFrames()
         expect(writes).toEqual([])
+    })
+})
+
+function forcedContainers(): HTMLElement[] {
+    return [...host.querySelectorAll<HTMLElement>('[data-part="chat-message-container"], [data-part="chat-first-message"]')]
+        .filter((container) => container.style.getPropertyValue('content-visibility') === 'visible')
+}
+// The reader jumped to a message far from the newest, so the window slid, and the jump's own frames have run out.
+async function slideByJump(index: number): Promise<void> {
+    const jumped = app!.jumpTo(index)
+    await settle()
+    expect((await jumped).status).toBe('done')
+    await playFrames()
+    expect(articleAt(999)).toBeNull()
+}
+
+describe('the settle step of the travel to the newest message', () => {
+    test('A3-7: the newest rows are forced before the scroll metrics are read for the plan, and released at the second frame', async () => {
+        seedLong(activeChat(), 200)
+        await show(30, 15)
+        await readFromEnd(1500)
+        const forcedAtRead: number[] = []
+        heightProbe = () => { forcedAtRead.push(forcedContainers().length) }
+        void app!.jumpToLatest({ animate: true, focusNewest: false })
+        expect(forcedAtRead.length).toBeGreaterThan(0)
+        expect(forcedAtRead[0]).toBeGreaterThan(0)
+        expect(articleAt(199)!.closest('[data-part="chat-message-container"]')).toBe(forcedContainers()[0])
+        runFrames()
+        expect(forcedContainers().length).toBeGreaterThan(0)
+        runFrames()
+        expect(forcedContainers()).toHaveLength(0)
+        await playFrames()
+        expect(top).toBe(bottomTop())
+    })
+    test('A3-8: an instant jump forces no band', async () => {
+        seedLong(activeChat(), 200)
+        await show(30, 15)
+        await readFromEnd(1500)
+        void app!.jumpToLatest({ animate: false, focusNewest: false })
+        await settle(false)
+        expect(forcedContainers()).toHaveLength(0)
+        expect(top).toBe(bottomTop())
+    })
+    test('A3-6a: a rebuilt window always cuts to two screens from the end and glides, whatever the old position clamps to', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        await slideByJump(500)
+        clampReads = true
+        writes.length = 0
+        void app!.jumpToLatest({ animate: true, focusNewest: false })
+        await playFrames()
+        const end = bottomTop()
+        expect(top).toBe(end)
+        expect(writes[0]).toBe(end - 2 * hostHeight)
+        expect(writes.length).toBeGreaterThanOrEqual(7)
+        for (let i = 1; i < writes.length; i++) expect(writes[i]).toBeGreaterThanOrEqual(writes[i - 1])
+    })
+    test('A3-6b: under the skipped-row model the glide starts two screens above the settled end, so the newest rows were settled before the cut', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15, 600, true)
+        await slideByJump(500)
+        writes.length = 0
+        void app!.jumpToLatest({ animate: true, focusNewest: false })
+        await playFrames()
+        const end = layoutModel!.scrollHeight - hostHeight
+        expect(layoutModel!.scrollTop).toBe(end)
+        expect(end - writes[0]).toBeGreaterThanOrEqual(1.5 * hostHeight)
+        expect(writes.length).toBeGreaterThanOrEqual(7)
     })
 })

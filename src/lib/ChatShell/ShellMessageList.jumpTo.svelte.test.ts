@@ -9,6 +9,7 @@ import type { character as Character, Chat, ChatAlt, Message } from '../../ts/st
 import type { StepRowRunner } from '../../ts/chatShell/stepHold'
 import type { IntentDirection, ReaderIntentListener, ReaderIntentSource } from '../../ts/chatShell/readerIntent'
 import type { JumpResult } from '../../ts/chatShell/jumpTarget'
+import { CvLayoutModel } from './cvLayoutModel.test-helpers'
 
 const editors = vi.hoisted(() => ({ open: false }))
 const capturedStepRows = vi.hoisted(() => [] as (StepRowRunner | undefined)[])
@@ -72,6 +73,10 @@ let frameId = 0
 const scrolledTo: string[] = []
 const holdTimers: (() => void)[] = []
 const heightOverride = new Map<number, number>()
+// A test that opts in lays the list out with the skipped-row model: `older` rows are estimated until something resolves them. Other tests keep the plain per-index geometry.
+let layoutModel: CvLayoutModel | null = null
+// Called with every container whose rect is read, before the answer is computed.
+let rectProbe: ((container: HTMLElement) => void) | null = null
 const character = $state({ chaId: 'c', type: 'character', name: 'Ari', image: '', chatPage: 0, alternateGreetings: ['Second'],
     chats: [{ id: 'room', message: [] as Message[], alt: [] as ChatAlt[] }, { id: 'other', message: [] as Message[], alt: [] as ChatAlt[] }] }) as unknown as Character
 
@@ -132,6 +137,7 @@ function rect(rectTop: number, height: number): DOMRect {
     return { x: 0, y: rectTop, top: rectTop, left: 0, right: 0, bottom: rectTop + height, width: 0, height, toJSON: () => ({}) }
 }
 function runFrames(): void {
+    layoutModel?.runFrame()
     for (const [id, callback] of [...frames]) { frames.delete(id); callback() }
 }
 async function settle(withFrames = true): Promise<void> {
@@ -151,19 +157,20 @@ async function playFrames(step = 20, limit = 40): Promise<void> {
         await tick()
     }
 }
-async function show(initial: number, additional: number, height = 600): Promise<void> {
+async function show(initial: number, additional: number, height = 600, withModel = false): Promise<void> {
     DBState.db.chatLoadInitialPages = initial
     DBState.db.chatLoadAdditionalPages = additional
     hostHeight = height
     DBState.db.characters = [character]
     target = document.createElement('div')
     host = document.createElement('main')
-    Object.defineProperty(host, 'scrollHeight', { get: () => contentHeight(), configurable: true })
+    layoutModel = withModel ? new CvLayoutModel({ list: host, hostHeight: () => hostHeight, realHeight: rowHeight }) : null
+    Object.defineProperty(host, 'scrollHeight', { get: () => layoutModel ? layoutModel.scrollHeight : contentHeight(), configurable: true })
     Object.defineProperty(host, 'clientHeight', { get: () => hostHeight, configurable: true })
     Object.defineProperty(host, 'scrollTop', {
-        get: () => top,
+        get: () => layoutModel ? layoutModel.scrollTop : top,
         set: (value: number) => {
-            const clamped = Math.max(0, Math.min(value, Math.max(0, contentHeight() - hostHeight)))
+            const clamped = layoutModel ? layoutModel.write(value) : Math.max(0, Math.min(value, Math.max(0, contentHeight() - hostHeight)))
             writes.push(clamped)
             events.push('write')
             top = clamped
@@ -240,9 +247,17 @@ beforeEach(() => {
     })
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
         if (this === host) return rect(0, hostHeight)
+        rectProbe?.(this)
         const index = modelIndexOf(this)
-        return index === null ? rect(0, 0) : rect(rowTop(index), rowHeight(index))
+        if (index === null) return rect(0, 0)
+        if (layoutModel) {
+            const placed = layoutModel.rectOf(index)
+            return rect(placed.top, placed.height)
+        }
+        return rect(rowTop(index), rowHeight(index))
     })
+    layoutModel = null
+    rectProbe = null
     top = 0
     character.chatPage = 0
     DBState.db.autoScrollToNewMessage = true
@@ -680,5 +695,101 @@ describe('jumpTo and following', () => {
         await settle()
         expect(top).toBe(landed)
         expect(props.atBottom).toBe(false)
+    })
+})
+
+const CONTAINERS = '[data-part="chat-message-container"], [data-part="chat-first-message"]'
+function containerStyle(container: HTMLElement): string { return container.style.getPropertyValue('content-visibility') }
+function forcedContainers(): HTMLElement[] {
+    return [...host.querySelectorAll<HTMLElement>(CONTAINERS)].filter((container) => containerStyle(container) === 'visible')
+}
+function forcedIndexes(): number[] {
+    return forcedContainers().map((container) => modelIndexOf(container)).filter((index): index is number => index !== null).sort((a, b) => a - b)
+}
+// Focus on an article resolves that row in the layout model, as the engine lays out a skipped row that is focused.
+function focusResolvesRows(): void {
+    vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (this: HTMLElement) {
+        const index = layoutModel?.indexOf(this) ?? null
+        if (index !== null) layoutModel?.focus(index)
+    })
+}
+
+describe('the settle step of a jump', () => {
+    test('A3-1: the target and the rows around it are forced before the first read of the target, in the same run as the write', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        const seen: string[] = []
+        rectProbe = (container) => {
+            if (container.matches('[data-part="chat-message-container"]') && modelIndexOf(container) === 500) seen.push(containerStyle(container))
+        }
+        void app!.jumpTo(500)
+        await settle(false)
+        expect(seen.length).toBeGreaterThan(0)
+        expect(seen.every((style) => style === 'visible')).toBe(true)
+        const forced = forcedIndexes()
+        expect(forced).toContain(500)
+        expect(Math.min(...forced)).toBeLessThan(500)
+        expect(Math.max(...forced)).toBeGreaterThan(500)
+    })
+    test('A3-3: the band is still there after the first frame and gone after the second', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        void app!.jumpTo(500)
+        await settle(false)
+        expect(forcedContainers().length).toBeGreaterThan(0)
+        runFrames()
+        expect(forcedContainers().length).toBeGreaterThan(0)
+        runFrames()
+        expect(forcedContainers()).toHaveLength(0)
+    })
+    test('A3-4: a second jump releases the first band before it forces its own, and no row of the first keeps the style', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        void app!.jumpTo(500)
+        await settle(false)
+        const first = forcedContainers()
+        expect(first.length).toBeGreaterThan(0)
+        void app!.jumpTo(480)
+        await settle(false)
+        expect(forcedIndexes()).toContain(480)
+        for (const container of first) expect(containerStyle(container)).toBe('')
+        runFrames()
+        runFrames()
+        expect(forcedContainers()).toHaveLength(0)
+    })
+    test('A3-4b: unmounting with a pending band removes the style from its rows', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        void app!.jumpTo(500)
+        await settle(false)
+        const band = forcedContainers()
+        expect(band.length).toBeGreaterThan(0)
+        await unmount(app!)
+        app = undefined
+        for (const container of band) expect(containerStyle(container)).toBe('')
+    })
+    test('A3-M1: under the skipped-row model a number jump ends on the line and the hold has nothing left to correct', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15, 600, true)
+        focusResolvesRows()
+        const request = app!.jumpTo(500)
+        await settle()
+        expect((await request).status).toBe('done')
+        expect(layoutModel!.isEstimated(500)).toBe(false)
+        expect(Math.abs(layoutModel!.rectOf(500).top - hostHeight / 3)).toBeLessThanOrEqual(0.5)
+        writes.length = 0
+        runFrames()
+        runFrames()
+        expect(writes).toEqual([])
+        expect(Math.abs(layoutModel!.rectOf(500).top - hostHeight / 3)).toBeLessThanOrEqual(0.5)
+    })
+    test('A3-M2: under the skipped-row model a return lands the row at the origin offset', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15, 600, true)
+        focusResolvesRows()
+        const request = app!.returnTo({ index: 480, offset: 120, atBottom: false })
+        await settle()
+        expect((await request).status).toBe('done')
+        expect(Math.abs(layoutModel!.rectOf(480).top - 120)).toBeLessThanOrEqual(0.5)
     })
 })
