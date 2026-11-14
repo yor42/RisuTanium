@@ -55,10 +55,42 @@ Every result from this folder is labelled "desktop-emulated, diagnostic" unless 
 
 ## Setup
 
-- Export the app with `git archive` into a folder outside the repository. Do not run `pnpm install` and do not write `.vite` through a `node_modules` junction.
-- Serve the export with vite using a harness-local `cacheDir` through a small `--config` file that merges the project config with `cacheDir` under the OS temp dir. The exact recipe is TODO(evidence): it has not been rebuilt from scratch.
-- Serve the app on 6293 and the mock on 9471, then `launch-chrome.mjs`, then `netlog.mjs` for diagnostic runs.
-- Fixture profile (TODO(evidence), not rebuilt from scratch): a profile with the chat shell enabled, a default character whose chat has the expected mounted rows (row 49 has three alternatives; the ALTMARK prompt builds them), and the character `H15 Alt Greetings` with a first message plus three alternates. Build it with `build.mjs`, `altfill.mjs` and `mock-altmark.mjs`; the expected rows are 49 and 9.
+The recipe below (serve a prebuilt `dist`, restore a synthetic `.bin`) was run once from scratch through step 5 of the restore on 2026-11-14/15 (Windows 11, Chrome 157, web build e500f4a44); the notice in step 6 was seen, but its dismissal was not saved. Step 7 is not yet backed by a saved run.
+
+### Serve a prebuilt web build
+
+- Build `dist` once in the worktree under test (`pnpm build`, under the full-run slot), or reuse an existing `dist`. Never run `pnpm install` or write `.vite` through a `node_modules` junction.
+- Serve `dist` read-only from 127.0.0.1 with any small static server that falls back to `index.html` for unknown paths, sends `cache-control: no-store` and serves `.wasm` as `application/wasm`. No server script ships in this folder. A server that checks the requested path against the root by text prefix must include the path separator, or a sibling directory with the same prefix passes.
+- Run the server as a background job and record its PID, then check that `http://127.0.0.1:6293/` answers 200.
+- Then start `launch-chrome.mjs` as a background job, the mock on 9471 if a probe can send, and `netlog.mjs` for diagnostic runs.
+- The new profile starts empty, which is expected; the restore below fills it. Refusals of Chrome's own traffic, `fonts.googleapis.com`, `openrouter.ai` and `raw.githubusercontent.com` in `proxy-refusals.jsonl` are expected.
+
+### Fixture profile from a synthetic `.bin`
+
+1. Apply the emulation (`phoneMode(c)` in `lib.mjs`), then `Page.navigate` from `about:blank` to the app URL.
+2. Turn on `Page.setInterceptFileChooserDialog { enabled: true }` and listen for `Page.fileChooserOpened`.
+3. On the Welcome screen, tap the restore button (`백업 복원`; the default UI language of a fresh profile is Korean) with a real touch tap at its centre (`c.tap(x, y)`). The reason given in the code for using a real tap is that the file chooser needs user activation; a script `.click()` was not tried.
+4. Tap the two confirmation buttons (`예`) with real taps. After the second one the app opens a detached `<input type=file>`, and the event carries its `backendNodeId`.
+5. `DOM.enable`, then `DOM.setFileInputFiles { files: ['<path to .bin>'], backendNodeId }`. Wait about 15 s; the app reloads into the restored library.
+6. After the import an archive notice ("Preparing your library") with an OK button may appear. How it was closed in the run is TODO(evidence); a script click from `Runtime.evaluate` is the expected way but was not observed.
+7. Enable the chat shell: TODO(evidence). The 2026-11-14/15 run reached the chat shell, but no saved script records how. Fill this step from the next run that records it.
+8. On later loads the app reopens the last chat by itself, so a script can start from the open chat.
+
+The older recipe (`build.mjs`, `altfill.mjs` and `mock-altmark.mjs`) builds the profile the `harness.mjs` scenarios need: the chat shell on, a default character whose chat has the expected mounted rows (row 49 has three alternatives; the ALTMARK prompt builds them), and the character `H15 Alt Greetings` with a first message plus three alternates; the expected rows are 49 and 9. It has not been rebuilt from scratch (TODO(evidence)).
+
+### Navigation after an import
+
+`Page.reload` and `Page.navigate` can hang on a `beforeunload` dialog after an import. Register `Page.javascriptDialogOpening` once and answer it with `Page.handleJavaScriptDialog { accept: true }`. This needs `Page.enable`, which `connect()` already sends. With the handler in place, `Page.navigate` to the app URL returned in about 60 ms. If a CDP client was killed while a dialog was open, the page stays blocked for new sessions: open a fresh tab (`PUT /json/new?about:blank`), close the old one (`/json/close/<id>`) and reconnect, because `connect()` needs exactly one page.
+
+### Driving sheets and buttons
+
+- Before a tap, read the button's centre and check that `document.elementFromPoint(x, y).closest('button')` is the intended button: an animating sheet once turned a stale point into a bookmark jump.
+- Match button text exactly: a prefix match for "Go" also finds the "Go back" chip.
+- Set text and date inputs with the native value setter plus an `input` event; `Input.insertText` appends to the old value.
+- Start every jump from a fresh page load: rows keep remembered sizes from earlier visits and change where a jump lands.
+
+### Profile-bound details
+
 - Coordinates in `openChat` (taps at 22,34 / 40,275 / 40,slot / 350,300) and the Korean labels are fixture-profile bound. The UI must be Korean.
 
 ## Running
