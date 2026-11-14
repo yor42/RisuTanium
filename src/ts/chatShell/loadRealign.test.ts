@@ -3,7 +3,7 @@
 // The layout is modelled with a height per row: a row's top is the sum of the heights above it minus the scroll position. Native scroll
 // anchoring is modelled by hand with anchor(); a reader's scroll with readerScroll(). Neither is recorded as a module write.
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { REALIGN_WINDOW_MS, createLoadRealign, viewportTopRow } from './loadRealign'
+import { JUMP_HOLD_MS, REALIGN_WINDOW_MS, createLoadRealign, viewportTopRow } from './loadRealign'
 
 function rectOf(top: number, height: number): DOMRect {
     return { x: 0, y: top, top, left: 0, right: 0, bottom: top + height, width: 0, height, toJSON: () => ({}) }
@@ -460,6 +460,36 @@ describe('starting', () => {
         expect(live.observers[1].disconnected).toBe(false)
         live.settle(3, 100)
         expect(live.writes).toEqual([260])
+    })
+})
+
+describe('holding a named row for a named time', () => {
+    test('A2-7: the named row is held instead of the top row, and the window lasts the named time', () => {
+        const live = rig()
+        expect(JUMP_HOLD_MS).toBe(1000)
+        // Row 7 is below the viewport: the default window would hold row 3.
+        live.realign.start({ row: live.rows[7], ms: JUMP_HOLD_MS })
+        expect(live.timerDelays).toEqual([JUMP_HOLD_MS])
+        live.resize(MIDDLE, 100)
+        live.fireResize()
+        // Row 7 moved down by 100 px, so the position follows it; holding row 3 would have written nothing.
+        expect(live.writes).toEqual([600])
+        live.fireTimers()
+        expect(live.realign.isActive()).toBe(false)
+    })
+    test('A2-7: a start without options keeps the top row and the default window', () => {
+        const live = rig()
+        live.realign.start({})
+        expect(live.timerDelays).toEqual([REALIGN_WINDOW_MS])
+        live.settle(MIDDLE, 272)
+        expect(live.writes).toEqual([500])
+    })
+    test('A2-7: a named row that is not in the document starts nothing that survives the first check', () => {
+        const live = rig()
+        live.realign.start({ row: document.createElement('article'), ms: JUMP_HOLD_MS })
+        live.runFrame()
+        expect(live.realign.isActive()).toBe(false)
+        expect(live.writes).toEqual([])
     })
 })
 

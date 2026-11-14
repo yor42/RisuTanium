@@ -13,13 +13,13 @@
     import { hasMessageEditorDrafts, onDraftsChanged } from '../../ts/localDrafts'
     import { createBottomFollower, isScrolledToBottom, type BottomFollower } from '../../ts/chatShell/bottomAnchor'
     import { bindReaderIntent, canHostMove, createReaderIntent, type ReaderIntentSource } from '../../ts/chatShell/readerIntent'
-    import { WRITE_EPSILON, createLoadRealign, viewportTopRow } from '../../ts/chatShell/loadRealign'
+    import { JUMP_HOLD_MS, WRITE_EPSILON, createLoadRealign, viewportTopRow } from '../../ts/chatShell/loadRealign'
     import { STEP_HOLD_MOUNT_CAP, createStepHold, heldPin, pagesForPin, type PinRelease, type StepRowRunner } from '../../ts/chatShell/stepHold'
     import { afterAppend, foldLoadMorePages, jumpOnlyGrows, jumpWindow,mountCap, newestWindow, normalizeBottom, shellInitialPages, shellPages, shellWindow, slideNewer, slideOlder, trimHeld } from '../../ts/chatShell/mountWindow'
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
     import { offscreenRowCounts } from '../../ts/chatShell/offscreenRows'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
-    import { appendedReplies, createTravel, distanceFromEnd, isAtBottom, isFar, travelPlan } from '../../ts/chatShell/jumpTarget'
+    import { alignDelta, appendedReplies, createTravel, distanceFromEnd, isAtBottom, isFar, parseInset, travelPlan, type JumpAlign, type JumpOptions, type JumpOrigin, type JumpResult, type JumpStatus } from '../../ts/chatShell/jumpTarget'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { holdWarmAsks } from '../ChatScreens/deferredAssetImages'
     import { language } from '../../lang'
@@ -286,6 +286,7 @@
         const index = ScrollToMessageStore.value
         if (index < 0) return
         ScrollToMessageStore.value = -1
+        untrack(() => settlePendingJump('cancelled'))
         // A target far from the newest message slides the window around it instead of mounting every row between.
         // While an editor is open nothing unmounts, so a window the jump would slide stays where it is and the target scrolls only when it is already mounted.
         const folded = chatFoldedStateMessageIndex.index >= 0
@@ -304,6 +305,35 @@
             follower?.release()
             follower?.sync()
         })
+    })
+
+    // A `jumpTo` request waits here for the effect below. At most one waits: a newer request, or a store request, settles it `cancelled`.
+    // A request made while the surface is hidden has already answered `deferred`; it stays here and runs when the surface is shown.
+    interface PendingJump {
+        index: number
+        align: JumpAlign
+        recordOrigin: boolean
+        generation: number
+        forRoom: string | null
+        intentAtStart: number
+        settle: ((result: JumpResult) => void) | null
+    }
+    let pendingJump: PendingJump | null = null
+    let jumpRequestToken = $state(0)
+    function settlePendingJump(status: JumpStatus): void {
+        const waiting = pendingJump
+        pendingJump = null
+        waiting?.settle?.({ status, from: null, to: waiting.index })
+    }
+    onDestroy(() => settlePendingJump('cancelled'))
+
+    $effect(() => {
+        void jumpRequestToken
+        if (installed && chatSurface.hidden) return
+        const request = pendingJump
+        if (!request) return
+        pendingJump = null
+        void runJump(request)
     })
 
     $effect(() => {
@@ -480,6 +510,92 @@
             if (completed) land()
             else if (mine === jumpGeneration) { traveling = false; readPosition() }
         })
+    }
+
+    // Brings message `index` (-1 is the first message) to the upper third of the visible area, focuses it and holds it against late layout.
+    // The answer says whether it ran: a hidden surface defers (and replays when shown), an editor that forbids the window change blocks,
+    // and a request that a newer jump, reader input, a chat switch or a long step hold overtook is cancelled.
+    export function jumpTo(index: number, { align = 'third', recordOrigin = true }: JumpOptions = {}): Promise<JumpResult> {
+        settlePendingJump('cancelled')
+        const generation = ++jumpGeneration
+        travel.cancel()
+        traveling = false
+        return new Promise((resolve) => {
+            const deferred = installed && chatSurface.hidden
+            if (deferred) resolve({ status: 'deferred', from: null, to: index })
+            pendingJump = { index, align, recordOrigin, generation, forRoom: room(), intentAtStart: intentSeq, settle: deferred ? null : resolve }
+            jumpRequestToken += 1
+        })
+    }
+
+    // Goes back to where a jump started. A reader who was following the newest message lands at the newest message again;
+    // otherwise the message that was at the top of the screen returns to the same distance from the top edge. The index is clamped to the chat.
+    export async function returnTo(origin: JumpOrigin): Promise<JumpResult> {
+        if (origin.atBottom) {
+            const to = messages.length - 1
+            if (installed && chatSurface.hidden) return { status: 'deferred', from: null, to }
+            if (win.slid && hasMessageEditorDrafts()) return { status: 'blocked', from: null, to }
+            await jumpToLatest({ animate: false, focusNewest: true })
+            return { status: atBottom ? 'done' : 'cancelled', from: null, to }
+        }
+        return jumpTo(Math.max(-1, Math.min(origin.index, messages.length - 1)), { align: { offset: origin.offset }, recordOrigin: false })
+    }
+
+    async function runJump(request: PendingJump): Promise<void> {
+        const result = await performJump(request).catch((error: unknown): JumpResult => {
+            recordCaughtError('chat.jump', error)
+            return { status: 'cancelled', from: null, to: request.index }
+        })
+        request.settle?.(result)
+    }
+
+    function captureOrigin(scroller: HTMLElement): JumpOrigin | null {
+        const top = rows ? viewportTopRow(scroller, rows) : null
+        const article = top?.querySelector<HTMLElement>('article[data-chat-index]')
+        if (!top || !article) return null
+        return { index: Number(article.dataset.chatIndex), offset: top.getBoundingClientRect().top - scroller.getBoundingClientRect().top, atBottom: isAtBottom(distanceFromEnd(scroller), win.slid) }
+    }
+
+    async function performJump(request: PendingJump): Promise<JumpResult> {
+        const { index, align, recordOrigin, generation, forRoom, intentAtStart } = request
+        const outcome = (status: JumpStatus, from: JumpOrigin | null = null): JumpResult => ({ status, from, to: index })
+        const abandoned = (): boolean => destroyed || generation !== jumpGeneration || room() !== forRoom || intentSeq !== intentAtStart || (installed && chatSurface.hidden)
+        // A request overtaken before it ran (a chat switch changes the length it is judged against) is cancelled, not out of range.
+        if (abandoned()) return outcome('cancelled')
+        if (index < -1 || index > messages.length - 1 || (index === -1 && character.type !== 'character')) return outcome('outOfRange')
+        // A step hold owns the position until it settles, so nothing is read, rebuilt or written under its pin.
+        if ((hold.isInFlight() || pin !== null) && !await waitForHold(abandoned)) return outcome('cancelled')
+        if (abandoned() || !host) return outcome('cancelled')
+        const scroller = host
+        realign.cancel()
+        const from = recordOrigin ? captureOrigin(scroller) : null
+        // A target far from the newest message slides the window around it. While an editor is open nothing unmounts,
+        // so a window the jump would slide stays where it is and only a target that is already mounted can be reached.
+        const folded = chatFoldedStateMessageIndex.index >= 0
+        const jumped = jumpWindow(index, messages.length, loadPages, CAP)
+        if (!hasMessageEditorDrafts() || jumpOnlyGrows(win.slid, folded, jumped, loadPages)) {
+            loadPages = jumped.pages
+            if (!folded) bottom = jumped.bottom
+        }
+        await afterFlush()
+        if ((hold.isInFlight() || pin !== null) && !await waitForHold(abandoned)) return outcome('cancelled')
+        if (abandoned() || !rows) return outcome('cancelled')
+        const article = rows.querySelector<HTMLElement>(`article[data-chat-index="${index}"]`)
+        if (!article) return outcome(hasMessageEditorDrafts() ? 'blocked' : 'outOfRange')
+        const container = article.closest<HTMLElement>('[data-part="chat-message-container"], [data-part="chat-first-message"]') ?? article
+        const hostTop = scroller.getBoundingClientRect().top
+        const targetTop = container.getBoundingClientRect().top
+        scroller.scrollTop += align === 'third'
+            ? alignDelta({ targetTop, hostTop, clientHeight: scroller.clientHeight, topInset: parseInset(getComputedStyle(scroller).scrollPaddingTop) })
+            : targetTop - hostTop - align.offset
+        // The jump left the newest message on purpose; arriving at the bottom re-enters following. Focus comes after the write and without
+        // a focus scroll, so it cannot undo the alignment, and the hold starts last so it captures the written position.
+        follower?.release()
+        follower?.sync()
+        asShellFocus(() => article.focus({ preventScroll: true }))
+        realign.start({ row: container, ms: JUMP_HOLD_MS })
+        readPosition()
+        return outcome('done', from)
     }
 
     export function anchorNewestBottom() {
