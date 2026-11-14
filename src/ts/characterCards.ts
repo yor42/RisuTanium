@@ -2037,6 +2037,20 @@ export async function preflightCardExport(char:character, type:'png'|'json'|'cha
     } : {})
 }
 
+// Picker label and file extension of each export type; the suggested file name uses the same extension as the picker filter.
+const cardExportKinds = {
+    'png': ['Image File', 'png'],
+    'json': ['JSON File', 'json'],
+    'charx': ['CharX File', 'charx'],
+    'charxJpeg': ['CharX Embedded Jpeg', 'jpeg']
+}
+
+// Never throws. Order matters: both strips come before the trim, and the fallback comes after it.
+export function cardExportFileName(name:string|undefined, type:'png'|'json'|'charx'|'charxJpeg'):string {
+    const stem = (name ?? '').replace(/[<>:"/\\|?*\.\,]/g, "").replace(/[\u0000-\u001f]/g, "").trim()
+    return `${stem === '' ? 'character' : stem}_export.${cardExportKinds[type][1]}`
+}
+
 export function exportCharacterCard(char:character, type:'png'|'json'|'charx'|'charxJpeg' = 'png', arg:{
     password?:string
     writer?:LocalWriter|VirtualWriter,
@@ -2103,16 +2117,9 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
             showWriting()
         }
         if(!arg.writer){
-            const nameExt = {
-                'png': ['Image File', 'png'],
-                'json': ['JSON File', 'json'],
-                'charx': ['CharX File', 'charx'],
-                'charxJpeg': ['CharX Embedded Jpeg', 'jpeg']
-            }
-            const ext = nameExt[type]
-            // Only the JSON export names its file; the other types keep the writer's own default name.
-            const jsonFileName = type === 'json' ? `${char.name.replace(/[<>:"/\\|?*\.\,]/g, "")}_export.json` : undefined
-            if(!(await (localWriter as LocalWriter).init(ext[0], [ext[1]], jsonFileName, cancel ?? undefined))){
+            const ext = cardExportKinds[type]
+            // Every type opened here suggests `<stem>_export.<ext>`; a writer supplied by the caller keeps its own name.
+            if(!(await (localWriter as LocalWriter).init(ext[0], [ext[1]], cardExportFileName(char.name, type), cancel ?? undefined))){
                 //the person dismissed the save dialog: nothing was exported, so nothing is said
                 gate?.clear()
                 return false
