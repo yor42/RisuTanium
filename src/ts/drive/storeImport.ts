@@ -332,10 +332,18 @@ export function decodeBinDatabaseOmitted(bytes: Uint8Array): Promise<ReadonlyMap
 
 /**
  * The database entry read from the file again and decoded; only the tree outlives the call (in the raw msgpack format its
- * binary values are views of the read bytes). Throws `BinFileChangedError`.
+ * binary values are views of the read bytes). `confirmed` is what the earlier decode left out and the person agreed to: a
+ * block this decode leaves out that is not in it was never asked about, so the file counts as changed. Throws
+ * `BinFileChangedError`.
  */
-export async function readBinDatabaseTree(file: BinFile, entry: BackupIndexEntry): Promise<Database> {
-    return (await decodeBinDatabase(await readBinDatabase(file, entry))).tree
+export async function readBinDatabaseTree(file: BinFile, entry: BackupIndexEntry, confirmed: ReadonlyMap<string, SalvageOmittedBlock>): Promise<Database> {
+    const decoded = await decodeBinDatabase(await readBinDatabase(file, entry))
+    for (const name of decoded.omitted.keys()) {
+        if (!confirmed.has(name)) {
+            throw new BinFileChangedError('omitted', DATABASE_ENTRY_NAME)
+        }
+    }
+    return decoded.tree
 }
 
 /**

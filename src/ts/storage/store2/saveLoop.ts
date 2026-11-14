@@ -1365,7 +1365,18 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
         const planned = plan.commitRequest()
         const request = MEASURE && activeGaps !== null ? activeGaps.wrapBuild(planned) : planned
-        const result = saveMine ? await committer.saveMine(read, request) : await committer.commit(read, request)
+        // A commit that did not land may have left this page load's own bulk marker standing; only the parked or stopped
+        // release lowers the flag, because it reads the marker's ownership afresh.
+        let result: CommitResult
+        try {
+            result = saveMine ? await committer.saveMine(read, request) : await committer.commit(read, request)
+        } catch (error) {
+            markerPending = true
+            throw error
+        }
+        if (result.status !== 'committed') {
+            markerPending = true
+        }
         if (MEASURE) {
             activeGaps?.committed()
         }
@@ -1394,10 +1405,6 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
         }
         if (result.status === 'refused' && result.reason === 'base-unnamed') {
-            // The final write of a bulk commit was refused and its own-marker clear did not land: the marker may still stand.
-            if (result.cleared != null && result.cleared.status !== 'cleared' && result.cleared.status !== 'nothing') {
-                markerPending = true
-            }
             if (saveMine && judged.kind === 'stop') {
                 // The refused write never reached the compare-and-write, so `judged` is still the base.
                 const next = parkOf(judged)
@@ -2050,7 +2057,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 port.liveCheck()
             }
             if (park !== null) {
-                // A refused bulk whose own-marker clear did not land would otherwise keep a marker standing for peers while parked.
+                // A commit that did not land may have left this page load's own marker standing, which would otherwise refuse every peer bulk while parked.
                 if (markerPending) {
                     await port.withWriteLock(releaseOwnMarkerWhileStopped)
                 }
