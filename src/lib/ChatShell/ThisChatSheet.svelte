@@ -38,11 +38,13 @@
         togglesSummary?: () => string | null
         ontoggles?: (opener: HTMLElement) => void
         onmodules: () => void
+        // The jump sheet: absent unless the shell can open it. It opens after this sheet has closed, on the opener this sheet had.
+        onjumpsheet?: (opener: HTMLElement | null) => void
         onremoved: () => void
         onclose: () => void
     }
 
-    let { open, opener, background, target, layer = $bindable(), confirmDelete, onpersona, togglesSummary, ontoggles, onmodules, onremoved, onclose }: Props = $props()
+    let { open, opener, background, target, layer = $bindable(), confirmDelete, onpersona, togglesSummary, ontoggles, onmodules, onjumpsheet, onremoved, onclose }: Props = $props()
 
     const NOTE_IDLE_MS = 600
     const SAVED_SHOWN_MS = 2000
@@ -349,6 +351,12 @@
             </div>
             <p data-part="this-chat-stats">{stats}</p>
             <p role="status" data-part="this-chat-status">{saved ? language.chatShellSaved : ''}</p>
+
+            {#if onjumpsheet}
+                <section data-part="this-chat-group" aria-label={language.chatShellJumpSheet}>
+                    <button type="button" data-part="this-chat-jump" data-kind="button" aria-haspopup="dialog" onclick={() => leave(() => onjumpsheet(opener))}>{language.chatShellJumpSheet}</button>
+                </section>
+            {/if}
 
             <section data-part="this-chat-group" aria-label={language.chatShellThisChat}>
                 <button type="button" data-part="this-chat-persona" data-kind="button" aria-haspopup="dialog" onclick={(event) => onpersona(event.currentTarget)}>

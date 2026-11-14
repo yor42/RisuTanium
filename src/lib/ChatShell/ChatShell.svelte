@@ -2,8 +2,10 @@
     import { onMount, tick, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import '../../styles/chat-tokens.css'
-    import { DBState, selIdState } from '../../ts/stores.svelte'
+    import { get } from 'svelte/store'
+    import { DBState, alertStore, selIdState, sideBarStore } from '../../ts/stores.svelte'
     import { language } from '../../lang'
+    import { postToast } from '../../ts/toast/toastHost.svelte'
     import type SendFailureCardComponent from './SendFailureCard.svelte'
     import type NotificationsOffNoticeComponent from '../ChatScreens/NotificationsOffNotice.svelte'
     import { chatWindowKey } from '../../ts/chatWindowPolicy'
@@ -19,6 +21,8 @@
     import type PlusSheetComponent from './PlusSheet.svelte'
     import type ShellNoticesComponent from './ShellNotices.svelte'
     import type ShellFloatingButtonsComponent from './ShellFloatingButtons.svelte'
+    import type JumpSheetComponent from './JumpSheet.svelte'
+    import type ReturnChipComponent from './ReturnChip.svelte'
     import type ShellMessageListComponent from './ShellMessageList.svelte'
     import type SwitchFrameComponent from './SwitchFrame.svelte'
     import type { SwitchTargetState } from '../../ts/chatShell/switchTarget.svelte'
@@ -28,8 +32,9 @@
     import { shouldAnchorBottom } from '../../ts/chatShell/bottomAnchor'
     import { bindReaderIntent, canHostMove, createReaderIntent } from '../../ts/chatShell/readerIntent'
     import { watchSoftKeyboard } from '../../ts/chatShell/softKeyboard'
-    import { latestButtonVisible } from '../../ts/chatShell/jumpTarget'
-    import { installTranscriptEndKey } from '../../ts/chatShell/shellJumpKeys'
+    import { isLongJump, latestButtonVisible, type JumpResult } from '../../ts/chatShell/jumpTarget'
+    import { createReturnChip, type ReturnChipState } from '../../ts/chatShell/returnChip'
+    import { installJumpSheetKey, installTranscriptEndKey } from '../../ts/chatShell/shellJumpKeys'
     import { lowPowerMarked } from '../../ts/chatShell/lowPower'
     import { reducedMotionActive } from '../../ts/chatShell/motionPrefs.svelte'
     import { hostIme } from '../../ts/android/hostBridge'
@@ -56,6 +61,9 @@
     let togglesModule: typeof import('./TogglesPanel.svelte') | null = $state.raw(null)
     let ShellNotices: typeof ShellNoticesComponent | null = $state(null)
     let ShellFloatingButtons: typeof ShellFloatingButtonsComponent | null = $state(null)
+    // The jump sheet and the return chip load with the This-chat sheet and never hold the composer back.
+    let JumpSheet: typeof JumpSheetComponent | null = $state(null)
+    let ReturnChip: typeof ReturnChipComponent | null = $state(null)
     let ShellMessageList: typeof ShellMessageListComponent | null = $state(null)
     // The switch frame and the pending-switch state load after the shell is up; neither holds the first paint back.
     let SwitchFrame: typeof SwitchFrameComponent | null = $state(null)
@@ -180,6 +188,7 @@
             seenCloseEpoch = epoch
             plusOpen = false
             closeThisChat()
+            closeJump()
             closeToggles()
             stickersOpen = false
             actionOpen = false
@@ -227,6 +236,11 @@
             ThisChatSheet = sheetModule.default
             ChatDeleteConfirm = confirmModule.default
         }).catch((error) => console.error('The This-chat sheet did not load:', error))
+        void Promise.all([import('./JumpSheet.svelte'), import('./ReturnChip.svelte')]).then(([jumpModule, chipModule]) => {
+            if (!live) return
+            JumpSheet = jumpModule.default
+            ReturnChip = chipModule.default
+        }).catch((error) => console.error('The jump sheet did not load:', error))
         void Promise.all([import('./SwitchFrame.svelte'), import('../../ts/chatShell/switchTarget.svelte')]).then(([frameModule, targetModule]) => {
             if (!live) return
             switchState = targetModule.switchTarget
@@ -307,6 +321,93 @@
         const active = document.activeElement
         void messageList?.jumpToLatest?.({ animate: fadeAllowed(), focusNewest: active instanceof Element && active.matches('[data-part="chat-new-message"]') })
     }
+
+    // The return point of the last long jump. It belongs to one chat and leaves with the first of: the timer, the reader's own scrolling
+    // (reader-intent events only, never a jump's own scroll), a tap, a chat switch, or the chat shrinking below the origin.
+    let chipState = $state.raw<ReturnChipState>({ origin: null, chatKey: null })
+    const chip = createReturnChip({
+        setTimer: (callback, ms) => window.setTimeout(callback, ms),
+        clearTimer: (id) => window.clearTimeout(id),
+        onChange: () => { chipState = chip.state },
+    })
+    let jumpHost = $state<HTMLElement>()
+    let jumpOpen = $state(false)
+    let jumpOpener = $state<HTMLElement | null>(null)
+    // The chat the sheet was opened for; the sheet closes as soon as the shown chat is another one.
+    let jumpChat = $state.raw<Chat | null>(null)
+
+    function chatKeyNow(): string {
+        return `${character?.chaId ?? ''}:${shownChat?.id ?? ''}`
+    }
+
+    onMount(() => {
+        const stop = readerIntent.subscribe((event) => chip.readerMoved(event.distance))
+        return () => { stop(); chip.hide() }
+    })
+
+    $effect(() => {
+        const state = chipState
+        if (!state.origin) return
+        const length = shownChat?.message.length ?? 0
+        if (chatKeyNow() !== state.chatKey || length - 1 < state.origin.index) chip.hide()
+    })
+
+    function openJump(active: Element | null): void {
+        if (surfaceHidden) return
+        const chat = character?.chats?.[character.chatPage]
+        if (!character || !chat) return
+        jumpOpener = active instanceof HTMLElement && shell?.contains(active) ? active : list ?? null
+        jumpChat = chat
+        jumpOpen = true
+    }
+
+    function closeJump(): void {
+        jumpOpen = false
+    }
+
+    $effect(() => {
+        if (!jumpOpen) return
+        if (!jumpChat || shownChat !== jumpChat) closeJump()
+    })
+
+    // A refusal the reader should see; a deferred or superseded jump is silent.
+    function reportJump(result: JumpResult): void {
+        if (result.status === 'blocked') postToast({ kind: 'warning', text: language.chatShellJumpEditorOpen })
+        else if (result.status === 'outOfRange') postToast({ kind: 'warning', text: language.hypaV3Modal.connectedMessageNotFoundLabel })
+    }
+
+    // The sheet is gone (focus and inert restored) before the jump runs, so the focused target is never under an inert layer.
+    async function runJump(index: number): Promise<void> {
+        closeJump()
+        await tick()
+        const key = chatKeyNow()
+        const result = await messageList?.jumpTo?.(index)
+        if (!result) return
+        reportJump(result)
+        if (result.status !== 'done' || !result.from || !isLongJump(result.from.index, result.to) || key !== chatKeyNow()) return
+        chip.show(result.from, key)
+        announcement = ''
+        await tick()
+        announcement = language.chatShellJumpedBack
+    }
+
+    async function returnFromChip(): Promise<void> {
+        const origin = chip.take()
+        if (!origin) return
+        const result = await messageList?.returnTo?.(origin)
+        if (result) reportJump(result)
+    }
+
+    onMount(() => {
+        if (!shell) return
+        return installJumpSheetKey({
+            shellRoot: shell,
+            surfaceVisible: () => !surfaceHidden && character?.type === 'character' && !!shownChat,
+            sidebarOpen: () => get(sideBarStore),
+            alertType: () => get(alertStore).type,
+            onopen: openJump,
+        })
+    })
 
     function openPersona(element: HTMLElement): void {
         if (surfaceHidden) return
@@ -456,8 +557,9 @@
     function branchRow(index: number, expectedId: string | undefined): void {
         void composerActions?.branchAt(composerSource, index, expectedId)
     }
-    let sheetBackground = $derived([header, list, composer].filter((element): element is HTMLElement => !!element))
-    let confirmBackground = $derived([header, list, composer, sheetLayer].filter((element): element is HTMLElement => !!element))
+    // The chip and the jump button are inert under any sheet, like the header, the transcript and the composer.
+    let sheetBackground = $derived([header, list, composer, jumpHost].filter((element): element is HTMLElement => !!element))
+    let confirmBackground = $derived([header, list, composer, jumpHost, sheetLayer].filter((element): element is HTMLElement => !!element))
 
 </script>
 
@@ -471,7 +573,10 @@
     </main>
     {#if SwitchFrame}<SwitchFrame transcript={list} />{/if}
     <div data-part="chat-announcer" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
-    {#if ShellFloatingButtons}<ShellFloatingButtons visible={latestButtonVisible({ atBottom, far: farFromLatest, unread, count: newCount })} count={newCount} onclick={jumpFromButton} />{/if}
+    <div bind:this={jumpHost} class="jump-host">
+        {#if ReturnChip && chipState.origin}<ReturnChip onreturn={() => void returnFromChip()} onhold={(kind, on) => chip.hold(kind, on)} />{/if}
+        {#if ShellFloatingButtons}<ShellFloatingButtons visible={latestButtonVisible({ atBottom, far: farFromLatest, unread, count: newCount })} count={newCount} onclick={jumpFromButton} />{/if}
+    </div>
     <div bind:this={composer} data-part="chat-composer-host" inert={switchPending ? true : undefined}>
         {#if SendFailureCard && sendFailure}<SendFailureCard failure={sendFailure} onfix={fixSendFailure} onretry={retryShownSendFailure} />{/if}
         <!-- The key is block identity only: a chat or character switch remounts the notice, so the instance that showed it is gone. -->
@@ -481,7 +586,8 @@
     {#if ActionSheet}<ActionSheet open={actionOpen} opener={actionRequest?.opener ?? null} anchor={actionRequest?.anchor} available={actionOpen ? actionRequest?.available() ?? [] : []} disabled={actionOpen ? actionRequest?.disabled() ?? [] : []} generating={actionOpen && actionRequest?.generating() === true} background={sheetBackground} onaction={(id) => actionRequest?.run(id)} onclose={() => actionOpen = false} />{/if}
     {#if CustomizeButtonsSheet}<CustomizeButtonsSheet open={customizeOpen} opener={customizeRequest?.opener ?? null} background={sheetBackground} onchange={() => customizeRequest?.onchange()} onclose={() => customizeOpen = false} />{/if}
     {#if PlusSheet}<PlusSheet open={plusOpen} {opener} background={[header, list, composer].filter((element): element is HTMLElement => !!element)} onclose={() => plusOpen = false} onstickers={() => stickersOpen = !stickersOpen} onchatlist={() => openChatList = true} onmodules={() => openModuleList = true} ontoggles={togglesModule ? (row) => openToggles(opener, false, row ?? null) : undefined} {togglesSummary} />{/if}
-    {#if ThisChatSheet}<ThisChatSheet open={thisChatOpen} {opener} background={sheetBackground} target={thisChatTarget} bind:layer={sheetLayer} {confirmDelete} onpersona={openPersonaFromSheet} {togglesSummary} ontoggles={togglesModule ? (element) => openToggles(element, true) : undefined} onmodules={() => openModuleList = true} onremoved={afterChatDeleted} onclose={closeThisChat} />{/if}
+    {#if ThisChatSheet}<ThisChatSheet open={thisChatOpen} {opener} background={sheetBackground} target={thisChatTarget} bind:layer={sheetLayer} {confirmDelete} onpersona={openPersonaFromSheet} {togglesSummary} ontoggles={togglesModule ? (element) => openToggles(element, true) : undefined} onmodules={() => openModuleList = true} onjumpsheet={JumpSheet ? openJump : undefined} onremoved={afterChatDeleted} onclose={closeThisChat} />{/if}
+    {#if JumpSheet}<JumpSheet open={jumpOpen} opener={jumpOpener} background={sheetBackground} chat={jumpChat} onjump={(index) => void runJump(index)} onclose={closeJump} />{/if}
     {#if PersonaSheet}<PersonaSheet open={personaOpen} opener={personaOpener} inertOutside={personaOverSheet} variant={personaOverSheet ? 'sheet' : 'dropup'} background={sheetBackground} onclose={() => { personaOpen = false; personaOverSheet = false }} />{/if}
     {#if TogglesPanel}<TogglesPanel open={togglesOpen} opener={togglesOpener} target={togglesTarget} openAt={togglesAt} onclose={closeToggles} />{/if}
     {#if ChatDeleteConfirm && deleteRequest}<ChatDeleteConfirm chat={deleteRequest.chat} busy={deleteRequest.busy} trigger={deleteRequest.trigger} background={confirmBackground} onanswer={(answer: PatternAnswer) => void settleDelete(answer === 'confirm')} />{/if}
@@ -490,6 +596,7 @@
 <style>
     [data-part="chat-shell"] { position: relative; display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: transparent; color: var(--nexus-text); }
     [data-part="chat-composer-host"] { flex: none; }
+    .jump-host { display: contents; }
     [data-part="chat-header-host"] { position: absolute; inset: 0 0 auto 0; z-index: 1; pointer-events: none; }
     [data-part="chat-transcript"] { flex: 1; min-height: 0; overflow-y: auto; padding-top: var(--header-height); scroll-padding-top: var(--header-height); }
     [data-part="chat-shell"][data-header-concealed] [data-part="chat-transcript"] { scroll-padding-top: 0; }
