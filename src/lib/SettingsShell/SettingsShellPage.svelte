@@ -10,7 +10,6 @@
     import UserSettings from '../Setting/Pages/UserSettings.svelte'
     import BotSettings from '../Setting/Pages/BotSettings.svelte'
     import OtherBotSettings from '../Setting/Pages/OtherBotSettings.svelte'
-    import PluginSettings from '../Setting/Pages/PluginSettings.svelte'
     import PersonaSettings from '../Setting/Pages/PersonaSettings.svelte'
     import PromptSettings from '../Setting/Pages/PromptSettings.svelte'
     import ModuleSettings from '../Setting/Pages/Module/ModuleSettings.svelte'
@@ -19,6 +18,7 @@
     import DisplayShellPage from './DisplayShellPage.svelte'
     import InputShellPage from './InputShellPage.svelte'
     import LanguageShellPage from './LanguageShellPage.svelte'
+    import PluginsShellPage from './PluginsShellPage.svelte'
     import ModeVisibilityGroup from './ModeVisibilityGroup.svelte'
     import ModeVisibilityConfirm from './ModeVisibilityConfirm.svelte'
     import { showAllModes, type HomeMode } from '../../ts/storage/homeModes'
@@ -136,7 +136,7 @@
                     <ModeVisibilityGroup onaskshowall={(trigger, hidden) => { showAllAsk = { trigger, hidden } }} />
                     <DisplayShellPage bind:this={displayPage} {phone} />
                 {:else if current === 4}
-                    <PluginSettings />
+                    <PluginsShellPage />
                 {:else if current === 6}
                     <AdvancedShellPage bind:this={advancedPage} />
                 {:else if current === 10}

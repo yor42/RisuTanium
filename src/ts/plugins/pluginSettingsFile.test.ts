@@ -18,6 +18,7 @@ import {
     planPluginSettings,
     selectWriteKeys,
     serializePluginSettings,
+    undoPluginSettings,
     pluginSettingsFileName,
     type PluginSettingsDeps,
 } from './pluginSettingsFile'
@@ -512,6 +513,60 @@ describe('openPluginSettingsMenu', () => {
         const imp = harness([plugin('P')], { select: vi.fn(async () => '1'), pickFile: picked(fileText({ key: 'new' })) })
         await openPluginSettingsMenu('P', imp.deps)
         expect(imp.list[0].realArg.key).toBe('new')
+    })
+})
+
+describe('an import that offers an undo', () => {
+    test('the result text goes to offerUndo once, after the write, and notify is not called', async () => {
+        const p = plugin('P')
+        const offerUndo = vi.fn<NonNullable<PluginSettingsDeps['offerUndo']>>()
+        const h = harness([p], { pickFile: picked(fileText({ key: 'new' })), offerUndo })
+        await importPluginSettings('P', h.deps)
+        expect(offerUndo).toHaveBeenCalledTimes(1)
+        expect(String(offerUndo.mock.calls[0][0])).toContain('Updated 1 value(s) of "P"')
+        expect(offerUndo.mock.calls[0][1].name).toBe('P')
+        expect(h.notify).not.toHaveBeenCalled()
+        expect(p.realArg.key).toBe('new')
+    })
+
+    test('a failing reload still offers the undo, with the failure reported separately', async () => {
+        const p = plugin('P')
+        const offerUndo = vi.fn<NonNullable<PluginSettingsDeps['offerUndo']>>()
+        const h = harness([p], { pickFile: picked(fileText({ key: 'new' })), offerUndo })
+        h.reload.mockRejectedValue(new Error('boom'))
+        await importPluginSettings('P', h.deps)
+        expect(offerUndo).toHaveBeenCalledTimes(1)
+        expect(h.fail).toHaveBeenCalledTimes(1)
+        expect(h.notify).not.toHaveBeenCalled()
+    })
+
+    test('an import that changes nothing offers no undo', async () => {
+        const offerUndo = vi.fn()
+        const h = harness([plugin('P')], { pickFile: picked(fileText({ key: 'old-key' })), offerUndo })
+        await importPluginSettings('P', h.deps)
+        expect(offerUndo).not.toHaveBeenCalled()
+        expect(h.notify).toHaveBeenCalledTimes(1)
+    })
+
+    test('undoPluginSettings restores the previous values', async () => {
+        const p = plugin('P')
+        const before = JSON.stringify(p.realArg)
+        const offerUndo = vi.fn<NonNullable<PluginSettingsDeps['offerUndo']>>()
+        await importPluginSettings('P', harness([p], { pickFile: picked(fileText({ key: 'new', size: 9 })), offerUndo }).deps)
+        expect(p.realArg.key).toBe('new')
+        expect(undoPluginSettings([p], offerUndo.mock.calls[0][1])).toBe('restored')
+        expect(JSON.stringify(p.realArg)).toBe(before)
+    })
+
+    test('undoPluginSettings refuses after a later edit and after the plugin is gone', async () => {
+        const p = plugin('P')
+        const offerUndo = vi.fn<NonNullable<PluginSettingsDeps['offerUndo']>>()
+        await importPluginSettings('P', harness([p], { pickFile: picked(fileText({ key: 'new' })), offerUndo }).deps)
+        const undo = offerUndo.mock.calls[0][1]
+        p.realArg.key = 'typed-later'
+        expect(undoPluginSettings([p], undo)).toBe('changed')
+        expect(p.realArg.key).toBe('typed-later')
+        expect(undoPluginSettings([], undo)).toBe('gone')
     })
 })
 
