@@ -2868,6 +2868,19 @@ export const languageVietnamese = {
         `RisuTanium hiện không thể lưu ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Những thay đổi mới nhất của bạn đối với nhân vật này không được lưu, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước khi sự cố được khắc phục. Bản đã lưu gần nhất vẫn được giữ, mọi thứ khác vẫn được lưu, và RisuTanium vẫn lặng lẽ tiếp tục thử lại.`,
     saveCharacterNeverSavedNotice: (name: string) =>
         `RisuTanium hoàn toàn không thể lưu ${name}: nhân vật này chưa từng được lưu và dữ liệu của nó không hợp lệ (có thể một plugin đã thay đổi nó). Nó không được lưu, nên sẽ bị mất nếu tab bị đóng hoặc tải lại trước khi sự cố được khắc phục. Mọi thứ khác vẫn được lưu, và RisuTanium vẫn lặng lẽ tiếp tục thử lại.`,
+    saveItemUnsavedNotice: (what: string) =>
+        `RisuTanium hiện không thể lưu ${what}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Những thay đổi mới nhất của bạn đối với nó không được lưu, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước khi sự cố được khắc phục. Bản đã lưu gần nhất vẫn được giữ, mọi thứ khác vẫn được lưu, và RisuTanium vẫn lặng lẽ tiếp tục thử lại.`,
+    saveItemNeverSavedNotice: (what: string) =>
+        `RisuTanium hoàn toàn không thể lưu ${what}: nó chưa từng được lưu và dữ liệu của nó không hợp lệ (có thể một plugin đã thay đổi nó). Nó không được lưu, nên sẽ bị mất nếu tab bị đóng hoặc tải lại trước khi sự cố được khắc phục. Mọi thứ khác vẫn được lưu, và RisuTanium vẫn lặng lẽ tiếp tục thử lại.`,
+    saveModulesHeldNotice: (name: string) =>
+        `RisuTanium không thể lưu module ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Nhân vật, cuộc trò chuyện và cài đặt của bạn vẫn được lưu, nhưng các thay đổi đối với module sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các module đã lưu gần nhất vẫn được giữ.`,
+    savePresetsHeldNotice: (name: string) =>
+        `RisuTanium không thể lưu preset ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Mọi thứ khác vẫn được lưu, nhưng các thay đổi đối với preset sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các preset đã lưu gần nhất vẫn được giữ. Nếu trang được tải lại trước đó, cài đặt hiện tại của bạn sẽ được giữ lại thành một preset mới.`,
+    saveTaskPresetsHeldNotice: (name: string) =>
+        `RisuTanium không thể lưu preset ${name}: dữ liệu của nó không hợp lệ và có thể một plugin đã thay đổi nó. Mọi thứ khác vẫn được lưu, nhưng các thay đổi đối với preset sẽ không được lưu cho đến khi sự cố được khắc phục, và sẽ bị mất nếu tab bị đóng hoặc tải lại trước đó. Các preset đã lưu gần nhất vẫn được giữ.`,
+    saveItemModuleLabel: (name: string) => `module "${name}"`,
+    saveItemSettingLabel: (field: string) => `cài đặt "${field}"`,
+    saveItemPluginDataLabel: (key: string) => `dữ liệu plugin "${key}"`,
     personasRepairedNotice: (count: number) =>
         `RisuTanium đã loại bỏ ${count} persona không phải dữ liệu hợp lệ. Có thể một plugin đã ghi chúng.`,
     personaListEmptyNotice: `Không còn persona nào dùng được trong danh sách persona, nên RisuTanium đã thêm một persona từ tên người dùng và biểu tượng của bạn rồi chọn nó.`,

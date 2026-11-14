@@ -76,6 +76,33 @@ export class SharedChaIdStubError extends CodecInputError {
     }
 }
 
+/**
+ * One module cannot be told from another, or its saved copy cannot be named, so a pass that met an unreadable module
+ * cannot carry just that module: the whole acknowledged module set is carried instead.
+ */
+export class ModuleSetUnsavableError extends CodecInputError {
+    constructor(public readonly id: string, public readonly moduleName: string, public readonly fault: unknown) {
+        super(`The module ${JSON.stringify(moduleName === '' ? id : moduleName)} cannot be read and cannot be carried alone.`)
+        this.name = 'ModuleSetUnsavableError'
+    }
+}
+
+/** What an item the pass went on without belongs to; the label of a `moduleSet` item is made by the save loop. */
+export type SkippedItemScope = 'module' | 'moduleSet' | 'presets' | 'taskPresets' | 'settings' | 'pluginData'
+
+/** A part of the database a pass could not read as plain JSON and went on without. */
+export interface SkippedItem {
+    scope: SkippedItemScope
+    /** The stable name of the item inside its scope: a module id, `presets`, `taskPresets`, a settings field or a plugin-data key. */
+    key: string
+    /** What a notice calls the item: the raw name, quoted. */
+    label: string
+    /** The previous encoding held the item, so its last saved copy is carried; false means it is left out of the tree. */
+    saved: boolean
+    /** The failure of the read, for the log. */
+    cause: unknown
+}
+
 /** The units do not describe a database: a missing unit, a Ref that does not match its bytes, or a body of the wrong shape. */
 export class CodecAssembleError extends CodecError {
     constructor(message: string) {
@@ -141,6 +168,11 @@ export interface PreviousObjects {
     /** The shard bodies by shard index. */
     shards?: readonly Shard[]
     moduleIndex?: ModuleIndex
+    /**
+     * The config unit's fields as the encoding holds them. In memory only (never written): a setting a later pass cannot
+     * read is put back from here.
+     */
+    config?: JsonObject
 }
 
 /** The earlier encoding a new encode reuses keys from. */

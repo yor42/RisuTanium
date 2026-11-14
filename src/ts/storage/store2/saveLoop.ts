@@ -7,7 +7,7 @@ import { isBusy } from '../../process/memory/busyActions'
 import { MEASURE } from '../../process/memory/measureFlag'
 import { netHeldNow, noteNetHeldTick, noteNetPassTick } from '../measureExportHold'
 import { isModuleStub } from '../moduleStub'
-import { isColdStub, SharedChaIdStubError, StubRefusedError } from './codec'
+import { isColdStub, ModuleSetUnsavableError, SharedChaIdStubError, StubRefusedError, type SkippedItem } from './codec'
 import { isUsableCharacterId } from '../characterIds'
 import { namesManifest, type AbandonResult, type CommitResult, type Committer } from './commit'
 import { classifyCommitRead } from './commitKey'
@@ -252,6 +252,12 @@ export interface Store2LoopPort {
      * set changed or `newly` is not empty. It must not report a failure; a throw is logged and ignored.
      */
     unsavable(current: readonly UnsavableCharacter[], newly: readonly UnsavableCharacter[]): void
+    /**
+     * As `unsavable`, for the modules, preset lists, settings fields and plugin-data keys that cannot be saved now: every
+     * item that stands (`current`) and those newly standing (`newly`). Called only when the set changed or `newly` is not
+     * empty; a throw is logged and ignored. Optional so that the many test ports of other behaviours need not declare it.
+     */
+    unsavableItems?(current: readonly SkippedItem[], newly: readonly SkippedItem[]): void
     /** The pass's data is in the store (or the store already held it): next-commit callbacks fire. */
     saved(): void
     /** Tells the other tabs a commit landed. */
@@ -394,7 +400,7 @@ export function stubNamesOf(db: Database): { names: string[], count: number } {
 
 /** The items a refused Save mine could not carry, as the plan named them; never reads the live database. */
 export function blockedOf(plan: Pick<SavePlan, 'carried'>): { names: readonly string[], count: number } {
-    const names = [...plan.carried.owners.values(), ...plan.carried.modules]
+    const names = [...plan.carried.owners.values(), ...plan.carried.modules, ...(plan.carried.items ?? [])]
     return { names, count: names.length > 0 ? names.length : plan.carried.units }
 }
 
@@ -479,6 +485,8 @@ interface PassRun {
     plan: SavePlan | null
     /** The module refusal the pass went on without (the modules were carried whole); null when none was met. */
     moduleRefusal: StubRefusedError | null
+    /** The module set the pass carried whole because one module could not be read or told from another; null when none. */
+    moduleSet: SkippedItem | null
     /** The pass's request asked for module scope, so a clean save proves no module stub blocks it. */
     moduleScope: boolean
     /** The pass cleared a foreign marker (a probe proved its owner gone); its retry is quiet. */
@@ -488,6 +496,14 @@ interface PassRun {
     /** The probe's answer for `standingMarker`; null when it is null or no probe answered. */
     standingLiveness: MarkerLiveness | null
     /** The open module question this pass saved past on a hidden page (`hiddenHeldAdmits`); `null` otherwise. */
+    held: Promise<void> | null
+}
+
+/** A plan and how the pass degraded to make it: a module refusal, a module set carried whole, or a held module question. */
+interface PlannedPass {
+    plan: SavePlan
+    moduleRefusal: StubRefusedError | null
+    moduleSet: SkippedItem | null
     held: Promise<void> | null
 }
 
@@ -641,6 +657,12 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
      * it, or when it is no longer in the database; an attempt whose commit did not land changes nothing here.
      */
     const unsavable = new Map<string, UnsavableCharacter>()
+    /**
+     * The modules, preset lists, settings fields and plugin-data keys the latest attempts whose commit landed could not
+     * encode, by `scope:key`. A front item is replaced by what each landed pass skipped (every pass encodes the front); a
+     * module item only by a pass that encoded the modules.
+     */
+    const unsavableItems = new Map<string, SkippedItem>()
 
     function namedByBase(key: CommitKey): boolean {
         return namesManifest(key, encoder.manifestKey)
@@ -705,7 +727,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
 
     /**
      * The verdict over every resident character, run by `settlePark` for a Reload press. Undecided (a pending attempt
-     * that a base read does not settle, an unheld slot, a stub that needs a full pass, an unsavable character, a
+     * that a base read does not settle, an unheld slot, a stub that needs a full pass, an unsavable character or item, a
      * verdict that is not clean, an unfinished judgement) counts as dirty and marks the page, so the loop's unsaved
      * question follows in the same step.
      * No pass runs while the loop is here. The judgement itself changes no park state, so one that outlives its
@@ -729,7 +751,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
             const db = port.getDatabase()
             const scan = encoder.netScan(db)
-            if (scan.unheld || scan.stubsNeedFull || unsavable.size > 0) {
+            if (scan.unheld || scan.stubsNeedFull || unsavable.size > 0 || unsavableItems.size > 0) {
                 return 'dirty'
             }
             const slots = (db.characters as Array<character | groupChat | null>).filter(
@@ -1074,14 +1096,24 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
      * returned beside that plan so the caller holds the module mark. Characters and chats still save. The modules are
      * carried only when the acknowledged encoding holds them; otherwise the planner's own error surfaces.
      */
-    async function planOf(db: Database, request: SavePassRequest): Promise<{ plan: SavePlan, moduleRefusal: StubRefusedError | null, held: Promise<void> | null }> {
+    async function planOf(db: Database, request: SavePassRequest): Promise<PlannedPass> {
         const loaded = new Set<string>()
         let planDb = db
         let planRequest = request
         for (;;) {
             try {
-                return { plan: await planWithStubLoads(planDb, planRequest), moduleRefusal: null, held: null }
+                return { plan: await planWithStubLoads(planDb, planRequest), moduleRefusal: null, moduleSet: null, held: null }
             } catch (error) {
+                if (error instanceof ModuleSetUnsavableError) {
+                    // One module cannot be read and cannot be carried alone: the whole acknowledged module set is carried,
+                    // and the characters, chats and settings still save. Without a module set to carry the error surfaces.
+                    if (!encoder.carriesModules()) {
+                        throw error
+                    }
+                    const name = error.moduleName !== '' ? error.moduleName : error.id
+                    const moduleSet: SkippedItem = { scope: 'moduleSet', key: 'modules', label: `"${name}"`, saved: true, cause: error.fault }
+                    return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: null, moduleSet, held: null }
+                }
                 if (!(error instanceof StubRefusedError) || error.kind !== 'module') {
                     throw error
                 }
@@ -1097,7 +1129,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                             if (MEASURE) {
                                 activeGaps?.resume()
                             }
-                            return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: null, held: result.settled }
+                            return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: null, moduleSet: null, held: result.settled }
                         }
                         throw new ModuleLoadDeferred(result.settled)
                     }
@@ -1113,7 +1145,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 if (!encoder.carriesModules()) {
                     throw error
                 }
-                return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: error, held: null }
+                return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: error, moduleSet: null, held: null }
             }
         }
     }
@@ -1275,6 +1307,47 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
     }
 
+    /**
+     * Folds the plan of an attempt whose commit landed into `unsavableItems` and tells the port when the set changed.
+     * Every pass encodes the front, so its own skips replace the front items. The module items are replaced only by a
+     * pass that encoded the modules: a pass that carried them whole says nothing about any module, and a module set
+     * carried whole (`moduleSet`) is added to what stands.
+     */
+    function settleItems(plan: SavePlan, moduleSet: SkippedItem | null): void {
+        if (unsavableItems.size === 0 && plan.skippedItems.length === 0 && moduleSet === null) {
+            return
+        }
+        const before = new Set(unsavableItems.keys())
+        const next = new Map<string, SkippedItem>()
+        for (const [key, item] of unsavableItems) {
+            const moduleItem = item.scope === 'module' || item.scope === 'moduleSet'
+            if (moduleItem && !plan.modulesEncoded) {
+                next.set(key, item)
+            }
+        }
+        for (const item of plan.skippedItems) {
+            next.set(`${item.scope}:${item.key}`, item)
+        }
+        if (moduleSet !== null) {
+            next.set(`${moduleSet.scope}:${moduleSet.key}`, moduleSet)
+        }
+        const newly = [...next].filter(([key]) => !before.has(key)).map(([, item]) => item)
+        const changed = before.size !== next.size || newly.length > 0
+        unsavableItems.clear()
+        for (const [key, item] of next) {
+            unsavableItems.set(key, item)
+        }
+        if (!changed) {
+            return
+        }
+        try {
+            port.unsavableItems?.([...next.values()], newly)
+        } catch (error) {
+            // A notice that fails must not turn a pass that saved into a failed one.
+            console.error(error)
+        }
+    }
+
     /** `attemptRun` with the gap recorder closed on every exit, a throw included, before the pass's own waits begin. */
     async function attemptOf(run: PassRun, tick: boolean, netChaId: string | null): Promise<Outcome> {
         try {
@@ -1328,6 +1401,15 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 // makes no pass due, so the idle net and the character cadence keep running. A tick folds it too, so a
                 // refusal found without any mark still keeps the page dirty.
                 run.moduleRefusal = planned.moduleRefusal
+                port.tracker.modules = true
+                port.markUnsaved?.()
+            }
+            if (planned.moduleSet !== null || plan.skippedItems.some(item => item.scope === 'module')) {
+                // A skipped module, or a module set carried whole, is retried by every marked pass until it encodes: the mark
+                // is folded before the commit so that every later outcome keeps it, and the page stays dirty. Like the
+                // refusal above it makes no pass due and counts no mark, so a skip never asks for another pass. A front item
+                // needs no mark: every pass encodes the front.
+                run.moduleSet = planned.moduleSet
                 port.tracker.modules = true
                 port.markUnsaved?.()
             }
@@ -1539,7 +1621,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
 
     /** Runs one pass; resolves `true` when it was a tick cut at a yield (nothing written or counted), `false` otherwise. */
     async function pass(tick: boolean, netChaId: string | null = null): Promise<boolean> {
-        const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleScope: false, foreignCleared: false, standingMarker: null, standingLiveness: null, held: null }
+        const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleSet: null, moduleScope: false, foreignCleared: false, standingMarker: null, standingLiveness: null, held: null }
         let cut = false
         // A tick that saved with nothing written and no module refusal is the one outcome that is not activity.
         let endedUnchanged = false
@@ -1552,11 +1634,11 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             switch (outcome.kind) {
                 case 'saved':
                     retries = 0
-                    endedUnchanged = tick && !outcome.wrote && run.moduleRefusal === null && run.held === null
+                    endedUnchanged = tick && !outcome.wrote && run.moduleRefusal === null && run.moduleSet === null && run.held === null
                     if (tick && run.moduleScope) {
                         moduleSweepOwed = false
                     }
-                    if (run.moduleScope && run.moduleRefusal === null && run.held === null) {
+                    if (run.moduleScope && run.moduleRefusal === null && run.moduleSet === null && run.held === null) {
                         // Only a pass that planned the modules proves no stub blocks them; a character-only pass or a
                         // degraded one says nothing, so the person is not asked again while the same stub stands.
                         editedAnnounced = null
@@ -1564,6 +1646,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     }
                     if (run.plan !== null) {
                         settleUnsavable(run.plan)
+                        settleItems(run.plan, run.moduleSet)
                     }
                     if (!tick || outcome.wrote) {
                         port.saved()
@@ -1629,6 +1712,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     port.requestPass()
                     if (run.plan !== null) {
                         settleUnsavable(run.plan)
+                        settleItems(run.plan, run.moduleSet)
                     }
                     const notFlushedDelay = backedOffWait(port.reportFailure(new Store2NotFlushedError(), savetrys), savetrys)
                     await backOff(notFlushedDelay)

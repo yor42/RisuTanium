@@ -2913,6 +2913,19 @@ export const languageChineseTraditional = {
         `RisuTanium 目前無法儲存 ${name}：它的資料無效，可能是外掛修改了它。你對它所做的最新變更並未儲存，如果在問題解決之前關閉或重新整理分頁，這些變更將遺失。最後一次儲存的副本會保留，其他所有內容仍會正常儲存，RisuTanium 會在背景持續重試。`,
     "saveCharacterNeverSavedNotice": (name: string) =>
         `RisuTanium 完全無法儲存 ${name}：它從未被儲存過，且資料無效（可能是外掛修改了它）。它並未儲存，因此如果在問題解決之前關閉或重新整理分頁，它將遺失。其他所有內容仍會正常儲存，RisuTanium 會在背景持續重試。`,
+    "saveItemUnsavedNotice": (what: string) =>
+        `RisuTanium 目前無法儲存${what}：它的資料無效，可能是外掛修改了它。你對它所做的最新變更並未儲存，如果在問題解決之前關閉或重新整理分頁，這些變更將遺失。最後一次儲存的副本會保留，其他所有內容仍會正常儲存，RisuTanium 會在背景持續重試。`,
+    "saveItemNeverSavedNotice": (what: string) =>
+        `RisuTanium 完全無法儲存${what}：它從未被儲存過，且資料無效（可能是外掛修改了它）。它並未儲存，因此如果在問題解決之前關閉或重新整理分頁，它將遺失。其他所有內容仍會正常儲存，RisuTanium 會在背景持續重試。`,
+    "saveModulesHeldNotice": (name: string) =>
+        `RisuTanium 無法儲存模組 ${name}：它的資料無效，可能是外掛修改了它。你的角色、聊天和設定仍會正常儲存，但在問題解決之前，對模組的變更不會被儲存，如果在此之前關閉或重新整理分頁，這些變更將遺失。最後一次儲存的模組會保留。`,
+    "savePresetsHeldNotice": (name: string) =>
+        `RisuTanium 無法儲存預設 ${name}：它的資料無效，可能是外掛修改了它。其他所有內容仍會正常儲存，但在問題解決之前，對預設的變更不會被儲存，如果在此之前關閉或重新整理分頁，這些變更將遺失。最後一次儲存的預設會保留。如果頁面在此之前重新載入，你目前的設定會作為新預設保留。`,
+    "saveTaskPresetsHeldNotice": (name: string) =>
+        `RisuTanium 無法儲存預設 ${name}：它的資料無效，可能是外掛修改了它。其他所有內容仍會正常儲存，但在問題解決之前，對預設的變更不會被儲存，如果在此之前關閉或重新整理分頁，這些變更將遺失。最後一次儲存的預設會保留。`,
+    "saveItemModuleLabel": (name: string) => `模組「${name}」`,
+    "saveItemSettingLabel": (field: string) => `設定「${field}」`,
+    "saveItemPluginDataLabel": (key: string) => `外掛資料「${key}」`,
     "personasRepairedNotice": (count: number) =>
         `RisuTanium 排除了 ${count} 個不是有效資料的使用者人設。這可能是外掛寫入的。`,
     "personaListEmptyNotice": `使用者人設清單中沒有剩餘的可用人設，因此 RisuTanium 根據你的使用者名稱和圖示新增了一個人設並將其選取。`,

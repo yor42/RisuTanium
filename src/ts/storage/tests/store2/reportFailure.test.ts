@@ -114,19 +114,19 @@ describe('a failure without a wording of its own', () => {
 })
 
 describe('a codec input error (an entry the save cannot encode, for example a non-object character slot)', () => {
-    // Guard: pins today's presentation, which the idle liveCheck gate relies on being quiet: one retrying toast, then nothing until the fifth failure.
+    // Changed compatibility expectation (MC-1798): the presentation stays quiet for the idle liveCheck gate (one retrying toast, then nothing), the raw error is shown once at the fifth failure only, and the retry waits five seconds.
     const error = new CodecInputError('characters[3] is not an object.')
 
     test('it is the unmapped class', () => {
         expect(saveFailureClassOf(error, false)).toBe('other')
     })
 
-    test('attempt 1 is the retrying toast, 2 to 4 are silent, 5 shows the error as it is', () => {
-        expect(describeSaveFailure(error, 1, false)).toEqual({ toast: language.saveRetrying, alert: null, showRaw: false, waitMs: 1000 })
-        for (const attempts of [2, 3, 4]) {
-            expect(describeSaveFailure(error, attempts, false)).toEqual({ toast: null, alert: null, showRaw: false, waitMs: 1000 })
+    test('attempt 1 is the retrying toast, 2 to 4 are silent, 5 shows the error as it is, later attempts are silent again, and every retry waits five seconds', () => {
+        expect(describeSaveFailure(error, 1, false)).toEqual({ toast: language.saveRetrying, alert: null, showRaw: false, waitMs: 5000 })
+        for (const attempts of [2, 3, 4, 6, 7]) {
+            expect(describeSaveFailure(error, attempts, false)).toEqual({ toast: null, alert: null, showRaw: false, waitMs: 5000 })
         }
-        expect(describeSaveFailure(error, 5, false)).toEqual({ toast: null, alert: null, showRaw: true, waitMs: 1000 })
+        expect(describeSaveFailure(error, 5, false)).toEqual({ toast: null, alert: null, showRaw: true, waitMs: 5000 })
     })
 })
 

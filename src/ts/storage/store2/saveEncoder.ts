@@ -85,6 +85,13 @@ export interface SavePlan {
      * holds them, left out when it does not. They count for nothing in `unchanged`.
      */
     readonly skipped: readonly SkippedCharacter[]
+    /**
+     * The modules, preset lists, settings fields and plugin-data keys this pass could not read and went on without: the
+     * saved copy is carried when the acknowledged encoding holds it (`saved`), else the item is left out.
+     */
+    readonly skippedItems: ScopedPlan['skippedItems']
+    /** The pass encoded the modules; false means it carried them whole, so it said nothing about any module item. */
+    readonly modulesEncoded: boolean
     /** The `chaId` of every character this pass encoded. */
     readonly encoded: readonly string[]
     /** Existing units the new manifest names without writing them, and the names (taken at plan time) of the characters and modules carried by key. */
@@ -400,7 +407,7 @@ function scopeOf(db: Database, previous: PreviousEncoding, request: SavePassRequ
     const everything = request.whole || request.rewriteAll === true
     const modules = request.carryModules !== true && (everything || request.modules || request.net?.modules === true)
     if (everything) {
-        return { modules, characters: 'all', yield: request.yield, skipUnsavableCharacters: true }
+        return { modules, characters: 'all', yield: request.yield, skipUnsavableCharacters: true, skipUnsavableItems: true }
     }
     const characters = new Set<string>(request.marked)
     const netChaId = request.net?.chaId
@@ -414,7 +421,7 @@ function scopeOf(db: Database, previous: PreviousEncoding, request: SavePassRequ
     for (const chaId of unheld) {
         characters.add(chaId)
     }
-    return { modules, characters, yield: request.yield, skipUnsavableCharacters: true }
+    return { modules, characters, yield: request.yield, skipUnsavableCharacters: true, skipUnsavableItems: true }
 }
 
 export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
@@ -496,6 +503,8 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
                 newUnits: scoped.newUnits,
                 unchanged: scoped.unchanged && pending === null && previous === base,
                 skipped: scoped.skipped,
+                skippedItems: scoped.skippedItems,
+                modulesEncoded: scoped.modulesEncoded,
                 encoded: scoped.encoded,
                 carried: scoped.carried,
                 commitRequest: () => ({

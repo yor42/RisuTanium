@@ -12,6 +12,7 @@ import {
     type PluginList, type PluginValueBody, type PresetBody, type StaticsBody,
 } from './bodies'
 import { assembleChat, chunkMessageJson, splitChat } from './chat'
+import { overflowInlayList } from '../lists/inlayList'
 import { buildManifest, carryManifest } from './manifest'
 import { carryModuleIndex, hasCurrentEntryFields, moduleBodyOf, moduleEntryFields, moduleHandles, taggedUnitRef, uniqueIdHandles } from './modules'
 import { MODULE_INDEX_PARAMS } from './moduleIndexParams'
@@ -21,8 +22,8 @@ import { UnitSink, type UnitKeyKind } from './reuse'
 import { carryShards, chunkRefTuple, groupIntoShards, listRefTuple, noteShardDigest, refTuple, shardCountFor, shardDigestOf } from './shard'
 import { assertChatNotPointer, assertNotStub } from './stub'
 import {
-    CodecInputError, StubRefusedError, type ConfigOwner, type EncodedTree, type EncodedUnit, type EncodeOptions, type ListDerivation,
-    type ModuleStubReason, type PreviousEncoding, type ReusableUnit, type SplitRecorder,
+    CodecAssembleError, CodecInputError, ModuleSetUnsavableError, StubRefusedError, type ConfigOwner, type EncodedTree, type EncodedUnit,
+    type EncodeOptions, type ListDerivation, type ModuleStubReason, type PreviousEncoding, type ReusableUnit, type SkippedItem, type SplitRecorder,
 } from './types'
 import { isModuleStub } from '../../moduleStub'
 import { isRecordedStub } from '../moduleStubMatch'
@@ -66,6 +67,62 @@ export function configFields(source: object): JsonObject {
         }
     }
     return plainObject(rest, 'database')
+}
+
+/**
+ * Whether a failure of a read of live data is a fault of that data, which a pass may go on without. A stub refusal is a
+ * request to load the stub, and an assemble error is an invariant: both must reach the caller.
+ */
+export function isSkippableFault(error: unknown): boolean {
+    return !(error instanceof StubRefusedError || error instanceof CodecAssembleError)
+}
+
+/** A name for a notice: the raw text, quoted. */
+function quoted(name: string): string {
+    return `"${name}"`
+}
+
+/** The non-empty string `name` of a live value, or null when it has none or the read throws. */
+function guardedName(value: unknown): string | null {
+    try {
+        const name = typeof value === 'object' && value !== null ? (value as { name?: unknown }).name : undefined
+        return typeof name === 'string' && name !== '' ? name : null
+    } catch {
+        return null
+    }
+}
+
+/**
+ * `configFields` that reads each field on its own: a field whose read is a fault of the data keeps the value the
+ * previous encoding holds (`saved`), or is left out when it holds none. Valid data gives the same object as
+ * `configFields`, key for key. A database with a `toJSON` field is read whole, as `configFields` reads it.
+ */
+export function configFieldsSkipping(source: object, previousConfig: JsonObject): { fields: JsonObject, skipped: SkippedItem[] } {
+    const record = source as Record<string, unknown>
+    const keys = Object.keys(source).filter(key => !(CONFIG_PARTITIONED_FIELDS as readonly string[]).includes(key))
+    if (keys.includes('toJSON') && typeof record.toJSON === 'function') {
+        return { fields: configFields(source), skipped: [] }
+    }
+    const fields: JsonObject = {}
+    const skipped: SkippedItem[] = []
+    for (const key of keys) {
+        try {
+            const value = toPlainJson(record[key])
+            if (value !== undefined) {
+                defineOwn(fields, key, value)
+            }
+        } catch (error) {
+            if (!isSkippableFault(error)) {
+                throw error
+            }
+            const saved = Object.hasOwn(previousConfig, key)
+            if (saved) {
+                defineOwn(fields, key, previousConfig[key])
+            }
+            skipped.push({ scope: 'settings', key, label: quoted(key), saved, cause: error })
+        }
+    }
+    return { fields, skipped }
 }
 
 /** The character fields the core keeps before the moved fields are taken out: everything but chats, lore, scripts. Unknown fields stay. */
@@ -137,13 +194,25 @@ export class Encoder {
     readonly carriedModuleNames: string[] = []
     /** Whether a character this encode wrote has a chat with alternatives; `finishTree` turns it into the manifest's `chat-alt` token. */
     chatAlt = false
+    /** The items of the database this encode could not read and went on without; the scoped encode reports them. */
+    readonly skippedItems: SkippedItem[] = []
+    /**
+     * A preset list or a plugin-data value was carried from the previous encoding instead of being read, so the config
+     * inlay list cannot be derived exactly: `finishTree` writes the overflow body, which keeps the sweep from deleting
+     * an inlay the carried part may still use.
+     */
+    inlayOwnerCarried = false
     private readonly occurrences = new Map<string, number>()
     private readonly usedU = new Set<string>()
 
     /** Measurement builds only: the recorder the sink and the hooks below write into; never read back. */
     declare readonly split: SplitRecorder | undefined
 
-    constructor(readonly options: EncodeOptions, readonly previous: PreviousEncoding | null, split?: SplitRecorder) {
+    /**
+     * `skipItems`: a module, preset list, setting or plugin-data key whose data cannot be read as plain JSON is gone
+     * without, as the front and module encodes describe; off, such a fault fails the pass as it always did.
+     */
+    constructor(readonly options: EncodeOptions, readonly previous: PreviousEncoding | null, split?: SplitRecorder, readonly skipItems = false) {
         if (MEASURE && split !== undefined) {
             this.split = split
         }
@@ -377,30 +446,115 @@ export function emitCharacter(normalized: NormalizedCharacter, encoder: Encoder)
     return entry
 }
 
-export function encodePlugins(db: Database, encoder: Encoder): { refs: Ref[], plain: JsonObject[] } {
-    const refs: Ref[] = []
-    const plain: JsonObject[] = []
+/** The plugins of both lists as plain JSON, in list order, each with its position in its own list. */
+export interface NormalizedPlugins {
+    readonly items: readonly { list: PluginList, index: number, object: JsonObject }[]
+}
+
+/** Reads the plugins out of the live database; nothing here touches an `Encoder`. A fault is never skipped. */
+export function normalizePlugins(db: Database): NormalizedPlugins {
+    const items: { list: PluginList, index: number, object: JsonObject }[] = []
     for (const list of PLUGIN_LISTS) {
         listOrEmpty((db as unknown as Record<PluginList, unknown>)[list], list).forEach((plugin, index) => {
-            const object = plainObject(plugin, `${list}[${index}]`)
-            plain.push(object)
-            const body: PluginBody = { v: 1, list, plugin: object }
-            refs.push(refTuple(encoder.put(`plugin:${list}:${index}`, UNIT_TYPE.plugin, body).ref))
+            items.push({ list, index, object: plainObject(plugin, `${list}[${index}]`) })
         })
     }
+    return { items }
+}
+
+export function emitPlugins(normalized: NormalizedPlugins, encoder: Encoder): { refs: Ref[], plain: JsonObject[] } {
+    const refs: Ref[] = []
+    const plain: JsonObject[] = []
+    for (const { list, index, object } of normalized.items) {
+        plain.push(object)
+        const body: PluginBody = { v: 1, list, plugin: object }
+        refs.push(refTuple(encoder.put(`plugin:${list}:${index}`, UNIT_TYPE.plugin, body).ref))
+    }
     return { refs, plain }
+}
+
+export function encodePlugins(db: Database, encoder: Encoder): { refs: Ref[], plain: JsonObject[] } {
+    return emitPlugins(normalizePlugins(db), encoder)
+}
+
+/** The plugin storage as plain JSON; a key whose value could not be read is in `faults` and in no other part. */
+export interface NormalizedPluginStorage {
+    readonly plain: JsonObject
+    readonly faults: readonly { key: string, cause: unknown }[]
+}
+
+/**
+ * Whether the plugin storage root can be read one key at a time with the same result as the whole-object read: a plain
+ * object with no `toJSON` and no boxed primitive. Any read of the root that throws answers false, and the whole read
+ * then fails with its own error.
+ */
+function readsPerKey(root: unknown): root is Record<string, unknown> {
+    try {
+        return typeof root === 'object' && root !== null && !Array.isArray(root)
+            && !(root instanceof Number || root instanceof String || root instanceof Boolean)
+            && typeof (root as { toJSON?: unknown }).toJSON !== 'function'
+    } catch {
+        return false
+    }
+}
+
+/**
+ * Reads the plugin storage out of the live database. With `skip`, a key whose own value is a fault of the data is
+ * recorded in `faults` and the other keys are read; otherwise (or when the root cannot be read per key) the whole
+ * object is read and a fault fails here.
+ */
+export function normalizePluginStorage(db: Database, skip: boolean): NormalizedPluginStorage {
+    const root: unknown = db.pluginCustomStorage ?? {}
+    if (!skip || !readsPerKey(root)) {
+        return { plain: plainObject(root, 'pluginCustomStorage'), faults: [] }
+    }
+    const plain: JsonObject = {}
+    const faults: { key: string, cause: unknown }[] = []
+    for (const key of Object.keys(root)) {
+        try {
+            const value = toPlainJson(root[key])
+            if (value !== undefined) {
+                defineOwn(plain, key, value)
+            }
+        } catch (error) {
+            if (!isSkippableFault(error)) {
+                throw error
+            }
+            faults.push({ key, cause: error })
+        }
+    }
+    return { plain, faults }
 }
 
 /**
  * Plugin storage values are stored as they are. The values that the
  * `_coldplugin` mapping names stay in cold storage; the converter must bring
  * them into units so a restore rolls plugin storage back with the backup.
+ *
+ * A key that could not be read keeps the unit the previous encoding holds for it, named from its bucket as before; one
+ * with no such unit is left out. The puts run bucket by bucket (the units of a bucket's keys, then the bucket), which
+ * fixes the order the real keys are minted in.
  */
-export function encodePluginStorage(db: Database, encoder: Encoder): { refs: Ref[], plain: JsonObject } {
-    const storage = plainObject(db.pluginCustomStorage ?? {}, 'pluginCustomStorage')
-    const groups = groupKeysIntoBuckets(Object.keys(storage), PLUGIN_STORAGE_BUCKETS)
+export function emitPluginStorage(normalized: NormalizedPluginStorage, encoder: Encoder): { refs: Ref[], plain: JsonObject } {
+    const storage = normalized.plain
+    const held = new Map<string, ReusableUnit>()
+    for (const { key, cause } of normalized.faults) {
+        const unit = encoder.previous?.units.get(`psv:${key}`)
+        const saved = unit !== undefined && unit.type === UNIT_TYPE.pluginStorageValue
+        if (saved) {
+            held.set(key, unit)
+            encoder.inlayOwnerCarried = true
+        }
+        encoder.skippedItems.push({ scope: 'pluginData', key, label: quoted(key), saved, cause })
+    }
+    const groups = groupKeysIntoBuckets([...Object.keys(storage), ...held.keys()], PLUGIN_STORAGE_BUCKETS)
     const refs = groups.map((keys, bucket) => {
         const entries = keys.map((key) => {
+            const unit = held.get(key)
+            if (unit !== undefined) {
+                encoder.carried.set(`psv:${key}`, unit)
+                return { k: key, ref: refTuple(unit.ref) }
+            }
             const body: PluginValueBody = { v: 1, value: storage[key] }
             return { k: key, ref: refTuple(encoder.put(`psv:${key}`, UNIT_TYPE.pluginStorageValue, body).ref) }
         })
@@ -408,6 +562,10 @@ export function encodePluginStorage(db: Database, encoder: Encoder): { refs: Ref
         return refTuple(encoder.putParent(`bucket:${bucket}`, UNIT_TYPE.pluginStorageBucket, bucketBody).ref)
     })
     return { refs, plain: storage }
+}
+
+export function encodePluginStorage(db: Database, encoder: Encoder): { refs: Ref[], plain: JsonObject } {
+    return emitPluginStorage(normalizePluginStorage(db, false), encoder)
 }
 
 /** The first three elements of a Ref and of a ListRef (tail, bytes, crc) agree. */
@@ -501,6 +659,30 @@ function moduleStubRefusal(fields: Pick<ModuleEntry, 'id' | 'name'>, reason: Mod
 }
 
 /**
+ * The previous units (module, asset list and, when the entry has one, inlay list) that the index entry for `handle`
+ * names, matched by ref head and unit type with no digest needed, under the identities `encodeModules` gives them. Null
+ * when a unit is missing or the entry's refs are not lists of numbers.
+ */
+function namedModuleUnits(entry: ModuleEntry, handle: string, previous: PreviousEncoding): [string, ReusableUnit][] | null {
+    const wanted: [string, UnitType, Ref | ListRef][] = [
+        [`${IDENTITY.module}${handle}`, UNIT_TYPE.module, entry.unit],
+        [`${IDENTITY.alModule}${handle}`, UNIT_TYPE.assetList, entry.al],
+    ]
+    if (entry.il !== null) {
+        wanted.push([`${IDENTITY.ilModule}${handle}`, UNIT_TYPE.inlayList, entry.il])
+    }
+    const found: [string, ReusableUnit][] = []
+    for (const [identity, type, ref] of wanted) {
+        const unit = previousUnitByHead(previous, identity, type, ref)
+        if (unit === undefined) {
+            return null
+        }
+        found.push([identity, unit])
+    }
+    return found
+}
+
+/**
  * The index entry a module stub is carried as, with the three previous units it names (module, asset list, inlay list)
  * set into `encoder.carried` so the next acknowledged encoding still holds them. Refusals, in this order, so a stub that
  * differs from its recorded entry is always `edited` and never reaches a loader that would drop that edit:
@@ -528,20 +710,9 @@ function carryStubAt(
     if (!isRecordedStub(module, entry)) {
         throw moduleStubRefusal(fields, 'edited')
     }
-    const wanted: [string, UnitType, Ref | ListRef][] = [
-        [`${IDENTITY.module}${handle}`, UNIT_TYPE.module, entry.unit],
-        [`${IDENTITY.alModule}${handle}`, UNIT_TYPE.assetList, entry.al],
-    ]
-    if (entry.il !== null) {
-        wanted.push([`${IDENTITY.ilModule}${handle}`, UNIT_TYPE.inlayList, entry.il])
-    }
-    const found: [string, ReusableUnit][] = []
-    for (const [identity, type, ref] of wanted) {
-        const unit = previousUnitByHead(previous, identity, type, ref)
-        if (unit === undefined) {
-            throw moduleStubRefusal(fields, 'uncarriable')
-        }
-        found.push([identity, unit])
+    const found = namedModuleUnits(entry, handle, previous)
+    if (found === null) {
+        throw moduleStubRefusal(fields, 'uncarriable')
     }
     if (handles === null || !stubEligible(entry, handles, encoder.options.lists.moduleListVersions)) {
         throw moduleStubRefusal(fields, 'uncarriable')
@@ -559,18 +730,109 @@ function previousModuleEntries(encoder: Encoder): ReadonlyMap<string, ModuleEntr
     return previousIndex === undefined ? null : new Map(moduleHandles(previousIndex.entries).map((handle, position) => [handle, previousIndex.entries[position]]))
 }
 
+/** What an unreadable module needs from the whole pass: whether its id is unique, and how often the previous index holds it. Each is taken once, when first asked. */
+interface ModuleFaults {
+    liveUnique(): ReadonlySet<string>
+    previousCount(id: string): number
+}
+
+/** The id of a live module slot, '' when it has none; null when the read throws. */
+function rawModuleId(slot: unknown): string | null {
+    try {
+        const id = typeof slot === 'object' && slot !== null ? (slot as { id?: unknown }).id : undefined
+        return typeof id === 'string' ? id : ''
+    } catch {
+        return null
+    }
+}
+
+/**
+ * The module list snapshot of one pass. A module whose id cannot be read is counted as having none: it fails its own
+ * turn and takes the whole set with it, so it never makes another module's id look unique.
+ */
+function moduleFaultsOf(slots: readonly unknown[], previousEntries: ReadonlyMap<string, ModuleEntry> | null): ModuleFaults {
+    let unique: ReadonlySet<string> | null = null
+    let counts: Map<string, number> | null = null
+    return {
+        liveUnique() {
+            unique ??= uniqueIdHandles(slots.map(slot => ({ id: rawModuleId(slot) ?? '' })))
+            return unique
+        },
+        previousCount(id) {
+            if (counts === null) {
+                counts = new Map<string, number>()
+                for (const entry of previousEntries?.values() ?? []) {
+                    counts.set(entry.id, (counts.get(entry.id) ?? 0) + 1)
+                }
+            }
+            return counts.get(id) ?? 0
+        },
+    }
+}
+
+/**
+ * What a pass does with a module it cannot read as plain JSON, when the pass may go on without it. The module is
+ * carried singly only when it can be told from every other module on both sides: its id is non-empty, not positional,
+ * and held once by the live list and once by the previous index, and every unit its previous entry names is held. A
+ * module the previous index does not hold at all is left out. Anything else throws `ModuleSetUnsavableError`, and the
+ * caller carries the whole acknowledged module set. `seen` counts the ids met so far, as `encodeModuleAt` does.
+ */
+function skipModule(
+    raw: unknown, fault: unknown, seen: Map<string, number>, encoder: Encoder, previousEntries: ReadonlyMap<string, ModuleEntry> | null,
+    faults: ModuleFaults,
+): ModuleEntry | null {
+    const id = rawModuleId(raw)
+    if (id === null) {
+        throw new ModuleSetUnsavableError('', '', fault)
+    }
+    seen.set(id, (seen.get(id) ?? 0) + 1)
+    const previous = encoder.previous
+    if (previousEntries === null || previous === null) {
+        throw fault
+    }
+    const handle = `${id}#0`
+    const name = guardedName(raw)
+    if (faults.liveUnique().has(handle)) {
+        const count = faults.previousCount(id)
+        if (count === 0) {
+            encoder.skippedItems.push({ scope: 'module', key: id, label: quoted(name ?? id), saved: false, cause: fault })
+            return null
+        }
+        const entry = previousEntries.get(handle)
+        const found = count === 1 && entry !== undefined && entry.id === id && Array.isArray(entry.unit) && Array.isArray(entry.al)
+            && (entry.il === null || Array.isArray(entry.il)) ? namedModuleUnits(entry, handle, previous) : null
+        if (entry !== undefined && found !== null) {
+            for (const [identity, unit] of found) {
+                encoder.carried.set(identity, unit)
+            }
+            encoder.skippedItems.push({ scope: 'module', key: id, label: quoted(entry.name !== '' ? entry.name : entry.id), saved: true, cause: fault })
+            return { ...entry, unit: [...entry.unit], al: [...entry.al], il: entry.il === null ? null : [...entry.il] }
+        }
+    }
+    throw new ModuleSetUnsavableError(id, name ?? '', fault)
+}
+
 /**
  * One module's turn: its plain copy, unit, both lists and index entry, all produced in this one synchronous call so a
  * module is never torn. `seen` counts the ids met so far and so must run in module order. The sync and the yielding
- * module set both loop this step.
+ * module set both loop this step. With `faults` set, a module whose data cannot be read is skipped (see `skipModule`)
+ * and the turn gives no entry.
  */
 function encodeModuleAt(
     raw: unknown, index: number, seen: Map<string, number>, encoder: Encoder, previousEntries: ReadonlyMap<string, ModuleEntry> | null,
-    handles: ReadonlySet<string> | null,
-): ModuleEntry {
+    handles: ReadonlySet<string> | null, faults: ModuleFaults | null,
+): ModuleEntry | null {
     const split = MEASURE ? encoder.split : undefined
     const turnStarted = MEASURE && split !== undefined ? split.now() : 0
-    const module = plainObject(raw, `modules[${index}]`)
+    let module: JsonObject
+    try {
+        module = plainObject(raw, `modules[${index}]`)
+    } catch (error) {
+        if (faults === null || !isSkippableFault(error)) {
+            throw error
+        }
+        return skipModule(raw, error, seen, encoder, previousEntries, faults)
+    }
     if (MEASURE && split !== undefined) {
         split.addMs('splitModuleReadMs', split.now() - turnStarted)
     }
@@ -616,7 +878,15 @@ export function encodeModules(db: Database, encoder: Encoder): ModuleEntry[] {
     const previousEntries = previousModuleEntries(encoder)
     const slots = listOrEmpty(db.modules, 'modules')
     const handles = moduleStubHandles(slots)
-    return slots.map((raw, index) => encodeModuleAt(raw, index, seen, encoder, previousEntries, handles))
+    const faults = encoder.skipItems ? moduleFaultsOf(slots, previousEntries) : null
+    const entries: ModuleEntry[] = []
+    slots.forEach((raw, index) => {
+        const entry = encodeModuleAt(raw, index, seen, encoder, previousEntries, handles, faults)
+        if (entry !== null) {
+            entries.push(entry)
+        }
+    })
+    return entries
 }
 
 /**
@@ -658,25 +928,124 @@ export interface FrontParts {
     taskPresets: Ref[]
     plugins: { refs: Ref[], plain: JsonObject[] }
     pluginStorage: { refs: Ref[], plain: JsonObject }
+    /** The bot preset list is the previous encoding's, so `config.botPresetsId` must not name any stored preset (see `finishTree`). */
+    botPresetsCarried: boolean
 }
 
-export function encodeFront(db: Database, encoder: Encoder): FrontParts {
-    const presets: Ref[] = []
-    const presetPlain: JsonObject[] = []
-    db.botPresets.forEach((preset, index) => {
-        const object = plainObject(preset, `botPresets[${index}]`)
-        presetPlain.push(object)
-        const body: PresetBody = { v: 1, preset: object }
-        presets.push(refTuple(encoder.put(`preset:${index}`, UNIT_TYPE.preset, body).ref))
-    })
+/** One preset list read out of the live database: every preset as plain JSON, or the faults of the list. */
+interface NormalizedPresets {
+    readonly plain: readonly JsonObject[]
+    /** The first fault of the list and the quoted names of every preset that faulted; null when the list is whole. */
+    readonly fault: { cause: unknown, labels: readonly string[] } | null
+}
+
+/** Reads the front of the live database; nothing here touches an `Encoder`, so a skip never has to undo a put. */
+interface NormalizedFront {
+    readonly presets: NormalizedPresets
+    readonly taskPresets: NormalizedPresets
+    readonly plugins: NormalizedPlugins
+    readonly pluginStorage: NormalizedPluginStorage
+}
+
+/**
+ * The presets of one list as plain JSON. With `skip`, a preset that is a fault of the data is recorded under its name
+ * (else its position) and the rest of the list is still read; otherwise the first fault fails here.
+ */
+function normalizePresets(list: readonly unknown[], where: 'botPresets' | 'taskPresets', skip: boolean): NormalizedPresets {
+    const plain: JsonObject[] = []
+    const labels: string[] = []
+    const causes: unknown[] = []
     // The preset object is written whole, as a bot preset is: a key this build does not know travels with it.
-    const taskPresets: Ref[] = (db.taskPresets ?? []).map((preset, index) => {
-        const body: PresetBody = { v: 1, preset: plainObject(preset, `taskPresets[${index}]`) }
-        return refTuple(encoder.put(`taskPreset:${index}`, UNIT_TYPE.taskPreset, body).ref)
+    list.forEach((preset, index) => {
+        try {
+            plain.push(plainObject(preset, `${where}[${index}]`))
+        } catch (error) {
+            if (!skip || !isSkippableFault(error)) {
+                throw error
+            }
+            causes.push(error)
+            labels.push(quoted(guardedName(preset) ?? `${where}[${index}]`))
+        }
     })
-    const plugins = encodePlugins(db, encoder)
-    const pluginStorage = encodePluginStorage(db, encoder)
-    return { presets, presetPlain, taskPresets, plugins, pluginStorage }
+    return { plain, fault: causes.length === 0 ? null : { cause: causes[0], labels } }
+}
+
+function normalizeFront(db: Database, encoder: Encoder): NormalizedFront {
+    // Without an earlier encoding there is no saved copy to fall back on: the fault fails the pass.
+    const skip = encoder.skipItems && encoder.previous !== null
+    const presets = normalizePresets(db.botPresets, 'botPresets', skip)
+    const taskPresets = normalizePresets(db.taskPresets ?? [], 'taskPresets', skip)
+    const plugins = normalizePlugins(db)
+    const pluginStorage = normalizePluginStorage(db, skip)
+    return { presets, taskPresets, plugins, pluginStorage }
+}
+
+/**
+ * The previous encoding's list of presets, taken as it stands: the refs the previous manifest names, each checked
+ * against the previous unit under the same identity by ref head and type, and the units set into `encoder.carried` so
+ * the next acknowledged encoding still holds them. Null when there is no previous manifest or a unit does not match: a
+ * partial or invented list is never written. An acknowledged empty list is carried as the empty list.
+ */
+function carriedPresetRefs(encoder: Encoder, kind: 'presets' | 'taskPresets'): Ref[] | null {
+    const previous = encoder.previous
+    const manifest = previous?.objects?.manifest
+    if (previous === null || manifest === undefined) {
+        return null
+    }
+    const held = kind === 'presets' ? manifest.fixed.presets : manifest.fixed.taskPresets ?? []
+    const prefix = kind === 'presets' ? 'preset:' : 'taskPreset:'
+    const type = kind === 'presets' ? UNIT_TYPE.preset : UNIT_TYPE.taskPreset
+    const refs = held.map(ref => refTuple(ref))
+    const found: [string, ReusableUnit][] = []
+    for (let index = 0; index < refs.length; index++) {
+        const unit = previousUnitByHead(previous, `${prefix}${index}`, type, refs[index])
+        if (unit === undefined) {
+            return null
+        }
+        found.push([`${prefix}${index}`, unit])
+    }
+    for (const [identity, unit] of found) {
+        encoder.carried.set(identity, unit)
+    }
+    return refs
+}
+
+/**
+ * Puts one preset list, or carries the previous one when a preset of it could not be read: the whole list is held
+ * (a preset's position is its identity, so a shifted list cannot be saved in part), and the live list's other presets
+ * are not written. Without a carry the first fault is thrown.
+ */
+function emitPresets(
+    normalized: NormalizedPresets, kind: 'presets' | 'taskPresets', encoder: Encoder,
+): { refs: Ref[], plain: JsonObject[], carried: boolean } {
+    if (normalized.fault !== null) {
+        const refs = carriedPresetRefs(encoder, kind)
+        if (refs === null) {
+            throw normalized.fault.cause
+        }
+        encoder.skippedItems.push({
+            scope: kind, key: kind, label: normalized.fault.labels.join(', '), saved: true, cause: normalized.fault.cause,
+        })
+        encoder.inlayOwnerCarried = true
+        return { refs, plain: [], carried: true }
+    }
+    const refs = normalized.plain.map((object, index) => {
+        const body: PresetBody = { v: 1, preset: object }
+        return kind === 'presets'
+            ? refTuple(encoder.put(`preset:${index}`, UNIT_TYPE.preset, body).ref)
+            : refTuple(encoder.put(`taskPreset:${index}`, UNIT_TYPE.taskPreset, body).ref)
+    })
+    return { refs, plain: [...normalized.plain], carried: false }
+}
+
+/** Every read of the live database that can throw happens in `normalizeFront`; `emitFront` then puts in the order the real keys are minted in. */
+export function encodeFront(db: Database, encoder: Encoder): FrontParts {
+    const normalized = normalizeFront(db, encoder)
+    const bot = emitPresets(normalized.presets, 'presets', encoder)
+    const task = emitPresets(normalized.taskPresets, 'taskPresets', encoder)
+    const plugins = emitPlugins(normalized.plugins, encoder)
+    const pluginStorage = emitPluginStorage(normalized.pluginStorage, encoder)
+    return { presets: bot.refs, presetPlain: bot.plain, taskPresets: task.refs, plugins, pluginStorage, botPresetsCarried: bot.carried }
 }
 
 /** The module index as the manifest names it and as the next encode carries unknown fields from it. */
@@ -732,9 +1101,13 @@ export async function encodeModuleSetYielding(db: Database, encoder: Encoder, yi
     const seen = new Map<string, number>()
     const previousEntries = previousModuleEntries(encoder)
     const handles = moduleStubHandles(modules)
+    const faults = encoder.skipItems ? moduleFaultsOf(modules, previousEntries) : null
     const moduleEntries: ModuleEntry[] = []
     for (let index = 0; index < modules.length; index++) {
-        moduleEntries.push(encodeModuleAt(modules[index], index, seen, encoder, previousEntries, handles))
+        const entry = encodeModuleAt(modules[index], index, seen, encoder, previousEntries, handles, faults)
+        if (entry !== null) {
+            moduleEntries.push(entry)
+        }
         await yieldFn?.()
     }
     return finishModuleSet(moduleEntries, encoder)
@@ -774,6 +1147,32 @@ function putShard(encoder: Encoder, index: number, shard: Shard, previousShard: 
         }
     }
     return encoder.putParent(identity, UNIT_TYPE.shard, shard, 'shard')
+}
+
+/**
+ * The config fields of `db`. With `skipItems` and a previous config to fall back on, a field that cannot be read keeps
+ * its saved value (see `configFieldsSkipping`); without one the field fails the pass. While the bot preset list is
+ * carried, `botPresetsId` is the first index past the end of the carried list: it names no stored preset, so a later
+ * preset switch cannot write the working settings into one, and boot repair appends them as a new preset instead.
+ */
+function configOf(db: Database, encoder: Encoder, botPresetsCarried: boolean): JsonObject {
+    const held = encoder.previous?.objects?.config
+    let config: JsonObject
+    if (encoder.skipItems && held !== undefined) {
+        const { fields, skipped } = configFieldsSkipping(db, held)
+        encoder.skippedItems.push(...skipped)
+        config = fields
+    } else {
+        config = configFields(db)
+    }
+    if (botPresetsCarried) {
+        const length = encoder.previous?.objects?.manifest?.fixed.presets.length
+        if (length === undefined) {
+            throw new CodecInputError('The carried bot presets have no previous manifest to name them.')
+        }
+        defineOwn(config, 'botPresetsId', length)
+    }
+    return config
 }
 
 /**
@@ -822,7 +1221,7 @@ export function finishTree(
         split.addMs('splitFinishFixedMs', split.now() - fixedStarted)
     }
     const configStarted = MEASURE && split !== undefined ? split.now() : 0
-    const config = configFields(db)
+    const config = configOf(db, encoder, front.botPresetsCarried)
     const configOwner: ConfigOwner = {
         config,
         presets: presetPlain,
@@ -834,7 +1233,8 @@ export function finishTree(
     }
     const configUnit = encoder.put('config', UNIT_TYPE.configRoot, { v: 1, f: config } satisfies ConfigBody)
     const configAl = encoder.putAssetList('al:config', options.lists.configAssets(configOwner))
-    const fixedIl = encoder.putInlayList('il:config', options.lists.configInlays(configOwner))
+    // A carried preset list or plugin-data value is not in `configOwner`, so the list cannot be exact: it is the overflow body.
+    const fixedIl = encoder.putInlayList('il:config', encoder.inlayOwnerCarried ? overflowInlayList() : options.lists.configInlays(configOwner))
 
     if (MEASURE && split !== undefined) {
         split.addMs('splitFinishConfigMs', split.now() - configStarted)
@@ -877,7 +1277,7 @@ export function finishTree(
         index: {
             units: indexUnits,
             entities: encoder.entities,
-            objects: { manifest, shards: shardBodies, moduleIndex: moduleSet.body },
+            objects: { manifest, shards: shardBodies, moduleIndex: moduleSet.body, config },
         },
     }
 }

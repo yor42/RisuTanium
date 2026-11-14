@@ -2870,6 +2870,19 @@ export const languageSpanish = {
         `RisuTanium no puede guardar a ${name} ahora mismo: sus datos no son válidos y puede que un plugin los haya cambiado. Tus últimos cambios en este personaje no se están guardando y se perderán si la pestaña se cierra o se recarga antes de que se solucione. Se conserva la última copia guardada, todo lo demás se sigue guardando y RisuTanium sigue intentándolo en silencio.`,
     saveCharacterNeverSavedNotice: (name: string) =>
         `RisuTanium no puede guardar a ${name} en absoluto: nunca se ha guardado y sus datos no son válidos (puede que un plugin los haya cambiado). No se está guardando, así que se perderá si la pestaña se cierra o se recarga antes de que se solucione. Todo lo demás se sigue guardando y RisuTanium sigue intentándolo en silencio.`,
+    saveItemUnsavedNotice: (what: string) =>
+        `RisuTanium no puede guardar ${what} ahora mismo: sus datos no son válidos y puede que un plugin los haya cambiado. Tus últimos cambios no se están guardando y se perderán si la pestaña se cierra o se recarga antes de que se solucione. Se conserva la última copia guardada, todo lo demás se sigue guardando y RisuTanium sigue intentándolo en silencio.`,
+    saveItemNeverSavedNotice: (what: string) =>
+        `RisuTanium no puede guardar ${what} en absoluto: nunca se ha guardado y sus datos no son válidos (puede que un plugin los haya cambiado). No se está guardando, así que se perderá si la pestaña se cierra o se recarga antes de que se solucione. Todo lo demás se sigue guardando y RisuTanium sigue intentándolo en silencio.`,
+    saveModulesHeldNotice: (name: string) =>
+        `RisuTanium no puede guardar el módulo ${name}: sus datos no son válidos y puede que un plugin los haya cambiado. Tus personajes, chats y ajustes se siguen guardando, pero los cambios en los módulos no se guardan hasta que se solucione, y se perderán si la pestaña se cierra o se recarga antes. Se conservan los últimos módulos guardados.`,
+    savePresetsHeldNotice: (name: string) =>
+        `RisuTanium no puede guardar el preset ${name}: sus datos no son válidos y puede que un plugin los haya cambiado. Todo lo demás se sigue guardando, pero los cambios en los presets no se guardan hasta que se solucione, y se perderán si la pestaña se cierra o se recarga antes. Se conservan los últimos presets guardados. Si la página se recarga antes, tus ajustes actuales se conservan como un preset nuevo.`,
+    saveTaskPresetsHeldNotice: (name: string) =>
+        `RisuTanium no puede guardar el preset ${name}: sus datos no son válidos y puede que un plugin los haya cambiado. Todo lo demás se sigue guardando, pero los cambios en los presets no se guardan hasta que se solucione, y se perderán si la pestaña se cierra o se recarga antes. Se conservan los últimos presets guardados.`,
+    saveItemModuleLabel: (name: string) => `el módulo "${name}"`,
+    saveItemSettingLabel: (field: string) => `el ajuste "${field}"`,
+    saveItemPluginDataLabel: (key: string) => `los datos de plugin "${key}"`,
     personasRepairedNotice: (count: number) =>
         `RisuTanium omitió ${count} ${count === 1 ? 'persona que no era un dato válido' : 'personas que no eran datos válidos'}. Puede que un plugin ${count === 1 ? 'la' : 'las'} haya escrito.`,
     personaListEmptyNotice: `No quedó ninguna persona utilizable en la lista de personas, así que RisuTanium añadió una a partir de tu nombre de usuario e icono y la seleccionó.`,
