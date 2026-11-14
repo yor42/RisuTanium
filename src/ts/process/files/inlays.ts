@@ -8,6 +8,7 @@ import { language } from "src/lang";
 import type { ByteStore } from "../../storage/store/contract";
 import { isAndroidTransport } from "../../storage/tauriByteTransport";
 import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES } from "../../storage/assetUrlGate";
+import { displayMimeOfInlay } from "../../storage/assetDisplayMime";
 import {
     cacheInlayRender,
     cachedInlayRender,
@@ -285,7 +286,17 @@ export async function getInlayAssetBlob(id: string){
 
 export type { InlayRender, InlayRenderSource } from "./inlayRenderCache";
 
-/** The render of an inlay asset read as bytes or from the old store: a signature has no URL, anything else is shown through an object URL over its Blob: the old store's own Blob as it is, or a Blob built in memory from bytes or a data URI. */
+/**
+ * An object URL over a zero-copy retyped view of `blob`. The type of the URL is
+ * the closed display table's for the inlay's kind and ext; the Blob's own type
+ * (a restored backup's, an old store's, a data URI header's) never decides how
+ * the page treats the URL.
+ */
+function objectUrlOfInlayBlob(type: unknown, ext: unknown, blob: Blob): string {
+    return URL.createObjectURL(blob.slice(0, blob.size, displayMimeOfInlay(type, ext)))
+}
+
+/** The render of an inlay asset read as bytes or from the old store: a signature has no URL, anything else is shown through an object URL over a retyped view of its Blob: the old store's own Blob, or a Blob built in memory from bytes or a data URI. */
 function renderOfAsset(img: InlayAsset): { render: InlayRender, objectUrl: string | null } | null {
     if(img.type === 'signature'){
         return { render: { type: 'signature', url: '', source: 'signature' }, objectUrl: null }
@@ -294,7 +305,7 @@ function renderOfAsset(img: InlayAsset): { render: InlayRender, objectUrl: strin
     if(shown === null){
         return null
     }
-    const url = URL.createObjectURL(shown.data)
+    const url = objectUrlOfInlayBlob(img.type, img.ext, shown.data)
     return { render: { type: img.type, url, source: 'memory-blob' }, objectUrl: url }
 }
 
@@ -324,7 +335,7 @@ async function deliverStoredInlay(store: ByteStore, record: InlayRecord): Promis
         try {
             const blob = await store.readBlob(record.body)
             if(blob !== null && blob.size === record.len){
-                const url = URL.createObjectURL(blob)
+                const url = objectUrlOfInlayBlob(type, record.fields.ext, blob)
                 return { render: { type, url, source: 'stored-blob' }, objectUrl: url }
             }
         } catch {
