@@ -115,6 +115,7 @@ vi.mock(import('src/ts/process/index.svelte'), () => ({
 
 import { importPlugin, loadPlugins, pluginV2, togglePluginEnabled } from 'src/ts/plugins/plugins.svelte'
 import { carrySavedValues } from 'src/ts/plugins/pluginListMerge'
+import { checkPluginUpdates } from 'src/ts/plugins/pluginUpdateCheck'
 import { DBState } from 'src/ts/stores.svelte'
 import * as alert from 'src/ts/alert'
 
@@ -227,5 +228,20 @@ describe('the other plugin versions are unchanged', () => {
         await vi.waitFor(() => expect(loadV3).toHaveBeenCalled())
         const handed = loadV3.mock.calls[0][0] as RisuPlugin[]
         expect(handed.map((plugin) => [plugin.name, plugin.version, plugin.enabled])).toEqual([['legacy', '3.0', true]])
+    })
+
+    test('guard: an update check over a V2.1 entry with an update address leaves the saved list byte-equal', async () => {
+        const old = { ...entry('', '2.1', true), updateURL: 'https://example.invalid/legacy.js', versionOfPlugin: '1.0.0' }
+        installDb([old])
+        const before = JSON.stringify(DBState.db.plugins)
+
+        const record = await checkPluginUpdates(DBState.db.plugins, {
+            fetcher: async () => ({ status: 200, text: async () => '//@name legacy\n//@api 3.0\n//@version 2.0.0\n' }),
+            now: () => 1,
+        })
+
+        expect(record.outcomes.map((outcome) => outcome.kind)).toEqual(['update'])
+        expect(JSON.stringify(DBState.db.plugins)).toBe(before)
+        expect(loadV3).not.toHaveBeenCalled()
     })
 })

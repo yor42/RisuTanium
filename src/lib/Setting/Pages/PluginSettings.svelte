@@ -15,6 +15,7 @@
     import { hotReloadPluginFiles } from "src/ts/plugins/apiV3/developMode";
     import { pluginExportFile } from "src/ts/plugins/pluginExport";
     import { openPluginSettingsMenu } from "src/ts/plugins/pluginSettingsFile";
+    import { downloadPluginStarter } from "src/ts/setting/pluginStarterDownload";
 
     let showParams = $state([])
 </script>
@@ -218,7 +219,7 @@
                                 }
                             >
                                 {#each plugin.arguments[arg] as a}
-                                    <OptionInput value={a}>a</OptionInput>
+                                    <OptionInput value={a}>{a}</OptionInput>
                                 {/each}
                             </SelectInput>
                         {:else if plugin.arguments[arg] === "string"}
@@ -312,12 +313,16 @@
                 case 0:
                     await hotReloadPluginFiles()
                     break;
-                case 1:{
-                    const a = document.createElement('a');
-                    a.href = '/plugin_start.7z';
-                    a.download = 'plugin_starter.7z';
-                    document.body.appendChild(a);
-                }
+                case 1:
+                    await downloadPluginStarter({
+                        fetcher: (url) => fetch(url),
+                        download: async (fileName, data) => {
+                            const { downloadFile } = await import("src/ts/globalApi.svelte")
+                            return downloadFile(fileName, data)
+                        },
+                        fail: () => alertError(language.pluginsPage.starterFailed),
+                    })
+                    break;
             }
         }}
         class="hover:text-textcolor cursor-pointer"
