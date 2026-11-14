@@ -424,6 +424,18 @@ describe('source lists and view targets (T-A5)', () => {
         expect(byId.get('page.display')?.target).toEqual({ index: 3, rowId: null })
     })
 
+    test('the Theme pack row is searchable on the Display page and named by its keywords', () => {
+        const byId = new Map(everything.map((source) => [source.id, source]))
+        expect(byId.get('display.themePack')?.target).toEqual({ index: 3, rowId: 'display.themePack' })
+        changeLanguage('en')
+        const tables: LanguageTables = { current: language, english: languageEnglish, korean: languageKorean }
+        const entries = buildSearchEntries(everything, tables)
+        expect(entries.find((candidate) => candidate.id === 'display.themePack')?.label).toBe(languageEnglish.themePackRowTitle)
+        for (const query of ['theme pack', 'risutheme']) {
+            expect(idsOf(searchSettings(entries, query), 'setting'), query).toContain('display.themePack')
+        }
+    })
+
     test('every source id is unique and every legacy item with a label is placed once', () => {
         const ids = everything.map((source) => source.id)
         expect(new Set(ids).size).toBe(ids.length)

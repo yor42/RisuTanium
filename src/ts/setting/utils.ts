@@ -78,6 +78,12 @@ export function checkCondition(item: SettingItem, ctx: SettingContext): boolean 
     return item.condition(ctx);
 }
 
+/**
+ * Items that exist as settings rows but are never offered as chat sidebar controls: a row that runs a whole
+ * install/remove flow is not a sidebar control.
+ */
+export const SIDEBAR_EXCLUDED_IDS: ReadonlySet<string> = new Set(['display.themePack']);
+
 export function getFullSettingsData(searchTerm = '') {
     const full =  accessibilitySettingsItems.concat(
         advancedSettingsItems,
@@ -88,7 +94,7 @@ export function getFullSettingsData(searchTerm = '') {
         modelSpecificParameterItems,
         chatFormatSettingsItems,
         displaySettingsItems,
-    );
+    ).filter(item => !SIDEBAR_EXCLUDED_IDS.has(item.id));
 
     if(!searchTerm) return full;
 

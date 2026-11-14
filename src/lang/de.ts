@@ -2823,6 +2823,86 @@ export const languageGerman = {
         `${count} Aufgaben-Voreinstellung(en) sind nur auf diesem Gerät gespeichert, und eine Backup-Datei hat keinen Platz dafür, daher würden sie in diesem Backup fehlen. Sie bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
         `${count} Design-Paket(e) sind nur auf diesem Gerät gespeichert, und eine Backup-Datei hat keinen Platz dafür oder für ihre Dateien, daher würden sie in diesem Backup fehlen. Sie bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "themePackRowTitle": "Design-Paket",
+    "themePackRowHelp": (toggle: string, classicPage: string, newPage: string, newSection: string) =>
+        `Installieren Sie eine .risutheme-Datei, um den neuen Chatbildschirm neu zu gestalten. Sie wird nur angezeigt, wenn „${toggle}“ eingeschaltet ist (unter ${classicPage} im klassischen Einstellungsbildschirm oder unter ${newPage} > ${newSection} im neuen) und das Standard-Chat-Design verwendet wird. Andere Bildschirme, der klassische Chatbildschirm, Gruppenchats und der Playground behalten das integrierte Aussehen. Eigenes CSS wird weiterhin zusätzlich angewendet.`,
+    "themePackRowLoadFailed": "Die Einstellungen des Design-Pakets konnten nicht geladen werden. Schließen Sie die Einstellungen und öffnen Sie sie erneut.",
+    "themePackActiveLegend": "Aktives Design-Paket",
+    "themePackNone": "Keines",
+    "themePackBuiltIn": "Integriert",
+    "themePackInstall": "Aus Datei installieren",
+    "themePackRemove": "Entfernen",
+    "themePackVersion": (version: string) => `Version ${version}`,
+    "themePackModesLight": "Nur hell",
+    "themePackModesDark": "Nur dunkel",
+    "themePackModesBoth": "Hell und dunkel",
+    "themePackSize": (size: string) => `Größe: ${size}`,
+    "themePackLicense": (license: string) => `Lizenz: ${license}`,
+    "themePackAttribution": (attribution: string) => `Urheberhinweis: ${attribution}`,
+    "themePackFonts": "Schriftlizenzen",
+    "themePackFontLicense": (file: string, license: string) => `${file}: ${license}`,
+    "themePackUnreadableName": "Nicht lesbares Design-Paket",
+    "themePackUnreadableDetail": "Dieser gespeicherte Eintrag kann nicht gelesen werden. Sie können ihn entfernen.",
+    "themePackChecking": "Design-Paket wird geprüft...",
+    "themePackLargeConfirm": (size: string) =>
+        `Dieses Design-Paket ist außergewöhnlich groß: Entpackt umfasst es ${size}. Trotzdem installieren? Es wurde noch nichts geschrieben.`,
+    "themePackReplaceConfirm": (name: string) => `Das installierte Design-Paket „${name}“ durch diese Datei ersetzen?`,
+    "themePackInstalled": (name: string) => `„${name}“ wurde installiert.`,
+    "themePackSkippedAreas": (files: string) =>
+        `Dieses Paket enthält außerdem ${files}. Diese Version gestaltet nur den neuen Chatbildschirm; diese Teile werden mit dem Paket aufbewahrt.`,
+    "themePackRefusedHeader": "Diese Datei wurde nicht installiert:",
+    "themePackBusy": "Eine andere Aufgabe läuft gerade (ein Speichern, eine Wiederherstellung oder die Installation eines anderen Design-Pakets). Versuchen Sie es erneut, wenn sie beendet ist.",
+    "themePackInstallFailedFiles": "Das Design-Paket wurde nach dem Speichern nicht korrekt zurückgelesen und daher nicht installiert. Versuchen Sie es erneut.",
+    "themePackWriteFailed": "Das Design-Paket konnte nicht gespeichert werden und wurde daher nicht installiert.",
+    "themePackListUnreadable": "Die gespeicherte Liste der Design-Pakete kann nicht gelesen werden, daher wurde nichts installiert.",
+    "themePackInstallFailed": "Das Design-Paket konnte wegen eines unerwarteten Fehlers nicht installiert werden.",
+    "themePackRemoveConfirm": (name: string) =>
+        `Das Design-Paket „${name}“ entfernen? Seine Dateien werden bei einer späteren Speicherbereinigung gelöscht.`,
+    "themePackRemoveChanged": "Die Liste der Design-Pakete hat sich geändert, während Sie entschieden haben, daher wurde nichts entfernt. Versuchen Sie es erneut.",
+    "themePackBroken": (name: string, reason: string) =>
+        `Das Design-Paket „${name}“ wurde nicht angewendet: ${reason}. Es bleibt gespeichert; entfernen Sie es hier, wenn Sie es nicht mehr brauchen.`,
+    "themePackBrokenFiles": "seine Dateien sind beschädigt oder fehlen",
+    "themePackBrokenRefused": "es hat die Prüfung nicht bestanden",
+    "themePackBrokenUnreadable": "sein gespeicherter Eintrag kann nicht gelesen werden",
+    "themePackBrokenCouldNotCheck": "es konnte nicht geprüft werden (die Prüfung wurde abgebrochen oder dauerte zu lange)",
+    "themePackRefuseNotAPack": "Diese Datei ist kein Design-Paket (.risutheme).",
+    "themePackRefuseNotThisKind": "Diese ZIP-Datei ist kein Design-Paket: Ihre manifest.json enthält nicht \"kind\": \"risutheme\".",
+    "themePackRefuseDamaged": "Die Design-Paket-Datei ist beschädigt und kann nicht sicher gelesen werden.",
+    "themePackRefuseUnsafeName": (name: string) =>
+        `„${name}“ ist kein erlaubter Dateiname in einem Design-Paket. Verwenden Sie Buchstaben, Ziffern, Punkt, Bindestrich und Unterstrich, auf oberster Ebene oder direkt in fonts/ oder images/.`,
+    "themePackRefuseDuplicateName": (name: string) =>
+        `„${name}“ kommt in diesem Paket mehr als einmal vor (Namen werden ohne Beachtung der Groß- und Kleinschreibung verglichen).`,
+    "themePackRefuseEncrypted": "Verschlüsselte Design-Pakete werden nicht unterstützt.",
+    "themePackRefuseCompression": (name: string) =>
+        `${name} verwendet ein Komprimierungsverfahren, das diese App nicht liest. Speichern Sie das Paket mit gewöhnlicher ZIP-Komprimierung (Deflate).`,
+    "themePackRefuseTooManyFiles": (limit: number) =>
+        `Dieses Paket enthält mehr als ${limit} Dateien, mehr als ein Design-Paket enthalten darf.`,
+    "themePackRefuseZip64": "Dieses Paket verwendet ZIP64, das ein Design-Paket nie benötigt. Speichern Sie es als gewöhnliche ZIP-Datei.",
+    "themePackRefuseFileTooLarge": (name: string, limit: string) =>
+        `${name} ist größer als ${limit}, der Höchstgröße für eine einzelne Datei in einem Design-Paket.`,
+    "themePackRefusePackTooLarge": (limit: string) =>
+        `Diese Datei umfasst entpackt mehr als ${limit}, weit mehr als jedes echte Design-Paket, daher wurde sie nicht geöffnet.`,
+    "themePackRefuseManifestMissing": "Dieses Paket hat keine manifest.json auf oberster Ebene.",
+    "themePackRefuseManifestUnreadable": "manifest.json kann nicht als JSON-Text gelesen werden.",
+    "themePackRefuseManifestField": (field: string) => `manifest.json: „${field}“ fehlt oder ist ungültig.`,
+    "themePackRefuseNewerFormat": "Dieses Design-Paket wurde für eine neuere Version der App erstellt. Aktualisieren Sie die App, um es zu installieren.",
+    "themePackRefuseUnknownFile": (name: string) =>
+        `${name} ist keine Datei, die ein Design-Paket enthalten darf (manifest.json, Stylesheets für Bereiche, fonts/, images/ sowie .txt- oder .md-Lizenzdateien).`,
+    "themePackRefuseSvg": (name: string) => `${name} ist ein SVG-Bild, das ein Design-Paket nicht enthalten darf.`,
+    "themePackRefuseWrongContent": (name: string) => `Der Inhalt von ${name} passt nicht zu seinem Dateityp.`,
+    "themePackRefuseNotUtf8": (name: string) => `${name} ist kein UTF-8-Text.`,
+    "themePackRefuseTarget": (sheet: string, target: string) =>
+        `${sheet} verweist auf „${target}“, das keine Datei in diesem Paket ist. Schreiben Sie den genauen Dateinamen, zum Beispiel url("fonts/Name.woff2").`,
+    "themePackRefuseWrongKind": (sheet: string, target: string) =>
+        `${sheet} verweist auf „${target}“, das keine Schrift- oder Bilddatei ist.`,
+    "themePackRefuseFontLicense": (file: string) =>
+        `Die Schrift ${file} benötigt genau einen Lizenzeintrag in manifest.json.`,
+    "themePackRefuseLicenseWithoutFont": (file: string) =>
+        `manifest.json führt eine Lizenz für ${file} auf, das keine Schrift in diesem Paket ist.`,
+    "themePackRefuseNoArea": "Dieses Paket hat keine chat.css, daher gibt es nichts, was diese Version anwenden kann.",
+    "themePackCouldNotCheck": "Das Paket konnte nicht geprüft werden (die Prüfung wurde abgebrochen oder dauerte zu lange).",
+    "themePackSheetRefused": (sheet: string) => `${sheet} wurde von der Stilprüfung abgelehnt:`,
+    "themePackLintLine": (selector: string, prop: string, why: string) => `${selector} ${prop}: ${why}`,
     "backupAlternativesLeftOut": (count: number, names: string[]) =>
         `${count} Chat(s) hatten alternative Antworten, die während des Backups gefunden wurden, und eine Backup-Datei hat keinen Platz dafür, daher sind sie nicht im Backup enthalten (die Chats und ihre Nachrichten werden gespeichert):\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupForkChatDataConfirm": (count: number, names: string[]) =>

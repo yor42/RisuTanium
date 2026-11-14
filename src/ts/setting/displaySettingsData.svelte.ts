@@ -32,6 +32,13 @@ export const displayThemeSettingsItems: SettingItem[] = [
         keywords: ['theme', 'gui', 'layout'],
     },
     {
+        id: 'display.themePack',
+        type: 'custom',
+        componentId: 'ThemePackRow',
+        labelKey: 'themePackRowTitle',
+        keywords: ['theme', 'pack', 'risutheme', 'install', 'style', 'css'],
+    },
+    {
         id: 'display.customGui',
         type: 'button',
         labelKey: 'defineCustomGUI',
