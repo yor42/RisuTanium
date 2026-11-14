@@ -310,9 +310,12 @@ export async function registerDispatch(input, { root = defaultRoot } = {}) {
     if (d.workClass === 'records' && live.filter(x => schedulingClass(x) === 'records').length >= p.scheduling.maxRecordsTracks) throw Error('Records track cap');
     if (d.workClass === 'device' && live.filter(x => schedulingClass(x) === 'device').length >= p.scheduling.maxDeviceTracks) throw Error('Device track cap');
     for (const other of live) {
-      if (codeWriter(d) && codeWriter(other) && pathKey(other.repoRoot ?? other.workdir ?? root) === pathKey(d.repoRoot)) throw Error('Code writer checkout ownership overlaps; use separate source worktrees');
+      const sameCheckout = pathKey(other.repoRoot ?? other.workdir ?? root) === pathKey(d.repoRoot);
+      if (codeWriter(d) && codeWriter(other) && sameCheckout) throw Error('Code writer checkout ownership overlaps; use separate source worktrees');
+      // allowedWrites are checkout-relative: the same path in another worktree is a different file, and
+      // separate worktrees are reconciled when they merge.
       const writes = new Set((other.allowedWrites ?? []).map(fileKey));
-      if (d.allowedWrites.some(file => writes.has(fileKey(file)))) throw Error('Exact file ownership overlaps');
+      if (sameCheckout && d.allowedWrites.some(file => writes.has(fileKey(file)))) throw Error('Exact file ownership overlaps');
       const claims = new Set(resourceClaims(other, root).map(resourceKey));
       if (d.resources.some(resource => claims.has(resourceKey(resource)))) throw Error('Declared resource ownership overlaps');
     }
