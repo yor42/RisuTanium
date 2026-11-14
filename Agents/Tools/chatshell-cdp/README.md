@@ -55,7 +55,7 @@ Every result from this folder is labelled "desktop-emulated, diagnostic" unless 
 
 ## Setup
 
-The recipe below (serve a prebuilt `dist`, restore a synthetic `.bin`) was run once from scratch through step 5 of the restore on 2026-11-14/15 (Windows 11, Chrome 157, web build e500f4a44); the notice in step 6 was seen, but its dismissal was not saved. Step 7 is not yet backed by a saved run.
+The recipe below (serve a prebuilt `dist`, restore a synthetic `.bin`) was run once from scratch through step 5 of the restore on 2026-11-14/15 (Windows 11, Chrome 157, web build e500f4a44); the notice in step 6 was seen, but its dismissal was not saved. Step 7 comes from a later run, which saved its scripts and screenshots.
 
 ### Serve a prebuilt web build
 
@@ -73,7 +73,7 @@ The recipe below (serve a prebuilt `dist`, restore a synthetic `.bin`) was run o
 4. Tap the two confirmation buttons (`예`) with real taps. After the second one the app opens a detached `<input type=file>`, and the event carries its `backendNodeId`.
 5. `DOM.enable`, then `DOM.setFileInputFiles { files: ['<path to .bin>'], backendNodeId }`. Wait about 15 s; the app reloads into the restored library.
 6. After the import an archive notice ("Preparing your library") with an OK button may appear. How it was closed in the run is TODO(evidence); a script click from `Runtime.evaluate` is the expected way but was not observed.
-7. Enable the chat shell: TODO(evidence). The 2026-11-14/15 run reached the chat shell, but no saved script records how. Fill this step from the next run that records it.
+7. Enable the chat shell with `localStorage.setItem('risuChatShell.enabled','1')` from `Runtime.evaluate`, then `Page.navigate` to the app URL (the key is read as `=== '1'` in `shellSwitch.svelte.ts`). The app stays on Home until a chat is open. Open one with real taps: Menu, then Character, then the character's icon in the sidebar rail. A tap on a row of the character list once left the rail up without opening a chat. The run that recorded this step (CHORE-744 A3 Stage 0b, 2026-11-15, web build 7583331de) first tried script clicks on up to four OK buttons after the import; its output was not saved.
 8. On later loads the app reopens the last chat by itself, so a script can start from the open chat.
 
 The older recipe (`build.mjs`, `altfill.mjs` and `mock-altmark.mjs`) builds the profile the `harness.mjs` scenarios need: the chat shell on, a default character whose chat has the expected mounted rows (row 49 has three alternatives; the ALTMARK prompt builds them), and the character `H15 Alt Greetings` with a first message plus three alternates; the expected rows are 49 and 9. It has not been rebuilt from scratch (TODO(evidence)).
