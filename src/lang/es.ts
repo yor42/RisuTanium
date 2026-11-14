@@ -2412,6 +2412,7 @@ export const languageSpanish = {
     "showPromptComparison": "Mostrar Comparación de Prompt",
     "inlayErrorResponse": "Respuesta de Error de Incrustación",
     "inlayFileTooLarge": "{name} supera los {size} MB y no se adjuntó.",
+    "inlaySendTooLarge": "No se envió al modelo (supera el límite de {size} MB por archivo): {names}",
     "triggerOn": "Trigger Activado",
     "noConfig": "Sin Configuración",
     "var": "Variable",

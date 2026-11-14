@@ -2546,6 +2546,7 @@ export const languageJapanese = {
     showPromptComparison: "プロンプト比較を表示",
     inlayErrorResponse: "インレイエラー応答",
     inlayFileTooLarge: "{name}は{size} MBを超えているため、添付されませんでした。",
+    inlaySendTooLarge: "モデルに送信されませんでした（1ファイルあたり{size} MBの上限を超過）：{names}",
     triggerOn: "発動条件",
     noConfig: "設定なし",
     var: "変数",

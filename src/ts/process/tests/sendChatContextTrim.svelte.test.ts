@@ -34,6 +34,8 @@ import type { Writable } from 'svelte/store'
 import type { character, groupChat, Chat, Message, Database } from '../../storage/database.svelte'
 import type { SendChatArg } from '../index.svelte'
 import type { WorkHandle } from '../chatOrigin'
+import { fillLang } from '../../../lang/fill'
+import { languageEnglish } from '../../../lang/en'
 // Installs the real `globalThis.safeStructuredClone`, the same way
 // `src/main.ts` does (`import "./ts/polyfill"`): the setup file's stand-in
 // throws on `undefined`, which the script pass clones.
@@ -174,6 +176,7 @@ vi.mock(import('../command'), () => ({
 
 vi.mock(import('../files/inlays'), () => ({
     getInlayAsset: vi.fn(),
+    getInlaySummary: vi.fn(),
     getInlayAssetBlob: vi.fn(async () => undefined),
     writeInlayImage: vi.fn(async () => 'inlay-id'),
 }) as unknown as typeof import('../files/inlays'))
@@ -349,6 +352,8 @@ let hypaV3Mock: ReturnType<typeof vi.fn>
 let runTriggerMock: ReturnType<typeof vi.fn>
 let exampleMessageMock: ReturnType<typeof vi.fn>
 let getInlayAssetMock: ReturnType<typeof vi.fn>
+let getInlaySummaryMock: ReturnType<typeof vi.fn>
+let alertToastMock: ReturnType<typeof vi.fn>
 let providerOptions: Map<string, { tokenizer?: string }>
 let editprocessHooks: Set<(data: string) => Promise<string | null>>
 
@@ -373,6 +378,8 @@ beforeAll(async () => {
     runTriggerMock = (await import('../triggers')).runTrigger as unknown as ReturnType<typeof vi.fn>
     exampleMessageMock = (await import('../exampleMessages')).exampleMessage as unknown as ReturnType<typeof vi.fn>
     getInlayAssetMock = (await import('../files/inlays')).getInlayAsset as unknown as ReturnType<typeof vi.fn>
+    getInlaySummaryMock = (await import('../files/inlays')).getInlaySummary as unknown as ReturnType<typeof vi.fn>
+    alertToastMock = (await import('../../alert')).alertToast as unknown as ReturnType<typeof vi.fn>
     providerOptions = (await import('../../plugins/plugins.svelte')).pluginV2.providerOptions as unknown as Map<string, { tokenizer?: string }>
     editprocessHooks = (await import('../../plugins/plugins.svelte')).pluginV2.editprocess as unknown as Set<(data: string) => Promise<string | null>>
 })
@@ -514,8 +521,11 @@ beforeEach(() => {
     exampleMessageMock.mockReset()
     exampleMessageMock.mockImplementation(() => [])
     getInlayAssetMock.mockReset()
+    getInlaySummaryMock.mockReset()
+    getInlaySummaryMock.mockImplementation(async () => ({ type: 'image', name: 'pic.png', ext: 'png', size: 1024 }))
     memoryRecords.length = 0
     alertErrorMock.mockClear()
+    alertToastMock.mockClear()
     for (const fn of [supaMemoryMock, hanuraiMemoryMock, hypaV2Mock, hypaV3Mock]) {
         fn.mockReset()
     }
@@ -1839,6 +1849,163 @@ describe('guard: the trim over the other inputs the context takes', () => {
             expect(first.content).not.toContain('[CAP]')
             expect(second.multimodals?.length ?? 0).toBe(0)
             expect(second.content).toContain('[CAP]')
+        })
+    })
+
+    describe('the send of video and audio inlays', () => {
+        const MIB = 1024 * 1024
+        const VIDEO_FLAG = 12
+        const AUDIO_FLAG = 2
+        const IMAGE_FLAG = 0
+        const LIMIT = 20 * MIB
+
+        interface Staged {
+            type: 'image' | 'video' | 'audio'
+            name: string
+            size: number
+        }
+
+        /** Answers the summary and the body of each staged id; an id that is not staged is missing. */
+        function stage(files: Record<string, Staged>): void {
+            getInlaySummaryMock.mockImplementation(async (id: string) => {
+                const file = files[id]
+                return file ? { type: file.type, name: file.name, ext: 'bin', size: file.size } : null
+            })
+            getInlayAssetMock.mockImplementation(async (id: string) => {
+                const file = files[id]
+                if (!file) {
+                    return null
+                }
+                return { type: file.type, name: file.name, ext: 'bin', data: `data:${file.type}/x;base64,${id}`, width: 4, height: 4 }
+            })
+        }
+
+        /** One earlier char message, then one user message that holds the given inlays. */
+        function holding(...ids: string[]): Message[] {
+            return [msg('char', 'earlier'), msg('user', `ask ${ids.map((id) => `{{inlay::${id}}}`).join(' ')}`)]
+        }
+
+        /** Every multimodal part of the request the send made. */
+        function sentModals(): Array<{ type: string, base64: string }> {
+            const formated = (lastBody()?.formated ?? []) as unknown as Array<{ multimodals?: Array<{ type: string, base64: string }> }>
+            return formated.flatMap((entry) => entry.multimodals ?? [])
+        }
+
+        const tooLargeToast = (names: string) => fillLang(languageEnglish.inlaySendTooLarge, { names, size: 20 })
+
+        test('a model without the video flag does not read a video and does not toast', async () => {
+            h.modelInfo = { flags: [] }
+            stage({ vid: { type: 'video', name: 'clip.mp4', size: 194 * MIB } })
+            await runChat({}, {}, holding('vid'))
+            expect(getInlayAssetMock).not.toHaveBeenCalledWith('vid')
+            expect(sentModals()).toEqual([])
+            expect(alertToastMock).not.toHaveBeenCalled()
+        })
+
+        test('a model with only the video flag does not read an audio', async () => {
+            h.modelInfo = { flags: [VIDEO_FLAG] }
+            stage({ aud: { type: 'audio', name: 'a.mp3', size: MIB } })
+            await runChat({}, {}, holding('aud'))
+            expect(getInlayAssetMock).not.toHaveBeenCalledWith('aud')
+            expect(sentModals()).toEqual([])
+        })
+
+        test('a video over the limit is not read and one toast names it', async () => {
+            h.modelInfo = { flags: [VIDEO_FLAG] }
+            stage({ vid: { type: 'video', name: 'clip.mp4', size: LIMIT + 1 } })
+            await runChat({}, {}, holding('vid'))
+            expect(getInlayAssetMock).not.toHaveBeenCalledWith('vid')
+            expect(sentModals()).toEqual([])
+            expect(alertToastMock).toHaveBeenCalledTimes(1)
+            expect(alertToastMock).toHaveBeenCalledWith(tooLargeToast('clip.mp4'))
+        })
+
+        test('guard: a video of exactly the limit is read and sent without a toast', async () => {
+            h.modelInfo = { flags: [VIDEO_FLAG] }
+            stage({ vid: { type: 'video', name: 'clip.mp4', size: LIMIT } })
+            await runChat({}, {}, holding('vid'))
+            expect(sentModals()).toEqual([{ type: 'video', base64: 'data:video/x;base64,vid' }])
+            expect(alertToastMock).not.toHaveBeenCalled()
+        })
+
+        test('one toast per send lists each over-limit file once, and only the small one is read', async () => {
+            h.modelInfo = { flags: [VIDEO_FLAG] }
+            stage({
+                big1: { type: 'video', name: 'one.mp4', size: 30 * MIB },
+                big2: { type: 'video', name: 'two.mp4', size: 40 * MIB },
+                small: { type: 'video', name: 'small.mp4', size: MIB },
+            })
+            const messages = [
+                msg('user', 'first {{inlay::big1}} {{inlay::big2}}'),
+                msg('char', 'reply'),
+                msg('user', 'again {{inlay::big2}} {{inlay::small}}'),
+            ]
+            await runChat({}, {}, messages)
+            expect(getInlayAssetMock.mock.calls.map((call) => call[0])).toEqual(['small'])
+            expect(alertToastMock).toHaveBeenCalledTimes(1)
+            expect(alertToastMock).toHaveBeenCalledWith(tooLargeToast('one.mp4, two.mp4'))
+        })
+
+        test('an image then a video in one message: the image is sent, the video finds the slot taken and is not read, with no toast', async () => {
+            h.modelInfo = { flags: [IMAGE_FLAG, VIDEO_FLAG] }
+            stage({
+                img: { type: 'image', name: 'p.png', size: 30 * MIB },
+                vid: { type: 'video', name: 'clip.mp4', size: 30 * MIB },
+            })
+            await runChat({}, {}, holding('img', 'vid'))
+            expect(getInlayAssetMock.mock.calls.map((call) => call[0])).toEqual(['img'])
+            expect(sentModals().map((part) => part.type)).toEqual(['image'])
+            expect(alertToastMock).not.toHaveBeenCalled()
+        })
+
+        test('guard: an image of any size is read and sent whatever the flags allow', async () => {
+            h.modelInfo = { flags: [IMAGE_FLAG] }
+            stage({ img: { type: 'image', name: 'p.png', size: 30 * MIB } })
+            await runChat({}, {}, holding('img'))
+            expect(sentModals().map((part) => part.type)).toEqual(['image'])
+            expect(alertToastMock).not.toHaveBeenCalled()
+        })
+
+        test('guard: a missing inlay is not read and its tag is stripped', async () => {
+            h.modelInfo = { flags: [VIDEO_FLAG] }
+            stage({})
+            await runChat({}, {}, holding('gone'))
+            expect(getInlayAssetMock).not.toHaveBeenCalled()
+            const sent = (lastBody()?.formated ?? []).map((entry) => entry.content).join('\n')
+            expect(sent).not.toContain('{{inlay::gone}}')
+            expect(alertToastMock).not.toHaveBeenCalled()
+        })
+
+        test('a skipped over-limit video does not take the slot of the message: the next video is sent', async () => {
+            h.modelInfo = { flags: [VIDEO_FLAG] }
+            stage({
+                big: { type: 'video', name: 'big.mp4', size: 30 * MIB },
+                small: { type: 'video', name: 'small.mp4', size: 5 * MIB },
+            })
+            await runChat({}, {}, holding('big', 'small'))
+            expect(sentModals()).toEqual([{ type: 'video', base64: 'data:video/x;base64,small' }])
+            expect(alertToastMock).toHaveBeenCalledWith(tooLargeToast('big.mp4'))
+        })
+
+        test('a video a model cannot take does not take the slot of the message: the audio is sent', async () => {
+            h.modelInfo = { flags: [AUDIO_FLAG] }
+            stage({
+                vid: { type: 'video', name: 'v.mp4', size: MIB },
+                aud: { type: 'audio', name: 'a.mp3', size: MIB },
+            })
+            await runChat({}, {}, holding('vid', 'aud'))
+            expect(sentModals()).toEqual([{ type: 'audio', base64: 'data:audio/x;base64,aud' }])
+        })
+
+        test('guard: the second eligible video of a message is still dropped once one is sent', async () => {
+            h.modelInfo = { flags: [VIDEO_FLAG] }
+            stage({
+                one: { type: 'video', name: 'one.mp4', size: MIB },
+                two: { type: 'video', name: 'two.mp4', size: MIB },
+            })
+            await runChat({}, {}, holding('one', 'two'))
+            expect(sentModals()).toEqual([{ type: 'video', base64: 'data:video/x;base64,one' }])
+            expect(getInlayAssetMock.mock.calls.map((call) => call[0])).toEqual(['one'])
         })
     })
 

@@ -2546,6 +2546,7 @@ export const languageEnglish = {
     showPromptComparison: "Show Prompt Comparison",
     inlayErrorResponse: "Inlay Error Response",
     inlayFileTooLarge: "{name} is larger than {size} MB and was not attached.",
+    inlaySendTooLarge: "Not sent to the model (over the {size} MB limit per file): {names}",
     triggerOn: "Trigger On",
     noConfig: "No Config",
     var: "Variable",
