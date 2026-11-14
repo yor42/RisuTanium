@@ -4,7 +4,7 @@
  * row's action sheet carry none; a chat that does not hold the flag renders every name. The flag itself (`Chat.hideNames`)
  * is read by the rows: see the second block. The sheet's own row is tested in ThisChatSheet.svelte.test.ts.
  */
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import { flushSync, mount, tick, unmount } from 'svelte'
 
 vi.mock('../../ts/stores.svelte', async () => {
@@ -129,6 +129,11 @@ function hideNamesControls(root: ParentNode): string[] {
     }
     return found
 }
+
+// The shell's lazy children import the icon-library barrel, which costs tens of seconds to transform cold; paying it here keeps it out of the mount wait.
+beforeAll(async () => {
+    await import('@lucide/svelte')
+}, 120000)
 
 describe('guard: the hide-names mode renders off and has no control', () => {
     test('every row shows its name', async () => {
