@@ -74,7 +74,8 @@ export interface SavePlan {
     /** `CommitRequest.newUnits`: the units the commit writes, the manifest included. */
     readonly newUnits: number
     /**
-     * No unit but the manifest would be written: the pass changed nothing and the commit can be skipped. Never true
+     * No unit but the manifest would be written and the manifest names what the previous one names: the pass changed
+     * nothing and the commit can be skipped. Never true
      * while an attempt is pending: its write may have landed, so a pass that reverts it must commit. Nor is it ever true
      * when the acknowledged encoding moved while the plan was made: the plan compared against a base that is no longer
      * the store's, so its acknowledgement throws instead of the pass being skipped.

@@ -2841,6 +2841,59 @@ describe('a commit that did not land may have left this page load\'s own bulk ma
     })
 })
 
+describe('a manifest-only change commits (CHORE-780)', () => {
+    const settle = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))
+
+    /** Real list derivation: the fake one puts the list lengths into a unit, which hides a change that touches only the manifest. */
+    function profile(): Database {
+        const db = clone(buildSmall(2)) as unknown as Obj
+        db.taskPresets = [{ name: 'T0', prompt: 'a' }, { name: 'T1', prompt: 'b' }]
+        db.botPresetsId = 0
+        return db as unknown as Database
+    }
+
+    const taskPresetsOf = async (loop: Loop) => (((await loop.kit.saved()) as unknown as Obj).taskPresets ?? []) as unknown[]
+
+    // T10, reproducer: the base reports the pass saved with no write and the stored plugins stay at 3.
+    test('T10 a marked plugin removal is written by the next pass', async () => {
+        const db = profile()
+        const loop = await startLoop(db, { lists: createListDerivation() })
+        ;((db as unknown as Obj).plugins as unknown[]).pop()
+        loop.tracker.plugins = true
+        loop.due()
+        await savedBy(loop)
+        expect((((await loop.kit.saved()) as unknown as Obj).plugins as unknown[]).length).toBe(2)
+        expect(loop.kit.counted.writeCalls()).toBeGreaterThan(0)
+        healthy(loop)
+    })
+
+    // T11, reproducer: with no mark the module-due idle tick is the only path; the base never lands the removal.
+    test('T11 an idle tick with no mark lands a task preset removal and then writes nothing more', async () => {
+        const db = profile()
+        const loop = await startLoop(db, { lists: createListDerivation(), stubs: [], idleNet: { intervalMs: 1, moduleIntervalMs: 1, quiet: null } })
+        ;(db as unknown as Obj).taskPresets = []
+        await until(async () => (await taskPresetsOf(loop)).length === 0, 'the removal landed', 4000)
+        const written = loop.kit.counted.writeCalls()
+        await settle(150)
+        expect(loop.kit.counted.writeCalls()).toBe(written)
+        healthy(loop)
+    })
+
+    // T12a and T12b, guards (pass before and after): an unedited profile commits nothing, on every tick the net plans.
+    test.each<[string, Store2StartOptions['idleNet'], boolean]>([
+        ['T12a quiet:null', { intervalMs: 1, moduleIntervalMs: 1, quiet: null }, false],
+        ['T12a quiet:null, boot-read previous', { intervalMs: 1, moduleIntervalMs: 1, quiet: null }, true],
+        ['T12b default quiet', { intervalMs: 1, moduleIntervalMs: 1 }, false],
+        ['T12b default quiet, boot-read previous', { intervalMs: 1, moduleIntervalMs: 1 }, true],
+    ])('%s: an unedited profile is never written', async (_name, idleNet, bootRead) => {
+        const loop = await startLoop(profile(), { lists: createListDerivation(), idleNet, ...(bootRead ? { stubs: [] } : {}) })
+        await settle(150)
+        expect(loop.kit.counted.writeCalls()).toBe(0)
+        expect(loop.state.saved).toBe(0)
+        healthy(loop)
+    })
+})
+
 describe('blockedOf and stubNamesOf: the items a prompt names', () => {
     const carried = (owners: Array<[string, string]>, modules: string[], units: number) => ({
         carried: { units, owners: new Map(owners), modules },
