@@ -551,8 +551,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
         }
         const refused = checkBuilt(built, issued, request.newUnits, true)
         if (refused !== null) {
-            await clearOwnMarker(prefix)
-            return refused
+            return { ...refused, cleared: await clearOwnMarker(prefix) }
         }
         const manifestUnit: UnitWrite = { key: built.manifest.key, bytes: encodeUnit(UNIT_TYPE.manifest, built.manifest.body) }
         try {

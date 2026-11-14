@@ -4,7 +4,7 @@ import {
     Store2BackendFailureError, Store2PayloadTooLargeError, Store2StalePageError, Store2UnknownOutcomeError,
 } from '../../store2/backend'
 import { language } from 'src/lang'
-import { checkTree, createCommitter, IMPORT_REPLACES_BASE, type AbandonResult, type CommitResult, type Committer, type CommitRequest } from '../../store2/commit'
+import { checkTree, createCommitter, IMPORT_REPLACES_BASE, Store2BulkAbortError, type AbandonResult, type CommitResult, type Committer, type CommitRequest } from '../../store2/commit'
 import { classifyCommitRead, nextCommitKey } from '../../store2/commitKey'
 import { encodeUnit, newUnitKey, readUnit, refOfFrame, UNIT_TYPE, type CommitKey, type Manifest } from '../../store2/format'
 import type { Store2Read } from '../../store2/backend'
@@ -20,7 +20,7 @@ import type { Database, character } from '../../database.svelte'
 import type { toSaveType } from '../../risuSave'
 import { until } from '../saveLoopWorld'
 import {
-    createPeerDouble, peerCommit, peerPin, startStore2, testEnv, type PeerDouble, type Store2Kit, type Store2StartOptions,
+    createPeerDouble, peerCommit, peerPin, startStore2, testEnv, type Hooks, type PeerDouble, type Store2Kit, type Store2StartOptions,
 } from '../store2SaveKit'
 import { asDatabase, buildSmall, fakeLists, type Obj } from './codecFixtures'
 
@@ -636,7 +636,8 @@ describe('new behaviour: result mapping', () => {
             await until(() => kit.peer.asked.length === 1, 'the replaced prompt', 4000)
             expect(kit.peer.asked[0]).toMatchObject({ reason: 'replaced', offers: ['reload'] })
             expect(loop.failures).toEqual([])
-            expect(seen.clears).toBe(1)
+            // The refusal raised the release flag, so the park asks once more; that clear ends on the same stale-page answer.
+            expect(seen.clears).toBe(2)
             healthy(loop)
         })
 
@@ -2038,7 +2039,7 @@ describe('new behaviour: a body the server refuses as too large stops this tab',
             },
             async commit() {
                 seen.commits += 1
-                standing.value = result.status === 'abandoned' && result.cleared !== null && result.cleared.status !== 'cleared'
+                standing.value = result.status === 'abandoned' && result.cleared !== null && result.cleared.status !== 'cleared' && result.cleared.status !== 'nothing'
                 return result
             },
             async abandonClear() {
@@ -2562,6 +2563,280 @@ describe('the carry rule at the loop: Save mine and bulk passes never write over
             expect(world.peer.asked).toHaveLength(1)
             expect(world.loop.state.saved).toBe(0)
             healthy(world.loop)
+        })
+    })
+})
+
+describe('a commit that did not land may have left this page load\'s own bulk marker, so the next park or stop releases it', () => {
+    const REFUSED_BYTES = 3 * 1024 * 1024
+    const refusal = () => new Store2PayloadTooLargeError('The Node server answered 413.', 'store2/example', REFUSED_BYTES, UNIT_TYPE.chatChunk)
+    const down = () => new Store2BackendFailureError('down')
+    const settle = (ms = 150) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+    type ExitScript = (attempt: number, real: Committer, request: CommitRequest) => Promise<CommitResult>
+
+    interface ExitOptions {
+        /** A peer's commit lands inside the first commit call, before its scripted result. */
+        peerFirst: boolean
+        /** Whose marker the overlaid reads show: this page's from the first commit on, a peer's from the start, or none. */
+        marker: 'own' | 'peer' | 'none'
+    }
+
+    interface ExitWorld {
+        db: Database
+        kit: Store2Kit
+        loop: Loop
+        seen: { commits: number, clears: number }
+        markerOwner(): Promise<string | null>
+    }
+
+    /**
+     * The kit's committer whose commits answer `script` and whose commit-key reads overlay a bulk marker, as a bulk that
+     * exited after its marker landed leaves one. A scripted `abandonClear` counts itself and removes the overlay.
+     */
+    async function exitWorld(script: ExitScript, options: ExitOptions): Promise<ExitWorld> {
+        const db = clone(buildSmall(4))
+        const kit = await startStore2({ db, peer: createPeerDouble('reload') })
+        const real = kit.committer
+        const seen = { commits: 0, clears: 0 }
+        const standing = { value: options.marker === 'peer' }
+        const overlayOwner = options.marker === 'peer' ? 'peer-page' : real.owner
+        const scripted: Committer = {
+            ...real,
+            async readCommit() {
+                const read = await real.readCommit()
+                const parsed = classifyCommitRead(read)
+                if (!standing.value || parsed.status !== 'parsed') {
+                    return read
+                }
+                const marked: CommitKey = { ...parsed.value, staging: { owner: overlayOwner, prefix: 'store2/g-0000000000000001-', startedAt: 1, label: 'bulk' } }
+                return { ...read, bytes: encodeUnit(UNIT_TYPE.commit, marked) }
+            },
+            async commit(_read: Store2Read, request: CommitRequest) {
+                seen.commits += 1
+                if (seen.commits === 1) {
+                    if (options.peerFirst) {
+                        await peerCommit(kit, (peerDb) => { chars(peerDb)[3].personality = 'the peer edit' })
+                    }
+                    standing.value = standing.value || options.marker === 'own'
+                }
+                return script(seen.commits, real, request)
+            },
+            async abandonClear() {
+                seen.clears += 1
+                standing.value = false
+                return { status: 'nothing' }
+            },
+        }
+        kit.context.session = { ...kit.context.session, committer: scripted }
+        const loop = runLoop(kit, db)
+        chars(db)[0].personality = 'my edit'
+        loop.mark(chaIdOf(db, 0))
+        async function markerOwner(): Promise<string | null> {
+            const parsed = classifyCommitRead(await scripted.readCommit())
+            return parsed.status === 'parsed' ? (parsed.value.staging?.owner ?? null) : null
+        }
+        return { db, kit, loop, seen, markerOwner }
+    }
+
+    const unexpected: ExitScript = async (attempt) => {
+        throw new Error(`Unexpected commit #${attempt}.`)
+    }
+
+    test.each([
+        ['abandoned upload-failed with a backend cause and a failed clear', async (): Promise<CommitResult> => ({ status: 'abandoned', reason: 'upload-failed', cleared: { status: 'failed', cause: down() }, cause: down() })],
+        ['abandoned rejudge-exhausted with no cause and a failed clear', async (): Promise<CommitResult> => ({ status: 'abandoned', reason: 'rejudge-exhausted', cleared: { status: 'failed', cause: down() } })],
+        ['refused bad-unit-set with a failed clear', async (): Promise<CommitResult> => ({ status: 'refused', reason: 'bad-unit-set', detail: 'x', cleared: { status: 'failed', cause: down() } })],
+        ['conflict', async (_attempt: number, real: Committer): Promise<CommitResult> => ({ status: 'conflict', current: await real.readCommit() })],
+        ['unknown', async (): Promise<CommitResult> => ({ status: 'unknown', cause: new Store2UnknownOutcomeError('lost') })],
+        ['failed', async (): Promise<CommitResult> => ({ status: 'failed', cause: down() })],
+        ['a thrown Store2BulkAbortError', async (): Promise<CommitResult> => {
+            throw new Store2BulkAbortError(new TypeError('x'), { status: 'failed', cause: down() })
+        }],
+        ['a thrown plain error', async (): Promise<CommitResult> => {
+            throw new TypeError('x')
+        }],
+    ] as Array<[string, (attempt: number, real: Committer) => Promise<CommitResult>]>)('a bulk exit by %s, then a park, releases the own marker while parked', async (_name, first) => {
+        const world = await exitWorld((attempt, real, request) => attempt === 1 ? first(attempt, real) : unexpected(attempt, real, request), { peerFirst: true, marker: 'own' })
+        await until(() => world.seen.clears >= 1, 'the release while parked', 6000)
+        await until(() => world.kit.peer.asked.length >= 1, 'the park prompt', 6000)
+        expect(world.seen.commits).toBe(1)
+        expect(await world.markerOwner()).toBeNull()
+    })
+
+    test('an own marker leaked by an exit is still released on a later park when an ordinary commit landed in between', async () => {
+        const world = await exitWorld(async (attempt, real, request) => {
+            if (attempt === 1) {
+                return { status: 'abandoned', reason: 'rejudge-exhausted', cleared: { status: 'failed', cause: down() } }
+            }
+            if (attempt === 2) {
+                return real.commit(await real.readCommit(), request)
+            }
+            throw new Error(`Unexpected commit #${attempt}.`)
+        }, { peerFirst: false, marker: 'own' })
+        await until(() => world.loop.state.saved >= 1, 'the ordinary commit that landed after the exit', 6000)
+        expect(world.seen.clears).toBe(0)
+        await peerCommit(world.kit, (peerDb) => { chars(peerDb)[3].personality = 'the peer edit' })
+        chars(world.db)[0].personality = 'my second edit'
+        world.loop.mark(chaIdOf(world.db, 0))
+        await until(() => world.seen.clears >= 1, 'the release while parked', 6000)
+        await until(() => world.kit.peer.asked.length >= 1, 'the park prompt', 6000)
+        expect(world.seen.commits).toBe(2)
+        expect(await world.markerOwner()).toBeNull()
+    })
+
+    test('an own marker left by an abandoned bulk is released by the stop of a later too-large commit that cleared nothing', async () => {
+        const world = await exitWorld(async (attempt) => {
+            if (attempt === 1) {
+                return { status: 'abandoned', reason: 'upload-failed', cleared: { status: 'failed', cause: down() }, cause: down() }
+            }
+            return { status: 'failed', cause: refusal() }
+        }, { peerFirst: false, marker: 'own' })
+        await until(() => world.loop.stopCalls.length >= 1, 'the stop', 8000)
+        await until(() => world.seen.clears >= 1, 'the release while stopped', 6000)
+        expect(world.seen.commits).toBe(2)
+        expect(await world.markerOwner()).toBeNull()
+    })
+
+    test('guard: a non-committed exit with no marker standing releases nothing and writes nothing', async () => {
+        const world = await exitWorld((attempt, real, request) => attempt === 1 ? Promise.resolve({ status: 'failed', cause: down() }) : unexpected(attempt, real, request), { peerFirst: true, marker: 'none' })
+        await until(() => world.kit.peer.asked.length >= 1, 'the park prompt', 6000)
+        await settle()
+        expect(world.seen.clears).toBe(0)
+        expect(await world.markerOwner()).toBeNull()
+    })
+
+    test('guard: a non-committed exit with a peer\'s marker standing never clears it', async () => {
+        const world = await exitWorld((attempt, real, request) => attempt === 1 ? Promise.resolve({ status: 'failed', cause: down() }) : unexpected(attempt, real, request), { peerFirst: true, marker: 'peer' })
+        await until(() => world.kit.peer.asked.length >= 1, 'the park prompt', 6000)
+        await settle()
+        expect(world.seen.clears).toBe(0)
+        expect(await world.markerOwner()).toBe('peer-page')
+    })
+
+    describe('through the real committer', () => {
+        const BULK_ROWS = 80
+
+        interface RealBulkWorld {
+            kit: Store2Kit
+            loop: Loop
+            peerKeys: CommitKey[]
+        }
+
+        /** The hooks see every backend call of the kit's committer once armed; `peerCommit` writes outside them. */
+        async function realBulkWorld(make: (world: { kit: () => Store2Kit, armed: () => boolean, peer: () => Promise<void> }) => Hooks): Promise<RealBulkWorld> {
+            const db = clone(buildSmall(BULK_ROWS))
+            const holder: { kit: Store2Kit | null } = { kit: null }
+            const armed = { value: false }
+            const peerKeys: CommitKey[] = []
+            const kit = await startStore2({
+                db,
+                peer: createPeerDouble('reload'),
+                hooks: make({
+                    kit: () => holder.kit as Store2Kit,
+                    armed: () => armed.value,
+                    peer: async () => {
+                        peerKeys.push(await peerCommit(holder.kit as Store2Kit, (peerDb) => { chars(peerDb)[3].personality = 'the peer edit' }))
+                    },
+                }),
+            })
+            holder.kit = kit
+            const loop = runLoop(kit, db)
+            for (const entry of chars(db)) {
+                entry.personality = `${String(entry.personality)} edited`
+            }
+            loop.reloadFlag.state = true
+            armed.value = true
+            loop.due()
+            return { kit, loop, peerKeys }
+        }
+
+        async function expectReleasedWhileParked(world: RealBulkWorld): Promise<void> {
+            await until(() => world.kit.peer.asked.length >= 1 || world.loop.state.saved >= 1, 'the prompt or a landed save', 20000)
+            await until(async () => (await world.kit.commitKey()).staging === null, 'the marker released while parked', 8000)
+            expect(world.kit.peer.asked).toHaveLength(1)
+            expect(world.loop.state.saved).toBe(0)
+            expect((await world.kit.commitKey()).current?.key).toBe(world.peerKeys[0].current?.key)
+            healthy(world.loop)
+        }
+
+        test('a unit upload that throws a plain error while the own-marker clear fails, with a peer commit landing in the clear, ends parked with the marker released', async () => {
+            let fired = false
+            let cleared = false
+            const world = await realBulkWorld(({ armed, peer }) => ({
+                before: async (name) => {
+                    if (!armed()) {
+                        return
+                    }
+                    if (name === 'putUnit' && !fired) {
+                        fired = true
+                        throw new TypeError('x')
+                    }
+                    if (name === 'casCommit' && fired && !cleared) {
+                        cleared = true
+                        await peer()
+                        throw new Store2BackendFailureError('Injected: the own-marker clear did not land.')
+                    }
+                },
+            }))
+            await expectReleasedWhileParked(world)
+        })
+
+        test('a peer commit landing right after the marker makes the bulk conflict, and the parked page releases its marker', async () => {
+            let fired = false
+            const world = await realBulkWorld(({ armed, peer }) => ({
+                after: async (name) => {
+                    if (armed() && name === 'casCommit' && !fired) {
+                        fired = true
+                        await peer()
+                    }
+                },
+            }))
+            await expectReleasedWhileParked(world)
+        })
+
+        test('a failed read after the marker leaves it unknown, and the parked page releases its marker', async () => {
+            let markerLanded = false
+            let fired = false
+            const world = await realBulkWorld(({ armed, peer }) => ({
+                after: (name) => {
+                    if (armed() && name === 'casCommit') {
+                        markerLanded = true
+                    }
+                },
+                before: async (name) => {
+                    if (armed() && name === 'readCommit' && markerLanded && !fired) {
+                        fired = true
+                        await peer()
+                        throw new Store2BackendFailureError('Injected: the read after the marker failed.')
+                    }
+                },
+            }))
+            await expectReleasedWhileParked(world)
+            expect(world.loop.failures.length).toBeGreaterThanOrEqual(1)
+        })
+
+        test('a failed reread of the final write after a peer commit leaves the marker, and the parked page releases it', async () => {
+            let fired = false
+            let finalWrite = false
+            let readFailed = false
+            const world = await realBulkWorld(({ armed, peer }) => ({
+                before: async (name) => {
+                    if (!armed()) {
+                        return
+                    }
+                    if (name === 'putUnit' && !fired) {
+                        fired = true
+                        await peer()
+                    } else if (name === 'casCommit' && fired && !finalWrite) {
+                        finalWrite = true
+                    } else if (name === 'readCommit' && finalWrite && !readFailed) {
+                        readFailed = true
+                        throw new Store2BackendFailureError('Injected: the reread of the final write failed.')
+                    }
+                },
+            }))
+            await expectReleasedWhileParked(world)
         })
     })
 })
