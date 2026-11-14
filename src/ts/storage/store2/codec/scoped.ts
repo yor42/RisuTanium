@@ -6,6 +6,7 @@ import {
     type KeyEnv, type Manifest, type Ref, type Shard, type ShardEntry, type UnitType,
 } from '../format'
 import type { BuildContext, BuiltCommit, KeyMint } from '../commit'
+import { manifestStateEquals } from './manifest'
 import { defineOwn } from './normalize'
 import { isUnchanged, unitDigest, UnitNotReusedError, UnitSink, type UnitKeyKind } from './reuse'
 import {
@@ -647,7 +648,11 @@ function rekey(tree: EncodedTree, parents: ReadonlyMap<string, ParentBody>, cont
 export interface ScopedPlan {
     /** How many units the commit writes, the manifest included: the `newUnits` of the `CommitRequest`, known before any key exists. */
     newUnits: number
-    /** True iff the only unit the commit would write is the manifest: nothing changed, and the caller can skip the commit. */
+    /**
+     * True iff the only unit the commit would write is the manifest and that manifest names what the previous one names
+     * (`seq` and `createdAt` aside): nothing changed, and the caller can skip the commit. A manifest that differs is a
+     * change even when every other unit is reused (a shorter plugin or preset list), so it is committed.
+     */
     unchanged: boolean
     /** The named characters the pass could not read and went on without (only under `skipUnsavableCharacters`). */
     skipped: readonly SkippedCharacter[]
@@ -687,7 +692,7 @@ export async function planScopedEncode(db: Database, options: EncodeOptions, sco
     const split = MEASURE ? scope.split : undefined
     const tailStarted = readClock(split)
     const newUnits = tree.units.filter(unit => !unit.reused).length
-    const unchanged = isUnchanged(tree)
+    const unchanged = isUnchanged(tree) && manifestStateEquals(tree.manifest, options.previous?.objects?.manifest)
     if (MEASURE && split !== undefined) {
         split.addMs('splitPlanTailMs', split.now() - tailStarted)
     }

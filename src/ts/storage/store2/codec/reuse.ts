@@ -265,7 +265,11 @@ export function unitsToWrite(tree: EncodedTree): WrittenUnit[] {
     return tree.units.filter(isWrittenUnit)
 }
 
-/** Whether no unit but the (always new) manifest needs writing: the encoded state equals the previous one. */
+/**
+ * Whether no unit but the (always new) manifest needs writing. This says nothing about the manifest itself: a list
+ * that lost its last ref leaves every unit reused, so a caller deciding to skip a commit must also compare the manifest
+ * (`manifestStateEquals`).
+ */
 export function isUnchanged(tree: EncodedTree): boolean {
     return tree.units.every(unit => unit.reused || unit.type === UNIT_TYPE.manifest)
 }
