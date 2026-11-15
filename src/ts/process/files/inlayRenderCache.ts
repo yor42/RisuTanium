@@ -22,17 +22,30 @@ export type InlayRenderSource =
     | 'stored-blob'
     /** An object URL over a Blob the page holds: built in memory from the body bytes or a data URI, or the old store's own (disk-backed) Blob as read. */
     | 'memory-blob'
+    /** An image this platform does not load: there is no URL, and the render names the file. */
+    | 'withheld'
 
-export interface InlayRender {
-    /** `image`, `video`, `audio` or `signature`; anything else is a type the parser does not show. */
-    type: string
-    /** Empty for a signature. */
-    url: string
-    source: InlayRenderSource
-}
+export type InlayRender =
+    | {
+        /** `image`, `video`, `audio` or `signature`; anything else is a type the parser does not show. */
+        type: string
+        /** Empty for a signature. */
+        url: string
+        source: Exclude<InlayRenderSource, 'withheld'>
+    }
+    | {
+        type: 'image'
+        url: ''
+        source: 'withheld'
+        /** The file's name, or its id when it has none. */
+        name: string
+        /** The file's size in bytes. */
+        size: number
+    }
 
-interface InlayRenderEntry extends InlayRender {
-    /** The object URL this module made for the entry, or `null` when `url` is not one. */
+interface InlayRenderEntry {
+    render: InlayRender
+    /** The object URL this module made for the entry, or `null` when the render's `url` is not one. */
     objectUrl: string | null
 }
 
@@ -40,11 +53,11 @@ const entries = new Map<string, InlayRenderEntry>()
 
 export function cachedInlayRender(id: string): InlayRender | null {
     const entry = entries.get(id)
-    return entry === undefined ? null : { type: entry.type, url: entry.url, source: entry.source }
+    return entry === undefined ? null : { ...entry.render }
 }
 
 export function cacheInlayRender(id: string, render: InlayRender, objectUrl: string | null): void {
-    entries.set(id, { ...render, objectUrl })
+    entries.set(id, { render, objectUrl })
 }
 
 /**

@@ -54,6 +54,8 @@ const h = vi.hoisted(() => ({
     modelInfo: {} as Record<string, unknown>,
     /** Runs inside every model-info lookup (the send looks the model up once before the prompt loop, and once per message that holds an inlay). */
     onModelInfo: null as null | (() => void),
+    /** What the Android-transport stand-in answers. */
+    android: false,
 }))
 
 vi.mock('localforage', () => ({
@@ -95,6 +97,11 @@ vi.mock('src/lib/UI/PopupList.svelte', () => ({
 vi.mock('dompurify', () => ({
     default: { addHook: vi.fn(), sanitize: (html: string) => html },
 }))
+
+vi.mock(import('../../storage/tauriByteTransport'), async (importOriginal) => {
+    const actual = await importOriginal()
+    return { ...actual, isAndroidTransport: () => h.android }
+})
 
 vi.mock(import('../../platform'), () => ({
     isTauri: false,
@@ -514,6 +521,7 @@ beforeEach(() => {
     h.nanMarker = null
     h.modelInfo = {}
     h.onModelInfo = null
+    h.android = false
     providerOptions.clear()
     editprocessHooks.clear()
     runTriggerMock.mockReset()
@@ -1975,7 +1983,8 @@ describe('guard: the trim over the other inputs the context takes', () => {
             expect(alertToastMock).not.toHaveBeenCalled()
         })
 
-        test('guard: an image of any size is read and sent whatever the flags allow', async () => {
+        test('guard: off Android an image of any size is read and sent whatever the flags allow', async () => {
+            h.android = false
             h.modelInfo = { flags: [IMAGE_FLAG] }
             stage({ img: { type: 'image', name: 'p.png', size: 30 * MIB } })
             await runChat({}, {}, holding('img'))
@@ -2023,6 +2032,108 @@ describe('guard: the trim over the other inputs the context takes', () => {
             await runChat({}, {}, holding('one', 'two'))
             expect(sentModals()).toEqual([{ type: 'video', base64: 'data:video/x;base64,one' }])
             expect(getInlayAssetMock.mock.calls.map((call) => call[0])).toEqual(['one'])
+        })
+
+        describe('an image over the 64 MB limit on Android', () => {
+            const ANDROID_LIMIT = 64 * MIB
+            const tooLarge64 = (names: string) => fillLang(languageEnglish.inlaySendTooLarge, { names, size: 64 })
+
+            test('a model with image input does not read it, sends nothing and one notice names it with 64', async () => {
+                h.android = true
+                h.modelInfo = { flags: [IMAGE_FLAG] }
+                stage({ img: { type: 'image', name: 'big.png', size: ANDROID_LIMIT + 1 } })
+                await runChat({}, {}, holding('img'))
+                expect(getInlayAssetMock).not.toHaveBeenCalledWith('img')
+                expect(sentModals()).toEqual([])
+                expect(alertToastMock).toHaveBeenCalledTimes(1)
+                expect(alertToastMock).toHaveBeenCalledWith(tooLarge64('big.png'))
+            })
+
+            test('a model without image input neither reads nor captions it', async () => {
+                h.android = true
+                h.modelInfo = { flags: [] }
+                stage({ img: { type: 'image', name: 'big.png', size: ANDROID_LIMIT + 1 } })
+                const transformers = await import('../transformers')
+                const caption = transformers.runImageEmbedding as unknown as ReturnType<typeof vi.fn>
+                caption.mockResolvedValue([{ generated_text: 'CAP' }])
+                try {
+                    await runChat({}, {}, holding('img'))
+                    expect(caption).not.toHaveBeenCalled()
+                } finally {
+                    caption.mockReset()
+                }
+                expect(getInlayAssetMock).not.toHaveBeenCalledWith('img')
+                expect(alertToastMock).toHaveBeenCalledTimes(1)
+                expect(alertToastMock).toHaveBeenCalledWith(tooLarge64('big.png'))
+            })
+
+            test('an earlier message is refused on every send while a small image of the last message is sent', async () => {
+                h.android = true
+                h.modelInfo = { flags: [IMAGE_FLAG] }
+                stage({
+                    big: { type: 'image', name: 'big.png', size: ANDROID_LIMIT + 1 },
+                    small: { type: 'image', name: 'small.png', size: MIB },
+                })
+                const messages = [msg('user', 'first {{inlay::big}}'), msg('char', 'reply'), msg('user', 'again {{inlay::small}}')]
+                await runChat({}, {}, messages)
+                expect(getInlayAssetMock.mock.calls.map((call) => call[0])).toEqual(['small'])
+                expect(sentModals().map((part) => part.type)).toEqual(['image'])
+                expect(alertToastMock).toHaveBeenCalledTimes(1)
+                expect(alertToastMock).toHaveBeenCalledWith(tooLarge64('big.png'))
+            })
+
+            test('a refused image does not take the slot: the video of the same message is sent', async () => {
+                h.android = true
+                h.modelInfo = { flags: [IMAGE_FLAG, VIDEO_FLAG] }
+                stage({
+                    big: { type: 'image', name: 'big.png', size: ANDROID_LIMIT + 1 },
+                    vid: { type: 'video', name: 'clip.mp4', size: 5 * MIB },
+                })
+                await runChat({}, {}, holding('big', 'vid'))
+                expect(sentModals().map((part) => part.type)).toEqual(['video'])
+                expect(alertToastMock).toHaveBeenCalledWith(tooLarge64('big.png'))
+            })
+
+            test('a mixed refusal is one notice: the 20 MB sentence first, a line break, the 64 MB sentence', async () => {
+                h.android = true
+                h.modelInfo = { flags: [IMAGE_FLAG, VIDEO_FLAG] }
+                stage({
+                    big: { type: 'image', name: 'big.png', size: ANDROID_LIMIT + 1 },
+                    vid: { type: 'video', name: 'clip.mp4', size: 30 * MIB },
+                })
+                await runChat({}, {}, holding('big', 'vid'))
+                expect(alertToastMock).toHaveBeenCalledTimes(1)
+                expect(alertToastMock).toHaveBeenCalledWith(`${tooLargeToast('clip.mp4')}\n${tooLarge64('big.png')}`)
+                expect(getInlayAssetMock).not.toHaveBeenCalled()
+            })
+
+            test('guard: off Android the same image is read and sent without a notice', async () => {
+                h.android = false
+                h.modelInfo = { flags: [IMAGE_FLAG] }
+                stage({ img: { type: 'image', name: 'big.png', size: ANDROID_LIMIT + 1 } })
+                await runChat({}, {}, holding('img'))
+                expect(sentModals().map((part) => part.type)).toEqual(['image'])
+                expect(alertToastMock).not.toHaveBeenCalled()
+            })
+
+            test('guard: an image of exactly 64 MiB is read and sent without a notice', async () => {
+                h.android = true
+                h.modelInfo = { flags: [IMAGE_FLAG] }
+                stage({ img: { type: 'image', name: 'big.png', size: ANDROID_LIMIT } })
+                await runChat({}, {}, holding('img'))
+                expect(sentModals().map((part) => part.type)).toEqual(['image'])
+                expect(alertToastMock).not.toHaveBeenCalled()
+            })
+
+            test('guard: a video of 64 MiB + 1 on Android keeps the 20 MB limit text', async () => {
+                h.android = true
+                h.modelInfo = { flags: [VIDEO_FLAG] }
+                stage({ vid: { type: 'video', name: 'clip.mp4', size: ANDROID_LIMIT + 1 } })
+                await runChat({}, {}, holding('vid'))
+                expect(getInlayAssetMock).not.toHaveBeenCalledWith('vid')
+                expect(alertToastMock).toHaveBeenCalledTimes(1)
+                expect(alertToastMock).toHaveBeenCalledWith(tooLargeToast('clip.mp4'))
+            })
         })
     })
 
