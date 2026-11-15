@@ -163,6 +163,7 @@ Modules that no character uses load as lightweight stubs. The app reads them onl
 - The fork retired the execution of V2.1 plugins. Existing V2.1 plugin entries stay untouched in your database and `.bin`. V3 plugins are not affected.
 - V3 permission choices have the scope of script and permission. A plugin needs the `db` permission for the APIs of characters, chats, and the database. It cannot read the saved arguments of another plugin. Plugin network requests go through a policy for destinations.
 - New: You can export the script of a plugin as `.js`. You can import several plugin or module files at once.
+- V3 `readInlay` returns `null` for a video or audio file larger than 20 MiB. Lua `LLM` and `axLLM` leave such a file out of the request.
 - Merged from upstream: The app now unloads all V3 plugins on a reload. Before, about half stayed running with stale scripts.
 
 ### Speed and rendering

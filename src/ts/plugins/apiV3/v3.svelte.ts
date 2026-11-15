@@ -39,7 +39,7 @@ import { isLightEntry, lightCharacterEntries, LIGHT_ENTRY_SINGLE_MESSAGE, type L
 import { isColdChat } from "src/ts/process/coldstorageData";
 import { clearPluginStorageValues, readPluginStorageValue, readPluginUnitFromDb, removePluginStorageValue, writePluginStorageValue, writePluginUnitToDb } from "./pluginColdStorage";
 import { getResidency } from "src/ts/storage/store2/residencyActive";
-import { getInlayAsset } from "src/ts/process/files/inlays";
+import { getInlayAssetCapped } from "src/ts/process/files/inlays";
 import { getLLMCache, searchLLMCache } from "src/ts/translator/translator";
 import { hasher, risuChatParser, type CbsConditions } from "src/ts/parser/parser.svelte";
 import localforage from "localforage";
@@ -1166,7 +1166,15 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             if(!conf){
                 return null;
             }
-            return await getInlayAsset(id);
+            const read = await getInlayAssetCapped(id);
+            if(read === null){
+                return null;
+            }
+            if(read.status === 'too-large'){
+                console.warn(`Plugin "${plugin.name}" read of inlay ${id} returned null: its ${read.summary.type} of ${read.summary.size} bytes is over the size limit.`);
+                return null;
+            }
+            return read.asset;
         },
         saveAsset: oldApis.saveAsset,
         //Same functionality, but new implementation

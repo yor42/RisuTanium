@@ -7,7 +7,6 @@ import { getAppStore } from "../../storage/store/appStore";
 import { language } from "src/lang";
 import type { ByteStore } from "../../storage/store/contract";
 import { isAndroidTransport } from "../../storage/tauriByteTransport";
-import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES } from "../../storage/assetUrlGate";
 import { displayMimeOfInlay } from "../../storage/assetDisplayMime";
 import {
     cacheInlayRender,
@@ -15,6 +14,7 @@ import {
     dropInlayRender,
     type InlayRender,
 } from "./inlayRenderCache";
+import { inlayImageWithheld, inlayReadVerdict } from "./inlaySendGate";
 import {
     fieldsOf,
     inFlight,
@@ -315,15 +315,11 @@ function renderOfAsset(img: InlayAsset): { render: InlayRender, objectUrl: strin
  * `null` when neither applies, and the bytes are read instead. The store's URL is
  * skipped for a video on Android, where a video served from a file stalls; a
  * store that cannot give a URL (the Node server without an asset token) is
- * skipped too.
+ * skipped too. An image the platform withholds never reaches here: the render
+ * decides that from the record before any delivery.
  */
 async function deliverStoredInlay(store: ByteStore, record: InlayRecord): Promise<{ render: InlayRender, objectUrl: string | null } | null> {
     const type = typeof record.fields.type === 'string' ? record.fields.type : ''
-    if(type === 'image' && isAndroidTransport() && record.len > ANDROID_WHOLE_READ_URL_LIMIT_BYTES){
-        // An image above the whole-read limit gets no URL and is not read into
-        // memory either: the page shows the empty image of a missing inlay.
-        return { render: { type, url: '', source: 'store-url' }, objectUrl: null }
-    }
     if(store.urlFor !== undefined && !(type === 'video' && isAndroidTransport())){
         try {
             return { render: { type, url: await store.urlFor(record.body), source: 'store-url' }, objectUrl: null }
@@ -355,6 +351,12 @@ async function resolveInlayRender(id: string): Promise<{ render: InlayRender, ob
         console.warn('An inlay could not be read from the app store:', error)
     }
     if(store !== null && record !== null){
+        // An image this platform does not load is named by its record alone: its body is never read and no URL is asked for.
+        if(record.fields.type === 'image' && inlayImageWithheld('image', inlayRecordSize(record), isAndroidTransport())){
+            const stored = record.fields.name
+            const name = typeof stored === 'string' && stored.trim() !== '' ? stored : id
+            return { render: { type: 'image', url: '', source: 'withheld', name, size: inlayRecordSize(record) }, objectUrl: null }
+        }
         // A string body (a `data:` URI) and a signature are decoded from bytes; only a Blob body is delivered by URL.
         if(record.repr === 'blob' && record.fields.type !== 'signature'){
             const delivered = await deliverStoredInlay(store, record)
@@ -405,6 +407,11 @@ function decodedTextSize(length: number): number {
     return Math.floor(length * 0.75)
 }
 
+/** The size of the file an app-store record stands for: a string body is estimated, any other keeps its length. */
+function inlayRecordSize(record: InlayRecord): number {
+    return record.repr === 'string' ? decodedTextSize(record.len) : record.len
+}
+
 function legacyInlaySize(value: InlayAsset): number | null {
     return value.data instanceof Blob ? value.data.size : typeof value.data === 'string' ? decodedTextSize(value.data.length) : null
 }
@@ -424,8 +431,7 @@ export async function getInlaySummary(id: string): Promise<InlaySummary | null> 
         const store = await getAppStore()
         const record = await readAppInlayRecord(store, id)
         if(record !== null){
-            const size = record.repr === 'string' ? decodedTextSize(record.len) : record.len
-            return { ...(record.fields as unknown as Omit<InlayAsset, 'data'>), size }
+            return { ...(record.fields as unknown as Omit<InlayAsset, 'data'>), size: inlayRecordSize(record) }
         }
     } catch (error) {
         console.warn('An inlay could not be read from the app store:', error)
@@ -435,6 +441,31 @@ export async function getInlaySummary(id: string): Promise<InlaySummary | null> 
         return null
     }
     return { ...(fieldsOf(old) as Omit<InlayAsset, 'data'>), size: legacyInlaySize(old) }
+}
+
+/** The outcome of a size-capped read: the inlay as `getInlayAsset` returns it, or the summary of one held back. */
+export type CappedInlayRead =
+    | { status: 'read', asset: NonNullable<Awaited<ReturnType<typeof getInlayAsset>>> }
+    | { status: 'too-large', summary: InlaySummary }
+
+/**
+ * `getInlayAsset` for a plugin or script read: a video or audio over the send limit is reported with its
+ * summary and its body is not loaded from the app store. `null` means there is no readable inlay, as for
+ * `getInlayAsset`. The caller reports a held-back file; this does not.
+ */
+export async function getInlayAssetCapped(id: string): Promise<CappedInlayRead | null> {
+    const summary = await getInlaySummary(id)
+    if(summary === null){
+        return null
+    }
+    if(inlayReadVerdict(summary) === 'too-large'){
+        return { status: 'too-large', summary }
+    }
+    const asset = await getInlayAsset(id)
+    if(asset === null){
+        return null
+    }
+    return { status: 'read', asset }
 }
 
 /** What a staged draft attachment shows: a media element over a render URL, or a chip with the file's name and size. */
@@ -464,7 +495,7 @@ export async function getInlayDraftPreview(id: string): Promise<InlayDraftPrevie
     }
     if(type === 'image' || type === 'video' || type === 'audio'){
         const render = await getInlayRender(id)
-        return render === null ? chip : { kind: 'media', type, url: render.url }
+        return render === null || render.source === 'withheld' ? chip : { kind: 'media', type, url: render.url }
     }
     return chip
 }

@@ -9,8 +9,9 @@ import { ReloadChatPointer, ReloadGUIPointer, selectedCharID } from "../stores.s
 import { alertSelect, alertError, alertInput, alertNormal, alertConfirm } from "../alert";
 import { HypaProcesser } from "./memory/hypamemory";
 import { generateAIImage, type ImageGenerationOptions } from "./stableDiff";
-import { writeInlayImage, getInlayAsset } from "./files/inlays";
-import type { OpenAIChat, MultiModal } from "./index.svelte";
+import { writeInlayImage } from "./files/inlays";
+import { multimodalsOfInlays } from "./files/inlayMultimodals";
+import type { OpenAIChat } from "./index.svelte";
 import { requestChatData, type StreamResponseChunk } from "./request/request";
 import { v4 } from "uuid";
 import { getModuleLorebooks, getModuleTriggers } from "./modules";
@@ -774,16 +775,7 @@ export async function runScripted(code:string, arg:{
                             return ''
                         })
                         
-                        const multimodals: MultiModal[] = []
-                        for(const inlay of inlays) {
-                            const inlayData = await getInlayAsset(inlay)
-                            multimodals.push({
-                                type: inlayData?.type,
-                                base64: inlayData?.data,
-                                width: inlayData?.width,
-                                height: inlayData?.height
-                            })
-                        }
+                        const multimodals = await multimodalsOfInlays(inlays)
 
                         msg.multimodals = multimodals.length > 0 ? multimodals : undefined
                     }
@@ -1158,16 +1150,7 @@ export async function runScripted(code:string, arg:{
                             return ''
                         })
                         
-                        const multimodals: MultiModal[] = []
-                        for(const inlay of inlays) {
-                            const inlayData = await getInlayAsset(inlay)
-                            multimodals.push({
-                                type: inlayData?.type,
-                                base64: inlayData?.data,
-                                width: inlayData?.width,
-                                height: inlayData?.height
-                            })
-                        }
+                        const multimodals = await multimodalsOfInlays(inlays)
 
                         msg.multimodals = multimodals.length > 0 ? multimodals : undefined
                     }
