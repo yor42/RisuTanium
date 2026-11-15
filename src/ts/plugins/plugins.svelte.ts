@@ -1,3 +1,4 @@
+import { untrack } from "svelte";
 import { get, writable } from "svelte/store";
 import { language } from "../../lang";
 import { fillLang } from "../../lang/fill";
@@ -611,8 +612,9 @@ function withHeldAssetLists(db: ReturnType<typeof getDatabase>, incoming: Return
  * `modules` are reconciled against the live lists at this moment, so a
  * character restored or a module loaded while a prompt was open is not
  * downgraded. Returns the object that was written, which is a copy when a
- * placeholder was swapped out, with the slots whose element is the live proxy
- * (see `prepareIncomingCharacters`). Each light character entry is replaced by
+ * placeholder was swapped out, with the slots whose element is the live proxy and
+ * that need no mark: reconcile-kept slots and clean light holders (see
+ * `prepareIncomingCharacters`). Each light character entry is replaced by
  * its live holder before any key is written, so no light entry reaches the
  * list; `lightCounts`, when given, receives how many were kept and left out.
  */
@@ -645,13 +647,38 @@ function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginN
     return { newDb, keptSlots: prepared.keptSlots }
 }
 
-/** The incoming list's characters to install, with the slots that keep the live proxy and need no mark. */
+/**
+ * The incoming list's characters to install, with the slots that keep the live proxy and need no mark: slots the
+ * reconcile kept, and swapped-in light holders at their own position that no transform wrote into.
+ */
 interface PreparedCharacters<T> {
     newDb: T
     keptSlots: ReadonlySet<number>
 }
 
 const NO_KEPT_SLOTS: ReadonlySet<number> = new Set<number>()
+
+/**
+ * The slots of a swapped-in light holder that the setter may leave unmarked: the holder sits at its own live position,
+ * no transform reported writing into it, and the list is not shorter than the live one. The shape rule keeps the pass
+ * that encodes the list order scheduled: any change to the chaId sequence of a list at least as long as the live one
+ * leaves a moved holder, a non-held slot or a slot past the live length, and none of those is kept. A shorter list
+ * keeps nothing, so its holders are marked. Elements of the live list are read inside `untrack` and never at an index it lacks.
+ */
+function cleanHeldSlots(live: unknown, installed: readonly unknown[], heldSlots: ReadonlySet<number>, wrote: ReadonlySet<unknown>): number[] {
+    if (!Array.isArray(live) || installed.length < live.length) {
+        return []
+    }
+    return untrack(() => {
+        const clean: number[] = []
+        for (const slot of heldSlots) {
+            if (slot < live.length && installed[slot] === live[slot] && !wrote.has(installed[slot])) {
+                clean.push(slot)
+            }
+        }
+        return clean
+    })
+}
 
 /**
  * Every per-character transform of an incoming `characters` list, then the keep decision. It is given the live list
@@ -661,6 +688,9 @@ const NO_KEPT_SLOTS: ReadonlySet<number> = new Set<number>()
  * slot that is not kept: no character is written after the decision, so a kept live proxy stays as it was.
  * Clearing SupaMemory on an empty chat happens here, before the decision, so a needed
  * clear makes the incoming element differ from the live one and the slot is installed and marked.
+ * Kept also covers a swapped-in light holder that no transform wrote into (`cleanHeldSlots`). The swap runs after
+ * `keepLiveAlt`, so the SupaMemory clear is the only transform that writes into a holder; every transform that runs
+ * after the swap must report the characters it wrote, and the decision stays the last step here.
  */
 function prepareIncomingCharacters<T extends { characters?: unknown }>(live: ReturnType<typeof getDatabase>['characters'], newDb: T, pluginName: string | undefined, rec: PluginRecordBuilder | null, lightCounts?: LightWriteCounts): PreparedCharacters<T> {
     if (!Array.isArray(newDb.characters)) {
@@ -674,8 +704,9 @@ function prepareIncomingCharacters<T extends { characters?: unknown }>(live: Ret
     keepLiveAlt(live, newDb.characters)
     rec?.lap('keepLiveAltMs')
     // After keepLiveAlt, so a swapped-in live holder keeps its own alternatives untouched.
+    const heldSlots = new Set<number>()
     if (hasLightEntry(newDb.characters)) {
-        newDb = { ...newDb, characters: swapLightEntries(live, newDb.characters, lightCounts ?? { lightKept: 0, lightLeftOut: 0 }) }
+        newDb = { ...newDb, characters: swapLightEntries(live, newDb.characters, lightCounts ?? { lightKept: 0, lightLeftOut: 0 }, heldSlots) }
     }
     const installed = newDb.characters
     if (!Array.isArray(installed)) {
@@ -686,20 +717,28 @@ function prepareIncomingCharacters<T extends { characters?: unknown }>(live: Ret
         noteSameObject(rec, live, installed)
         rec.restart()
     }
-    clearSupaMemoryIfEmptyIn(installed)
+    const wrote = clearSupaMemoryIfEmptyIn(installed)
     rec?.lap('clearSupaMemoryMs')
-    const reconciled = reconcileEnabled() ? reconcileCharacters(live, installed) : null
+    const enabled = reconcileEnabled()
+    const reconciled = enabled ? reconcileCharacters(live, installed) : null
     rec?.set('keptEqual', reconciled?.keptSlots.size ?? 0)
     rec?.lap('reconcileMs')
-    if (reconciled === null) {
+    // The last step: no character is written after this decision.
+    const cleanHeld = enabled ? cleanHeldSlots(live, installed, heldSlots, wrote) : []
+    if (reconciled === null && cleanHeld.length === 0) {
         return { newDb, keptSlots: NO_KEPT_SLOTS }
     }
-    return { newDb: { ...newDb, characters: reconciled.characters }, keptSlots: reconciled.keptSlots }
+    const keptSlots = new Set<number>(reconciled?.keptSlots)
+    for (const slot of cleanHeld) {
+        keptSlots.add(slot)
+    }
+    return { newDb: reconciled === null ? newDb : { ...newDb, characters: reconciled.characters }, keptSlots }
 }
 
 /**
  * Measurement only. How many incoming characters are `===` a live element of the list they are about to replace, and the
- * first 50 chaIds. The identity tracker has already seen such an element, so only the setter's mark-all marks it.
+ * first 50 chaIds. The identity tracker has already seen such an element, so only the setter's own mark marks it, and
+ * a clean light holder at its own position is not marked at all.
  */
 function noteSameObject(rec: PluginRecordBuilder, live: unknown, incoming: unknown): void {
     try {
@@ -772,10 +811,12 @@ function keepPluginStorageInternals(current: {[key:string]:any} | undefined, inc
 
 /**
  * Marks every slot of the written `characters` list that is not kept, by slot and through that slot's `chaId`. Kept
- * means strictly equal to the live character and the same live proxy, so this write needs no save for it. Every
- * other slot is marked here: V2's getDatabase() is a live wrapper over DBState.db, so a plugin edits live elements
- * in place and a self-assignment notifies nothing, invisible to both the selected-character effect and the identity
- * tracker; V3 installs fresh objects. Both setters share this, so the mark does not depend on the API version.
+ * means the incoming element stores as the live character (`sameStoredValue`) and is replaced by the live proxy, or
+ * is a swapped-in light holder at its own position that no transform wrote into, so this write needs no save for it.
+ * Every other slot is marked here: V2's getDatabase() is a live wrapper over
+ * DBState.db, so a plugin edits live elements in place and a self-assignment notifies nothing, invisible to both the
+ * selected-character effect and the identity tracker; V3 installs fresh objects. Both setters share this, so the
+ * mark does not depend on the API version.
  * Never deletes: a character this call's own `characters` array omits still keeps its block and comes back on
  * reload; the guarantee that a save iteration without a reload can never delete a block lives in
  * `prepareSaveIteration`'s no-reload filter (globalApi.svelte.ts), not here. Returns the number of marks raised.
