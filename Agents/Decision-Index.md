@@ -1599,3 +1599,160 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-1702](Maintainer-Context.md#mc-1702--per-file-existence-probe-before-replay-measure-it-2026-11-14) | Per-file existence probe before replay, measure it, 2026-11-14 |
 | [MC-1703](Maintainer-Context.md#mc-1703--asset-replay-probe-deadline-8000-ms-2026-11-14) | Asset replay probe deadline 8000 ms, 2026-11-14 |
 | [MC-1704](Maintainer-Context.md#mc-1704--new-sessions-for-ui-batches-and-records-2026-11-14) | New sessions for UI, batches and records, 2026-11-14 |
+| [MC-1705](Maintainer-Context.md#mc-1705--agent-launch-workflow-hook-timeout-raised-to-30-s-2026-11-14) | Agent-launch workflow-hook timeout raised to 30 s, 2026-11-14 |
+| [MC-1706](Maintainer-Context.md#mc-1706--workflow-control-lock-retries-with-backoff-and-breaks-stale-locks-2026-11-14) | Workflow-control lock retries with backoff and breaks stale locks, 2026-11-14 |
+| [MC-1707](Maintainer-Context.md#mc-1707--synthetic-rich-card-legs-added-to-chore-743-2026-11-14) | Synthetic rich-card legs added to CHORE-743, 2026-11-14 |
+| [MC-1708](Maintainer-Context.md#mc-1708--chat-message-font-token-for-theme-packs-option-c-2026-11-14) | Chat-message font token for theme packs, option C, 2026-11-14 |
+| [MC-1709](Maintainer-Context.md#mc-1709--finished-workflow-task-records-archived-out-of-workflow-statejson-2026-11-14) | Finished workflow task records archived out of Workflow-State.json, 2026-11-14 |
+| [MC-1710](Maintainer-Context.md#mc-1710--stage-1-moved-out-rows-stay-put-until-their-page-is-rebuilt-2026-11-14) | Stage 1 moved-out rows stay put until their page is rebuilt, 2026-11-14 |
+| [MC-1711](Maintainer-Context.md#mc-1711--uselegacygui-drop-is-not-in-stage-1-2026-11-14) | useLegacyGUI drop is not in Stage 1, 2026-11-14 |
+| [MC-1712](Maintainer-Context.md#mc-1712--stage-3-plugins-page-is-one-restyled-list-for-now-2026-11-14) | Stage 3 Plugins page is one restyled list for now, 2026-11-14 |
+| [MC-1713](Maintainer-Context.md#mc-1713--plugin-update-last-check-time-stored-on-this-device-only-2026-11-14) | Plugin update last-check time stored on this device only, 2026-11-14 |
+| [MC-1714](Maintainer-Context.md#mc-1714--api-version-2-plugins-shown-as-retired-like-v21-2026-11-14) | API version 2 plugins shown as retired, like V2.1, 2026-11-14 |
+| [MC-1730](Maintainer-Context.md#mc-1730--persona-delete-gets-an-undo-toast-now-2026-11-14) | Persona delete gets an undo toast now, 2026-11-14 |
+| [MC-1731](Maintainer-Context.md#mc-1731--persona-chat-count-uses-loaded-characters-2026-11-14) | Persona chat count uses loaded characters, 2026-11-14 |
+| [MC-1732](Maintainer-Context.md#mc-1732--deleting-the-active-persona-activates-the-first-remaining-one-2026-11-14) | Deleting the active persona activates the first remaining one, 2026-11-14 |
+| [MC-1733](Maintainer-Context.md#mc-1733--persona-png-export-gains-a-largeportrait-flag-and-allows-empty-fields-2026-11-14) | Persona PNG export gains a largePortrait flag and allows empty fields, 2026-11-14 |
+| [MC-1734](Maintainer-Context.md#mc-1734--empty-field-persona-export-shows-the-spec-warning-only-2026-11-14) | Empty-field persona export shows the spec warning only, 2026-11-14 |
+| [MC-1735](Maintainer-Context.md#mc-1735--bound-chat-list-shows-plain-rows-2026-11-14) | Bound-chat list shows plain rows, 2026-11-14 |
+| [MC-1736](Maintainer-Context.md#mc-1736--persona-note-always-shown-no-toggle-2026-11-14) | Persona note always shown, no toggle, 2026-11-14 |
+| [MC-1737](Maintainer-Context.md#mc-1737--accept-seven-extra-en-strings-and-design-defaults-with-one-accepted-limitation-2026-11-14) | Accept seven extra en strings and design defaults, with one accepted limitation, 2026-11-14 |
+| [MC-1740](Maintainer-Context.md#mc-1740--studio-carry-reaches-open-and-loaded-characters-2026-11-14) | Studio carry reaches open and loaded characters, 2026-11-14 |
+| [MC-1741](Maintainer-Context.md#mc-1741--studio-carry-favourites-follow-a-rename-loadouts-stay-2026-11-14) | Studio carry: favourites follow a rename, loadouts stay, 2026-11-14 |
+| [MC-1742](Maintainer-Context.md#mc-1742--studio-carry-and-update-all-undo-only-within-the-same-visit-2026-11-14) | Studio carry and update-all undo only within the same visit, 2026-11-14 |
+| [MC-1743](Maintainer-Context.md#mc-1743--studio-preset-toggle-is-the-last-write-stage-2026-11-14) | Studio preset toggle is the last write stage, 2026-11-14 |
+| [MC-1744](Maintainer-Context.md#mc-1744--studio-update-all-rewrites-static-cbs-only-lua-flagged-2026-11-14) | Studio update-all rewrites static CBS only, Lua flagged, 2026-11-14 |
+| [MC-1745](Maintainer-Context.md#mc-1745--studio-spill-checks-per-source-2026-11-14) | Studio spill checks per source, 2026-11-14 |
+| [MC-1746](Maintainer-Context.md#mc-1746--chore-570-split-default-value-syntax-stays-held-2026-11-14) | CHORE-570 split; default-value syntax stays held, 2026-11-14 |
+| [MC-1747](Maintainer-Context.md#mc-1747--slice-2-and-3-design-decisions-adopted-as-amended-2026-11-14) | Slice 2 and 3 design decisions adopted as amended, 2026-11-14 |
+| [MC-1748](Maintainer-Context.md#mc-1748--studio-text-fields-write-through-outside-ime-composition-2026-11-14) | Studio text fields write through outside IME composition, 2026-11-14 |
+| [MC-1749](Maintainer-Context.md#mc-1749--studio-problems-and-preview-per-field-no-side-panel-2026-11-14) | Studio problems and preview per field, no side panel, 2026-11-14 |
+| [MC-1750](Maintainer-Context.md#mc-1750--studio-preview-resolves-offline-macros-only-2026-11-14) | Studio preview resolves offline macros only, 2026-11-14 |
+| [MC-1751](Maintainer-Context.md#mc-1751--studio-korean-text-for-the-spec-macro-groups-2026-11-14) | Studio Korean text for the spec macro groups, 2026-11-14 |
+| [MC-1752](Maintainer-Context.md#mc-1752--studio-swap-or-move-follows-the-first-message-text-2026-11-14) | Studio swap or move follows the first-message text, 2026-11-14 |
+| [MC-1753](Maintainer-Context.md#mc-1753--studio-height-cap-stored-per-field-kind-in-local-storage-2026-11-14) | Studio height cap stored per field kind in local storage, 2026-11-14 |
+| [MC-1754](Maintainer-Context.md#mc-1754--studio-focus-revert-point-set-per-opening-2026-11-14) | Studio focus revert point set per opening, 2026-11-14 |
+| [MC-1755](Maintainer-Context.md#mc-1755--studio-token-chip-counts-text-as-written-until-e2-2026-11-14) | Studio token chip counts text as written until E2, 2026-11-14 |
+| [MC-1756](Maintainer-Context.md#mc-1756--studio-insert-sheet-toggles-group-comes-with-the-toggle-work-2026-11-14) | Studio insert-sheet toggles group comes with the toggle work, 2026-11-14 |
+| [MC-1757](Maintainer-Context.md#mc-1757--studio-korean-text-for-all-66-mockup-macro-rows-2026-11-14) | Studio Korean text for all 66 mockup macro rows, 2026-11-14 |
+| [MC-1758](Maintainer-Context.md#mc-1758--studio-w0d-preset-toggle-edit-history-lasts-for-the-page-session-2026-11-14) | Studio W0d preset toggle edit history lasts for the page session, 2026-11-14 |
+| [MC-1759](Maintainer-Context.md#mc-1759--studio-s3d-2d-text-edit-not-saved-before-carry-over-exists-2026-11-14) | Studio S3d 2D text edit not saved before carry-over exists, 2026-11-14 |
+| [MC-1760](Maintainer-Context.md#mc-1760--chore-744-scrubber-thumb-and-bubble-move-only-while-dragging-2026-11-14) | CHORE-744 scrubber: thumb and bubble move only while dragging, 2026-11-14 |
+| [MC-1761](Maintainer-Context.md#mc-1761--chore-744-shell-always-shows-the-round-jump-to-latest-button-2026-11-14) | CHORE-744 shell always shows the round jump-to-latest button, 2026-11-14 |
+| [MC-1762](Maintainer-Context.md#mc-1762--chore-744-ctrlg-opens-the-jump-sheet-inside-the-chat-2026-11-14) | CHORE-744 Ctrl+G opens the jump sheet inside the chat, 2026-11-14 |
+| [MC-1763](Maintainer-Context.md#mc-1763--chore-744-jump-entries-form-a-first-group-in-thischatsheet-2026-11-14) | CHORE-744 jump entries form a first group in ThisChatSheet, 2026-11-14 |
+| [MC-1764](Maintainer-Context.md#mc-1764--chore-744-in-chat-search-step-direction-follows-the-mockup-2026-11-14) | CHORE-744 in-chat search: step direction follows the mockup, 2026-11-14 |
+| [MC-1765](Maintainer-Context.md#mc-1765--chore-744-b3-in-chat-search-mark-alignment-and-thoughts-handling-2026-11-14) | CHORE-744 B3 in-chat search: mark alignment and Thoughts handling, 2026-11-14 |
+| [MC-1766](Maintainer-Context.md#mc-1766--chore-744-scrubber-accessibility-range-focus-and-short-chat-rules-2026-11-15) | CHORE-744 scrubber accessibility, range, focus and short-chat rules, 2026-11-15 |
+| [MC-1767](Maintainer-Context.md#mc-1767--chore-744-scrubber-hidden-on-short-landscape-tracks-2026-11-15) | CHORE-744 scrubber hidden on short landscape tracks, 2026-11-15 |
+| [MC-1780](Maintainer-Context.md#mc-1780--chore-462-closed-as-moot-2026-11-14) | CHORE-462 closed as moot, 2026-11-14 |
+| [MC-1781](Maintainer-Context.md#mc-1781--chore-374-inlay-blob-url-display-type-from-the-closed-extension-table-2026-11-14) | CHORE-374 inlay blob URL display type from the closed extension table, 2026-11-14 |
+| [MC-1782](Maintainer-Context.md#mc-1782--chore-374-asset-protocol-texthtml-fallback-for-store-url-inlays-is-record-only-2026-11-14) | CHORE-374 asset-protocol text/html fallback for store-url inlays is record-only, 2026-11-14 |
+| [MC-1783](Maintainer-Context.md#mc-1783--chore-599-name-that-sanitizes-to-empty-exports-as-character_export-2026-11-14) | CHORE-599 name that sanitizes to empty exports as character_export, 2026-11-14 |
+| [MC-1784](Maintainer-Context.md#mc-1784--chore-599-strip-control-characters-u0000-u001f-and-trim-the-name-2026-11-14) | CHORE-599 strip control characters U+0000-U+001F and trim the name, 2026-11-14 |
+| [MC-1785](Maintainer-Context.md#mc-1785--chore-599-no-length-cap-on-exported-names-2026-11-14) | CHORE-599 no length cap on exported names, 2026-11-14 |
+| [MC-1790](Maintainer-Context.md#mc-1790--chore-221-refuse-a-bin-commit-that-would-leave-out-an-unconfirmed-block-2026-11-14) | CHORE-221 refuse a .bin commit that would leave out an unconfirmed block, 2026-11-14 |
+| [MC-1791](Maintainer-Context.md#mc-1791--chore-350-skip-an-unstorable-item-and-keep-its-last-saved-copy-2026-11-14) | CHORE-350 skip an unstorable item and keep its last saved copy, 2026-11-14 |
+| [MC-1792](Maintainer-Context.md#mc-1792--chore-71-skip-the-plugin-link-walk-on-store2-pages-2026-11-14) | CHORE-71 skip the plugin link walk on store2 pages, 2026-11-14 |
+| [MC-1793](Maintainer-Context.md#mc-1793--close-chore-72-and-chore-73-as-stale-chore-70-stays-open-2026-11-14) | Close CHORE-72 and CHORE-73 as stale, CHORE-70 stays open, 2026-11-14 |
+| [MC-1794](Maintainer-Context.md#mc-1794--chore-71-refines-mc-1792-on-store2-skip-only-the-chat-walk-and-retained-stub-check-2026-11-14) | CHORE-71 refines MC-1792: on store2 skip only the chat walk and retained-stub check, 2026-11-14 |
+| [MC-1795](Maintainer-Context.md#mc-1795--chore-350-presets-keep-the-whole-last-saved-preset-list-on-an-unstorable-value-2026-11-14) | CHORE-350 presets: keep the whole last-saved preset list on an unstorable value, 2026-11-14 |
+| [MC-1796](Maintainer-Context.md#mc-1796--chore-350-notice-names-a-setting-by-its-raw-key-2026-11-14) | CHORE-350 notice names a setting by its raw key, 2026-11-14 |
+| [MC-1797](Maintainer-Context.md#mc-1797--loadouts-statics-and-characterorder-out-of-chore-350-scope-2026-11-14) | Loadouts, statics and characterOrder out of CHORE-350 scope, 2026-11-14 |
+| [MC-1798](Maintainer-Context.md#mc-1798--codecinputerror-alert-once-at-the-fifth-attempt-then-quiet-retries-2026-11-14) | CodecInputError alert once at the fifth attempt, then quiet retries, 2026-11-14 |
+| [MC-1799](Maintainer-Context.md#mc-1799--chore-350-presets-saved-preset-id-past-the-held-list-startup-adds-new-preset-2026-11-14) | CHORE-350 presets: saved preset id past the held list, startup adds "New Preset", 2026-11-14 |
+| [MC-1800](Maintainer-Context.md#mc-1800--chore-17-next-step-design-compare-and-keep-before-code-2026-11-14) | CHORE-17 next step: design compare-and-keep before code, 2026-11-14 |
+| [MC-1810](Maintainer-Context.md#mc-1810--w0-swap-undo-restores-both-sides-or-stops-2026-11-14) | W0 swap undo restores both sides or stops, 2026-11-14 |
+| [MC-1811](Maintainer-Context.md#mc-1811--chats-that-chose-a-deleted-s3d-option-get-the-first-option-2026-11-14) | Chats that chose a deleted S3d option get the first option, 2026-11-14 |
+| [MC-1812](Maintainer-Context.md#mc-1812--w0-restore-point-covers-every-studio-editable-field-2026-11-14) | W0 restore point covers every Studio-editable field, 2026-11-14 |
+| [MC-1813](Maintainer-Context.md#mc-1813--ime-edges-save-held-composition-text-at-hide-or-kill-drop-it-when-the-row-is-removed-2026-11-14) | IME edges: save held composition text at hide or kill, drop it when the row is removed, 2026-11-14 |
+| [MC-1814](Maintainer-Context.md#mc-1814--w0-swap-reach-any-step-changing-both-first-message-and-alternates-applies-both-or-stops-2026-11-14) | W0 swap reach: any step changing both first message and alternates applies both or stops, 2026-11-14 |
+| [MC-1815](Maintainer-Context.md#mc-1815--w0-restore-point-leaves-the-open-chats-chosen-first-message-in-place-2026-11-14) | W0 restore point leaves the open chat's chosen first message in place, 2026-11-14 |
+| [MC-1816](Maintainer-Context.md#mc-1816--s3d-2f-renamed-toggle-name-and-key-ask-and-carry-nothing-2026-11-14) | S3d-2F: renamed toggle name and key, ask and carry nothing, 2026-11-14 |
+| [MC-1817](Maintainer-Context.md#mc-1817--s3d-carried-key-rename-keeps-the-old-keys-saved-value-2026-11-14) | S3d carried key rename keeps the old key's saved value, 2026-11-14 |
+| [MC-1818](Maintainer-Context.md#mc-1818--pending-carry-question-kept-in-memory-until-the-page-closes-if-the-device-cannot-store-it-2026-11-14) | Pending carry question kept in memory until the page closes if the device cannot store it, 2026-11-14 |
+| [MC-1819](Maintainer-Context.md#mc-1819--2f-banner-and-row-flag-now-tree-marker-and-problems-entry-with-the-side-panel-shell-batch-2026-11-14) | 2F banner and row flag now; tree marker and Problems entry with the side-panel shell batch, 2026-11-14 |
+| [MC-1820](Maintainer-Context.md#mc-1820--mvp-a3b5d706e-is-still-the-only-release-signed-build-holding-real-data-2026-11-14) | MVP a3b5d706e is still the only release-signed build holding real data, 2026-11-14 |
+| [MC-1821](Maintainer-Context.md#mc-1821--workflow-control-exact-file-ownership-is-scoped-per-checkout-2026-11-14) | Workflow-control exact-file ownership is scoped per checkout, 2026-11-14 |
+| [MC-1822](Maintainer-Context.md#mc-1822--chat-font-token-may-name-only-pack-bundled-fonts-and-generic-families-2026-11-14) | Chat font token may name only pack-bundled fonts and generic families, 2026-11-14 |
+| [MC-1823](Maintainer-Context.md#mc-1823--pack-chat-font-applies-only-to-the-new-chat-screens-message-text-2026-11-14) | Pack chat font applies only to the new chat screen's message text, 2026-11-14 |
+| [MC-1824](Maintainer-Context.md#mc-1824--chat-code-blocks-stay-monospace-and-do-not-take-the-pack-font-2026-11-14) | Chat code blocks stay monospace and do not take the pack font, 2026-11-14 |
+| [MC-1825](Maintainer-Context.md#mc-1825--lane-c-may-add-one---chat-message-font-line-to-the-maintainer-imported-theme-tokens-file-2026-11-14) | Lane C may add one --chat-message-font line to the maintainer-imported theme tokens file, 2026-11-14 |
+| [MC-1826](Maintainer-Context.md#mc-1826--full-pnpm-test-pnpm-check-and-builds-run-one-at-a-time-on-this-pc-2026-11-14) | Full pnpm test, pnpm check and builds run one at a time on this PC, 2026-11-14 |
+| [MC-1827](Maintainer-Context.md#mc-1827--studio-history-version-rule-amended-a-widening-keeps-v2-2026-11-14) | Studio history version rule amended: a widening keeps v2, 2026-11-14 |
+| [MC-1828](Maintainer-Context.md#mc-1828--code-blocks-keep-rendering-as-today-and-never-take-the-pack-font-2026-11-14) | Code blocks keep rendering as today and never take the pack font, 2026-11-14 |
+| [MC-1829](Maintainer-Context.md#mc-1829--w0-0-whole-value-transient-history-writes-move-to-lane-d-in-ui-s3-slice-4-2026-11-14) | W0-0 whole-value transient history writes move to lane D in UI-S3 slice 4, 2026-11-14 |
+| [MC-1830](Maintainer-Context.md#mc-1830--remove-three-unused-clean-worktrees-lane-a-cleanup-2026-11-14) | Remove three unused clean worktrees (lane A cleanup), 2026-11-14 |
+| [MC-1831](Maintainer-Context.md#mc-1831--one-added-line-in-the-chat-theme-reference-checker-for---chat-message-font-2026-11-14) | One added line in the chat theme reference checker for --chat-message-font, 2026-11-14 |
+| [MC-1832](Maintainer-Context.md#mc-1832--accepted-limitations-when-a-pack-sets---chat-message-font-2026-11-14) | Accepted limitations when a pack sets --chat-message-font, 2026-11-14 |
+| [MC-1833](Maintainer-Context.md#mc-1833--asset-rows-whose-path-is-not-under-assets-skip-the-replay-existence-check-2026-11-14) | Asset rows whose path is not under assets/ skip the replay existence check, 2026-11-14 |
+| [MC-1834](Maintainer-Context.md#mc-1834--w0-0b-the-both-or-stop-rule-in-planreplay-and-planrevert-after-w0-0-and-before-45m-2026-11-14) | W0-0b: the both-or-stop rule in planReplay and planRevert, after W0-0 and before 4.5m, 2026-11-14 |
+| [MC-1835](Maintainer-Context.md#mc-1835--four-ui-s2-c4a-shortcuts-korean-strings-kept-as-the-translator-wrote-them-2026-11-14) | Four UI-S2 C4a Shortcuts Korean strings kept as the translator wrote them, 2026-11-14 |
+| [MC-1836](Maintainer-Context.md#mc-1836--turn-off-typescript-lsp-and-svelte-lsp-2026-11-14) | Turn off typescript-lsp and svelte-lsp, 2026-11-14 |
+| [MC-1837](Maintainer-Context.md#mc-1837--merge-trial107-despite-fullrun-fail-recording-the-chore-776-base-failure-2026-11-14) | Merge trial107 despite FULLRUN FAIL, recording the CHORE-776 base failure, 2026-11-14 |
+| [MC-1838](Maintainer-Context.md#mc-1838--held-task-preset-list-gets-its-own-notice-2026-11-14) | Held task-preset list gets its own notice, 2026-11-14 |
+| [MC-1839](Maintainer-Context.md#mc-1839--ui-s6-install-i3-close-stall-measure-n9-15a-record-2026-11-14) | UI-S6 install I3 close-stall measure (N9-15a) record, 2026-11-14 |
+| [MC-1840](Maintainer-Context.md#mc-1840--toggle-list-use-rename-ships-with-update-all-2026-11-14) | Toggle list-use rename ships with update-all, 2026-11-14 |
+| [MC-1841](Maintainer-Context.md#mc-1841--preset-pending-carry-question-is-page-session-only-2026-11-14) | Preset pending carry question is page-session only, 2026-11-14 |
+| [MC-1842](Maintainer-Context.md#mc-1842--carry-reach-excludes-trashed-characters-2026-11-14) | Carry reach excludes trashed characters, 2026-11-14 |
+| [MC-1843](Maintainer-Context.md#mc-1843--option-renumbering-carries-only-while-the-builder-is-open-2026-11-14) | Option renumbering carries only while the builder is open, 2026-11-14 |
+| [MC-1844](Maintainer-Context.md#mc-1844--character-owned-toggle-carries-to-the-characters-own-chats-2026-11-14) | Character-owned toggle carries to the character's own chats, 2026-11-14 |
+| [MC-1845](Maintainer-Context.md#mc-1845--reopened-carry-question-after-undo-is-page-session-only-2026-11-14) | Reopened carry question after Undo is page-session only, 2026-11-14 |
+| [MC-1846](Maintainer-Context.md#mc-1846--carry-renumbers-a-toggle-only-when-all-its-changes-were-made-in-the-open-builder-2026-11-14) | Carry renumbers a toggle only when all its changes were made in the open builder, 2026-11-14 |
+| [MC-1847](Maintainer-Context.md#mc-1847--preview-sandbox-shows-the-real-chat-user-name-2026-11-14) | Preview sandbox shows the real chat user name, 2026-11-14 |
+| [MC-1848](Maintainer-Context.md#mc-1848--preview-formulas-show-their-tex-source-as-text-2026-11-14) | Preview formulas show their TeX source as text, 2026-11-14 |
+| [MC-1849](Maintainer-Context.md#mc-1849--settings-classic-links-reopen-the-settings-page-2026-11-14) | Settings classic links reopen the Settings page, 2026-11-14 |
+| [MC-1860](Maintainer-Context.md#mc-1860--choice-toggle-with-no-saved-value-previews-its-first-option-2026-11-14) | Choice toggle with no saved value previews its first option, 2026-11-14 |
+| [MC-1861](Maintainer-Context.md#mc-1861--toggle-preview-opens-as-a-sheet-from-the-item-header-2026-11-14) | Toggle preview opens as a sheet from the item header, 2026-11-14 |
+| [MC-1862](Maintainer-Context.md#mc-1862--every--formula-shows-its-tex-source-once-in-the-preview-2026-11-14) | Every $$ formula shows its TeX source once in the preview, 2026-11-14 |
+| [MC-1863](Maintainer-Context.md#mc-1863--duplicate-puts-the-copy-at-the-end-as-one-undo-step-2026-11-14) | Duplicate puts the copy at the end as one undo step, 2026-11-14 |
+| [MC-1864](Maintainer-Context.md#mc-1864--example-split-marker-edit-is-its-own-undo-step-2026-11-14) | Example split marker edit is its own undo step, 2026-11-14 |
+| [MC-1865](Maintainer-Context.md#mc-1865--example-text-view-never-writes-on-open-switch-or-leave-2026-11-14) | Example text view never writes on open, switch or leave, 2026-11-14 |
+| [MC-1866](Maintainer-Context.md#mc-1866--greetingdelete-keeps-resetting-the-open-chat-to-the-main-first-message-2026-11-14) | greetingDelete keeps resetting the open chat to the main first message, 2026-11-14 |
+| [MC-1880](Maintainer-Context.md#mc-1880--theme-pack-on-a-direct-to-chat-launch-shows-the-chat-first-2026-11-14) | Theme pack on a direct-to-chat launch shows the chat first, 2026-11-14 |
+| [MC-1881](Maintainer-Context.md#mc-1881--phone-2-runs-the-queued-device-rows-now-2026-11-14) | Phone 2 runs the queued device rows now, 2026-11-14 |
+| [MC-1882](Maintainer-Context.md#mc-1882--n9-14-pixel-leg-decides-event-leg-diagnostic-2026-11-14) | N9-14 pixel leg decides, event leg diagnostic, 2026-11-14 |
+| [MC-1883](Maintainer-Context.md#mc-1883--five-translator-drafted-korean-keys-merge-as-drafted-2026-11-14) | Five translator-drafted Korean keys merge as drafted, 2026-11-14 |
+| [MC-1884](Maintainer-Context.md#mc-1884--run-a-195-mib-attachsend-check-on-phone-1-2026-11-14) | Run a 195 MiB attach/send check on phone 1, 2026-11-14 |
+| [MC-1885](Maintainer-Context.md#mc-1885--chore-779-filed-composer-preview-and-send-must-not-read-whole-videos-2026-11-14) | CHORE-779 filed: composer preview and send must not read whole videos, 2026-11-14 |
+| [MC-1886](Maintainer-Context.md#mc-1886--start-chore-779-sizing-now-in-media-charx-2026-11-14) | Start CHORE-779 sizing now in media-charx, 2026-11-14 |
+| [MC-1887](Maintainer-Context.md#mc-1887--start-chore-780-manifest-only-removal-fix-now-2026-11-14) | Start CHORE-780 manifest-only removal fix now, 2026-11-14 |
+| [MC-1888](Maintainer-Context.md#mc-1888--maintainer-hand-check-rows-batched-for-one-sitting-2026-11-14) | Maintainer hand-check rows batched for one sitting, 2026-11-14 |
+| [MC-1889](Maintainer-Context.md#mc-1889--merge-trial112-with-the-one-failure-noted-2026-11-14) | Merge trial112 with the one failure noted, 2026-11-14 |
+| [MC-1890](Maintainer-Context.md#mc-1890--approve-worktree-removals-with-branches-kept-2026-11-14) | Approve worktree removals with branches kept, 2026-11-14 |
+| [MC-1891](Maintainer-Context.md#mc-1891--force-remove-three-dirty-lane-b-worktrees-after-a-patch-save-2026-11-14) | Force-remove three dirty lane B worktrees after a patch save, 2026-11-14 |
+| [MC-1892](Maintainer-Context.md#mc-1892--theme-pack-install-row-on-both-settings-screens-2026-11-14) | Theme-pack install row on both Settings screens, 2026-11-14 |
+| [MC-1893](Maintainer-Context.md#mc-1893--broken-theme-pack-shows-its-notice-only-on-the-settings-row-2026-11-14) | Broken theme pack shows its notice only on the Settings row, 2026-11-14 |
+| [MC-1894](Maintainer-Context.md#mc-1894--theme-pack-row-help-and-android-pick-behaviour-2026-11-14) | Theme-pack row help and Android pick behaviour, 2026-11-14 |
+| [MC-1895](Maintainer-Context.md#mc-1895--approve-removing-five-clean-merged-worktrees-2026-11-15) | Approve removing five clean merged worktrees, 2026-11-15 |
+| [MC-1896](Maintainer-Context.md#mc-1896--settings-round-trip-moves-reading-position-file-chore-783-2026-11-15) | Settings round trip moves reading position; file CHORE-783, 2026-11-15 |
+| [MC-1897](Maintainer-Context.md#mc-1897--video-or-audio-skipped-unread-when-the-model-lacks-the-input-flag-2026-11-14) | Video or audio skipped unread when the model lacks the input flag, 2026-11-14 |
+| [MC-1898](Maintainer-Context.md#mc-1898--per-attachment-20-mib-inline-cap-with-an-over-cap-toast-2026-11-14) | Per-attachment 20 MiB inline cap with an over-cap toast, 2026-11-14 |
+| [MC-1899](Maintainer-Context.md#mc-1899--history-re-send-unchanged-flag-rule-and-cap-apply-per-message-2026-11-14) | History re-send unchanged; flag rule and cap apply per message, 2026-11-14 |
+| [MC-1900](Maintainer-Context.md#mc-1900--android-video-draft-chip-desktop-and-web-keep-a-player-2026-11-14) | Android video draft chip; desktop and web keep a player, 2026-11-14 |
+| [MC-1901](Maintainer-Context.md#mc-1901--over-cap-toast-repeats-on-every-send-and-prompt-preview-2026-11-14) | Over-cap toast repeats on every send and prompt preview, 2026-11-14 |
+| [MC-1902](Maintainer-Context.md#mc-1902--over-cap-toast-wording-and-key-inlaysendtoolarge-2026-11-14) | Over-cap toast wording and key inlaySendTooLarge, 2026-11-14 |
+| [MC-1907](Maintainer-Context.md#mc-1907--over-size-notice-lists-each-file-once-2026-11-15) | Over-size notice lists each file once, 2026-11-15 |
+| [MC-1908](Maintainer-Context.md#mc-1908--sent-large-video-costs-sandbox-memory-file-chore-785-2026-11-15) | Sent large video costs sandbox memory; file CHORE-785, 2026-11-15 |
+| [MC-1909](Maintainer-Context.md#mc-1909--force-remove-track-3658-worktree-2026-11-15) | Force-remove track-3658 worktree, 2026-11-15 |
+| [MC-1910](Maintainer-Context.md#mc-1910--lane-c-may-remove-worktree-uis6i4b-and-its-branch-2026-11-15) | Lane C may remove worktree uis6i4b and its branch, 2026-11-15 |
+| [MC-1911](Maintainer-Context.md#mc-1911--file-chore-786-sidebar-pin-crash-unscheduled-2026-11-15) | File CHORE-786 sidebar pin crash, unscheduled, 2026-11-15 |
+| [MC-1912](Maintainer-Context.md#mc-1912--lane-c-takes-chore-783-782-786-and-778-work-2026-11-15) | Lane C takes CHORE-783, 782, 786 and 778 work, 2026-11-15 |
+| [MC-1913](Maintainer-Context.md#mc-1913--reading-position-after-a-chat-list-rebuild-keeps-message-and-offset-2026-11-15) | Reading position after a chat-list rebuild keeps message and offset, 2026-11-15 |
+| [MC-1914](Maintainer-Context.md#mc-1914--reload-the-window-around-the-reading-message-if-it-is-not-loaded-2026-11-15) | Reload the window around the reading message if it is not loaded, 2026-11-15 |
+| [MC-1915](Maintainer-Context.md#mc-1915--amend-slice4_spec-to-record-actual-behaviour-no-persisted-cache-2026-11-15) | Amend SLICE4_SPEC to record actual behaviour, no persisted cache, 2026-11-15 |
+| [MC-1916](Maintainer-Context.md#mc-1916--unresolvable-sidebar-pin-skipped-silently-still-listed-in-settings-2026-11-15) | Unresolvable sidebar pin skipped silently, still listed in Settings, 2026-11-15 |
+| [MC-1917](Maintainer-Context.md#mc-1917--deleting-an-alternative-first-message-adjusts-only-the-open-chat-2026-11-15) | Deleting an alternative first message adjusts only the open chat, 2026-11-15 |
+| [MC-1918](Maintainer-Context.md#mc-1918--standing-rule-a-lane-removes-its-own-clean-merged-worktree-2026-11-15) | Standing rule: a lane removes its own clean merged worktree, 2026-11-15 |
+| [MC-1919](Maintainer-Context.md#mc-1919--slice-4-korean-studio-strings-stay-in-해요-2026-11-15) | Slice 4 Korean Studio strings stay in 해요, 2026-11-15 |
+| [MC-1920](Maintainer-Context.md#mc-1920--chore-787-starts-now-in-the-hygiene-session-2026-11-15) | CHORE-787 starts now in the hygiene session, 2026-11-15 |
+| [MC-1921](Maintainer-Context.md#mc-1921--merge-trial118-with-the-one-failure-noted-2026-11-15) | Merge trial118 with the one failure noted, 2026-11-15 |
+| [MC-1922](Maintainer-Context.md#mc-1922--merge-trial119-with-three-failing-files-noted-2026-11-15) | Merge trial119 with three failing files noted, 2026-11-15 |
+| [MC-1923](Maintainer-Context.md#mc-1923--chore-777-shared-test-warm-ups-start-after-chore-787-2026-11-15) | CHORE-777 shared test warm-ups start after CHORE-787, 2026-11-15 |
+| [MC-1924](Maintainer-Context.md#mc-1924--lane-c-takes-chore-790-chore-791-and-chore-788-2026-11-15) | Lane C takes CHORE-790, CHORE-791 and CHORE-788, 2026-11-15 |
+| [MC-1925](Maintainer-Context.md#mc-1925--chore-790-closed-as-not-applicable-2026-11-15) | CHORE-790 closed as not applicable, 2026-11-15 |
+| [MC-1926](Maintainer-Context.md#mc-1926--over-limit-android-image-shows-a-name-and-size-chip-2026-11-15) | Over-limit Android image shows a name and size chip, 2026-11-15 |
+| [MC-1927](Maintainer-Context.md#mc-1927--android-refuses-over-limit-image-send-without-reading-it-2026-11-15) | Android refuses over-limit image send without reading it, 2026-11-15 |
+| [MC-1928](Maintainer-Context.md#mc-1928--over-cap-readinlay-and-lua-inlay-return-null-2026-11-15) | Over-cap readInlay and Lua inlay return null, 2026-11-15 |
+| [MC-1929](Maintainer-Context.md#mc-1929--plugin-api-session-takes-chore-793-first-2026-11-15) | Plugin-api session takes CHORE-793 first, 2026-11-15 |
+| [MC-1930](Maintainer-Context.md#mc-1930--unresolved-pluginmodel-id-fails-locally-2026-11-15) | Unresolved pluginmodel id fails locally, 2026-11-15 |
