@@ -32,7 +32,9 @@ import { runTrigger } from "./triggers";
 import { HypaProcesser } from "./memory/hypamemory";
 import { additionalInformations } from "./embedding/addinfo";
 import { getInlayAsset, getInlaySummary } from "./files/inlays";
-import { INLAY_SEND_LIMIT_BYTES, inlaySendVerdict } from "./files/inlaySendGate";
+import { INLAY_SEND_LIMIT_BYTES, inlayImageWithheld, inlaySendVerdict } from "./files/inlaySendGate";
+import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES } from "../storage/assetUrlGate";
+import { isAndroidTransport } from "../storage/tauriByteTransport";
 import { getGenerationModelString } from "./models/modelString";
 import { runInlayScreen } from "./inlayScreen";
 import { addRerolls, renameContinuedMessage } from "./prereroll";
@@ -1483,9 +1485,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     // The module regex list is fixed at the first pass of this build: a change to
     // the module selection during the loop applies from the next send.
     const moduleScripts: PromptModuleScripts = {}
-    // Attachments left out for their size, by id. The one toast per send lists each name once,
-    // since the same file attached in two messages has two ids.
-    const tooLarge = new Map<string, string>()
+    // Attachments left out for their size, by id, with the limit each was held to. The one toast per
+    // send lists each name once, since the same file attached in two messages has two ids.
+    const tooLarge = new Map<string, { name: string, limitBytes: number }>()
     for(const msg of ms){
         const chatIndex = msChatIndexes[index]
         let formatedChat = (await processScriptFull(nowChatroom,risuChatParser(msg.data, {chara: currentChar, role: msg.role, subject, promptView: promptViewAt(promptView, chatIndex)}), 'editprocess', chatIndex, {
@@ -1533,9 +1535,14 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                 // The summary holds no body: a video or an audio the model cannot take, the message
                 // cannot hold or the limit rules out is never read, and does not take the message's slot.
                 const summary = await getInlaySummary(inlayName)
-                const verdict = summary === null ? 'not-sent' : inlaySendVerdict(summary, modelinfo.flags, multimodal.length > 0)
+                // An image the platform does not load is refused whatever the model takes.
+                const withheldImage = summary !== null && inlayImageWithheld(summary.type, summary.size, isAndroidTransport())
+                const verdict = summary === null ? 'not-sent' : withheldImage ? 'too-large' : inlaySendVerdict(summary, modelinfo.flags, multimodal.length > 0)
                 if(summary !== null && verdict === 'too-large'){
-                    tooLarge.set(inlayName, summary.name || inlayName)
+                    tooLarge.set(inlayName, {
+                        name: summary.name || inlayName,
+                        limitBytes: withheldImage ? ANDROID_WHOLE_READ_URL_LIMIT_BYTES : INLAY_SEND_LIMIT_BYTES,
+                    })
                 }
                 const inlayData = verdict === 'read' ? await getInlayAsset(inlayName) : null
                 if(inlayData?.type === 'image'){
@@ -1653,10 +1660,17 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         index++
     }
     if(tooLarge.size > 0){
-        alertToast(fillLang(language.inlaySendTooLarge, {
-            names: [...new Set(tooLarge.values())].join(', '),
-            size: INLAY_SEND_LIMIT_BYTES / (1024 * 1024)
-        }))
+        // One notice: a sentence per limit, the smaller limit first, joined by a line break.
+        const namesByLimit = new Map<number, string[]>()
+        for(const entry of tooLarge.values()){
+            const names = namesByLimit.get(entry.limitBytes) ?? []
+            names.push(entry.name)
+            namesByLimit.set(entry.limitBytes, names)
+        }
+        alertToast([...namesByLimit.entries()].sort((a, b) => a[0] - b[0]).map(([limitBytes, names]) => fillLang(language.inlaySendTooLarge, {
+            names: [...new Set(names)].join(', '),
+            size: limitBytes / (1024 * 1024)
+        })).join('\n'))
     }
     if(import.meta.env.DEV){
         console.log(JSON.stringify(chats, null, 2))
