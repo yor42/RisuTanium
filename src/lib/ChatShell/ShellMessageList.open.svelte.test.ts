@@ -218,6 +218,38 @@ describe('the other positioning paths keep their position', () => {
         await frame()
         expect(top).toBe(400)
     })
+    test('X1f: the pixel fallback ends with the anchor property removed after the release frames', async () => {
+        await show(0)
+        top = 400
+        hiding()
+        surface.hidden = true
+        flushSync()
+        top = 0
+        surface.rebuildEpoch += 1
+        surface.hidden = false
+        flushSync()
+        await tick()
+        expect(host.style.getPropertyValue('overflow-anchor')).toBe('none')
+        for (let i = 0; i < 4; i += 1) await frame()
+        expect(top).toBe(400)
+        expect(host.style.getPropertyValue('overflow-anchor')).toBe('')
+    })
+    test('X1h: a plain return with no row to anchor on writes nothing and ends with the anchor property removed', async () => {
+        await show(0)
+        top = 400
+        writes.length = 0
+        hiding()
+        surface.hidden = true
+        flushSync()
+        surface.hidden = false
+        flushSync()
+        await tick()
+        expect(host.style.getPropertyValue('overflow-anchor')).toBe('none')
+        for (let i = 0; i < 4; i += 1) await frame()
+        expect(writes).toEqual([])
+        expect(top).toBe(400)
+        expect(host.style.getPropertyValue('overflow-anchor')).toBe('')
+    })
     test('a ScrollToMessage jump is not overridden by resting at the bottom', async () => {
         const original = Element.prototype.scrollIntoView
         Element.prototype.scrollIntoView = function () { top = 123 }
