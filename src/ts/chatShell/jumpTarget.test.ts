@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest'
-import { BOTTOM_PX, LONG_JUMP_MESSAGES, TRAVEL_FRAME_CAP_MS, TRAVEL_MAX_MS, TRAVEL_MS, alignDelta, appendedReplies, badgeText, bookmarkEntries, createTravel, distanceFromEnd, hasUntimed, indexForDay, isAtBottom, isFar, isLongJump, jumpReach, latestButtonVisible, localDayStart, parseInset, parseMessageNumber, travelPlan, travelReach } from './jumpTarget'
+import { BOTTOM_PX, LONG_JUMP_MESSAGES, TRAVEL_FRAME_CAP_MS, TRAVEL_MAX_MS, TRAVEL_MS, alignDelta, appendedReplies, badgeText, bookmarkEntries, createTravel, distanceFromEnd, hasUntimed, indexForDay, isAtBottom, isFar, isLongJump, jumpReach, latestButtonVisible, localDayStart, matchAlignDelta, parseInset, parseMessageNumber, travelPlan, travelReach } from './jumpTarget'
 
 describe('the at-bottom rule', () => {
     test('A1-1: the end is within 100 px of the bottom, a slid window is never at it', () => {
@@ -207,6 +207,27 @@ describe('alignDelta', () => {
         expect(parseInset('')).toBe(0)
         expect(parseInset('auto')).toBe(0)
         expect(parseInset('-5px')).toBe(0)
+    })
+})
+
+describe('matchAlignDelta', () => {
+    const base = { hostTop: 0, clientHeight: 600, topInset: 0 }
+    test('J1: an aimed element that stays visible with the message on the line keeps the message alignment', () => {
+        // The line is at 200; the message scrolls by 300, so the aimed bottom 700 lands at 400, inside the 600 px area.
+        expect(matchAlignDelta({ ...base, containerTop: 500, aimTop: 650, aimBottom: 700 })).toBe(300)
+    })
+    test('J1: an aimed element that would fall below the visible area goes to the line itself', () => {
+        // Aligning the message leaves the aimed bottom at 1900 - 300 = 1600, below 600; the aimed top 1850 goes to the line instead.
+        expect(matchAlignDelta({ ...base, containerTop: 500, aimTop: 1850, aimBottom: 1900 })).toBe(1650)
+    })
+    test('J1: an aimed bottom exactly on the bottom edge still counts as visible', () => {
+        expect(matchAlignDelta({ ...base, containerTop: 500, aimTop: 850, aimBottom: 900 })).toBe(300)
+        expect(matchAlignDelta({ ...base, containerTop: 500, aimTop: 850, aimBottom: 901 })).toBe(650)
+    })
+    test('J1: the inset moves the line down and the host top moves the edges', () => {
+        // The line is at 50 + 60 + (600 - 60) / 3 = 290; the bottom edge is at 650.
+        expect(matchAlignDelta({ hostTop: 50, clientHeight: 600, topInset: 60, containerTop: 500, aimTop: 600, aimBottom: 800 })).toBe(210)
+        expect(matchAlignDelta({ hostTop: 50, clientHeight: 600, topInset: 60, containerTop: 500, aimTop: 1000, aimBottom: 1010 })).toBe(710)
     })
 })
 

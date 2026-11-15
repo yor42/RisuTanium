@@ -28,11 +28,6 @@
     // It is taken at most once, only by the row that replaces the stepped one at the same position, and only while the window is open: a body that renders later gets no fade.
     const COMMIT_HANDOVER_MS = HEIGHT_FLOOR_MS
     let commitHandover: { idx: number; chatId: string | undefined; direction: 'back' | 'forward'; until: number; mark: boolean } | null = null
-    // The pending body is empty or one of ChatBody's loading indicators (the parse placeholder with role="status", the translation spinner with its animated element); anything else is the rendered message.
-    function bodyRendered(body: HTMLElement): boolean {
-        if (body.querySelector('[role="status"], [style*="animation: spin"]') !== null) return false
-        return (body.textContent ?? '').trim() !== '' || body.querySelector('*') !== null
-    }
     // A swipe starts only where the nearest part of the row is one of the message's own parts. Editors, modal layers, the pager and the end row, and anything rendered into the row later, are not listed, so they start nothing until they are named here.
     const SWIPE_START_PARTS: ReadonlySet<string> = new Set([
         'chat-message', 'chat-message-name-row', 'chat-message-meta', 'chat-message-name', 'chat-message-avatar', 'chat-message-badges',
@@ -82,6 +77,7 @@
     import { tickHaptic, readHaptics } from '../../ts/chatShell/haptics'
     import { reducedMotionActive } from '../../ts/chatShell/motionPrefs.svelte'
     import { createMessageKeys } from '../../ts/chatShell/messageKeys'
+    import { bodyRendered } from '../../ts/chatShell/hitMarks'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
     import type { StepRowRunner } from '../../ts/chatShell/stepHold'
     import { ACTION_IDS, type ActionId } from '../../ts/chatShell/actionSlots'

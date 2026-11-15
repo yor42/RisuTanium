@@ -160,6 +160,9 @@ export interface JumpOptions {
     recordOrigin?: boolean
     // Whether the target takes focus after it is placed; true unless a caller keeps focus where it is (the search field).
     focus?: boolean
+    // Runs once the target row is mounted and before any measurement; it may change the row (open a block, add marks) and returns the element
+    // the jump should keep in view, or null when there is none. A jump overtaken while it runs is cancelled.
+    aim?: (article: HTMLElement) => Promise<HTMLElement | null>
 }
 
 // The scroll distance that brings `targetTop` to the line one third down the visible area. The area starts below `topInset`
@@ -167,6 +170,14 @@ export interface JumpOptions {
 export function alignDelta(input: { targetTop: number, hostTop: number, clientHeight: number, topInset: number }): number {
     const line = input.hostTop + input.topInset + (input.clientHeight - input.topInset) / 3
     return input.targetTop - line
+}
+
+// The scroll distance for a jump that aims at an element inside the target: the message keeps the upper-third line when the aimed element's
+// bottom is still inside the visible area after that scroll; otherwise the aimed element's top goes to the line.
+export function matchAlignDelta(input: { containerTop: number, aimTop: number, aimBottom: number, hostTop: number, clientHeight: number, topInset: number }): number {
+    const byContainer = alignDelta({ targetTop: input.containerTop, hostTop: input.hostTop, clientHeight: input.clientHeight, topInset: input.topInset })
+    if (input.aimBottom - byContainer <= input.hostTop + input.clientHeight) return byContainer
+    return alignDelta({ targetTop: input.aimTop, hostTop: input.hostTop, clientHeight: input.clientHeight, topInset: input.topInset })
 }
 
 // A computed `scroll-padding-top` is a length, but jsdom gives '' and a browser can give 'auto'; neither is an inset.

@@ -40,6 +40,8 @@
     import { installFindKey, installJumpSheetKey, installTranscriptEndKey } from '../../ts/chatShell/shellJumpKeys'
     import { DEFAULT_FILTERS, createFindSession, sameFingerprint, searchFingerprint, type FindSession, type FindSessionState, type SearchFingerprint } from '../../ts/chatShell/findSession'
     import { createFindRun, type FindRun } from '../../ts/chatShell/findRun'
+    import { createHitAim, createHitMarks, type HitMarks } from '../../ts/chatShell/hitMarks'
+    import { recordCaughtError } from '../../ts/caughtErrors'
     import { createSearchCache, dayBoundsOf, matchesQuery, passesFilters, type DayBounds, type SearchFilters, type SearchHit } from '../../ts/chatShell/inChatSearch'
     import { firstMessageOf } from '../../ts/process/firstMessage'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
@@ -424,12 +426,19 @@
         chat: Chat
         // Where focus was when search opened; it returns there at a close the reader asked for.
         opener: HTMLElement | null
+        // The marks of the hit being shown. They belong to this opening, so a detached context can still clear them at close.
+        marks: HitMarks
+        // The aim of the hit being shown; the run's jump reads it at call time, so a step carries only its own hit's aim.
+        aim: ((article: HTMLElement) => Promise<HTMLElement | null>) | null
     }
     let findCtx: FindContext | null = null
     let findOpen = $state(false)
     let findChat = $state.raw<Chat | null>(null)
     let findState = $state.raw<FindSessionState | null>(null)
     let searchHit = $state.raw<SearchHit | null>(null)
+    // The list draws the outline plus note for the shown hit only when it has no marks: an unlocated hit, a jump that never reached
+    // marking, or marks removed because the hit's own body changed. It stays until the next step.
+    let hitOutline = $state(false)
     let findBar: ReturnType<typeof FindBarComponent> | undefined = $state()
     let findFingerprint: SearchFingerprint | null = null
     let noResultsFor: string | null = null
@@ -467,13 +476,15 @@
         }
         const run = createFindRun({
             readOrigin: () => messageList?.readOrigin?.() ?? null,
-            jumpTo: async (index) => (await messageList?.jumpTo?.(index, { recordOrigin: false, focus: false })) ?? { status: 'cancelled', from: null, to: index },
+            jumpTo: async (index) => (await messageList?.jumpTo?.(index, { recordOrigin: false, focus: false, aim: context.aim ?? undefined })) ?? { status: 'cancelled', from: null, to: index },
             chatKey: chatKeyNow,
         })
         const context: FindContext = {
             run,
             chat,
             opener: null,
+            marks: createHitMarks({ viewportTop: () => list?.getBoundingClientRect().top ?? null }),
+            aim: null,
             session: createFindSession({
                 count: () => chat.message.length,
                 includeFirst: true,
@@ -514,13 +525,50 @@
         announcement = text
     }
 
+    // Removes the shown hit's marks and outline. `jumping` is true when another hit follows, so every details the marks opened closes;
+    // otherwise one whose top is above the visible top stays open and nothing scrolls.
+    function clearHit(context: FindContext | null, jumping: boolean): void {
+        if (context) {
+            context.marks.clear({ jumping })
+            context.aim = null
+        }
+        searchHit = null
+        hitOutline = false
+    }
+
     // A hit jump never records an origin, shows no chip and takes no focus: the reader keeps typing, and the run keeps the pre-search place.
     async function showHit(context: FindContext, target: SearchHit, index: number): Promise<JumpStatus> {
         if (surfaceHidden) return 'deferred'
         if (!context.run.live) return 'cancelled'
+        // The previous hit's marks go first; its token is replaced, so a late aim of that hit marks nothing.
+        clearHit(context, true)
         searchHit = target
+        const token = context.marks.token()
+        const atShow = context.session.state
+        const isCurrent = (): boolean => findCtx === context && searchHit === target && context.marks.token() === token
+        let marked = false
+        const aim = createHitAim({
+            marks: context.marks,
+            token,
+            query: atShow.query,
+            thinking: atShow.filters.thinking,
+            thoughtsLabel: language.cot,
+            onOutline: () => { if (isCurrent()) hitOutline = true },
+            onLost: () => {
+                marked = false
+                if (isCurrent()) hitOutline = true
+            },
+            onError: (error) => recordCaughtError('chat.searchMark', error),
+        })
+        context.aim = async (article) => {
+            const anchor = await aim(article)
+            if (anchor !== null && isCurrent()) marked = true
+            return anchor
+        }
         const result = await context.run.show(index)
         if (result === null) return 'cancelled'
+        // A jump that did not reach marking still shows the hit, as the outline.
+        if (result.status !== 'done' && !marked && isCurrent()) hitOutline = true
         reportJump(result)
         // A query typed while the jump ran has cleared the hit; the old match is not announced.
         if (result.status === 'done' && searchHit === target && findCtx === context) {
@@ -548,7 +596,7 @@
         noResultsFor = null
         findState = context.session.state
         findChat = chat
-        searchHit = null
+        clearHit(context, false)
         const resting = untrack(() => atBottom)
         findOpen = true
         void settleAfterReserveChange(resting).then(() => findBar?.focusField())
@@ -604,7 +652,7 @@
     }
 
     function onFindFilters(patch: Partial<SearchFilters>): void {
-        searchHit = null
+        clearHit(findCtx, false)
         findCtx?.session.setFilters(patch)
     }
 
@@ -625,7 +673,7 @@
         findCtx = null
         findChat = null
         findState = null
-        searchHit = null
+        clearHit(context, false)
         const resting = untrack(() => atBottom)
         findOpen = false
         filtersOpen = false
@@ -695,12 +743,12 @@
 
     // A new query or new filters clear the displayed hit in the same flush, before the new scan can show another.
     function onFindQuery(value: string, options: { composing: boolean }): void {
-        searchHit = null
+        clearHit(findCtx, false)
         findCtx?.session.setQuery(value, options)
     }
 
     function onFindClearFilters(): void {
-        searchHit = null
+        clearHit(findCtx, false)
         findCtx?.session.clearFilters()
     }
 
@@ -876,7 +924,7 @@
     </div>
     <main bind:this={list} data-part="chat-transcript" tabindex="-1" aria-label={language.chatShellMessages} data-fade={fade} inert={switchPending ? true : undefined} onscroll={scroll}>
         {#if ShellNotices && character?.type === 'character'}<ShellNotices />{/if}
-        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom bind:newCount bind:farFromLatest {readerIntent} {searchHit} searchHitNote={language.chatShellFindMatchInside} {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
+        {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom bind:newCount bind:farFromLatest {readerIntent} searchHit={hitOutline ? searchHit : null} searchHitNote={language.chatShellFindMatchInside} {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
     </main>
     {#if SwitchFrame}<SwitchFrame transcript={list} />{/if}
     <div data-part="chat-announcer" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
@@ -912,6 +960,11 @@
     /* While the bar is open both of its rows are reserved: nothing under it is covered, and typing or stepping never moves the view. */
     [data-part="chat-shell"][data-find-open] [data-part="chat-transcript"] { padding-top: calc(var(--header-height) + var(--size-17)); scroll-padding-top: calc(var(--header-height) + var(--size-17)); }
     [data-part="chat-shell"][data-find-open] :global([data-part="chat-switch-frame"]) { top: calc(var(--header-height) + var(--size-17)); }
+    /* The shown hit's marks in the message text. Colour and outline only: no padding, margin, border or font change, so a mark never moves a line. */
+    [data-part="chat-transcript"] :global(mark.search-mark) { color: inherit; background: var(--color-accent-tint-strong); outline: var(--stroke-bold) solid var(--nexus-ring); padding: 0; margin: 0; border: 0; font: inherit; }
+    @media (forced-colors: active) {
+        [data-part="chat-transcript"] :global(mark.search-mark) { background: transparent; outline: var(--stroke-bold) solid Highlight; }
+    }
     [data-part="chat-announcer"] { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
     [data-part="chat-transcript"][data-fade="a"] { animation: chat-switch-fade-a var(--chat-dur-fast) var(--chat-ease-out); }
     [data-part="chat-transcript"][data-fade="b"] { animation: chat-switch-fade-b var(--chat-dur-fast) var(--chat-ease-out); }

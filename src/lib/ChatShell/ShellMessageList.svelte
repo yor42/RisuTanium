@@ -19,7 +19,7 @@
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
     import { offscreenRowCounts } from '../../ts/chatShell/offscreenRows'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
-    import { alignDelta, appendedReplies, createTravel, distanceFromEnd, isAtBottom, isFar, jumpReach, parseInset, travelPlan, travelReach, type JumpAlign, type JumpOptions, type JumpOrigin, type JumpResult, type JumpStatus } from '../../ts/chatShell/jumpTarget'
+    import { alignDelta, appendedReplies, createTravel, distanceFromEnd, isAtBottom, isFar, jumpReach, matchAlignDelta, parseInset, travelPlan, travelReach, type JumpAlign, type JumpOptions, type JumpOrigin, type JumpResult, type JumpStatus } from '../../ts/chatShell/jumpTarget'
     import { settleBand, type SettleReach } from '../../ts/chatShell/settleBand'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { holdWarmAsks } from '../ChatScreens/deferredAssetImages'
@@ -320,6 +320,7 @@
         align: JumpAlign
         recordOrigin: boolean
         focus: boolean
+        aim: JumpOptions['aim']
         generation: number
         forRoom: string | null
         intentAtStart: number
@@ -549,7 +550,7 @@
     // Brings message `index` (-1 is the first message) to the upper third of the visible area, focuses it and holds it against late layout.
     // The answer says whether it ran: a hidden surface defers (and replays when shown), an editor that forbids the window change blocks,
     // and a request that a newer jump, reader input, a chat switch or a long step hold overtook is cancelled.
-    export function jumpTo(index: number, { align = 'third', recordOrigin = true, focus = true }: JumpOptions = {}): Promise<JumpResult> {
+    export function jumpTo(index: number, { align = 'third', recordOrigin = true, focus = true, aim }: JumpOptions = {}): Promise<JumpResult> {
         settlePendingJump('cancelled')
         const generation = ++jumpGeneration
         travel.cancel()
@@ -557,7 +558,7 @@
         return new Promise((resolve) => {
             const deferred = installed && chatSurface.hidden
             if (deferred) resolve({ status: 'deferred', from: null, to: index })
-            pendingJump = { index, align, recordOrigin, focus, generation, forRoom: room(), intentAtStart: intentSeq, settle: deferred ? null : resolve }
+            pendingJump = { index, align, recordOrigin, focus, aim, generation, forRoom: room(), intentAtStart: intentSeq, settle: deferred ? null : resolve }
             jumpRequestToken += 1
         })
     }
@@ -597,7 +598,7 @@
     }
 
     async function performJump(request: PendingJump): Promise<JumpResult> {
-        const { index, align, recordOrigin, focus, generation, forRoom, intentAtStart } = request
+        const { index, align, recordOrigin, focus, aim, generation, forRoom, intentAtStart } = request
         const outcome = (status: JumpStatus, from: JumpOrigin | null = null): JumpResult => ({ status, from, to: index })
         const abandoned = (): boolean => destroyed || generation !== jumpGeneration || room() !== forRoom || intentSeq !== intentAtStart || (installed && chatSurface.hidden)
         // A request overtaken before it ran (a chat switch changes the length it is judged against) is cancelled, not out of range.
@@ -623,21 +624,31 @@
         const article = rows.querySelector<HTMLElement>(`article[data-chat-index="${index}"]`)
         if (!article) return outcome(hasMessageEditorDrafts() ? 'blocked' : 'outOfRange')
         const container = article.closest<HTMLElement>('[data-part="chat-message-container"], [data-part="chat-first-message"]') ?? article
+        // The aim changes the target row (opens blocks, adds marks), so it resolves before the settle step and every geometry read;
+        // whatever it awaited can have overtaken the jump, so the hold and abandonment checks repeat.
+        const aimed = aim ? await aim(article) : null
+        if (aim) {
+            if ((hold.isInFlight() || pin !== null) && !await waitForHold(abandoned)) return outcome('cancelled')
+            if (abandoned() || !article.isConnected) return outcome('cancelled')
+        }
         // Settle step: every geometry read below that decides the write comes after this block, in the same synchronous run as the write.
         // The target and the rows of its post-write viewport are laid out at their real sizes first; otherwise focus() resolving the skipped target
         // after the write would move it away from the line before the hold captures its baseline. Any DOM change to the target row that affects its geometry belongs above this block.
         settleJump(container, jumpReach(align, scroller.clientHeight, parseInset(getComputedStyle(scroller).scrollPaddingTop)))
         const hostTop = scroller.getBoundingClientRect().top
         const targetTop = container.getBoundingClientRect().top
+        const aimRect = aimed && align === 'third' ? aimed.getBoundingClientRect() : null
         scroller.scrollTop += align === 'third'
-            ? alignDelta({ targetTop, hostTop, clientHeight: scroller.clientHeight, topInset: parseInset(getComputedStyle(scroller).scrollPaddingTop) })
+            ? aimRect
+                ? matchAlignDelta({ containerTop: targetTop, aimTop: aimRect.top, aimBottom: aimRect.bottom, hostTop, clientHeight: scroller.clientHeight, topInset: parseInset(getComputedStyle(scroller).scrollPaddingTop) })
+                : alignDelta({ targetTop, hostTop, clientHeight: scroller.clientHeight, topInset: parseInset(getComputedStyle(scroller).scrollPaddingTop) })
             : targetTop - hostTop - align.offset
         // The jump left the newest message on purpose; arriving at the bottom re-enters following. Focus comes after the write and without
         // a focus scroll, so it cannot undo the alignment, and the hold starts last so it captures the written position.
         follower?.release()
         follower?.sync()
         if (focus) asShellFocus(() => article.focus({ preventScroll: true }))
-        realign.start({ row: container, ms: JUMP_HOLD_MS })
+        realign.start({ row: aimed ?? container, ms: JUMP_HOLD_MS })
         readPosition()
         return outcome('done', from)
     }

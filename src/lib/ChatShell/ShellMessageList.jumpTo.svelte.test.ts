@@ -793,3 +793,134 @@ describe('the settle step of a jump', () => {
         expect(Math.abs(layoutModel!.rectOf(480).top - 120)).toBeLessThanOrEqual(0.5)
     })
 })
+
+// The aimed element is a child of the target article whose rect follows the target row, `offset` px below the row top.
+function aimedElement(article: HTMLElement, index: number, offset: number | (() => number), onRead?: () => void): HTMLElement {
+    const mark = document.createElement('mark')
+    article.append(mark)
+    mark.getBoundingClientRect = () => {
+        onRead?.()
+        return rect(rowTop(index) + (typeof offset === 'number' ? offset : offset()), 20)
+    }
+    return mark
+}
+
+describe('a jump with an aim', () => {
+    test('J2: an aimed element below the visible area goes to the upper third and the hold keeps it there', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        let markOffset = 800
+        const request = app!.jumpTo(500, { aim: async (article) => aimedElement(article, 500, () => markOffset) })
+        await settle()
+        expect((await request).status).toBe('done')
+        expect(Math.abs(rowTop(500) + markOffset - hostHeight / 3)).toBeLessThanOrEqual(0.5)
+        // Late layout inside the target row moves the mark without moving the row's top: the hold follows the mark.
+        markOffset = 900
+        runFrames()
+        expect(Math.abs(rowTop(500) + markOffset - hostHeight / 3)).toBeLessThanOrEqual(0.5)
+        heightOverride.set(480, 150)
+        runFrames()
+        expect(Math.abs(rowTop(500) + markOffset - hostHeight / 3)).toBeLessThanOrEqual(0.5)
+    })
+    test('J2: an aimed element that stays visible keeps the message on the line', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        const request = app!.jumpTo(500, { aim: async (article) => aimedElement(article, 500, 30) })
+        await settle()
+        expect((await request).status).toBe('done')
+        expect(Math.abs(rowTop(500) - hostHeight / 3)).toBeLessThanOrEqual(0.5)
+    })
+    test('J3: an aim that finds nothing lands exactly like a jump without one', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        const aim = vi.fn(async (): Promise<HTMLElement | null> => null)
+        const request = app!.jumpTo(500, { aim })
+        await settle()
+        expect((await request).status).toBe('done')
+        expect(aim).toHaveBeenCalledTimes(1)
+        expect(Math.abs(rowTop(500) - hostHeight / 3)).toBeLessThanOrEqual(0.5)
+        expect(document.activeElement).toBe(articleAt(500))
+    })
+    test('J4: a jump overtaken while the aim runs is cancelled and writes nothing', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        let release: (value: HTMLElement | null) => void = () => {}
+        const first = app!.jumpTo(500, { aim: () => new Promise<HTMLElement | null>((resolve) => { release = resolve }) })
+        await settle()
+        const second = app!.jumpTo(480)
+        await settle()
+        expect((await second).status).toBe('done')
+        const written = [...writes]
+        release(null)
+        await settle()
+        expect((await first).status).toBe('cancelled')
+        expect(writes).toEqual(written)
+        expect(Math.abs(rowTop(480) - hostHeight / 3)).toBeLessThanOrEqual(0.5)
+    })
+    test('J6: the aim is not called for an index out of range, a blocked window or a hidden surface', async () => {
+        await slideBack()
+        const aim = vi.fn(async (): Promise<HTMLElement | null> => null)
+        const outOfRange = app!.jumpTo(5000, { aim })
+        await settle()
+        expect((await outOfRange).status).toBe('outOfRange')
+        editors.open = true
+        const blocked = app!.jumpTo(999, { aim })
+        await settle()
+        expect((await blocked).status).toBe('blocked')
+        editors.open = false
+        chatSurface.hidden = true
+        flushSync()
+        const deferred = app!.jumpTo(500, { aim })
+        await settle()
+        expect((await deferred).status).toBe('deferred')
+        expect(aim).not.toHaveBeenCalled()
+    })
+    test('J7: no rect is read before the aim resolves, the reads follow it, and a layout change the aim made is part of the write', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        host.getBoundingClientRect = () => { events.push('read:host'); return rect(0, hostHeight) }
+        rectProbe = () => { events.push('read:row') }
+        const request = app!.jumpTo(500, {
+            recordOrigin: false,
+            aim: async (article) => {
+                events.push('aim start')
+                await Promise.resolve()
+                // A row above the target grows, as an opened details block does.
+                heightOverride.set(499, 300)
+                const mark = aimedElement(article, 500, 30, () => events.push('read:aim'))
+                events.push('aim end')
+                return mark
+            },
+        })
+        await settle()
+        expect((await request).status).toBe('done')
+        const start = events.indexOf('aim start')
+        const end = events.indexOf('aim end')
+        const write = events.indexOf('write', end)
+        expect(start).toBeGreaterThanOrEqual(0)
+        expect(write).toBeGreaterThan(end)
+        expect(events.slice(0, end).filter((entry) => entry.startsWith('read:'))).toEqual([])
+        const between = events.slice(end, write)
+        expect(between).toContain('read:host')
+        expect(between).toContain('read:row')
+        expect(between).toContain('read:aim')
+        expect(Math.abs(rowTop(500) - hostHeight / 3)).toBeLessThanOrEqual(0.5)
+    })
+    test('J8: the aimed rect is read after the settle step forced the target row, in the same run as the write', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15)
+        const seen: string[] = []
+        const request = app!.jumpTo(500, {
+            aim: async (article: HTMLElement) => aimedElement(article, 500, 30, () => {
+                const container = article.closest<HTMLElement>('[data-part="chat-message-container"]')
+                seen.push(container ? containerStyle(container) : 'none')
+                events.push('read:aim')
+            }),
+        })
+        await settle(false)
+        expect((await request).status).toBe('done')
+        expect(seen.length).toBeGreaterThan(0)
+        expect(seen.every((style) => style === 'visible')).toBe(true)
+        expect(events.indexOf('read:aim')).toBeLessThan(events.indexOf('write'))
+    })
+})

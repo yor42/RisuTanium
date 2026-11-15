@@ -9,6 +9,8 @@ import { localDayStart } from './jumpTarget'
 const INLINE_TAGS = 'a|b|i|u|s|em|strong|del|ins|mark|small|sub|sup|code|kbd|span|font|abbr|cite|q|time|var|samp|dfn|bdi|bdo|wbr|ruby|rt|rp'
 // `thoughts` is listed so a stray, unclosed Thoughts tag never stays searchable.
 const BLOCK_TAGS = 'thoughts|p|br|hr|div|ul|ol|li|dl|dt|dd|h[1-6]|blockquote|pre|table|thead|tbody|tfoot|tr|td|th|img|figure|figcaption|details|summary|center|section|article|aside|header|footer|nav|label|button|input|textarea|select|option|audio|video|source|iframe|link|caption|col|colgroup|fieldset|legend|form|picture|svg|path|g|rect|circle|line'
+// The same block names as a set with `h[1-6]` expanded, for code that walks rendered markup and must treat a block edge as a space.
+export const BLOCK_TAG_NAMES: ReadonlySet<string> = new Set(BLOCK_TAGS.split('|').flatMap((name) => name === 'h[1-6]' ? ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'] : [name]))
 // A tag matches only when `<` or `</` is followed directly by a known name, so `Array<string>` and `a < b and c > d` stay as written.
 const INLINE_TAG_RE = new RegExp('</?(?:' + INLINE_TAGS + ')(?:\\s[^<>]*)?/?>', 'gi')
 const BLOCK_TAG_RE = new RegExp('</?(?:' + BLOCK_TAGS + ')(?:\\s[^<>]*)?/?>', 'gi')

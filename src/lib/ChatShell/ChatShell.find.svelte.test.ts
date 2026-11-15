@@ -138,6 +138,7 @@ let toast: Mock<(init: { kind: string, text: string }) => number>
 
 const pre: JumpOrigin = { index: 5, offset: 40, atBottom: false }
 const done = (to: number, from: JumpOrigin | null = null): JumpResult => ({ status: 'done', from, to })
+const stepOptions = { recordOrigin: false, focus: false, aim: expect.any(Function) }
 const root = () => target.querySelector<HTMLElement>('[data-part="chat-shell"]')!
 const transcript = () => target.querySelector<HTMLElement>('[data-part="chat-transcript"]')!
 const bar = () => target.querySelector<HTMLElement>('[data-part="chat-find-bar"]')
@@ -207,7 +208,11 @@ beforeEach(() => {
     jumpToLatest = vi.fn<() => Promise<void>>(async () => {})
     captured.returnTo = (origin) => returnTo(origin)
     captured.jumpToLatest = () => jumpToLatest()
-    jumpTo =vi.fn<(index: number, options?: JumpOptions) => Promise<JumpResult>>(async (index) => done(index))
+    // A step reaches the aim like the real list does; this row has no body to mark, so the hit falls back to the outline.
+    jumpTo = vi.fn<(index: number, options?: JumpOptions) => Promise<JumpResult>>(async (index, options) => {
+        await options?.aim?.(document.createElement('article'))
+        return done(index)
+    })
     readOrigin = vi.fn<() => JumpOrigin | null>(() => pre)
     anchorBottom = vi.fn<() => void>()
     toast = vi.fn<(init: { kind: string, text: string }) => number>(() => 1)
@@ -291,7 +296,7 @@ describe('the open bar and the first message', () => {
         await openBar()
         type('greeting')
         await vi.waitFor(() => { flushSync(); expect(jumpTo).toHaveBeenCalledTimes(1) }, { timeout: 3000 })
-        expect(jumpTo).toHaveBeenLastCalledWith(-1, { recordOrigin: false, focus: false })
+        expect(jumpTo).toHaveBeenLastCalledWith(-1, stepOptions)
         expect(captured.list!.searchHit).toEqual({ index: -1, message: null })
         await settle()
         expect(counter()).toBe('1 of 1')
@@ -327,7 +332,7 @@ describe('showing hits', () => {
         await mountShell()
         await openBar()
         await typeAndWaitForFirstHit()
-        expect(jumpTo).toHaveBeenLastCalledWith(150, { recordOrigin: false, focus: false })
+        expect(jumpTo).toHaveBeenLastCalledWith(150, stepOptions)
         expect(document.activeElement).toBe(field())
         expect(captured.list!.searchHit?.index).toBe(150)
         expect(captured.list!.searchHitNote).toBe('The match is inside this message')
@@ -335,7 +340,7 @@ describe('showing hits', () => {
         expect(chipButton()).toBeNull()
         field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
         await vi.waitFor(() => { flushSync(); expect(jumpTo).toHaveBeenCalledTimes(2) })
-        expect(jumpTo).toHaveBeenLastCalledWith(100, { recordOrigin: false, focus: false })
+        expect(jumpTo).toHaveBeenLastCalledWith(100, stepOptions)
         expect(document.activeElement).toBe(field())
         expect(chipButton()).toBeNull()
     })
@@ -687,7 +692,7 @@ describe('a blocked hit jump', () => {
         expect(bar()).not.toBeNull()
         enter()
         await vi.waitFor(() => { flushSync(); expect(jumpTo).toHaveBeenCalledTimes(2) })
-        expect(jumpTo).toHaveBeenLastCalledWith(100, { recordOrigin: false, focus: false })
+        expect(jumpTo).toHaveBeenLastCalledWith(100, stepOptions)
         expect(toast).toHaveBeenCalledTimes(1)
     })
 })
@@ -712,12 +717,12 @@ describe('the results and filters sheets', () => {
         await vi.waitFor(() => { flushSync(); expect(captured.results!.charImage).toBe('resolved:c.png') })
         expect(captured.results!.userImage).toBe('resolved:u.png')
         const openAtCall: boolean[] = []
-        jumpTo.mockImplementation(async (index) => { openAtCall.push(captured.results!.open); return done(index) })
+        jumpTo.mockImplementation(async (index, options) => { openAtCall.push(captured.results!.open); await options?.aim?.(document.createElement('article')); return done(index) })
         captured.results!.onpick(2)
         flushSync()
         expect(captured.results!.open).toBe(false)
         await vi.waitFor(() => { flushSync(); expect(jumpTo).toHaveBeenCalledTimes(2) })
-        expect(jumpTo).toHaveBeenLastCalledWith(20, { recordOrigin: false, focus: false })
+        expect(jumpTo).toHaveBeenLastCalledWith(20, stepOptions)
         expect(openAtCall).toEqual([false])
         expect(captured.list!.searchHit?.index).toBe(20)
     })
