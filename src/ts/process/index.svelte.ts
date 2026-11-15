@@ -105,7 +105,8 @@ export interface MultiModal{
     type:'image'|'video'|'audio'|'signature'
     base64:string,
     height?:number,
-    width?:number
+    width?:number,
+    name?:string
 }
 
 /**
@@ -1563,7 +1564,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
                     if(multimodal.length === 0){
                         multimodal.push({
                             type: inlayData.type,
-                            base64: inlayData.data
+                            base64: inlayData.data,
+                            name: summary?.name || inlayName
                         })
                     }
                 }

@@ -1,5 +1,6 @@
 import { language } from "src/lang"
-import { alertError } from "src/ts/alert";
+import { alertError, alertToast } from "src/ts/alert";
+import { fillLang } from "src/lang/fill";
 import { getDatabase } from "src/ts/storage/database.svelte"
 import { LLMFlags, LLMFormat, LLMProvider } from "src/ts/model/modellist"
 import { strongBan, tokenizeNum } from "src/ts/tokenizer"
@@ -16,7 +17,8 @@ import { beginToolRound, endStreamForGate, gateResult, toolBlockGate } from '../
 import type { RequestDataArgumentExtended, requestDataResponse, StreamResponseChunk } from '../request'
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters } from '../shared'
 
-import type { Contents, OpenAIChatExtra, OpenAIChatFull, ToolCall } from './types'
+import { buildUserContents } from './chatContents'
+import type { OpenAIChatExtra, OpenAIChatFull, ToolCall } from './types'
 
 import { getLocalNetworkRequestOptions, type LocalNetworkRequestOptions } from './shared'
 import { resolveRequestKey } from '../secretKey'
@@ -107,9 +109,10 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
         
         return processedMessages
     }
+    const leftOutAttachments:string[] = []
     for(let i=0;i<formated.length;i++){
         const m = formated[i]
-        
+
         // Check if message contains tool calls
         if(m.content && m.content.includes('<tool_call>')) {
             const processedMessages = await processToolCalls(m.content, m)
@@ -117,28 +120,19 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
         }
         else if(m.multimodals && m.multimodals.length > 0 && m.role === 'user'){
             let v:OpenAIChatExtra = safeStructuredClone(m)
-            let contents:Contents[] = []
-            for(let j=0;j<m.multimodals.length;j++){
-                contents.push({
-                    "type": "image_url",
-                    "image_url": {
-                        "url": m.multimodals[j].base64,
-                        "detail": db.gptVisionQuality
-                    }
-                })
-            }
-            contents.push({
-                "type": "text",
-                "text": m.content
-            })
-            v.content = contents
+            const built = buildUserContents(m.multimodals, m.content, db.gptVisionQuality, language.openAIAudioUnnamed)
+            leftOutAttachments.push(...built.leftOut)
+            v.content = built.contents
             formatedChat.push(v)
         }
         else{
             formatedChat.push(m)
         }
     }
-    
+    if(leftOutAttachments.length > 0){
+        alertToast(fillLang(language.openAIAudioLeftOut, { names: [...new Set(leftOutAttachments)].join(', ') }))
+    }
+
     let oobaSystemPrompts:string[] = []
     for(let i=0;i<formatedChat.length;i++){
         if(formatedChat[i].role !== 'function'){

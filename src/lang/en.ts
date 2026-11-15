@@ -2590,6 +2590,8 @@ export const languageEnglish = {
     inlayErrorResponse: "Inlay Error Response",
     inlayFileTooLarge: "{name} is larger than {size} MB and was not attached.",
     inlaySendTooLarge: "Not sent to the model (over the {size} MB limit per file): {names}",
+    openAIAudioLeftOut: "Not sent to the model (it takes only WAV or MP3 audio): {names}",
+    openAIAudioUnnamed: "an audio attachment",
     triggerOn: "Trigger On",
     noConfig: "No Config",
     var: "Variable",
