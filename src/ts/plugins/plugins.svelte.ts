@@ -41,6 +41,7 @@ import {
 import { clearSupaMemoryIfEmptyIn } from "../process/memory/supaResume";
 import { MEASURE } from "../process/memory/measureFlag";
 import { startPluginRecord, type PluginRecordBuilder } from "./pluginCostMeter";
+import { reconcileCharacters, reconcileEnabled } from "./characterReconcile";
 import {
     fillMissingCharacterInstallIds,
     fillMissingDatabaseInstallIds,
@@ -610,9 +611,10 @@ function withHeldAssetLists(db: ReturnType<typeof getDatabase>, incoming: Return
  * `modules` are reconciled against the live lists at this moment, so a
  * character restored or a module loaded while a prompt was open is not
  * downgraded. Returns the object that was written, which is a copy when a
- * placeholder was swapped out. Each light character entry is replaced by its
- * live holder before any key is written, so no light entry reaches the list;
- * `lightCounts`, when given, receives how many were kept and left out.
+ * placeholder was swapped out, with the slots whose element is the live proxy
+ * (see `prepareIncomingCharacters`). Each light character entry is replaced by
+ * its live holder before any key is written, so no light entry reaches the
+ * list; `lightCounts`, when given, receives how many were kept and left out.
  */
 function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginName: string | undefined, rec: PluginRecordBuilder | null = null, lightCounts?: LightWriteCounts) {
     db.pluginCustomStorage ??= {}
@@ -620,24 +622,8 @@ function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginN
     newDb = withoutStubDowngrades(db.characters, newDb, pluginName)
     newDb = withoutModuleStubDowngrades(db.modules, newDb, pluginName)
     rec?.lap('stubDowngradesMs')
-    if (Array.isArray(newDb.characters)) {
-        const beforeCharacters = db.characters
-        fillMissingDatabaseInstallIds(newDb)
-        warnDuplicatesInDatabaseInstall(newDb, beforeCharacters, pluginName)
-        rec?.lap('idsDuplicatesMs')
-        // After the ids are filled and before any key is written: the live alternatives are read from the
-        // live list as it is now, and the incoming characters carry them into the new list.
-        keepLiveAlt(db.characters, newDb.characters)
-        rec?.lap('keepLiveAltMs')
-        // After keepLiveAlt, so a swapped-in live holder keeps its own alternatives untouched.
-        if (hasLightEntry(newDb.characters)) {
-            newDb = { ...newDb, characters: swapLightEntries(db.characters, newDb.characters, lightCounts ?? { lightKept: 0, lightLeftOut: 0 }) }
-        }
-        if (rec !== null) {
-            noteSameObject(rec, db.characters, newDb.characters)
-            rec.restart()
-        }
-    }
+    const prepared = prepareIncomingCharacters(db.characters, newDb, pluginName, rec, lightCounts)
+    newDb = prepared.newDb
     for (const key of Object.keys(newDb)) {
         if (key === 'plugins') {
             continue
@@ -656,13 +642,59 @@ function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginN
         }
     }
     rec?.lap('keyLoopMs')
-    // Cleared through the live list: the reactive proxy's set trap does not write to the raw
-    // object, so the stored chats are cleared through the stored reference.
-    if (Array.isArray(newDb.characters)) {
-        clearSupaMemoryIfEmptyIn(db.characters)
+    return { newDb, keptSlots: prepared.keptSlots }
+}
+
+/** The incoming list's characters to install, with the slots that keep the live proxy and need no mark. */
+interface PreparedCharacters<T> {
+    newDb: T
+    keptSlots: ReadonlySet<number>
+}
+
+const NO_KEPT_SLOTS: ReadonlySet<number> = new Set<number>()
+
+/**
+ * Every per-character transform of an incoming `characters` list, then the keep decision. It is given the live list
+ * and never the database. The transforms write live data only through `===` live elements of the incoming list and
+ * through the live `alt` records that `keepLiveAlt` shares. `reattachOrphans` writes those only when the incoming
+ * messages differ from live, so such a slot is never kept. After it returns, the setter only assigns the list and marks every
+ * slot that is not kept: no character is written after the decision, so a kept live proxy stays as it was.
+ * Clearing SupaMemory on an empty chat happens here, before the decision, so a needed
+ * clear makes the incoming element differ from the live one and the slot is installed and marked.
+ */
+function prepareIncomingCharacters<T extends { characters?: unknown }>(live: ReturnType<typeof getDatabase>['characters'], newDb: T, pluginName: string | undefined, rec: PluginRecordBuilder | null, lightCounts?: LightWriteCounts): PreparedCharacters<T> {
+    if (!Array.isArray(newDb.characters)) {
+        return { newDb, keptSlots: NO_KEPT_SLOTS }
     }
+    fillMissingDatabaseInstallIds(newDb)
+    warnDuplicatesInDatabaseInstall(newDb, live, pluginName)
+    rec?.lap('idsDuplicatesMs')
+    // After the ids are filled and before any key is written: the live alternatives are read from the
+    // live list as it is now, and the incoming characters carry them into the new list.
+    keepLiveAlt(live, newDb.characters)
+    rec?.lap('keepLiveAltMs')
+    // After keepLiveAlt, so a swapped-in live holder keeps its own alternatives untouched.
+    if (hasLightEntry(newDb.characters)) {
+        newDb = { ...newDb, characters: swapLightEntries(live, newDb.characters, lightCounts ?? { lightKept: 0, lightLeftOut: 0 }) }
+    }
+    const installed = newDb.characters
+    if (!Array.isArray(installed)) {
+        // The swap above always yields a list; a non-list installs as written and every character is marked.
+        return { newDb, keptSlots: NO_KEPT_SLOTS }
+    }
+    if (rec !== null) {
+        noteSameObject(rec, live, installed)
+        rec.restart()
+    }
+    clearSupaMemoryIfEmptyIn(installed)
     rec?.lap('clearSupaMemoryMs')
-    return newDb
+    const reconciled = reconcileEnabled() ? reconcileCharacters(live, installed) : null
+    rec?.set('keptEqual', reconciled?.keptSlots.size ?? 0)
+    rec?.lap('reconcileMs')
+    if (reconciled === null) {
+        return { newDb, keptSlots: NO_KEPT_SLOTS }
+    }
+    return { newDb: { ...newDb, characters: reconciled.characters }, keptSlots: reconciled.keptSlots }
 }
 
 /**
@@ -739,32 +771,38 @@ function keepPluginStorageInternals(current: {[key:string]:any} | undefined, inc
 }
 
 /**
- * Mark every character, don't reload. V2's
- * getDatabase() is a live wrapper over DBState.db (see getDatabase in
- * getV2PluginAPIs), so a plugin edits live elements in place and a
- * self-assignment notifies nothing -- invisible to both the
- * selected-character effect and the identity tracker. Never deletes: a
- * character this call's own `characters` array omits still keeps its block and
- * comes back on reload -- the guarantee that a save iteration without a
- * reload can never delete a block lives in `prepareSaveIteration`'s no-reload
- * filter (globalApi.svelte.ts), not here. The same reasoning applies to
- * setDatabase.
+ * Marks every slot of the written `characters` list that is not kept, by slot and through that slot's `chaId`. Kept
+ * means strictly equal to the live character and the same live proxy, so this write needs no save for it. Every
+ * other slot is marked here: V2's getDatabase() is a live wrapper over DBState.db, so a plugin edits live elements
+ * in place and a self-assignment notifies nothing, invisible to both the selected-character effect and the identity
+ * tracker; V3 installs fresh objects. Both setters share this, so the mark does not depend on the API version.
+ * Never deletes: a character this call's own `characters` array omits still keeps its block and comes back on
+ * reload; the guarantee that a save iteration without a reload can never delete a block lives in
+ * `prepareSaveIteration`'s no-reload filter (globalApi.svelte.ts), not here. Returns the number of marks raised.
  */
-function markLiteCharacters(db: ReturnType<typeof getDatabase>, written: { characters?: unknown }) {
-    if (Array.isArray(written.characters)) {
-        for (const char of db.characters ?? []) {
-            markCharacterForSave(char?.chaId);
-        }
+function markWrittenCharacters(db: ReturnType<typeof getDatabase>, written: { characters?: unknown }, keptSlots: ReadonlySet<number>): number {
+    if (!Array.isArray(written.characters)) {
+        return 0
     }
+    const characters = db.characters ?? []
+    let raised = 0
+    for (let i = 0; i < characters.length; i++) {
+        if (keptSlots.has(i)) {
+            continue
+        }
+        markCharacterForSave(characters[i]?.chaId)
+        raised++
+    }
+    return raised
 }
 
 /** Measurement only: closes the mark-loop lap and notes how many `markCharacterForSave` calls the write made. */
-function noteMarkLoop(rec: PluginRecordBuilder | null, db: ReturnType<typeof getDatabase>, written: { characters?: unknown }): void {
+function noteMarkLoop(rec: PluginRecordBuilder | null, raised: number): void {
     if (rec === null) {
         return
     }
     rec.lap('markLoopMs')
-    rec.set('marksRaised', Array.isArray(written.characters) ? (db.characters?.length ?? 0) : 0)
+    rec.set('marksRaised', raised)
 }
 
 //#endregion
@@ -1000,11 +1038,11 @@ export const getV2PluginAPIs = () => {
                 // and a plugin list that cannot be applied is a rejected promise,
                 // never a synchronous throw.
                 const db = getDatabase()
-                newDb = writeSetterKeys(db, newDb, pluginName, rec, lightCounts)
+                const written = writeSetterKeys(db, newDb, pluginName, rec, lightCounts)
+                newDb = written.newDb
                 DBState.db = db
                 rec?.lap('assignMs')
-                markLiteCharacters(db, newDb)
-                noteMarkLoop(rec, db, newDb)
+                noteMarkLoop(rec, markWrittenCharacters(db, newDb, written.keptSlots))
                 rec?.finish()
                 return plan.kind === 'failed' ? Promise.reject(plan.error) : undefined
             }
@@ -1043,11 +1081,11 @@ export const getV2PluginAPIs = () => {
                     failure ??= commitPluginChanges(classified)
                 }
                 const db = getDatabase()
-                newDb = writeSetterKeys(db, newDb, pluginName, rec, lightCounts)
+                const written = writeSetterKeys(db, newDb, pluginName, rec, lightCounts)
+                newDb = written.newDb
                 DBState.db = db
                 rec?.lap('assignMs')
-                markLiteCharacters(db, newDb)
-                noteMarkLoop(rec, db, newDb)
+                noteMarkLoop(rec, markWrittenCharacters(db, newDb, written.keptSlots))
                 rec?.finish()
                 if (failure) {
                     throw failure
@@ -1102,25 +1140,14 @@ export const getV2PluginAPIs = () => {
                 failure = commitPluginChanges(plan.classified)
             }
             const db = getDatabase()
-            newDb = writeSetterKeys(db, newDb, pluginName, rec, lightCounts)
+            const written = writeSetterKeys(db, newDb, pluginName, rec, lightCounts)
+            newDb = written.newDb
             setDatabase(db);
             rec?.lap('normalizerMs')
-            // Same reasoning as markLiteCharacters -- this setter is shared by
-            // both V2 (live wrapper, in-place edits) and V3 (getDatabase()
-            // returns fresh snapshots; apiV3/v3.svelte.ts's makeRisuaiAPIV3()
-            // wraps this same function to pass the plugin's name through), so
-            // mark unconditionally rather than special-case which API version
-            // called in. V3's fresh `characters` array is also new-identity to the
-            // identity tracker (dbChangeEffects.svelte.ts), so this is redundant
-            // (but harmless, see appendIfAbsent) for that case specifically.
-            // Never deletes: see markLiteCharacters's comment -- the
-            // no-reload guarantee lives in prepareSaveIteration's filter now.
-            if (Array.isArray(newDb.characters)) {
-                for (const char of db.characters ?? []) {
-                    markCharacterForSave(char?.chaId);
-                }
-            }
-            noteMarkLoop(rec, db, newDb)
+            // The normaliser replaces no character and writes only volatile chat fields into them, so the slot
+            // indices of `keptSlots` still address the written list. The identity tracker and the write hook stay
+            // as a second route for every slot that is not kept (see appendIfAbsent).
+            noteMarkLoop(rec, markWrittenCharacters(db, newDb, written.keptSlots))
             rec?.finish()
             if (failure) {
                 throw failure
