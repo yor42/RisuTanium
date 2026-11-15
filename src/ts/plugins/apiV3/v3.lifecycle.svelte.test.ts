@@ -30,6 +30,12 @@ const replacers = vi.hoisted(() => ({
 }))
 const chatListeners = vi.hoisted(() => new Set<unknown>())
 const mcpClients = vi.hoisted(() => new Map<string, object>())
+const scriptHandlers = vi.hoisted(() => ({
+    editinput: new Set<unknown>(),
+    editoutput: new Set<unknown>(),
+    editprocess: new Set<unknown>(),
+    editdisplay: new Set<unknown>(),
+} as Record<string, Set<unknown>>))
 
 const memStore = new Map<string, unknown>()
 
@@ -72,12 +78,30 @@ vi.mock(import('../plugins.svelte'), () => ({
         removeRisuChatListener: (_mode: string, func: unknown) => {
             chatListeners.delete(func)
         },
+        // Same lookup and the same thrown string as the real producer.
+        addRisuScriptHandler: (name: string, func: unknown) => {
+            const handlers = scriptHandlers['edit' + name]
+            if (handlers) {
+                handlers.add(func)
+            } else {
+                throw (`script handler named ${name} not found`)
+            }
+        },
+        removeRisuScriptHandler: (name: string, func: unknown) => {
+            const handlers = scriptHandlers['edit' + name]
+            if (handlers) {
+                handlers.delete(func)
+            } else {
+                throw (`script handler named ${name} not found`)
+            }
+        },
     }),
     handlePluginInstallViaPlugin: vi.fn(),
     pluginV2: {
         providers: new Map(),
         providerOptions: new Map(),
         chatOutput: new Set(),
+        ...scriptHandlers,
     },
 }) as unknown as typeof import('../plugins.svelte'))
 
@@ -213,7 +237,12 @@ vi.mock(import('../../process/ttsHooks'), () => ({
 import { additionalFloatingActionButtons, bodyIntercepterStore } from '../../stores.svelte'
 import { sleep } from '../../util'
 import { unregisterTTSPreprocessor } from '../../process/ttsHooks'
-import { executePluginV3, getV3PluginInstance, loadV3Plugins, makeRisuaiAPIV3 } from './v3.svelte'
+import { customProviderStore, pluginV2 } from '../plugins.svelte'
+import type { EditFunction, PluginV2ProviderArgument } from '../plugins.svelte'
+import type { ScriptMode } from '../../process/scripts'
+import type { LLMModel } from '../../model/types'
+import { customV3ProviderMetaStore, executePluginV3, getV3PluginInstance, loadV3Plugins, makeRisuaiAPIV3 } from './v3.svelte'
+import { get } from 'svelte/store'
 
 //#region fixtures
 
@@ -249,6 +278,11 @@ beforeEach(() => {
     replacers.throwOnRemove = false
     chatListeners.clear()
     mcpClients.clear()
+    pluginV2.providers.clear()
+    pluginV2.providerOptions.clear()
+    customProviderStore.set([])
+    customV3ProviderMetaStore.length = 0
+    for (const handlers of Object.values(scriptHandlers)) handlers.clear()
     bodyIntercepterStore.length = 0
     additionalFloatingActionButtons.length = 0
     alertConfirmMock.mockReset()
@@ -603,6 +637,270 @@ describe('registration during unload', () => {
 
         expect(errorSpy.mock.calls.some(([first]) => String(first).includes(plugin.name))).toBe(true)
         expect(hostTerminateMock).toHaveBeenCalledTimes(1)
+    })
+})
+
+//#endregion
+
+//#region provider and script handler unload
+
+type ProviderApi = ReturnType<typeof makeApi>
+type ProviderFn = Parameters<ProviderApi['addProvider']>[1]
+type ProviderOptions = Parameters<ProviderApi['addProvider']>[2]
+
+const okProvider: ProviderFn = async () => ({ success: true, content: 'ok' })
+const modelOptions = (label: string): ProviderOptions => ({ model: { name: label } as LLMModel })
+const providerNames = () => get(customProviderStore)
+
+// The real producer looks up `'edit' + mode`, so the runtime mode is 'output'
+// while the typed union says 'editoutput'.
+const OUTPUT = 'output' as string as ScriptMode
+const handlerFn: EditFunction = (content) => content
+
+const providerArg: PluginV2ProviderArgument = {
+    prompt_chat: [],
+    frequency_penalty: 0,
+    min_p: 0,
+    presence_penalty: 0,
+    repetition_penalty: 0,
+    top_k: 0,
+    top_p: 0,
+    temperature: 0,
+    mode: 'plugin-supplied',
+    max_tokens: 0,
+}
+
+describe('provider unload', () => {
+    test('R-P1: an unloaded plugin leaves no provider name, map entry, options or model meta', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        makeApi(plugin).addProvider('r-p1', okProvider, modelOptions('m'))
+        let lastNames: string[] = []
+        const unsubscribe = customProviderStore.subscribe((names) => { lastNames = [...names] })
+        expect(lastNames).toEqual(['r-p1'])
+
+        await loadV3Plugins([])
+        unsubscribe()
+
+        expect(lastNames).toEqual([])
+        expect(pluginV2.providers.has('r-p1')).toBe(false)
+        expect(pluginV2.providerOptions.has('r-p1')).toBe(false)
+        expect(customV3ProviderMetaStore.length).toBe(0)
+    })
+
+    test('R-P2: a reload does not accumulate names or model meta', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        makeApi(plugin).addProvider('x', okProvider)
+        await loadV3Plugins([plugin])
+        makeApi(plugin).addProvider('x', okProvider)
+
+        expect(providerNames()).toEqual(['x'])
+        expect(customV3ProviderMetaStore.length).toBe(1)
+    })
+
+    test('R-P3: unloading the first registrant keeps the later registration of the same name', async () => {
+        const running = makePlugin()
+        await executePluginV3(running)
+        const other = makePlugin()
+        const otherOptions = modelOptions('other-model')
+        makeApi(running).addProvider('r-p3', okProvider, modelOptions('running-model'))
+        makeApi(other).addProvider('r-p3', okProvider, otherOptions)
+        const otherWrapper = pluginV2.providers.get('r-p3')
+        const otherMeta = customV3ProviderMetaStore[1]
+
+        await loadV3Plugins([])
+
+        expect(pluginV2.providers.get('r-p3')).toBe(otherWrapper)
+        expect(pluginV2.providerOptions.get('r-p3')).toBe(otherOptions)
+        expect(providerNames()).toEqual(['r-p3'])
+        expect(customV3ProviderMetaStore.length).toBe(1)
+        expect(customV3ProviderMetaStore[0]).toBe(otherMeta)
+    })
+
+    test('R-P4: unloading the overwriter removes the shared entries and keeps the other meta', async () => {
+        const running = makePlugin()
+        await executePluginV3(running)
+        const other = makePlugin()
+        makeApi(other).addProvider('r-p4', okProvider, modelOptions('other-model'))
+        const otherMeta = customV3ProviderMetaStore[0]
+        makeApi(running).addProvider('r-p4', okProvider, modelOptions('running-model'))
+
+        await loadV3Plugins([])
+
+        expect(pluginV2.providers.has('r-p4')).toBe(false)
+        expect(pluginV2.providerOptions.has('r-p4')).toBe(false)
+        expect(providerNames()).toEqual(['r-p4'])
+        expect(customV3ProviderMetaStore.length).toBe(1)
+        expect(customV3ProviderMetaStore[0]).toBe(otherMeta)
+    })
+
+    test('R-P5: one instance registering a name twice leaves nothing behind', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        const api = makeApi(plugin)
+        api.addProvider('r-p5', okProvider, modelOptions('first'))
+        api.addProvider('r-p5', okProvider, modelOptions('second'))
+
+        await loadV3Plugins([])
+
+        expect(pluginV2.providers.has('r-p5')).toBe(false)
+        expect(pluginV2.providerOptions.has('r-p5')).toBe(false)
+        expect(providerNames()).toEqual([])
+        expect(customV3ProviderMetaStore.length).toBe(0)
+    })
+
+    test('R-P6: a provider added in the unload window is not registered at termination', async () => {
+        const plugin = makePlugin()
+        const window = await openUnloadWindow(plugin, [])
+        let namesAtTerminate: string[] | undefined
+        hostTerminateMock.mockImplementation(() => { namesAtTerminate = [...providerNames()] })
+        try {
+            window.api.addProvider('late', okProvider, modelOptions('late-model'))
+        } finally {
+            await window.finish()
+        }
+
+        expect(namesAtTerminate).toEqual([])
+        expect(providerNames()).toEqual([])
+        expect(pluginV2.providers.has('late')).toBe(false)
+        expect(customV3ProviderMetaStore.length).toBe(0)
+    })
+
+    test('R-P7: a stale API object of an unloaded instance never disturbs the reloaded registration', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        const old = makeApi(plugin)
+        await loadV3Plugins([plugin])
+        const fresh = makeApi(plugin)
+        const freshOptions = modelOptions('fresh-model')
+        fresh.addProvider('r-p7', okProvider, freshOptions)
+        const freshWrapper = pluginV2.providers.get('r-p7')
+        const freshMeta = customV3ProviderMetaStore[0]
+
+        old.addProvider('r-p7', okProvider, modelOptions('old-model'))
+
+        expect(pluginV2.providers.get('r-p7')).toBe(freshWrapper)
+        expect(pluginV2.providerOptions.get('r-p7')).toBe(freshOptions)
+        expect(providerNames()).toEqual(['r-p7'])
+        expect(customV3ProviderMetaStore.length).toBe(1)
+        expect(customV3ProviderMetaStore[0]).toBe(freshMeta)
+    })
+
+    test('R-P8: unload after the loadV2Plugin-style clear of the map still clears options, names and meta', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        makeApi(plugin).addProvider('r-p8', okProvider, modelOptions('m'))
+        pluginV2.providers.clear()
+
+        await expect(loadV3Plugins([])).resolves.toBeUndefined()
+
+        expect(pluginV2.providerOptions.has('r-p8')).toBe(false)
+        expect(providerNames()).toEqual([])
+        expect(customV3ProviderMetaStore.length).toBe(0)
+    })
+
+    test('G-P9: a live provider answers through its wrapper with the mode forced to v3', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        const seen: string[] = []
+        const func: ProviderFn = async (arg) => {
+            seen.push(arg.mode)
+            return { success: true, content: 'live' }
+        }
+        makeApi(plugin).addProvider('g-p9', func)
+
+        const result = await pluginV2.providers.get('g-p9')?.({ ...providerArg })
+
+        expect(result).toEqual({ success: true, content: 'live' })
+        expect(seen).toEqual(['v3'])
+    })
+})
+
+describe('script handler unload', () => {
+    test('R-S1: a script handler added by a plugin is removed when the plugin unloads', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        makeApi(plugin).addRisuScriptHandler(OUTPUT, handlerFn)
+        expect(scriptHandlers.editoutput.has(handlerFn)).toBe(true)
+
+        await loadV3Plugins([])
+
+        expect(scriptHandlers.editoutput.has(handlerFn)).toBe(false)
+    })
+
+    test('R-S2: a script handler added in the unload window is gone by termination', async () => {
+        const plugin = makePlugin()
+        const window = await openUnloadWindow(plugin, [])
+        let presentAtTerminate: boolean | undefined
+        hostTerminateMock.mockImplementation(() => { presentAtTerminate = scriptHandlers.editoutput.has(handlerFn) })
+        try {
+            window.api.addRisuScriptHandler(OUTPUT, handlerFn)
+        } finally {
+            await window.finish()
+        }
+
+        expect(presentAtTerminate).toBe(false)
+        expect(scriptHandlers.editoutput.has(handlerFn)).toBe(false)
+    })
+
+    test('G-S3: an unknown mode throws, registers nothing and leaves unload quiet', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+        let thrown: unknown
+        try {
+            makeApi(plugin).addRisuScriptHandler('nope' as ScriptMode, handlerFn)
+        } catch (error) {
+            thrown = error
+        }
+
+        await loadV3Plugins([])
+
+        expect(thrown).toBe('script handler named nope not found')
+        expect(errorSpy).not.toHaveBeenCalled()
+        expect(hostTerminateMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('G-S4: a handler the plugin removed itself leaves unload without error', async () => {
+        const plugin = makePlugin()
+        await executePluginV3(plugin)
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+        const api = makeApi(plugin)
+        api.addRisuScriptHandler(OUTPUT, handlerFn)
+        api.removeRisuScriptHandler(OUTPUT, handlerFn)
+
+        await expect(loadV3Plugins([])).resolves.toBeUndefined()
+
+        expect(errorSpy).not.toHaveBeenCalled()
+        expect(scriptHandlers.editoutput.size).toBe(0)
+    })
+
+    test('G-S5: unloading a plugin keeps the handler of another plugin', async () => {
+        const running = makePlugin()
+        await executePluginV3(running)
+        const other = makePlugin()
+        const otherHandler: EditFunction = (content) => content
+        makeApi(other).addRisuScriptHandler(OUTPUT, otherHandler)
+        makeApi(running).addRisuScriptHandler(OUTPUT, handlerFn)
+
+        await loadV3Plugins([])
+
+        expect(scriptHandlers.editoutput.has(otherHandler)).toBe(true)
+    })
+
+    test('R-S6: unloading a plugin removes its own handler and only that one', async () => {
+        const running = makePlugin()
+        await executePluginV3(running)
+        const other = makePlugin()
+        const otherHandler: EditFunction = (content) => content
+        makeApi(other).addRisuScriptHandler(OUTPUT, otherHandler)
+        makeApi(running).addRisuScriptHandler(OUTPUT, handlerFn)
+
+        await loadV3Plugins([])
+
+        expect(scriptHandlers.editoutput.has(handlerFn)).toBe(false)
+        expect(scriptHandlers.editoutput.size).toBe(1)
     })
 })
 

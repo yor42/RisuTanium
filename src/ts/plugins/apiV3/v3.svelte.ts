@@ -941,7 +941,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
 
     const oldApis = getV2PluginAPIs();
     // Once this plugin instance's unload has begun, its API object adds no
-    // replacer, chat listener or body interceptor: a registration made after a
+    // replacer, chat listener, body interceptor or provider: a registration made after a
     // permission prompt that outlived the instance would never be removed, and
     // its host wrapper would never settle. A reloaded instance of the same name
     // gets its own API object and its own flag.
@@ -1038,10 +1038,13 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
         getChar: getGatedChar,
         setChar: setGatedChar,
         addProvider: (name: string, func: (arg: PluginV2ProviderArgument, abortSignal?: AbortSignal) => Promise<{ success: boolean, content: string | ReadableStream<string> }>, options?: PluginV3ProviderOptions) => {
+            if(pluginUnloaded || unloadScope.closed){
+                return;
+            }
             console.warn(`[WARN] addProvider is a powerful API that can potentially be unsafe if used incorrectly. addProvider's functionality might be limited or changed in future updates to ensure security. please use other APIs if possible.`);
             let provs = get(customProviderStore)
             provs.push(name)
-            pluginV2.providers.set(name, (arg, abortSignal) => {
+            const wrapper: typeof func = (arg, abortSignal) => {
                 return runWithPluginPermission(
                     () => getPermission('provider'),
                     async () => {
@@ -1055,8 +1058,10 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                         content: language.providerPermissionDenied,
                     },
                 )
-            }),
-            pluginV2.providerOptions.set(name, options ?? {})
+            }
+            const ownOptions = options ?? {}
+            pluginV2.providers.set(name, wrapper)
+            pluginV2.providerOptions.set(name, ownOptions)
             customProviderStore.set(provs)
 
             const modelData:LLMModel = {
@@ -1072,6 +1077,27 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 tokenizer:options?.model?.tokenizer ??  LLMTokenizer.Unknown
             }
             customV3ProviderMetaStore.push(modelData);
+
+            // Undo only this call's own entries: a later registration of the same
+            // name by another instance stays, and each entry is checked by identity
+            // independently because the map may already have been cleared.
+            addPluginUnloadCallback(unloadScope,() => {
+                if(pluginV2.providers.get(name) === wrapper){
+                    pluginV2.providers.delete(name);
+                }
+                if(pluginV2.providerOptions.get(name) === ownOptions){
+                    pluginV2.providerOptions.delete(name);
+                }
+                const names = get(customProviderStore);
+                const nameIndex = names.indexOf(name);
+                if(nameIndex !== -1){
+                    customProviderStore.set(names.filter((_, index) => index !== nameIndex));
+                }
+                const metaIndex = customV3ProviderMetaStore.indexOf(modelData);
+                if(metaIndex !== -1){
+                    customV3ProviderMetaStore.splice(metaIndex, 1);
+                }
+            });
         },
         addTTSPreprocessor: async (
             func: TTSHookFn<BeforeTTSContext, BeforeTTSResult>,
@@ -1085,7 +1111,11 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
             registerTTSPostprocessor(func);
             addPluginUnloadCallback(unloadScope,() => unregisterTTSPostprocessor(func));
         },
-        addRisuScriptHandler: oldApis.addRisuScriptHandler,
+        addRisuScriptHandler: (...args: Parameters<typeof oldApis.addRisuScriptHandler>) => {
+            // Registering first keeps an unknown mode a plain throw with no callback.
+            oldApis.addRisuScriptHandler(...args);
+            addPluginUnloadCallback(unloadScope,() => oldApis.removeRisuScriptHandler(...args));
+        },
         removeRisuScriptHandler: oldApis.removeRisuScriptHandler,
         addRisuReplacer: async (name:string,func:Function) => {
             //permission check for replacer

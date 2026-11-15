@@ -109,6 +109,9 @@ function soleHolder(chaId: string): { status: 'found', index: number, holder: Sl
  * object taken before the read may be stale). A full holder is returned as it
  * is. On a failed restore the stub is left unchanged and the user gets one
  * alert naming the character. The returned character has the defaults applied.
+ * The defaults live in the holder and are saved when a later write changes or
+ * marks the character. A plugin write that keeps the holder unchanged does not
+ * save them, and the next open fills them again.
  */
 export async function restoreArchivedForWrite(chaId: string): Promise<ColdWriteTarget> {
     const before = soleHolder(chaId)
