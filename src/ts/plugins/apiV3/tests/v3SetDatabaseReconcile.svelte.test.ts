@@ -222,6 +222,7 @@ import { resetReconcileSwitchForTest } from '../../characterReconcile'
 import { getV2PluginAPIs } from '../../plugins.svelte'
 import { DBState, selectedCharID } from '../../../stores.svelte'
 import { buildColdStub } from '../../../process/coldCharacter'
+import { resetChatStreamingState } from '../../../storage/characterDefaults'
 import { registerDbChangeEffects } from '../../../storage/dbChangeEffects.svelte'
 import { installDbWriteHook, uninstallDbWriteHook } from '../../../storage/dbWriteHook'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from '../../../storage/characterSaveMarks'
@@ -273,6 +274,19 @@ function producerWorld(): World {
     Object.assign(characters[2], { type: 'group', characters: ['group-member-a', 'group-member-b'] })
     return { db, ids: characters.map((entry) => entry.chaId as string) }
 }
+
+/** The producer world after boot: `setDatabase` leaves the streaming-mode key on every chat with the value undefined. */
+function bootedWorld(): World {
+    const world = producerWorld()
+    for (const entry of world.db.characters) {
+        resetChatStreamingState(entry)
+    }
+    return world
+}
+
+const STREAMING_KEY = 'activeStreamingDisplayOptimizationMode'
+
+const holdsStreamingKey = (list: Obj[]): boolean => list.every((entry) => (entry.chats as Obj[]).every((chat) => Object.hasOwn(chat, STREAMING_KEY)))
 
 /** The live list holds a structured clone, so each test owns its tree and the encoded base stays untouched. */
 function installWorld(world: World): void {
@@ -446,6 +460,83 @@ describe('an unchanged copy written back', () => {
         expect(decodedCharacter(passes.decoded, world.ids[1]).desc).toBe(EDITED)
         expect(decodedCharacter(passes.decoded, world.ids[0]).desc).toBe((world.db.characters as unknown as Obj[])[0].desc)
         expectNothingLeftUnmarked(passes)
+    })
+})
+
+describe('a JSON-round-tripped copy written back after boot', () => {
+    /** The plugin's copy: the bridge clone with every undefined-valued key dropped, as `JSON.stringify` does. */
+    async function jsonCopy(): Promise<Obj[]> {
+        const raw = await bridgeCopy()
+        // Precondition: the bridge copy owns the boot key, so only the plugin's round trip removes it.
+        expect(holdsStreamingKey(raw)).toBe(true)
+        const copy = JSON.parse(JSON.stringify(raw)) as Obj[]
+        expect((copy[1].chats as Obj[]).some((chat) => Object.hasOwn(chat, STREAMING_KEY))).toBe(false)
+        return copy
+    }
+
+    test.each(SETTERS)('(R) S-R1 %s marks no character and keeps every live proxy', async (method) => {
+        const world = bootedWorld()
+        const base = encodeWith(world.db)
+        installWorld(world)
+        selectedCharID.set(-1)
+        const wiring = wire({ identity: true, hook: true, install: true })
+        const before = [...DBState.db.characters]
+        const copy = await jsonCopy()
+        await api3()[method]({ characters: copy })
+        flushSync()
+        expect(marked(wiring)).toEqual([])
+        expect(DBState.db.characters).toHaveLength(3)
+        DBState.db.characters.forEach((entry, index) => expect(entry).toBe(before[index]))
+        expectNothingLeftUnmarked(await storePasses(base, marked(wiring)))
+    })
+
+    test.each(SETTERS)('(R) S-R2 %s with one edited character marks exactly that character, and the pass persists the edit', async (method) => {
+        const world = bootedWorld()
+        const base = encodeWith(world.db)
+        installWorld(world)
+        selectedCharID.set(-1)
+        const wiring = wire({ identity: true, hook: true, install: true })
+        const copy = await jsonCopy()
+        copy[1].desc = EDITED
+        await api3()[method]({ characters: copy })
+        flushSync()
+        expect(marked(wiring)).toEqual([world.ids[1]])
+        const passes = await storePasses(base, marked(wiring))
+        expect(decodedCharacter(passes.decoded, world.ids[1]).desc).toBe(EDITED)
+        expectNothingLeftUnmarked(passes)
+    })
+
+    test.each(SETTERS)('(G) S-G1 %s: a removed defined field is marked and the decoded character lacks it', async (method) => {
+        const world = bootedWorld()
+        const base = encodeWith(world.db)
+        installWorld(world)
+        selectedCharID.set(-1)
+        const wiring = wire({ identity: true, hook: true, install: true })
+        const copy = await jsonCopy()
+        expect(copy[1].desc).toBeTruthy()
+        delete copy[1].desc
+        await api3()[method]({ characters: copy })
+        flushSync()
+        expect(marked(wiring)).toContain(world.ids[1])
+        const passes = await storePasses(base, marked(wiring))
+        expect(Object.hasOwn(decodedCharacter(passes.decoded, world.ids[1]), 'desc')).toBe(false)
+        expect(decodedCharacter(passes.decoded, world.ids[0]).desc).toBe((world.db.characters as unknown as Obj[])[0].desc)
+    })
+
+    test.each(SETTERS)('(G) S-G2 %s: null written over a live undefined is marked and decodes as null', async (method) => {
+        const world = bootedWorld()
+        ;(world.db.characters as unknown as Obj[])[1].trashTime = undefined
+        const base = encodeWith(world.db)
+        installWorld(world)
+        selectedCharID.set(-1)
+        const wiring = wire({ identity: true, hook: true, install: true })
+        const copy = await jsonCopy()
+        copy[1].trashTime = null
+        await api3()[method]({ characters: copy })
+        flushSync()
+        expect(marked(wiring)).toContain(world.ids[1])
+        const passes = await storePasses(base, marked(wiring))
+        expect(decodedCharacter(passes.decoded, world.ids[1]).trashTime).toBeNull()
     })
 })
 
@@ -831,9 +922,12 @@ function encodesDiffer(a: Obj, b: Obj): boolean {
 //#endregion
 
 describe('the oracle at the setter', () => {
-    test.each(SETTERS)('(G) G8 %s: a write that changes the live encoding is marked, and a mutated copy that encodes differently from live is never kept', async (method: Setter) => {
+    const ORACLE_CASES = SETTERS.flatMap((method) => [false, true].map((booted) => [method, booted] as const))
+
+    test.each(ORACLE_CASES)('(G) G8 %s booted=%s: a write that changes the live encoding is marked, and a mutated copy that encodes differently from live is never kept', async (method: Setter, booted: boolean) => {
         const rng = mulberry32(SEED)
-        const world = producerWorld()
+        // Booted: the world as `setDatabase` leaves it, and the copy as a plugin's JSON round trip returns it.
+        const world = booted ? bootedWorld() : producerWorld()
         const base = encodeWith(world.db)
         let mutated = 0
         let obliged = 0
@@ -845,7 +939,7 @@ describe('the oracle at the setter', () => {
             installWorld(world)
             const wiring = wire({ identity: false, hook: false, install: true })
             const before = live().map((entry) => $state.snapshot(entry) as Obj)
-            const copy = await bridgeCopy()
+            const copy = booted ? JSON.parse(JSON.stringify(await bridgeCopy())) as Obj[] : await bridgeCopy()
             let applied = 'none'
             let mutatedSlot = -1
             let copyDiffers = false

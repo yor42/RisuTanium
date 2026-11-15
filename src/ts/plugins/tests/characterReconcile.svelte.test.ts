@@ -11,6 +11,8 @@ import { describe, expect, test } from 'vitest'
 import { reconcileCharacters, sameStoredValue } from '../characterReconcile'
 import { keepLiveAlt, withoutAlt } from '../chatAltBridge'
 import { sameJsonValue, toPlainJson } from '../../storage/store2/codec/normalize'
+import { resetChatStreamingState } from '../../storage/characterDefaults'
+import { buildCharactersProfile } from '../../storage/tests/store2/writeAmplificationRig'
 
 type Entry = Record<string, unknown>
 
@@ -155,10 +157,16 @@ describe('sameStoredValue: pitfalls that must be different', () => {
         expect(sameStoredValue(incoming, live({ x: 1 }))).toBe(false)
     })
 
-    test('guard: undefined against an absent key, and -0 against 0, are strict (over-mark; open pending the plugin-rewrite measurement)', () => {
-        expect(sameStoredValue({ a: undefined }, live({}))).toBe(false)
-        expect(sameStoredValue({}, live({ a: undefined }))).toBe(false)
+    test('U-G3 guard: values the encoder normalises but a kept proxy would read differently stay different (over-mark only)', () => {
+        const fn = () => 1
+        expect(sameStoredValue([undefined], live([null]))).toBe(false)
+        expect(sameStoredValue([null], live([undefined]))).toBe(false)
         expect(sameStoredValue({ n: -0 }, live({ n: 0 }))).toBe(false)
+        expect(sameStoredValue({ n: NaN }, live({ n: null }))).toBe(false)
+        expect(sameStoredValue({ n: Infinity }, live({ n: null }))).toBe(false)
+        expect(sameStoredValue({ f: fn }, live({}))).toBe(false)
+        expect(sameStoredValue({}, live({ f: fn }))).toBe(false)
+        expect(sameStoredValue({ s: Symbol.for('x') }, live({}))).toBe(false)
     })
 
     test('guard: functions, symbols and bigints are different from themselves', () => {
@@ -208,6 +216,176 @@ describe('sameStoredValue: what must be equal', () => {
         const unshared = bridgeCopy('a')
         ;(unshared.chats as Entry[])[0].alt = structuredClone($state.snapshot(liveAlt))
         expect(sameStoredValue(unshared, liveList[0])).toBe(true)
+    })
+})
+
+type SpyLog = Array<{ op: string, key: string }>
+
+/** A forwarding proxy over a live tree that logs every `get`, `has` and descriptor read of a key the target does not own. */
+function spyOnAbsentReads<T extends object>(target: T, log: SpyLog): T {
+    const absent = (t: object, key: string | symbol): boolean => typeof key === 'string' && !Object.keys(t).includes(key)
+    return new Proxy(target, {
+        get(t, key, receiver) {
+            if (absent(t, key)) {
+                log.push({ op: 'get', key: String(key) })
+            }
+            const value = Reflect.get(t, key, receiver)
+            return typeof value === 'object' && value !== null ? spyOnAbsentReads(value, log) : value
+        },
+        has(t, key) {
+            if (absent(t, key)) {
+                log.push({ op: 'has', key: String(key) })
+            }
+            return Reflect.has(t, key)
+        },
+        getOwnPropertyDescriptor(t, key) {
+            if (absent(t, key)) {
+                log.push({ op: 'descriptor', key: String(key) })
+            }
+            return Reflect.getOwnPropertyDescriptor(t, key)
+        },
+    })
+}
+
+/**
+ * Three residents as the producer builds them after boot: a chat with alternative records and a group, with the
+ * streaming-mode key left on every chat with the value undefined (`setDatabase` runs `resetChatStreamingState`).
+ */
+function producerCharacters(): Entry[] {
+    const { db, characters } = buildCharactersProfile(3)
+    const firstChat = (characters[0].chats as Entry[])[0]
+    ;(firstChat.message as Entry[]).forEach((message, index) => { message.chatId = `m${index + 1}` })
+    firstChat.alt = [rec('x', 'm1', 1), rec('y', 'm2', 2)]
+    Object.assign(characters[2], { type: 'group', characters: ['group-member-a', 'group-member-b'] })
+    for (const slot of db.characters) {
+        resetChatStreamingState(slot)
+    }
+    return characters
+}
+
+/** What the V3 bridge delivers after the plugin JSON-round-trips an unchanged list: no `alt`, no undefined-valued key. */
+function jsonRoundTripOf(liveList: Entry[]): Entry[] {
+    return JSON.parse(JSON.stringify(liveList.map((slot) => withoutAlt($state.snapshot(slot) as { chats?: { alt?: unknown }[] })))) as Entry[]
+}
+
+describe('undefined against absent', () => {
+    test('U-R1 a producer character after boot, JSON-round-tripped by the plugin, is equal and the slots are kept', () => {
+        const raw = producerCharacters()
+        const liveList = live(structuredClone(raw))
+        const incoming = jsonRoundTripOf(liveList)
+        keepLiveAlt(liveList, incoming)
+        // Precondition: the key the boot code sets is live-only, so the difference is exactly undefined against absent.
+        expect((liveList[0].chats as Entry[]).every((entry) => Object.hasOwn(entry, 'activeStreamingDisplayOptimizationMode'))).toBe(true)
+        expect((incoming[0].chats as Entry[]).some((entry) => 'activeStreamingDisplayOptimizationMode' in entry)).toBe(false)
+        expect(sameStoredValue(incoming[0], liveList[0])).toBe(true)
+        const result = reconcileCharacters(liveList, incoming)
+        expect(result).not.toBeNull()
+        expect([...result!.keptSlots]).toEqual([0, 1, 2])
+        result!.characters.forEach((element, i) => {
+            expect(element).toBe(liveList[i])
+        })
+    })
+
+    test('U-R2 an incoming key holding undefined equals a live element without the key, flat and nested', () => {
+        expect(sameStoredValue({ x: 1, a: undefined }, live({ x: 1 }))).toBe(true)
+        expect(sameStoredValue({ c: { a: undefined } }, live({ c: {} }))).toBe(true)
+    })
+
+    test('U-R2 a live key holding undefined equals an incoming element without the key, flat and nested', () => {
+        expect(sameStoredValue({ x: 1 }, live({ x: 1, a: undefined }))).toBe(true)
+        expect(sameStoredValue({ c: {} }, live({ c: { a: undefined } }))).toBe(true)
+    })
+
+    test('U-R2 a live key set through the proxy after proxying equals an incoming element without the key', () => {
+        const liveValue = live({ x: 1 } as Entry)
+        liveValue.mode = undefined
+        expect(Object.keys(liveValue)).toContain('mode')
+        expect(sameStoredValue({ x: 1 }, liveValue)).toBe(true)
+        expect(sameStoredValue({ x: 1, mode: undefined }, liveValue)).toBe(true)
+    })
+
+    test('U-G1 guard: a removed, undefined-ed or added defined value stays different', () => {
+        expect(sameStoredValue({}, live({ a: 1 }))).toBe(false)
+        expect(sameStoredValue({ a: undefined }, live({ a: 1 }))).toBe(false)
+        expect(sameStoredValue({ a: 1 }, live({ a: undefined }))).toBe(false)
+        expect(sameStoredValue({ a: 1 }, live({}))).toBe(false)
+        expect(sameStoredValue({ c: {} }, live({ c: { a: 1 } }))).toBe(false)
+        expect(sameStoredValue({ c: { a: 1 } }, live({ c: {} }))).toBe(false)
+    })
+
+    test('U-G2 guard: null against undefined or absent stays different in both directions', () => {
+        expect(sameStoredValue({ a: null }, live({ a: undefined }))).toBe(false)
+        expect(sameStoredValue({ a: undefined }, live({ a: null }))).toBe(false)
+        expect(sameStoredValue({ a: null }, live({}))).toBe(false)
+        expect(sameStoredValue({}, live({ a: null }))).toBe(false)
+    })
+
+    test('U-G4 guard: one extra key on each side, only one of them undefined, is different', () => {
+        expect(sameStoredValue({ a: 1 }, live({ b: undefined }))).toBe(false)
+        expect(sameStoredValue({ b: undefined }, live({ a: 1 }))).toBe(false)
+        expect(sameStoredValue({ a: 1, b: undefined }, live({ a: 1, c: 2 }))).toBe(false)
+    })
+
+    test('U-G5 guard: the compare reads no key the live element does not own, whether the key is held by the target or only by a proxy source', () => {
+        const log: SpyLog = []
+        const liveValue = live({ x: 1, nested: {} } as Entry)
+        sameStoredValue({ x: 1, extra: undefined, nested: { y: undefined } }, spyOnAbsentReads(liveValue, log))
+        expect(log).toEqual([])
+        const sourceLog: SpyLog = []
+        const sourceOnly = live({ x: 1 } as Entry)
+        sourceOnly.mode = undefined
+        sameStoredValue({ x: 1 }, spyOnAbsentReads(sourceOnly, sourceLog))
+        sameStoredValue({ x: 1, other: undefined }, spyOnAbsentReads(sourceOnly, sourceLog))
+        expect(sourceLog).toEqual([])
+    })
+
+    test('U-R3 the compare that reads no absent live key still answers equal for undefined-valued incoming keys', () => {
+        const log: SpyLog = []
+        const liveValue = live({ x: 1, nested: {} } as Entry)
+        expect(sameStoredValue({ x: 1, extra: undefined, nested: { y: undefined } }, spyOnAbsentReads(liveValue, log))).toBe(true)
+        const sourceOnly = live({ x: 1 } as Entry)
+        sourceOnly.mode = undefined
+        expect(sameStoredValue({ x: 1 }, spyOnAbsentReads(sourceOnly, []))).toBe(true)
+    })
+
+    test('U-O3 undefined-valued keys added at random object nodes of either side stay equal and encode the same', () => {
+        const rng = mulberry32(SEED + 4)
+        const addUndefinedKeys = (root: Entry): void => {
+            const nodes: Entry[] = []
+            const walk = (node: unknown, key: string): void => {
+                // The shared `alt` subtree is a live proxy after `keepLiveAlt`, and a write into it would change live state.
+                if (key === 'alt' || typeof node !== 'object' || node === null) {
+                    return
+                }
+                if (!Array.isArray(node)) {
+                    nodes.push(node as Entry)
+                }
+                for (const [childKey, child] of Object.entries(node)) {
+                    walk(child, childKey)
+                }
+            }
+            walk(root, '')
+            const count = 1 + Math.floor(rng() * 3)
+            for (let n = 0; n < count; n++) {
+                choose(nodes, rng)[`zzUndefined${n}`] = undefined
+            }
+        }
+        for (let i = 0; i < 200; i++) {
+            const raw = producerCharacters()
+            const side = rng() < 0.5 ? 'incoming' : 'live'
+            if (side === 'live') {
+                addUndefinedKeys(raw[1])
+            }
+            const liveList = live(structuredClone(raw))
+            const incoming = jsonRoundTripOf(liveList)
+            if (side === 'incoming') {
+                addUndefinedKeys(incoming[1])
+            }
+            keepLiveAlt(liveList, incoming)
+            const where = `seed=${SEED} iteration=${i} side=${side}`
+            expect(sameStoredValue(incoming[1], liveList[1]), where).toBe(true)
+            expect(sameJsonValue(toPlainJson(incoming[1]), toPlainJson($state.snapshot(liveList[1]))), where).toBe(true)
+        }
     })
 })
 

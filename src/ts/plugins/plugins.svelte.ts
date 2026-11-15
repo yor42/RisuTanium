@@ -772,10 +772,11 @@ function keepPluginStorageInternals(current: {[key:string]:any} | undefined, inc
 
 /**
  * Marks every slot of the written `characters` list that is not kept, by slot and through that slot's `chaId`. Kept
- * means strictly equal to the live character and the same live proxy, so this write needs no save for it. Every
- * other slot is marked here: V2's getDatabase() is a live wrapper over DBState.db, so a plugin edits live elements
- * in place and a self-assignment notifies nothing, invisible to both the selected-character effect and the identity
- * tracker; V3 installs fresh objects. Both setters share this, so the mark does not depend on the API version.
+ * means the incoming element stores as the live character (`sameStoredValue`) and is replaced by the live proxy, so
+ * this write needs no save for it. Every other slot is marked here: V2's getDatabase() is a live wrapper over
+ * DBState.db, so a plugin edits live elements in place and a self-assignment notifies nothing, invisible to both the
+ * selected-character effect and the identity tracker; V3 installs fresh objects. Both setters share this, so the
+ * mark does not depend on the API version.
  * Never deletes: a character this call's own `characters` array omits still keeps its block and comes back on
  * reload; the guarantee that a save iteration without a reload can never delete a block lives in
  * `prepareSaveIteration`'s no-reload filter (globalApi.svelte.ts), not here. Returns the number of marks raised.

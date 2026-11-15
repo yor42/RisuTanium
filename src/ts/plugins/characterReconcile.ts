@@ -1,16 +1,23 @@
 /**
- * Compare-and-keep for a plugin's whole-list write of `characters`: an incoming element that is strictly equal to the
- * live element at the same slot is replaced by the live proxy, so the setter can leave that slot unmarked and the next
- * store2 pass does not read or encode it.
+ * Compare-and-keep for a plugin's whole-list write of `characters`: an incoming element that stores as the live element
+ * at the same slot (`sameStoredValue`) is replaced by the live proxy, so the setter can leave that slot unmarked and
+ * the next store2 pass does not read or encode it.
  *
  * Invariants:
  * - Strict: `sameStoredValue` answers "equal" only when installing the incoming element would give the same stored
  *   units and the same raw reads of the encoder. Anything not plain (Date, boxed values, class instances, own
  *   `toJSON`, functions, symbols, bigints, nesting past the depth cap) is different. A wrong "different" over-marks
  *   and costs time; a wrong "equal" drops the plugin's write, so every doubt answers "different".
- * - Undefined versus absent is strict as well: an own key whose value is `undefined` against a missing key is
- *   different, and so is `-0` against `0`. This over-marks only. It is open pending the measurement of how often
- *   common plugin rewrites drop such keys; do not widen it without that number.
+ * - Undefined against absent: inside a plain object, an own enumerable key whose value is exactly `undefined` on one
+ *   side is the same as that key being absent on the other, because the encoder drops such a key (`toPlainJson`), and
+ *   every raw read the encoder makes of a live slot is by value (`chaId`, `type`, `coldstorage`, `lastInteraction`,
+ *   `trashTime` and the stub overlay fields `name`, `creatorNotes`, `image`, `characters`, `tags`, `creator` and
+ *   `additionalData.creator`, read by the scoped overlay check and the stub tag and creator helpers). This is the
+ *   only widening of the encoder's normalisations. An `undefined` array item against `null`, `-0` against `0`, `NaN`
+ *   or an infinity against `null`, and a function- or symbol-valued key against an absent one stay different, so a kept
+ *   live proxy never reads differently by value from what the plugin wrote. A kept proxy may still hold
+ *   `key: undefined` where the plugin's element had no key, or the reverse; only `in`, `hasOwn` and key enumeration
+ *   can tell these apart, and no stored unit differs.
  * - Aliasing: an object reachable from both trees by the same reference compares equal. This holds for the live
  *   `alt` that `keepLiveAlt` places into the incoming chats. It assumes every transform of the incoming list has
  *   finished before the compare. An incoming element that is not itself a live element but shares nested live
@@ -22,7 +29,8 @@
  * - The reconcile reads only. It never writes to either list or to any element, so a caller that runs every
  *   per-character transform before it and assigns the returned list afterwards has no write after the keep decision.
  * - Live proxies are read inside `untrack`, and never for a key that is absent from them: the Svelte `get` trap
- *   creates a source for every absent key it is asked about.
+ *   creates a source for every absent key it is asked about. A key that only the incoming object holds is checked on
+ *   the incoming object alone.
  * - Any fault returns `null`, which the caller treats as "keep nothing": the plugin's own list is installed and every
  *   character is marked, as without the reconcile.
  */
@@ -103,14 +111,28 @@ function sameObject(a: object, b: object, depth: number): boolean {
     }
     const left = a as Record<string, unknown>
     const right = b as Record<string, unknown>
-    const keysA = new Set(Object.keys(a))
+    const keysA = Object.keys(a)
     const keysB = Object.keys(b)
-    if (keysA.size !== keysB.length) {
-        return false
-    }
+    const setA = new Set(keysA)
+    let matched = 0
     for (const key of keysB) {
-        if (!keysA.has(key) || !sameStoredValue(left[key], right[key], depth + 1)) {
+        if (setA.has(key)) {
+            if (!sameStoredValue(left[key], right[key], depth + 1)) {
+                return false
+            }
+            matched++
+        } else if (right[key] !== undefined) {
+            // The key is one of the live object's own, so this read cannot create a proxy source for an absent key.
             return false
+        }
+    }
+    if (matched < keysA.length) {
+        const setB = new Set(keysB)
+        for (const key of keysA) {
+            // The live object is never asked about a key it does not own.
+            if (!setB.has(key) && left[key] !== undefined) {
+                return false
+            }
         }
     }
     return true
