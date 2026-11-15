@@ -562,16 +562,6 @@ describe('the measurement switch that forces the fallback', () => {
 })
 
 describe('writes the setter must mark', () => {
-    test.each(SETTERS)('(G) G1 %s: a light holder written back is marked (current conservative behaviour, not a requirement)', async (method) => {
-        const world = producerWorld()
-        installWorld(world)
-        const wiring = wire({ identity: false, hook: false, install: true })
-        const entries = (await api3().getLightCharacters()) as unknown as Obj[]
-        expect(entries.map((entry) => entry.chaId)).toEqual(world.ids)
-        await api3()[method]({ characters: entries })
-        expect(marked(wiring)).toEqual(sorted(world.ids))
-    })
-
     test('(G) G1 a V2 in-place edit through the live wrapper is marked and persisted', async () => {
         const world = producerWorld()
         const base = encodeWith(world.db)
@@ -696,6 +686,163 @@ describe('writes the setter must mark', () => {
         const copy = await bridgeCopy()
         await api3()[method]({ characters: copy })
         expect(marked(wiring)).toContain(world.ids[1])
+    })
+})
+
+describe('light entries written back', () => {
+    const lightOf = async (): Promise<Obj[]> => (await api3().getLightCharacters()) as unknown as Obj[]
+
+    const WIRINGS = SETTERS.flatMap((method) => [false, true].map((tracked) => [method, tracked] as const))
+
+    test.each(WIRINGS)('(R) L-R1 %s tracked=%s: a light list written back in place marks no character and keeps every proxy', async (method, tracked) => {
+        const world = producerWorld()
+        const base = encodeWith(world.db)
+        installWorld(world)
+        selectedCharID.set(-1)
+        const wiring = wire({ identity: tracked, hook: tracked, install: true })
+        const before = [...DBState.db.characters]
+        const entries = await lightOf()
+        expect(entries.map((entry) => entry.chaId)).toEqual(world.ids)
+        const counts = await api3()[method]({ characters: entries })
+        flushSync()
+        expect(counts).toEqual({ lightKept: 3, lightLeftOut: 0 })
+        expect(marked(wiring)).toEqual([])
+        expect(DBState.db.characters).toHaveLength(3)
+        DBState.db.characters.forEach((entry, index) => expect(entry).toBe(before[index]))
+        expectNothingLeftUnmarked(await storePasses(base, marked(wiring)))
+    })
+
+    test.each(SETTERS)('(R) L-R2 %s: a reordered light list marks exactly the moved holders and the order follows', async (method) => {
+        const world = producerWorld()
+        const base = encodeWith(world.db)
+        installWorld(world)
+        selectedCharID.set(-1)
+        const wiring = wire({ identity: false, hook: false, install: true })
+        const [e0, e1, e2] = await lightOf()
+        await api3()[method]({ characters: [e0, e2, e1] })
+        expect(live().map((entry) => entry.chaId)).toEqual([world.ids[0], world.ids[2], world.ids[1]])
+        // The exact marks are the evidence that a pass is scheduled for the order; the pass below encodes it either way.
+        expect(marked(wiring)).toEqual(sorted([world.ids[1], world.ids[2]]))
+        const passes = await storePasses(base, marked(wiring))
+        expect((passes.decoded.characters as unknown as Obj[]).map((entry) => entry.chaId)).toEqual([world.ids[0], world.ids[2], world.ids[1]])
+        expectNothingLeftUnmarked(passes)
+    })
+
+    test.each(SETTERS)('(R) L-R2 %s: a reversal of three leaves the middle holder unmarked and marks both ends', async (method) => {
+        const world = producerWorld()
+        const base = encodeWith(world.db)
+        installWorld(world)
+        selectedCharID.set(-1)
+        const wiring = wire({ identity: false, hook: false, install: true })
+        const entries = await lightOf()
+        await api3()[method]({ characters: [...entries].reverse() })
+        expect(live().map((entry) => entry.chaId)).toEqual([...world.ids].reverse())
+        expect(marked(wiring)).toEqual(sorted([world.ids[0], world.ids[2]]))
+        expectNothingLeftUnmarked(await storePasses(base, marked(wiring)))
+    })
+
+    test.each(SETTERS)('(R) L-R3 %s: light entries beside one edited full copy mark only the edited character', async (method) => {
+        const world = producerWorld()
+        const base = encodeWith(world.db)
+        installWorld(world)
+        selectedCharID.set(-1)
+        const wiring = wire({ identity: false, hook: false, install: true })
+        const entries = await lightOf()
+        const copy = await bridgeCopy()
+        copy[1].desc = EDITED
+        await api3()[method]({ characters: [entries[0], copy[1], entries[2]] })
+        expect(marked(wiring)).toEqual([world.ids[1]])
+        const passes = await storePasses(base, marked(wiring))
+        expect(decodedCharacter(passes.decoded, world.ids[1]).desc).toBe(EDITED)
+        expectNothingLeftUnmarked(passes)
+    })
+
+    test.each(SETTERS)('(R) L-R4 %s: light entries and an appended new character mark only the new one', async (method) => {
+        const world = producerWorld()
+        const base = encodeWith(world.db)
+        installWorld(world)
+        selectedCharID.set(-1)
+        const wiring = wire({ identity: false, hook: false, install: true })
+        const entries = await lightOf()
+        const fresh = { ...structuredClone((await bridgeCopy())[0]), chaId: 'appended-id' }
+        await api3()[method]({ characters: [...entries, fresh] })
+        expect(live().map((entry) => entry.chaId)).toEqual([...world.ids, 'appended-id'])
+        expect(marked(wiring)).toEqual(['appended-id'])
+        const passes = await storePasses(base, marked(wiring))
+        expect(passes.decoded.characters).toHaveLength(4)
+        expectNothingLeftUnmarked(passes)
+    })
+
+    test.each(SETTERS)('(R) L-R5 %s: an entry without a holder ahead of the holders shifts no mark', async (method) => {
+        const world = producerWorld()
+        const base = encodeWith(world.db)
+        installWorld(world)
+        selectedCharID.set(-1)
+        const wiring = wire({ identity: false, hook: false, install: true })
+        const entries = await lightOf()
+        const orphan = { ...entries[0], chaId: 'no-such-holder' }
+        const counts = await api3()[method]({ characters: [entries[0], orphan, entries[1], entries[2]] })
+        expect(counts).toEqual({ lightKept: 3, lightLeftOut: 1 })
+        expect(live().map((entry) => entry.chaId)).toEqual(world.ids)
+        expect(marked(wiring)).toEqual([])
+        expectNothingLeftUnmarked(await storePasses(base, marked(wiring)))
+    })
+
+    /** An empty chat that still holds stale memory fields; each arm leaves a different subset. */
+    const STALE_ARMS: Array<[string, (chat: Obj) => void, (chat: Obj) => void]> = [
+        ['data and covered id', (chat) => { chat.supaMemoryData = SUPA_DATA; chat.supaMemoryCoveredId = SUPA_COVERED },
+            (chat) => { expect(chat.supaMemoryData).toBe(''); expect(chat.supaMemoryCoveredId).toBeUndefined() }],
+        ['data only', (chat) => { chat.supaMemoryData = SUPA_DATA; delete chat.supaMemoryCoveredId },
+            (chat) => { expect(chat.supaMemoryData).toBe('') }],
+        ['covered id only', (chat) => { chat.supaMemoryData = ''; chat.supaMemoryCoveredId = SUPA_COVERED },
+            (chat) => { expect(chat.supaMemoryCoveredId).toBeUndefined() }],
+    ]
+
+    test.each(SETTERS.flatMap((method) => STALE_ARMS.map((arm) => [method, ...arm] as const)))(
+        '(G) L-G1 %s, stale %s: a light holder whose empty chat is cleared is marked and the clear persists (passes before and after)',
+        async (method, _name, stale, expectCleared) => {
+            const world = producerWorld()
+            const chat = ((world.db.characters as unknown as Obj[])[1].chats as Obj[])[0]
+            chat.message = []
+            stale(chat)
+            const base = encodeWith(world.db)
+            installWorld(world)
+            selectedCharID.set(-1)
+            const wiring = wire({ identity: false, hook: false, install: true })
+            await api3()[method]({ characters: await lightOf() })
+            expect(marked(wiring)).toContain(world.ids[1])
+            const passes = await storePasses(base, marked(wiring))
+            expectCleared((decodedCharacter(passes.decoded, world.ids[1]).chats as Obj[])[0])
+            expectNothingLeftUnmarked(passes)
+        },
+    )
+
+    test.each(SETTERS)('(G) L-G2 %s: a light list missing its last entry marks every remaining holder (passes before and after)', async (method) => {
+        const world = producerWorld()
+        installWorld(world)
+        selectedCharID.set(-1)
+        const wiring = wire({ identity: false, hook: false, install: true })
+        const entries = await lightOf()
+        await api3()[method]({ characters: entries.slice(0, 2) })
+        expect(live().map((entry) => entry.chaId)).toEqual(world.ids.slice(0, 2))
+        expect(marked(wiring)).toEqual(sorted(world.ids.slice(0, 2)))
+    })
+
+    describe('with the measurement switch off', () => {
+        afterEach(() => {
+            resetReconcileSwitchForTest()
+        })
+
+        test.each(SETTERS)('(G) L-G3 %s: every holder is marked (passes before and after)', async (method) => {
+            vi.stubGlobal('localStorage', { getItem: (key: string) => key === 'risu-measure-reconcile' ? 'off' : null })
+            resetReconcileSwitchForTest()
+            const world = producerWorld()
+            installWorld(world)
+            selectedCharID.set(-1)
+            const wiring = wire({ identity: false, hook: false, install: true })
+            await api3()[method]({ characters: await lightOf() })
+            expect(marked(wiring)).toEqual(sorted(world.ids))
+        })
     })
 })
 

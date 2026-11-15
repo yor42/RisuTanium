@@ -163,6 +163,26 @@ describe('empty-chat rule', () => {
         expect(other.supaMemoryData).toBe('')
         expect('supaMemoryCoveredId' in other).toBe(false)
     })
+
+    it('clearSupaMemoryIfEmpty reports a write exactly when it assigned the data or deleted the covered id', () => {
+        expect(clearSupaMemoryIfEmpty(chatOf([], 'x\nsummary', 'x'))).toBe(true)
+        expect(clearSupaMemoryIfEmpty(chatOf([], 'x\nsummary'))).toBe(true)
+        expect(clearSupaMemoryIfEmpty(chatOf([], '', 'x'))).toBe(true)
+        expect(clearSupaMemoryIfEmpty(chatOf([], ''))).toBe(false)
+        expect(clearSupaMemoryIfEmpty(chatOf([]))).toBe(false)
+        expect(clearSupaMemoryIfEmpty(chatOf(['a'], 'a\nsummary', 'a'))).toBe(false)
+    })
+
+    it('clearSupaMemoryIfEmptyIn returns exactly the characters it wrote into', () => {
+        const wroteData = { chats: [chatOf([], 'x\nsummary')] }
+        const wroteCovered = { chats: [chatOf(['a']), chatOf([], '', 'x')] }
+        const clean = { chats: [chatOf([], ''), chatOf(['a'], 'a\nsummary')] }
+        const noChats = {}
+        const result = clearSupaMemoryIfEmptyIn([wroteData, clean, wroteCovered, noChats, wroteData])
+        expect([...result]).toEqual([wroteData, wroteCovered])
+        expect(result.has(clean)).toBe(false)
+        expect(result.has(noChats)).toBe(false)
+    })
 })
 
 describe('writeSupaMemoryData (the send writer)', () => {

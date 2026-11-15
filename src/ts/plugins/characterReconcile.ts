@@ -25,7 +25,11 @@
  *   changed live, and the compare would report equal. No production caller builds such input (the only caller is
  *   the V3 bridge, whose arguments are structured clones); tests that call the setter directly must not either.
  * - A slot whose incoming element is itself a live element (`===`, as a light holder or an element of the list
- *   itself) is never kept, and the setter marks it. This is the current conservative behaviour, not a requirement.
+ *   itself) is never kept by the reconcile, and the setter marks it. This is the current conservative behaviour, not a
+ *   requirement. The setter separately leaves a swapped-in light holder unmarked when it sits at its own live
+ *   position and no transform wrote into it (`cleanHeldSlots` in the setter).
+ * - A legacy encoder keys each character block by chaId and never decides the list order by marks, so an unmarked
+ *   clean holder changes no legacy block.
  * - The reconcile reads only. It never writes to either list or to any element, so a caller that runs every
  *   per-character transform before it and assigns the returned list afterwards has no write after the keep decision.
  * - Live proxies are read inside `untrack`, and never for a key that is absent from them: the Svelte `get` trap
