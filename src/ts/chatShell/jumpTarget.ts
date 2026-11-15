@@ -2,6 +2,10 @@
 // so there is one rule for "at the bottom" on the button and the count. It is separate from the bottom follower's sub-pixel tolerance.
 export const BOTTOM_PX = 100
 export const TRAVEL_MS = 260
+// One frame advances the glide by at most this long, and the glide ends by this long after it started whatever the frames did:
+// a stalled frame cannot swallow the glide, and a run of stalled frames cannot stretch it without bound.
+export const TRAVEL_FRAME_CAP_MS = 50
+export const TRAVEL_MAX_MS = 1000
 const CUT_SCREENS = 2
 const BADGE_CAP = 99
 
@@ -50,10 +54,11 @@ export interface TravelPlan {
     duration: number
 }
 
-export function travelPlan(input: { distance: number, viewport: number, reduced: boolean }): TravelPlan {
+// A `rebuilt` window was just cut down to the newest rows, so the reader's old position says nothing about the distance to the end: it always cuts.
+export function travelPlan(input: { distance: number, viewport: number, reduced: boolean, rebuilt?: boolean }): TravelPlan {
     if (input.reduced) return { cutTo: null, duration: 0 }
     const limit = CUT_SCREENS * input.viewport
-    return { cutTo: input.distance > limit ? limit : null, duration: TRAVEL_MS }
+    return { cutTo: input.rebuilt === true || input.distance > limit ? limit : null, duration: TRAVEL_MS }
 }
 
 export interface TravelDeps {
@@ -87,12 +92,17 @@ export function createTravel(deps: TravelDeps): Travel {
             const mine = generation
             const from = deps.read().top
             const started = deps.now()
+            let last = started
+            let elapsed = 0
             const step = (): void => {
                 frame = null
                 if (mine !== generation) return
                 if (deps.stop()) { done(false); return }
                 const { end } = deps.read()
-                const progress = duration > 0 ? Math.min(1, (deps.now() - started) / duration) : 1
+                const now = deps.now()
+                elapsed += Math.min(now - last, TRAVEL_FRAME_CAP_MS)
+                last = now
+                const progress = duration > 0 ? Math.min(1, Math.max(elapsed / duration, (now - started) / TRAVEL_MAX_MS)) : 1
                 if (progress >= 1) {
                     deps.write(end)
                     done(true)
@@ -106,6 +116,17 @@ export function createTravel(deps: TravelDeps): Travel {
         },
         cancel,
     }
+}
+
+// How far the rows settled before a jump's measurements must reach above and below the target's top: the visible area split at the alignment line.
+export function jumpReach(align: JumpAlign, clientHeight: number, topInset: number): { above: number, below: number } {
+    const line = align === 'third' ? topInset + (clientHeight - topInset) / 3 : align.offset
+    return { above: Math.max(0, line), below: Math.max(0, clientHeight - line) }
+}
+
+// How far above the end the rows must be settled for a glide: the cut viewport, the glide span and the half viewport the engine settles around the visible area, with room to spare.
+export function travelReach(viewport: number): number {
+    return (CUT_SCREENS + 2) * viewport
 }
 
 // A jump of more than this many messages leaves a return chip behind.
@@ -139,6 +160,9 @@ export interface JumpOptions {
     recordOrigin?: boolean
     // Whether the target takes focus after it is placed; true unless a caller keeps focus where it is (the search field).
     focus?: boolean
+    // Runs once the target row is mounted and before any measurement; it may change the row (open a block, add marks) and returns the element
+    // the jump should keep in view, or null when there is none. A jump overtaken while it runs is cancelled.
+    aim?: (article: HTMLElement) => Promise<HTMLElement | null>
 }
 
 // The scroll distance that brings `targetTop` to the line one third down the visible area. The area starts below `topInset`
@@ -146,6 +170,14 @@ export interface JumpOptions {
 export function alignDelta(input: { targetTop: number, hostTop: number, clientHeight: number, topInset: number }): number {
     const line = input.hostTop + input.topInset + (input.clientHeight - input.topInset) / 3
     return input.targetTop - line
+}
+
+// The scroll distance for a jump that aims at an element inside the target: the message keeps the upper-third line when the aimed element's
+// bottom is still inside the visible area after that scroll; otherwise the aimed element's top goes to the line.
+export function matchAlignDelta(input: { containerTop: number, aimTop: number, aimBottom: number, hostTop: number, clientHeight: number, topInset: number }): number {
+    const byContainer = alignDelta({ targetTop: input.containerTop, hostTop: input.hostTop, clientHeight: input.clientHeight, topInset: input.topInset })
+    if (input.aimBottom - byContainer <= input.hostTop + input.clientHeight) return byContainer
+    return alignDelta({ targetTop: input.aimTop, hostTop: input.hostTop, clientHeight: input.clientHeight, topInset: input.topInset })
 }
 
 // A computed `scroll-padding-top` is a length, but jsdom gives '' and a browser can give 'auto'; neither is an inset.

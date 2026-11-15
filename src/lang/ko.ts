@@ -53,6 +53,8 @@ export const languageKorean = {
     chatShellJumpedBack: "이동했어요. “돌아가기”로 이전 위치로 돌아갈 수 있어요.",
     chatShellJumpDateAfterLast: "그날 이후의 메시지가 없어요",
     chatShellJumpEditorOpen: "이동하려면 편집 중인 메시지를 닫아 주세요",
+    chatShellScrubberBubble: (position: string, total: string) => `${position} / ${total}`,
+    chatShellScrubberBubbleDated: (position: string, total: string, date: string) => `${position} / ${total} · ${date}`,
     chatShellSearchInChat: "채팅에서 검색",
     chatShellFindPlaceholder: "이 채팅에서 검색",
     chatShellFindCounter: (index: string, total: string) => `${index} / ${total}`,

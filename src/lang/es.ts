@@ -53,6 +53,8 @@ export const languageSpanish = {
     chatShellJumpedBack: "Hecho. “Volver” te lleva de nuevo a donde estabas.",
     chatShellJumpDateAfterLast: "No hay mensajes de ese día ni posteriores",
     chatShellJumpEditorOpen: "Cierra el mensaje que estás editando para ir allí",
+    chatShellScrubberBubble: (position: string, total: string) => `${position} / ${total}`,
+    chatShellScrubberBubbleDated: (position: string, total: string, date: string) => `${position} / ${total} · ${date}`,
     chatShellSearchInChat: "Buscar en el chat",
     chatShellFindPlaceholder: "Buscar en este chat",
     chatShellFindCounter: (index: string, total: string) => `${index} / ${total}`,

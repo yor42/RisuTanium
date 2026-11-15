@@ -53,6 +53,8 @@ export const languageJapanese = {
     chatShellJumpedBack: "移動しました。「戻る」で元の位置に戻れます。",
     chatShellJumpDateAfterLast: "その日以降のメッセージはありません",
     chatShellJumpEditorOpen: "移動するには編集中のメッセージを閉じてください",
+    chatShellScrubberBubble: (position: string, total: string) => `${position} / ${total}`,
+    chatShellScrubberBubbleDated: (position: string, total: string, date: string) => `${position} / ${total} · ${date}`,
     chatShellSearchInChat: "チャット内を検索",
     chatShellFindPlaceholder: "このチャットを検索",
     chatShellFindCounter: (index: string, total: string) => `${index} / ${total}`,

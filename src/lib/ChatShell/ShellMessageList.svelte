@@ -19,7 +19,8 @@
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
     import { offscreenRowCounts } from '../../ts/chatShell/offscreenRows'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
-    import { alignDelta, appendedReplies, createTravel, distanceFromEnd, isAtBottom, isFar, parseInset, travelPlan, type JumpAlign, type JumpOptions, type JumpOrigin, type JumpResult, type JumpStatus } from '../../ts/chatShell/jumpTarget'
+    import { alignDelta, appendedReplies, createTravel, distanceFromEnd, isAtBottom, isFar, jumpReach, matchAlignDelta, parseInset, travelPlan, travelReach, type JumpAlign, type JumpOptions, type JumpOrigin, type JumpResult, type JumpStatus } from '../../ts/chatShell/jumpTarget'
+    import { settleBand, type SettleReach } from '../../ts/chatShell/settleBand'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { holdWarmAsks } from '../ChatScreens/deferredAssetImages'
     import type { SearchHit } from '../../ts/chatShell/inChatSearch'
@@ -319,6 +320,7 @@
         align: JumpAlign
         recordOrigin: boolean
         focus: boolean
+        aim: JumpOptions['aim']
         generation: number
         forRoom: string | null
         intentAtStart: number
@@ -452,6 +454,27 @@
     })
     onDestroy(() => travel.cancel())
 
+    // The one settle band: rows forced to `content-visibility: visible` so a jump measures them at their real sizes (see settleJump).
+    // Every path that drops the band's frames releases it, so no row stays forced.
+    let bandRelease: (() => void) | null = null
+    let bandFrame = 0
+    function releaseBand(): void {
+        cancelFrame(bandFrame)
+        const release = bandRelease
+        bandRelease = null
+        release?.()
+    }
+    // Forces the rows around `target` (see settleBand) and releases them at the second frame after this call: the first rendering records the
+    // remembered sizes, so releasing earlier would let the rows fall back to the estimate before the engine has stored the real size.
+    // The row containers carry no `style:` directive, so Svelte never reconciles the inline property this sets and removes.
+    // A previous band is released first; a new band always replaces the old one.
+    function settleJump(target: HTMLElement, reach: SettleReach): void {
+        releaseBand()
+        bandRelease = settleBand(target, reach)
+        bandFrame = requestFrame(() => { bandFrame = requestFrame(releaseBand) })
+    }
+    onDestroy(releaseBand)
+
     function waitForHold(abandoned: () => boolean): Promise<boolean> {
         return new Promise((resolve) => {
             let waited = 0
@@ -492,8 +515,14 @@
         if (abandoned() || !host) return
         const scroller = host
         realign.cancel()
-        if (win.slid) rebuildNewestWindow()
-        const plan = travelPlan({ distance: distanceFromEnd(scroller), viewport: scroller.clientHeight, reduced: !animate })
+        // Read before the rebuild: a window that was slid has no meaningful scroll position to measure the distance from.
+        const rebuilt = win.slid
+        if (rebuilt) rebuildNewestWindow()
+        // Settle step: the newest rows are laid out at their real sizes before the plan reads the scroll metrics, so the cut and the glide
+        // run over the real end. A reduced-motion landing is one write at the clamped end and forces nothing.
+        const newestRow = rows?.firstElementChild
+        if (animate && newestRow instanceof HTMLElement) settleJump(newestRow, { above: travelReach(scroller.clientHeight), below: 0 })
+        const plan = travelPlan({ distance: distanceFromEnd(scroller), viewport: scroller.clientHeight, reduced: !animate, rebuilt })
         if (plan.cutTo !== null) scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight - plan.cutTo)
         const land = (): void => {
             traveling = false
@@ -521,7 +550,7 @@
     // Brings message `index` (-1 is the first message) to the upper third of the visible area, focuses it and holds it against late layout.
     // The answer says whether it ran: a hidden surface defers (and replays when shown), an editor that forbids the window change blocks,
     // and a request that a newer jump, reader input, a chat switch or a long step hold overtook is cancelled.
-    export function jumpTo(index: number, { align = 'third', recordOrigin = true, focus = true }: JumpOptions = {}): Promise<JumpResult> {
+    export function jumpTo(index: number, { align = 'third', recordOrigin = true, focus = true, aim }: JumpOptions = {}): Promise<JumpResult> {
         settlePendingJump('cancelled')
         const generation = ++jumpGeneration
         travel.cancel()
@@ -529,7 +558,7 @@
         return new Promise((resolve) => {
             const deferred = installed && chatSurface.hidden
             if (deferred) resolve({ status: 'deferred', from: null, to: index })
-            pendingJump = { index, align, recordOrigin, focus, generation, forRoom: room(), intentAtStart: intentSeq, settle: deferred ? null : resolve }
+            pendingJump = { index, align, recordOrigin, focus, aim, generation, forRoom: room(), intentAtStart: intentSeq, settle: deferred ? null : resolve }
             jumpRequestToken += 1
         })
     }
@@ -569,7 +598,7 @@
     }
 
     async function performJump(request: PendingJump): Promise<JumpResult> {
-        const { index, align, recordOrigin, focus, generation, forRoom, intentAtStart } = request
+        const { index, align, recordOrigin, focus, aim, generation, forRoom, intentAtStart } = request
         const outcome = (status: JumpStatus, from: JumpOrigin | null = null): JumpResult => ({ status, from, to: index })
         const abandoned = (): boolean => destroyed || generation !== jumpGeneration || room() !== forRoom || intentSeq !== intentAtStart || (installed && chatSurface.hidden)
         // A request overtaken before it ran (a chat switch changes the length it is judged against) is cancelled, not out of range.
@@ -595,17 +624,31 @@
         const article = rows.querySelector<HTMLElement>(`article[data-chat-index="${index}"]`)
         if (!article) return outcome(hasMessageEditorDrafts() ? 'blocked' : 'outOfRange')
         const container = article.closest<HTMLElement>('[data-part="chat-message-container"], [data-part="chat-first-message"]') ?? article
+        // The aim changes the target row (opens blocks, adds marks), so it resolves before the settle step and every geometry read;
+        // whatever it awaited can have overtaken the jump, so the hold and abandonment checks repeat.
+        const aimed = aim ? await aim(article) : null
+        if (aim) {
+            if ((hold.isInFlight() || pin !== null) && !await waitForHold(abandoned)) return outcome('cancelled')
+            if (abandoned() || !article.isConnected) return outcome('cancelled')
+        }
+        // Settle step: every geometry read below that decides the write comes after this block, in the same synchronous run as the write.
+        // The target and the rows of its post-write viewport are laid out at their real sizes first; otherwise focus() resolving the skipped target
+        // after the write would move it away from the line before the hold captures its baseline. Any DOM change to the target row that affects its geometry belongs above this block.
+        settleJump(container, jumpReach(align, scroller.clientHeight, parseInset(getComputedStyle(scroller).scrollPaddingTop)))
         const hostTop = scroller.getBoundingClientRect().top
         const targetTop = container.getBoundingClientRect().top
+        const aimRect = aimed && align === 'third' ? aimed.getBoundingClientRect() : null
         scroller.scrollTop += align === 'third'
-            ? alignDelta({ targetTop, hostTop, clientHeight: scroller.clientHeight, topInset: parseInset(getComputedStyle(scroller).scrollPaddingTop) })
+            ? aimRect
+                ? matchAlignDelta({ containerTop: targetTop, aimTop: aimRect.top, aimBottom: aimRect.bottom, hostTop, clientHeight: scroller.clientHeight, topInset: parseInset(getComputedStyle(scroller).scrollPaddingTop) })
+                : alignDelta({ targetTop, hostTop, clientHeight: scroller.clientHeight, topInset: parseInset(getComputedStyle(scroller).scrollPaddingTop) })
             : targetTop - hostTop - align.offset
         // The jump left the newest message on purpose; arriving at the bottom re-enters following. Focus comes after the write and without
         // a focus scroll, so it cannot undo the alignment, and the hold starts last so it captures the written position.
         follower?.release()
         follower?.sync()
         if (focus) asShellFocus(() => article.focus({ preventScroll: true }))
-        realign.start({ row: container, ms: JUMP_HOLD_MS })
+        realign.start({ row: aimed ?? container, ms: JUMP_HOLD_MS })
         readPosition()
         return outcome('done', from)
     }
