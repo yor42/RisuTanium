@@ -14,6 +14,7 @@
     import { createBottomFollower, isScrolledToBottom, type BottomFollower } from '../../ts/chatShell/bottomAnchor'
     import { bindReaderIntent, canHostMove, createReaderIntent, type ReaderIntentSource } from '../../ts/chatShell/readerIntent'
     import { JUMP_HOLD_MS, WRITE_EPSILON, createLoadRealign, viewportTopRow } from '../../ts/chatShell/loadRealign'
+    import { beginReturn, createReturnAnchorHold, fallbackRest, returnPlan, type ReturnOutcome, type ReturnRecord } from '../../ts/chatShell/returnAnchor'
     import { STEP_HOLD_MOUNT_CAP, createStepHold, heldPin, pagesForPin, type PinRelease, type StepRowRunner } from '../../ts/chatShell/stepHold'
     import { afterAppend, foldLoadMorePages, jumpOnlyGrows, jumpWindow,mountCap, newestWindow, normalizeBottom, shellInitialPages, shellPages, shellWindow, slideNewer, slideOlder, trimHeld } from '../../ts/chatShell/mountWindow'
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
@@ -85,8 +86,8 @@
     let rowPointers = $state<Record<number, number>>({})
     let previousLength = 0
     let previousRoom: string | null = null
-    let hideTop: number | null = null
-    let hideOwner: string | null = null
+    // Where the reader was at the latest hide; the return that follows consumes it.
+    let returnRecord: ReturnRecord | null = null
     let initialPagesAtHide = initialPages()
     let wasHidden = false
     const installed = isChatSurfaceInstalled()
@@ -95,10 +96,16 @@
         const restored = windowPolicy.onDraftsChanged()
         if (restored !== null) loadPages = restored
     })
+    // The engagement of the return anchor hold made at the latest hide; the return that follows takes it.
+    let visitEngagement: number | null = null
     const stopHiding = installed ? onSurfaceHiding(() => {
-        hideTop = host?.scrollTop ?? null
-        hideOwner = chatWindowKey(character.chaId, chat)
+        // Anchoring is already off when the surface is laid out again; the hold ends only after the return has settled.
+        visitEngagement = returnHold.engage()
         realign.cancel()
+        // Recorded last: a capture that throws leaves no record, and the engagement above stays releasable.
+        // `atEnd` is the follow-latest rule: auto-scroll on and the follower engaged at the exact end. A reader the app does not follow is restored by anchor like any other.
+        const following = DBState.db.autoScrollToNewMessage !== false && (follower?.isFollowing() ?? false)
+        returnRecord = host ? { origin: captureOrigin(host), atEnd: following && isScrolledToBottom(host) && !win.slid, pixel: host.scrollTop, owner: chatWindowKey(character.chaId, chat) } : null
     }) : () => {}
     // While an alternative step runs, the oldest mounted position is frozen at this value (-1 is the first message); null means the window follows loadPages.
     let pin = $state<number | null>(null)
@@ -186,12 +193,20 @@
         requestFrame,
         cancelFrame,
     })
+    // Native anchoring stays off from the hide until a few frames after the return, so un-hiding the surface cannot move the reader.
+    // A step hold sets the same property itself, so the release waits while one is in flight.
+    const returnHold = createReturnAnchorHold({
+        host: () => host,
+        held: () => hold.isInFlight(),
+        requestFrame,
+        cancelFrame,
+    })
     // A step owns the position from its first call, so the window ends before the hold takes its measurements.
     const runStep: StepRowRunner = (idx, step) => {
         realign.cancel()
         return hold.run(idx, step)
     }
-    onDestroy(() => { stopDrafts(); stopHiding(); hold.cancel(); realign.cancel() })
+    onDestroy(() => { stopDrafts(); stopHiding(); hold.cancel(); realign.cancel(); returnHold.dispose() })
 
     let visibleRows = $derived.by(() => {
         const result: { idx: number, message: Message, key: string }[] = []
@@ -260,12 +275,28 @@
             initialPagesAtHide = untrack(initialPages)
             return
         }
+        // Only the change from hidden to shown restores; the effect also re-runs while visible, and those runs do nothing new.
+        let returning: Pick<ReturnTicket, 'record' | 'rebuilt' | 'restorable' | 'deferBump' | 'engagement'> | null = null
         if (wasHidden) {
             wasHidden = false
+            // A step hold's frame pass may have removed the suppression while the surface was hidden.
+            returnHold.reassert()
             const next = pagesOnReturn(loadPages, initialPagesAtHide, initialPages())
             // A changed page size replaces the window, so a slid window goes back to the newest message with it.
             if (next.next !== loadPages) { loadPages = next.next; bottom = null }
-            if (next.lowered) windowResetToken += 1
+            returning = untrack(() => {
+                const record = returnRecord
+                returnRecord = null
+                const engagement = visitEngagement
+                visitEngagement = null
+                // A deferred jump or a ScrollToMessage request is read here, in the effect: later in the microtask it has already been taken.
+                const waiting = pendingJump !== null || ScrollToMessageStore.value >= 0
+                const willRebuild = installed && chatSurface.rebuildEpoch !== rebuildEpoch
+                const begun = beginReturn({ record, ownerNow: chatWindowKey(character.chaId, chat), rebuilt: willRebuild, lowered: next.lowered, waiting })
+                // A restore that will run replaces the page-size reset; the single exit applies the reset late unless the restore landed.
+                if (next.lowered && !begun.deferBump) windowResetToken += 1
+                return { record, rebuilt: willRebuild, restorable: begun.restorable, deferBump: begun.deferBump, engagement }
+            })
         }
         if (installed && chatSurface.rebuildEpoch !== rebuildEpoch) {
             // The hold comes before `rebuildEpoch` re-keys the rows, so every remounted row's loader waits for it.
@@ -273,11 +304,9 @@
             rebuildEpoch = chatSurface.rebuildEpoch
             guiPointer = chatSurface.heldGui
             rowPointers = chatSurface.heldChat
-            if (hideOwner === chatWindowKey(character.chaId, chat) && hideTop !== null && host) { host.scrollTop = hideTop; if (!isScrolledToBottom(host)) follower?.release() }
             // The list signal is one frame after the restore, restored or not; the remounted rows' scans still have to follow.
             const forHold = openWarmHold
             openWarmFrame = requestFrame(() => { openWarmFrame = null; releaseOpenWarmHold(forHold) })
-            hideTop = null
         } else if (installed) {
             guiPointer = chatSurface.heldGui
             rowPointers = chatSurface.heldChat
@@ -285,7 +314,86 @@
             guiPointer = get(ReloadGUIPointer)
             rowPointers = get(ReloadChatPointer)
         }
+        if (returning) {
+            const decided = returning
+            untrack(() => { void settleReturn({ ...decided, intentAtReturn: intentSeq, roomAtReturn: room(), jumpGeneration }) })
+        }
     })
+
+    // One return: every path ends in `finishReturn`, the only place that applies the page-size reset late and the only place that releases the anchor hold.
+    interface ReturnTicket {
+        record: ReturnRecord | null
+        rebuilt: boolean
+        restorable: boolean
+        deferBump: boolean
+        engagement: number | null
+        intentAtReturn: number
+        roomAtReturn: string | null
+        // The generation of the jump the restore started, so a newer jump is told from this one.
+        jumpGeneration: number
+    }
+    async function settleReturn(ticket: ReturnTicket): Promise<void> {
+        let outcome: ReturnOutcome = 'skipped'
+        try {
+            await afterFlush()
+            // A newer hide has engaged the hold again and owns the position: this visit's restore is stale.
+            // A jump made after the return took the position, so the restore must not cancel it.
+            if (ticket.restorable && !destroyed && returnHold.isCurrent(ticket.engagement) && jumpGeneration === ticket.jumpGeneration) outcome = await restoreReturn(ticket)
+        } catch (error) {
+            outcome = 'failed'
+            recordCaughtError('chat.returnRestore', error)
+        } finally {
+            finishReturn(ticket, outcome)
+        }
+    }
+    function finishReturn(ticket: ReturnTicket, outcome: ReturnOutcome): void {
+        if (!destroyed && fallbackRest({
+            deferred: ticket.deferBump,
+            outcome,
+            readerActed: intentSeq !== ticket.intentAtReturn,
+            overtaken: jumpGeneration !== ticket.jumpGeneration || pendingJump !== null,
+            chatChanged: room() !== ticket.roomAtReturn,
+            superseded: !returnHold.isCurrent(ticket.engagement),
+        })) windowResetToken += 1
+        returnHold.releaseAfterFrames(ticket.engagement)
+    }
+    async function restoreReturn(ticket: ReturnTicket): Promise<ReturnOutcome> {
+        const plan = returnPlan({ record: ticket.record, rebuilt: ticket.rebuilt, length: messages.length, mounted: (index) => messageArticle(index) !== null })
+        if (plan.kind === 'none') return 'skipped'
+        if (plan.kind === 'newest') return placeAtNewest() === null ? 'skipped' : 'landed'
+        if (plan.kind === 'pixel') {
+            if (!host) return 'skipped'
+            host.scrollTop = plan.top
+            if (!isScrolledToBottom(host)) follower?.release()
+            return 'landed'
+        }
+        if (plan.kind === 'jump') {
+            const request = jumpTo(plan.index, { align: { offset: plan.offset }, recordOrigin: false, focus: false })
+            // The call has taken its generation by now; no await comes between.
+            ticket.jumpGeneration = jumpGeneration
+            const result = await request
+            return result.status === 'done' ? 'landed' : result.status === 'blocked' ? 'jumpBlocked' : result.status === 'outOfRange' ? 'jumpOutOfRange' : 'jumpCancelled'
+        }
+        const scroller = host
+        const container = messageArticle(plan.index)?.closest<HTMLElement>('[data-part="chat-message-container"], [data-part="chat-first-message"]') ?? null
+        if (!scroller || !container) return 'skipped'
+        // Rebuilt rows are laid out at their real sizes before the geometry that decides the write is read.
+        if (plan.settle) settleJump(container, jumpReach({ offset: plan.offset }, scroller.clientHeight, parseInset(getComputedStyle(scroller).scrollPaddingTop)))
+        const delta = container.getBoundingClientRect().top - scroller.getBoundingClientRect().top - plan.offset
+        const wrote = Math.abs(delta) > WRITE_EPSILON
+        if (wrote) scroller.scrollTop += delta
+        // A plain return that kept its place touches neither the follower nor the realign window.
+        if (wrote || ticket.rebuilt) {
+            if (!isScrolledToBottom(scroller)) follower?.release()
+            follower?.sync()
+            realign.start({ row: container, ms: JUMP_HOLD_MS })
+            readPosition()
+        }
+        return 'landed'
+    }
+    function messageArticle(index: number): HTMLElement | null {
+        return rows?.querySelector<HTMLElement>(`article[data-chat-index="${index}"]`) ?? null
+    }
 
     $effect(() => {
         if (installed && chatSurface.hidden) return
