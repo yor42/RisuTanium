@@ -3,6 +3,7 @@ import type { RisuModule} from './process/modules.ts'
 import type { character, RisuPersona } from './storage/database.svelte.js';
 import { createBlankChar } from "src/ts/characters";
 import { language } from "src/lang";
+import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from './studio/assets/assetOwnerKeys';
 
 export function convertModuleToCharacter(m: RisuModule): character {
     const char = createBlankChar()
@@ -23,6 +24,11 @@ export function convertModuleToCharacter(m: RisuModule): character {
     char.moduleNamespace = m.namespace
     char.customModuleToggle = m.customModuleToggle || ""
     char.image = m.icon || ""
+    // The folder document travels verbatim: an unknown version or a bad shape is copied, never normalised or dropped.
+    if(m[ASSET_FOLDER_KEY] !== undefined){
+        char.extentions ??= {}
+        char.extentions[ASSET_FOLDER_KEY] = safeStructuredClone(m[ASSET_FOLDER_KEY])
+    }
 
     for(let i = 0; i < char.globalLore.length; i++){
         const lore = safeStructuredClone(char.globalLore[i])
@@ -70,7 +76,9 @@ export function convertCharacterToModule(c: character): RisuModule {
         icon: c.image
     }
     mod.lorebook = safeStructuredClone(mod.lorebook || [])
-
+    if(c.extentions && c.extentions[ASSET_FOLDER_KEY] !== undefined){
+        mod[ASSET_FOLDER_KEY] = safeStructuredClone(c.extentions[ASSET_FOLDER_KEY])
+    }
 
     if(c.desc){
         mod.lorebook.push({
@@ -155,6 +163,8 @@ export function convertPersonaToModule(p: RisuPersona): RisuModule {
     if(p.embeddedModule){
         baseModule = safeStructuredClone(p.embeddedModule)
     }
+    // The retained paths belong to the device and owner they were recorded on; a new module starts with none.
+    Reflect.deleteProperty(baseModule, ASSET_RETAINED_KEY)
 
     baseModule.name = p.name
     baseModule.description = p.note || ""
@@ -180,6 +190,8 @@ export function convertModuleToPersona(m: RisuModule): RisuPersona {
         embeddedModule: safeStructuredClone(m)
     }
 
+    // The retained paths belong to the device and owner they were recorded on; a new persona starts with none.
+    Reflect.deleteProperty(basePersona.embeddedModule, ASSET_RETAINED_KEY)
     basePersona.name = m.name
     basePersona.embeddedModule.lorebook ??= []
     basePersona.embeddedModule.lorebook = basePersona?.embeddedModule?.lorebook?.filter((a) => {

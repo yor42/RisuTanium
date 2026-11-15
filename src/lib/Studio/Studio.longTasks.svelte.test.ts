@@ -45,6 +45,7 @@ vi.mock('../../ts/stores.svelte', () => ({
     get QuickSettings() { return QuickSettings },
 }))
 vi.mock('../../ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
+vi.mock('../../ts/alert', () => ({ alertError: vi.fn() }))
 vi.mock('../../ts/process/moduleRefList', () => ({
     moduleListOf: (ids: string[]) => listerOver(db.db.modules)(ids),
 }))

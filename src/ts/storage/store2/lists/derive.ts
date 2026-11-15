@@ -18,6 +18,13 @@ import { DEFAULT_MAX_INLAY_BODY_BYTES, type ListParams } from './params'
  * derived again instead of carried. The module list golden test catches only
  * the changes its one fixture shows; the derivation pin test fails when the
  * module fields read change. Neither forces the bump: that is the author's duty.
+ *
+ * A derivation that starts reading a field no earlier build writes needs no bump
+ * (the retained-paths field is the case): a list stored without it is already
+ * what that derivation gives for an owner that lacks the field, and an owner that
+ * carries it is derived again when its bytes change. The downgrade caveat: an
+ * older build's re-derived list omits the field until this build encodes the
+ * owner again.
  */
 export function createListDerivation(params?: Partial<ListParams>): ListDerivation {
     const defaultCap = (params?.maxInlayBodyBytes ?? DEFAULT_MAX_INLAY_BODY_BYTES) === DEFAULT_MAX_INLAY_BODY_BYTES

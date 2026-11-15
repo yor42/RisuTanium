@@ -1,0 +1,48 @@
+{
+  "customBackground": "assets/3333333333333333333333333333333333333333333333333333333333333333.png",
+  "userIcon": "assets/4444444444444444444444444444444444444444444444444444444444444444.png",
+  "NAIImgConfig": {
+    "image": "assets/nai-image.png",
+    "character_image": "assets/5555555555555555555555555555555555555555555555555555555555555555.png"
+  },
+  "wavespeedImage": {
+    "reference_image": "assets/wave-ref.png"
+  },
+  "personas": [
+    {
+      "name": "P1",
+      "icon": "assets/6666666666666666666666666666666666666666666666666666666666666666.png",
+      "embeddedModule": {
+        "id": "laned-embedded-1",
+        "name": "Embedded",
+        "description": "",
+        "assets": [
+          [
+            "Pic",
+            "assets/7777777777777777777777777777777777777777777777777777777777777777.png",
+            "png"
+          ]
+        ],
+        "icon": "assets/embedded-icon.png"
+      }
+    },
+    {
+      "name": "P2",
+      "icon": "assets/persona-two.png"
+    }
+  ],
+  "loadouts": [
+    {
+      "icons": [
+        "assets/8888888888888888888888888888888888888888888888888888888888888888.png",
+        "assets/loadout-icon.png"
+      ]
+    }
+  ],
+  "characterOrder": [
+    "laned-char-1",
+    {
+      "imgFile": "assets/9999999999999999999999999999999999999999999999999999999999999999.png"
+    }
+  ]
+}

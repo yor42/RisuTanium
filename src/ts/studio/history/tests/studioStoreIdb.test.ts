@@ -1,4 +1,4 @@
-// The IndexedDB adapter of the Studio history store over fake-indexeddb: the pinned v1 layout (a header
+// The IndexedDB adapter of the Studio history store over fake-indexeddb: the pinned layout (a header
 // per owner and an index plus one entry per step under one owner/generation key range), load, the S4
 // never-put-over-unread-data guard, the S5 total and eviction, the per-owner cap, the S6 errors and the
 // closed connection. Stored bytes come from the store's own writers (the adapter itself, or
@@ -195,7 +195,7 @@ afterEach(() => {
     vi.restoreAllMocks()
 })
 
-// ---------------------------------------------------------------- the pinned v1 layout
+// ---------------------------------------------------------------- the pinned layout
 
 describe('layout and open', () => {
     test('S1 the database is risuStudio, version 1, one store records, and nothing else exists', async () => {
@@ -217,7 +217,7 @@ describe('layout and open', () => {
         db.close()
     })
 
-    test('S2 every key a save writes uses the pinned v1 forms, and the header describes the generation', async () => {
+    test('S2 every key a save writes uses the pinned forms, and the header describes the generation', async () => {
         const factory = new IDBFactory()
         const store = newStore(factory, { pageSession: 'pg' })
         const record = sized(X, 7, 600)
@@ -493,7 +493,7 @@ describe('save transaction: total, eviction, trim, errors', () => {
             [entryKey(zOrphan, 'zz-foreign:1', 's:x'), hugeValue],
             [headerKey(zBad), '{not json'],
             [entryKey(zBad, 'zz-foreign:1', 'i'), hugeValue],
-            [headerKey(zV2), JSON.stringify({ v: 2, wid: 'w', gen: 'zz-foreign:2', ownerKey: zV2, size: 999999, touchedAt: 1 })],
+            [headerKey(zV2), JSON.stringify({ v: 3, wid: 'w', gen: 'zz-foreign:2', ownerKey: zV2, size: 999999, touchedAt: 1 })],
             [entryKey(zV2, 'zz-foreign:2', 'i'), hugeValue],
             [asideMarkKey(A), hugeValue],
             ['rec:' + A, hugeValue],
@@ -832,31 +832,31 @@ describe('S4 guard and the aside rule', () => {
         expect(after.has(asideMarkKey(X))).toBe(false)
     })
 
-    test('T-S3 an unreadable v2 header is copied aside byte-equal, later saves persist, a new instance loads the v1 record', async () => {
+    test('T-S3 an unreadable later-version header is copied aside byte-equal, later saves persist, a new instance loads the version 2 record', async () => {
         const factory = new IDBFactory()
         const first = newStore(factory)
-        // Hand-written v2 header: stands for a later producer.
-        const v2Header = JSON.stringify({ v: 2, wid: 'later:1', ownerKey: X, size: 5, touchedAt: 1 })
-        await seed(factory, [[headerKey(X), v2Header]])
+        // Hand-written later-version header: stands for a later producer.
+        const laterHeader = JSON.stringify({ v: 3, wid: 'later:1', ownerKey: X, size: 5, touchedAt: 1 })
+        await seed(factory, [[headerKey(X), laterHeader]])
 
         expect(await first.load(X)).toEqual({ kind: 'unreadable' })
         const mine = sized(X, 9, 800, 'm')
         expect(await first.save(X, mine, new Set([X]))).toEqual({ kind: 'ok', asided: true, trimmed: false })
         const stored = await dump(factory)
-        expect(stored.get(asideMarkKey(X))).toBe(v2Header)
+        expect(stored.get(asideMarkKey(X))).toBe(laterHeader)
         const later = { ...mine, touchedAt: 12 }
         expect(await first.save(X, later, new Set([X]))).toMatchObject({ kind: 'ok', asided: false })
 
         const second = newStore(factory)
         expect(await second.load(X)).toEqual({ kind: 'ok', record: later })
-        expect((await dump(factory)).get(asideMarkKey(X))).toBe(v2Header)
+        expect((await dump(factory)).get(asideMarkKey(X))).toBe(laterHeader)
     })
 
     test('T-S3b an unreadable header with the marker present is kept: both values stay byte-identical', async () => {
         const factory = new IDBFactory()
         const store = newStore(factory)
         await seed(factory, [
-            [headerKey(X), JSON.stringify({ v: 2, wid: 'later:1', ownerKey: X, size: 5, touchedAt: 1 })],
+            [headerKey(X), JSON.stringify({ v: 3, wid: 'later:1', ownerKey: X, size: 5, touchedAt: 1 })],
             [asideMarkKey(X), 'earlier header'],
         ])
         const before = await dump(factory)

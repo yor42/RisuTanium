@@ -11,6 +11,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 const h = vi.hoisted(() => ({ marks: 0 }))
 
 vi.mock('src/ts/globalApi.svelte', () => ({ getSaveMarkCount: () => h.marks }))
+// StudioScreen reports a rejected replay through alertError; the real module loads the database and avatar code.
+vi.mock('src/ts/alert', () => ({ alertError: vi.fn() }))
 
 const db = $state({ db: fixtureDb() })
 const selection = $state({ selId: 0 })

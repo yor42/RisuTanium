@@ -1,5 +1,5 @@
 // The frozen contract between the Studio history service and its device store: the two ports, the
-// v1 stored layout (a header, an index and one entry per step under one owner/generation key range),
+// v2 stored layout (a header, an index and one entry per step under one owner/generation key range),
 // its strict writers and readers, the size rule, and the pure pieces of the save transaction (load
 // classification, the S4 decision, the planners, the per-owner cap and the eviction plan) that the
 // memory double and the IndexedDB adapter both use. Nothing here touches a database.
@@ -58,10 +58,16 @@ export type ClaimResult = 'granted' | 'held' | 'unsupported' | 'failed'
 
 // Never throws or rejects. A granted claim is held until the page ends.
 export interface StudioClaimPort {
-    tryClaim(chaId: string): Promise<ClaimResult>
+    // A character claim covers that character's history owners; a module claim covers the module's.
+    tryClaim(subject: { kind: 'character' | 'module'; id: string }): Promise<ClaimResult>
 }
 
-// ---------------------------------------------------------------- layout (v1)
+// ---------------------------------------------------------------- layout (v2)
+
+// Studio history is stored at this one format version. A header, index or entry of any other version is
+// not recognised: the owner reads as unreadable and takes the store's existing aside path, so the bytes
+// are kept and never block a write of the current version.
+export const HISTORY_FORMAT_VERSION = 2
 
 // Keys:
 //   h:<owner>                          the header (what the eviction reads)
@@ -71,9 +77,16 @@ export interface StudioClaimPort {
 // Steps and deleted items have separate kinds because a deleted item's id can equal a step id.
 // Any other prefix belongs to another build and is never read, written, evicted or counted. A build
 // that writes a header, an index or an entry of another version writes all three of that version in
-// one transaction under a fresh gen, or uses new prefixes. A change to the entry data a reader
-// accepts is a new version.
-// An optional, additive step field (such as a step's `listFingerprint`) keeps v1: a v1 reader that
+// one transaction under a fresh gen, or uses new prefixes.
+// Version rule (MC-1827): a widening that older builds refuse outright keeps the version, while a change older
+// builds would accept but misread, or replay with a different meaning, needs a new version.
+//   (a) Refused means the strict parse rejects the whole record or header; dropping or skipping a single entry
+//       counts as misread.
+//   (b) The widening reader still reads every shape the current version wrote.
+//   (c) An older build's set-aside keeps the newer bytes and never overwrites them.
+// MC-350: from the first release build that ships Studio, every format change ships an automatic forward
+// migration, and data a build cannot read is kept, never overwritten.
+// An optional, additive step field (such as a step's `listFingerprint`) keeps the version: a reader that
 // does not know it drops it when it rebuilds the step, and an absent field means the behaviour from
 // before the field existed. The field is omitted when absent, never written as undefined or null.
 export const HEADER_PREFIX = 'h:'
@@ -83,9 +96,8 @@ export const ENTRY_PREFIX = 'e:'
 export const INDEX_PART = 'i'
 export const RESTORE_PART = 'r'
 
-// Pinned v1 format, not tunable policy: a stored header's `size` is checked against these when an
-// owner is read, so a later build that changes any of them must read v1 data with v1's sizing or
-// follow the format rule above.
+// Pinned format, not tunable policy: a stored header's `size` is checked against these when an
+// owner is read, so a later build that changes any of them must follow the format rule above.
 export const ENTRY_OVERHEAD = 144
 export const OWNER_OVERHEAD = 512
 
@@ -165,7 +177,7 @@ export type EntryKind = 's' | 'd' | 'r'
 
 export function serializeHeader(header: StoredHeader): string {
     return JSON.stringify({
-        v: 1,
+        v: HISTORY_FORMAT_VERSION,
         wid: header.wid,
         gen: header.gen,
         ownerKey: header.ownerKey,
@@ -176,7 +188,7 @@ export function serializeHeader(header: StoredHeader): string {
 
 export function serializeIndex(ownerKey: OwnerKey, wid: string, lists: IndexLists): string {
     return JSON.stringify({
-        v: 1,
+        v: HISTORY_FORMAT_VERSION,
         wid,
         ownerKey,
         done: lists.done,
@@ -187,7 +199,7 @@ export function serializeIndex(ownerKey: OwnerKey, wid: string, lists: IndexList
 }
 
 export function serializeEntry(kind: EntryKind, ownerKey: OwnerKey, data: Step | DeletedItem | RestorePoint): string {
-    return JSON.stringify({ v: 1, k: kind, ownerKey, data })
+    return JSON.stringify({ v: HISTORY_FORMAT_VERSION, k: kind, ownerKey, data })
 }
 
 // Counted bytes of one entry: its value in UTF-16, its key (owner key and id appear in the key and
@@ -230,7 +242,7 @@ function parseJson(text: unknown): Record<string, unknown> | null {
 // Strict header reader. With `expectedOwner`, the header must name exactly that owner.
 export function readHeader(text: unknown, expectedOwner?: string): StoredHeader | null {
     const value = parseJson(text)
-    if (!value || value.v !== 1 || typeof value.wid !== 'string' || typeof value.ownerKey !== 'string') {
+    if (!value || value.v !== HISTORY_FORMAT_VERSION || typeof value.wid !== 'string' || typeof value.ownerKey !== 'string') {
         return null
     }
     const { gen, size, touchedAt } = value
@@ -316,10 +328,10 @@ export function recordObeysIdRule(record: OwnerRecord): boolean {
     )
 }
 
-// Strict index reader: `v` 1, the header's write id and the owner, the id rule, and counts.
+// Strict index reader: the format version, the header's write id and the owner, the id rule, and counts.
 function readIndex(text: unknown, owner: OwnerKey, wid: string): IndexLists | null {
     const value = parseJson(text)
-    if (!value || value.v !== 1 || value.wid !== wid || value.ownerKey !== owner) {
+    if (!value || value.v !== HISTORY_FORMAT_VERSION || value.wid !== wid || value.ownerKey !== owner) {
         return null
     }
     const done = readRows(value.done)
@@ -338,11 +350,11 @@ function readIndex(text: unknown, owner: OwnerKey, wid: string): IndexLists | nu
     return { done, undone, deleted, restore }
 }
 
-// The strict reader of one entry's value: `v` 1, the kind of its key part, the owner, and for a
+// The strict reader of one entry's value: the format version, the kind of its key part, the owner, and for a
 // step or a deleted item its own id equal to the key's.
 function readEntryData(text: string, kind: EntryKind, owner: OwnerKey, id: string | null): unknown {
     const value = parseJson(text)
-    if (!value || value.v !== 1 || value.k !== kind || value.ownerKey !== owner) {
+    if (!value || value.v !== HISTORY_FORMAT_VERSION || value.k !== kind || value.ownerKey !== owner) {
         return undefined
     }
     const data = value.data
@@ -486,6 +498,8 @@ export function classifyHeader(owner: OwnerKey, headerValue: unknown, asidePrese
     return { kind: 'readEntries', header }
 }
 
+// Any record this build cannot read. With the aside marker already taken it stays untouched and its owner is
+// memory-only (an older version's record included). Otherwise the next save copies its header aside.
 function unreadableClassification(asidePresent: boolean): LoadClassification {
     return {
         result: { kind: asidePresent ? 'keptUnreadable' : 'unreadable' },

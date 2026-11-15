@@ -7,6 +7,8 @@
 import type { ClaimResult, StudioClaimPort } from './studioHistoryStore'
 
 export const CLAIM_LOCK_PREFIX = 'risuStudio.history:'
+// Modules take their own name space, so a module id never collides with a character id.
+export const MODULE_CLAIM_LOCK_PREFIX = 'risuStudio.historyModule:'
 
 // The part of `LockManager.request` this adapter uses.
 export interface ClaimLockManager {
@@ -24,7 +26,7 @@ function pageLocks(): ClaimLockManager | undefined {
 // `getLocks` is read at every request, so a lock manager installed later governs the next claim.
 export function createStudioClaimLocks(getLocks: () => ClaimLockManager | undefined = pageLocks): StudioClaimPort {
     return {
-        tryClaim(chaId): Promise<ClaimResult> {
+        tryClaim(subject): Promise<ClaimResult> {
             return new Promise<ClaimResult>((resolve) => {
                 try {
                     const locks = getLocks()
@@ -32,7 +34,7 @@ export function createStudioClaimLocks(getLocks: () => ClaimLockManager | undefi
                         resolve('unsupported')
                         return
                     }
-                    const request = locks.request(CLAIM_LOCK_PREFIX + chaId, { mode: 'exclusive', ifAvailable: true }, (lock) => {
+                    const request = locks.request((subject.kind === 'module' ? MODULE_CLAIM_LOCK_PREFIX : CLAIM_LOCK_PREFIX) + subject.id, { mode: 'exclusive', ifAvailable: true }, (lock) => {
                         if (lock === null) {
                             resolve('held')
                             return Promise.resolve()

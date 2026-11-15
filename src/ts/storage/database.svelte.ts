@@ -1568,6 +1568,11 @@ export interface character{
     coldVersion?:number
     coldChatCount?:number
     customModuleToggle?:string
+    /**
+     * Device state: the `[name, path]` pairs this character's history retains. Carried by `.bin` and the store, never by
+     * a card. Typed `unknown` because a stored value may have another shape; the readers narrow it.
+     */
+    risutanium_asset_retained?:unknown
 }
 
 

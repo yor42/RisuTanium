@@ -8,6 +8,7 @@ import type { RisuModule } from '../../process/modules'
 import type { toSaveType } from '../risuSave'
 import { coldStorageHeader } from '../../process/coldstorageData'
 import { toAssetList } from '../assetList'
+import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../../studio/assets/assetOwnerKeys'
 import { resetNetSignalsForTest, type NetSignalHandle } from '../netSignalMeter'
 
 // Guards for registerDbChangeEffects()'s preset effect
@@ -537,6 +538,65 @@ describe('registerDbChangeEffects — modules partition equivalence suite', () =
         flushSync()
 
         expect(tracker.modules).toBe(false)
+    })
+
+    // Diagnostic: the same holds for a splice, which is why a Studio asset write assigns a new list.
+    test('diagnostic: an in-place splice of an installed AssetList saves nothing', () => {
+        installDbWithModules([moduleWithAssetList('a'), moduleWithAssetList('b')])
+        const { tracker, markChanged } = freshTrackerAndMarker()
+
+        cleanup = $effect.root(() => {
+            registerDbChangeEffects({ tracker, markChanged })
+        })
+        flushSync()
+        tracker.modules = false
+
+        DBState.db.modules[0].assets!.splice(0, 1)
+        flushSync()
+
+        expect(tracker.modules).toBe(false)
+    })
+
+    // The module a Studio asset write assigns carries the folder document and the retained field under their own keys.
+    test('replacing the module element with new folder and retained values marks the modules block dirty', () => {
+        installDbWithModules([moduleWithAssetList('a'), moduleWithAssetList('b')])
+        const { tracker, markChanged } = freshTrackerAndMarker()
+
+        cleanup = $effect.root(() => {
+            registerDbChangeEffects({ tracker, markChanged })
+        })
+        flushSync()
+        tracker.modules = false
+
+        const live = DBState.db.modules[0]
+        DBState.db.modules[0] = {
+            ...live,
+            assets: toAssetList([['changed-asset-name', 'asset-path-a', 'asset-ext-a']]),
+            [ASSET_FOLDER_KEY]: { v: 1, additional: { order: ['F'], of: [] } },
+            [ASSET_RETAINED_KEY]: [['asset-name-a', 'asset-path-a']],
+        }
+        flushSync()
+
+        expect(tracker.modules).toBe(true)
+    })
+
+    test('replacing only the retained field, or only the folder document, of a module marks the modules block dirty', () => {
+        for (const key of [ASSET_RETAINED_KEY, ASSET_FOLDER_KEY] as const) {
+            installDbWithModules([moduleWithAssetList('a'), moduleWithAssetList('b')])
+            const { tracker, markChanged } = freshTrackerAndMarker()
+
+            const stop = $effect.root(() => {
+                registerDbChangeEffects({ tracker, markChanged })
+            })
+            flushSync()
+            tracker.modules = false
+
+            DBState.db.modules[1] = { ...DBState.db.modules[1], [key]: key === ASSET_RETAINED_KEY ? [['n', 'p']] : { v: 1 } }
+            flushSync()
+
+            expect(tracker.modules).toBe(true)
+            stop()
+        }
     })
 
     test('element replacement modules[k] = {...} marks dirty', () => {

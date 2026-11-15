@@ -2,16 +2,17 @@
     import { untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import { XIcon } from '@lucide/svelte'
+    import { alertError } from '../../ts/alert'
     import { language } from '../../lang'
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
-    import { createStudioToasts, refusalText, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
+    import { createStudioToasts, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
     import type { StepLabel } from '../../ts/studio/history/historyModel'
-    import type { OwnerHistoryService, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
+    import type { OwnerHistoryService, ReplayDesc, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import { parseOwnerKey, type OwnerKey } from '../../ts/studio/history/ownerPhase'
     import { beginOwnerVisit, ensureStudioHistory, getStudioHistoryService, historyBannerText, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
     import { closeStudioHistory } from '../../ts/studio/studioBack.svelte'
     import { focusLost, placeFocusAfterHistory } from '../../ts/studio/historyFocus'
-    import { readOwnerFields } from '../../ts/studio/ownerFields'
+    import { readOwnerFields, type OwnerFields } from '../../ts/studio/ownerFields'
     import { selectedHistoryOwner, setStudioRestoreSheetOpen, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import { DBState } from '../../ts/stores.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
@@ -97,17 +98,50 @@
         untrack(() => { message = null })
     })
 
+    // A deleted item's restore is text-only and runs at once.
     function run(action: (svc: OwnerHistoryService, key: OwnerKey) => StudioResult): void {
         if (!service || historyOwner === null) return
         const key = historyOwner
         const before = readOwnerFields(key)
         const result = runDismissingConsumed(service, toasts, key, () => action(service, key))
+        showOutcome(key, result, before)
+    }
+
+    // Undo, redo and revert run in the service's replay queue, which may ask whether asset files are still there first, so
+    // the outcome arrives later. The fields are read inside the replay's own synchronous segment.
+    async function replayAction(desc: ReplayDesc): Promise<void> {
+        if (!service || historyOwner === null) return
+        const key = historyOwner
+        const svc = service
+        const read: { before: OwnerFields | null } = { before: null }
+        let result: StudioResult
+        try {
+            result = await svc.replay(key, desc, (apply) => {
+                read.before = readOwnerFields(key)
+                return runDismissingConsumed(svc, toasts, key, apply)
+            })
+        } catch (error) {
+            // A rejected replay may already have landed its write; the error is shown.
+            alertError(error instanceof Error ? error : String(error))
+            return
+        }
+        // The panel may have moved to another owner meanwhile: its message belongs to this one.
+        if (historyOwner !== key) return
+        showOutcome(key, result, read.before)
+    }
+
+    function showOutcome(key: OwnerKey, result: StudioResult, before: OwnerFields | null): void {
         if (result.ok === false) {
-            message = refusalText(result.reason)
+            message = refusalTextOf(result)
             return
         }
         const notes: string[] = []
+        if (result.goneRows !== undefined && result.goneRows.length > 0) notes.push(language.studioAssetFileGone(result.goneName ?? result.goneRows[0]))
+        if (result.already === 'undo') notes.push(language.studioHistoryAlreadyUndone)
+        else if (result.already === 'redo') notes.push(language.studioHistoryAlreadyRedone)
+        else if (result.dropped) notes.push(language.studioHistoryStepDropped)
         if (result.listSkipped !== undefined && result.listSkipped > 0) notes.push(language.studioHistoryRevertListSkipped)
+        if (result.pairSkipped !== undefined && result.pairSkipped > 0) notes.push(language.studioHistoryRevertPairSkipped)
         if (result.fmNotRestored) notes.push(language.studioToastRestoredFmNotice)
         message = notes.length > 0 ? notes.join(' ') : null
         void placeFocusAfterHistory(before, readOwnerFields(key), () => root?.closest('[data-part="studio"]') ?? null, () => root)
@@ -116,13 +150,21 @@
     function stepText(label: StepLabel): string {
         switch (label.kind) {
             case 'field':
-                return label.field === 'desc' ? language.description : label.field === 'hideChatIcon' ? language.hideChatIcon : language.note
+                switch (label.field) {
+                    case 'desc': return language.description
+                    case 'firstMessage': return language.firstMessage
+                    case 'exampleMessage': return language.exampleMessage
+                    case 'hideChatIcon': return language.hideChatIcon
+                    case 'note': return language.note
+                }
             case 'greetingAdd': return language.studioStepGreetingAdd
             case 'greetingRemove': return language.studioStepGreetingRemove
             case 'greetingEdit': return language.studioStepGreetingEdit
             case 'restorePoint': return language.studioStepRestorePoint
             case 'revert': return language.studioStepRevert
             case 'restoreDeleted': return language.studioStepRestoreDeleted
+            // The asset step labels have their texts with the asset lists; until then the kind names the step.
+            default: return label.kind
         }
     }
 
@@ -173,8 +215,8 @@
             {/if}
             <p data-part="studio-history-device-note" class="text-sm text-textcolor2">{language.studioHistoryDeviceNote}</p>
             <div class="flex gap-2">
-                <button type="button" class={buttonClass} data-part="studio-history-undo" disabled={!view.editable || view.done.length === 0} onclick={() => run((svc, key) => svc.undo(key))}>{language.studioHistoryUndo}</button>
-                <button type="button" class={buttonClass} data-part="studio-history-redo" disabled={!view.editable || view.undone.length === 0} onclick={() => run((svc, key) => svc.redo(key))}>{language.studioHistoryRedo}</button>
+                <button type="button" class={buttonClass} data-part="studio-history-undo" disabled={!view.editable || view.done.length === 0} onclick={() => void replayAction({ kind: 'undo' })}>{language.studioHistoryUndo}</button>
+                <button type="button" class={buttonClass} data-part="studio-history-redo" disabled={!view.editable || view.undone.length === 0} onclick={() => void replayAction({ kind: 'redo' })}>{language.studioHistoryRedo}</button>
             </div>
             {#if message}
                 <p role="status" data-part="studio-history-message" class="text-sm text-draculared">{message}</p>
@@ -191,7 +233,7 @@
                                     {#if row.undone}<span data-part="studio-history-undone" class="me-1 rounded border border-darkborderc px-1 text-xs">{language.studioHistoryUndone}</span>{/if}{stepText(row.step.label)}
                                 </span>
                                 {#if row.revertible}
-                                    <button type="button" class={buttonClass} data-part="studio-history-revert" disabled={!view.editable} onclick={() => run((svc, key) => svc.revertTo(key, row.step.id))}>{language.studioHistoryRevert}</button>
+                                    <button type="button" class={buttonClass} data-part="studio-history-revert" disabled={!view.editable} onclick={() => void replayAction({ kind: 'revert', stepId: row.step.id })}>{language.studioHistoryRevert}</button>
                                 {/if}
                             </li>
                         {/each}

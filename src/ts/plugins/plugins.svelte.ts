@@ -19,6 +19,7 @@ import { withoutModuleStubDowngrades } from "./moduleStubGuard";
 import { databaseWriteProblem, selectedCharacterMismatch, singleCharacterProblem } from "./characterWriteCheck";
 import { hasLightEntry, LIGHT_ENTRY_WRAPPER_MESSAGE, swapLightEntries, type LightWriteCounts } from "./lightCharacters";
 import { keepLiveAlt, overwritesPlaceholder, placeholderAgainMessage, placeholderTargets, restoreArchivedTargets } from "./chatAltBridge";
+import { keepLiveRetained, withLiveRetained } from "./retainedCarry";
 import { isCharacterEntry } from "../storage/characterIds";
 import { PLUGIN_STORAGE_INDEX_KEY, PLUGIN_STORAGE_LEGACY_MAP_KEY } from "../process/pluginStorageIndex";
 import { AssetList, type AssetTuple } from "../storage/assetList";
@@ -634,7 +635,7 @@ function writeSetterKeys(db: ReturnType<typeof getDatabase>, newDb: any, pluginN
             db.pluginCustomStorage = keepPluginStorageInternals(db.pluginCustomStorage, newDb[key]);
         }
         else if (key === 'modules') {
-            db.modules = withHeldAssetLists(db, newDb[key]);
+            db.modules = withHeldAssetLists(db, withLiveRetained(db.modules, newDb[key], 'id'));
         }
         else if (allowedDbKeys.includes(key)) {
             (db as any)[key] = newDb[key];
@@ -683,8 +684,9 @@ function cleanHeldSlots(live: unknown, installed: readonly unknown[], heldSlots:
 /**
  * Every per-character transform of an incoming `characters` list, then the keep decision. It is given the live list
  * and never the database. The transforms write live data only through `===` live elements of the incoming list and
- * through the live `alt` records that `keepLiveAlt` shares. `reattachOrphans` writes those only when the incoming
- * messages differ from live, so such a slot is never kept. After it returns, the setter only assigns the list and marks every
+ * through the live `alt` records that `keepLiveAlt` shares and the live retained values that `keepLiveRetained` shares
+ * by reference. No transform writes through a shared retained value; the shared `alt` records are written only by
+ * `reattachOrphans`, and only when the incoming messages differ from live, so such a slot is never kept. After it returns, the setter only assigns the list and marks every
  * slot that is not kept: no character is written after the decision, so a kept live proxy stays as it was.
  * Clearing SupaMemory on an empty chat happens here, before the decision, so a needed
  * clear makes the incoming element differ from the live one and the slot is installed and marked.
@@ -703,6 +705,9 @@ function prepareIncomingCharacters<T extends { characters?: unknown }>(live: Ret
     // live list as it is now, and the incoming characters carry them into the new list.
     keepLiveAlt(live, newDb.characters)
     rec?.lap('keepLiveAltMs')
+    // Beside keepLiveAlt and before the light swap: the live retained paths are read from the live list as it is
+    // now, and a light entry is skipped here because its live holder replaces it afterwards.
+    keepLiveRetained(live, newDb.characters, 'chaId')
     // After keepLiveAlt, so a swapped-in live holder keeps its own alternatives untouched.
     const heldSlots = new Set<number>()
     if (hasLightEntry(newDb.characters)) {
@@ -890,6 +895,7 @@ export const getV2PluginAPIs = () => {
                 warnIfCharacterInstallDuplicatesChatIds(char?.chats, char?.chaId, db.characters, replaced?.chats, pluginName)
             }
             keepLiveAlt([replaced], [char])
+            keepLiveRetained([replaced], [char], 'chaId')
             db.characters[charid] = char
             noteIdlessCopyWrite(pluginName ?? '', replaced, char, wasIdless)
             clearSupaMemoryIfEmptyIn([db.characters[charid]])

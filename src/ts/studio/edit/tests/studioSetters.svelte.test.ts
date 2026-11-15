@@ -5,10 +5,13 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { DBState, selIdState } from 'src/ts/stores.svelte'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
-import { characterOwnerKey, chatOwnerKey } from 'src/ts/studio/history/ownerPhase'
+import { characterOwnerKey, chatOwnerKey, moduleOwnerKey } from 'src/ts/studio/history/ownerPhase'
 import { commitStep, createModelState, deriveRestoreWrites, emptyRecord, planReplay } from 'src/ts/studio/history/historyModel'
 import { listFingerprintOf } from 'src/ts/studio/history/listFingerprint'
 import type { Chat, character } from 'src/ts/storage/database.svelte'
+import type { RisuModule } from 'src/ts/process/modules'
+import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from 'src/ts/studio/assets/assetOwnerKeys'
+import { stubModule, watchBodyKeys } from 'src/ts/studio/studioFixtures.test-helpers'
 import {
     applyCharacterWrites,
     applyChatWrites,
@@ -16,20 +19,25 @@ import {
     buildGreetingAdd,
     buildGreetingDelete,
     buildGreetingEdit,
+    buildWrittenModule,
     createLiveReader,
+    createModuleLiveReader,
+    isModuleTarget,
     isRestrictedChaId,
     resolveLiveTarget,
     uniqueChatById,
+    writeLiveModule,
     type LiveTarget,
 } from '../studioSetters'
 
 vi.mock('src/ts/stores.svelte', async () => {
     const { writable } = await import('svelte/store')
     return {
-        DBState: { db: { characters: [] } },
+        DBState: { db: { characters: [], modules: [] } },
         selIdState: { selId: 0 },
         MobileGUI: writable(false),
         settingsOpen: writable(false),
+        clearCharEmotionCache: () => {},
     }
 })
 
@@ -45,6 +53,8 @@ interface LiveCharacter {
     license?: string
     coldstorage?: string
     desc: string
+    firstMessage?: string
+    exampleMessage?: string
     hideChatIcon?: boolean
     alternateGreetings: string[]
     chats: LiveChat[]
@@ -156,6 +166,17 @@ describe('the live reader', () => {
         expect(reader.fmIndex('missing')).toBeNull()
     })
 
+    test('the first message and the example message read as their own strings, absent as had false', () => {
+        const live = makeCharacter('A', { firstMessage: 'hello', exampleMessage: 'ex', hideChatIcon: true })
+        const reader = createLiveReader(targetOf(live))
+        expect(reader.field('firstMessage')).toEqual({ had: true, value: 'hello' })
+        expect(reader.field('exampleMessage')).toEqual({ had: true, value: 'ex' })
+        expect(reader.field('hideChatIcon')).toEqual({ had: true, value: true })
+        const bare = createLiveReader(targetOf(makeCharacter('A', { hideChatIcon: true })))
+        expect(bare.field('firstMessage')).toEqual({ had: false })
+        expect(bare.field('exampleMessage')).toEqual({ had: false })
+    })
+
     test('a character without a greeting list reads as null', () => {
         const live = makeCharacter('A')
         delete (live as Partial<LiveCharacter>).alternateGreetings
@@ -177,6 +198,23 @@ describe('the op builders', () => {
         expect(buildFieldEdit('hideChatIcon', 'yes', reader)).toEqual({ ok: false, reason: 'precondition' })
         const absent = buildFieldEdit('hideChatIcon', false, reader)
         expect(absent).toMatchObject({ ok: true, ops: [{ before: { had: false }, after: { had: true, value: false } }] })
+    })
+
+    test('a first message edit builds exactly one set op and no list op', () => {
+        const reader = createLiveReader(targetOf(makeCharacter('A', { firstMessage: 'hi' })))
+        const built = buildFieldEdit('firstMessage', 'hello', reader)
+        expect(built).toMatchObject({
+            ok: true,
+            label: { kind: 'field', field: 'firstMessage' },
+            ops: [{ op: 'set', path: 'firstMessage', before: { had: true, value: 'hi' }, after: { had: true, value: 'hello' } }],
+            writes: [{ op: 'set', path: 'firstMessage', value: { had: true, value: 'hello' } }],
+        })
+        if (built.ok === false) throw new Error('the edit must build')
+        expect(built.ops).toHaveLength(1)
+        expect(built.writes).toHaveLength(1)
+        expect(built.ops.some((op) => op.op === 'listSet' || op.op === 'listInsert' || op.op === 'listRemove')).toBe(false)
+        expect(buildFieldEdit('firstMessage', true, reader)).toEqual({ ok: false, reason: 'precondition' })
+        expect(buildFieldEdit('exampleMessage', 'x', reader)).toMatchObject({ ok: true, ops: [{ before: { had: false } }] })
     })
 
     test('greeting add appends an empty one; edit keys its coalescing by index; both refuse out of range', () => {
@@ -246,6 +284,33 @@ describe('the write functions', () => {
         expect(live.hideChatIcon).toBe(false)
     })
 
+    test('the first message and the example message are assigned; absent is a no-op, as for the description', () => {
+        const live = makeCharacter('A', { firstMessage: 'f0', exampleMessage: 'e0' })
+        applyCharacterWrites(
+            live as unknown as character,
+            [
+                { op: 'set', path: 'firstMessage', value: { had: true, value: 'f1' } },
+                { op: 'set', path: 'exampleMessage', value: { had: true, value: 'e1' } },
+            ],
+            false,
+        )
+        expect(live.firstMessage).toBe('f1')
+        expect(live.exampleMessage).toBe('e1')
+        expect(live.hideChatIcon).toBeUndefined()
+        applyCharacterWrites(
+            live as unknown as character,
+            [
+                { op: 'set', path: 'firstMessage', value: { had: false } },
+                { op: 'set', path: 'exampleMessage', value: { had: false } },
+                { op: 'set', path: 'desc', value: { had: false } },
+            ],
+            false,
+        )
+        expect(live.firstMessage).toBe('f1')
+        expect(live.exampleMessage).toBe('e1')
+        expect(live.desc).toBe('d0')
+    })
+
     test('list writes run in order; chatFm acts on the unique chat; pageFm acts on the context chat', () => {
         const live = makeCharacter('A', { chats: [{ id: 'c1', note: '', fmIndex: 4 }, { note: '', fmIndex: 1 }], chatPage: 1 })
         applyCharacterWrites(
@@ -278,5 +343,193 @@ describe('the write functions', () => {
             { op: 'listInsert', index: 0, value: 'no' },
         ])
         expect(chat).toEqual({ id: 'c1', note: 'n1', fmIndex: 2 })
+    })
+})
+
+describe('resolveLiveTarget: the module branch', () => {
+    const open = (id: string | null) => () => id
+    const putModules = (...modules: unknown[]): void => {
+        DBState.db.modules = modules as unknown as typeof DBState.db.modules
+    }
+
+    test('without a port a module owner is gone, as for a caller that has no module panel', () => {
+        putModules({ id: 'M1' })
+        expect(resolveLiveTarget(moduleOwnerKey('M1'))).toEqual({ ok: false, reason: 'gone' })
+    })
+
+    test('a module owner is selected only while the port returns its id', () => {
+        putModules({ id: 'M1' })
+        expect(resolveLiveTarget(moduleOwnerKey('M1'), open(null))).toEqual({ ok: false, reason: 'not-selected' })
+        expect(resolveLiveTarget(moduleOwnerKey('M1'), open('M2'))).toEqual({ ok: false, reason: 'not-selected' })
+        expect(resolveLiveTarget(moduleOwnerKey('M1'), open('M1'))).toMatchObject({ ok: true, target: { index: 0 } })
+    })
+
+    test('the slot is found by id, wherever the list has moved it, and a missing id is gone', () => {
+        putModules({ id: 'M0' }, { id: 'M1' })
+        const first = resolveLiveTarget(moduleOwnerKey('M1'), open('M1'))
+        expect(first.ok && isModuleTarget(first.target) && first.target.index).toBe(1)
+        putModules({ id: 'M1' }, { id: 'M0' })
+        const moved = resolveLiveTarget(moduleOwnerKey('M1'), open('M1'))
+        expect(moved.ok && isModuleTarget(moved.target) && moved.target.index).toBe(0)
+        putModules({ id: 'M0' })
+        expect(resolveLiveTarget(moduleOwnerKey('M1'), open('M1'))).toEqual({ ok: false, reason: 'gone' })
+    })
+
+    test('a shared id refuses even when one holder is a stub, and a lone stub is gone; no stub body key is read', () => {
+        const reads: string[] = []
+        putModules({ id: 'M1' }, watchBodyKeys(stubModule('M1'), reads))
+        expect(resolveLiveTarget(moduleOwnerKey('M1'), open('M1'))).toEqual({ ok: false, reason: 'duplicate-module-id' })
+        putModules({ id: 'M1' }, { id: 'M1' })
+        expect(resolveLiveTarget(moduleOwnerKey('M1'), open('M1'))).toEqual({ ok: false, reason: 'duplicate-module-id' })
+        putModules(watchBodyKeys(stubModule('M1'), reads))
+        expect(resolveLiveTarget(moduleOwnerKey('M1'), open('M1'))).toEqual({ ok: false, reason: 'gone' })
+        expect(reads).toEqual([])
+    })
+})
+
+describe('the asset reader and the asset owner writes', () => {
+    const rows = (): string[][] => [['smile', 'assets/smile.png', 'png'], ['grin', 'assets/grin.png', 'png']]
+
+    test('the character reader serves its two lists and the folder document from extentions; the module reader serves assets', () => {
+        const stored = { v: 1, additional: { order: [], of: [] } }
+        const live = makeCharacter('A') as LiveCharacter & { additionalAssets: string[][]; emotionImages: string[][]; extentions: Record<string, unknown> }
+        live.additionalAssets = rows()
+        live.emotionImages = [['happy', 'assets/happy.png']]
+        live.extentions = { [ASSET_FOLDER_KEY]: stored }
+        const reader = createLiveReader(targetOf(live))
+        expect(reader.assetRows?.('additionalAssets')).toEqual(rows())
+        expect(reader.assetRows?.('emotionImages')).toEqual([['happy', 'assets/happy.png']])
+        expect(reader.assetRows?.('assets')).toBeNull()
+        expect(reader.folderValue?.()).toBe(stored)
+
+        const module = { id: 'M', assets: rows(), [ASSET_FOLDER_KEY]: stored } as unknown as RisuModule
+        const moduleReader = createModuleLiveReader(module)
+        expect(moduleReader.assetRows?.('assets')).toEqual(rows())
+        expect(moduleReader.assetRows?.('additionalAssets')).toBeNull()
+        expect(moduleReader.folderValue?.()).toBe(stored)
+        expect(moduleReader.greetings()).toBeNull()
+    })
+
+    test('a list or row that is not strings is read as unreadable, never edited', () => {
+        const live = makeCharacter('A') as LiveCharacter & { additionalAssets: unknown }
+        live.additionalAssets = [['smile', 3]]
+        expect(createLiveReader(targetOf(live)).assetRows?.('additionalAssets')).toBeNull()
+        live.additionalAssets = 'x'
+        expect(createLiveReader(targetOf(live)).assetRows?.('additionalAssets')).toBeNull()
+    })
+
+    test('a character write applies rows, then the folder document, then text, and the field is set from the recompute', () => {
+        const live = makeCharacter('A') as LiveCharacter & { additionalAssets: string[][]; emotionImages: string[][]; extentions?: Record<string, unknown>; globalLore: { content: string }[] }
+        live.additionalAssets = rows()
+        live.emotionImages = []
+        live.globalLore = [{ content: 'see smile' }]
+        const doc = { v: 1, additional: { order: ['F'], of: [] } }
+        applyCharacterWrites(
+            live as unknown as character,
+            [
+                { op: 'textSet', target: 'lore/0/content', value: 'see grin' },
+                { op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: ['smile', 'assets/smile.png', 'png'], count: 1 },
+                { op: 'assetFolderOrder', before: [], after: ['F'] },
+            ],
+            false,
+            { folder: { kind: 'set', doc }, retained: () => ({ kind: 'set', value: [['smile', 'assets/smile.png']] }) },
+        )
+        expect(live.additionalAssets).toEqual([['grin', 'assets/grin.png', 'png']])
+        expect(live.extentions?.[ASSET_FOLDER_KEY]).toBe(doc)
+        expect(live.globalLore[0].content).toBe('see grin')
+        expect((live as unknown as Record<string, unknown>)[ASSET_RETAINED_KEY]).toEqual([['smile', 'assets/smile.png']])
+    })
+
+    test('a removed folder document deletes the key and keeps an empty extentions, and an absent extentions is created only to write one', () => {
+        const live = makeCharacter('A') as LiveCharacter & { additionalAssets: string[][]; emotionImages: string[][]; extentions?: Record<string, unknown> }
+        live.additionalAssets = rows()
+        live.emotionImages = []
+        live.extentions = { [ASSET_FOLDER_KEY]: { v: 1, additional: { order: ['F'], of: [] } } }
+        const none = { retained: null }
+        applyCharacterWrites(live as unknown as character, [], false, { folder: { kind: 'remove' }, ...none })
+        expect(live.extentions).toEqual({})
+        expect(Object.hasOwn(live.extentions ?? {}, ASSET_FOLDER_KEY)).toBe(false)
+
+        const bare = makeCharacter('A') as LiveCharacter & { additionalAssets: string[][]; emotionImages: string[][]; extentions?: Record<string, unknown> }
+        bare.additionalAssets = rows()
+        bare.emotionImages = []
+        applyCharacterWrites(bare as unknown as character, [], false, { folder: { kind: 'remove' }, ...none })
+        expect('extentions' in bare).toBe(false)
+        applyCharacterWrites(bare as unknown as character, [], false, { folder: { kind: 'set', doc: { v: 1 } }, ...none })
+        expect(bare.extentions).toEqual({ [ASSET_FOLDER_KEY]: { v: 1 } })
+    })
+
+    test('the retained recompute reads the field as it is inside the write and a remove result deletes the key', () => {
+        const live = makeCharacter('A') as LiveCharacter & { additionalAssets: string[][]; emotionImages: string[][] }
+        live.additionalAssets = rows()
+        live.emotionImages = []
+        ;(live as unknown as Record<string, unknown>)[ASSET_RETAINED_KEY] = [['old', 'assets/old.png']]
+        const seen: unknown[] = []
+        applyCharacterWrites(live as unknown as character, [], false, {
+            folder: { kind: 'keep' },
+            retained: (existing) => {
+                seen.push(existing)
+                return { kind: 'remove' }
+            },
+        })
+        expect(seen).toEqual([[['old', 'assets/old.png']]])
+        expect(Object.hasOwn(live, ASSET_RETAINED_KEY)).toBe(false)
+    })
+
+    test('a module write returns a new object with new lists and leaves the live module untouched', () => {
+        const live = {
+            id: 'M',
+            name: 'M',
+            assets: rows(),
+            lorebook: [{ key: 'k', content: 'see smile' }, { key: 'k2', content: 'other' }],
+            regex: [{ in: 'a', out: 'smile', type: 'editoutput' }],
+        } as unknown as RisuModule
+        const lorebook = live.lorebook
+        const next = buildWrittenModule(
+            live,
+            [
+                { op: 'assetRowRemove', array: 'assets', index: 1, tuple: ['grin', 'assets/grin.png', 'png'], count: 1 },
+                { op: 'textSet', target: 'lore/0/content', value: 'see beam' },
+                { op: 'textSet', target: 'regex/0/out', value: 'beam' },
+            ],
+            { folder: { kind: 'set', doc: { v: 1 } }, retained: () => ({ kind: 'set', value: [['grin', 'assets/grin.png']] }) },
+        )
+        expect(next).not.toBe(live)
+        expect(next.assets).toEqual([['smile', 'assets/smile.png', 'png']])
+        expect(next.assets).not.toBe(live.assets)
+        expect(live.assets).toEqual(rows())
+        expect(next.lorebook?.[0].content).toBe('see beam')
+        expect(next.lorebook?.[1]).toBe(lorebook?.[1])
+        expect(live.lorebook).toBe(lorebook)
+        expect(lorebook?.[0].content).toBe('see smile')
+        expect(next.regex?.[0].out).toBe('beam')
+        expect(next[ASSET_FOLDER_KEY]).toEqual({ v: 1 })
+        expect(next[ASSET_RETAINED_KEY]).toEqual([['grin', 'assets/grin.png']])
+        expect(Object.hasOwn(live, ASSET_FOLDER_KEY)).toBe(false)
+    })
+
+    test('a module folder removal omits the key; it is never present with the value undefined', () => {
+        const live = { id: 'M', name: 'M', assets: rows(), [ASSET_FOLDER_KEY]: { v: 1 }, [ASSET_RETAINED_KEY]: [['a', 'b']] } as unknown as RisuModule
+        const next = buildWrittenModule(live, [], { folder: { kind: 'remove' }, retained: () => ({ kind: 'remove' }) })
+        expect(Object.hasOwn(next, ASSET_FOLDER_KEY)).toBe(false)
+        expect(Object.hasOwn(next, ASSET_RETAINED_KEY)).toBe(false)
+        expect(Object.hasOwn(live, ASSET_FOLDER_KEY)).toBe(true)
+    })
+
+    test('writeLiveModule assigns the slot once and refuses a stub or a shared id', () => {
+        const live = { id: 'M', name: 'M', assets: rows() } as unknown as RisuModule
+        DBState.db.modules = [live]
+        const list = DBState.db.modules
+        expect(writeLiveModule('M', (module) => ({ ...module, name: 'renamed' }))).toBe(true)
+        expect(DBState.db.modules).toBe(list)
+        expect(DBState.db.modules[0].name).toBe('renamed')
+        expect(DBState.db.modules[0]).not.toBe(live)
+
+        DBState.db.modules = [{ id: 'M', name: 'a' }, stubModule('M')] as unknown as typeof DBState.db.modules
+        expect(writeLiveModule('M', (module) => ({ ...module, name: 'x' }))).toBe(false)
+        DBState.db.modules = [stubModule('M')] as unknown as typeof DBState.db.modules
+        expect(writeLiveModule('M', (module) => ({ ...module, name: 'x' }))).toBe(false)
+        DBState.db.modules = [] as unknown as typeof DBState.db.modules
+        expect(writeLiveModule('M', (module) => module)).toBe(false)
     })
 })

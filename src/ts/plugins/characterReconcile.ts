@@ -19,11 +19,14 @@
  *   `key: undefined` where the plugin's element had no key, or the reverse; only `in`, `hasOwn` and key enumeration
  *   can tell these apart, and no stored unit differs.
  * - Aliasing: an object reachable from both trees by the same reference compares equal. This holds for the live
- *   `alt` that `keepLiveAlt` places into the incoming chats. It assumes every transform of the incoming list has
- *   finished before the compare. An incoming element that is not itself a live element but shares nested live
+ *   `alt` that `keepLiveAlt` places into the incoming chats and for the live retained values that `keepLiveRetained`
+ *   places into the incoming characters. No transform writes through a shared retained value; the shared `alt`
+ *   records are written only by `reattachOrphans`, and only when the incoming messages differ from live, so such a
+ *   slot is never kept. It assumes every transform of the incoming list has finished before the compare. An incoming element that is not itself a live element but shares nested live
  *   objects is outside the guarantee: a transform that wrote through the shared reference would already have
- *   changed live, and the compare would report equal. No production caller builds such input (the only caller is
- *   the V3 bridge, whose arguments are structured clones); tests that call the setter directly must not either.
+ *   changed live, and the compare would report equal. No production caller builds such input beyond the `alt` and
+ *   retained values named above (the only caller is the V3 bridge, whose arguments are structured clones); tests
+ *   that call the setter directly must not either.
  * - A slot whose incoming element is itself a live element (`===`, as a light holder or an element of the list
  *   itself) is never kept by the reconcile, and the setter marks it. This is the current conservative behaviour, not a
  *   requirement. The setter separately leaves a swapped-in light holder unmarked when it sits at its own live

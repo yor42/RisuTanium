@@ -28,6 +28,7 @@ import type { OnnxModelFiles } from "./process/transformers"
 import { CharXImporter, CharXParseError, CharXWriter, assetByteLimit, charxLimits, hasZipEndRecord, type CharxStreamProgress, type EntryRouter } from "./process/processzip"
 import { buildByafCard, isByafJsonEntry, planByaf, type ByafPlan, type ByafRefusal } from "./byafImport"
 import { exportModuleLegacy, readModule, type RisuModule } from "./process/modules"
+import { ASSET_RETAINED_KEY } from "./studio/assets/assetOwnerKeys"
 import { ModuleRefusal, importErrorMessage } from "./process/moduleRefusal"
 import { hasModuleStubKey } from "./storage/moduleStub"
 import { ModuleImportStopped, confirmRisumLowLevel } from "./process/moduleImportStop"
@@ -1106,6 +1107,8 @@ export async function characterURLImport() {
                 throw new ModuleRefusal(language.errors.noData)
             }
             importData.id = v4()
+            //A link never supplies the retained paths: they name this device's files.
+            Reflect.deleteProperty(importData, ASSET_RETAINED_KEY)
 
             if(!importData.lowLevelAccess || await alertConfirm(language.lowLevelAccessConfirm)){
                 markBootWrite()

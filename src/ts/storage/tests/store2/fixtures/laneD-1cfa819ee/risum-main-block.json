@@ -1,0 +1,17 @@
+{
+  "module": {
+    "id": "laned-risum-1",
+    "name": "Risum module",
+    "description": "synthetic",
+    "lorebook": [],
+    "assets": [],
+    "icon": "",
+    "risutanium_asset_retained": [
+      [
+        "gone",
+        "assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png"
+      ]
+    ]
+  },
+  "risumBase64": "bwBZAQAA5m5hYSAtQOKyTAUgl2HmbmFhYWEgDuIgl2EgTNPyBeIMeQ5Isi0MwSAAbmFhYWEg8tMtBSCXYSBDDkiyLWEtQOKyTAUgAG5hYWFhIOIFSDx5DiwPDkDyIJdhIEhs8g9XBQ8OPCAAbmFhYWEgTEB5BR1AQM0gl2H0zwBuYWFhYSDTSEgFD0ggl2H0zwBuYWFhYSAOPEDyIJdhICAAbmFhYWEgeQ5Isg/T8g6yLTTTSEgFDzR5BQ/TDvIF4iCXYfRuYWFhYWFh9G5hYWFhYWFhYSAqQPIFIABuYWFhYWFhYWEg00hIBQ9Ir9PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09NdLPIqIG5hYWFhYWHPbmFhYWHPbmFhewBuYWEgD2wsBSCXYSB5Dkiy20DiskwFIG57AA=="
+}

@@ -14,6 +14,8 @@ const h = vi.hoisted(() => ({
     stores: [] as { counts: { open: number; load: number; save: number }; shared: Map<string, string> }[],
 }))
 
+const fileStates = vi.hoisted(() => new Map<string, 'present' | 'gone' | 'unknown'>())
+
 // The adapters' stand-ins, kept apart so a case can register a failing module and the next case gets these back.
 const adapterMocks = vi.hoisted(() => ({
     // The main realm must never build the IndexedDB adapter: this one is counted, and its stores are not the
@@ -57,8 +59,16 @@ vi.mock('src/ts/stores.svelte', async () => {
         selIdState: { selId: 0 },
         MobileGUI: writable(false),
         settingsOpen: writable(false),
+        clearCharEmotionCache: () => {},
     }
 })
+// The reader of file states the builder loads lazily: a path is present unless listed.
+vi.mock('src/ts/studio/assets/assetFileState', () => ({
+    openAssetFileReader: async () => ({
+        concurrency: 1,
+        stateOf: async (path: string) => fileStates.get(path) ?? 'present',
+    }),
+}))
 vi.mock('src/ts/studio/edit/saveAck.svelte', () => ({
     productionSaveAckDeps: vi.fn(() => ({})),
     createSaveAck: vi.fn(() => {
@@ -122,6 +132,7 @@ async function fresh(): Promise<Fresh> {
 }
 
 beforeEach(() => {
+    fileStates.clear()
     h.marks = 0
     h.tauri = false
     h.claimAnswer = 'granted'
@@ -574,5 +585,48 @@ describe('banner text', () => {
         ])
         expect(new Set(texts).size).toBe(reasons.length)
         expect(m.accessor.historyBannerText(null)).toBeNull()
+    })
+})
+
+describe('the service the accessor builds checks files and ends asset toasts', () => {
+    const toastClock = { now: () => 0, after: () => () => {} }
+
+    async function builtWithAssets() {
+        const m = await fresh()
+        const row = (name: string): string[] => [name, `assets/${name}.png`, 'png']
+        ;(m.stores.DBState.db.characters[0] as unknown as { additionalAssets: string[][] }).additionalAssets = [row('smile'), row('grin'), row('wave')]
+        const service = await m.accessor.loadStudioHistoryService()
+        const owner = m.phase.characterOwnerKey('A')
+        await service.whenReady(owner)
+        const names = (): string[] => (m.stores.DBState.db.characters[0] as unknown as { additionalAssets: string[][] }).additionalAssets.map((r) => r[0])
+        return { m, service, owner, names }
+    }
+
+    test('a landing ends the asset toast of that owner, whichever instance posted it', async () => {
+        const { service, owner } = await builtWithAssets()
+        const toasts = await import('src/ts/studio/edit/studioToasts')
+        const hostModule = await import('src/ts/toast/toastHost.svelte')
+        const host = hostModule.createToastHost({ clock: toastClock })
+        const posted = service.assetDelete(owner, 'additionalAssets', [1])
+        expect(posted.ok).toBe(true)
+        if (!posted.ok || posted.stepId === undefined) throw new Error('the delete did not record a step')
+        toasts.createStudioToasts({ service: () => service, host }).postAssetAction(owner, posted.stepId, 'Deleted grin')
+        expect(host.visible).toHaveLength(1)
+        expect(service.editField(owner, 'desc', 'typed').ok).toBe(true)
+        expect(host.visible).toHaveLength(0)
+    })
+
+    test('a replay asks the file first: a gone file leaves its row out, and a synchronous undo refuses the row', async () => {
+        const { service, owner, names } = await builtWithAssets()
+        expect(service.assetDelete(owner, 'additionalAssets', [1]).ok).toBe(true)
+        fileStates.set('assets/grin.png', 'gone')
+        expect(await service.replay(owner, { kind: 'undo' })).toMatchObject({ ok: true, dropped: true, goneRows: ['assets/grin.png'], goneName: 'grin' })
+        expect(names()).toEqual(['smile', 'wave'])
+
+        expect(service.assetDelete(owner, 'additionalAssets', [1]).ok).toBe(true)
+        expect(service.undo(owner)).toEqual({ ok: false, reason: 'asset-file-unchecked', name: 'wave' })
+        expect(names()).toEqual(['smile'])
+        expect(await service.replay(owner, { kind: 'undo' })).toMatchObject({ ok: true })
+        expect(names()).toEqual(['smile', 'wave'])
     })
 })

@@ -21,6 +21,7 @@ import { appStoreOrNull, listModuleAssets, preflightExport, refuseExport, type E
 import { ExportCancelToken, ExportCancelledError, createExportWaitGate, type ExportWaitGate } from "../exportCancel"
 import { exportFileState, withFileIncompleteSentence } from "../exportWriters"
 import { isTauri } from "../platform"
+import { ASSET_RETAINED_KEY } from "../studio/assets/assetOwnerKeys"
 import { risumFileName, streamRisum } from "../risumStream"
 import { moduleListOf, moduleRefIdsOf } from "./moduleRefList"
 import { bumpModuleGui } from "./moduleGuiBump"
@@ -56,6 +57,13 @@ export interface RisuModule{
     customModuleToggle?:string
     mcp?:MCPModule
     icon?:string
+    /** The asset folder document, copied verbatim by the CharX converters; the typed reader narrows it. */
+    risutanium_asset_folders?:unknown
+    /**
+     * Device state: the `[name, path]` pairs this module's history retains. Carried by `.bin` and the store, never by a
+     * module file. Typed `unknown` because a stored value may have another shape; the readers narrow it.
+     */
+    risutanium_asset_retained?:unknown
 }
 
 export function exportModule(module:RisuModule, arg:{
@@ -135,9 +143,19 @@ export async function exportModuleLegacy(module:RisuModule, arg:{
     return withBusy('export', () => writeRisumFile(snapshot, entries, alertEnd))
 }
 
+/**
+ * Removes the device-only asset state from a module object, whatever shape the value has. A module file never carries
+ * the retained paths: they name this device's files, and a file from outside cannot be trusted to name them. Call it on
+ * a copy or on an object that is not yet installed, never on a live slot.
+ */
+export function dropDeviceAssetState<T extends object>(module:T):T{
+    Reflect.deleteProperty(module, ASSET_RETAINED_KEY)
+    return module
+}
+
 /** The module as the main block describes it: a copy whose asset keys are blanked, because the records carry the bytes. */
 function snapshotModuleForRisum(module:RisuModule):RisuModule{
-    const copy = safeStructuredClone(module)
+    const copy = dropDeviceAssetState(safeStructuredClone(module))
     copy.assets = (copy.assets ?? []).map((asset) => {
         return [asset[0], '', asset[2]] as [string,string,string]
     })
@@ -342,6 +360,7 @@ async function scanRisum(source: ImportSource): Promise<RisumScan> {
         console.error("Module carries the stub marker")
         throw new ModuleRefusal(language.errors.noData)
     }
+    dropDeviceAssetState(module)
 
     const totalAssets = module.assets?.length ?? 0
     const limit = assetByteLimit()
@@ -606,12 +625,35 @@ function commitModule(module:RisuModule, decision:DuplicateDecision, session:Dup
     return describeReplace(placement.previous, module)
 }
 
+/**
+ * A replace keeps the retained paths and folders of the module it replaces, and a stub holds neither. So when the
+ * installed target is a stub, its body is loaded before the write; a body that cannot be loaded ends the import through a
+ * refusal and nothing is written. A target that is not installed makes the import an add, as before.
+ */
+async function loadReplaceTarget(decision:DuplicateDecision):Promise<void> {
+    if(decision.choice !== 'replace'){
+        return
+    }
+    const targetOf = () => DBState.db.modules.find((installed) => installed.id === decision.targetId)
+    const stub = targetOf()
+    if(!isModuleStub(stub)){
+        return
+    }
+    const { loadModuleStubsOf } = await import('./moduleLoader')
+    await loadModuleStubsOf(decision.targetId)
+    const loaded = targetOf()
+    if(!loaded || isModuleStub(loaded)){
+        throw new ModuleRefusal(language.moduleLoadFailed(typeof stub?.name === 'string' ? stub.name : ''))
+    }
+}
+
 /** Decides the duplicate question of a module that was read in full, then writes it. A skip writes nothing. */
 async function placeModule(module:RisuModule, file:File, session:DuplicateSession, laterFiles:boolean):Promise<ImportOutcome> {
     const decision = await session.decide(DBState.db.modules, module.name, file.name, laterFiles)
     if(decision.choice === 'skip'){
         return {kind: 'skipped'}
     }
+    await loadReplaceTarget(decision)
     return importedOutcome(commitModule(module, decision, session))
 }
 
@@ -662,6 +704,7 @@ async function importModuleFile(file:File, batch:boolean, session:DuplicateSessi
                         throw new ModuleImportStopped('skipped')
                     }
                 }})
+                await loadReplaceTarget(decision)
                 return importedOutcome(commitModule(module, decision, session))
             } finally {
                 await source.close()
@@ -692,6 +735,7 @@ async function importModuleJson(file:File, batchFile:string|undefined, session:D
                 return {kind: 'refused', reason: language.errors.noData}
             }
             importData.id = v4()
+            dropDeviceAssetState(importData)
 
             if(importData.lowLevelAccess){
                 const prompt = batchFile ? `${language.moduleLowLevelNamed(importData.name, batchFile)}\n${language.lowLevelAccessConfirm}` : language.lowLevelAccessConfirm
@@ -732,6 +776,10 @@ async function importModuleJson(file:File, batchFile:string|undefined, session:D
             }, file, session, laterFiles)
         }
     } catch (error) {
+        //A refusal that names its own reason (a replace target that could not be loaded) is not "no data".
+        if(error instanceof ModuleRefusal){
+            throw error
+        }
         console.error(error)
     }
     return {kind: 'refused', reason: language.errors.noData, normal: true}

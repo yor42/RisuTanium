@@ -107,7 +107,8 @@ export function stubModule(id: string, overrides: Partial<ModuleEntry> = {}): Ri
 
 /** Keys of a module that its index entry does not carry: a stub must never be asked for any of them. */
 export const STUB_BODY_KEYS = [
-    'lorebook', 'regex', 'cjs', 'trigger', 'backgroundEmbedding', 'assets', 'customModuleToggle',
+    'lorebook', 'regex', 'cjs', 'trigger', 'backgroundEmbedding', 'assets', 'customModuleToggle', 'risutanium_asset_folders',
+    'risutanium_asset_retained',
 ] as const satisfies readonly Exclude<keyof RisuModule, keyof ModuleEntry>[]
 
 // Fails to compile if a body key is added to RisuModule and not listed above.
@@ -115,7 +116,7 @@ type UnlistedBodyKey = Exclude<Exclude<keyof RisuModule, keyof ModuleEntry>, typ
 export const bodyKeyListIsComplete: [UnlistedBodyKey] extends [never] ? true : false = true
 
 /**
- * Wraps a stub so that every `get` or `has` of a body key is recorded. Marker, entry fields, symbols and
+ * Wraps a stub so that every `get`, `has` or own-property probe (`Object.hasOwn`) of a body key is recorded. Marker, entry fields, symbols and
  * `constructor` pass through untouched, so a correct reader records nothing.
  */
 export function watchBodyKeys<T extends object>(row: T, reads: string[]): T {
@@ -128,6 +129,10 @@ export function watchBodyKeys<T extends object>(row: T, reads: string[]): T {
         has(target, key) {
             if (bodyKeys.has(key)) reads.push(String(key))
             return Reflect.has(target, key)
+        },
+        getOwnPropertyDescriptor(target, key) {
+            if (bodyKeys.has(key)) reads.push(String(key))
+            return Reflect.getOwnPropertyDescriptor(target, key)
         },
     })
 }

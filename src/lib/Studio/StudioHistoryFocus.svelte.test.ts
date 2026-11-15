@@ -35,6 +35,7 @@ vi.mock('src/ts/stores.svelte', async () => {
     }
 })
 vi.mock('src/ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
+vi.mock('src/ts/alert', () => ({ alertError: vi.fn() }))
 vi.mock('src/ts/process/moduleRefList', () => ({ moduleListOf: () => [] }))
 vi.mock('src/ts/alertPrompts', () => ({ pageCovered: () => false }))
 vi.mock('src/ts/alertBack', () => ({ closeDialogForBack: vi.fn() }))

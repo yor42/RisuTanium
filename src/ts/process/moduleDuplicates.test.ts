@@ -20,6 +20,7 @@ vi.mock(import('src/ts/alert'), () => ({
 
 import { DuplicateSession, applyModulePlacement, describeReplace, findDuplicateIndex } from 'src/ts/process/moduleDuplicates'
 import { language } from 'src/lang'
+import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from 'src/ts/studio/assets/assetOwnerKeys'
 
 const mod = (id: string, name: unknown, extra: Record<string, unknown> = {}) => ({ id, name, description: '', ...extra }) as unknown as RisuModule
 
@@ -177,5 +178,61 @@ describe('DuplicateSession', () => {
         expect(await session.decide(list, 'T', 'f', false)).toEqual({ choice: 'skip' })
         expect(await session.decide(list, 'T', 'f', false)).toEqual({ choice: 'skip' })
         expect(h.asked).toHaveLength(3)
+    })
+})
+
+describe('applyModulePlacement keeps the device-side fields of the module it replaces', () => {
+    const KEPT = [['gone', 'assets/K.png']]
+    const FILE_LIST = [['file', 'assets/File.png']]
+    const FOLDERS = { v: 1, additional: { order: ['Faces'], of: [['smile', 'Faces']] } }
+    const replace = { choice: 'replace', targetId: 't' } as const
+
+    test('the retained field stays the target\'s, by reference, whatever the incoming module holds', () => {
+        const list = [mod('t', 'T', { [ASSET_RETAINED_KEY]: KEPT })]
+        applyModulePlacement(list, mod('fresh', 'T', { [ASSET_RETAINED_KEY]: FILE_LIST }), replace)
+        expect(list[0][ASSET_RETAINED_KEY]).toBe(KEPT)
+    })
+
+    test('the retained field stays the target\'s when it is of another shape', () => {
+        const odd = { a: ['assets/K2.png'] }
+        const list = [mod('t', 'T', { [ASSET_RETAINED_KEY]: odd })]
+        applyModulePlacement(list, mod('fresh', 'T'), replace)
+        expect(list[0][ASSET_RETAINED_KEY]).toBe(odd)
+    })
+
+    test('a target without the field stays without it, so an incoming module cannot give it one', () => {
+        const list = [mod('t', 'T')]
+        applyModulePlacement(list, mod('fresh', 'T', { [ASSET_RETAINED_KEY]: FILE_LIST }), replace)
+        expect(Object.hasOwn(list[0], ASSET_RETAINED_KEY)).toBe(false)
+    })
+
+    test('an incoming module without a folder document keeps the target\'s, by reference', () => {
+        const list = [mod('t', 'T', { [ASSET_FOLDER_KEY]: FOLDERS })]
+        applyModulePlacement(list, mod('fresh', 'T'), replace)
+        expect(list[0][ASSET_FOLDER_KEY]).toBe(FOLDERS)
+    })
+
+    test.each([
+        ['a v1 document', { v: 1, additional: { order: [], of: [] } }],
+        ['a document of an unknown version', { v: 9, x: 1 }],
+        ['a value that is not an object', 'garbage'],
+    ])('an incoming module that holds %s wins over the target\'s', (_label, incomingDocument) => {
+        const list = [mod('t', 'T', { [ASSET_FOLDER_KEY]: FOLDERS })]
+        applyModulePlacement(list, mod('fresh', 'T', { [ASSET_FOLDER_KEY]: incomingDocument }), replace)
+        expect(list[0][ASSET_FOLDER_KEY]).toBe(incomingDocument)
+    })
+
+    test('a target that holds neither field adds neither, and the rest still comes from the incoming module', () => {
+        const list = [mod('t', 'T')]
+        applyModulePlacement(list, mod('fresh', 'T', { description: 'new' }), replace)
+        expect(list[0]).toMatchObject({ id: 't', description: 'new' })
+        expect(Object.hasOwn(list[0], ASSET_FOLDER_KEY)).toBe(false)
+        expect(Object.hasOwn(list[0], ASSET_RETAINED_KEY)).toBe(false)
+    })
+
+    test('an add never carries a field from another module', () => {
+        const list = [mod('t', 'T', { [ASSET_RETAINED_KEY]: KEPT })]
+        applyModulePlacement(list, mod('n', 'T'), { choice: 'add' })
+        expect(Object.hasOwn(list[1], ASSET_RETAINED_KEY)).toBe(false)
     })
 })

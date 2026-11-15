@@ -1,0 +1,30 @@
+{
+  "id": "laned-module-1",
+  "name": "Profile module",
+  "description": "synthetic",
+  "lorebook": [
+    {
+      "key": "k",
+      "comment": "c",
+      "content": "text",
+      "mode": "normal",
+      "insertorder": 1,
+      "alwaysActive": false,
+      "secondkey": "",
+      "selective": false
+    }
+  ],
+  "assets": [
+    [
+      "Face",
+      "assets/1111111111111111111111111111111111111111111111111111111111111111.png",
+      "png"
+    ],
+    [
+      "Theme",
+      "assets/theme_song.mp3",
+      "mp3"
+    ]
+  ],
+  "icon": "assets/2222222222222222222222222222222222222222222222222222222222222222.png"
+}

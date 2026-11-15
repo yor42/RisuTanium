@@ -144,8 +144,27 @@ function locateMessage(messages: Message[], ref: MessageRef): number {
     return -1
 }
 
-function generateScriptCacheKey(scripts: customscript[], data: string, mode: ScriptMode, chatID = -1, cbsConditions: CbsConditions = {}, subject?: RunSubject, promptView?: PromptView) {
-    let hash = data + '|||' + mode + '|||';
+/**
+ * A fixed-length digest of the asset names the dynamic-asset block matches against, character names first and
+ * module names after. A rename, removal or merge of either side changes it, so a cache key that carries it
+ * cannot serve text built from the old names. A collision only reproduces the stale hit the digest prevents.
+ */
+function assetNamesSignature(charNames: string[], moduleNames: string[]): string {
+    const text = charNames.join('\u0000') + '\u0001' + moduleNames.join('\u0000')
+    let h1 = 0xdeadbeef
+    let h2 = 0x41c6ce57
+    for(let i = 0; i < text.length; i++){
+        const c = text.charCodeAt(i)
+        h1 = Math.imul(h1 ^ c, 2654435761)
+        h2 = Math.imul(h2 ^ c, 1597334677)
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+    return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0')
+}
+
+function generateScriptCacheKey(scripts: customscript[], data: string, mode: ScriptMode, chatID = -1, cbsConditions: CbsConditions = {}, subject?: RunSubject, promptView?: PromptView, assetSignature = '') {
+    let hash = data + '|||' + mode + '|||' + assetSignature + '|||';
     for (const script of scripts) {
         if(script.type !== mode){
             continue
@@ -323,7 +342,12 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
     const scripts = (db.presetRegex ?? []).concat(char.customscript).concat(moduleRegexScripts)
     const promptPass = promptView !== undefined
     const useCache = cache === 'use' && (!promptPass || isKeyDeterminedPass(scripts, mode, data))
-    const hash = useCache ? generateScriptCacheKey(scripts, data, mode, chatID, cbsConditions, subject, promptView) : ''
+    const dynamicAssetBlockCanRun = !!db.dynamicAssets && (char.type === 'simple' || char.type === 'character') && !!char.additionalAssets && char.additionalAssets.length > 0
+        && mode !== 'editinput' && mode !== 'editprocess' && (db.dynamicAssetsEditDisplay || mode !== 'editdisplay')
+    const charAssetNames = dynamicAssetBlockCanRun ? (char as character | simpleCharacterArgument).additionalAssets!.map((v) => v[0]) : []
+    const moduleAssetNames = dynamicAssetBlockCanRun ? getModuleAssets(subject).map((v) => v[0]) : []
+    const assetSignature = dynamicAssetBlockCanRun ? assetNamesSignature(charAssetNames, moduleAssetNames) : ''
+    const hash = useCache ? generateScriptCacheKey(scripts, data, mode, chatID, cbsConditions, subject, promptView, assetSignature) : ''
     const cached = useCache ? getScriptCache(hash, promptPass) : undefined
     if(MEASURE && probe){
         probe.cache = cached ? 'hit' : scripts.length === 0 ? 'empty' : useCache ? 'miss' : 'uncached'
@@ -613,14 +637,7 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
             }
             return {data, emoChanged}
         }
-        const assetNames = char.additionalAssets.map((v) => v[0])
-
-        const moduleAssets = getModuleAssets(subject)
-        if(moduleAssets.length > 0){
-            for(const asset of moduleAssets){
-                assetNames.push(asset[0])
-            }
-        }
+        const assetNames = charAssetNames.concat(moduleAssetNames)
 
         const processer = new HypaProcesser()
         await processer.addText(assetNames)
@@ -629,7 +646,7 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
         for(const match of matches){
             const type = match[1]
             const assetName = match[2]
-            const cacheKey = char.chaId + '::' + assetName
+            const cacheKey = char.chaId + '::' + assetSignature + '::' + assetName
             if(type !== 'emotion' && type !== 'source'){
                 if(bestMatchCache.has(cacheKey)){
                     data = data.replaceAll(match[0], `{{${type}::${bestMatchCache.get(cacheKey)}}}`)

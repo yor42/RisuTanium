@@ -40,6 +40,7 @@ vi.mock('../../ts/stores.svelte', () => ({
     get QuickSettings() { return QuickSettings },
 }))
 vi.mock('../../ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
+vi.mock('../../ts/alert', () => ({ alertError: vi.fn() }))
 vi.mock('../../ts/process/moduleRefList', () => ({ moduleListOf: () => [] }))
 vi.mock('../../ts/alertPrompts', () => ({ pageCovered: () => false }))
 vi.mock('../../ts/alertBack', () => ({ closeDialogForBack: vi.fn() }))

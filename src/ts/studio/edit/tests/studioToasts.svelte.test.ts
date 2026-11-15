@@ -7,13 +7,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { DBState, selIdState } from 'src/ts/stores.svelte'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { toSaveType } from 'src/ts/storage/risuSave'
-import { createToastHost, resetToastHostForTests, toastHost, type ToastClock, type ToastHost } from 'src/ts/toast/toastHost.svelte'
+import { createToastHost, DEFAULT_TOAST_CONFIG, resetToastHostForTests, toastHost, type ToastClock, type ToastHost, type UndoOutcome, type UndoToastInit } from 'src/ts/toast/toastHost.svelte'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
-import { createOwnerHistoryService, type OwnerHistoryService, type OwnerView, type StudioRefusal, type StudioResult } from '../../history/ownerHistory.svelte'
+import { createOwnerHistoryService, REPLAY_BUDGET_MS, type OwnerHistoryService, type OwnerView, type StudioRefusal, type StudioResult } from '../../history/ownerHistory.svelte'
 import { characterOwnerKey, SAVE_DEBOUNCE_MS } from '../../history/ownerPhase'
-import { createFakeClock } from '../../history/tests/historyTestKit.test-helpers'
+import { createFakeClock, drainMicrotasks } from '../../history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../history/tests/studioStoreDoubles'
-import { createStudioToasts, refusalText, runDismissingConsumed } from '../studioToasts'
+import { createStudioToasts, refusalText, resetStudioToastsForTests, retireAssetToasts, runDismissingConsumed, type StudioToasts } from '../studioToasts'
 
 const h = vi.hoisted(() => ({ marks: 0 }))
 
@@ -25,11 +25,18 @@ vi.mock('src/ts/stores.svelte', async () => {
         selIdState: { selId: 0 },
         MobileGUI: writable(false),
         settingsOpen: writable(false),
+        clearCharEmotionCache: () => {},
     }
 })
 vi.mock('src/lang', async () => {
     const helpers = await import('src/ts/studio/studioFixtures.test-helpers')
-    return { language: helpers.studioLanguageMock() }
+    const base = helpers.studioLanguageMock()
+    // The two texts that name a row answer with the key and the name.
+    const named: Record<string, unknown> = {
+        studioAssetFileGone: (name: string) => `studioAssetFileGone(${name})`,
+        studioAssetFileUnchecked: (name: string) => `studioAssetFileUnchecked(${name})`,
+    }
+    return { language: new Proxy(named, { get: (target, key) => (typeof key === 'symbol' ? undefined : key in target ? target[key] : base[key]) }) }
 })
 
 interface FakeToastClock extends ToastClock {
@@ -74,7 +81,12 @@ const A = characterOwnerKey('A')
 let clock: FakeToastClock
 let host: ToastHost
 
-function serviceReturning(result: StudioResult): { service: Pick<OwnerHistoryService, 'restoreDeleted'>; calls: [string, string][] } {
+// The delete toast reaches only `restoreDeleted`; the asset toast's `view` and `replay` are covered in assetToast.svelte.test.ts.
+const unusedAssetPath = (): never => {
+    throw new Error('the delete toast never reads the asset path of the service')
+}
+
+function serviceReturning(result: StudioResult): { service: Pick<OwnerHistoryService, 'restoreDeleted' | 'view' | 'replay'>; calls: [string, string][] } {
     const calls: [string, string][] = []
     return {
         calls,
@@ -83,6 +95,8 @@ function serviceReturning(result: StudioResult): { service: Pick<OwnerHistorySer
                 calls.push([owner, deletedId])
                 return result
             },
+            view: unusedAssetPath,
+            replay: unusedAssetPath,
         },
     }
 }
@@ -148,7 +162,7 @@ describe('T-UI5 the Undo action', () => {
         expect(host.visible[0].kind).toBe('success')
     })
 
-    const reasons: StudioRefusal[] = ['loading', 'not-selected', 'duplicate-id', 'group', 'restricted', 'gone', 'no-unique-chat', 'precondition', 'empty', 'unknown']
+    const reasons: StudioRefusal[] = ['loading', 'not-selected', 'duplicate-id', 'group', 'restricted', 'gone', 'no-unique-chat', 'precondition', 'pairSplit', 'empty', 'unknown']
 
     test.each(reasons)('a refusal (%s) shows its own text, never success, and removes the action (M36)', async (reason) => {
         const { service } = serviceReturning({ ok: false, reason })
@@ -164,7 +178,7 @@ describe('T-UI5 the Undo action', () => {
 
     test('the refusal texts differ where the user needs to act differently', () => {
         const texts = new Set(reasons.map(refusalText))
-        expect(texts.size).toBe(8)
+        expect(texts.size).toBe(9)
     })
 
     test('with no service built, Undo reports that history is still loading', async () => {
@@ -180,6 +194,8 @@ describe('T-UI5 the Undo action', () => {
                 restoreDeleted() {
                     throw new Error('boom')
                 },
+                view: unusedAssetPath,
+                replay: unusedAssetPath,
             }),
             host,
         })
@@ -381,5 +397,223 @@ describe('T-UI5b the Undo outlives Studio and goes through the marked write path
         expect(h.marks).toBe(marksBefore)
         expect(host.visible[0].kind).toBe('info')
         expect(host.visible[0].text).toBe(refusalText('not-selected'))
+    })
+})
+
+describe('the asset Undo toast runs through the replay queue', () => {
+    interface LiveCharacter {
+        chaId: string
+        desc: string
+        alternateGreetings: string[]
+        chats: { id: string; note: string; fmIndex?: number }[]
+        chatPage: number
+        additionalAssets: string[][]
+        emotionImages: string[][]
+    }
+
+    const tracker: toSaveType = { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
+    const never = new Promise<void>(() => {})
+
+    // The file reader the service is given: a path is present unless listed; each question first waits for the next entry
+    // of `waits`, so a test can hold an answer back or never give it.
+    interface Files {
+        gone: Set<string>
+        failing: Set<string>
+        waits: (Promise<void> | null)[]
+    }
+
+    interface Fixture {
+        service: OwnerHistoryService
+        toasts: StudioToasts
+        files: Files
+        historyClock: ReturnType<typeof createFakeClock>
+        // The spec of the toast the last `postAssetAction` posted, so its action can be run and its outcome read.
+        run: () => Promise<UndoOutcome>
+    }
+
+    const live = (): LiveCharacter => DBState.db.characters[0] as unknown as LiveCharacter
+
+    async function setup(): Promise<Fixture> {
+        const files: Files = { gone: new Set(), failing: new Set(), waits: [] }
+        const historyClock = createFakeClock()
+        let spec: UndoToastInit | null = null
+        const capturing: ToastHost = {
+            ...host,
+            postUndo(next) {
+                spec = next
+                return host.postUndo(next)
+            },
+        }
+        const service = createOwnerHistoryService({
+            store: createMemoryStudioStore(),
+            claim: createClaimDouble(),
+            clock: historyClock,
+            pageSession: 'p1',
+            getVisitId: () => 'v1',
+            registerLeaveFlush: () => () => {},
+            onLanded: retireAssetToasts,
+            openAssetFileReader: async () => ({
+                concurrency: 1,
+                stateOf: async (path) => {
+                    const wait = files.waits.shift()
+                    if (wait) {
+                        await wait
+                    }
+                    if (files.failing.has(path)) {
+                        throw new Error('read failed')
+                    }
+                    return files.gone.has(path) ? 'gone' : 'present'
+                },
+            }),
+        })
+        await service.whenReady(A)
+        const toasts = createStudioToasts({ service: () => service, host: capturing })
+        return {
+            service,
+            toasts,
+            files,
+            historyClock,
+            run: () => {
+                if (spec === null) {
+                    throw new Error('no toast was posted')
+                }
+                return Promise.resolve(spec.action.run())
+            },
+        }
+    }
+
+    beforeEach(() => {
+        h.marks = 0
+        tracker.character.length = 0
+        resetCharacterSaveMarksForTest()
+        installCharacterSaveMarks({ tracker, schedule: () => { h.marks += 1 } })
+        resetStudioScreenForTests()
+        resetStudioToastsForTests()
+        DBState.db.characters = [
+            {
+                chaId: 'A',
+                type: 'character',
+                desc: 'd0',
+                alternateGreetings: ['g0'],
+                chats: [{ id: 'c1', note: '', fmIndex: 0 }],
+                chatPage: 0,
+                additionalAssets: [['smile', 'assets/smile.png', 'png'], ['grin', 'assets/grin.png', 'png']],
+                emotionImages: [],
+            },
+        ] as unknown as typeof DBState.db.characters
+        selIdState.selId = 0
+        studioScreen.chaId = 'A'
+    })
+
+    afterEach(() => {
+        resetCharacterSaveMarksForTest()
+        resetStudioScreenForTests()
+        resetStudioToastsForTests()
+    })
+
+    // Deletes the `grin` row and posts the toast the setter's caller posts for the landed step.
+    function deleteGrinWithToast(fixture: Fixture): string {
+        const result = fixture.service.assetDelete(A, 'additionalAssets', [1])
+        if (result.ok === false || result.stepId === undefined) {
+            throw new Error('the delete did not land')
+        }
+        fixture.toasts.postAssetAction(A, result.stepId, 'Deleted grin')
+        return result.stepId
+    }
+
+    test('an instance ends the toast another instance posted when a step lands on the owner', () => {
+        const first = createStudioToasts({ service: () => null, host })
+        const second = createStudioToasts({ service: () => null, host })
+        first.postAssetAction(A, 's1', 'Deleted grin')
+        expect(host.visible).toHaveLength(1)
+        second.retireAssetToasts(A, 's2')
+        expect(host.visible).toHaveLength(0)
+    })
+
+    test('the toast of an owner whose step is still on top stays, and so does another owner\'s', () => {
+        const toasts = createStudioToasts({ service: () => null, host })
+        toasts.postAssetAction(A, 's1', 'Deleted grin')
+        retireAssetToasts(characterOwnerKey('B'), null)
+        retireAssetToasts(A, 's1')
+        expect(host.visible).toHaveLength(1)
+        retireAssetToasts(A, null)
+        expect(host.visible).toHaveLength(0)
+    })
+
+    test('Undo with its file present puts the row back and the toast shows Undone', async () => {
+        const fixture = await setup()
+        deleteGrinWithToast(fixture)
+        expect(await fixture.run()).toEqual({ ok: true, text: 'studioAssetUndone' })
+        expect(live().additionalAssets.map((row) => row[0])).toEqual(['smile', 'grin'])
+    })
+
+    test('Undo with its file gone names the row, puts nothing back and drops the step', async () => {
+        const fixture = await setup()
+        deleteGrinWithToast(fixture)
+        fixture.files.gone.add('assets/grin.png')
+        expect(await fixture.run()).toEqual({ ok: true, text: 'studioAssetFileGone(grin)' })
+        expect(live().additionalAssets.map((row) => row[0])).toEqual(['smile'])
+        expect(fixture.service.view(A).done).toHaveLength(0)
+    })
+
+    test('Undo with a file that could not be checked says so, names the row and changes nothing', async () => {
+        const fixture = await setup()
+        deleteGrinWithToast(fixture)
+        fixture.files.failing.add('assets/grin.png')
+        const marks = h.marks
+        expect(await fixture.run()).toEqual({ ok: false, text: 'studioAssetFileUnchecked(grin)' })
+        expect(live().additionalAssets.map((row) => row[0])).toEqual(['smile'])
+        expect(fixture.service.view(A).done).toHaveLength(1)
+        expect(h.marks).toBe(marks)
+    })
+
+    test('a step that lands while the files are asked closes the toast with the history-panel text and applies nothing', async () => {
+        const fixture = await setup()
+        deleteGrinWithToast(fixture)
+        let release!: () => void
+        fixture.files.waits.push(new Promise<void>((done) => { release = done }))
+        const outcome = fixture.run()
+        await fixture.historyClock.advance(0)
+        expect(fixture.service.editField(A, 'desc', 'typed').ok).toBe(true)
+        release()
+        expect(await outcome).toEqual({ ok: false, text: 'studioAssetToastUseHistory', after: 'close' })
+        expect(live().additionalAssets.map((row) => row[0])).toEqual(['smile'])
+        expect(live().desc).toBe('typed')
+    })
+
+    test('answers that come after the deadline leave the refusal as the outcome and land nothing', async () => {
+        const fixture = await setup()
+        deleteGrinWithToast(fixture)
+        let release!: () => void
+        fixture.files.waits.push(new Promise<void>((done) => { release = done }))
+        let outcome: UndoOutcome | null = null
+        void fixture.run().then((value) => { outcome = value })
+        await drainMicrotasks()
+        await fixture.historyClock.advance(REPLAY_BUDGET_MS)
+        expect(outcome).toEqual({ ok: false, text: 'studioAssetFileUnchecked(grin)' })
+        release()
+        await fixture.historyClock.advance(0)
+        expect(live().additionalAssets.map((row) => row[0])).toEqual(['smile'])
+        expect(fixture.service.view(A).done).toHaveLength(1)
+    })
+
+    test('an Undo queued behind a replay whose reader hangs settles with its own refusal before the host gives up', async () => {
+        const fixture = await setup()
+        const id = (deleteGrinWithToast(fixture), host.visible[0].id)
+        fixture.files.waits.push(never, never)
+        const keyboard = fixture.service.replay(A, { kind: 'undo' })
+        const activated = host.activate(id)
+        await drainMicrotasks()
+        // The host's clock is at the budget when the replay gives up, still short of the host's own timeout.
+        clock.advance(REPLAY_BUDGET_MS)
+        await fixture.historyClock.advance(REPLAY_BUDGET_MS)
+        await activated
+        expect(await keyboard).toEqual({ ok: false, reason: 'asset-file-unchecked', name: 'grin' })
+        expect(host.visible).toHaveLength(1)
+        expect(host.visible[0].text).toBe('studioAssetFileUnchecked(grin)')
+    })
+
+    test('the replay budget leaves the host margin of its own Undo timeout', () => {
+        expect(REPLAY_BUDGET_MS).toBeLessThanOrEqual(DEFAULT_TOAST_CONFIG.undoRunTimeoutMs - 2000)
     })
 })

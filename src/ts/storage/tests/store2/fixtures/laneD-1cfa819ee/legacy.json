@@ -1,0 +1,155 @@
+{
+  "files": [
+    {
+      "key": "database/database.bin",
+      "status": "ok",
+      "database": {
+        "customBackground": "assets/3333333333333333333333333333333333333333333333333333333333333333.png",
+        "userIcon": "assets/4444444444444444444444444444444444444444444444444444444444444444.png",
+        "NAIImgConfig": {
+          "image": "assets/nai-image.png",
+          "character_image": "assets/5555555555555555555555555555555555555555555555555555555555555555.png"
+        },
+        "wavespeedImage": {
+          "reference_image": "assets/wave-ref.png"
+        },
+        "personas": [
+          {
+            "name": "P1",
+            "icon": "assets/6666666666666666666666666666666666666666666666666666666666666666.png",
+            "embeddedModule": {
+              "id": "laned-embedded-1",
+              "name": "Embedded",
+              "description": "",
+              "assets": [
+                [
+                  "Pic",
+                  "assets/7777777777777777777777777777777777777777777777777777777777777777.png",
+                  "png"
+                ]
+              ],
+              "icon": "assets/embedded-icon.png"
+            }
+          },
+          {
+            "name": "P2",
+            "icon": "assets/persona-two.png"
+          }
+        ],
+        "loadouts": [
+          {
+            "icons": [
+              "assets/8888888888888888888888888888888888888888888888888888888888888888.png",
+              "assets/loadout-icon.png"
+            ]
+          }
+        ],
+        "characterOrder": [
+          "laned-char-1",
+          {
+            "imgFile": "assets/9999999999999999999999999999999999999999999999999999999999999999.png"
+          }
+        ],
+        "characters": [
+          {
+            "chaId": "laned-char-1",
+            "type": "character",
+            "name": "Profile character",
+            "image": "assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
+            "emotionImages": [
+              [
+                "happy",
+                "assets/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.webp"
+              ],
+              [
+                "sad",
+                "assets/Sad_Face.PNG"
+              ]
+            ],
+            "additionalAssets": [
+              [
+                "Smile",
+                "assets/cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc.png",
+                "png"
+              ],
+              [
+                "Voice",
+                "assets/VoiceFile.WAV",
+                "wav"
+              ]
+            ],
+            "vits": {
+              "files": {
+                "a": "assets/vits-one.onnx"
+              }
+            },
+            "gptSoVitsConfig": {
+              "ref_audio_data": {
+                "fileName": "ref.wav",
+                "assetId": "assets/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd.wav"
+              }
+            },
+            "ccAssets": [
+              {
+                "type": "icon",
+                "uri": "assets/eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee.png",
+                "name": "main",
+                "ext": "png"
+              }
+            ]
+          }
+        ],
+        "modules": [
+          {
+            "id": "laned-module-1",
+            "name": "Profile module",
+            "description": "synthetic",
+            "lorebook": [
+              {
+                "key": "k",
+                "comment": "c",
+                "content": "text",
+                "mode": "normal",
+                "insertorder": 1,
+                "alwaysActive": false,
+                "secondkey": "",
+                "selective": false
+              }
+            ],
+            "assets": [
+              [
+                "Face",
+                "assets/1111111111111111111111111111111111111111111111111111111111111111.png",
+                "png"
+              ],
+              [
+                "Theme",
+                "assets/theme_song.mp3",
+                "mp3"
+              ]
+            ],
+            "icon": "assets/2222222222222222222222222222222222222222222222222222222222222222.png"
+          }
+        ]
+      },
+      "coldCharacters": [
+        {
+          "chaId": "laned-cold-1",
+          "type": "character",
+          "image": "assets/cold-image.png",
+          "additionalAssets": [
+            [
+              "Cold",
+              "assets/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.png",
+              "png"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "key": "coldstorage/unreadable",
+      "status": "unreadable"
+    }
+  ]
+}

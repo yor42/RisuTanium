@@ -38,6 +38,14 @@ export const sideBarStore = writable(window.innerWidth > 1024)
 export const selectedCharID = writable(-1)
 export const CurrentTriggerIdStore = writable<string | null>(null)
 export const CharEmotion = writable({} as {[key:string]: [string, string, number][]})
+// CharEmotion caches the resolved path of the last-triggered emotion, not its name, so removing an emotion image does
+// not invalidate it: dropping the character's entry makes the emotion box fall back to the default emotion.
+export function clearCharEmotionCache(chaId: string): void {
+    CharEmotion.update((charemotions) => {
+        delete charemotions[chaId]
+        return charemotions
+    })
+}
 export const ViewBoxsize = writable({ width: 12 * 16, height: 12 * 16 }); // Default width and height in pixels
 export const settingsOpen = writable(false)
 export const botMakerMode = writable(false)

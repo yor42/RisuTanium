@@ -337,3 +337,96 @@ describe('setChar writes only the selected character, and only when one is selec
         expect(live()[0].chaId).toBe('z')
     })
 })
+
+describe('a plugin write to characters keeps the live retained field', () => {
+    const KEY = 'risutanium_asset_retained'
+    const LIVE = [['x', 'assets/K.png'], ['y', 'assets/Y.png']]
+    const STALE = [['x', 'assets/K.png']]
+    const FOREIGN = [['z', 'assets/Z.png']]
+    const plain = (value: unknown) => JSON.parse(JSON.stringify(value)) as unknown
+    const keyAt = (index: number) => plain(live()[index][KEY])
+    /** The character as a plugin holds it: a copy taken at read time. */
+    const copy = (chaId: string, extra: Entry = {}): Entry => ({ chaId, name: chaId.toUpperCase(), type: 'character', chats: [], ...extra })
+
+    beforeEach(() => {
+        live()[0][KEY] = structuredClone(LIVE)
+    })
+
+    describe.each(['setDatabase', 'setDatabaseLite'] as const)('%s', (setter) => {
+        const write = async (characters: Entry[]) => { await Promise.resolve(api()[setter]({ characters })) }
+
+        test('a copy that lacks the field, at the same index, takes the live value', async () => {
+            await write([copy('a'), copy('b')])
+            expect(keyAt(0)).toEqual(LIVE)
+        })
+
+        test('a reordered list with unique ids carries the field to the character it continues', async () => {
+            await write([copy('b'), copy('a')])
+            expect(liveIds()).toEqual(['b', 'a'])
+            expect(keyAt(1)).toEqual(LIVE)
+            expect(Object.hasOwn(live()[0], KEY)).toBe(false)
+        })
+
+        test('a stale copy loses to the live value', async () => {
+            await write([copy('a', { [KEY]: structuredClone(STALE) }), copy('b')])
+            expect(keyAt(0)).toEqual(LIVE)
+        })
+
+        test('a live character without the field leaves the written character without one', async () => {
+            await write([copy('a'), copy('b', { [KEY]: structuredClone(FOREIGN) })])
+            expect(Object.hasOwn(live()[1], KEY)).toBe(false)
+        })
+
+        test('a new id keeps the value it holds, or none', async () => {
+            await write([copy('a'), copy('b'), copy('c', { [KEY]: structuredClone(FOREIGN) }), copy('d')])
+            expect(keyAt(2)).toEqual(FOREIGN)
+            expect(Object.hasOwn(live()[3], KEY)).toBe(false)
+        })
+
+        test('an id held twice at other indices is unmatched, so each copy keeps its own value', async () => {
+            await write([copy('b'), copy('a', { [KEY]: structuredClone(STALE) }), copy('a', { [KEY]: structuredClone(FOREIGN) })])
+            expect(keyAt(1)).toEqual(STALE)
+            expect(keyAt(2)).toEqual(FOREIGN)
+        })
+
+        test('a light entry is untouched by the carry, and its live holder keeps the live value after the swap', async () => {
+            const light = { lightEntry: true, chaId: 'a', name: 'A', type: 'character', creatorNotes: '', chatCount: 0, archived: false }
+            await write([light, copy('b')])
+            expect(live()[0].lightEntry).toBeUndefined()
+            expect(keyAt(0)).toEqual(LIVE)
+        })
+
+        test('with a live id held twice, the live holder swapped in for a light entry keeps its own retained value', async () => {
+            const R1 = [['n', 'assets/X1.png']]
+            const R2 = [['n', 'assets/X2.png']]
+            installDb([
+                { chaId: 'x', name: 'X', type: 'character', chats: [], [KEY]: structuredClone(R1) },
+                { chaId: 'x', name: 'X', type: 'character', chats: [], [KEY]: structuredClone(R2) },
+            ])
+            const holder = live()[2]
+            const light = { lightEntry: true, chaId: 'x', name: 'X', type: 'character', creatorNotes: '', chatCount: 0, archived: false }
+            await write([copy('a'), copy('b'), copy('x', { name: 'X edited' }), light])
+            expect(live()[3]).toBe(holder)
+            expect(keyAt(3)).toEqual(R1)
+        })
+    })
+
+    describe('setChar', () => {
+        test('a copy that lacks the field takes the live value', () => {
+            api().setChar(copy('a', { name: 'A edited' }))
+            expect(live()[0].name).toBe('A edited')
+            expect(keyAt(0)).toEqual(LIVE)
+        })
+
+        test('a stale copy loses to the live value', () => {
+            api().setChar(copy('a', { [KEY]: structuredClone(STALE) }))
+            expect(keyAt(0)).toEqual(LIVE)
+        })
+
+        test('a live character without the field leaves the written character without one', () => {
+            delete live()[0][KEY]
+            api().setChar(copy('a', { [KEY]: structuredClone(FOREIGN) }))
+            expect(Object.hasOwn(live()[0], KEY)).toBe(false)
+        })
+    })
+})

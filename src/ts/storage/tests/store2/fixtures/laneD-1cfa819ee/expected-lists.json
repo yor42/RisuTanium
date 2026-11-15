@@ -1,0 +1,62 @@
+{
+  "character": {
+    "v": 1,
+    "h": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d07u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u4qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqou7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7szMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMw",
+    "l": [
+      "sad_face.png",
+      "vits-one.onnx",
+      "voicefile.wav"
+    ]
+  },
+  "module": {
+    "v": 1,
+    "h": "EREREREREREREREREREREREREREREREREREREREREREIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiI",
+    "l": [
+      "theme_song.mp3"
+    ]
+  },
+  "config": {
+    "v": 1,
+    "h": "MzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMREREREREREREREREREREREREREREREREREREREREREQVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmYd3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3ciIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIgmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZk",
+    "l": [
+      "embedded-icon.png",
+      "loadout-icon.png",
+      "nai-image.png",
+      "persona-two.png",
+      "wave-ref.png"
+    ]
+  },
+  "legacy": {
+    "v": 1,
+    "iv": 1,
+    "files": [
+      {
+        "key": "coldstorage/unreadable",
+        "status": "unreadable"
+      },
+      {
+        "key": "database/database.bin",
+        "status": "ok"
+      }
+    ],
+    "h": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d07u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u4EREREREREREREREREREREREREREREREREREREREREREIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMREREREREREREREREREREREREREREREREREREREREREQVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY__________________________________________8d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3ciIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIgmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZkqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqou7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7szMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMw",
+    "l": [
+      "cold-image.png",
+      "embedded-icon.png",
+      "loadout-icon.png",
+      "nai-image.png",
+      "persona-two.png",
+      "sad_face.png",
+      "theme_song.mp3",
+      "vits-one.onnx",
+      "voicefile.wav",
+      "wave-ref.png"
+    ],
+    "i": {
+      "v": 1,
+      "u": [],
+      "h": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d07u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u4EREREREREREREREREREREREREREREREREREREREREREIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMREREREREREREREREREREREREREREREREREREREREREQVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVUZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmY__________________________________________8d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3ciIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIiIgmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZkqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqou7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7szMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMzMw",
+      "o": []
+    }
+  }
+}

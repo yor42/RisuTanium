@@ -1,9 +1,25 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
+    applyFolderOps,
+    carryFolderOnRename,
+    deleteFolder,
+    dropFolderEntries,
+    invertFolderOp,
+    moveManyToFolder,
+    moveToFolder,
+    readFolderDoc,
+    renameFolder,
+    type FolderOp,
+    type FolderWriteResult,
+} from '../../assets/folderCodec'
+import {
     COALESCE_MS,
     MAX_DELETED,
     MAX_DONE,
     applyReplayMove,
+    assetPathsReplayMayInsert,
+    assetStepWrites,
+    isStoredAssetPath,
     closeOpenStep,
     commitStep,
     createListHashTracker,
@@ -20,6 +36,7 @@ import {
     planRestorePoint,
     planRevert,
     stepIdFor,
+    textBeforeOf,
     type DeletedItem,
     type Step,
     type FieldValue,
@@ -27,18 +44,27 @@ import {
     type LiveReader,
     type ModelState,
     type Op,
+    type OwnerRecord,
     type PlanResult,
     type RestorePath,
     type SetPath,
+    type AssetOp,
+    type StepLabel,
+    type StepPlan,
+    type TextEditOp,
     type WriteOp,
 } from '../historyModel'
 import { fingerprintElement, listFingerprintOf } from '../listFingerprint'
-import { characterOwnerKey, chatOwnerKey } from '../ownerPhase'
+import { characterOwnerKey, chatOwnerKey, moduleOwnerKey } from '../ownerPhase'
+import { retainedPathsOf } from '../retainedPaths'
+import { OWNER_CAP_BYTES, entrySize, serializeEntry } from '../studioHistoryStore'
 
 // ---------------------------------------------------------------- a live character double
 
 interface LiveObject {
     desc?: string
+    firstMessage?: string
+    exampleMessage?: string
     hideChatIcon?: boolean
     note?: string
     alternateGreetings: string[]
@@ -754,7 +780,8 @@ describe('deleted items (T-D1)', () => {
             record: { ...s.record, done: s.record.done.slice(0, 1), undone: [] },
             open: null,
         }
-        expect(planReplay(withoutTop.record, 'undo', s.live.reader)).toEqual({ ok: false, reason: 'precondition' })
+        // The step cannot be undone here, so it is dropped: nothing is written and History's list is as it was.
+        expect(planReplay(withoutTop.record, 'undo', s.live.reader)).toMatchObject({ ok: true, dropStep: true, writes: [], deletedRemove: [] })
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b'])
     })
 
@@ -764,7 +791,7 @@ describe('deleted items (T-D1)', () => {
         s.restoreDeleted(id, 5000)
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b'])
         const deleteStepOnly = { ...s.record, done: s.record.done.slice(0, 1), undone: [] }
-        expect(planReplay(deleteStepOnly, 'undo', s.live.reader)).toEqual({ ok: false, reason: 'precondition' })
+        expect(planReplay(deleteStepOnly, 'undo', s.live.reader)).toMatchObject({ ok: true, dropStep: true, writes: [], deletedRemove: [] })
     })
 
     test('a restore is refused for an unknown id, and when the greeting list cannot be read', () => {
@@ -1144,23 +1171,24 @@ describe('list fingerprint: format', () => {
 })
 
 describe('list fingerprint: replay after a lost owner write', () => {
-    test('T1 an undo of a delete whose write was lost is refused', () => {
+    test('T1 an undo of a delete whose write was lost moves past the step and writes nothing', () => {
         const s = newSession({ alternateGreetings: ['x', 'y'], chats: { chatA: { fmIndex: 1 } } })
         const snap = snapshot(s)
         s.deleteGreeting(1, 0)
         lose(s, snap)
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toMatchObject({ ok: true, already: 'undo', writes: [] })
         expect(s.live.obj.alternateGreetings).toEqual(['x', 'y'])
-        expect(s.record.done).toHaveLength(1)
-        expect(s.record.deleted).toHaveLength(1)
+        expect(s.record.done).toHaveLength(0)
+        expect(s.record.undone).toHaveLength(1)
+        expect(s.record.deleted).toHaveLength(0)
     })
 
-    test('T2 an equal neighbour does not make a lost delete undoable', () => {
+    test('T2 an equal neighbour does not make a lost delete write again', () => {
         const s = newSession({ alternateGreetings: ['a', 'a'], chats: { chatA: { fmIndex: 1 } } })
         const snap = snapshot(s)
         s.deleteGreeting(0, 0)
         lose(s, snap)
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toMatchObject({ ok: true, already: 'undo', writes: [] })
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'a'])
     })
 
@@ -1178,11 +1206,13 @@ describe('list fingerprint: replay after a lost owner write', () => {
     })
 
     test('T4 an old-record undo next to an equal neighbour uses the exact-slot skip', () => {
-        // No chat side effect to lean on: the insert is skipped, so nothing applies.
+        // No chat side effect to lean on: the insert cannot be checked, so the step is dropped.
         const a = newSession({ alternateGreetings: ['a', 'a'] })
         a.deleteGreeting(0, 0, null)
         stripAll(a)
-        expect(a.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(a.undo()).toMatchObject({ ok: true, dropStep: true, writes: [] })
+        expect(a.record.done).toHaveLength(0)
+        expect(a.record.undone).toHaveLength(0)
         expect(a.live.obj.alternateGreetings).toEqual(['a'])
         // With an applying chat part the step is partial: the list is kept, the index restored.
         const b = newSession({ alternateGreetings: ['a', 'a'], chats: { chatA: { fmIndex: 1 } } })
@@ -1205,17 +1235,18 @@ describe('list fingerprint: replay after a lost owner write', () => {
         expect(s.live.obj.chats.chatA.fmIndex).toBe(-1)
     })
 
-    test('T6 a redo after a lost undo write is refused', () => {
+    test('T6 a redo after a lost undo write moves past the step and writes nothing', () => {
         const s = newSession({ alternateGreetings: ['g'] })
         s.addGreeting('', 0)
         const snap = snapshot(s)
         s.undo()
         lose(s, snap)
-        expect(s.redo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo()).toMatchObject({ ok: true, already: 'redo', writes: [] })
+        expect(s.record.done).toHaveLength(1)
         expect(s.live.obj.alternateGreetings).toEqual(['g', ''])
     })
 
-    test('T7 the undo of a revert whose write was lost is refused', () => {
+    test('T7 the undo of a revert whose write was lost moves past the step', () => {
         const s = newSession({ desc: 'd' })
         s.typeDesc('e', 0)
         const anchor = s.record.done[0].id
@@ -1223,7 +1254,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         const snap = snapshot(s)
         s.revertTo(anchor, 10000)
         lose(s, snap)
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toMatchObject({ ok: true, already: 'undo', writes: [] })
         expect(s.live.obj.alternateGreetings).toEqual(['g'])
     })
 
@@ -1238,15 +1269,15 @@ describe('list fingerprint: replay after a lost owner write', () => {
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b'])
     })
 
-    test('T51 a redo of a delete after a lost undo is refused and does not consume the item', () => {
+    test('T51 a redo of a delete after a lost undo moves past the step and lists its item', () => {
         const s = newSession({ alternateGreetings: ['a', 'a'], chats: { chatA: {} } })
         s.deleteGreeting(0, 0)
         const snap = snapshot(s)
         s.undo()
         lose(s, snap)
-        expect(s.redo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo()).toMatchObject({ ok: true, already: 'redo', writes: [] })
         expect(s.live.obj.alternateGreetings).toEqual(['a'])
-        expect(s.record.deleted).toEqual([])
+        expect(s.record.deleted).toHaveLength(1)
     })
 
     test('T57a a revert past a delete after an outside prepend is refused', () => {
@@ -1259,7 +1290,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         expect(s.live.obj.alternateGreetings).toEqual(['c', 'a', 'b'])
     })
 
-    test('T61 a redo of a revert after a lost undo is refused', () => {
+    test('T61 a redo of a revert after a lost undo moves past the step', () => {
         const s = newSession({ desc: 'd', alternateGreetings: ['a', 'b', 'a'] })
         s.typeDesc('e', 0)
         const anchor = s.record.done[0].id
@@ -1269,7 +1300,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b', 'a'])
         s.undo()
         listOnly(s, ['a', 'b', 'a'])
-        expect(s.redo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo()).toMatchObject({ ok: true, already: 'redo', writes: [] })
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b', 'a'])
     })
 
@@ -1529,7 +1560,7 @@ describe('list fingerprint: further replay rows', () => {
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'a'])
     })
 
-    test('T37 a redo of a restore point after a lost undo is refused', () => {
+    test('T37 a redo of a restore point after a lost undo moves past the step', () => {
         const s = newSession({ alternateGreetings: ['a', 'b', 'c'] })
         s.deleteGreeting(1, 0, null)
         s.restorePoint(new Set(), 5000)
@@ -1537,7 +1568,7 @@ describe('list fingerprint: further replay rows', () => {
         const snap = snapshot(s)
         s.undo()
         lose(s, snap)
-        expect(s.redo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo()).toMatchObject({ ok: true, already: 'redo', writes: [] })
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b', 'c'])
     })
 
@@ -1602,7 +1633,7 @@ describe('list fingerprint: further replay rows', () => {
         expect(s.record.deleted).toEqual([])
     })
 
-    test('T54 the undo of a revert whose write was lost is refused', () => {
+    test('T54 the undo of a revert whose write was lost moves past the step', () => {
         const s = newSession({ desc: 'd', alternateGreetings: ['a', 'a'] })
         s.typeDesc('e', 0)
         const anchor = s.record.done[0].id
@@ -1610,18 +1641,18 @@ describe('list fingerprint: further replay rows', () => {
         const snap = snapshot(s)
         s.revertTo(anchor, 10000)
         lose(s, snap)
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toMatchObject({ ok: true, already: 'undo', writes: [] })
         expect(s.live.obj.alternateGreetings).toEqual(['a'])
     })
 
-    test('T55b a redo of a restore point after a lost undo is refused', () => {
+    test('T55b a redo of a restore point after a lost undo moves past the step', () => {
         const s = newSession({ alternateGreetings: ['x', 'b'] })
         s.deleteGreeting(0, 0, null)
         s.restorePoint(new Set(), 5000)
         const snap = snapshot(s)
         s.undo()
         lose(s, snap)
-        expect(s.redo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo()).toMatchObject({ ok: true, already: 'redo', writes: [] })
         expect(s.live.obj.alternateGreetings).toEqual(['x', 'b'])
     })
 
@@ -1645,11 +1676,11 @@ describe('list fingerprint: further replay rows', () => {
         expect(s.live.obj.alternateGreetings).toEqual(['c', 'a', 'b'])
     })
 
-    test('T65e an outside re-creation of the list does not make the undo apply', () => {
+    test('T65e an outside re-creation of the list moves the step past without applying it', () => {
         const s = newSession({ alternateGreetings: ['a', 'a'] })
         s.deleteGreeting(0, 0, null)
         listOnly(s, ['a', 'a'])
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toMatchObject({ ok: true, already: 'undo', writes: [] })
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'a'])
     })
 
@@ -1731,7 +1762,7 @@ describe('T15a an old record replays as before the fingerprint', () => {
         s.counter = 4
         const note = (label: string, r: PlanResult) => {
             const top = s.record.undone.at(-1) ?? s.record.done.at(-1)
-            const moved = (top?.ops ?? []).map((op) => (op.op === 'chatFm' || op.op === 'set' ? op.op : `${op.op}${op.index}`)).join(',')
+            const moved = (top?.ops ?? []).map((op) => (op.op === 'chatFm' || op.op === 'set' ? op.op : `${op.op}${'index' in op ? op.index : ''}`)).join(',')
             return [
                 label,
                 r.ok,
@@ -2036,7 +2067,9 @@ describe('T60a / T60b generated histories against the real functions', () => {
             if (!hasListShape(top)) {
                 // A listSet-only or field step is still replayed per op: a drifted undo that applies redoes exactly.
                 const drifted = [...h.s.live.obj.alternateGreetings]
-                if (h.s.undo(70002).ok && h.s.redo(70003).ok) {
+                // An undo that found its result in place wrote nothing, so its redo applies the change itself.
+                const undone = h.s.undo(70002)
+                if (undone.ok && undone.already === undefined && h.s.redo(70003).ok) {
                     expect(h.s.live.obj.alternateGreetings).toEqual(drifted)
                 }
             }
@@ -2458,16 +2491,17 @@ describe('deleted-item lifecycle: reverts and their undo and redo', () => {
         expect(s.record.deleted.map((item) => item.id)).toEqual([id])
     })
 
-    test('T50 diagnostic: a lost undo of a revert leaves its item listed while the message is present', () => {
+    test('T50 diagnostic: a lost undo of a revert leaves its item listed; the redo moves past the step', () => {
         const { s, anchor, id } = deleteThenRevert(null)
         s.revertTo(anchor, 10000)
         const snap = snapshot(s)
         s.undo(15000)
         lose(s, snap)
         expect(s.record.deleted.map((item) => item.id)).toEqual([id])
-        expect(s.redo(20000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo(20000)).toMatchObject({ ok: true, already: 'redo', writes: [] })
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b', 'c'])
-        expect(s.record.deleted.map((item) => item.id)).toEqual([id])
+        // The revert put the item's text back, so the redo consumes the item again.
+        expect(s.record.deleted.map((item) => item.id)).toEqual([])
     })
 
     test('T67 a revert whose two sides are equal re-lists the item when undone', () => {
@@ -3716,4 +3750,1224 @@ describe('S2b generated: without outside edits nothing is skipped (T95)', () => 
         expect(nonZero).toEqual([])
         expect(checks).toBeGreaterThan(1000)
     }, 600_000)
+})
+
+// ---------------------------------------------------------------- asset ops, replay rules, revert chains
+
+interface AssetWorld {
+    additionalAssets: string[][]
+    emotionImages: string[][]
+    assets: string[][]
+    folder: unknown
+    texts: Record<string, string>
+}
+
+function splice(text: string, edit: { offset: number; from: string; to: string }): string {
+    return text.slice(0, edit.offset) + edit.to + text.slice(edit.offset + edit.from.length)
+}
+
+// A live owner that also holds asset rows, a folder document and registry texts, written the way an owner
+// write lands the plan's writes.
+function makeAssetLive(init: Partial<LiveObject> = {}, world: Partial<AssetWorld> = {}) {
+    const base = makeLive(init)
+    const assets: AssetWorld = { additionalAssets: [], emotionImages: [], assets: [], folder: undefined, texts: {}, ...world }
+    const reader: LiveReader = {
+        ...base.reader,
+        assetRows: (array) => assets[array],
+        folderValue: () => assets.folder,
+        text: (target) => assets.texts[target] ?? null,
+    }
+    function apply(writes: readonly WriteOp[]) {
+        base.apply(writes)
+        for (const write of writes) {
+            if (write.op === 'assetRowRemove') {
+                assets[write.array].splice(write.index, 1)
+            } else if (write.op === 'assetRowInsert') {
+                assets[write.array].splice(write.index, 0, [...write.tuple])
+            } else if (write.op === 'assetRowSet') {
+                assets[write.array][write.index] = [...write.after]
+            } else if (write.op === 'assetFolderSet' || write.op === 'assetFolderOrder') {
+                const op =
+                    write.op === 'assetFolderSet'
+                        ? ({ kind: 'assetFolderSet', name: write.name, before: write.before, after: write.after } as const)
+                        : ({ kind: 'assetFolderOrder', before: write.before, after: write.after } as const)
+                const result = applyFolderOps(assets.folder, [op])
+                if (result.ok) {
+                    assets.folder = result.doc ?? undefined
+                }
+            } else if (write.op === 'textSet') {
+                assets.texts[write.target] = write.value
+            }
+        }
+    }
+    const obj = base.obj
+    return { obj, reader, apply, assets }
+}
+
+let assetStepCounter = 0
+
+// Lands `ops` on the live owner and records them as one step, as an asset intent does: the writes are the whole
+// values `assetStepWrites` computes against the live owner, and the restore point learns all three text fields.
+function commitOps(s: Session, label: StepLabel, ops: Op[], at: number, replacesRestore = false) {
+    assetStepCounter += 1
+    const greetings = [...s.live.obj.alternateGreetings]
+    const textBefore = textBeforeOf((path) => s.live.reader.field(path))
+    const writes = assetStepWrites(ops, s.live.reader)
+    if (writes === null) {
+        throw new Error('the step does not apply to the live owner')
+    }
+    s.live.apply(writes)
+    s.state = commitStep(s.state, {
+        id: `a:${assetStepCounter}`,
+        at,
+        visitId: s.visit,
+        label,
+        ops,
+        restoreWrites: deriveRestoreWrites(ops, greetings, textBefore),
+        coalesceKey: null,
+        replacesRestore,
+    })
+}
+
+function planOf(plan: PlanResult): StepPlan {
+    if (plan.ok === false) {
+        throw new Error(`plan refused: ${plan.reason}`)
+    }
+    return plan
+}
+
+const T = (name: string, path: string): string[] => [name, path]
+
+const ASSET_LABELS: StepLabel[] = [
+    { kind: 'assetDelete', count: 2, name: null },
+    { kind: 'assetDelete', count: 1, name: 'a' },
+    { kind: 'assetRemoveExtras', count: 3, name: 'a' },
+    { kind: 'assetMerge', from: 'a', to: 'b' },
+    { kind: 'assetRename', from: 'a', to: 'b' },
+    { kind: 'assetMove', count: 2, folder: 'F' },
+    { kind: 'assetMove', count: 1, folder: null },
+    { kind: 'folderRename', from: 'F', to: 'G' },
+    { kind: 'folderDelete', name: 'F' },
+    { kind: 'assetAdd', count: 3 },
+    { kind: 'folderCreate', name: 'Poses' },
+    { kind: 'folderReorder' },
+]
+
+const ALL_ASSET_OPS: Op[] = [
+    { op: 'assetRowRemove', array: 'additionalAssets', index: 1, tuple: T('a', 'p'), count: 2 },
+    { op: 'assetRowInsert', array: 'emotionImages', index: 0, tuple: T('a', 'p'), count: 0 },
+    { op: 'assetRowSet', array: 'assets', index: 2, before: T('a', 'p'), after: T('b', 'p') },
+    { op: 'assetFolderSet', name: 'a', before: { had: false }, after: { had: true, value: 'F' } },
+    { op: 'assetFolderOrder', before: [], after: ['F'] },
+    { op: 'textEdit', target: 'lore/0/content', offset: 3, from: 'a.png', to: 'b.png' },
+]
+
+describe('asset ops: inverse, parse and copies', () => {
+    test('T92 invertOp of each asset op: shape and count as specified, and the double inverse is the op', () => {
+        const remove: Op = { op: 'assetRowRemove', array: 'additionalAssets', index: 1, tuple: T('a', 'p'), count: 2 }
+        const insert: Op = { op: 'assetRowInsert', array: 'additionalAssets', index: 1, tuple: T('a', 'p'), count: 0 }
+        expect(invertOp(remove)).toEqual({ op: 'assetRowInsert', array: 'additionalAssets', index: 1, tuple: T('a', 'p'), count: 1 })
+        expect(invertOp(insert)).toEqual({ op: 'assetRowRemove', array: 'additionalAssets', index: 1, tuple: T('a', 'p'), count: 1 })
+        expect(invertOp(ALL_ASSET_OPS[2])).toEqual({ op: 'assetRowSet', array: 'assets', index: 2, before: T('b', 'p'), after: T('a', 'p') })
+        expect(invertOp(ALL_ASSET_OPS[3])).toEqual({ op: 'assetFolderSet', name: 'a', before: { had: true, value: 'F' }, after: { had: false } })
+        expect(invertOp(ALL_ASSET_OPS[4])).toEqual({ op: 'assetFolderOrder', before: ['F'], after: [] })
+        expect(invertOp(ALL_ASSET_OPS[5])).toEqual({ op: 'textEdit', target: 'lore/0/content', offset: 3, from: 'b.png', to: 'a.png' })
+        for (const op of ALL_ASSET_OPS) {
+            expect(invertOp(invertOp(op))).toEqual(op)
+        }
+    })
+
+    test('T17a every asset label and op survives the strict reader on a character and a module; a chat refuses them', () => {
+        for (const key of [characterOwnerKey('c1'), moduleOwnerKey('m1')]) {
+            const record = {
+                ownerKey: key,
+                touchedAt: 1,
+                done: ASSET_LABELS.map((label, i) => ({ id: `s${i}`, at: i, label, ops: ALL_ASSET_OPS })),
+                undone: [],
+                deleted: [],
+                restore: null,
+            }
+            expect(parseOwnerRecord(JSON.parse(JSON.stringify(record)), key)).toEqual(record)
+        }
+        const chatKey = chatOwnerKey('c1', 'k1')
+        const asChat = { ownerKey: chatKey, touchedAt: 1, done: [], undone: [], deleted: [], restore: null }
+        const opChat = { ...asChat, done: [{ id: 's', at: 1, label: { kind: 'field', field: 'note' }, ops: [ALL_ASSET_OPS[0]] }] }
+        expect(parseOwnerRecord(JSON.parse(JSON.stringify(opChat)), chatKey)).toBeNull()
+    })
+
+    test('a module record refuses a field op, a list op, a fingerprint, a deleted item and a restore point', () => {
+        const key = moduleOwnerKey('m1')
+        const base = { ownerKey: key, touchedAt: 1, done: [], undone: [], deleted: [], restore: null }
+        const step = (extra: object) => ({ ...base, done: [{ id: 's', at: 1, label: ASSET_LABELS[0], ops: [], ...extra }] })
+        expect(parseOwnerRecord(step({}), key)).not.toBeNull()
+        const set: Op = { op: 'set', path: 'desc', before: { had: false }, after: { had: true, value: 'x' } }
+        const listInsert: Op = { op: 'listInsert', index: 0, value: 'x' }
+        expect(parseOwnerRecord(step({ ops: [set] }), key)).toBeNull()
+        expect(parseOwnerRecord(step({ ops: [listInsert] }), key)).toBeNull()
+        expect(parseOwnerRecord(step({ listFingerprint: { before: 1, after: 2 } }), key)).toBeNull()
+        const item: DeletedItem = { id: 'd', at: 1, index: 0, value: 'v', sideChat: null }
+        expect(parseOwnerRecord({ ...base, deleted: [item] }, key)).toBeNull()
+        expect(parseOwnerRecord({ ...base, restore: { visitId: 'v', at: 1, fields: {} } }, key)).not.toBeNull()
+        expect(parseOwnerRecord({ ...base, restore: { visitId: 'v', at: 1, fields: { desc: { before: { had: false }, last: { had: false } } } } }, key)).toBeNull()
+    })
+
+    test('the strict reader refuses a malformed asset op or text target', () => {
+        const key = moduleOwnerKey('m1')
+        const bad: object[] = [
+            { op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: 'a', count: 1 },
+            { op: 'assetRowRemove', array: 'nope', index: 0, tuple: ['a'], count: 1 },
+            { op: 'assetRowRemove', array: 'assets', index: 0, tuple: ['a'], count: -1 },
+            { op: 'assetRowSet', array: 'assets', index: 0, before: ['a'], after: [1] },
+            { op: 'assetFolderSet', name: 'a', before: { had: true, value: 3 }, after: { had: false } },
+            { op: 'assetFolderOrder', before: [], after: [1] },
+            { op: 'textEdit', target: 'a b', offset: 0, from: 'x', to: 'y' },
+            { op: 'textEdit', target: 'desc', offset: -1, from: 'x', to: 'y' },
+        ]
+        for (const op of bad) {
+            const record = { ownerKey: key, touchedAt: 1, done: [{ id: 's', at: 1, label: ASSET_LABELS[0], ops: [op] }], undone: [], deleted: [], restore: null }
+            expect(parseOwnerRecord(record, key)).toBeNull()
+        }
+    })
+
+    test('the strict reader refuses a malformed or unknown step label, including each added kind', () => {
+        const key = characterOwnerKey('c1')
+        const bad: object[] = [
+            { kind: 'assetAdd' },
+            { kind: 'assetAdd', count: -1 },
+            { kind: 'assetAdd', count: 1.5 },
+            { kind: 'assetAdd', count: '2' },
+            { kind: 'assetAdd', count: 2, name: 'x' },
+            { kind: 'folderCreate' },
+            { kind: 'folderCreate', name: 3 },
+            { kind: 'folderCreate', name: 'F', count: 1 },
+            { kind: 'folderReorder', name: 'F' },
+            { kind: 'folderReorder', count: 0 },
+            { kind: 'folderMystery' },
+        ]
+        for (const label of bad) {
+            const record = { ownerKey: key, touchedAt: 1, done: [{ id: 's', at: 1, label, ops: [] }], undone: [], deleted: [], restore: null }
+            expect(parseOwnerRecord(record, key)).toBeNull()
+        }
+    })
+
+    test('T78 an op and its inverse hold copies: mutating the live row afterwards changes no stored tuple', () => {
+        const live = makeAssetLive({ desc: 'd' }, { additionalAssets: [['a', 'p1'], ['b', 'p2']] })
+        const s = new Session(live)
+        s.typeDesc('e', 0)
+        const anchor = s.record.done[0].id
+        const rows = live.assets.additionalAssets
+        const op: Op = { op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: [...rows[0]], count: 1 }
+        commitOps(s, { kind: 'assetDelete', count: 1, name: 'a' }, [op], 5000)
+        const plan = planOf(s.revertTo(anchor, 10000))
+        const inserted = plan.ops.find((candidate) => candidate.op === 'assetRowInsert')
+        expect(inserted).toBeDefined()
+        live.assets.additionalAssets[0][0] = 'y'
+        expect(inserted && inserted.op === 'assetRowInsert' ? inserted.tuple : null).toEqual(['a', 'p1'])
+        expect(op.op === 'assetRowRemove' ? op.tuple : null).toEqual(['a', 'p1'])
+        // The inverse holds its own array, not the stored op's.
+        expect(inserted && inserted.op === 'assetRowInsert' ? inserted.tuple : null).not.toBe(op.op === 'assetRowRemove' ? op.tuple : undefined)
+        const write = plan.writes.find((candidate) => candidate.op === 'assetRowInsert')
+        expect(write && write.op === 'assetRowInsert' ? write.tuple : null).not.toBe(inserted && inserted.op === 'assetRowInsert' ? inserted.tuple : undefined)
+    })
+})
+
+describe('replay rules on asset ops (the atTarget table)', () => {
+    function rowStep(rows: string[][], op: Op, label: StepLabel = { kind: 'assetDelete', count: 1, name: null }) {
+        const live = makeAssetLive({}, { additionalAssets: rows })
+        const s = new Session(live)
+        commitOps(s, label, [op], 0)
+        return { s, live }
+    }
+    const t = T('a', 'p')
+
+    test('T68 identical tuples: an undo applies by count; a lost write is at target; any other count refuses', () => {
+        const remove: Op = { op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: t, count: 2 }
+        const applied = rowStep([[...t], [...t]], remove)
+        expect(planReplay(applied.s.record, 'undo', applied.live.reader)).toMatchObject({ ok: true, writes: [{ op: 'assetRowInsert', count: 1 }] })
+        const lost = rowStep([[...t], [...t]], remove)
+        lost.live.assets.additionalAssets.splice(0, 0, [...t])
+        expect(planReplay(lost.s.record, 'undo', lost.live.reader)).toMatchObject({ ok: true, already: 'undo', writes: [] })
+        const other = rowStep([[...t], [...t]], remove)
+        other.live.assets.additionalAssets.push([...t], [...t])
+        expect(planReplay(other.s.record, 'undo', other.live.reader)).toEqual({ ok: false, reason: 'precondition' })
+    })
+
+    test('T68 a shifted index and an unreadable array are never at target', () => {
+        const remove: Op = { op: 'assetRowRemove', array: 'additionalAssets', index: 5, tuple: t, count: 1 }
+        const live = makeAssetLive({}, { additionalAssets: [t] })
+        const s = new Session(live)
+        s.state = createModelState({
+            ...emptyRecord(characterOwnerKey('c1'), 0),
+            done: [{ id: 'x', at: 0, label: { kind: 'assetDelete', count: 1, name: null }, ops: [remove] }],
+        })
+        live.assets.additionalAssets.splice(0, live.assets.additionalAssets.length, ['z', 'q'])
+        expect(planReplay(s.record, 'undo', live.reader)).toEqual({ ok: false, reason: 'precondition' })
+        const noRows: LiveReader = { ...live.reader, assetRows: undefined }
+        expect(planReplay(s.record, 'undo', noRows)).toEqual({ ok: false, reason: 'precondition' })
+        const nullRows: LiveReader = { ...live.reader, assetRows: () => null }
+        expect(planReplay(s.record, 'undo', nullRows)).toEqual({ ok: false, reason: 'precondition' })
+    })
+
+    test('a row set, a folder set, a folder order and a text edit whose result is in place move without a write', () => {
+        const cases: { op: Op; lose: (live: ReturnType<typeof makeAssetLive>) => void; world: Partial<AssetWorld> }[] = [
+            {
+                op: { op: 'assetRowSet', array: 'additionalAssets', index: 0, before: T('a', 'p'), after: T('b', 'p') },
+                world: { additionalAssets: [T('a', 'p')] },
+                lose: (live) => {
+                    live.assets.additionalAssets[0] = T('a', 'p')
+                },
+            },
+            {
+                op: { op: 'assetFolderSet', name: 'x', before: { had: false }, after: { had: true, value: 'F' } },
+                world: {},
+                lose: (live) => {
+                    live.assets.folder = undefined
+                },
+            },
+            {
+                op: { op: 'assetFolderOrder', before: [], after: ['F'] },
+                world: {},
+                lose: (live) => {
+                    live.assets.folder = undefined
+                },
+            },
+            {
+                op: { op: 'textEdit', target: 'lore/0/content', offset: 0, from: 'ab', to: 'xy' },
+                world: { texts: { 'lore/0/content': 'ab cd' } },
+                lose: (live) => {
+                    live.assets.texts['lore/0/content'] = 'ab cd'
+                },
+            },
+        ]
+        for (const { op, lose: loseWrite, world } of cases) {
+            const live = makeAssetLive({}, world)
+            const s = new Session(live)
+            commitOps(s, ASSET_LABELS[3], [op], 0)
+            loseWrite(live)
+            expect(planReplay(s.record, 'undo', live.reader)).toMatchObject({ ok: true, already: 'undo', writes: [] })
+            // The step in place, redo: the write is applied from the undone state instead.
+        }
+    })
+
+    test('a folder op whose before no longer holds is refused, and an unreadable folder is never at target', () => {
+        const live = makeAssetLive({}, {})
+        const s = new Session(live)
+        const op: Op = { op: 'assetFolderSet', name: 'x', before: { had: false }, after: { had: true, value: 'F' } }
+        commitOps(s, ASSET_LABELS[5], [op], 0)
+        live.assets.folder = { v: 9 }
+        expect(planReplay(s.record, 'undo', live.reader)).toEqual({ ok: false, reason: 'precondition' })
+        live.assets.folder = { v: 1, additional: { order: [], of: [['x', 'G']] } }
+        expect(planReplay(s.record, 'undo', live.reader)).toEqual({ ok: false, reason: 'precondition' })
+    })
+
+    test('a text edit whose text moved on is refused and a step on side other applies no asset op', () => {
+        const live = makeAssetLive({}, { texts: { 'lore/0/content': 'ab cd' } })
+        const s = new Session(live)
+        commitOps(s, ASSET_LABELS[3], [{ op: 'textEdit', target: 'lore/0/content', offset: 0, from: 'ab', to: 'xy' }], 0)
+        live.assets.texts['lore/0/content'] = 'qq cd'
+        expect(planReplay(s.record, 'undo', live.reader)).toEqual({ ok: false, reason: 'precondition' })
+    })
+
+    test('T89 an asset-only step leaves the deleted list as it is through commit, undo and redo', () => {
+        const live = makeAssetLive(
+            { alternateGreetings: ['a', 'b'], pageChat: { fmIndex: 1 } },
+            { additionalAssets: [T('a', 'p1'), T('b', 'p2')], texts: { 'lore/0/content': 'hi' } },
+        )
+        const s = new Session(live)
+        s.deleteGreeting(0, 0, null)
+        const deleted = JSON.stringify(s.record.deleted)
+        expect(s.record.deleted).toHaveLength(1)
+        const ops: Op[] = [
+            { op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: T('a', 'p1'), count: 1 },
+            { op: 'assetRowInsert', array: 'additionalAssets', index: 1, tuple: T('c', 'p3'), count: 0 },
+            { op: 'assetRowSet', array: 'additionalAssets', index: 0, before: T('b', 'p2'), after: T('B', 'p2') },
+            { op: 'assetFolderSet', name: 'x', before: { had: false }, after: { had: true, value: 'F' } },
+            { op: 'textEdit', target: 'lore/0/content', offset: 0, from: 'hi', to: 'yo' },
+        ]
+        ops.forEach((op, i) => {
+            commitOps(s, ASSET_LABELS[i], [op], 5000 * (i + 1))
+            expect(JSON.stringify(s.record.deleted)).toBe(deleted)
+        })
+        for (let i = 0; i < ops.length; i++) {
+            expect(s.undo(100000 + i).ok).toBe(true)
+            expect(JSON.stringify(s.record.deleted)).toBe(deleted)
+        }
+        expect(live.assets.additionalAssets).toEqual([T('a', 'p1'), T('b', 'p2')])
+        for (let i = 0; i < ops.length; i++) {
+            expect(s.redo(200000 + i).ok).toBe(true)
+            expect(JSON.stringify(s.record.deleted)).toBe(deleted)
+        }
+    })
+
+    test('T90 a first-message delete followed by 51 asset delete steps stays listed and restorable', () => {
+        const live = makeAssetLive({ alternateGreetings: ['a', 'b'], pageChat: { fmIndex: 1 } }, { additionalAssets: [T('a', 'p1')] })
+        const s = new Session(live)
+        const id = s.deleteGreeting(0, 0, null)
+        for (let i = 0; i < 51; i++) {
+            const out = i % 2 === 0
+            const op: Op = out
+                ? { op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: T('a', 'p1'), count: 1 }
+                : { op: 'assetRowInsert', array: 'additionalAssets', index: 0, tuple: T('a', 'p1'), count: 0 }
+            commitOps(s, { kind: 'assetDelete', count: 1, name: 'a' }, [op], 5000 * (i + 1))
+        }
+        expect(s.record.deleted.map((item) => item.id)).toEqual([id])
+        expect(s.restoreDeleted(id, 999999).ok).toBe(true)
+        expect(live.obj.alternateGreetings).toEqual(['a', 'b'])
+    })
+})
+
+describe('replay rules on first messages and fields (R1, R1c, R2)', () => {
+    test('T60 a field already at its undo value moves past; the next undo restores the field below; two redos restore both', () => {
+        const s = newSession({ desc: 'a', hideChatIcon: false })
+        s.editField('hideChatIcon', present(true), 0)
+        s.typeDesc('b', 5000)
+        s.live.obj.desc = 'a'
+        expect(s.undo(10000)).toMatchObject({ ok: true, already: 'undo', writes: [] })
+        expect(s.undo(11000)).toMatchObject({ ok: true })
+        expect(s.live.obj.hideChatIcon).toBe(false)
+        expect(s.live.obj.desc).toBe('a')
+        expect(s.redo(12000).ok).toBe(true)
+        expect(s.redo(13000).ok).toBe(true)
+        expect(s.live.obj.hideChatIcon).toBe(true)
+        expect(s.live.obj.desc).toBe('b')
+    })
+
+    test('T60n an unverifiable insert is dropped: alone, with an op in place; with an op that applies it stays partial', () => {
+        const a = newSession({ alternateGreetings: ['a', 'a'], chats: { chatA: { fmIndex: 1 } } })
+        a.deleteGreeting(0, 0)
+        stripAll(a)
+        // The chat index is back where the undo would put it, so that op is in place too.
+        a.live.obj.chats.chatA.fmIndex = 1
+        const dropped = a.undo()
+        expect(dropped).toMatchObject({ ok: true, dropStep: true, writes: [], deletedRemove: [] })
+        expect(a.record.done).toHaveLength(0)
+        expect(a.record.undone).toHaveLength(0)
+        expect(a.record.deleted).toHaveLength(1)
+        expect(a.live.obj.alternateGreetings).toEqual(['a'])
+        const b = newSession({ alternateGreetings: ['a', 'a'], chats: { chatA: { fmIndex: 1 } } })
+        b.deleteGreeting(0, 0)
+        stripAll(b)
+        const partial = b.undo()
+        expect(partial).toMatchObject({ ok: true, skipped: 1 })
+        expect(partial.ok && partial.dropStep).toBeUndefined()
+        expect(b.live.obj.alternateGreetings).toEqual(['a'])
+    })
+
+    test('T60n the same insert on redo is refused and the stacks stay', () => {
+        const s = newSession({ alternateGreetings: ['g'] })
+        s.addGreeting('x', 0)
+        stripAll(s)
+        expect(s.undo().ok).toBe(true)
+        stripAll(s)
+        s.live.obj.alternateGreetings.push('x')
+        const record = s.record
+        expect(s.redo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.record).toBe(record)
+    })
+
+    test('T64r one op in place and one that applies: one write, one skipped, the moved step carries one op', () => {
+        const s = newSession({ desc: 'a', hideChatIcon: false })
+        s.state = commitStep(s.state, {
+            id: 'x:1',
+            at: 0,
+            visitId: 'v1',
+            label: { kind: 'field', field: 'desc' },
+            ops: [
+                { op: 'set', path: 'desc', before: present('a'), after: present('b') },
+                { op: 'set', path: 'hideChatIcon', before: present(false), after: present(true) },
+            ],
+            restoreWrites: [],
+            coalesceKey: null,
+            replacesRestore: false,
+        })
+        s.live.obj.desc = 'a'
+        s.live.obj.hideChatIcon = true
+        const plan = planOf(s.undo())
+        expect(plan.writes).toHaveLength(1)
+        expect(plan.skipped).toBe(1)
+        expect(s.record.undone[0].ops).toHaveLength(1)
+    })
+
+    test('T66 one op in place and one changed elsewhere refuses; an all-unreadable list refuses', () => {
+        const s = newSession({ desc: 'a', hideChatIcon: false })
+        s.state = commitStep(s.state, {
+            id: 'x:1',
+            at: 0,
+            visitId: 'v1',
+            label: { kind: 'field', field: 'desc' },
+            ops: [
+                { op: 'set', path: 'desc', before: present('a'), after: present('b') },
+                { op: 'set', path: 'hideChatIcon', before: present(false), after: present(true) },
+            ],
+            restoreWrites: [],
+            coalesceKey: null,
+            replacesRestore: false,
+        })
+        s.live.obj.desc = 'a'
+        delete s.live.obj.hideChatIcon
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        const t = newSession({ alternateGreetings: ['a', 'b'] })
+        t.addGreeting('c', 0)
+        stripAll(t)
+        const unreadable: LiveReader = { ...t.live.reader, greetings: () => null }
+        expect(planReplay(t.record, 'undo', unreadable)).toEqual({ ok: false, reason: 'precondition' })
+    })
+
+    test('T67 a revert whose ops are all in place is refused, not moved', () => {
+        const s = newSession({ desc: 'd' })
+        s.typeDesc('e', 0)
+        const anchor = s.record.done[0].id
+        s.typeDesc('f', 5000)
+        s.live.obj.desc = 'e'
+        expect(planRevert(s.record, anchor, s.live.reader)).toEqual({ ok: false, reason: 'precondition' })
+    })
+
+    test('an unreadable greeting list refuses a replay of a step with a list op or a greeting text edit, with or without a fingerprint', () => {
+        const live = makeAssetLive({ alternateGreetings: ['a', 'b'], chats: { chatA: { fmIndex: 1 } } })
+        const s = new Session(live)
+        s.deleteGreeting(0, 0)
+        const unreadable: LiveReader = { ...live.reader, greetings: () => null }
+        expect(planReplay(s.record, 'undo', unreadable)).toEqual({ ok: false, reason: 'precondition' })
+        stripAll(s)
+        expect(planReplay(s.record, 'undo', unreadable)).toEqual({ ok: false, reason: 'precondition' })
+        const merge = makeAssetLive({ desc: 'x logo.png', alternateGreetings: ['g', 'h logo.png'] })
+        const m = new Session(merge)
+        commitOps(m, ASSET_LABELS[3], [
+            { op: 'textEdit', target: 'alternateGreetings/1', offset: 2, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'desc', offset: 2, from: 'logo.png', to: 'kept.png' },
+        ], 0)
+        const noList: LiveReader = { ...merge.reader, greetings: () => null }
+        expect(planReplay(m.record, 'undo', noList)).toEqual({ ok: false, reason: 'precondition' })
+        expect(planReplay(m.record, 'undo', merge.reader)).toMatchObject({ ok: true })
+    })
+
+    test('a step on side other with an op that would still apply is refused whole', () => {
+        const s = newSession({ alternateGreetings: ['a', 'a'], chats: { chatA: { fmIndex: 1 } } })
+        s.deleteGreeting(0, 0)
+        const record = s.record
+        listOnly(s, ['a', 'a'])
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.record).toBe(record)
+    })
+
+    test('the carried fingerprint lets a redo after a moved undo apply', () => {
+        const s = newSession({ alternateGreetings: ['A', 'X'] })
+        const snap = snapshot(s)
+        s.addGreeting('X', 0)
+        lose(s, snap)
+        s.live.obj.alternateGreetings.splice(0, 2, 'A', 'X')
+        expect(s.undo()).toMatchObject({ ok: true, already: 'undo' })
+        expect(s.record.undone[0].listFingerprint).toBeDefined()
+        expect(s.redo().ok).toBe(true)
+        expect(s.live.obj.alternateGreetings).toEqual(['A', 'X', 'X'])
+    })
+})
+
+describe('restore point learns text edits', () => {
+    test('T79 a merge step committed without replacing the restore point is not reported as changed elsewhere', () => {
+        const live = makeAssetLive(
+            { desc: 'start', alternateGreetings: ['g0', 'g1', 'x logo.png'] },
+            { texts: { 'lore/0/content': 'l logo.png' } },
+        )
+        const s = new Session(live)
+        s.typeDesc('d logo.png', 0)
+        commitOps(s, ASSET_LABELS[3], [
+            { op: 'textEdit', target: 'lore/0/content', offset: 2, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'alternateGreetings/2', offset: 2, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'desc', offset: 2, from: 'logo.png', to: 'kept.png' },
+        ], 5000)
+        expect(live.obj.desc).toBe('d kept.png')
+        const restore = s.record.restore!
+        expect(listChangedElsewhere(restore, live.reader)).toEqual([])
+        const plan = planRestorePoint(restore, live.reader, new Set())
+        expect(plan.ok && plan.writes).toEqual(expect.arrayContaining([{ op: 'set', path: 'desc', value: present('start') }]))
+        expect('changedElsewhere' in plan ? plan.changedElsewhere : null).toEqual([])
+    })
+
+    test('deriveRestoreWrites folds several desc edits, splices a greeting entry and ignores other targets', () => {
+        const edit = (target: string, offset: number, from: string, to: string): Op => ({ op: 'textEdit', target, offset, from, to })
+        expect(deriveRestoreWrites([edit('desc', 0, 'ab', 'xy'), edit('desc', 3, 'cd', 'zz')], null, { desc: 'ab cd' })).toEqual([
+            { path: 'desc', before: present('ab cd'), after: present('xy zz') },
+        ])
+        expect(deriveRestoreWrites([edit('desc', 0, 'ab', 'xy')], null)).toEqual([])
+        expect(deriveRestoreWrites([edit('lore/0/content', 0, 'ab', 'xy')], ['g'], { desc: 'd' })).toEqual([])
+        expect(deriveRestoreWrites([edit('alternateGreetings/1', 1, 'b', 'Q')], ['a', 'cbd'])).toEqual([
+            { path: 'alternateGreetings', before: { list: ['a', 'cbd'] }, after: { list: ['a', 'cQd'] } },
+        ])
+    })
+})
+
+describe('revert across asset and text steps', () => {
+    function world() {
+        const live = makeAssetLive({ desc: 'd' }, { additionalAssets: [T('a', 'p1'), T('b', 'p2')] })
+        const s = new Session(live)
+        s.typeDesc('e', 0)
+        return { live, s, anchor: s.record.done[0].id }
+    }
+    const remove = (name: string, path: string): Op => ({ op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: T(name, path), count: 1 })
+
+    test('T96 a revert across two asset deletes stores both inserts, restores the rows, and its undo removes them', () => {
+        const { live, s, anchor } = world()
+        commitOps(s, ASSET_LABELS[1], [remove('a', 'p1')], 5000)
+        commitOps(s, ASSET_LABELS[1], [remove('b', 'p2')], 10000)
+        expect(live.assets.additionalAssets).toEqual([])
+        const plan = planOf(s.revertTo(anchor, 20000))
+        expect(plan.ops.filter((op) => op.op === 'assetRowInsert')).toHaveLength(2)
+        expect(live.assets.additionalAssets).toEqual([T('a', 'p1'), T('b', 'p2')])
+        expect(live.obj.desc).toBe('e')
+        expect(s.undo(30000).ok).toBe(true)
+        expect(live.assets.additionalAssets).toEqual([])
+        expect(live.obj.desc).toBe('e')
+    })
+
+    test('T98 a re-insert and a later delete of one row store no asset op; a desc edit alone is written', () => {
+        const { live, s, anchor } = world()
+        commitOps(s, ASSET_LABELS[1], [remove('a', 'p1')], 5000)
+        commitOps(s, ASSET_LABELS[1], [{ op: 'assetRowInsert', array: 'additionalAssets', index: 0, tuple: T('a', 'p1'), count: 0 }], 10000)
+        expect(planRevert(s.record, anchor, live.reader)).toEqual({ ok: false, reason: 'unchanged' })
+        const t = world()
+        commitOps(t.s, ASSET_LABELS[1], [remove('a', 'p1')], 5000)
+        commitOps(t.s, ASSET_LABELS[1], [{ op: 'assetRowInsert', array: 'additionalAssets', index: 0, tuple: T('a', 'p1'), count: 0 }], 10000)
+        t.s.typeDesc('f', 15000)
+        const net = planOf(planRevert(t.s.record, t.anchor, t.live.reader))
+        expect(net.ops.filter((op) => op.op.startsWith('asset'))).toEqual([])
+        expect(net.writes.filter((write) => write.op.startsWith('asset'))).toEqual([])
+        expect(net.writes).toEqual([{ op: 'set', path: 'desc', value: present('e') }])
+    })
+
+    test('a revert stores an assetRowRemove only across an insert, inserts across a delete and nothing across a re-insert', () => {
+        const kinds = (plan: StepPlan) => plan.ops.filter((op) => op.op.startsWith('assetRow')).map((op) => op.op)
+        const inserted = world()
+        commitOps(inserted.s, ASSET_LABELS[4], [{ op: 'assetRowInsert', array: 'additionalAssets', index: 2, tuple: T('c', 'p3'), count: 0 }], 5000)
+        expect(kinds(planOf(inserted.s.revertTo(inserted.anchor, 10000)))).toEqual(['assetRowRemove'])
+        const deleted = world()
+        commitOps(deleted.s, ASSET_LABELS[1], [remove('a', 'p1')], 5000)
+        expect(kinds(planOf(deleted.s.revertTo(deleted.anchor, 10000)))).toEqual(['assetRowInsert'])
+        const both = world()
+        commitOps(both.s, ASSET_LABELS[1], [remove('a', 'p1')], 5000)
+        commitOps(both.s, ASSET_LABELS[1], [{ op: 'assetRowInsert', array: 'additionalAssets', index: 0, tuple: T('a', 'p1'), count: 0 }], 10000)
+        both.s.typeDesc('f', 15000)
+        expect(kinds(planOf(both.s.revertTo(both.anchor, 20000)))).toEqual([])
+    })
+
+    test('T99 a merge across desc, a greeting and a lore entry reverts to one net set, one hunk and a stored lore chain', () => {
+        const live = makeAssetLive(
+            { desc: 'start', alternateGreetings: ['g0', 'g1', 'x logo.png'] },
+            { texts: { 'lore/0/content': 'l logo.png' } },
+        )
+        const s = new Session(live)
+        s.typeDesc('d logo.png', 0)
+        const anchor = s.record.done[0].id
+        commitOps(s, ASSET_LABELS[3], [
+            { op: 'textEdit', target: 'lore/0/content', offset: 2, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'alternateGreetings/2', offset: 2, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'desc', offset: 2, from: 'logo.png', to: 'kept.png' },
+        ], 5000)
+        const plan = planOf(s.revertTo(anchor, 10000))
+        expect(plan.ops.filter((op) => op.op === 'textEdit')).toEqual([
+            { op: 'textEdit', target: 'lore/0/content', offset: 2, from: 'kept.png', to: 'logo.png' },
+        ])
+        expect(plan.ops).toEqual(expect.arrayContaining([{ op: 'listSet', index: 2, before: 'x kept.png', after: 'x logo.png' }]))
+        expect(plan.ops.filter((op) => op.op === 'set').map((op) => (op.op === 'set' ? op.after : null))).toEqual([present('d logo.png')])
+        expect(live.obj.desc).toBe('d logo.png')
+        expect(live.assets.texts['lore/0/content']).toBe('l logo.png')
+        expect(s.undo(20000).ok).toBe(true)
+        expect(live.obj.desc).toBe('d kept.png')
+        expect(live.obj.alternateGreetings[2]).toBe('x kept.png')
+        expect(live.assets.texts['lore/0/content']).toBe('l kept.png')
+    })
+
+    test('a revert does not re-insert a row whose file is gone and names it; with nothing else applied it is unchanged', () => {
+        const { live, s, anchor } = world()
+        commitOps(s, ASSET_LABELS[1], [remove('a', 'p1')], 5000)
+        const gone = new Set(['p1'])
+        expect(planRevert(s.record, anchor, live.reader, undefined, undefined, gone)).toEqual({ ok: false, reason: 'unchanged', goneRows: ['p1'] })
+        // With another change in the revert, the revert lands it and names the row.
+        s.typeDesc('f', 9000)
+        expect(planRevert(s.record, anchor, live.reader, undefined, undefined, gone)).toMatchObject({ ok: true, goneRows: ['p1'], writes: [{ op: 'set' }] })
+        // A failure that is not a gone row refuses.
+        live.obj.desc = 'zzz'
+        expect(planRevert(s.record, anchor, live.reader, undefined, undefined, gone)).toEqual({ ok: false, reason: 'precondition' })
+    })
+})
+
+describe('a revert across a greeting text edit keeps the list hashes exact', () => {
+    test('the revert step fingerprint after a greeting text edit and an insert equals the hash of the list it leaves', () => {
+        const live = makeAssetLive({ desc: 'd', alternateGreetings: ['g0', 'h logo.png'] })
+        const s = new Session(live)
+        s.typeDesc('e', 0)
+        const anchor = s.record.done[0].id
+        s.addGreeting('z', 5000)
+        commitOps(s, ASSET_LABELS[3], [{ op: 'textEdit', target: 'alternateGreetings/1', offset: 2, from: 'logo.png', to: 'kept.png' }], 10000)
+        const plan = planOf(planRevert(s.record, anchor, live.reader))
+        expect(plan.afterListHash).toBe(listFingerprintOf(['g0', 'h logo.png']))
+        expect(plan.liveListHash).toBe(listFingerprintOf(['g0', 'h kept.png', 'z']))
+    })
+})
+
+// ---------------------------------------------------------------- replay: sides, gates, drops and revert chains
+
+// A delete step with no chat op: the list op alone.
+function deleteAlone(s: Session, index: number, at: number): string {
+    const value = s.live.obj.alternateGreetings[index]
+    const deletedId = `del${s.counter + 1}`
+    const ops: Op[] = [{ op: 'listRemove', index, value, deletedId }]
+    const greetings = [...s.live.obj.alternateGreetings]
+    s.live.obj.alternateGreetings.splice(index, 1)
+    s.counter += 1
+    s.state = commitStep(s.state, {
+        id: stepIdFor('page', s.counter),
+        at,
+        visitId: s.visit,
+        label: { kind: 'greetingRemove' },
+        ops,
+        restoreWrites: deriveRestoreWrites(ops, greetings),
+        coalesceKey: null,
+        replacesRestore: true,
+    })
+    return deletedId
+}
+
+// The deleted item leaves History's list: evicted, or taken by an earlier restore.
+function cutDeleted(s: Session, id: string) {
+    s.state = { record: { ...s.record, deleted: s.record.deleted.filter((item) => item.id !== id) }, open: null }
+}
+
+const unreadableReader = (live: { reader: LiveReader }): LiveReader => ({ ...live.reader, greetings: () => null })
+
+// A step as the old record reader gave it: the keys the model parsed before the fingerprint, by hand.
+function recordWith(done: Step[], undone: Step[] = [], deleted: DeletedItem[] = []): OwnerRecord {
+    return { ...emptyRecord(characterOwnerKey('c1'), 0), done, undone, deleted }
+}
+
+describe('replay past a step already in place: further rows', () => {
+    test('a fingerprinted delete whose owner write was lost moves past: nothing written, kept in undone with its fingerprint, its item no longer listed', () => {
+        const s = newSession({ alternateGreetings: ['x', 'y'], chats: { chatA: { fmIndex: 1 } } })
+        const snap = snapshot(s)
+        s.deleteGreeting(1, 0)
+        const fingerprint = s.record.done[0].listFingerprint
+        expect(fingerprint).toBeDefined()
+        lose(s, snap)
+        expect(s.undo()).toMatchObject({ ok: true, already: 'undo', writes: [] })
+        expect(s.record.done).toEqual([])
+        expect(s.record.undone).toHaveLength(1)
+        expect(s.record.undone[0].listFingerprint).toEqual(fingerprint)
+        expect(s.record.deleted).toEqual([])
+    })
+
+    function revertWithHunksAndRow() {
+        const live = makeAssetLive({ desc: 'd', alternateGreetings: ['a', 'b'] }, { additionalAssets: [T('x', 'p1')] })
+        const s = new Session(live)
+        s.typeDesc('e', 0)
+        const anchor = s.record.done[0].id
+        s.addGreeting('c', 5000)
+        commitOps(s, ASSET_LABELS[1], [{ op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: T('x', 'p1'), count: 1 }], 10000)
+        const before = { list: [...live.obj.alternateGreetings], rows: live.assets.additionalAssets.map((row) => [...row]) }
+        const plan = planOf(s.revertTo(anchor, 20000))
+        expect(plan.ops.some((op) => op.op === 'assetRowInsert')).toBe(true)
+        expect(plan.ops.some((op) => op.op === 'listRemove')).toBe(true)
+        return { s, live, before }
+    }
+
+    test('a revert with greeting hunks and an asset insert chain, owner write lost: Undo moves past it and keeps the fingerprint', () => {
+        const { s, live, before } = revertWithHunksAndRow()
+        live.obj.alternateGreetings.splice(0, live.obj.alternateGreetings.length, ...before.list)
+        live.assets.additionalAssets.splice(0, live.assets.additionalAssets.length, ...before.rows)
+        const fingerprint = s.record.done[s.record.done.length - 1].listFingerprint
+        expect(fingerprint).toBeDefined()
+        expect(s.undo(30000)).toMatchObject({ ok: true, already: 'undo', writes: [] })
+        expect(s.record.undone[s.record.undone.length - 1].listFingerprint).toEqual(fingerprint)
+    })
+
+    test('a step on side other with an asset op that would still apply is refused with an identical record', () => {
+        const { s, live, before } = revertWithHunksAndRow()
+        // The list write was lost but the row insert landed: the row op would still apply.
+        live.obj.alternateGreetings.splice(0, live.obj.alternateGreetings.length, ...before.list)
+        const record = s.record
+        expect(s.undo(30000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.record).toBe(record)
+        expect(live.assets.additionalAssets).toEqual([T('x', 'p1')])
+    })
+
+    test('a step on side neither is refused although its chat index was reset by hand', () => {
+        const s = newSession({ alternateGreetings: ['a', 'b'], chats: { chatA: { fmIndex: 1 } } })
+        s.deleteGreeting(0, 0)
+        listOnly(s, ['z'])
+        s.live.obj.chats.chatA.fmIndex = 1
+        const record = s.record
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.record).toBe(record)
+    })
+
+    function revertConsumerAndProducer() {
+        const s = newSession({ alternateGreetings: ['g', 'A', 'X'], chats: { chatA: { fmIndex: 1 } } })
+        const dA = s.deleteGreeting(1, 0)
+        s.restoreDeleted(dA, 5000)
+        const dX = s.deleteGreeting(2, 10000)
+        const anchor = s.record.done[0].id
+        const snap = snapshot(s)
+        const plan = planOf(s.revertTo(anchor, 20000))
+        lose(s, snap)
+        return { s, dA, dX, plan }
+    }
+
+    test('a revert that consumed one item and produced another, owner write lost, producer cut: Undo drops the step and lists the consumed item again', () => {
+        const { s, dA, dX } = revertConsumerAndProducer()
+        expect(s.record.deleted.map((item) => item.id)).toEqual([dA])
+        cutDeleted(s, dA)
+        const doneBefore = s.record.done.length
+        expect(s.undo(30000)).toMatchObject({ ok: true, dropStep: true, writes: [] })
+        expect(s.record.done).toHaveLength(doneBefore - 1)
+        expect(s.record.undone).toEqual([])
+        expect(s.record.deleted.map((item) => item.id)).toEqual([dX])
+        expect(s.record.deleted[0]).toMatchObject({ value: 'X', index: 2 })
+        expect(s.live.obj.alternateGreetings).toEqual(['g', 'A'])
+    })
+
+    test('a drop that lists an item again at the cap evicts the oldest entry and lists the item last', () => {
+        const { s, dA, dX } = revertConsumerAndProducer()
+        cutDeleted(s, dA)
+        const fillers: DeletedItem[] = Array.from({ length: MAX_DELETED }, (_, i) => ({ id: `f${i}`, at: i, index: 0, value: `fv${i}`, sideChat: null }))
+        s.state = { record: { ...s.record, deleted: fillers }, open: null }
+        expect(s.undo(30000)).toMatchObject({ ok: true, dropStep: true })
+        expect(s.record.deleted).toHaveLength(MAX_DELETED)
+        expect(s.record.deleted[0].id).toBe('f1')
+        expect(s.record.deleted[MAX_DELETED - 1].id).toBe(dX)
+    })
+
+    test('a revert that produced two items, owner write lost, one cut: Undo drops the step, releases the other item and keeps the list', () => {
+        const s = newSession({ desc: 'd', alternateGreetings: ['g', 'A', 'B'], chats: { chatA: { fmIndex: 1 } } })
+        s.typeDesc('e', 0)
+        const dB = s.deleteGreeting(2, 5000)
+        const dA = s.deleteGreeting(1, 10000)
+        s.restoreDeleted(dA, 15000)
+        s.restoreDeleted(dB, 20000)
+        expect(s.live.obj.alternateGreetings).toEqual(['g', 'A', 'B'])
+        const anchor = s.record.done[2].id
+        const snap = snapshot(s)
+        planOf(s.revertTo(anchor, 25000))
+        expect(s.live.obj.alternateGreetings).toEqual(['g'])
+        expect(s.record.deleted.map((item) => item.id).sort()).toEqual([dA, dB].sort())
+        lose(s, snap)
+        cutDeleted(s, dA)
+        expect(s.undo(30000)).toMatchObject({ ok: true, dropStep: true, writes: [] })
+        expect(s.record.deleted).toEqual([])
+        expect(s.live.obj.alternateGreetings).toEqual(['g', 'A', 'B'])
+    })
+
+    test('an unfingerprinted delete whose item a History restore consumed is dropped when the list reads again', () => {
+        const live = makeLive({ alternateGreetings: ['b', 'a'] })
+        const s = new Session(live)
+        s.state = createModelState(recordWith([{ id: 'x:1', at: 0, label: { kind: 'greetingRemove' }, ops: [{ op: 'listRemove', index: 0, value: 'a', deletedId: 'd1' }] }]))
+        expect(s.undo()).toMatchObject({ ok: true, dropStep: true, writes: [], deletedRemove: [] })
+        expect(s.record.done).toEqual([])
+        expect(s.record.undone).toEqual([])
+        expect(s.record.deleted).toEqual([])
+        expect(live.obj.alternateGreetings).toEqual(['b', 'a'])
+    })
+
+    test('an unfingerprinted delete with a chat op that applies stays a partial replay: the chat op moves, the list is left', () => {
+        const live = makeLive({ alternateGreetings: ['b', 'a'], chats: { chatA: { fmIndex: -1 } } })
+        const s = new Session(live)
+        const chatOp: Op = { op: 'chatFm', chatId: 'chatA', before: { had: true, value: 1 }, after: { had: true, value: -1 } }
+        s.state = createModelState(recordWith([{ id: 'x:1', at: 0, label: { kind: 'greetingRemove' }, ops: [{ op: 'listRemove', index: 0, value: 'a', deletedId: 'd1' }, chatOp] }]))
+        const plan = planOf(s.undo())
+        expect(plan.dropStep).toBeUndefined()
+        expect(plan).toMatchObject({ skipped: 1, deletedRemove: [] })
+        expect(plan.ops).toEqual([chatOp])
+        expect(live.obj.chats.chatA.fmIndex).toBe(1)
+        expect(live.obj.alternateGreetings).toEqual(['b', 'a'])
+    })
+
+    function twoDeletesAndReverts() {
+        const s = newSession({ alternateGreetings: ['g0', 'g1', 'g2'], chats: { chatA: { fmIndex: 1 } } })
+        s.addGreeting('g3', 0)
+        s.addGreeting('g4', 5000)
+        const d3 = s.deleteGreeting(4, 10000)
+        expect(d3).toBe('del3')
+        planOf(s.revertTo(s.record.done[0].id, 15000))
+        return { s, d3 }
+    }
+
+    test('Undo of a revert that produced an item leaves it unlisted and the list as it was', () => {
+        const { s, d3 } = twoDeletesAndReverts()
+        expect(s.record.deleted).toEqual([])
+        planOf(s.revertTo(s.record.done[2].id, 20000))
+        expect(s.record.deleted.map((item) => item.id)).toEqual([d3])
+        const list = [...s.live.obj.alternateGreetings]
+        const plan = planOf(s.undo(30000))
+        expect(plan).toMatchObject({ skipped: 0, deletedRemove: [d3] })
+        expect(s.record.deleted).toEqual([])
+        expect(s.live.obj.alternateGreetings).toEqual(list)
+        expect(s.live.obj.alternateGreetings).not.toContain('g4')
+    })
+
+    test('with the item evicted before the Undo it stays unlisted, then Redo lists it again', () => {
+        const { s, d3 } = twoDeletesAndReverts()
+        planOf(s.revertTo(s.record.done[2].id, 20000))
+        cutDeleted(s, d3)
+        const list = [...s.live.obj.alternateGreetings]
+        planOf(s.undo(30000))
+        expect(s.record.deleted).toEqual([])
+        expect(s.live.obj.alternateGreetings).toEqual(list)
+        planOf(s.redo(40000))
+        expect(s.record.deleted.map((item) => item.id)).toEqual([d3])
+    })
+
+    test('a moved Undo of a revert that re-listed an item releases it; Redo applies by the fingerprint and lists it again', () => {
+        const { s, d3 } = twoDeletesAndReverts()
+        s.addGreeting('g5', 20000)
+        const snap = snapshot(s)
+        planOf(s.revertTo(s.record.done[2].id, 25000))
+        expect(s.record.deleted.map((item) => item.id)).toEqual([d3])
+        lose(s, snap)
+        const list = [...s.live.obj.alternateGreetings]
+        expect(list).toEqual(['g0', 'g1', 'g2', 'g3', 'g5'])
+        expect(s.undo(30000)).toMatchObject({ ok: true, already: 'undo', writes: [], deletedRemove: [d3] })
+        expect(s.record.deleted).toEqual([])
+        expect(s.live.obj.alternateGreetings).toEqual(list)
+        expect(s.redo(40000)).toMatchObject({ ok: true })
+        expect(s.record.deleted.map((item) => item.id)).toEqual([d3])
+    })
+
+    test('a consumed delete plus a chat op that would still apply, on side other, is refused whole', () => {
+        const s = newSession({ alternateGreetings: ['a', 'b'], chats: { chatA: { fmIndex: 1 } } })
+        const id = s.deleteGreeting(0, 0)
+        listOnly(s, ['a', 'b'])
+        cutDeleted(s, id)
+        const record = s.record
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.record).toBe(record)
+        expect(s.live.obj.chats.chatA.fmIndex).toBe(-1)
+    })
+
+    test('a fingerprinted delete whose item left History, on side neither, is refused and nothing changes; with the list back it applies the plain insert', () => {
+        const s = newSession({ alternateGreetings: ['a', 'b'] })
+        const id = deleteAlone(s, 0, 0)
+        cutDeleted(s, id)
+        s.live.obj.alternateGreetings.unshift('z')
+        const record = s.record
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.record).toBe(record)
+        expect(s.record.deleted).toEqual([])
+        s.live.obj.alternateGreetings.shift()
+        expect(s.undo()).toMatchObject({ ok: true })
+        expect(s.live.obj.alternateGreetings).toEqual(['a', 'b'])
+    })
+
+    test('a fingerprinted delete whose item left History, with a chat op that would apply, on side neither is refused as well', () => {
+        const s = newSession({ alternateGreetings: ['a', 'b'], chats: { chatA: { fmIndex: 1 } } })
+        const id = s.deleteGreeting(0, 0)
+        cutDeleted(s, id)
+        s.live.obj.alternateGreetings.unshift('z')
+        const record = s.record
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.record).toBe(record)
+        expect(s.live.obj.chats.chatA.fmIndex).toBe(-1)
+    })
+
+    test('a fingerprinted delete whose item left History is refused while the list cannot be read', () => {
+        const s = newSession({ alternateGreetings: ['a', 'b'] })
+        cutDeleted(s, deleteAlone(s, 0, 0))
+        expect(planReplay(s.record, 'undo', unreadableReader(s.live))).toEqual({ ok: false, reason: 'precondition' })
+        expect(planReplay(s.record, 'undo', s.live.reader)).toMatchObject({ ok: true })
+    })
+
+    test('a fingerprinted consumed delete with a chat op that would apply is refused while the list cannot be read, instead of moving the chat op alone', () => {
+        const s = newSession({ alternateGreetings: ['a', 'b'], chats: { chatA: { fmIndex: 1 } } })
+        cutDeleted(s, s.deleteGreeting(0, 0))
+        expect(planReplay(s.record, 'undo', unreadableReader(s.live))).toEqual({ ok: false, reason: 'precondition' })
+    })
+
+    test('an unfingerprinted delete whose item left History is refused, not dropped, while the list cannot be read', () => {
+        const s = newSession({ alternateGreetings: ['a', 'b'] })
+        cutDeleted(s, deleteAlone(s, 0, 0))
+        stripAll(s)
+        expect(planReplay(s.record, 'undo', unreadableReader(s.live))).toEqual({ ok: false, reason: 'precondition' })
+        expect(planReplay(s.record, 'undo', s.live.reader)).toMatchObject({ ok: true, dropStep: true })
+    })
+
+    test('an unfingerprinted delete with a chat op that would apply is refused while the list cannot be read', () => {
+        const s = newSession({ alternateGreetings: ['a', 'b'], chats: { chatA: { fmIndex: 1 } } })
+        cutDeleted(s, s.deleteGreeting(0, 0))
+        stripAll(s)
+        expect(planReplay(s.record, 'undo', unreadableReader(s.live))).toEqual({ ok: false, reason: 'precondition' })
+    })
+
+    test('a merge step with a greeting text edit and a desc text edit is refused whole while the list cannot be read, and its stacks stay', () => {
+        const live = makeAssetLive({ desc: 'x logo.png', alternateGreetings: ['g', 'h logo.png'] })
+        const s = new Session(live)
+        commitOps(s, ASSET_LABELS[3], [
+            { op: 'textEdit', target: 'alternateGreetings/1', offset: 2, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'desc', offset: 2, from: 'logo.png', to: 'kept.png' },
+        ], 0)
+        const json = JSON.stringify(s.record)
+        expect(planReplay(s.record, 'undo', unreadableReader(live))).toEqual({ ok: false, reason: 'precondition' })
+        expect(JSON.stringify(s.record)).toBe(json)
+        expect(live.obj.desc).toBe('x kept.png')
+        expect(live.obj.alternateGreetings[1]).toBe('h kept.png')
+    })
+
+    test('a redo of a fingerprinted delete with a chat op is refused while the list cannot be read', () => {
+        const s = newSession({ alternateGreetings: ['a', 'b'], chats: { chatA: { fmIndex: 1 } } })
+        s.deleteGreeting(0, 0)
+        expect(s.undo().ok).toBe(true)
+        expect(planReplay(s.record, 'redo', unreadableReader(s.live))).toEqual({ ok: false, reason: 'precondition' })
+        expect(planReplay(s.record, 'redo', s.live.reader)).toMatchObject({ ok: true })
+    })
+
+    test('the History-restore shape drops the delete step: no write, the step in neither stack, History\'s list unchanged', () => {
+        const s = newSession({ alternateGreetings: ['a', 'b'], chats: { chatA: { fmIndex: 1 } } })
+        const id = s.deleteGreeting(0, 0)
+        s.restoreDeleted(id, 5000)
+        s.undo(6000)
+        s.restoreDeleted(id, 7000)
+        const deleteStepOnly = createModelState({ ...s.record, done: s.record.done.slice(0, 1), undone: [] })
+        const plan = planOf(planReplay(deleteStepOnly.record, 'undo', s.live.reader))
+        expect(plan).toMatchObject({ dropStep: true, writes: [], deletedRemove: [] })
+        const next = applyReplayMove(deleteStepOnly, 'undo', plan, 9000, 'v1')
+        expect(next.record.done).toEqual([])
+        expect(next.record.undone).toEqual([])
+        expect(next.record.deleted).toEqual(deleteStepOnly.record.deleted)
+    })
+
+    test('a revert across a desc edit, two interacting asset deletes and a greeting delete stores the net set, the hunks and the chain in applied order; Undo restores each', () => {
+        const live = makeAssetLive({ desc: 'd', alternateGreetings: ['g0', 'g1'], chats: { chatA: { fmIndex: 1 } } }, { additionalAssets: [T('a', 'p1'), T('b', 'p2')] })
+        const s = new Session(live)
+        s.editField('hideChatIcon', present(true), 0)
+        const anchor = s.record.done[0].id
+        s.typeDesc('e', 5000)
+        commitOps(s, ASSET_LABELS[1], [{ op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: T('a', 'p1'), count: 1 }], 10000)
+        commitOps(s, ASSET_LABELS[1], [{ op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: T('b', 'p2'), count: 1 }], 15000)
+        s.deleteGreeting(0, 20000)
+        const plan = planOf(s.revertTo(anchor, 30000))
+        expect(plan.ops.filter((op) => op.op === 'assetRowInsert')).toEqual([
+            { op: 'assetRowInsert', array: 'additionalAssets', index: 0, tuple: T('b', 'p2'), count: 0 },
+            { op: 'assetRowInsert', array: 'additionalAssets', index: 0, tuple: T('a', 'p1'), count: 0 },
+        ])
+        expect(plan.ops.filter((op) => op.op === 'set').map((op) => (op.op === 'set' ? op.after : null))).toEqual([present('d')])
+        expect(plan.ops.some((op) => op.op === 'listInsert')).toBe(true)
+        expect(live.assets.additionalAssets).toEqual([T('a', 'p1'), T('b', 'p2')])
+        expect(live.obj.desc).toBe('d')
+        expect(live.obj.alternateGreetings).toEqual(['g0', 'g1'])
+        expect(retainedPathsOf(new Set(s.record.done))).toEqual(['p1', 'p2'])
+        expect(s.undo(40000).ok).toBe(true)
+        expect(live.assets.additionalAssets).toEqual([])
+        expect(live.obj.desc).toBe('e')
+        expect(live.obj.alternateGreetings).toEqual(['g1'])
+    })
+
+    test('after a stop the greeting text edit of an older merge is skipped and counted, and its desc text edit still reverts', () => {
+        const live = makeAssetLive({ desc: 'start', alternateGreetings: ['g0', 'x logo.png'] })
+        const s = new Session(live)
+        s.typeDesc('d logo.png', 0)
+        const anchor = s.record.done[0].id
+        commitOps(s, ASSET_LABELS[3], [
+            { op: 'textEdit', target: 'alternateGreetings/1', offset: 2, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'desc', offset: 2, from: 'logo.png', to: 'kept.png' },
+        ], 5000)
+        s.addGreeting('z', 10000)
+        // An outside append puts the list on neither side of the add, and leaves the merge's greeting text where it was.
+        live.obj.alternateGreetings.push('o')
+        const plan = planOf(s.revertTo(anchor, 20000))
+        expect(plan.listSkipped).toBe(2)
+        expect(plan.writes.some((write) => write.op === 'listSet' || write.op === 'textSet')).toBe(false)
+        expect(live.obj.alternateGreetings).toEqual(['g0', 'x kept.png', 'z', 'o'])
+        expect(live.obj.desc).toBe('d logo.png')
+    })
+
+    test('a typed desc step older than the merge applies on the text the merge undo left', () => {
+        const live = makeAssetLive({ desc: 'start', hideChatIcon: false })
+        const s = new Session(live)
+        s.editField('hideChatIcon', present(true), 0)
+        const anchor = s.record.done[0].id
+        s.typeDesc('d logo.png', 5000)
+        commitOps(s, ASSET_LABELS[3], [{ op: 'textEdit', target: 'desc', offset: 2, from: 'logo.png', to: 'kept.png' }], 10000)
+        const plan = planOf(s.revertTo(anchor, 20000))
+        expect(live.obj.desc).toBe('start')
+        expect(plan.ops.filter((op) => op.op === 'set' && op.path === 'desc')).toEqual([
+            { op: 'set', path: 'desc', before: present('d kept.png'), after: present('start') },
+        ])
+        expect(plan.skipped).toBe(0)
+    })
+
+    test('a full merge undo lets an older first-message delete apply; an outside edit of the rewritten text first refuses it and the stacks stay', () => {
+        const world = () => {
+            const live = makeAssetLive({ desc: 'x logo.png', alternateGreetings: ['g0', 'x logo.png'], chats: { chatA: { fmIndex: 1 } } })
+            const s = new Session(live)
+            s.deleteGreeting(0, 0)
+            commitOps(s, ASSET_LABELS[3], [
+                { op: 'textEdit', target: 'alternateGreetings/0', offset: 2, from: 'logo.png', to: 'kept.png' },
+                { op: 'textEdit', target: 'desc', offset: 2, from: 'logo.png', to: 'kept.png' },
+            ], 5000)
+            return { live, s }
+        }
+        const a = world()
+        expect(a.s.undo(10000).ok).toBe(true)
+        expect(a.live.obj.alternateGreetings).toEqual(['x logo.png'])
+        expect(a.s.undo(15000).ok).toBe(true)
+        expect(a.live.obj.alternateGreetings).toEqual(['g0', 'x logo.png'])
+        const b = world()
+        b.live.obj.alternateGreetings[0] = 'x outside'
+        const merge = planOf(b.s.undo(10000))
+        expect(merge.skipped).toBe(1)
+        const record = b.s.record
+        expect(b.s.undo(15000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(b.s.record).toBe(record)
+        expect(b.live.obj.alternateGreetings).toEqual(['x outside'])
+    })
+})
+
+describe('folder steps: size and delegation to the folder codec', () => {
+    const toOp = (op: FolderOp): Op =>
+        op.kind === 'assetFolderSet'
+            ? { op: 'assetFolderSet', name: op.name, before: op.before, after: op.after }
+            : { op: 'assetFolderOrder', before: op.before, after: op.after }
+    const toFolderOp = (op: Op | WriteOp): FolderOp => {
+        if (op.op === 'assetFolderSet') {
+            return { kind: 'assetFolderSet', name: op.name, before: op.before, after: op.after }
+        }
+        if (op.op === 'assetFolderOrder') {
+            return { kind: 'assetFolderOrder', before: op.before, after: op.after }
+        }
+        throw new Error(`not a folder op: ${op.op}`)
+    }
+    const stepOf = (ops: FolderOp[]): Step => ({ id: 'p:1', at: 1, label: { kind: 'folderDelete', name: 'F' }, ops: ops.map(toOp) })
+    const okOps = (result: FolderWriteResult): FolderOp[] => {
+        if (result.ok === false) {
+            throw new Error(`refused: ${result.reason}`)
+        }
+        return result.ops
+    }
+
+    function foldered(count: number) {
+        const folders = Array.from({ length: 10 }, (_, i) => `Folder${i}`)
+        const names = Array.from({ length: count }, (_, i) => `image${i}`)
+        const doc = { v: 1, additional: { order: folders, of: names.map((name, i) => [name, folders[i % 10]]) } }
+        return { names, doc }
+    }
+
+    const ownerKey = characterOwnerKey('c1')
+    const chars = (ops: FolderOp[]) => serializeEntry('s', ownerKey, stepOf(ops)).length
+
+    test('a folder step is stored at a size linear in the names it names, and a 300-name delete fits the owner cap with room', () => {
+        const drop = (count: number) => {
+            const { names, doc } = foldered(count)
+            return okOps(dropFolderEntries(doc, names.map((name) => ({ name, rowsLeft: 0 }))))
+        }
+        const move = (count: number) => {
+            const { names, doc } = foldered(count)
+            return okOps(moveManyToFolder(doc, names, 'Folder0'))
+        }
+        expect(chars(drop(2000)) / chars(drop(1000))).toBeLessThanOrEqual(2.2)
+        expect(chars(move(2000)) / chars(move(1000))).toBeLessThanOrEqual(2.2)
+        const small = chars(drop(300))
+        expect(entrySize(small, 'p:1'.length, ownerKey.length)).toBeLessThan(OWNER_CAP_BYTES / 8)
+    })
+
+    const doc = (order: string[], of: [string, string][]) => ({ v: 1, additional: { order, of } })
+    const docI = doc(['F'], [['IMAGE1', 'F'], ['image1', 'F']])
+    const docII = doc(['F', 'G'], [['IMAGE1', 'F'], ['image1', 'G']])
+    const docV = doc(['F'], [['Grin', 'F']])
+    const docVI = doc(['F', 'G'], [['Grin', 'F'], ['GRIN', 'G']])
+    const arms: [string, unknown, FolderOp[]][] = [
+        ['delete F over fold-alike entries', docI, okOps(deleteFolder(docI, 'F'))],
+        ['delete G only reorders', docII, okOps(deleteFolder(docII, 'G'))],
+        ['delete F drops the first fold-alike entry', docII, okOps(deleteFolder(docII, 'F'))],
+        ['rename F to F2', docII, okOps(renameFolder(docII, 'F', 'F2'))],
+        ['move one fold-alike row', docII, okOps(moveToFolder(docII, 'image1', 'G'))],
+        ['drop two names that fold alike', docV, okOps(dropFolderEntries(docV, [{ name: 'Grin', rowsLeft: 0 }, { name: 'GRIN', rowsLeft: 0 }]))],
+        ['carry a folder on rename and drop the old name', docVI, okOps(carryFolderOnRename(docVI, 'grin', 'smile', 0))],
+        ['move three names, two of which fold alike', docVI, okOps(moveManyToFolder(docVI, ['Grin', 'GRIN', 'smile'], 'G'))],
+    ]
+
+    test.each(arms)('%s: a replay applies the step as the codec does, its inverse restores a read-equal value, and invertOp is invertFolderOp', (_name, stored, ops) => {
+        expect(ops.length).toBeGreaterThan(0)
+        const after = applyFolderOps(stored, ops)
+        if (!after.ok) {
+            throw new Error('the codec ops do not apply to their own document')
+        }
+        const afterDoc = after.doc ?? undefined
+        const step = stepOf(ops)
+        const readerFor = (folder: unknown): LiveReader => ({ ...makeLive().reader, folderValue: () => folder })
+        const writesOf = (plan: PlanResult): FolderOp[] => {
+            if (plan.ok === false) {
+                throw new Error(`refused: ${plan.reason}`)
+            }
+            expect(plan.writes.every((write) => write.op.startsWith('assetFolder'))).toBe(true)
+            return plan.writes.map(toFolderOp)
+        }
+        // Redo is the forward application: the same document as applyFolderOps gives.
+        const redo = writesOf(planReplay(recordWith([], [step]), 'redo', readerFor(stored)))
+        const forward = applyFolderOps(stored, redo)
+        expect(forward).toEqual(after)
+        // Undo applies the inverses in reverse: a read-equal value comes back.
+        const undo = writesOf(planReplay(recordWith([step]), 'undo', readerFor(afterDoc)))
+        const back = applyFolderOps(afterDoc, undo)
+        if (!back.ok) {
+            throw new Error('the inverse ops do not apply')
+        }
+        expect(readFolderDoc(back.doc ?? undefined)).toEqual(readFolderDoc(stored))
+        for (const op of ops) {
+            expect(invertOp(toOp(op))).toEqual(toOp(invertFolderOp(op)))
+            expect(invertOp(invertOp(toOp(op)))).toEqual(toOp(op))
+        }
+    })
+})
+
+describe('apply the replay move', () => {
+    test('a dropped step leaves its list and nothing else; the deleted list follows the kept ops', () => {
+        const s = newSession({ alternateGreetings: ['a', 'b'], pageChat: { fmIndex: 1 } })
+        const id = s.deleteGreeting(0, 0, null)
+        s.restoreDeleted(id, 5000)
+        const withoutTop = { ...s.record, done: s.record.done.slice(0, 1), undone: [] }
+        const plan = planOf(planReplay(withoutTop, 'undo', s.live.reader))
+        const next = applyReplayMove(createModelState(withoutTop), 'undo', plan, 9000, 'v1')
+        expect(next.record.done).toEqual([])
+        expect(next.record.undone).toEqual([])
+        expect(next.record.deleted).toEqual(withoutTop.deleted)
+    })
+})
+
+describe('the asset paths a replay may put a row over', () => {
+    const row = (path: string): string[] => ['n', path, 'png']
+    const stepWith = (id: string, ...ops: Op[]): Step => ({ id, at: 0, label: { kind: 'assetDelete', count: 1, name: null }, ops })
+    const removeOp = (path: string): Op => ({ op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: row(path), count: 1 })
+    const insertOp = (path: string): Op => ({ op: 'assetRowInsert', array: 'additionalAssets', index: 0, tuple: row(path), count: 0 })
+    const setOp = (before: string, after: string): Op => ({ op: 'assetRowSet', array: 'additionalAssets', index: 0, before: row(before), after: row(after) })
+
+    test('an undo puts back what the step removed, a redo what it inserted; the other half is not a path to ask', () => {
+        const step = stepWith('s', removeOp('assets/b.png'), insertOp('assets/a.png'))
+        expect(assetPathsReplayMayInsert([step], 'undo')).toEqual(['assets/b.png'])
+        expect(assetPathsReplayMayInsert([step], 'redo')).toEqual(['assets/a.png'])
+    })
+
+    test('a re-point asks only its new path, and a rename in place asks none', () => {
+        const repoint = stepWith('s', setOp('assets/old.png', 'assets/new.png'))
+        expect(assetPathsReplayMayInsert([repoint], 'redo')).toEqual(['assets/new.png'])
+        expect(assetPathsReplayMayInsert([repoint], 'undo')).toEqual(['assets/old.png'])
+        expect(assetPathsReplayMayInsert([stepWith('s', setOp('assets/same.png', 'assets/same.png'))], 'undo')).toEqual([])
+    })
+
+    test('the paths of several steps are sorted and unique, and text and folder ops name none', () => {
+        const steps = [
+            stepWith('a', removeOp('assets/z.png'), { op: 'textEdit', target: 'desc', offset: 0, from: '', to: 'x' }),
+            stepWith('b', removeOp('assets/m.png'), removeOp('assets/z.png'), { op: 'assetFolderOrder', before: [], after: ['f'] }),
+        ]
+        expect(assetPathsReplayMayInsert(steps, 'undo')).toEqual(['assets/m.png', 'assets/z.png'])
+        expect(assetPathsReplayMayInsert([], 'undo')).toEqual([])
+    })
+
+    test('a path not under assets/ is not a path to ask, whether inserted or re-pointed', () => {
+        const mixed = stepWith('s', removeOp('assets/b.png'), removeOp('https://example.invalid/a.png'), removeOp('x/assets/a.png'), setOp('assets/old.png', 'blob:synthetic'))
+        expect(assetPathsReplayMayInsert([mixed], 'undo')).toEqual(['assets/b.png', 'assets/old.png'])
+        expect(assetPathsReplayMayInsert([stepWith('s', setOp('assets/old.png', 'https://example.invalid/b.png'))], 'redo')).toEqual([])
+    })
+
+    test('only a path that starts with assets/ is a stored file', () => {
+        expect(isStoredAssetPath('assets/a.png')).toBe(true)
+        expect(isStoredAssetPath('x/assets/a.png')).toBe(false)
+        expect(isStoredAssetPath('https://example.invalid/a.png')).toBe(false)
+        expect(isStoredAssetPath('')).toBe(false)
+    })
 })
