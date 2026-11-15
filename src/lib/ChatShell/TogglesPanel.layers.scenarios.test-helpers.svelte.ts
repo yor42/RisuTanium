@@ -12,6 +12,7 @@
  */
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach,beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import { COLD_TRANSFORM_HOOK_MS } from '../../ts/tests/coldTransform.test-helpers'
 import { dispatchBack, resetBackHandlersForTests } from '../../ts/backHandlers'
 import ChatShell from './ChatShell.svelte'
 import { DBState, selIdState } from '../../ts/stores.svelte'
@@ -68,7 +69,7 @@ export function registerTogglesPanelOpenAtSuite(plus: PlusHandle): void {
     // The shell loads its parts lazily; the first transform of all of them is slow, so it happens before any test clock starts.
     beforeAll(async () => {
         await Promise.all([import('./ShellHeader.svelte'), import('./PersonaSheet.svelte'), import('./ChatDeleteConfirm.svelte'), import('./ThisChatSheet.svelte'), import('./TogglesPanel.svelte')])
-    }, 120000)
+    }, COLD_TRANSFORM_HOOK_MS)
 
     describe('the panel opened at a row (R1)', () => {
         beforeEach(() => {

@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { beforeAll, describe, expect, test, vi } from 'vitest'
+import { COLD_TRANSFORM_HOOK_MS } from '../tests/coldTransform.test-helpers'
 import { renderOpenParagraphSource, toSafeHtml } from './streamingSafe'
 
 const law = vi.hoisted(() => ({ applies: false }))
@@ -35,9 +36,10 @@ vi.mock('src/ts/process/files/inlays', () => ({ getInlayRender: vi.fn(async () =
 
 let parser: typeof import('../parser/parser.svelte')
 
+// The parser's graph is slow to transform cold; this hook pays that before any test starts.
 beforeAll(async () => {
     parser = await import('../parser/parser.svelte')
-})
+}, COLD_TRANSFORM_HOOK_MS)
 
 describe('T12 / MC-239 streaming sanitizer', () => {
     test('partial image tag is cut and a completed event handler is stripped by real DOMPurify', () => {

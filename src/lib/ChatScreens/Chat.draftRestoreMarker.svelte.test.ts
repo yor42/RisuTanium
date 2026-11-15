@@ -592,7 +592,9 @@ describe('Chat.svelte translation editor: two overlapping failing saves must not
             const save = findButtonByText(target, language.editTranslationSave)
             save.click()
             save.click()
-            await new Promise((r) => setTimeout(r, 40))
+            // The saves are chained, so the second rejection lands only after the first has; wait for both alerts
+            // rather than for a fixed time a busy event loop can outrun.
+            await vi.waitFor(() => expect(vi.mocked(alertError)).toHaveBeenCalledTimes(2), { timeout: 5000 })
             flushSync()
         })
         expect(vi.mocked(alertError)).toHaveBeenCalledTimes(2)

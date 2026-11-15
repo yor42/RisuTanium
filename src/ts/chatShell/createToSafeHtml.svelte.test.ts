@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
+import { COLD_TRANSFORM_HOOK_MS } from '../tests/coldTransform.test-helpers'
 
 const law = vi.hoisted(() => ({ applies: false }))
 const mutant = vi.hoisted(() => ({ identitySanitize: false, dropWatermark: false, throwDisplay: false }))
@@ -59,7 +60,8 @@ vi.mock('../process/scripts', () => ({
 import { createToSafeHtml } from './streamingSafe'
 
 let parser: typeof import('../parser/parser.svelte')
-beforeAll(async () => { parser = await import('../parser/parser.svelte') })
+// The parser's graph is slow to transform cold; both hooks below may pay that before any test starts.
+beforeAll(async () => { parser = await import('../parser/parser.svelte') }, COLD_TRANSFORM_HOOK_MS)
 afterEach(() => {
     law.applies = false
     mutant.identitySanitize = false
@@ -73,7 +75,7 @@ const hostile = '<img src=x onerror="alert(1)"> hi'
 
 // The guard the production wiring must satisfy: handlers stripped and, when the law applies, the metadata present.
 let reference: typeof import('../parser/parser.svelte')
-beforeAll(async () => { reference = await vi.importActual<typeof import('../parser/parser.svelte')>('../parser/parser.svelte') })
+beforeAll(async () => { reference = await vi.importActual<typeof import('../parser/parser.svelte')>('../parser/parser.svelte') }, COLD_TRANSFORM_HOOK_MS)
 
 async function assertWiring(html: string): Promise<void> {
     const element = document.createElement('div')
