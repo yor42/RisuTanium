@@ -124,9 +124,10 @@ export function jumpReach(align: JumpAlign, clientHeight: number, topInset: numb
     return { above: Math.max(0, line), below: Math.max(0, clientHeight - line) }
 }
 
-// How far above the end the rows must be settled for a glide: the cut viewport, the glide span and the half viewport the engine settles around the visible area, with room to spare.
+// How far above the end the rows must be settled for a glide: the glide span, the landing viewport and the half viewport the engine settles around the visible
+// area are all laid out before the cut. Less lets the cut and the glide run over estimates that resolve mid-glide.
 export function travelReach(viewport: number): number {
-    return (CUT_SCREENS + 2) * viewport
+    return (CUT_SCREENS + 1.5) * viewport
 }
 
 // A jump of more than this many messages leaves a return chip behind.
