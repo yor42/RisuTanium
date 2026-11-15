@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import { flushSync, mount, unmount } from 'svelte'
+import { COLD_TRANSFORM_HOOK_MS } from '../../ts/tests/coldTransform.test-helpers'
 import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 
 const control = vi.hoisted(() => ({
@@ -208,7 +209,7 @@ describe('StreamingView yields to the event loop', () => {
 
 describe('StreamingView yields keep the output identical (MC-239)', () => {
     let reference: typeof import('../../ts/parser/parser.svelte')
-    beforeAll(async () => { reference = await import('../../ts/parser/parser.svelte') })
+    beforeAll(async () => { reference = await import('../../ts/parser/parser.svelte') }, COLD_TRANSFORM_HOOK_MS)
 
     const text = 'Safe one.\n\n<img src=x onerror="alert(1)"> second\n\n- item\n- item two\n\nopen end'
 
