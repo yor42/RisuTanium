@@ -162,7 +162,7 @@ describe('T-UI5 the Undo action', () => {
         expect(host.visible[0].kind).toBe('success')
     })
 
-    const reasons: StudioRefusal[] = ['loading', 'not-selected', 'duplicate-id', 'group', 'restricted', 'gone', 'no-unique-chat', 'precondition', 'empty', 'unknown']
+    const reasons: StudioRefusal[] = ['loading', 'not-selected', 'duplicate-id', 'group', 'restricted', 'gone', 'no-unique-chat', 'precondition', 'pairSplit', 'empty', 'unknown']
 
     test.each(reasons)('a refusal (%s) shows its own text, never success, and removes the action (M36)', async (reason) => {
         const { service } = serviceReturning({ ok: false, reason })
@@ -178,7 +178,7 @@ describe('T-UI5 the Undo action', () => {
 
     test('the refusal texts differ where the user needs to act differently', () => {
         const texts = new Set(reasons.map(refusalText))
-        expect(texts.size).toBe(8)
+        expect(texts.size).toBe(9)
     })
 
     test('with no service built, Undo reports that history is still loading', async () => {

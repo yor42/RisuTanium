@@ -1,5 +1,6 @@
+import fc from 'fast-check'
 import { describe, expect, test } from 'vitest'
-import { enumerateClassifiedTargets, enumerateTargets, type TargetClass } from './referenceTargets'
+import { enumerateClassifiedTargets, enumerateTargets, parseTargetPath, rewritableTextAt, type TargetClass, type TargetOwner } from './referenceTargets'
 import { blankV2Triggers, characterOwner, luaTriggers, moduleOwner, v2Trigger } from './assetFixtures.test-helpers'
 
 const REF = '{{image::smile}}'
@@ -308,5 +309,147 @@ describe('real trigger templates', () => {
         expect(enumerateClassifiedTargets(characterOwner({ triggerscript: luaTriggers('x') }))).toEqual([
             { path: 'trigger/0/effect/0/code', text: 'x', cls: 'flagOnly' },
         ])
+    })
+})
+
+describe('parseTargetPath: one parse of a registry path', () => {
+    test('a __proto__ segment, a non-canonical index and a shape the stored target refuses give null for both owner kinds', () => {
+        for (const kind of ['character', 'module'] as const) {
+            expect(parseTargetPath(kind, 'trigger/0/effect/0/__proto__'), kind).toBeNull()
+            expect(parseTargetPath(kind, '__proto__'), kind).toBeNull()
+            expect(parseTargetPath(kind, 'lore/01/content'), kind).toBeNull()
+            expect(parseTargetPath(kind, 'trigger/00/effect/0/value'), kind).toBeNull()
+            expect(parseTargetPath(kind, 'trigger/0/effect/1e1/value'), kind).toBeNull()
+            expect(parseTargetPath(kind, 'trigger/0/effect/0/a-b'), kind).toBeNull()
+            expect(parseTargetPath(kind, 'lore/0/content/'), kind).toBeNull()
+            expect(parseTargetPath(kind, 'lore//content'), kind).toBeNull()
+            expect(parseTargetPath(kind, 'lore/0/key'), kind).toBeNull()
+            expect(parseTargetPath(kind, 'name'), kind).toBeNull()
+        }
+        expect(parseTargetPath('character', 'alternateGreetings/01')).toBeNull()
+        expect(parseTargetPath('character', 'alternateGreetings/-1')).toBeNull()
+    })
+
+    test('a canonical path parses by owner kind', () => {
+        expect(parseTargetPath('character', 'alternateGreetings/12')).toEqual({ greeting: 12 })
+        expect(parseTargetPath('character', 'desc')).toEqual({ field: 'desc' })
+        expect(parseTargetPath('character', 'depth_prompt/prompt')).toEqual({ nested: 'depth_prompt', field: 'prompt' })
+        expect(parseTargetPath('character', 'lore/3/content')).toEqual({ entry: 'lore', index: 3, field: 'content' })
+        expect(parseTargetPath('module', 'regex/0/out')).toEqual({ entry: 'regex', index: 0, field: 'out' })
+        expect(parseTargetPath('module', 'trigger/2/conditions/10/value')).toEqual({ trigger: 2, section: 'conditions', entry: 10, field: 'value' })
+        expect(parseTargetPath('module', 'backgroundEmbedding')).toEqual({ field: 'backgroundEmbedding' })
+        expect(parseTargetPath('module', 'desc')).toBeNull()
+        expect(parseTargetPath('module', 'alternateGreetings/0')).toBeNull()
+        expect(parseTargetPath('character', 'backgroundEmbedding')).toBeNull()
+    })
+})
+
+describe('rewritableTextAt agrees with the enumerator', () => {
+    const word = fc.constantFrom('', 'a', 'smile', 'x y', 'lo')
+    const effectArb = fc.oneof(
+        fc.record({ type: fc.constant('v2SetVar'), var: word, varType: fc.constantFrom('var', 'value'), operator: fc.constant('='), valueType: fc.constantFrom('value', 'var'), value: word }),
+        fc.record({ type: fc.constant('setvar'), var: word, operator: fc.constant('='), value: word }),
+        fc.record({ type: fc.constant('triggerlua'), code: word }),
+        fc.record({ type: fc.constant('extractRegex'), regex: word, result: word, flags: word, value: word, inputVar: word }),
+        fc.record({ type: fc.constant('v2ExtractRegex'), regex: word, regexType: fc.constantFrom('value', 'var'), result: word, outputVar: word, value: word, valueType: fc.constantFrom('value', 'var') }),
+        fc.record({ type: fc.constant('v2Header'), code: word, indent: fc.nat(3) }),
+        fc.record({ type: fc.constant('v2If'), source: word, sourceType: fc.constantFrom('value', 'var'), condition: fc.constant('='), target: word, targetType: fc.constantFrom('value', 'var') }),
+    )
+    const conditionArb = fc.oneof(
+        fc.record({ type: fc.constant('var'), var: word, operator: fc.constant('='), value: word }),
+        fc.record({ type: fc.constant('value'), var: word, operator: fc.constant('='), value: word }),
+        fc.record({ type: fc.constant('exists'), type2: fc.constantFrom('strict', 'loose', 'regex'), value: word, depth: fc.nat(5) }),
+        fc.record({ type: fc.constant('chatindex'), value: fc.nat(5).map(String), operator: fc.constant('=') }),
+    )
+    const triggerArb = fc.record({
+        comment: word,
+        type: fc.constant('manual'),
+        conditions: fc.array(conditionArb, { maxLength: 2 }),
+        effect: fc.array(effectArb, { maxLength: 3 }),
+    })
+    const characterArb = fc.record({
+        desc: word,
+        firstMessage: word,
+        alternateGreetings: fc.array(word, { maxLength: 3 }),
+        systemPrompt: word,
+        exampleMessage: word,
+        depth_prompt: fc.record({ depth: fc.nat(10), prompt: word }),
+        newGenData: fc.record({ prompt: word, negative: word, instructions: word, emotionInstructions: word }),
+        creatorNotes: word,
+        replaceGlobalNote: word,
+        additionalText: word,
+        personality: word,
+        scenario: word,
+        backgroundHTML: word,
+        defaultVariables: word,
+        translatorNote: word,
+        // Strings the registry never scans.
+        name: word,
+        nickname: word,
+        postHistoryInstructions: word,
+        backgroundCSS: word,
+        globalLore: fc.array(fc.record({ key: word, content: word }), { maxLength: 3 }),
+        customscript: fc.array(fc.record({ in: word, out: word }), { maxLength: 3 }),
+        triggerscript: fc.array(triggerArb, { maxLength: 2 }),
+    })
+    const moduleArb = fc.record({
+        lorebook: fc.array(fc.record({ key: word, content: word }), { maxLength: 3 }),
+        regex: fc.array(fc.record({ in: word, out: word }), { maxLength: 3 }),
+        trigger: fc.array(triggerArb, { maxLength: 2 }),
+        backgroundEmbedding: word,
+        cjs: word,
+        name: word,
+    })
+
+    const REGISTRY_NAMES = [
+        'desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality', 'scenario',
+        'backgroundHTML', 'defaultVariables', 'translatorNote', 'creatorNotes', 'depth_prompt/prompt', 'newGenData/prompt',
+        'backgroundEmbedding', 'cjs', 'name', 'nickname', 'postHistoryInstructions', 'backgroundCSS', 'constructor', 'toString',
+    ]
+
+    // Every own string leaf of the owner at the path its list would give it, the registry names, and mutations of
+    // every candidate: out of range, a non-canonical index and an unknown field.
+    function candidatesOf(owner: TargetOwner): string[] {
+        const out = new Set<string>(REGISTRY_NAMES)
+        for (const target of enumerateClassifiedTargets(owner)) {
+            out.add(target.path)
+            out.add(target.path + 'x')
+            out.add(target.path.replace(/\/(\d+)\//, '/0$1/'))
+            out.add(target.path.replace(/\/(\d+)(\/|$)/, (_, index: string, tail: string) => '/' + (Number(index) + 50) + tail))
+        }
+        const triggers = (owner.kind === 'character' ? owner.source.triggerscript : owner.source.trigger) ?? []
+        triggers.forEach((list, i) => {
+            for (const section of ['conditions', 'effect'] as const) {
+                ;(list[section] ?? []).forEach((entry, j) => {
+                    for (const key of Object.keys(entry)) {
+                        out.add(`trigger/${i}/${section}/${j}/${key}`)
+                    }
+                    out.add(`trigger/${i}/${section}/${j}/missing`)
+                })
+            }
+        })
+        return [...out]
+    }
+
+    function checkOwner(owner: TargetOwner): void {
+        const rewritable = new Map(enumerateClassifiedTargets(owner).filter((target) => target.cls === 'rewritable').map((target) => [target.path, target.text]))
+        for (const path of candidatesOf(owner)) {
+            expect(rewritableTextAt(owner, path), path).toBe(rewritable.get(path) ?? null)
+        }
+    }
+
+    test('a character: a path resolves to its text exactly when the enumerator lists it as rewritable', () => {
+        fc.assert(fc.property(characterArb, (source) => checkOwner({ kind: 'character', source })), { numRuns: 150 })
+    })
+
+    test('a module: a path resolves to its text exactly when the enumerator lists it as rewritable', () => {
+        fc.assert(fc.property(moduleArb, (source) => checkOwner({ kind: 'module', source })), { numRuns: 150 })
+    })
+
+    test('a group resolves nothing, and a missing owner entry is null, not an empty text', () => {
+        expect(rewritableTextAt({ kind: 'character', source: { type: 'group', desc: 'd' } }, 'desc')).toBeNull()
+        expect(rewritableTextAt({ kind: 'character', source: {} }, 'lore/0/content')).toBeNull()
+        expect(rewritableTextAt({ kind: 'module', source: { lorebook: [{}] } }, 'lore/0/content')).toBeNull()
+        expect(rewritableTextAt({ kind: 'module', source: { lorebook: [{ content: '' }] } }, 'lore/0/content')).toBe('')
     })
 })

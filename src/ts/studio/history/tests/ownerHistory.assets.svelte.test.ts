@@ -39,9 +39,23 @@ vi.mock('src/ts/stores.svelte', async () => {
 
 type Row = string[]
 
+interface LiveTriggerList {
+    comment: string
+    type: string
+    conditions: object[]
+    effect: object[]
+}
+
 interface LiveCharacter {
     chaId: string
     desc: string
+    firstMessage?: string
+    exampleMessage?: string
+    systemPrompt?: string
+    depth_prompt?: { depth: number; prompt: string }
+    globalLore?: { key: string; content: string }[]
+    customscript?: { in: string; out: string; type: string }[]
+    triggerscript?: LiveTriggerList[]
     alternateGreetings: string[]
     chats: { id: string; note: string; fmIndex?: number }[]
     chatPage: number
@@ -56,6 +70,9 @@ interface LiveModule {
     name: string
     assets: Row[]
     lorebook?: { key: string; content: string }[]
+    trigger?: LiveTriggerList[]
+    backgroundEmbedding?: string
+    cjs?: string
     [ASSET_FOLDER_KEY]?: unknown
     [ASSET_RETAINED_KEY]?: unknown
 }
@@ -747,6 +764,193 @@ describe('text edits of a merge land in the same write', () => {
         expect(harness.service.assetMerge(A, model, byPathOnly)).toEqual({ ok: false, reason: 'precondition' })
         expect(live().additionalAssets).toHaveLength(4)
     })
+})
+
+// ---------------------------------------------------------------- whole-value text writes through the service
+
+function valueEffect(value: string, mode = 'value'): object {
+    return { type: 'v2SetVar', var: 'v', varType: 'var', operator: '=', valueType: mode, value }
+}
+
+function triggers(...effects: object[]): LiveTriggerList[] {
+    return [{ comment: 'event', type: 'manual', conditions: [], effect: effects }]
+}
+
+// A merge of text edits alone: no row is removed.
+function textOnlyModel(array: 'additionalAssets' | 'assets', edits: MergePreview['textEdits']): MergePreview {
+    const model = mergeModel(array)
+    model.rowOps = []
+    model.textEdits = edits
+    return model
+}
+
+describe('a merge edit of a registry text lands in the live owner, undoes and redoes', () => {
+    test('a character: the first message, the system prompt, a depth prompt and a trigger value change once per undo and redo', async () => {
+        putCharacters(makeCharacter('A', {
+            firstMessage: 'hi smile2 there',
+            systemPrompt: 'sys smile2',
+            depth_prompt: { depth: 4, prompt: 'dp smile2' },
+            triggerscript: triggers(valueEffect('eff smile2')),
+        }))
+        await ready(A)
+        const model = textOnlyModel('additionalAssets', [
+            { target: 'firstMessage', offset: 3, from: 'smile2', to: 'smile' },
+            { target: 'systemPrompt', offset: 4, from: 'smile2', to: 'smile' },
+            { target: 'depth_prompt/prompt', offset: 3, from: 'smile2', to: 'smile' },
+            { target: 'trigger/0/effect/0/value', offset: 4, from: 'smile2', to: 'smile' },
+        ])
+        const merged = (): void => {
+            expect(live().firstMessage).toBe('hi smile there')
+            expect(live().systemPrompt).toBe('sys smile')
+            expect(live().depth_prompt?.prompt).toBe('dp smile')
+            expect((live().triggerscript?.[0].effect[0] as { value: string }).value).toBe('eff smile')
+        }
+        expect(harness.service.assetMerge(A, model, byPathOnly).ok).toBe(true)
+        merged()
+        expect(harness.service.undo(A).ok).toBe(true)
+        expect(live().firstMessage).toBe('hi smile2 there')
+        expect(live().systemPrompt).toBe('sys smile2')
+        expect(live().depth_prompt?.prompt).toBe('dp smile2')
+        expect((live().triggerscript?.[0].effect[0] as { value: string }).value).toBe('eff smile2')
+        expect(harness.service.redo(A).ok).toBe(true)
+        merged()
+    })
+
+    test('a character: a merge that rewrites the first message and the example message gives the restore point both keys, and restoring puts both texts back', async () => {
+        putCharacters(makeCharacter('A', { firstMessage: 'hi smile2 there', exampleMessage: 'ex smile2' }))
+        await ready(A)
+        expect(harness.service.editField(A, 'desc', 'studio desc').ok).toBe(true)
+        const model = textOnlyModel('additionalAssets', [
+            { target: 'firstMessage', offset: 3, from: 'smile2', to: 'smile' },
+            { target: 'exampleMessage', offset: 3, from: 'smile2', to: 'smile' },
+        ])
+        expect(harness.service.assetMerge(A, model, byPathOnly).ok).toBe(true)
+        expect(live().firstMessage).toBe('hi smile there')
+        expect(live().exampleMessage).toBe('ex smile')
+        const fields = harness.service.view(A).restore?.fields
+        expect(fields?.firstMessage).toEqual({ before: { had: true, value: 'hi smile2 there' }, last: { had: true, value: 'hi smile there' } })
+        expect(fields?.exampleMessage).toEqual({ before: { had: true, value: 'ex smile2' }, last: { had: true, value: 'ex smile' } })
+        expect(harness.service.restore(A, new Set()).ok).toBe(true)
+        expect(live().desc).toBe('d0')
+        expect(live().firstMessage).toBe('hi smile2 there')
+        expect(live().exampleMessage).toBe('ex smile2')
+    })
+
+    test('a module: the background embedding and a trigger value change once per undo and redo, next to a removed row', async () => {
+        putModules(makeModule('M1', { backgroundEmbedding: 'be smile2', trigger: triggers(valueEffect('eff smile2')) }))
+        harness.openModule = 'M1'
+        await ready(M1)
+        const model = textOnlyModel('assets', [
+            { target: 'backgroundEmbedding', offset: 3, from: 'smile2', to: 'smile' },
+            { target: 'trigger/0/effect/0/value', offset: 4, from: 'smile2', to: 'smile' },
+        ])
+        model.rowOps = [{ kind: 'assetRowRemove', array: 'assets', index: 3, tuple: [...SMILE_COPY], count: 1 }]
+        expect(harness.service.assetMerge(M1, model, byPathOnly).ok).toBe(true)
+        expect(liveModule().backgroundEmbedding).toBe('be smile')
+        expect((liveModule().trigger?.[0].effect[0] as { value: string }).value).toBe('eff smile')
+        expect(liveModule().assets).toHaveLength(3)
+        expect(harness.service.undo(M1).ok).toBe(true)
+        expect(liveModule().backgroundEmbedding).toBe('be smile2')
+        expect((liveModule().trigger?.[0].effect[0] as { value: string }).value).toBe('eff smile2')
+        expect(liveModule().assets).toHaveLength(4)
+        expect(harness.service.redo(M1).ok).toBe(true)
+        expect(liveModule().backgroundEmbedding).toBe('be smile')
+        expect((liveModule().trigger?.[0].effect[0] as { value: string }).value).toBe('eff smile')
+        expect(liveModule().assets).toHaveLength(3)
+    })
+
+    test('a stale edit, whose text is no longer the one it was planned on, is refused with nothing written and no mark', async () => {
+        putCharacters(makeCharacter('A', { systemPrompt: 'sys smile2' }))
+        await ready(A)
+        const before = snapshot('character')
+        const marks = h.marks
+        const model = textOnlyModel('additionalAssets', [{ target: 'systemPrompt', offset: 4, from: 'other', to: 'smile' }])
+        expect(harness.service.assetMerge(A, model, byPathOnly)).toEqual({ ok: false, reason: 'precondition' })
+        expect(snapshot('character')).toBe(before)
+        expect(h.marks).toBe(marks)
+        expect(harness.service.view(A).done).toHaveLength(0)
+    })
+})
+
+describe('a merge edit of a target that may not be rewritten is refused whole', () => {
+    interface Case {
+        name: string
+        owner: 'character' | 'module'
+        set: () => void
+        edit: MergePreview['textEdits'][number]
+    }
+
+    const proto = JSON.parse('{"type":"v2SetVar","valueType":"value","value":"v","__proto__":"smile2 x","__proto__Type":"value"}') as object
+
+    const CASES: Case[] = [
+        { name: 'a module cjs', owner: 'module', set: () => putModules(makeModule('M1', { cjs: 'code smile2' })), edit: { target: 'cjs', offset: 5, from: 'smile2', to: 'smile' } },
+        {
+            name: 'trigger script code',
+            owner: 'character',
+            set: () => putCharacters(makeCharacter('A', { triggerscript: triggers({ type: 'triggerlua', code: 'print(smile2)' }) })),
+            edit: { target: 'trigger/0/effect/0/code', offset: 6, from: 'smile2', to: 'smile' },
+        },
+        {
+            name: 'a regex pattern of an extractRegex effect',
+            owner: 'character',
+            set: () => putCharacters(makeCharacter('A', { triggerscript: triggers({ type: 'extractRegex', regex: 'smile2', result: 'r', value: 'v', flags: 'g', inputVar: 'i' }) })),
+            edit: { target: 'trigger/0/effect/0/regex', offset: 0, from: 'smile2', to: 'smile' },
+        },
+        {
+            name: 'a regex script pattern',
+            owner: 'character',
+            set: () => putCharacters(makeCharacter('A', { customscript: [{ in: 'smile2', out: 'o', type: 'editoutput' }] })),
+            edit: { target: 'regex/0/in', offset: 0, from: 'smile2', to: 'smile' },
+        },
+        {
+            name: 'a lore entry beyond the list, with an insertion',
+            owner: 'character',
+            set: () => putCharacters(makeCharacter('A', { globalLore: [{ key: 'k', content: 'c' }] })),
+            edit: { target: 'lore/9/content', offset: 0, from: '', to: 'x' },
+        },
+        {
+            name: 'a trigger value that is in var mode now',
+            owner: 'character',
+            set: () => putCharacters(makeCharacter('A', { triggerscript: triggers(valueEffect('smile2 x', 'var')) })),
+            edit: { target: 'trigger/0/effect/0/value', offset: 0, from: 'smile2', to: 'smile' },
+        },
+        {
+            name: 'an own __proto__ key of a trigger effect',
+            owner: 'character',
+            set: () => putCharacters(makeCharacter('A', { triggerscript: triggers(proto) })),
+            edit: { target: 'trigger/0/effect/0/__proto__', offset: 0, from: 'smile2', to: 'smile' },
+        },
+        {
+            name: 'a trigger field key that is not a stored target shape',
+            owner: 'character',
+            set: () => putCharacters(makeCharacter('A', { triggerscript: triggers({ type: 'v2SetVar', 'a-b': 'smile2 x', 'a-bType': 'value' }) })),
+            edit: { target: 'trigger/0/effect/0/a-b', offset: 0, from: 'smile2', to: 'smile' },
+        },
+        { name: 'a text field of a module', owner: 'module', set: () => putModules(makeModule('M1')), edit: { target: 'desc', offset: 0, from: 'M', to: 'X' } },
+        { name: 'a first message of a module', owner: 'module', set: () => putModules(makeModule('M1')), edit: { target: 'firstMessage', offset: 0, from: 'M', to: 'X' } },
+        {
+            name: 'a first message entry with a non-canonical index',
+            owner: 'character',
+            set: () => putCharacters(makeCharacter('A', { alternateGreetings: ['g0', 'g1'] })),
+            edit: { target: 'alternateGreetings/01', offset: 0, from: 'g', to: 'x' },
+        },
+    ]
+
+    for (const entry of CASES) {
+        test(`${entry.name}: the step is refused, nothing is written or marked, and no step is recorded`, async () => {
+            entry.set()
+            harness.openModule = 'M1'
+            const owner = entry.owner === 'module' ? M1 : A
+            await ready(owner)
+            const before = snapshot(entry.owner)
+            const marks = h.marks
+            const model = textOnlyModel(entry.owner === 'module' ? 'assets' : 'additionalAssets', [entry.edit])
+            expect(harness.service.assetMerge(owner, model, byPathOnly)).toEqual({ ok: false, reason: 'precondition' })
+            expect(snapshot(entry.owner)).toBe(before)
+            expect(h.marks).toBe(marks)
+            expect(harness.service.view(owner).done).toHaveLength(0)
+        })
+    }
 })
 
 // ---------------------------------------------------------------- the module owner

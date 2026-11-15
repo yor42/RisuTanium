@@ -18,6 +18,7 @@ import {
     MAX_DONE,
     applyReplayMove,
     assetPathsReplayMayInsert,
+    assetStepWrites,
     isStoredAssetPath,
     closeOpenStep,
     commitStep,
@@ -35,6 +36,7 @@ import {
     planRestorePoint,
     planRevert,
     stepIdFor,
+    textBeforeOf,
     type DeletedItem,
     type Step,
     type FieldValue,
@@ -61,6 +63,8 @@ import { OWNER_CAP_BYTES, entrySize, serializeEntry } from '../studioHistoryStor
 
 interface LiveObject {
     desc?: string
+    firstMessage?: string
+    exampleMessage?: string
     hideChatIcon?: boolean
     note?: string
     alternateGreetings: string[]
@@ -3791,15 +3795,8 @@ function makeAssetLive(init: Partial<LiveObject> = {}, world: Partial<AssetWorld
                 if (result.ok) {
                     assets.folder = result.doc ?? undefined
                 }
-            } else if (write.op === 'textEdit') {
-                const index = /^alternateGreetings\/(\d+)$/.exec(write.target)
-                if (write.target === 'desc') {
-                    obj.desc = splice(obj.desc ?? '', write)
-                } else if (index) {
-                    obj.alternateGreetings[Number(index[1])] = splice(obj.alternateGreetings[Number(index[1])], write)
-                } else {
-                    assets.texts[write.target] = splice(assets.texts[write.target], write)
-                }
+            } else if (write.op === 'textSet') {
+                assets.texts[write.target] = write.value
             }
         }
     }
@@ -3807,25 +3804,26 @@ function makeAssetLive(init: Partial<LiveObject> = {}, world: Partial<AssetWorld
     return { obj, reader, apply, assets }
 }
 
-function isOwnerWrite(op: Op): op is AssetOp | TextEditOp {
-    return op.op.startsWith('asset') || op.op === 'textEdit'
-}
-
 let assetStepCounter = 0
 
-// Lands `ops` on the live owner and records them as one step, as an asset intent does.
+// Lands `ops` on the live owner and records them as one step, as an asset intent does: the writes are the whole
+// values `assetStepWrites` computes against the live owner, and the restore point learns all three text fields.
 function commitOps(s: Session, label: StepLabel, ops: Op[], at: number, replacesRestore = false) {
     assetStepCounter += 1
     const greetings = [...s.live.obj.alternateGreetings]
-    const descBefore = s.live.obj.desc
-    s.live.apply(ops.filter(isOwnerWrite))
+    const textBefore = textBeforeOf((path) => s.live.reader.field(path))
+    const writes = assetStepWrites(ops, s.live.reader)
+    if (writes === null) {
+        throw new Error('the step does not apply to the live owner')
+    }
+    s.live.apply(writes)
     s.state = commitStep(s.state, {
         id: `a:${assetStepCounter}`,
         at,
         visitId: s.visit,
         label,
         ops,
-        restoreWrites: deriveRestoreWrites(ops, greetings, descBefore),
+        restoreWrites: deriveRestoreWrites(ops, greetings, textBefore),
         coalesceKey: null,
         replacesRestore,
     })
@@ -4288,11 +4286,11 @@ describe('restore point learns text edits', () => {
 
     test('deriveRestoreWrites folds several desc edits, splices a greeting entry and ignores other targets', () => {
         const edit = (target: string, offset: number, from: string, to: string): Op => ({ op: 'textEdit', target, offset, from, to })
-        expect(deriveRestoreWrites([edit('desc', 0, 'ab', 'xy'), edit('desc', 3, 'cd', 'zz')], null, 'ab cd')).toEqual([
+        expect(deriveRestoreWrites([edit('desc', 0, 'ab', 'xy'), edit('desc', 3, 'cd', 'zz')], null, { desc: 'ab cd' })).toEqual([
             { path: 'desc', before: present('ab cd'), after: present('xy zz') },
         ])
         expect(deriveRestoreWrites([edit('desc', 0, 'ab', 'xy')], null)).toEqual([])
-        expect(deriveRestoreWrites([edit('lore/0/content', 0, 'ab', 'xy')], ['g'], 'd')).toEqual([])
+        expect(deriveRestoreWrites([edit('lore/0/content', 0, 'ab', 'xy')], ['g'], { desc: 'd' })).toEqual([])
         expect(deriveRestoreWrites([edit('alternateGreetings/1', 1, 'b', 'Q')], ['a', 'cbd'])).toEqual([
             { path: 'alternateGreetings', before: { list: ['a', 'cbd'] }, after: { list: ['a', 'cQd'] } },
         ])
@@ -4773,7 +4771,7 @@ describe('replay past a step already in place: further rows', () => {
         live.obj.alternateGreetings.push('o')
         const plan = planOf(s.revertTo(anchor, 20000))
         expect(plan.listSkipped).toBe(2)
-        expect(plan.writes.some((write) => write.op === 'listSet' || write.op === 'textEdit')).toBe(false)
+        expect(plan.writes.some((write) => write.op === 'listSet' || write.op === 'textSet')).toBe(false)
         expect(live.obj.alternateGreetings).toEqual(['g0', 'x kept.png', 'z', 'o'])
         expect(live.obj.desc).toBe('d logo.png')
     })

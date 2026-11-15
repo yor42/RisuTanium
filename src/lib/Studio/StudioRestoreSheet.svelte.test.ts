@@ -405,6 +405,30 @@ describe('the sheet lists what it restores and lands one step', () => {
         expect(part('studio-restore-sheet')).toBeNull()
     })
 
+    test('the first message and the example message are listed in the restore order, restored on confirm, and kept when changed outside', async () => {
+        const character = live() as { firstMessage?: string; exampleMessage?: string }
+        character.firstMessage = 'f0'
+        character.exampleMessage = 'e0'
+        const { service } = await openHistory()
+        expect(service.editField(A, 'firstMessage', 'f1').ok).toBe(true)
+        service.closeOpenStep(A)
+        expect(service.editField(A, 'exampleMessage', 'e1').ok).toBe(true)
+        service.closeOpenStep(A)
+        expect([character.firstMessage, character.exampleMessage]).toEqual(['f1', 'e1'])
+        click('studio-history-restore-open')
+        await settle()
+        expect(parts('studio-restore-field').map((row) => row.dataset.path)).toEqual(['desc', 'firstMessage', 'exampleMessage', 'alternateGreetings'])
+        expect(parts('studio-restore-field').map((row) => row.querySelector('span')?.textContent)).toEqual(['description', 'firstMessage', 'exampleMessage', 'altGreet'])
+
+        character.firstMessage = 'changed outside Studio'
+        flushSync()
+        expect(parts('studio-restore-keep').map((box) => box.dataset.path)).toEqual(['firstMessage'])
+        click('studio-restore-confirm')
+        expect(character.firstMessage).toBe('changed outside Studio')
+        expect(character.exampleMessage).toBe('e0')
+        expect(live().desc).toBe('d0')
+    })
+
     test('a field changed outside Studio is kept by default, and overwritten when the user unchecks it', async () => {
         await openSheet()
         live().desc = 'changed outside Studio'

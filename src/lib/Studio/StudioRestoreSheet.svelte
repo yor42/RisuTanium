@@ -3,7 +3,7 @@
     import { language } from '../../lang'
     import { createLiveReader, resolveLiveTarget } from '../../ts/studio/edit/studioSetters'
     import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
-    import { listChangedElsewhere, type RestorePath } from '../../ts/studio/history/historyModel'
+    import { listChangedElsewhere, RESTORE_PATH_ORDER, type RestorePath } from '../../ts/studio/history/historyModel'
     import type { StudioRefusal } from '../../ts/studio/history/ownerHistory.svelte'
     import { getStudioHistoryService } from '../../ts/studio/history/studioHistoryService.svelte'
     import { registerStudioSheetBack } from '../../ts/studio/studioBack.svelte'
@@ -25,12 +25,10 @@
     createStudioToasts({ service: getStudioHistoryService, host: untrack(() => host) }).suspendWhileMounted()
     registerStudioSheetBack()
 
-    const PATH_ORDER: readonly RestorePath[] = ['desc', 'hideChatIcon', 'note', 'alternateGreetings']
-
     const service = $derived(getStudioHistoryService())
     const owner = $derived(selectedHistoryOwner())
     const restore = $derived(service && owner !== null ? service.view(owner).restore : null)
-    const paths = $derived(restore ? PATH_ORDER.filter((path) => restore.fields[path] !== undefined) : [])
+    const paths = $derived(restore ? RESTORE_PATH_ORDER.filter((path) => restore.fields[path] !== undefined) : [])
     // Paths whose live value was changed outside Studio's history since the visit.
     const changed = $derived.by((): RestorePath[] => {
         if (!restore || owner === null) return []
@@ -50,6 +48,8 @@
     function labelOf(path: RestorePath): string {
         switch (path) {
             case 'desc': return language.description
+            case 'firstMessage': return language.firstMessage
+            case 'exampleMessage': return language.exampleMessage
             case 'hideChatIcon': return language.hideChatIcon
             case 'note': return language.note
             case 'alternateGreetings': return language.altGreet

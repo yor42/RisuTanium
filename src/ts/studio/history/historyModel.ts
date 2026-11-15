@@ -5,6 +5,7 @@
 
 import { applyFolderOps, folderOpAtTarget, invertFolderOp, type FolderFieldValue, type FolderOp } from '../assets/folderCodec'
 import type { AssetArrayName } from '../assets/mergePreview'
+import { parseTargetPath, TEXT_TARGET } from '../assets/referenceTargets'
 import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
 import { parseOwnerKey, type OwnerKey } from './ownerPhase'
 
@@ -24,16 +25,19 @@ export interface HistoryClock {
 
 // ---------------------------------------------------------------- field paths and values
 
-export type CharacterField = 'desc' | 'hideChatIcon'
+export type CharacterField = 'desc' | 'firstMessage' | 'exampleMessage' | 'hideChatIcon'
 export type ChatField = 'note'
 export type SetPath = CharacterField | ChatField
 export type ListPath = 'alternateGreetings'
 export type RestorePath = SetPath | ListPath
 
-export const CHARACTER_SET_PATHS: readonly CharacterField[] = ['desc', 'hideChatIcon']
+export const CHARACTER_SET_PATHS: readonly CharacterField[] = ['desc', 'firstMessage', 'exampleMessage', 'hideChatIcon']
 export const CHAT_SET_PATHS: readonly ChatField[] = ['note']
 export const LIST_PATH: ListPath = 'alternateGreetings'
-const RESTORE_PATH_ORDER: readonly RestorePath[] = ['desc', 'hideChatIcon', 'note', 'alternateGreetings']
+export const RESTORE_PATH_ORDER: readonly RestorePath[] = ['desc', 'firstMessage', 'exampleMessage', 'hideChatIcon', 'note', 'alternateGreetings']
+// The character text fields whose whole value a set op carries.
+export type TextFieldPath = 'desc' | 'firstMessage' | 'exampleMessage'
+export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = ['desc', 'firstMessage', 'exampleMessage']
 
 // `had: false` is an absent optional key. Writing it deletes the key; it never assigns false or undefined.
 export type FieldValue = { had: false } | { had: true; value: string | boolean }
@@ -185,7 +189,13 @@ function nullableString(value: unknown): string | null | undefined {
 }
 
 function isSetPath(value: unknown): value is SetPath {
-    return value === 'desc' || value === 'hideChatIcon' || value === 'note'
+    return (
+        value === 'desc' ||
+        value === 'firstMessage' ||
+        value === 'exampleMessage' ||
+        value === 'hideChatIcon' ||
+        value === 'note'
+    )
 }
 
 function parseFieldValue(path: SetPath, value: unknown): FieldValue | null {
@@ -269,7 +279,6 @@ function parseLabel(value: unknown): StepLabel | null {
 type OwnerKind = 'character' | 'chat' | 'module'
 
 const ASSET_ARRAYS: readonly string[] = ['additionalAssets', 'emotionImages', 'assets']
-const TEXT_TARGET = /^[A-Za-z0-9_]+(\/[A-Za-z0-9_]+)*$/
 
 function isCount(value: unknown): value is number {
     return typeof value === 'number' && Number.isInteger(value) && value >= 0
@@ -482,7 +491,7 @@ function parseRestore(value: unknown, kind: OwnerKind): RestorePoint | null {
     ) {
         return null
     }
-    const allowed: readonly RestorePath[] = kind === 'chat' ? ['note'] : kind === 'module' ? [] : ['desc', 'hideChatIcon', LIST_PATH]
+    const allowed: readonly RestorePath[] = kind === 'chat' ? ['note'] : kind === 'module' ? [] : ['desc', 'firstMessage', 'exampleMessage', 'hideChatIcon', LIST_PATH]
     const fields: Partial<Record<RestorePath, RestoreField>> = {}
     for (const key of Object.keys(value.fields)) {
         if (!(allowed as readonly string[]).includes(key)) {
@@ -562,7 +571,8 @@ export interface LiveReader {
     assetRows?(array: AssetArrayName): readonly (readonly string[])[] | null
     // The owner's stored folder value, undefined when absent.
     folderValue?(): unknown
-    // The text at a registry path other than `desc` and the greeting entries, or null when unreadable.
+    // The text at a registry path, or null for anything not rewritable at read time. The three text fields
+    // (`desc`, `firstMessage`, `exampleMessage`) are read through `field`, so this serves every other text path.
     text?(target: string): string | null
 }
 
@@ -572,9 +582,10 @@ export type WriteOp =
     | { op: 'listInsert'; index: number; value: string }
     | { op: 'listRemove'; index: number }
     | { op: 'chatFm'; chatId: string; value: FmValue }
-    // An asset or text write is the op itself; the owner write applies it (`textEdit` on `desc` is a `set`).
+    // An asset write is the op itself. A text write carries the whole value the plan computed: a text field is a
+    // `set`, an alternate first message entry a `listSet`, every other registry text a `textSet`. Never stored or posted.
     | AssetOp
-    | TextEditOp
+    | { op: 'textSet'; target: string; value: string }
 
 export interface RestoreWrite {
     path: RestorePath
@@ -583,8 +594,9 @@ export interface RestoreWrite {
 }
 
 // `unchanged` is returned by planRevert only: the revert's net effect is nothing. It is an in-memory
-// result and is never stored or posted.
-export type ModelRefusal = 'empty' | 'unknown' | 'precondition' | 'unchanged'
+// result and is never stored or posted. `pairSplit`: a step that changed the first message together with the alternate
+// first messages would land only one of the two, so it stops whole (the bound-step rule).
+export type ModelRefusal = 'empty' | 'unknown' | 'precondition' | 'unchanged' | 'pairSplit'
 
 export interface StepPlan {
     ok: true
@@ -603,6 +615,9 @@ export interface StepPlan {
     // Revert only: list ops the revert did not apply because their step's list did not fit or the
     // per-op check failed. Absent when none.
     listSkipped?: number
+    // Revert only: steps left whole because they changed the first message together with the alternate first
+    // messages and one of the two no longer fits. Absent when none.
+    pairSkipped?: number
     // Fingerprints of the live list before the plan's ops and, after them: a revert's final fill, or
     // for a whole expected-side replay the step's other-side fingerprint. They only let the commit or
     // the move reuse a hash the plan already holds; they are never stored or posted.
@@ -620,7 +635,7 @@ export interface StepPlan {
 export type PlanResult =
     | StepPlan
     | { ok: false; reason: Exclude<ModelRefusal, 'unchanged'> }
-    | { ok: false; reason: 'unchanged'; listSkipped?: number; fmNotRestored?: boolean; goneRows?: string[] }
+    | { ok: false; reason: 'unchanged'; listSkipped?: number; pairSkipped?: number; fmNotRestored?: boolean; goneRows?: string[] }
 
 interface Working {
     field(path: SetPath): FieldValue
@@ -757,11 +772,38 @@ function fromFolderOp(op: FolderOp): Extract<Op, { op: 'assetFolderSet' | 'asset
         : { op: 'assetFolderOrder', before: [...op.before], after: [...op.after] }
 }
 
-const GREETING_TARGET = /^alternateGreetings\/(\d+)$/
+// How a `textEdit` target is read and written: one of the owner's text fields, an entry of the first message list, or
+// any other registry text (served by the live reader). Null when the path is no registry address at all. Every
+// classification of a target goes through `parseTargetPath`, so a path is one kind everywhere.
+type TextRoute = { kind: 'field'; path: TextFieldPath } | { kind: 'greeting'; index: number } | { kind: 'text' }
 
-function greetingIndexOf(target: string): number | null {
-    const match = GREETING_TARGET.exec(target)
-    return match ? Number(match[1]) : null
+function routeOf(target: string): TextRoute | null {
+    // The owner kind is not known here: a module-only path parses as a module path, and the reader of the
+    // owner that does not hold the path refuses it.
+    const parsed = parseTargetPath('character', target) ?? parseTargetPath('module', target)
+    if (parsed === null) {
+        return null
+    }
+    if ('greeting' in parsed) {
+        return { kind: 'greeting', index: parsed.greeting }
+    }
+    if (!('trigger' in parsed) && !('entry' in parsed) && !('nested' in parsed)) {
+        const path = TEXT_FIELD_PATHS.find((candidate) => candidate === parsed.field)
+        if (path !== undefined) {
+            return { kind: 'field', path }
+        }
+    }
+    return { kind: 'text' }
+}
+
+function textFieldOf(target: string): TextFieldPath | null {
+    const route = routeOf(target)
+    return route !== null && route.kind === 'field' ? route.path : null
+}
+
+function greetingEntryOf(target: string): number | null {
+    const route = routeOf(target)
+    return route !== null && route.kind === 'greeting' ? route.index : null
 }
 
 function tupleEquals(a: readonly string[], b: readonly string[]): boolean {
@@ -778,51 +820,122 @@ function countOf(rows: readonly (readonly string[])[], tuple: readonly string[])
     return count
 }
 
-// The text a `textEdit` reads and writes: the field for `desc`, the list entry for a greeting, the owner's
-// registry text otherwise. Null when it cannot be read.
+// The text a `textEdit` reads and writes: the field for a text field, the list entry for a first message, the owner's
+// registry text otherwise. Null when it cannot be read, which includes a target outside the registry.
 function textOf(target: string, working: Working): string | null {
-    if (target === 'desc') {
-        const field = working.field('desc')
+    const route = routeOf(target)
+    if (route === null) {
+        return null
+    }
+    if (route.kind === 'field') {
+        const field = working.field(route.path)
         return field.had && typeof field.value === 'string' ? field.value : null
     }
-    const greeting = greetingIndexOf(target)
-    if (greeting !== null) {
-        const value = working.list ? working.list[greeting] : undefined
+    if (route.kind === 'greeting') {
+        const value = working.list ? working.list[route.index] : undefined
         return typeof value === 'string' ? value : null
     }
     return working.text(target)
 }
 
 function storeText(target: string, text: string, working: Working): void {
-    if (target === 'desc') {
-        working.setField('desc', { had: true, value: text })
+    const route = routeOf(target)
+    if (route === null) {
         return
     }
-    const greeting = greetingIndexOf(target)
-    if (greeting !== null && working.list) {
-        working.list[greeting] = text
-        return
+    if (route.kind === 'field') {
+        working.setField(route.path, { had: true, value: text })
+    } else if (route.kind === 'greeting') {
+        if (working.list) {
+            working.list[route.index] = text
+        }
+    } else {
+        working.setText(target, text)
     }
-    working.setText(target, text)
 }
 
+// The one splice: it computes a whole value on the plan's working copy, and the writes carry that value.
 function spliceText(text: string, edit: { offset: number; from: string; to: string }): string {
     return text.slice(0, edit.offset) + edit.to + text.slice(edit.offset + edit.from.length)
 }
 
+// The write that lands a text target's whole new value.
+function textWriteFor(target: string, next: string): WriteOp {
+    const route = routeOf(target)
+    if (route !== null && route.kind === 'field') {
+        return { op: 'set', path: route.path, value: { had: true, value: next } }
+    }
+    if (route !== null && route.kind === 'greeting') {
+        return { op: 'listSet', index: route.index, value: next }
+    }
+    return { op: 'textSet', target, value: next }
+}
+
+// The text fields' values as the owner holds them now, for the restore point to learn from a `textEdit`.
+export type TextBefore = Partial<Record<TextFieldPath, string>>
+
+export function textBeforeOf(field: (path: TextFieldPath) => FieldValue, paths: readonly TextFieldPath[] = TEXT_FIELD_PATHS): TextBefore {
+    const out: TextBefore = {}
+    for (const path of paths) {
+        const value = field(path)
+        if (value.had && typeof value.value === 'string') {
+            out[path] = value.value
+        }
+    }
+    return out
+}
+
+// The writes of an asset build's ops as the owner write applies them: every `textEdit` is checked against a working
+// copy of the live owner and lands as its whole value (the rest of the plan's edits of one target follow the running
+// value); an asset op is its own write; any other op writes nothing here. Null when a `textEdit` cannot apply, so the
+// caller refuses before anything is written.
+export function assetStepWrites(ops: readonly Op[], live: LiveReader): WriteOp[] | null {
+    const working = makeWorking(live)
+    const writes: WriteOp[] = []
+    for (const op of ops) {
+        if (op.op === 'textEdit') {
+            const outcome = applyForward(op, working)
+            if (outcome.kind !== 'applied') {
+                return null
+            }
+            writes.push(outcome.write)
+        } else if (op.op === 'assetRowRemove' || op.op === 'assetRowInsert' || op.op === 'assetRowSet' || op.op === 'assetFolderSet' || op.op === 'assetFolderOrder') {
+            writes.push(op)
+        }
+    }
+    return writes
+}
+
 type ApplyOutcome = { kind: 'applied'; write: WriteOp } | { kind: 'inert' } | { kind: 'failed' }
+
+// The ops whose precondition is a value comparison. `applyForward` and the revert's bound-step pre-decision both
+// ask this one function, so the non-mutating check cannot drift from the op loop.
+type ValueOp = Extract<Op, { op: 'set' | 'listSet' | 'textEdit' }>
+
+function forwardPreconditionHolds(op: ValueOp, working: Working): boolean {
+    switch (op.op) {
+        case 'set':
+            return fieldValueEquals(working.field(op.path), op.before)
+        case 'listSet':
+            return !!working.list && working.list[op.index] === op.before
+        case 'textEdit': {
+            const text = textOf(op.target, working)
+            return text !== null && text.slice(op.offset, op.offset + op.from.length) === op.from
+        }
+    }
+}
 
 // Checks one forward op's precondition against the working copy and applies it there.
 function applyForward(op: Op, working: Working): ApplyOutcome {
     switch (op.op) {
         case 'set':
-            if (!fieldValueEquals(working.field(op.path), op.before)) {
+            if (!forwardPreconditionHolds(op, working)) {
                 return { kind: 'failed' }
             }
             working.setField(op.path, op.after)
             return { kind: 'applied', write: { op: 'set', path: op.path, value: op.after } }
         case 'listSet':
-            if (!working.list || working.list[op.index] !== op.before) {
+            if (!forwardPreconditionHolds(op, working) || !working.list) {
                 return { kind: 'failed' }
             }
             working.list[op.index] = op.after
@@ -889,15 +1002,12 @@ function applyForward(op: Op, working: Working): ApplyOutcome {
         }
         case 'textEdit': {
             const text = textOf(op.target, working)
-            if (text === null || text.slice(op.offset, op.offset + op.from.length) !== op.from) {
+            if (text === null || !forwardPreconditionHolds(op, working)) {
                 return { kind: 'failed' }
             }
             const next = spliceText(text, op)
             storeText(op.target, next, working)
-            // The field is the owner's own: the write is a plain `set`.
-            return op.target === 'desc'
-                ? { kind: 'applied', write: { op: 'set', path: 'desc', value: { had: true, value: next } } }
-                : { kind: 'applied', write: { ...op } }
+            return { kind: 'applied', write: textWriteFor(op.target, next) }
         }
     }
 }
@@ -944,28 +1054,30 @@ function holdsResultOf(op: Op, working: Working): boolean {
 
 // What the restore point must learn from a set of forward ops. List ops collapse into one
 // whole-array write because the restore point stores the whole greeting list.
-// `descBefore` is the `desc` text before the ops (the plan carries it); without it a `textEdit` on `desc`
-// contributes nothing. A `textEdit` on a greeting entry splices that entry of the list copy.
+// `textBefore` holds the text fields' values before the ops (the plan carries them); without a field's value a
+// `textEdit` on that field contributes nothing. A `textEdit` on a first message entry splices that entry of the list copy.
 export function deriveRestoreWrites(
     forwardOps: readonly Op[],
     greetingsBefore: readonly string[] | null,
-    descBefore?: string,
+    textBefore?: TextBefore,
 ): RestoreWrite[] {
     const byPath = new Map<SetPath, RestoreWrite>()
     let list: string[] | null = greetingsBefore === null ? null : [...greetingsBefore]
     let listTouched = false
     for (const op of forwardOps) {
         if (op.op === 'textEdit') {
-            if (op.target === 'desc') {
-                const known = byPath.get('desc')
-                const current = known ? (known.after as FieldValue) : descBefore === undefined ? null : ({ had: true, value: descBefore } as FieldValue)
+            const textField = textFieldOf(op.target)
+            if (textField !== null) {
+                const known = byPath.get(textField)
+                const start = textBefore?.[textField]
+                const current = known ? (known.after as FieldValue) : start === undefined ? null : ({ had: true, value: start } as FieldValue)
                 if (current && current.had && typeof current.value === 'string') {
                     const before: FieldValue = known ? (known.before as FieldValue) : current
-                    byPath.set('desc', { path: 'desc', before, after: { had: true, value: spliceText(current.value, op) } })
+                    byPath.set(textField, { path: textField, before, after: { had: true, value: spliceText(current.value, op) } })
                 }
                 continue
             }
-            const greeting = greetingIndexOf(op.target)
+            const greeting = greetingEntryOf(op.target)
             if (greeting !== null) {
                 listTouched = true
                 if (list && typeof list[greeting] === 'string') {
@@ -1035,15 +1147,106 @@ function isListOp(op: Op): boolean {
 // A greeting-list op: a list op, or a `textEdit` on an entry of the greeting list. One predicate serves the
 // unreadable-list gate of a replay and the side and stop rules of a revert.
 function touchesGreetingList(op: Op): boolean {
-    return isListOp(op) || (op.op === 'textEdit' && greetingIndexOf(op.target) !== null)
-}
-
-function descTextOf(field: FieldValue | null): string | undefined {
-    return field !== null && field.had && typeof field.value === 'string' ? field.value : undefined
+    return isListOp(op) || (op.op === 'textEdit' && greetingEntryOf(op.target) !== null)
 }
 
 function hasInsertOrRemove(ops: readonly Op[]): boolean {
     return ops.some((op) => op.op === 'listInsert' || op.op === 'listRemove')
+}
+
+// ---------------------------------------------------------------- bound-step rule
+
+// A step that changed the first message together with the alternate first messages lands both or stops whole, in an
+// undo, a redo and a revert alike. The rule keys on the step's ops, never on its label. This block is its one definition:
+// `planReplay` and `planRevert` decide a step through `boundVerdict` and restate nothing.
+//
+// The group is the `set` ops on `firstMessage` plus every op on the alternate list (`touchesGreetingList`). A `chatFm` op is never in the group: a
+// skipped chat index never stops a step. The list half (L) is whether the alternate list takes the step's change, the
+// first message half (F) whether the field does:
+//
+//   L \ F        passes   holds   neither
+//   applies      apply    stop    stop
+//   in place     stop     today   stop
+//   neither      stop     stop    stop
+//
+// `apply` runs the step's ops, `today` leaves them to the existing nothing-to-apply rules, `stop` lands none of them.
+type ListHalf = 'applies' | 'inPlace' | 'neither'
+type FirstMessageHalf = 'passes' | 'holds' | 'neither'
+type BoundVerdict = 'apply' | 'today' | 'stop'
+type GroupOutcome = 'applied' | 'kept' | 'failed'
+
+interface BoundGroup {
+    fmSets: Extract<Op, { op: 'set' }>[]
+    listOps: Op[]
+}
+
+function boundGroupOf(ops: readonly Op[]): BoundGroup | null {
+    const fmSets: Extract<Op, { op: 'set' }>[] = []
+    for (const op of ops) {
+        if (op.op === 'set' && op.path === 'firstMessage') {
+            fmSets.push(op)
+        }
+    }
+    const listOps = ops.filter(touchesGreetingList)
+    return fmSets.length > 0 && listOps.length > 0 ? { fmSets, listOps } : null
+}
+
+// The entry of the alternate list a group op changes. Null for an insert or a remove, which shift entries.
+function entryIndexOf(op: Op): number | null {
+    if (op.op === 'listSet') {
+        return op.index
+    }
+    return op.op === 'textEdit' ? greetingEntryOf(op.target) : null
+}
+
+// The list half of a step without a fingerprint, from what each group op did. A step that holds an insert or a remove
+// (recorded while the list could not be read) or two ops on one entry cannot be decided per entry: neither.
+function unfingerprintedListHalf(listOps: readonly Op[], outcomeOf: (op: Op) => GroupOutcome): ListHalf {
+    if (hasInsertOrRemove(listOps)) {
+        return 'neither'
+    }
+    const entries = new Set<number>()
+    for (const op of listOps) {
+        const entry = entryIndexOf(op)
+        if (entry === null || entries.has(entry)) {
+            return 'neither'
+        }
+        entries.add(entry)
+    }
+    const outcomes = listOps.map(outcomeOf)
+    if (outcomes.every((outcome) => outcome === 'applied')) {
+        return 'applies'
+    }
+    return outcomes.every((outcome) => outcome === 'kept') ? 'inPlace' : 'neither'
+}
+
+// Two first message values in one step have no single list half to agree with.
+function boundListHalf(group: BoundGroup, list: ListHalf): ListHalf {
+    return group.fmSets.length > 1 ? 'neither' : list
+}
+
+function boundVerdict(list: ListHalf, firstMessage: FirstMessageHalf): BoundVerdict {
+    if (list === 'applies' && firstMessage === 'passes') {
+        return 'apply'
+    }
+    return list === 'inPlace' && firstMessage === 'holds' ? 'today' : 'stop'
+}
+
+function firstMessageHalfOf(outcome: GroupOutcome): FirstMessageHalf {
+    return outcome === 'applied' ? 'passes' : outcome === 'kept' ? 'holds' : 'neither'
+}
+
+// What a revert would do with one stored op, without changing the working copy: the inverse applies, is already in
+// place, or fails. The checks are the ones the op loop makes.
+function revertOutcomeOf(original: Op, working: Working): GroupOutcome {
+    const forward = invertOp(original)
+    if (forward.op !== 'set' && forward.op !== 'listSet' && forward.op !== 'textEdit') {
+        return 'failed'
+    }
+    if (forwardPreconditionHolds(forward, working)) {
+        return 'applied'
+    }
+    return holdsResultOf(forward, working) ? 'kept' : 'failed'
 }
 
 function listRestoreWrite(writes: readonly RestoreWrite[]): { before: string[]; after: string[] } | null {
@@ -1157,7 +1360,15 @@ export function planReplay(
     let failed = 0
     let fmNotRestored = false
     const goneSeen = new Set<string>()
-    const descBefore = step.ops.some((op) => op.op === 'textEdit' && op.target === 'desc') ? working.field('desc') : null
+    // Read before the loop: the working copy's text fields move as the ops apply.
+    const targeted = new Set<TextFieldPath>()
+    for (const op of step.ops) {
+        const textField = op.op === 'textEdit' ? textFieldOf(op.target) : null
+        if (textField !== null) {
+            targeted.add(textField)
+        }
+    }
+    const textBefore = textBeforeOf((path) => working.field(path), [...targeted])
     for (const original of order) {
         // A delete can be undone only while its deleted item is still listed: restoring the item
         // from History consumes it, so the two routes exclude each other. On the expected side the
@@ -1232,6 +1443,25 @@ export function planReplay(
             deletedRemove.push(original.deletedId)
         }
     }
+    // The bound-step rule runs on the recorded outcomes of this trial run, so a stop lands nothing: the writes leave
+    // only through the result. On the expected side the list half applies only when every group list op did.
+    const group = boundGroupOf(step.ops)
+    if (group !== null) {
+        const appliedSet = new Set(applied)
+        const keptSet = new Set(kept)
+        const outcomeOf = (op: Op): GroupOutcome => (appliedSet.has(op) ? 'applied' : keptSet.has(op) ? 'kept' : 'failed')
+        const list = boundListHalf(
+            group,
+            side === 'expected'
+                ? group.listOps.every((op) => appliedSet.has(op)) ? 'applies' : 'neither'
+                : side === 'other'
+                  ? 'inPlace'
+                  : unfingerprintedListHalf(group.listOps, outcomeOf),
+        )
+        if (boundVerdict(list, firstMessageHalfOf(outcomeOf(group.fmSets[0]))) === 'stop') {
+            return { ok: false, reason: 'pairSplit' }
+        }
+    }
     if (real === 0) {
         // Nothing applied: the step moves when every change is already in place (R1), is dropped when the
         // only changes that did not apply cannot be replayed here (R1c), and is refused otherwise (R2).
@@ -1272,7 +1502,7 @@ export function planReplay(
         label: step.label,
         ops: applied,
         writes,
-        restoreWrites: deriveRestoreWrites(executed, greetingsBefore, descTextOf(descBefore)),
+        restoreWrites: deriveRestoreWrites(executed, greetingsBefore, textBefore),
         deletedRemove,
         skipped,
         fmNotRestored,
@@ -1313,7 +1543,8 @@ function revertForward(original: Op, pairsWithReopen: boolean, consumedId: strin
 }
 
 // The target a revert stores a chain for: an asset array, the folder document, or a registry text other than
-// `desc` (a `set` carries it) and a greeting entry (the list hunks carry it). Null for every other op.
+// the three text fields (`desc`, `firstMessage`, `exampleMessage`: a `set` carries them) and a greeting entry
+// (the list hunks carry it). Null for every other op.
 type TargetKey = { kind: 'rows'; array: AssetArrayName } | { kind: 'folder' } | { kind: 'text'; target: string }
 
 // The text a revert's maps use to tell targets apart; the typed key is what the snapshot reads.
@@ -1337,8 +1568,10 @@ function targetKeyOf(op: Op): TargetKey | null {
         case 'assetFolderSet':
         case 'assetFolderOrder':
             return { kind: 'folder' }
-        case 'textEdit':
-            return op.target === 'desc' || greetingIndexOf(op.target) !== null ? null : { kind: 'text', target: op.target }
+        case 'textEdit': {
+            const route = routeOf(op.target)
+            return route !== null && route.kind !== 'text' ? null : { kind: 'text', target: op.target }
+        }
         default:
             return null
     }
@@ -1357,7 +1590,7 @@ function snapshotOf(key: TargetKey, working: Working): string {
 
 function trackAppliedOp(tracker: ListHashTracker, forward: Op): void {
     if (forward.op === 'textEdit') {
-        const greeting = greetingIndexOf(forward.target)
+        const greeting = greetingEntryOf(forward.target)
         if (greeting !== null) {
             tracker.set(greeting)
         }
@@ -1434,13 +1667,16 @@ export function planRevert(
     const liveListHash = tracker && list ? tracker.hash(list) : undefined
     let spent = 0
     let suspended = false
-    // Set by the first fingerprinted step a hash decision puts off its expected side. Exact or stop:
-    // from there on no older step decides by hash and no older step changes the list, because every
-    // older list op would work against lifecycle state no step recorded. Description and other
-    // fields still revert, and the chat's selected first message counts as one of them for a step
-    // without a fingerprint. A budget suspension does not set it: a step without a fingerprint keeps
-    // its per-op checks after a suspension, so on that route a repeated text can still be applied.
+    // Set when a stopped step's skipped list ops shift indexes: by the first fingerprinted step a hash
+    // decision puts off its expected side, or by a bound-step stop of a step that holds an insert or a
+    // remove. Exact or stop: from there on no older step decides by hash and no older step changes the
+    // list, because every older list op would work against lifecycle state no step recorded.
+    // Description and other fields still revert, and the chat's selected first message counts as one of
+    // them for a step without a fingerprint. A budget suspension alone does not set it: a step without a
+    // fingerprint keeps its per-op checks after a suspension, so on that route a repeated text can still
+    // be applied. A bound-step stop skipping only `listSet` ops shifts no index and leaves it unchanged.
     let stopped = false
+    let pairSkipped = 0
     for (const step of above) {
         let side: ListSide = 'none'
         const afterStop = stopped
@@ -1461,6 +1697,35 @@ export function planRevert(
             }
             if (suspended || afterStop) {
                 side = 'neither'
+            }
+        }
+        // The bound-step rule, decided before any op of the step runs. A fingerprinted step takes its list half from
+        // the side (a side that stayed `none` means the list could not be read: neither); a step without one from
+        // `afterStop`, else from non-mutating checks of its ops.
+        const group = boundGroupOf(step.ops)
+        if (group !== null) {
+            const list = boundListHalf(
+                group,
+                step.listFingerprint
+                    ? side === 'expected'
+                        ? 'applies'
+                        : side === 'other'
+                          ? 'inPlace'
+                          : 'neither'
+                    : afterStop
+                      ? 'neither'
+                      : unfingerprintedListHalf(group.listOps, (op) => revertOutcomeOf(op, working)),
+            )
+            if (boundVerdict(list, firstMessageHalfOf(revertOutcomeOf(group.fmSets[0], working))) === 'stop') {
+                skipped += step.ops.length
+                if (list !== 'inPlace') {
+                    listSkipped += group.listOps.length
+                }
+                pairSkipped += 1
+                if (hasInsertOrRemove(step.ops)) {
+                    stopped = true
+                }
+                continue
             }
         }
         for (const original of [...step.ops].reverse()) {
@@ -1511,7 +1776,8 @@ export function planRevert(
             if (targetKey !== null && targetText !== null && !startOf.has(targetText)) {
                 startOf.set(targetText, { key: targetKey, start: snapshotOf(targetKey, working) })
             }
-            const descBeforeOp = forward.op === 'textEdit' && forward.target === 'desc' ? working.field('desc') : null
+            const textField = forward.op === 'textEdit' ? textFieldOf(forward.target) : null
+            const fieldBeforeOp = textField === null ? null : working.field(textField)
             const outcome = applyForward(forward, working)
             if (outcome.kind === 'failed') {
                 skipped += 1
@@ -1523,10 +1789,10 @@ export function planRevert(
                 fmNotRestored = true
             } else {
                 writeTargets.push(targetText)
-                // A `desc` edit is stored as the net `set` of the field, with the rest of the field ops.
+                // A text field edit is stored as the net `set` of the field, with the rest of the field ops.
                 ops.push(
-                    descBeforeOp
-                        ? { op: 'set', path: 'desc', before: descBeforeOp, after: working.field('desc') }
+                    textField !== null && fieldBeforeOp
+                        ? { op: 'set', path: textField, before: fieldBeforeOp, after: working.field(textField) }
                         : forward,
                 )
                 // Every applied list op is tracked, whichever path decided the step.
@@ -1556,8 +1822,12 @@ export function planRevert(
     }
     const gone = goneSeen.size > 0 ? { goneRows: [...goneSeen].sort() } : {}
     if (ops.length === 0) {
-        // Nothing applied: a revert whose only failures are re-inserts of gone rows lands nothing but
-        // names them; any other failure refuses.
+        // Nothing applied: a pair stop with no other failure refuses with its own reason, which wins over the
+        // gone-rows note (nothing was changed). A revert whose only failures are re-inserts of gone rows lands
+        // nothing but names them; any other failure refuses.
+        if (pairSkipped > 0 && failedOther === 0) {
+            return { ok: false, reason: 'pairSplit' }
+        }
         if (goneSeen.size > 0 && failedOther === 0) {
             return { ok: false, reason: 'unchanged', ...gone, ...(listSkipped > 0 ? { listSkipped } : {}), ...(fmNotRestored ? { fmNotRestored } : {}) }
         }
@@ -1600,7 +1870,14 @@ export function planRevert(
     }
     const stored = revertStepOps(ops, greetingsBefore, working.list, consumedValues, producedValues, netZero)
     if (stored.length === 0) {
-        return { ok: false, reason: 'unchanged', ...gone, ...(listSkipped > 0 ? { listSkipped } : {}), ...(fmNotRestored ? { fmNotRestored } : {}) }
+        return {
+            ok: false,
+            reason: 'unchanged',
+            ...gone,
+            ...(listSkipped > 0 ? { listSkipped } : {}),
+            ...(pairSkipped > 0 ? { pairSkipped } : {}),
+            ...(fmNotRestored ? { fmNotRestored } : {}),
+        }
     }
     return {
         ok: true,
@@ -1612,6 +1889,7 @@ export function planRevert(
         ...gone,
         skipped,
         ...(listSkipped > 0 ? { listSkipped } : {}),
+        ...(pairSkipped > 0 ? { pairSkipped } : {}),
         fmNotRestored,
         // The final fill hashes only the slots the revert changed and is never budgeted.
         ...(tracker && list && liveListHash !== undefined ? { liveListHash, afterListHash: tracker.hash(list) } : {}),

@@ -53,6 +53,8 @@ interface LiveCharacter {
     license?: string
     coldstorage?: string
     desc: string
+    firstMessage?: string
+    exampleMessage?: string
     hideChatIcon?: boolean
     alternateGreetings: string[]
     chats: LiveChat[]
@@ -164,6 +166,17 @@ describe('the live reader', () => {
         expect(reader.fmIndex('missing')).toBeNull()
     })
 
+    test('the first message and the example message read as their own strings, absent as had false', () => {
+        const live = makeCharacter('A', { firstMessage: 'hello', exampleMessage: 'ex', hideChatIcon: true })
+        const reader = createLiveReader(targetOf(live))
+        expect(reader.field('firstMessage')).toEqual({ had: true, value: 'hello' })
+        expect(reader.field('exampleMessage')).toEqual({ had: true, value: 'ex' })
+        expect(reader.field('hideChatIcon')).toEqual({ had: true, value: true })
+        const bare = createLiveReader(targetOf(makeCharacter('A', { hideChatIcon: true })))
+        expect(bare.field('firstMessage')).toEqual({ had: false })
+        expect(bare.field('exampleMessage')).toEqual({ had: false })
+    })
+
     test('a character without a greeting list reads as null', () => {
         const live = makeCharacter('A')
         delete (live as Partial<LiveCharacter>).alternateGreetings
@@ -185,6 +198,23 @@ describe('the op builders', () => {
         expect(buildFieldEdit('hideChatIcon', 'yes', reader)).toEqual({ ok: false, reason: 'precondition' })
         const absent = buildFieldEdit('hideChatIcon', false, reader)
         expect(absent).toMatchObject({ ok: true, ops: [{ before: { had: false }, after: { had: true, value: false } }] })
+    })
+
+    test('a first message edit builds exactly one set op and no list op', () => {
+        const reader = createLiveReader(targetOf(makeCharacter('A', { firstMessage: 'hi' })))
+        const built = buildFieldEdit('firstMessage', 'hello', reader)
+        expect(built).toMatchObject({
+            ok: true,
+            label: { kind: 'field', field: 'firstMessage' },
+            ops: [{ op: 'set', path: 'firstMessage', before: { had: true, value: 'hi' }, after: { had: true, value: 'hello' } }],
+            writes: [{ op: 'set', path: 'firstMessage', value: { had: true, value: 'hello' } }],
+        })
+        if (built.ok === false) throw new Error('the edit must build')
+        expect(built.ops).toHaveLength(1)
+        expect(built.writes).toHaveLength(1)
+        expect(built.ops.some((op) => op.op === 'listSet' || op.op === 'listInsert' || op.op === 'listRemove')).toBe(false)
+        expect(buildFieldEdit('firstMessage', true, reader)).toEqual({ ok: false, reason: 'precondition' })
+        expect(buildFieldEdit('exampleMessage', 'x', reader)).toMatchObject({ ok: true, ops: [{ before: { had: false } }] })
     })
 
     test('greeting add appends an empty one; edit keys its coalescing by index; both refuse out of range', () => {
@@ -252,6 +282,33 @@ describe('the write functions', () => {
         expect('hideChatIcon' in live).toBe(false)
         applyCharacterWrites(live as unknown as character, [{ op: 'set', path: 'hideChatIcon', value: { had: true, value: false } }], false)
         expect(live.hideChatIcon).toBe(false)
+    })
+
+    test('the first message and the example message are assigned; absent is a no-op, as for the description', () => {
+        const live = makeCharacter('A', { firstMessage: 'f0', exampleMessage: 'e0' })
+        applyCharacterWrites(
+            live as unknown as character,
+            [
+                { op: 'set', path: 'firstMessage', value: { had: true, value: 'f1' } },
+                { op: 'set', path: 'exampleMessage', value: { had: true, value: 'e1' } },
+            ],
+            false,
+        )
+        expect(live.firstMessage).toBe('f1')
+        expect(live.exampleMessage).toBe('e1')
+        expect(live.hideChatIcon).toBeUndefined()
+        applyCharacterWrites(
+            live as unknown as character,
+            [
+                { op: 'set', path: 'firstMessage', value: { had: false } },
+                { op: 'set', path: 'exampleMessage', value: { had: false } },
+                { op: 'set', path: 'desc', value: { had: false } },
+            ],
+            false,
+        )
+        expect(live.firstMessage).toBe('f1')
+        expect(live.exampleMessage).toBe('e1')
+        expect(live.desc).toBe('d0')
     })
 
     test('list writes run in order; chatFm acts on the unique chat; pageFm acts on the context chat', () => {
@@ -370,7 +427,7 @@ describe('the asset reader and the asset owner writes', () => {
         applyCharacterWrites(
             live as unknown as character,
             [
-                { op: 'textEdit', target: 'lore/0/content', offset: 4, from: 'smile', to: 'grin' },
+                { op: 'textSet', target: 'lore/0/content', value: 'see grin' },
                 { op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: ['smile', 'assets/smile.png', 'png'], count: 1 },
                 { op: 'assetFolderOrder', before: [], after: ['F'] },
             ],
@@ -432,8 +489,8 @@ describe('the asset reader and the asset owner writes', () => {
             live,
             [
                 { op: 'assetRowRemove', array: 'assets', index: 1, tuple: ['grin', 'assets/grin.png', 'png'], count: 1 },
-                { op: 'textEdit', target: 'lore/0/content', offset: 4, from: 'smile', to: 'beam' },
-                { op: 'textEdit', target: 'regex/0/out', offset: 0, from: 'smile', to: 'beam' },
+                { op: 'textSet', target: 'lore/0/content', value: 'see beam' },
+                { op: 'textSet', target: 'regex/0/out', value: 'beam' },
             ],
             { folder: { kind: 'set', doc: { v: 1 } }, retained: () => ({ kind: 'set', value: [['grin', 'assets/grin.png']] }) },
         )

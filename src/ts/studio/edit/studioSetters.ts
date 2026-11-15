@@ -9,8 +9,9 @@ import { toAssetList, type AssetTuple } from '../../storage/assetList'
 import { isModuleStub } from '../../storage/moduleStub'
 import type { Chat, character, groupChat } from '../../storage/database.svelte'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../assets/assetOwnerKeys'
+import { parseTargetPath, rewritableTextAt } from '../assets/referenceTargets'
 import { selectedStudioCharacterId, studioScreen } from '../studioScreen.svelte'
-import type { FieldValue, FmValue, LiveReader, Op, SetPath, StepLabel, TextEditOp, WriteOp } from '../history/historyModel'
+import { TEXT_FIELD_PATHS, type FieldValue, type FmValue, type LiveReader, type Op, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
 import { parseOwnerKey, type OwnerKey } from '../history/ownerPhase'
 import { moduleSlotsWithId, orderAssetWrites, type RetainedResult } from './assetSetters'
 
@@ -143,6 +144,12 @@ export function createLiveReader(target: LiveTarget): LiveReader {
             if (path === 'desc') {
                 return typeof live.desc === 'string' ? { had: true, value: live.desc } : { had: false }
             }
+            if (path === 'firstMessage') {
+                return typeof live.firstMessage === 'string' ? { had: true, value: live.firstMessage } : { had: false }
+            }
+            if (path === 'exampleMessage') {
+                return typeof live.exampleMessage === 'string' ? { had: true, value: live.exampleMessage } : { had: false }
+            }
             return typeof live.hideChatIcon === 'boolean' ? { had: true, value: live.hideChatIcon } : { had: false }
         },
         greetings() {
@@ -153,7 +160,7 @@ export function createLiveReader(target: LiveTarget): LiveReader {
             return found ? fmValueOf(found) : null
         },
         text(target) {
-            return readTextAt('character', live, target)
+            return rewritableTextAt({ kind: 'character', source: live }, target)
         },
         assetRows(array) {
             return array === 'assets' ? null : rowsOfList(live[array])
@@ -180,7 +187,7 @@ export function createModuleLiveReader(module: RisuModule): LiveReader {
         greetings: () => null,
         fmIndex: () => null,
         text(target) {
-            return readTextAt('module', module, target)
+            return rewritableTextAt({ kind: 'module', source: module }, target)
         },
         assetRows(array) {
             return array === 'assets' ? rowsOfList(module.assets) : null
@@ -188,66 +195,6 @@ export function createModuleLiveReader(module: RisuModule): LiveReader {
         folderValue() {
             return module[ASSET_FOLDER_KEY]
         },
-    }
-}
-
-// ---------------------------------------------------------------- text targets of a registry path
-
-export type TextOwnerKind = 'character' | 'module'
-
-export interface TextSlot {
-    list: 'globalLore' | 'customscript' | 'lorebook' | 'regex'
-    index: number
-    field: 'content' | 'out'
-}
-
-const TEXT_PATH = /^(lore|regex)\/(0|[1-9][0-9]*)\/(content|out)$/
-
-// The list and field that hold the text a registry path names, by owner kind: a character keeps its lorebook in
-// `globalLore` and its scripts in `customscript`, a module in `lorebook` and `regex`. Any other path, including
-// `desc` and the greeting entries, is refused: the owner write handles those itself.
-export function textSlotOf(kind: TextOwnerKind, path: string): TextSlot | null {
-    const match = TEXT_PATH.exec(path)
-    if (!match) {
-        return null
-    }
-    const index = Number(match[2])
-    if (match[1] === 'lore' && match[3] === 'content') {
-        return { list: kind === 'character' ? 'globalLore' : 'lorebook', index, field: 'content' }
-    }
-    if (match[1] === 'regex' && match[3] === 'out') {
-        return { list: kind === 'character' ? 'customscript' : 'regex', index, field: 'out' }
-    }
-    return null
-}
-
-// The lists an owner of either kind may hold; a character or a module is assignable to it.
-export interface TextHolder {
-    readonly globalLore?: readonly { readonly content?: string }[]
-    readonly customscript?: readonly { readonly out?: string }[]
-    readonly lorebook?: readonly { readonly content?: string }[]
-    readonly regex?: readonly { readonly out?: string }[]
-}
-
-function stringOrNull(value: unknown): string | null {
-    return typeof value === 'string' ? value : null
-}
-
-// The text at `path` in the owner's own lists; null when the path is refused or the entry holds no string.
-export function readTextAt(kind: TextOwnerKind, holder: TextHolder, path: string): string | null {
-    const slot = textSlotOf(kind, path)
-    if (!slot) {
-        return null
-    }
-    switch (slot.list) {
-        case 'globalLore':
-            return stringOrNull(holder.globalLore?.[slot.index]?.content)
-        case 'lorebook':
-            return stringOrNull(holder.lorebook?.[slot.index]?.content)
-        case 'customscript':
-            return stringOrNull(holder.customscript?.[slot.index]?.out)
-        case 'regex':
-            return stringOrNull(holder.regex?.[slot.index]?.out)
     }
 }
 
@@ -353,6 +300,14 @@ function setCharacterField(live: character, path: SetPath, value: FieldValue): v
         if (value.had && typeof value.value === 'string') {
             live.desc = value.value
         }
+    } else if (path === 'firstMessage') {
+        if (value.had && typeof value.value === 'string') {
+            live.firstMessage = value.value
+        }
+    } else if (path === 'exampleMessage') {
+        if (value.had && typeof value.value === 'string') {
+            live.exampleMessage = value.value
+        }
     } else if (path === 'hideChatIcon') {
         if (!value.had) {
             delete live.hideChatIcon
@@ -378,34 +333,37 @@ export interface AssetWriteExtras {
     retained: ((existing: unknown) => RetainedResult) | null
 }
 
-function spliceInto(text: string, edit: TextEditOp): string {
-    return text.slice(0, edit.offset) + edit.to + text.slice(edit.offset + edit.from.length)
+// A string-keyed view of a holder, for assigning a registry text by its parsed field name. The holder is a character,
+// a module or one of their entries; a write goes through it only where the slot holds a string now.
+function fieldsView(holder: object): Record<string, unknown> {
+    return holder as Record<string, unknown>
 }
 
-const GREETING_TEXT_TARGET = /^alternateGreetings\/(\d+)$/
-
-// A `textEdit` on a greeting entry or a registry text of the live character. `desc` is a field write, never here.
-function editCharacterText(live: character, edit: TextEditOp): void {
-    const greeting = GREETING_TEXT_TARGET.exec(edit.target)
-    if (greeting) {
-        const index = Number(greeting[1])
-        const current = live.alternateGreetings?.[index]
-        if (typeof current === 'string') {
-            live.alternateGreetings[index] = spliceInto(current, edit)
+function assignIfString(holder: object | null | undefined, field: string, value: string): void {
+    if (holder) {
+        const fields = fieldsView(holder)
+        if (typeof fields[field] === 'string') {
+            fields[field] = value
         }
+    }
+}
+
+// A `textSet` on a registry text of the live character: the whole value the plan computed, assigned in place where
+// the slot holds a string. It creates no container. The text fields (a `set`) and the first message entries (a `listSet`)
+// are never written here.
+function writeCharacterText(live: character, target: string, value: string): void {
+    const parsed = parseTargetPath('character', target)
+    if (parsed === null || 'greeting' in parsed) {
         return
     }
-    const slot = textSlotOf('character', edit.target)
-    if (slot?.list === 'globalLore') {
-        const entry = live.globalLore?.[slot.index]
-        if (entry && typeof entry.content === 'string') {
-            entry.content = spliceInto(entry.content, edit)
-        }
-    } else if (slot?.list === 'customscript') {
-        const entry = live.customscript?.[slot.index]
-        if (entry && typeof entry.out === 'string') {
-            entry.out = spliceInto(entry.out, edit)
-        }
+    if ('trigger' in parsed) {
+        assignIfString(live.triggerscript?.[parsed.trigger]?.[parsed.section]?.[parsed.entry], parsed.field, value)
+    } else if ('entry' in parsed) {
+        assignIfString((parsed.entry === 'lore' ? live.globalLore : live.customscript)?.[parsed.index], parsed.field, value)
+    } else if ('nested' in parsed) {
+        assignIfString(live[parsed.nested], parsed.field, value)
+    } else if (!(TEXT_FIELD_PATHS as readonly string[]).includes(parsed.field)) {
+        assignIfString(live, parsed.field, value)
     }
 }
 
@@ -461,8 +419,8 @@ export function applyCharacterWrites(live: character | groupChat, writes: readon
                     emotionRemoved = true
                 }
                 break
-            case 'textEdit':
-                editCharacterText(live, write)
+            case 'textSet':
+                writeCharacterText(live, write.target, write.value)
                 break
             case 'assetFolderSet':
             case 'assetFolderOrder':
@@ -535,8 +493,8 @@ export function buildWrittenModule(live: RisuModule, writes: readonly WriteOp[],
             } else {
                 rows[write.index] = [...write.after]
             }
-        } else if (write.op === 'textEdit') {
-            editModuleText(next, write)
+        } else if (write.op === 'textSet') {
+            writeModuleText(next, write.target, write.value)
         }
     }
     if (rows) {
@@ -555,23 +513,54 @@ export function buildWrittenModule(live: RisuModule, writes: readonly WriteOp[],
     return next
 }
 
-// A `textEdit` on a module's lorebook or regex entry: the list and the entry are replaced by copies.
-function editModuleText(next: RisuModule, edit: TextEditOp): void {
-    const slot = textSlotOf('module', edit.target)
-    if (slot?.list === 'lorebook') {
-        const list = next.lorebook
-        const entry = list?.[slot.index]
-        if (list && entry && typeof entry.content === 'string') {
-            const content = spliceInto(entry.content, edit)
-            next.lorebook = list.map((item, index) => (index === slot.index ? { ...item, content } : item))
+function replaceAt<T>(list: readonly T[], at: number, item: T): T[] {
+    return list.map((current, index) => (index === at ? item : current))
+}
+
+function withField<T extends object>(source: T, field: string, value: unknown): T {
+    const copy = { ...source }
+    fieldsView(copy)[field] = value
+    return copy
+}
+
+function holdsString(holder: object, field: string): boolean {
+    return typeof fieldsView(holder)[field] === 'string'
+}
+
+// A `textSet` on a registry text of the module under construction. Every container on the path (the list, the entry,
+// the trigger's section array and leaf) is replaced by a copy taken from `next`, never from the live module, so
+// several writes into one list compose; the live module is not touched. A slot that holds no string is left alone,
+// and so is `cjs` (flag-only).
+function writeModuleText(next: RisuModule, target: string, value: string): void {
+    const parsed = parseTargetPath('module', target)
+    if (parsed === null) {
+        return
+    }
+    if ('trigger' in parsed) {
+        const list = next.trigger
+        const entry = list?.[parsed.trigger]
+        const group = entry?.[parsed.section]
+        const leaf = group?.[parsed.entry]
+        if (list && entry && group && leaf && holdsString(leaf, parsed.field)) {
+            const leafCopy = withField(leaf, parsed.field, value)
+            next.trigger = replaceAt(list, parsed.trigger, withField(entry, parsed.section, replaceAt(group, parsed.entry, leafCopy)))
         }
-    } else if (slot?.list === 'regex') {
-        const list = next.regex
-        const entry = list?.[slot.index]
-        if (list && entry && typeof entry.out === 'string') {
-            const out = spliceInto(entry.out, edit)
-            next.regex = list.map((item, index) => (index === slot.index ? { ...item, out } : item))
+    } else if ('entry' in parsed) {
+        if (parsed.entry === 'lore') {
+            const list = next.lorebook
+            const entry = list?.[parsed.index]
+            if (list && entry && holdsString(entry, parsed.field)) {
+                next.lorebook = replaceAt(list, parsed.index, withField(entry, parsed.field, value))
+            }
+        } else {
+            const list = next.regex
+            const entry = list?.[parsed.index]
+            if (list && entry && holdsString(entry, parsed.field)) {
+                next.regex = replaceAt(list, parsed.index, withField(entry, parsed.field, value))
+            }
         }
+    } else if ('field' in parsed && !('nested' in parsed) && parsed.field === 'backgroundEmbedding' && typeof next.backgroundEmbedding === 'string') {
+        next.backgroundEmbedding = value
     }
 }
 

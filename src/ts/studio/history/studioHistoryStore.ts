@@ -66,8 +66,7 @@ export interface StudioClaimPort {
 
 // Studio history is stored at this one format version. A header, index or entry of any other version is
 // not recognised: the owner reads as unreadable and takes the store's existing aside path, so the bytes
-// are kept and never block a write of the current version. MC-350 binds this format from the first
-// release build that ships Studio: from then on a format change ships a forward migration.
+// are kept and never block a write of the current version.
 export const HISTORY_FORMAT_VERSION = 2
 
 // Keys:
@@ -78,8 +77,15 @@ export const HISTORY_FORMAT_VERSION = 2
 // Steps and deleted items have separate kinds because a deleted item's id can equal a step id.
 // Any other prefix belongs to another build and is never read, written, evicted or counted. A build
 // that writes a header, an index or an entry of another version writes all three of that version in
-// one transaction under a fresh gen, or uses new prefixes. A change to the entry data a reader
-// accepts is a new version.
+// one transaction under a fresh gen, or uses new prefixes.
+// Version rule (MC-1827): a widening that older builds refuse outright keeps the version, while a change older
+// builds would accept but misread, or replay with a different meaning, needs a new version.
+//   (a) Refused means the strict parse rejects the whole record or header; dropping or skipping a single entry
+//       counts as misread.
+//   (b) The widening reader still reads every shape the current version wrote.
+//   (c) An older build's set-aside keeps the newer bytes and never overwrites them.
+// MC-350: from the first release build that ships Studio, every format change ships an automatic forward
+// migration, and data a build cannot read is kept, never overwritten.
 // An optional, additive step field (such as a step's `listFingerprint`) keeps the version: a reader that
 // does not know it drops it when it rebuilds the step, and an absent field means the behaviour from
 // before the field existed. The field is omitted when absent, never written as undefined or null.

@@ -140,6 +140,7 @@
         else if (result.already === 'redo') notes.push(language.studioHistoryAlreadyRedone)
         else if (result.dropped) notes.push(language.studioHistoryStepDropped)
         if (result.listSkipped !== undefined && result.listSkipped > 0) notes.push(language.studioHistoryRevertListSkipped)
+        if (result.pairSkipped !== undefined && result.pairSkipped > 0) notes.push(language.studioHistoryRevertPairSkipped)
         if (result.fmNotRestored) notes.push(language.studioToastRestoredFmNotice)
         message = notes.length > 0 ? notes.join(' ') : null
         void placeFocusAfterHistory(before, readOwnerFields(key), () => root?.closest('[data-part="studio"]') ?? null, () => root)
@@ -148,7 +149,13 @@
     function stepText(label: StepLabel): string {
         switch (label.kind) {
             case 'field':
-                return label.field === 'desc' ? language.description : label.field === 'hideChatIcon' ? language.hideChatIcon : language.note
+                switch (label.field) {
+                    case 'desc': return language.description
+                    case 'firstMessage': return language.firstMessage
+                    case 'exampleMessage': return language.exampleMessage
+                    case 'hideChatIcon': return language.hideChatIcon
+                    case 'note': return language.note
+                }
             case 'greetingAdd': return language.studioStepGreetingAdd
             case 'greetingRemove': return language.studioStepGreetingRemove
             case 'greetingEdit': return language.studioStepGreetingEdit

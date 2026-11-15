@@ -358,3 +358,182 @@ export function enumerateClassifiedTargets(owner: TargetOwner): ClassifiedTarget
 export function enumerateTargets(owner: TargetOwner): TargetPair[] {
     return enumerateClassifiedTargets(owner).map(({ path, text }) => ({ path, text }))
 }
+
+// ---------------------------------------------------------------- addressing a registry path
+
+/** The shape every stored text target must have: `/`-separated segments of letters, digits and underscores. */
+export const TEXT_TARGET = /^[A-Za-z0-9_]+(\/[A-Za-z0-9_]+)*$/
+
+/** The top-level text fields a character registry path names. */
+export const CHARACTER_TEXT_FIELDS = [
+    'desc', 'firstMessage', 'exampleMessage', 'systemPrompt', 'replaceGlobalNote', 'additionalText', 'personality',
+    'scenario', 'backgroundHTML', 'defaultVariables', 'translatorNote', 'creatorNotes',
+] as const
+
+export type CharacterTextField = (typeof CHARACTER_TEXT_FIELDS)[number]
+
+const MODULE_TEXT_FIELDS: readonly string[] = ['backgroundEmbedding', 'cjs']
+
+const NESTED_TEXT_FIELDS: Readonly<Record<'depth_prompt' | 'newGenData', readonly string[]>> = {
+    depth_prompt: ['prompt'],
+    newGenData: ['prompt', 'negative', 'instructions', 'emotionInstructions'],
+}
+
+const INDEX_SEGMENT = /^(0|[1-9][0-9]*)$/
+
+/** A registry path as the pieces that address it. Every index is canonical decimal. */
+export type TargetPath =
+    | { field: string }
+    | { nested: 'depth_prompt' | 'newGenData'; field: string }
+    | { entry: 'lore' | 'regex'; index: number; field: string }
+    | { trigger: number; section: 'conditions' | 'effect'; entry: number; field: string }
+    | { greeting: number }
+
+export type TriggerTargetPath = Extract<TargetPath, { trigger: number }>
+
+function indexOf(segment: string): number | null {
+    if (!INDEX_SEGMENT.test(segment)) {
+        return null
+    }
+    const index = Number(segment)
+    return Number.isSafeInteger(index) ? index : null
+}
+
+/**
+ * The one parse of a registry path for an owner kind: null for anything that is not an address of that kind (a path
+ * failing the stored shape, a `__proto__` segment, a non-canonical index, an unknown field). A parsed path says where
+ * a text would live, not that it exists or may be edited: the resolver decides that against the owner.
+ */
+export function parseTargetPath(kind: TargetOwner['kind'], path: string): TargetPath | null {
+    if (!TEXT_TARGET.test(path)) {
+        return null
+    }
+    const parts = path.split('/')
+    if (parts.includes('__proto__')) {
+        return null
+    }
+    if (parts.length === 1) {
+        const names: readonly string[] = kind === 'character' ? CHARACTER_TEXT_FIELDS : MODULE_TEXT_FIELDS
+        return names.includes(parts[0]) ? { field: parts[0] } : null
+    }
+    if (parts.length === 2) {
+        const [head, tail] = parts
+        if (kind !== 'character') {
+            return null
+        }
+        if (head === 'alternateGreetings') {
+            const index = indexOf(tail)
+            return index === null ? null : { greeting: index }
+        }
+        if (head === 'depth_prompt' || head === 'newGenData') {
+            return NESTED_TEXT_FIELDS[head].includes(tail) ? { nested: head, field: tail } : null
+        }
+        return null
+    }
+    if (parts.length === 3) {
+        const [head, indexText, field] = parts
+        const index = indexOf(indexText)
+        if (index === null) {
+            return null
+        }
+        if (head === 'lore' && field === 'content') {
+            return { entry: 'lore', index, field }
+        }
+        return head === 'regex' && field === 'out' ? { entry: 'regex', index, field } : null
+    }
+    if (parts.length === 5 && parts[0] === 'trigger') {
+        const section = parts[2]
+        const list = indexOf(parts[1])
+        const entry = indexOf(parts[3])
+        if ((section === 'conditions' || section === 'effect') && list !== null && entry !== null) {
+            return { trigger: list, section, entry, field: parts[4] }
+        }
+    }
+    return null
+}
+
+function stringAt(list: readonly unknown[] | undefined, index: number): string | null {
+    if (!Array.isArray(list)) {
+        return null
+    }
+    const value: unknown = list[index]
+    return typeof value === 'string' ? value : null
+}
+
+function objectAt(list: readonly object[] | undefined, index: number): object | null {
+    if (!Array.isArray(list)) {
+        return null
+    }
+    const value: unknown = list[index]
+    return typeof value === 'object' && value !== null ? value : null
+}
+
+function stringField(holder: object | null | undefined, field: string): string | null {
+    if (!holder) {
+        return null
+    }
+    const value = fieldsOf(holder)[field]
+    return typeof value === 'string' ? value : null
+}
+
+function triggerTextAt(lists: readonly TriggerListLike[] | undefined, parsed: TriggerTargetPath): string | null {
+    const list = objectAt(lists, parsed.trigger) as TriggerListLike | null
+    if (!list) {
+        return null
+    }
+    const entry = objectAt(parsed.section === 'conditions' ? list.conditions : list.effect, parsed.entry)
+    if (!entry) {
+        return null
+    }
+    const fields = fieldsOf(entry)
+    // The enumerator reads own keys only, and classifies each field against the entry as it is now.
+    if (!Object.prototype.hasOwnProperty.call(fields, parsed.field)) {
+        return null
+    }
+    const value = fields[parsed.field]
+    if (typeof value !== 'string') {
+        return null
+    }
+    const cls = parsed.section === 'conditions' ? conditionFieldClass(fields, parsed.field) : effectFieldClass(fields, parsed.field)
+    return cls === 'rewritable' ? value : null
+}
+
+/**
+ * The text at `path` when the enumerator would list it as rewritable now, else null: a path outside the registry, a
+ * missing entry or parent, a value that is not a string, a flag-only or excluded field (a trigger field is classified
+ * against its entry as it is at this read), and every path of a group. Reads only the addressed entry.
+ */
+export function rewritableTextAt(owner: TargetOwner, path: string): string | null {
+    if (owner.kind === 'character' && owner.source.type === 'group') {
+        return null
+    }
+    const parsed = parseTargetPath(owner.kind, path)
+    if (parsed === null) {
+        return null
+    }
+    if (owner.kind === 'character') {
+        const c = owner.source
+        if ('greeting' in parsed) {
+            return stringAt(c.alternateGreetings, parsed.greeting)
+        }
+        if ('trigger' in parsed) {
+            return triggerTextAt(c.triggerscript, parsed)
+        }
+        if ('entry' in parsed) {
+            return stringField(objectAt(parsed.entry === 'lore' ? c.globalLore : c.customscript, parsed.index), parsed.field)
+        }
+        if ('nested' in parsed) {
+            return stringField(c[parsed.nested], parsed.field)
+        }
+        return stringField(c, parsed.field)
+    }
+    const m = owner.source
+    if ('trigger' in parsed) {
+        return triggerTextAt(m.trigger, parsed)
+    }
+    if ('entry' in parsed) {
+        return stringField(objectAt(parsed.entry === 'lore' ? m.lorebook : m.regex, parsed.index), parsed.field)
+    }
+    // A module's `cjs` is flag-only: scanned, never edited.
+    return 'field' in parsed && !('nested' in parsed) && parsed.field === 'backgroundEmbedding' ? stringField(m, parsed.field) : null
+}

@@ -282,7 +282,7 @@ describe('the retained pairs and the recompute', () => {
 
 describe('write ordering, module slots and the file probe', () => {
     test('rows come first, then folder entries, then the rest, each group in the plan order', () => {
-        const text: WriteOp = { op: 'textEdit', target: 'lore/0/content', offset: 0, from: 'a', to: 'b' }
+        const text: WriteOp = { op: 'textSet', target: 'lore/0/content', value: 'b' }
         const set: WriteOp = { op: 'set', path: 'desc', value: { had: true, value: 'x' } }
         const folderSet: WriteOp = { op: 'assetFolderSet', name: 'a', before: { had: false }, after: { had: true, value: 'F' } }
         const rowA: WriteOp = { op: 'assetRowRemove', array: 'additionalAssets', index: 3, tuple: GRIN, count: 1 }

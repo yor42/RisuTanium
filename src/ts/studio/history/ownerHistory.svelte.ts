@@ -54,6 +54,7 @@ import type { ListElementHash } from './listFingerprint'
 import {
     applyReplayMove,
     assetPathsReplayMayInsert,
+    assetStepWrites,
     isStoredAssetPath,
     commitStep,
     createPageSession,
@@ -65,6 +66,7 @@ import {
     planRestorePoint,
     planRevert,
     stepIdFor,
+    textBeforeOf,
     type DeletedItem,
     type HistoryClock,
     type LiveReader,
@@ -111,7 +113,7 @@ export type AssetRefusal = 'asset-no-undo' | 'asset-other-tab-character' | 'asse
 // Undo is given up by its host after 10 s, so a queued replay must reach its answer well before that.
 export const REPLAY_BUDGET_MS = 8000
 
-export type StudioRefusal = 'loading' | SetterRefusal | AssetRefusal | 'empty' | 'unknown'
+export type StudioRefusal = 'loading' | SetterRefusal | AssetRefusal | 'empty' | 'unknown' | 'pairSplit'
 
 // What a landed action tells the caller. `unchanged` means the value already was the requested one:
 // nothing was written, marked or recorded.
@@ -134,6 +136,9 @@ export interface StudioWriteNotes {
     // Revert only: list ops that were not undone because their step's list no longer fit. Also set on
     // an `unchanged` revert, which lands nothing.
     listSkipped?: number
+    // Revert only: steps left whole because they changed the first message together with the alternate first
+    // messages and one of the two no longer fit. Also set on an `unchanged` revert.
+    pairSkipped?: number
     // Restore point only: the paths whose live value was changed outside Studio's history.
     changedElsewhere?: RestorePath[]
     // An asset intent that landed: the id of the step it recorded.
@@ -729,25 +734,6 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         notes: StudioWriteNotes
     }
 
-    // The ops of an asset build as the writes the owner write applies: a `desc` text edit is the field's value after
-    // the splice (the rest of the plan's edits of it follow the running value), every other op is its own write.
-    function writesOfAssetOps(ops: readonly Op[], live: LiveReader): WriteOp[] {
-        const writes: WriteOp[] = []
-        const field = live.field('desc')
-        let desc = field.had && typeof field.value === 'string' ? field.value : null
-        for (const op of ops) {
-            if (op.op === 'textEdit' && op.target === 'desc') {
-                if (desc !== null) {
-                    desc = desc.slice(0, op.offset) + op.to + desc.slice(op.offset + op.from.length)
-                    writes.push({ op: 'set', path: 'desc', value: { had: true, value: desc } })
-                }
-            } else if (op.op === 'textEdit' || op.op === 'assetRowRemove' || op.op === 'assetRowInsert' || op.op === 'assetRowSet' || op.op === 'assetFolderSet' || op.op === 'assetFolderOrder') {
-                writes.push(op)
-            }
-        }
-        return writes
-    }
-
     // The steps a replay or a revert would replay, and the direction their ops are applied in: an undo and a revert
     // undo, a redo redoes. Null for every other intent.
     function replayedSteps(slot: OwnerSlot, intent: Intent): { steps: readonly Step[]; direction: 'undo' | 'redo' } | null {
@@ -815,16 +801,21 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             if (built.ok === false) {
                 return built.reason === 'unchanged' ? { ok: true, unchanged: true } : refused('precondition')
             }
+            // Every text edit must apply to the live owner as it is now: a stale or unreadable one refuses the
+            // intent before anything is written.
+            const assetWrites = assetStepWrites(built.ops, live)
+            if (assetWrites === null) {
+                return refused('precondition')
+            }
             const id = stepIdFor(pageSession, ++counter)
             const greetings = live.greetings()
-            const descField = live.field('desc')
             const restoreWrites = deriveRestoreWrites(
                 built.ops,
                 greetings === null ? null : [...greetings],
-                descField.had && typeof descField.value === 'string' ? descField.value : undefined,
+                textBeforeOf((path) => live.field(path)),
             )
             return {
-                writes: writesOfAssetOps(built.ops, live),
+                writes: assetWrites,
                 pageFm: false,
                 notes: {},
                 // An asset step never joins an open step and never replaces the restore point, as a revert does not.
@@ -873,7 +864,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         if (intent.kind === 'replay') {
             const plan = planReplay(record, intent.direction, live, hashFor, goneRows)
             if (plan.ok === false) {
-                return refused(plan.reason === 'empty' ? 'empty' : 'precondition')
+                return refused(plan.reason === 'empty' || plan.reason === 'pairSplit' ? plan.reason : 'precondition')
             }
             return {
                 writes: plan.writes,
@@ -899,6 +890,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                     ok: true,
                     unchanged: true,
                     ...(plan.listSkipped === undefined ? {} : { listSkipped: plan.listSkipped }),
+                    ...(plan.pairSkipped === undefined ? {} : { pairSkipped: plan.pairSkipped }),
                     ...(plan.fmNotRestored ? { fmNotRestored: true } : {}),
                     ...(plan.goneRows === undefined ? {} : { goneRows: plan.goneRows }),
                     ...(goneName === undefined ? {} : { goneName }),
@@ -942,6 +934,9 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         if (plan.listSkipped !== undefined && plan.listSkipped > 0) {
             notes.listSkipped = plan.listSkipped
+        }
+        if (plan.pairSkipped !== undefined && plan.pairSkipped > 0) {
+            notes.pairSkipped = plan.pairSkipped
         }
         if (plan.already !== undefined) {
             notes.already = plan.already

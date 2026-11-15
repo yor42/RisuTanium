@@ -66,7 +66,8 @@ import { characterOwnerKey, chatOwnerKey, READY_DEADLINE_MS, SAVE_DEBOUNCE_MS, S
 import { ensureStudioHistory, resetStudioHistoryAccessorForTests, setStudioHistoryLoaderForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { asideMarkKey, headerKey, ownerCapFor } from '../../ts/studio/history/studioHistoryStore'
 import { createFakeClock, drainMicrotasks, type FakeClock } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
-import { createClaimDouble, createMemoryStudioStore, storedRecord, type ClaimDouble, type MemoryStudioStore } from '../../ts/studio/history/tests/studioStoreDoubles'
+import { createClaimDouble, createMemoryStudioStore, seedOwner, storedRecord, type ClaimDouble, type MemoryStudioStore } from '../../ts/studio/history/tests/studioStoreDoubles'
+import { emptyRecord, type Step } from '../../ts/studio/history/historyModel'
 import StudioHistoryPanel from './StudioHistoryPanel.svelte'
 import StudioScreen from './StudioScreen.svelte'
 
@@ -656,6 +657,21 @@ describe('steps, undo, redo and revert', () => {
         expect(stepsText()).toEqual(['studioStepGreetingAdd', 'hideChatIcon', 'description'])
     })
 
+    test('a first message step and an example message step are labelled with their own field names', async () => {
+        const rig = makeRig()
+        openPanelState()
+        mountInto(StudioHistoryPanel)
+        await settle()
+        rig.service.editField(A, 'firstMessage', 'f1')
+        rig.service.closeOpenStep(A)
+        rig.service.editField(A, 'exampleMessage', 'e1')
+        rig.service.closeOpenStep(A)
+        flushSync()
+        expect(stepsText()).toEqual(['exampleMessage', 'firstMessage'])
+        expect(languageEnglish.firstMessage).toBe('First Message')
+        expect(languageEnglish.exampleMessage).toBe('Example Message')
+    })
+
     test('Undo and Redo replay the top step, and an undone step is marked', async () => {
         await openWithSteps()
         click('studio-history-undo')
@@ -807,6 +823,100 @@ describe('a revert that did not undo older first-message changes says so', () =>
 
     test('T89t the notice text is the one the maintainer chose', () => {
         expect(languageEnglish.studioHistoryRevertListSkipped).toBe('Some older changes to the first messages were not undone.')
+    })
+})
+
+// ---------------------------------------------------------------- a step that changed the first message with the alternates
+
+describe('a step that changed the first message together with the alternate first messages and no longer fits', () => {
+    const fieldValue = (value: string) => ({ had: true as const, value })
+    const descStep: Step = { id: 's0', at: 1, label: { kind: 'field', field: 'desc' }, ops: [{ op: 'set', path: 'desc', before: fieldValue('d0'), after: fieldValue('d1') }] }
+    const swapStep: Step = {
+        id: 's1',
+        at: 2,
+        label: { kind: 'field', field: 'firstMessage' },
+        ops: [
+            { op: 'set', path: 'firstMessage', before: fieldValue('M'), after: fieldValue('G') },
+            { op: 'listSet', index: 1, before: 'G', after: 'M' },
+        ],
+    }
+
+    const liveCharacter = (): ReturnType<typeof live> & { firstMessage?: string } => live()
+
+    // The history holds the steps; the live character is the swap's result with the main text changed outside.
+    async function openWith(steps: Step[], desc: string): Promise<Rig> {
+        const shared = new Map<string, string>()
+        seedOwner(shared, { ...emptyRecord(A, 1), done: steps }, 'w:bound')
+        const rig = makeRig({ shared })
+        live().desc = desc
+        liveCharacter().firstMessage = 'Z'
+        live().alternateGreetings = ['A', 'M', 'C']
+        openPanelState()
+        mountInto(StudioHistoryPanel)
+        await settle()
+        return rig
+    }
+
+    async function revertTo(rig: Rig, stepIndex: number): Promise<void> {
+        const anchor = rig.service.view(A).done[stepIndex].id
+        const row = parts('studio-history-step').find((r) => r.dataset.stepId === anchor)!
+        row.querySelector<HTMLElement>('[data-part="studio-history-revert"]')!.click()
+        flushSync()
+        await settle()
+    }
+
+    test('an undo shows the explanation and changes nothing', async () => {
+        await openWith([descStep, swapStep], 'd1')
+        click('studio-history-undo')
+        await settle()
+        expect(part('studio-history-message')?.textContent).toBe('studioRefusalPairSplit')
+        expect(liveCharacter().firstMessage).toBe('Z')
+        expect(live().alternateGreetings).toEqual(['A', 'M', 'C'])
+    })
+
+    test('a revert that can only skip the step shows the explanation alone', async () => {
+        const rig = await openWith([descStep, swapStep], 'd1')
+        await revertTo(rig, 0)
+        expect(part('studio-history-message')?.textContent).toBe('studioRefusalPairSplit')
+        expect(live().alternateGreetings).toEqual(['A', 'M', 'C'])
+    })
+
+    test('a revert that lands other changes adds the note that the step was left as it is', async () => {
+        const later: Step = { id: 's2', at: 3, label: { kind: 'field', field: 'desc' }, ops: [{ op: 'set', path: 'desc', before: fieldValue('d1'), after: fieldValue('d2') }] }
+        const rig = await openWith([descStep, swapStep, later], 'd2')
+        await revertTo(rig, 0)
+        expect(live().desc).toBe('d1')
+        expect(part('studio-history-message')?.textContent).toBe('studioHistoryRevertListSkipped studioHistoryRevertPairSkipped')
+    })
+
+    test('a revert whose other steps cancel out shows the note and adds no row', async () => {
+        const out: Step = { id: 's1', at: 2, label: { kind: 'greetingEdit' }, ops: [{ op: 'listSet', index: 0, before: 'A', after: 'a1' }] }
+        const back: Step = { id: 's2', at: 3, label: { kind: 'greetingEdit' }, ops: [{ op: 'listSet', index: 0, before: 'a1', after: 'A' }] }
+        const bound: Step = {
+            id: 's3',
+            at: 4,
+            label: { kind: 'field', field: 'firstMessage' },
+            ops: [
+                { op: 'set', path: 'firstMessage', before: fieldValue('M'), after: fieldValue('N') },
+                { op: 'listSet', index: 2, before: 'C', after: 'c3' },
+            ],
+        }
+        const rig = await openWith([descStep, out, back, bound], 'd1')
+        live().alternateGreetings = ['A', 'B', 'c3']
+        flushSync()
+        const rowsBefore = stepsText()
+        await revertTo(rig, 0)
+        expect(part('studio-history-message')?.textContent).toBe('studioHistoryRevertListSkipped studioHistoryRevertPairSkipped')
+        expect(stepsText()).toEqual(rowsBefore)
+    })
+
+    test('the explanation texts are the ones the maintainer chose', () => {
+        expect(languageEnglish.studioRefusalPairSplit).toBe(
+            'This step changed the default first message together with the alternative first messages, and one of them has changed since, so Studio stopped here to keep both. Nothing was changed.',
+        )
+        expect(languageEnglish.studioHistoryRevertPairSkipped).toBe(
+            'A step that changed the default first message together with the alternative first messages was left as it is, because one of them changed since.',
+        )
     })
 })
 

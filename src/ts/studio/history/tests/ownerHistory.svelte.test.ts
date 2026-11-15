@@ -6,11 +6,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { DBState, selIdState } from 'src/ts/stores.svelte'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { toSaveType } from 'src/ts/storage/risuSave'
-import { readTextAt, textSlotOf } from 'src/ts/studio/edit/studioSetters'
+import { rewritableTextAt, type TargetOwner } from 'src/ts/studio/assets/referenceTargets'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../ownerHistory.svelte'
 import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, SAVE_DEBOUNCE_MS, type OwnerKey } from '../ownerPhase'
-import { COALESCE_MS, type Step } from '../historyModel'
+import { COALESCE_MS, emptyRecord, type Step } from '../historyModel'
 import { listFingerprintOf } from '../listFingerprint'
 import { createFakeClock, type FakeClock } from './historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore, seedOwner, storedRecord, type ClaimDouble, type MemoryStudioStore } from './studioStoreDoubles'
@@ -57,6 +57,7 @@ interface LiveCharacter {
     license?: string
     coldstorage?: string
     desc: string
+    firstMessage?: string
     hideChatIcon?: boolean
     alternateGreetings: string[]
     chats: LiveChat[]
@@ -897,6 +898,72 @@ describe('list fingerprint through the service (CHORE-690 S1)', () => {
     })
 })
 
+describe('a step that changed the first message together with the alternate first messages', () => {
+    const fieldValue = (value: string) => ({ had: true as const, value })
+    const descStep: Step = { id: 's0', at: 1, label: { kind: 'field', field: 'desc' }, ops: [{ op: 'set', path: 'desc', before: fieldValue('d0'), after: fieldValue('d1') }] }
+    // Main M and the entry G trade places: the live character holds the result, main G and [A, M, C].
+    const swapStep: Step = {
+        id: 's1',
+        at: 2,
+        label: { kind: 'field', field: 'firstMessage' },
+        ops: [
+            { op: 'set', path: 'firstMessage', before: fieldValue('M'), after: fieldValue('G') },
+            { op: 'listSet', index: 1, before: 'G', after: 'M' },
+        ],
+    }
+
+    async function openWith(steps: Step[], character: Partial<LiveCharacter>): Promise<void> {
+        putCharacters(makeCharacter('A', { desc: 'd1', ...character }), makeCharacter('B'))
+        const shared = new Map<string, string>()
+        seedOwner(shared, { ...emptyRecord(A, 1), done: steps }, 'w:bound')
+        harness = build(shared)
+        await ready()
+    }
+
+    test('an undo after the main text changed outside is refused with its own reason and writes nothing', async () => {
+        await openWith([descStep, swapStep], { firstMessage: 'Z', alternateGreetings: ['A', 'M', 'C'] })
+        expect(harness.service.undo(A)).toEqual({ ok: false, reason: 'pairSplit' })
+        expect(live().firstMessage).toBe('Z')
+        expect(live().alternateGreetings).toEqual(['A', 'M', 'C'])
+        expect(harness.service.view(A).done).toHaveLength(2)
+        expect(h.marks).toBe(0)
+    })
+
+    test('a revert that can only skip that step is refused with the same reason', async () => {
+        await openWith([descStep, swapStep], { firstMessage: 'Z', alternateGreetings: ['A', 'M', 'C'] })
+        expect(harness.service.revertTo(A, 's0')).toEqual({ ok: false, reason: 'pairSplit' })
+        expect(live().alternateGreetings).toEqual(['A', 'M', 'C'])
+        expect(harness.service.view(A).done).toHaveLength(2)
+    })
+
+    test('a revert that lands other changes reports the skipped pair', async () => {
+        const later: Step = { id: 's2', at: 3, label: { kind: 'field', field: 'desc' }, ops: [{ op: 'set', path: 'desc', before: fieldValue('d1'), after: fieldValue('d2') }] }
+        await openWith([descStep, swapStep, later], { desc: 'd2', firstMessage: 'Z', alternateGreetings: ['A', 'M', 'C'] })
+        expect(harness.service.revertTo(A, 's0')).toMatchObject({ ok: true, pairSkipped: 1, listSkipped: 1 })
+        expect(live().desc).toBe('d1')
+        expect(live().firstMessage).toBe('Z')
+        expect(live().alternateGreetings).toEqual(['A', 'M', 'C'])
+    })
+
+    test('a revert whose other steps cancel out still reports the skipped pair and writes nothing', async () => {
+        const out: Step = { id: 's1', at: 2, label: { kind: 'greetingEdit' }, ops: [{ op: 'listSet', index: 0, before: 'A', after: 'a1' }] }
+        const back: Step = { id: 's2', at: 3, label: { kind: 'greetingEdit' }, ops: [{ op: 'listSet', index: 0, before: 'a1', after: 'A' }] }
+        const bound: Step = {
+            id: 's3',
+            at: 4,
+            label: { kind: 'field', field: 'firstMessage' },
+            ops: [
+                { op: 'set', path: 'firstMessage', before: fieldValue('M'), after: fieldValue('N') },
+                { op: 'listSet', index: 2, before: 'C', after: 'c3' },
+            ],
+        }
+        await openWith([descStep, out, back, bound], { firstMessage: 'Z', alternateGreetings: ['A', 'B', 'c3'] })
+        expect(harness.service.revertTo(A, 's0')).toEqual({ ok: true, unchanged: true, listSkipped: 1, pairSkipped: 1 })
+        expect(live().alternateGreetings).toEqual(['A', 'B', 'c3'])
+        expect(harness.service.view(A).done).toHaveLength(4)
+    })
+})
+
 describe('the text target resolver maps a registry path per owner kind', () => {
     // Owners shaped as the importers produce them. The decoy lists hold the other kind's name, so a
     // resolver that mixes the kinds up reads a different text.
@@ -913,22 +980,22 @@ describe('the text target resolver maps a registry path per owner kind', () => {
         customscript: [{ out: 'decoy' }],
     }
 
+    const ownerOf = (kind: 'character' | 'module', source: object): TargetOwner =>
+        kind === 'character' ? { kind, source: source as Extract<TargetOwner, { kind: 'character' }>['source'] } : { kind, source: source as Extract<TargetOwner, { kind: 'module' }>['source'] }
+
     test('a character holds its lore in globalLore and its regex out in customscript', () => {
-        expect(textSlotOf('character', 'lore/1/content')).toEqual({ list: 'globalLore', index: 1, field: 'content' })
-        expect(textSlotOf('character', 'regex/0/out')).toEqual({ list: 'customscript', index: 0, field: 'out' })
-        expect(readTextAt('character', character, 'lore/1/content')).toBe('c-lore1')
-        expect(readTextAt('character', character, 'regex/0/out')).toBe('c-out0')
+        expect(rewritableTextAt(ownerOf('character', character), 'lore/1/content')).toBe('c-lore1')
+        expect(rewritableTextAt(ownerOf('character', character), 'regex/0/out')).toBe('c-out0')
     })
 
     test('a module holds its lore in lorebook and its regex out in regex, never in the character lists', () => {
-        expect(textSlotOf('module', 'lore/1/content')).toEqual({ list: 'lorebook', index: 1, field: 'content' })
-        expect(textSlotOf('module', 'regex/0/out')).toEqual({ list: 'regex', index: 0, field: 'out' })
-        expect(readTextAt('module', module, 'lore/0/content')).toBe('m-lore0')
-        expect(readTextAt('module', module, 'regex/0/out')).toBe('m-out0')
+        expect(rewritableTextAt(ownerOf('module', module), 'lore/0/content')).toBe('m-lore0')
+        expect(rewritableTextAt(ownerOf('module', module), 'regex/0/out')).toBe('m-out0')
     })
 
     test('any other path is refused, and so is an entry that holds no string', () => {
         const refused = [
+            // Rewritable character paths: they read null here only because neither fixture holds the key.
             'desc',
             'alternateGreetings/1',
             'lore/0/comment',
@@ -944,12 +1011,11 @@ describe('the text target resolver maps a registry path per owner kind', () => {
         ]
         for (const kind of ['character', 'module'] as const) {
             for (const path of refused) {
-                expect(textSlotOf(kind, path), `${kind} ${path}`).toBeNull()
-                expect(readTextAt(kind, kind === 'character' ? character : module, path), `${kind} ${path}`).toBeNull()
+                expect(rewritableTextAt(ownerOf(kind, kind === 'character' ? character : module), path), `${kind} ${path}`).toBeNull()
             }
-            expect(readTextAt(kind, {}, 'lore/0/content')).toBeNull()
-            expect(readTextAt(kind, { globalLore: [{}], lorebook: [{}] }, 'lore/0/content')).toBeNull()
-            expect(readTextAt(kind, character, 'lore/9/content')).toBeNull()
+            expect(rewritableTextAt(ownerOf(kind, {}), 'lore/0/content')).toBeNull()
+            expect(rewritableTextAt(ownerOf(kind, { globalLore: [{}], lorebook: [{}] }), 'lore/0/content')).toBeNull()
+            expect(rewritableTextAt(ownerOf(kind, character), 'lore/9/content')).toBeNull()
         }
     })
 })

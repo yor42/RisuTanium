@@ -1,0 +1,61 @@
+{
+  "ownerKey": "character:c1",
+  "record": {
+    "ownerKey": "character:c1",
+    "touchedAt": 5,
+    "done": [
+      {
+        "id": "p:1",
+        "at": 1,
+        "label": { "kind": "field", "field": "desc" },
+        "ops": [
+          { "op": "textEdit", "target": "desc", "offset": 0, "from": "Old", "to": "New" },
+          { "op": "textEdit", "target": "alternateGreetings/0", "offset": 2, "from": "ab", "to": "abcd" },
+          { "op": "textEdit", "target": "lore/0/content", "offset": 0, "from": "x", "to": "yz" },
+          { "op": "textEdit", "target": "regex/0/out", "offset": 1, "from": "q", "to": "" },
+          { "op": "textEdit", "target": "systemPrompt", "offset": 0, "from": "be", "to": "be very" },
+          { "op": "textEdit", "target": "trigger/0/effect/0/value", "offset": 0, "from": "v", "to": "vv" }
+        ]
+      },
+      {
+        "id": "p:2",
+        "at": 2,
+        "label": { "kind": "field", "field": "desc" },
+        "ops": [{ "op": "set", "path": "desc", "before": { "had": true, "value": "New" }, "after": { "had": true, "value": "Newer" } }]
+      }
+    ],
+    "undone": [],
+    "deleted": [],
+    "restore": {
+      "visitId": "v1",
+      "at": 3,
+      "fields": {
+        "desc": { "before": { "had": true, "value": "Old" }, "last": { "had": true, "value": "Newer" } },
+        "hideChatIcon": { "before": { "had": false }, "last": { "had": true, "value": true } },
+        "alternateGreetings": { "before": { "list": ["a"] }, "last": { "list": ["a", "b"] } }
+      }
+    }
+  },
+  "entries": [
+    [
+      "e:12:character:c1|double1:1|s:p:1",
+      "{\"v\":2,\"k\":\"s\",\"ownerKey\":\"character:c1\",\"data\":{\"id\":\"p:1\",\"at\":1,\"label\":{\"kind\":\"field\",\"field\":\"desc\"},\"ops\":[{\"op\":\"textEdit\",\"target\":\"desc\",\"offset\":0,\"from\":\"Old\",\"to\":\"New\"},{\"op\":\"textEdit\",\"target\":\"alternateGreetings/0\",\"offset\":2,\"from\":\"ab\",\"to\":\"abcd\"},{\"op\":\"textEdit\",\"target\":\"lore/0/content\",\"offset\":0,\"from\":\"x\",\"to\":\"yz\"},{\"op\":\"textEdit\",\"target\":\"regex/0/out\",\"offset\":1,\"from\":\"q\",\"to\":\"\"},{\"op\":\"textEdit\",\"target\":\"systemPrompt\",\"offset\":0,\"from\":\"be\",\"to\":\"be very\"},{\"op\":\"textEdit\",\"target\":\"trigger/0/effect/0/value\",\"offset\":0,\"from\":\"v\",\"to\":\"vv\"}]}}"
+    ],
+    [
+      "e:12:character:c1|double1:1|s:p:2",
+      "{\"v\":2,\"k\":\"s\",\"ownerKey\":\"character:c1\",\"data\":{\"id\":\"p:2\",\"at\":2,\"label\":{\"kind\":\"field\",\"field\":\"desc\"},\"ops\":[{\"op\":\"set\",\"path\":\"desc\",\"before\":{\"had\":true,\"value\":\"New\"},\"after\":{\"had\":true,\"value\":\"Newer\"}}]}}"
+    ],
+    [
+      "e:12:character:c1|double1:1|r",
+      "{\"v\":2,\"k\":\"r\",\"ownerKey\":\"character:c1\",\"data\":{\"visitId\":\"v1\",\"at\":3,\"fields\":{\"desc\":{\"before\":{\"had\":true,\"value\":\"Old\"},\"last\":{\"had\":true,\"value\":\"Newer\"}},\"hideChatIcon\":{\"before\":{\"had\":false},\"last\":{\"had\":true,\"value\":true}},\"alternateGreetings\":{\"before\":{\"list\":[\"a\"]},\"last\":{\"list\":[\"a\",\"b\"]}}}}}"
+    ],
+    [
+      "e:12:character:c1|double1:1|i",
+      "{\"v\":2,\"wid\":\"double1:1\",\"ownerKey\":\"character:c1\",\"done\":[[\"p:1\",583],[\"p:2\",216]],\"undone\":[],\"deleted\":[],\"restore\":310}"
+    ],
+    [
+      "h:character:c1",
+      "{\"v\":2,\"wid\":\"double1:1\",\"gen\":\"double1:1\",\"ownerKey\":\"character:c1\",\"size\":3258,\"touchedAt\":5}"
+    ]
+  ]
+}

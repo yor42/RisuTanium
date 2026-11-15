@@ -80,10 +80,32 @@ function splice(text: string, edit: { offset: number; from: string; to: string }
     return text.slice(0, edit.offset) + edit.to + text.slice(edit.offset + edit.from.length)
 }
 
-// The owner writes an action makes when it lands `ops` forward.
-function forwardWrites(ops: readonly Op[]): WriteOp[] {
+// The owner writes an action makes when it lands `ops` forward. A text edit lands as the whole value it produces,
+// computed here on a running copy of the world's texts: this is the oracle the model's own writes are judged by.
+function forwardWrites(ops: readonly Op[], w?: World): WriteOp[] {
+    const running = new Map<string, string>()
+    const currentText = (target: string): string => {
+        const known = running.get(target)
+        if (known !== undefined) {
+            return known
+        }
+        if (!w) {
+            throw new Error('a text edit needs the world it lands on')
+        }
+        return target === 'desc' ? w.desc : target === LORE_TARGET ? w.lore : w.greetings[Number(target.slice('alternateGreetings/'.length))]
+    }
     return ops.flatMap<WriteOp>((op) => {
         switch (op.op) {
+            case 'textEdit': {
+                const value = splice(currentText(op.target), op)
+                running.set(op.target, value)
+                if (op.target === 'desc') {
+                    return [{ op: 'set', path: 'desc', value: { had: true, value } }]
+                }
+                return op.target.startsWith('alternateGreetings/')
+                    ? [{ op: 'listSet', index: Number(op.target.slice('alternateGreetings/'.length)), value }]
+                    : [{ op: 'textSet', target: op.target, value }]
+            }
             case 'set':
                 return [{ op: 'set', path: op.path, value: op.after }]
             case 'listSet':
@@ -142,17 +164,11 @@ function applyWrites(w: World, writes: readonly WriteOp[]): void {
                 }
                 break
             }
-            case 'textEdit': {
-                const entry = /^alternateGreetings\/(\d+)$/.exec(write.target)
-                if (write.target === 'desc') {
-                    w.desc = splice(w.desc, write)
-                } else if (entry) {
-                    w.greetings[Number(entry[1])] = splice(w.greetings[Number(entry[1])], write)
-                } else if (write.target === LORE_TARGET) {
-                    w.lore = splice(w.lore, write)
+            case 'textSet':
+                if (write.target === LORE_TARGET) {
+                    w.lore = write.value
                 }
                 break
-            }
         }
     }
 }
@@ -639,8 +655,8 @@ function runActions(input: Input, tally: Tally): string | null {
                 }
                 const greetings = [...w.greetings]
                 const descBefore = w.desc
-                applyWrites(w, forwardWrites(ops))
-                commit({ kind: 'assetMerge', from: 'a', to: 'b' }, ops, deriveRestoreWrites(ops, greetings, descBefore), false)
+                applyWrites(w, forwardWrites(ops, w))
+                commit({ kind: 'assetMerge', from: 'a', to: 'b' }, ops, deriveRestoreWrites(ops, greetings, { desc: descBefore }), false)
                 break
             }
             case 'revert':
