@@ -4,8 +4,9 @@
  * nothing. Real: `settingsRestore.ts`, `restoreInProgress.ts`, `backupWorkGuard.ts`. Faked: the loaders and the
  * confirmation dialog, so this proves the call shape and the confirmation order, not a picker or a native write.
  */
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { language } from 'src/lang'
+import { COLD_TRANSFORM_HOOK_MS } from '../../tests/coldTransform.test-helpers'
 import type { OperationOutcome } from '../operationEnd'
 
 const confirmMock = vi.hoisted(() => vi.fn(async (_message: string): Promise<boolean> => true))
@@ -331,8 +332,14 @@ describe('the Welcome restore entry when the picker is dismissed without an even
 describe('a failed Welcome restore reaches the installed rejection handler', () => {
     const installed: Array<[string, EventListener]> = []
 
+    let updateErrorHandling: () => void
+
+    beforeAll(async () => {
+        ({ updateErrorHandling } = await import('../../bootstrap'))
+    }, COLD_TRANSFORM_HOOK_MS)
+
     /** Installs the real bootstrap handlers and records them, so teardown removes exactly the ones this case added. */
-    async function installRealHandlers(): Promise<void> {
+    function installRealHandlers(): void {
         const add = window.addEventListener.bind(window)
         vi.spyOn(window, 'addEventListener').mockImplementation((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
             if (type === 'error' || type === 'unhandledrejection') {
@@ -340,7 +347,6 @@ describe('a failed Welcome restore reaches the installed rejection handler', () 
             }
             add(type, listener, options)
         })
-        const { updateErrorHandling } = await import('../../bootstrap')
         updateErrorHandling()
     }
 
@@ -356,7 +362,7 @@ describe('a failed Welcome restore reaches the installed rejection handler', () 
     })
 
     test('the rejection of the Welcome entry reaches alertError, so the failure stays visible', async () => {
-        await installRealHandlers()
+        installRealHandlers()
         const failure = new Error('guard failed')
         workInProgressMock.mockImplementation(() => {
             throw failure
@@ -375,7 +381,7 @@ describe('a failed Welcome restore reaches the installed rejection handler', () 
     })
 
     test('a run end that throws after the fallback already resolved the entry is rethrown and reaches alertError', async () => {
-        await installRealHandlers()
+        installRealHandlers()
         // The runner's own rejection listeners are set aside so this deliberate unhandled rejection is not reported as a
         // test error; the stand-in forwards it to the installed page handler exactly as a browser would.
         const runnerListeners = process.listeners('unhandledRejection')
