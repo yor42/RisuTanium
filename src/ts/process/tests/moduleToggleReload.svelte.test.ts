@@ -18,7 +18,7 @@
 import type * as SvelteRuntime from 'svelte'
 import { get } from 'svelte/store'
 import type { Writable } from 'svelte/store'
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { toAssetList } from 'src/ts/storage/assetList'
 import { moduleStubOf } from 'src/ts/storage/store2/moduleStubMatch'
@@ -162,6 +162,12 @@ vi.mock(import('src/ts/characterCards'), () => ({
 }) as unknown as typeof import('src/ts/characterCards'))
 
 //#endregion
+
+// The chat menu imports the icon-library barrel, which costs tens of seconds to transform cold; paying it here keeps
+// it out of the first test. The transform stays cached across `vi.resetModules()`, so later rigs only re-evaluate it.
+beforeAll(async () => {
+    await import('@lucide/svelte')
+}, 300_000)
 
 //#region rig
 
