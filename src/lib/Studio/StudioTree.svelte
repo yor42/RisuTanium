@@ -13,7 +13,8 @@
 </script>
 
 <script lang="ts">
-    import { tick, untrack } from 'svelte'
+    import { untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { classicDestinationOf, openInClassicEditor } from '../../ts/studio/classicLinks.svelte'
     import type { KindNode, OwnerModel, OwnerNode, StudioKind } from '../../ts/studio/ownerModel'
     import { ownerSourceFor } from '../../ts/studio/ownerSource.svelte'
@@ -228,7 +229,7 @@
 
     async function focusRow(id: string): Promise<void> {
         focusId = id
-        await tick()
+        await afterFlush()
         rowElementOf(id)?.focus()
     }
 
@@ -240,7 +241,7 @@
     // instead of falling to the page.
     async function showMore(row: TreeNode, listId: string): Promise<void> {
         showMoreStudioRows(listId)
-        await tick()
+        await afterFlush()
         if (rows.some((candidate) => candidate.id === row.id)) return
         const last = rows.findLast((candidate) => candidate.parentId === listId)
         if (last) await focusRow(last.id)
@@ -269,7 +270,7 @@
     async function openMenu(row: TreeNode): Promise<void> {
         if (!menuAvailable(row)) return
         menuRowId = row.id
-        await tick()
+        await afterFlush()
         treeElement?.querySelector<HTMLElement>('[data-part="studio-row-menu-classic"]')?.focus()
     }
 

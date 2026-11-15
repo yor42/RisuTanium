@@ -229,7 +229,7 @@ describe('the validator reads the stylesheet as a browser does (Gate 2 round 1)'
 })
 
 describe('MC-1351: bundled fonts through @font-face', () => {
-    const FACE = '@font-face{font-family:"pack serif";src:url(fonts/serif.woff2) format("woff2"),url("fonts/serif.woff") format("woff");font-weight:400 700;font-style:normal;font-display:swap;unicode-range:U+0000-00FF}'
+    const FACE = '@font-face{font-family:"pack-serif";src:url(fonts/serif.woff2) format("woff2"),url("fonts/serif.woff") format("woff");font-weight:400 700;font-style:normal;font-display:swap;unicode-range:U+0000-00FF}'
 
     test('a top-level @font-face with bundled sources is accepted in every area, and the rest is judged as before', () => {
         for (const area of THEME_AREAS) {
@@ -673,9 +673,9 @@ describe('A16 case-significant spans, A19 comment placement (MC-1568, MC-1549)',
 
 describe('GN: compatibility guards (accepted before and after)', () => {
     test.each([
-        ['a single root token', ':root{--nexus-pad:12px}' + `${SAFE_LEAF}{padding:var(--nexus-pad)}`],
-        ['a duplicate root token, last wins', ':root{--nexus-pad:1000px}:root{--nexus-pad:12px}' + `${SAFE_LEAF}{padding:var(--nexus-pad)}`],
-        ['a font size token', `:root{--nexus-fs:14px}${TEXT_LEAF}{font-size:var(--nexus-fs)}`],
+        ['a single root token', ':root{--pack-pad:12px}' + `${SAFE_LEAF}{padding:var(--pack-pad)}`],
+        ['a duplicate root token', ':root{--pack-pad:10px}:root{--pack-pad:12px}' + `${SAFE_LEAF}{padding:var(--pack-pad)}`],
+        ['a font size token', `:root{--pack-fs:14px}${TEXT_LEAF}{font-size:var(--pack-fs)}`],
         ['a negative margin by negation', `${SAFE_LEAF}{margin-right:calc(var(--space-3) * -1)}`],
         ['a negation of a number', `${SAFE_LEAF}{margin-right:calc(-1 * 8px)}`],
         ['a helper with a root default and a state value', `:root{--pack-a:12px}html[data-input="touch"]{--pack-a:10px}${SAFE_LEAF}{padding:var(--pack-a)}`],
@@ -690,7 +690,7 @@ describe('GN: compatibility guards (accepted before and after)', () => {
         ['a keyword span in any case', `${SAFE_LEAF}{border:1px solid CanvasText;color:#FFFFFF;OPACITY:1}HTML ${SAFE_LEAF}{opacity:1}`],
         [':ROOT as a keyword span', ':ROOT{--focus-ring-w:2px}'],
         ['an upper-case @MEDIA and property name', `@MEDIA (MIN-WIDTH:1px){${SAFE_LEAF}{OPACITY:0}}`],
-        ['a lower-case family registered and used in several spellings', '@font-face{font-family:"pack serif";src:url(fonts/s.woff2)}' + `${SAFE_LEAF}{font-family:"pack serif"}[data-part="chat-message-name"]{font-family:pack serif}[data-part="chat-message-badges"]{font:bold 16px/1.5 "pack serif", serif}`],
+        ['a lower-case family registered and used in several spellings', '@font-face{font-family:"pack-serif";src:url(fonts/s.woff2)}' + `${SAFE_LEAF}{font-family:"pack-serif"}[data-part="chat-message-name"]{font-family:pack-serif}[data-part="chat-message-badges"]{font:bold 16px/1.5 "pack-serif", serif}`],
         ['comments on their own line, after a comma, a semicolon, a brace and between rules', `${SAFE_LEAF}{opacity:1}\n/* own line */\n${SAFE_LEAF},/* c */[data-part="chat-message-name"]{opacity:1;/* d */padding:1px}/* e */[data-part="chat-message-badges"]{/* f */opacity:1}`],
         ['a run of comments beside a space', `${SAFE_LEAF}{opacity:1} /**//**/${SAFE_LEAF}{opacity:1}`],
         ['a grid function in a token', ':root{--nexus-ease:cubic-bezier(0.2, 0, 0, 1)}'],
@@ -783,8 +783,87 @@ describe('MC-1550 and the font rules', () => {
     })
 
     test.each([
-        ['italic bold shorthand with a generic', `${SAFE_LEAF}{font:italic bold 12px/1.5 "pack serif", serif}` , '@font-face{font-family:"pack serif";src:url(f.woff2)}'],
+        ['italic bold shorthand with a generic', `${SAFE_LEAF}{font:italic bold 12px/1.5 "pack-serif", serif}` , '@font-face{font-family:"pack-serif";src:url(f.woff2)}'],
     ])('F guard: %s', (_name, css, face) => { expectAcceptedPack('chat', face + css) })
+})
+
+// UI-S6 I4a (MC-1708, MC-1822): the pack-settable chat message font token. Its value names only the pack's own faces, the generic
+// families and resolving --pack-* helpers; any var() of an app token is refused even when the pack sets that token.
+describe('MC-1708: the chat message font token', () => {
+    const FACE = '@font-face{font-family:"pack-i4a";src:url(fonts/a.woff2)}'
+    const TWO_FACES = '@font-face{font-family:"pack-a";src:url(fonts/a.woff2)}@font-face{font-family:"pack-b";src:url(fonts/b.woff2)}'
+    const TOKEN_FAMILY = (value: string): string => `:root{--chat-message-font:${value}}`
+    const RE_APP_VAR = (name: string): RegExp => new RegExp(`font family "var\\(${name}\\)" is not allowed`)
+
+    test('U1a: a pack sets the token to its own face and a generic family', () => {
+        expectAcceptedPack('chat', FACE + TOKEN_FAMILY('"pack-i4a", sans-serif'))
+    })
+
+    test.each([
+        ['a generic family', TOKEN_FAMILY('serif')],
+        ['an unquoted own face', FACE + TOKEN_FAMILY('pack-i4a')],
+        ['a --pack-* helper with a state value', TWO_FACES + ':root{--pack-f:"pack-a";--chat-message-font:var(--pack-f)}html[data-layout="phone"]{--pack-f:"pack-b"}'],
+    ])('U1b: accepts %s', (_name, css) => { expectAcceptedPack('chat', css) })
+
+    test('U1c: a system family is refused with the font tokens\' reasons', () => {
+        const own = reasonsOf('chat', TOKEN_FAMILY('Wingdings')).filter((why) => RE_1550.test(why))
+        expect(own.length).toBeGreaterThan(0)
+        expect(own).toEqual(reasonsOf('chat', ':root{--font:Wingdings}').filter((why) => RE_1550.test(why)))
+        expectRefused('chat', TOKEN_FAMILY('Wingdings'), RE_1550)
+    })
+
+    test.each([
+        ['an unregistered family', TOKEN_FAMILY('"pack-missing"')],
+        ['a non-ASCII family', '@font-face{font-family:"나눔";src:url(fonts/a.woff2)}' + TOKEN_FAMILY('"나눔"')],
+        ['the reserved --risu-font-family', TOKEN_FAMILY('var(--risu-font-family)')],
+    ])('U1d: refuses %s', (_name, css) => { expectRefused('chat', css, RE_1550) })
+
+    test.each([
+        ['chat', '--font', ':root{--chat-message-font:var(--font)}'],
+        ['chat', '--mono', ':root{--chat-message-font:var(--mono)}'],
+        ['studio', '--studio-font-mono', ':root{--chat-message-font:var(--studio-font-mono)}'],
+        ['settings', '--settings-font', ':root{--chat-message-font:var(--settings-font)}'],
+        ['home', '--home-font', ':root{--chat-message-font:var(--home-font)}'],
+        ['home', '--home-mono', ':root{--chat-message-font:var(--home-mono)}'],
+    ] as const)('U1h: %s refuses var(%s) in the token', (area, name, css) => {
+        expectRefused(area, css, RE_APP_VAR(name), RE_1550)
+    })
+
+    test('U1i: a helper that reaches an app token, a pack-set app token and itself are refused', () => {
+        expectRefused('chat', ':root{--pack-f:var(--mono);--chat-message-font:var(--pack-f)}', RE_APP_VAR('--mono'), RE_1550)
+        expectRefused('chat', '@font-face{font-family:"pack-a";src:url(fonts/a.woff2)}:root{--font:"pack-a";--chat-message-font:var(--font)}', RE_APP_VAR('--font'), RE_1550)
+        expectRefused('chat', TOKEN_FAMILY('var(--chat-message-font)'), RE_APP_VAR('--chat-message-font'), RE_1550)
+    })
+
+    test.each([
+        ['an app token chain on --font', 'chat', ':root{--font:var(--mono)}'],
+        ['an app token chain on --settings-font', 'settings', ':root{--settings-font:var(--font)}'],
+    ] as const)('U1j: the other font tokens still accept %s', (_name, area, css) => { expectAcceptedPack(area, css) })
+
+    test.each([
+        ['empty', TOKEN_FAMILY('')],
+        ['whitespace', TOKEN_FAMILY(' ')],
+        ['initial', TOKEN_FAMILY('initial')],
+        ['inherit', TOKEN_FAMILY('inherit')],
+        ['unset', TOKEN_FAMILY('unset')],
+        ['revert', TOKEN_FAMILY('revert')],
+        ['revert-layer', TOKEN_FAMILY('revert-layer')],
+        ['!important', FACE + TOKEN_FAMILY('"pack-i4a" !important')],
+        ['a layout selector', FACE + 'html[data-layout="phone"]{--chat-message-font:"pack-i4a"}'],
+        ['an input selector', FACE + 'html[data-input="touch"]{--chat-message-font:"pack-i4a"}'],
+        ['an html selector', FACE + 'html{--chat-message-font:"pack-i4a"}'],
+        ['an @media :root', FACE + '@media (min-width:1px){:root{--chat-message-font:"pack-i4a"}}'],
+        ['an @property registration', '@property --chat-message-font{syntax:"*";inherits:true;initial-value:serif}'],
+    ])('U1e: refuses %s', (_name, css) => { expectRefused('chat', css) })
+
+    test('U1f: the whole pack verdict follows the face', () => {
+        expect(validateThemePack({ files: { chat: TOKEN_FAMILY('"pack-i4a", sans-serif') }, totalBytes: 1 }).ok).toBe(false)
+        expect(validateThemePack({ files: { chat: FACE + TOKEN_FAMILY('"pack-i4a", sans-serif') }, totalBytes: 1 }).ok).toBe(true)
+    })
+
+    test('U1g: the shared name is accepted in the Studio sheet too', () => {
+        expectAcceptedPack('studio', FACE + TOKEN_FAMILY('"pack-i4a", sans-serif'))
+    })
 })
 
 describe('R5: every refusal class names its token, unit, function or span and its decision', () => {
@@ -815,7 +894,8 @@ describe('drift guard: the font tokens', () => {
         // Tokens that carry the size or leading of the font shorthand, not a family.
         const FONT_SHORTHAND_SIZE_TOKENS = ['--font-size-sm', '--font-size-xs', '--leading-140', '--leading-155', '--studio-fs-12px', '--studio-fs-13px', '--studio-lh-20px']
         const root = path.resolve(ROOT, 'docs/design')
-        const files = (readdirSync(root, { recursive: true }) as string[]).filter((f) => f.endsWith('.css')).map((f) => path.join(root, f))
+        // The app stylesheet reads --chat-message-font in font-family too, so a settable token it reads must be judged as a font token.
+        const files = [...(readdirSync(root, { recursive: true }) as string[]).filter((f) => f.endsWith('.css')).map((f) => path.join(root, f)), path.resolve(ROOT, 'src/styles.css')]
         expect(files.length).toBeGreaterThan(20)
         const names = new Set<string>()
         for (const file of files) {

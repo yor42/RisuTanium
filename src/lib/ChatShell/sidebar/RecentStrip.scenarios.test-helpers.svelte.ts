@@ -1,7 +1,6 @@
 /**
- * The focus-survival scenarios of `RecentStrip.svelte`, registered by both `RecentStrip.svelte.test.ts` (the
- * shipped scheduler) and `RecentStrip.asyncOrder.svelte.test.ts` (the async scheduler), so each scenario runs
- * under both schedulers with no copy.
+ * The focus-survival scenarios of `RecentStrip.svelte`, registered by `RecentStrip.svelte.test.ts`, which runs
+ * under the async scheduler the app ships.
  *
  * Keyboard focus on an avatar follows its character when the strip reorders or the character's slot object is
  * replaced, and focus that went elsewhere is never taken back. The DOM is made to drop focus on a node move or

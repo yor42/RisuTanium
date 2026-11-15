@@ -402,14 +402,24 @@ describe('diagnostic: the read split', () => {
 describe('diagnostic: the write split', () => {
     test('setDatabase records every listed span, the normaliser and the mark loop', async () => {
         installDb([fullCharacter('a') as unknown as CharacterFixture, fullCharacter('b') as unknown as CharacterFixture])
-        await api3().setDatabase({ characters: [fullCharacter('a'), fullCharacter('b')] })
+        await api3().setDatabase({ characters: [fullCharacter('a'), { ...fullCharacter('b'), desc: 'b edited' }] })
         const { fields } = lastOf('write')
         expect(fields.method).toBe('setDatabase')
         for (const name of WRITE_SPANS) {
             expect(typeof fields[name], name).toBe('number')
         }
         expect(typeof fields.normalizerMs).toBe('number')
-        expect(fields.marksRaised).toBe(2)
+        // Only the edited character is marked; the equal one keeps its live proxy.
+        expect(fields.marksRaised).toBe(1)
+        expect(fields.keptEqual).toBe(1)
+    })
+
+    test('an unchanged setDatabase marks no character and counts both as kept equal', async () => {
+        installDb([fullCharacter('a') as unknown as CharacterFixture, fullCharacter('b') as unknown as CharacterFixture])
+        await api3().setDatabase({ characters: [fullCharacter('a'), fullCharacter('b')] })
+        const { fields } = lastOf('write')
+        expect(fields.marksRaised).toBe(0)
+        expect(fields.keptEqual).toBe(2)
     })
 
     test('setDatabaseLite records its own spans and assignment, without a normaliser', async () => {

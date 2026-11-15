@@ -228,6 +228,37 @@ export interface PluginSettingsDeps {
     pickFile: () => Promise<{ name: string, data: Uint8Array } | null>
     download: (fileName: string, content: string) => Promise<void>
     reload: () => Promise<void>
+    /**
+     * When given, the result text is offered here together with what is needed to undo the import, and
+     * `notify` is not called for it. Without it the flow behaves exactly as before.
+     */
+    offerUndo?: (text: string, undo: PluginSettingsUndo) => void
+}
+
+/** What undoing one settings-file import needs: the values before it and the saved values it wrote. */
+export interface PluginSettingsUndo {
+    name: string
+    previous: RisuPlugin['realArg']
+    /** `JSON.stringify` of the entry's `realArg` right after the import; an undo refuses once it differs. */
+    writtenJson: string
+}
+
+export type PluginSettingsUndoResult = 'restored' | 'gone' | 'changed'
+
+/**
+ * Puts the values from before an import back. It refuses when the plugin is gone or its saved values were
+ * edited after the import, so an undo never discards a later change.
+ */
+export function undoPluginSettings(list: RisuPlugin[] | undefined, undo: PluginSettingsUndo): PluginSettingsUndoResult {
+    const entry = findPluginByName(list, undo.name)
+    if (!entry) {
+        return 'gone'
+    }
+    if (JSON.stringify(entry.realArg) !== undo.writtenJson) {
+        return 'changed'
+    }
+    entry.realArg = { ...undo.previous }
+    return 'restored'
 }
 
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : String(error))
@@ -335,19 +366,30 @@ export async function importPluginSettings(name: string, deps: PluginSettingsDep
         deps.notify(fillLang(text.nothingChanged, { plugin: shorten(name) }))
         return
     }
+    const previous = { ...target.realArg }
     applyPluginSettings(target, plan.merged, writeKeys)
+    const undo: PluginSettingsUndo = { name, previous, writtenJson: JSON.stringify(target.realArg) }
 
     if (target.enabled) {
         try {
             await deps.reload()
         } catch (error) {
             deps.fail(fillLang(text.reloadFailed, { error: errorText(error) }))
+            deps.offerUndo?.(resultText(), undo)
             return
         }
     }
-    deps.notify(fillLang(text.result, {
-        applied: writeKeys.length,
-        plugin: shorten(name),
-        skipped: plan.skipped + (plan.changed.length - writeKeys.length),
-    }))
+    if (deps.offerUndo) {
+        deps.offerUndo(resultText(), undo)
+    } else {
+        deps.notify(resultText())
+    }
+
+    function resultText(): string {
+        return fillLang(text.result, {
+            applied: writeKeys.length,
+            plugin: shorten(name),
+            skipped: plan.skipped + (plan.changed.length - writeKeys.length),
+        })
+    }
 }

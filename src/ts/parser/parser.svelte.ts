@@ -28,6 +28,7 @@ import { registerCBS, type matcherArg, type PromptView, type RegisterCallback } 
 import type { RunSubject } from '../process/chatOrigin';
 import cssSelectorParser from 'postcss-selector-parser'
 import { escapeHtmlText } from '../htmlEscape'
+import { formatMiB } from '../drive/backupUpstreamSizes'
 import { registerGuiReloadHook } from '../guiReloadHooks'
 import { untrack } from 'svelte'
 
@@ -802,6 +803,23 @@ function trimmer(str:string){
     return str.trim().replace(/[_ -.]/g, '')
 }
 
+const WITHHELD_NAME_MAX_CODE_POINTS = 200
+
+/**
+ * A file name as inert text inside markup that the markdown renderer and the sanitizer still pass over:
+ * whitespace runs (line breaks included) become one space, a name over the cap is cut and ends in `...`,
+ * and every ASCII punctuation character becomes a numeric entity, so no HTML, markdown, math or
+ * typographer rule finds a trigger in it.
+ */
+function withheldChipText(name: string): string {
+    let text = name.replace(/\s+/g, ' ').trim()
+    const codePoints = Array.from(text)
+    if(codePoints.length > WITHHELD_NAME_MAX_CODE_POINTS){
+        text = codePoints.slice(0, WITHHELD_NAME_MAX_CODE_POINTS).join('') + '...'
+    }
+    return text.replace(/[!-\/:-@\[-`{-~]/g, (char) => `&#${char.charCodeAt(0)};`)
+}
+
 async function parseInlayAssets(data:string){
     const inlayMatch = data.match(/{{(inlay|inlayed|inlayeddata)::(.+?)}}/g)
     if(inlayMatch){
@@ -823,6 +841,13 @@ async function parseInlayAssets(data:string){
                     // Hide inlay images when hideAllImages is enabled
                     if(DBState.db.hideAllImages){
                         data = data.replace(inlay, '')
+                        break
+                    }
+                    if(render.source === 'withheld'){
+                        // A block inside the image block of an `inlayed` token, an inline span within the text of an `inlay` one.
+                        const element = inlayType === 'inlay' ? 'span' : 'div'
+                        const chip = `${prefix}<${element} class="x-risu-tool-call">${withheldChipText(render.name)}<br>${formatMiB(render.size)}</${element}>${postfix}`
+                        data = data.replace(inlay, () => chip)
                         break
                     }
                     data = data.replace(inlay, `${prefix}<img src="${url}"/>${postfix}`)

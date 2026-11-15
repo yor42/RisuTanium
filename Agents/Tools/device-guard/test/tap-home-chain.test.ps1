@@ -12,7 +12,7 @@ $env:FAKE_TAP_EXIT = '0'
 $log = Join-Path $testDir 'log.txt'
 $st = Join-Path $testDir 'state.json'
 $script:failures = 0
-$phone = '29f3cde9193f7ece'
+$phone = 'emulator-5580'
 function Test-Result([string]$label, [bool]$ok, [string]$detail) {
     if (-not $ok) { $script:failures++ }
     ($(if ($ok) { 'ok  ' } else { 'FAIL' })) + ' ' + $label + ' ' + $detail
@@ -23,7 +23,7 @@ function Invoke-GuardCase([string]$label, [string]$want, [string[]]$guardArgs) {
 }
 function Get-Calls { if (Test-Path $calls) { @(Get-Content $calls) } else { @() } }
 function Reset-Calls { if (Test-Path $calls) { Remove-Item $calls } }
-function Set-LocateRecord([string]$loc = '29f3cde9193f7ece', [int]$ageMs = 0, [bool]$used = $false) {
+function Set-LocateRecord([string]$loc = 'emulator-5580', [int]$ageMs = 0, [bool]$used = $false) {
     $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - $ageMs
     $o = @{ picks = @(); pickErrors = 0; offset = $null; pickLocked = $false; locates = @(@{ id = 1; time = $now; label = 'css:#home'; bounds = @{ l = 10; t = 10; r = 110; b = 60 }; used = $used; serial = $loc }) }
     ConvertTo-Json $o -Depth 5 | Set-Content $st

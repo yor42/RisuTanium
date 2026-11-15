@@ -16,7 +16,7 @@ import { beginInFlight } from '../inFlightWork'
 export type BusyKind =
     | 'charImage' | 'charEmotion' | 'groupImage' | 'assetAdd' | 'imageAdd'
     | 'import' | 'export' | 'backupSave' | 'backupLoad' | 'cleanup' | 'integrityCheck'
-    | 'hypaBulk' | 'mcpWrite'
+    | 'hypaBulk' | 'mcpWrite' | 'themePack'
 
 export interface BusyHandle {
     readonly kind: BusyKind

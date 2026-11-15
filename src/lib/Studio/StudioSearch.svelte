@@ -4,7 +4,8 @@
 </script>
 
 <script lang="ts">
-    import { onMount, tick, untrack } from 'svelte'
+    import { onMount, untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
     import { isImeComposing } from '../../ts/ime/compositionGuard'
     import { ownerSourceFor, readTextSources } from '../../ts/studio/ownerSource.svelte'
@@ -116,7 +117,7 @@
         // The field that held focus goes with the search; focus returns to the Studio root so Esc and Ctrl+K keep working.
         const studioRoot = input?.closest<HTMLElement>('[data-part="studio"]')
         closeStudioSearch()
-        void tick().then(() => studioRoot?.focus())
+        void afterFlush().then(() => studioRoot?.focus())
     }
 
     // An IME composition owns its Enter: it commits the text and must not open a result.
@@ -146,7 +147,7 @@
         const buttons = resultButtons()
         const at = buttons.indexOf(event.currentTarget as HTMLElement)
         const next = buttons[at + (event.key === 'ArrowDown' ? 1 : -1)]
-        await tick()
+        await afterFlush()
         if (next) next.focus()
         else if (event.key === 'ArrowUp') input?.focus()
     }

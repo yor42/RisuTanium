@@ -30,7 +30,7 @@ import type { LegacyEntryReader, LegacyUnitRead } from './resolve'
  * slice, is an `error` carrying `BinFileChangedError`, which aborts the resolve before anything is written.
  */
 
-export type BinChangeReason = 'unreadable' | 'length' | 'header' | 'marker'
+export type BinChangeReason = 'unreadable' | 'length' | 'header' | 'marker' | 'omitted'
 
 /** The file is not what the walk indexed (or cannot be read now). The caller shows the restore's "file changed while reading" text. */
 export class BinFileChangedError extends Error {

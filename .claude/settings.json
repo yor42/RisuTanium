@@ -16,7 +16,7 @@
           {
             "type": "command",
             "onFailure": "block",
-            "timeout": 10,
+            "timeout": 30,
             "shell": "powershell",
             "command": "$ErrorActionPreference = \"Stop\"; & \"$env:CLAUDE_PROJECT_DIR\\.claude\\scripts\\workflow-hook.ps1\"; exit $LASTEXITCODE"
           }
@@ -41,7 +41,7 @@
           {
             "type": "command",
             "onFailure": "block",
-            "timeout": 10,
+            "timeout": 30,
             "shell": "powershell",
             "command": "$ErrorActionPreference = \"Stop\"; & \"$env:CLAUDE_PROJECT_DIR\\.claude\\scripts\\workflow-hook.ps1\"; exit $LASTEXITCODE"
           }

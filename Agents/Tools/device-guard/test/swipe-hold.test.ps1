@@ -11,7 +11,7 @@ $env:FAKE_CALLS = $calls
 $log = Join-Path $testDir 'log.txt'
 $st = Join-Path $testDir 'state.json'
 $script:failures = 0
-$phone = '29f3cde9193f7ece'
+$phone = 'emulator-5580'
 $pkg = 'io.example.app'
 function Test-Result([string]$label, [bool]$ok, [string]$detail) {
     if (-not $ok) { $script:failures++ }
@@ -24,7 +24,7 @@ function Invoke-GuardCase([string]$label, [string]$want, [string[]]$guardArgs) {
 function Get-Calls { if (Test-Path $calls) { @(Get-Content $calls) } else { @() } }
 function Reset-Calls { if (Test-Path $calls) { Remove-Item $calls } }
 # The locate is 100x50 at (10,10), so its centre is 60,35. $screen adds a recorded screen size.
-function Set-LocateRecord([string]$loc = '29f3cde9193f7ece', [int]$ageMs = 0, [bool]$used = $false, $screen = $null) {
+function Set-LocateRecord([string]$loc = 'emulator-5580', [int]$ageMs = 0, [bool]$used = $false, $screen = $null) {
     $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() - $ageMs
     $rec = @{ id = 1; time = $now; label = 'css:#thing'; bounds = @{ l = 10; t = 10; r = 110; b = 60 }; used = $used; serial = $loc }
     if ($null -ne $screen) { $rec.screen = $screen }
@@ -94,7 +94,7 @@ Test-Result 'stale: no adb call' ((Get-Calls).Count -eq 0) ''
 Set-LocateRecord -used $true; Reset-Calls
 Invoke-GuardCase 'swipe used locate' '99' (@('swipe') + $c + @('--dx', '1', '--dy', '1', '--duration-ms', '300'))
 Test-Result 'used: no adb call' ((Get-Calls).Count -eq 0) ''
-Set-LocateRecord 'emulator-5580'; Reset-Calls
+Set-LocateRecord '29f3cde9193f7ece'; Reset-Calls
 Invoke-GuardCase 'swipe locate from another serial' '99' (@('swipe') + $c + @('--dx', '1', '--dy', '1', '--duration-ms', '300'))
 Test-Result 'other serial: no adb call' ((Get-Calls).Count -eq 0) ''
 ConvertTo-Json @{ picks = @(); pickErrors = 0; offset = $null; pickLocked = $false; locates = @() } -Depth 5 | Set-Content $st

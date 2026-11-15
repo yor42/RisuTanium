@@ -1,5 +1,5 @@
-import { tick } from 'svelte'
 import { get } from 'svelte/store'
+import { afterFlush } from '../../ts/afterFlush'
 import { ReloadChatPointer, ReloadGUIPointer, settingsOpen } from '../../ts/stores.svelte'
 import { topLevelChangeCount } from '../../ts/storage/topLevelChanges'
 import { language } from '../../lang'
@@ -86,7 +86,7 @@ function onSettingsOpened(){
 
 async function onSettingsClosed(){
     const thisVisit = visit
-    await tick()
+    await afterFlush()
     // A reopen during the flush owns the next release.
     if(visit !== thisVisit || get(settingsOpen) || get(studioOpen) || !chatSurface.hidden){
         return

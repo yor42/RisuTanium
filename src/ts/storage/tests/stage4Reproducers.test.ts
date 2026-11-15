@@ -356,7 +356,7 @@ describe('the rewritten save path writes in proportion to what changed', () => {
         const liveDb = live as PluginColdStorageDb
         let write: Promise<void> = Promise.resolve()
         await nextCommit(w, () => {
-            write = writePluginStorageValue(liveDb, () => liveDb, 'slot-5', edited, writePluginUnitToDb(() => liveDb), () => 'unused').then(flush)
+            write = writePluginStorageValue(liveDb, () => liveDb, 'slot-5', edited, writePluginUnitToDb(() => liveDb), () => 'unused', true).then(flush)
         })
         await write
 
@@ -378,7 +378,7 @@ describe('the rewritten save path writes in proportion to what changed', () => {
 
         let write: Promise<void> = Promise.resolve()
         await nextCommit(w, () => {
-            write = writePluginStorageValue(liveDb, () => liveDb, 'fresh', { n: 1 }, writePluginUnitToDb(() => liveDb), () => 'unit-fresh').then(flush)
+            write = writePluginStorageValue(liveDb, () => liveDb, 'fresh', { n: 1 }, writePluginUnitToDb(() => liveDb), () => 'unit-fresh', true).then(flush)
         })
         await write
         const afterAdd = (await k.saved()).pluginCustomStorage as Record<string, unknown>

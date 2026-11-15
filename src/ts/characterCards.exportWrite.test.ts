@@ -191,7 +191,7 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 
 //#endregion
 
-import { exportCharacterCard } from 'src/ts/characterCards'
+import { cardExportFileName, exportCharacterCard } from 'src/ts/characterCards'
 import { LocalWriter, readImage } from 'src/ts/globalApi.svelte'
 import type { character } from 'src/ts/storage/database.svelte'
 import { language } from 'src/lang'
@@ -455,6 +455,93 @@ describe('JSON export onto a LocalWriter', () => {
         expect(h.log).toEqual(['normal:' + language.successExportChosenLocation])
         expect(h.invoked.length).toBeGreaterThan(0)
         expect(h.invoked[h.invoked.length - 1].last).toBe(true)
+    })
+})
+
+describe('suggested file name of an export that opens its own writer', () => {
+    const extOf = { png: 'png', charx: 'charx', charxJpeg: 'jpeg' } as const
+    const labelOf = { png: 'Image File', json: 'JSON File', charx: 'CharX File', charxJpeg: 'CharX Embedded Jpeg' } as const
+
+    async function suggestedFile(name: string, type: 'png' | 'json' | 'charx' | 'charxJpeg'): Promise<string | undefined> {
+        h.initResult = false
+        h.inits.length = 0
+        const char = syntheticCharacter()
+        char.name = name
+        expect(await exportCharacterCard(char, type, { spec: 'v3' })).toBe(false)
+        expect(h.inits).toHaveLength(1)
+        expect(h.inits[0].name).toBe(labelOf[type])
+        return h.inits[0].file
+    }
+
+    test.each(['png', 'charx', 'charxJpeg'] as const)('(F1) %s suggests the character name with the _export suffix and its own extension', async (type) => {
+        expect(await suggestedFile('Synthetic', type)).toBe(`Synthetic_export.${extOf[type]}`)
+    })
+
+    test('(F2) json keeps its suggested name', async () => {
+        expect(await suggestedFile('Synthetic', 'json')).toBe('Synthetic_export.json')
+    })
+
+    test('(F3) characters that a file name cannot hold are removed', async () => {
+        expect(await suggestedFile('A<b>:c"d/e\\f|g?h*i.j,k', 'charx')).toBe('Abcdefghijk_export.charx')
+    })
+
+    test('(F4) a name that sanitizes to nothing falls back to character', async () => {
+        expect(await suggestedFile('?.,', 'charx')).toBe('character_export.charx')
+        expect(await suggestedFile('?.,', 'json')).toBe('character_export.json')
+    })
+
+    test('(F5) padding around the name is trimmed', async () => {
+        expect(await suggestedFile(' \tBob\n ', 'png')).toBe('Bob_export.png')
+        expect(await suggestedFile(' \tBob\n ', 'json')).toBe('Bob_export.json')
+    })
+
+    test('(F6) Hangul is kept', async () => {
+        expect(await suggestedFile('테스트 캐릭터', 'charx')).toBe('테스트 캐릭터_export.charx')
+    })
+
+    test('(F8) control characters inside the name are removed', async () => {
+        expect(await suggestedFile('Bo\tb\u0001', 'png')).toBe('Bob_export.png')
+        expect(await suggestedFile('Bo\tb\u0001', 'json')).toBe('Bob_export.json')
+    })
+
+    test('(F9) a name made only of control characters falls back to character', async () => {
+        expect(await suggestedFile('\u0001\u0002', 'charx')).toBe('character_export.charx')
+        expect(await suggestedFile('\u0001\u0002', 'json')).toBe('character_export.json')
+    })
+
+    test('(F10) a name of spaces, or spaces around a stripped dot, falls back to character', async () => {
+        for (const name of ['   ', ' . ']) {
+            expect(await suggestedFile(name, 'charx')).toBe('character_export.charx')
+            expect(await suggestedFile(name, 'json')).toBe('character_export.json')
+        }
+    })
+
+    test('(F11) spaces left next to a stripped character are trimmed after the strip', async () => {
+        for (const name of ['Bob .', 'Bob \u0001']) {
+            expect(await suggestedFile(name, 'png')).toBe('Bob_export.png')
+            expect(await suggestedFile(name, 'json')).toBe('Bob_export.json')
+        }
+    })
+
+    test('(F12) a record with no name still exports under the fallback name', async () => {
+        h.initResult = false
+        const nameless = () => {
+            const char = syntheticCharacter()
+            Reflect.deleteProperty(char, 'name')
+            return char
+        }
+        expect(await exportCharacterCard(nameless(), 'png', { spec: 'v3' })).toBe(false)
+        expect(h.inits.map(init => init.file)).toEqual(['character_export.png'])
+        h.inits.length = 0
+        expect(await exportCharacterCard(nameless(), 'json', { spec: 'v3' })).toBe(false)
+        expect(h.inits.map(init => init.file)).toEqual(['character_export.json'])
+        expect(cardExportFileName(undefined, 'charx')).toBe('character_export.charx')
+    })
+
+    test('(F7) a writer supplied by the caller is not initialised and gets no name', async () => {
+        const writer = new LocalWriter()
+        await exportCharacterCard(syntheticCharacter(), 'charx', { spec: 'v3', writer })
+        expect(h.inits).toEqual([])
     })
 })
 

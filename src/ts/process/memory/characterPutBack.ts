@@ -78,7 +78,7 @@ import {
 import { startQuietTrigger, type QuietTrigger } from './putBackQuiet'
 import { clearRestoredBytes, restoredBytesOf } from './restoredBytes'
 
-/** One `fire` swaps at most one character, fingerprints at most this many, and stops starting a fingerprint after `MAX_FIRE_MS`. */
+/** One `fire` swaps at most one character and fingerprints at most this many. It always starts the first fingerprint, so a stalled thread cannot make a fire judge nothing; `MAX_FIRE_MS` bounds starting any further one. */
 const MAX_FINGERPRINTS_PER_FIRE = 3
 const MAX_FIRE_MS = 8
 
@@ -281,7 +281,7 @@ function runFire(): FireOutcome {
             deferredWriting = true
             continue
         }
-        if (fingerprints >= MAX_FINGERPRINTS_PER_FIRE || performance.now() - startedAt - measurementMs >= MAX_FIRE_MS) {
+        if (fingerprints >= MAX_FINGERPRINTS_PER_FIRE || (fingerprints > 0 && performance.now() - startedAt - measurementMs >= MAX_FIRE_MS)) {
             break
         }
         fingerprints += 1
@@ -400,7 +400,7 @@ function runFireStore2(residency: Residency, quietRun: boolean): FireOutcome {
             deferredLarge.add(chaId)
             continue
         }
-        if (verdicts >= MAX_FINGERPRINTS_PER_FIRE || performance.now() - startedAt >= MAX_FIRE_MS) {
+        if (verdicts >= MAX_FINGERPRINTS_PER_FIRE || (verdicts > 0 && performance.now() - startedAt >= MAX_FIRE_MS)) {
             break
         }
         verdicts += 1

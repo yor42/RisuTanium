@@ -93,8 +93,26 @@ async function settle() {
     }
     await tick()
 }
+/**
+ * Animation frames are stepped by hand. Under the async scheduler Svelte's tick races a real frame against a timer, so
+ * with real frames any await could end a one-frame hold early on a loaded machine.
+ */
+let pendingFrames = new Map<number, FrameRequestCallback>()
+let nextFrameId = 1
+function stubFrames() {
+    pendingFrames = new Map()
+    nextFrameId = 1
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        pendingFrames.set(nextFrameId, callback)
+        return nextFrameId++
+    })
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => { pendingFrames.delete(id) })
+}
+/** Runs the frames requested so far, as one browser frame does: a request made by a callback waits for the next. */
 async function frame() {
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    const due = Array.from(pendingFrames.entries())
+    pendingFrames.clear()
+    for (const [, callback] of due) callback(performance.now())
     await tick()
 }
 async function show(startTop = 0, settleFrame = true) {
@@ -190,6 +208,7 @@ function leaveAndReturnRebuilt() {
 beforeEach(async () => {
     vi.stubGlobal('ResizeObserver', class { observe(): void {} disconnect(): void {} })
     vi.stubGlobal('IntersectionObserver', FakeObserver)
+    stubFrames()
     FakeObserver.instances = []
     transport.sizes = {}
     resetAssetUrlGateForTest()

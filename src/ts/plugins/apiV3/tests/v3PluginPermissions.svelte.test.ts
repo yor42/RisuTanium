@@ -175,6 +175,7 @@ vi.mock(import('../../../process/files/inlays'), () => ({
     // Resolvable so a granted `readInlay()` call can be told apart from a
     // denied one (null) by its return value.
     getInlayAsset: vi.fn(async () => 'asset-data'),
+    getInlayAssetCapped: vi.fn(async () => ({ status: 'read', asset: 'asset-data' })),
 }) as unknown as typeof import('../../../process/files/inlays'))
 
 vi.mock(import('../../../translator/translator'), () => ({

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { tick } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { StarIcon } from '@lucide/svelte'
     import { language } from '../../lang'
     import { isImeComposing } from '../../ts/ime/compositionGuard'
@@ -75,7 +75,7 @@
         const group = event.currentTarget as HTMLElement
         const next = (chosen + step + row.options.length) % row.options.length
         onset(String(next))
-        await tick()
+        await afterFlush()
         group.querySelectorAll<HTMLElement>('[role="radio"]')[next]?.focus()
     }
 

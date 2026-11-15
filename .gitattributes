@@ -18,3 +18,5 @@ patches/svelte-5.57.3/** text eol=lf
 src/ts/drive/tests/rtbGoldens/*.rtb binary
 src/ts/drive/tests/rtbGoldens/*.rtbseg binary
 src/ts/drive/tests/rtbGoldens/*.json text eol=lf
+src/ts/themePack/goldens/*.risutheme binary
+src/ts/themePack/fixtures/packs/*.risutheme binary

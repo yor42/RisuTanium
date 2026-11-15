@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { registerDispatch, validateDispatch, selectRoute, finishDispatch, loadState, mutateState, hook, checkDevice } from './workflow-control.mjs';
+import { spawn } from 'node:child_process';
+import { registerDispatch, validateDispatch, selectRoute, finishDispatch, loadState, mutateState, hook, checkDevice, lockOptions, canonicalRoot, fsOps, breakStaleLock } from './workflow-control.mjs';
 
 let currentFixture;
 function fixture(t) {
@@ -60,8 +61,81 @@ test('generation and lock conflicts block; frozen cutover blocks new work', asyn
   const root = fixture(t); mutateState(root, 0, s => { s.activation = 'frozen'; });
   assert.throws(() => mutateState(root, 0, () => {}), /Stale/);
   await assert.rejects(registerDispatch(job(), { root }), /frozen/);
+  const saved = { ...lockOptions }; t.after(() => Object.assign(lockOptions, saved)); lockOptions.waitMs = 300;
   fs.writeFileSync(path.join(root, 'Agents/Workflow-State.json.lock'), 'held');
   assert.throws(() => mutateState(root, null, () => {}), /EEXIST/);
+  assert.equal(fs.readFileSync(path.join(root, 'Agents/Workflow-State.json.lock'), 'utf8'), 'held');
+});
+test('a linked worktree resolves to the main checkout from the .git layout', t => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'risu-root-')); t.after(() => fs.rmSync(base, { recursive: true, force: true }));
+  const main = path.join(base, 'main'); const linked = path.join(base, 'linked'); const gitDir = path.join(main, '.git/worktrees/linked');
+  fs.mkdirSync(gitDir, { recursive: true }); fs.mkdirSync(linked);
+  fs.writeFileSync(path.join(linked, '.git'), `gitdir: ${gitDir}\n`); fs.writeFileSync(path.join(gitDir, 'commondir'), '../..\n');
+  assert.equal(canonicalRoot(linked), fs.realpathSync(main)); assert.equal(canonicalRoot(main), fs.realpathSync(main));
+  const relative = path.join(base, 'relative'); const relGitDir = path.join(main, '.git/worktrees/relative');
+  fs.mkdirSync(relGitDir, { recursive: true }); fs.mkdirSync(relative);
+  fs.writeFileSync(path.join(relative, '.git'), 'gitdir: ../main/.git/worktrees/relative\r\n'); fs.writeFileSync(path.join(relGitDir, 'commondir'), '../..\r\n');
+  assert.equal(canonicalRoot(relative), fs.realpathSync(main));
+});
+const lockFile = root => path.join(root, 'Agents/Workflow-State.json.lock');
+const leftovers = root => fs.readdirSync(path.join(root, 'Agents')).filter(f => /\.(lock|stale|tmp)$/.test(f));
+test('a lock left by a killed writer is broken after the stale window', t => {
+  const root = fixture(t); fs.writeFileSync(lockFile(root), 'killed');
+  const old = new Date(Date.now() - 120000); fs.utimesSync(lockFile(root), old, old);
+  mutateState(root, null, s => { s.activation = 'frozen'; });
+  assert.equal(loadState(root).activation, 'frozen'); assert.deepEqual(leftovers(root), []);
+});
+test('a fresh lock released by another process during the wait is acquired', async t => {
+  const root = fixture(t); const saved = { ...lockOptions }; t.after(() => Object.assign(lockOptions, saved)); lockOptions.waitMs = 6000;
+  fs.writeFileSync(lockFile(root), 'busy');
+  const child = spawn(process.execPath, ['-e', `setTimeout(() => require('fs').unlinkSync(${JSON.stringify(lockFile(root))}), 300)`], { stdio: 'ignore' });
+  await new Promise(resolve => child.once('spawn', resolve));
+  mutateState(root, null, s => { s.activation = 'frozen'; });
+  assert.equal(loadState(root).activation, 'frozen'); assert.deepEqual(leftovers(root), []);
+  await new Promise(resolve => child.exitCode !== null ? resolve() : child.once('exit', resolve));
+});
+test('a writer whose lock was taken refuses the write and leaves the new owner\'s lock', t => {
+  const root = fixture(t);
+  assert.throws(() => mutateState(root, null, s => { s.activation = 'mine'; fs.writeFileSync(lockFile(root), 'other-owner'); }), /Concurrent/);
+  assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'other-owner'); assert.equal(loadState(root).activation, 'active');
+  fs.unlinkSync(lockFile(root)); assert.deepEqual(leftovers(root), []);
+});
+test('a stale lock is not broken while another breaker holds the breaker directory', t => {
+  const root = fixture(t); const saved = { ...lockOptions }; t.after(() => Object.assign(lockOptions, saved)); lockOptions.waitMs = 400;
+  fs.writeFileSync(lockFile(root), 'killed'); const old = new Date(Date.now() - 120000); fs.utimesSync(lockFile(root), old, old);
+  fs.mkdirSync(`${lockFile(root)}.break`);
+  assert.throws(() => mutateState(root, null, () => {}), /EEXIST/); assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'killed');
+  fs.utimesSync(`${lockFile(root)}.break`, old, old);
+  mutateState(root, null, s => { s.activation = 'frozen'; });
+  assert.equal(loadState(root).activation, 'frozen'); assert.deepEqual(leftovers(root), []); assert.equal(fs.existsSync(`${lockFile(root)}.break`), false);
+});
+test('the breaker re-checks staleness and leaves a lock created after the stale one', t => {
+  const root = fixture(t); fs.writeFileSync(lockFile(root), 'fresh-owner');
+  breakStaleLock(lockFile(root));
+  assert.equal(fs.readFileSync(lockFile(root), 'utf8'), 'fresh-owner'); assert.equal(fs.existsSync(`${lockFile(root)}.break`), false);
+  const old = new Date(Date.now() - 120000); fs.utimesSync(lockFile(root), old, old);
+  breakStaleLock(lockFile(root)); assert.equal(fs.existsSync(lockFile(root)), false);
+});
+test('a transient rename refusal is retried and a final failure leaves no temp file', t => {
+  const root = fixture(t); const original = fsOps.renameSync; t.after(() => { fsOps.renameSync = original; });
+  let refusals = 2; fsOps.renameSync = (from, to) => { if (refusals-- > 0) throw Object.assign(Error('busy'), { code: 'EPERM' }); return original(from, to); };
+  mutateState(root, null, s => { s.activation = 'frozen'; }); assert.equal(loadState(root).activation, 'frozen');
+  fsOps.renameSync = () => { throw Object.assign(Error('busy'), { code: 'EBUSY' }); };
+  assert.throws(() => mutateState(root, null, s => { s.activation = 'active'; }), /busy/);
+  assert.equal(loadState(root).activation, 'frozen'); assert.deepEqual(leftovers(root), []);
+});
+test('a registration whose state write fails removes its receipt so the retry can register', async t => {
+  const root = fixture(t); const original = fsOps.renameSync; t.after(() => { fsOps.renameSync = original; });
+  fsOps.renameSync = (from, to) => { if (to.endsWith('Workflow-State.json')) throw Object.assign(Error('disk gone'), { code: 'EIO' }); return original(from, to); };
+  await assert.rejects(registerDispatch(job(), { root }), /disk gone/);
+  assert.equal(fs.existsSync(path.join(root, '.claude/scratch/dispatches/d1.json')), false);
+  fsOps.renameSync = original; assert.equal((await registerDispatch(job(), { root })).id, 'd1');
+});
+test('a generation moved by a concurrent writer refuses the write', t => {
+  const root = fixture(t); const file = path.join(root, 'Agents/Workflow-State.json');
+  assert.throws(() => mutateState(root, null, s => { fs.writeFileSync(file, JSON.stringify({ ...s, generation: s.generation + 1, activation: 'external' })); s.activation = 'mine'; }), /Concurrent/);
+  const after = JSON.parse(fs.readFileSync(file, 'utf8')); assert.equal(after.activation, 'external'); assert.equal(after.generation, 1);
+  assert.deepEqual(leftovers(root), []);
 });
 test('compact context preserves queue and parked checks; device stops after one retry', async t => {
   const root = fixture(t);

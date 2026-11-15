@@ -84,7 +84,7 @@ describe('CHORE-07: writePluginStorageValue', () => {
         const db: PluginColdStorageDb = {}
         const writer = vi.fn(async () => false)
         await expect(
-            writePluginStorageValue(db, () => db, 'k', 'v', writer, () => 'new-id')
+            writePluginStorageValue(db, () => db, 'k', 'v', writer, () => 'new-id', false)
         ).rejects.toThrow(/k/)
     })
 
@@ -92,7 +92,7 @@ describe('CHORE-07: writePluginStorageValue', () => {
         const db: PluginColdStorageDb = {}
         const writer = vi.fn(async () => false)
         await expect(
-            writePluginStorageValue(db, () => db, 'k', 'v', writer, () => 'new-id')
+            writePluginStorageValue(db, () => db, 'k', 'v', writer, () => 'new-id', false)
         ).rejects.toThrow()
         expect(db.pluginCustomStorage?._coldplugin?.k).toBeUndefined()
     })
@@ -101,7 +101,7 @@ describe('CHORE-07: writePluginStorageValue', () => {
         const db: PluginColdStorageDb = { pluginCustomStorage: { _coldplugin: { k: 'existing-id' } } }
         const writer = vi.fn(async () => false)
         await expect(
-            writePluginStorageValue(db, () => db, 'k', 'v', writer, () => 'unused-new-id')
+            writePluginStorageValue(db, () => db, 'k', 'v', writer, () => 'unused-new-id', false)
         ).rejects.toThrow()
         expect(db.pluginCustomStorage?._coldplugin?.k).toBe('existing-id')
     })
@@ -109,7 +109,7 @@ describe('CHORE-07: writePluginStorageValue', () => {
     test('setItem(undefined) stores null instead of undefined', async () => {
         const db: PluginColdStorageDb = {}
         const writer = vi.fn(async () => true)
-        await writePluginStorageValue(db, () => db, 'k', undefined, writer, () => 'new-id')
+        await writePluginStorageValue(db, () => db, 'k', undefined, writer, () => 'new-id', false)
         expect(writer).toHaveBeenCalledWith('new-id', null)
     })
 
@@ -123,7 +123,7 @@ describe('CHORE-07: writePluginStorageValue', () => {
         const liveDb: PluginColdStorageDb = { pluginCustomStorage: { _coldplugin: {} } }
         const writer = vi.fn(async () => true)
 
-        await writePluginStorageValue(originalDb, () => liveDb, 'k', 'v', writer, () => 'new-id')
+        await writePluginStorageValue(originalDb, () => liveDb, 'k', 'v', writer, () => 'new-id', false)
 
         expect(liveDb.pluginCustomStorage?._coldplugin?.k).toBe('new-id')
         expect(originalDb.pluginCustomStorage?._coldplugin?.k).toBeUndefined()
@@ -132,7 +132,7 @@ describe('CHORE-07: writePluginStorageValue', () => {
     test('a brand-new key is written into the same object when there was no clear', async () => {
         const db: PluginColdStorageDb = { pluginCustomStorage: { _coldplugin: {} } }
         const writer = vi.fn(async () => true)
-        await writePluginStorageValue(db, () => db, 'k', 'v', writer, () => 'new-id')
+        await writePluginStorageValue(db, () => db, 'k', 'v', writer, () => 'new-id', false)
         expect(db.pluginCustomStorage?._coldplugin?.k).toBe('new-id')
     })
 
@@ -140,7 +140,7 @@ describe('CHORE-07: writePluginStorageValue', () => {
         const db: PluginColdStorageDb = { pluginCustomStorage: { _coldplugin: { k: 'existing-id' } } }
         const writer = vi.fn(async () => true)
         const newColdId = vi.fn(() => 'should-not-be-used')
-        await writePluginStorageValue(db, () => db, 'k', 'v', writer, newColdId)
+        await writePluginStorageValue(db, () => db, 'k', 'v', writer, newColdId, false)
         expect(writer).toHaveBeenCalledWith('existing-id', 'v')
         expect(newColdId).not.toHaveBeenCalled()
         expect(db.pluginCustomStorage?._coldplugin?.k).toBe('existing-id')
@@ -153,7 +153,7 @@ describe('CHORE-07: writePluginStorageValue', () => {
         const db: PluginColdStorageDb = { pluginCustomStorage: { _coldplugin: { k: '' } } }
         const writer = vi.fn(async () => true)
         const newColdId = vi.fn(() => 'fresh-id')
-        await writePluginStorageValue(db, () => db, 'k', 'v', writer, newColdId)
+        await writePluginStorageValue(db, () => db, 'k', 'v', writer, newColdId, false)
         expect(newColdId).toHaveBeenCalledTimes(1)
         expect(writer).toHaveBeenCalledWith('fresh-id', 'v')
         expect(db.pluginCustomStorage?._coldplugin?.k).toBe('fresh-id')
@@ -200,7 +200,7 @@ describe('writePluginStorageValue never overwrites an archive that something els
         const unitBefore = JSON.stringify(units.get(SHARED))
         const mappingBefore = JSON.stringify(db.pluginCustomStorage?._coldplugin)
 
-        await expect(writePluginStorageValue(db, () => db, 'k', 'plugin value', writer, () => 'unused')).rejects.toThrow(FAILURE)
+        await expect(writePluginStorageValue(db, () => db, 'k', 'plugin value', writer, () => 'unused', false)).rejects.toThrow(FAILURE)
 
         expect(writer).not.toHaveBeenCalled()
         expect(JSON.stringify(units.get(SHARED))).toBe(unitBefore)
@@ -218,7 +218,7 @@ describe('writePluginStorageValue never overwrites an archive that something els
         const { units, writer } = makeStore()
         const newColdId = vi.fn(() => 'unused')
 
-        await writePluginStorageValue(db, () => db, 'k', 'plugin value', writer, newColdId)
+        await writePluginStorageValue(db, () => db, 'k', 'plugin value', writer, newColdId, false)
 
         expect(writer).toHaveBeenCalledExactlyOnceWith(SHARED, 'plugin value')
         expect(units.get(SHARED)).toBe('plugin value')
@@ -231,15 +231,15 @@ describe('writePluginStorageValue never overwrites an archive that something els
         const db = makeDb(characters)
         const { units, writer } = makeStore()
 
-        await writePluginStorageValue(db, () => db, 'k', 'first', writer, () => 'unused')
+        await writePluginStorageValue(db, () => db, 'k', 'first', writer, () => 'unused', false)
         expect(units.get(SHARED)).toBe('first')
 
         characters.push({ coldstorage: SHARED, chats: [] })
-        await expect(writePluginStorageValue(db, () => db, 'k', 'second', writer, () => 'unused')).rejects.toThrow(FAILURE)
+        await expect(writePluginStorageValue(db, () => db, 'k', 'second', writer, () => 'unused', false)).rejects.toThrow(FAILURE)
         expect(units.get(SHARED)).toBe('first')
 
         characters.pop()
-        await writePluginStorageValue(db, () => db, 'k', 'third', writer, () => 'unused')
+        await writePluginStorageValue(db, () => db, 'k', 'third', writer, () => 'unused', false)
         expect(units.get(SHARED)).toBe('third')
     })
 
@@ -248,7 +248,7 @@ describe('writePluginStorageValue never overwrites an archive that something els
         const live = makeDb([{ chats: [chatWith(coldStorageHeader + SHARED)] }])
         const { units, writer } = makeStore()
 
-        await expect(writePluginStorageValue(db, () => live, 'k', 'v', writer, () => 'unused')).rejects.toThrow(FAILURE)
+        await expect(writePluginStorageValue(db, () => live, 'k', 'v', writer, () => 'unused', false)).rejects.toThrow(FAILURE)
         expect(writer).not.toHaveBeenCalled()
         expect(units.get(SHARED)).toEqual({ character: { chaId: 'someone-else', name: 'Not a plugin value' } })
     })
@@ -265,7 +265,7 @@ describe('writePluginStorageValue never overwrites an archive that something els
             return true
         })
 
-        await writePluginStorageValue(db, () => db, 'fresh', 'v', writer, () => 'fresh-id')
+        await writePluginStorageValue(db, () => db, 'fresh', 'v', writer, () => 'fresh-id', false)
 
         expect(units.get('fresh-id')).toBe('v')
         expect(db.pluginCustomStorage?._coldplugin?.fresh).toBe('fresh-id')
@@ -276,7 +276,7 @@ describe('writePluginStorageValue never overwrites an archive that something els
         const db = makeDb([{ chats: [{ message: [{ data: 'plain' }, { data: coldStorageHeader + SHARED }] }, chatWith(formatColdStorageLoadError(SHARED) + ' extra')] }])
         const { units, writer } = makeStore()
 
-        await writePluginStorageValue(db, () => db, 'k', 'v', writer, () => 'unused')
+        await writePluginStorageValue(db, () => db, 'k', 'v', writer, () => 'unused', false)
 
         expect(units.get(SHARED)).toBe('v')
     })
@@ -290,9 +290,98 @@ describe('writePluginStorageValue never overwrites an archive that something els
         const db = makeDb(malformed)
         const { units, writer } = makeStore()
 
-        await writePluginStorageValue(db, () => db, 'k', 'v', writer, () => 'unused')
+        await writePluginStorageValue(db, () => db, 'k', 'v', writer, () => 'unused', false)
 
         expect(units.get(SHARED)).toBe('v')
+    })
+})
+
+describe('writePluginStorageValue on a store2 page checks only the slot aliases', () => {
+    const SHARED = 'shared-unit'
+    const FAILURE = 'Failed to write plugin storage for key: k'
+    const chatWith = (data: string) => ({ message: [{ data }] })
+
+    afterEach(() => {
+        resetRetainedForTest()
+    })
+
+    /** The store2 writer: the value lands in pluginCustomStorage[<id>], no cold unit. */
+    function store2Writer(db: PluginColdStorageDb) {
+        return (coldId: string, value: unknown): boolean => {
+            db.pluginCustomStorage ??= {}
+            db.pluginCustomStorage[coldId] = value
+            return true
+        }
+    }
+
+    const LINKS: Array<[string, () => PluginColdStorageDb['characters']]> = [
+        ['a character stub\'s coldstorage', () => [{ coldstorage: SHARED, chats: [] }]],
+        ['an entry of a character\'s coldStoragedChats', () => [{ coldstorage: 'blob', coldStoragedChats: ['x', SHARED], chats: [] }]],
+        ['a chat\'s first-message pointer', () => [{ chats: [chatWith('plain'), chatWith(coldStorageHeader + SHARED)] }]],
+        ['a chat\'s first-message legacy error text', () => [{ chats: [chatWith(formatColdStorageLoadError(SHARED))] }]],
+    ]
+
+    // Regression reproducer: the store2 write target is not a cold unit, so a link to the id does not apply.
+    test.each(LINKS)('a slot whose unit id is linked by %s is saved into pluginCustomStorage', async (_label, makeCharacters) => {
+        const db: PluginColdStorageDb = {
+            characters: makeCharacters(),
+            pluginCustomStorage: { _coldplugin: { k: SHARED }, [SHARED]: 'old' },
+        }
+
+        await writePluginStorageValue(db, () => db, 'k', 'plugin value', store2Writer(db), () => 'unused', true)
+
+        expect(db.pluginCustomStorage?.[SHARED]).toBe('plugin value')
+        expect(db.pluginCustomStorage?._coldplugin).toEqual({ k: SHARED })
+    })
+
+    // Regression reproducer: the retained-stub unit key is a legacy cold unit, not the store2 target.
+    test('a slot mapped to the unit of a retained stub is saved into pluginCustomStorage', async () => {
+        const full = { chaId: 'x', name: 'X', type: 'character', chatPage: 0, chats: [] } as unknown as Database['characters'][number]
+        const stub = buildColdStub(full, SHARED, [])
+        DBState.db = { characters: [full] } as unknown as Database
+        retainOnRestore(full, stub, full)
+        const db: PluginColdStorageDb = { pluginCustomStorage: { _coldplugin: { k: SHARED } } }
+
+        await writePluginStorageValue(db, () => db, 'k', 'plugin value', store2Writer(db), () => 'unused', true)
+
+        expect(db.pluginCustomStorage?.[SHARED]).toBe('plugin value')
+    })
+
+    // Regression reproducer: no character is read at all (the link walk costs a pass over every character).
+    test('the store2 write never reads the characters', async () => {
+        let reads = 0
+        const db: PluginColdStorageDb = {
+            get characters() {
+                reads++
+                return []
+            },
+            pluginCustomStorage: { _coldplugin: { k: SHARED } },
+        }
+
+        await writePluginStorageValue(db, () => db, 'k', 'plugin value', store2Writer(db), () => 'unused', true)
+
+        expect(reads).toBe(0)
+    })
+
+    // Compatibility guard: passes before and after; another slot's alias still refuses the write on a store2 page.
+    test('guard: a slot whose unit id another slot also names is refused', async () => {
+        const db: PluginColdStorageDb = {
+            pluginCustomStorage: { _coldplugin: { b: 'unit-b', c: 'unit-b' }, 'unit-b': 2 },
+        }
+
+        await expect(writePluginStorageValue(db, () => db, 'b', 'new', store2Writer(db), () => 'unused', true)).rejects.toThrow('Failed to write plugin storage for key: b')
+
+        expect(db.pluginCustomStorage?.['unit-b']).toBe(2)
+    })
+
+    // Compatibility guard: the legacy full check is unchanged when the flag is false.
+    test('guard: with the flag false a linked unit is still refused', async () => {
+        const db: PluginColdStorageDb = {
+            characters: [{ chats: [chatWith(coldStorageHeader + SHARED)] }],
+            pluginCustomStorage: { _coldplugin: { k: SHARED } },
+        }
+
+        await expect(writePluginStorageValue(db, () => db, 'k', 'v', store2Writer(db), () => 'unused', false)).rejects.toThrow(FAILURE)
     })
 })
 
@@ -319,7 +408,7 @@ describe('writePluginStorageValue never overwrites the unit of a stub the put-ba
         const db: PluginColdStorageDb = { pluginCustomStorage: { _coldplugin: { k: RETAINED_UNIT } } }
         const writer = vi.fn(async () => true)
 
-        await expect(writePluginStorageValue(db, () => db, 'k', 'plugin value', writer, () => 'unused')).rejects.toThrow(FAILURE)
+        await expect(writePluginStorageValue(db, () => db, 'k', 'plugin value', writer, () => 'unused', false)).rejects.toThrow(FAILURE)
 
         expect(writer).not.toHaveBeenCalled()
         expect(db.pluginCustomStorage?._coldplugin?.k).toBe(RETAINED_UNIT)
@@ -331,7 +420,7 @@ describe('writePluginStorageValue never overwrites the unit of a stub the put-ba
         const db: PluginColdStorageDb = { pluginCustomStorage: { _coldplugin: { k: 'plugin-only-unit' } } }
         const writer = vi.fn(async () => true)
 
-        await writePluginStorageValue(db, () => db, 'k', 'plugin value', writer, () => 'unused')
+        await writePluginStorageValue(db, () => db, 'k', 'plugin value', writer, () => 'unused', false)
 
         expect(writer).toHaveBeenCalledWith('plugin-only-unit', 'plugin value')
     })

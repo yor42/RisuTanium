@@ -178,6 +178,7 @@ export const DISPLAY_SHELL_SECTIONS: readonly DisplaySection[] = [
         collapsed: false,
         rows: [
             { kind: 'shell', id: 'display.theme', component: 'ThemeCards' },
+            plain('display.themePack'),
             plain('display.waifuWidth'),
             plain('display.waifuWidth2'),
             plain('display.guiHTML'),

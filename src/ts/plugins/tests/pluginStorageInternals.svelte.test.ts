@@ -289,7 +289,7 @@ describe('store2 layout: values live at pluginCustomStorage[<unit id>] next to _
     let unitCounter = 0
     const v3Get = (key: string) => readPluginStorageValue(getLive(), key, readPluginUnitFromDb(getLive))
     const v3Set = (key: string, value: unknown) =>
-        writePluginStorageValue(getLive(), getLive, key, value, writePluginUnitToDb(getLive), () => `new-unit-${++unitCounter}`)
+        writePluginStorageValue(getLive(), getLive, key, value, writePluginUnitToDb(getLive), () => `new-unit-${++unitCounter}`, true)
 
     test('V2 pluginStorage.clear keeps a V3 value readable', async () => {
         installDb({ [PLUGIN_STORAGE_LEGACY_MAP_KEY]: { k: 'u1' }, u1: { v: 'value' }, v2key: 'x' })

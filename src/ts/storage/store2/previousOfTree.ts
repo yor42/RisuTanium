@@ -3,7 +3,7 @@ import {
     type ContentBody, type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndex, type ModuleIndexRoot, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType,
 } from './format'
 import {
-    CodecAssembleError, IDENTITY, PLUGIN_LISTS, readStringListField, unitDigest,
+    CodecAssembleError, IDENTITY, isJsonObject, PLUGIN_LISTS, readStringListField, unitDigest,
     type PluginList, type PreviousEncoding, type PreviousObjects, type ReusableUnit, type UnitSource,
 } from './codec'
 import { moduleIndexOfParts } from './codec/modules'
@@ -172,7 +172,7 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
     const moduleBuckets = fixed.moduleBuckets?.map((ref, bucket) =>
         registerBody(`moduleIndex:bucket:${bucket}`, UNIT_TYPE.moduleBucket, ref) as ModuleBucket)
     const moduleIndex = moduleIndexOfParts(root, moduleBuckets)
-    register('config', UNIT_TYPE.configRoot, fixed.config)
+    const configBody = registerBody('config', UNIT_TYPE.configRoot, fixed.config) as ContentBody
     register('al:config', UNIT_TYPE.assetList, fixed.configAl)
     register('il:config', UNIT_TYPE.inlayList, fixed.il)
     register('statics', UNIT_TYPE.statics, fixed.statics)
@@ -235,5 +235,9 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
     }
 
     const objects: PreviousObjects = { manifest, shards, moduleIndex }
+    // A config body that is not an object of fields holds nothing to put back: a later fault of a setting then fails the pass.
+    if (isJsonObject(configBody.f)) {
+        objects.config = configBody.f
+    }
     return { units, entities, objects }
 }

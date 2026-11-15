@@ -15,7 +15,9 @@ import { judgeFamilyList, splitFontShorthand, splitTop, SYSTEM_FONTS } from './s
 import { tokenFile, type TokenFile } from './tokens'
 
 /** The font tokens a pack may set, judged as font-family wherever they are declared or reached. */
-export const FONT_TOKENS: readonly string[] = ['--font', '--mono', '--settings-font', '--home-font', '--home-mono', '--studio-font-mono']
+export const FONT_TOKENS: readonly string[] = ['--font', '--mono', '--settings-font', '--home-font', '--home-mono', '--studio-font-mono', '--chat-message-font']
+/** Font tokens whose value may name only the pack's own families, generic families and --pack-* helpers that resolve to those: a var() of any app token is refused, even one the pack sets itself. */
+export const STRICT_FONT_TOKENS: readonly string[] = ['--chat-message-font']
 /** Tokens the engine bounds only through its largest-number reading: each must be one plain length (rule B). */
 export const BOUNDED_TOKENS: readonly string[] = ['--size-touch-lg', '--size-touch', '--font-size-sm', '--font-size-md', '--font-size-base', '--sheet-padding-x', '--sheet-padding-bottom', '--control-padding-x', '--item-padding-x', '--item-gap', '--focus-ring-w', '--focus-ring-w-forced']
 
@@ -305,7 +307,8 @@ export function valueRulesPass(canon: string, env: ValueEnv): LintError[] {
 
     // Rule F: a font family list names only the pack's own @font-face families and the generic families.
     const familyReason = (name: string): string => `font family "${name}" is not allowed: a pack may name only its own @font-face families and the generic families (MC-1550)`
-    const judgeFamilies = (list: string, depth: number, active: ReadonlySet<string>, out: string[]) => {
+    // In strict mode a var() item passes only as a --pack-* helper the pack declares; its values are judged strictly too.
+    const judgeFamilies = (list: string, depth: number, active: ReadonlySet<string>, out: string[], strict = false) => {
         const whole = list.trim()
         if (CSS_WIDE.has(whole)) return
         for (const item of splitTop(whole, ',')) {
@@ -320,12 +323,13 @@ export function valueRulesPass(canon: string, env: ValueEnv): LintError[] {
             const ref = VAR_EXACT.exec(it)
             if (ref) {
                 const declared = sites.get(ref[1])
-                if (!declared) {
+                if (strict && !ref[1].startsWith('--pack-')) out.push(familyReason(`var(${ref[1]})`))
+                else if (!declared) {
                     if (!FONT_TOKENS.includes(ref[1])) out.push(familyReason(`var(${ref[1]})`))
                 } else if (depth > MAX_DEPTH || active.has(ref[1])) out.push(familyReason(`var(${ref[1]})`))
                 else {
                     const next = new Set(active).add(ref[1])
-                    for (const s of declared) judgeFamilies(s.value, depth + 1, next, out)
+                    for (const s of declared) judgeFamilies(s.value, depth + 1, next, out, strict)
                 }
                 continue
             }
@@ -415,7 +419,7 @@ export function valueRulesPass(canon: string, env: ValueEnv): LintError[] {
             }
         } else if (custom && FONT_TOKENS.includes(d.prop)) {
             const out: string[] = []
-            judgeFamilies(value, 0, new Set([d.prop]), out)
+            judgeFamilies(value, 0, new Set([d.prop]), out, STRICT_FONT_TOKENS.includes(d.prop))
             for (const why of out) report(d, why)
         }
 

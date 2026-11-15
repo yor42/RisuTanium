@@ -1,8 +1,6 @@
 /**
  * The scroll-memory scenarios of `SettingsShellPage.svelte`, registered by both
- * `SettingsShellPage.modes.svelte.test.ts` (the shipped scheduler) and
- * `SettingsShellPage.asyncOrder.svelte.test.ts` (the async scheduler), so each scenario runs under both
- * schedulers with no copy.
+ * `SettingsShellPage.modes.svelte.test.ts`, which runs under the async scheduler the app ships.
  *
  * The page remembers the scroll position of the view it is leaving, keyed by that view's index. Neither test
  * DOM has layout, so the column's clamp is modelled: the scroll column keeps whatever `scrollTop` it is given

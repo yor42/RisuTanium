@@ -1,7 +1,6 @@
 /**
  * The focus and alert-change scenarios of `AlertComp.svelte`, registered by both
- * `AlertComp.focusBox.svelte.test.ts` (the shipped scheduler) and `AlertComp.asyncOrder.svelte.test.ts` (the
- * async scheduler), so each scenario runs under both schedulers with no copy.
+ * `AlertComp.focusBox.svelte.test.ts`, which runs under the async scheduler the app ships.
  *
  * Drives the REAL `AlertComp.svelte` over a real `writable` standing in for `alertStore`, and the real alert
  * functions for the prompt that a notice covers. The assertions read `document.activeElement` and the nodes the

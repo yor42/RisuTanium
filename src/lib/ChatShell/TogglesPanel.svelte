@@ -41,7 +41,8 @@
 </script>
 
 <script lang="ts">
-    import { onDestroy, tick, untrack } from 'svelte'
+    import { onDestroy, untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { ChevronDownIcon, FileTextIcon, FunnelIcon, PuzzleIcon, SearchIcon, StarIcon, UserIcon, XIcon } from '@lucide/svelte'
     import { ReloadGUIPointer } from '../../ts/stores.svelte'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
@@ -160,7 +161,9 @@
     let favRows = $derived(filtering ? [] : favouriteRows(sources, favourites.items))
     // The uid of the Favourites copy this opening is aimed at; null when it is not aimed at one. The aim is
     // taken when the opening is read, so the sheet's first render and its one-shot initial focus see it in
-    // either scheduler; it recomputes only when the panel opens or closes.
+    // either scheduler; it recomputes only when the panel opens or closes. The aim at a Favourites row can be
+    // computed before the opening effect's syncFavourites(); if another tab removed the star in between, no row is
+    // aimed and focus falls to the sheet section instead of the title. Accepted limitation (MC-1557).
     let openedAt = $derived.by(() => {
         const opening = open
         return untrack(() => {
@@ -267,7 +270,7 @@
 
     // Focus goes back to the control of the row that had the layer, once the layer is gone.
     async function refocus(uid: string, selector = '[data-row-control]'): Promise<void> {
-        await tick()
+        await afterFlush()
         layer?.querySelector<HTMLElement>(`[data-part="toggle-row"][data-uid="${uid}"] ${selector}`)?.focus()
     }
 
@@ -415,7 +418,7 @@
             if (!uid) return
             event.preventDefault()
             menuUid = uid
-            void tick().then(() => rowElement.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus())
+            void afterFlush().then(() => rowElement.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus())
         } else if (event.key === 'ArrowRight' && target.matches('[data-row-control]:not([role="radio"])')) {
             const button = rowElement.querySelector<HTMLElement>('[data-part="toggle-menu-button"]')
             if (!button) return

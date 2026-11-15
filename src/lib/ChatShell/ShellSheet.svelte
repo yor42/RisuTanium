@@ -1,6 +1,7 @@
 <script lang="ts">
-    import { tick, untrack, type Snippet } from 'svelte'
+    import { untrack, type Snippet } from 'svelte'
     import { language } from 'src/lang'
+    import { afterFlush } from '../../ts/afterFlush'
     import { backCloseHandler, registerBackHandler } from '../../ts/backHandlers'
     import { isTopmostShell, makeInert, registerShell, returnFocus, trapTab, watchFocus } from '../Nexus/pattern/patternFocus'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
@@ -156,7 +157,7 @@
         dragging = false
         settle = release
         if (release === 'stay') dragY = 0
-        await tick()
+        await afterFlush()
         if (settle !== release) return
         const done = () => {
             settleTimer = undefined

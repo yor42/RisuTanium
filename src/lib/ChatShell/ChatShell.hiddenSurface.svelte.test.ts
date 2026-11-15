@@ -247,14 +247,19 @@ describe('guard: a hidden chat surface takes no focus, opens no sheet, reads no 
 
     test('guard: while hidden a scroll event reads no layout and a pending jump stays pending; after the unhide the jump runs and layout is read', async () => {
         const root = await showShell()
+        // The list reads the transcript's scroll metrics (distance from the end) on every scroll event it handles.
+        let metricReads = 0
+        Object.defineProperty(transcript(root), 'scrollHeight', { get: () => { metricReads += 1; return 0 }, configurable: true })
         chatSurface.hidden = true
         await settle()
 
         rectReads.mockClear()
+        metricReads = 0
         transcript(root).dispatchEvent(new Event('scroll'))
         ScrollToMessageStore.value = 1
         await settle()
         expect(rectReads).not.toHaveBeenCalled()
+        expect(metricReads).toBe(0)
         expect(ScrollToMessageStore.value).toBe(1)
         expect(scrollIntoView).not.toHaveBeenCalled()
 
@@ -262,9 +267,10 @@ describe('guard: a hidden chat surface takes no focus, opens no sheet, reads no 
         await settle()
         await until(() => ScrollToMessageStore.value === -1, 'the pending jump to be consumed')
         await until(() => scrollIntoView.mock.calls.length > 0, 'the jump to scroll')
+        metricReads = 0
         transcript(root).dispatchEvent(new Event('scroll'))
         flushSync()
-        expect(rectReads).toHaveBeenCalled()
+        expect(metricReads).toBeGreaterThan(0)
     })
 
     test('guard: a reply that arrives while hidden does not scroll then, and the shell catches up on the unhide', async () => {

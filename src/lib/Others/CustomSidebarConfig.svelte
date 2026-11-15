@@ -5,7 +5,7 @@
     import { getFullSettingsData, getLabel } from "src/ts/setting/utils";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
-    import { tick } from "svelte";
+    import { afterFlush } from "src/ts/afterFlush";
     import { fillLang } from "src/lang/fill";
     import { removeSidebarItem, sidebarItemUndoAction } from "src/ts/setting/sidebarItemUndo";
     import { postUndoToast } from "src/ts/toast/toastHost.svelte";
@@ -30,7 +30,7 @@
             actionLabel: language.uiCommon.undo,
             action: sidebarItemUndoAction(removed.item, removed.index),
         });
-        await tick();
+        await afterFlush();
         const deletes = document.querySelectorAll<HTMLElement>("[data-sidebar-item-delete]");
         const target =
             deletes[removed.index] ??

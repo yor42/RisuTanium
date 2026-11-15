@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import './asyncScheduler.test-helpers'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import { tick } from 'svelte'
 import { tickFake } from './svelteTick.test-helpers'

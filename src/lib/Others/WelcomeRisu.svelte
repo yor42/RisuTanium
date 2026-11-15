@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { onDestroy, onMount, tick } from 'svelte'
+    import { onDestroy, onMount } from 'svelte'
+    import { afterFlush } from 'src/ts/afterFlush'
     import { language } from 'src/lang'
     import { backCloseHandler, registerBackHandler } from 'src/ts/backHandlers'
     import type { FirstRunStep } from 'src/ts/firstRun/firstRunChoices'
@@ -38,7 +39,7 @@
             return
         }
         shownStep = step
-        void tick().then(() => {
+        void afterFlush().then(() => {
             card?.querySelector<HTMLElement>('[data-step-heading]')?.focus()
         })
     })

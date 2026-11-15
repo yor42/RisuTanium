@@ -205,31 +205,43 @@ function repointParkedPairs(chat: Chat, previous: readonly Message[], parentsBef
 
 /**
  * Empty-chat rule: a chat with no messages keeps no SupaMemory data, plain or
- * `hypa:`, and no covered-ID field.
+ * `hypa:`, and no covered-ID field. Returns true exactly when it assigned `supaMemoryData` or deleted
+ * `supaMemoryCoveredId`, so a caller that must know which objects it wrote into can tell.
  */
-export function clearSupaMemoryIfEmpty(chat: Chat): void {
+export function clearSupaMemoryIfEmpty(chat: Chat): boolean {
     // Plugin writes reach this unvalidated: a chat that is not an object with a message list is left alone.
     if (!chat || !Array.isArray(chat.message) || chat.message.length !== 0) {
-        return;
+        return false;
     }
+    let wrote = false;
     if (chat.supaMemoryData) {
         chat.supaMemoryData = "";
+        wrote = true;
     }
     if ("supaMemoryCoveredId" in chat) {
         delete chat.supaMemoryCoveredId;
+        wrote = true;
     }
+    return wrote;
 }
 
-/** `clearSupaMemoryIfEmpty` over every chat of the given characters. */
-export function clearSupaMemoryIfEmptyIn(chars: readonly { chats?: Chat[] }[]): void {
+/**
+ * `clearSupaMemoryIfEmpty` over every chat of the given characters. Returns the character objects it wrote into, so a
+ * caller that keeps live characters unmarked can exclude exactly those.
+ */
+export function clearSupaMemoryIfEmptyIn<T extends { chats?: Chat[] }>(chars: readonly T[]): Set<T> {
+    const wrote = new Set<T>();
     for (const char of chars) {
         if (!Array.isArray(char?.chats)) {
             continue;
         }
         for (const chat of char.chats) {
-            clearSupaMemoryIfEmpty(chat);
+            if (clearSupaMemoryIfEmpty(chat)) {
+                wrote.add(char);
+            }
         }
     }
+    return wrote;
 }
 
 /**

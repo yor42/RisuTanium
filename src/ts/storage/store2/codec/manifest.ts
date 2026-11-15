@@ -1,4 +1,5 @@
 import { carryUnknownFields, KNOWN_FIELDS, REQ_CHAT_ALT, REQ_MODULE_BUCKETS, REQ_TASK_PRESETS, unionReq, type ListRef, type Manifest, type Ref } from '../format'
+import { sameJsonValue } from './normalize'
 import { PLUGIN_STORAGE_BUCKETS } from './pluginStorage'
 
 /**
@@ -52,6 +53,22 @@ export function carryManifest(prev: Manifest | undefined, next: Manifest): Manif
     }
     next.req = unionReq(next.req, prev.req)
     return next
+}
+
+/**
+ * Whether `next` says what `previous` says: the same top-level fields, each equal in depth, `seq` and `createdAt`
+ * aside (they differ on every commit and say nothing about the stored state). An absent `previous` is never equal, so
+ * a pass with nothing to compare against commits.
+ */
+export function manifestStateEquals(next: Manifest, previous: Manifest | undefined): boolean {
+    if (previous === undefined) {
+        return false
+    }
+    const left = next as unknown as Record<string, unknown>
+    const right = previous as unknown as Record<string, unknown>
+    const leftKeys = Object.keys(left).filter(key => key !== 'seq' && key !== 'createdAt')
+    const rightKeys = Object.keys(right).filter(key => key !== 'seq' && key !== 'createdAt')
+    return leftKeys.length === rightKeys.length && leftKeys.every(key => Object.hasOwn(right, key) && sameJsonValue(left[key], right[key]))
 }
 
 /**

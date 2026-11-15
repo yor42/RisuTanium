@@ -28,11 +28,6 @@
     // It is taken at most once, only by the row that replaces the stepped one at the same position, and only while the window is open: a body that renders later gets no fade.
     const COMMIT_HANDOVER_MS = HEIGHT_FLOOR_MS
     let commitHandover: { idx: number; chatId: string | undefined; direction: 'back' | 'forward'; until: number; mark: boolean } | null = null
-    // The pending body is empty or one of ChatBody's loading indicators (the parse placeholder with role="status", the translation spinner with its animated element); anything else is the rendered message.
-    function bodyRendered(body: HTMLElement): boolean {
-        if (body.querySelector('[role="status"], [style*="animation: spin"]') !== null) return false
-        return (body.textContent ?? '').trim() !== '' || body.querySelector('*') !== null
-    }
     // A swipe starts only where the nearest part of the row is one of the message's own parts. Editors, modal layers, the pager and the end row, and anything rendered into the row later, are not listed, so they start nothing until they are named here.
     const SWIPE_START_PARTS: ReadonlySet<string> = new Set([
         'chat-message', 'chat-message-name-row', 'chat-message-meta', 'chat-message-name', 'chat-message-avatar', 'chat-message-badges',
@@ -82,6 +77,7 @@
     import { tickHaptic, readHaptics } from '../../ts/chatShell/haptics'
     import { reducedMotionActive } from '../../ts/chatShell/motionPrefs.svelte'
     import { createMessageKeys } from '../../ts/chatShell/messageKeys'
+    import { bodyRendered } from '../../ts/chatShell/hitMarks'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
     import type { StepRowRunner } from '../../ts/chatShell/stepHold'
     import { ACTION_IDS, type ActionId } from '../../ts/chatShell/actionSlots'
@@ -107,7 +103,8 @@
     import { getCharImage } from '../../ts/characters'
     import { isAndroidTransport } from '../../ts/storage/tauriByteTransport'
     import { getModelInfo } from '../../ts/model/modellist'
-    import { onDestroy, onMount, tick, untrack } from 'svelte'
+    import { onDestroy, onMount, untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
 
     interface Props {
         idx: number
@@ -173,6 +170,8 @@
     const ownWheel = createWheelSteps(0, 1)
     let pointerType = ''
     let pointerStart = { x: 0, y: 0 }
+    // A swipe follows only the pointer that started it: another pointer's move, lift or cancel is ignored until that pointer lifts or is cancelled. The id is read only while `swipe` is set, and every new swipe sets it.
+    let activePointerId: number | null = null
     let longPressTimer: ReturnType<typeof setTimeout> | undefined
     let longPressRing = $state(false)
     let swipeProgress = $state(0)
@@ -434,7 +433,7 @@
         const neighbour = at < 0 ? null : mode === 'one' ? rows[at - 1] ?? rows[at + 1] ?? null : rows[at + 1] ?? null
         const mine = article
         await removeMessage(mode)
-        await tick()
+        await afterFlush()
         const active = document.activeElement
         if (mine && !mine.isConnected && neighbour?.isConnected && (!active || active === document.body || !document.contains(active))) asShellFocus(() => neighbour.focus())
     }
@@ -525,10 +524,18 @@
         return SWIPE_START_PARTS.has(owner.getAttribute('data-part') ?? '')
     }
     function onPointerUp(event: PointerEvent): void {
-        if (swipe) finishSwipe(swipeBlocked() ? swipe.cancel() : swipe.up(sample(event)))
+        if (!swipe || event.pointerId !== activePointerId) return
+        finishSwipe(swipeBlocked() ? swipe.cancel() : swipe.up(sample(event)))
+    }
+    function onPointerCancel(event: PointerEvent): void {
+        if (!swipe || event.pointerId !== activePointerId) return
+        finishSwipe(swipe.cancel())
     }
     function onPointerDown(event: PointerEvent): void {
         if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return
+        // Strict comparison: only a pointer reported as non-primary is a later finger; synthetic events without the field count as the first.
+        if (event.isPrimary === false) return
+        if (swipe && event.pointerType !== pointerType) return
         if (swipeBlocked()) return
         if (settling) return
         const target = event.target as HTMLElement
@@ -536,6 +543,7 @@
         const interactive = target.closest(SWIPE_INTERACTIVE)
         if (interactive !== null && article?.contains(interactive)) return
         pointerType = event.pointerType
+        activePointerId = event.pointerId
         pointerStart = { x: event.clientX, y: event.clientY }
         clearTimeout(springTimer)
         spring = false
@@ -564,7 +572,7 @@
         return Math.sign(delta) * (Math.min(distance, easy) + Math.max(0, distance - easy) * 0.35)
     }
     function onPointerMove(event: PointerEvent): void {
-        if (!swipe) return
+        if (!swipe || event.pointerId !== activePointerId) return
         if (swipeBlocked()) { finishSwipe(swipe.cancel()); return }
         spring = false
         if (Math.hypot(event.clientX - pointerStart.x, event.clientY - pointerStart.y) > 10) { clearTimeout(longPressTimer); longPressTimer = undefined; longPressRing = false }
@@ -794,7 +802,7 @@
 
 <!-- The article keeps the transcript semantics and is a tab stop and the focus target of message navigation, so its key and context-menu events and the captured clicks and submits of rich message content must reach it; the swipe gesture listens here too, so it starts on the message's own parts (SWIPE_START_PARTS) except on an interactive descendant, and the body moves. -->
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions, a11y_no_noninteractive_tabindex -->
-<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta={namesHidden ? 'hidden' : 'shown'} data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="0" bind:this={article} style:touch-action="pan-y" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onpointercancel={() => { if (swipe) finishSwipe(swipe.cancel()) }} onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
+<article class="risu-chat" class:user={message.role === 'user'} data-part="chat-message" data-role={message.role} data-run={firstMessage ? 'single' : run} data-meta={namesHidden ? 'hidden' : 'shown'} data-streaming={streaming ? '' : undefined} data-hidden={disabled ? '' : undefined} data-bookmarked={isBookmarked ? '' : undefined} data-chat-index={idx} data-chat-id={chatId ?? ''} aria-labelledby={labelId} tabindex="0" bind:this={article} style:touch-action="pan-y" onpointerdown={onPointerDown} onpointermove={onPointerMove} onpointerup={onPointerUp} onpointercancel={onPointerCancel} onclickcapture={(event) => handleButtonTriggerWithin(event, liveIndex)} onsubmitcapture={(event) => handleFormTriggerWithin(event, liveIndex)} onkeydown={onMessageKey} oncontextmenu={(event) => { if (!window.getSelection()?.toString() || event.shiftKey) { event.preventDefault(); openActions(event.currentTarget, { x: event.clientX, y: event.clientY }) } }}>
     {#if disabled === true}<div data-part="chat-message-divider" data-kind="disabled"></div>{/if}
     <div data-part="chat-message-name-row">
         <div data-part="chat-message-meta">

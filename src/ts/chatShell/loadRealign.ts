@@ -11,6 +11,8 @@
 
 // How long after the restore the top row is held.
 export const REALIGN_WINDOW_MS = 300
+// How long a jump holds the row it landed on: images and late layout in the first second move rows above the target.
+export const JUMP_HOLD_MS = 1000
 // Offsets that differ by no more than this are layout rounding, not a shift to correct.
 export const WRITE_EPSILON = 0.5
 // A visible row that moved by no more than this since the last reading counts as having kept its place.
@@ -45,7 +47,8 @@ export interface LoadRealignDeps {
 
 export interface LoadRealign {
     // Begins a window that holds the row at the top of the screen where it is now; replaces any active window.
-    start: () => void
+    // `row` names the row to hold instead of the top row, and `ms` replaces the window length; both are read at this call.
+    start: (options?: { row?: Element, ms?: number }) => void
     // Ends the active window, if any.
     cancel: () => void
     isActive: () => boolean
@@ -174,12 +177,12 @@ export function createLoadRealign(deps: LoadRealignDeps): LoadRealign {
         if (current === state) state.frame = deps.requestFrame(frameCheck)
     }
 
-    function start(): void {
+    function start(options?: { row?: Element, ms?: number }): void {
         end()
         const host = deps.host()
         const rows = deps.rows()
         if (!host || !rows || !deps.active() || deps.held() || deps.following()) return
-        const top = viewportTopRow(host, rows)
+        const top = options?.row ?? viewportTopRow(host, rows)
         if (!top) return
         const onInput = (): void => end()
         const state: RealignWindow = {
@@ -205,7 +208,7 @@ export function createLoadRealign(deps: LoadRealignDeps): LoadRealign {
         state.disconnect = disconnect
         state.frame = deps.requestFrame(frameCheck)
         for (const type of HOST_INPUT_EVENTS) host.addEventListener(type, onInput, { passive: true })
-        state.timer = deps.setTimer(end, REALIGN_WINDOW_MS)
+        state.timer = deps.setTimer(end, options?.ms ?? REALIGN_WINDOW_MS)
     }
 
     return { start, cancel: end, isActive: () => current !== null }

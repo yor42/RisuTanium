@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onDestroy, tick, untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
     import { DBState, additionalChatMenu, hypaV3ModalOpen, settingsOpen } from '../../ts/stores.svelte'
     import type { Chat, character, groupChat } from '../../ts/storage/database.svelte'
@@ -37,11 +38,15 @@
         togglesSummary?: () => string | null
         ontoggles?: (opener: HTMLElement) => void
         onmodules: () => void
+        // The jump sheet: absent unless the shell can open it. It opens after this sheet has closed, on the opener this sheet had.
+        onjumpsheet?: (opener: HTMLElement | null) => void
+        // In-chat search, in the same group: absent unless the shell can open it. It opens after this sheet has closed, like the jump sheet.
+        onsearch?: (opener: HTMLElement | null) => void
         onremoved: () => void
         onclose: () => void
     }
 
-    let { open, opener, background, target, layer = $bindable(), confirmDelete, onpersona, togglesSummary, ontoggles, onmodules, onremoved, onclose }: Props = $props()
+    let { open, opener, background, target, layer = $bindable(), confirmDelete, onpersona, togglesSummary, ontoggles, onmodules, onjumpsheet, onsearch, onremoved, onclose }: Props = $props()
 
     const NOTE_IDLE_MS = 600
     const SAVED_SHOWN_MS = 2000
@@ -138,7 +143,7 @@
                 refused()
             }
         }
-        if (refocus) void tick().then(() => renameEl?.focus())
+        if (refocus) void afterFlush().then(() => renameEl?.focus())
     }
 
     function flushPending(at: Session): void {
@@ -161,7 +166,7 @@
         nameDraft = lastName
         renameActive = true
         renaming = true
-        await tick()
+        await afterFlush()
         nameEl?.focus()
         nameEl?.select()
     }
@@ -169,7 +174,7 @@
     function cancelRename(): void {
         renameActive = false
         renaming = false
-        void tick().then(() => renameEl?.focus())
+        void afterFlush().then(() => renameEl?.focus())
     }
 
     function onNameKey(event: KeyboardEvent): void {
@@ -243,6 +248,11 @@
         void edits
         return (session?.owner.chats.length ?? 0) <= 1
     })
+    // The chat-only scope moves the jailbreak and memory rows into the first group; the same predicate as the toggles panel.
+    let scopeOn = $derived.by(() => {
+        void edits
+        return session?.chat.useLocallySetGlobalVariables === true
+    })
     let showJailbreak = $derived(promptHasJailbreakToggle(DBState.db))
     let showMemory = $derived(DBState.db.supaModelType !== 'none' || !!DBState.db.hanuraiEnable || !!DBState.db.hypav2 || !!DBState.db.hypaV3)
     let memoryLabel = $derived(DBState.db.hanuraiEnable ? language.hanuraiMemory : (DBState.db.hypav2 || DBState.db.hypaV3 || DBState.db.hypaMemory) ? language.ToggleHypaMemory : language.ToggleSuperMemory)
@@ -309,6 +319,27 @@
     }
 </script>
 
+{#snippet jailbreakRow()}
+    {#if showJailbreak}
+        <label data-part="this-chat-row">
+            <span>{language.jailbreakToggle}</span>
+            <input type="checkbox" role="switch" data-part="this-chat-jailbreak" checked={jailbreakOn} onchange={(event) => setJailbreak(event.currentTarget.checked)} />
+        </label>
+    {/if}
+{/snippet}
+
+{#snippet memoryRows()}
+    {#if showMemory}
+        <label data-part="this-chat-row">
+            <span>{memoryLabel}</span>
+            <input type="checkbox" role="switch" data-part="this-chat-memory" checked={memoryOn} onchange={(event) => setMemory(event.currentTarget.checked)} />
+        </label>
+        {#if showMemoryView}
+            <button type="button" data-part="this-chat-memory-view" data-kind="button" onclick={openMemoryView}>{DBState.db.hypav2 ? language.hypaMemoryV2Modal : language.hypaMemoryV3Modal}</button>
+        {/if}
+    {/if}
+{/snippet}
+
 <ShellSheet {open} kind="sheet" mode="side" label={language.chatShellThisChat} {opener} {background} innerescape={innerEscape} bind:layer {onclose}>
     {#if session}
         <div data-part="this-chat-body">
@@ -322,6 +353,17 @@
             </div>
             <p data-part="this-chat-stats">{stats}</p>
             <p role="status" data-part="this-chat-status">{saved ? language.chatShellSaved : ''}</p>
+
+            {#if onjumpsheet || onsearch}
+                <section data-part="this-chat-group" aria-label={language.chatShellThisChat}>
+                    {#if onjumpsheet}
+                        <button type="button" data-part="this-chat-jump" data-kind="button" aria-haspopup="dialog" onclick={() => leave(() => onjumpsheet(opener))}>{language.chatShellJumpSheet}</button>
+                    {/if}
+                    {#if onsearch}
+                        <button type="button" data-part="this-chat-search" data-kind="button" onclick={() => leave(() => onsearch(opener))}>{language.chatShellSearchInChat}</button>
+                    {/if}
+                </section>
+            {/if}
 
             <section data-part="this-chat-group" aria-label={language.chatShellThisChat}>
                 <button type="button" data-part="this-chat-persona" data-kind="button" aria-haspopup="dialog" onclick={(event) => onpersona(event.currentTarget)}>
@@ -343,7 +385,15 @@
                     <span>{language.chatShellHideNames}</span>
                     <input type="checkbox" role="switch" data-part="this-chat-hide-names" checked={hideNamesOn} onchange={(event) => setHideNames(event.currentTarget.checked)} />
                 </label>
-                <ToggleScopeSwitch owner={session.owner} chat={session.chat} effective={() => ({ jailbreak: effectiveJailbreak(session?.chat), memory: session ? effectiveMemory(session.owner, session.chat) : false })} />
+                <!-- A flip or an Undo bubbles here, so the placement below is read again even when the chat object is not reactive. -->
+                <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
+                <div class="scope-host" onchange={() => { edits++ }} onclick={() => { edits++ }}>
+                    <ToggleScopeSwitch owner={session.owner} chat={session.chat} effective={() => ({ jailbreak: effectiveJailbreak(session?.chat), memory: session ? effectiveMemory(session.owner, session.chat) : false })} />
+                </div>
+                {#if scopeOn}
+                    {@render jailbreakRow()}
+                    {@render memoryRows()}
+                {/if}
                 {#if ontoggles}
                     <button type="button" data-part="this-chat-toggles" data-kind="button" aria-haspopup="dialog" onclick={(event) => ontoggles(event.currentTarget)}>
                         <span>{language.chatShellTogglesTitle}</span>
@@ -352,26 +402,17 @@
                 {/if}
             </section>
 
-            {#if showMemory}
+            {#if showMemory && !scopeOn}
                 <section data-part="this-chat-group" aria-labelledby="this-chat-scope-character">
                     <span id="this-chat-scope-character" data-part="this-chat-scope-tag">{language.chatShellScopeCharacter}</span>
-                    <label data-part="this-chat-row">
-                        <span>{memoryLabel}</span>
-                        <input type="checkbox" role="switch" data-part="this-chat-memory" checked={memoryOn} onchange={(event) => setMemory(event.currentTarget.checked)} />
-                    </label>
-                    {#if showMemoryView}
-                        <button type="button" data-part="this-chat-memory-view" data-kind="button" onclick={openMemoryView}>{DBState.db.hypav2 ? language.hypaMemoryV2Modal : language.hypaMemoryV3Modal}</button>
-                    {/if}
+                    {@render memoryRows()}
                 </section>
             {/if}
 
             <section data-part="this-chat-group" aria-labelledby="this-chat-scope-all">
                 <span id="this-chat-scope-all" data-part="this-chat-scope-tag">{language.chatShellScopeAll}</span>
-                {#if showJailbreak}
-                    <label data-part="this-chat-row">
-                        <span>{language.jailbreakToggle}</span>
-                        <input type="checkbox" role="switch" data-part="this-chat-jailbreak" checked={jailbreakOn} onchange={(event) => setJailbreak(event.currentTarget.checked)} />
-                    </label>
+                {#if !scopeOn}
+                    {@render jailbreakRow()}
                 {/if}
                 <button type="button" data-part="this-chat-all-settings" data-kind="button" onclick={() => leave(() => settingsOpen.set(true))}>{language.chatShellAllSettings}</button>
             </section>
@@ -404,6 +445,7 @@
     [data-part="this-chat-stats"] { margin: 0; font-size: var(--font-size-sm); color: var(--nexus-text-secondary); }
     [data-part="this-chat-status"] { margin: 0; min-height: var(--space-12); font-size: var(--font-size-xs); color: var(--nexus-text-secondary); }
     [data-part="this-chat-group"] { display: flex; flex-direction: column; border-top: 1px solid var(--nexus-edge); padding-top: var(--space-5); }
+    .scope-host { display: contents; }
     [data-part="this-chat-scope-tag"] { align-self: flex-start; margin: var(--space-3) 0; padding: 0 var(--space-5); font-size: var(--font-size-xs); color: var(--nexus-text-secondary); border: 1px solid var(--nexus-edge); border-radius: var(--radius-pill); }
     [data-part="this-chat-group"] button[data-kind="button"], [data-part="this-chat-row"] { display: flex; align-items: center; justify-content: space-between; gap: var(--space-7); width: 100%; min-height: var(--size-touch); padding: var(--space-5) var(--space-10); text-align: left; color: var(--nexus-text); border-bottom: 1px solid var(--nexus-edge); }
     [data-part="this-chat-rename"] { flex: none; min-height: var(--size-touch); padding: 0 var(--space-7); color: var(--nexus-text); border: 1px solid var(--nexus-edge); border-radius: var(--radius-control); }

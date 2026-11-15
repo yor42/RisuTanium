@@ -154,6 +154,8 @@ vi.mock(import('src/ts/process/command'), () => ({
 
 vi.mock(import('src/ts/process/files/inlays'), () => ({
     getInlayAsset: vi.fn(async () => ({ type: 'image', data: '' })),
+    getInlayDraftPreview: vi.fn(async () => ({ kind: 'media', type: 'image', url: '' })),
+    forgetInlayRender: vi.fn(async () => {}),
     writeInlayImage: vi.fn(async () => 'inlay-id'),
 }) as unknown as typeof import('src/ts/process/files/inlays'))
 
@@ -353,7 +355,7 @@ import { hasLocalDrafts, hasMessageEditorDrafts, resetLocalDraftsForTest } from 
 import { getMultiTabAction } from 'src/ts/storage/multiTabReload'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { preLoadChat, retryLegacyColdChatLoad } from 'src/ts/process/coldstorage.svelte'
-import { getInlayAsset } from 'src/ts/process/files/inlays'
+import { forgetInlayRender, getInlayAsset, getInlayDraftPreview } from 'src/ts/process/files/inlays'
 import { coldStorageHeader, formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
 
 //#region fixtures
@@ -1342,7 +1344,8 @@ describe('a staged file whose asset cannot be loaded', () => {
         const onUnhandled = (reason: unknown) => { unhandled.push(reason) }
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
         process.on('unhandledRejection', onUnhandled)
-        vi.mocked(getInlayAsset).mockImplementation(async () => { throw new Error('asset gone') })
+        vi.mocked(getInlayDraftPreview).mockImplementation(async () => { throw new Error('asset gone') })
+        vi.mocked(forgetInlayRender).mockClear()
         try {
             const chatA = makeChat(freshId('chat'), [])
             const charA = makeCharacter(freshId('cha'), [chatA])
@@ -1367,11 +1370,100 @@ describe('a staged file whose asset cannot be loaded', () => {
 
             expect(composerDrafts.peek({ chaId: charA.chaId as string, chatId: chatA.id as string }).fileInput).toEqual([])
             expect(target.textContent).not.toContain('broken-asset.png')
+            // The catch branch's remove handler releases the render of the removed id too.
+            expect(forgetInlayRender).toHaveBeenCalledWith('broken-asset.png')
+            expect(unhandled).toEqual([])
         } finally {
             process.off('unhandledRejection', onUnhandled)
             warn.mockRestore()
-            vi.mocked(getInlayAsset).mockImplementation((async () => ({ type: 'image', data: '' })) as never)
+            vi.mocked(getInlayDraftPreview).mockImplementation((async () => ({ kind: 'media', type: 'image', url: '' })) as never)
         }
+    })
+})
+
+describe('a staged video, audio or image preview', () => {
+    function stageFiles(...files: string[]) {
+        const chatA = makeChat(freshId('chat'), [])
+        const charA = makeCharacter(freshId('cha'), [chatA])
+        installDb([charA])
+        composerDrafts.write({ chaId: charA.chaId as string, chatId: chatA.id as string }, (record) => {
+            for (const file of files) {
+                record.fileInput.push(file)
+            }
+        })
+        return { charA, chatA }
+    }
+
+    test('regression reproducer: a staged video is previewed by the render URL, and its body is never read as a data URI', async () => {
+        vi.mocked(getInlayAsset).mockClear()
+        vi.mocked(getInlayAsset).mockImplementation((async () => ({ type: 'video', data: 'data:video/mp4;base64,AAAA' })) as never)
+        vi.mocked(getInlayDraftPreview).mockImplementation((async () => ({ kind: 'media', type: 'video', url: 'blob:fake' })) as never)
+        try {
+            stageFiles('clip-id')
+            const { target } = mountScreen()
+            await settle()
+            await new Promise((r) => setTimeout(r, 20))
+            flushSync()
+
+            expect(getInlayAsset).not.toHaveBeenCalled()
+            const source = target.querySelector<HTMLSourceElement>('video source')
+            expect(source).not.toBeNull()
+            expect(source!.getAttribute('src')).toBe('blob:fake')
+            expect(source!.getAttribute('src')!.startsWith('data:')).toBe(false)
+        } finally {
+            vi.mocked(getInlayAsset).mockImplementation((async () => ({ type: 'image', data: '' })) as never)
+            vi.mocked(getInlayDraftPreview).mockImplementation((async () => ({ kind: 'media', type: 'image', url: '' })) as never)
+        }
+    })
+
+    test('regression reproducer: a file chip shows the name and size, with no media element and no body read', async () => {
+        vi.mocked(getInlayAsset).mockClear()
+        vi.mocked(getInlayAsset).mockImplementation((async () => ({ type: 'video', data: 'data:video/mp4;base64,AAAA' })) as never)
+        vi.mocked(getInlayDraftPreview).mockImplementation((async () => ({ kind: 'file', name: 'clip.mp4', size: 194 * 1024 * 1024 })) as never)
+        try {
+            stageFiles('clip-id')
+            const { target } = mountScreen()
+            await settle()
+            await new Promise((r) => setTimeout(r, 20))
+            flushSync()
+
+            expect(getInlayAsset).not.toHaveBeenCalled()
+            expect(target.textContent).toContain('clip.mp4')
+            expect(target.textContent).toContain('194.0 MiB')
+            expect(target.querySelector('video')).toBeNull()
+        } finally {
+            vi.mocked(getInlayAsset).mockImplementation((async () => ({ type: 'image', data: '' })) as never)
+            vi.mocked(getInlayDraftPreview).mockImplementation((async () => ({ kind: 'media', type: 'image', url: '' })) as never)
+        }
+    })
+
+    test('regression reproducer: removing a staged file releases the render of that file only; sending releases nothing', async () => {
+        vi.mocked(forgetInlayRender).mockClear()
+        const { charA, chatA } = stageFiles('f1', 'f2')
+        const { target } = mountScreen()
+        await settle()
+        await new Promise((r) => setTimeout(r, 20))
+        flushSync()
+
+        const removeButtons = stagedFileRemoveButtons(target)
+        expect(removeButtons.length).toBe(2)
+        removeButtons[0].click()
+        await settle()
+
+        expect(composerDrafts.peek({ chaId: charA.chaId as string, chatId: chatA.id as string }).fileInput).toEqual(['f2'])
+        expect(forgetInlayRender).toHaveBeenCalledTimes(1)
+        expect(forgetInlayRender).toHaveBeenCalledWith('f1')
+        expect(forgetInlayRender).not.toHaveBeenCalledWith('f2')
+
+        // Guard (passes before and after): the sent message reuses the render, so a send forgets nothing.
+        vi.mocked(forgetInlayRender).mockClear()
+        typeInto(mainTextarea(target), 'hello')
+        await settle()
+        sendButton(target).click()
+        await waitFor(() => sendChatMock.mock.calls.length >= 1)
+        await waitFor(() => !isComposerBusy())
+        await settle()
+        expect(forgetInlayRender).not.toHaveBeenCalled()
     })
 })
 

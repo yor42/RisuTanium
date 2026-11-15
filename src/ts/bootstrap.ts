@@ -567,6 +567,9 @@ export async function loadData() {
             LoadingStatusState.text = "Updating States..."
             updateColorScheme()
             updateTextThemeAndCSS()
+            // The pack element is inserted before #customcss, so it sits after the app's sheets and before Custom CSS in document order.
+            // Boot does not wait for the judge: a chat shown first has the built-in look until the pack is applied.
+            void import('./themePack/activePack.svelte').then((m) => m.startThemePackApply()).catch((error) => console.error(error))
             startRootAttributeMirror(window, document)
             updateAnimationSpeed()
             updateHeightMode()

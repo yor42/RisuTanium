@@ -15,6 +15,7 @@ import { isEnterActivatedControl, shouldYieldToFocusedControl } from "./hotkeyYi
 import { changeCharOrAlert } from "./characterPick"
 import { isHiddenSystemCharacter } from "./hiddenCharacters"
 import { settingsShellEscape } from "./settingsShell/settingsNavigation"
+import { hotkeyIsApple } from "./hotkeyChord"
 
 // Shortcuts that act on the chat screen. Settings keeps the chat mounted but hidden, so
 // these must not reach its buttons while Settings is open.
@@ -121,6 +122,7 @@ export function initHotkey(){
             !ev.ctrlKey &&
             !ev.altKey &&
             !ev.shiftKey &&
+            !(hotkeyIsApple() && ev.metaKey) &&
             isTypingTarget(document.activeElement)
         ){
             return
@@ -486,20 +488,22 @@ async function quickMenu(){
     }
 }
 
-export function hotkeyMatches(hotkey: typeof DBState.db.hotkeys[number], ev: KeyboardEvent): boolean {
-    if(!hotkey){
+export function hotkeyMatches(hotkey: typeof DBState.db.hotkeys[number] | undefined, ev: KeyboardEvent, apple: boolean = hotkeyIsApple()): boolean {
+    if(!hotkey || !hotkey.key){
         return false
     }
-    
-    hotkey.ctrl = hotkey.ctrl ?? false
-    hotkey.alt = hotkey.alt ?? false
-    hotkey.shift = hotkey.shift ?? false
 
-    if(hotkey.ctrl !== ev.ctrlKey) return false
-    if(hotkey.alt !== ev.altKey) return false
-    if(hotkey.shift !== ev.shiftKey) return false
+    // On Apple the ctrl slot is the command key and the physical Control key matches nothing.
+    if(apple && ev.ctrlKey) return false
+    const ctrl = hotkey.ctrl ?? false
+    const alt = hotkey.alt ?? false
+    const shift = hotkey.shift ?? false
+
+    if(ctrl !== (apple ? ev.metaKey : ev.ctrlKey)) return false
+    if(alt !== ev.altKey) return false
+    if(shift !== ev.shiftKey) return false
     if(hotkey.key.toLowerCase() !== ev.key.toLowerCase()) return false
-    if(!hotkey.ctrl && !hotkey.alt && !hotkey.shift){
+    if(!ctrl && !alt && !shift){
         return !isTypingTarget(document.activeElement)
     }
     return true

@@ -2359,6 +2359,9 @@ interface RisuaiPluginAPI {
      *
      * Returns `null` if no asset exists for that UUID.
      *
+     * **Fork-specific note (not upstream RisuAI):** this also returns `null` for a video or audio asset
+     * larger than 20 MiB (20 × 1024 × 1024 bytes). Images and signatures are returned whatever their size.
+     *
      * @param id - Inlay UUID
      * @returns Asset with `data` as a base64 data-URI string, or `null`
      *

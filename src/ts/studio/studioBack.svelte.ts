@@ -1,4 +1,4 @@
-import { tick } from 'svelte'
+import { afterFlush } from '../afterFlush'
 import { backCloseHandler, registerBackHandler } from '../backHandlers'
 import { returnFocusAfterClose } from './layerFocus'
 import {
@@ -41,8 +41,9 @@ function focusTargetOf(opener: StudioOpener | null): HTMLElement | null {
 export function leaveStudio(): void {
     const opener = studioScreen.opener
     closeStudio()
-    // The chat surface is laid out again only after the flush that follows the close.
-    void tick().then(() => tick()).then(() => focusTargetOf(opener)?.focus())
+    // The chat surface is laid out again only after the flush that follows the close: its own release waits one
+    // flush, so the opener is focused one flush later, and never while the surface is still hidden.
+    void afterFlush().then(() => afterFlush()).then(() => focusTargetOf(opener)?.focus())
 }
 
 /** The Back layers of the screen, called once while the Studio root is created. */

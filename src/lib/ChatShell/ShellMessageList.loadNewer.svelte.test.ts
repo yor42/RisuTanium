@@ -8,6 +8,10 @@ import type { character as Character, Chat, ChatAlt, Message } from '../../ts/st
 import type { TreeView } from '../../ts/process/chatTreeView'
 import { siblingsAt } from '../../ts/process/chatTree'
 
+// A test that slides the window back mounts about 150 real rows in jsdom: several seconds alone, a multiple of that under
+// a full run's CPU load. The budget covers that work; nothing here waits on a wall-clock delay.
+vi.setConfig({ testTimeout: 60_000 })
+
 const editors = vi.hoisted(() => ({ open: false }))
 const stepSibling = vi.hoisted(() => vi.fn())
 vi.mock('../../ts/stores.svelte', async () => {

@@ -5,6 +5,10 @@
  * type of an untrusted backup, so neither may decide how the page treats a
  * `blob:` URL. Anything outside the closed table, markup types (`svg`, `html`)
  * included, is shown as opaque bytes.
+ *
+ * An inlay's body key carries no extension (it is a 16-hex token), so the
+ * inlay's own `ext` and kind decide, within the same closed table. A font type
+ * is never reachable for an inlay.
  */
 
 const DISPLAY_MIME_BY_EXTENSION: ReadonlyMap<string, string> = new Map([
@@ -45,4 +49,24 @@ export function displayMimeOfAssetKey(key: string): string {
         return OPAQUE_DISPLAY_MIME
     }
     return DISPLAY_MIME_BY_EXTENSION.get(key.slice(dot + 1).toLowerCase()) ?? OPAQUE_DISPLAY_MIME
+}
+
+/**
+ * The display MIME type of an inlay of kind `type` (`image`, `video` or `audio`)
+ * with extension `ext`. Both arrive from a stored record or an old-store value
+ * that a backup may have written, so neither is trusted to be a string. The type
+ * is the table's only when its category is the inlay's kind; anything else is opaque.
+ */
+export function displayMimeOfInlay(type: unknown, ext: unknown): string {
+    if (type !== 'image' && type !== 'video' && type !== 'audio') {
+        return OPAQUE_DISPLAY_MIME
+    }
+    if (typeof ext !== 'string') {
+        return OPAQUE_DISPLAY_MIME
+    }
+    const mime = DISPLAY_MIME_BY_EXTENSION.get(ext.toLowerCase())
+    if (mime === undefined || !mime.startsWith(type + '/')) {
+        return OPAQUE_DISPLAY_MIME
+    }
+    return mime
 }

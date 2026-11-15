@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { onDestroy, tick, untrack } from 'svelte'
+    import { onDestroy, untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
     import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
     import type { StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
@@ -68,7 +69,7 @@
         if (loadFailed) {
             if (retrying) {
                 retrying = false
-                void tick().then(() => {
+                void afterFlush().then(() => {
                     if (root && document.activeElement === root) retryButton?.focus()
                 })
             }
@@ -121,7 +122,7 @@
 
     async function addGreeting(): Promise<void> {
         if (!service || !editable || !noted(service.greetingAdd(owner))) return
-        await tick()
+        await afterFlush()
         greetingInputs().at(-1)?.focus()
     }
 
@@ -129,7 +130,7 @@
         if (!service || !editable || !noted(service.greetingDelete(owner, index))) return
         const op = service.view(owner).done.at(-1)?.ops.find((candidate) => candidate.op === 'listRemove')
         if (op?.op === 'listRemove') toasts.postDeleted(owner, op.deletedId)
-        await tick()
+        await afterFlush()
         // Focus goes to the row that took the place, else the one before it, else the add button.
         const rows = greetingInputs()
         const next = rows[index] ?? rows[index - 1] ?? root?.querySelector<HTMLElement>('[data-part="studio-greeting-add"]')

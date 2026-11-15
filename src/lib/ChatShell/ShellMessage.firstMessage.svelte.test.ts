@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { flushSync, mount, tick, unmount } from 'svelte'
+import { flushSync, mount, unmount } from 'svelte'
+import { tickFake } from '../../ts/tests/svelteTick.test-helpers'
 
 const stepSibling = vi.hoisted(() => vi.fn())
 const regenerateNewest = vi.hoisted(() => vi.fn())
@@ -86,7 +87,7 @@ async function show(): Promise<void> {
     document.body.appendChild(target)
     app = mount(ShellMessageList, { target: host, props: { character: DBState.db.characters[0] as never, host } })
     flushSync()
-    await tick()
+    await tickFake()
 }
 afterEach(async () => {
     if (app) await unmount(app)

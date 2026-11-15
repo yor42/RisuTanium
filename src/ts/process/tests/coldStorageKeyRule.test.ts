@@ -277,7 +277,7 @@ describe('contract: a plugin slot mapped to a key the rule rejects', () => {
         const db: PluginColdStorageDb = { pluginCustomStorage: { _coldplugin: { k: mapped as string } } }
 
         await expect(readPluginStorageValue(db, 'k', readColdStorageItem)).rejects.toThrow('Failed to read plugin storage for key: k')
-        await expect(writePluginStorageValue(db, () => db, 'k', 'value', setColdStorageItem, () => 'unused')).rejects.toThrow('Failed to write plugin storage for key: k')
+        await expect(writePluginStorageValue(db, () => db, 'k', 'value', setColdStorageItem, () => 'unused', false)).rejects.toThrow('Failed to write plugin storage for key: k')
 
         expect(db.pluginCustomStorage?._coldplugin?.k).toBe(mapped)
         expect(h.calls).toEqual([])

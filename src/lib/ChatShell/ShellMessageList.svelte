@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { flushSync, onDestroy, tick, untrack } from 'svelte'
+    import { flushSync, onDestroy, untrack } from 'svelte'
+    import { afterFlush } from '../../ts/afterFlush'
     import { get } from 'svelte/store'
     import type { character as Character, Message } from '../../ts/storage/database.svelte'
     import type { TreeView } from '../../ts/process/chatTreeView'
@@ -12,14 +13,17 @@
     import { hasMessageEditorDrafts, onDraftsChanged } from '../../ts/localDrafts'
     import { createBottomFollower, isScrolledToBottom, type BottomFollower } from '../../ts/chatShell/bottomAnchor'
     import { bindReaderIntent, canHostMove, createReaderIntent, type ReaderIntentSource } from '../../ts/chatShell/readerIntent'
-    import { WRITE_EPSILON, createLoadRealign, viewportTopRow } from '../../ts/chatShell/loadRealign'
+    import { JUMP_HOLD_MS, WRITE_EPSILON, createLoadRealign, viewportTopRow } from '../../ts/chatShell/loadRealign'
     import { STEP_HOLD_MOUNT_CAP, createStepHold, heldPin, pagesForPin, type PinRelease, type StepRowRunner } from '../../ts/chatShell/stepHold'
     import { afterAppend, foldLoadMorePages, jumpOnlyGrows, jumpWindow,mountCap, newestWindow, normalizeBottom, shellInitialPages, shellPages, shellWindow, slideNewer, slideOlder, trimHeld } from '../../ts/chatShell/mountWindow'
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
     import { offscreenRowCounts } from '../../ts/chatShell/offscreenRows'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
+    import { alignDelta, appendedReplies, createTravel, distanceFromEnd, isAtBottom, isFar, jumpReach, matchAlignDelta, parseInset, travelPlan, travelReach, type JumpAlign, type JumpOptions, type JumpOrigin, type JumpResult, type JumpStatus } from '../../ts/chatShell/jumpTarget'
+    import { settleBand, type SettleReach } from '../../ts/chatShell/settleBand'
     import { recordCaughtError } from '../../ts/caughtErrors'
     import { holdWarmAsks } from '../ChatScreens/deferredAssetImages'
+    import type { SearchHit } from '../../ts/chatShell/inChatSearch'
     import { language } from '../../lang'
     import ShellMessage, { type ActionRequest, type CustomizeRequest } from './ShellMessage.svelte'
 
@@ -28,8 +32,16 @@
         host: HTMLElement | undefined
         unread?: boolean
         atBottom?: boolean
+        // Character replies that arrived while the reader was away from the bottom; it clears at the bottom and with a chat switch.
+        newCount?: number
+        // The reader is more than one screen from the newest message, or the window does not mount it.
+        farFromLatest?: boolean
         // The shell's reader-intent source; a list mounted on its own binds one to its host.
         readerIntent?: ReaderIntentSource
+        // The in-chat search hit on display, by message reference (index -1 and a null message are the first message); null shows none.
+        searchHit?: SearchHit | null
+        // The note shown inside the hit: the match may be in text that is not visible.
+        searchHitNote?: string
         onBranch?: (index: number, expectedId: string | undefined) => void
         getTreeView?: () => TreeView | null
         getBusy?: () => boolean
@@ -39,7 +51,7 @@
         onCloseActions?: (request: ActionRequest) => void
         onOpenCustomize?: (request: CustomizeRequest) => void
     }
-    let { character, host, unread = $bindable(false), atBottom = $bindable(true), readerIntent, onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize }: Props = $props()
+    let { character, host, unread = $bindable(false), atBottom = $bindable(true), newCount = $bindable(0), farFromLatest = $bindable(false), readerIntent, searchHit = null, searchHitNote = '', onBranch, getTreeView, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize }: Props = $props()
     // Rows with a modal layer open (the partial-edit overlays are fixed-position inside the row) leave content-visibility so the layer is not clipped to the row.
     let overlayRows = $state<Record<string, true>>({})
     function setOverlay(key: string, open: boolean): void {
@@ -150,7 +162,7 @@
         },
         row: (idx) => rows?.querySelector<HTMLElement>(`article[data-chat-index="${idx}"]`) ?? null,
         intentSeq: () => intentSeq,
-        tick,
+        tick: afterFlush,
         requestFrame,
         cancelFrame,
     })
@@ -280,6 +292,7 @@
         const index = ScrollToMessageStore.value
         if (index < 0) return
         ScrollToMessageStore.value = -1
+        untrack(() => settlePendingJump('cancelled'))
         // A target far from the newest message slides the window around it instead of mounting every row between.
         // While an editor is open nothing unmounts, so a window the jump would slide stays where it is and the target scrolls only when it is already mounted.
         const folded = chatFoldedStateMessageIndex.index >= 0
@@ -288,7 +301,7 @@
             loadPages = jumped.pages
             if (!folded) bottom = jumped.bottom
         }
-        void tick().then(() => {
+        void afterFlush().then(() => {
             if (installed && chatSurface.hidden) { ScrollToMessageStore.value = index; return }
             const target = rows?.querySelector(`[data-chat-index="${Math.max(0, index - 3)}"]`)
             if (!target) return
@@ -298,6 +311,37 @@
             follower?.release()
             follower?.sync()
         })
+    })
+
+    // A `jumpTo` request waits here for the effect below. At most one waits: a newer request, or a store request, settles it `cancelled`.
+    // A request made while the surface is hidden has already answered `deferred`; it stays here and runs when the surface is shown.
+    interface PendingJump {
+        index: number
+        align: JumpAlign
+        recordOrigin: boolean
+        focus: boolean
+        aim: JumpOptions['aim']
+        generation: number
+        forRoom: string | null
+        intentAtStart: number
+        settle: ((result: JumpResult) => void) | null
+    }
+    let pendingJump: PendingJump | null = null
+    let jumpRequestToken = $state(0)
+    function settlePendingJump(status: JumpStatus): void {
+        const waiting = pendingJump
+        pendingJump = null
+        waiting?.settle?.({ status, from: null, to: waiting.index })
+    }
+    onDestroy(() => settlePendingJump('cancelled'))
+
+    $effect(() => {
+        void jumpRequestToken
+        if (installed && chatSurface.hidden) return
+        const request = pendingJump
+        if (!request) return
+        pendingJump = null
+        void runJump(request)
     })
 
     $effect(() => {
@@ -312,10 +356,17 @@
         const room = chat?.id ?? null
         const length = messages.length
         const same = room === previousRoom
-        if (!same) { replyUnread = false; atBottom = true; restAtNewest(room) }
-        if (same && length > previousLength && messages[length - 1]?.role === 'char' && DBState.db.autoScrollToNewMessage) {
-            if (atBottom || DBState.db.alwaysScrollToNewMessage) void tick().then(scrollToLatestMessage)
-            else replyUnread = true
+        if (!same) { replyUnread = false; atBottom = true; newCount = 0; farFromLatest = false; restAtNewest(room) }
+        if (same && length > previousLength) {
+            const resting = untrack(() => atBottom)
+            // The auto-scroll setting decides only whether a reader at the bottom is followed; a reply the reader is not following is counted either way.
+            const follows = messages[length - 1]?.role === 'char' && DBState.db.autoScrollToNewMessage && (resting || DBState.db.alwaysScrollToNewMessage)
+            if (follows) void afterFlush().then(scrollToLatestMessage)
+            else if (!resting) {
+                replyUnread = true
+                const replies = appendedReplies(messages, previousLength)
+                untrack(() => { newCount += replies })
+            }
         }
         previousLength = length
         previousRoom = room
@@ -345,7 +396,7 @@
     $effect.pre(() => {
         const slid = win.slid
         unread = replyUnread || slid
-        if (slid) atBottom = false
+        if (slid) { atBottom = false; farFromLatest = true }
     })
     $effect(() => {
         if (!host || !rows) return
@@ -368,18 +419,238 @@
         // Rebuilding a slid window unmounts rows, which an open editor forbids; the new-message button stays until the editor closes.
         if (win.slid && hasMessageEditorDrafts()) return
         replyUnread = false
+        newCount = 0
         // A slid window is rebuilt around the newest messages first, so the cut lands on a mounted newest row.
-        if (win.slid) {
-            const fresh = newestWindow(initialPages(), CAP)
-            bottom = fresh.bottom
-            loadPages = fresh.pages
-            flushSync()
-        }
+        if (win.slid) rebuildNewestWindow()
         atBottom = true
+        farFromLatest = false
         realign.cancel()
         rows?.firstElementChild?.scrollIntoView({ behavior: 'instant', block: 'start' })
         follower?.sync()
         follower?.follow()
+    }
+
+    function rebuildNewestWindow(): void {
+        const fresh = newestWindow(initialPages(), CAP)
+        bottom = fresh.bottom
+        loadPages = fresh.pages
+        flushSync()
+    }
+
+    // The button and the End key travel to the newest message. A step hold owns the position while it runs, so a jump waits for it
+    // (a bounded number of frames) instead of writing under its pin; reader input, a chat switch, a hidden surface or a newer jump drop the wait.
+    const HOLD_WAIT_FRAMES = 30
+    let jumpGeneration = 0
+    let traveling = false
+    // The glide re-reads the live end every frame: the content under the reader keeps growing while a reply streams.
+    let travelStops: () => boolean = () => true
+    const travel = createTravel({
+        requestFrame,
+        cancelFrame,
+        now: () => performance.now(),
+        read: () => ({ top: host?.scrollTop ?? 0, end: host ? Math.max(0, host.scrollHeight - host.clientHeight) : 0 }),
+        write: (value) => { if (host) host.scrollTop = value },
+        stop: () => travelStops(),
+    })
+    onDestroy(() => travel.cancel())
+
+    // The one settle band: rows forced to `content-visibility: visible` so a jump measures them at their real sizes (see settleJump).
+    // Every path that drops the band's frames releases it, so no row stays forced.
+    let bandRelease: (() => void) | null = null
+    let bandFrame = 0
+    function releaseBand(): void {
+        cancelFrame(bandFrame)
+        const release = bandRelease
+        bandRelease = null
+        release?.()
+    }
+    // Forces the rows around `target` (see settleBand) and releases them at the second frame after this call: the first rendering records the
+    // remembered sizes, so releasing earlier would let the rows fall back to the estimate before the engine has stored the real size.
+    // The row containers carry no `style:` directive, so Svelte never reconciles the inline property this sets and removes.
+    // A previous band is released first; a new band always replaces the old one.
+    function settleJump(target: HTMLElement, reach: SettleReach): void {
+        releaseBand()
+        bandRelease = settleBand(target, reach)
+        bandFrame = requestFrame(() => { bandFrame = requestFrame(releaseBand) })
+    }
+    onDestroy(releaseBand)
+
+    function waitForHold(abandoned: () => boolean): Promise<boolean> {
+        return new Promise((resolve) => {
+            let waited = 0
+            const check = (): void => {
+                if (abandoned()) { resolve(false); return }
+                if (!hold.isInFlight() && pin === null) { resolve(true); return }
+                waited += 1
+                if (waited > HOLD_WAIT_FRAMES) { resolve(false); return }
+                requestFrame(check)
+            }
+            requestFrame(check)
+        })
+    }
+
+    function readPosition(): void {
+        if (!host) return
+        const distance = distanceFromEnd(host)
+        atBottom = isAtBottom(distance, win.slid)
+        farFromLatest = isFar(distance, host.clientHeight, win.slid)
+        if (atBottom) { replyUnread = false; newCount = 0 }
+    }
+
+    export async function jumpToLatest({ animate, focusNewest }: { animate: boolean, focusNewest: boolean }): Promise<void> {
+        if (installed && chatSurface.hidden) return
+        // Rebuilding a slid window unmounts rows, which an open editor forbids; the new-message button stays until the editor closes.
+        if (win.slid && hasMessageEditorDrafts()) return
+        const mine = ++jumpGeneration
+        travel.cancel()
+        traveling = false
+        const forRoom = room()
+        // Taken now, so the reader's input between the tap and the first write ends the jump.
+        const intentAtStart = intentSeq
+        const abandoned = (): boolean => destroyed || mine !== jumpGeneration || room() !== forRoom || intentSeq !== intentAtStart || (installed && chatSurface.hidden)
+        if (hold.isInFlight() || pin !== null) {
+            if (!await waitForHold(abandoned)) return
+            if (win.slid && hasMessageEditorDrafts()) return
+        }
+        if (abandoned() || !host) return
+        const scroller = host
+        realign.cancel()
+        // Read before the rebuild: a window that was slid has no meaningful scroll position to measure the distance from.
+        const rebuilt = win.slid
+        if (rebuilt) rebuildNewestWindow()
+        // Settle step: the newest rows are laid out at their real sizes before the plan reads the scroll metrics, so the cut and the glide
+        // run over the real end. A reduced-motion landing is one write at the clamped end and forces nothing.
+        const newestRow = rows?.firstElementChild
+        if (animate && newestRow instanceof HTMLElement) settleJump(newestRow, { above: travelReach(scroller.clientHeight), below: 0 })
+        const plan = travelPlan({ distance: distanceFromEnd(scroller), viewport: scroller.clientHeight, reduced: !animate, rebuilt })
+        if (plan.cutTo !== null) scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight - plan.cutTo)
+        const land = (): void => {
+            traveling = false
+            readPosition()
+            follower?.sync()
+            follower?.follow()
+            if (!focusNewest) return
+            // The newest row is the first article in document order; the focus scroll is suppressed so it cannot move the landing.
+            const newest = rows?.querySelector<HTMLElement>('article[data-part="chat-message"]')
+            if (newest) asShellFocus(() => newest.focus({ preventScroll: true }))
+        }
+        if (plan.duration === 0) {
+            scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+            land()
+            return
+        }
+        traveling = true
+        travelStops = () => abandoned() || hold.isInFlight()
+        travel.run(plan.duration, (completed) => {
+            if (completed) land()
+            else if (mine === jumpGeneration) { traveling = false; readPosition() }
+        })
+    }
+
+    // Brings message `index` (-1 is the first message) to the upper third of the visible area, focuses it and holds it against late layout.
+    // The answer says whether it ran: a hidden surface defers (and replays when shown), an editor that forbids the window change blocks,
+    // and a request that a newer jump, reader input, a chat switch or a long step hold overtook is cancelled.
+    export function jumpTo(index: number, { align = 'third', recordOrigin = true, focus = true, aim }: JumpOptions = {}): Promise<JumpResult> {
+        settlePendingJump('cancelled')
+        const generation = ++jumpGeneration
+        travel.cancel()
+        traveling = false
+        return new Promise((resolve) => {
+            const deferred = installed && chatSurface.hidden
+            if (deferred) resolve({ status: 'deferred', from: null, to: index })
+            pendingJump = { index, align, recordOrigin, focus, aim, generation, forRoom: room(), intentAtStart: intentSeq, settle: deferred ? null : resolve }
+            jumpRequestToken += 1
+        })
+    }
+
+    // Goes back to where a jump started. A reader who was following the newest message lands at the newest message again;
+    // otherwise the message that was at the top of the screen returns to the same distance from the top edge. The index is clamped to the chat.
+    export async function returnTo(origin: JumpOrigin): Promise<JumpResult> {
+        if (origin.atBottom) {
+            const to = messages.length - 1
+            if (installed && chatSurface.hidden) return { status: 'deferred', from: null, to }
+            if (win.slid && hasMessageEditorDrafts()) return { status: 'blocked', from: null, to }
+            await jumpToLatest({ animate: false, focusNewest: true })
+            return { status: atBottom ? 'done' : 'cancelled', from: null, to }
+        }
+        return jumpTo(Math.max(-1, Math.min(origin.index, messages.length - 1)), { align: { offset: origin.offset }, recordOrigin: false })
+    }
+
+    async function runJump(request: PendingJump): Promise<void> {
+        const result = await performJump(request).catch((error: unknown): JumpResult => {
+            recordCaughtError('chat.jump', error)
+            return { status: 'cancelled', from: null, to: request.index }
+        })
+        request.settle?.(result)
+    }
+
+    function captureOrigin(scroller: HTMLElement): JumpOrigin | null {
+        const top = rows ? viewportTopRow(scroller, rows) : null
+        const article = top?.querySelector<HTMLElement>('article[data-chat-index]')
+        if (!top || !article) return null
+        return { index: Number(article.dataset.chatIndex), offset: top.getBoundingClientRect().top - scroller.getBoundingClientRect().top, atBottom: isAtBottom(distanceFromEnd(scroller), win.slid) }
+    }
+
+    // Where the reader is now: the message at the top of the screen. Null while the surface is hidden or no row is mounted.
+    export function readOrigin(): JumpOrigin | null {
+        if (!host || (installed && chatSurface.hidden)) return null
+        return captureOrigin(host)
+    }
+
+    async function performJump(request: PendingJump): Promise<JumpResult> {
+        const { index, align, recordOrigin, focus, aim, generation, forRoom, intentAtStart } = request
+        const outcome = (status: JumpStatus, from: JumpOrigin | null = null): JumpResult => ({ status, from, to: index })
+        const abandoned = (): boolean => destroyed || generation !== jumpGeneration || room() !== forRoom || intentSeq !== intentAtStart || (installed && chatSurface.hidden)
+        // A request overtaken before it ran (a chat switch changes the length it is judged against) is cancelled, not out of range.
+        if (abandoned()) return outcome('cancelled')
+        if (index < -1 || index > messages.length - 1 || (index === -1 && character.type !== 'character')) return outcome('outOfRange')
+        // A step hold owns the position until it settles, so nothing is read, rebuilt or written under its pin.
+        if ((hold.isInFlight() || pin !== null) && !await waitForHold(abandoned)) return outcome('cancelled')
+        if (abandoned() || !host) return outcome('cancelled')
+        const scroller = host
+        realign.cancel()
+        const from = recordOrigin ? captureOrigin(scroller) : null
+        // A target far from the newest message slides the window around it. While an editor is open nothing unmounts,
+        // so a window the jump would slide stays where it is and only a target that is already mounted can be reached.
+        const folded = chatFoldedStateMessageIndex.index >= 0
+        const jumped = jumpWindow(index, messages.length, loadPages, CAP)
+        if (!hasMessageEditorDrafts() || jumpOnlyGrows(win.slid, folded, jumped, loadPages)) {
+            loadPages = jumped.pages
+            if (!folded) bottom = jumped.bottom
+        }
+        await afterFlush()
+        if ((hold.isInFlight() || pin !== null) && !await waitForHold(abandoned)) return outcome('cancelled')
+        if (abandoned() || !rows) return outcome('cancelled')
+        const article = rows.querySelector<HTMLElement>(`article[data-chat-index="${index}"]`)
+        if (!article) return outcome(hasMessageEditorDrafts() ? 'blocked' : 'outOfRange')
+        const container = article.closest<HTMLElement>('[data-part="chat-message-container"], [data-part="chat-first-message"]') ?? article
+        // The aim changes the target row (opens blocks, adds marks), so it resolves before the settle step and every geometry read;
+        // whatever it awaited can have overtaken the jump, so the hold and abandonment checks repeat.
+        const aimed = aim ? await aim(article) : null
+        if (aim) {
+            if ((hold.isInFlight() || pin !== null) && !await waitForHold(abandoned)) return outcome('cancelled')
+            if (abandoned() || !article.isConnected) return outcome('cancelled')
+        }
+        // Settle step: every geometry read below that decides the write comes after this block, in the same synchronous run as the write.
+        // The target and the rows of its post-write viewport are laid out at their real sizes first; otherwise focus() resolving the skipped target
+        // after the write would move it away from the line before the hold captures its baseline. Any DOM change to the target row that affects its geometry belongs above this block.
+        settleJump(container, jumpReach(align, scroller.clientHeight, parseInset(getComputedStyle(scroller).scrollPaddingTop)))
+        const hostTop = scroller.getBoundingClientRect().top
+        const targetTop = container.getBoundingClientRect().top
+        const aimRect = aimed && align === 'third' ? aimed.getBoundingClientRect() : null
+        scroller.scrollTop += align === 'third'
+            ? aimRect
+                ? matchAlignDelta({ containerTop: targetTop, aimTop: aimRect.top, aimBottom: aimRect.bottom, hostTop, clientHeight: scroller.clientHeight, topInset: parseInset(getComputedStyle(scroller).scrollPaddingTop) })
+                : alignDelta({ targetTop, hostTop, clientHeight: scroller.clientHeight, topInset: parseInset(getComputedStyle(scroller).scrollPaddingTop) })
+            : targetTop - hostTop - align.offset
+        // The jump left the newest message on purpose; arriving at the bottom re-enters following. Focus comes after the write and without
+        // a focus scroll, so it cannot undo the alignment, and the hold starts last so it captures the written position.
+        follower?.release()
+        follower?.sync()
+        if (focus) asShellFocus(() => article.focus({ preventScroll: true }))
+        realign.start({ row: aimed ?? container, ms: JUMP_HOLD_MS })
+        readPosition()
+        return outcome('done', from)
     }
 
     export function anchorNewestBottom() {
@@ -408,7 +679,9 @@
             host.scrollTop = Math.max(0, host.scrollHeight - host.clientHeight)
         }
         replyUnread = false
+        newCount = 0
         atBottom = true
+        farFromLatest = false
         follower?.sync()
         follower?.follow()
         return host.scrollTop
@@ -416,7 +689,7 @@
     function restAtNewest(forRoom: string | null): void {
         // This pass signals only the hold that was pending when it was asked for; a newer key change owns a newer hold.
         const forHold = openWarmHold
-        void tick().then(() => {
+        void afterFlush().then(() => {
             if (destroyed || room() !== forRoom) return
             const placed = placeAtNewest()
             if (placed === null || typeof requestAnimationFrame === 'undefined') { releaseOpenWarmHold(forHold); return }
@@ -467,7 +740,7 @@
             follower?.sync()
             return { target, wrote }
         }
-        void tick().then(() => {
+        void afterFlush().then(() => {
             if (destroyed) { pendingBottomDistance = null; return }
             const { target: placed } = restore()
             if (typeof requestAnimationFrame === 'undefined') { pendingBottomDistance = null; realign.start(); return }
@@ -508,7 +781,7 @@
             if (Math.abs(delta) > WRITE_EPSILON) current.scrollTop += delta
             follower?.sync()
         }
-        void tick().then(() => {
+        void afterFlush().then(() => {
             if (destroyed) { newerPending = false; return }
             correct()
             if (typeof requestAnimationFrame === 'undefined') { newerPending = false; return }
@@ -522,19 +795,19 @@
     export function onScroll() {
         if (!host || (installed && chatSurface.hidden)) return
         follower?.sync()
-        if (host.scrollTop < 100 && win.hasOlder) loadOlder()
-        else loadNewer()
-        const newest = rows?.firstElementChild
-        // The bottom of a slid window's rows is not the bottom of the conversation.
-        atBottom = !win.slid && (!newest || newest.getBoundingClientRect().top <= host.getBoundingClientRect().bottom + 100)
-        if (atBottom) replyUnread = false
+        // The travel to the newest message owns the position: older and newer rows are not loaded under it.
+        if (!traveling) {
+            if (host.scrollTop < 100 && win.hasOlder) loadOlder()
+            else loadNewer()
+        }
+        readPosition()
     }
 </script>
 
 <div data-part="chat-message-list" class="flex flex-col-reverse" role="log" aria-live="off" bind:this={rows}>
     {#key rebuildEpoch}
         {#each renderRows as row (row.key)}
-            <div class="chat-message-container" class:older={row.idx < messages.length - 3 && !overlayRows[row.key]} data-part="chat-message-container">
+            <div class="chat-message-container" class:older={row.idx < messages.length - 3 && !overlayRows[row.key]} class:search-hit={searchHit !== null && searchHit.message === row.message} data-part="chat-message-container">
                 <svelte:boundary onerror={(error) => recordCaughtError('chat.message', error)}>
                     <ShellMessage idx={row.idx} message={row.message} chatId={row.message.chatId} name={row.message.role === 'user' ? DBState.db.username : character.name}
                         img={row.message.role === 'user' ? DBState.db.userIcon : character.image}
@@ -552,14 +825,16 @@
                         <div data-part="chat-message-failed" role="note">{row.message.data}<p>{language.messageRenderFailed}</p><button onclick={reset}>{language.messageRenderRetry}</button></div>
                     {/snippet}
                 </svelte:boundary>
+                {#if searchHit !== null && searchHit.message === row.message}<p class="search-hit-note" role="note">{searchHitNote}</p>{/if}
             </div>
         {/each}
         {#if chat && win.firstMounted && character.type === 'character'}
-            <div data-part="chat-first-message">
+            <div data-part="chat-first-message" class:search-hit={searchHit !== null && searchHit.message === null}>
                 <svelte:boundary onerror={(error) => recordCaughtError('chat.message', error)}>
                     <ShellMessage idx={-1} message={{ role: 'char', data: firstMessageOf(character, chat) }} name={character.name} img={character.image} character={createSimpleCharacter(character)} firstMessage getTreeView={firstMessageTreeView} neighbourText={(index) => chat ? firstMessageOf(character, { fmIndex: index - 2 }) : null} onReroll={() => stepFirstMessage(1)} unReroll={() => stepFirstMessage(-1)} stepRow={runStep} {onOpenActions} {onCloseActions} {onOpenCustomize} />
                     {#snippet failed(_error, reset)}<div role="note">{language.messageRenderFailed}<button onclick={reset}>{language.messageRenderRetry}</button></div>{/snippet}
                 </svelte:boundary>
+                {#if searchHit !== null && searchHit.message === null}<p class="search-hit-note" role="note">{searchHitNote}</p>{/if}
             </div>
         {/if}
     {/key}
@@ -570,4 +845,9 @@
 
 <style>
     [data-part="chat-message-container"].older { content-visibility: auto; contain-intrinsic-size: auto var(--size-39); }
+    /* The search hit takes no layout space: the outline is drawn inside the box and the note is absolutely positioned, so decorating
+       or undecorating a row never moves the rows around it and the scroll anchor holds while stepping. */
+    .search-hit { position: relative; outline: var(--stroke-bold) solid var(--nexus-ring); outline-offset: calc(var(--stroke-bold) * -1); }
+    .search-hit-note { position: absolute; inset-block-start: var(--stroke-bold); inset-inline-end: var(--stroke-bold); max-width: calc(100% - var(--stroke-bold) * 2); margin: 0; padding: 0 var(--space-6);
+        overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--font-size-xs); color: var(--nexus-text-secondary); background: var(--color-surface-bar); pointer-events: none; z-index: 1; }
 </style>

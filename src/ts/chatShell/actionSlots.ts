@@ -6,7 +6,7 @@ export const DEFAULT_PINNED: ActionId[] = ['edit', 'delete']
 export const NARROW_PIN_LIMIT = 3
 export const WIDE_PIN_LIMIT = 6
 const KEY = 'risuChatShell.actionSlots'
-const DEFAULT_ORDER: ActionId[] = ['edit', 'delete', 'copy', 'translate', 'readAloud', 'selectText', 'stepPrev', 'stepNext', 'newReply', 'branch', 'bookmark', 'hideAI', 'deleteAfter', 'customizeButtons']
+export const DEFAULT_ORDER: readonly ActionId[] = ['edit', 'delete', 'copy', 'translate', 'readAloud', 'selectText', 'stepPrev', 'stepNext', 'newReply', 'branch', 'bookmark', 'hideAI', 'deleteAfter', 'customizeButtons']
 
 function isActionId(value: string): value is ActionId {
     return ACTION_IDS.some(id => id === value) || value.startsWith('plugin:') && value.length > 7

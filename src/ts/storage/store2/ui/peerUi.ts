@@ -4,7 +4,7 @@ import { escapeActionFor } from 'src/ts/alertEscape'
 import { alertStore } from 'src/ts/stores.svelte'
 import { get } from 'svelte/store'
 import { Store2CommitRefusedError, Store2NotFlushedError, type ParkCheck, type PeerLiveState, type PeerOffer, type PeerParkPrompt, type Store2PeerHandler } from '../saveLoop'
-import { StubRefusedError } from '../codec'
+import { CodecInputError, StubRefusedError } from '../codec'
 import type { Staging } from '../owner'
 import { foreignMarkerScreen } from './bootText'
 import type { SaveFailureClass } from '../saveFailure'
@@ -381,6 +381,11 @@ export function describeSaveFailure(error: unknown, attempts: number, storageFul
             showRaw: false,
             waitMs: 1000,
         }
+    }
+    if (error instanceof CodecInputError) {
+        // Data the codec cannot store (and no skip rule covers) stays unstorable until it changes: one raw report at the
+        // fifth attempt and a slow retry, instead of a report on every pass from then on.
+        return { toast: attempts === 1 ? text.saveRetrying : null, alert: null, showRaw: attempts === 5, waitMs: 5000 }
     }
     return { toast: attempts === 1 ? text.saveRetrying : null, alert: null, showRaw: escalated, waitMs: 1000 }
 }

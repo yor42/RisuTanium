@@ -7,13 +7,14 @@ import { getAppStore } from "../../storage/store/appStore";
 import { language } from "src/lang";
 import type { ByteStore } from "../../storage/store/contract";
 import { isAndroidTransport } from "../../storage/tauriByteTransport";
-import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES } from "../../storage/assetUrlGate";
+import { displayMimeOfInlay } from "../../storage/assetDisplayMime";
 import {
     cacheInlayRender,
     cachedInlayRender,
     dropInlayRender,
     type InlayRender,
 } from "./inlayRenderCache";
+import { inlayImageWithheld, inlayReadVerdict } from "./inlaySendGate";
 import {
     fieldsOf,
     inFlight,
@@ -285,7 +286,17 @@ export async function getInlayAssetBlob(id: string){
 
 export type { InlayRender, InlayRenderSource } from "./inlayRenderCache";
 
-/** The render of an inlay asset read as bytes or from the old store: a signature has no URL, anything else is shown through an object URL over its Blob: the old store's own Blob as it is, or a Blob built in memory from bytes or a data URI. */
+/**
+ * An object URL over a zero-copy retyped view of `blob`. The type of the URL is
+ * the closed display table's for the inlay's kind and ext; the Blob's own type
+ * (a restored backup's, an old store's, a data URI header's) never decides how
+ * the page treats the URL.
+ */
+function objectUrlOfInlayBlob(type: unknown, ext: unknown, blob: Blob): string {
+    return URL.createObjectURL(blob.slice(0, blob.size, displayMimeOfInlay(type, ext)))
+}
+
+/** The render of an inlay asset read as bytes or from the old store: a signature has no URL, anything else is shown through an object URL over a retyped view of its Blob: the old store's own Blob, or a Blob built in memory from bytes or a data URI. */
 function renderOfAsset(img: InlayAsset): { render: InlayRender, objectUrl: string | null } | null {
     if(img.type === 'signature'){
         return { render: { type: 'signature', url: '', source: 'signature' }, objectUrl: null }
@@ -294,7 +305,7 @@ function renderOfAsset(img: InlayAsset): { render: InlayRender, objectUrl: strin
     if(shown === null){
         return null
     }
-    const url = URL.createObjectURL(shown.data)
+    const url = objectUrlOfInlayBlob(img.type, img.ext, shown.data)
     return { render: { type: img.type, url, source: 'memory-blob' }, objectUrl: url }
 }
 
@@ -304,15 +315,11 @@ function renderOfAsset(img: InlayAsset): { render: InlayRender, objectUrl: strin
  * `null` when neither applies, and the bytes are read instead. The store's URL is
  * skipped for a video on Android, where a video served from a file stalls; a
  * store that cannot give a URL (the Node server without an asset token) is
- * skipped too.
+ * skipped too. An image the platform withholds never reaches here: the render
+ * decides that from the record before any delivery.
  */
 async function deliverStoredInlay(store: ByteStore, record: InlayRecord): Promise<{ render: InlayRender, objectUrl: string | null } | null> {
     const type = typeof record.fields.type === 'string' ? record.fields.type : ''
-    if(type === 'image' && isAndroidTransport() && record.len > ANDROID_WHOLE_READ_URL_LIMIT_BYTES){
-        // An image above the whole-read limit gets no URL and is not read into
-        // memory either: the page shows the empty image of a missing inlay.
-        return { render: { type, url: '', source: 'store-url' }, objectUrl: null }
-    }
     if(store.urlFor !== undefined && !(type === 'video' && isAndroidTransport())){
         try {
             return { render: { type, url: await store.urlFor(record.body), source: 'store-url' }, objectUrl: null }
@@ -324,7 +331,7 @@ async function deliverStoredInlay(store: ByteStore, record: InlayRecord): Promis
         try {
             const blob = await store.readBlob(record.body)
             if(blob !== null && blob.size === record.len){
-                const url = URL.createObjectURL(blob)
+                const url = objectUrlOfInlayBlob(type, record.fields.ext, blob)
                 return { render: { type, url, source: 'stored-blob' }, objectUrl: url }
             }
         } catch {
@@ -344,6 +351,12 @@ async function resolveInlayRender(id: string): Promise<{ render: InlayRender, ob
         console.warn('An inlay could not be read from the app store:', error)
     }
     if(store !== null && record !== null){
+        // An image this platform does not load is named by its record alone: its body is never read and no URL is asked for.
+        if(record.fields.type === 'image' && inlayImageWithheld('image', inlayRecordSize(record), isAndroidTransport())){
+            const stored = record.fields.name
+            const name = typeof stored === 'string' && stored.trim() !== '' ? stored : id
+            return { render: { type: 'image', url: '', source: 'withheld', name, size: inlayRecordSize(record) }, objectUrl: null }
+        }
         // A string body (a `data:` URI) and a signature are decoded from bytes; only a Blob body is delivered by URL.
         if(record.repr === 'blob' && record.fields.type !== 'signature'){
             const delivered = await deliverStoredInlay(store, record)
@@ -389,6 +402,117 @@ export async function getInlayRender(id: string): Promise<InlayRender | null> {
     })
 }
 
+/** The size of the bytes a base64 data URI string stands for, estimated from its length. */
+function decodedTextSize(length: number): number {
+    return Math.floor(length * 0.75)
+}
+
+/** The size of the file an app-store record stands for: a string body is estimated, any other keeps its length. */
+function inlayRecordSize(record: InlayRecord): number {
+    return record.repr === 'string' ? decodedTextSize(record.len) : record.len
+}
+
+function legacyInlaySize(value: InlayAsset): number | null {
+    return value.data instanceof Blob ? value.data.size : typeof value.data === 'string' ? decodedTextSize(value.data.length) : null
+}
+
+/**
+ * The fields and size of the inlay `id` without its body, or `null` when there is no such inlay. The app
+ * store is asked first, for its metadata record only; an id it lacks is looked up in this browser's old
+ * store. The size is of the file the body stands for: a string body is a base64 data URI, so it is
+ * estimated by `decodedTextSize` as the old store's strings are; a `string16` body is not a data URI and
+ * keeps its byte length. Never throws.
+ */
+export async function getInlaySummary(id: string): Promise<InlaySummary | null> {
+    if(typeof id !== 'string'){
+        return null
+    }
+    try {
+        const store = await getAppStore()
+        const record = await readAppInlayRecord(store, id)
+        if(record !== null){
+            return { ...(record.fields as unknown as Omit<InlayAsset, 'data'>), size: inlayRecordSize(record) }
+        }
+    } catch (error) {
+        console.warn('An inlay could not be read from the app store:', error)
+    }
+    const old = await readLegacyInlay(id)
+    if(old === null){
+        return null
+    }
+    return { ...(fieldsOf(old) as Omit<InlayAsset, 'data'>), size: legacyInlaySize(old) }
+}
+
+/** The outcome of a size-capped read: the inlay as `getInlayAsset` returns it, or the summary of one held back. */
+export type CappedInlayRead =
+    | { status: 'read', asset: NonNullable<Awaited<ReturnType<typeof getInlayAsset>>> }
+    | { status: 'too-large', summary: InlaySummary }
+
+/**
+ * `getInlayAsset` for a plugin or script read: a video or audio over the send limit is reported with its
+ * summary and its body is not loaded from the app store. `null` means there is no readable inlay, as for
+ * `getInlayAsset`. The caller reports a held-back file; this does not.
+ */
+export async function getInlayAssetCapped(id: string): Promise<CappedInlayRead | null> {
+    const summary = await getInlaySummary(id)
+    if(summary === null){
+        return null
+    }
+    if(inlayReadVerdict(summary) === 'too-large'){
+        return { status: 'too-large', summary }
+    }
+    const asset = await getInlayAsset(id)
+    if(asset === null){
+        return null
+    }
+    return { status: 'read', asset }
+}
+
+/** What a staged draft attachment shows: a media element over a render URL, or a chip with the file's name and size. */
+export type InlayDraftPreview =
+    | { kind: 'media', type: 'image' | 'video' | 'audio', url: string }
+    | { kind: 'file', name: string, size: number | null }
+
+/**
+ * The preview of a staged attachment, or `null` when there is no such inlay. No body is read into the
+ * page as a data URI: a video on Android, where it would be read whole, is a chip; everything else is
+ * shown through the render of the id (which the sent message reuses). A signature, an unknown type and a
+ * render that cannot be had are chips.
+ */
+export async function getInlayDraftPreview(id: string): Promise<InlayDraftPreview | null> {
+    const summary = await getInlaySummary(id)
+    if(summary === null){
+        return null
+    }
+    const chip: InlayDraftPreview = {
+        kind: 'file',
+        name: typeof summary.name === 'string' && summary.name !== '' ? summary.name : id,
+        size: summary.size,
+    }
+    const type = summary.type
+    if(type === 'video' && isAndroidTransport()){
+        return chip
+    }
+    if(type === 'image' || type === 'video' || type === 'audio'){
+        const render = await getInlayRender(id)
+        return render === null || render.source === 'withheld' ? chip : { kind: 'media', type, url: render.url }
+    }
+    return chip
+}
+
+/**
+ * Drops and revokes the cached render of `id`, after any render of it in flight: a miss is resolved and
+ * cached under the id's lock, so a drop outside the lock could run first and leave that render behind.
+ * Never rejects.
+ */
+export async function forgetInlayRender(id: string): Promise<void> {
+    try {
+        await withInlayLock(id, async () => dropInlayRender(id))
+    } catch (error) {
+        console.warn('A cached inlay render could not be released:', error)
+    }
+}
+
 /** Every inlay of the app store and of this browser's old store, without bodies. */
 export async function listInlayAssets(): Promise<[id: string, InlaySummary][]> {
     const assets: [id: string, InlaySummary][] = []
@@ -420,8 +544,7 @@ export async function listInlayAssets(): Promise<[id: string, InlaySummary][]> {
         if (value === null) {
             continue
         }
-        const size = value.data instanceof Blob ? value.data.size : typeof value.data === 'string' ? Math.floor(value.data.length * 0.75) : null
-        assets.push([id, { ...(fieldsOf(value) as Omit<InlayAsset, 'data'>), size }])
+        assets.push([id, { ...(fieldsOf(value) as Omit<InlayAsset, 'data'>), size: legacyInlaySize(value) }])
     }
     return assets
 }

@@ -16,6 +16,7 @@
  * must be preserved.
  */
 import { describe, test, expect, vi, beforeAll, beforeEach, afterAll } from 'vitest'
+import { COLD_TRANSFORM_HOOK_MS } from '../../tests/coldTransform.test-helpers'
 import { flushSync } from 'svelte'
 import { writable, get } from 'svelte/store'
 import type { Database } from '../../storage/database.svelte'
@@ -213,7 +214,7 @@ beforeAll(async () => {
     DBState = stores.DBState as unknown as { db: Database }
     selectedCharID = stores.selectedCharID as unknown as ReturnType<typeof writable<number>>
     pluginV2 = (await import('../../plugins/plugins.svelte')).pluginV2 as never
-})
+}, COLD_TRANSFORM_HOOK_MS)
 
 afterAll(() => {
     vi.unstubAllGlobals()

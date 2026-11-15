@@ -42,6 +42,7 @@ vi.mock('../Setting/Pages/BotSettings.svelte', () => ({ default: (_anchor: unkno
 vi.mock('../Setting/Pages/OtherBotSettings.svelte', () => ({ default: () => {} }))
 vi.mock('./DisplayShellPage.svelte', () => ({ default: () => { seen.displayMounts++ } }))
 vi.mock('../Setting/Pages/PluginSettings.svelte', () => ({ default: () => {} }))
+vi.mock('./PluginsShellPage.svelte', () => ({ default: () => {} }))
 vi.mock('../Setting/Pages/AdvancedSettings.svelte', () => ({ default: () => {} }))
 vi.mock('../Setting/Pages/LanguageSettings.svelte', () => ({ default: () => {} }))
 vi.mock('../Setting/Pages/AccessibilitySettings.svelte', () => ({ default: () => {} }))
@@ -53,6 +54,7 @@ vi.mock('../Others/PluginDefinedIcon.svelte', () => ({ default: () => {} }))
 
 import { language } from '../../lang'
 import { resetBackHandlersForTests } from '../../ts/backHandlers'
+import { defaultHotkeys } from '../../ts/defaulthotkeys'
 import { additionalSettingsMenu, DBState, easyPanelStore, SettingsMenuIndex, selIdState, settingsOpen } from '../../ts/stores.svelte'
 import { setSettingsShellEnabled } from '../../ts/settingsShell/settingsShellSwitch.svelte'
 import { installSettingsOrigin, resetSettingsOriginForTests } from '../../ts/settingsShell/settingsOrigin'
@@ -259,12 +261,16 @@ describe('T14 per-view scroll', () => {
 })
 
 describe('T15 shortcuts on a phone', () => {
-    test('the shortcuts page shows the screen-too-small line, never an empty column', async () => {
+    test('the shortcuts page lists the shortcuts read-only with the keyboard banner, never an empty column', async () => {
         setWidth(412)
+        DBState.db.hotkeys = JSON.parse(JSON.stringify(defaultHotkeys)) as typeof DBState.db.hotkeys
         SettingsMenuIndex.set(15)
         settingsOpen.set(true)
         const target = mountHost()
         await settle()
-        expect(target.querySelector('[data-part="settings-page"]')!.textContent).toContain(language.screenTooSmall)
+        const text = target.querySelector('[data-part="settings-page"]')!.textContent ?? ''
+        expect(text).toContain(language.settingsShellHkPhone)
+        expect(text).toContain(language.settingsShellHkActions.home)
+        expect(text).not.toContain(language.screenTooSmall)
     })
 })

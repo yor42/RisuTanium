@@ -36,7 +36,6 @@ import {
     alertInput,
     alertModuleSelect,
     alertNormalWait,
-    alertPluginConfirm,
     alertSelect,
     alertSelectChar,
     alertStaleAccountNotice,
@@ -93,13 +92,6 @@ describe('a prompt with a cancel button', () => {
         await settle()
         expect(out).toEqual({ settled: true, value: false })
         expect(shown().type).toBe('none')
-    })
-
-    test('Back inside the answer guard still answers, and Back never confirms', async () => {
-        const out = track(alertPluginConfirm('Import?'))
-        expect(dispatchBack()).toBe(true)
-        await settle()
-        expect(out).toEqual({ settled: true, value: false })
     })
 
     test('the character picker resolves with its cancel value', async () => {

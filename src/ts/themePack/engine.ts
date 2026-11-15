@@ -22,7 +22,7 @@ import { geometryPass, sheetHeights } from './geometry'
 import type { GeometryChain, GeometrySheet, SheetHeightRow, SheetTerm } from './geometry'
 import { tokenFile } from './tokens'
 
-export { sheetHeights }
+export { sheetHeights, COMPOUND, effective, resolve, cr }
 export type { ContrastPair, LintError, NameMatch, Rgba, SameChannel, SurfaceCheck, TokenMap }
 
 /** A registry as an area passes it to lintPack: every field optional; effective() adds chat's names and the shared defaults. */
@@ -147,6 +147,8 @@ export const CHAT_SETTABLE: NameMatch[] = [/^--(control-gap|control-padding-x|he
 // Calibrated against rendered pages at 360x640 touch, Korean: the ancestry below is the real DOM ancestry of the failed card and of the critical sheet; the sheet is a bottom
 // sheet with max-height 60% whose .sheet-body scrolls, so what a pack can break is the room left for the scroller. The terms are the content estimate: grab bar and title, body padding, text, one stacked action per button.
 export const CHAT_CHAINS: GeometryChain[] = [{ name: 'the transcript chain (chat-shell > chat-transcript > chat-message > chat-message-stage > chat-message-body > chat-message-text > the failed card)', parts: ['chat-shell', 'chat-transcript', 'chat-message', 'chat-message-stage', 'chat-message-body', 'chat-message-text'], defaults: { 'chat-transcript': 24, 'chat-message-body': 14 } }, { name: 'the sheet chain (chat-sheet > chat-sheet-body)', parts: ['chat-sheet', 'chat-sheet-body'], defaults: { 'chat-sheet-body': 20 } }]
+// The live chat shell mounts the failed card in chat-composer-host, an ancestor no CHAT_CHAINS entry names; CHAT_CHAINS is the mockup model the reference parity is pinned to and stays as it is. This list holds exactly the failed-card ancestry (chat-shell > chat-composer-host), without defaults because the page pads neither part, and is judged only by chatLiveChainErrors.
+export const CHAT_LIVE_CHAINS: GeometryChain[] = [{ name: 'the failed-card chain (chat-shell > chat-composer-host > the failed card)', parts: ['chat-shell', 'chat-composer-host'] }]
 export const CHAT_SHEET_TERMS = (p: SheetRef): SheetTerm[] => [{ px: 24 }, { text: { chars: p.title, size: '--font-size-lg', lead: 1.5, hfixed: 32 } }, { px: 4 }, { t: '--sheet-padding-bottom' }, { px: 12 }, { text: { chars: p.body, size: '--font-size-md', lead: 1.5, hpad: ['--sheet-padding-x'], hfixed: 20 } }, { px: p.extra || 0 }, { px: 10 }, { t: '--size-touch-lg', n: p.nBtn }, { px: 8 * p.nBtn }]
 export const CHAT_SHEET_REF: SheetRef = { title: 16, body: 40, nBtn: 3 }
 export const CHAT_SHEETS: GeometrySheet[] = [{ name: 'chat critical sheet', terms: CHAT_SHEET_TERMS(CHAT_SHEET_REF), fixed: [{ px: 24 }, { text: { chars: CHAT_SHEET_REF.title, size: '--font-size-lg', lead: 1.5, hfixed: 32 } }], cap: 384 }]
@@ -916,6 +918,17 @@ export function lintPack(css: string, name = '', registry?: RegistryInput): Lint
     if (pre.error) add({ selector: ':root', prop: reg.privatePrefix, why: `private variables cannot be judged: ${pre.error}` })
     for (const v of pre.variants) for (const e of lintOnce(v, name, reg, true).errors) add(e)
     return { ok: errors.length === 0, errors, name }
+}
+// The live-shell geometry of chat: CHAT_LIVE_CHAINS judged over the same text preparation as lintPack (normalise, then every private-variable variant) with the app's token map, errors de-duplicated. The caller runs it only on a sheet every other pass accepted, so it adds refusals for the live shell and cannot change another pass's output.
+export function chatLiveChainErrors(css: string): LintError[] {
+    const pre = inlinePrivate(normalise(css), PRIVATE_PREFIX)
+    const errors: LintError[] = []
+    const seen = new Set<string>()
+    for (const variant of pre.variants) for (const e of geometryPass(variant, { app: APP, chains: CHAT_LIVE_CHAINS })) {
+        const key = e.selector + '|' + e.prop + '|' + e.why
+        if (!seen.has(key)) { seen.add(key); errors.push({ selector: e.selector, prop: e.prop, why: e.why }) }
+    }
+    return errors
 }
 // The two size messages below begin with a space and the fixed-width one with ":  " (no property name): the wording is part of the verdict and matches the reference byte for byte.
 const NO_PART_SIZE_WHY = ' on a selector that names no part can resize a protected element directly (DD-265): name a part instead'

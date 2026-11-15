@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
+import { COLD_TRANSFORM_HOOK_MS } from '../../ts/tests/coldTransform.test-helpers'
 import { flushSync, mount, tick, unmount } from 'svelte'
 
 const composer = vi.hoisted(() => ({
@@ -120,6 +121,11 @@ function openNewestActions(): void {
     target.querySelector<HTMLButtonElement>('article[data-chat-id="m"] [aria-label="More actions"]')!.click()
     flushSync()
 }
+
+// The shell's lazy children import the icon-library barrel, which costs tens of seconds to transform cold; paying it here keeps it out of the mount wait.
+beforeAll(async () => {
+    await import('@lucide/svelte')
+}, COLD_TRANSFORM_HOOK_MS)
 
 describe('ChatShell wires the reply tree into the rows', () => {
     test('a message with two alternatives shows 1 / 2 with an enabled next arrow', async () => {

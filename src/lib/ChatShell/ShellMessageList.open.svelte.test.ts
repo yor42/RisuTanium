@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { flushSync, mount, tick, unmount } from 'svelte'
 import type { character as Character, Message } from '../../ts/storage/database.svelte'
+import { drainMicrotasks } from '../../ts/tests/firstFrame.test-helpers'
 
 let hiding: () => void = () => {}
 
@@ -65,7 +66,8 @@ async function show(startTop = 0, settle = true) {
     document.body.appendChild(target)
     app = mount(ShellMessageList, { target: host, props: { character, host } })
     flushSync()
-    await tick()
+    // The wait must not span an animation frame: the list's late-growth frame check is queued at mount, and a frame wait here would run it before the test grows the content.
+    await drainMicrotasks()
     if (settle) await frame()
 }
 beforeEach(() => {

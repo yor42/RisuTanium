@@ -9,6 +9,7 @@
   color-scheme: var(--color-scheme);
   --danger: var(--nexus-danger);              /* (the solid and its channels live in ../theme/nexus-tokens.css) */
   --mono: ui-monospace, "Cascadia Mono", Consolas, "D2Coding", monospace;
+  --chat-message-font: var(--font);
   --chat-speaker-0: #ffb38a; --chat-speaker-1: #9bbcff; --chat-speaker-2: #7fe3b3; --chat-speaker-3: #ffd27a; --chat-speaker-4: #c9a9ff; --chat-speaker-5: #ff9db3; --chat-speaker-6: #7fe9ff; --chat-speaker-7: #e3b3ff;
 
   /* ---- motion: durations and easing ---- */

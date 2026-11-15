@@ -18,10 +18,10 @@ function Invoke-GuardCase([string]$label, [string]$want, [string[]]$guardArgs) {
 }
 function Set-LocateRecord {
     $now = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-    $o = @{ picks = @(); pickErrors = 0; offset = $null; pickLocked = $false; locates = @(@{ id = 1; time = $now; label = 'css:#field'; bounds = @{ l = 10; t = 10; r = 110; b = 60 }; used = $false; serial = '29f3cde9193f7ece' }) }
+    $o = @{ picks = @(); pickErrors = 0; offset = $null; pickLocked = $false; locates = @(@{ id = 1; time = $now; label = 'css:#field'; bounds = @{ l = 10; t = 10; r = 110; b = 60 }; used = $false; serial = 'emulator-5580' }) }
     ConvertTo-Json $o -Depth 5 | Set-Content $st
 }
-$c = @('--serial', '29f3cde9193f7ece', '--log', $log)
+$c = @('--serial', 'emulator-5580', '--log', $log)
 Invoke-GuardCase 'text no state' '99' ($c + @('--', 'shell', 'input text hello'))
 Set-LocateRecord
 Invoke-GuardCase 'text no grant' '99' ($c + @('--state', $st, '--', 'shell', 'input text hello'))
@@ -45,7 +45,8 @@ $env:FAKE_EXIT = '0'
 Invoke-GuardCase 'text after failed tap' '99' ($c + @('--state', $st, '--', 'shell', 'input text hi'))
 Set-LocateRecord
 Invoke-GuardCase 'tap5' '0' (@('tap') + $c + @('--state', $st))
-Invoke-GuardCase 'text other serial' '99' (@('--serial', '2ac80128013f7ece', '--log', $log, '--state', $st, '--', 'shell', 'input text hi'))
+# The only other full-access serials are playground serials (MC-1666), which need no typing grant, so the cross-serial grant check cannot be reached with a second full-access serial.
+Invoke-GuardCase 'text on a playground serial needs no grant' '0' (@('--serial', '2ac80128013f7ece', '--log', $log, '--state', $st, '--', 'shell', 'input text hi'))
 Set-LocateRecord
 Invoke-GuardCase 'tap6' '0' (@('tap') + $c + @('--state', $st))
 Invoke-GuardCase 'enter direct after tap' '0' ($c + @('--state', $st, '--', 'shell', 'input keyevent KEYCODE_ENTER'))

@@ -902,6 +902,22 @@ export function getModelInfo(id?: string | null): LLMModel{
         if(pluginModel){
             return pluginModel
         }
+        // An unresolved plugin model never falls through to OpenAI-compatible: that would send the prompt
+        // and the user's OpenAI key to api.openai.com under a plugin id. The Plugin format makes the send
+        // fail locally with "plugin provider not found"; the saved selection is left as it is. No request
+        // is made for this model itself; a configured fallbackModels entry still sends to its own provider.
+        return {
+            id,
+            name: id,
+            shortName: id,
+            fullName: id,
+            internalID: id,
+            provider: LLMProvider.AsIs,
+            format: LLMFormat.Plugin,
+            flags: [],
+            parameters: OpenAIParameters,
+            tokenizer: LLMTokenizer.Unknown
+        }
     }
 
     const added = resolveAdded(id)

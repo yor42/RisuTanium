@@ -9,6 +9,7 @@
  */
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi, type Mock } from 'vitest'
+import { COLD_TRANSFORM_HOOK_MS } from '../../ts/tests/coldTransform.test-helpers'
 import type { Chat } from 'src/ts/storage/database.svelte'
 
 const h = vi.hoisted(() => ({
@@ -162,7 +163,7 @@ const settle = async () => { flushSync(); await tick(); await tick() }
 beforeAll(async () => {
     await import('./TogglesPanel.svelte')
     await import('../../ts/parser/chatToggleScope')
-}, 120_000)
+}, COLD_TRANSFORM_HOOK_MS)
 
 beforeEach(() => {
     localStorage.clear()

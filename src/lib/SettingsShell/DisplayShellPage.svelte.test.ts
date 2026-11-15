@@ -112,6 +112,8 @@ vi.mock('../Others/PluginDefinedIcon.svelte', () => ({ default: () => {} }))
 import { language } from 'src/lang'
 import { setDatabase, type Database } from 'src/ts/storage/database.svelte'
 import { DBState, SettingsMenuIndex } from 'src/ts/stores.svelte'
+import { resetThemePackRowLoaderForTests } from '../Setting/Pages/Display/ThemePackRowLoader.svelte'
+import ThemePackRowStub from '../Setting/Pages/Display/ThemePackRowStub.svelte'
 import DisplayShellPage from './DisplayShellPage.svelte'
 import SettingsShellPage from './SettingsShellPage.svelte'
 
@@ -198,6 +200,8 @@ function changedKeys(before: Record<string, unknown>, after: Record<string, unkn
 beforeEach(() => {
     SettingsMenuIndex.set(3)
     DBState.db = freshProfile()
+    // The real row (and the theme pack runtime behind it) is covered by ThemePackRow.svelte.test.ts; the page tests load a stub.
+    resetThemePackRowLoaderForTests(async () => ({ default: ThemePackRowStub }))
 })
 
 afterEach(() => {
@@ -322,6 +326,28 @@ describe('inverse controls (T-B7)', () => {
     })
 })
 
+describe('the Theme pack row (T4-8)', () => {
+    function nextRowId(target: HTMLElement, id: string): string | undefined {
+        const rows = [...target.querySelectorAll<HTMLElement>('[data-setting-row]')]
+        return rows[rows.findIndex((el) => el.dataset.settingRow === id) + 1]?.dataset.settingRow
+    }
+
+    test.each([
+        ['a fresh profile', {}],
+        ['the waifu theme', { theme: 'waifu' }],
+        ['the retired custom theme', { theme: 'custom' }],
+        ['only the hybrid mode shown, unused modes hidden', { visibleModes: ['hybrid'], hideUnusedModes: true }],
+    ] as const)('%s: the row follows the theme cards and its loaded control is present', async (_name, overrides) => {
+        setProfile(overrides)
+        const { target } = showPage()
+        await settle()
+        expect(nextRowId(target, 'display.theme')).toBe('display.themePack')
+        const themePackRow = row(target, 'display.themePack')
+        expect(themePackRow.querySelector('[data-part="theme-pack-install"]')).not.toBeNull()
+        expect(themePackRow.textContent).not.toContain(language.themePackRowLoadFailed)
+    })
+})
+
 describe('mounting writes nothing (T-B8)', () => {
     test.each([
         ['a fresh profile', {}],
@@ -336,6 +362,8 @@ describe('mounting writes nothing (T-B8)', () => {
         const before = dbSnapshot()
         const { target } = showPage()
         await settle()
+        // The loaded row must be on the page, or this test would only see the title-only state.
+        expect(row(target, 'display.themePack').querySelector('[data-part="theme-pack-install"]')).not.toBeNull()
         openAdvanced(target)
         await settle()
         expect(changedKeys(before, dbSnapshot())).toEqual([])

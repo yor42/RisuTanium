@@ -67,6 +67,7 @@ export const SHARED_SETTABLE: NameMatch[] = [
     /^--nexus-(?!animate-)[a-z0-9-]+$/,      // colours, channels, blur, touch size, focus ring pair, motion basics (the motion ones are bounded by the shared minimums and maximums)
     /^--color-(?!scheme$)[a-z0-9-]+$/,       // every colour role of chat, Settings and Studio
     '--color-scheme', '--font', '--mono', '--alpha-switch-off', '--radius-field', '--radius-sheet', '--radius-control', '--radius-popup',
+    '--chat-message-font',
 ]
 
 // decorative colours a pack may switch off (the two canvas blooms: upstream's look has none). Everything else that is fully transparent is rejected; a registry adds its own decorative names in `transparentOk`.

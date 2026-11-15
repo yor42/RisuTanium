@@ -191,6 +191,7 @@ import { DBState } from '../../stores.svelte'
 import { getDatabase } from '../../storage/database.svelte'
 import { registerDbChangeEffects } from '../../storage/dbChangeEffects.svelte'
 import { registerResidency, resetResidencyForTest } from '../../storage/store2/residencyActive'
+import { coldStorageHeader } from '../../process/coldstorageData'
 
 type Storage = Record<string, unknown> & { _coldplugin?: Record<string, string> }
 
@@ -355,6 +356,50 @@ describe('V3 pluginStorage on a store2 page', () => {
         expect(await marked(() => api._clearPluginStorage())).toBe(true)
 
         cleanup()
+    })
+})
+
+describe('V3 pluginStorage write guard by page kind', () => {
+    const chatPointingAt = (unitId: string) => ({ message: [{ data: coldStorageHeader + unitId }] })
+    const withLinkedUnit = (): void => {
+        installDb({ _coldplugin: { k: 'unit-1' }, 'unit-1': 'old' })
+        DBState.db.characters = [{ chats: [chatPointingAt('unit-1')] }] as unknown as Database['characters']
+    }
+
+    // Regression reproducer: the store2 write target is pluginCustomStorage[<id>], which no chat link names;
+    // it fails while the write is refused for a link that does not apply to that target.
+    test('a store2 setItem over a slot whose unit id a chat links saves into pluginCustomStorage', async () => {
+        withLinkedUnit()
+        pageIsStore2()
+        const api = makeApi()
+
+        await api._setPluginStorage('k', 'new')
+
+        expect(storage()['unit-1']).toBe('new')
+        expect(storage()._coldplugin).toEqual({ k: 'unit-1' })
+    })
+
+    // Compatibility guard: passes before and after; the slot-alias check still applies on a store2 page.
+    test('a store2 setItem over a slot whose unit id another slot also names is refused', async () => {
+        installDb({ _coldplugin: { b: 'unit-b', c: 'unit-b' }, 'unit-b': 2 })
+        pageIsStore2()
+        const api = makeApi()
+
+        await expect(api._setPluginStorage('b', 'new')).rejects.toThrow('Failed to write plugin storage for key: b')
+
+        expect(storage()['unit-b']).toBe(2)
+        expect(await api._getPluginStorage('c')).toBe(2)
+    })
+
+    // Compatibility guard: passes before and after; a legacy page keeps the full link check.
+    test('a legacy setItem over a slot whose unit id a chat links is refused', async () => {
+        withLinkedUnit()
+        const api = makeApi()
+
+        await expect(api._setPluginStorage('k', 'new')).rejects.toThrow('Failed to write plugin storage for key: k')
+
+        expect(coldMock.setColdStorageItem).not.toHaveBeenCalled()
+        expect(storage()['unit-1']).toBe('old')
     })
 })
 

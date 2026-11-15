@@ -1,5 +1,6 @@
 <script lang="ts">
-    import { flushSync, onDestroy, tick, untrack, type Snippet } from "svelte";
+    import { flushSync, onDestroy, untrack, type Snippet } from "svelte";
+    import { afterFlush } from "../../ts/afterFlush";
     import { buildSlices, computeWindow } from "../SideBars/railWindow";
     import { UNMEASURED_VIEWPORT_PX, WINDOW_MIN_OVERSCAN_ROWS, WINDOW_OVERSCAN_VIEWPORTS } from "../SideBars/railConstants";
     import { anchorAt, buildRowLayout, cardAnchorAt, gridColumns, heightDeltaAbove, scrollTopFor, scrollTopForCard, type CardAnchor, type CharRow, type ScrollAnchor } from "./charListRows";
@@ -377,7 +378,7 @@
         untrack(() => {
             focusedCard = null;
         });
-        void tick().then(() => {
+        void afterFlush().then(() => {
             const active = document.activeElement;
             if (scroller?.isConnected && (!active || active === document.body)) {
                 scroller.focus();

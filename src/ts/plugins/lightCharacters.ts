@@ -112,9 +112,11 @@ export function lightCharacterEntries(live: readonly Slot[] | undefined): LightC
  * entry of an id becomes the k-th live holder of that id in list order, and an
  * entry with no such holder is left out. Other elements pass through. Returns
  * `incoming` itself when it holds no light entry. `counts` is set to the number
- * of entries swapped and left out.
+ * of entries swapped and left out. `heldSlots`, when given, receives the output
+ * index of every swapped entry (a left-out entry shifts the later indices), so a
+ * caller can tell a swapped live holder from an element the plugin supplied.
  */
-export function swapLightEntries(live: readonly unknown[] | undefined, incoming: readonly unknown[], counts: LightWriteCounts): unknown[] {
+export function swapLightEntries(live: readonly unknown[] | undefined, incoming: readonly unknown[], counts: LightWriteCounts, heldSlots?: Set<number>): unknown[] {
     let kept = 0
     let leftOut = 0
     let holdersById: Map<unknown, unknown[]> | undefined
@@ -143,6 +145,7 @@ export function swapLightEntries(live: readonly unknown[] | undefined, incoming:
         const holders = holdersById.get(entry.chaId)
         const next = used.get(entry.chaId) ?? 0
         if (holders && next < holders.length) {
+            heldSlots?.add(swapped.length)
             swapped.push(holders[next])
             used.set(entry.chaId, next + 1)
             kept++

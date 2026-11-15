@@ -16,7 +16,7 @@
  * Test labels: `(R)` fails against the rail before this change; `(G)` is proven by a named
  * mutant of the rail that it fails against.
  */
-import { mount, tick, unmount } from 'svelte'
+import { flushSync, mount, tick, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { describe, test, expect, vi, afterEach, beforeEach } from 'vitest'
 import type { Database } from '../../ts/storage/database.svelte'
@@ -147,6 +147,7 @@ import Sidebar from './Sidebar.svelte'
 import { DEFAULT_HEIGHTS } from './railConstants'
 import { charKey } from './railTestKit'
 import { OPEN_FOLDERS_KEY, RAIL_SCROLL_KEY } from './railMemory'
+import { drainMicrotasks, installFrameQueue, readAtFirstFrame, runFrame, uninstallFrameQueue } from '../../ts/tests/firstFrame.test-helpers'
 import {
     boxOf,
     charRow,
@@ -243,6 +244,7 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+    uninstallFrameQueue()
     vi.useRealTimers()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
@@ -486,6 +488,24 @@ describe('remembered scroll position', () => {
         await settle()
 
         expect(scrollerOf(root).scrollTop).toBe(rowTop(100) + 5)
+    })
+
+    test('(R) the saved row is restored before the first frame of the mount', async () => {
+        installLayoutStub()
+        seedScroll(charKey('c100'), 5, 3)
+        setDb(ids(200))
+        installFrameQueue()
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const app = mount(Sidebar, { target, props: {} }) as unknown as Record<string, unknown>
+        mounted = { target, app }
+        root = target
+        flushSync()
+        const scrollAtFirstFrame = readAtFirstFrame(() => scrollerOf(root).scrollTop)
+        // Only microtasks run: a restore that waits for an animation frame or a timer has not happened yet.
+        await drainMicrotasks()
+        runFrame()
+        expect(await scrollAtFirstFrame).toBe(rowTop(100) + 5)
     })
 
     test('(R) with nothing saved, or a corrupt value, the first scroll is saved', async () => {

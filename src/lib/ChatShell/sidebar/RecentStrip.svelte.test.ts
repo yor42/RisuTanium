@@ -11,8 +11,8 @@
  * - A group is a strip member with a glyph; a tap hands the entry to the caller, never a direct switch.
  * - Keyboard focus on an avatar follows its character when the strip reorders or the character's
  *   slot object is replaced, and focus that went elsewhere is never taken back. Those scenarios
- *   live in `RecentStrip.scenarios.test-helpers.svelte.ts` and also run under the async scheduler
- *   in `RecentStrip.asyncOrder.svelte.test.ts`.
+ *   live in `RecentStrip.scenarios.test-helpers.svelte.ts` and run here under the async
+ *   scheduler the app ships.
  *
  * MOCKED: the avatar thumbnail lookup (`getCharImage`), since the fixtures carry no image.
  */

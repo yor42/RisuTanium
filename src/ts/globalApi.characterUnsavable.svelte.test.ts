@@ -139,6 +139,62 @@ describe('T-A8: isCharacterUnsavable follows the latest pass', () => {
         await until(() => !page.w.api.isCharacterUnsavable(secondId), 'the second to be dropped', 6000)
     })
 
+    // New-behaviour guard, not a pre-fix reproducer: the notice key does not exist on the pre-fix base. Its sensitivity to
+    // the page hook is shown by mutants M17 (isSaveClean ignores the count), M17b (no toast) and M23 (front skips ignored).
+    test('L7 guard (new rule): a preset list that cannot be saved is told once, keeps the page not clean, and is clean again after the fix', async () => {
+        const page = await startPage()
+        await settled(page.w)
+        const presets = page.db.botPresets as Entry[]
+        const { alertToast } = await import('src/ts/alert')
+        const { language } = await import('src/lang')
+        const notice = language.savePresetsHeldNotice('"Preset 1"')
+        const toasts = (): number => vi.mocked(alertToast).mock.calls.filter(([shown]) => shown === notice).length
+        expect(page.w.api.isSaveClean()).toBe(true)
+
+        await nextCommit(page.w, () => {
+            presets[1].temperature = unreadable()
+            characters(page.db)[2].personality = 'edited next to the held preset list'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        await until(() => toasts() >= 1, 'the notice', 6000)
+        expect((await page.k.saved()).characters[2]).toMatchObject({ personality: 'edited next to the held preset list' })
+        expect(page.w.api.isSaveClean()).toBe(false)
+        expect(page.w.api.hasUnsavedSaveMarks()).toBe(false)
+
+        await nextCommit(page.w, () => {
+            presets[1].temperature = 99
+            characters(page.db)[3].personality = 'edited after the fix'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[3].chaId))
+            page.flush()
+        }, false)
+        await until(() => page.w.api.isSaveClean(), 'a clean page after the fix', 6000)
+        expect(toasts()).toBe(1)
+        expect((await page.k.saved()).botPresets[1]).toMatchObject({ temperature: 99 })
+    })
+
+    test('a task preset list that cannot be saved gets the task preset notice, not the bot preset one', async () => {
+        const page = await startPage()
+        await settled(page.w)
+        const { alertToast } = await import('src/ts/alert')
+        const { language } = await import('src/lang')
+        const notice = language.saveTaskPresetsHeldNotice('"Task A"')
+        const botNotice = language.savePresetsHeldNotice('"Task A"')
+        expect(notice).not.toBe(botNotice)
+        const shown = (text: string): number => vi.mocked(alertToast).mock.calls.filter(([toast]) => toast === text).length
+
+        await nextCommit(page.w, () => {
+            page.db.taskPresets = [{ name: 'Task A', broken: unreadable() }]
+            characters(page.db)[2].personality = 'edited next to the held task presets'
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            page.flush()
+        }, false)
+        await until(() => shown(notice) >= 1, 'the task preset notice', 6000)
+        expect(shown(botNotice)).toBe(0)
+        expect(shown(notice)).toBe(1)
+        expect(page.w.api.isSaveClean()).toBe(false)
+    })
+
     test('the legacy loop never reports a character', async () => {
         h.db = makeDb('base', ['alpha', 'beta'])
         const w = await worlds.startWorld()

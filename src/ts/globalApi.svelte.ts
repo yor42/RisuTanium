@@ -14,6 +14,7 @@ import { open } from '@tauri-apps/plugin-shell'
 import { TauriWriter, openWebExportWriter, writeBackupEntry, encodeBackupEntryHeader, type ExportByteWriter } from "./exportWriters";
 import { ExportCancelledError, type ExportCancelToken } from "./exportCancel";
 import { type Database, defaultSdDataFunc, getDatabase, appVer, getCurrentCharacter, type character, type groupChat, type Chat, appSubVer } from "./storage/database.svelte";
+import { collectPackAssetRefs } from "./themePack/packRefs";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
 import { botMakerMode, loadedStore, DBState, LoadingStatusState, selIdState, selectedCharID, ReloadGUIPointer, bodyIntercepterStore, savingStoppedReason, frozenSaveKeysStore, type FrozenSaveKeyInfo } from "./stores.svelte";
@@ -31,6 +32,7 @@ import { appendIfAbsent, installCharacterSaveMarks } from "./storage/characterSa
 import { createSaveScheduler } from "./storage/saveScheduler";
 import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
 import type { Store2LoopPort } from "./storage/store2/saveLoop";
+import type { SkippedItem } from "./storage/store2/codec";
 import { activeStreamOwners } from "./process/activeStreams";
 import { takeResidentLoaded } from "./storage/store2/residentLoads";
 import { saveFailureStore } from "./storage/store2/saveFailure";
@@ -1260,6 +1262,8 @@ let requestSaveNowImpl: (() => void) | null = null
 let unsavableCharacterCount = 0
 /** Which characters those are, replaced whole at each store2 pass; empty on a page without a store2 loop. */
 let unsavableCharacterIds: ReadonlySet<string> = new Set()
+/** How many modules, preset lists, settings fields and plugin-data keys the store2 loop's passes cannot encode now; 0 on a page without a store2 loop. */
+let unsavableItemCount = 0
 
 /** True while the store2 loop reports the character as unsavable; always false on the legacy loop. */
 export function isCharacterUnsavable(chaId: string): boolean {
@@ -1368,8 +1372,8 @@ export function getSaveMarkCount(): number {
  * True only when everything marked so far is in the store: the last
  * iteration committed, no mark has arrived since its snapshot, and no save is
  * running, debounced, queued, stopped or held back by a frozen chaId, and no
- * character is unsavable (its latest data is in memory only). `hasUnsavedSaveMarks`
- * does not count unsavable characters: a new save request cannot help them.
+ * character or other item is unsavable (its latest data is in memory only). `hasUnsavedSaveMarks`
+ * does not count unsavable characters or items: a new save request cannot help them.
  */
 export function isSaveClean(): boolean {
     if (!saveLoopPending || !lastIterationCommitted) {
@@ -1377,6 +1381,7 @@ export function isSaveClean(): boolean {
     }
     return saveMarkCount === snapshotMarkCount
         && unsavableCharacterCount === 0
+        && unsavableItemCount === 0
         && !saving.state
         && !requiresFullEncoderReload.state
         && !saveLoopPending()
@@ -2034,6 +2039,32 @@ function unsavableCharacterLabel(chaId: string): string {
     }
 }
 
+/**
+ * The notice of one item the store2 loop cannot save. The labels are the raw names, quoted (the item's `label` is the
+ * quoted name; a setting or plugin-data key is its own key). Total: a hostile name must not reach the save loop.
+ */
+function unsavableItemNotice(item: SkippedItem): string {
+    try {
+        if (item.scope === 'presets') {
+            return language.savePresetsHeldNotice(item.label)
+        }
+        if (item.scope === 'taskPresets') {
+            return language.saveTaskPresetsHeldNotice(item.label)
+        }
+        if (item.scope === 'moduleSet') {
+            return language.saveModulesHeldNotice(item.label)
+        }
+        const what = item.scope === 'module'
+            ? language.saveItemModuleLabel(item.label.slice(1, -1))
+            : item.scope === 'settings'
+                ? language.saveItemSettingLabel(item.key)
+                : language.saveItemPluginDataLabel(item.key)
+        return item.saved ? language.saveItemUnsavedNotice(what) : language.saveItemNeverSavedNotice(what)
+    } catch {
+        return item.saved ? language.saveItemUnsavedNotice(`"${item.key}"`) : language.saveItemNeverSavedNotice(`"${item.key}"`)
+    }
+}
+
 /** What a park for unwritable data names to the person: the character, or the kind of data. */
 function describeParkedData(error: SaveParkError | BlockSetGateError): string {
     if (error instanceof BlockSetGateError) {
@@ -2214,6 +2245,13 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
                 console.error(entry.cause)
                 const label = unsavableCharacterLabel(entry.chaId)
                 alertToast(entry.saved ? language.saveCharacterUnsavedNotice(label) : language.saveCharacterNeverSavedNotice(label))
+            }
+        },
+        unsavableItems(current, newly) {
+            unsavableItemCount = current.length
+            for (const item of newly) {
+                console.error(item.cause)
+                alertToast(unsavableItemNotice(item))
             }
         },
         saved() {
@@ -3908,6 +3946,9 @@ export function getUncleanablesSync(db: Database, options?:{
             }
         })
     }
+    // An installed theme pack keeps its stored archive. Every entry is walked, whatever its version or shape, so an
+    // entry this build cannot read still keeps its files.
+    collectPackAssetRefs(db.themePacks, addUncleanable);
     return Array.from(uncleanable);
 }
 
@@ -5144,74 +5185,6 @@ export function getVersionString(): string {
         versionString = 'Nightly Build ' + import.meta.env.VITE_RISU_BUILD_TIME
     }
     return versionString
-}
-
-export function toGetter<T extends object>(
-    getterFn: () => T,
-    args?: {
-        //blocks this.children from being accessed
-        restrictChildren:string[]
-    }
-): T {
-
-    const dummyTarget = () => { };
-
-    return new Proxy(dummyTarget, {
-        get(target, prop, receiver) {
-
-            const realInstance = getterFn();
-            
-            if (args?.restrictChildren && args.restrictChildren.includes(prop as string)) {
-                throw new Error(`Access to property '${String(prop)}' is restricted`);
-            }
-
-            if (realInstance === null || realInstance === undefined) {
-                return (realInstance as any)[prop];
-            }
-
-            const value = Reflect.get(realInstance as object, prop);
-
-            if (typeof value === 'function') {
-                return value.bind(realInstance);
-            }
-
-            return value;
-        },
-
-        set(target, prop, value, receiver) {
-
-            if(args?.restrictChildren && args.restrictChildren.includes(prop as string)) {
-                throw new Error(`Access to property '${String(prop)}' is restricted`);
-            }
-            const realInstance = getterFn();
-            return Reflect.set(realInstance as object, prop, value, receiver);
-        },
-
-        has(target, prop) {
-            const realInstance = getterFn();
-            return Reflect.has(realInstance as object, prop);
-        },
-
-        ownKeys(target) {
-            const realInstance = getterFn();
-            return Reflect.ownKeys(realInstance as object);
-        },
-
-        construct(target, argArray, newTarget) {
-            const realInstance = getterFn() as any;
-            return new realInstance(...argArray);
-        },
-
-        deleteProperty(target, prop) {
-            const realInstance = getterFn();
-            return Reflect.deleteProperty(realInstance as object, prop);
-        },
-
-        getPrototypeOf() {
-            const realInstance = getterFn();
-            return Reflect.getPrototypeOf(realInstance as object);
-        }
-    }) as unknown as T;
 }
 
 const countriesWithAiLaw = new Set<string>([

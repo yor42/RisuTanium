@@ -36,6 +36,14 @@ test('code tracks up to the policy cap, one records draft, one pinned device and
   await assert.rejects(registerDispatch(make('code-over'), { root }), /Implementation track cap/);
   assert.equal(Object.keys(loadState(root).dispatches).length, codeCap + 3);
 });
+test('the same relative file in two separate checkouts is not an ownership overlap', async t => {
+  const { root, make } = fixture(t);
+  await registerDispatch(make('wt-a', { allowedWrites: ['src/lang/en.ts', 'docs/shared.md'] }), { root });
+  await registerDispatch(make('wt-b', { allowedWrites: ['src/lang/en.ts', 'src/b.ts'] }), { root });
+  await assert.rejects(registerDispatch(make('doc-same', { repoRoot: path.join(root, 'wt-a-source'), workClass: 'documents', allowedWrites: ['docs/shared.md'] }), { root }), /file ownership overlaps/);
+  await registerDispatch(make('doc-other', { repoRoot: path.join(root, 'wt-b-source'), workClass: 'documents', allowedWrites: ['docs/shared.md'] }), { root });
+  assert.deepEqual(Object.keys(loadState(root).dispatches).sort(), ['doc-other', 'wt-a', 'wt-b']);
+});
 test('same code checkout is exclusive while a disjoint records edit may share it', async t => {
   const { root, make } = fixture(t);
   await registerDispatch(make('code-a', { repoRoot: root }), { root });
@@ -62,8 +70,8 @@ test('primary records require registered Haiku identity and preserve authority b
 });
 test('exact destinations and normalized resources stay exclusive across scheduling classes', async t => {
   const { root, make } = fixture(t);
-  await registerDispatch(make('code', { workClass: 'code', allowedWrites: ['Agents/Roadmap.md'], resources: ['tcp:06450', 'build:C:\\Temp\\Owned\\'] }), { root });
-  await assert.rejects(registerDispatch(make('records', { workClass: 'records', allowedWrites: ['Agents/Roadmap.md'] }), { root }), /file ownership overlaps/);
+  await registerDispatch(make('code', { workClass: 'code', repoRoot: root, allowedWrites: ['Agents/Roadmap.md'], resources: ['tcp:06450', 'build:C:\\Temp\\Owned\\'] }), { root });
+  await assert.rejects(registerDispatch(make('records', { workClass: 'records', repoRoot: root, allowedWrites: ['Agents/Roadmap.md'] }), { root }), /file ownership overlaps/);
   await assert.rejects(registerDispatch(make('docs', { workClass: 'documents', allowedWrites: ['docs/example.md'], resources: ['build:c:/temp/owned'] }), { root }), /resource ownership overlaps/);
   await assert.rejects(registerDispatch(make('cross-kind', { workClass: 'documents', allowedWrites: ['docs/other.md'], resources: ['output:c:/temp/owned/'] }), { root }), /resource ownership overlaps/);
   await assert.rejects(registerDispatch(make('device', { mode: 'scout', workClass: 'device', allowedWrites: [], resources: ['device:fixture', 'tcp:6450'], artifact: { sha256: 'b'.repeat(64), sourceRevision: 'base' } }), { root }), /resource ownership overlaps/);

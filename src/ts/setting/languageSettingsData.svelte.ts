@@ -18,6 +18,39 @@ import { exportLLMCacheAsJSON, importLLMCacheFromJSON, clearLLMCache } from '../
 
 export const langState = $state({ changed: false });
 
+/**
+ * Asks which translation file to download and downloads it as lang.json. It writes nothing to the profile. The
+ * "continue" branch rebinds the runtime language to the chosen one so the file holds that translation, so a caller
+ * that keeps the stored language must bind it again afterwards.
+ */
+export async function downloadTranslationFile(): Promise<void> {
+    const j = await alertSelect([
+        language.alerts.translangContinue,
+        language.alerts.translangNew,
+    ]);
+
+    if (parseInt(j) === 0) {
+        const langs = ['de', 'ko', 'cn', 'vi', 'zh-Hant', 'es', 'ja'];
+        const lang = parseInt(await alertSelect(langs));
+        changeLanguage(langs[lang]);
+        const saved = await downloadFile(
+            'lang.json',
+            new TextEncoder().encode(JSON.stringify(language, null, 4)),
+        );
+        if (saved) {
+            alertNormal(language.alerts.translationJsonDownloaded);
+        }
+    } else {
+        const saved = await downloadFile(
+            'lang.json',
+            new TextEncoder().encode(JSON.stringify(languageEnglish, null, 4)),
+        );
+        if (saved) {
+            alertNormal(language.alerts.translationJsonDownloaded);
+        }
+    }
+}
+
 export const languageSettingsItems: SettingItem[] = [
     {
         id: 'lang.header',
@@ -48,32 +81,7 @@ export const languageSettingsItems: SettingItem[] = [
         },
         onChange: async (val, ctx) => {
             if (val === 'translang') {
-                const j = await alertSelect([
-                    language.alerts.translangContinue,
-                    language.alerts.translangNew,
-                ]);
-
-                if (parseInt(j) === 0) {
-                    const langs = ['de', 'ko', 'cn', 'vi', 'zh-Hant', 'es', 'ja'];
-                    const lang = parseInt(await alertSelect(langs));
-                    changeLanguage(langs[lang]);
-                    const saved = await downloadFile(
-                        'lang.json',
-                        new TextEncoder().encode(JSON.stringify(language, null, 4)),
-                    );
-                    if (saved) {
-                        alertNormal(language.alerts.translationJsonDownloaded);
-                    }
-                } else {
-                    const saved = await downloadFile(
-                        'lang.json',
-                        new TextEncoder().encode(JSON.stringify(languageEnglish, null, 4)),
-                    );
-                    if (saved) {
-                        alertNormal(language.alerts.translationJsonDownloaded);
-                    }
-                }
-
+                await downloadTranslationFile();
                 ctx.db.language = 'en';
             }
 

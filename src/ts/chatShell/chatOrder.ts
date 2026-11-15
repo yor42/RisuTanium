@@ -17,8 +17,7 @@ import { keepChatPageOf } from './chatOpen'
 type Owner = Database['characters'][number]
 type Reorderable = Chat | ChatFolder
 
-/** The most a held edge scrolls the list in one frame. */
-export const AUTOSCROLL_MAX_PX = 12
+export { AUTOSCROLL_BAND_PX, AUTOSCROLL_MAX_PX, autoscrollDelta } from './autoscroll'
 
 /** What the sidebar offers the list while Edit order is on. Each call reports whether the order is now as asked. */
 export type ChatOrdering = {
@@ -195,19 +194,6 @@ export function indicatorGap(items: ChatListItem[], dragged: Reorderable, target
         return last.index + 1 + (entry.folded ? 0 : entry.count)
     }
     return last.index + 1
-}
-
-/** How far to scroll this frame for a pointer at `clientY` over a scroller spanning `top` to `bottom`: zero outside the edge bands. */
-export function autoscrollDelta(clientY: number, top: number, bottom: number): number {
-    const toTop = top + ROW_HEIGHT - clientY
-    if (toTop > 0) {
-        return -Math.min(AUTOSCROLL_MAX_PX, Math.ceil((AUTOSCROLL_MAX_PX * toTop) / ROW_HEIGHT))
-    }
-    const toBottom = clientY - (bottom - ROW_HEIGHT)
-    if (toBottom > 0) {
-        return Math.min(AUTOSCROLL_MAX_PX, Math.ceil((AUTOSCROLL_MAX_PX * toBottom) / ROW_HEIGHT))
-    }
-    return 0
 }
 
 function refused(): false {

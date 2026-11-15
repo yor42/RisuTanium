@@ -8,12 +8,14 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { resetBusyActionsForTest } from '../../memory/busyActions'
 import { inlayMetaKey } from '../inlayKeys'
-import { readAppInlay } from '../inlayStore'
+import { v4 } from 'uuid'
+import { readAppInlay, writeAppInlay } from '../inlayStore'
 import { runInlayCopy, type InlayCopyEnvironment } from '../inlayCopy'
 import { createMemoryByteStore, type MemoryByteStore, type MemoryByteStoreOptions } from './memoryByteStore'
 import {
     getInlayAsset,
     getInlayRender,
+    postInlayAsset,
     removeInlayAsset,
     setInlayAsset,
     type InlayAsset,
@@ -281,9 +283,11 @@ describe('the source a render is delivered from', () => {
         const failing = async () => { throw new Error('no token') }
         const blobStore = useStore({ urlFor: failing, blobs: true })
         const first = freshId()
-        await setInlayAsset(first, asset(new Blob(['abc'], { type: 'video/mp4' })))
+        await setInlayAsset(first, asset(new Blob(['abc'], { type: 'video/mp4' }), { ext: 'mp4' }))
+        const held = blobStore.blobs.get(bodyKeyOf(blobStore))!
+        const slice = vi.spyOn(held, 'slice')
         expect((await getInlayRender(first))!.source).toBe('stored-blob')
-        expect(objectUrls.get('blob:test/1')).toBe(blobStore.blobs.get(bodyKeyOf(blobStore)))
+        expect(objectUrls.get('blob:test/1')).toBe(slice.mock.results[0].value)
 
         useStore({ urlFor: failing })
         const second = freshId()
@@ -306,15 +310,21 @@ describe('the source a render is delivered from', () => {
         expect(store.urlRequests.length).toBe(1)
     })
 
-    test('a store that keeps Blobs shows the very Blob it holds through an object URL', async () => {
+    test('a store that keeps Blobs shows a retyped view of the Blob it holds through an object URL', async () => {
         const store = useStore({ blobs: true })
         const id = freshId()
-        await setInlayAsset(id, asset(new Blob(['stored'], { type: 'video/mp4' })))
+        await setInlayAsset(id, asset(new Blob(['stored'], { type: 'video/mp4' }), { ext: 'mp4' }))
+        const held = store.blobs.get(bodyKeyOf(store))!
+        const slice = vi.spyOn(held, 'slice')
 
         const render = (await getInlayRender(id))!
 
         expect(render.source).toBe('stored-blob')
-        expect(objectUrls.get(render.url)).toBe(store.blobs.get(bodyKeyOf(store)))
+        expect(slice).toHaveBeenCalledWith(0, held.size, 'video/mp4')
+        const shown = objectUrls.get(render.url)!
+        expect(shown).toBe(slice.mock.results[0].value)
+        expect(shown.type).toBe('video/mp4')
+        expect(await textOf(shown)).toBe('stored')
         expect(createdCount).toBe(1)
         expect(store.reads.filter((key) => key.startsWith('inlays/b-'))).toEqual([])
     })
@@ -352,7 +362,7 @@ describe('the source a render is delivered from', () => {
     ] as Array<[string, MemoryByteStoreOptions]>)('a base64 data URI string is decoded into a memory Blob on a store that %s', async (_label, options) => {
         const store = useStore(options)
         const id = freshId()
-        await setInlayAsset(id, asset('data:audio/mpeg;base64,aGVsbG8=', { type: 'audio' }))
+        await setInlayAsset(id, asset('data:audio/mpeg;base64,aGVsbG8=', { type: 'audio', ext: 'mp3' }))
 
         const render = (await getInlayRender(id))!
 
@@ -374,16 +384,20 @@ describe('the source a render is delivered from', () => {
         expect(createdCount).toBe(0)
     })
 
-    test('an inlay found only in the old store is shown through an object URL over the old store\'s own Blob', async () => {
+    test('an inlay found only in the old store is shown through an object URL over a retyped view of the old store\'s own Blob', async () => {
         const store = useStore({ urlFor: true, blobs: true })
         const id = freshId()
         const old = new Blob(['old'], { type: 'image/png' })
-        h.legacy.set(id, asset(old, { type: 'image' }))
+        const slice = vi.spyOn(old, 'slice')
+        h.legacy.set(id, asset(old, { type: 'image', ext: 'png' }))
 
         const render = (await getInlayRender(id))!
 
         expect(render).toMatchObject({ type: 'image', source: 'memory-blob' })
-        expect(objectUrls.get(render.url)).toBe(old)
+        expect(slice).toHaveBeenCalledWith(0, old.size, 'image/png')
+        const shown = objectUrls.get(render.url)!
+        expect(shown).toBe(slice.mock.results[0].value)
+        expect(await textOf(shown)).toBe('old')
         expect(store.urlRequests).toEqual([])
     })
 
@@ -401,6 +415,142 @@ describe('the source a render is delivered from', () => {
         h.legacy.set(id, asset(new Blob(['o']), { type: 'image' }))
 
         expect((await getInlayRender(id))!.source).toBe('memory-blob')
+    })
+})
+
+describe('the type an inlay object URL carries', () => {
+    const HOSTILE_BODY = '<script>1</script>'
+    const hostileDataUri = (mime: string) => `data:${mime};base64,${btoa(HOSTILE_BODY)}`
+
+    type Route = {
+        label: string
+        options: MemoryByteStoreOptions
+        source: 'memory-blob' | 'stored-blob'
+        place: (id: string, fields: Record<string, unknown>, bodyType: string) => Promise<void>
+    }
+
+    // A backup restores a body the way `writeGroup` does: the Blob carries the header's own mime.
+    const writeRestored = (id: string, fields: Record<string, unknown>, body: Blob | string) =>
+        writeAppInlay(appStore, id, { ...fields, data: body })
+
+    const routes: Route[] = [
+        {
+            label: 'bytes in the app store',
+            options: {},
+            source: 'memory-blob',
+            place: (id, fields, bodyType) => writeRestored(id, fields, new Blob([HOSTILE_BODY], { type: bodyType })),
+        },
+        {
+            label: 'a Blob in the app store',
+            options: { blobs: true },
+            source: 'stored-blob',
+            place: (id, fields, bodyType) => writeRestored(id, fields, new Blob([HOSTILE_BODY], { type: bodyType })),
+        },
+        {
+            label: 'a string body in the app store',
+            options: {},
+            source: 'memory-blob',
+            place: (id, fields, bodyType) => writeRestored(id, fields, hostileDataUri(bodyType)),
+        },
+        {
+            label: 'the Blob of the old store',
+            options: {},
+            source: 'memory-blob',
+            place: async (id, fields, bodyType) => { h.legacy.set(id, { ...fields, data: new Blob([HOSTILE_BODY], { type: bodyType }) }) },
+        },
+        {
+            label: 'a data URI of the old store',
+            options: {},
+            source: 'memory-blob',
+            place: async (id, fields, bodyType) => { h.legacy.set(id, { ...fields, data: hostileDataUri(bodyType) }) },
+        },
+    ]
+
+    test.each(routes.map((route) => [route.label, route] as const))('a hostile body is shown with the type of its ext and kind: %s', async (_label, route) => {
+        useStore(route.options)
+        const id = freshId()
+        await route.place(id, { name: 'a.png', ext: 'png', type: 'image' }, 'text/html')
+
+        const render = (await getInlayRender(id))!
+
+        expect(render.source).toBe(route.source)
+        const shown = objectUrls.get(render.url)!
+        expect(shown.type).toBe('image/png')
+        expect(await textOf(shown)).toBe(HOSTILE_BODY)
+    })
+
+    test.each(routes.flatMap((route) => [
+        [route.label, 'an ext outside the table', route, { name: 'a.svg', ext: 'svg', type: 'image' }, 'image/svg+xml'],
+        [route.label, 'an ext of another kind', route, { name: 'a.png', ext: 'png', type: 'video' }, 'text/html'],
+        [route.label, 'no ext', route, { name: 'a', type: 'image' }, 'text/html'],
+    ] as const))('%s: %s is shown as opaque bytes', async (_label, _case, route, fields, bodyType) => {
+        useStore(route.options)
+        const id = freshId()
+        await route.place(id, { ...fields }, bodyType)
+
+        const render = (await getInlayRender(id))!
+
+        const shown = objectUrls.get(render.url)!
+        expect(shown.type).toBe('application/octet-stream')
+        expect(await textOf(shown)).toBe(HOSTILE_BODY)
+    })
+
+    describe('an inlay made by the producer', () => {
+        const freshProducedId = () => {
+            const id = freshId()
+            vi.mocked(v4 as () => string).mockReturnValueOnce(id)
+            return id
+        }
+
+        test.each([
+            ['mp4', 'video/mp4'],
+            ['webm', 'video/webm'],
+            ['wav', 'audio/wav'],
+            ['ogg', 'audio/ogg'],
+            ['flac', 'audio/flac'],
+        ])('a .%s file keeps its type %s and its bytes on a store of bytes and of Blobs', async (ext, mime) => {
+            for (const [options, source] of [[{}, 'memory-blob'], [{ blobs: true }, 'stored-blob']] as Array<[MemoryByteStoreOptions, string]>) {
+                useStore(options)
+                const id = freshProducedId()
+                expect(await postInlayAsset({ name: `a.${ext}`, data: new Blob(['media'], { type: 'application/x-test' }) })).toBe(id)
+
+                const render = (await getInlayRender(id))!
+
+                expect(render.source).toBe(source)
+                const shown = objectUrls.get(render.url)!
+                expect(shown.type).toBe(mime)
+                expect(await textOf(shown)).toBe('media')
+            }
+        })
+
+        test.each([
+            ['mp3', 'audio/mpeg'],
+            ['mkv', 'video/x-matroska'],
+        ])('a .%s file is shown with the table type %s', async (ext, mime) => {
+            for (const options of [{}, { blobs: true }] as MemoryByteStoreOptions[]) {
+                useStore(options)
+                const id = freshProducedId()
+                await postInlayAsset({ name: `a.${ext}`, data: new Blob(['media']) })
+
+                const render = (await getInlayRender(id))!
+
+                expect(objectUrls.get(render.url)!.type).toBe(mime)
+            }
+        })
+
+        test('an encoded image keeps its type and its bytes', async () => {
+            for (const options of [{}, { blobs: true }] as MemoryByteStoreOptions[]) {
+                useStore(options)
+                const id = freshId()
+                await setInlayAsset(id, asset(new Blob(['png'], { type: 'image/png' }), { name: 'a.png', ext: 'png', type: 'image', width: 1, height: 1 }))
+
+                const render = (await getInlayRender(id))!
+
+                const shown = objectUrls.get(render.url)!
+                expect(shown.type).toBe('image/png')
+                expect(await textOf(shown)).toBe('png')
+            }
+        })
     })
 })
 

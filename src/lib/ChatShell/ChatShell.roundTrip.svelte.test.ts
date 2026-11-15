@@ -140,6 +140,7 @@ vi.mock(import('src/ts/process/memory/hypamemory'), () => ({ HypaProcesser: clas
 vi.mock(import('src/ts/process/embedding/addinfo'), () => ({ additionalInformations: vi.fn(async () => '') }) as unknown as typeof import('src/ts/process/embedding/addinfo'))
 vi.mock(import('src/ts/process/files/inlays'), () => ({
     getInlayAsset: vi.fn(async () => ({ type: 'image', data: '' })), getInlayAssetBlob: vi.fn(async () => undefined), writeInlayImage: vi.fn(async () => 'inlay-id'),
+    getInlayDraftPreview: vi.fn(async () => ({ kind: 'media', type: 'image', url: '' })), forgetInlayRender: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/process/files/inlays'))
 vi.mock(import('src/ts/process/files/multisend'), () => ({ postChatFile: vi.fn(async () => []) }) as unknown as typeof import('src/ts/process/files/multisend'))
 vi.mock(import('src/ts/process/models/modelString'), () => ({ getGenerationModelString: vi.fn(() => undefined) }) as unknown as typeof import('src/ts/process/models/modelString'))

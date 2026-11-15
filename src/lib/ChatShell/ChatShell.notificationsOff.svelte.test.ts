@@ -10,7 +10,8 @@
  * Every "absent after" assertion first asserts that the notice WAS shown. The result hook is called
  * through `?.`, so on a base without the hook a test fails on its assertion and not on a TypeError.
  */
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import { COLD_TRANSFORM_HOOK_MS } from '../../ts/tests/coldTransform.test-helpers'
 import { flushSync, mount, tick, unmount } from 'svelte'
 
 const composer = vi.hoisted(() => ({
@@ -148,6 +149,11 @@ async function noticeShown(): Promise<HTMLElement> {
     }, { timeout: 3000 })
     return target.querySelector<HTMLElement>(NOTICE)!
 }
+
+// The shell's lazy children import the icon-library barrel, which costs tens of seconds to transform cold; paying it here keeps it out of the mount wait.
+beforeAll(async () => {
+    await import('@lucide/svelte')
+}, COLD_TRANSFORM_HOOK_MS)
 
 beforeEach(() => {
     replyNotificationsModule.resetNotificationsOffNoticeForTests?.()

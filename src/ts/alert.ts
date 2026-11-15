@@ -297,14 +297,6 @@ export async function alertConfirm(msg:string){
     })) === 'yes'
 }
 
-export async function alertPluginConfirm(msg:string){
-
-    return (await askPrompt({
-        'type': 'pluginconfirm',
-        'msg': msg
-    })) === 'yes'
-}
-
 export async function alertCardExport(type:string = ''){
 
     return JSON.parse(await askPrompt({

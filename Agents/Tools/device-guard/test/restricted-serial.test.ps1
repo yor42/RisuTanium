@@ -31,7 +31,7 @@ $personal = 'R5CT1234ABC'
 $pkg = 'io.example.app'
 $apk = '/data/app/~~abc123==/io.example.app-xyz789==/base.apk'
 $c = @('--serial', $personal, '--log', $log, '--own-ports', '9465,9466', '--own-package', $pkg)
-$full = @('--serial', '29f3cde9193f7ece', '--log', $log, '--own-ports', '9465,9466', '--own-package', $pkg)
+$full = @('--serial', 'emulator-5580', '--log', $log, '--own-ports', '9465,9466', '--own-package', $pkg)
 
 # Restricted serial, allowed.
 Invoke-GuardCase 'restricted reverse own port' '0' ($c + @('--', 'reverse', 'tcp:9465', 'tcp:9465'))
@@ -124,7 +124,7 @@ Invoke-GuardCase 'full logcat' '0' ($full + @('--', 'logcat', '--pid', '123', '-
 Invoke-GuardCase 'full keyevent BACK' '0' ($full + @('--', 'shell', 'input keyevent KEYCODE_BACK'))
 Invoke-GuardCase 'full shell pm install still 97' '97' ($full + @('--', 'shell', 'pm install /sdcard/Download/a.apk'))
 Invoke-GuardCase 'full install apk' '0' ($full + @('--', 'install', '-r', 'C:\a.apk'))
-Invoke-GuardCase 'note 9 phone 2 pm clear own' '0' (@('--serial', '2ac80128013f7ece', '--log', $log, '--own-package', $pkg, '--', 'shell', ('pm clear ' + $pkg)))
+Invoke-GuardCase 'note 9 phone 2 pm clear own' '0' (@('--serial', '2ac80128013f7ece', '--log', $log, '--own-package', 'io.github.yor42.risutanium', '--', 'shell', 'pm clear io.github.yor42.risutanium'))
 Invoke-GuardCase 'emulator-5580 logcat' '0' (@('--serial', 'emulator-5580', '--log', $log, '--', 'logcat', '--pid', '5', '-d'))
 Invoke-GuardCase 'near-miss serial is restricted' '95' (@('--serial', 'emulator-5582', '--log', $log, '--', 'logcat', '--pid', '5', '-d'))
 Remove-Item Env:ADBG_FAKE_ADB_SCRIPT; Remove-Item Env:FAKE_EXIT
