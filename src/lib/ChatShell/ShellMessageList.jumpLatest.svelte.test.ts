@@ -668,4 +668,35 @@ describe('the settle step of the travel to the newest message', () => {
         expect(end - writes[0]).toBeGreaterThanOrEqual(1.5 * hostHeight)
         expect(writes.length).toBeGreaterThanOrEqual(7)
     })
+    test('L-1: on a short screen the band forces only the rows the cut and glide need, and the glide still lands on the settled end', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15, 400, true)
+        await slideByJump(500)
+        writes.length = 0
+        let forcedAtRead: number[] | null = null
+        heightProbe = () => {
+            if (forcedAtRead === null) forcedAtRead = forcedContainers().map((container) => modelIndexOf(container) as number).sort((a, b) => a - b)
+        }
+        void app!.jumpToLatest({ animate: true, focusNewest: false })
+        expect(forcedAtRead).not.toBeNull()
+        expect(forcedAtRead).toContain(985)
+        expect(forcedAtRead).not.toContain(984)
+        await playFrames()
+        const end = layoutModel!.scrollHeight - hostHeight
+        expect(layoutModel!.scrollTop).toBe(end)
+        expect(end - writes[0]).toBe(2 * hostHeight)
+    })
+    test('L-2: when the band reaches every mounted row nothing resolves between the cut and the landing', async () => {
+        seedLong(activeChat(), 1000)
+        await show(30, 15, 480, true)
+        await slideByJump(500)
+        writes.length = 0
+        void app!.jumpToLatest({ animate: true, focusNewest: false })
+        const afterCall = layoutModel!.scrollHeight
+        await playFrames()
+        const end = layoutModel!.scrollHeight - hostHeight
+        expect(layoutModel!.scrollHeight).toBe(afterCall)
+        for (let i = 1; i < writes.length; i++) expect(writes[i]).toBeGreaterThanOrEqual(writes[i - 1])
+        expect(end - writes[0]).toBe(2 * hostHeight)
+    })
 })

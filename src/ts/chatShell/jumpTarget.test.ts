@@ -76,8 +76,9 @@ describe('the settle reach', () => {
         expect(jumpReach({ offset: -30 }, 600, 0)).toEqual({ above: 0, below: 630 })
         expect(jumpReach({ offset: 700 }, 600, 0)).toEqual({ above: 700, below: 0 })
     })
-    test('A3-5: a glide settles four screens above the end', () => {
-        expect(travelReach(600)).toBe(2400)
+    test('A3-5: a glide settles three and a half screens above the end', () => {
+        expect(travelReach(600)).toBe(2100)
+        expect(travelReach(480)).toBe(1680)
     })
 })
 
