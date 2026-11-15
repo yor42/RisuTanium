@@ -53,6 +53,8 @@ export const languageChinese = {
     "chatShellJumpedBack": "已跳转。点击“返回”可回到之前的位置。",
     "chatShellJumpDateAfterLast": "该日期及之后没有消息",
     "chatShellJumpEditorOpen": "请先关闭正在编辑的消息，再跳转到那里",
+    "chatShellScrubberBubble": (position: string, total: string) => `${position} / ${total}`,
+    "chatShellScrubberBubbleDated": (position: string, total: string, date: string) => `${position} / ${total} · ${date}`,
     "chatShellSearchInChat": "在聊天中搜索",
     "chatShellFindPlaceholder": "搜索此聊天",
     "chatShellFindCounter": (index: string, total: string) => `${index} / ${total}`,

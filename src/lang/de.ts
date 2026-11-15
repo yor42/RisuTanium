@@ -53,6 +53,8 @@ export const languageGerman = {
     "chatShellJumpedBack": "Gesprungen. Mit „Zurück“ geht es zur vorherigen Position.",
     "chatShellJumpDateAfterLast": "Keine Nachrichten an diesem Tag oder danach",
     "chatShellJumpEditorOpen": "Zum Springen die bearbeitete Nachricht schließen",
+    "chatShellScrubberBubble": (position: string, total: string) => `${position} / ${total}`,
+    "chatShellScrubberBubbleDated": (position: string, total: string, date: string) => `${position} / ${total} · ${date}`,
     "chatShellSearchInChat": "Im Chat suchen",
     "chatShellFindPlaceholder": "Diesen Chat durchsuchen",
     "chatShellFindCounter": (index: string, total: string) => `${index} / ${total}`,

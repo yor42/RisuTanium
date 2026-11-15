@@ -53,6 +53,8 @@ export const languageVietnamese = {
     chatShellJumpedBack: "Đã chuyển. “Quay lại” sẽ đưa bạn về vị trí trước đó.",
     chatShellJumpDateAfterLast: "Không có tin nhắn nào vào ngày đó hoặc sau đó",
     chatShellJumpEditorOpen: "Hãy đóng tin nhắn đang chỉnh sửa để chuyển đến đó",
+    chatShellScrubberBubble: (position: string, total: string) => `${position} / ${total}`,
+    chatShellScrubberBubbleDated: (position: string, total: string, date: string) => `${position} / ${total} · ${date}`,
     chatShellSearchInChat: "Tìm trong cuộc trò chuyện",
     chatShellFindPlaceholder: "Tìm trong cuộc trò chuyện này",
     chatShellFindCounter: (index: string, total: string) => `${index} / ${total}`,

@@ -33,9 +33,11 @@
     import type CustomizeButtonsSheetComponent from './CustomizeButtonsSheet.svelte'
     import type { ActionRequest, CustomizeRequest } from './ShellMessage.svelte'
     import { shouldAnchorBottom } from '../../ts/chatShell/bottomAnchor'
-    import { bindReaderIntent, canHostMove, createReaderIntent } from '../../ts/chatShell/readerIntent'
+    import type ScrubberComponent from './Scrubber.svelte'
+    import { bindReaderIntent, canHostMove, createReaderIntent, type WheelSample } from '../../ts/chatShell/readerIntent'
+    import { HOVER_EDGE_PX, PAGE_FRACTION, createScrubVisibility, thumbFraction, wheelPixels } from '../../ts/chatShell/scrubber'
     import { watchSoftKeyboard } from '../../ts/chatShell/softKeyboard'
-    import { isLongJump, latestButtonVisible, type JumpResult, type JumpStatus } from '../../ts/chatShell/jumpTarget'
+    import { isLongJump, latestButtonVisible, type JumpOptions, type JumpResult, type JumpStatus } from '../../ts/chatShell/jumpTarget'
     import { createReturnChip, type ReturnChipState } from '../../ts/chatShell/returnChip'
     import { installFindKey, installJumpSheetKey, installTranscriptEndKey } from '../../ts/chatShell/shellJumpKeys'
     import { DEFAULT_FILTERS, createFindSession, sameFingerprint, searchFingerprint, type FindSession, type FindSessionState, type SearchFingerprint } from '../../ts/chatShell/findSession'
@@ -75,6 +77,7 @@
     // The jump sheet and the return chip load with the This-chat sheet and never hold the composer back.
     let JumpSheet: typeof JumpSheetComponent | null = $state(null)
     let ReturnChip: typeof ReturnChipComponent | null = $state(null)
+    let Scrubber: typeof ScrubberComponent | null = $state(null)
     // The search bar loads with them: search is opened by the reader, never at first paint.
     let FindBar: typeof FindBarComponent | null = $state(null)
     let FindFiltersSheet: typeof FindFiltersSheetComponent | null = $state(null)
@@ -252,10 +255,11 @@
             ThisChatSheet = sheetModule.default
             ChatDeleteConfirm = confirmModule.default
         }).catch((error) => console.error('The This-chat sheet did not load:', error))
-        void Promise.all([import('./JumpSheet.svelte'), import('./ReturnChip.svelte'), import('./FindBar.svelte'), import('./FindFiltersSheet.svelte'), import('./FindResultsSheet.svelte')]).then(([jumpModule, chipModule, findModule, filtersModule, resultsModule]) => {
+        void Promise.all([import('./JumpSheet.svelte'), import('./ReturnChip.svelte'), import('./Scrubber.svelte'), import('./FindBar.svelte'), import('./FindFiltersSheet.svelte'), import('./FindResultsSheet.svelte')]).then(([jumpModule, chipModule, scrubberModule, findModule, filtersModule, resultsModule]) => {
             if (!live) return
             JumpSheet = jumpModule.default
             ReturnChip = chipModule.default
+            Scrubber = scrubberModule.default
             FindBar = findModule.default
             FindFiltersSheet = filtersModule.default
             FindResultsSheet = resultsModule.default
@@ -307,6 +311,7 @@
 
     function scroll(): void {
         messageList?.onScroll?.()
+        requestFractionRefresh()
     }
 
     // Only the reader's input drives the header (C-3): 24 px of travel toward older hides it, any travel toward newer shows it.
@@ -399,8 +404,13 @@
     async function runJump(index: number): Promise<void> {
         closeJump()
         await tick()
+        await jumpAndOffer(index)
+    }
+
+    // The one jump path of the sheet and the scrubber: it records the origin, reports a refusal and offers the long-jump chip.
+    async function jumpAndOffer(index: number, options?: JumpOptions): Promise<void> {
         const key = chatKeyNow()
-        const result = await messageList?.jumpTo?.(index)
+        const result = await (options ? messageList?.jumpTo?.(index, options) : messageList?.jumpTo?.(index))
         if (!result) return
         reportJump(result)
         if (result.status !== 'done' || !result.from || !isLongJump(result.from.index, result.to) || key !== chatKeyNow()) return
@@ -415,6 +425,123 @@
         if (!origin) return
         const result = await messageList?.returnTo?.(origin)
         if (result) reportJump(result)
+    }
+
+    // ---- position scrubber
+    // The thumb follows the reader's place (`readOrigin`, message indices only) and a release is one `jumpTo`. Every scroll it causes
+    // enters through the reader-intent source first, so the follower, the header, the chip and a running jump see it like a wheel turn.
+    let scrubVisible = $state(false)
+    let scrubInteractive = $state(false)
+    let scrubFraction = $state(0)
+    // Whether the chat is too short to scroll; read once per reveal, never while the thumb is already shown.
+    let scrubShort = $state(false)
+    const scrubFormatter = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    const scrubVisibility = createScrubVisibility({
+        setTimer: (callback, ms) => window.setTimeout(callback, ms),
+        clearTimer: (id) => window.clearTimeout(id),
+        onChange: () => { scrubVisible = scrubVisibility.visible; scrubInteractive = scrubVisibility.trackInteractive },
+    })
+    let scrubHover = false
+    let scrubListRect: DOMRect | null = null
+    let scrubFrame = 0
+
+    function applyScrubBlocked(): void {
+        scrubVisibility.blocked(scrubBlockedByState || scrubShort)
+    }
+
+    function readScrubShort(): void {
+        scrubShort = (shownChat?.message.length ?? 0) < 2 || !list || list.scrollHeight <= list.clientHeight
+        applyScrubBlocked()
+    }
+
+    $effect(() => {
+        applyScrubBlocked()
+    })
+
+    onMount(() => {
+        const stop = readerIntent.subscribe(() => {
+            if (!scrubVisible) readScrubShort()
+            scrubVisibility.readerScrolled()
+        })
+        const resize = () => { if (scrubListRect && list) scrubListRect = list.getBoundingClientRect() }
+        window.addEventListener('resize', resize)
+        return () => {
+            stop()
+            window.removeEventListener('resize', resize)
+            scrubVisibility.destroy()
+            if (scrubFrame) cancelAnimationFrame(scrubFrame)
+        }
+    })
+
+    // One frame later the thumb reads where the reader is. Nothing is read while the scrubber is hidden, and a hidden surface (null) keeps the last value.
+    function requestFractionRefresh(): void {
+        if (scrubFrame) return
+        scrubFrame = requestAnimationFrame(() => {
+            scrubFrame = 0
+            if (!scrubVisible) return
+            const origin = messageList?.readOrigin?.()
+            if (!origin) return
+            scrubFraction = thumbFraction({ topIndex: origin.index, count: shownChat?.message.length ?? 0, atBottom: origin.atBottom })
+        })
+    }
+
+    $effect(() => {
+        if (scrubVisible) requestFractionRefresh()
+    })
+    $effect(() => {
+        void atBottom
+        requestFractionRefresh()
+    })
+
+    function setScrubHover(on: boolean): void {
+        if (on === scrubHover) return
+        scrubHover = on
+        if (on && !scrubVisible) readScrubShort()
+        scrubVisibility.hover(on)
+    }
+
+    function onListPointerEnter(event: PointerEvent): void {
+        if (event.pointerType === 'mouse' && list) scrubListRect = list.getBoundingClientRect()
+    }
+
+    function onListPointerMove(event: PointerEvent): void {
+        if (event.pointerType !== 'mouse' || !list) return
+        scrubListRect ??= list.getBoundingClientRect()
+        setScrubHover(scrubListRect.right - event.clientX <= HOVER_EDGE_PX)
+    }
+
+    // Moving onto the thumb or the track leaves the transcript but not the scrubber: the scrubber's own hover then owns the state.
+    function onListPointerLeave(event: PointerEvent): void {
+        if (event.pointerType !== 'mouse') return
+        const to = event.relatedTarget
+        if (to instanceof Element && to.closest('[data-part="chat-scrubber"]')) return
+        setScrubHover(false)
+    }
+
+    // The reader-intent reducer is fed before the list moves: it judges whether the list can move from where it is now.
+    function feedAndScroll(sample: WheelSample): void {
+        if (!list) return
+        readerIntent.wheel(sample)
+        if (sample.ctrlKey || sample.shiftKey || Math.abs(sample.deltaX) >= Math.abs(sample.deltaY)) return
+        list.scrollBy({ top: wheelPixels(sample.deltaY, sample.deltaMode, list.clientHeight), behavior: 'instant' })
+    }
+
+    function scrubWheel(event: WheelEvent): void {
+        feedAndScroll({ deltaX: event.deltaX, deltaY: event.deltaY, deltaMode: event.deltaMode, ctrlKey: event.ctrlKey, shiftKey: event.shiftKey, pageHeight: list?.clientHeight ?? 0 })
+    }
+
+    function scrubPage(direction: -1 | 1): void {
+        const height = list?.clientHeight ?? 0
+        feedAndScroll({ deltaX: 0, deltaY: direction * PAGE_FRACTION * height, deltaMode: 0, ctrlKey: false, shiftKey: false, pageHeight: height })
+    }
+
+    function scrubDrag(on: boolean): void {
+        scrubVisibility.dragging(on)
+        if (!on) requestFractionRefresh()
+    }
+
+    function scrubLabel(position: string, total: string, date: string | null): string {
+        return date === null ? language.chatShellScrubberBubble(position, total) : language.chatShellScrubberBubbleDated(position, total, date)
     }
 
     // ---- in-chat search
@@ -448,6 +575,8 @@
     let resultsOpen = $state(false)
     let resultsOpener = $state<HTMLElement | null>(null)
     let resultsImages = $state<{ user: string, char: string }>({ user: '', char: '' })
+    // Every sheet and surface state that hides the scrubber; declared after the find sheets it reads.
+    let scrubBlockedByState = $derived(surfaceHidden || switchPending || !!deleteRequest || character?.type !== 'character' || jumpOpen || thisChatOpen || personaOpen || plusOpen || actionOpen || customizeOpen || togglesOpen || filtersOpen || resultsOpen)
 
     function dayBoundsMemo(): (filters: SearchFilters) => DayBounds {
         let last: { filters: SearchFilters, bounds: DayBounds } | null = null
@@ -922,13 +1051,14 @@
         {#if findOpen && FindBar && findState}<FindBar bind:this={findBar} query={findState.query} count={findState.hits.length} current={findState.current} complete={findState.complete} filters={findState.filters} characterName={character?.name ?? ''} onquery={onFindQuery} oncomposing={(on) => findCtx?.session.setComposing(on)} onstep={(direction) => findCtx?.session.step(direction)} onclose={() => void closeFind('user')} onclearfilters={onFindClearFilters} onfilters={openFindFilters} onseeall={openFindResults} />
         {:else if ShellHeader}<ShellHeader name={headerName} chatName={headerChatName} hidden={headerHiddenNow} {hardwareKeyboardSeen} onthischat={openThisChat} onconcealed={(concealed) => headerConcealed = concealed} />{/if}
     </div>
-    <main bind:this={list} data-part="chat-transcript" tabindex="-1" aria-label={language.chatShellMessages} data-fade={fade} inert={switchPending ? true : undefined} onscroll={scroll}>
+    <main bind:this={list} data-part="chat-transcript" tabindex="-1" aria-label={language.chatShellMessages} data-fade={fade} inert={switchPending ? true : undefined} onscroll={scroll} onpointerenter={onListPointerEnter} onpointermove={onListPointerMove} onpointerleave={onListPointerLeave}>
         {#if ShellNotices && character?.type === 'character'}<ShellNotices />{/if}
         {#if ShellMessageList && character?.type === 'character'}<ShellMessageList bind:this={messageList} {character} host={list} bind:unread bind:atBottom bind:newCount bind:farFromLatest {readerIntent} searchHit={hitOutline ? searchHit : null} searchHitNote={language.chatShellFindMatchInside} {getTreeView} {getBusy} onBranch={branchRow} onOpenActions={openActions} onCloseActions={closeActions} onOpenCustomize={openCustomize} />{/if}
     </main>
     {#if SwitchFrame}<SwitchFrame transcript={list} />{/if}
     <div data-part="chat-announcer" role="status" aria-live="polite" aria-atomic="true">{announcement}</div>
     <div bind:this={jumpHost} class="jump-host">
+        {#if Scrubber}{#key chatKeyNow()}<Scrubber count={shownChat?.message.length ?? 0} fraction={scrubFraction} visible={scrubVisible} trackInteractive={scrubInteractive} formatter={scrubFormatter} label={scrubLabel} timeAt={(index) => shownChat?.message[index]?.time} onrelease={(index) => void jumpAndOffer(index, { focus: false })} onpage={scrubPage} onhover={setScrubHover} ondrag={scrubDrag} onwheel={scrubWheel} />{/key}{/if}
         {#if ReturnChip && chipState.origin}<ReturnChip onreturn={() => void returnFromChip()} onhold={(kind, on) => chip.hold(kind, on)} />{/if}
         {#if ShellFloatingButtons}<ShellFloatingButtons visible={latestButtonVisible({ atBottom, far: farFromLatest, unread, count: newCount })} count={newCount} onclick={jumpFromButton} />{/if}
     </div>

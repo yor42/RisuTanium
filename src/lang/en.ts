@@ -53,6 +53,8 @@ export const languageEnglish = {
     chatShellJumpedBack: 'Moved. "Go back" returns to where you were.',
     chatShellJumpDateAfterLast: 'No messages on or after that day',
     chatShellJumpEditorOpen: 'Close the message you are editing to go there',
+    chatShellScrubberBubble: (position: string, total: string) => `${position} / ${total}`,
+    chatShellScrubberBubbleDated: (position: string, total: string, date: string) => `${position} / ${total} · ${date}`,
     chatShellSearchInChat: 'Search in chat',
     chatShellFindPlaceholder: 'Search this chat',
     chatShellFindCounter: (index: string, total: string) => `${index} / ${total}`,

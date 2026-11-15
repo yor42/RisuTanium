@@ -31,7 +31,7 @@ const CHAT_PART_NAMES: readonly string[] = [
     'chat-message-stop-tts', 'chat-message-text', 'chat-message-translate', 'chat-message-translation-edit', 'chat-message-translation-editor', 'chat-message-tts',
     'chat-move-down', 'chat-move-up', 'chat-new-message', 'chat-order-status', 'chat-persona-settings', 'chat-plugin-panel', 'chat-plugin-panels', 'chat-preset-chip', 'chat-return-chip', 'chat-row',
     'chat-row-draft', 'chat-row-editing', 'chat-row-host', 'chat-row-menu', 'chat-row-name', 'chat-row-name-input', 'chat-row-preview', 'chat-row-time',
-    'chat-save-guard', 'chat-search-character', 'chat-search-chat', 'chat-search-group', 'chat-search-results', 'chat-search-scroller', 'chat-search-status', 'chat-send',
+    'chat-save-guard', 'chat-scrubber', 'chat-scrubber-bubble', 'chat-scrubber-thumb', 'chat-scrubber-track', 'chat-search-character', 'chat-search-chat', 'chat-search-group', 'chat-search-results', 'chat-search-scroller', 'chat-search-status', 'chat-send',
     'chat-sheet', 'chat-sheet-body', 'chat-sheet-handle', 'chat-sheet-item', 'chat-sheet-item-value', 'chat-sheet-layer', 'chat-sheet-scrim', 'chat-sheet-title',
     'chat-shell', 'chat-sidebar', 'chat-sidebar-footer', 'chat-sidebar-header', 'chat-sidebar-list', 'chat-sidebar-search', 'chat-sidebar-search-field',
     'chat-sidebar-strip', 'chat-sidebar-toggle', 'chat-status-row', 'chat-sticker-assets', 'chat-stream-finished', 'chat-stream-open', 'chat-stream-thinking',
