@@ -395,6 +395,20 @@ describe('a plugin write to characters keeps the live retained field', () => {
             expect(live()[0].lightEntry).toBeUndefined()
             expect(keyAt(0)).toEqual(LIVE)
         })
+
+        test('with a live id held twice, the live holder swapped in for a light entry keeps its own retained value', async () => {
+            const R1 = [['n', 'assets/X1.png']]
+            const R2 = [['n', 'assets/X2.png']]
+            installDb([
+                { chaId: 'x', name: 'X', type: 'character', chats: [], [KEY]: structuredClone(R1) },
+                { chaId: 'x', name: 'X', type: 'character', chats: [], [KEY]: structuredClone(R2) },
+            ])
+            const holder = live()[2]
+            const light = { lightEntry: true, chaId: 'x', name: 'X', type: 'character', creatorNotes: '', chatCount: 0, archived: false }
+            await write([copy('a'), copy('b'), copy('x', { name: 'X edited' }), light])
+            expect(live()[3]).toBe(holder)
+            expect(keyAt(3)).toEqual(R1)
+        })
     })
 
     describe('setChar', () => {
