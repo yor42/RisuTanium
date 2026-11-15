@@ -183,6 +183,8 @@ These are descriptive measurements on specific machines. They are not a promise 
 
 The fork has an Android build. A foreground service keeps work alive and shows a "Generating a reply..." notification with Stop. The app saves a reply that finishes while the app is hidden. Other apps can open cards, modules, presets, and `.bin` files in it. Only the own phone of the maintainer has a signed build. There is no public Android release.
 
+On Android, an image in a chat that is larger than 64 MiB shows as a box with its name and size instead of the image. The app does not read the image, and it is not sent to the model. A notice names it when you send.
+
 ## New features
 
 - **Import:** Backyard `.byaf` characters, YAML cards, and chats from SillyTavern `.jsonl`, Chub, Ooba, Agnai, Kobold Lite, and Character.AI (tested on synthetic files only). SillyTavern lorebooks keep secondary keys, disabled entries, probability, position, and depth. SillyTavern presets import in Settings and in the Playground.
@@ -270,6 +272,7 @@ Links to upstream appear only where the records name one. The fixes are on main.
 - A Stop before the first byte is silent. A Stop cancels a native stream.
 - Back closes dialogs, settings, and panels on mobile.
 - Runs of prompt templates now send the start text and the history-end text of triggers.
+- A video or audio file in a chat that is larger than 20 MiB is not sent to the model, and the app does not read it. When the file would otherwise be sent, a notice names it.
 
 ### Lua, triggers, and lorebook
 
