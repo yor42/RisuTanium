@@ -109,6 +109,12 @@
         held = { ctrl: false, alt: false, shift: false };
     }
 
+    // Recording ends with nothing to announce: the "Press a key" text must not outlive it.
+    function endRecording() {
+        stopRecording();
+        status = "";
+    }
+
     async function focusChord(action: string) {
         await afterFlush();
         root?.querySelector<HTMLElement>(`[data-hotkey-action="${action}"]`)?.focus();
@@ -153,7 +159,7 @@
             return;
         }
         if (chordsEqual(chord, rowChord(row))) {
-            stopRecording();
+            endRecording();
             focusChord(action);
             return;
         }
@@ -194,7 +200,7 @@
         }
         const read = readChord(chordInputOf(e), { apple, action });
         if (read.kind === "leave") {
-            stopRecording();
+            endRecording();
             return;
         }
         // The key belongs to recording: neither the global shortcuts nor Settings' Escape may see it.
@@ -205,8 +211,7 @@
         }
         switch (read.kind) {
             case "cancel":
-                stopRecording();
-                status = "";
+                endRecording();
                 focusChord(action);
                 break;
             case "modifiers":
@@ -233,7 +238,7 @@
 
     function onChordClick(action: string) {
         if (recording === action) {
-            stopRecording();
+            endRecording();
             return;
         }
         startRecording(action);
@@ -278,7 +283,7 @@
             cancelPending();
         } else if (recording !== null) {
             const action = recording;
-            stopRecording();
+            endRecording();
             focusChord(action);
         }
     }
@@ -294,6 +299,9 @@
     // A read-only page has no draft: entering it drops recording, the conflict and the menu.
     $effect(() => {
         if (readOnly) {
+            if (recording !== null) {
+                endRecording();
+            }
             recording = null;
             pending = null;
             menuOpen = null;
@@ -313,7 +321,7 @@
 
     function onWindowBlur() {
         if (recording !== null) {
-            stopRecording();
+            endRecording();
         }
     }
 </script>
@@ -372,7 +380,7 @@
                                     onclick={() => onChordClick(row.action)}
                                     onkeydown={(e) => onChordKeydown(e, row.action)}
                                     onkeyup={onChordKeyup}
-                                    onblur={() => { if (recording === row.action) stopRecording(); }}
+                                    onblur={() => { if (recording === row.action) endRecording(); }}
                                 >
                                     {#each caps as cap}<kbd class="rounded border border-darkborderc bg-darkbg px-1.5 text-sm text-textcolor">{cap}</kbd>{:else}<span class="text-sm text-textcolor2">{language.settingsShellHkUnbound}</span>{/each}
                                 </button>

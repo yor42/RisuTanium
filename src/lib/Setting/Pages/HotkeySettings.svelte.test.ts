@@ -206,6 +206,39 @@ describe('recording a chord (A1, A10)', () => {
     })
 })
 
+describe('the status line after recording ends (A10)', () => {
+    test('recording the row\'s own chord clears the Press a key text and writes nothing', () => {
+        const target = show()
+        const status = target.querySelector('[data-hotkey-status]')!
+        const button = startRecording(target, 'home')
+        expect(status.textContent).toBe(language.settingsShellHkRecPrompt)
+        press(button, 'h', { ctrlKey: true })
+        expect(status.textContent).toBe('')
+        expect(toastHost.visible).toHaveLength(0)
+        expect(stored('home')).toMatchObject({ key: 'h', ctrl: true })
+    })
+
+    test('Back, blur and a toggle click clear the Press a key text too', () => {
+        const target = show()
+        const status = target.querySelector('[data-hotkey-status]')!
+        startRecording(target, 'home')
+        expect(dispatchBack()).toBe(true)
+        flushSync()
+        expect(status.textContent).toBe('')
+
+        const button = startRecording(target, 'home')
+        expect(status.textContent).toBe(language.settingsShellHkRecPrompt)
+        button.blur()
+        flushSync()
+        expect(status.textContent).toBe('')
+
+        startRecording(target, 'home')
+        chordButton(target, 'home').click()
+        flushSync()
+        expect(status.textContent).toBe('')
+    })
+})
+
 describe('refusals and leaving (A2, A10)', () => {
     test('Tab leaves unprevented, Escape cancels without reaching the document, bare R is refused and recording goes on', async () => {
         const target = show()
