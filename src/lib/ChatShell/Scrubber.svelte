@@ -14,13 +14,14 @@
         label: (position: string, total: string, date: string | null) => string
         timeAt: (index: number) => number | undefined
         pick?: (x: number, y: number) => Element | null | undefined
+        trusted?: (event: MouseEvent) => boolean
         onrelease: (index: number) => void
         onpage: (direction: -1 | 1) => void
         onhover: (on: boolean) => void
         ondrag: (on: boolean) => void
         onwheel: (event: WheelEvent) => void
     }
-    let { count, fraction, visible, trackInteractive, formatter, label, timeAt, pick, onrelease, onpage, onhover, ondrag, onwheel }: Props = $props()
+    let { count, fraction, visible, trackInteractive, formatter, label, timeAt, pick, trusted, onrelease, onpage, onhover, ondrag, onwheel }: Props = $props()
 
     interface Session {
         pointerId: number
@@ -35,11 +36,16 @@
         lastY: number
     }
 
+    // The browser's own click after a pass-through tap arrives once the tapped control may already have opened something under the finger;
+    // it is swallowed only close to the tap in time and space, so a later or distant click is never lost.
+    const TRAILING_CLICK_MS = 400
+    const TRAILING_CLICK_RADIUS_PX = 24
+
     let root: HTMLElement | undefined
     let track: HTMLElement | undefined
     let thumb: HTMLElement | undefined
     let session: Session | null = null
-    // A track too short to address the chat hides the scrubber; it is read on each reveal and again when a drag would start.
+    // A track too short to address the chat hides the scrubber; it is read on each reveal, whenever the track is resized (a window resize or rotation) and again when a drag would start.
     let fits = $state(false)
     let dragP = $state<number | null>(null)
 
@@ -81,6 +87,28 @@
         dragP = next
     }
 
+    let disarmTrailing: (() => void) | null = null
+
+    function armTrailingClickSwallow(x: number, y: number): void {
+        disarmTrailing?.()
+        const timer = window.setTimeout(() => disarmTrailing?.(), TRAILING_CLICK_MS)
+        const listener = (event: MouseEvent): void => {
+            if (!(trusted ?? ((e: MouseEvent) => e.isTrusted))(event)) return
+            const near = Math.hypot(event.clientX - x, event.clientY - y) <= TRAILING_CLICK_RADIUS_PX
+            disarmTrailing?.()
+            if (!near) return
+            event.preventDefault()
+            event.stopPropagation()
+        }
+        const disarm = (): void => {
+            window.clearTimeout(timer)
+            window.removeEventListener('click', listener, { capture: true })
+            if (disarmTrailing === disarm) disarmTrailing = null
+        }
+        disarmTrailing = disarm
+        window.addEventListener('click', listener, { capture: true })
+    }
+
     function releaseSession(): Session | null {
         const s = session
         if (!s) return null
@@ -119,6 +147,7 @@
 
     function onThumbDown(event: PointerEvent): void {
         if (session || !visible || !thumb || !track) return
+        disarmTrailing?.()
         if (event.pointerType === 'mouse' && event.button !== 0) return
         if (!measure()) return
         const thumbRect = thumb.getBoundingClientRect()
@@ -161,7 +190,10 @@
         if (!s || !outcome) return
         if (outcome.kind === 'tap') {
             const target = (pick ?? defaultPick)(outcome.x, outcome.y)
-            if (target instanceof HTMLElement) target.click()
+            if (target instanceof HTMLElement) {
+                target.click()
+                armTrailingClickSwallow(outcome.x, outcome.y)
+            }
         } else if (outcome.kind === 'release') {
             const index = indexAtFraction(s.prevP, count)
             dragP = null
@@ -204,9 +236,19 @@
         if (visible) measure()
     })
     $effect(() => {
+        // Hiding is opacity only, so the track keeps its size while hidden and a resize can reveal or hide it.
+        if (!track || typeof ResizeObserver === 'undefined') return
+        const observer = new ResizeObserver(() => { measure() })
+        observer.observe(track)
+        return () => observer.disconnect()
+    })
+    $effect(() => {
         if (hidden) abortSession()
     })
-    $effect(() => abortSession)
+    $effect(() => () => {
+        abortSession()
+        disarmTrailing?.()
+    })
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->

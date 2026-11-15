@@ -15,6 +15,13 @@ const rects = { trackHeight: 456, thumbHeight: 56 }
 const formatter = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
 const label = (position: string, total: string, date: string | null) => date === null ? `${position} / ${total}` : `${position} / ${total} · ${date}`
 const mounted: { app: ReturnType<typeof mount>, target: HTMLElement }[] = []
+const observer = { fire: () => {}, observed: [] as Element[], disconnects: 0 }
+
+class FakeObserver {
+    constructor(callback: () => void) { observer.fire = callback }
+    observe(target: Element): void { observer.observed.push(target) }
+    disconnect(): void { observer.disconnects += 1 }
+}
 
 function makeProps(overrides: Partial<{ count: number, fraction: number, visible: boolean, trackInteractive: boolean, time: number | undefined }> = {}) {
     const state = $state({ count: 101, fraction: 0, visible: true, trackInteractive: false, time: undefined as number | undefined, ...overrides })
@@ -25,6 +32,7 @@ function makeProps(overrides: Partial<{ count: number, fraction: number, visible
         ondrag: vi.fn<(on: boolean) => void>(),
         onwheel: vi.fn<(event: WheelEvent) => void>(),
         pick: vi.fn<(x: number, y: number) => Element | null | undefined>(() => null),
+        trusted: vi.fn<(event: MouseEvent) => boolean>(() => true),
     }
     return { state, handlers }
 }
@@ -120,6 +128,87 @@ describe('Scrubber drag and release', () => {
         view.thumb.dispatchEvent(native)
         expect(native.defaultPrevented).toBe(true)
         expect(props.handlers.onpage).not.toHaveBeenCalled()
+    })
+
+    describe('trailing click after a pass-through tap', () => {
+        function tapThrough() {
+            vi.useFakeTimers()
+            const props = makeProps({ trackInteractive: true })
+            const button = document.createElement('button')
+            document.body.appendChild(button)
+            const targetClicked = vi.fn()
+            const cancel = vi.fn()
+            button.addEventListener('click', targetClicked)
+            const sheetCancel = document.createElement('button')
+            document.body.appendChild(sheetCancel)
+            sheetCancel.addEventListener('click', cancel)
+            props.handlers.pick.mockReturnValue(button)
+            const view = mountScrubber(props)
+            pointer(view.thumb, 'pointerdown', 128, 'touch', 1, 480)
+            pointer(view.thumb, 'pointerup', 128, 'touch', 1, 480)
+            return { props, view, targetClicked, cancel, sheetCancel, cleanup: () => { button.remove(); sheetCancel.remove() } }
+        }
+
+        function trailing(on: Element, x: number, y: number): MouseEvent {
+            const event = new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y })
+            on.dispatchEvent(event)
+            return event
+        }
+
+        test('S2c the trailing trusted click at the tap point is swallowed once', () => {
+            const t = tapThrough()
+            expect(t.targetClicked).toHaveBeenCalledTimes(1)
+            vi.advanceTimersByTime(150)
+            const first = trailing(t.sheetCancel, 482, 130)
+            expect(first.defaultPrevented).toBe(true)
+            expect(t.cancel).not.toHaveBeenCalled()
+            trailing(t.sheetCancel, 482, 130)
+            expect(t.cancel).toHaveBeenCalledTimes(1)
+            expect(t.targetClicked).toHaveBeenCalledTimes(1)
+            t.cleanup()
+        })
+
+        test('S2d an untrusted click is not swallowed', () => {
+            const t = tapThrough()
+            t.props.handlers.trusted.mockReturnValue(false)
+            trailing(t.sheetCancel, 480, 128)
+            expect(t.cancel).toHaveBeenCalledTimes(1)
+            t.cleanup()
+        })
+
+        test('S2e a click after the window is not swallowed', () => {
+            const t = tapThrough()
+            vi.advanceTimersByTime(401)
+            trailing(t.sheetCancel, 480, 128)
+            expect(t.cancel).toHaveBeenCalledTimes(1)
+            t.cleanup()
+        })
+
+        test('S2f a click outside the radius passes through and disarms', () => {
+            const t = tapThrough()
+            trailing(t.sheetCancel, 480, 200)
+            expect(t.cancel).toHaveBeenCalledTimes(1)
+            trailing(t.sheetCancel, 480, 128)
+            expect(t.cancel).toHaveBeenCalledTimes(2)
+            t.cleanup()
+        })
+
+        test('S2g after unmount a click is not swallowed', async () => {
+            const t = tapThrough()
+            await unmount(t.view.app)
+            trailing(t.sheetCancel, 480, 128)
+            expect(t.cancel).toHaveBeenCalledTimes(1)
+            t.cleanup()
+        })
+
+        test('S2h a new session disarms the swallow', () => {
+            const t = tapThrough()
+            pointer(t.view.thumb, 'pointerdown', 128, 'touch', 2, 480)
+            trailing(t.sheetCancel, 480, 128)
+            expect(t.cancel).toHaveBeenCalledTimes(1)
+            pointer(t.view.thumb, 'pointercancel', 128, 'touch', 2, 480)
+            t.cleanup()
+        })
     })
 
     test('S2b a 260 ms hold starts a drag without movement', () => {
@@ -266,6 +355,56 @@ describe('Scrubber hidden and fit', () => {
         pointer(view.thumb, 'pointerup', 168)
         expect(props.handlers.ondrag).not.toHaveBeenCalled()
         expect(view.root.hasAttribute('data-hidden')).toBe(true)
+    })
+
+    describe('S12 the fit follows the track size', () => {
+        beforeEach(() => {
+            observer.fire = () => {}
+            observer.observed = []
+            observer.disconnects = 0
+            vi.stubGlobal('ResizeObserver', FakeObserver)
+        })
+        afterEach(() => { vi.unstubAllGlobals() })
+
+        test('a track that grows to fit reveals the scrubber without a new reveal', () => {
+            rects.trackHeight = 100
+            const view = mountScrubber(makeProps())
+            expect(observer.observed).toEqual([view.track])
+            expect(view.root.hasAttribute('data-hidden')).toBe(true)
+            rects.trackHeight = 456
+            observer.fire()
+            flushSync()
+            expect(view.root.hasAttribute('data-hidden')).toBe(false)
+        })
+
+        test('a track that shrinks below two thumb heights hides the scrubber', () => {
+            const view = mountScrubber(makeProps())
+            expect(view.root.hasAttribute('data-hidden')).toBe(false)
+            rects.trackHeight = 100
+            observer.fire()
+            flushSync()
+            expect(view.root.hasAttribute('data-hidden')).toBe(true)
+        })
+
+        test('a resize that stops fitting during a drag aborts it without a jump', () => {
+            const props = makeProps()
+            const view = mountScrubber(props)
+            pointer(view.thumb, 'pointerdown', 128)
+            pointer(view.thumb, 'pointermove', 368)
+            rects.trackHeight = 100
+            observer.fire()
+            flushSync()
+            pointer(view.thumb, 'pointerup', 368)
+            expect(props.handlers.onrelease).not.toHaveBeenCalled()
+            expect(props.handlers.ondrag).toHaveBeenLastCalledWith(false)
+        })
+
+        test('unmount disconnects the observer', async () => {
+            const view = mountScrubber(makeProps())
+            expect(observer.disconnects).toBe(0)
+            await unmount(view.app)
+            expect(observer.disconnects).toBe(1)
+        })
     })
 })
 

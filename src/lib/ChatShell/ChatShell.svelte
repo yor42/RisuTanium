@@ -1093,7 +1093,7 @@
     /* The shown hit's marks in the message text. Colour and outline only: no padding, margin, border or font change, so a mark never moves a line. */
     [data-part="chat-transcript"] :global(mark.search-mark) { color: inherit; background: var(--color-accent-tint-strong); outline: var(--stroke-bold) solid var(--nexus-ring); padding: 0; margin: 0; border: 0; font: inherit; }
     @media (forced-colors: active) {
-        [data-part="chat-transcript"] :global(mark.search-mark) { background: transparent; outline: var(--stroke-bold) solid Highlight; }
+        [data-part="chat-transcript"] :global(mark.search-mark) { color: CanvasText; background: transparent; outline: var(--stroke-bold) solid Highlight; }
     }
     [data-part="chat-announcer"] { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
     [data-part="chat-transcript"][data-fade="a"] { animation: chat-switch-fade-a var(--chat-dur-fast) var(--chat-ease-out); }
