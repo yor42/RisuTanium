@@ -44,6 +44,9 @@ vi.mock('../../ts/stores.svelte', () => ({
 vi.mock('../../ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
 vi.mock('../../ts/process/moduleRefList', () => ({ moduleListOf: () => [] }))
 vi.mock('../../ts/alertPrompts', () => ({ pageCovered: () => false }))
+// StudioScreen and the History panel report a rejected replay through alertError. The real module loads the database
+// and parser graph, whose root effect reads the stores getters above before their consts are initialised.
+vi.mock('../../ts/alert', () => ({ alertError: vi.fn() }))
 vi.mock('../../ts/alertBack', () => ({ closeDialogForBack: vi.fn() }))
 vi.mock('../../ts/caughtErrors', () => ({ recordCaughtError: vi.fn() }))
 vi.mock('../../lang', async () => {

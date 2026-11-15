@@ -685,8 +685,8 @@ function cleanHeldSlots(live: unknown, installed: readonly unknown[], heldSlots:
  * Every per-character transform of an incoming `characters` list, then the keep decision. It is given the live list
  * and never the database. The transforms write live data only through `===` live elements of the incoming list and
  * through the live `alt` records that `keepLiveAlt` shares and the live retained values that `keepLiveRetained` shares
- * by reference; no transform writes through either shared value. `reattachOrphans` writes those only when the incoming
- * messages differ from live, so such a slot is never kept. After it returns, the setter only assigns the list and marks every
+ * by reference. No transform writes through a shared retained value; the shared `alt` records are written only by
+ * `reattachOrphans`, and only when the incoming messages differ from live, so such a slot is never kept. After it returns, the setter only assigns the list and marks every
  * slot that is not kept: no character is written after the decision, so a kept live proxy stays as it was.
  * Clearing SupaMemory on an empty chat happens here, before the decision, so a needed
  * clear makes the incoming element differ from the live one and the slot is installed and marked.
