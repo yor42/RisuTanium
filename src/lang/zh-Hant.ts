@@ -2485,6 +2485,8 @@ export const languageChineseTraditional = {
     "inlayErrorResponse": "內嵌錯誤回應",
     "inlayFileTooLarge": "{name} 超過 {size} MB，未能附加。",
     "inlaySendTooLarge": "未傳送給模型（單一檔案超過 {size} MB 限制）：{names}",
+    "openAIAudioLeftOut": "未傳送給模型（僅接受 WAV 或 MP3 音訊）：{names}",
+    "openAIAudioUnnamed": "一個音訊附件",
     "triggerOn": "Trigger 時機",
     "noConfig": "無設定",
     "var": "變數",

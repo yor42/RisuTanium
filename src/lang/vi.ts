@@ -2439,6 +2439,8 @@ export const languageVietnamese = {
     "inlayErrorResponse": "Phản hồi lỗi Inlay",
     "inlayFileTooLarge": "{name} lớn hơn {size} MB nên không được đính kèm.",
     "inlaySendTooLarge": "Không gửi cho mô hình (vượt giới hạn {size} MB mỗi tệp): {names}",
+    "openAIAudioLeftOut": "Không gửi cho mô hình (chỉ nhận âm thanh WAV hoặc MP3): {names}",
+    "openAIAudioUnnamed": "một tệp âm thanh đính kèm",
     "triggerOn": "Kích hoạt bật",
     "noConfig": "Không có cấu hình",
     "var": "Biến",

@@ -2441,6 +2441,8 @@ export const languageSpanish = {
     "inlayErrorResponse": "Respuesta de Error de Incrustación",
     "inlayFileTooLarge": "{name} supera los {size} MB y no se adjuntó.",
     "inlaySendTooLarge": "No se envió al modelo (supera el límite de {size} MB por archivo): {names}",
+    "openAIAudioLeftOut": "No se envió al modelo (solo acepta audio WAV o MP3): {names}",
+    "openAIAudioUnnamed": "un archivo de audio adjunto",
     "triggerOn": "Trigger Activado",
     "noConfig": "Sin Configuración",
     "var": "Variable",
