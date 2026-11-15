@@ -29,6 +29,7 @@ import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
+import { COLD_TRANSFORM_HOOK_MS } from '../../tests/coldTransform.test-helpers'
 import { writable, get } from 'svelte/store'
 import type { Writable } from 'svelte/store'
 import type { character, groupChat, Chat, Message, Database } from '../../storage/database.svelte'
@@ -382,7 +383,7 @@ beforeAll(async () => {
     alertToastMock = (await import('../../alert')).alertToast as unknown as ReturnType<typeof vi.fn>
     providerOptions = (await import('../../plugins/plugins.svelte')).pluginV2.providerOptions as unknown as Map<string, { tokenizer?: string }>
     editprocessHooks = (await import('../../plugins/plugins.svelte')).pluginV2.editprocess as unknown as Set<(data: string) => Promise<string | null>>
-})
+}, COLD_TRANSFORM_HOOK_MS)
 
 function msg(role: 'user' | 'char', data: string, extra: Partial<Message> = {}): Message {
     return { role, data, time: 1, ...extra } as Message

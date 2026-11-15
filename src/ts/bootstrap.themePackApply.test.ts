@@ -11,6 +11,10 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable, get, type Writable } from 'svelte/store'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 
+// The first boot transforms the real bootstrap graph cold: several seconds alone, a multiple of that under a full run's
+// CPU load. Later boots re-evaluate it in well under a second.
+vi.setConfig({ testTimeout: 60_000 })
+
 const MAIN_KEY = 'database/database.bin'
 
 const world = vi.hoisted(() => ({
@@ -192,7 +196,11 @@ vi.mock(import('src/ts/storage/bootArchivePass'), () => ({
 
 const DRIVER = 'src/ts/themePack/activePack.svelte'
 
-/** The driver stand-in, registered per test so that a failing chunk (a factory that throws rejects the dynamic import) is per test. */
+/**
+ * The driver stand-in, registered per test so that a failing chunk (a factory that throws rejects the dynamic import) is
+ * per test. Each test calls this exactly once, before its boot: two registrations of the same path still pending at the
+ * next import land in the order their resolutions finish, not the order they were made, so the wrong one could win.
+ */
 function mockDriver(chunkFails: boolean): void {
     vi.doMock(DRIVER, () => {
         if (chunkFails) {
@@ -258,7 +266,6 @@ beforeEach(() => {
     localStorage.clear()
     world.items.clear()
     world.db = {}
-    mockDriver(false)
     startThemePackApplyMock.mockReset()
     errorLog = vi.spyOn(console, 'error').mockImplementation(() => { })
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })))
@@ -276,6 +283,7 @@ afterEach(() => {
 
 describe('loadData() starts the theme pack driver', () => {
     test('T3D-10: starts it exactly once and ends on loadedStore true', async () => {
+        mockDriver(false)
         const { resolved, loaded } = await boot()
 
         expect(resolved).toBe(true)
@@ -296,6 +304,7 @@ describe('loadData() starts the theme pack driver', () => {
     })
 
     test('T3D-10: a driver start that throws is logged and does not reject loadData()', async () => {
+        mockDriver(false)
         startThemePackApplyMock.mockImplementation(() => { throw new Error('start failed') })
 
         const { resolved, loaded } = await boot()
