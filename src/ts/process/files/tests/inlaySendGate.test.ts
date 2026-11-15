@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { INLAY_SEND_LIMIT_BYTES, inlayImageWithheld, inlaySendVerdict } from '../inlaySendGate'
+import { INLAY_SEND_LIMIT_BYTES, inlayImageWithheld, inlayReadVerdict, inlaySendVerdict } from '../inlaySendGate'
 import { LLMFlags } from '../../../model/types'
 import type { InlaySummary } from '../inlayStore'
 
@@ -97,6 +97,26 @@ describe('inlayImageWithheld', () => {
     test('is false for a video, an audio or a signature, however large', () => {
         for (const type of ['video', 'audio', 'signature'] as const) {
             expect(inlayImageWithheld(type, LIMIT + 1, true)).toBe(false)
+        }
+    })
+})
+
+describe('inlayReadVerdict', () => {
+    test('a video or audio is read at exactly the limit and too large one byte above it', () => {
+        for (const type of ['video', 'audio'] as const) {
+            expect(inlayReadVerdict(summaryOf(type, 20 * MIB))).toBe('read')
+            expect(inlayReadVerdict(summaryOf(type, 20 * MIB + 1))).toBe('too-large')
+        }
+    })
+
+    test('a video or audio of unknown size is read', () => {
+        expect(inlayReadVerdict(summaryOf('video', null))).toBe('read')
+        expect(inlayReadVerdict(summaryOf('audio', null))).toBe('read')
+    })
+
+    test('an image or a signature is read at any size', () => {
+        for (const type of ['image', 'signature'] as const) {
+            expect(inlayReadVerdict(summaryOf(type, 30 * MIB))).toBe('read')
         }
     })
 })

@@ -1003,7 +1003,7 @@ if (m) {
 }
 ```
 
-`readInlay(id)` returns `null` if no asset exists for the given UUID. Supported `type` values: `'image' | 'video' | 'audio' | 'signature'`.
+`readInlay(id)` returns `null` if no asset exists for the given UUID. On RisuTanium it also returns `null` for a video or audio asset larger than 20 MiB. Images and signatures are always returned. Supported `type` values: `'image' | 'video' | 'audio' | 'signature'`.
 
 ### Theming
 

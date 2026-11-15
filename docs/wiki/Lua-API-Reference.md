@@ -100,7 +100,7 @@ Edge cases:
 
 | Call it as | Args | Returns | Access |
 |---|---|---|---|
-| `LLM(id, prompt, useMultimodal, options)` *(shim)* | `prompt`: an array of `{role, content}` (`system`/`sys`, `user`, `assistant`/`bot`/`char` all normalize). `useMultimodal`: a bool that expands `{{inlay\|inlayed\|inlayeddata::x}}` tags into image attachments. `options: {streaming?}` | `{success, result}`, using the main model | Low-level |
+| `LLM(id, prompt, useMultimodal, options)` *(shim)* | `prompt`: an array of `{role, content}` (`system`/`sys`, `user`, `assistant`/`bot`/`char` all normalize). `useMultimodal`: a bool that expands `{{inlay\|inlayed\|inlayeddata::x}}` tags into image attachments. A video or audio file larger than 20 MiB is left out. `options: {streaming?}` | `{success, result}`, using the main model | Low-level |
 | `axLLM(id, prompt, useMultimodal, options)` *(shim)* | The same as `LLM` | `{success, result}`, using the slot of the auxiliary ("otherAx") model | Low-level |
 | `simpleLLM(id, prompt)` | prompt: string | A `{success, result}` object (no JSON round trip is needed), using the main model, with no multimodal support | Low-level |
 <!-- src/ts/process/scriptings.ts:656-766, 767-800, 1038-1148, 1417-1427 -->

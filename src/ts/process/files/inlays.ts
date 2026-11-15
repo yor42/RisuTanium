@@ -14,7 +14,7 @@ import {
     dropInlayRender,
     type InlayRender,
 } from "./inlayRenderCache";
-import { inlayImageWithheld } from "./inlaySendGate";
+import { inlayImageWithheld, inlayReadVerdict } from "./inlaySendGate";
 import {
     fieldsOf,
     inFlight,
@@ -441,6 +441,31 @@ export async function getInlaySummary(id: string): Promise<InlaySummary | null> 
         return null
     }
     return { ...(fieldsOf(old) as Omit<InlayAsset, 'data'>), size: legacyInlaySize(old) }
+}
+
+/** The outcome of a size-capped read: the inlay as `getInlayAsset` returns it, or the summary of one held back. */
+export type CappedInlayRead =
+    | { status: 'read', asset: NonNullable<Awaited<ReturnType<typeof getInlayAsset>>> }
+    | { status: 'too-large', summary: InlaySummary }
+
+/**
+ * `getInlayAsset` for a plugin or script read: a video or audio over the send limit is reported with its
+ * summary and its body is not loaded from the app store. `null` means there is no readable inlay, as for
+ * `getInlayAsset`. The caller reports a held-back file; this does not.
+ */
+export async function getInlayAssetCapped(id: string): Promise<CappedInlayRead | null> {
+    const summary = await getInlaySummary(id)
+    if(summary === null){
+        return null
+    }
+    if(inlayReadVerdict(summary) === 'too-large'){
+        return { status: 'too-large', summary }
+    }
+    const asset = await getInlayAsset(id)
+    if(asset === null){
+        return null
+    }
+    return { status: 'read', asset }
 }
 
 /** What a staged draft attachment shows: a media element over a render URL, or a chip with the file's name and size. */
