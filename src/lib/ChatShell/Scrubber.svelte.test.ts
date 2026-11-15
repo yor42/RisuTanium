@@ -32,6 +32,7 @@ function makeProps(overrides: Partial<{ count: number, fraction: number, visible
         ondrag: vi.fn<(on: boolean) => void>(),
         onwheel: vi.fn<(event: WheelEvent) => void>(),
         pick: vi.fn<(x: number, y: number) => Element | null | undefined>(() => null),
+        trusted: vi.fn<(event: MouseEvent) => boolean>(() => true),
     }
     return { state, handlers }
 }
@@ -127,6 +128,87 @@ describe('Scrubber drag and release', () => {
         view.thumb.dispatchEvent(native)
         expect(native.defaultPrevented).toBe(true)
         expect(props.handlers.onpage).not.toHaveBeenCalled()
+    })
+
+    describe('trailing click after a pass-through tap', () => {
+        function tapThrough() {
+            vi.useFakeTimers()
+            const props = makeProps({ trackInteractive: true })
+            const button = document.createElement('button')
+            document.body.appendChild(button)
+            const targetClicked = vi.fn()
+            const cancel = vi.fn()
+            button.addEventListener('click', targetClicked)
+            const sheetCancel = document.createElement('button')
+            document.body.appendChild(sheetCancel)
+            sheetCancel.addEventListener('click', cancel)
+            props.handlers.pick.mockReturnValue(button)
+            const view = mountScrubber(props)
+            pointer(view.thumb, 'pointerdown', 128, 'touch', 1, 480)
+            pointer(view.thumb, 'pointerup', 128, 'touch', 1, 480)
+            return { props, view, targetClicked, cancel, sheetCancel, cleanup: () => { button.remove(); sheetCancel.remove() } }
+        }
+
+        function trailing(on: Element, x: number, y: number): MouseEvent {
+            const event = new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y })
+            on.dispatchEvent(event)
+            return event
+        }
+
+        test('S2c the trailing trusted click at the tap point is swallowed once', () => {
+            const t = tapThrough()
+            expect(t.targetClicked).toHaveBeenCalledTimes(1)
+            vi.advanceTimersByTime(150)
+            const first = trailing(t.sheetCancel, 482, 130)
+            expect(first.defaultPrevented).toBe(true)
+            expect(t.cancel).not.toHaveBeenCalled()
+            trailing(t.sheetCancel, 482, 130)
+            expect(t.cancel).toHaveBeenCalledTimes(1)
+            expect(t.targetClicked).toHaveBeenCalledTimes(1)
+            t.cleanup()
+        })
+
+        test('S2d an untrusted click is not swallowed', () => {
+            const t = tapThrough()
+            t.props.handlers.trusted.mockReturnValue(false)
+            trailing(t.sheetCancel, 480, 128)
+            expect(t.cancel).toHaveBeenCalledTimes(1)
+            t.cleanup()
+        })
+
+        test('S2e a click after the window is not swallowed', () => {
+            const t = tapThrough()
+            vi.advanceTimersByTime(401)
+            trailing(t.sheetCancel, 480, 128)
+            expect(t.cancel).toHaveBeenCalledTimes(1)
+            t.cleanup()
+        })
+
+        test('S2f a click outside the radius passes through and disarms', () => {
+            const t = tapThrough()
+            trailing(t.sheetCancel, 480, 200)
+            expect(t.cancel).toHaveBeenCalledTimes(1)
+            trailing(t.sheetCancel, 480, 128)
+            expect(t.cancel).toHaveBeenCalledTimes(2)
+            t.cleanup()
+        })
+
+        test('S2g after unmount a click is not swallowed', async () => {
+            const t = tapThrough()
+            await unmount(t.view.app)
+            trailing(t.sheetCancel, 480, 128)
+            expect(t.cancel).toHaveBeenCalledTimes(1)
+            t.cleanup()
+        })
+
+        test('S2h a new session disarms the swallow', () => {
+            const t = tapThrough()
+            pointer(t.view.thumb, 'pointerdown', 128, 'touch', 2, 480)
+            trailing(t.sheetCancel, 480, 128)
+            expect(t.cancel).toHaveBeenCalledTimes(1)
+            pointer(t.view.thumb, 'pointercancel', 128, 'touch', 2, 480)
+            t.cleanup()
+        })
     })
 
     test('S2b a 260 ms hold starts a drag without movement', () => {
