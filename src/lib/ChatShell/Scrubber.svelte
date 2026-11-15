@@ -39,7 +39,7 @@
     let track: HTMLElement | undefined
     let thumb: HTMLElement | undefined
     let session: Session | null = null
-    // A track too short to address the chat hides the scrubber; it is read on each reveal and again when a drag would start.
+    // A track too short to address the chat hides the scrubber; it is read on each reveal, whenever the track is resized (a window resize or rotation) and again when a drag would start.
     let fits = $state(false)
     let dragP = $state<number | null>(null)
 
@@ -202,6 +202,13 @@
 
     $effect(() => {
         if (visible) measure()
+    })
+    $effect(() => {
+        // Hiding is opacity only, so the track keeps its size while hidden and a resize can reveal or hide it.
+        if (!track || typeof ResizeObserver === 'undefined') return
+        const observer = new ResizeObserver(() => { measure() })
+        observer.observe(track)
+        return () => observer.disconnect()
     })
     $effect(() => {
         if (hidden) abortSession()
