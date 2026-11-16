@@ -74,33 +74,98 @@ describe('retainedPathsOf', () => {
         expect(tracker.update(stepsOf(record([]), record([])))).toEqual([])
     })
 
-    test('T77a a first call over 200 steps of 300 ops and an incremental update stay within the budget', () => {
-        // Best of five on fresh steps (a cold per-step cache each time): a loaded host spikes single runs.
-        let firstMs = Infinity
-        let updateMs = Infinity
-        for (let attempt = 0; attempt < 5; attempt++) {
-            const steps: Step[] = []
-            for (let i = 0; i < 200; i++) {
-                const ops: Op[] = []
-                for (let j = 0; j < 300; j++) {
-                    ops.push(remove(`p${(i * 300 + j) % 1000}`))
-                }
-                steps.push(step(`s${i}`, ops))
+    test('T77a each step\'s ops are walked once in total: a first call over 200 steps of 300 ops, an update after one new step and one departure, and the per-step name reads', () => {
+        // Work is counted, not timed: every read of a step's ops goes through a Proxy, so the counts hold on any host.
+        // A lost per-step cache (a later read of a cached step walks its ops again) or a full rescan on update
+        // raises a count. The Map get/set calls of an update are counted the same way: an update that rebuilds every
+        // count from every cached step makes tens of thousands of calls, the real one a few per changed path, so the
+        // bounds hold on any host. The plan's timing budgets (first update under 10 ms, incremental under 2 ms) are not
+        // asserted here or by any test; they are judged by the owed T77b device run.
+        const mapCalls = (run: () => void): number => {
+            const originalGet = Map.prototype.get
+            const originalSet = Map.prototype.set
+            let calls = 0
+            Map.prototype.get = function (this: Map<unknown, unknown>, key: unknown) {
+                calls++
+                return originalGet.call(this, key)
             }
-            const tracker = createRetainedPaths()
-            const start = performance.now()
-            const first = tracker.update(new Set(steps))
-            firstMs = Math.min(firstMs, performance.now() - start)
-            expect(first).toHaveLength(1000)
-            const joined = new Set(steps)
-            joined.add(step('extra', [remove('p5000')]))
-            const again = performance.now()
-            tracker.update(joined)
-            updateMs = Math.min(updateMs, performance.now() - again)
+            Map.prototype.set = function (this: Map<unknown, unknown>, key: unknown, value: unknown) {
+                calls++
+                return originalSet.call(this, key, value)
+            }
+            try {
+                run()
+            } finally {
+                Map.prototype.get = originalGet
+                Map.prototype.set = originalSet
+            }
+            return calls
         }
-        // The plan's PC-proxy budgets; the phone run is owed.
-        expect(firstMs).toBeLessThan(10)
-        expect(updateMs).toBeLessThan(2)
+        const walks: number[] = []
+        const reads: number[] = []
+        const counted = (index: number, ops: Op[]): Op[] => new Proxy(ops, {
+            get(target, key, receiver) {
+                if (key === Symbol.iterator) {
+                    walks[index]++
+                } else if (typeof key === 'string' && /^\d+$/.test(key)) {
+                    reads[index]++
+                }
+                return Reflect.get(target, key, receiver)
+            },
+        })
+        const make = (index: number, ops: Op[]): Step => {
+            walks[index] = 0
+            reads[index] = 0
+            return step(`s${index}`, counted(index, ops))
+        }
+        const steps: Step[] = []
+        for (let i = 0; i < 200; i++) {
+            const ops: Op[] = []
+            for (let j = 0; j < 300; j++) {
+                ops.push(remove(`p${(i * 300 + j) % 1000}`))
+            }
+            steps.push(make(i, ops))
+        }
+        const tracker = createRetainedPaths()
+        const first = tracker.update(new Set(steps))
+        expect(first).toHaveLength(1000)
+        // The proxy sees the walk: once per step, every op read once.
+        expect(walks.every(count => count === 1)).toBe(true)
+        expect(reads.every(count => count === 300)).toBe(true)
+
+        const joined = new Set(steps)
+        const extra = make(200, [remove('p5000')])
+        joined.add(extra)
+        let again: string[] = []
+        // One new step naming one path: a get and a set for it, far under the bound; a rebuild is over 100000.
+        expect(mapCalls(() => { again = tracker.update(joined) })).toBeLessThan(100)
+        expect(again).toHaveLength(1001)
+        expect(again).toContain('p5000')
+        expect(walks.slice(0, 200).every(count => count === 1)).toBe(true)
+        expect(reads.slice(0, 200).every(count => count === 300)).toBe(true)
+        expect(walks[200]).toBe(1)
+        expect(reads[200]).toBe(1)
+
+        // A departure subtracts the step's cached paths, and the name reads use the same cache.
+        const left = new Set(joined)
+        left.delete(steps[0])
+        // Its 300 paths are all named by other steps, so the set is unchanged; the calls are 300 gets and sets at most.
+        let afterFirstLeaves: string[] = []
+        expect(mapCalls(() => { afterFirstLeaves = tracker.update(left) })).toBeLessThan(2000)
+        expect(afterFirstLeaves).toEqual(again)
+        for (const kept of left) {
+            stepNamesAssetPath(kept)
+        }
+        expect(nameOfPathIn([...left], 'p5000')).toBe('n')
+        // The step that alone names p5000 leaves: subtraction drops the path and keeps the other 1000.
+        const gone = new Set(left)
+        gone.delete(extra)
+        let afterExtraLeaves: string[] = []
+        expect(mapCalls(() => { afterExtraLeaves = tracker.update(gone) })).toBeLessThan(100)
+        expect(afterExtraLeaves).toHaveLength(1000)
+        expect(afterExtraLeaves).not.toContain('p5000')
+        expect(walks.slice(0, 201).every(count => count === 1)).toBe(true)
+        expect(reads.slice(0, 200).every(count => count === 300)).toBe(true)
     })
 })
 
