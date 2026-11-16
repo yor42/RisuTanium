@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, untrack, type Snippet } from 'svelte'
+    import { onDestroy, onMount, untrack, type Snippet } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import '../../styles/studio-tokens.css'
     import { language } from '../../lang'
@@ -37,6 +37,10 @@
     let { tree, detail, toastHost }: Props = $props()
 
     let root: HTMLElement | undefined = $state()
+
+    // Set once the screen is gone: a replay that settles after that has no screen to speak on.
+    let destroyed = false
+    onDestroy(() => { destroyed = true })
 
     const toasts = createStudioToasts({ service: getStudioHistoryService, host: untrack(() => toastHost) })
 
@@ -111,6 +115,7 @@
     // later. The fields are read inside the replay's own synchronous segment, so `before` is what the apply changed.
     async function replayAndNotify(service: OwnerHistoryService, owner: OwnerKey, direction: 'undo' | 'redo', entry: HTMLInputElement | HTMLTextAreaElement | null): Promise<void> {
         const read: { before: OwnerFields | null } = { before: null }
+        const visitId = studioScreen.visitId
         let result: StudioResult
         try {
             result = await service.replay(owner, { kind: direction }, (apply) => {
@@ -118,10 +123,13 @@
                 return runDismissingConsumed(service, toasts, owner, apply)
             })
         } catch (error) {
-            // A rejected replay may already have landed its write; the error is shown.
+            // A rejected replay may already have landed its write; the error is shown, whatever became of the screen.
             alertError(error instanceof Error ? error : String(error))
             return
         }
+        // A replay that outlasts this screen or its visit has nothing to say: a notice would land on a screen that is
+        // gone, or on the next visit, and focus would move in a page that is no longer this one's.
+        if (destroyed || studioScreen.visitId !== visitId) return
         // A replay that outlasts a switch to another owner has nothing to say on the new screen.
         if (selectedHistoryOwner() !== owner) return
         // Exactly one message: the refusal, a gone file, or the note of a step that moved or dropped without a write. A gone

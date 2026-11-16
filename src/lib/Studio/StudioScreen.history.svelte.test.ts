@@ -76,10 +76,12 @@ vi.mock('src/ts/alert', () => ({ alertError: (message: string | Error) => { aler
 vi.mock('src/lang', async () => {
     const helpers = await import('src/ts/studio/studioFixtures.test-helpers')
     const base = helpers.studioLanguageMock()
-    // The two texts that name a row answer with the key and the name.
+    // The texts that name a row answer with the key and the names.
     const named: Record<string, unknown> = {
         studioAssetFileGone: (name: string) => `studioAssetFileGone(${name})`,
         studioAssetFileUnchecked: (name: string) => `studioAssetFileUnchecked(${name})`,
+        studioStepAssetDeleteOne: (name: string) => `studioStepAssetDeleteOne(${name})`,
+        studioStepAssetRename: (from: string, to: string) => `studioStepAssetRename(${from},${to})`,
     }
     return { language: new Proxy(named, { get: (target, key) => (typeof key === 'symbol' ? undefined : key in target ? target[key] : base[key]) }) }
 })
