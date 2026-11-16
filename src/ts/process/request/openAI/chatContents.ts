@@ -4,7 +4,45 @@ import type { Contents } from './types'
 const wavMimeTypes = ['audio/wav', 'audio/x-wav', 'audio/wave', 'audio/vnd.wave']
 const mp3MimeTypes = ['audio/mpeg', 'audio/mp3', 'audio/mpeg3', 'audio/x-mpeg-3']
 
-/** The wav or mp3 payload of a base64 audio data URL, or `null` for any other or unreadable audio. */
+/** Base64 characters that decode to the 12 header bytes the sniffing reads; the payload is never decoded further. */
+const sniffBase64Length = 16
+const sniffByteLength = 12
+
+/**
+ * The format named by the file header of an untyped audio payload, or `null` when the header is
+ * not wav or mp3 (MPEG layer III; AAC ADTS and layer I/II are not), the payload is shorter than
+ * 12 bytes or the base64 is malformed.
+ */
+function sniffAudioFormat(data: string): 'wav' | 'mp3' | null {
+    let head: string
+    try{
+        head = atob(data.slice(0, sniffBase64Length))
+    }
+    catch{
+        return null
+    }
+    if(head.length < sniffByteLength){
+        return null
+    }
+    if(head.startsWith('RIFF') && head.slice(8, 12) === 'WAVE'){
+        return 'wav'
+    }
+    if(head.startsWith('ID3')){
+        return 'mp3'
+    }
+    const second = head.charCodeAt(1)
+    const isFrameHeader = head.charCodeAt(0) === 0xFF
+        && (second & 0xE0) === 0xE0
+        && (second & 0x18) !== 0x08
+        && (second & 0x06) === 0x02
+    return isFrameHeader ? 'mp3' : null
+}
+
+/**
+ * The wav or mp3 payload of a base64 audio data URL, or `null` for any other or unreadable audio.
+ * A declared MIME type decides the format. Only an `application/octet-stream` or empty MIME type
+ * (audio stored without a type) is sniffed from the file header; the payload is passed on unchanged.
+ */
 function parseAudioDataUrl(base64: string): { data: string, format: 'wav' | 'mp3' } | null {
     if(!base64.startsWith('data:')){
         return null
@@ -25,13 +63,18 @@ function parseAudioDataUrl(base64: string): { data: string, format: 'wav' | 'mp3
     if(mp3MimeTypes.includes(mime)){
         return { data, format: 'mp3' }
     }
+    if(mime === '' || mime === 'application/octet-stream'){
+        const format = sniffAudioFormat(data)
+        return format === null ? null : { data, format }
+    }
     return null
 }
 
 /**
  * The Chat Completions content parts of one user message. An image and a signature are sent as
- * `image_url`, a video as `video_url`, a wav or mp3 audio as `input_audio`; any other audio is left
- * out and its name listed in `leftOut`. The text part is always last.
+ * `image_url`, a video as `video_url`, a wav or mp3 audio as `input_audio` (untyped audio is
+ * recognised by its file header, see `parseAudioDataUrl`); any other audio is left out and its name
+ * listed in `leftOut`. The text part is always last.
  */
 export function buildUserContents(
     multimodals: MultiModal[],
