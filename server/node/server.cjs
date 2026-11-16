@@ -2393,6 +2393,10 @@ async function handleWrite(req, res, next, guarded){
                 throw error;
             }
 
+            if(guarded && filePath === STORE2_COMMIT_HEX){
+                // The commit key's content has landed: waiting pages may now read it.
+                bumpStore2Feed();
+            }
             if(guarded){
                 res.send({
                     success: true,
@@ -2442,6 +2446,79 @@ async function handleWrite(req, res, next, guarded){
 app.post('/api/write', storageRouteLimiter, authBeforeBody(checkAuth), authenticatedBodyParsers, asyncRoute((req, res, next) => handleWrite(req, res, next, false)));
 // The marker goes on before the gate, so a refusal and a too-large answer carry it too.
 app.post('/api/write-checked', storageRouteLimiter, (req, res, next) => { markGuarded(res); next(); }, authBeforeBody(checkAuth), authenticatedBodyParsers, asyncRoute((req, res, next) => handleWrite(req, res, next, true)));
+
+// ---------------------------------------------------------------------------
+// The store2 change feed: a long poll that tells a page the commit key changed.
+//
+// It is wake-only: the answer carries a process-local revision and this process's
+// instance id (a restarted server counts from zero under a new id), never store
+// contents, and a page never depends on it for correctness. The revision moves
+// after a guarded write of the commit key has landed. A request is held until the
+// next move or the timeout; held requests are bounded. A client that leaves while
+// auth runs, or after it is held, frees its place and timer at once; one that left
+// before the route saw it is answered into the void at the timeout.
+// ---------------------------------------------------------------------------
+const STORE2_COMMIT_HEX = Buffer.from('store2-commit', 'utf-8').toString('hex');
+const STORE2_FEED_TIMEOUT_MS = positiveIntegerFromEnv('RISU_STORE2_FEED_TIMEOUT_MS', 25000);
+const STORE2_FEED_MAX_WAITERS = positiveIntegerFromEnv('RISU_STORE2_FEED_MAX_WAITERS', 32);
+const store2FeedInstance = crypto.randomBytes(8).toString('hex');
+const store2FeedWaiters = new Set();
+let store2FeedRevision = 0;
+
+function answerStore2Feed(waiter){
+    if(!store2FeedWaiters.delete(waiter)){
+        return;
+    }
+    clearTimeout(waiter.timer);
+    waiter.res.send({ rev: store2FeedRevision, instance: store2FeedInstance });
+}
+
+function bumpStore2Feed(){
+    store2FeedRevision += 1;
+    for(const waiter of [...store2FeedWaiters]){
+        answerStore2Feed(waiter);
+    }
+}
+
+app.get('/api/store2-feed', storageRouteLimiter, asyncRoute(async (req, res) => {
+    // Registered before the auth await, so a client that goes while auth runs is
+    // never added as a waiter; after the add it frees the waiter's place and timer.
+    let gone = false;
+    let heldWaiter = null;
+    res.on('close', () => {
+        gone = true;
+        if(heldWaiter !== null){
+            clearTimeout(heldWaiter.timer);
+            store2FeedWaiters.delete(heldWaiter);
+        }
+    });
+    if(!await checkAuth(req, res)){
+        return;
+    }
+    if(gone){
+        return;
+    }
+    const sinceText = req.query.since;
+    // No `since` is the baseline request: answered at once, never held.
+    if(sinceText !== undefined && (typeof sinceText !== 'string' || !/^[0-9]{1,15}$/.test(sinceText))){
+        res.status(400).send({ error: 'since must be a non-negative integer' });
+        return;
+    }
+    res.set('Cache-Control', 'no-store');
+    if(sinceText === undefined || store2FeedRevision > Number(sinceText)){
+        res.send({ rev: store2FeedRevision, instance: store2FeedInstance });
+        return;
+    }
+    if(store2FeedWaiters.size >= STORE2_FEED_MAX_WAITERS){
+        res.set('Retry-After', '5');
+        res.status(503).send({ error: 'Too many waiting feed requests.' });
+        return;
+    }
+    const waiter = { res, timer: null };
+    waiter.timer = setTimeout(() => answerStore2Feed(waiter), STORE2_FEED_TIMEOUT_MS);
+    store2FeedWaiters.add(waiter);
+    heldWaiter = waiter;
+}));
 
 // ---------------------------------------------------------------------------
 // Chunked asset upload and ranged read.
