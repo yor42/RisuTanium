@@ -79,8 +79,9 @@ export function inlayWriteLimit(): number {
 const MIB = 1024 * 1024
 
 /**
- * The largest video inlay Android takes. Android shows a video by reading the whole file, which the
- * piecewise limits above this do not cover, so a video stays at this bound there (CHORE-373).
+ * The largest video inlay Android takes. A video there is served by the store's URL, but a render the
+ * store cannot serve that way can read the whole file, which the piecewise limits above this do not
+ * cover, so a video stays at this bound there (CHORE-373).
  */
 export const ANDROID_VIDEO_INLAY_LIMIT_BYTES = 200 * MIB
 

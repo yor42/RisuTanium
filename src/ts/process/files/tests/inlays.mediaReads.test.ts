@@ -362,4 +362,15 @@ describe('an audio of the old store above the whole-read limit on Android', () =
 
         expect(render!.source).toBe('memory-blob')
     })
+
+    test('guard: a Blob video over the limit in the old store is used as it is, not withheld', async () => {
+        h.android = true
+        const id = freshId()
+        const piece = new Blob([new Uint8Array(MIB)])
+        h.legacy.set(id, asset(new Blob([...Array.from({ length: 64 }, () => piece), new Uint8Array(1)]), { name: 'big.mp4' }))
+
+        const render = await getInlayRender(id)
+
+        expect(render!.source).toBe('memory-blob')
+    })
 })

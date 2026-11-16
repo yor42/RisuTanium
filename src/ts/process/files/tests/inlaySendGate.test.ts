@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { ANDROID_STRING_MEDIA_DISPLAY_LIMIT_BYTES, INLAY_SEND_LIMIT_BYTES, inlayImageWithheld, inlayReadVerdict, inlaySendVerdict, withheldStringMediaKind } from '../inlaySendGate'
+import { ANDROID_BLOB_VIDEO_DISPLAY_LIMIT_BYTES, ANDROID_STRING_MEDIA_DISPLAY_LIMIT_BYTES, INLAY_SEND_LIMIT_BYTES, blobVideoWholeReadWithheld, inlayImageWithheld, inlayReadVerdict, inlaySendVerdict, withheldStringMediaKind } from '../inlaySendGate'
+import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES } from '../../../storage/assetUrlGate'
 import { LLMFlags } from '../../../model/types'
 import type { InlaySummary } from '../inlayStore'
 
@@ -147,5 +148,30 @@ describe('withheldStringMediaKind', () => {
         expect(withheldStringMediaKind('image', LIMIT + 1, true)).toBeNull()
         expect(withheldStringMediaKind('signature', LIMIT + 1, true)).toBeNull()
         expect(withheldStringMediaKind(undefined, LIMIT + 1, true)).toBeNull()
+    })
+})
+
+describe('blobVideoWholeReadWithheld', () => {
+    const LIMIT = ANDROID_BLOB_VIDEO_DISPLAY_LIMIT_BYTES
+
+    test('the limit is the whole-read limit, 64 MiB', () => {
+        expect(LIMIT).toBe(ANDROID_WHOLE_READ_URL_LIMIT_BYTES)
+        expect(LIMIT).toBe(64 * MIB)
+    })
+
+    test('is true for a video above the limit on Android', () => {
+        expect(blobVideoWholeReadWithheld('video', LIMIT + 1, true)).toBe(true)
+    })
+
+    test('is false at exactly the limit, of an unknown size, or off Android', () => {
+        expect(blobVideoWholeReadWithheld('video', LIMIT, true)).toBe(false)
+        expect(blobVideoWholeReadWithheld('video', null, true)).toBe(false)
+        expect(blobVideoWholeReadWithheld('video', LIMIT + 1, false)).toBe(false)
+    })
+
+    test('is false for an audio, an image, a signature or an unknown type, however large', () => {
+        for (const type of ['audio', 'image', 'signature', undefined] as const) {
+            expect(blobVideoWholeReadWithheld(type, LIMIT + 1, true)).toBe(false)
+        }
     })
 })
