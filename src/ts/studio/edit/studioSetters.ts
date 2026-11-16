@@ -130,7 +130,7 @@ export function resolveLiveTarget(owner: OwnerKey, openModuleId?: () => string |
     return chat ? { ok: true, target: { character: live, chat } } : { ok: false, reason: 'no-unique-chat' }
 }
 
-function fmValueOf(chat: Chat): FmValue {
+export function fmValueOf(chat: Chat): FmValue {
     return typeof chat.fmIndex === 'number' ? { had: true, value: chat.fmIndex } : { had: false }
 }
 
@@ -210,8 +210,9 @@ export interface EditBuild {
     writes: WriteOp[]
     // Identifies a coalescible edit; null for add and delete.
     coalesceKey: string | null
-    // A greeting delete on a chat without a unique id also sets `fmIndex = -1` on `chats[chatPage]`.
-    pageFm: boolean
+    // A list edit that moves the context chat's first message, on a chat without a unique id, also sets `fmIndex` to
+    // this value on `chats[chatPage]` (delete passes -1). Null: no page write.
+    pageFm: number | null
 }
 
 export type EditBuildResult = EditBuild | { ok: false; reason: 'precondition' | 'unchanged' }
@@ -237,24 +238,57 @@ export function buildFieldEdit(path: SetPath, value: string | boolean, live: Liv
         ops: [{ op: 'set', path, before, after }],
         writes: [{ op: 'set', path, value: after }],
         coalesceKey: coalesce ? path : null,
-        pageFm: false,
+        pageFm: null,
     }
 }
 
-export function buildGreetingAdd(live: LiveReader): EditBuildResult {
+// The step part that moves the context chat (`chats[chatPage]`) to `after`: its `chatFm` op, the write when the chat
+// has a unique id, and the page write when it has none (the op then records `chatId: null`, which an undo cannot
+// replay). Null when the character has no context chat.
+export function chatFmFollow(target: LiveTarget, after: number): { op: Op; write: WriteOp | null; pageFm: number | null } | null {
+    const context = target.character.chats?.[target.character.chatPage]
+    if (!context) {
+        return null
+    }
+    const chatId = context.id && uniqueChatById(target.character.chats, context.id) === context ? context.id : null
+    const next: FmValue = { had: true, value: after }
+    return {
+        op: { op: 'chatFm', chatId, before: fmValueOf(context), after: next },
+        write: chatId === null ? null : { op: 'chatFm', chatId, value: next },
+        pageFm: chatId === null ? after : null,
+    }
+}
+
+// An append may make the stored index of a chat that reads as the default (an integer at or past the old length) name
+// an appended entry. The step pins every such chat to -1, so the appended text never becomes its first message silently.
+export function staleFmPin(target: LiveTarget | undefined, oldLength: number): { op: Op; write: WriteOp | null; pageFm: number | null } | null {
+    if (!target) {
+        return null
+    }
+    const context = target.character.chats?.[target.character.chatPage]
+    if (!context || typeof context.fmIndex !== 'number' || !Number.isInteger(context.fmIndex) || context.fmIndex < oldLength) {
+        return null
+    }
+    return chatFmFollow(target, -1)
+}
+
+// `target` is optional so that a caller with no chat context builds the bare insert; the service always passes it.
+export function buildGreetingAdd(live: LiveReader, target?: LiveTarget): EditBuildResult {
     const list = live.greetings()
     if (list === null) {
         return { ok: false, reason: 'precondition' }
     }
     const index = list.length
-    return {
-        ok: true,
-        label: { kind: 'greetingAdd' },
-        ops: [{ op: 'listInsert', index, value: '' }],
-        writes: [{ op: 'listInsert', index, value: '' }],
-        coalesceKey: null,
-        pageFm: false,
+    const ops: Op[] = [{ op: 'listInsert', index, value: '' }]
+    const writes: WriteOp[] = [{ op: 'listInsert', index, value: '' }]
+    const pin = staleFmPin(target, index)
+    if (pin) {
+        ops.push(pin.op)
+        if (pin.write) {
+            writes.push(pin.write)
+        }
     }
+    return { ok: true, label: { kind: 'greetingAdd' }, ops, writes, coalesceKey: null, pageFm: pin?.pageFm ?? null }
 }
 
 export function buildGreetingEdit(index: number, value: string, live: LiveReader): EditBuildResult {
@@ -272,7 +306,7 @@ export function buildGreetingEdit(index: number, value: string, live: LiveReader
         ops: [{ op: 'listSet', index, before, after: value }],
         writes: [{ op: 'listSet', index, value }],
         coalesceKey: `alternateGreetings:${index}`,
-        pageFm: false,
+        pageFm: null,
     }
 }
 
@@ -287,17 +321,14 @@ export function buildGreetingDelete(index: number, deletedId: string, target: Li
     }
     const ops: Op[] = [{ op: 'listRemove', index, value, deletedId }]
     const writes: WriteOp[] = [{ op: 'listRemove', index }]
-    let pageFm = false
-    const context = target.character.chats?.[target.character.chatPage]
-    if (context) {
-        const chatId = context.id && uniqueChatById(target.character.chats, context.id) === context ? context.id : null
-        const after: FmValue = { had: true, value: -1 }
-        ops.push({ op: 'chatFm', chatId, before: fmValueOf(context), after })
-        if (chatId === null) {
-            pageFm = true
-        } else {
-            writes.push({ op: 'chatFm', chatId, value: after })
+    let pageFm: number | null = null
+    const follow = chatFmFollow(target, -1)
+    if (follow) {
+        ops.push(follow.op)
+        if (follow.write) {
+            writes.push(follow.write)
         }
+        pageFm = follow.pageFm
     }
     return { ok: true, label: { kind: 'greetingRemove' }, ops, writes, coalesceKey: null, pageFm }
 }
@@ -412,7 +443,7 @@ function writeCharacterFolder(live: character, folder: AssetWriteExtras['folder'
 }
 
 // The body of the one `writeLiveCharacter` call of a character owner's action.
-export function applyCharacterWrites(live: character | groupChat, writes: readonly WriteOp[], pageFm: boolean, extras?: AssetWriteExtras): void {
+export function applyCharacterWrites(live: character | groupChat, writes: readonly WriteOp[], pageFm: number | null, extras?: AssetWriteExtras): void {
     if (live.type === 'group') {
         return
     }
@@ -473,10 +504,10 @@ export function applyCharacterWrites(live: character | groupChat, writes: readon
     if (emotionRemoved) {
         clearCharEmotionCache(live.chaId)
     }
-    if (pageFm) {
+    if (pageFm !== null) {
         const page = live.chats?.[live.chatPage]
         if (page) {
-            page.fmIndex = -1
+            page.fmIndex = pageFm
         }
     }
 }

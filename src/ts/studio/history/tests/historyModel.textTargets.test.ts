@@ -190,7 +190,7 @@ function landCharacter(state: ModelState, c: TestCharacter, ops: Op[]): Landed {
         throw new Error('the step does not apply to the character')
     }
     const next = commitOf(state, reader, ops)
-    applyCharacterWrites(asCharacter(c), writes, false)
+    applyCharacterWrites(asCharacter(c), writes, null)
     return { state: next, writes }
 }
 
@@ -199,7 +199,7 @@ function replayCharacter(state: ModelState, c: TestCharacter, direction: 'undo' 
     if (plan.ok === false) {
         throw new Error(`replay refused: ${plan.reason}`)
     }
-    applyCharacterWrites(asCharacter(c), plan.writes, false)
+    applyCharacterWrites(asCharacter(c), plan.writes, null)
     return { state: applyReplayMove(state, direction, plan, 100, 'v1'), plan }
 }
 
@@ -445,7 +445,7 @@ describe('a revert and a restore point carry the first message and the example m
             coalesceKey: null,
             replacesRestore: true,
         })
-        applyCharacterWrites(asCharacter(c), built.writes, false)
+        applyCharacterWrites(asCharacter(c), built.writes, null)
         return next
     }
 
@@ -464,7 +464,7 @@ describe('a revert and a restore point carry the first message and the example m
                 { op: 'set', path: 'firstMessage', before: { had: true, value: 'first smile message' }, after: { had: true, value: 'first smile2 message' } },
             ]),
         )
-        applyCharacterWrites(asCharacter(c), plan.writes, false)
+        applyCharacterWrites(asCharacter(c), plan.writes, null)
         expect(c.firstMessage).toBe('first smile2 message')
         expect(c.desc).toBe('desc one')
         stepCounter += 1

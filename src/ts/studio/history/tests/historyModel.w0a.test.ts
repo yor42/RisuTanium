@@ -164,9 +164,9 @@ describe('CD-1: records holding the new constructs on the merged base', () => {
         expect(readable('module', { done: [rawStep([rawSet('customModuleToggle')])] })).toBeNull()
     })
 
-    test('a greetingSwap label is refused whole', () => {
-        const swap = { kind: 'greetingSwap' }
-        expect(readable('character', { done: [rawStep([], swap)] })).toBeNull()
+    test('an unknown label kind is refused whole', () => {
+        const unknown = { kind: 'greetingFuture' }
+        expect(readable('character', { done: [rawStep([], unknown)] })).toBeNull()
     })
 })
 
