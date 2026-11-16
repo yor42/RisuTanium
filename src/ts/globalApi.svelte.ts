@@ -77,7 +77,8 @@ import { getColdStorageItem } from "./process/coldstorage.svelte";
 import { isTauri, isNodeServer } from "./platform";
 import { isLocalNetworkUrl } from "./network/localNetwork";
 import { decodeProxyJobWsChunk, formatProxyStreamErrorMessage, parseProxyJobWsEvent } from "./network/proxyJobWs";
-import { getNodeServerProxyAuth } from "./storage/nodeStorage";
+import { getNodeServerProxyAuth, NodeStorage } from "./storage/nodeStorage";
+import { peerCommitWake, startNodePeerFeed } from "./storage/store2/nodePeerFeed";
 import { assertNoSecretRef, redactResolved } from "./secretRef";
 import { getMultiTabAction, isRevisionAwareBackend, nextAutoReloadHistory, resolvePromptChoice, resolveRevisionAwarePromptChoice, readAutoReloadHistory, writeAutoReloadHistory, shouldRetainOtherTabSavedSignal, type AutoReloadHistory } from "./storage/multiTabReload";
 import { hasLocalDrafts } from "./localDrafts";
@@ -2138,6 +2139,16 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
     saveLoopUnsaved = () => dirtySinceLastSave
     function saveTimeoutExecute(markDirty = true) {
         scheduler.schedule(markDirty)
+    }
+
+    // The Node server's commit-key feed only wakes the peer check, through the flag the broadcast path sets: it counts no
+    // save mark, marks nothing dirty and takes no idle-net slot. A page without it loses promptness, nothing else.
+    const nodeStorage = forageStorage.realStorage
+    if (isNodeServer && nodeStorage instanceof NodeStorage) {
+        startNodePeerFeed({
+            authHeader: () => nodeStorage.authHeader(),
+            onPeerCommit: peerCommitWake(() => { peerHeard = true }, () => scheduler.wakeIdle()),
+        })
     }
 
     // The boot window still counts what the effects below cannot see; with no encoder to initialise it is empty
