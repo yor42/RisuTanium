@@ -28,13 +28,13 @@ const ALL_SET_PATHS: readonly SetPath[] = ['desc', 'firstMessage', 'exampleMessa
 const EXPECTED_SET: Record<OwnerKind, readonly SetPath[]> = {
     character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon'],
     chat: ['note'],
-    module: [],
+    module: ['customModuleToggle'],
 }
 
 const EXPECTED_RESTORE: Record<OwnerKind, readonly RestorePath[]> = {
     character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'alternateGreetings'],
     chat: ['note'],
-    module: [],
+    module: ['customModuleToggle'],
 }
 
 function fieldValue(path: RestorePath, value: string): unknown {
@@ -132,17 +132,19 @@ describe('rule K: isOpAllowedFor is the acceptance the parser applies', () => {
         }
     })
 
-    test('a chat owner holds only set note; a module holds only asset ops and text edits; a character holds every op but module-only paths', () => {
+    test('a chat owner holds only set note; a module holds only asset ops, text edits and set customModuleToggle; a character holds every op but module-only paths', () => {
         const allowed = (kind: OwnerKind): string[] => ops.filter(({ op }) => isOpAllowedFor(kind, op)).map(({ name }) => name)
         expect(allowed('chat')).toEqual(['set note'])
-        expect(allowed('module')).toEqual(ops.map(({ name }) => name).filter((name) => !name.startsWith('set ') && !LIST_NAMES.includes(name)))
+        expect(allowed('module')).toEqual(
+            ops.map(({ name }) => name).filter((name) => name === 'set customModuleToggle' || (!name.startsWith('set ') && !LIST_NAMES.includes(name))),
+        )
         expect(allowed('character')).toEqual(ops.map(({ name }) => name).filter((name) => name !== 'set note'))
     })
 
     test('the text paths of a kind are its row without the boolean field', () => {
         expect([...textPathsFor('character')]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle'])
         expect([...textPathsFor('chat')]).toEqual(['note'])
-        expect([...textPathsFor('module')]).toEqual([])
+        expect([...textPathsFor('module')]).toEqual(['customModuleToggle'])
     })
 })
 
@@ -160,8 +162,16 @@ describe('CD-1: records holding the new constructs on the merged base', () => {
         expect(readable('character', { done: [rawStep([op])] })?.done[0].ops).toEqual([op])
     })
 
-    test('a module record with set customModuleToggle is refused whole', () => {
-        expect(readable('module', { done: [rawStep([rawSet('customModuleToggle')])] })).toBeNull()
+    test('a module record with a set on any path but customModuleToggle, or a restore key of one, is refused whole', () => {
+        for (const path of ALL_SET_PATHS.filter((entry) => entry !== 'customModuleToggle')) {
+            expect(readable('module', { done: [rawStep([rawSet(path)])] }), `set ${path}`).toBeNull()
+            const fields = { [path]: { before: fieldValue(path, 'a'), last: fieldValue(path, 'b') } }
+            expect(readable('module', { restore: { visitId: 'v1', at: 1, fields } }), `restore ${path}`).toBeNull()
+        }
+        const toggle = rawSet('customModuleToggle')
+        expect(readable('module', { done: [rawStep([toggle], { kind: 'field', field: 'customModuleToggle' })] })?.done[0].ops).toEqual([toggle])
+        const fields = { customModuleToggle: { before: fieldValue('customModuleToggle', 'a'), last: fieldValue('customModuleToggle', 'b') } }
+        expect(readable('module', { restore: { visitId: 'v1', at: 1, fields } })?.restore?.fields.customModuleToggle).toBeDefined()
     })
 
     test('an unknown label kind is refused whole', () => {

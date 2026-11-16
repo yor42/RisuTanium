@@ -855,11 +855,21 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             if (intent.kind === 'text' && !textPathsFor(ownerKind).includes(intent.path)) {
                 return refused('precondition')
             }
-            if (target === null) {
+            // A text intent reads only the live reader, so it needs no character target: a module owner has none and
+            // still carries `customModuleToggle`. Every edit intent is refused without a character target.
+            if (intent.kind === 'edit' && target === null) {
                 return refused('gone')
             }
             const id = stepIdFor(pageSession, ++counter)
-            const built = intent.kind === 'text' ? buildFieldEdit(intent.path, intent.value, live, intent.coalesce) : intent.build(id, live, target)
+            let built: EditBuildResult
+            if (intent.kind === 'text') {
+                built = buildFieldEdit(intent.path, intent.value, live, intent.coalesce)
+            } else if (target === null) {
+                // Unreachable: an edit intent without a target was refused above.
+                built = { ok: false, reason: 'precondition' }
+            } else {
+                built = intent.build(id, live, target)
+            }
             if (built.ok === false) {
                 return built.reason === 'unchanged' ? { ok: true, unchanged: true } : refused('precondition')
             }

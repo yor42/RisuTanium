@@ -184,10 +184,10 @@ function rowsOfList(value: unknown): readonly (readonly string[])[] | null {
 }
 
 // The reader of a module owner: asset rows of `assets`, the folder document under its prefixed key, and the module's
-// own registry texts. A module has no fields, first messages or chats.
+// own registry texts. A module has no first messages or chats, and its only field is the toggle definition.
 export function createModuleLiveReader(module: RisuModule): LiveReader {
     return {
-        field: () => ({ had: false }),
+        field: (path) => (path === 'customModuleToggle' && typeof module.customModuleToggle === 'string' ? { had: true, value: module.customModuleToggle } : { had: false }),
         greetings: () => null,
         fmIndex: () => null,
         text(target) {
@@ -563,6 +563,13 @@ export function buildWrittenModule(live: RisuModule, writes: readonly WriteOp[],
             }
         } else if (write.op === 'textSet') {
             writeModuleText(next, write.target, write.value)
+        } else if (write.op === 'set' && write.path === 'customModuleToggle') {
+            // An absent value deletes the optional key on the copy; the live module is never written.
+            if (write.value.had && typeof write.value.value === 'string') {
+                next.customModuleToggle = write.value.value
+            } else {
+                delete next.customModuleToggle
+            }
         }
     }
     if (rows) {
