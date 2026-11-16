@@ -9,7 +9,7 @@
  */
 
 export type TokenizerId = 'o200k_base' | 'cl100k_base' | 'mistral' | 'llama' | 'novelai' | 'claude' | 'novellist'
-    | 'gemma' | 'cohere' | 'deepseek' | 'deepseek-v4' | 'glm4' | 'glm5' | 'gguf' | 'plugin'
+    | 'gemma' | 'cohere' | 'deepseek' | 'deepseek-v4' | 'glm4' | 'glm5' | 'plugin'
 
 /** `online-only` models are counted by a remote service, which the editor never calls. */
 export type TokenRoute = { kind: 'local'; tokenizer: TokenizerId } | { kind: 'online-only' }

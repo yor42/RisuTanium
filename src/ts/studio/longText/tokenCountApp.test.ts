@@ -98,7 +98,7 @@ describe('A2-u4 resolveTokenRoute', () => {
             [LLMTokenizer.Gemma, local('gemma'), local('gemma')],
             [LLMTokenizer.GoogleCloud, local('gemma'), { kind: 'online-only' }],
             [LLMTokenizer.Cohere, local('cohere'), local('cohere')],
-            [LLMTokenizer.Local, local('gguf'), local('gguf')],
+            [LLMTokenizer.Local, local('cl100k_base'), local('cl100k_base')],
             [LLMTokenizer.DeepSeek, local('deepseek'), local('deepseek')],
             [LLMTokenizer.DeepSeekV4, local('deepseek-v4'), local('deepseek-v4')],
             [LLMTokenizer.GLM4, local('glm4'), local('glm4')],
