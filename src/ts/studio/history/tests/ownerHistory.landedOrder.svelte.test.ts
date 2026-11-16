@@ -125,6 +125,18 @@ describe('a callback that throws after a landed write leaves the step with its s
         expect(harness.store.counts.save).toBe(saved + 1)
     })
 
+    test('a throwing landed callback after a whole-value text edit in ready: the step is on top and its save runs', async () => {
+        const saved = await readyAndSettled()
+        harness.throwOnLanded = true
+
+        expect(() => harness.service.editText(A, 'desc', 'typed', 'single')).toThrow('onLanded')
+
+        expect(harness.service.view(A).done.map((step) => step.label)).toEqual([{ kind: 'field', field: 'desc' }])
+        expect(live().desc).toBe('typed')
+        await harness.clock.advance(SAVE_DEBOUNCE_MS)
+        expect(harness.store.counts.save).toBe(saved + 1)
+    })
+
     test('a throwing landed callback after a replay that finds its step already in place: the move is saved', async () => {
         await readyAndSettled()
         expect(harness.service.editField(A, 'desc', 'typed').ok).toBe(true)
