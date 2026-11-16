@@ -14,7 +14,7 @@ import {
     dropInlayRender,
     type InlayRender,
 } from "./inlayRenderCache";
-import { inlayImageWithheld, inlayReadVerdict, withheldStringMediaKind } from "./inlaySendGate";
+import { blobVideoWholeReadWithheld, inlayImageWithheld, inlayReadVerdict, withheldStringMediaKind } from "./inlaySendGate";
 import {
     fieldsOf,
     inFlight,
@@ -312,16 +312,16 @@ function renderOfAsset(img: InlayAsset): { render: InlayRender, objectUrl: strin
 /**
  * How a Blob inlay of the app store reaches the page without being read into
  * memory: the store's own URL, else an object URL over the Blob the store holds.
- * `null` when neither applies, and the bytes are read instead. The store's URL is
- * skipped for a video on Android, where a video served from a file stalls; a
- * store that cannot give a URL (the Node server without an asset token) is
- * skipped too. An image the platform withholds never reaches here: the render
- * decides that from the record before any delivery. A string video or audio it
- * withholds is not a Blob record and never reaches here either.
+ * `null` when neither applies, and the render reads the bytes instead, except for a
+ * Blob video that Android would read whole above its limit, which the render
+ * withholds. A store that cannot give a URL (the Node server without an asset
+ * token) is skipped. An image the platform withholds never reaches here: the
+ * render decides that from the record before any delivery. A string video or
+ * audio it withholds is not a Blob record and never reaches here either.
  */
 async function deliverStoredInlay(store: ByteStore, record: InlayRecord): Promise<{ render: InlayRender, objectUrl: string | null } | null> {
     const type = typeof record.fields.type === 'string' ? record.fields.type : ''
-    if(store.urlFor !== undefined && !(type === 'video' && isAndroidTransport())){
+    if(store.urlFor !== undefined){
         try {
             return { render: { type, url: await store.urlFor(record.body), source: 'store-url' }, objectUrl: null }
         } catch {
@@ -380,6 +380,10 @@ async function resolveInlayRender(id: string): Promise<{ render: InlayRender, ob
             const delivered = await deliverStoredInlay(store, record)
             if(delivered !== null){
                 return delivered
+            }
+            // Nothing delivered the body, so it would be read whole: a Blob video Android would read whole is named by its record alone.
+            if(blobVideoWholeReadWithheld(record.fields.type, inlayRecordSize(record), isAndroidTransport())){
+                return withheldRender('video', record.fields.name, id, inlayRecordSize(record))
             }
         }
         const img = await readAppInlayBody(store, id, record)
@@ -503,7 +507,7 @@ export type InlayDraftPreview =
 
 /**
  * The preview of a staged attachment, or `null` when there is no such inlay. No body is read into the
- * page as a data URI: a video on Android, where it would be read whole, is a chip; everything else is
+ * page as a data URI: a video on Android is always a chip; everything else is
  * shown through the render of the id (which the sent message reuses). A signature, an unknown type, a
  * file the render withholds (an image, or a string video or audio, over the Android limit) and a render
  * that cannot be had are chips.

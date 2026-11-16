@@ -55,6 +55,19 @@ export function withheldStringMediaKind(type: unknown, size: number | null, andr
     return null
 }
 
+/** The size above which Android does not read a Blob video whole to show it. */
+export const ANDROID_BLOB_VIDEO_DISPLAY_LIMIT_BYTES = ANDROID_WHOLE_READ_URL_LIMIT_BYTES
+
+/**
+ * Whether a Blob video is one this platform does not read whole to show: on Android a video above the
+ * limit that the store could deliver neither by URL nor as a stored Blob. The caller asks this only after
+ * that delivery came back empty, so a video with a URL or a stored Blob is never withheld. Decided from the
+ * type and the record's length alone. An unknown size is not withheld; no other type is withheld here.
+ */
+export function blobVideoWholeReadWithheld(type: unknown, size: number | null, android: boolean): boolean {
+    return android && type === 'video' && size !== null && size > ANDROID_BLOB_VIDEO_DISPLAY_LIMIT_BYTES
+}
+
 export type InlayReadVerdict = 'read' | 'too-large'
 
 /**
