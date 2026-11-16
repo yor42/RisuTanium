@@ -257,7 +257,7 @@ describe('the op builders', () => {
         const unique = buildGreetingDelete(1, 'd1', targetOf(live), createLiveReader(targetOf(live)))
         expect(unique).toMatchObject({
             ok: true,
-            pageFm: false,
+            pageFm: null,
             ops: [
                 { op: 'listRemove', index: 1, value: 'g1', deletedId: 'd1' },
                 { op: 'chatFm', chatId: 'c1', before: { had: true, value: 2 }, after: { had: true, value: -1 } },
@@ -267,12 +267,12 @@ describe('the op builders', () => {
 
         const idless = makeCharacter('A', { chats: [{ note: '', fmIndex: 1 }] })
         const byIndex = buildGreetingDelete(0, 'd2', targetOf(idless), createLiveReader(targetOf(idless)))
-        expect(byIndex).toMatchObject({ ok: true, pageFm: true, ops: [{ op: 'listRemove' }, { op: 'chatFm', chatId: null }] })
+        expect(byIndex).toMatchObject({ ok: true, pageFm: -1, ops: [{ op: 'listRemove' }, { op: 'chatFm', chatId: null }] })
         expect(byIndex.ok && byIndex.writes).toEqual([{ op: 'listRemove', index: 0 }])
 
         const chatless = makeCharacter('A', { chats: [] })
         const noChat = buildGreetingDelete(0, 'd3', targetOf(chatless), createLiveReader(targetOf(chatless)))
-        expect(noChat).toMatchObject({ ok: true, pageFm: false, ops: [{ op: 'listRemove' }] })
+        expect(noChat).toMatchObject({ ok: true, pageFm: null, ops: [{ op: 'listRemove' }] })
         expect(buildGreetingDelete(9, 'd4', targetOf(live), createLiveReader(targetOf(live)))).toEqual({ ok: false, reason: 'precondition' })
     })
 })
@@ -280,9 +280,9 @@ describe('the op builders', () => {
 describe('the write functions', () => {
     test('a field set to absent deletes the key; it never assigns false or undefined', () => {
         const live = makeCharacter('A', { hideChatIcon: true })
-        applyCharacterWrites(live as unknown as character, [{ op: 'set', path: 'hideChatIcon', value: { had: false } }], false)
+        applyCharacterWrites(live as unknown as character, [{ op: 'set', path: 'hideChatIcon', value: { had: false } }], null)
         expect('hideChatIcon' in live).toBe(false)
-        applyCharacterWrites(live as unknown as character, [{ op: 'set', path: 'hideChatIcon', value: { had: true, value: false } }], false)
+        applyCharacterWrites(live as unknown as character, [{ op: 'set', path: 'hideChatIcon', value: { had: true, value: false } }], null)
         expect(live.hideChatIcon).toBe(false)
     })
 
@@ -294,7 +294,7 @@ describe('the write functions', () => {
                 { op: 'set', path: 'firstMessage', value: { had: true, value: 'f1' } },
                 { op: 'set', path: 'exampleMessage', value: { had: true, value: 'e1' } },
             ],
-            false,
+            null,
         )
         expect(live.firstMessage).toBe('f1')
         expect(live.exampleMessage).toBe('e1')
@@ -306,7 +306,7 @@ describe('the write functions', () => {
                 { op: 'set', path: 'exampleMessage', value: { had: false } },
                 { op: 'set', path: 'desc', value: { had: false } },
             ],
-            false,
+            null,
         )
         expect(live.firstMessage).toBe('f1')
         expect(live.exampleMessage).toBe('e1')
@@ -324,7 +324,7 @@ describe('the write functions', () => {
                 { op: 'chatFm', chatId: 'c1', value: { had: false } },
                 { op: 'chatFm', chatId: 'gone', value: { had: true, value: 9 } },
             ],
-            true,
+            -1,
         )
         expect(live.alternateGreetings).toEqual(['g1!', 'new', 'g2'])
         expect('fmIndex' in live.chats[0]).toBe(false)
@@ -333,7 +333,7 @@ describe('the write functions', () => {
 
     test('a group is never written', () => {
         const group = { type: 'group', chaId: 'G', alternateGreetings: ['g'] }
-        applyCharacterWrites(group as unknown as character, [{ op: 'listInsert', index: 0, value: 'x' }], false)
+        applyCharacterWrites(group as unknown as character, [{ op: 'listInsert', index: 0, value: 'x' }], null)
         expect(group.alternateGreetings).toEqual(['g'])
     })
 
@@ -433,7 +433,7 @@ describe('the asset reader and the asset owner writes', () => {
                 { op: 'assetRowRemove', array: 'additionalAssets', index: 0, tuple: ['smile', 'assets/smile.png', 'png'], count: 1 },
                 { op: 'assetFolderOrder', before: [], after: ['F'] },
             ],
-            false,
+            null,
             { folder: { kind: 'set', doc }, retained: () => ({ kind: 'set', value: [['smile', 'assets/smile.png']] }) },
         )
         expect(live.additionalAssets).toEqual([['grin', 'assets/grin.png', 'png']])
@@ -448,16 +448,16 @@ describe('the asset reader and the asset owner writes', () => {
         live.emotionImages = []
         live.extentions = { [ASSET_FOLDER_KEY]: { v: 1, additional: { order: ['F'], of: [] } } }
         const none = { retained: null }
-        applyCharacterWrites(live as unknown as character, [], false, { folder: { kind: 'remove' }, ...none })
+        applyCharacterWrites(live as unknown as character, [], null, { folder: { kind: 'remove' }, ...none })
         expect(live.extentions).toEqual({})
         expect(Object.hasOwn(live.extentions ?? {}, ASSET_FOLDER_KEY)).toBe(false)
 
         const bare = makeCharacter('A') as LiveCharacter & { additionalAssets: string[][]; emotionImages: string[][]; extentions?: Record<string, unknown> }
         bare.additionalAssets = rows()
         bare.emotionImages = []
-        applyCharacterWrites(bare as unknown as character, [], false, { folder: { kind: 'remove' }, ...none })
+        applyCharacterWrites(bare as unknown as character, [], null, { folder: { kind: 'remove' }, ...none })
         expect('extentions' in bare).toBe(false)
-        applyCharacterWrites(bare as unknown as character, [], false, { folder: { kind: 'set', doc: { v: 1 } }, ...none })
+        applyCharacterWrites(bare as unknown as character, [], null, { folder: { kind: 'set', doc: { v: 1 } }, ...none })
         expect(bare.extentions).toEqual({ [ASSET_FOLDER_KEY]: { v: 1 } })
     })
 
@@ -467,7 +467,7 @@ describe('the asset reader and the asset owner writes', () => {
         live.emotionImages = []
         ;(live as unknown as Record<string, unknown>)[ASSET_RETAINED_KEY] = [['old', 'assets/old.png']]
         const seen: unknown[] = []
-        applyCharacterWrites(live as unknown as character, [], false, {
+        applyCharacterWrites(live as unknown as character, [], null, {
             folder: { kind: 'keep' },
             retained: (existing) => {
                 seen.push(existing)

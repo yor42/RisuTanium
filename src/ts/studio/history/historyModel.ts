@@ -77,6 +77,9 @@ export type StepLabel =
     | { kind: 'greetingAdd' }
     | { kind: 'greetingRemove' }
     | { kind: 'greetingEdit' }
+    | { kind: 'greetingMove' }
+    | { kind: 'greetingSwap' }
+    | { kind: 'greetingAddMany'; count: number }
     | { kind: 'restorePoint' }
     | { kind: 'revert'; toStepId: string }
     | { kind: 'restoreDeleted'; deletedId: string }
@@ -253,8 +256,14 @@ function parseLabel(value: unknown): StepLabel | null {
         case 'greetingAdd':
         case 'greetingRemove':
         case 'greetingEdit':
+        case 'greetingMove':
+        case 'greetingSwap':
         case 'restorePoint':
             return { kind: value.kind }
+        case 'greetingAddMany':
+            return hasOnlyKeys(value, ['kind', 'count']) && isCount(value.count) && value.count >= 1
+                ? { kind: 'greetingAddMany', count: value.count }
+                : null
         case 'revert':
             return typeof value.toStepId === 'string' ? { kind: 'revert', toStepId: value.toStepId } : null
         case 'restoreDeleted':

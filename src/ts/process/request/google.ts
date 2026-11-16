@@ -60,7 +60,8 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
     let reformatedChat:GeminiChat[] = []
     let systemPrompt = ''
 
-    if(formated[0].role === 'system'){
+    // An empty list has no system instruction; the request then carries no contents.
+    if(formated.length > 0 && formated[0].role === 'system'){
         systemPrompt = formated[0].content
         formated.shift()
     }

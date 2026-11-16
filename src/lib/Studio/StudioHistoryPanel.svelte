@@ -168,6 +168,9 @@
             case 'greetingAdd': return language.studioStepGreetingAdd
             case 'greetingRemove': return language.studioStepGreetingRemove
             case 'greetingEdit': return language.studioStepGreetingEdit
+            case 'greetingMove': return language.studioStepGreetingMove
+            case 'greetingSwap': return language.studioStepGreetingSwap
+            case 'greetingAddMany': return language.studioStepGreetingAddMany(label.count)
             case 'restorePoint': return language.studioStepRestorePoint
             case 'revert': return language.studioStepRevert
             case 'restoreDeleted': return language.studioStepRestoreDeleted

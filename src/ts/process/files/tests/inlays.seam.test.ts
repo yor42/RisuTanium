@@ -297,7 +297,7 @@ describe('the source a render is delivered from', () => {
         expect(await textOf(objectUrls.get(render.url)!)).toBe('abc')
     })
 
-    test('a video on the Android transport is read into memory even where the store serves URLs, and an image is not', async () => {
+    test('a video and an image on the Android transport are both served by the store\'s URL', async () => {
         const store = useStore({ urlFor: true })
         h.android = true
         const video = freshId()
@@ -305,9 +305,13 @@ describe('the source a render is delivered from', () => {
         await setInlayAsset(video, asset(new Blob(['v'], { type: 'video/mp4' })))
         await setInlayAsset(image, asset(new Blob(['i'], { type: 'image/png' }), { type: 'image' }))
 
-        expect((await getInlayRender(video))!.source).toBe('memory-blob')
+        store.reads.length = 0
+
+        expect((await getInlayRender(video))!.source).toBe('store-url')
         expect((await getInlayRender(image))!.source).toBe('store-url')
-        expect(store.urlRequests.length).toBe(1)
+        expect(store.urlRequests.length).toBe(2)
+        expect(store.reads.filter((key) => key.startsWith('inlays/b-'))).toEqual([])
+        expect(createdCount).toBe(0)
     })
 
     test('a store that keeps Blobs shows a retyped view of the Blob it holds through an object URL', async () => {

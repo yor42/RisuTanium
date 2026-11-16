@@ -27,6 +27,7 @@ import {
     type FolderIntent,
     type SurvivorDeps,
 } from '../edit/assetSetters'
+import { buildGreetingAppendMany, buildGreetingMove, buildGreetingSwap } from '../edit/greetingListOps'
 import {
     applyCharacterWrites,
     applyChatWrites,
@@ -223,6 +224,12 @@ export interface OwnerHistoryService {
     greetingAdd(owner: OwnerKey): StudioResult
     greetingEdit(owner: OwnerKey, index: number, value: string): StudioResult
     greetingDelete(owner: OwnerKey, index: number): StudioResult
+    // Moves entry `from` to `to` (post-removal index); the context chat keeps showing the same text.
+    greetingMove(owner: OwnerKey, from: number, to: number): StudioResult
+    // Exchanges entry `index` with the default first message; the context chat keeps showing the same text.
+    greetingSwapWithMain(owner: OwnerKey, index: number): StudioResult
+    // Appends the values at the end of the list as one step.
+    greetingAppendMany(owner: OwnerKey, values: readonly string[]): StudioResult
     // Synchronous replays. With a file reader configured they refuse every row they would put back, because they have
     // no answers: callers use `replay`.
     undo(owner: OwnerKey): StudioResult
@@ -729,7 +736,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
 
     interface Planned {
         writes: readonly WriteOp[]
-        pageFm: boolean
+        pageFm: number | null
         // The plan changes no live value: the owner is neither written nor marked.
         noWrite?: true
         // A step that only moves because its change is already in place: its forward ops still get the removal
@@ -822,7 +829,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             )
             return {
                 writes: assetWrites,
-                pageFm: false,
+                pageFm: null,
                 notes: {},
                 // An asset step never joins an open step and never replaces the restore point, as a revert does not.
                 land: (state) =>
@@ -886,7 +893,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             }
             return {
                 writes: plan.writes,
-                pageFm: false,
+                pageFm: null,
                 ...(plan.already !== undefined || plan.dropStep ? { noWrite: true as const } : {}),
                 ...(plan.already !== undefined ? { forwardOps: intent.direction === 'undo' ? plan.ops.map(invertOp) : plan.ops } : {}),
                 notes: replayNotes(plan, goneNameOf(slot, intent, plan.goneRows)),
@@ -923,7 +930,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         return {
             writes: plan.writes,
-            pageFm: false,
+            pageFm: null,
             notes,
             land: (state) =>
                 commitStep(state, {
@@ -1311,7 +1318,13 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             applyStudioWrite(owner, { kind: 'edit', build: (_id, live) => buildFieldEdit(path, value, live) }),
         editText: (owner, path, value, mode = 'typing') =>
             applyStudioWrite(owner, { kind: 'text', path, value, coalesce: mode === 'typing' }),
-        greetingAdd: (owner) => applyStudioWrite(owner, { kind: 'edit', build: (_id, live) => buildGreetingAdd(live) }),
+        greetingAdd: (owner) => applyStudioWrite(owner, { kind: 'edit', build: (_id, live, target) => buildGreetingAdd(live, target) }),
+        greetingMove: (owner, from, to) =>
+            applyStudioWrite(owner, { kind: 'edit', build: (_id, live, target) => buildGreetingMove(from, to, target, live) }),
+        greetingSwapWithMain: (owner, index) =>
+            applyStudioWrite(owner, { kind: 'edit', build: (_id, live, target) => buildGreetingSwap(index, target, live) }),
+        greetingAppendMany: (owner, values) =>
+            applyStudioWrite(owner, { kind: 'edit', build: (_id, live, target) => buildGreetingAppendMany(values, target, live) }),
         greetingEdit: (owner, index, value) =>
             applyStudioWrite(owner, { kind: 'edit', build: (_id, live) => buildGreetingEdit(index, value, live) }),
         greetingDelete: (owner, index) =>

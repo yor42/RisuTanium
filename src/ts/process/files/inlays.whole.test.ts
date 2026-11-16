@@ -5,13 +5,16 @@
  * The draft preview of it is a name and size chip. A string-stored audio or
  * video over the same limit is withheld the same way, from its record alone;
  * a Blob audio keeps its URL at any size, and nothing changes off Android.
+ * A Blob video is served by the store's URL like any other media; one the store
+ * cannot deliver by URL or Blob, and that is over the limit, is withheld from its
+ * record alone instead of being read whole.
  * The bodies are Blobs built from one shared 1 MiB piece, so no test holds
  * more than that.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { resetBusyActionsForTest } from '../memory/busyActions'
-import { createMemoryByteStore, type MemoryByteStore } from './tests/memoryByteStore'
+import { createMemoryByteStore, type MemoryByteStore, type MemoryByteStoreOptions } from './tests/memoryByteStore'
 import { getInlayDraftPreview, getInlayRender, setInlayAsset, type InlayAsset } from './inlays'
 import { cachedInlayRender, dropInlayRender } from './inlayRenderCache'
 import { withInlayLock, writeAppInlay } from './inlayStore'
@@ -79,8 +82,12 @@ function blobOfSize(mib: number, extra: number, type: string): Blob {
     return new Blob(parts, { type })
 }
 
-function asset(data: Blob, type: 'image' | 'audio'): InlayAsset {
+function asset(data: Blob, type: 'image' | 'audio' | 'video'): InlayAsset {
     return { name: 'n.bin', ext: 'bin', type, data } as InlayAsset
+}
+
+function video(data: Blob): InlayAsset {
+    return { name: 'big.mp4', ext: 'mp4', type: 'video', data } as InlayAsset
 }
 
 interface StringMediaSpec {
@@ -372,5 +379,177 @@ describe('a string audio or video above the whole-read limit on Android', () => 
 
         expect(render).toBeNull()
         expect(bodyKeys(store.reads).length).toBeGreaterThan(0)
+    })
+})
+
+describe('a Blob video above the whole-read limit on Android', () => {
+    const LIMIT = ANDROID_WHOLE_READ_URL_LIMIT_BYTES
+    const bodyKeys = (keys: string[]) => keys.filter((key) => key.startsWith('inlays/b-'))
+    const failingUrl = async (): Promise<string> => { throw new Error('no token') }
+    const WITHHELD = (size: number) => ({ type: 'video', url: '', source: 'withheld', name: 'big.mp4', size })
+
+    /** The Android store: it keeps Blobs and serves URLs, but has no `readBlob`. `keepReadBlob` offers one that finds nothing. */
+    function useAndroidStore(urlFor: MemoryByteStoreOptions['urlFor'], keepReadBlob = false): MemoryByteStore {
+        store = createMemoryByteStore({ blobs: true, urlFor })
+        if (keepReadBlob) {
+            store.readBlob = async () => null
+        } else {
+            delete store.readBlob
+        }
+        injectAppStore(store)
+        return store
+    }
+
+    /** Writes the video, then makes any read of a body key fail so a whole read is recorded without being allocated. */
+    async function writeVideo(mib: number, extra: number): Promise<string> {
+        const id = freshId()
+        renderedIds.push(id)
+        await setInlayAsset(id, video(blobOfSize(mib, extra, 'video/mp4')))
+        store.failRead = (key) => (key.startsWith('inlays/b-') ? new Error('whole read') : null)
+        store.reads.length = 0
+        store.blobReads.length = 0
+        store.urlRequests.length = 0
+        return id
+    }
+
+    test('reproducer: a video over the limit on the store Android has is delivered by its URL and cached', async () => {
+        useAndroidStore(true)
+        const id = await writeVideo(64, 1)
+
+        const render = await getInlayRender(id)
+
+        expect(render).toEqual({ type: 'video', url: `mem://${[...store.blobs.keys()].find((key) => key.startsWith('inlays/b-'))}`, source: 'store-url' })
+        expect(bodyKeys(store.reads)).toEqual([])
+        expect(store.blobReads).toEqual([])
+        expect(store.urlRequests.length).toBe(1)
+        expect(URL.createObjectURL).not.toHaveBeenCalled()
+        const readsAfterFirst = store.reads.length
+        expect(await getInlayRender(id)).toEqual(render)
+        expect(store.urlRequests.length).toBe(1)
+        expect(store.reads.length).toBe(readsAfterFirst)
+        expect(cachedInlayRender(id)).toEqual(render)
+    })
+
+    test('reproducer: a video over the limit with no URL and no Blob read is withheld by name and size, and its body is not read', async () => {
+        useAndroidStore(undefined)
+        const id = await writeVideo(64, 1)
+
+        const render = await getInlayRender(id)
+
+        expect(render).toEqual(WITHHELD(LIMIT + 1))
+        expect(bodyKeys(store.reads)).toEqual([])
+        expect(store.blobReads).toEqual([])
+        expect(URL.createObjectURL).not.toHaveBeenCalled()
+    })
+
+    test('reproducer: a video over the limit whose URL cannot be had is withheld after the URL was asked for once', async () => {
+        useAndroidStore(failingUrl)
+        const id = await writeVideo(64, 1)
+
+        const render = await getInlayRender(id)
+
+        expect(render).toEqual(WITHHELD(LIMIT + 1))
+        expect(store.urlRequests.length).toBe(1)
+        expect(bodyKeys(store.reads)).toEqual([])
+        expect(URL.createObjectURL).not.toHaveBeenCalled()
+    })
+
+    test('reproducer: a video over the limit whose URL cannot be had and whose Blob read finds nothing is withheld', async () => {
+        useAndroidStore(failingUrl, true)
+        const id = await writeVideo(64, 1)
+
+        const render = await getInlayRender(id)
+
+        expect(render).toEqual(WITHHELD(LIMIT + 1))
+        expect(bodyKeys(store.reads)).toEqual([])
+    })
+
+    test('reproducer: the withheld render is cached and costs no further read', async () => {
+        useAndroidStore(undefined)
+        const id = await writeVideo(64, 1)
+        const first = await getInlayRender(id)
+        const readsBefore = store.reads.length
+
+        expect(cachedInlayRender(id)).toEqual(WITHHELD(LIMIT + 1))
+        expect(await getInlayRender(id)).toEqual(first)
+        expect(store.reads.length).toBe(readsBefore)
+    })
+
+    test('guard: a video of exactly the limit is read whole when nothing delivers it', async () => {
+        useAndroidStore(undefined)
+        const id = await writeVideo(64, 0)
+
+        await getInlayRender(id)
+
+        expect(bodyKeys(store.reads).length).toBe(1)
+        expect(cachedInlayRender(id)).toBeNull()
+    })
+
+    test('guard: a video of exactly the limit whose URL cannot be had is read whole', async () => {
+        useAndroidStore(failingUrl)
+        const id = await writeVideo(64, 0)
+
+        await getInlayRender(id)
+
+        expect(bodyKeys(store.reads).length).toBe(1)
+        expect(cachedInlayRender(id)).toBeNull()
+    })
+
+    test('guard: a small video that nothing delivers is read whole into a Blob', async () => {
+        useAndroidStore(undefined)
+        const id = freshId()
+        renderedIds.push(id)
+        await setInlayAsset(id, video(new Blob([new Uint8Array(3)], { type: 'video/mp4' })))
+
+        const render = await getInlayRender(id)
+
+        expect(render?.source).toBe('memory-blob')
+    })
+
+    test('guard: a video over the limit on a store with a Blob read is shown from the stored Blob', async () => {
+        store = createMemoryByteStore({ blobs: true })
+        injectAppStore(store)
+        const id = await writeVideo(64, 1)
+
+        const render = await getInlayRender(id)
+
+        expect(render?.source).toBe('stored-blob')
+        expect(bodyKeys(store.reads)).toEqual([])
+    })
+
+    test('guard: a video over the limit whose URL cannot be had is shown from the stored Blob', async () => {
+        store = createMemoryByteStore({ blobs: true, urlFor: failingUrl })
+        injectAppStore(store)
+        const id = await writeVideo(64, 1)
+
+        const render = await getInlayRender(id)
+
+        expect(render?.source).toBe('stored-blob')
+        expect(bodyKeys(store.reads)).toEqual([])
+    })
+
+    test('guard: off Android a video over the limit that nothing delivers is read, not withheld', async () => {
+        h.android = false
+        useAndroidStore(undefined)
+        const id = await writeVideo(64, 1)
+
+        await getInlayRender(id)
+
+        expect(bodyKeys(store.reads).length).toBe(1)
+        expect(cachedInlayRender(id)).toBeNull()
+    })
+
+    test('guard: an audio over the limit that nothing delivers is read, not withheld', async () => {
+        useAndroidStore(undefined)
+        const id = freshId()
+        renderedIds.push(id)
+        await setInlayAsset(id, asset(blobOfSize(64, 1, 'audio/mpeg'), 'audio'))
+        store.failRead = (key) => (key.startsWith('inlays/b-') ? new Error('whole read') : null)
+        store.reads.length = 0
+
+        await getInlayRender(id)
+
+        expect(bodyKeys(store.reads).length).toBe(1)
+        expect(cachedInlayRender(id)).toBeNull()
     })
 })

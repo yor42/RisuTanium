@@ -4,6 +4,7 @@ import { returnFocusAfterClose } from './layerFocus'
 import { DBState, selIdState, settingsOpen } from '../stores.svelte'
 import { studioEligible } from './studioSwitch.svelte'
 import { studioOpen } from './studioOpen'
+import { flushStudioFields } from './fieldFlush'
 import { clearClassicLinkRequest } from './classicLinks.svelte'
 import { resolveStudioTarget, type StudioNotice } from './resolveTarget'
 import { ownerKeyOf, type OwnerModel, type StudioKind } from './ownerModel'
@@ -128,6 +129,7 @@ function installWatchers(): void {
  * Settings is open. A second call while open starts a new visit.
  */
 export function openStudio(target: StudioTarget, opener: StudioOpener | null): boolean {
+    flushStudioFields('leave')
     if (!studioEligible()) return false
     if (get(settingsOpen)) return false
     const chaId = selectedStudioCharacterId()
@@ -158,6 +160,7 @@ export function closeStudio(): void {
  * that layout closes it and its Back handler goes with it.
  */
 export function setStudioLayout(next: StudioLayout): void {
+    if (next !== studioScreen.layout) flushStudioFields('leave')
     if (studioScreen.layout === 'drawer' && next !== 'drawer' && studioScreen.drawerOpen) {
         studioScreen.drawerOpen = false
         void returnFocusAfterClose('drawer', () => studioScreen.drawerOpen)
@@ -180,6 +183,7 @@ export function pickStudioItem(): void {
 
 /** The phone header title: shows the owner list. */
 export function showStudioList(): void {
+    flushStudioFields('leave')
     studioScreen.detailShown = false
     studioScreen.notice = null
 }
@@ -234,6 +238,7 @@ export function setStudioRestoreSheetOpen(open: boolean): void {
  * different owner closes the restore sheet, so the content it was opened over cannot change behind it.
  */
 export function setStudioSelection(ownerKey: string, kind: StudioKind | null, itemId: string | null): void {
+    flushStudioFields('leave')
     if (studioScreen.selectedOwnerKey !== ownerKey) studioScreen.restoreSheetOpen = false
     studioScreen.selectedOwnerKey = ownerKey
     studioScreen.selectedKind = kind
