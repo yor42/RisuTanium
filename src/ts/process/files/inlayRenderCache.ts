@@ -22,7 +22,7 @@ export type InlayRenderSource =
     | 'stored-blob'
     /** An object URL over a Blob the page holds: built in memory from the body bytes or a data URI, or the old store's own (disk-backed) Blob as read. */
     | 'memory-blob'
-    /** An image this platform does not load: there is no URL, and the render names the file. */
+    /** A file this platform does not load: there is no URL, and the render names the file. */
     | 'withheld'
 
 export type InlayRender =
@@ -34,7 +34,7 @@ export type InlayRender =
         source: Exclude<InlayRenderSource, 'withheld'>
     }
     | {
-        type: 'image'
+        type: 'image' | 'video' | 'audio'
         url: ''
         source: 'withheld'
         /** The file's name, or its id when it has none. */

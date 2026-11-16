@@ -14,7 +14,7 @@ import {
     dropInlayRender,
     type InlayRender,
 } from "./inlayRenderCache";
-import { inlayImageWithheld, inlayReadVerdict } from "./inlaySendGate";
+import { inlayImageWithheld, inlayReadVerdict, withheldStringMediaKind } from "./inlaySendGate";
 import {
     fieldsOf,
     inFlight,
@@ -316,7 +316,8 @@ function renderOfAsset(img: InlayAsset): { render: InlayRender, objectUrl: strin
  * skipped for a video on Android, where a video served from a file stalls; a
  * store that cannot give a URL (the Node server without an asset token) is
  * skipped too. An image the platform withholds never reaches here: the render
- * decides that from the record before any delivery.
+ * decides that from the record before any delivery. A string video or audio it
+ * withholds is not a Blob record and never reaches here either.
  */
 async function deliverStoredInlay(store: ByteStore, record: InlayRecord): Promise<{ render: InlayRender, objectUrl: string | null } | null> {
     const type = typeof record.fields.type === 'string' ? record.fields.type : ''
@@ -341,6 +342,18 @@ async function deliverStoredInlay(store: ByteStore, record: InlayRecord): Promis
     return null
 }
 
+/** The render of a file this platform does not load: its name (the id when it has none) and size, and no URL. */
+function withheldRender(type: 'image' | 'video' | 'audio', storedName: unknown, id: string, size: number): { render: InlayRender, objectUrl: string | null } {
+    const name = typeof storedName === 'string' && storedName.trim() !== '' ? storedName : id
+    return { render: { type, url: '', source: 'withheld', name, size }, objectUrl: null }
+}
+
+/** The withheld render of a string-stored video or audio of the estimated `size` that Android does not decode, or `null`. */
+function stringMediaWithheld(type: unknown, storedName: unknown, id: string, size: number): { render: InlayRender, objectUrl: string | null } | null {
+    const kind = withheldStringMediaKind(type, size, isAndroidTransport())
+    return kind === null ? null : withheldRender(kind, storedName, id, size)
+}
+
 async function resolveInlayRender(id: string): Promise<{ render: InlayRender, objectUrl: string | null } | null> {
     let store: ByteStore | null = null
     let record: InlayRecord | null = null
@@ -353,9 +366,14 @@ async function resolveInlayRender(id: string): Promise<{ render: InlayRender, ob
     if(store !== null && record !== null){
         // An image this platform does not load is named by its record alone: its body is never read and no URL is asked for.
         if(record.fields.type === 'image' && inlayImageWithheld('image', inlayRecordSize(record), isAndroidTransport())){
-            const stored = record.fields.name
-            const name = typeof stored === 'string' && stored.trim() !== '' ? stored : id
-            return { render: { type: 'image', url: '', source: 'withheld', name, size: inlayRecordSize(record) }, objectUrl: null }
+            return withheldRender('image', record.fields.name, id, inlayRecordSize(record))
+        }
+        // A string video or audio this platform does not decode is named by its record alone, before its body is read.
+        if(record.repr === 'string'){
+            const withheld = stringMediaWithheld(record.fields.type, record.fields.name, id, inlayRecordSize(record))
+            if(withheld !== null){
+                return withheld
+            }
         }
         // A string body (a `data:` URI) and a signature are decoded from bytes; only a Blob body is delivered by URL.
         if(record.repr === 'blob' && record.fields.type !== 'signature'){
@@ -370,7 +388,17 @@ async function resolveInlayRender(id: string): Promise<{ render: InlayRender, ob
         }
     }
     const old = await readLegacyInlay(id)
-    return old === null ? null : renderOfAsset(old)
+    if(old === null){
+        return null
+    }
+    // The old store's string is already read; withholding it skips the decode copies and the Blob the cache would keep.
+    if(typeof old.data === 'string'){
+        const withheld = stringMediaWithheld(old.type, old.name, id, decodedTextSize(old.data.length))
+        if(withheld !== null){
+            return withheld
+        }
+    }
+    return renderOfAsset(old)
 }
 
 /**
@@ -476,8 +504,9 @@ export type InlayDraftPreview =
 /**
  * The preview of a staged attachment, or `null` when there is no such inlay. No body is read into the
  * page as a data URI: a video on Android, where it would be read whole, is a chip; everything else is
- * shown through the render of the id (which the sent message reuses). A signature, an unknown type and a
- * render that cannot be had are chips.
+ * shown through the render of the id (which the sent message reuses). A signature, an unknown type, a
+ * file the render withholds (an image, or a string video or audio, over the Android limit) and a render
+ * that cannot be had are chips.
  */
 export async function getInlayDraftPreview(id: string): Promise<InlayDraftPreview | null> {
     const summary = await getInlaySummary(id)

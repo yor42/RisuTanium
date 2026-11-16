@@ -820,6 +820,12 @@ function withheldChipText(name: string): string {
     return text.replace(/[!-\/:-@\[-`{-~]/g, (char) => `&#${char.charCodeAt(0)};`)
 }
 
+/** The box a withheld file shows: a block inside the image block of an `inlayed` token, an inline span within the text of an `inlay` one. */
+function withheldChip(name: string, size: number, inlayType: string, prefix: string, postfix: string): string {
+    const element = inlayType === 'inlay' ? 'span' : 'div'
+    return `${prefix}<${element} class="x-risu-tool-call">${withheldChipText(name)}<br>${formatMiB(size)}</${element}>${postfix}`
+}
+
 async function parseInlayAssets(data:string){
     const inlayMatch = data.match(/{{(inlay|inlayed|inlayeddata)::(.+?)}}/g)
     if(inlayMatch){
@@ -844,18 +850,23 @@ async function parseInlayAssets(data:string){
                         break
                     }
                     if(render.source === 'withheld'){
-                        // A block inside the image block of an `inlayed` token, an inline span within the text of an `inlay` one.
-                        const element = inlayType === 'inlay' ? 'span' : 'div'
-                        const chip = `${prefix}<${element} class="x-risu-tool-call">${withheldChipText(render.name)}<br>${formatMiB(render.size)}</${element}>${postfix}`
-                        data = data.replace(inlay, () => chip)
+                        data = data.replace(inlay, () => withheldChip(render.name, render.size, inlayType, prefix, postfix))
                         break
                     }
                     data = data.replace(inlay, `${prefix}<img src="${url}"/>${postfix}`)
                     break
                 case 'video':
+                    if(render.source === 'withheld'){
+                        data = data.replace(inlay, () => withheldChip(render.name, render.size, inlayType, prefix, postfix))
+                        break
+                    }
                     data = data.replace(inlay, `${prefix}<video controls><source src="${url}" type="video/mp4"></video>${postfix}`)
                     break
                 case 'audio':
+                    if(render.source === 'withheld'){
+                        data = data.replace(inlay, () => withheldChip(render.name, render.size, inlayType, prefix, postfix))
+                        break
+                    }
                     data = data.replace(inlay, `${prefix}<audio controls><source src="${url}" type="audio/mpeg"></audio>${postfix}`)
                     break
             }
