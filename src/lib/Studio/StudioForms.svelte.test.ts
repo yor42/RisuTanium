@@ -29,14 +29,24 @@ vi.mock('src/ts/stores.svelte', async () => {
 vi.mock('src/ts/alertPrompts', async (importOriginal) => ({ ...(await importOriginal<typeof import('src/ts/alertPrompts')>()), pageCovered: () => false }))
 vi.mock('src/lang', async () => {
     const helpers = await import('src/ts/studio/studioFixtures.test-helpers')
-    return { language: helpers.studioLanguageMock() }
+    const base = helpers.studioLanguageMock()
+    // The problem list's keys take arguments, so they answer with the key and its arguments.
+    const withArguments = (key: string) => (...args: (string | number)[]) => `${key}(${args.join(',')})`
+    const own: Record<string, unknown> = {}
+    for (const key of ['ltProblemCount', 'ltProblemsShowAll', 'ltProblemLine', 'ltProblemFix', 'cbsUnclosed', 'cbsStrayBlockClose', 'cbsNotABlock', 'ltMacroMatches']) own[key] = withArguments(key)
+    // The macro table's labels: one per row id, answering `row:<id>`.
+    own.ltMacroRows = new Proxy({}, { get: (_target, id) => typeof id === 'string' ? `row:${id}` : undefined })
+    return { language: new Proxy(base, { get: (target, key) => typeof key === 'string' && key in own ? own[key] : Reflect.get(target, key) }) }
 })
 
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { createSaveAck, PENDING_DELAY_MS, type SaveAck, type SaveAckDeps } from 'src/ts/studio/edit/saveAck.svelte'
 import { refusalText } from 'src/ts/studio/edit/studioToasts'
-import { backCloseHandler } from 'src/ts/backHandlers'
+import { backCloseHandler, dispatchBack, resetBackHandlersForTests } from 'src/ts/backHandlers'
+import { createMacroIndex } from 'src/ts/studio/longText/macroIndex'
+import { setMacroIndexForTests } from 'src/ts/studio/longText/macroIndexService'
+import { installStudioBack } from 'src/ts/studio/studioBack.svelte'
 import { studioOpen } from 'src/ts/studio/studioOpen'
 import { closeStudio, resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { DEFAULT_TOAST_CONFIG, createToastHost, type ToastClock, type ToastHost } from 'src/ts/toast/toastHost.svelte'
@@ -242,9 +252,12 @@ beforeEach(() => {
     studioScreen.chaId = 'A'
     studioScreen.visitId = 'v1'
     studioScreen.open = true
+    // The checker needs no registry here: `char` is the one macro it knows, so a role tag's fix is not itself a problem.
+    setMacroIndexForTests(createMacroIndex([{ name: 'char', aliases: [], summary: 'char', usage: null, docOnly: false, internalOnly: false, blockSyntax: false, deprecated: null }]))
 })
 
 afterEach(async () => {
+    setMacroIndexForTests(null)
     await unmountAll()
     resetStudioHistoryAccessorForTests()
     resetCharacterSaveMarksForTest()
@@ -1711,5 +1724,189 @@ describe('B1 a flush finds the owner no longer editable or the row gone', () => 
         expect(edits.mock.calls.length).toBe(refused)
         expect(refusalLine()).toBeUndefined()
         expect(note().value).toBe('n0한')
+    })
+})
+
+// ---------------------------------------------------------------- C1: problems per field and their fixes
+
+describe('C1 a problem fix is one history step on its own range', () => {
+    const fixButtons = () => parts('studio-lt-problem-fix') as HTMLButtonElement[]
+
+    // The check runs 250 ms after the last change; its result arrives through a promise.
+    async function pastCheckPause(): Promise<void> {
+        vi.advanceTimersByTime(250)
+        await settle()
+    }
+
+    beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }) })
+    afterEach(() => { vi.useRealTimers() })
+
+    test('C1-C2 a fix typed after the text closes the open step first: two steps, and undo restores only the fixed range', async () => {
+        const rig = makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        type(desc(), 'a <char> b')
+        rig.clock.set(100)
+        await pastCheckPause()
+        expect(fixButtons()).toHaveLength(1)
+        expect(rig.service.view(A).done).toHaveLength(1)
+        fixButtons()[0].click()
+        flushSync()
+        expect(live().desc).toBe('a {{char}} b')
+        expect(rig.service.view(A).done).toHaveLength(2)
+        expect(desc().value).toBe('a {{char}} b')
+        expect(rig.service.undo(A).ok).toBe(true)
+        flushSync()
+        expect(live().desc).toBe('a <char> b')
+    })
+
+    test('C1-C4 on a CRLF card the row is on the LF line and the fix keeps the stored CRLF in one step', async () => {
+        db.db.characters = [makeCharacter({ desc: 'a\r\n<char>' })]
+        const rig = makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        expect(desc().value).toBe('a\n<char>')
+        await pastCheckPause()
+        const rows = parts('studio-lt-problem-row')
+        expect(rows).toHaveLength(1)
+        expect((rows[0].querySelector('[data-part="studio-lt-problem-line"]') as HTMLElement).textContent).toBe('ltProblemLine(2)')
+        fixButtons()[0].click()
+        flushSync()
+        expect(live().desc).toBe('a\r\n{{char}}')
+        expect(rig.service.view(A).done).toHaveLength(1)
+    })
+
+    test('C1-C5 a fix tapped after the text changed writes nothing and records no step, and the list is checked again', async () => {
+        const rig = makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        type(desc(), '<char>')
+        await pastCheckPause()
+        type(desc(), '<char>x')
+        const steps = rig.service.view(A).done.length
+        const marks = h.marks
+        fixButtons()[0].click()
+        flushSync()
+        expect(live().desc).toBe('<char>x')
+        expect(h.marks).toBe(marks)
+        expect(rig.service.view(A).done).toHaveLength(steps)
+        await settle()
+        fixButtons()[0].click()
+        flushSync()
+        expect(live().desc).toBe('{{char}}x')
+    })
+})
+
+// ---------------------------------------------------------------- C2: the macro picker
+
+describe('C2 the macro picker writes through the field and the history service', () => {
+    const options = () => parts('studio-lt-picker-option')
+
+    // A typed character, as the browser reports it: an `input` event that names its kind.
+    function typeKey(field: HTMLTextAreaElement, value: string): void {
+        field.value = value
+        field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+        flushSync()
+    }
+
+    beforeEach(() => { vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }) })
+    afterEach(() => {
+        vi.useRealTimers()
+        resetBackHandlersForTests()
+    })
+
+    test('C2-C2 Enter after a typed name inserts the first match as its own history step and leaves the focus value on the new text', async () => {
+        const rig = makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        desc().focus()
+        typeKey(desc(), '{{g')
+        await settle()
+        expect(options().length).toBeGreaterThan(0)
+        expect(rig.service.view(A).done).toHaveLength(1)
+        const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+        desc().dispatchEvent(event)
+        flushSync()
+        expect(event.defaultPrevented).toBe(true)
+        expect(live().desc).toBe('{{getvar::}}')
+        expect(rig.service.view(A).done).toHaveLength(2)
+        expect(desc().dataset.studioFocusValue).toBe(desc().value)
+        expect(rig.service.undo(A).ok).toBe(true)
+        flushSync()
+        expect(live().desc).toBe('{{g')
+    })
+
+    test('C2-C6(b) a pick made while composing writes the held text, then one insert; the late compositionend writes nothing and records no step', async () => {
+        const rig = makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        const field = desc()
+        field.focus()
+        compositionStart(field)
+        composeInto(field, '{{ge')
+        await settle()
+        expect(live().desc).toBe('d0')
+        options()[0].click()
+        flushSync()
+        expect(live().desc).toBe('{{getvar::}}')
+        const steps = rig.service.view(A).done.length
+        const marks = h.marks
+        compositionEnd(field)
+        vi.advanceTimersByTime(250)
+        await settle()
+        expect(live().desc).toBe('{{getvar::}}')
+        expect(field.value).toBe('{{getvar::}}')
+        expect(h.marks).toBe(marks)
+        expect(rig.service.view(A).done).toHaveLength(steps)
+    })
+
+    test('C2-C7 with the picker open on a phone detail, Back closes the picker and the detail stays', async () => {
+        makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        studioScreen.layout = 'stack'
+        studioScreen.pickedInVisit = true
+        studioScreen.detailShown = true
+        const stop = $effect.root(() => { installStudioBack() })
+        flushSync()
+        try {
+            desc().focus()
+            typeKey(desc(), '{{')
+            await settle()
+            expect(part('studio-lt-picker')).not.toBeNull()
+            expect(dispatchBack()).toBe(true)
+            flushSync()
+            expect(part('studio-lt-picker')).toBeNull()
+            expect(studioScreen.detailShown).toBe(true)
+            expect(studioScreen.open).toBe(true)
+        } finally {
+            stop()
+        }
+    })
+
+    test('C2-x54 C2-x55 C2-x56 C2-x85 C2-y04 with the sheet open on a phone detail, Back closes the sheet, the detail stays and the field is not focused', async () => {
+        makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        studioScreen.layout = 'stack'
+        studioScreen.pickedInVisit = true
+        studioScreen.detailShown = true
+        const stop = $effect.root(() => { installStudioBack() })
+        flushSync()
+        try {
+            desc().focus()
+            desc().dispatchEvent(new KeyboardEvent('keydown', { key: ' ', code: 'Space', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }))
+            flushSync()
+            await settle()
+            expect(part('studio-lt-sheet')).not.toBeNull()
+            expect(dispatchBack()).toBe(true)
+            flushSync()
+            expect(part('studio-lt-sheet')).toBeNull()
+            expect(studioScreen.detailShown).toBe(true)
+            expect(studioScreen.open).toBe(true)
+            expect(document.activeElement).not.toBe(desc())
+        } finally {
+            stop()
+        }
     })
 })
