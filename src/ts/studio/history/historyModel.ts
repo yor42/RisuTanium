@@ -674,6 +674,8 @@ export interface StepPlan {
     dropStep?: true
     // Revert only: asset rows whose file is gone and that the revert did not re-insert.
     goneRows?: string[]
+    // Restore of a deleted item only: the page write for an open chat without a unique id. In memory only, never stored.
+    pageFm?: number
 }
 
 export type PlanResult =
@@ -2216,8 +2218,31 @@ export function planRestorePoint(restore: RestorePoint | null, live: LiveReader,
     }
 }
 
-// Inserts a deleted item back at its old position (or the end of a shorter list) as one new step.
-export function planRestoreDeleted(record: OwnerRecord, deletedId: string, live: LiveReader): PlanResult {
+// The stored first-message index of the chat that shows an alternative after the entry at `d` is removed: main stays
+// main, a removal after the shown entry leaves it, the shown entry itself sends the chat to main, an earlier removal
+// moves it down one. `e` is the effective index (-1 for the default first message).
+export function fmAfterRemove(e: number, d: number): number {
+    if (e === -1 || d > e) {
+        return e
+    }
+    return d === e ? -1 : e - 1
+}
+
+// Raw-integer follow of an insert at `i`: an integer stored value at or past `i` moves up by one. -1, other negatives,
+// non-integers and absent stay; a stale value stays stale (v + 1 is past the new end).
+export function fmAfterInsert(v: number, i: number): number {
+    return Number.isInteger(v) && v >= i ? v + 1 : v
+}
+
+// The open chat a restore follows: by its unique id, or, for a chat without one, by the stored value the service read
+// (the commit then writes it by page index).
+export type RestoreContext = { chatId: string } | { chatId: null; fm: FmValue }
+
+// Inserts a deleted item back at its old position (or the end of a shorter list) as one new step. Only the open chat
+// (`context`) is adjusted, with at most one chatFm: it follows its text through the insert (a stored integer at or past
+// the insert index moves up one), or, when it is the chat the delete reset to main and still reads -1, it goes back
+// to the value the delete recorded. Every other chat is left as it is.
+export function planRestoreDeleted(record: OwnerRecord, deletedId: string, live: LiveReader, context: RestoreContext | null): PlanResult {
     const item = record.deleted.find((entry) => entry.id === deletedId)
     const greetings = live.greetings()
     if (!item) {
@@ -2228,15 +2253,26 @@ export function planRestoreDeleted(record: OwnerRecord, deletedId: string, live:
     }
     const index = Math.min(item.index, greetings.length)
     const ops: Op[] = [{ op: 'listInsert', index, value: item.value }]
-    if (item.sideChat) {
-        const current = live.fmIndex(item.sideChat.chatId)
-        if (current && fmValueEquals(current, { had: true, value: -1 })) {
-            ops.push({
-                op: 'chatFm',
-                chatId: item.sideChat.chatId,
-                before: { had: true, value: -1 },
-                after: item.sideChat.before,
-            })
+    let pageFm: number | undefined
+    // A chat that no longer exists (null) gets no op.
+    const current = context === null ? null : 'fm' in context ? context.fm : live.fmIndex(context.chatId)
+    if (context !== null && current !== null) {
+        const sideChat = item.sideChat
+        if (current.had && fmAfterInsert(current.value, index) !== current.value) {
+            const next = fmAfterInsert(current.value, index)
+            ops.push({ op: 'chatFm', chatId: context.chatId, before: current, after: { had: true, value: next } })
+            if (context.chatId === null) {
+                pageFm = next
+            }
+        } else if (
+            context.chatId !== null &&
+            sideChat?.chatId === context.chatId &&
+            fmValueEquals(current, { had: true, value: -1 }) &&
+            !(sideChat.before.had && Number.isInteger(sideChat.before.value) && sideChat.before.value > item.index)
+        ) {
+            // The reset branch needs a delete that reset the chat to main; a record from a delete that re-indexed
+            // (before past the item's index) must not send the chat back to its old, now different, entry.
+            ops.push({ op: 'chatFm', chatId: context.chatId, before: current, after: sideChat.before })
         }
     }
     const working = makeWorking(live)
@@ -2256,6 +2292,7 @@ export function planRestoreDeleted(record: OwnerRecord, deletedId: string, live:
         deletedRemove: [deletedId],
         skipped: 0,
         fmNotRestored: false,
+        ...(pageFm === undefined ? {} : { pageFm }),
     }
 }
 

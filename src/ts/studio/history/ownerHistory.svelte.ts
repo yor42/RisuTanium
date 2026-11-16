@@ -41,6 +41,7 @@ import {
     isModuleTarget,
     isRestrictedChaId,
     resolveLiveTarget,
+    restoreContextOf,
     writeLiveModule,
     type AssetWriteExtras,
     type EditBuildResult,
@@ -905,7 +906,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 ? planRevert(record, intent.stepId, live, undefined, hashFor, goneRows)
                 : intent.kind === 'restore'
                   ? planRestorePoint(record.restore, live, intent.keep)
-                  : planRestoreDeleted(record, intent.deletedId, live)
+                  : planRestoreDeleted(record, intent.deletedId, live, target === null ? null : restoreContextOf(target))
         if (plan.ok === false) {
             // A net-nothing revert lands nothing: no write, mark, step or save. It may still tell the
             // caller that older list changes were not undone or that a chat index could not be restored.
@@ -930,7 +931,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         return {
             writes: plan.writes,
-            pageFm: null,
+            pageFm: plan.pageFm ?? null,
             notes,
             land: (state) =>
                 commitStep(state, {

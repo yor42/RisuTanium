@@ -573,7 +573,7 @@ function runActions(input: Input, tally: Tally): string | null {
                     if (w.greetings.includes(item.value)) {
                         break
                     }
-                    const plan = planRestoreDeleted(state.record, item.id, readerOf(w))
+                    const plan = planRestoreDeleted(state.record, item.id, readerOf(w), { chatId: 'chatA' })
                     if (plan.ok) {
                         const failure = commitPlan(plan, 'restore')
                         if (failure) {

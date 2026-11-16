@@ -25,6 +25,7 @@ import {
     isModuleTarget,
     isRestrictedChaId,
     resolveLiveTarget,
+    restoreContextOf,
     uniqueChatById,
     writeLiveModule,
     type LiveTarget,
@@ -260,14 +261,14 @@ describe('the op builders', () => {
             pageFm: null,
             ops: [
                 { op: 'listRemove', index: 1, value: 'g1', deletedId: 'd1' },
-                { op: 'chatFm', chatId: 'c1', before: { had: true, value: 2 }, after: { had: true, value: -1 } },
+                { op: 'chatFm', chatId: 'c1', before: { had: true, value: 2 }, after: { had: true, value: 1 } },
             ],
-            writes: [{ op: 'listRemove', index: 1 }, { op: 'chatFm', chatId: 'c1', value: { had: true, value: -1 } }],
+            writes: [{ op: 'listRemove', index: 1 }, { op: 'chatFm', chatId: 'c1', value: { had: true, value: 1 } }],
         })
 
         const idless = makeCharacter('A', { chats: [{ note: '', fmIndex: 1 }] })
         const byIndex = buildGreetingDelete(0, 'd2', targetOf(idless), createLiveReader(targetOf(idless)))
-        expect(byIndex).toMatchObject({ ok: true, pageFm: -1, ops: [{ op: 'listRemove' }, { op: 'chatFm', chatId: null }] })
+        expect(byIndex).toMatchObject({ ok: true, pageFm: 0, ops: [{ op: 'listRemove' }, { op: 'chatFm', chatId: null }] })
         expect(byIndex.ok && byIndex.writes).toEqual([{ op: 'listRemove', index: 0 }])
 
         const chatless = makeCharacter('A', { chats: [] })
@@ -533,5 +534,71 @@ describe('the asset reader and the asset owner writes', () => {
         expect(writeLiveModule('M', (module) => ({ ...module, name: 'x' }))).toBe(false)
         DBState.db.modules = [] as unknown as typeof DBState.db.modules
         expect(writeLiveModule('M', (module) => module)).toBe(false)
+    })
+})
+
+function deleteAt(live: LiveCharacter, index: number) {
+    return buildGreetingDelete(index, 'd1', targetOf(live), createLiveReader(targetOf(live)))
+}
+
+function chatFmOps(result: ReturnType<typeof deleteAt>) {
+    return result.ok ? result.ops.filter((op) => op.op === 'chatFm') : null
+}
+
+describe('a delete of an alternative first message adjusts only the open chat', () => {
+    test('T2 an open chat on a later entry moves down one: one chatFm op and write by id, no page write', () => {
+        const result = deleteAt(makeCharacter('A', { chats: [{ id: 'c1', note: '', fmIndex: 2 }] }), 1)
+        expect(result).toMatchObject({ ok: true, pageFm: null })
+        expect(chatFmOps(result)).toEqual([{ op: 'chatFm', chatId: 'c1', before: { had: true, value: 2 }, after: { had: true, value: 1 } }])
+        expect(result.ok && result.writes).toEqual([{ op: 'listRemove', index: 1 }, { op: 'chatFm', chatId: 'c1', value: { had: true, value: 1 } }])
+    })
+
+    test('T3 a delete after the shown entry emits no chatFm op and no chatFm write', () => {
+        const result = deleteAt(makeCharacter('A', { chats: [{ id: 'c1', note: '', fmIndex: 0 }] }), 2)
+        expect(chatFmOps(result)).toEqual([])
+        expect(result.ok && result.writes).toEqual([{ op: 'listRemove', index: 2 }])
+    })
+
+    test('T4 deleting the shown entry, also the last one, sends the open chat to the main first message', () => {
+        expect(chatFmOps(deleteAt(makeCharacter('A', { chats: [{ id: 'c1', note: '', fmIndex: 1 }] }), 1))).toMatchObject([{ after: { had: true, value: -1 } }])
+        expect(chatFmOps(deleteAt(makeCharacter('A', { chats: [{ id: 'c1', note: '', fmIndex: 2 }] }), 2))).toMatchObject([{ after: { had: true, value: -1 } }])
+    })
+
+    test('T5 a chat that shows the main first message (stale, absent or -1) gets no op and keeps its stored value', () => {
+        for (const fmIndex of [7, undefined, -1]) {
+            const live = makeCharacter('A', { chats: [fmIndex === undefined ? { id: 'c1', note: '' } : { id: 'c1', note: '', fmIndex }] })
+            const result = deleteAt(live, 0)
+            expect(chatFmOps(result)).toEqual([])
+            if (result.ok) {
+                applyCharacterWrites(live as unknown as character, result.writes, result.pageFm)
+            }
+            expect(live.chats[0].fmIndex).toBe(fmIndex)
+        }
+    })
+
+    test('T6 an open chat without a unique id follows by page write; a delete after its entry writes nothing', () => {
+        const before = makeCharacter('A', { chats: [{ note: '', fmIndex: 2 }] })
+        expect(deleteAt(before, 0)).toMatchObject({ ok: true, pageFm: 1, ops: [{ op: 'listRemove' }, { op: 'chatFm', chatId: null }] })
+        const live = makeCharacter('A', { chats: [{ note: '', fmIndex: 2 }] })
+        const result = deleteAt(live, 0)
+        if (result.ok) {
+            applyCharacterWrites(live as unknown as character, result.writes, result.pageFm)
+        }
+        expect(live.chats[0].fmIndex).toBe(1)
+        expect(deleteAt(makeCharacter('A', { chats: [{ note: '', fmIndex: 0 }] }), 2)).toMatchObject({ ok: true, pageFm: null, ops: [{ op: 'listRemove' }] })
+        expect(deleteAt(makeCharacter('A', { chats: [{ note: '', fmIndex: 2 }] }), 2)).toMatchObject({ ok: true, pageFm: -1 })
+    })
+})
+
+describe('restoreContextOf', () => {
+    const contextOf = (chats: LiveChat[], chatPage = 0) => restoreContextOf(targetOf(makeCharacter('A', { chats, chatPage })))
+
+    test('RC1 a unique id names the chat; no id or a duplicate id carries its stored value; no chat gives null', () => {
+        expect(contextOf([{ id: 'a', note: '', fmIndex: 1 }])).toEqual({ chatId: 'a' })
+        expect(contextOf([{ note: '', fmIndex: 1 }])).toEqual({ chatId: null, fm: { had: true, value: 1 } })
+        expect(contextOf([{ id: 'd', note: '', fmIndex: 1 }, { id: 'd', note: '' }])).toEqual({ chatId: null, fm: { had: true, value: 1 } })
+        expect(contextOf([{ id: 'a', note: '' }])).toEqual({ chatId: 'a' })
+        expect(contextOf([])).toBeNull()
+        expect(contextOf([{ id: 'a', note: '' }], 3)).toBeNull()
     })
 })
