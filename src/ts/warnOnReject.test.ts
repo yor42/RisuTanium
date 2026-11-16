@@ -68,6 +68,7 @@ describe('production compile of the media components', () => {
         'src/lib/SideBars/CharConfig.svelte',
         'src/lib/Setting/Pages/PersonaSettings.svelte',
         'src/lib/Setting/Pages/OtherBotSettings.svelte',
+        'src/lib/SettingsShell/PersonasShellPage.svelte',
         'src/lib/ChatScreens/EmotionBox.svelte',
         'src/lib/ChatScreens/DefaultChatScreen.svelte',
         'src/lib/Playground/PlaygroundInlayExplorer.svelte',
