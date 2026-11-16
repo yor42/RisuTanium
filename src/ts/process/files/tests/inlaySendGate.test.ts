@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { INLAY_SEND_LIMIT_BYTES, inlayImageWithheld, inlayReadVerdict, inlaySendVerdict } from '../inlaySendGate'
+import { ANDROID_STRING_MEDIA_DISPLAY_LIMIT_BYTES, INLAY_SEND_LIMIT_BYTES, inlayImageWithheld, inlayReadVerdict, inlaySendVerdict, withheldStringMediaKind } from '../inlaySendGate'
 import { LLMFlags } from '../../../model/types'
 import type { InlaySummary } from '../inlayStore'
 
@@ -118,5 +118,34 @@ describe('inlayReadVerdict', () => {
         for (const type of ['image', 'signature'] as const) {
             expect(inlayReadVerdict(summaryOf(type, 30 * MIB))).toBe('read')
         }
+    })
+})
+
+describe('the string media display limit', () => {
+    test('is 64 MiB, the limit of an image', () => {
+        expect(ANDROID_STRING_MEDIA_DISPLAY_LIMIT_BYTES).toBe(64 * MIB)
+    })
+})
+
+describe('withheldStringMediaKind', () => {
+    const LIMIT = ANDROID_STRING_MEDIA_DISPLAY_LIMIT_BYTES
+
+    test('names the kind of an audio or video above the limit on Android', () => {
+        expect(withheldStringMediaKind('audio', LIMIT + 1, true)).toBe('audio')
+        expect(withheldStringMediaKind('video', LIMIT + 1, true)).toBe('video')
+    })
+
+    test('withholds nothing at exactly the limit, off Android, or of an unknown size', () => {
+        for (const type of ['audio', 'video'] as const) {
+            expect(withheldStringMediaKind(type, LIMIT, true)).toBeNull()
+            expect(withheldStringMediaKind(type, LIMIT + 1, false)).toBeNull()
+            expect(withheldStringMediaKind(type, null, true)).toBeNull()
+        }
+    })
+
+    test('leaves an image and a signature to their own rules, and an unknown type alone', () => {
+        expect(withheldStringMediaKind('image', LIMIT + 1, true)).toBeNull()
+        expect(withheldStringMediaKind('signature', LIMIT + 1, true)).toBeNull()
+        expect(withheldStringMediaKind(undefined, LIMIT + 1, true)).toBeNull()
     })
 })

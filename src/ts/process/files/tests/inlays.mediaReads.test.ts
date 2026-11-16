@@ -290,3 +290,76 @@ describe('forgetInlayRender', () => {
         expect(bodyReads(appStore).length).toBeGreaterThan(readsBefore)
     })
 })
+
+describe('an audio of the old store above the whole-read limit on Android', () => {
+    const LIMIT = 64 * MIB
+    // 89 478 464 characters of payload (a multiple of 4) after the 23-character header estimate to one byte over the limit.
+    const overString = () => 'data:audio/mpeg;base64,' + 'A'.repeat(89_478_464)
+    const audio = (data: string | Blob, extra: Record<string, unknown> = {}) => asset(data, { type: 'audio', ext: 'mp3', name: 'big.mp3', ...extra })
+
+    test('reproducer: a string audio over the limit is withheld without being decoded', async () => {
+        h.android = true
+        const id = freshId()
+        h.legacy.set(id, audio(overString()))
+        const decoded: number[] = []
+        vi.spyOn(globalThis, 'atob').mockImplementation((text: string) => {
+            decoded.push(text.length)
+            throw new Error('decode entered')
+        })
+
+        const render = await getInlayRender(id)
+
+        expect(decoded).toEqual([])
+        expect(render).toEqual({ type: 'audio', url: '', source: 'withheld', name: 'big.mp3', size: LIMIT + 1 })
+        expect(createdCount).toBe(0)
+    })
+
+    test('reproducer: the draft preview of a string audio over the limit is a chip with its name and size', async () => {
+        h.android = true
+        const id = freshId()
+        h.legacy.set(id, audio(overString()))
+
+        expect(await getInlayDraftPreview(id)).toEqual({ kind: 'file', name: 'big.mp3', size: LIMIT + 1 })
+    })
+
+    test.each([['empty', ''], ['whitespace only', '   '], ['not a string', 7]])('reproducer: a %s stored name falls back to the id', async (_label, stored) => {
+        h.android = true
+        const id = freshId()
+        h.legacy.set(id, audio(overString(), { name: stored }))
+
+        const render = await getInlayRender(id)
+
+        expect(render).toMatchObject({ source: 'withheld', name: id })
+    })
+
+    test('guard: a small string audio is shown as before', async () => {
+        h.android = true
+        const id = freshId()
+        h.legacy.set(id, audio('data:audio/mpeg;base64,' + 'A'.repeat(400)))
+
+        const render = await getInlayRender(id)
+
+        expect(render!.source).toBe('memory-blob')
+    })
+
+    test('guard: a string audio over the limit is shown as before off Android', async () => {
+        const id = freshId()
+        h.legacy.set(id, audio(overString()))
+
+        const render = await getInlayRender(id)
+
+        expect(render!.source).toBe('memory-blob')
+        await forgetInlayRender(id)
+    })
+
+    test('guard: a Blob audio over the limit is used as it is', async () => {
+        h.android = true
+        const id = freshId()
+        const piece = new Blob([new Uint8Array(MIB)])
+        h.legacy.set(id, audio(new Blob([...Array.from({ length: 64 }, () => piece), new Uint8Array(1)])))
+
+        const render = await getInlayRender(id)
+
+        expect(render!.source).toBe('memory-blob')
+    })
+})

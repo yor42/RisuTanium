@@ -193,3 +193,62 @@ describe('rendering an inlay token', () => {
     expect(inlayReads.asked).toEqual([id, id])
   })
 })
+
+describe('an audio or video the platform withholds', () => {
+  const MIB = 1024 * 1024
+  const withheld = (type: 'audio' | 'video', name: string): InlayRender => ({ type, url: '', source: 'withheld', name, size: 64 * MIB + 1 })
+  const parsedInto = (html: string) => {
+    const root = document.createElement('div')
+    root.innerHTML = html
+    return root
+  }
+
+  test('an audio in an inlayed token becomes a box inside the image block, with the name and the size and no audio element', async () => {
+    reading(withheld('audio', 'big.mp3'))
+    const root = parsedInto(await ParseMarkdown(`{{inlayed::${freshId()}}}`, null, 'back'))
+    expect(root.querySelector('audio')).toBeNull()
+    const box = root.querySelector('.x-risu-risu-inlay-image div.x-risu-tool-call')
+    expect(box).not.toBeNull()
+    expect(box?.textContent).toContain('big.mp3')
+    expect(box?.textContent).toContain('64.0 MiB')
+  })
+
+  test('an audio in an inline token becomes an inline span', async () => {
+    reading(withheld('audio', 'big.mp3'))
+    const root = parsedInto(await ParseMarkdown(`see {{inlay::${freshId()}}} here`, null, 'normal'))
+    expect(root.querySelector('audio')).toBeNull()
+    const box = root.querySelector('span.x-risu-tool-call')
+    expect(box).not.toBeNull()
+    expect(root.querySelector('div.x-risu-tool-call')).toBeNull()
+    expect(box?.textContent).toContain('big.mp3')
+  })
+
+  test('a hostile audio name is text: no element is made from it and its characters survive', async () => {
+    const hostile = '<img src=x onerror=alert(1)>.mp3'
+    reading(withheld('audio', hostile))
+    const root = parsedInto(await ParseMarkdown(`{{inlayed::${freshId()}}}`, null, 'back'))
+    expect(root.querySelector('img')).toBeNull()
+    expect(root.querySelector('audio')).toBeNull()
+    expect(root.textContent).toContain(hostile)
+  })
+
+  test('a video becomes the same box in an inlayed token and an inline span in an inline one, with no video element', async () => {
+    reading(withheld('video', 'big.webm'))
+    const block = parsedInto(await ParseMarkdown(`{{inlayed::${freshId()}}}`, null, 'back'))
+    expect(block.querySelector('video')).toBeNull()
+    expect(block.querySelector('.x-risu-risu-inlay-image div.x-risu-tool-call')?.textContent).toContain('big.webm')
+    expect(block.querySelector('.x-risu-tool-call')?.textContent).toContain('64.0 MiB')
+    const inline = parsedInto(await ParseMarkdown(`see {{inlay::${freshId()}}} here`, null, 'normal'))
+    expect(inline.querySelector('video')).toBeNull()
+    expect(inline.querySelector('span.x-risu-tool-call')?.textContent).toContain('big.webm')
+    expect(inline.querySelector('div.x-risu-tool-call')).toBeNull()
+  })
+
+  test('guard: hiding images leaves the box of a withheld audio and video', async () => {
+    mockedDb.db.hideAllImages = true
+    reading(withheld('audio', 'big.mp3'))
+    expect(await ParseMarkdown(`{{inlayed::${freshId()}}}`, null, 'back')).toContain('big.mp3')
+    reading(withheld('video', 'big.webm'))
+    expect(await ParseMarkdown(`{{inlayed::${freshId()}}}`, null, 'back')).toContain('big.webm')
+  })
+})
