@@ -24,6 +24,7 @@ import { toAssetList } from 'src/ts/storage/assetList'
 import { moduleStubOf } from 'src/ts/storage/store2/moduleStubMatch'
 import type { ModuleEntry } from 'src/ts/storage/store2/format/types'
 import type { RisuModule } from '../modules'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 
 // The first test of a cold run transforms the whole graph (stores, modules, ChatBody, BackgroundDom).
 vi.setConfig({ testTimeout: 90_000 })
@@ -167,7 +168,7 @@ vi.mock(import('src/ts/characterCards'), () => ({
 // it out of the first test. The transform stays cached across `vi.resetModules()`, so later rigs only re-evaluate it.
 beforeAll(async () => {
     await import('@lucide/svelte')
-}, 300_000)
+}, COLD_TRANSFORM_HOOK_MS)
 
 //#region rig
 

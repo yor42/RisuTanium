@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest'
+import { COLD_TRANSFORM_HOOK_MS } from '../tests/coldTransform.test-helpers'
 
 const mutant = vi.hoisted(() => ({ identitySanitize: false }))
 
@@ -51,7 +52,7 @@ import { findAllOriginalRangesFromHtml } from '../parser/partialEdit'
 import { createHitMarks, locateInBody, type LocateResult, type WalkOptions } from './hitMarks'
 
 let parser: typeof import('../parser/parser.svelte')
-beforeAll(async () => { parser = await import('../parser/parser.svelte') }, 60_000)
+beforeAll(async () => { parser = await import('../parser/parser.svelte') }, COLD_TRANSFORM_HOOK_MS)
 afterEach(() => { mutant.identitySanitize = false })
 
 const walk: WalkOptions = { thinking: true, thoughtsLabel: language.cot }
