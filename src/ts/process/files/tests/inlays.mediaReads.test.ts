@@ -189,6 +189,41 @@ describe('getInlaySummary of the old store', () => {
     })
 })
 
+describe('listInlayAssets of the app store', () => {
+    test('a data URI string record is listed with the decoded estimate getInlaySummary reports, not its text length', async () => {
+        const id = freshId()
+        await setInlayAsset(id, asset('data:video/mp4;base64,' + 'A'.repeat(4000)))
+        const record = recordOf(appStore, id)
+        expect(record.repr).toBe('string')
+
+        const listed = new Map(await listInlayAssets())
+        const summary = await getInlaySummary(id)
+
+        expect(listed.get(id)!.size).toBe(Math.floor(record.len * 0.75))
+        expect(listed.get(id)!.size).toBe(summary!.size)
+    })
+
+    test('guard: a Blob record is listed with its byte length', async () => {
+        const id = freshId()
+        await setInlayAsset(id, asset(new Blob([new Uint8Array(1234)], { type: 'video/mp4' })))
+
+        const listed = new Map(await listInlayAssets())
+
+        expect(listed.get(id)!.size).toBe(1234)
+    })
+
+    test('guard: a string16 record is listed with its stored length', async () => {
+        const id = freshId()
+        await setInlayAsset(id, asset('\ud800abc'))
+        const record = recordOf(appStore, id)
+        expect(record.repr).toBe('string16')
+
+        const listed = new Map(await listInlayAssets())
+
+        expect(listed.get(id)!.size).toBe(record.len)
+    })
+})
+
 describe('getInlayDraftPreview', () => {
     test('a video, audio and image on the desktop are shown through their render URL, never a data URI', async () => {
         const urls: string[] = []

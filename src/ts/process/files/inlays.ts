@@ -16,9 +16,11 @@ import {
 } from "./inlayRenderCache";
 import { blobVideoWholeReadWithheld, inlayImageWithheld, inlayReadVerdict, withheldStringMediaKind } from "./inlaySendGate";
 import {
+    decodedTextSize,
     fieldsOf,
     inFlight,
     inlayAttachmentLimit,
+    inlayRecordSize,
     legacyInlayStore,
     listAppInlayKeys,
     readAppInlay,
@@ -432,16 +434,6 @@ export async function getInlayRender(id: string): Promise<InlayRender | null> {
         cacheInlayRender(id, resolved.render, resolved.objectUrl)
         return resolved.render
     })
-}
-
-/** The size of the bytes a base64 data URI string stands for, estimated from its length. */
-function decodedTextSize(length: number): number {
-    return Math.floor(length * 0.75)
-}
-
-/** The size of the file an app-store record stands for: a string body is estimated, any other keeps its length. */
-function inlayRecordSize(record: InlayRecord): number {
-    return record.repr === 'string' ? decodedTextSize(record.len) : record.len
 }
 
 function legacyInlaySize(value: InlayAsset): number | null {
