@@ -10,7 +10,7 @@
     import UserSettings from '../Setting/Pages/UserSettings.svelte'
     import BotSettings from '../Setting/Pages/BotSettings.svelte'
     import OtherBotSettings from '../Setting/Pages/OtherBotSettings.svelte'
-    import PersonaSettings from '../Setting/Pages/PersonaSettings.svelte'
+    import PersonasShellPage from './PersonasShellPage.svelte'
     import PromptSettings from '../Setting/Pages/PromptSettings.svelte'
     import ModuleSettings from '../Setting/Pages/Module/ModuleSettings.svelte'
     import HotkeySettings from '../Setting/Pages/HotkeySettings.svelte'
@@ -144,7 +144,7 @@
                 {:else if current === 11}
                     <InputShellPage bind:this={inputPage} />
                 {:else if current === 12}
-                    <PersonaSettings />
+                    <PersonasShellPage />
                 {:else if current === 13}
                     <PromptSettings onGoBack={() => { SettingsMenuIndex.set(1) }} />
                 {:else if current === 14}

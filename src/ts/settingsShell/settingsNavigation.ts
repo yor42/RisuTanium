@@ -43,12 +43,16 @@ export function writeLastPage(page: SettingsPageId): void {
 
 /**
  * The one close step of the shell, shared by the header Back, Android Back and Escape. An open search closes
- * first and nothing else changes. Then, after the Fix route Back closes outright; on a phone a page goes up to
+ * first and nothing else changes; then an open page sub-level closes alone. Then, after the Fix route Back closes outright; on a phone a page goes up to
  * the index; every other case closes Settings. The width is read at call time.
  */
 export function settingsShellBackStep(): void {
     if (settingsSearchState.open) {
         closeSearch()
+        return
+    }
+    if (subLevel?.isOpen()) {
+        subLevel.close()
         return
     }
     if (isReturnToChat() || !isPhoneWidth(window.innerWidth) || get(SettingsMenuIndex) === -1) {
@@ -63,7 +67,20 @@ export function settingsShellBackStep(): void {
  * index and the search open. Closing the search alone counts as a change.
  */
 export function settingsShellBackSnapshot(): string {
-    return `${get(settingsOpen)}|${get(SettingsMenuIndex)}|${settingsSearchState.open}`
+    return `${get(settingsOpen)}|${get(SettingsMenuIndex)}|${settingsSearchState.open}${subLevel?.isOpen() ? '|sub' : ''}`
+}
+
+/** A page's own drill-in level (an editor that replaces the page's list). It closes before the shell's steps. */
+export interface SettingsSubLevel {
+    isOpen(): boolean
+    close(): void
+}
+
+let subLevel: SettingsSubLevel | null = null
+
+/** The page registers its sub-level while mounted and clears it with null on teardown. */
+export function setSettingsSubLevel(level: SettingsSubLevel | null): void {
+    subLevel = level
 }
 
 let shellBackHandler: BackHandler | null = null

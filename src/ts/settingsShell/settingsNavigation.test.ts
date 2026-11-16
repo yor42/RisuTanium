@@ -10,7 +10,7 @@ vi.mock('../stores.svelte', async () => {
 import { SettingsMenuIndex, settingsOpen } from '../stores.svelte'
 import { fixPending, openSettingsForFix, resetSettingsRouteForTests } from '../../lib/Setting/settingsRoute'
 import {
-    isPhoneWidth, PHONE_MAX_WIDTH, readLastPage, resolveOpenIndex, setShellBackHandler, settingsShellBackSnapshot,
+    isPhoneWidth, PHONE_MAX_WIDTH, readLastPage, resolveOpenIndex, setSettingsSubLevel, setShellBackHandler, settingsShellBackSnapshot,
     settingsShellBackStep, settingsShellEscape, writeLastPage,
 } from './settingsNavigation'
 import { openSearch, resetSearch, settingsSearchState } from './settingsSearchState.svelte'
@@ -30,6 +30,7 @@ beforeEach(() => {
 afterEach(() => {
     resetSearch()
     setShellBackHandler(null)
+    setSettingsSubLevel(null)
     vi.restoreAllMocks()
     resetSettingsRouteForTests()
 })
@@ -178,6 +179,82 @@ describe('settingsShellBackStep with the search open (T-A6)', () => {
         expect(settingsShellBackSnapshot()).toBe('true|11|false')
         openSearch()
         expect(settingsShellBackSnapshot()).toBe('true|11|true')
+    })
+})
+
+/** A sub-level the way a page registers it: open until its close runs. */
+function registerOpenSubLevel(): { isOpen: () => boolean } {
+    let open = true
+    const level = { isOpen: () => open, close: () => { open = false } }
+    setSettingsSubLevel(level)
+    return level
+}
+
+describe('settingsShellBackStep with a page sub-level (N1-N3)', () => {
+    test('N1a: a phone page with its sub-level open closes only the sub-level, then goes up', () => {
+        setWidth(412)
+        settingsOpen.set(true)
+        SettingsMenuIndex.set(12)
+        const closed = settingsShellBackSnapshot()
+        registerOpenSubLevel()
+        expect(settingsShellBackSnapshot()).toBe(`${closed}|sub`)
+        settingsShellBackStep()
+        expect(get(SettingsMenuIndex)).toBe(12)
+        expect(get(settingsOpen)).toBe(true)
+        expect(settingsShellBackSnapshot()).toBe(closed)
+        settingsShellBackStep()
+        expect(get(SettingsMenuIndex)).toBe(-1)
+    })
+
+    test('N1b: with return-to-chat the sub-level closes first and Settings stays open', () => {
+        setWidth(800)
+        openSettingsForFix('botSettings')
+        registerOpenSubLevel()
+        settingsShellBackStep()
+        expect(get(settingsOpen)).toBe(true)
+        expect(get(fixPending)).toBe(false)
+        settingsShellBackStep()
+        expect(get(settingsOpen)).toBe(false)
+    })
+
+    test('N1c: the wide layout below 1024 closes only the sub-level', () => {
+        setWidth(800)
+        settingsOpen.set(true)
+        SettingsMenuIndex.set(12)
+        registerOpenSubLevel()
+        settingsShellBackStep()
+        expect(get(settingsOpen)).toBe(true)
+        expect(get(SettingsMenuIndex)).toBe(12)
+    })
+
+    test('N2: an open search closes before the sub-level', () => {
+        setWidth(1280)
+        settingsOpen.set(true)
+        SettingsMenuIndex.set(12)
+        const level = registerOpenSubLevel()
+        openSearch()
+        settingsShellBackStep()
+        expect(settingsSearchState.open).toBe(false)
+        expect(level.isOpen()).toBe(true)
+    })
+
+    test('N3: a sub-level that reports closed is skipped and null clears the registration', () => {
+        setWidth(1280)
+        settingsOpen.set(true)
+        SettingsMenuIndex.set(12)
+        const close = vi.fn()
+        setSettingsSubLevel({ isOpen: () => false, close })
+        expect(settingsShellBackSnapshot()).toBe('true|12|false')
+        settingsShellBackStep()
+        expect(close).not.toHaveBeenCalled()
+        expect(get(settingsOpen)).toBe(false)
+        settingsOpen.set(true)
+        const open = vi.fn()
+        setSettingsSubLevel({ isOpen: () => true, close: open })
+        setSettingsSubLevel(null)
+        settingsShellBackStep()
+        expect(open).not.toHaveBeenCalled()
+        expect(get(settingsOpen)).toBe(false)
     })
 })
 

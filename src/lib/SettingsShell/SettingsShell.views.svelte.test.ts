@@ -17,6 +17,7 @@ const seen = vi.hoisted(() => ({
     bot: null as { goPromptTemplate: () => void } | null,
     prompt: null as { onGoBack: () => void } | null,
     displayMounts: 0,
+    personasMounts: 0,
 }))
 
 vi.mock(import('../../ts/stores.svelte'), () => {
@@ -46,7 +47,7 @@ vi.mock('./PluginsShellPage.svelte', () => ({ default: () => {} }))
 vi.mock('../Setting/Pages/AdvancedSettings.svelte', () => ({ default: () => {} }))
 vi.mock('../Setting/Pages/LanguageSettings.svelte', () => ({ default: () => {} }))
 vi.mock('../Setting/Pages/AccessibilitySettings.svelte', () => ({ default: () => {} }))
-vi.mock('../Setting/Pages/PersonaSettings.svelte', () => ({ default: () => {} }))
+vi.mock('./PersonasShellPage.svelte', () => ({ default: () => { seen.personasMounts++ } }))
 vi.mock('../Setting/Pages/PromptSettings.svelte', () => ({ default: (_anchor: unknown, props: { onGoBack: () => void }) => { seen.prompt = props } }))
 vi.mock('../Setting/Pages/Module/ModuleSettings.svelte', () => ({ default: () => {} }))
 vi.mock('../Setting/SettingsLegalLinks.svelte', () => ({ default: () => {} }))
@@ -106,6 +107,7 @@ beforeEach(() => {
     seen.bot = null
     seen.prompt = null
     seen.displayMounts = 0
+    seen.personasMounts = 0
     resetBackHandlersForTests()
     resetSettingsRouteForTests()
     resetSettingsOriginForTests()
@@ -149,6 +151,13 @@ describe('T13 views, plugin rows and the Easy panel row', () => {
         seen.bot!.goPromptTemplate()
         flushSync()
         expect(get(SettingsMenuIndex)).toBe(13)
+    })
+
+    test('V1: the Personas index mounts the native Personas page', () => {
+        SettingsMenuIndex.set(12)
+        settingsOpen.set(true)
+        mountHost()
+        expect(seen.personasMounts).toBe(1)
     })
 
     test('the extensions chips switch between Plugins and Modules; a single-view page has none', () => {
