@@ -429,6 +429,27 @@ describe('the sheet lists what it restores and lands one step', () => {
         expect(live().desc).toBe('d0')
     })
 
+    test('A8 every restorable character path is listed in the restore order with its own label, the custom module toggle between the example message and the chat icon', async () => {
+        const character = live() as { firstMessage?: string; exampleMessage?: string }
+        character.firstMessage = 'f0'
+        character.exampleMessage = 'e0'
+        const { service } = await openHistory()
+        expect(service.editField(A, 'firstMessage', 'f1').ok).toBe(true)
+        service.closeOpenStep(A)
+        expect(service.editField(A, 'exampleMessage', 'e1').ok).toBe(true)
+        service.closeOpenStep(A)
+        expect(service.editField(A, 'customModuleToggle', '<toggle>a=1').ok).toBe(true)
+        service.closeOpenStep(A)
+        expect(service.editField(A, 'hideChatIcon', true).ok).toBe(true)
+        service.closeOpenStep(A)
+        click('studio-history-restore-open')
+        await settle()
+        expect(parts('studio-restore-field').map((row) => row.dataset.path)).toEqual(
+            ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'alternateGreetings'])
+        expect(parts('studio-restore-field').map((row) => row.querySelector('span')?.textContent)).toEqual(
+            ['description', 'firstMessage', 'exampleMessage', 'customPromptTemplateToggle', 'hideChatIcon', 'altGreet'])
+    })
+
     test('a field changed outside Studio is kept by default, and overwritten when the user unchecks it', async () => {
         await openSheet()
         live().desc = 'changed outside Studio'

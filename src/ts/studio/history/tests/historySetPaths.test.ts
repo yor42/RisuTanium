@@ -47,10 +47,10 @@ function readBack(record: OwnerRecord): OwnerRecord | null {
 
 describe('the character set paths', () => {
     test('the set paths, the text paths and the restore order are the closed lists', () => {
-        expect(CHARACTER_SET_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'hideChatIcon'])
+        expect(CHARACTER_SET_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon'])
         expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage'])
         expect(CHAT_SET_PATHS).toEqual(['note'])
-        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'hideChatIcon', 'note', 'alternateGreetings'])
+        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'note', 'alternateGreetings'])
     })
 
     test('a character record keeps a first message set op, an example message set op, their labels and their restore keys', () => {

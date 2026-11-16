@@ -50,6 +50,7 @@
             case 'desc': return language.description
             case 'firstMessage': return language.firstMessage
             case 'exampleMessage': return language.exampleMessage
+            case 'customModuleToggle': return language.customPromptTemplateToggle
             case 'hideChatIcon': return language.hideChatIcon
             case 'note': return language.note
             case 'alternateGreetings': return language.altGreet
