@@ -12,8 +12,10 @@
  * assert behaviour the contract-based boot has. A passing test here says
  * nothing about the native Tauri file API.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 const MAIN = 'database/database.bin'
 
@@ -266,6 +268,8 @@ function onUnhandled(reason: unknown): void {
     unhandled.push(reason)
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
     fakeFs.reset()

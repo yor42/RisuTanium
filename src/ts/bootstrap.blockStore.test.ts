@@ -13,13 +13,15 @@
  * `bootstrap.mainFileRead.node.test.ts`. The boot archive pass is mocked at its
  * boundary. A passing test here says nothing about the real server.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { FakeNodeServer } from 'src/ts/storage/tests/manualCleanupHarness'
 import { createFakeStore, makeOwner } from 'src/ts/storage/tests/blockStoreHarness'
 import { BLOCK_TYPE_CHARACTER_WITH_CHAT, frameBlock } from 'src/ts/storage/blockFrame'
 import { keptKey, ownBlockKey } from 'src/ts/storage/blockKeys'
 import { preBlocksKey } from 'src/ts/storage/mainFileFingerprint'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 const HEAD_KEY = 'blocks/head'
 
@@ -345,6 +347,8 @@ async function restartPage(): Promise<void> {
     world.storage = new NodeStorage()
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(async () => {
     localStorage.clear()
     keyPair = null

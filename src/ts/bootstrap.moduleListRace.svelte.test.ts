@@ -17,9 +17,11 @@
  * a regression test for the behaviour it names. The save loop is not part of this harness: a mocked `saveDb` shows that
  * boot saves, not what the store writes.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -397,6 +399,8 @@ async function bootHeldAtQuestion(modules: unknown, during: () => void): Promise
 
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
     window.history.replaceState(null, '', '/')

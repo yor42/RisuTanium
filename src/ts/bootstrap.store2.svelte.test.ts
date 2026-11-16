@@ -9,7 +9,7 @@
  * profile back without the no-write switch (the disabled archive session, the disabled block owner, the non-pruning
  * backup listing); each is named with its mutant in the hand-back. Guards: the unregistered page runs the legacy boot.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/backend'
@@ -27,6 +27,8 @@ import { buildSmall, fakeLists } from 'src/ts/storage/tests/store2/codecFixtures
 import { createClock, seedTree, testEnv, createPeerDouble } from 'src/ts/storage/tests/store2SaveKit'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { bootSteps, createLegacyBootTracker, type BootStep } from 'src/lib/Nexus/boot/bootProgress'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -513,6 +515,8 @@ async function settle(): Promise<void> {
     await new Promise<void>(resolve => setTimeout(resolve, 0))
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
     platformState.isTauri = false

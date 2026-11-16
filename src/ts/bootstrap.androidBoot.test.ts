@@ -7,10 +7,12 @@
  * recorded commands. A pass proves which commands the covered boots send, not
  * that the native shell no longer hangs.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { baseTree, fullCharacter } from 'src/ts/storage/tests/bootArchivePassHarness'
 import { installTauriWire, WAITING_PLUGIN_COMMANDS, type TauriWire } from 'src/ts/storage/tests/tauriWireFake'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 const dbState = vi.hoisted(() => ({
     current: {} as Record<string, unknown>,
@@ -212,6 +214,8 @@ async function freshLoadData() {
     return { loadData, loadedStore }
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
     dbState.current = baseDb({ characters: [] })
