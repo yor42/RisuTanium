@@ -7,8 +7,10 @@
     import { createGreetingRowKeys } from '../../ts/studio/greetingRowKeys'
     import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
     import { beginOwnerVisit, ensureStudioHistory, getStudioHistoryService, historyBannerText, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
+    import type { LongTextWritePort } from '../../ts/studio/longText/fieldWrite'
     import { DBState } from '../../ts/stores.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
+    import LongTextField from './LongTextField.svelte'
 
     // The live edit fields of the selected character: description, hide-icon and the alternative first
     // messages. Every edit goes through the history service, which writes the live character, marks it for
@@ -83,19 +85,31 @@
         return result.ok
     }
 
-    function onFocus(event: FocusEvent & { currentTarget: HTMLTextAreaElement }): void {
-        // The value the field had when it was focused: the browser's own undo owns the field until it is back here.
-        event.currentTarget.dataset.studioFocusValue = event.currentTarget.value
+    // A null result means there was no write path: the refusal line stays as it was.
+    function onFieldResult(result: StudioResult | null): void {
+        if (result) noted(result)
     }
 
-    function onBlur(): void {
-        service?.closeOpenStep(owner)
+    const descPort: LongTextWritePort = {
+        read: () => live?.desc ?? '',
+        write: (value) => (service && editable ? service.editField(owner, 'desc', value) : null),
+        closeStep: () => service?.closeOpenStep(owner),
     }
 
-    function onDescInput(event: Event & { currentTarget: HTMLTextAreaElement }): void {
-        const field = event.currentTarget
-        if (!service || !editable || !noted(service.editField(owner, 'desc', field.value))) {
-            field.value = live?.desc ?? ''
+    // Bound to the row's id, not its position: a row that was removed reads null, and a row that took another
+    // text fails the controller's base check, so held text never lands in a neighbouring row.
+    function greetingPort(id: number): LongTextWritePort {
+        const at = (): number => greetingRows.findIndex((row) => row.id === id)
+        return {
+            read: () => {
+                const index = at()
+                return index < 0 ? null : greetingRows[index].text
+            },
+            write: (value) => {
+                const index = at()
+                return index < 0 || !service || !editable ? null : service.greetingEdit(owner, index, value)
+            },
+            closeStep: () => service?.closeOpenStep(owner),
         }
     }
 
@@ -107,13 +121,6 @@
         }
         // A toggle is one discrete action: it never joins the next one's step.
         service.closeOpenStep(owner)
-    }
-
-    function onGreetingInput(index: number, event: Event & { currentTarget: HTMLTextAreaElement }): void {
-        const field = event.currentTarget
-        if (!service || !editable || !noted(service.greetingEdit(owner, index, field.value))) {
-            field.value = greetings[index] ?? ''
-        }
     }
 
     function greetingInputs(): HTMLElement[] {
@@ -152,19 +159,17 @@
         {#if banner}
             <p role="status" data-part="studio-form-banner" data-banner={view?.banner} class="rounded-md border border-darkborderc p-2 text-sm text-textcolor2">{banner}</p>
         {/if}
-        <label class="flex flex-col gap-1">
-            <span class="font-bold">{language.description}</span>
-            <textarea
-                data-part="studio-form-desc"
-                class="min-h-32 w-full rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor"
-                readonly={!editable}
-                aria-busy={editable ? undefined : 'true'}
-                value={live.desc ?? ''}
-                onfocus={onFocus}
-                onblur={onBlur}
-                oninput={onDescInput}
-            ></textarea>
-        </label>
+        <LongTextField
+            port={descPort}
+            part="studio-form-desc"
+            label={language.description}
+            kind="desc"
+            mode="cbs"
+            {editable}
+            busy={!editable}
+            fieldClass="min-h-32 w-full rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor"
+            onresult={onFieldResult}
+        />
         <label class="flex min-h-11 items-center gap-2">
             <input
                 type="checkbox"
@@ -193,18 +198,18 @@
             {/if}
             {#each greetingRows as row, index (row.id)}
                 <div class="flex items-start gap-2" data-part="studio-greeting-row">
-                    <textarea
-                        data-part="studio-greeting-input"
-                        data-index={index}
-                        class="min-h-20 min-w-0 flex-1 rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor"
-                        aria-label={`${language.altGreet} ${index + 1}`}
-                        readonly={!editable}
-                        aria-busy={editable ? undefined : 'true'}
-                        value={row.text}
-                        onfocus={onFocus}
-                        onblur={onBlur}
-                        oninput={(event) => onGreetingInput(index, event)}
-                    ></textarea>
+                    <LongTextField
+                        port={greetingPort(row.id)}
+                        part="studio-greeting-input"
+                        {index}
+                        ariaLabel={`${language.altGreet} ${index + 1}`}
+                        kind="greeting"
+                        mode="html+cbs"
+                        {editable}
+                        busy={!editable}
+                        fieldClass="min-h-20 w-full min-w-0 rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor"
+                        onresult={onFieldResult}
+                    />
                     <button
                         type="button"
                         data-part="studio-greeting-delete"

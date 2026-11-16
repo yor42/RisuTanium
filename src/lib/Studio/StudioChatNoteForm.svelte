@@ -4,10 +4,12 @@
     import { language } from '../../lang'
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
     import { refusalText } from '../../ts/studio/edit/studioToasts'
-    import type { StudioRefusal } from '../../ts/studio/history/ownerHistory.svelte'
+    import type { StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import { chatOwnerKey } from '../../ts/studio/history/ownerPhase'
     import { beginOwnerVisit, ensureStudioHistory, getStudioHistoryService, historyBannerText, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
+    import type { LongTextWritePort } from '../../ts/studio/longText/fieldWrite'
     import { DBState } from '../../ts/stores.svelte'
+    import LongTextField from './LongTextField.svelte'
 
     // The note of the selected character's current chat. A chat without a unique id has no history and no form:
     // its note is shown read-only with the reason.
@@ -76,22 +78,15 @@
         }
     })
 
-    function onFocus(event: FocusEvent & { currentTarget: HTMLTextAreaElement }): void {
-        // The value the field had when it was focused: the browser's own undo owns the field until it is back here.
-        event.currentTarget.dataset.studioFocusValue = event.currentTarget.value
-    }
-
-    function onBlur(): void {
-        service?.closeOpenStep(owner)
-    }
-
-    function onInput(event: Event & { currentTarget: HTMLTextAreaElement }): void {
-        const field = event.currentTarget
-        const result = service && editable ? service.editField(owner, 'note', field.value) : null
+    // A null result means there was no write path; the note then clears the refusal line like an accepted write.
+    function onFieldResult(result: StudioResult | null): void {
         refusal = result && result.ok === false ? result.reason : null
-        if (!result || result.ok === false) {
-            field.value = shownChat?.note ?? ''
-        }
+    }
+
+    const notePort: LongTextWritePort = {
+        read: () => shownChat?.note ?? '',
+        write: (value) => (service && editable ? service.editField(owner, 'note', value) : null),
+        closeStep: () => service?.closeOpenStep(owner),
     }
 
     onDestroy(() => service?.closeOpenStep(owner))
@@ -112,19 +107,18 @@
         {#if banner}
             <p role="status" data-part="studio-form-banner" data-banner={view?.banner} class="rounded-md border border-darkborderc p-2 text-sm text-textcolor2">{banner}</p>
         {/if}
-        <label class="flex flex-col gap-1">
-            <span id={labelId} class="font-bold">{language.note}</span>
-            <textarea
-                data-part="studio-form-note"
-                class="min-h-32 w-full rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor"
-                readonly={!editable}
-                aria-busy={editable || !editableChat ? undefined : 'true'}
-                value={shownChat.note ?? ''}
-                onfocus={onFocus}
-                onblur={onBlur}
-                oninput={onInput}
-            ></textarea>
-        </label>
+        <LongTextField
+            port={notePort}
+            part="studio-form-note"
+            label={language.note}
+            {labelId}
+            kind="note"
+            mode="cbs"
+            {editable}
+            busy={!(editable || !editableChat)}
+            fieldClass="min-h-32 w-full rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor"
+            onresult={onFieldResult}
+        />
         {#if refusal}
             <p role="alert" data-part="studio-form-refusal" class="text-sm text-draculared">{refusalText(refusal)}</p>
         {/if}

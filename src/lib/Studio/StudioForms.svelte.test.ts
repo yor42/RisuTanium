@@ -25,6 +25,8 @@ vi.mock('src/ts/stores.svelte', async () => {
         frozenSaveKeysStore: writable([]),
     }
 })
+// No prompt is ever on screen in these suites; the real one would read the alert store this mock leaves out.
+vi.mock('src/ts/alertPrompts', async (importOriginal) => ({ ...(await importOriginal<typeof import('src/ts/alertPrompts')>()), pageCovered: () => false }))
 vi.mock('src/lang', async () => {
     const helpers = await import('src/ts/studio/studioFixtures.test-helpers')
     return { language: helpers.studioLanguageMock() }
@@ -34,7 +36,9 @@ import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/t
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import { createSaveAck, PENDING_DELAY_MS, type SaveAck, type SaveAckDeps } from 'src/ts/studio/edit/saveAck.svelte'
 import { refusalText } from 'src/ts/studio/edit/studioToasts'
-import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
+import { backCloseHandler } from 'src/ts/backHandlers'
+import { studioOpen } from 'src/ts/studio/studioOpen'
+import { closeStudio, resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { DEFAULT_TOAST_CONFIG, createToastHost, type ToastClock, type ToastHost } from 'src/ts/toast/toastHost.svelte'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
 import { characterOwnerKey, chatOwnerKey, SAVE_DEBOUNCE_MS, READY_DEADLINE_MS } from '../../ts/studio/history/ownerPhase'
@@ -1293,5 +1297,419 @@ describe('first-message rows are keyed by identity', () => {
         await settle()
         expect(valuesOf()).toEqual(messages(3, 'b'))
         expect(greetingInputs().some((node) => first.includes(node))).toBe(false)
+    })
+})
+
+// ---------------------------------------------------------------- B1: the long-text write path
+
+type EolFixture = 'plain' | 'crlf' | 'mixed' | 'lonecr'
+
+const FIXTURE_TEXT: Record<EolFixture, { desc: string; greeting: string; note: string }> = {
+    plain: { desc: 'd0', greeting: 'g1', note: 'n0' },
+    crlf: { desc: 'd0\r\nx', greeting: 'g1\r\ny', note: 'n0\r\nz' },
+    mixed: { desc: 'a\r\nb\nc', greeting: 'g\r\nh\ni', note: 'n\r\no\np' },
+    lonecr: { desc: 'a\rb', greeting: 'g\rh', note: 'n\ro' },
+}
+
+interface LongTarget {
+    name: 'desc' | 'greeting 1' | 'note'
+    owner: typeof A
+    mountForm(): void
+    field(): HTMLTextAreaElement
+    stored(): string
+    // Replaces the stored text before the form is mounted.
+    seed(text: string): void
+    // The same edit the form would make, through the service.
+    edit(service: OwnerHistoryService, text: string): void
+    textOf(fixture: EolFixture): string
+}
+
+const LONG_TARGETS: LongTarget[] = [
+    {
+        name: 'desc',
+        owner: A,
+        mountForm: () => { mountInto(StudioCharacterForm, { chaId: 'A' }) },
+        field: desc,
+        stored: () => live().desc,
+        seed: (text) => { live().desc = text },
+        edit: (service, text) => { service.editField(A, 'desc', text) },
+        textOf: (fixture) => FIXTURE_TEXT[fixture].desc,
+    },
+    {
+        name: 'greeting 1',
+        owner: A,
+        mountForm: () => { mountInto(StudioCharacterForm, { chaId: 'A' }) },
+        field: () => greetingInputs()[1],
+        stored: () => live().alternateGreetings[1],
+        seed: (text) => { live().alternateGreetings = ['g0', text, 'g2'] },
+        edit: (service, text) => { service.greetingEdit(A, 1, text) },
+        textOf: (fixture) => FIXTURE_TEXT[fixture].greeting,
+    },
+    {
+        name: 'note',
+        owner: CHAT,
+        mountForm: () => { mountInto(StudioChatNoteForm, { chaId: 'A', chatId: 'c1' }) },
+        field: note,
+        stored: () => live().chats[0].note,
+        seed: (text) => { live().chats[0].note = text },
+        edit: (service, text) => { service.editField(CHAT, 'note', text) },
+        textOf: (fixture) => FIXTURE_TEXT[fixture].note,
+    },
+]
+
+const lfOf = (text: string): string => text.replace(/\r\n?/g, '\n')
+
+function composeInto(field: HTMLTextAreaElement, value: string): void {
+    field.value = value
+    field.dispatchEvent(new InputEvent('input', { bubbles: true, isComposing: true, inputType: 'insertCompositionText' }))
+    flushSync()
+}
+
+function compositionStart(field: HTMLTextAreaElement): void {
+    field.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+}
+
+function compositionEnd(field: HTMLTextAreaElement): void {
+    field.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
+    flushSync()
+}
+
+function setVisibility(state: 'hidden' | 'visible'): void {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state })
+}
+
+// The page hides: `visibilitychange` at the document with the state stubbed, as a browser fires it.
+function hidePage(): void {
+    setVisibility('hidden')
+    document.dispatchEvent(new Event('visibilitychange', { bubbles: true }))
+}
+
+async function mountTarget(target: LongTarget, fixture: EolFixture = 'plain'): Promise<Rig> {
+    target.seed(target.textOf(fixture))
+    const rig = makeRig()
+    target.mountForm()
+    await settle()
+    return rig
+}
+
+const stepsOf = (service: OwnerHistoryService, owner: typeof A): number => service.view(owner).done.length
+const refusalLine = (): string | undefined => part('studio-form-refusal')?.textContent ?? undefined
+
+describe('B1 the long-text write path', () => {
+    afterEach(() => {
+        setVisibility('visible')
+    })
+
+    describe.each(LONG_TARGETS)('$name', (target) => {
+        test('B1-R1 a composing input is held: nothing is written, marked or recorded', async () => {
+            const { service } = await mountTarget(target)
+            const before = target.stored()
+            compositionStart(target.field())
+            composeInto(target.field(), `${before}ㅎ`)
+            expect(target.stored()).toBe(before)
+            expect(h.marks).toBe(0)
+            expect(stepsOf(service, target.owner)).toBe(0)
+        })
+
+        test('B1-R2 compositionend writes once, in Chrome order and in Firefox order', async () => {
+            const { service } = await mountTarget(target)
+            const before = target.stored()
+            const field = target.field()
+            compositionStart(field)
+            composeInto(field, `${before}ㅎ`)
+            composeInto(field, `${before}하`)
+            composeInto(field, `${before}한`)
+            compositionEnd(field)
+            expect(target.stored()).toBe(`${before}한`)
+            expect(h.marks).toBe(1)
+            expect(stepsOf(service, target.owner)).toBe(1)
+            // Firefox: a trailing non-composing input with the same text follows compositionend.
+            type(field, `${before}한`)
+            expect(h.marks).toBe(1)
+            expect(stepsOf(service, target.owner)).toBe(1)
+        })
+
+        test('B1-R3 a refusal during composition leaves the composition alone; compositionend resets and shows it', async () => {
+            await mountTarget(target)
+            const before = target.stored()
+            studioScreen.chaId = 'B'
+            const field = target.field()
+            compositionStart(field)
+            composeInto(field, `${before}한`)
+            expect(field.value).toBe(`${before}한`)
+            expect(refusalLine()).toBeUndefined()
+            compositionEnd(field)
+            expect(field.value).toBe(before)
+            expect(refusalLine()).toBe(refusalText('not-selected'))
+            expect(h.marks).toBe(0)
+        })
+
+        test('B1-R4 a hide flush that is refused while composing keeps the text; compositionend resets', async () => {
+            await mountTarget(target)
+            const before = target.stored()
+            studioScreen.chaId = 'B'
+            const field = target.field()
+            compositionStart(field)
+            composeInto(field, `${before}한`)
+            hidePage()
+            flushSync()
+            expect(field.value).toBe(`${before}한`)
+            expect(refusalLine()).toBe(refusalText('not-selected'))
+            compositionEnd(field)
+            expect(field.value).toBe(before)
+        })
+
+        test('B1-R5 a real edit keeps the stored CRLF endings', async () => {
+            await mountTarget(target, 'crlf')
+            const field = target.field()
+            const shown = lfOf(target.textOf('crlf'))
+            expect(field.value).toBe(shown)
+            type(field, `${shown}Y`)
+            expect(target.stored()).toBe(`${target.textOf('crlf')}Y`)
+        })
+
+        test.each(['mixed', 'lonecr'] as const)('B1-R6 a net-zero composition on a %s text rewrites no endings', async (fixture) => {
+            const { service } = await mountTarget(target, fixture)
+            const stored = target.stored()
+            const field = target.field()
+            const shown = lfOf(stored)
+            compositionStart(field)
+            composeInto(field, `${shown}X`)
+            composeInto(field, shown)
+            compositionEnd(field)
+            expect(target.stored()).toBe(stored)
+            expect(h.marks).toBe(0)
+            expect(stepsOf(service, target.owner)).toBe(0)
+        })
+
+        test('B1-G1 blur writes held text; typing after the pause makes a second step', async () => {
+            const { service, clock } = await mountTarget(target)
+            const before = target.stored()
+            const field = target.field()
+            compositionStart(field)
+            composeInto(field, `${before}한`)
+            field.dispatchEvent(new FocusEvent('blur'))
+            flushSync()
+            expect(target.stored()).toBe(`${before}한`)
+            expect(h.marks).toBe(1)
+            expect(stepsOf(service, target.owner)).toBe(1)
+            clock.set(100)
+            type(field, `${before}한x`)
+            expect(stepsOf(service, target.owner)).toBe(2)
+        })
+
+        test('B1-G3 Back while composing records the held text', async () => {
+            await mountTarget(target)
+            const before = target.stored()
+            const field = target.field()
+            field.focus()
+            compositionStart(field)
+            composeInto(field, `${before}한`)
+            let recorded: string | null = null
+            const handler = backCloseHandler({ isOpen: () => true, snapshot: () => target.stored(), close: () => { recorded = target.stored() } })
+            handler()
+            expect(recorded).toBe(`${before}한`)
+        })
+
+        describe('B1-G6 no input means no write', () => {
+            const cells: [string, (field: HTMLTextAreaElement) => void][] = [
+                ['focus and blur', (field) => { field.focus(); field.blur() }],
+                ['focus and hide', (field) => { field.focus(); hidePage() }],
+                ['focus and closeStudio', (field) => { field.focus(); studioOpen.set(true); closeStudio() }],
+                ['focus and a composition with no input', (field) => { field.focus(); compositionStart(field); compositionEnd(field) }],
+            ]
+            test.each(['plain', 'crlf', 'mixed', 'lonecr'] as const)('(a) positive controls on %s text', async (fixture) => {
+                for (const [, act] of cells) {
+                    setVisibility('visible')
+                    await unmountAll()
+                    db.db.characters = [makeCharacter()]
+                    const { service } = await mountTarget(target, fixture)
+                    const stored = target.stored()
+                    expect(target.field().value).toBe(lfOf(stored))
+                    act(target.field())
+                    flushSync()
+                    expect(target.stored()).toBe(stored)
+                    expect(h.marks).toBe(0)
+                    expect(stepsOf(service, target.owner)).toBe(0)
+                }
+                await unmountAll()
+                db.db.characters = [makeCharacter()]
+                const { service } = await mountTarget(target, fixture)
+                const stored = target.stored()
+                target.field().focus()
+                await unmountAll()
+                expect(target.stored()).toBe(stored)
+                expect(h.marks).toBe(0)
+                expect(stepsOf(service, target.owner)).toBe(0)
+            })
+
+            test.each(cells.map(([name]) => name))('(b) stale surface after an owner change: %s', async (cellName) => {
+                const { service } = await mountTarget(target)
+                const field = target.field()
+                field.focus()
+                target.edit(service, 'new text')
+                const act = cells.find(([name]) => name === cellName)?.[1]
+                act?.(field)
+                flushSync()
+                expect(target.stored()).toBe('new text')
+                expect(h.marks).toBe(1)
+                expect(stepsOf(service, target.owner)).toBe(1)
+                expect(refusalLine()).toBeUndefined()
+            })
+        })
+    })
+})
+
+describe('B1 greeting rows keep held text with their row', () => {
+    test('B1-G8 a removal before the held row, after a render, still writes the held row', async () => {
+        const rig = makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        compositionStart(greetingInputs()[1])
+        composeInto(greetingInputs()[1], 'g1ㅎ')
+        expect(rig.service.greetingDelete(A, 0).ok).toBe(true)
+        await settle()
+        composeInto(greetingInputs()[0], 'g1한')
+        compositionEnd(greetingInputs()[0])
+        expect(live().alternateGreetings).toEqual(['g1한', 'g2'])
+    })
+
+    test('B1-G8b a removal before the held row in the same tick: the hide flush writes into the right row', async () => {
+        const rig = makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        compositionStart(greetingInputs()[1])
+        composeInto(greetingInputs()[1], 'g1ㅎ')
+        expect(rig.service.greetingDelete(A, 0).ok).toBe(true)
+        hidePage()
+        expect(live().alternateGreetings).toEqual(['g1ㅎ', 'g2'])
+        expect(refusalLine()).toBeUndefined()
+        setVisibility('visible')
+    })
+
+    test('B1-T1 a row removed while its text is held writes nothing at teardown', async () => {
+        const rig = makeRig()
+        const writes = vi.spyOn(rig.service, 'greetingEdit')
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        compositionStart(greetingInputs()[1])
+        composeInto(greetingInputs()[1], 'g1ㅎ')
+        expect(rig.service.greetingDelete(A, 1).ok).toBe(true)
+        const marksAfterDelete = h.marks
+        await settle()
+        expect(writes).not.toHaveBeenCalled()
+        expect(h.marks).toBe(marksAfterDelete)
+        expect(marksAfterDelete).toBe(1)
+        expect(live().alternateGreetings).toEqual(['g0', 'g2'])
+        const last = greetingInputs()[1]
+        expect(rig.service.greetingEdit(A, 1, 'g2x').ok).toBe(true)
+        await settle()
+        expect(greetingInputs()[1]).toBe(last)
+        expect(greetingInputs().map((node) => node.value)).toEqual(['g0', 'g2x'])
+    })
+
+    test('B1-T2 a whole-array replacement under held text writes nothing and the rows follow', async () => {
+        const rig = makeRig()
+        const edits = vi.spyOn(rig.service, 'greetingEdit')
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        compositionStart(greetingInputs()[1])
+        composeInto(greetingInputs()[1], 'g1ㅎ')
+        live().alternateGreetings = ['g0', 'g2']
+        await settle()
+        const marks = h.marks
+        live().alternateGreetings = ['g0', 'g2x', 'g9']
+        await settle()
+        expect(greetingInputs().map((node) => node.value)).toEqual(['g0', 'g2x', 'g9'])
+        expect(edits).not.toHaveBeenCalled()
+        expect(h.marks).toBe(marks)
+    })
+
+    test('B1-T3 a description whose character turns private writes nothing', async () => {
+        const rig = makeRig()
+        const edits = vi.spyOn(rig.service, 'editField')
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        compositionStart(desc())
+        composeInto(desc(), 'd0ㅎ')
+        live().license = 'private'
+        await settle()
+        expect(desc()).toBeNull()
+        expect(edits).not.toHaveBeenCalled()
+        expect(h.marks).toBe(0)
+        expect(live().desc).toBe('d0')
+    })
+})
+
+describe('B1 a flush finds the owner no longer editable or the row gone', () => {
+    afterEach(() => {
+        setVisibility('visible')
+    })
+
+    // The character turns private between the held input and the flush, before any render: the write path must
+    // answer null itself, not reach the service.
+    test('B1-X1 held description: a hide flush after the owner stopped being editable makes no service write', async () => {
+        const rig = makeRig()
+        const edits = vi.spyOn(rig.service, 'editField')
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        compositionStart(desc())
+        composeInto(desc(), 'd0ㅎ')
+        live().license = 'private'
+        hidePage()
+        expect(edits).not.toHaveBeenCalled()
+        expect(h.marks).toBe(0)
+        expect(live().desc).toBe('d0')
+    })
+
+    test('B1-X2 held first message: a hide flush after the owner stopped being editable makes no service write', async () => {
+        const rig = makeRig()
+        const edits = vi.spyOn(rig.service, 'greetingEdit')
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        compositionStart(greetingInputs()[1])
+        composeInto(greetingInputs()[1], 'g1ㅎ')
+        live().license = 'private'
+        hidePage()
+        expect(edits).not.toHaveBeenCalled()
+        expect(h.marks).toBe(0)
+        expect(live().alternateGreetings).toEqual(['g0', 'g1', 'g2'])
+    })
+
+    test('B1-X3 a row removed while its text is held: a hide flush before any render shows no refusal and writes nothing', async () => {
+        const rig = makeRig()
+        const edits = vi.spyOn(rig.service, 'greetingEdit')
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        compositionStart(greetingInputs()[1])
+        composeInto(greetingInputs()[1], 'g1ㅎ')
+        expect(rig.service.greetingDelete(A, 1).ok).toBe(true)
+        hidePage()
+        flushSync()
+        expect(refusalLine()).toBeUndefined()
+        expect(edits).not.toHaveBeenCalled()
+        expect(live().alternateGreetings).toEqual(['g0', 'g2'])
+    })
+
+    // A null result means there was no write path; the note clears its refusal line like an accepted write.
+    test('B1-X4 the note clears a shown refusal when a later flush finds no write path', async () => {
+        const rig = makeRig()
+        const edits = vi.spyOn(rig.service, 'editField')
+        mountInto(StudioChatNoteForm, { chaId: 'A', chatId: 'c1' })
+        await settle()
+        studioScreen.chaId = 'B'
+        compositionStart(note())
+        composeInto(note(), 'n0한')
+        hidePage()
+        flushSync()
+        expect(refusalLine()).toBe(refusalText('not-selected'))
+        const refused = edits.mock.calls.length
+        // A second chat with the same id: the note has no unique chat, so its write path is gone.
+        live().chats.push({ ...live().chats[0] })
+        hidePage()
+        flushSync()
+        expect(edits.mock.calls.length).toBe(refused)
+        expect(refusalLine()).toBeUndefined()
+        expect(note().value).toBe('n0한')
     })
 })
