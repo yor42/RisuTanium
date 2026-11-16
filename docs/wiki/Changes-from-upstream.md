@@ -176,7 +176,7 @@ These are descriptive measurements on specific machines. They are not a promise 
 
 ### Security
 
-- The Node server needs a password, with rules for tokens and request sizes. Desktop and Android check native network destinations and trim permissions. They ask before they install Python or start the stdio command of a module.
+- The Node server needs a password, with rules for tokens and request sizes. Desktop and Android check native network destinations and trim permissions. They ask before they start the stdio command of a module.
 - Imported presets cannot redirect stored API keys. The fork closed several unsafe HTML sinks.
 
 ### Android
@@ -327,7 +327,6 @@ Two reports did not hold in this fork. The first said that the app sends backup 
 - A boot hang on Android is fixed. File pickers settle when you cancel.
 - The app receives a reply that finishes while the app is hidden, and its notification clears.
 - Android exports and previews read assets in bounded pieces. They no longer read whole files.
-- Tauri `install_python` no longer panics on failure, and it reports pip errors honestly.
 
 ### Interface
 
