@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { untrack } from 'svelte'
+    import { onDestroy, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import { XIcon } from '@lucide/svelte'
     import { alertError } from '../../ts/alert'
@@ -27,6 +27,11 @@
     }
 
     let { host }: Props = $props()
+
+    // Set once the panel is gone: a replay that settles after that has no panel to show its outcome in, and its focus
+    // placement would fall back to the whole document.
+    let destroyed = false
+    onDestroy(() => { destroyed = true })
 
     const toasts = createStudioToasts({ service: getStudioHistoryService, host: untrack(() => host) })
 
@@ -121,10 +126,11 @@
                 return runDismissingConsumed(svc, toasts, key, apply)
             })
         } catch (error) {
-            // A rejected replay may already have landed its write; the error is shown.
+            // A rejected replay may already have landed its write; the error is shown, whatever became of the panel.
             alertError(error instanceof Error ? error : String(error))
             return
         }
+        if (destroyed) return
         // The panel may have moved to another owner meanwhile: its message belongs to this one.
         if (historyOwner !== key) return
         showOutcome(key, result, read.before)
@@ -163,7 +169,10 @@
             case 'restorePoint': return language.studioStepRestorePoint
             case 'revert': return language.studioStepRevert
             case 'restoreDeleted': return language.studioStepRestoreDeleted
-            // The asset step labels have their texts with the asset lists; until then the kind names the step.
+            // A delete of several rows has no name to show: it keeps the kind until the bulk lists name it.
+            case 'assetDelete': return label.name === null ? label.kind : language.studioStepAssetDeleteOne(label.name)
+            case 'assetRename': return language.studioStepAssetRename(label.from, label.to)
+            // The other asset step labels have their texts with the asset lists; until then the kind names the step.
             default: return label.kind
         }
     }

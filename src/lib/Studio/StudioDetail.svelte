@@ -6,6 +6,7 @@
     import { currentVisitAck } from '../../ts/studio/history/studioHistoryService.svelte'
     import { ownerSourceFor, readTextSources } from '../../ts/studio/ownerSource.svelte'
     import { applyStudioTarget, clearStudioSelection, studioScreen } from '../../ts/studio/studioScreen.svelte'
+    import StudioAssetList from './assets/StudioAssetList.svelte'
     import StudioChatNoteForm from './StudioChatNoteForm.svelte'
     import StudioCharacterForm from './StudioCharacterForm.svelte'
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
@@ -42,11 +43,12 @@
     const item = $derived(selectedItemOf())
     const roleLabel = $derived(owner ? ownerRoleLabelOf(owner.type) : null)
     const destination = $derived(owner && !owner.restricted ? classicDestinationOf(owner.type, kindNode?.kind ?? null) : null)
-    // The live forms: the character's basic info, and the chat owner's own screen. Neither exists for a private or
-    // not-loaded owner; the forms re-check privacy themselves at every render.
+    // The live forms: the character's basic info, its asset list, and the chat owner's own screen. None exists for a
+    // private or not-loaded owner; the forms re-check privacy themselves at every render.
     const characterFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'basic')
+    const assetFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'display')
     const chatFormLive = $derived(owner?.type === 'chat' && !owner.restricted && !owner.stub && studioScreen.selectedKind === null)
-    const formLive = $derived(characterFormLive || chatFormLive)
+    const formLive = $derived(characterFormLive || assetFormLive || chatFormLive)
 
     // A selected owner the model no longer has (the chat page moved, a module was removed) leaves the detail
     // empty; the selection is dropped and the notice says so.
@@ -126,7 +128,7 @@
             {/if}
             {#if kindNode}
                 <p data-part="studio-detail-kind" class="font-bold">{kindLabelOf(kindNode.kind)}</p>
-                {#if kindNode.count + kindNode.folderCount === 0}
+                {#if kindNode.count + kindNode.folderCount === 0 && !assetFormLive}
                     <p class="text-textcolor2">{language.studioEmptyKind}</p>
                 {:else if kindNode.kind === 'lore' || kindNode.kind === 'regex'}
                     <p class="text-textcolor2">{language.studioItemCount(kindNode.count)}</p>
@@ -146,6 +148,8 @@
                 <!-- A new visit clears the selection first, so its form is built again over its own ack. -->
                 {#if characterFormLive}
                     <StudioCharacterForm chaId={studioScreen.chaId} />
+                {:else if assetFormLive}
+                    <StudioAssetList chaId={studioScreen.chaId} />
                 {:else if owner}
                     <StudioChatNoteForm chaId={studioScreen.chaId} chatId={owner.id} />
                 {/if}

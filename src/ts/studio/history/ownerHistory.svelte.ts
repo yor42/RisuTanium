@@ -953,8 +953,10 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         return notes
     }
 
-    // Every history action is one call of this: phase check, the setter guards, the plan, one
-    // marked `writeLive*` call, then the stack move, the visit ack and the save request.
+    // Every history action is one call of this: phase check, the setter guards, the plan, one marked `writeLive*` call,
+    // then the record assignment, the save request (in `ready`) and, last, the notifications: the module slot port, the
+    // visit ack and the landed callback. Nothing runs between the record assignment and the save request, and no
+    // notification runs inside the live write, so a notification that throws never leaves a landed step without its save.
     function applyStudioWrite(owner: OwnerKey, intent: Intent): StudioResult {
         cancelWarm()
         // A module owner that is not selected, shares its id or is a stub is refused before its lifecycle starts, so
@@ -1006,14 +1008,14 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 }
             }
             // A step that is already in place, or dropped: no live write, mark, ack or recompute. The stack
-            // move still lands and is saved.
+            // move still lands and is saved; the save is requested before the landed callback runs.
             const moved = planned.land({ record: slot.record, open: slot.open })
             slot.record = moved.record
             slot.open = moved.open
-            landedNotice(owner, slot)
             if (phase.kind === 'ready') {
                 requestSave(slot)
             }
+            landedNotice(owner, slot)
             return { ok: true, ...planned.notes }
         }
         // The asset path: every write that changes an asset list or a folder entry carries the retained paths.
@@ -1063,7 +1065,8 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         let landed: boolean
         if (isModuleTarget(target)) {
             const moduleExtras = extras ?? { folder: { kind: 'keep' as const }, retained: null }
-            landed = writeLiveModule(slot.claimSubject.id, (module) => buildWrittenModule(module, planned.writes, moduleExtras), deps.onModuleSlotReplaced)
+            // No port is passed: it is told below, after the save is armed, and never from inside the write.
+            landed = writeLiveModule(slot.claimSubject.id, (module) => buildWrittenModule(module, planned.writes, moduleExtras))
         } else if (chaId === null) {
             landed = false
         } else if (target.chat) {
@@ -1080,10 +1083,6 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         slot.record = next.record
         slot.open = next.open
-        if (chaId !== null) {
-            acks.get(chaId)?.noteEdit(chaId, before)
-        }
-        landedNotice(owner, slot)
         if (phase.kind === 'ready') {
             // A removal-type write saves at once; any other waits for the debounce.
             if (assetWrite && removal) {
@@ -1092,6 +1091,16 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 requestSave(slot)
             }
         }
+        // The notifications follow the armed save, in this order, and none is isolated: a throw reaches the caller and
+        // skips the ones after it, while the step and its save stand. The port resets the module memo before it tells
+        // module screens, and runs once per landed module write, before this returns.
+        if (isModuleTarget(target)) {
+            deps.onModuleSlotReplaced?.()
+        }
+        if (chaId !== null) {
+            acks.get(chaId)?.noteEdit(chaId, before)
+        }
+        landedNotice(owner, slot)
         return { ok: true, ...planned.notes, ...(intent.kind === 'asset' ? { stepId: slot.record.done.at(-1)?.id } : {}) }
     }
 
