@@ -195,7 +195,7 @@ class Kit {
     }
 
     restoreDeleted(id: string): PlanResult {
-        return this.commitPlan(planRestoreDeleted(this.record, id, this.reader))
+        return this.commitPlan(planRestoreDeleted(this.record, id, this.reader, { chatId: 'chatA' }))
     }
 
     stripFingerprints() {

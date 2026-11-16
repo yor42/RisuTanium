@@ -199,7 +199,7 @@ function runLockstep(seed: number, steps: number) {
             action = (k) => k.commitPlan(planRevert(k.record, target, k.reader, k.budget, k.elementHash))
         } else if (pick < 0.76 && ref.record.deleted.length > 0) {
             const id = ref.record.deleted[Math.floor(next() * ref.record.deleted.length)].id
-            action = (k) => k.commitPlan(planRestoreDeleted(k.record, id, k.reader))
+            action = (k) => k.commitPlan(planRestoreDeleted(k.record, id, k.reader, null))
         } else if (pick < 0.8) {
             action = (k) => k.commitPlan(planRestorePoint(k.record.restore, k.reader, new Set()))
         } else if (pick < 0.92) {

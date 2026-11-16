@@ -27,6 +27,8 @@ import {
     createPageSession,
     deriveRestoreWrites,
     emptyRecord,
+    fmAfterInsert,
+    fmAfterRemove,
     invertOp,
     listChangedElsewhere,
     listSideOf,
@@ -46,6 +48,7 @@ import {
     type Op,
     type OwnerRecord,
     type PlanResult,
+    type RestoreContext,
     type RestorePath,
     type SetPath,
     type AssetOp,
@@ -215,18 +218,20 @@ class Session {
     }
 
     // `chatId` null stands for a context chat without a unique id (its fmIndex is set by page index).
-    deleteGreeting(index: number, at: number, chatId: string | null = 'chatA'): string {
+    deleteGreeting(index: number, at: number, chatId: string | null = 'chatA', after: number | null = -1): string {
         const value = this.live.obj.alternateGreetings[index]
         const deletedId = `del${this.counter + 1}`
         const target = chatId === null ? this.live.obj.pageChat : this.live.obj.chats[chatId]
         const beforeFm: FmValue = target.fmIndex === undefined ? { had: false } : { had: true, value: target.fmIndex }
-        const ops: Op[] = [
-            { op: 'listRemove', index, value, deletedId },
-            { op: 'chatFm', chatId, before: beforeFm, after: { had: true, value: -1 } },
-        ]
+        const ops: Op[] = [{ op: 'listRemove', index, value, deletedId }]
+        if (after !== null) {
+            ops.push({ op: 'chatFm', chatId, before: beforeFm, after: { had: true, value: after } })
+        }
         const greetings = [...this.live.obj.alternateGreetings]
         this.live.obj.alternateGreetings.splice(index, 1)
-        target.fmIndex = -1
+        if (after !== null) {
+            target.fmIndex = after
+        }
         this.state = commitStep(this.state, {
             id: this.nextId(),
             at,
@@ -282,8 +287,9 @@ class Session {
         return this.commitPlan(planRevert(this.record, stepId, this.live.reader, budgetUnits), at)
     }
 
-    restoreDeleted(id: string, at: number) {
-        return this.commitPlan(planRestoreDeleted(this.record, id, this.live.reader), at)
+    // The Session's open chat is chatA.
+    restoreDeleted(id: string, at: number, context: RestoreContext | null = { chatId: 'chatA' }) {
+        return this.commitPlan(planRestoreDeleted(this.record, id, this.live.reader, context), at)
     }
 
     restorePoint(keep: ReadonlySet<RestorePath>, at: number) {
@@ -705,7 +711,7 @@ describe('restore point (T-RP1 to T-RP3)', () => {
 describe('deleted items (T-D1)', () => {
     function deleteThenEdit() {
         const s = newSession({ desc: 'd', alternateGreetings: ['a', 'b', 'c'], chats: { chatA: { fmIndex: 2 } } })
-        const id = s.deleteGreeting(1, 0)
+        const id = s.deleteGreeting(1, 0, 'chatA', 1)
         s.typeDesc('d2', 5000)
         s.editGreeting(0, 'a2', 10000)
         s.addGreeting('d', 15000)
@@ -732,7 +738,7 @@ describe('deleted items (T-D1)', () => {
         expect(s.live.obj.alternateGreetings).toEqual(['a2', 'b', 'c', 'd'])
         expect(s.record.deleted).toEqual([])
         expect(s.record.done.at(-1)?.label).toEqual({ kind: 'restoreDeleted', deletedId: id })
-        // fmIndex was -1, so the side effect is restored as well.
+        // The chat followed its text to 1 at the delete; the restore moves it back with its text.
         expect(s.live.obj.chats.chatA.fmIndex).toBe(2)
     })
 
@@ -762,7 +768,7 @@ describe('deleted items (T-D1)', () => {
         const id = s.deleteGreeting(0, 0)
         s.undo()
         expect(s.record.deleted).toEqual([])
-        expect(planRestoreDeleted(s.record, id, s.live.reader)).toEqual({ ok: false, reason: 'unknown' })
+        expect(planRestoreDeleted(s.record, id, s.live.reader, null)).toEqual({ ok: false, reason: 'unknown' })
         s.redo()
         expect(s.record.deleted.map((item) => item.id)).toEqual([id])
         expect(s.record.deleted[0]).toMatchObject({ index: 0, value: 'a', sideChat: { chatId: 'chatA' } })
@@ -770,7 +776,7 @@ describe('deleted items (T-D1)', () => {
 
     test('Ctrl+Z on the delete step and the History restore exclude each other', () => {
         const s = newSession({ alternateGreetings: ['a', 'b'], chats: { chatA: { fmIndex: 1 } } })
-        const id = s.deleteGreeting(0, 0)
+        const id = s.deleteGreeting(0, 0, 'chatA', 0)
         s.restoreDeleted(id, 5000)
         // Undo the restore, then restore from History again, then the delete step is no longer undoable.
         s.undo()
@@ -796,18 +802,18 @@ describe('deleted items (T-D1)', () => {
 
     test('a restore is refused for an unknown id, and when the greeting list cannot be read', () => {
         const { s, id } = deleteThenEdit()
-        expect(planRestoreDeleted(s.record, 'nope', s.live.reader)).toEqual({ ok: false, reason: 'unknown' })
+        expect(planRestoreDeleted(s.record, 'nope', s.live.reader, null)).toEqual({ ok: false, reason: 'unknown' })
         const unreadable: LiveReader = { ...s.live.reader, greetings: () => null }
-        expect(planRestoreDeleted(s.record, id, unreadable)).toEqual({ ok: false, reason: 'precondition' })
+        expect(planRestoreDeleted(s.record, id, unreadable, null)).toEqual({ ok: false, reason: 'precondition' })
     })
 
-    test('the side effect is restored only while fmIndex is still -1', () => {
+    test('a chat moved meanwhile at or past the insert index follows its text on restore', () => {
         const s = newSession({ alternateGreetings: ['a', 'b'], chats: { chatA: { fmIndex: 1 } } })
         const id = s.deleteGreeting(0, 0)
         s.live.obj.chats.chatA.fmIndex = 0
         s.restoreDeleted(id, 5000)
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b'])
-        expect(s.live.obj.chats.chatA.fmIndex).toBe(0)
+        expect(s.live.obj.chats.chatA.fmIndex).toBe(1)
     })
 
     test('the deleted list is capped at MAX_DELETED, dropping the oldest', () => {
@@ -1747,9 +1753,9 @@ const LEGACY_OUTCOMES: Array<[string, boolean, string | null, number | null, str
 // replays before the revert do not touch that lifecycle and stay pinned to the old values above.
 const REVERT_LIFECYCLE_OUTCOMES: typeof LEGACY_OUTCOMES = [
     ['undo revert', true, null, 0, ['B', 'c', 'd'], -1, ['page:1', 'page:2', 'page:3', 'page:4'], ['page:5'], ['del3'], 'chatFm,listSet0,listInsert1,listRemove3,listInsert3,listRemove3'],
-    ['restore deleted', true, null, 0, ['a', 'B', 'c', 'd'], 2, ['page:1', 'page:2', 'page:3', 'page:4', 'page:6'], [], [], 'listInsert0,chatFm'],
-    ['undo restore', true, null, 0, ['B', 'c', 'd'], -1, ['page:1', 'page:2', 'page:3', 'page:4'], ['page:6'], ['del3'], 'listInsert0,chatFm'],
-    ['redo restore', true, null, 0, ['a', 'B', 'c', 'd'], 2, ['page:1', 'page:2', 'page:3', 'page:4', 'page:6'], [], [], 'listInsert0,chatFm'],
+    ['restore deleted', true, null, 0, ['a', 'B', 'c', 'd'], -1, ['page:1', 'page:2', 'page:3', 'page:4', 'page:6'], [], [], 'listInsert0'],
+    ['undo restore', true, null, 0, ['B', 'c', 'd'], -1, ['page:1', 'page:2', 'page:3', 'page:4'], ['page:6'], ['del3'], 'listInsert0'],
+    ['redo restore', true, null, 0, ['a', 'B', 'c', 'd'], -1, ['page:1', 'page:2', 'page:3', 'page:4', 'page:6'], [], [], 'listInsert0'],
 ]
 
 describe('T15a an old record replays as before the fingerprint', () => {
@@ -2273,7 +2279,7 @@ describe('deleted-item lifecycle: reverts and their undo and redo', () => {
         expect(s.record.deleted).toStrictEqual([entry])
         s.typeDesc('f', 20000)
         expect(s.record.deleted).toStrictEqual([entry])
-        expect(planRestoreDeleted(s.record, id, s.live.reader).ok).toBe(true)
+        expect(planRestoreDeleted(s.record, id, s.live.reader, null).ok).toBe(true)
     })
 
     test('T20 redoing the revert consumes the item again; repeated undo and redo never list it twice', () => {
@@ -2521,7 +2527,7 @@ describe('deleted-item lifecycle: reverts and their undo and redo', () => {
 describe('deleted-item lifecycle: Restore deleted redo', () => {
     test('T59a a Restore deleted redo on the other side is refused and does not consume the item', () => {
         const s = newSession({ alternateGreetings: ['a', 'b'], chats: { chatA: { fmIndex: 1 } } })
-        const id = s.deleteGreeting(0, 0)
+        const id = s.deleteGreeting(0, 0, 'chatA', 0)
         expect(s.restoreDeleted(id, 5000).ok).toBe(true)
         s.undo(10000)
         listOnly(s, ['a', 'b'])
@@ -4718,7 +4724,7 @@ describe('replay past a step already in place: further rows', () => {
 
     test('the History-restore shape drops the delete step: no write, the step in neither stack, History\'s list unchanged', () => {
         const s = newSession({ alternateGreetings: ['a', 'b'], chats: { chatA: { fmIndex: 1 } } })
-        const id = s.deleteGreeting(0, 0)
+        const id = s.deleteGreeting(0, 0, 'chatA', 0)
         s.restoreDeleted(id, 5000)
         s.undo(6000)
         s.restoreDeleted(id, 7000)
@@ -4969,5 +4975,614 @@ describe('the asset paths a replay may put a row over', () => {
         expect(isStoredAssetPath('x/assets/a.png')).toBe(false)
         expect(isStoredAssetPath('https://example.invalid/a.png')).toBe(false)
         expect(isStoredAssetPath('')).toBe(false)
+    })
+})
+
+// ---------------------------------------------------------------- the open chat follows its first message
+
+// A list of alternative first messages with chats, driven the way the builders drive it: a delete moves only the open
+// chat (chatFm only when its effective index changes), and move and swap move it as greetingListOps does.
+interface FollowObject {
+    firstMessage: string
+    alternateGreetings: string[]
+    chats: Record<string, { fmIndex?: number }>
+}
+
+const effectiveFm = (obj: FollowObject, fm: number | undefined) =>
+    typeof fm === 'number' && Number.isInteger(fm) && fm >= 0 && fm < obj.alternateGreetings.length ? fm : -1
+
+function fmAfterMove(e: number, from: number, to: number): number {
+    if (e === -1) {
+        return -1
+    }
+    if (e === from) {
+        return to
+    }
+    if (from < e && e <= to) {
+        return e - 1
+    }
+    return to <= e && e < from ? e + 1 : e
+}
+
+function fmAfterSwap(e: number, i: number): number {
+    if (e === -1) {
+        return i
+    }
+    return e === i ? -1 : e
+}
+
+class FollowWorld {
+    state: ModelState = createModelState(emptyRecord(characterOwnerKey('c1'), 0))
+    n = 0
+    // The chat the builders and the restore treat as open.
+    open = 'chatA'
+    constructor(readonly obj: FollowObject) {}
+
+    reader: LiveReader = {
+        field: (path) => (path === 'firstMessage' ? { had: true, value: this.obj.firstMessage } : { had: false }),
+        greetings: () => this.obj.alternateGreetings,
+        fmIndex: (chatId) => {
+            const chat = this.obj.chats[chatId]
+            if (!chat) {
+                return null
+            }
+            return chat.fmIndex === undefined ? { had: false } : { had: true, value: chat.fmIndex }
+        },
+    }
+
+    apply(writes: readonly WriteOp[]) {
+        for (const w of writes) {
+            if (w.op === 'set' && w.path === 'firstMessage' && w.value.had && typeof w.value.value === 'string') {
+                this.obj.firstMessage = w.value.value
+            } else if (w.op === 'listSet') {
+                this.obj.alternateGreetings[w.index] = w.value
+            } else if (w.op === 'listInsert') {
+                this.obj.alternateGreetings.splice(w.index, 0, w.value)
+            } else if (w.op === 'listRemove') {
+                this.obj.alternateGreetings.splice(w.index, 1)
+            } else if (w.op === 'chatFm') {
+                if (w.value.had) {
+                    this.obj.chats[w.chatId].fmIndex = w.value.value
+                } else {
+                    delete this.obj.chats[w.chatId].fmIndex
+                }
+            }
+        }
+    }
+
+    commit(label: StepLabel, ops: Op[], before: string[], deletedRemove?: readonly string[]) {
+        this.n += 1
+        this.state = commitStep(this.state, {
+            id: stepIdFor('page', this.n),
+            at: this.n * 10000,
+            visitId: 'v1',
+            label,
+            ops,
+            restoreWrites: deriveRestoreWrites(ops, before),
+            coalesceKey: null,
+            replacesRestore: label.kind !== 'restoreDeleted',
+            deletedRemove,
+        })
+    }
+
+    rawOf(chatId: string): FmValue {
+        const chat = this.obj.chats[chatId]
+        return chat.fmIndex === undefined ? { had: false } : { had: true, value: chat.fmIndex }
+    }
+
+    // Adds the open chat's chatFm op when its effective index changes; the returned function lands the new value.
+    follow(ops: Op[], next: (e: number) => number): () => void {
+        const chat = this.obj.chats[this.open]
+        const e = effectiveFm(this.obj, chat.fmIndex)
+        const after = next(e)
+        if (after === e) {
+            return () => {}
+        }
+        ops.push({ op: 'chatFm', chatId: this.open, before: this.rawOf(this.open), after: { had: true, value: after } })
+        return () => {
+            chat.fmIndex = after
+        }
+    }
+
+    // `legacy` builds the delete as an older build did: an unconditional chatFm to -1 on chatA.
+    del(index: number, legacy = false): string {
+        const before = [...this.obj.alternateGreetings]
+        const id = `del${this.n + 1}`
+        const ops: Op[] = [{ op: 'listRemove', index, value: before[index], deletedId: id }]
+        let land = () => {}
+        if (legacy) {
+            ops.push({ op: 'chatFm', chatId: 'chatA', before: this.rawOf('chatA'), after: { had: true, value: -1 } })
+            land = () => {
+                this.obj.chats.chatA.fmIndex = -1
+            }
+        } else {
+            land = this.follow(ops, (e) => fmAfterRemove(e, index))
+        }
+        this.obj.alternateGreetings.splice(index, 1)
+        land()
+        this.commit({ kind: 'greetingRemove' }, ops, before)
+        return id
+    }
+
+    move(from: number, to: number) {
+        const before = [...this.obj.alternateGreetings]
+        const value = before[from]
+        const ops: Op[] = [
+            { op: 'listRemove', index: from, value, deletedId: null },
+            { op: 'listInsert', index: to, value },
+        ]
+        const land = this.follow(ops, (e) => fmAfterMove(e, from, to))
+        this.obj.alternateGreetings.splice(from, 1)
+        this.obj.alternateGreetings.splice(to, 0, value)
+        land()
+        this.commit({ kind: 'greetingMove' }, ops, before)
+    }
+
+    swap(i: number) {
+        const before = [...this.obj.alternateGreetings]
+        const main = this.obj.firstMessage
+        const entry = before[i]
+        const ops: Op[] = [
+            { op: 'set', path: 'firstMessage', before: { had: true, value: main }, after: { had: true, value: entry } },
+            { op: 'listSet', index: i, before: entry, after: main },
+        ]
+        const land = this.follow(ops, (e) => fmAfterSwap(e, i))
+        this.obj.firstMessage = entry
+        this.obj.alternateGreetings[i] = main
+        land()
+        this.commit({ kind: 'greetingSwap' }, ops, before)
+    }
+
+    plan(id: string, context: RestoreContext | null = { chatId: this.open }): PlanResult {
+        return planRestoreDeleted(this.state.record, id, this.reader, context)
+    }
+
+    restore(id: string, context: RestoreContext | null = { chatId: this.open }): PlanResult {
+        const before = [...this.obj.alternateGreetings]
+        const plan = this.plan(id, context)
+        if (plan.ok) {
+            this.apply(plan.writes)
+            this.commit(plan.label, plan.ops, before, plan.deletedRemove)
+        }
+        return plan
+    }
+
+    replay(direction: 'undo' | 'redo'): PlanResult {
+        const plan = planReplay(this.state.record, direction, this.reader)
+        if (plan.ok) {
+            this.apply(plan.writes)
+            this.state = applyReplayMove(this.state, direction, plan, 99999 + this.n, 'v1')
+        }
+        return plan
+    }
+
+    // Drops the step stacks, as an eviction does: only the deleted list survives.
+    evict() {
+        const record = { ...this.state.record, done: [], undone: [] }
+        this.state = createModelState(parseOwnerRecord(JSON.parse(JSON.stringify(record)), characterOwnerKey('c1'))!)
+    }
+
+    fm(chatId = 'chatA') {
+        return this.obj.chats[chatId].fmIndex
+    }
+
+    shown(chatId = 'chatA') {
+        const fm = this.obj.chats[chatId].fmIndex
+        return effectiveFm(this.obj, fm) === -1 ? this.obj.firstMessage : this.obj.alternateGreetings[fm!]
+    }
+
+    sideChatOf(id: string) {
+        return this.state.record.deleted.find((item) => item.id === id)?.sideChat
+    }
+}
+
+function followWorld(list: string[], fm: number | undefined, other?: number) {
+    return new FollowWorld({
+        firstMessage: 'M',
+        alternateGreetings: [...list],
+        chats: { chatA: fm === undefined ? {} : { fmIndex: fm }, ...(other === undefined ? {} : { chatB: { fmIndex: other } }) },
+    })
+}
+
+const chatFmOpsOf = (plan: PlanResult) => (plan.ok ? plan.ops.filter((op) => op.op === 'chatFm') : [])
+
+describe('CHORE-778 the pure follow rules', () => {
+    test('T1 fmAfterRemove: main stays, a later delete leaves it, the shown entry goes to main, an earlier delete moves it down', () => {
+        expect([fmAfterRemove(-1, 0), fmAfterRemove(2, 0), fmAfterRemove(2, 1), fmAfterRemove(2, 2), fmAfterRemove(1, 2), fmAfterRemove(0, 0)]).toEqual([-1, 1, 1, -1, 1, -1])
+    })
+
+    test('T1b fmAfterInsert is raw-integer: at or past the index moves up; -1, other negatives and non-integers stay', () => {
+        const values = [fmAfterInsert(-1, 0), fmAfterInsert(0, 0), fmAfterInsert(1, 0), fmAfterInsert(1, 2), fmAfterInsert(2, 2), fmAfterInsert(7, 1), fmAfterInsert(-2, 0), fmAfterInsert(1.5, 0)]
+        expect(values).toEqual([-1, 1, 2, 1, 3, 8, -2, 1.5])
+    })
+})
+
+describe('CHORE-778 a restore follows the open chat through the insert', () => {
+    test('P1 the restore of one delete before the shown entry moves the chat back: op before is the live value', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 2)
+        const x = s.del(0)
+        expect(s.fm()).toBe(1)
+        const plan = s.restore(x)
+        expect(chatFmOpsOf(plan)).toEqual([{ op: 'chatFm', chatId: 'chatA', before: { had: true, value: 1 }, after: { had: true, value: 2 } }])
+        expect([s.fm(), s.shown()]).toEqual([2, 'A2'])
+    })
+
+    test('P2 a chat on the insert index itself moves up (at or past, not only past)', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 1)
+        const x = s.del(0)
+        expect(s.fm()).toBe(0)
+        s.restore(x)
+        expect([s.fm(), s.shown()]).toEqual([1, 'A1'])
+    })
+
+    test('K1 two deletes above the shown entry, the older restored first, then the newer: the chat keeps its text', () => {
+        const s = followWorld(['A0', 'A1', 'A2', 'A3'], 1)
+        const x = s.del(0)
+        const y = s.del(1)
+        s.restore(x)
+        expect([s.obj.alternateGreetings, s.shown()]).toEqual([['A0', 'A1', 'A3'], 'A1'])
+        s.restore(y)
+        expect([s.obj.alternateGreetings, s.shown()]).toEqual([['A0', 'A2', 'A1', 'A3'], 'A1'])
+    })
+
+    test('K2 a delete above the shown entry, then a move of the shown entry past it, then the restore: the chat keeps its text', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 0)
+        const y = s.del(1)
+        s.move(0, 1)
+        const plan = s.restore(y)
+        expect([s.obj.alternateGreetings, s.fm(), s.shown()]).toEqual([['A2', 'A1', 'A0'], 2, 'A0'])
+        expect(chatFmOpsOf(plan)).toEqual([{ op: 'chatFm', chatId: 'chatA', before: { had: true, value: 1 }, after: { had: true, value: 2 } }])
+    })
+
+    test('K3 a chat on main, a delete, a swap that brings the chat onto an entry, then the restore: the chat keeps its text', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], -1)
+        const y = s.del(0)
+        s.swap(1)
+        s.restore(y)
+        expect(s.shown()).toBe('M')
+    })
+
+    test('C1 two deletes before the shown entry, the older restored first: the chat keeps its text', () => {
+        const s = followWorld(['A0', 'A1', 'A2', 'A3'], 3)
+        const x1 = s.del(0)
+        s.del(0)
+        s.restore(x1)
+        expect(s.obj.alternateGreetings).toEqual(['A0', 'A2', 'A3'])
+        expect(s.shown()).toBe('A3')
+    })
+
+    test('C2 the older restored first and that restore undone, then the restores in order: the chat ends on its text', () => {
+        const s = followWorld(['A0', 'A1', 'A2', 'A3'], 3)
+        const x1 = s.del(0)
+        const x2 = s.del(0)
+        s.restore(x1)
+        s.replay('undo')
+        expect(s.shown()).toBe('A3')
+        expect(s.sideChatOf(x1)).toEqual({ chatId: 'chatA', before: { had: true, value: 2 } })
+        s.restore(x2)
+        s.restore(x1)
+        expect(s.obj.alternateGreetings).toEqual(['A0', 'A1', 'A2', 'A3'])
+        expect(s.shown()).toBe('A3')
+    })
+
+    test('C3 a chat moved meanwhile onto the insert index follows its text', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 2)
+        const x = s.del(0)
+        s.obj.chats.chatA.fmIndex = 0
+        s.restore(x)
+        expect([s.fm(), s.shown()]).toEqual([1, 'A1'])
+    })
+
+    test('C3b a chat moved meanwhile past the insert index follows its text', () => {
+        const s = followWorld(['A0', 'A1', 'A2', 'A3'], 3)
+        const x = s.del(1)
+        s.obj.chats.chatA.fmIndex = 1
+        expect(s.shown()).toBe('A2')
+        s.restore(x)
+        expect([s.fm(), s.shown()]).toEqual([2, 'A2'])
+    })
+
+    test('C3c a chat moved meanwhile below the insert index is untouched', () => {
+        const s = followWorld(['A0', 'A1', 'A2', 'A3'], 3)
+        const x = s.del(2)
+        s.obj.chats.chatA.fmIndex = 0
+        const plan = s.restore(x)
+        expect(chatFmOpsOf(plan)).toEqual([])
+        expect([s.fm(), s.shown()]).toEqual([0, 'A0'])
+    })
+
+    test('C4 a revert across two deletes and an out-of-order restore, then the undo of the revert: the chat keeps its text', () => {
+        const s = followWorld(['A0', 'A1', 'A2', 'A3', 'Z'], 3)
+        s.del(4)
+        const anchor = s.state.record.done[0].id
+        const x1 = s.del(0)
+        s.del(0)
+        s.restore(x1)
+        expect(s.shown()).toBe('A3')
+        const before = [...s.obj.alternateGreetings]
+        const plan = planRevert(s.state.record, anchor, s.reader)
+        expect(plan.ok).toBe(true)
+        if (plan.ok) {
+            s.apply(plan.writes)
+            s.commit(plan.label, plan.ops, before, plan.deletedRemove)
+        }
+        expect([s.obj.alternateGreetings, s.shown()]).toEqual([['A0', 'A1', 'A2', 'A3'], 'A3'])
+        s.replay('undo')
+        expect([s.obj.alternateGreetings, s.shown()]).toEqual([['A0', 'A2', 'A3'], 'A3'])
+    })
+
+    test('R1 the delete of the shown entry sends the chat to main; its restore puts the chat back on the restored text', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 1)
+        const x = s.del(1)
+        expect([s.fm(), s.shown()]).toEqual([-1, 'M'])
+        const plan = s.restore(x)
+        expect(chatFmOpsOf(plan)).toEqual([{ op: 'chatFm', chatId: 'chatA', before: { had: true, value: -1 }, after: { had: true, value: 1 } }])
+        expect(s.shown()).toBe('A1')
+    })
+
+    test('R2 the delete of the last alternative with its step evicted: the restore still puts the chat back', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 2)
+        const x = s.del(2)
+        s.evict()
+        s.restore(x)
+        expect([s.fm(), s.shown()]).toEqual([2, 'A2'])
+    })
+
+    test('N1 a delete before the shown entry with its step evicted: the restore still follows', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 2)
+        const x = s.del(0)
+        s.evict()
+        s.restore(x)
+        expect([s.fm(), s.shown()]).toEqual([2, 'A2'])
+    })
+
+    test('T8e restore, undo, restore, undo, redo: the re-listed item keeps the chat on its text', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 2)
+        const x = s.del(0)
+        s.restore(x)
+        expect(s.fm()).toBe(2)
+        s.replay('undo')
+        expect(s.fm()).toBe(1)
+        expect(s.sideChatOf(x)).toEqual({ chatId: 'chatA', before: { had: true, value: 2 } })
+        s.restore(x)
+        expect(s.fm()).toBe(2)
+        s.replay('undo')
+        s.replay('redo')
+        expect([s.fm(), s.shown()]).toEqual([2, 'A2'])
+    })
+
+    test('T8d a swap brings the chat onto main before the restore: no op, the chat keeps its text', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 2)
+        const x = s.del(0)
+        s.swap(1)
+        expect([s.fm(), s.shown()]).toEqual([-1, 'A2'])
+        const plan = s.restore(x)
+        expect(chatFmOpsOf(plan)).toEqual([])
+        expect([s.fm(), s.shown()]).toEqual([-1, 'A2'])
+    })
+
+    test('X1 the chat moved onto the restored index after a reset delete follows; after an undo and a pick of main it stays on main', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 1)
+        const x = s.del(1)
+        s.obj.chats.chatA.fmIndex = 1
+        s.restore(x)
+        expect(s.shown()).toBe('A2')
+        s.replay('undo')
+        expect(s.shown()).toBe('A2')
+        s.obj.chats.chatA.fmIndex = -1
+        s.restore(x)
+        expect(s.shown()).toBe('M')
+    })
+
+    test('X2 a delete before the shown entry then the delete of the shown one, restored oldest first: the text stays', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 2)
+        const x1 = s.del(0)
+        const x2 = s.del(1)
+        expect([s.fm(), s.obj.alternateGreetings]).toEqual([-1, ['A1']])
+        s.restore(x1)
+        expect(s.shown()).toBe('M')
+        s.restore(x2)
+        expect(s.shown()).toBe('A2')
+    })
+
+    test('X3 the same two deletes restored newest first', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 2)
+        const x1 = s.del(0)
+        const x2 = s.del(1)
+        s.restore(x2)
+        expect(s.shown()).toBe('A2')
+        s.restore(x1)
+        expect([s.obj.alternateGreetings, s.shown()]).toEqual([['A0', 'A1', 'A2'], 'A2'])
+    })
+
+    test('X4 an absent fmIndex: the delete records no side chat and the restore adds no op', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], undefined)
+        const x = s.del(0)
+        expect(s.sideChatOf(x)).toBeNull()
+        const plan = s.restore(x)
+        expect(chatFmOpsOf(plan)).toEqual([])
+        expect('fmIndex' in s.obj.chats.chatA).toBe(false)
+    })
+
+    test('X5 a delete of a later entry then a delete below it: the restore inserts at its index and the chat is on it', () => {
+        const s = followWorld(['A0', 'A1', 'A2', 'A3'], 2)
+        const x = s.del(2)
+        s.del(0)
+        s.restore(x)
+        expect(s.shown()).toBe('A2')
+    })
+})
+
+describe('CHORE-778 the restore reads the chat value as stored', () => {
+    test('H1 an item re-listed by an undone restore without a chat op: the chat keeps its text after the next restore', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 2)
+        const x = s.del(0)
+        s.del(1)
+        s.restore(x)
+        expect(s.shown()).toBe('M')
+        s.replay('undo')
+        s.replay('undo')
+        expect(s.shown()).toBe('A2')
+        s.restore(x)
+        expect([s.obj.alternateGreetings, s.shown()]).toEqual([['A0', 'A1', 'A2'], 'A2'])
+    })
+
+    test('H2 a move of the shown entry below the insert index, the restore, both undone, the restore again: the chat keeps its text', () => {
+        const s = followWorld(['A0', 'A1', 'A2', 'A3'], 3)
+        const x = s.del(1)
+        s.move(2, 0)
+        s.restore(x)
+        expect(s.shown()).toBe('A3')
+        s.replay('undo')
+        s.replay('undo')
+        s.restore(x)
+        expect([s.obj.alternateGreetings, s.shown()]).toEqual([['A0', 'A1', 'A2', 'A3'], 'A3'])
+    })
+
+    test('H3 a swap of the shown entry with main, the restore, both undone, the restore again: the chat keeps its text', () => {
+        const s = followWorld(['A0', 'A1', 'A2', 'A3'], 3)
+        const x = s.del(1)
+        s.swap(2)
+        s.restore(x)
+        s.replay('undo')
+        s.replay('undo')
+        s.restore(x)
+        expect([s.obj.alternateGreetings, s.shown()]).toEqual([['A0', 'A1', 'A2', 'A3'], 'A3'])
+    })
+
+    test('D1 a delete after the shown entry, the chat moved onto or past it, the restore: the chat follows its text', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 0)
+        const x = s.del(1)
+        s.obj.chats.chatA.fmIndex = 1
+        s.restore(x)
+        expect(s.shown()).toBe('A2')
+    })
+
+    test('D2 a restore clamped to the end resets the chat; two unrelated restores then leave it on main', () => {
+        const s = followWorld(['A0', 'A1', 'A2', 'A3'], 3)
+        const x = s.del(3)
+        const y = s.del(0)
+        const z = s.del(0)
+        s.restore(x)
+        s.restore(z)
+        s.restore(y)
+        expect([s.obj.alternateGreetings, s.shown()]).toEqual([['A0', 'A1', 'A2', 'A3'], 'M'])
+    })
+
+    test('D3 a stale stored value equal to the list length moves to length + 1 and still shows main', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 0)
+        const x = s.del(1)
+        s.obj.chats.chatA.fmIndex = 2
+        s.restore(x)
+        expect([s.obj.alternateGreetings, s.fm(), s.shown()]).toEqual([['A0', 'A1', 'A2'], 3, 'M'])
+    })
+
+    test('ST a stale stored value with a re-index item moves up by one: one chatFm 7 to 8, still main', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 2)
+        const x = s.del(0)
+        s.obj.chats.chatA.fmIndex = 7
+        const plan = s.restore(x)
+        expect(chatFmOpsOf(plan)).toEqual([{ op: 'chatFm', chatId: 'chatA', before: { had: true, value: 7 }, after: { had: true, value: 8 } }])
+        expect([s.fm(), s.shown()]).toEqual([8, 'M'])
+    })
+
+    test('ST2 a stale stored value with a reset-shaped item shifts instead of resetting', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 1)
+        const x = s.del(1)
+        s.obj.chats.chatA.fmIndex = 7
+        s.restore(x)
+        expect([s.fm(), s.shown()]).toEqual([8, 'M'])
+    })
+
+    test('RAW1 the reset needs a raw -1: a chat on -2 with a reset-shaped item gets no op', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 1)
+        const x = s.del(1)
+        s.obj.chats.chatA.fmIndex = -2
+        const plan = s.restore(x)
+        expect(chatFmOpsOf(plan)).toEqual([])
+        expect(s.fm()).toBe(-2)
+    })
+})
+
+describe('CHORE-778 an item recorded by an older build restores as that build recorded it', () => {
+    test('L1 a re-index-shaped legacy item (after -1, before past the index): no op, the chat stays on main', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 2)
+        const x = s.del(0, true)
+        const plan = s.restore(x)
+        expect(chatFmOpsOf(plan)).toEqual([])
+        expect([s.fm(), s.shown()]).toEqual([-1, 'M'])
+    })
+
+    test('L2 a legacy delete after the shown entry (before below the index): the reset restores before, not the item index', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 0)
+        const x = s.del(2, true)
+        expect(s.fm()).toBe(-1)
+        s.restore(x)
+        expect([s.fm(), s.shown()]).toEqual([0, 'A0'])
+    })
+
+    test('L3 a legacy delete of the shown entry: the reset restores it', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 1)
+        const x = s.del(1, true)
+        s.restore(x)
+        expect([s.fm(), s.shown()]).toEqual([1, 'A1'])
+    })
+})
+
+describe('CHORE-778 only the open chat is adjusted, with at most one chatFm', () => {
+    test('NC1 a reset item whose side chat is not the open chat: no chatFm, the side chat stays on main', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 1, -1)
+        const x = s.del(1)
+        expect(s.fm()).toBe(-1)
+        s.open = 'chatB'
+        const plan = s.restore(x)
+        expect(chatFmOpsOf(plan)).toEqual([])
+        expect([s.fm('chatA'), s.fm('chatB')]).toEqual([-1, -1])
+    })
+
+    test('NC2 a re-index item with another chat open: only the open chat follows; the delete-time chat is left as it is', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 2, 1)
+        const x = s.del(0)
+        expect(s.fm('chatA')).toBe(1)
+        s.open = 'chatB'
+        const shownB = s.shown('chatB')
+        const plan = s.restore(x)
+        expect(chatFmOpsOf(plan)).toEqual([{ op: 'chatFm', chatId: 'chatB', before: { had: true, value: 1 }, after: { had: true, value: 2 } }])
+        expect(s.shown('chatB')).toBe(shownB)
+        expect(s.fm('chatA')).toBe(1)
+    })
+
+    test('GONE the open chat id names no chat: no chatFm, the insert lands', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 2)
+        const x = s.del(0)
+        const plan = s.restore(x, { chatId: 'nochat' })
+        expect(plan.ok).toBe(true)
+        expect(chatFmOpsOf(plan)).toEqual([])
+    })
+
+    test('NULL no open chat: no chatFm, the insert lands', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 2)
+        const x = s.del(0)
+        const plan = s.restore(x, null)
+        expect(plan.ok).toBe(true)
+        expect(chatFmOpsOf(plan)).toEqual([])
+    })
+
+    test('NOID an open chat without a unique id: chatFm with chatId null, no chatFm write, pageFm carries the value', () => {
+        const s = followWorld(['A1', 'A2'], 1)
+        s.obj.alternateGreetings.unshift('A0')
+        const x = s.del(0)
+        const plan = s.plan(x, { chatId: null, fm: { had: true, value: 1 } })
+        expect(plan.ok && plan.ops.slice(1)).toEqual([{ op: 'chatFm', chatId: null, before: { had: true, value: 1 }, after: { had: true, value: 2 } }])
+        expect(plan.ok && plan.writes.filter((w) => w.op === 'chatFm')).toEqual([])
+        expect(planOf(plan).pageFm).toBe(2)
+    })
+
+    test('NOID2 an open chat without a unique id below the insert index: no op and no pageFm', () => {
+        const s = followWorld(['A0', 'A1', 'A2'], 0)
+        const x = s.del(1)
+        const plan = s.plan(x, { chatId: null, fm: { had: true, value: 0 } })
+        expect(chatFmOpsOf(plan)).toEqual([])
+        expect(planOf(plan).pageFm).toBeUndefined()
     })
 })

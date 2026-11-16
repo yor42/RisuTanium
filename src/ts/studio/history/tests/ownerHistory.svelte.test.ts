@@ -292,21 +292,21 @@ describe('greetings', () => {
         expect(h.marks).toBe(0)
     })
 
-    test('T-LS2: a delete sets the context chat fmIndex to -1 and an undo restores it', async () => {
+    test('T-LS2: a delete before the shown entry re-indexes the context chat and an undo restores it', async () => {
         await ready()
         expect(harness.service.greetingDelete(A, 1).ok).toBe(true)
-        expect(live().chats[0].fmIndex).toBe(-1)
+        expect(live().chats[0].fmIndex).toBe(1)
         expect(h.marks).toBe(1)
         harness.service.undo(A)
         expect(live().alternateGreetings).toEqual(['g0', 'g1', 'g2'])
         expect(live().chats[0].fmIndex).toBe(2)
     })
 
-    test('T-LS2: an absent fmIndex is absent again after the undo', async () => {
+    test('T-LS2: an absent fmIndex gets no op and stays absent through the delete and the undo', async () => {
         putCharacters(makeCharacter('A', { chats: [{ id: 'c1', note: '' }] }))
         await ready()
         harness.service.greetingDelete(A, 0)
-        expect(live().chats[0].fmIndex).toBe(-1)
+        expect('fmIndex' in live().chats[0]).toBe(false)
         harness.service.undo(A)
         expect('fmIndex' in live().chats[0]).toBe(false)
     })
@@ -314,8 +314,8 @@ describe('greetings', () => {
     test('T-LS3: a context chat without an id still gets fmIndex -1; the undo cannot restore it', async () => {
         putCharacters(makeCharacter('A', { chats: [{ note: '', fmIndex: 1 }] }))
         await ready()
-        expect(harness.service.greetingDelete(A, 2).ok).toBe(true)
-        expect(live().alternateGreetings).toEqual(['g0', 'g1'])
+        expect(harness.service.greetingDelete(A, 1).ok).toBe(true)
+        expect(live().alternateGreetings).toEqual(['g0', 'g2'])
         expect(live().chats[0].fmIndex).toBe(-1)
         const undone = harness.service.undo(A)
         expect(undone).toEqual({ ok: true, fmNotRestored: true })
