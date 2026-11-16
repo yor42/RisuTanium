@@ -19,12 +19,14 @@
  * factory, so every dynamically re-imported module instance (`vi.resetModules()` runs before each
  * test) shares one spy identity.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { STALE_ACCOUNT_NOTICE_ACK } from './alert'
 // The exact literal answer values `AlertComp`'s own buttons write for this prompt.
 import { UPSTREAM_AGREEMENT_ACCEPT, UPSTREAM_AGREEMENT_DECLINE } from 'src/ts/upstreamAgreement'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -354,6 +356,8 @@ function arm(db: Record<string, unknown>) {
     forageState.items.set('database/database.bin', encodeRisuSaveLegacy(db))
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
     window.history.replaceState(null, '', '/')

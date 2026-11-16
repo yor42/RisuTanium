@@ -7,9 +7,11 @@
  * was decoded". The driver module is a counting stand-in: this file says nothing about the driver itself (its own test does),
  * and nothing about Tauri, Node-hosted or Android boots.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get, type Writable } from 'svelte/store'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 // The first boot transforms the real bootstrap graph cold: several seconds alone, a multiple of that under a full run's
 // CPU load. Later boots re-evaluate it in well under a second.
@@ -260,6 +262,8 @@ function recordUnhandled(reason: unknown): void {
     unhandled.push(reason)
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     unhandled = []
     process.on('unhandledRejection', recordUnhandled)

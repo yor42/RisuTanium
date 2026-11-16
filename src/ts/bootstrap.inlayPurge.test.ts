@@ -14,10 +14,12 @@
  * `isSaveClean` gate, which `inlayCleanup.save.svelte.test.ts` exercises for the
  * other delete paths. Synthetic data only.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 //#region hoisted mutable config
 
@@ -320,6 +322,8 @@ async function freshBoot() {
     return { loadData }
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
     window.history.replaceState(null, '', '/')

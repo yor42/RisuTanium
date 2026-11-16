@@ -7,8 +7,10 @@
  * fixed `isTauri: true` and gives every test a fresh module graph. Mocked/real
  * split mirrors `bootstrap.tauriStaleAccountPin.test.ts`.
  */
-import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { writable } from 'svelte/store'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 const desktopLaunchImportMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
 const androidOpenedFilesImportMock = vi.hoisted(() => vi.fn((): void => { }))
@@ -249,6 +251,8 @@ async function bootOnce() {
     await loadData()
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(async () => {
     // The mocked stores module keeps one `loadedStore` for the whole file, and `loadData()` does nothing once it is true.
     const { loadedStore } = await import('src/ts/stores.svelte')

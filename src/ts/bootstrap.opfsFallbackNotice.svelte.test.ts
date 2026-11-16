@@ -23,10 +23,12 @@
  * Everything else `bootstrap.ts` imports is mocked, mirroring the sibling
  * bootstrap test files.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import type { FallbackNotice } from 'src/ts/storage/opfsCopyBack'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 type FallbackReason = FallbackNotice['reason']
 
@@ -317,6 +319,8 @@ async function freshLoadData() {
     return { loadData, alertStore, loadedStore }
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
     fsStore.clear()

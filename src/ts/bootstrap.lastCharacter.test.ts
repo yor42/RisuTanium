@@ -7,9 +7,11 @@
  * `bootstrap.ts` reads `isTauri` at its module top level, so this file keeps a fixed `isTauri: true` and
  * gives every test a fresh module graph. The mocked/real split mirrors `bootstrap.desktopLaunch.test.ts`.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { get } from 'svelte/store'
 import type { ChangeCharOutcome } from 'src/ts/characters'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 const world = vi.hoisted(() => ({
     events: [] as string[],
@@ -315,6 +317,8 @@ function selectingPick(): void {
     })
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     holder.current = holder.make()
     localStorage.clear()

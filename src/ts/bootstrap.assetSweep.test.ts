@@ -23,9 +23,11 @@
  * moved behind the byte store; `reproducer:` tests fail against the sweep that
  * listed the asset directory itself and deleted what the keep-set did not name.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { FakeNodeServer } from 'src/ts/storage/tests/manualCleanupHarness'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 const MAIN_KEY = 'database/database.bin'
 
@@ -316,6 +318,8 @@ async function freshLoadData() {
     }
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(async () => {
     localStorage.clear()
     world.keyPair = null

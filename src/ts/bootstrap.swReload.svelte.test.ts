@@ -8,10 +8,12 @@
  * Labels: reproducer (the 5xx first visit posts a notice before the reload on the base), compatibility guard (a 2xx boot
  * posts its notice and does not reload). A mocked service worker and `location.reload` are not evidence about a browser.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import type { FallbackNotice } from 'src/ts/storage/opfsCopyBack'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -281,6 +283,8 @@ const registerMock = vi.fn(async () => { })
 let swInitStatus = 200
 let reloadSpy: ReturnType<typeof vi.spyOn>
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
     forageState.staleAccountProfile = false

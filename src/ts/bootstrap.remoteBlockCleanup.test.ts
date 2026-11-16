@@ -22,9 +22,11 @@
  * and after the remote blocks moved behind the byte store. The others assert
  * behaviour only the store-based boot has.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { FakeNodeServer } from 'src/ts/storage/tests/manualCleanupHarness'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 const MAIN_KEY = 'database/database.bin'
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -319,6 +321,8 @@ function remoteWrites(): { op: string, path: string }[] {
     return fakeFs.calls.filter((call) => call.op === 'writeFile' && relative(call.path).startsWith('remotes/'))
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(async () => {
     localStorage.clear()
     world.keyPair = null
