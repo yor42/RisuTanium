@@ -150,8 +150,8 @@ function chaIdAt(index: number): string | null {
     return typeof chaId === 'string' && chaId !== '' ? chaId : null
 }
 
-/** The base keep-set and the previous selection with its group members. */
-function putBackKeepSet(): Set<string> {
+/** The base keep-set and the previous selection with its group members; exported so a fast-forward counts the same characters in use. */
+export function putBackKeepSet(): Set<string> {
     const keep = baseKeepInline()
     if (previousChaId !== null) {
         keep.add(previousChaId)

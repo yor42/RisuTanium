@@ -133,7 +133,7 @@ function blockedText(blocked: PeerParkPrompt['blocked']): string {
 /** `exportShown`: whether 'Export this tab first' is among the buttons, so the wording never names a button that is not there. */
 function titleOf(prompt: PeerParkPrompt, exportShown: boolean, fileName: string | null): string {
     const text = language.store2Boot
-    const title = prompt.reason === 'replaced' ? text.peerReplacedTitle : text.peerCommitTitle
+    const title = prompt.reason === 'peer-commit' ? text.peerCommitTitle : prompt.reason === 'ff-revert' ? text.peerFfRevert : text.peerReplacedTitle
     switch (prompt.saveMineUnavailable) {
         case 'node': {
             const base = `${title} ${text.peerNoSaveNode} ${exportShown ? text.peerNodeReloadDrops : text.peerNodeReloadDropsOnly}`
@@ -157,6 +157,7 @@ function titleOf(prompt: PeerParkPrompt, exportShown: boolean, fileName: string 
             return node
         }
         case 'replaced': return `${title} ${text.peerNoSaveReplaced}`
+        case 'tree-replaced': return `${title} ${text.peerNoSaveTreeReplaced}`
         case 'carries': return `${title} ${blockedText(prompt.blocked)}`
         case undefined: return title
     }
@@ -197,15 +198,36 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         }
     }
 
-    async function askClean(prompt: PeerParkPrompt, live: () => PeerLiveState, requestReload: () => Promise<ParkCheck>): Promise<void> {
+    async function askClean(prompt: PeerParkPrompt, live: () => PeerLiveState, requestReload: () => Promise<ParkCheck>, manifestKey?: () => string): Promise<void> {
+        const exportOffered = prompt.offers.includes('export-first') && exportAvailable && manifestKey !== undefined
         for (;;) {
             await untilClear()
             const text = language.store2Boot
             const warned = live().drafts
-            const title = prompt.reason === 'replaced'
-                ? (warned ? text.peerCleanReplacedDrafts : text.peerCleanReplaced)
-                : (warned ? text.peerCleanCommitDrafts : text.peerCleanCommit)
-            const index = await alertSelect([warned ? text.peerReloadDrafts : text.peerReloadOnly, text.peerKeepReading], title)
+            // A clean page whose descent is unproven may be missing its own saved edits from the store: its title never says
+            // that nothing is unsaved, and the export is offered next to Reload.
+            const title = exportOffered
+                ? text.peerCleanUnproven
+                : prompt.reason !== 'peer-commit' && prompt.reason !== 'ff-revert'
+                    ? (warned ? text.peerCleanReplacedDrafts : text.peerCleanReplaced)
+                    : (warned ? text.peerCleanCommitDrafts : text.peerCleanCommit)
+            const reloadLabel = warned ? text.peerReloadDrafts : text.peerReloadOnly
+            const labels = exportOffered ? [reloadLabel, text.peerExportFirst, text.peerKeepReading] : [reloadLabel, text.peerKeepReading]
+            const index = await alertSelect(labels, title)
+            if (exportOffered && index === '1' && manifestKey !== undefined) {
+                const now = live()
+                if (!now.parked || now.dirty) {
+                    return
+                }
+                if (await exportThisTab(manifestKey()) !== 'saved') {
+                    continue
+                }
+                const after = live()
+                if (after.parked && !after.dirty) {
+                    options.reload()
+                }
+                return
+            }
             if (index !== '0') {
                 return
             }
@@ -300,8 +322,8 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
     }
 
     return {
-        parkedClean: (prompt, live, requestReload) => {
-            askClean(prompt, live, requestReload).catch((error: unknown) => console.error(error))
+        parkedClean: (prompt, live, requestReload, manifestKey) => {
+            askClean(prompt, live, requestReload, manifestKey).catch((error: unknown) => console.error(error))
         },
         moduleEdited: (info, stillBlocked) => {
             askModuleEdited(info, stillBlocked).catch((error: unknown) => console.error(error))

@@ -5,18 +5,20 @@ import type { AppStoreKind } from '../store/appStore'
 import type { CompareToken, Store2Backend, UnitWrite } from './backend/types'
 import type { SessionDecision } from './session'
 import { reflushTopLevel, Store2Session } from './session'
-import { activateStore2Save, setModuleLoader, type ModuleStubLoad, type Store2SaveContext } from './saveActive'
+import { activateStore2Save, setModuleLoader, type ModuleStubLoad, type Store2Lineage, type Store2SaveContext } from './saveActive'
 import type { RisuModule } from '../../process/modules'
 import type { Store2PeerHandler } from './saveLoop'
 import { createSaveEncoder, type SaveEncoder } from './saveEncoder'
 import { createResidency } from './residency'
+import { createFastForward } from './fastForward'
 import { registerResidency } from './residencyActive'
 import { residentModuleHandlesOf, residentSetOf } from './residencyPolicy'
 import { moduleStubOf } from './moduleStubMatch'
 import { clearAbandonedMarker, type MarkerOwnerProbe } from './abandonedMarker'
 import { assembleCharacter, assembleDatabase, assembleModule, CodecAssembleError, stubFromEntry, type ListDerivation } from './codec'
 import { createListDerivation } from './lists/derive'
-import { defaultKeyEnv, type KeyEnv } from './format'
+import { lineIdOf, replacedStamp } from './commitKey'
+import { defaultKeyEnv, type CommitKey, type KeyEnv } from './format'
 import { firstLifeGrant, type FirstLifeLabel, type GrantResult } from './firstLife'
 import { isOwnMarker, type Staging } from './owner'
 import { previousOfTree } from './previousOfTree'
@@ -241,13 +243,24 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
         return { decision, session, env, lists, keyEnv, decoders: deps.decoders, resolve: deps.resolve, importBackup: deps.importBackup }
     }
 
+    /** The descent baseline a boot seeds from the commit key that names the opened manifest; anything else is unknown. */
+    function baselineOf(seed: CommitKey | null, manifestKey: string): Store2Lineage['base'] {
+        return seed !== null && seed.current?.key === manifestKey
+            ? { line: lineIdOf(seed), stamp: replacedStamp(seed), seq: seed.seq }
+            : 'unknown'
+    }
+
     /** The session's backend as every dispatch path uses it: a mutating call on it sets `mayHaveWritten`. */
     function backendOf(session: Store2Session): Store2Backend | null {
         return session.backend === null ? null : recordingBackend(session.backend, () => { mayHaveWritten = true })
     }
 
-    /** Reads the tree of `manifestKey` and opens it: the load path shared by a normal boot and a fresh install. */
-    async function openStored(session: Store2Session, manifestKey: string, decision: { fence: 'absent' | 'fenced' | 'blocked' }): Promise<Round> {
+    /**
+     * Reads the tree of `manifestKey` and opens it: the load path shared by a normal boot and a fresh install. `seed` is the
+     * commit key that names `manifestKey` as its `current`: the descent baseline of an indexeddb or node page starts from it,
+     * and a seed that does not name the manifest leaves the baseline unknown (the fail-closed default).
+     */
+    async function openStored(session: Store2Session, manifestKey: string, decision: { fence: 'absent' | 'fenced' | 'blocked' }, seed: CommitKey | null): Promise<Round> {
         const backend = backendOf(session)
         if (backend === null) {
             return stop('no-backend', 'The session has no backend.')
@@ -351,6 +364,12 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             markerOwnerProbe: deps.markerOwnerProbe?.(session.kind) ?? null,
             loadStub: loadStubsOf,
             loadModuleStub: loadModuleStubsOf,
+            ...(session.kind === 'indexeddb' || session.kind === 'node'
+                ? {
+                    lineage: { base: baselineOf(seed, manifestKey) },
+                    fastForward: createFastForward({ backend, kind: session.kind, lists, env: keyEnv }),
+                }
+                : {}),
         }
         registerResidency(createResidency({ backend, context }))
         setModuleLoader(loadModuleOf)
@@ -372,7 +391,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
     }
 
     /** After an install: the re-flush a Tauri page owes when the write was not confirmed, then the installed profile opens. */
-    async function openInstalled(session: Store2Session, backend: Store2Backend, installed: { manifestKey: string, flushed: boolean | undefined }): Promise<Round> {
+    async function openInstalled(session: Store2Session, backend: Store2Backend, installed: { manifestKey: string, value: CommitKey, flushed: boolean | undefined }): Promise<Round> {
         mayHaveWritten = true
         if (installed.flushed !== true && session.reflush !== null) {
             const reflushed = await reflushTopLevel(backend)
@@ -380,7 +399,8 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 raise({ name: 'flush-unconfirmed' })
             }
         }
-        return openStored(session, installed.manifestKey, { fence: 'absent' })
+        // The seed is the landed key the final write returned, never the bytes read back.
+        return openStored(session, installed.manifestKey, { fence: 'absent' }, installed.value)
     }
 
     /**
@@ -514,7 +534,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
             }
         }
         raise({ name: 'seeded' })
-        return openStored(session, outcome.manifestKey, { fence: 'absent' })
+        return openStored(session, outcome.manifestKey, { fence: 'absent' }, outcome.value)
     }
 
     /**
@@ -601,7 +621,7 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                     if (result.fromBackup !== null) {
                         raise({ name: 'converted-from-backup', backup: result.fromBackup })
                     }
-                    return openStored(session, result.manifestKey, { fence: 'absent' })
+                    return openStored(session, result.manifestKey, { fence: 'absent' }, result.value)
             }
         }
     }
@@ -702,7 +722,10 @@ export async function dispatchStore2Boot(env: Store2BootEnv, deps: Store2Dispatc
                 if (roundLeft && await clearGoneForeignMarker(session)) {
                     return RECLASSIFY
                 }
-                return openStored(session, tree.manifestKey, { fence: decision.fence })
+                // The session read this tree from the first read's `current`, and the commit is re-read only after a start-up
+                // clear (null here except on row 9's own clear), so the parsed key names `tree.manifestKey`. The check stays and
+                // fails closed to an unknown baseline.
+                return openStored(session, tree.manifestKey, { fence: decision.fence }, session.commit?.status === 'parsed' ? session.commit.value : null)
             }
             case 9: {
                 if (decision.clear === 'foreign-path') {

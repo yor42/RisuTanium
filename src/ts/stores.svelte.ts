@@ -26,6 +26,8 @@ export const SizeStore = writable({
 
 export const loadedStore = writable(false)
 export const savingStoppedReason = writable('')
+/** True while a fast-forward waits for a running reply to finish: saving is not stopped, the indicator only says why this tab shows the old state. */
+export const peerWaitingStatus = writable(false)
 /** One entry per chaId currently held by two or more characters, whose block the save file is keeping unchanged rather than rewriting (MC-078, MC-079, MC-082). */
 export interface FrozenSaveKeyInfo {
     chaId: string

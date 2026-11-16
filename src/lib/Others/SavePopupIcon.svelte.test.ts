@@ -41,6 +41,7 @@ vi.mock(import('../../ts/stores.svelte'), () => {
     return {
         DBState: state,
         savingStoppedReason: writable(''),
+        peerWaitingStatus: writable(false),
         frozenSaveKeysStore: writable<FrozenSaveKeyInfo[]>([]),
     } as unknown as typeof import('../../ts/stores.svelte')
 })
@@ -72,7 +73,7 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
 
 //#endregion
 
-import { DBState, savingStoppedReason as savingStoppedReasonStore, frozenSaveKeysStore as frozenSaveKeysStoreMock } from '../../ts/stores.svelte'
+import { DBState, savingStoppedReason as savingStoppedReasonStore, peerWaitingStatus as peerWaitingStatusStore, frozenSaveKeysStore as frozenSaveKeysStoreMock } from '../../ts/stores.svelte'
 import { saving } from 'src/ts/globalApi.svelte'
 import { language } from '../../lang'
 import SavePopupIcon from './SavePopupIcon.svelte'
@@ -92,6 +93,7 @@ async function teardown(target: HTMLElement, app: Record<string, unknown>): Prom
 beforeEach(() => {
     saving.state = false
     savingStoppedReasonStore.set('')
+    peerWaitingStatusStore.set(false)
     frozenSaveKeysStoreMock.set([])
     heldSaveStore.set([])
     DBState.db = {} as unknown as Database
@@ -108,6 +110,34 @@ describe('SavePopupIcon shows nothing when nothing is wrong', () => {
         const { target, app } = mountIcon()
         flushSync()
         expect(target.querySelector('button')).toBeNull()
+        await teardown(target, app)
+    })
+})
+
+describe('SavePopupIcon -- the waiting line of a fast-forward that waits for a reply', () => {
+    test('the line shows its sentence as plain status text, not as the stopped alert button, and goes when the status clears', async () => {
+        const { target, app } = mountIcon()
+        flushSync()
+        expect(target.textContent).not.toContain(language.store2Boot.peerWaitingSend)
+
+        peerWaitingStatusStore.set(true)
+        flushSync()
+        expect(target.querySelector('[role="status"]')?.textContent?.trim()).toBe(language.store2Boot.peerWaitingSend)
+        expect(target.querySelector('button')).toBeNull()
+
+        peerWaitingStatusStore.set(false)
+        flushSync()
+        expect(target.querySelector('[role="status"]')).toBeNull()
+        await teardown(target, app)
+    })
+
+    test('a stop reason still wins over the line', async () => {
+        peerWaitingStatusStore.set(true)
+        savingStoppedReasonStore.set('replaced')
+        const { target, app } = mountIcon()
+        flushSync()
+        expect(target.querySelector('button')).not.toBeNull()
+        expect(target.querySelector('[role="status"]')).toBeNull()
         await teardown(target, app)
     })
 })

@@ -97,6 +97,8 @@ export interface SavePlan {
     readonly encoded: readonly string[]
     /** Existing units the new manifest names without writing them, and the names (taken at plan time) of the characters and modules carried by key. */
     readonly carried: ScopedPlan['carried']
+    /** The identity and digest of every unit this plan writes that holds no Ref of another unit (`ScopedPlan.written`). */
+    readonly written: ScopedPlan['written']
     /** The commit request of this plan; its build runs `finalize` under the attempt's own mint and keeps that tree. */
     commitRequest(): CommitRequest
     /**
@@ -116,6 +118,13 @@ export interface SaveEncoder {
      * before an adoption is stale and must be made again.
      */
     adoptIfCurrent(currentKey: string | null): boolean
+    /**
+     * Moves the acknowledged encoding to `next`, the encoding of a tree a peer committed that the page has taken in
+     * (the fast-forward). Throws while an attempt is pending, as its write may have landed, and when `next` names no
+     * manifest; the encoder is then unchanged. Every value shadow is dropped, and every plan made before it is stale:
+     * it is never `unchanged`, and its `acknowledge` throws.
+     */
+    fastForward(next: PreviousEncoding): void
     /**
      * The manifest key of the attempt kept as pending, null when none: set by `keepAsPending`, cleared by an adoption
      * or by the acknowledgement of a later plan. The caller resolves it against the base read (`adoptIfCurrent`, or
@@ -508,6 +517,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
                 modulesEncoded: scoped.modulesEncoded,
                 encoded: scoped.encoded,
                 carried: scoped.carried,
+                written: scoped.written,
                 commitRequest: () => ({
                     newUnits: scoped.newUnits,
                     carry: { from: manifestKeyOf(base), units: scoped.carried.units },
@@ -553,6 +563,14 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
             pending = null
             resetShadows()
             return true
+        },
+        fastForward(next) {
+            if (pending !== null) {
+                throw new SavePlanError('The acknowledged encoding cannot be fast-forwarded while an attempt is pending.')
+            }
+            manifestKeyOf(next)
+            previous = next
+            resetShadows()
         },
         get pendingKey() {
             return pending === null ? null : pending.manifestKey

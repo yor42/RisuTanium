@@ -17,7 +17,7 @@ import { type Database, defaultSdDataFunc, getDatabase, appVer, getCurrentCharac
 import { collectPackAssetRefs } from "./themePack/packRefs";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
-import { botMakerMode, loadedStore, DBState, LoadingStatusState, selIdState, selectedCharID, ReloadGUIPointer, bodyIntercepterStore, savingStoppedReason, frozenSaveKeysStore, type FrozenSaveKeyInfo } from "./stores.svelte";
+import { botMakerMode, loadedStore, DBState, LoadingStatusState, selIdState, selectedCharID, ReloadGUIPointer, bodyIntercepterStore, savingStoppedReason, peerWaitingStatus, frozenSaveKeysStore, type FrozenSaveKeyInfo } from "./stores.svelte";
 import { loadPlugins } from "./plugins/plugins.svelte";
 import { alertConfirm, alertError, alertMd, alertSelect, alertStore, alertToast, waitAlert } from "./alert";
 import { ASSET_PIECE_SAVE_MIN_BYTES, Sha256, sha256Hex } from "./assetHash";
@@ -1406,6 +1406,9 @@ function isNodeBodyRefusal(error: unknown): boolean {
  */
 let savingStoppedDetail = ''
 
+/** Whether the waiting line is on; the store is touched only when the value changes, so the loop's clearing on every pass costs nothing. */
+let peerWaitingShown = false
+
 export function getSavingStoppedDetail(): string {
     return savingStoppedDetail
 }
@@ -2290,6 +2293,12 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
             // Only a real stop ends the token: the empty reason clears a park and the owed redo still runs.
             if (reason) {
                 endRedoHold()
+            }
+        },
+        setPeerWaiting(waiting) {
+            if (waiting !== peerWaitingShown) {
+                peerWaitingShown = waiting
+                peerWaitingStatus.set(waiting)
             }
         },
         notifyTooLarge(label) {
