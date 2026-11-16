@@ -427,7 +427,8 @@ export function reformater(formated:OpenAIChat[],modelInfo:LLMModel|LLMFlags[]){
 
     if(!flags.includes(LLMFlags.hasFullSystemPrompt)){
         if(flags.includes(LLMFlags.hasFirstSystemPrompt)){
-            while(formated[0].role === 'system'){
+            // A list of only system messages leaves nothing after them: the loop ends on an empty list.
+            while(formated.length > 0 && formated[0].role === 'system'){
                 if(systemPrompt){
                     systemPrompt.content += '\n\n' + formated[0].content
                 }
