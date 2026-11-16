@@ -214,7 +214,9 @@ describe('the op builders', () => {
         expect(built.writes).toHaveLength(1)
         expect(built.ops.some((op) => op.op === 'listSet' || op.op === 'listInsert' || op.op === 'listRemove')).toBe(false)
         expect(buildFieldEdit('firstMessage', true, reader)).toEqual({ ok: false, reason: 'precondition' })
-        expect(buildFieldEdit('exampleMessage', 'x', reader)).toMatchObject({ ok: true, ops: [{ before: { had: false } }] })
+        expect(buildFieldEdit('exampleMessage', 'x', reader)).toEqual({ ok: false, reason: 'precondition' })
+        const withExample = createLiveReader(targetOf(makeCharacter('A', { exampleMessage: 'e0' })))
+        expect(buildFieldEdit('exampleMessage', 'x', withExample)).toMatchObject({ ok: true, ops: [{ before: { had: true, value: 'e0' } }] })
     })
 
     test('greeting add appends an empty one; edit keys its coalescing by index; both refuse out of range', () => {

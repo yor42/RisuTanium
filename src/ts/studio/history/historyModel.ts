@@ -7,7 +7,7 @@ import { applyFolderOps, folderOpAtTarget, invertFolderOp, type FolderFieldValue
 import type { AssetArrayName } from '../assets/mergePreview'
 import { parseTargetPath, TEXT_TARGET } from '../assets/referenceTargets'
 import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
-import { parseOwnerKey, type OwnerKey } from './ownerPhase'
+import { parseOwnerKey, type OwnerKey, type ParsedOwnerKey } from './ownerPhase'
 
 // Typing in one field extends the open step while each write follows the previous one by less
 // than this. The model never reads Date.now: callers pass `now`.
@@ -25,16 +25,31 @@ export interface HistoryClock {
 
 // ---------------------------------------------------------------- field paths and values
 
-export type CharacterField = 'desc' | 'firstMessage' | 'exampleMessage' | 'hideChatIcon'
+export type CharacterField = 'desc' | 'firstMessage' | 'exampleMessage' | 'customModuleToggle' | 'hideChatIcon'
 export type ChatField = 'note'
 export type SetPath = CharacterField | ChatField
 export type ListPath = 'alternateGreetings'
 export type RestorePath = SetPath | ListPath
+export type OwnerKind = ParsedOwnerKey['kind']
 
-export const CHARACTER_SET_PATHS: readonly CharacterField[] = ['desc', 'firstMessage', 'exampleMessage', 'hideChatIcon']
-export const CHAT_SET_PATHS: readonly ChatField[] = ['note']
+// The one table of the set paths each owner kind accepts. `isSetPath`, the `set` acceptance of `parseOp`,
+// `isOpAllowedFor` and the restore table all derive from it; nothing else decides which set paths an owner kind
+// accepts. The module row is empty: a module record holding a `set` op is refused whole.
+export const SET_PATHS_BY_KIND: { readonly [K in OwnerKind]: readonly SetPath[] } = {
+    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon'],
+    chat: ['note'],
+    module: [],
+}
 export const LIST_PATH: ListPath = 'alternateGreetings'
-export const RESTORE_PATH_ORDER: readonly RestorePath[] = ['desc', 'firstMessage', 'exampleMessage', 'hideChatIcon', 'note', 'alternateGreetings']
+// The paths a restore point may hold per owner kind: every set path, plus the greeting list for a character.
+export const RESTORE_PATHS_BY_KIND: { readonly [K in OwnerKind]: readonly RestorePath[] } = {
+    character: [...SET_PATHS_BY_KIND.character, LIST_PATH],
+    chat: SET_PATHS_BY_KIND.chat,
+    module: SET_PATHS_BY_KIND.module,
+}
+export const CHARACTER_SET_PATHS: readonly SetPath[] = SET_PATHS_BY_KIND.character
+export const CHAT_SET_PATHS: readonly SetPath[] = SET_PATHS_BY_KIND.chat
+export const RESTORE_PATH_ORDER: readonly RestorePath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'note', 'alternateGreetings']
 // The character text fields whose whole value a set op carries.
 export type TextFieldPath = 'desc' | 'firstMessage' | 'exampleMessage'
 export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = ['desc', 'firstMessage', 'exampleMessage']
@@ -190,11 +205,10 @@ function nullableString(value: unknown): string | null | undefined {
 
 function isSetPath(value: unknown): value is SetPath {
     return (
-        value === 'desc' ||
-        value === 'firstMessage' ||
-        value === 'exampleMessage' ||
-        value === 'hideChatIcon' ||
-        value === 'note'
+        typeof value === 'string' &&
+        (SET_PATHS_BY_KIND.character.includes(value as SetPath) ||
+            SET_PATHS_BY_KIND.chat.includes(value as SetPath) ||
+            SET_PATHS_BY_KIND.module.includes(value as SetPath))
     )
 }
 
@@ -276,7 +290,32 @@ function parseLabel(value: unknown): StepLabel | null {
     }
 }
 
-type OwnerKind = 'character' | 'chat' | 'module'
+// Rule K, defined once: whether an owner of this kind may hold the op. `parseOp` applies it after the shape checks,
+// and the service refuses a build whose op fails it before anything is written, so a landed write is always one
+// the owner's own record reads back.
+export function isOpAllowedFor(kind: OwnerKind, op: Op): boolean {
+    switch (op.op) {
+        case 'set':
+            return SET_PATHS_BY_KIND[kind].includes(op.path)
+        case 'listSet':
+        case 'listInsert':
+        case 'listRemove':
+        case 'chatFm':
+            return kind === 'character'
+        case 'assetRowRemove':
+        case 'assetRowInsert':
+        case 'assetRowSet':
+        case 'assetFolderSet':
+        case 'assetFolderOrder':
+        case 'textEdit':
+            return kind !== 'chat'
+    }
+}
+
+// The set paths of an owner kind that carry text: its row of the table minus the boolean `hideChatIcon`.
+export function textPathsFor(kind: OwnerKind): readonly SetPath[] {
+    return SET_PATHS_BY_KIND[kind].filter((path) => path !== 'hideChatIcon')
+}
 
 const ASSET_ARRAYS: readonly string[] = ['additionalAssets', 'emotionImages', 'assets']
 
@@ -345,31 +384,22 @@ function parseAssetOp(value: Record<string, unknown>): Op | null | undefined {
     }
 }
 
-function parseOp(value: unknown, kind: OwnerKind): Op | null {
+// The shape of one op, whatever the owner kind; null when it is outside the closed union.
+function parseOpShape(value: unknown): Op | null {
     if (!isObject(value)) {
         return null
     }
     if (value.op === 'set') {
-        if (kind === 'module' || !isSetPath(value.path)) {
-            return null
-        }
-        const allowed = kind === 'chat' ? CHAT_SET_PATHS : CHARACTER_SET_PATHS
-        if (!(allowed as readonly string[]).includes(value.path)) {
+        if (!isSetPath(value.path)) {
             return null
         }
         const before = parseFieldValue(value.path, value.before)
         const after = parseFieldValue(value.path, value.after)
         return before && after ? { op: 'set', path: value.path, before, after } : null
     }
-    if (kind === 'chat') {
-        return null
-    }
     const asset = parseAssetOp(value)
     if (asset !== undefined) {
         return asset
-    }
-    if (kind === 'module') {
-        return null
     }
     switch (value.op) {
         case 'listSet':
@@ -406,6 +436,11 @@ function parseOp(value: unknown, kind: OwnerKind): Op | null {
         default:
             return null
     }
+}
+
+function parseOp(value: unknown, kind: OwnerKind): Op | null {
+    const op = parseOpShape(value)
+    return op && isOpAllowedFor(kind, op) ? op : null
 }
 
 function parseStep(value: unknown, kind: OwnerKind): Step | null {
@@ -491,7 +526,7 @@ function parseRestore(value: unknown, kind: OwnerKind): RestorePoint | null {
     ) {
         return null
     }
-    const allowed: readonly RestorePath[] = kind === 'chat' ? ['note'] : kind === 'module' ? [] : ['desc', 'firstMessage', 'exampleMessage', 'hideChatIcon', LIST_PATH]
+    const allowed: readonly RestorePath[] = RESTORE_PATHS_BY_KIND[kind]
     const fields: Partial<Record<RestorePath, RestoreField>> = {}
     for (const key of Object.keys(value.fields)) {
         if (!(allowed as readonly string[]).includes(key)) {
