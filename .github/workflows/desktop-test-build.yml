@@ -53,7 +53,7 @@ jobs:
         if: startsWith(matrix.settings.platform, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
 
       # ring compiles C for aarch64-pc-windows-msvc and needs clang there. Fail early if the
       # runner image has none instead of failing deep inside the cargo build.
