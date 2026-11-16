@@ -32,6 +32,7 @@ import type { WorkHandle } from '../chatOrigin'
 // `src/main.ts` does (`import "./ts/polyfill"`): the setup file's stand-in
 // throws on `undefined`, which the script pass clones.
 import '../../polyfill'
+import { COLD_TRANSFORM_HOOK_MS } from '../../tests/coldTransform.test-helpers'
 
 //#region module mocks
 
@@ -340,7 +341,7 @@ beforeAll(async () => {
     const stores = await import('../../stores.svelte')
     DBState = stores.DBState as unknown as { db: Database }
     selectedCharID = stores.selectedCharID as unknown as Selection
-})
+}, COLD_TRANSFORM_HOOK_MS)
 
 beforeEach(() => {
     h.request.mockReset()
