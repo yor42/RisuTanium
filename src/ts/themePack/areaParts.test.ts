@@ -18,6 +18,11 @@ const REVIEWED_EXPRESSIONS: Readonly<Record<string, readonly string[]>> = {
     '/src/lib/SettingsShell/SettingsSearchResults.svelte': ['settings-search-result', 'settings-search-more'],
 }
 
+/** A component that renders `data-part={prop}` from a prop: its usages must pass a literal, and those literals belong to the caller's screen. Usages are found by the component's file name as the tag, so an aliased import or a dynamic component is not seen. */
+const FORWARDING_COMPONENTS: Readonly<Record<string, string>> = {
+    '/src/lib/Studio/LongTextField.svelte': 'part',
+}
+
 interface Rendered {
     byScreen: Record<Screen, Set<string>>
     unreviewed: string[]
@@ -33,7 +38,22 @@ function collectRendered(): Rendered {
             if (/[{}$]/.test(m[1])) unreviewed.push(`${file}: data-part="${m[1]}"`)
             else byScreen[screen].add(m[1])
         }
+        for (const [forwarder, prop] of Object.entries(FORWARDING_COMPONENTS)) {
+            if (file === forwarder) continue
+            const tag = forwarder.slice(forwarder.lastIndexOf('/') + 1).replace(/\.svelte$/, '')
+            for (const usage of markup.matchAll(new RegExp(`<${tag}\\b[\\s\\S]*?(?:/>|</${tag}>)`, 'g'))) {
+                let matched = 0
+                for (const a of usage[0].matchAll(new RegExp(`\\s${prop}=(?:"([^"]*)"|\\{([^}]*)\\})`, 'g'))) {
+                    matched++
+                    if (a[1] !== undefined && !/[{}$]/.test(a[1])) byScreen[screen].add(a[1])
+                    else unreviewed.push(`${file}: ${tag} ${prop}=${a[1] !== undefined ? `"${a[1]}"` : `{${a[2]}}`}`)
+                }
+                if (matched === 0 || usage[0].includes('{...')) unreviewed.push(`${file}: ${tag} without a plain ${prop}="..." (shorthand, spread or absent)`)
+            }
+        }
         for (const m of markup.matchAll(/data-part=\{([^\n]*)/g)) {
+            const forwarded = FORWARDING_COMPONENTS[file]
+            if (forwarded !== undefined && m[1].trim().replace(/\}.*$/, '').trim() === forwarded) continue
             const quoted = new Set([...m[1].matchAll(/'([a-z][a-z0-9-]*)'/g)].map((n) => n[1]))
             const reviewed = REVIEWED_EXPRESSIONS[file]
             if (!reviewed || reviewed.some((n) => !quoted.has(n))) unreviewed.push(`${file}: data-part={${m[1].trim()}`)
