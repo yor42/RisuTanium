@@ -3,7 +3,7 @@ import type { Store2Backend, Store2Read } from '../backend/types'
 import type { BlockedReason } from '../bootActive'
 import type { ListDerivation } from '../codec/types'
 import { firstLifeInstall, installBuilt, type BuiltInstall, type FirstLifeGrant, type FirstLifeResult } from '../firstLife'
-import { defaultKeyEnv, type KeyEnv, type LegacyList } from '../format'
+import { defaultKeyEnv, type CommitKey, type KeyEnv, type LegacyList } from '../format'
 import { LegacyListBuilder } from '../lists/legacyList'
 import { planOldDataSnapshot, withSnapshot, type OldDataSource } from '../oldData/plan'
 import type { ForeignClearHook } from '../owner'
@@ -53,7 +53,7 @@ export interface BootImportRequest {
 }
 
 export type BootImportResult =
-    | { status: 'installed', manifestKey: string, flushed: boolean | undefined, repair: RepairSummary }
+    | { status: 'installed', manifestKey: string, value: CommitKey, flushed: boolean | undefined, repair: RepairSummary }
     | PrepareStop
     /** The marker or the final write did not land and the store may have moved: classify the boot again. */
     | { status: 'reclassify' }
@@ -136,7 +136,7 @@ function resultOfMarker(marker: Extract<FirstLifeResult, { status: 'not-marked' 
 function resultOfInstall(result: FirstLifeResult, repair: RepairSummary): BootImportResult {
     switch (result.status) {
         case 'installed':
-            return { status: 'installed', manifestKey: result.manifestKey, flushed: result.flushed, repair }
+            return { status: 'installed', manifestKey: result.manifestKey, value: result.value, flushed: result.flushed, repair }
         case 'abandoned':
             return { status: 'reclassify' }
         case 'not-marked':

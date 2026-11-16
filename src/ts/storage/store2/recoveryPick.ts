@@ -2,7 +2,7 @@ import {
     Store2BackendError, Store2BackendFailureError, Store2CommitConflictError, Store2NotBinaryError, Store2OverwriteRefusedError, Store2UnknownOutcomeError,
 } from './backend/errors'
 import { sameBytes, type Store2Backend, type Store2Read, type Store2WriteResult } from './backend/types'
-import { classifyCommitRead, nextCommitKey } from './commitKey'
+import { classifyCommitRead, nextCommitKey, withLine, withReplaced } from './commitKey'
 import {
     assetRefKey, decodeFrame, defaultKeyEnv, encodeUnit, keyOfTail, newStagedKey, newStagedManifestKey, parseStore2Key,
     readUnit, refOfFrame, refsOf, REFS_TABLE, splitHashStems, UNIT_TYPE,
@@ -718,6 +718,9 @@ export async function finalWrite(basis: InstallBasis, manifestKey: string, manif
         ...(converted === undefined ? {} : { convertedFrom: converted.from, convertedAt: converted.at }),
         ...(snapshot === undefined ? {} : { snapshot }),
     }, env)
+    // An install replaces the tree whole: it never descends from the marker's base and it is stamped as an install.
+    withLine(next, marked.marker, false)
+    withReplaced(next, 'install')
     const nextBytes = encodeUnit(UNIT_TYPE.commit, next)
     // Every attempt compares at the marker's own read-back token, never at a fresh read.
     for (let attempt = 0; attempt < FINAL_ATTEMPTS; attempt++) {

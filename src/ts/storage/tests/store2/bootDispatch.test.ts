@@ -611,6 +611,17 @@ describe('new behaviour: row 5, a normal store2 profile', () => {
         expect(test.ui.notices.map(notice => notice.name)).toContain('reflush-failed')
         expect(result.session.notice?.reason).toBe('reflush-failed')
     })
+
+    test('only an indexeddb or node page judges on a line: a Tauri page gets no lineage and an indexeddb page does', async () => {
+        const world = await seedWorld()
+        const tauri = rig({ memory: world.memory, kind: 'tauri' })
+        expectStoreResult(await tauri.dispatch())
+        expect((getActiveStore2Save() as { lineage?: unknown } | null)?.lineage).toBeUndefined()
+        resetStore2SaveForTest()
+        const idb = rig({ memory: world.memory, kind: 'indexeddb' })
+        expectStoreResult(await idb.dispatch())
+        expect((getActiveStore2Save() as { lineage?: unknown } | null)?.lineage).toBeDefined()
+    })
 })
 
 // ---- row 3: too new ----
@@ -1524,6 +1535,21 @@ describe('new behaviour: row 1 offers, restore the newest backup or import a fil
         expect((result.database.characters as { name: string }[]).map(character => character.name)).toEqual(['Small 0', 'Small 1'])
         expect(test.store.writes).toEqual([])
         expect(test.store.deletes).toEqual([])
+    })
+
+    test('the page opened over an import starts its descent baseline from the landed install key', async () => {
+        const memory = createMemoryBackend()
+        const test = rig({
+            memory, mainFile: false, backups: TIMES,
+            importBackup: async (target) => finish(await target.install({ tree: legacyTree() }, RESOLVED_READER, acceptHooks)),
+        })
+        expectStoreResult(await test.dispatch())
+        const key = await currentKey(test.memory) as unknown as { seq: number, line?: { id: string }, replaced?: unknown }
+        const base = (getActiveStore2Save() as { lineage?: { base: { line: string | null, stamp: string | null, seq: number } } } | null)?.lineage?.base
+        expect(key.line?.id).toBeDefined()
+        expect(base?.line).toBe(key.line?.id)
+        expect(base?.seq).toBe(key.seq)
+        expect(JSON.parse(base?.stamp ?? 'null')).toEqual(key.replaced)
     })
 
     test('an import that backs out asks the offer again; nothing is written until a flow installs', async () => {

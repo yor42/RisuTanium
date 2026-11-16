@@ -2,6 +2,7 @@ import {
     FRAME_OVERHEAD, keyOfRef, readUnit, refOfFrame, UNIT_TYPE,
     type ContentBody, type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndex, type ModuleIndexRoot, type PluginBucket, type Ref, type Shard, type ShardEntry, type UnitType,
 } from './format'
+import type { JsonObject } from '../blockFrame'
 import {
     CodecAssembleError, IDENTITY, isJsonObject, PLUGIN_LISTS, readStringListField, unitDigest,
     type PluginList, type PreviousEncoding, type PreviousObjects, type ReusableUnit, type UnitSource,
@@ -32,7 +33,7 @@ export interface PreviousOfTreeOptions {
 }
 
 /** The unit's bytes when the source holds them and they are the unit the Ref names (length and checksum). */
-function checkedBytes(source: UnitSource, ref: Ref): Uint8Array | undefined {
+export function checkedBytes(source: UnitSource, ref: Ref): Uint8Array | undefined {
     const key = keyOfRef(ref)
     const bytes = source.get(key)
     if (bytes === undefined || bytes.length < FRAME_OVERHEAD) {
@@ -43,7 +44,7 @@ function checkedBytes(source: UnitSource, ref: Ref): Uint8Array | undefined {
 }
 
 /** Module handle: the id, told apart from a repeated id by occurrence; the handle `encodeModules` names its units by. */
-function moduleHandles(index: ModuleIndex): string[] {
+export function moduleHandles(index: ModuleIndex): string[] {
     const seen = new Map<string, number>()
     return index.entries.map((entry) => {
         const occurrence = seen.get(entry.id) ?? 0
@@ -126,6 +127,22 @@ export function hydrateModuleDigests(previous: PreviousEncoding, entry: ModuleEn
     registerModuleUnits(entry, handle, digestHydrator(previous, source))
 }
 
+/** The handle of a character is its id and its occurrence among the holders of that id, in `characters` order; its value is the entity id `u`. */
+export function entityIdsOf(order: ContentBody, entries: ReadonlyMap<string, ShardEntry>): Map<string, string> {
+    const entities = new Map<string, string>()
+    const occurrences = new Map<string, number>()
+    for (const u of readStringListField(order, 'chars', 'order')) {
+        const entry = entries.get(u)
+        if (entry === undefined) {
+            throw new CodecAssembleError(`The order names entity ${u}, which no shard lists.`)
+        }
+        const occurrence = occurrences.get(entry.chaId) ?? 0
+        occurrences.set(entry.chaId, occurrence + 1)
+        entities.set(`${entry.chaId}#${occurrence}`, u)
+    }
+    return entities
+}
+
 export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions = {}): PreviousEncoding {
     const { manifestKey, manifest, source } = tree
     const keepBytes = options.keepBytes === true
@@ -175,9 +192,9 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
     const configBody = registerBody('config', UNIT_TYPE.configRoot, fixed.config) as ContentBody
     register('al:config', UNIT_TYPE.assetList, fixed.configAl)
     register('il:config', UNIT_TYPE.inlayList, fixed.il)
-    register('statics', UNIT_TYPE.statics, fixed.statics)
+    const staticsBytes = register('statics', UNIT_TYPE.statics, fixed.statics)
     register('loadouts', UNIT_TYPE.loadouts, fixed.loadouts)
-    fixed.presets.forEach((ref, index) => register(`preset:${index}`, UNIT_TYPE.preset, ref))
+    const presetBytes = fixed.presets.map((ref, index) => register(`preset:${index}`, UNIT_TYPE.preset, ref))
     fixed.taskPresets?.forEach((ref, index) => register(`taskPreset:${index}`, UNIT_TYPE.taskPreset, ref))
 
     // A plugin's identity names its list, which only its body says: without every body the boundary between the lists is unknown.
@@ -221,20 +238,26 @@ export function previousOfTree(tree: StoredTree, options: PreviousOfTreeOptions 
         }
     })
 
-    // The handle of a character is its id and its occurrence among the holders of that id, in `characters` order.
-    const entities = new Map<string, string>()
-    const occurrences = new Map<string, number>()
-    for (const u of readStringListField(order, 'chars', 'order')) {
-        const entry = entries.get(u)
-        if (entry === undefined) {
-            throw new CodecAssembleError(`The order names entity ${u}, which no shard lists.`)
-        }
-        const occurrence = occurrences.get(entry.chaId) ?? 0
-        occurrences.set(entry.chaId, occurrence + 1)
-        entities.set(`${entry.chaId}#${occurrence}`, u)
-    }
+    const entities = entityIdsOf(order, entries)
 
-    const objects: PreviousObjects = { manifest, shards, moduleIndex }
+    const objects: PreviousObjects = { manifest, shards, moduleIndex, order }
+    // The statics body and the preset bodies are kept only when every unit was read and parses: a partial list is no base.
+    const statics = staticsBytes === undefined ? null : readUnit(staticsBytes, UNIT_TYPE.statics)
+    if (statics !== null && (statics.status === 'ok' || statics.status === 'stale')) {
+        objects.statics = statics.value.body as ContentBody
+    }
+    const presets: JsonObject[] = []
+    for (const bytes of presetBytes) {
+        const parsed = bytes === undefined ? null : readUnit(bytes, UNIT_TYPE.preset)
+        const preset = parsed !== null && (parsed.status === 'ok' || parsed.status === 'stale') ? (parsed.value.body as ContentBody).preset : undefined
+        if (!isJsonObject(preset)) {
+            break
+        }
+        presets.push(preset)
+    }
+    if (presets.length === presetBytes.length) {
+        objects.presets = presets
+    }
     // A config body that is not an object of fields holds nothing to put back: a later fault of a setting then fails the pass.
     if (isJsonObject(configBody.f)) {
         objects.config = configBody.f

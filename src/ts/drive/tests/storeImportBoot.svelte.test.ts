@@ -23,6 +23,7 @@ import { createWorldKit, sleepReal, settled, type World } from 'src/ts/storage/t
 import { startStore2, store2Boot } from 'src/ts/storage/tests/store2SaveKit'
 import { FakeLockManagerCore, FakeTabLockManagerView } from 'src/ts/storage/tests/fakeWebLocks'
 import type { BootImportResult, BootImportTarget } from 'src/ts/storage/store2/legacy/bootImport'
+import { firstCommitKey } from 'src/ts/storage/store2/commitKey'
 import type { LegacyEntryReader } from 'src/ts/storage/store2/legacy/resolve'
 import { ID } from 'src/ts/storage/tests/store2/legacyFixtures'
 import type { Database } from 'src/ts/storage/database.svelte'
@@ -321,7 +322,7 @@ describe('the start-up .bin import never writes a cold-storage unit (Gate 1 C1)'
         })
     }
 
-    const installedResult: BootImportResult = { status: 'installed', manifestKey: 'm', flushed: true, repair: { dropped: 0, changed: 0, recovered: 0 } }
+    const installedResult: BootImportResult = { status: 'installed', manifestKey: 'm', value: firstCommitKey({ current: { key: 'm', at: 0 }, staging: null }), flushed: true, repair: { dropped: 0, changed: 0, recovered: 0 } }
 
     /** The notice is shown once the restore has run, however long it takes; the bound stays far inside the file's test timeout. */
     const NOTICE_WAIT = { timeout: 10_000 }

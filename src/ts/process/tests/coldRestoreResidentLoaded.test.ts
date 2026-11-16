@@ -85,7 +85,8 @@ function storeUnit(value: unknown): void {
 
 function registerStore2Read(): void {
     const read = { status: 'ok', value: { character: full() }, entry: { u: KEY }, source: { get: () => undefined }, bytes: 1, droppedAlt: [] } as unknown as Extract<ResidencyRead, { status: 'ok' }>
-    registerResidency({ readCharacter: async () => read, hydrate: () => {} } as unknown as Residency)
+    // The acknowledged entry is the one the read carries, so the stale-read guard finds the read current.
+    registerResidency({ readCharacter: async () => read, entryOf: () => read.entry, hydrate: () => {} } as unknown as Residency)
 }
 
 beforeEach(() => {

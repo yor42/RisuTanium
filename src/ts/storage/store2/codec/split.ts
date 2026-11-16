@@ -1262,6 +1262,7 @@ export function finishTree(
     encoder.parents.set('manifest', { type: UNIT_TYPE.manifest, body: manifest })
     const manifestUnit = encoder.sink.putFresh('manifest', UNIT_TYPE.manifest, manifest, 'manifest')
 
+    const presetBodies = front.botPresetsCarried ? encoder.previous?.objects?.presets : presetPlain
     const units = encoder.sink.units
     const indexUnits = new Map<string, ReusableUnit>([...carried, ...encoder.carried])
     for (const unit of units) {
@@ -1277,7 +1278,11 @@ export function finishTree(
         index: {
             units: indexUnits,
             entities: encoder.entities,
-            objects: { manifest, shards: shardBodies, moduleIndex: moduleSet.body, config },
+            objects: {
+                manifest, shards: shardBodies, moduleIndex: moduleSet.body, config, statics: { ...staticsBody }, order: { ...orderBody },
+                // A carried preset list keeps the bodies of the encoding it was carried from; one that held none holds none.
+                ...(presetBodies === undefined ? {} : { presets: presetBodies }),
+            },
         },
     }
 }
