@@ -10,7 +10,8 @@
  */
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 
 //#region module mocks
 
@@ -590,6 +591,9 @@ describe('device motion rows (CHORE-585, MC-1529)', () => {
     function reason(target: HTMLElement): string | null {
         return row(target, 'display.animationSpeed').querySelector('[data-part="setting-row-reason"]')?.textContent ?? null
     }
+
+    // The motion preferences module is transformed once here, outside any per-case hook clock.
+    beforeAll(async () => { await import('src/ts/chatShell/motionPrefs.svelte') }, COLD_TRANSFORM_HOOK_MS)
 
     beforeEach(async () => {
         localStorage.clear()

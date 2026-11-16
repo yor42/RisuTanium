@@ -57,6 +57,7 @@ import { writable, get } from 'svelte/store'
 import { STALE_ACCOUNT_NOTICE_ACK } from './alert'
 import type { AssetVerifyResult } from './storage/assetIntegrity'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -453,7 +454,7 @@ async function freshLoadData() {
 beforeAll(async () => {
     await freshLoadData()
     vi.resetModules()
-}, 60_000)
+}, COLD_TRANSFORM_HOOK_MS)
 
 beforeEach(() => {
     localStorage.clear()

@@ -11,10 +11,12 @@
  * assert behaviour the contract-based boot has. A passing test here is about the
  * request sequence the boot makes; it says nothing about the real server.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { FakeNodeServer } from 'src/ts/storage/tests/manualCleanupHarness'
 import { createFakeStore, makeOwner } from 'src/ts/storage/tests/blockStoreHarness'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 const MAIN_KEY = 'database/database.bin'
 const HEAD_KEY = 'blocks/head'
@@ -274,6 +276,8 @@ function installedCharacterIds(): string[][] {
     return setDatabaseMock.mock.calls.map((call) => (call[0].characters as { chaId: string }[]).map((c) => c.chaId))
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(async () => {
     localStorage.clear()
     keyPair = null

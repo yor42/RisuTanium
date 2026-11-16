@@ -13,6 +13,7 @@
 import { flushSync, mount, tick, unmount } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 
 const evaluated = vi.hoisted(() => ({ row: 0, install: 0 }))
 
@@ -149,7 +150,14 @@ function deferredRow(): { importRow: () => Promise<{ default: typeof ThemePackRo
 }
 
 // The registry statically reaches icon users; the first transform of the icon library is slow and must not land inside a wait.
-beforeAll(() => import('@lucide/svelte'), 300000)
+// The registry, the renderer and a shell row are transformed here too, so the first test's own imports only evaluate them;
+// the row and install modules stay unevaluated until the loader mounts.
+beforeAll(async () => {
+    await import('@lucide/svelte')
+    await import('src/ts/setting/customComponents')
+    await import('src/ts/setting/settingRegistry')
+    await import('src/lib/SettingsShell/ShellSettingRow.svelte')
+}, COLD_TRANSFORM_HOOK_MS)
 
 beforeEach(() => {
     process.on('unhandledRejection', onUnhandled)

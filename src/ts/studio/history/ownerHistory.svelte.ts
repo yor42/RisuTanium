@@ -61,12 +61,14 @@ import {
     deriveRestoreWrites,
     emptyRecord,
     invertOp,
+    isOpAllowedFor,
     planReplay,
     planRestoreDeleted,
     planRestorePoint,
     planRevert,
     stepIdFor,
     textBeforeOf,
+    textPathsFor,
     type DeletedItem,
     type HistoryClock,
     type LiveReader,
@@ -216,6 +218,8 @@ export interface OwnerHistoryService {
     view(owner: OwnerKey): OwnerView
     setAck(chaId: string, ack: OwnerAck | null): void
     editField(owner: OwnerKey, path: SetPath, value: string | boolean): StudioResult
+    // A whole-value text edit. `typing` coalesces with the previous typing step of the same path; `single` is always its own step.
+    editText(owner: OwnerKey, path: SetPath, value: string, mode?: 'typing' | 'single'): StudioResult
     greetingAdd(owner: OwnerKey): StudioResult
     greetingEdit(owner: OwnerKey, index: number, value: string): StudioResult
     greetingDelete(owner: OwnerKey, index: number): StudioResult
@@ -342,6 +346,8 @@ function saveEvent(result: SaveResult): OwnerEvent {
 
 type Intent =
     | { kind: 'edit'; build: (id: string, live: LiveReader, target: LiveTarget) => EditBuildResult }
+    // `coalesce: false` is the `single` mode: the step never merges with a neighbouring typing step.
+    | { kind: 'text'; path: SetPath; value: string; coalesce: boolean }
     | { kind: 'replay'; direction: 'undo' | 'redo' }
     | { kind: 'revert'; stepId: string }
     | { kind: 'restore'; keep: ReadonlySet<RestorePath> }
@@ -832,14 +838,26 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                     }, hashFor),
             }
         }
-        if (intent.kind === 'edit') {
+        if (intent.kind === 'edit' || intent.kind === 'text') {
+            const ownerKind = parseOwnerKey(slot.key)?.kind
+            if (ownerKind === undefined) {
+                return refused('unknown')
+            }
+            // A text path the owner kind does not carry (or the boolean field) is refused before any read or write.
+            if (intent.kind === 'text' && !textPathsFor(ownerKind).includes(intent.path)) {
+                return refused('precondition')
+            }
             if (target === null) {
                 return refused('gone')
             }
             const id = stepIdFor(pageSession, ++counter)
-            const built = intent.build(id, live, target)
+            const built = intent.kind === 'text' ? buildFieldEdit(intent.path, intent.value, live, intent.coalesce) : intent.build(id, live, target)
             if (built.ok === false) {
                 return built.reason === 'unchanged' ? { ok: true, unchanged: true } : refused('precondition')
+            }
+            // Rule K: an op the owner's own record would refuse on reading is never written, marked or recorded.
+            if (!built.ops.every((op) => isOpAllowedFor(ownerKind, op))) {
+                return refused('precondition')
             }
             const greetings = live.greetings()
             // Read before the write: the live list is mutated in place.
@@ -1291,6 +1309,8 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         },
         editField: (owner, path, value) =>
             applyStudioWrite(owner, { kind: 'edit', build: (_id, live) => buildFieldEdit(path, value, live) }),
+        editText: (owner, path, value, mode = 'typing') =>
+            applyStudioWrite(owner, { kind: 'text', path, value, coalesce: mode === 'typing' }),
         greetingAdd: (owner) => applyStudioWrite(owner, { kind: 'edit', build: (_id, live) => buildGreetingAdd(live) }),
         greetingEdit: (owner, index, value) =>
             applyStudioWrite(owner, { kind: 'edit', build: (_id, live) => buildGreetingEdit(index, value, live) }),

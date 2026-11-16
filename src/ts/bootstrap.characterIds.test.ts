@@ -13,11 +13,13 @@
  * Title labels: (R) marks a reproducer that fails against a boot with no
  * repair before the install; (G) marks a guard that passes with or without it.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import type { FallbackNotice } from 'src/ts/storage/opfsCopyBack'
 import { BLOCK, composeSave, corruptBlockPayload } from 'src/ts/storage/tests/manualCleanupHarness'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 const MAIN_KEY = 'database/database.bin'
 
@@ -348,6 +350,8 @@ function characterIds(tree: Record<string, unknown>): string[] {
     return (tree.characters as { chaId: string }[]).map((c) => c.chaId)
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
     world.events.length = 0

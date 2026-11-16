@@ -2590,6 +2590,8 @@ export const languageJapanese = {
     inlayErrorResponse: "インレイエラー応答",
     inlayFileTooLarge: "{name}は{size} MBを超えているため、添付されませんでした。",
     inlaySendTooLarge: "モデルに送信されませんでした（1ファイルあたり{size} MBの上限を超過）：{names}",
+    openAIAudioLeftOut: "モデルに送信されませんでした（WAVまたはMP3の音声のみ受け付けます）：{names}",
+    openAIAudioUnnamed: "音声の添付ファイル",
     triggerOn: "発動条件",
     noConfig: "設定なし",
     var: "変数",

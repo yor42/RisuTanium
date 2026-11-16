@@ -2455,6 +2455,8 @@ export const languageKorean = {
     "inlayErrorResponse": "인레이 오류 응답",
     "inlayFileTooLarge": "{name} 파일이 {size} MB보다 커서 첨부하지 않았습니다.",
     "inlaySendTooLarge": "파일당 {size} MB 제한을 넘어 모델에 보내지 않았어요: {names}",
+    "openAIAudioLeftOut": "WAV나 MP3 오디오만 받는 모델이라 보내지 않았어요: {names}",
+    "openAIAudioUnnamed": "오디오 첨부 파일",
     "triggerOn": "활성화 조건",
     "noConfig": "설정 없음",
     "var": "변수",

@@ -22,9 +22,11 @@
  * behaviour it names. A mocked clean-up is not evidence of the Tauri or Node
  * server clean-up.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -376,6 +378,8 @@ function recordedCleanup(): Promise<unknown> {
 
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
     window.history.replaceState(null, '', '/')

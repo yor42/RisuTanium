@@ -658,6 +658,8 @@ describe('steps, undo, redo and revert', () => {
     })
 
     test('a first message step and an example message step are labelled with their own field names', async () => {
+        // A real character always carries both texts; an edit of an absent one is refused.
+        Object.assign(live(), { firstMessage: 'f0', exampleMessage: 'e0' })
         const rig = makeRig()
         openPanelState()
         mountInto(StudioHistoryPanel)
@@ -670,6 +672,19 @@ describe('steps, undo, redo and revert', () => {
         expect(stepsText()).toEqual(['exampleMessage', 'firstMessage'])
         expect(languageEnglish.firstMessage).toBe('First Message')
         expect(languageEnglish.exampleMessage).toBe('Example Message')
+    })
+
+    test('A9 a custom module toggle step is labelled with the toggle text and never as an added alternate first message', async () => {
+        const rig = makeRig()
+        openPanelState()
+        mountInto(StudioHistoryPanel)
+        await settle()
+        expect(rig.service.editField(A, 'customModuleToggle', '<toggle>a=1').ok).toBe(true)
+        rig.service.closeOpenStep(A)
+        flushSync()
+        expect(stepsText()).toEqual(['customPromptTemplateToggle'])
+        expect(stepsText()).not.toContain('studioStepGreetingAdd')
+        expect(languageEnglish.customPromptTemplateToggle).toBeTruthy()
     })
 
     test('Undo and Redo replay the top step, and an undone step is marked', async () => {

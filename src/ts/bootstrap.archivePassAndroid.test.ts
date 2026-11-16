@@ -7,10 +7,12 @@
  * boundary of `storage/tests/tauriWireFake.ts`. A pass says nothing about the
  * phone's memory, speed or process kills, or the native shell.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { installTauriWire, WAITING_PLUGIN_COMMANDS, ANDROID_ALLOWED_PLUGIN_COMMANDS, type TauriWire } from 'src/ts/storage/tests/tauriWireFake'
 import { baseTree, charactersOf, fullCharacter } from 'src/ts/storage/tests/bootArchivePassHarness'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 const dbState = vi.hoisted(() => ({
     current: {} as Record<string, unknown>,
     baseline: () => ({}) as Record<string, unknown>,
@@ -197,6 +199,8 @@ async function seedBlockProfile(ids: string[]): Promise<void> {
     resetPageBlockOwnerForTests()
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(async () => {
     localStorage.clear()
     dbState.current = { ...baseTree([]), coldstorage: false }

@@ -39,6 +39,22 @@ export function inlayImageWithheld(type: unknown, size: number | null, android: 
     return android && type === 'image' && size !== null && size > ANDROID_WHOLE_READ_URL_LIMIT_BYTES
 }
 
+/** The decoded size above which Android does not decode a string-stored video or audio for display. */
+export const ANDROID_STRING_MEDIA_DISPLAY_LIMIT_BYTES = ANDROID_WHOLE_READ_URL_LIMIT_BYTES
+
+/**
+ * The kind of a string-stored video or audio that this platform does not decode for display, or `null`.
+ * A string body is a base64 data URI that is read whole and decoded into copies of its size, so on Android
+ * one whose estimated decoded size is above the limit is neither shown nor read. Decided from the type and
+ * the estimate alone. An unknown size is not withheld; an image has its own rule, `inlayImageWithheld`.
+ */
+export function withheldStringMediaKind(type: unknown, size: number | null, android: boolean): 'audio' | 'video' | null {
+    if(android && (type === 'audio' || type === 'video') && size !== null && size > ANDROID_STRING_MEDIA_DISPLAY_LIMIT_BYTES){
+        return type
+    }
+    return null
+}
+
 export type InlayReadVerdict = 'read' | 'too-large'
 
 /**

@@ -6,7 +6,8 @@
  */
 import { flushSync, mount, unmount } from 'svelte'
 import { writable } from 'svelte/store'
-import { afterEach, beforeEach, describe, expect, test, vi, type Mock } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi, type Mock } from 'vitest'
+import { COLD_TRANSFORM_HOOK_MS } from '../../ts/tests/coldTransform.test-helpers'
 
 const captured = vi.hoisted(() => ({
     list: null as null | { atBottom: boolean, unread: boolean, newCount: number, farFromLatest: boolean },
@@ -75,6 +76,30 @@ function pressEnd(element: Element, init: KeyboardEventInit = {}): KeyboardEvent
     element.dispatchEvent(event)
     return event
 }
+
+// The shell's lazy parts and the icon-library barrel they import are transformed cold; paying them here keeps that out of
+// the mount wait, and lets no lazy import still be loading when the environment is torn down.
+beforeAll(async () => {
+    await import('@lucide/svelte')
+    await Promise.all([
+        import('./ShellHeader.svelte'),
+        import('../ChatScreens/NotificationsOffNotice.svelte'),
+        import('./SendFailureCard.svelte'),
+        import('../../ts/chatShell/sendFailure.svelte'),
+        import('../Setting/settingsRoute'),
+        import('./ThisChatSheet.svelte'),
+        import('./ChatDeleteConfirm.svelte'),
+        import('./JumpSheet.svelte'),
+        import('./ReturnChip.svelte'),
+        import('./Scrubber.svelte'),
+        import('./FindBar.svelte'),
+        import('./FindFiltersSheet.svelte'),
+        import('./FindResultsSheet.svelte'),
+        import('./SwitchFrame.svelte'),
+        import('../../ts/chatShell/switchTarget.svelte'),
+        import('./TogglesPanel.svelte'),
+    ])
+}, COLD_TRANSFORM_HOOK_MS)
 
 beforeEach(() => {
     captured.list = null

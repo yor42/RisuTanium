@@ -1933,7 +1933,7 @@ describe('guard: the trim over the other inputs the context takes', () => {
             h.modelInfo = { flags: [VIDEO_FLAG] }
             stage({ vid: { type: 'video', name: 'clip.mp4', size: LIMIT } })
             await runChat({}, {}, holding('vid'))
-            expect(sentModals()).toEqual([{ type: 'video', base64: 'data:video/x;base64,vid' }])
+            expect(sentModals()).toEqual([{ type: 'video', base64: 'data:video/x;base64,vid', name: 'clip.mp4' }])
             expect(alertToastMock).not.toHaveBeenCalled()
         })
 
@@ -2010,7 +2010,7 @@ describe('guard: the trim over the other inputs the context takes', () => {
                 small: { type: 'video', name: 'small.mp4', size: 5 * MIB },
             })
             await runChat({}, {}, holding('big', 'small'))
-            expect(sentModals()).toEqual([{ type: 'video', base64: 'data:video/x;base64,small' }])
+            expect(sentModals()).toEqual([{ type: 'video', base64: 'data:video/x;base64,small', name: 'small.mp4' }])
             expect(alertToastMock).toHaveBeenCalledWith(tooLargeToast('big.mp4'))
         })
 
@@ -2021,7 +2021,7 @@ describe('guard: the trim over the other inputs the context takes', () => {
                 aud: { type: 'audio', name: 'a.mp3', size: MIB },
             })
             await runChat({}, {}, holding('vid', 'aud'))
-            expect(sentModals()).toEqual([{ type: 'audio', base64: 'data:audio/x;base64,aud' }])
+            expect(sentModals()).toEqual([{ type: 'audio', base64: 'data:audio/x;base64,aud', name: 'a.mp3' }])
         })
 
         test('guard: the second eligible video of a message is still dropped once one is sent', async () => {
@@ -2031,7 +2031,7 @@ describe('guard: the trim over the other inputs the context takes', () => {
                 two: { type: 'video', name: 'two.mp4', size: MIB },
             })
             await runChat({}, {}, holding('one', 'two'))
-            expect(sentModals()).toEqual([{ type: 'video', base64: 'data:video/x;base64,one' }])
+            expect(sentModals()).toEqual([{ type: 'video', base64: 'data:video/x;base64,one', name: 'one.mp4' }])
             expect(getInlayAssetMock.mock.calls.map((call) => call[0])).toEqual(['one'])
         })
 

@@ -2454,6 +2454,8 @@ export const languageChinese = {
     "inlayErrorResponse": "嵌入错误响应",
     "inlayFileTooLarge": "{name} 超过 {size} MB，未能附加。",
     "inlaySendTooLarge": "未发送给模型（单个文件超过 {size} MB 限制）：{names}",
+    "openAIAudioLeftOut": "未发送给模型（该模型只接受 WAV 或 MP3 音频）：{names}",
+    "openAIAudioUnnamed": "一个音频附件",
     "triggerOn": "触发于",
     "noConfig": "无配置",
     "var": "变量",

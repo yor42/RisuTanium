@@ -150,6 +150,9 @@ export function createLiveReader(target: LiveTarget): LiveReader {
             if (path === 'exampleMessage') {
                 return typeof live.exampleMessage === 'string' ? { had: true, value: live.exampleMessage } : { had: false }
             }
+            if (path === 'customModuleToggle') {
+                return typeof live.customModuleToggle === 'string' ? { had: true, value: live.customModuleToggle } : { had: false }
+            }
             return typeof live.hideChatIcon === 'boolean' ? { had: true, value: live.hideChatIcon } : { had: false }
         },
         greetings() {
@@ -213,11 +216,17 @@ export interface EditBuild {
 
 export type EditBuildResult = EditBuild | { ok: false; reason: 'precondition' | 'unchanged' }
 
-export function buildFieldEdit(path: SetPath, value: string | boolean, live: LiveReader): EditBuildResult {
+// `coalesce: false` gives a step that never joins, and is never joined by, a neighbouring typing step.
+export function buildFieldEdit(path: SetPath, value: string | boolean, live: LiveReader, coalesce = true): EditBuildResult {
     if (typeof value !== (path === 'hideChatIcon' ? 'boolean' : 'string')) {
         return { ok: false, reason: 'precondition' }
     }
     const before = live.field(path)
+    // An absent required key cannot be put back by an undo (setCharacterField never deletes it), so the edit is refused
+    // before anything is written, marked or recorded.
+    if (!before.had && (path === 'firstMessage' || path === 'exampleMessage')) {
+        return { ok: false, reason: 'precondition' }
+    }
     if (before.had && before.value === value) {
         return { ok: false, reason: 'unchanged' }
     }
@@ -227,7 +236,7 @@ export function buildFieldEdit(path: SetPath, value: string | boolean, live: Liv
         label: { kind: 'field', field: path },
         ops: [{ op: 'set', path, before, after }],
         writes: [{ op: 'set', path, value: after }],
-        coalesceKey: path,
+        coalesceKey: coalesce ? path : null,
         pageFm: false,
     }
 }
@@ -307,6 +316,12 @@ function setCharacterField(live: character, path: SetPath, value: FieldValue): v
     } else if (path === 'exampleMessage') {
         if (value.had && typeof value.value === 'string') {
             live.exampleMessage = value.value
+        }
+    } else if (path === 'customModuleToggle') {
+        if (!value.had) {
+            delete live.customModuleToggle
+        } else if (typeof value.value === 'string') {
+            live.customModuleToggle = value.value
         }
     } else if (path === 'hideChatIcon') {
         if (!value.had) {

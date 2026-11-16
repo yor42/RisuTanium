@@ -2456,6 +2456,8 @@ export const languageGerman = {
     "inlayErrorResponse": "Fehlerantwort einfügen",
     "inlayFileTooLarge": "{name} ist größer als {size} MB und wurde nicht angehängt.",
     "inlaySendTooLarge": "Nicht an das Modell gesendet (über dem Limit von {size} MB pro Datei): {names}",
+    "openAIAudioLeftOut": "Nicht an das Modell gesendet (es akzeptiert nur WAV- oder MP3-Audio): {names}",
+    "openAIAudioUnnamed": "ein Audioanhang",
     "triggerOn": "Trigger ein",
     "noConfig": "Keine Konfiguration",
     "var": "Variable",

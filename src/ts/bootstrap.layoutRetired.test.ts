@@ -9,9 +9,11 @@
  * "install what was decoded". Each case ends on `loadedStore` true, so a boot that stopped early cannot pass by
  * leaving the layout untouched. A pass says nothing about Tauri, Node-hosted or Android boots.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get, type Writable } from 'svelte/store'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 
 const MAIN_KEY = 'database/database.bin'
 
@@ -256,6 +258,8 @@ async function bootAndReadLayout(betaMobileGUI: boolean) {
     }
 }
 
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
 beforeEach(() => {
     localStorage.clear()
     world.items.clear()
