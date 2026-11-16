@@ -3901,7 +3901,7 @@ describe('asset ops: inverse, parse and copies', () => {
         expect(parseOwnerRecord(JSON.parse(JSON.stringify(opChat)), chatKey)).toBeNull()
     })
 
-    test('a module record refuses a field op, a list op, a fingerprint, a deleted item and a restore point', () => {
+    test('a module record refuses a field op or restore key on any path but customModuleToggle, a list op, a fingerprint and a deleted item', () => {
         const key = moduleOwnerKey('m1')
         const base = { ownerKey: key, touchedAt: 1, done: [], undone: [], deleted: [], restore: null }
         const step = (extra: object) => ({ ...base, done: [{ id: 's', at: 1, label: ASSET_LABELS[0], ops: [], ...extra }] })

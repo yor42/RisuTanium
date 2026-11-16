@@ -34,11 +34,12 @@ export type OwnerKind = ParsedOwnerKey['kind']
 
 // The one table of the set paths each owner kind accepts. `isSetPath`, the `set` acceptance of `parseOp`,
 // `isOpAllowedFor` and the restore table all derive from it; nothing else decides which set paths an owner kind
-// accepts. The module row is empty: a module record holding a `set` op is refused whole.
+// accepts. The module row holds `customModuleToggle` only: a module record holding a `set` op on any other path is
+// refused whole.
 export const SET_PATHS_BY_KIND: { readonly [K in OwnerKind]: readonly SetPath[] } = {
     character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon'],
     chat: ['note'],
-    module: [],
+    module: ['customModuleToggle'],
 }
 export const LIST_PATH: ListPath = 'alternateGreetings'
 // The paths a restore point may hold per owner kind: every set path, plus the greeting list for a character.
