@@ -22,6 +22,7 @@ vi.mock('src/ts/globalApi.svelte', () => ({
 }))
 vi.mock('src/ts/alert', () => ({
     alertInput: h.alertInput,
+    alertConfirm: vi.fn(async () => true),
 }))
 vi.mock('src/ts/network/privateNetworkConsent', () => ({
     getAllowPrivate: vi.fn(async () => false),

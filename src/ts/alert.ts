@@ -23,6 +23,8 @@ export interface alertData{
     onCancel?: () => void
     /** Set on a select or input prompt whose caller offered a cancel: the answer its Cancel button, Back and Escape write. */
     cancelAnswer?: string
+    /** Set on an error alert that has a place to fix it: a button that closes the alert, then runs `open`. */
+    link?: { label: string, open: () => void }
 }
 
 type AlertGenerationInfoStoreData = {
@@ -40,7 +42,7 @@ export const alertStore = {
     }
 }
 
-export function alertError(msg: string | Error) {
+export function alertError(msg: string | Error, opts?: { link?: alertData['link'] }) {
     console.error(msg)
     const db = getDatabase()
 
@@ -81,7 +83,8 @@ export function alertError(msg: string | Error) {
         'type': 'error',
         'msg': msg,
         'submsg': submsg,
-        'stackTrace': stackTrace
+        'stackTrace': stackTrace,
+        ...(opts?.link ? { 'link': opts.link } : {})
     })
 }
 
