@@ -13,6 +13,7 @@ import { makeDb } from 'src/ts/storage/tests/saveLoopSupport'
 import { createWorldKit, nextCommit, settled, sleepReal, until, type World } from 'src/ts/storage/tests/saveLoopWorld'
 import { createPeerDouble, peerCommit, startStore2, store2Boot, type Store2Kit, type Store2StartOptions } from 'src/ts/storage/tests/store2SaveKit'
 import { buildSmall } from 'src/ts/storage/tests/store2/codecFixtures'
+import { moduleStubOf } from 'src/ts/storage/store2/moduleStubMatch'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { SaveFailureState } from 'src/ts/storage/store2/saveFailure'
 import { createFakeClock, drainMicrotasks, type FakeClock } from 'src/ts/studio/history/tests/historyTestKit.test-helpers'
@@ -22,6 +23,8 @@ import {
     PEER_POLL_MS,
     PENDING_DELAY_MS,
     createSaveAck,
+    type AckSubject,
+    type ModuleCommitVerdict,
     type SaveAck,
     type SaveAckDeps,
 } from '../saveAck.svelte'
@@ -111,6 +114,8 @@ interface FakeWorld {
         visible: boolean
         saveRequests: number
     }
+    // The verdict a module ack reads for each id; an id not listed reads `saved`.
+    verdicts: Map<string, ModuleCommitVerdict>
     armed: { count: number }
     listeners: { commit: Set<() => void>; pass: Set<() => void>; failure: Set<(value: SaveFailureState | null) => void>; stop: Set<() => void>; visibility: Set<() => void> }
     // An edit: the mark counts first, then the ack is told with the count read before.
@@ -120,8 +125,9 @@ interface FakeWorld {
     passStart(): void
 }
 
-function fakeWorld(options: { visible?: boolean } = {}): FakeWorld {
+function fakeWorld(options: { visible?: boolean, subject?: 'module' | 'character' } = {}): FakeWorld {
     const clock = createFakeClock()
+    const verdicts = new Map<string, ModuleCommitVerdict>()
     const state: FakeWorld['state'] = {
         marks: 0,
         committed: 0,
@@ -170,13 +176,19 @@ function fakeWorld(options: { visible?: boolean } = {}): FakeWorld {
         },
         clock,
     }
-    const ack = createSaveAck(deps)
+    const subject: AckSubject | undefined = options.subject === undefined
+        ? undefined
+        : options.subject === 'module'
+            ? { kind: 'module', verdict: (id) => verdicts.get(id) ?? 'saved' }
+            : { kind: 'character' }
+    const ack = createSaveAck(deps, subject)
     acks.push(ack)
     return {
         clock,
         deps,
         ack,
         state,
+        verdicts,
         armed,
         listeners,
         edit(chaId = 'A') {
@@ -485,6 +497,138 @@ describe('T-A9a: disposal', () => {
         expect(w.armed.count).toBe(armedBefore)
         w.edit()
         expect(w.clock.pendingTimers()).toBe(0)
+    })
+})
+
+describe('a module ack reads the commit verdict, not the character rules', () => {
+    test('R2-B: a covering commit that carried the module set whole is unconfirmed, and Retry is offered', () => {
+        const w = fakeWorld({ subject: 'module' })
+        w.verdicts.set('M1', 'blocked')
+        w.edit('M1')
+        w.commit()
+        expect(w.ack.state).toBe('unconfirmed')
+        expect(w.ack.display).toBe('unconfirmed')
+        expect(w.ack.canRetry()).toBe(true)
+    })
+
+    test('R2-U: a covering commit that skipped the module is failed with no Retry', () => {
+        const w = fakeWorld({ subject: 'module' })
+        w.verdicts.set('M1', 'unsavable')
+        w.edit('M1')
+        w.commit()
+        expect(w.ack.state).toBe('failed')
+        expect(w.ack.canRetry()).toBe(false)
+        expect(w.ack.retry()).toBe(false)
+        expect(w.state.saveRequests).toBe(0)
+    })
+
+    test('R2-R: Retry from unconfirmed asks for a save and the next covering commit with a saved verdict ends in saved', () => {
+        const w = fakeWorld({ subject: 'module' })
+        w.verdicts.set('M1', 'blocked')
+        w.edit('M1')
+        w.commit()
+        expect(w.ack.state).toBe('unconfirmed')
+        w.verdicts.set('M1', 'saved')
+        expect(w.ack.retry()).toBe(true)
+        expect(w.state.saveRequests).toBe(1)
+        expect(w.ack.state).toBe('pending')
+        w.commit()
+        expect(w.ack.state).toBe('saved')
+    })
+
+    test('R2-X: a permanent failed ends only in saved; unconfirmed stays until Retry whatever the verdict', async () => {
+        const permanent = fakeWorld({ subject: 'module' })
+        permanent.verdicts.set('M1', 'unsavable')
+        permanent.edit('M1')
+        permanent.commit()
+        expect(permanent.ack.state).toBe('failed')
+        expect(permanent.ack.canRetry()).toBe(false)
+        permanent.commit()
+        expect(permanent.ack.state).toBe('failed')
+        expect(permanent.ack.canRetry()).toBe(false)
+        // A later covering commit that only says "blocked" does not turn the refusal into "not confirmed".
+        permanent.verdicts.set('M1', 'blocked')
+        permanent.commit()
+        expect(permanent.ack.state).toBe('failed')
+        expect(permanent.ack.canRetry()).toBe(false)
+        permanent.verdicts.set('M1', 'saved')
+        permanent.state.peers += 1
+        await permanent.clock.advance(PEER_POLL_MS)
+        expect(permanent.ack.changedElsewhere).toBe(true)
+        permanent.commit()
+        expect(permanent.ack.state).toBe('saved')
+        expect(permanent.ack.changedElsewhere).toBe(false)
+        expect(permanent.ack.canRetry()).toBe(false)
+
+        const unconfirmed = fakeWorld({ subject: 'module' })
+        unconfirmed.verdicts.set('M1', 'blocked')
+        unconfirmed.edit('M1')
+        unconfirmed.commit()
+        expect(unconfirmed.ack.state).toBe('unconfirmed')
+        unconfirmed.verdicts.set('M1', 'saved')
+        unconfirmed.commit()
+        expect(unconfirmed.ack.state).toBe('unconfirmed')
+        expect(unconfirmed.ack.canRetry()).toBe(true)
+    })
+
+    test('R2-P: every entry into a sticky state that is not a verdict clears the permanent flag', () => {
+        const uncounted = fakeWorld({ subject: 'module' })
+        uncounted.verdicts.set('M1', 'unsavable')
+        uncounted.edit('M1')
+        uncounted.commit()
+        expect(uncounted.ack.state).toBe('failed')
+        expect(uncounted.ack.canRetry()).toBe(false)
+        // The new edit's mark was not counted: nothing will save it, and Retry is the way out.
+        uncounted.ack.noteEdit('M1', uncounted.state.marks)
+        expect(uncounted.ack.state).toBe('failed')
+        expect(uncounted.ack.canRetry()).toBe(true)
+
+        const published = fakeWorld({ subject: 'module' })
+        published.verdicts.set('M1', 'unsavable')
+        published.edit('M1')
+        published.commit()
+        expect(published.ack.canRetry()).toBe(false)
+        published.verdicts.set('M1', 'saved')
+        published.commit()
+        expect(published.ack.state).toBe('saved')
+        published.edit('M1')
+        expect(published.ack.state).toBe('pending')
+        const failure: SaveFailureState = { class: 'not-flushed', attempts: 1 }
+        for (const callback of published.listeners.failure) {
+            callback(failure)
+        }
+        expect(published.ack.state).toBe('failed')
+        expect(published.ack.canRetry()).toBe(true)
+    })
+
+    test('CG2-C: a character ack never consults a module verdict, and a character that cannot be encoded still fails', () => {
+        const w = fakeWorld({ subject: 'character' })
+        w.verdicts.set('A', 'unsavable')
+        w.edit('A')
+        w.commit()
+        expect(w.ack.state).toBe('saved')
+        const blocked = fakeWorld({ subject: 'character' })
+        blocked.verdicts.set('A', 'blocked')
+        blocked.edit('A')
+        blocked.commit()
+        expect(blocked.ack.state).toBe('saved')
+        const unsavable = fakeWorld({ subject: 'character' })
+        unsavable.state.unsavable.add('A')
+        unsavable.edit('A')
+        unsavable.commit()
+        expect(unsavable.ack.state).toBe('failed')
+    })
+
+    test('CG2-NC: an uncounted mark, or a stop, is failed with Retry unless saving is stopped', () => {
+        const uncounted = fakeWorld({ subject: 'module' })
+        uncounted.ack.noteEdit('M1', uncounted.state.marks)
+        expect(uncounted.ack.state).toBe('failed')
+        expect(uncounted.ack.canRetry()).toBe(true)
+        const stopped = fakeWorld({ subject: 'module' })
+        stopped.state.stopped = true
+        stopped.edit('M1')
+        expect(stopped.ack.state).toBe('failed')
+        expect(stopped.ack.canRetry()).toBe(false)
     })
 })
 
@@ -808,5 +952,181 @@ describe('T-A12: store2, an undo is pending until a commit covers its own mark',
         expect(ack.state).toBe('pending')
         await until(() => ack.state === 'saved', 'the undo to be saved', 10000)
         expect((await page.k.saved()).characters[2]).toMatchObject({ personality: original })
+    })
+})
+
+// ---------------------------------------------------------------- part 3: a module ack over the real store2 loop
+
+const modulesOf = (db: Entry): Entry[] => db.modules as Entry[]
+// A value JSON cannot store, and one that a reactive proxy can hold (a cyclic one would overflow the change effects).
+const unstorable = (): bigint => 10n
+const moduleIdOf = (db: Entry, index: number): string => String(modulesOf(db)[index].id)
+
+/** Starts the loop over a live database that `arrange` has changed before the loop's first pass. */
+async function startModulePage(seed: Database, arrange: (live: Entry) => void, options: Partial<Store2StartOptions> = {}, waitForClean = true): Promise<Page> {
+    const live = JSON.parse(JSON.stringify(seed)) as Entry
+    const k = await startStore2({ db: seed, ...options })
+    arrange(live)
+    h.db = live
+    const w = await worlds.startWorld({ kind: 'tauri', startLoop: false, boot: store2Boot(k) })
+    const stores = await import('src/ts/stores.svelte')
+    const { flushSync } = await import('svelte')
+    ;(stores.DBState as { db: unknown }).db = h.db
+    h.db = (stores.DBState as { db: unknown }).db as Entry
+    const page: Page = { w, k, db: h.db, flush: flushSync }
+    w.start()
+    await sleepReal(150)
+    if (waitForClean) {
+        // A page that stands on a held module never reads clean, so only the other pages wait for it.
+        await settled(w)
+    }
+    return page
+}
+
+// The module ack, built from the production dependencies and the production module subject of the world's own module graph.
+async function worldModuleAck(clock: FakeClock): Promise<SaveAck> {
+    const module = await import('src/ts/studio/edit/saveAck.svelte')
+    const ack = module.createSaveAck(module.productionSaveAckDeps(clock), module.productionModuleAckSubject())
+    acks.push(ack)
+    return ack
+}
+
+// A Studio module slot write as the write hook reports it: the change, the `modules` mark, then the ack is told with
+// the count read before.
+function studioModuleEdit(page: Page, ack: SaveAck, moduleId: string, change: (module: Entry) => void): void {
+    const target = modulesOf(page.db).find((module) => String(module.id) === moduleId)
+    if (target === undefined) {
+        throw new Error(`No live module ${moduleId}.`)
+    }
+    const before = page.w.api.getSaveMarkCount()
+    change(target)
+    page.w.marks.markDbWrite({ kind: 'setting', key: 'modules' })
+    page.flush()
+    ack.noteEdit(moduleId, before)
+}
+
+const savedModuleNames = async (page: Page): Promise<unknown[]> => (await page.k.saved()).modules.map((module) => (module as unknown as Entry).name)
+
+// A module edit that stays in the store of an earlier commit: an edited stub of module `index` keeps the module set whole.
+function editStub(page: Page, index: number): Entry {
+    const entry = page.k.context.previous.objects?.moduleIndex?.entries[index]
+    if (entry === undefined) {
+        throw new Error('The seeded tree holds no module index.')
+    }
+    const original = JSON.parse(JSON.stringify(modulesOf(page.db)[index])) as Entry
+    modulesOf(page.db)[index] = { ...(moduleStubOf(entry) as unknown as Entry), name: 'Edited module' }
+    page.w.marks.markDbWrite({ kind: 'setting', key: 'modules' })
+    page.flush()
+    return original
+}
+
+describe('W1-3: store2, a module edit is judged by the commit that holds it', () => {
+    test('a clean commit makes it saved, and the store holds the text', async () => {
+        const page = await startModulePage(buildSmall(4), () => {})
+        const ack = await worldModuleAck(createFakeClock())
+        const id = moduleIdOf(page.db, 2)
+        studioModuleEdit(page, ack, id, (module) => { module.name = 'renamed toggle' })
+        await until(() => ack.state !== 'pending', 'the covering commit', 10000)
+        expect(ack.state).toBe('saved')
+        expect(await savedModuleNames(page)).toContain('renamed toggle')
+    })
+
+    test('a stub that cannot be carried blocks the set: unconfirmed with Retry, the saved text kept, and Retry saves once the stub is back', async () => {
+        const page = await startModulePage(buildSmall(4), () => {})
+        const ack = await worldModuleAck(createFakeClock())
+        const before = await savedModuleNames(page)
+        const original = editStub(page, 0)
+        const id = moduleIdOf(page.db, 2)
+        studioModuleEdit(page, ack, id, (module) => { module.name = 'renamed behind the stub' })
+        await until(() => ack.state !== 'pending', 'the covering commit', 10000)
+        expect(ack.state).toBe('unconfirmed')
+        expect(ack.canRetry()).toBe(true)
+        expect(await savedModuleNames(page)).toEqual(before)
+
+        modulesOf(page.db)[0] = original
+        page.w.marks.markDbWrite({ kind: 'setting', key: 'modules' })
+        page.flush()
+        expect(ack.retry()).toBe(true)
+        await until(() => ack.state === 'saved', 'the retry to be confirmed', 10000)
+        expect(await savedModuleNames(page)).toContain('renamed behind the stub')
+    })
+
+    test('a module the loop cannot encode is failed with no Retry, and its saved copy is kept', async () => {
+        const page = await startModulePage(buildSmall(4), () => {})
+        const ack = await worldModuleAck(createFakeClock())
+        const before = await savedModuleNames(page)
+        const id = moduleIdOf(page.db, 1)
+        studioModuleEdit(page, ack, id, (module) => { module.cyc = unstorable() })
+        await until(() => ack.state !== 'pending', 'the covering commit', 10000)
+        expect(ack.state).toBe('failed')
+        expect(ack.canRetry()).toBe(false)
+        expect(await savedModuleNames(page)).toEqual(before)
+    })
+})
+
+describe('W1-X: store2, a permanent failed ends when a commit stores the module', () => {
+    test('the module is fixed through the write path and told to the ack: saved, and the store holds the fix', async () => {
+        const page = await startModulePage(buildSmall(4), () => {})
+        const ack = await worldModuleAck(createFakeClock())
+        const id = moduleIdOf(page.db, 1)
+        studioModuleEdit(page, ack, id, (module) => { module.cyc = unstorable() })
+        await until(() => ack.state !== 'pending', 'the covering commit', 10000)
+        expect(ack.state).toBe('failed')
+        expect(ack.canRetry()).toBe(false)
+
+        studioModuleEdit(page, ack, id, (module) => {
+            delete module.cyc
+            module.name = 'fixed toggle'
+        })
+        await until(() => ack.state === 'saved', 'the commit that stores the fix', 10000)
+        expect(await savedModuleNames(page)).toContain('fixed toggle')
+    })
+})
+
+describe('W1-F1: store2, a character commit does not turn a refused module into saved', () => {
+    test('a marked character edit, then one only the idle net finds, leave the failed state and the saved copy alone', async () => {
+        // Two seeded modules share an id, and the live copy of the first one cannot be stored: the set cannot be told
+        // apart, so it is carried whole and the faulting id is the one that is refused.
+        const seed = buildSmall(4)
+        modulesOf(seed as unknown as Entry)[1].id = modulesOf(seed as unknown as Entry)[0].id
+        const idleNet = { intervalMs: 20, moduleIntervalMs: 1_000_000_000, backstopMs: 0 }
+        const page = await startModulePage(seed, (live) => {
+            modulesOf(live).splice(0, 1)
+            modulesOf(live)[0].cyc = unstorable()
+        }, { idleNet }, false)
+        const ack = await worldModuleAck(createFakeClock())
+        const before = await savedModuleNames(page)
+        const id = moduleIdOf(page.db, 0)
+        studioModuleEdit(page, ack, id, (module) => { module.name = 'renamed in the faulting set' })
+        await until(() => ack.state !== 'pending', 'the covering commit', 10000)
+        expect(ack.state).toBe('failed')
+        expect(ack.canRetry()).toBe(false)
+
+        // A marked character commit: the module is carried, its refusal stands.
+        characters(page.db)[2].personality = 'marked edit'
+        page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+        page.flush()
+        await until(async () => (await page.k.saved()).characters[2].personality === 'marked edit', 'the marked character edit', 10000)
+        expect(ack.state).toBe('failed')
+        expect(ack.canRetry()).toBe(false)
+
+        // An edit no mark names: only the idle net's verdict pass can find it, and that pass does not plan the modules.
+        characters(page.db)[3].personality = 'edit found by the net'
+        await until(async () => (await page.k.saved()).characters[3].personality === 'edit found by the net', 'the edit found by the idle net', 10000)
+        expect(ack.state).toBe('failed')
+        expect(ack.canRetry()).toBe(false)
+        expect(await savedModuleNames(page)).toEqual(before)
+    })
+})
+
+describe('CG1-C: store2, a character edit beside a module refusal is saved', () => {
+    test('the character chip reads saved while the module set is carried whole', async () => {
+        const page = await startModulePage(buildSmall(4), () => {})
+        const ack = await worldAck(createFakeClock())
+        editStub(page, 0)
+        studioEdit(page, ack, 2, 'edited beside the stub')
+        await until(() => ack.state !== 'pending', 'the covering commit', 10000)
+        expect(ack.state).toBe('saved')
+        expect((await page.k.saved()).characters[2]).toMatchObject({ personality: 'edited beside the stub' })
     })
 })

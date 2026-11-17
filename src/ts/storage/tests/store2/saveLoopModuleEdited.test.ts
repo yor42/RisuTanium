@@ -14,7 +14,7 @@ vi.mock(import('src/ts/alert'), () => ({
 import { StubRefusedError, type PreviousEncoding } from '../../store2/codec'
 import { moduleStubOf } from '../../store2/moduleStubMatch'
 import { createSaveEncoder, type SaveEncoder, type SavePassRequest } from '../../store2/saveEncoder'
-import { runStore2SaveLoop, type IdleNetOptions, type Store2LoopPort } from '../../store2/saveLoop'
+import { runStore2SaveLoop, type IdleNetOptions, type ModuleHold, type Store2LoopPort } from '../../store2/saveLoop'
 import type { SaveFailureClass } from '../../store2/saveFailure'
 import { describeSaveFailure, saveFailureClassOf } from '../../store2/ui/peerUi'
 import { createSaveScheduler, type SaveScheduler } from '../../saveScheduler'
@@ -92,6 +92,12 @@ interface Run {
     unflushedOnce: boolean
     /** The next broadcast throws, as a failed hand-off after a landed commit does. */
     broadcastThrowsOnce: boolean
+    /** While set, a commit whose pass asked for module scope throws before it is written. */
+    throwModuleScopeCommits: boolean
+    /** How many module-scope commits threw while `throwModuleScopeCommits` was set. */
+    moduleScopeCommitThrows: number
+    /** The module hold each `saved` notice carried, with the plan request of the pass that reported it. */
+    holds: Array<{ hold: ModuleHold, request: SavePassRequest | undefined }>
     /** The scheduler the loop's own waits go through when `schedulerWaits` is set. */
     loopScheduler: SaveScheduler
     /** While true the scheduler's sleep does not end within a test's window, so only a wake or a latch can end a wait. */
@@ -207,6 +213,7 @@ async function startRun(options: StartOptions = {}): Promise<Run> {
         state: { due: false, dirty: false, saved: 0, begun: 0, ended: 0 },
         reports: [], uncounted: [], sleeps: [], waits: [], requests, valveCalls,
         commits: 0, markUnsavedCalls: 0, crashed: [], holdDue: false, sleepGate: null, unflushedOnce: false, broadcastThrowsOnce: false,
+        throwModuleScopeCommits: false, moduleScopeCommitThrows: 0, holds: [],
         loopScheduler: createSaveScheduler({
             debounceMs: 1000,
             sleep: () => run.stallScheduler ? new Promise<void>((resolve) => { setTimeout(resolve, 10_000) }) : idle(),
@@ -242,6 +249,10 @@ async function startRun(options: StartOptions = {}): Promise<Run> {
                 ...wrapped,
                 async commit(read, request) {
                     run.commits += 1
+                    if (run.throwModuleScopeCommits && requests[requests.length - 1]?.net?.modules === true) {
+                        run.moduleScopeCommitThrows += 1
+                        throw new Error('The commit of a module-scope tick failed.')
+                    }
                     const result = await wrapped.commit(read, request)
                     if (run.unflushedOnce && result.status === 'committed') {
                         run.unflushedOnce = false
@@ -288,7 +299,8 @@ async function startRun(options: StartOptions = {}): Promise<Run> {
             run.state.dirty = true
         },
         unsavable: () => {},
-        saved() {
+        saved(hold) {
+            run.holds.push({ hold, request: requests[requests.length - 1] })
             run.state.saved += 1
         },
         broadcast() {
@@ -725,6 +737,109 @@ describe('failures that are not a module refusal keep their path', () => {
         expect(run.peer.edited).toHaveLength(1)
         expect(run.waits).toContain(5000)
         expect(run.commits).toBe(0)
+    })
+})
+
+const NO_NET_MODULES = { intervalMs: 5, moduleIntervalMs: 3_600_000_000_000, backstopMs: 0 }
+
+function lastHold(run: Run): ModuleHold | undefined {
+    return run.holds[run.holds.length - 1]?.hold
+}
+
+/** The module id of slot 0 of the acknowledged encoding: the id a refused or edited stub in that slot names. */
+function stubId(run: Run): string | undefined {
+    return run.kit.context.previous.objects?.moduleIndex?.entries[0].id
+}
+
+describe('the module hold that rides with each saved notice', () => {
+    test('R T1a edited-stub-is-carried-whole-and-named: a marked pass past an edited stub reports the set as not saved, naming the stub', async () => {
+        const run = await startRun()
+        await markPass(run)
+        expect(run.holds).toHaveLength(1)
+        expect(lastHold(run)).toEqual({ carriedWhole: true, faultIds: [stubId(run)] })
+    })
+
+    test('R T1a uncarriable-stub-is-carried-whole-and-named: the same for a stub the planner cannot carry alone', async () => {
+        const run = await startRun({ edited: false })
+        refuseUncarriable(run)
+        await markPass(run)
+        expect(run.holds).toHaveLength(1)
+        expect(lastHold(run)).toEqual({ carriedWhole: true, faultIds: [stubId(run)] })
+    })
+
+    test('R T1f landed-then-thrown-pass-leaves-the-hold-for-the-next-writing-tick: a no-module-scope tick reports the stub that the thrown pass met', async () => {
+        const run = await startRun({ edited: false, idleNet: NO_NET_MODULES })
+        refuseUncarriable(run)
+        changeCharacter(run, 'saved before the hand-off failed')
+        run.broadcastThrowsOnce = true
+        await markPass(run)
+        expect(run.uncounted).toHaveLength(1)
+        expect(run.holds).toHaveLength(0)
+
+        run.holdDue = true
+        const requestsBefore = run.requests.length
+        ;(run.db.characters as unknown as Plain[])[0].name = 'renamed without a mark'
+        await until(() => run.holds.length >= 1, 'the writing tick to report')
+        expect(run.requests.slice(requestsBefore).every((request) => request.net?.modules !== true)).toBe(true)
+        expect(run.holds[0].request?.net?.modules).not.toBe(true)
+        expect(lastHold(run)).toEqual({ carriedWhole: true, faultIds: [stubId(run)] })
+        expect(run.crashed).toEqual([])
+    })
+
+    test('R T1g clean-landed-then-thrown-pass-clears-the-hold: once the stub is gone and a pass that encodes the modules lands, a later writing tick reports clean', async () => {
+        const run = await startRun({ edited: false, idleNet: NO_NET_MODULES })
+        refuseUncarriable(run)
+        await markPass(run)
+        expect(lastHold(run)).toEqual({ carriedWhole: true, faultIds: [stubId(run)] })
+
+        run.db.modules = clone(run.kit.seedDb.modules)
+        ;(run.db.modules as unknown as Plain[])[1].name = 'renamed after the fix'
+        run.broadcastThrowsOnce = true
+        await markPass(run)
+        expect(run.uncounted).toHaveLength(1)
+        expect((await storedModuleNames(run))[1]).toBe('renamed after the fix')
+        const reported = run.holds.length
+
+        run.holdDue = true
+        const requestsBefore = run.requests.length
+        ;(run.db.characters as unknown as Plain[])[0].name = 'renamed without a mark'
+        await until(() => run.holds.length > reported, 'the writing tick to report')
+        expect(run.requests.slice(requestsBefore).every((request) => request.net?.modules !== true)).toBe(true)
+        expect(lastHold(run)).toEqual({ carriedWhole: false, faultIds: [] })
+    })
+
+    test('R T1h unchanged-module-pass-replaces-the-hold: a pass that plans the modules and finds nothing to write reports clean once the stub is reverted', async () => {
+        const run = await startRun()
+        await markPass(run)
+        expect(lastHold(run)).toEqual({ carriedWhole: true, faultIds: [stubId(run)] })
+
+        run.install(0)
+        const commitsBefore = run.commits
+        await markPass(run)
+        expect(run.commits).toBe(commitsBefore)
+        expect(lastHold(run)).toEqual({ carriedWhole: false, faultIds: [] })
+    })
+
+    test('R T1i unlanded-module-tick-leaves-the-hold: a module-scope tick that plans cleanly but whose commit throws does not clear the hold the next writing tick reports', async () => {
+        const run = await startRun({ edited: false, idleNet: { intervalMs: 5, moduleIntervalMs: 1000, backstopMs: 0 } })
+        refuseUncarriable(run)
+        await markPass(run)
+        expect(lastHold(run)).toEqual({ carriedWhole: true, faultIds: [stubId(run)] })
+
+        run.holdDue = true
+        // One synchronous step: no module-scope commit can fall between the flag and the fix.
+        run.throwModuleScopeCommits = true
+        run.db.modules = clone(run.kit.seedDb.modules)
+        ;(run.db.modules as unknown as Plain[])[1].name = 'renamed after the fix'
+        await until(() => run.moduleScopeCommitThrows >= 1, 'a module-scope tick whose commit throws')
+        expect(run.crashed).toEqual([])
+
+        const reported = run.holds.length
+        ;(run.db.characters as unknown as Plain[])[0].name = 'renamed by the writing tick'
+        await until(() => run.holds.length > reported && run.holds[run.holds.length - 1].request?.net?.modules !== true, 'a commit from a tick without module scope')
+        expect(run.holds[run.holds.length - 1].hold).toEqual({ carriedWhole: true, faultIds: [stubId(run)] })
+        expect(await storedCharacterName(run)).toBe('renamed by the writing tick')
+        expect(await storedModuleNames(run)).toEqual(seedModuleNames(run))
     })
 })
 

@@ -219,6 +219,8 @@ export interface OwnerHistoryService {
     whenReady(owner: OwnerKey): Promise<void>
     view(owner: OwnerKey): OwnerView
     setAck(chaId: string, ack: OwnerAck | null): void
+    // The ack told of a landed write to module `moduleId`, kept apart from the character acks (which are keyed by chaId).
+    setModuleAck(moduleId: string, ack: OwnerAck | null): void
     editField(owner: OwnerKey, path: SetPath, value: string | boolean): StudioResult
     // A whole-value text edit. `typing` coalesces with the previous typing step of the same path; `single` is always its own step.
     editText(owner: OwnerKey, path: SetPath, value: string, mode?: 'typing' | 'single'): StudioResult
@@ -376,6 +378,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     const slots = new Map<OwnerKey, OwnerSlot>()
     const claims = new Map<string, Entry<ClaimResult>>()
     const acks = new Map<string, OwnerAck>()
+    const moduleAcks = new Map<string, OwnerAck>()
     let openEntry: Entry<OpenResult> | null = null
     // Read by `view`, so a view taken before an owner's first use updates when the owner appears.
     let slotCount = $state(0)
@@ -1135,6 +1138,9 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         if (chaId !== null) {
             acks.get(chaId)?.noteEdit(chaId, before)
+        } else if (isModuleTarget(target)) {
+            // `before` was read ahead of the write; the module's own ack reads the count again and finds its mark counted.
+            moduleAcks.get(slot.claimSubject.id)?.noteEdit(slot.claimSubject.id, before)
         }
         landedNotice(owner, slot)
         return { ok: true, ...planned.notes, ...(intent.kind === 'asset' ? { stepId: slot.record.done.at(-1)?.id } : {}) }
@@ -1323,6 +1329,13 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 if (warmJob?.chaId === chaId) {
                     cancelWarm()
                 }
+            }
+        },
+        setModuleAck(moduleId, ack) {
+            if (ack) {
+                moduleAcks.set(moduleId, ack)
+            } else {
+                moduleAcks.delete(moduleId)
             }
         },
         editField: (owner, path, value) =>

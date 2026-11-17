@@ -5,7 +5,8 @@ import { gcPass } from '../../store2/gc/pass'
 import { checkTree } from '../../store2/commit'
 import type { CommitKey } from '../../store2/format'
 import type { SkippedItem } from '../../store2/codec'
-import { PARK_CHECK_MAX_MS, runStore2SaveLoop, type Store2LoopPort } from '../../store2/saveLoop'
+import { createSaveEncoder, type SaveEncoder, type SavePassRequest } from '../../store2/saveEncoder'
+import { PARK_CHECK_MAX_MS, runStore2SaveLoop, type ModuleHold, type Store2LoopPort } from '../../store2/saveLoop'
 import type { Database } from '../../database.svelte'
 import type { toSaveType } from '../../risuSave'
 import { until as untilCondition } from '../saveLoopWorld'
@@ -50,6 +51,10 @@ interface Loop {
     requested: number
     merges: number
     itemCalls: ItemCall[]
+    /** The module hold each `saved` notice carried, with the plan request of the pass that reported it. */
+    holds: Array<{ hold: ModuleHold, request: SavePassRequest | undefined }>
+    /** Every plan request the loop made, in order. */
+    requests: SavePassRequest[]
     /** Every call that named a newly standing item. */
     notices(): SkippedItem[][]
     /** While set, `markUnsaved` is counted but leaves the page clean: isolates a check from the dirty mark. */
@@ -76,6 +81,14 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
     let passes = 0
     const real = kit.committer
     kit.context.session = { ...kit.context.session, committer: { ...real, readCommit: () => { passes++; return real.readCommit() } } }
+    const requests: SavePassRequest[] = []
+    const inner = createSaveEncoder({ previous: kit.context.previous, lists: kit.context.lists, env: kit.context.env })
+    const encoder: SaveEncoder = Object.create(inner) as SaveEncoder
+    encoder.plan = async (planDb, request) => {
+        requests.push(request)
+        return inner.plan(planDb, request)
+    }
+    kit.context.encoder = encoder
     const tracker: toSaveType = { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }
     const loop: Loop = {
         kit, db, tracker,
@@ -86,6 +99,8 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
         requested: 0,
         merges: 0,
         itemCalls: [],
+        holds: [],
+        requests,
         notices: () => loop.itemCalls.filter(call => call.newly.length > 0).map(call => call.newly),
         ignoreMarks: false,
         passes: () => passes,
@@ -145,7 +160,8 @@ function runLoop(kit: Store2Kit, db: Database): Loop {
         unsavableItems(current, newly) {
             loop.itemCalls.push({ current: [...current], newly: [...newly] })
         },
-        saved() {
+        saved(hold) {
+            loop.holds.push({ hold, request: requests[requests.length - 1] })
             loop.state.saved += 1
         },
         broadcast: () => { },
@@ -507,6 +523,103 @@ describe('Save mine carries an item\'s saved copy only over a base that holds it
         expect(after.current?.key).toBe(before.current?.key)
         expect(await checkTree(loop.kit.memory, after.current?.key as string)).toMatchObject({ status: 'complete' })
         expect(loop.failures).toEqual([])
+    })
+})
+
+describe('the module hold that rides with each saved notice', () => {
+    const setFault = (): Setup => ({
+        seed: (db) => { modules(db)[1].id = modules(db)[0].id },
+        live: (db) => {
+            modules(db).splice(0, 1)
+            modules(db)[0].cyc = cyclic()
+        },
+    })
+
+    /** Edits a character without any mark, so only the idle net's verdict tick can find and commit it; returns the notice that commit reported. */
+    async function unmarkedCommit(loop: Loop, index: number, text: string): Promise<{ hold: ModuleHold, request: SavePassRequest | undefined }> {
+        const before = loop.holds.length
+        const marksBefore = [...loop.tracker.character]
+        chars(loop.db)[index].personality = text
+        await until(() => loop.holds.length > before, 'the verdict tick to commit and report', 6000)
+        expect(loop.tracker.character).toEqual(marksBefore)
+        expect((await loop.kit.saved()).characters[index]).toMatchObject({ personality: text })
+        return loop.holds[before]
+    }
+
+    test('reproducer T1b: a module set that cannot be told from another is reported carried whole, naming the module that faulted', async () => {
+        const loop = await start(setFault())
+        chars(loop.db)[2].personality = 'edited next to the held modules'
+        loop.markModules()
+        loop.mark(chaIdOf(loop.db, 2))
+        await until(() => loop.holds.length >= 1, 'the saved notice', 4000)
+        expect(loop.holds[0].hold).toEqual({ carriedWhole: true, faultIds: [String(modules(loop.db)[0].id)] })
+    })
+
+    test('reproducer T1d: a skipped module is reported by id without carrying the set whole; a clean pass reports nothing held; a fix returns to clean', async () => {
+        const clean = await start()
+        clean.markModules()
+        clean.mark(chaIdOf(clean.db, 2))
+        await until(() => clean.holds.length >= 1, 'the clean pass notice', 4000)
+        expect(clean.holds[0].hold).toEqual({ carriedWhole: false, faultIds: [] })
+
+        const loop = await start({ live: (db) => { modules(db)[1].cyc = cyclic() } })
+        const skipped = String(modules(loop.db)[1].id)
+        chars(loop.db)[2].personality = 'first'
+        loop.markModules()
+        loop.mark(chaIdOf(loop.db, 2))
+        await until(() => loop.holds.length >= 1, 'the skip pass notice', 4000)
+        expect(loop.holds[0].hold).toEqual({ carriedWhole: false, faultIds: [skipped] })
+
+        delete modules(loop.db)[1].cyc
+        modules(loop.db)[1].description = 'fixed module'
+        loop.markModules()
+        loop.mark(chaIdOf(loop.db, 2))
+        await until(() => loop.holds.length >= 2, 'the fix pass notice', 4000)
+        expect(loop.holds[loop.holds.length - 1].hold).toEqual({ carriedWhole: false, faultIds: [] })
+    })
+
+    test('reproducer T1e: a verdict tick that commits an unmarked edit reports the standing set fault, not a clean module state', async () => {
+        const loop = await start(setFault())
+        const faulted = String(modules(loop.db)[0].id)
+        chars(loop.db)[2].personality = 'first'
+        loop.markModules()
+        loop.mark(chaIdOf(loop.db, 2))
+        await until(() => loop.holds.length >= 1, 'the set fault pass notice', 4000)
+
+        const tick = await unmarkedCommit(loop, 3, 'edited without a mark')
+        expect(tick.request?.net).toBeDefined()
+        expect(tick.request?.net?.modules).not.toBe(true)
+        expect(tick.hold).toEqual({ carriedWhole: true, faultIds: [faulted] })
+        expect(loop.failures).toEqual([])
+    })
+
+    test('reproducer T1e: a verdict tick that commits an unmarked edit reports the standing module skip', async () => {
+        const loop = await start({ live: (db) => { modules(db)[1].cyc = cyclic() } })
+        const skipped = String(modules(loop.db)[1].id)
+        chars(loop.db)[2].personality = 'first'
+        loop.markModules()
+        loop.mark(chaIdOf(loop.db, 2))
+        await until(() => loop.holds.length >= 1, 'the skip pass notice', 4000)
+
+        const tick = await unmarkedCommit(loop, 3, 'edited without a mark')
+        expect(tick.request?.net).toBeDefined()
+        expect(tick.request?.net?.modules).not.toBe(true)
+        expect(tick.hold).toEqual({ carriedWhole: false, faultIds: [skipped] })
+        expect(loop.failures).toEqual([])
+    })
+
+    test('guard T1e (passes under a pass-own hold too): a marked character pass after a set fault re-plans the modules and reports the same fault', async () => {
+        const loop = await start(setFault())
+        const faulted = String(modules(loop.db)[0].id)
+        chars(loop.db)[2].personality = 'first'
+        loop.markModules()
+        loop.mark(chaIdOf(loop.db, 2))
+        await until(() => loop.holds.length >= 1, 'the set fault pass notice', 4000)
+
+        chars(loop.db)[3].personality = 'marked second'
+        loop.mark(chaIdOf(loop.db, 3))
+        await until(() => loop.holds.length >= 2, 'the marked pass notice', 4000)
+        expect(loop.holds[loop.holds.length - 1].hold).toEqual({ carriedWhole: true, faultIds: [faulted] })
     })
 })
 
