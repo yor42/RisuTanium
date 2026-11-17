@@ -15,6 +15,7 @@ import {
     warnIfChatSlotIdDuplicated,
 } from "src/ts/process/chatIds";
 import { SafeLocalPluginStorage, tagWhitelist } from "../pluginSafeClass";
+import { PLUGIN_PERMISSIONS_STORE } from "src/ts/drive/rtb/sideStoreConfig";
 import { noteIdlessCopyWrite } from "../idlessCopyNotice";
 import DOMPurify from 'dompurify';
 import { additionalChatMenu, additionalFloatingActionButtons, additionalHamburgerMenu, additionalSettingsMenu, bodyIntercepterStore, chatPanelStore, DBState, selectedCharID, type MenuDef } from "src/ts/stores.svelte";
@@ -693,10 +694,7 @@ const permissionReconfirm: Record<PluginPermission, boolean | 'periodically'> = 
 const isPluginPermission = (s: string): s is PluginPermission =>
     typeof s === 'string' && Object.hasOwn(permissionReconfirm, s);
 const permissionSessionCache = new PluginPermissionSessionCache();
-const permissionForage = localforage.createInstance({
-    name: 'plugin_permissions',
-    storeName: 'plugin_permissions'
-});
+const permissionForage = localforage.createInstance(PLUGIN_PERMISSIONS_STORE);
 
 type PluginV3ProviderOptions = PluginV2ProviderOptions & {
     model?: LLMModel

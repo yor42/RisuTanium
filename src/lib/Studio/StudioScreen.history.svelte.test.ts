@@ -82,6 +82,8 @@ vi.mock('src/lang', async () => {
         studioAssetFileUnchecked: (name: string) => `studioAssetFileUnchecked(${name})`,
         studioStepAssetDeleteOne: (name: string) => `studioStepAssetDeleteOne(${name})`,
         studioStepAssetRename: (from: string, to: string) => `studioStepAssetRename(${from},${to})`,
+        studioStepAssetMerge: (from: string, to: string) => `studioStepAssetMerge(${from},${to})`,
+        studioStepAssetAdd: (n: number) => `studioStepAssetAdd(${n})`,
     }
     return { language: new Proxy(named, { get: (target, key) => (typeof key === 'symbol' ? undefined : key in target ? target[key] : base[key]) }) }
 })

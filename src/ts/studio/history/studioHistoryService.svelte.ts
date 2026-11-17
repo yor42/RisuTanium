@@ -8,6 +8,7 @@ import { language } from '../../../lang'
 import type { SaveAck } from '../edit/saveAck.svelte'
 import type { ModuleSlotReplaced } from '../edit/studioSetters'
 import { resetStudioToastsForTests, retireAssetToasts } from '../edit/studioToasts'
+import { openStudioModuleId } from '../assets/openModuleForm.svelte'
 import { studioOpen } from '../studioOpen'
 import { studioScreen } from '../studioScreen.svelte'
 import type { HistoryClock } from './historyModel'
@@ -113,6 +114,9 @@ async function build(): Promise<Loaded> {
             tauri: platform.isTauri,
             scheduleIdle: history.browserIdleScheduler(),
             onModuleSlotReplaced: productionModuleSlotPort,
+            // A module write is accepted only while the Studio detail has that module selected and publishes its id (loaded,
+            // not restricted, id not shared); otherwise every module write is refused as not selected.
+            openModuleId: openStudioModuleId,
             // Loaded when a replay first needs it: the asset file reader reaches the storage layer.
             openAssetFileReader: async () => (await import('../assets/assetFileState')).openAssetFileReader(),
             // Any landed step ends the Undo toasts of that owner that are no longer on top, whichever instance posted them.
