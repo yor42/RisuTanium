@@ -613,6 +613,8 @@ export const languageJapanese = {
         requestLogRemovedDesc: "このリクエストログは、クライアントが更新または再読み込みされたときに削除されます。",
         secretRefUnavailable: (name: string) =>
             `環境変数 ${name} は利用できません：設定されていないか、サーバーで許可されていないか、サーバーによってリクエストが拒否されました。`,
+        allKeysLimited: (count: number) =>
+            `${count} 個のキーすべてがレート制限またはクォータ制限に達しました。`,
         secretRefUnsupported: (name: string) =>
             `環境変数 ${name} はここでは使用できません：このプラットフォームからはサーバーの環境にアクセスできません。`,
         secretRefNotForeign: (name: string) =>
@@ -926,6 +928,9 @@ export const languageJapanese = {
         nameApiKey: "{name} APIキー",
         nameApiKeyLower: "{name} APIキー",
         apiKeyEnvRefNote: "キーの代わりに${NAME}を入力できます。これはデスクトップアプリまたはNodeサーバーを実行しているマシン上の環境変数名です。該当マシン上のRISU_ALLOWED_ENV変数に記載されている場合を除き、RISU_OPENAI_KEYのような名前（RISU_、任意の名前、_KEYまたは_TOKEN）のみが読み取られます。NodeサーバーのないWebビルドでは環境変数を読み取ることができません。",
+        addAnotherKey: "別のキーを追加",
+        keyRowLabel: "キー {n}",
+        keySeparatorHint: "1つの欄に1つのキーを入力します。スペースまたは改行で次のキーになります。",
         nameKey: "{name} キー",
         nameUrl: "{name} URL",
         nameSettings: "{name} 設定",

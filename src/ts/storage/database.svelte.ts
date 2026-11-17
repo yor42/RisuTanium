@@ -2654,6 +2654,7 @@ export async function importPreset(f:{
         pre[field] = ''
     }
     delete pre.koboldURL
+    //A key field holds one key per line, so the field is blanked when any of its lines is a whole reference.
     pre.openAIKey = typeof pre.openAIKey === 'string' ? blankSecretRef(pre.openAIKey) : ''
     pre.proxyKey = typeof pre.proxyKey === 'string' ? blankSecretRef(pre.proxyKey) : ''
     db.botPresets.push(pre)
