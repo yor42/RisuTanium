@@ -1329,6 +1329,7 @@
             <OptionInput value="bgeSmallEn">BGE Small English (CPU)</OptionInput>
             <OptionInput value="bgem3">BGE Medium 3 (CPU)</OptionInput>
             <OptionInput value="multiMiniLM">Multilingual MiniLM L12 v2 (CPU)</OptionInput>
+            <OptionInput value="multiE5Small">Multilingual E5 Small (CPU)</OptionInput>
             <OptionInput value="bgeM3Ko">BGE Medium 3 Korean (CPU)</OptionInput>
             <OptionInput value="openai3small">OpenAI text-embedding-3-small</OptionInput>
             <OptionInput value="openai3large">OpenAI text-embedding-3-large</OptionInput>

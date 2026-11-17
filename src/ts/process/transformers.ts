@@ -68,7 +68,7 @@ const runSummarizerUntracked = async (text: string) => {
 
 let extractor: FeatureExtractionPipeline = null
 let lastEmbeddingModelQuery: string = ''
-type EmbeddingModel = 'Xenova/all-MiniLM-L6-v2' | 'nomic-ai/nomic-embed-text-v1.5'
+type EmbeddingModel = 'Xenova/all-MiniLM-L6-v2' | 'nomic-ai/nomic-embed-text-v1.5' | 'Xenova/multilingual-e5-small'
 export const runEmbedding = (texts: string[], model: EmbeddingModel = 'Xenova/all-MiniLM-L6-v2', device: 'webgpu' | 'wasm'): Promise<Float32Array[]> =>
     withInFlight('embed', () => runEmbeddingUntracked(texts, model, device))
 
