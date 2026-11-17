@@ -216,6 +216,68 @@ function rateLimitWaitMs(response: Response, triesSoFar: number, nowMs: number):
     return Math.min(RATE_LIMIT_BACKOFF_MS * 2 ** (triesSoFar - 1), RATE_LIMIT_BACKOFF_CAP_MS)
 }
 
+/**
+ * Runs `attempt` again after a 429, waiting as long as the server asked,
+ * for at most `RATE_LIMIT_MAX_TRIES` tries and `RATE_LIMIT_TOTAL_MS` in
+ * all; past that the last 429 comes back as it is, for the caller to fail
+ * on. The server's limiter answers before any handler runs, so a refused
+ * request changed nothing and its retry may carry the same condition. Each
+ * 429 body is cancelled before the retry so the connection is released.
+ */
+export async function retryOnRateLimit(attempt: () => Promise<Response>, sleep: (ms: number) => Promise<void>, now: () => number): Promise<Response> {
+    const startedAt = now()
+    for (let tries = 1; ; tries++) {
+        const response = await attempt()
+        if (response.status !== 429 || tries >= RATE_LIMIT_MAX_TRIES) {
+            return response
+        }
+        const wait = rateLimitWaitMs(response, tries, now())
+        if (now() - startedAt + wait > RATE_LIMIT_TOTAL_MS) {
+            return response
+        }
+        try {
+            await response.body?.cancel()
+        } catch {
+            // A body that cannot be cancelled is released when the response is collected.
+        }
+        await sleep(wait)
+    }
+}
+
+/** Waits, in milliseconds, before each retry of a request that failed in transit or came back 500, 502, 503 or 504. */
+const TRANSIENT_RETRY_DELAYS_MS = [1000, 2000, 4000]
+const TRANSIENT_STATUSES: ReadonlySet<number> = new Set([500, 502, 503, 504])
+
+/**
+ * `retryOnRateLimit`, and in addition a request that was rejected in transit or answered 500, 502, 503 or 504 is sent
+ * again up to three times, after 1, 2 and 4 seconds. Only for requests the server applies at most once however often
+ * they arrive (a read, or a sequenced append). Past the last retry the last answer or the last rejection comes back as
+ * it is.
+ */
+export async function retryTransientRequest(attempt: () => Promise<Response>, sleep: (ms: number) => Promise<void>, now: () => number): Promise<Response> {
+    for (let retry = 0; ; retry++) {
+        let response: Response
+        try {
+            response = await retryOnRateLimit(attempt, sleep, now)
+        } catch (error) {
+            if (retry >= TRANSIENT_RETRY_DELAYS_MS.length) {
+                throw error
+            }
+            await sleep(TRANSIENT_RETRY_DELAYS_MS[retry])
+            continue
+        }
+        if (!TRANSIENT_STATUSES.has(response.status) || retry >= TRANSIENT_RETRY_DELAYS_MS.length) {
+            return response
+        }
+        try {
+            await response.body?.cancel()
+        } catch {
+            // A body that cannot be cancelled is released when the response is collected.
+        }
+        await sleep(TRANSIENT_RETRY_DELAYS_MS[retry])
+    }
+}
+
 /** The server answered with a status this store does not map to a typed error. */
 export class NodeHttpError extends StoreError {
     constructor(public readonly status: number, public readonly operation: string, public readonly detail: NodeErrorDetail | null = null) {
@@ -319,34 +381,6 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
     const rateLimitSleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
     const now = options.now ?? (() => Date.now())
 
-    /**
-     * Runs `attempt` again after a 429, waiting as long as the server asked,
-     * for at most `RATE_LIMIT_MAX_TRIES` tries and `RATE_LIMIT_TOTAL_MS` in
-     * all; past that the last 429 comes back as it is, for the caller to fail
-     * on. The server's limiter answers before any handler runs, so a refused
-     * request changed nothing and its retry may carry the same condition. Each
-     * 429 body is cancelled before the retry so the connection is released.
-     */
-    async function retryOnRateLimit(attempt: () => Promise<Response>): Promise<Response> {
-        const startedAt = now()
-        for (let tries = 1; ; tries++) {
-            const response = await attempt()
-            if (response.status !== 429 || tries >= RATE_LIMIT_MAX_TRIES) {
-                return response
-            }
-            const wait = rateLimitWaitMs(response, tries, now())
-            if (now() - startedAt + wait > RATE_LIMIT_TOTAL_MS) {
-                return response
-            }
-            try {
-                await response.body?.cancel()
-            } catch {
-                // A body that cannot be cancelled is released when the response is collected.
-            }
-            await rateLimitSleep(wait)
-        }
-    }
-
     // Every request opts out of the browser HTTP cache: concurrent requests for
     // one URL (all reads share `/api/read`) are otherwise queued behind each
     // other, and the key lives in a header, not in the URL.
@@ -354,7 +388,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
         return await retryOnRateLimit(async () => {
             const auth = await options.authHeader()
             return await doFetch(`${baseUrl}${path}`, { ...init, cache: 'no-store', headers: { ...init.headers, 'risu-auth': auth } })
-        })
+        }, rateLimitSleep, now)
     }
 
     /** The state `/api/read` reports for `key`; the body is read only for a GET. */
@@ -385,7 +419,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
                 const auth = await options.authHeader()
                 requestSent = true
                 return await doFetch(`${baseUrl}/api/remove`, { method: 'GET', cache: 'no-store', headers: { ...headers, 'risu-auth': auth } })
-            })
+            }, rateLimitSleep, now)
         } catch (error) {
             // A request that was sent may have reached the server before the connection failed;
             // one whose auth header could not be produced was never sent.
@@ -484,7 +518,7 @@ export function createNodeHttpStore(options: NodeHttpStoreOptions): ByteStore {
                     headers: { ...call.headers, 'risu-auth': auth },
                     body: call.body,
                 })
-            })
+            }, rateLimitSleep, now)
         } catch (error) {
             if (!requestSent) {
                 throw error

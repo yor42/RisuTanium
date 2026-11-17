@@ -574,7 +574,7 @@ describe('saveAssetFromPieces on Tauri', () => {
 
         await expect(api.saveAssetFromPieces(pieces, { sizeBound: 64 * MIB })).rejects.toBe(refusal)
 
-        expect(openWriter).toHaveBeenCalledTimes(1)
+        expect(openWriter.mock.calls.length).toBe(1)
         expect(busy.chokePointInFlight('asset')).toBe(0)
         expect(released).toBe(true)
         expect(assetFiles()).toEqual([])
@@ -605,7 +605,7 @@ describe('saveAssetFromPieces off Tauri', () => {
         const key = await api.saveAssetFromPieces(piecesOf(bytes, PIECE_SIZES), { fileName: 'x.mp4', sizeBound: bytes.length })
 
         expect(key).toBe(`assets/${sha256Hex(bytes)}.mp4`)
-        expect(handle.write).toHaveBeenCalledTimes(1)
+        expect(handle.write.mock.calls.length).toBe(1)
         expect(Buffer.compare(Buffer.from(handle.files.get(key) ?? []), Buffer.from(bytes))).toBe(0)
         expect(wire.chunks).toEqual([])
     }, 60_000)
@@ -798,14 +798,14 @@ describe('saveAssetFromBlob on a store that keeps Blobs', () => {
         const key = await api.saveAssetFromBlob(file, 'clip.mp4', { minPieceBytes: 1, pieceBytes: 70 })
 
         expect(key).toBe(`assets/${sha256Hex(bytes)}.mp4`)
-        expect(handle.writeBlob).toHaveBeenCalledTimes(2)
+        expect(handle.writeBlob.mock.calls.length).toBe(2)
         expect(handle.writeBlob.mock.calls[0][0]).toMatch(TEMP_KEY)
         expect(handle.writeBlob.mock.calls[0][1]).toBe(file)
         expect(handle.writeBlob.mock.calls[1][0]).toBe(key)
         expect((handle.writeBlob.mock.calls[1][1] as Blob).size).toBe(450)
         expect(handle.deleted).toEqual([handle.writeBlob.mock.calls[0][0]])
         expect(Array.from(handle.blobs.keys())).toEqual([key])
-        expect(handle.write).not.toHaveBeenCalled()
+        expect(handle.write.mock.calls.length).toBe(0)
         expect(Math.max(...arrayBufferSizes(reads))).toBeLessThanOrEqual(70)
     })
 
@@ -818,7 +818,7 @@ describe('saveAssetFromBlob on a store that keeps Blobs', () => {
         await api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'a.png', { minPieceBytes: 1 })
         await api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'a.png', { minPieceBytes: 1 })
 
-        expect(handle.writeBlob).toHaveBeenCalledTimes(3)
+        expect(handle.writeBlob.mock.calls.length).toBe(3)
         expect(handle.writeBlob.mock.calls.filter(([key]) => !TEMP_KEY.test(key as string))).toHaveLength(1)
         expect(handle.deleted).toHaveLength(2)
         expect(handle.deleted.every((key) => TEMP_KEY.test(key))).toBe(true)
@@ -833,7 +833,7 @@ describe('saveAssetFromBlob on a store that keeps Blobs', () => {
 
         const key = await api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'a.png', { minPieceBytes: 10_000 })
 
-        expect(handle.writeBlob).not.toHaveBeenCalled()
+        expect(handle.writeBlob.mock.calls.length).toBe(0)
         expect(Array.from(handle.files.get(key) ?? [])).toEqual(Array.from(bytes))
     })
 
@@ -907,7 +907,7 @@ describe('saveAssetFromBlob on a store that keeps Blobs', () => {
         await expect(failure).rejects.toBeInstanceOf(api.AssetStorageFullError)
         await expect(failure).rejects.toThrow(/^"a\.png" could not be saved because your browser storage is full\./)
         await expect(failure).rejects.toMatchObject({ cause: quota })
-        expect(handle.write).not.toHaveBeenCalled()
+        expect(handle.write.mock.calls.length).toBe(0)
         expect(handle.files.size).toBe(0)
     })
 
@@ -920,7 +920,7 @@ describe('saveAssetFromBlob on a store that keeps Blobs', () => {
 
         await expect(api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'a.png', { minPieceBytes: 1 })).rejects.toBe(failure)
 
-        expect(handle.write).not.toHaveBeenCalled()
+        expect(handle.write.mock.calls.length).toBe(0)
         expect(handle.files.size).toBe(0)
     })
 
@@ -939,8 +939,8 @@ describe('saveAssetFromBlob on a store that keeps Blobs', () => {
 
         const key = await api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'clip.mp4', { minPieceBytes: 1, pieceBytes: 70 })
 
-        expect(openWriter).toHaveBeenCalledTimes(1)
-        expect(writeBlob).not.toHaveBeenCalled()
+        expect(openWriter.mock.calls.length).toBe(1)
+        expect(writeBlob.mock.calls.length).toBe(0)
         expect(key).toBe(`assets/${sha256Hex(bytes)}.mp4`)
         expect(Array.from(handle.files.get(key) ?? [])).toEqual(Array.from(bytes))
     })
@@ -1040,7 +1040,7 @@ describe('saveAssetFromBlob names the bytes the store holds', () => {
         const failure = api.saveAssetFromBlob(new File([bytes as Uint8Array<ArrayBuffer>], 'clip.mp4'), 'clip.mp4', SLICED)
 
         await expect(failure).rejects.toThrow(/^"clip\.mp4" was not saved: its temporary copy was removed by another tab of this app\. Try again\.$/)
-        expect(handle.writeBlob).toHaveBeenCalledTimes(1)
+        expect(handle.writeBlob.mock.calls.length).toBe(1)
         expect(handle.deleted).toHaveLength(1)
         expect(assetKeysOf(handle)).toEqual([])
     })
@@ -1093,7 +1093,7 @@ describe('saveAssetFromBlob names the bytes the store holds', () => {
 
         await expect(api.saveAssetFromBlob(file, 'clip.mp4', SLICED)).rejects.toBeInstanceOf(api.AssetSourceChangedError)
 
-        expect(handle.writeBlob).toHaveBeenCalledTimes(1)
+        expect(handle.writeBlob.mock.calls.length).toBe(1)
         expect(assetKeysOf(handle)).toEqual([])
     })
 
@@ -1218,7 +1218,7 @@ describe('saveAssetFromBlob names the bytes the store holds', () => {
         await expect(api.saveAssetFromBlob(new File([bytes as Uint8Array<ArrayBuffer>], 'clip.mp4'), 'clip.mp4', SLICED)).rejects.toBe(unsupported)
 
         expect(assetKeysOf(handle)).toEqual([])
-        expect(handle.write).not.toHaveBeenCalled()
+        expect(handle.write.mock.calls.length).toBe(0)
         expect(Math.max(...arrayBufferSizes(reads))).toBeLessThanOrEqual(70)
     })
 
@@ -1230,7 +1230,7 @@ describe('saveAssetFromBlob names the bytes the store holds', () => {
 
         await api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'a.png', { minPieceBytes: 10_000 })
 
-        expect(handle.writeBlob).not.toHaveBeenCalled()
+        expect(handle.writeBlob.mock.calls.length).toBe(0)
         expect(handle.blobs.size).toBe(0)
         expect(handle.deleted).toEqual([])
     })
@@ -1445,7 +1445,7 @@ describe('saveAssetFromBlob refuses a file above the store asset limit before re
         expect(big.slice).not.toHaveBeenCalled()
         expect(big.arrayBuffer).not.toHaveBeenCalled()
         expect(handle.files.size).toBe(0)
-        expect(handle.write).not.toHaveBeenCalled()
+        expect(handle.write.mock.calls.length).toBe(0)
     })
 
     test('regression reproducer: on the browser IndexedDB store that keeps Blobs a file above the limit is refused before the Blob is handed to the store, sliced or read', async () => {
@@ -1458,7 +1458,7 @@ describe('saveAssetFromBlob refuses a file above the store asset limit before re
 
         expect(refusal.names).toEqual(['clip.mp4'])
         expect(refusal.limitBytes).toBe(GIB)
-        expect(handle.writeBlob).not.toHaveBeenCalled()
+        expect(handle.writeBlob.mock.calls.length).toBe(0)
         expect(big.slice).not.toHaveBeenCalled()
         expect(big.arrayBuffer).not.toHaveBeenCalled()
         expect(handle.blobs.size).toBe(0)
@@ -1526,5 +1526,154 @@ describe('saveAssetFromBlob refuses a file above the store asset limit before re
         const key = await api.saveAssetFromBlob(new Blob([bytes as Uint8Array<ArrayBuffer>]), 'a.png')
 
         expect(key).toBe(`assets/${sha256Hex(bytes)}.png`)
+    })
+})
+
+describe('saveAsset of a whole value of the piece-save threshold or more on a store that keeps Blobs', () => {
+    async function unsupported(): Promise<unknown> {
+        const { StoreBlobUnsupportedError } = await import('src/ts/storage/store/errors')
+        return new StoreBlobUnsupportedError('assets/x', new DOMException('no blobs', 'DataCloneError'))
+    }
+
+    test('reproducer: exactly the threshold is stored as one Blob under the content key, never as bytes; one byte less is stored as bytes', async () => {
+        const exact = randomBytes(16 * MIB, 101)
+        const below = randomBytes(16 * MIB - 1, 102)
+        const { api, appStore } = await loadWorld()
+        const handle = await blobMapStore()
+        appStore.injectAppStore(handle.store, 'indexeddb')
+
+        const key = await api.saveAsset(exact, '', 'clip.mp4')
+
+        expect(key).toBe(`assets/${sha256Hex(exact)}.mp4`)
+        expect(handle.writeBlob.mock.calls.length).toBe(1)
+        expect(handle.writeBlob.mock.calls[0][0]).toBe(key)
+        expect(handle.write.mock.calls.length).toBe(0)
+        expect(Array.from(handle.blobs.keys())).toEqual([key])
+        expect(Buffer.compare(await bytesOfBlob(handle.blobs.get(key)), exact)).toBe(0)
+
+        handle.writeBlob.mockClear()
+        const smallKey = await api.saveAsset(below, '', 'clip.mp4')
+
+        expect(handle.writeBlob.mock.calls.length).toBe(0)
+        expect(handle.write.mock.calls.length).toBe(1)
+        expect(handle.files.has(smallKey)).toBe(true)
+    })
+
+    test('guard: a store without readBlob keeps the bytes path with no Blob write, on a Node page and off one', async () => {
+        for (const node of [false, true]) {
+            const bytes = randomBytes(LARGE, node ? 103 : 104)
+            h.platform.isNodeServer = node
+            const { api, appStore } = await loadWorld()
+            const handle = await mapStore()
+            const writeBlob = vi.fn(async () => ({ version: null }))
+            appStore.injectAppStore({ ...handle.store, writeBlob }, node ? 'node' : 'indexeddb')
+
+            const key = await api.saveAsset(bytes, '', 'clip.mp4')
+
+            expect(handle.write.mock.calls.length).toBe(1)
+            expect(writeBlob.mock.calls.length).toBe(0)
+            expect(handle.files.has(key)).toBe(true)
+        }
+    })
+
+    test('reproducer: a browser that keeps no Blob is tried once, then the bytes are stored under the same key', async () => {
+        const bytes = randomBytes(LARGE, 105)
+        const { api, appStore } = await loadWorld()
+        const handle = await blobMapStore(await unsupported())
+        appStore.injectAppStore(handle.store, 'indexeddb')
+
+        const key = await api.saveAsset(bytes, '', 'clip.mp4')
+
+        expect(handle.writeBlob.mock.calls.length).toBe(1)
+        expect(handle.writeBlob.mock.calls[0][0]).toBe(key)
+        expect(key).toBe(`assets/${sha256Hex(bytes)}.mp4`)
+        expect(Buffer.compare(handle.files.get(key) ?? new Uint8Array(), bytes)).toBe(0)
+        expect(handle.blobs.size).toBe(0)
+    })
+
+    test('reproducer: a quota failure of the Blob put is the storage-full message with the browser error as its cause and nothing is stored as bytes', async () => {
+        const bytes = randomBytes(LARGE, 106)
+        const quota = new DOMException('', 'QuotaExceededError')
+        const { api, appStore } = await loadWorld()
+        const handle = await blobMapStore(quota)
+        appStore.injectAppStore(handle.store, 'indexeddb')
+
+        const failure = api.saveAsset(bytes, '', 'a.png')
+
+        await expect(failure).rejects.toBeInstanceOf(api.AssetStorageFullError)
+        await expect(failure).rejects.toThrow(/^"a\.png" could not be saved because your browser storage is full\./)
+        await expect(failure).rejects.toMatchObject({ cause: quota })
+        expect(handle.write.mock.calls.length).toBe(0)
+        expect(handle.files.size).toBe(0)
+    })
+
+    test('reproducer: any other failure of the Blob put reaches the caller as it is and is not retried as bytes', async () => {
+        const bytes = randomBytes(LARGE, 107)
+        const failure = new Error('disk failure')
+        const { api, appStore } = await loadWorld()
+        const handle = await blobMapStore(failure)
+        appStore.injectAppStore(handle.store, 'indexeddb')
+
+        await expect(api.saveAsset(bytes, '', 'a.png')).rejects.toBe(failure)
+
+        expect(handle.write.mock.calls.length).toBe(0)
+        expect(handle.files.size).toBe(0)
+    })
+
+    test('guard: a browser that keeps no Blob and then has no room for the bytes either reports one storage-full error caused by the quota error', async () => {
+        const bytes = randomBytes(LARGE, 108)
+        const quota = new DOMException('', 'QuotaExceededError')
+        const { api, appStore } = await loadWorld()
+        const handle = await blobMapStore(await unsupported())
+        handle.write.mockRejectedValueOnce(quota)
+        appStore.injectAppStore(handle.store, 'indexeddb')
+
+        const failure = api.saveAsset(bytes, '', 'a.png')
+
+        await expect(failure).rejects.toBeInstanceOf(api.AssetStorageFullError)
+        await expect(failure).rejects.toMatchObject({ cause: quota })
+    })
+
+    test('guard: saveAssetFromBlob on a browser that keeps no Blob makes exactly one Blob attempt (the temporary key) before storing the bytes', async () => {
+        const bytes = randomBytes(LARGE, 109)
+        const { api, appStore } = await loadWorld()
+        const handle = await blobMapStore(await unsupported())
+        appStore.injectAppStore(handle.store, 'indexeddb')
+
+        const key = await api.saveAssetFromBlob(new File([bytes as Uint8Array<ArrayBuffer>], 'clip.mp4'), 'clip.mp4')
+
+        expect(handle.writeBlob.mock.calls.length).toBe(1)
+        expect(handle.writeBlob.mock.calls[0][0]).toMatch(TEMP_KEY)
+        expect(key).toBe(`assets/${sha256Hex(bytes)}.mp4`)
+        expect(Buffer.compare(handle.files.get(key) ?? new Uint8Array(), bytes)).toBe(0)
+    })
+
+    test('reproducer: a view over a larger buffer stores exactly the view bytes under the hash of the view', async () => {
+        const backing = randomBytes(LARGE + 20, 110)
+        const view = backing.subarray(7, 7 + LARGE)
+        const { createMemoryByteStore } = await import('src/ts/process/files/tests/memoryByteStore')
+        const { api, appStore } = await loadWorld()
+        const memory = createMemoryByteStore({ blobs: true })
+        appStore.injectAppStore(memory, 'indexeddb')
+
+        const key = await api.saveAsset(view, '', 'clip.mp4')
+
+        expect(key).toBe(`assets/${sha256Hex(view)}.mp4`)
+        const stored = memory.blobs.get(key)
+        expect(stored?.size).toBe(LARGE)
+        expect(Buffer.compare(await bytesOfBlob(stored), view)).toBe(0)
+    })
+
+    test('reproducer: a save with a custom id is stored as a Blob under that id', async () => {
+        const bytes = randomBytes(LARGE, 111)
+        const { createMemoryByteStore } = await import('src/ts/process/files/tests/memoryByteStore')
+        const { api, appStore } = await loadWorld()
+        const memory = createMemoryByteStore({ blobs: true })
+        appStore.injectAppStore(memory, 'indexeddb')
+
+        const key = await api.saveAsset(bytes, 'custom', 'x.zip')
+
+        expect(key).toBe('assets/custom.zip')
+        expect(memory.blobs.get(key)?.size).toBe(LARGE)
     })
 })

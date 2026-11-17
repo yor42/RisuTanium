@@ -23,6 +23,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
+import { gzipSync } from 'fflate'
 import type { Database } from 'src/ts/storage/database.svelte'
 
 //#region module mocks
@@ -266,6 +267,7 @@ import { readColdStorageItem } from 'src/ts/process/coldstorage.svelte'
 import { coldStorageHeader, formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
 import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
 import { injectRestoreStore } from './restoreSupport'
+import { normalizeHypaV3Presets } from 'src/ts/process/memory/hypaV3Presets'
 
 //#region helpers
 
@@ -723,5 +725,160 @@ describe.each(GOLDEN_WINDOWS)('at $label', ({ bytes }) => {
             expect(prompts[0]).toContain('Stub Bob')
             expect(prompts[0]).toContain(`${unavailable} cold storage item(s) will remain unavailable`)
         })
+    })
+})
+
+/**
+ * HypaV3 presets across the `.bin` round trip. The container is hand-built in
+ * the test, upstream-shaped and synthetic (not upstream writer output): the
+ * block framing is written out below and shares no code with a production
+ * writer, and no golden file is read or changed. Upstream's block writer keeps
+ * every database key except `characters`, `botPresets` and `modules` in the
+ * root block, so the preset list, the active index and the five engine fields
+ * sit there, and its `setDatabase` writes presets back as `{name, settings}`
+ * without an id.
+ *
+ * Leg 1 (restore keeps the fields) is a compatibility guard. The block as a
+ * whole imports `normalizeHypaV3Presets`, so no pre-change run of it is
+ * claimed. `setDatabase` is mocked in this file, so the normalize legs call the
+ * function `setDatabase` calls; the load itself is proven by
+ * `databaseHypaV3Presets.test.ts`. The last leg models upstream's load: no
+ * upstream code runs.
+ */
+describe('HypaV3 presets through the upstream-shaped .bin round trip', () => {
+    const framing = new TextEncoder()
+
+    function u32(n: number): Uint8Array {
+        const buf = new Uint8Array(4)
+        new DataView(buf.buffer).setUint32(0, n, true)
+        return buf
+    }
+
+    function join(parts: Uint8Array[]): Uint8Array {
+        return concatBytes(parts)
+    }
+
+    /** One block as upstream frames it: `[type u8][compression u8][nameLength u8][name][dataLength u32 LE][data]`; gzip has a zero header time. */
+    function block(type: number, name: string, value: unknown, gzip: boolean): Uint8Array {
+        const nameBuf = framing.encode(name)
+        const raw = framing.encode(JSON.stringify(value))
+        const data = gzip ? gzipSync(raw, { mtime: 0 }) : raw
+        return join([Uint8Array.of(type, gzip ? 1 : 0, nameBuf.length), nameBuf, u32(data.length), data])
+    }
+
+    const TYPE = { config: 0, root: 1, preset: 4, modules: 5, character: 7, plugins: 9, loadouts: 10, pluginStorage: 11 } as const
+
+    function presetOf(name: string, recent: number, similar: number) {
+        return {
+            name,
+            settings: {
+                summarizationModel: 'subModel',
+                summarizationPrompt: `prompt of ${name}`,
+                reSummarizationPrompt: '',
+                memoryTokensRatio: 0.2,
+                extraSummarizationRatio: 0,
+                maxChatsPerSummary: 6,
+                recentMemoryRatio: recent,
+                similarMemoryRatio: similar,
+                enableSimilarityCorrection: false,
+                preserveOrphanedMemory: false,
+                processRegexScript: false,
+                doNotSummarizeUserMessage: false,
+                summaryChunkSeparator: '\\n\\n',
+                useExperimentalImpl: false,
+                summarizationRequestsPerMinute: 20,
+                summarizationMaxConcurrent: 1,
+                embeddingRequestsPerMinute: 100,
+                embeddingMaxConcurrent: 1,
+                alwaysToggleOn: false,
+                queryChatCount: 3,
+            },
+        }
+    }
+
+    const BUILT_PRESETS = [presetOf('Zeta', 0.4, 0.4), presetOf('Alpha', 0.4, 0.4), presetOf('Mid', 0.3, 0.5)]
+    const BUILT_FIELDS = { hypav2: true, hanuraiEnable: false, hypaV3: false, supaModelType: 'subModel', memoryAlgorithmType: 'hypaMemoryV2' }
+    const BUILT_ROOT = { ...BUILT_FIELDS, hypaV3Presets: BUILT_PRESETS, hypaV3PresetId: 2, characterOrder: [], personas: [] }
+
+    function upstreamContainer(): Uint8Array {
+        const blocks = [
+            { type: TYPE.character, name: 'cha-inline', value: { type: 'character', chaId: 'cha-inline', name: 'Inline Alice', chatPage: 0, chats: [{ id: 'chat-1', message: [{ time: 1, data: 'hello', role: 'char' }], note: '', name: '', localLore: [] }] } },
+            { type: TYPE.preset, name: 'preset', value: [{ name: 'Golden Preset', id: 'preset-golden', temperature: 80, maxContext: 4000, maxResponse: 300 }] },
+            { type: TYPE.modules, name: 'modules', value: [] },
+            { type: TYPE.loadouts, name: 'loadouts', value: [] },
+            { type: TYPE.plugins, name: 'plugins', value: [] },
+            { type: TYPE.pluginStorage, name: 'pluginStorage', value: {} },
+            { type: TYPE.config, name: 'config', value: { version: 1 } },
+        ]
+        const database = join([
+            framing.encode('RISUSAVE\0'),
+            ...blocks.map((b) => block(b.type, b.name, b.value, true)),
+            block(TYPE.root, 'root', { ...BUILT_ROOT, __directory: blocks.map((b) => b.name) }, false),
+        ])
+        const nameBuf = framing.encode('database.risudat')
+        return join([u32(nameBuf.length), nameBuf, u32(database.length), database])
+    }
+
+    type PresetRoot = RestoredDatabase & {
+        hypav2: boolean, hanuraiEnable: boolean, hypaV3: boolean, supaModelType: string, memoryAlgorithmType: string,
+        hypaV3Presets: { id?: string, name: string, settings: object }[], hypaV3PresetId: number,
+    }
+
+    function fieldsOf(root: PresetRoot) {
+        return {
+            hypav2: root.hypav2, hanuraiEnable: root.hanuraiEnable, hypaV3: root.hypaV3,
+            supaModelType: root.supaModelType, memoryAlgorithmType: root.memoryAlgorithmType,
+        }
+    }
+
+    function nameAndSettings(root: PresetRoot) {
+        return root.hypaV3Presets.map((p) => ({ name: p.name, settings: p.settings }))
+    }
+
+    test('the restore keeps the five fields, the preset order, {name, settings} and the index; normalize, export and decode keep them and the ids', async () => {
+        // Leg 1: restore (real LoadLocalBackup).
+        const root = await restoreBytes(upstreamContainer()) as PresetRoot
+        expect(fieldsOf(root)).toEqual(BUILT_FIELDS)
+        expect(root.hypaV3Presets).toEqual(BUILT_PRESETS)
+        expect(root.hypaV3PresetId).toBe(2)
+
+        // Leg 2: the function setDatabase calls on every load.
+        normalizeHypaV3Presets(root as unknown as Parameters<typeof normalizeHypaV3Presets>[0])
+        expect(nameAndSettings(root)).toEqual(BUILT_PRESETS)
+        expect(root.hypaV3PresetId).toBe(2)
+        const ids = root.hypaV3Presets.map((p) => p.id)
+        expect(new Set(ids).size).toBe(3)
+        for (const id of ids) {
+            expect(typeof id).toBe('string')
+            expect(id).not.toBe('')
+        }
+
+        // Leg 3: export through the real SaveLocalBackup, then decode.
+        getDatabaseMock.mockImplementation(() => root as unknown as Database)
+        backupSink.writes.length = 0
+        await SaveLocalBackup()
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        const decoded = await decodeRisuSave(databaseEntryOf(concatBytes(backupSink.writes)), { strict: true }) as unknown as PresetRoot
+        expect(fieldsOf(decoded)).toEqual(BUILT_FIELDS)
+        expect(decoded.hypaV3Presets.map((p) => Object.keys(p).sort())).toEqual([['id', 'name', 'settings'], ['id', 'name', 'settings'], ['id', 'name', 'settings']])
+        expect(nameAndSettings(decoded)).toEqual(BUILT_PRESETS)
+        expect(decoded.hypaV3Presets.map((p) => p.id)).toEqual(ids)
+        expect(decoded.hypaV3PresetId).toBe(2)
+
+        // Leg 4: a second normalize keeps the ids.
+        normalizeHypaV3Presets(decoded as unknown as Parameters<typeof normalizeHypaV3Presets>[0])
+        expect(decoded.hypaV3Presets.map((p) => p.id)).toEqual(ids)
+
+        // Modelled leg: upstream rebuilds each preset as {name, settings} and drops the id.
+        const upstreamLoaded = {
+            hypaV3Presets: decoded.hypaV3Presets.map((p) => ({ name: p.name, settings: p.settings })),
+            hypaV3PresetId: decoded.hypaV3PresetId,
+            hypaV3Settings: {},
+            supaMemoryPrompt: '',
+        }
+        normalizeHypaV3Presets(upstreamLoaded as unknown as Parameters<typeof normalizeHypaV3Presets>[0])
+        expect(upstreamLoaded.hypaV3Presets.map((p) => ({ name: p.name, settings: p.settings }))).toEqual(BUILT_PRESETS)
+        expect(upstreamLoaded.hypaV3PresetId).toBe(2)
+        expect(new Set((upstreamLoaded.hypaV3Presets as unknown as { id: string }[]).map((p) => p.id)).size).toBe(3)
     })
 })

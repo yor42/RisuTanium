@@ -15,7 +15,11 @@ const h = vi.hoisted(() => ({
   clear: vi.fn(),
   wait: vi.fn(),
   selections: [] as string[],
+  select: vi.fn(),
 }))
+
+/** A queue entry that makes the prompt answer with the cancel its caller offered; rejects when none was offered. */
+const OFFERED_CANCEL = 'offered-cancel'
 
 vi.mock(import('./storage/database.svelte'), () =>
   ({
@@ -66,7 +70,14 @@ vi.mock(import('./stores.svelte'), () => {
 
 vi.mock(import('./alert'), () =>
   ({
-    alertSelect: async () => h.selections.shift() ?? '0',
+    alertSelect: async (msg: string[], display?: string, options?: { cancel?: string }) => {
+      h.select(msg, display, options)
+      const next = h.selections.shift() ?? '0'
+      if (next === 'offered-cancel') {
+        return options?.cancel ?? Promise.reject(new Error('no cancel offered'))
+      }
+      return next
+    },
     alertWait: h.wait,
     alertClear: h.clear,
     alertError: (e: unknown) => { throw e },
@@ -101,6 +112,7 @@ vi.mock(import('./media'), () => ({} as unknown as typeof import('./media')))
 //#endregion
 
 import { exportChat } from './characters'
+import { ALERT_SELECT_CANCEL } from './alertCancel'
 
 // Mode '0' is JSON, '1' text and '2' an HTML file, which also asks the translate and persona questions.
 const exportMode = async (selections: string[]) => {
@@ -113,6 +125,46 @@ beforeEach(() => {
   h.normal.mockReset()
   h.clear.mockReset()
   h.wait.mockReset()
+  h.select.mockReset()
+})
+
+describe('exportChat prompts offer a cancel that exports nothing', () => {
+  it('the mode prompt: its cancel ends the export before any other prompt, download or notice', async () => {
+    await exportMode([OFFERED_CANCEL])
+
+    expect(h.select).toHaveBeenCalledTimes(1)
+    expect(h.select.mock.calls[0][2]).toEqual({ cancel: ALERT_SELECT_CANCEL })
+    expect(h.download).not.toHaveBeenCalled()
+    expect(h.wait).not.toHaveBeenCalled()
+    expect(h.normal).not.toHaveBeenCalled()
+  })
+
+  it('the translate prompt of the HTML mode: its cancel ends the export before the persona prompt', async () => {
+    await exportMode(['2', OFFERED_CANCEL])
+
+    expect(h.select).toHaveBeenCalledTimes(2)
+    expect(h.select.mock.calls[1][2]).toEqual({ cancel: ALERT_SELECT_CANCEL })
+    expect(h.download).not.toHaveBeenCalled()
+    expect(h.wait).not.toHaveBeenCalled()
+  })
+
+  it('the persona prompt of the HTML mode: its cancel ends the export before the download', async () => {
+    await exportMode(['2', '1', OFFERED_CANCEL])
+
+    expect(h.select).toHaveBeenCalledTimes(3)
+    expect(h.select.mock.calls[2][2]).toEqual({ cancel: ALERT_SELECT_CANCEL })
+    expect(h.download).not.toHaveBeenCalled()
+    expect(h.wait).not.toHaveBeenCalled()
+  })
+
+  it('guard: the mode prompt of the clipboard-less modes still reaches the download after its answers', async () => {
+    h.download.mockResolvedValue(true)
+
+    await exportMode(['2', '1', '0'])
+
+    expect(h.select).toHaveBeenCalledTimes(3)
+    expect(h.download).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('exportChat cancelled picker', () => {

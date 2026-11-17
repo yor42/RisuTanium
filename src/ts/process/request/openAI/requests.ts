@@ -21,7 +21,7 @@ import { buildUserContents } from './chatContents'
 import type { OpenAIChatExtra, OpenAIChatFull, ToolCall } from './types'
 
 import { getLocalNetworkRequestOptions, type LocalNetworkRequestOptions } from './shared'
-import { resolveRequestKey } from '../secretKey'
+import { leaseRequestKey, limitedField, sendArgKey, sendKeyLine } from '../secretKey'
 export { requestOpenAIResponseAPI, __testResponsesAPI } from './responses'
 function isOfficialOpenAIURL(url: string): boolean {
     try {
@@ -210,7 +210,7 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
 
     if(aiModel === 'openrouter' && db.openrouterRequestModel === 'risu/free'){
         // The model list swallows its own failures; resolving here first reports an unusable reference as such.
-        await resolveRequestKey(arg, db.openrouterKey)
+        await leaseRequestKey(arg, 'openrouterKey')
         openrouterRequestModel = await getFreeOpenRouterModels()
     }
 
@@ -290,7 +290,7 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
                 modelId: arg.modelInfo.id
             } ),
             headers: {
-                "Authorization": "Bearer " + await resolveRequestKey(arg, arg.key ?? db.mistralKey),
+                "Authorization": "Bearer " + (arg.key != null ? await sendArgKey(arg) : await sendKeyLine(arg, 'mistralKey')),
             },
             abortSignal: arg.abortSignal,
             chatId: arg.chatId,
@@ -332,13 +332,15 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
             if(dat.error && dat.error.message){                    
                 return {
                     type: 'fail',
-                    result: (language.errors.httpError + `${dat.error.message}`)
+                    result: (language.errors.httpError + `${dat.error.message}`),
+                    keyLimited: limitedField(arg, res.status)
                 }
             }
-            else{                    
+            else{
                 return {
                     type: 'fail',
-                    result: (language.errors.httpError + `${JSON.stringify(res.data)}`)
+                    result: (language.errors.httpError + `${JSON.stringify(res.data)}`),
+                    keyLimited: limitedField(arg, res.status)
                 }
             }
         }
@@ -547,10 +549,12 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
     // The field is chosen first and only the chosen one is resolved, so an unset reference in a
     // field this model does not use cannot fail the request.
     const chosenKey = arg.modelInfo?.keyIdentifier
-        ? db.OaiCompAPIKeys[arg.modelInfo.keyIdentifier]
-        : (arg.key ?? (aiModel === 'nanogpt' ? db.nanogptKey : aiModel === 'reverse_proxy' ?  db.proxyKey : (aiModel === 'openrouter' ? db.openrouterKey : db.openAIKey)))
+        ? await sendKeyLine(arg, `OaiCompAPIKeys:${arg.modelInfo.keyIdentifier}`)
+        : (arg.key != null
+            ? await sendArgKey(arg)
+            : await sendKeyLine(arg, aiModel === 'nanogpt' ? 'nanogptKey' : aiModel === 'reverse_proxy' ?  'proxyKey' : (aiModel === 'openrouter' ? 'openrouterKey' : 'openAIKey')))
     let headers = {
-        "Authorization": "Bearer " + await resolveRequestKey(arg, chosenKey),
+        "Authorization": "Bearer " + chosenKey,
         "Content-Type": "application/json"
     }
     if(aiModel === 'openrouter'){
@@ -621,7 +625,8 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
         if(da.status !== 200){
             return {
                 type: "fail",
-                result: await textifyReadableStream(da.body)
+                result: await textifyReadableStream(da.body),
+                keyLimited: limitedField(arg, da.status)
             }
         }
 
@@ -908,15 +913,17 @@ export async function requestHTTPOpenAI(
         }
     }
     
-    if(dat.error && dat.error.message){                    
+    if(dat.error && dat.error.message){
         return {
             type: 'fail',
-            result: (language.errors.httpError + `${dat.error.message}`)
+            result: (language.errors.httpError + `${dat.error.message}`),
+            keyLimited: limitedField(arg, res.status)
         }
     }
 
     return {
         type: 'fail',
+        keyLimited: limitedField(arg, res.status),
         result: (language.errors.httpError + `${JSON.stringify(res.data)}`)
     }
 }
@@ -967,7 +974,7 @@ export async function requestOpenAILegacyInstruct(arg:RequestDataArgumentExtende
 
     let headers:any = {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + await resolveRequestKey(arg, arg.key ?? db.openAIKey)
+        "Authorization": "Bearer " + (arg.key != null ? await sendArgKey(arg) : await sendKeyLine(arg, 'openAIKey'))
     }
 
     body = applyAdditionalParameters(body, headers, getAdditionalParameters(arg.aiModel))
@@ -983,7 +990,8 @@ export async function requestOpenAILegacyInstruct(arg:RequestDataArgumentExtende
     if(!response.ok){
         return {
             type: 'fail',
-            result: (language.errors.httpError + `${JSON.stringify(response.data)}`)
+            result: (language.errors.httpError + `${JSON.stringify(response.data)}`),
+            keyLimited: limitedField(arg, response.status)
         }
     }
     const text:string = response.data.choices[0].text
