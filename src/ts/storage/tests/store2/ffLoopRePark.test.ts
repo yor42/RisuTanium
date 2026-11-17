@@ -38,7 +38,7 @@ vi.mock(import('src/ts/storage/store/appStore'), () => ({
     })),
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 
-import { chaIdOf, chars, until } from './lineFixtures'
+import { chars, until } from './lineFixtures'
 import { bootB, ffSetup, ffTeardown, ffWorld, runLoopWorld, signal, sleepMs } from './ffFixtures'
 
 /**
@@ -57,10 +57,17 @@ afterEach(() => {
     ffTeardown()
 })
 
-/** Page B parked clean on a fast-forward park (a character in use), then a peer save over a stale plan replaces that park. */
+const MINE = 'my unmarked edit'
+
+/**
+ * Page B parked clean on a fast-forward park (this page and the peer changed the same card; the edit is unmarked, so no
+ * save is owed and the page counts as clean), then a peer save over a stale plan replaces that park.
+ */
 async function reparkedClean(realSleep = false) {
     const { memory, page } = await ffWorld()
     const b = await bootB(memory)
+    const untouched = chars(b.db)[3].personality
+    chars(b.db)[3].personality = MINE
     const keys: Array<(() => string) | undefined> = []
     const original = b.peer.parkedClean
     b.peer.parkedClean = (prompt, live, requestReload, manifestKey) => {
@@ -68,14 +75,13 @@ async function reparkedClean(realSleep = false) {
         original(prompt, live, requestReload, manifestKey)
     }
     const world = runLoopWorld(b.context, b.db, realSleep ? { sleep: (ms) => sleepMs(ms) } : {})
-    hostHandle.host.state.inUse.add(chaIdOf(b.db, 3))
     const stale = await page.freeze()
     await page.commitEdit((db) => { chars(db)[3].personality = 'peer edit' })
     signal(world)
     await until(() => b.peer.clean.length >= 1, 'the first clean notice', 6000)
     await page.saveMine(stale, (db) => { chars(db)[2].personality = 'forced over a stale plan' })
     signal(world)
-    return { b, world, keys }
+    return { b, world, keys, untouched }
 }
 
 describe('a clean park replaced by one with other offers', () => {
@@ -88,9 +94,11 @@ describe('a clean park replaced by one with other offers', () => {
     })
 
     test('P2 a Reload pressed on the older dialog after the newer park was judged is answered moved, and the newer dialog answers clean', async () => {
-        const { b, world } = await reparkedClean(true)
+        const { b, world, untouched } = await reparkedClean(true)
         await until(() => b.peer.clean.length >= 2, 'the second clean notice', 6000)
         expect(await b.peer.requests[0]()).toBe('moved')
+        // The page's one difference from the acknowledged encoding is undone, so the Reload check finds it clean.
+        chars(b.db)[3].personality = untouched
         expect(await b.peer.requests[1]()).toBe('clean')
         expect(world.crashed).toEqual([])
     })
@@ -98,8 +106,8 @@ describe('a clean park replaced by one with other offers', () => {
     test('P4 a Reload pressed on the older dialog in the turn the re-park is heard is answered moved, not clean', async () => {
         const { memory, page } = await ffWorld()
         const b = await bootB(memory)
+        chars(b.db)[3].personality = MINE
         const world = runLoopWorld(b.context, b.db, { sleep: (ms) => sleepMs(ms) })
-        hostHandle.host.state.inUse.add(chaIdOf(b.db, 3))
         const stale = await page.freeze()
         await page.commitEdit((db) => { chars(db)[3].personality = 'peer edit' })
         signal(world)

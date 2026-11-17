@@ -51,6 +51,7 @@ export const ALERT_BACK_ACTIONS: Record<alertData['type'], BackAction> = {
     wait2: CLOSE,
     wait: { kind: 'cancelWait' },
     select: CANCEL_IF_OFFERED,
+    peerConflicts: HOLD,
     input: CANCEL_IF_OFFERED,
     tos: HOLD,
     staleAccountNotice: HOLD,

@@ -1,6 +1,10 @@
 import type { JsonObject, JsonValue } from '../../blockFrame'
 import { isJsonObject, sameJsonValue } from '../codec'
 import type { ChatEntry, ShardEntry } from '../format'
+import {
+    changedRecords, fingerprintOf, isWholeEntry, mergeChatList, recordRefs, RECORD_CHAT_LIST, RECORD_VIEW,
+    type RecordSide,
+} from './units'
 
 /**
  * The fast-forward's classifier. It decides, per record, what the page does with a change a peer committed: base is the
@@ -301,6 +305,286 @@ export function classifyMembership(base: readonly Member[], mine: readonly Membe
         }
     }
     return { kind: 'append', members: appended }
+}
+
+/**
+ * Whether the membership is inside the domain of the target merge: on each of the three sides every chaId is a
+ * non-empty string held once. Outside it a chaId cannot name a character, so only `classifyMembership` decides.
+ */
+export function membershipInDomain(base: readonly Member[], live: readonly Member[], theirs: readonly Member[]): boolean {
+    return [base, live, theirs].every(side => {
+        const seen = new Set<string>()
+        return side.every(member => {
+            if (typeof member.chaId !== 'string' || member.chaId === '' || seen.has(member.chaId)) {
+                return false
+            }
+            seen.add(member.chaId)
+            return true
+        })
+    })
+}
+
+export type DomainMembershipDecision =
+    | { kind: 'keep' }
+    /** The peer inserted these characters (at any position) and removed others; `membershipTarget` places them. */
+    | { kind: 'change', inserted: Member[] }
+    | { kind: 'park', reason: string }
+
+/**
+ * The membership inside the domain. Theirs equal to base: `keep`. This page's list differing from base: `both-changed`.
+ * Theirs restricted to the base's ids keeping the base's order and every `u` (a re-minted `u` is another character):
+ * else `not-append`. An inserted resident id: `resident-id`. Otherwise `change`.
+ */
+export function mergeMembership(base: readonly Member[], mine: readonly Member[], theirs: readonly Member[], isResident: (chaId: string) => boolean): DomainMembershipDecision {
+    if (base.length === theirs.length && base.every((member, index) => member.chaId === theirs[index].chaId && member.u === theirs[index].u)) {
+        return { kind: 'keep' }
+    }
+    if (mine.length !== base.length || mine.some((member, index) => member.chaId !== base[index].chaId)) {
+        return { kind: 'park', reason: 'both-changed' }
+    }
+    const baseIds = new Set(base.map(member => member.chaId))
+    const kept = theirs.filter(member => baseIds.has(member.chaId))
+    let at = 0
+    for (const member of kept) {
+        while (at < base.length && base[at].chaId !== member.chaId) {
+            at++
+        }
+        if (at >= base.length || base[at].u !== member.u) {
+            return { kind: 'park', reason: 'not-append' }
+        }
+        at++
+    }
+    const inserted = theirs.filter(member => !baseIds.has(member.chaId))
+    if (inserted.some(member => isResident(member.chaId))) {
+        return { kind: 'park', reason: 'resident-id' }
+    }
+    return { kind: 'change', inserted }
+}
+
+/**
+ * The membership decision of a pass: inside the domain `mergeMembership`, outside it exactly `classifyMembership`, which
+ * never yields a target, a placement or a removal.
+ */
+export function decideMembership(base: readonly Member[], live: readonly Member[], theirs: readonly Member[], isResident: (chaId: string) => boolean): MembershipDecision | DomainMembershipDecision {
+    return membershipInDomain(base, live, theirs) ? mergeMembership(base, live, theirs, isResident) : classifyMembership(base, live, theirs, isResident)
+}
+
+/**
+ * The chaId sequence the page holds after the merge: `mergeChatList` over the chaIds. `live` is this page's sequence
+ * before the apply and `keep` the ids a delete-row answer keeps.
+ */
+export function membershipTarget(input: { base: readonly string[], live: readonly string[], theirs: readonly string[], keep?: ReadonlySet<string> }): string[] {
+    return mergeChatList({ base: input.base, mine: input.live, theirs: input.theirs, ...(input.keep === undefined ? {} : { keep: input.keep }) })
+}
+
+export interface Insertion {
+    chaId: string
+    /** The chaId the new character goes before; it is a live member or an insertion placed earlier. Null: the end. */
+    before: string | null
+}
+
+/**
+ * The insertions that turn `liveAfterRemovals` into `target`, in reverse target order: each insertion's `before` is the
+ * next chaId of the target, which is already present when the insertion is applied.
+ */
+export function placeInsertions(liveAfterRemovals: readonly string[], target: readonly string[]): Insertion[] {
+    const present = new Set(liveAfterRemovals)
+    const out: Insertion[] = []
+    for (let index = target.length - 1; index >= 0; index--) {
+        if (!present.has(target[index])) {
+            out.push({ chaId: target[index], before: index + 1 < target.length ? target[index + 1] : null })
+        }
+    }
+    return out
+}
+
+/** An entry of `characterOrder`: a character id, or a folder naming its characters in `data`. */
+export type OrderEntry = string | { data?: readonly string[] }
+
+export interface KeptCharacter {
+    chaId: string
+    /** The kept character's final slot is in the trash. */
+    trashed: boolean
+}
+
+/**
+ * `characterOrder` with every untrashed kept character that it names nowhere (top level or a folder) appended at the
+ * top-level end: the entry `checkCharOrder` would push. A fast-forward runs no `checkCharOrder`, and the sidebar lists
+ * only the ordered ids.
+ */
+export function completeOrder<T extends OrderEntry>(order: readonly T[], kept: readonly KeptCharacter[]): (T | string)[] {
+    const named = new Set<string>()
+    for (const entry of order) {
+        if (typeof entry === 'string') {
+            named.add(entry)
+        } else {
+            for (const id of entry.data ?? []) {
+                named.add(id)
+            }
+        }
+    }
+    const out: (T | string)[] = [...order]
+    for (const character of kept) {
+        if (!character.trashed && !named.has(character.chaId)) {
+            named.add(character.chaId)
+            out.push(character.chaId)
+        }
+    }
+    return out
+}
+
+export type DeleteEdit = 'edited' | 'unedited' | 'unknown'
+
+export type EditedHere =
+    /** A loaded slot: `mine` is the fresh entry's side, null when `freshEntry` was `unknown`. */
+    | { slot: 'loaded', base: RecordSide, mine: RecordSide | null, liveTrashTime: number | undefined }
+    /** An unloaded stub: `stubMatches` is whether it still shows its base entry. */
+    | { slot: 'stub', stubMatches: boolean, baseTrashTime: number | undefined, liveTrashTime: number | undefined }
+
+/**
+ * Whether this page edited a character the peer removed. A loaded slot: some record other than `view` differs from the
+ * base (a view-only change is not an edit); `lastInteraction` and a set or changed `trashTime` are not records, but a
+ * `trashTime` cleared here (a restore) counts. A stub: it no longer shows its entry, or it was restored.
+ */
+export function editedForDelete(input: EditedHere): DeleteEdit {
+    if (input.slot === 'stub') {
+        return !input.stubMatches || (input.baseTrashTime !== undefined && input.liveTrashTime === undefined) ? 'edited' : 'unedited'
+    }
+    if (input.mine === null) {
+        return 'unknown'
+    }
+    if (input.base.entry.trashTime !== undefined && input.liveTrashTime === undefined) {
+        return 'edited'
+    }
+    const whole = isWholeEntry(input.base.entry, input.base.splitCore === true) || isWholeEntry(input.mine.entry, input.mine.splitCore === true)
+    const changed = changedRecords(recordRefs(input.base.entry, { whole }), recordRefs(input.mine.entry, { whole }))
+    changed.delete(RECORD_VIEW)
+    return changed.size > 0 ? 'edited' : 'unedited'
+}
+
+/**
+ * Whether the peer edited a character this page removed: some record other than `view` differs, an entry field
+ * differs (conservative), or the peer cleared `trashTime` (a restore there). A peer change of only `view`,
+ * `lastInteraction`, the lists or a set or changed `trashTime` is no edit.
+ */
+export function editedThereForDelete(base: RecordSide, theirs: RecordSide): boolean {
+    if (base.entry.trashTime !== undefined && theirs.entry.trashTime === undefined) {
+        return true
+    }
+    if (entryOtherChanged(base.entry, theirs.entry)) {
+        return true
+    }
+    const whole = isWholeEntry(base.entry, base.splitCore === true) || isWholeEntry(theirs.entry, theirs.splitCore === true)
+    const changed = changedRecords(recordRefs(base.entry, { whole }), recordRefs(theirs.entry, { whole }))
+    changed.delete(RECORD_VIEW)
+    return changed.size > 0
+}
+
+export type DeleteRowDecision =
+    /** The peer's removal applies. */
+    | { kind: 'remove' }
+    /** This page's deletion stands. */
+    | { kind: 'keep' }
+    | { kind: 'row', row: 'deletedThere' | 'deletedHere' }
+    | { kind: 'park', reason: 'not-append' | 'character-missing' }
+
+export interface DeleteRowInput {
+    /** `there`: the peer removed D. `here`: this page removed D and the peer still holds it. */
+    side: 'there' | 'here'
+    inDomain: boolean
+    /** D's id is resident (decided from D's base entry), so no stub can stand for it. */
+    resident: boolean
+    /** `there` only: D is an unloaded stub here. */
+    stub?: boolean
+    /** `there`: `editedForDelete`. `here`: `edited` when `editedThereForDelete` holds, else `unedited`. */
+    edited: DeleteEdit
+    /** `here` only: the peer's entry for D differs from the base at all (used outside the domain). */
+    changedAtAll?: boolean
+}
+
+/**
+ * The delete-row table of the membership decision. Outside the domain no row exists: `there` parks `not-append`, `here`
+ * parks `character-missing` when the peer changed D at all and otherwise keeps this page's deletion. A resident id has
+ * no row either. A stub edited while unloaded parks, because the peer's tree holds no entry for it to carry. A loaded
+ * slot whose freshness is unknown parks.
+ */
+export function decideDeleteRow(input: DeleteRowInput): DeleteRowDecision {
+    if (input.side === 'here') {
+        if (!input.inDomain) {
+            return input.changedAtAll === true ? { kind: 'park', reason: 'character-missing' } : { kind: 'keep' }
+        }
+        if (input.edited !== 'edited') {
+            return { kind: 'keep' }
+        }
+        return input.resident ? { kind: 'park', reason: 'character-missing' } : { kind: 'row', row: 'deletedHere' }
+    }
+    if (!input.inDomain) {
+        return { kind: 'park', reason: 'not-append' }
+    }
+    if (input.edited === 'unedited') {
+        return { kind: 'remove' }
+    }
+    if (input.resident || input.stub === true || input.edited === 'unknown') {
+        return { kind: 'park', reason: 'not-append' }
+    }
+    return { kind: 'row', row: 'deletedThere' }
+}
+
+export type RecordConflictKind = 'both' | 'deletedThere' | 'deletedHere'
+
+export type RecordDecision =
+    /** Only the peer changed it (a removal included): write the peer's value. */
+    | { id: string, kind: 'take' }
+    /** This page changed it; `agreed` means the peer changed it to the same content, so there is no step to write. */
+    | { id: string, kind: 'keep', agreed: boolean }
+    /** Both changed the `chatList` or the `view`: `mergeChatList` or `decideView` decides. */
+    | { id: string, kind: 'merge' }
+    | { id: string, kind: 'conflict', conflict: RecordConflictKind }
+
+export interface CharacterRecords {
+    /** The character is one record. */
+    whole: boolean
+    mineChanged: ReadonlySet<string>
+    theirsChanged: ReadonlySet<string>
+    /** One decision per record either side changed, in record id order. */
+    decisions: RecordDecision[]
+}
+
+/**
+ * The per-record three-way of one character: base is the acknowledged entry, mine the entry a fresh encode of the live
+ * character gives, theirs the peer's.
+ * - only theirs changed: take; only mine changed: keep;
+ * - both changed to the same content: keep, agreed;
+ * - both changed: a conflict, a chat removed on one side and changed on the other included; the `chatList` and the
+ *   `view` merge instead.
+ */
+export function classifyCharacterRecords(input: { base: RecordSide, mine: RecordSide, theirs: RecordSide }): CharacterRecords {
+    const { base, mine, theirs } = input
+    const whole = [base, mine, theirs].some(side => isWholeEntry(side.entry, side.splitCore === true))
+    const baseRefs = recordRefs(base.entry, { whole })
+    const mineRefs = recordRefs(mine.entry, { whole })
+    const theirsRefs = recordRefs(theirs.entry, { whole })
+    const mineChanged = changedRecords(baseRefs, mineRefs)
+    const theirsChanged = changedRecords(baseRefs, theirsRefs)
+    const decisions: RecordDecision[] = []
+    for (const id of [...new Set([...mineChanged, ...theirsChanged])].sort()) {
+        if (!mineChanged.has(id)) {
+            decisions.push({ id, kind: 'take' })
+        } else if (!theirsChanged.has(id)) {
+            decisions.push({ id, kind: 'keep', agreed: false })
+        } else if (fingerprintOf(mineRefs.get(id), mine.digestOf) === fingerprintOf(theirsRefs.get(id), theirs.digestOf)) {
+            decisions.push({ id, kind: 'keep', agreed: true })
+        } else if (id === RECORD_CHAT_LIST || id === RECORD_VIEW) {
+            decisions.push({ id, kind: 'merge' })
+        } else if (baseRefs.has(id) && !mineRefs.has(id)) {
+            decisions.push({ id, kind: 'conflict', conflict: 'deletedHere' })
+        } else if (baseRefs.has(id) && !theirsRefs.has(id)) {
+            decisions.push({ id, kind: 'conflict', conflict: 'deletedThere' })
+        } else {
+            decisions.push({ id, kind: 'conflict', conflict: 'both' })
+        }
+    }
+    return { whole, mineChanged, theirsChanged, decisions }
 }
 
 /** `characterOrder`, a sub-record of the order unit: it follows its own side, apart from the membership. */

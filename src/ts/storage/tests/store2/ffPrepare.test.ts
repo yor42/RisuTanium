@@ -43,7 +43,7 @@ import { assembleDatabase } from 'src/ts/storage/store2/codec'
 import { advancePrevious } from 'src/ts/storage/store2/fastForward/advancePrevious'
 import { realApply } from 'src/ts/storage/store2/fastForward/apply'
 import { prepareFastForward, type Prepared } from 'src/ts/storage/store2/fastForward/prepare'
-import { readPeerTree } from 'src/ts/storage/store2/fastForward/read'
+import { readEntityUnits, readPeerTree } from 'src/ts/storage/store2/fastForward/read'
 import { defaultKeyEnv } from 'src/ts/storage/store2/format'
 import { previousOfTree } from 'src/ts/storage/store2/previousOfTree'
 import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
@@ -82,9 +82,23 @@ async function decide(world: World, mine: (db: Database) => void, peer: (db: Dat
     if (target.status !== 'ok') {
         throw new Error(`The peer read ${target.status}.`)
     }
-    const next = advancePrevious(old, target.tree)
     const { host } = testHost(state)
-    return { prepared: prepareFastForward({ db, old, target: target.tree, next, host, replyOwners, env: defaultKeyEnv, lists: fakeLists }), db }
+    // A decision that names units the tree lacks is decided again after they are read, as the fast-forward's run does.
+    let tree = target.tree
+    for (let reads = 0; ; reads++) {
+        const prepared = prepareFastForward({ db, old, target: tree, next: advancePrevious(old, tree), host, replyOwners, env: defaultKeyEnv, lists: fakeLists })
+        if (prepared.kind !== 'need') {
+            return { prepared, db }
+        }
+        if (reads >= 2) {
+            throw new Error('The decision still needs units after two reads.')
+        }
+        const more = await readEntityUnits(world.memory, tree, prepared.units)
+        if (more.status !== 'ok') {
+            throw new Error(`The unit read ${more.status}.`)
+        }
+        tree = more.tree
+    }
 }
 
 function ready(prepared: Prepared) {
@@ -121,19 +135,26 @@ describe('prepareFastForward', () => {
         expect(plan.guard.some(entry => entry.kind === 'unit')).toBe(true)
     })
 
-    test('P4 a character body this page also changed parks', async () => {
+    test('P4 a character record both sides changed parks as that record\'s conflict, and nothing is written', async () => {
         const world = await ffWorld()
-        const { prepared } = await decide(world, (mine) => { chars(mine)[3].personality = 'mine' }, (peerDb) => { chars(peerDb)[3].personality = 'peer edit' })
-        expect(prepared).toEqual({ kind: 'park', reason: 'character:body-dirty' })
+        const { prepared, db } = await decide(world, (mine) => { chars(mine)[3].personality = 'mine' }, (peerDb) => { chars(peerDb)[3].personality = 'peer edit' })
+        expect(prepared).toEqual({ kind: 'park', reason: `conflict:char:${String(chars(db)[3].chaId)}:core` })
+        expect(chars(db)[3].personality).toBe('mine')
     })
 
-    test('P5 a character in use here parks even when its copy is clean', async () => {
+    test('P5 a character in use here is merged in place, not parked and not swapped for a stub, even when its copy is clean', async () => {
         const world = await ffWorld()
         const key = await parsedKey(world.memory)
         const read = await readTreeBytes(world.memory, key.current?.key ?? '')
         const chaId = read.status === 'ok' ? String(chars(assembleDatabase(read.tree.manifest, read.tree.source))[3].chaId) : ''
-        const { prepared } = await decide(world, () => { }, (peerDb) => { chars(peerDb)[3].personality = 'peer edit' }, { inUse: new Set([chaId]), writing: new Set(), busy: false, sending: false })
-        expect(prepared).toEqual({ kind: 'park', reason: 'character:in-use' })
+        const { prepared, db } = await decide(world, () => { }, (peerDb) => { chars(peerDb)[3].personality = 'peer edit' }, { inUse: new Set([chaId]), writing: new Set(), busy: false, sending: false })
+        const plan = ready(prepared)
+        const owner = chars(db)[3]
+        expect(plan.waits).toBeNull()
+        expect(realApply(plan.steps)).toBe('applied')
+        expect(chars(db)[3]).toBe(owner)
+        expect(isColdStub(owner)).toBe(false)
+        expect(owner.personality).toBe('peer edit')
     })
 
     test('P6 a character the peer appended is added as a stub, and a changed membership on both sides parks', async () => {
@@ -187,14 +208,18 @@ describe('prepareFastForward', () => {
         expect(isColdStub(chars(db)[3])).toBe(true)
         expect(chars(db)[3].lastInteraction).toBe(9000)
     })
-    test('P5b a character a reply is streaming into, or being written, is in use', async () => {
+    test('P5b a character a reply is streaming into, or being written, is not changed now: the plan waits on it and is never a stub install', async () => {
         const world = await ffWorld()
         const key = await parsedKey(world.memory)
         const read = await readTreeBytes(world.memory, key.current?.key ?? '')
         const chaId = read.status === 'ok' ? String(chars(assembleDatabase(read.tree.manifest, read.tree.source))[3].chaId) : ''
         const owner = await decide(world, () => { }, (peerDb) => { chars(peerDb)[3].personality = 'peer edit' }, undefined, new Set([chaId]))
-        expect(owner.prepared).toEqual({ kind: 'park', reason: 'character:in-use' })
+        const ownerPlan = ready(owner.prepared)
+        expect(ownerPlan.waits?.chars).toEqual([chaId])
         const world2 = await ffWorld()
         const writing = await decide(world2, () => { }, (peerDb) => { chars(peerDb)[3].personality = 'peer edit' }, { inUse: new Set(), writing: new Set([chaId]), busy: false, sending: false })
-        expect(writing.prepared).toEqual({ kind: 'park', reason: 'character:in-use' })
-    })})
+        const writingPlan = ready(writing.prepared)
+        expect(writingPlan.waits?.chars).toEqual([chaId])
+        expect(isColdStub(chars(writing.db)[3])).toBe(false)
+    })
+})

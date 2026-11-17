@@ -6,17 +6,29 @@ import { alertStore as alertStoreImported } from "./stores.svelte"
 import { askPrompt, promptShowing, promptWaiting } from "./alertPrompts"
 import type { PromptCancel } from "./alertCancel"
 
+/** What the per-record conflict dialog shows for one record: text already in the person's language, and the choices offered. */
+export interface PeerConflictRowView {
+    id: string
+    label: string
+    choices: Array<'mine' | 'theirs' | 'both'>
+    preselect: 'mine' | 'theirs' | 'both'
+    /** The sentence that says what keep both does for this record; null for a record without that choice. */
+    note: string | null
+}
+
 export interface alertData{
     type: 'error'|'normal'|'none'|'ask'|'wait'|'selectChar'
             |'input'|'toast'|'wait2'|'markdown'|'select'
             |'tos'|'cardexport'|'requestdata'|'addchar'|'hypaV2'|'selectModule'
             |'chatOptions'|'pukmakkurit'|'branches'|'progress'|'pluginconfirm'|'requestlogs'
-            |'staleAccountNotice'|'patternSelect'|'patternInput',
+            |'staleAccountNotice'|'patternSelect'|'patternInput'|'peerConflicts',
     msg: string,
     submsg?: string
     datalist?: [string, string][],
     /** Options of a `patternSelect` prompt, carried structured rather than joined into `msg`. */
     choices?: string[],
+    /** The rows of a `peerConflicts` prompt; its answer is the JSON of `{ [row id]: choice }`. */
+    peerConflicts?: PeerConflictRowView[],
     stackTrace?: string;
     defaultValue?: string
     /** Set on a wait alert that can be cancelled: the action that ends the wait early. */

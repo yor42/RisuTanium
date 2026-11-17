@@ -18,6 +18,7 @@
     import TextInput from '../UI/GUI/TextInput.svelte';
     import { aiLawApplies, openURL, getFetchLogs } from 'src/ts/globalApi.svelte';
     import Button from '../UI/GUI/Button.svelte';
+    import PeerConflicts from './PeerConflicts.svelte';
     import { XIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, CheckIcon } from "@lucide/svelte";
     import hljs from 'highlight.js/lib/core';
     import json from 'highlight.js/lib/languages/json';
@@ -318,6 +319,10 @@
                     {/if}
                     <p class="confirm-message">{confirmMessage}</p>
                 </div>
+            {:else if a.type === 'peerConflicts'}
+                <PeerConflicts rows={a.peerConflicts ?? []} title={a.msg} onanswer={(message) => {
+                    alertStore.set({ type: 'none', msg: message })
+                }} />
             {:else if a.type !== 'select' && a.type !== 'requestdata' && a.type !== 'addchar' && a.type !== 'hypaV2' && a.type !== 'chatOptions'}
                 <span class="text-gray-300 whitespace-pre-wrap">{displayAlertText(a, $busyRefusalLine)}</span>
                 {#if a.submsg && a.type !== 'progress'}

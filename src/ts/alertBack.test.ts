@@ -341,7 +341,7 @@ describe('alerts Back leaves on screen', () => {
             .filter(([, action]) => action.kind === 'hold')
             .map(([type]) => type)
             .sort()
-        expect(held).toEqual(['none', 'progress', 'staleAccountNotice', 'toast', 'tos'])
+        expect(held).toEqual(['none', 'peerConflicts', 'progress', 'staleAccountNotice', 'toast', 'tos'])
     })
 
     test('exactly the select and the input are classified as a per-instance cancel', () => {
