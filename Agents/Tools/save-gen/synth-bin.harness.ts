@@ -482,7 +482,7 @@ describe('synthetic .bin generator', () => {
 
     test('names every asset by the hash of its bytes and covers every kind, with none at 100 MiB or more in the small scale', () => {
         const kinds = Object.keys(manifestA.counts.byKind).sort()
-        expect(kinds).toEqual(['additional', 'avatar', 'cc', 'customBackground', 'emotion', 'folderImage', 'moduleAsset', 'moduleIcon', 'personaIcon', 'presetImage', 'userIcon', 'vits', 'voice'])
+        expect(kinds).toEqual(['additional', 'avatar', 'cc', 'customBackground', 'emotion', 'folderImage', 'moduleAsset', 'moduleIcon', 'personaIcon', 'userIcon', 'vits', 'voice'])
         expect(manifestA.counts.largestAssets).toEqual([])
         for (const [name, row] of Object.entries(manifestA.assets)) expect(name.slice(0, 64)).toBe(row.sha256)
     })
@@ -693,7 +693,7 @@ describe('the verifier\'s resolved tree against the app\'s own import', () => {
         const clean = await bootRepairs(false)
         expect(clean.changedPreset).toBe(false)
         expect(clean.notices).toEqual([])
-        expect(clean.changedPersonas).toBe(0)
+        expect(clean.changedPersonas).toEqual({ dropped: 0, added: 'none' })
         expect(clean.diff.differences).toBe(0)
         const twin = await bootRepairs(true)
         expect(twin.notices.length).toBeGreaterThan(0)

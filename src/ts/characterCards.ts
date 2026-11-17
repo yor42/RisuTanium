@@ -753,7 +753,7 @@ async function planRccCard(value:string, assetKeys:Set<string>):Promise<PngCardP
         return refusedOutcome(language.errors.noData)
     }
     if(metaData.usePassword){
-        const password = await alertInput(language.inputCardPassword)
+        const password = await alertInput(language.inputCardPassword, undefined, undefined, { cancel: '' })
         if(!password){
             return {kind: 'declined'}
         }

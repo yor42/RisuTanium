@@ -23,10 +23,17 @@ import { importSourceOfBytes, type ImportSource, type ImportSourceStat } from 's
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { LocalBackupEnd } from 'src/ts/drive/backuplocal'
+import * as kitCommit from 'src/ts/storage/store2/commit'
 
 vi.setConfig({ testTimeout: 60_000 })
 
 const platformBox = vi.hoisted(() => ({ isNodeServer: false }))
+
+type ImportStreamModule = typeof import('src/ts/storage/store2/legacy/importStream')
+type Arm = 'whole' | 'stream'
+
+/** The arm the running test is in, and what the streamed prepare decided in it (`onPrepared`, once per attempt that reached it). */
+const armBox = vi.hoisted(() => ({ arm: 'whole' as 'whole' | 'stream', verdicts: [] as string[] }))
 
 vi.mock(import('src/ts/platform'), () => ({
     isTauri: false,
@@ -58,6 +65,7 @@ beforeAll(() => {
 
 beforeEach(() => {
     vi.clearAllMocks()
+    armBox.verdicts = []
     platformBox.isNodeServer = false
     h.broadcasts.length = 0
     h.channels.length = 0
@@ -85,6 +93,32 @@ beforeEach(() => {
         getColdStorageBackupKey: (await import('src/ts/process/coldstorageData')).getColdStorageBackupKey,
         readColdStorageItem: async () => ({ status: 'missing' }),
         setColdStorageItem: vi.fn(async () => false),
+    }))
+    // The arm seam: production never passes `minUnits`, so the streamed prepare is steered here, through the module the
+    // page's import loads. The whole arm never reaches the threshold; the stream arm always does.
+    vi.doMock('src/ts/storage/store2/legacy/importStream', async () => {
+        const actual = await vi.importActual<ImportStreamModule>('src/ts/storage/store2/legacy/importStream')
+        return {
+            ...actual,
+            prepareImportStream: (request: Parameters<ImportStreamModule['prepareImportStream']>[0], hooks: Parameters<ImportStreamModule['prepareImportStream']>[1]) => actual.prepareImportStream({
+                ...request,
+                stream: {
+                    ...request.stream,
+                    minUnits: armBox.arm === 'stream' ? 0 : Number.POSITIVE_INFINITY,
+                    onPrepared: (verdict) => {
+                        armBox.verdicts.push(verdict)
+                        request.stream.onPrepared?.(verdict)
+                    },
+                },
+            }, hooks),
+        }
+    })
+    // The committer of the page is built by the kit in this file's module graph, the import code runs in the world's: a
+    // streamed commit always runs under a bulk marker and fails with the kit's `Store2BulkAbortError`, which the import
+    // must recognise by class as it does in the one graph of the app.
+    vi.doMock('src/ts/storage/store2/commit', async () => ({
+        ...await vi.importActual<typeof import('src/ts/storage/store2/commit')>('src/ts/storage/store2/commit'),
+        Store2BulkAbortError: kitCommit.Store2BulkAbortError,
     }))
     vi.spyOn(console, 'log').mockImplementation(() => { })
     vi.spyOn(console, 'warn').mockImplementation(() => { })
@@ -259,9 +293,42 @@ function withoutMintedIds(text: string): string {
 
 const alertErrorTexts =(page: Page): unknown[] => vi.mocked(page.alert.alertError).mock.calls.map((call) => call[0])
 
+// ---- the whole and the stream arm ----
+
+/** What one import showed: the fields the two arms must give alike. */
+interface ArmView {
+    outcome: string
+    errors: string[]
+    reloads: number
+    /** What the store holds after the import, with the minted ids replaced. */
+    saved: string
+}
+
+interface ArmRecord {
+    view: ArmView
+    verdicts: string[]
+}
+
+/** By test name without the arm: the last import of the test in each arm. */
+const observed = new Map<string, Partial<Record<Arm, ArmRecord>>>()
+
+/** Records what the import that just ended showed, under the running test's name, for the arm agreement test at the end of the file. */
+async function observeArm(page: Page, end: LocalBackupEnd): Promise<void> {
+    const view: ArmView = {
+        outcome: end.outcome,
+        errors: alertErrorTexts(page).map((text) => String(text)),
+        reloads: vi.mocked(window.location.reload).mock.calls.length,
+        saved: withoutMintedIds(JSON.stringify(await page.k.saved())),
+    }
+    const name = (expect.getState().currentTestName ?? '').replace(/ \((whole|stream) arm\)/, '')
+    observed.set(name, { ...observed.get(name), [armBox.arm]: { view, verdicts: [...armBox.verdicts] } })
+}
+
 const SOURCES = ['fork-full.bin', 'upstream-full.bin'] as const
 
-describe.each(SOURCES)('a page import of %s from an opened source', (name) => {
+for (const arm of ['whole', 'stream'] as const) describe.each(SOURCES)(`a page import of %s from an opened source (${arm} arm)`, (name) => {
+    beforeEach(() => { armBox.arm = arm })
+
     // Guard: passes before and after the feature only in the sense that both routes agree; red if the source route differs.
     test('guard: the page ends in the state the picker File restore leaves', async () => {
         const viaFile = await openPage()
@@ -273,6 +340,7 @@ describe.each(SOURCES)('a page import of %s from an opened source', (name) => {
         const viaSource = await openPage()
         const probe = probeSource(golden(name))
         const sourceEnd = await restoreOpened(probe.source)
+        await observeArm(viaSource, sourceEnd)
 
         expect(alertErrorTexts(viaFile)).toEqual([])
         expect(alertErrorTexts(viaSource)).toEqual([])
@@ -324,6 +392,7 @@ describe.each(SOURCES)('a page import of %s from an opened source', (name) => {
             })
 
             const end = await restoreOpened(probe.source)
+            await observeArm(page, end)
 
             expect(probe.faulted(), 'the harness must have faulted a read').toBeGreaterThan(0)
             expect(end.outcome).not.toBe('committed')
@@ -348,6 +417,7 @@ describe.each(SOURCES)('a page import of %s from an opened source', (name) => {
             const probe = probeSource(golden(name), { stat: () => statOf(statCalls++) })
 
             const end = await restoreOpened(probe.source)
+            await observeArm(page, end)
 
             expect(statCalls).toBeGreaterThanOrEqual(3)
             expect(end.outcome).toBe('nothing-replaced')
@@ -362,10 +432,28 @@ describe.each(SOURCES)('a page import of %s from an opened source', (name) => {
             const probe = probeSource(golden(name), { stat: () => ({ size: golden(name).length, modified: 5 }) })
 
             const end = await restoreOpened(probe.source)
+            await observeArm(page, end)
 
             expect(end.outcome).toBe('committed')
             expect(alertErrorTexts(page)).toEqual([])
             expect(await page.k.commitKey()).not.toEqual(before)
         })
+    })
+})
+
+// The arm tests above ran first (one file, tests in order): what each import showed in the two arms must be equal.
+describe('the whole arm and the stream arm agree', () => {
+    test('every import showed the same outcome, error texts, reload count and stored state in both arms', () => {
+        const compared: string[] = []
+        for (const [name, arms] of observed) {
+            if (arms.whole === undefined || arms.stream === undefined) {
+                continue
+            }
+            compared.push(name)
+            expect(arms.whole.verdicts.filter((verdict) => verdict === 'stream'), `${name}: the whole arm streamed`).toEqual([])
+            expect(arms.stream.view, name).toEqual(arms.whole.view)
+        }
+        expect(compared.length).toBeGreaterThan(0)
+        expect([...observed.values()].some((arms) => arms.stream?.verdicts.includes('stream')), 'no import took the streamed path').toBe(true)
     })
 })

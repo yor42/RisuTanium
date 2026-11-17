@@ -6,9 +6,11 @@ import type { Database, folder } from '../storage/database.svelte'
 import { asBuffer } from '../util'
 import { isNodeServer, isTauri } from '../platform'
 import { getAppStore } from '../storage/store/appStore'
-import { ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES, androidAssetSizeVerdict, androidWholeReadQueue, knownStoredAssetSize } from '../storage/assetUrlGate'
-import { isAndroidTransport } from '../storage/tauriByteTransport'
-import { readTauriHeader, readUrlHeader, type ImageHeader } from './avatarThumbHeader'
+import { ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES, ANDROID_WHOLE_READ_URL_LIMIT_BYTES, androidAssetSizeVerdict, androidWholeReadQueue, knownStoredAssetSize } from '../storage/assetUrlGate'
+import { isAndroidTransport, readRangedPieces } from '../storage/tauriByteTransport'
+import { assetOrInlayBodyKeyViolation } from '../storage/store/keyRules'
+import { readTauriHeader, readTauriPrefix, readUrlHeader, readUrlPrefix, type ImageHeader } from './avatarThumbHeader'
+import { EMBEDDED_THUMB_SCAN_BYTES, MAX_EMBEDDED_THUMB_LONG_SIDE, extractEmbeddedJpegThumb, orientationTransform, orientedSize, type EmbeddedCrop, type ExifOrientation } from './embeddedJpegThumb'
 
 export { classifyImage, isAnimatedImage, type ImageClass } from './imageClass'
 
@@ -23,10 +25,20 @@ export { classifyImage, isAnimatedImage, type ImageClass } from './imageClass'
 export const THUMB_SHORT_SIDE = 168
 /** Bump whenever the size, format or scaling policy changes; older records
  *  then count as absent instead of being served stale. */
-export const THUMB_VERSION = 1
+export const THUMB_VERSION = 2
+
+/**
+ * Above this stored size an avatar is never read whole into JS or decoded from
+ * its URL on Android; its thumbnail comes from a bounded read. It is the
+ * Android whole-read URL limit, and a change of either needs a `THUMB_VERSION`
+ * bump in the same change, because a persisted skip means "no bounded preview
+ * under these rules".
+ */
+export const BOUNDED_THUMB_ABOVE_BYTES = ANDROID_WHOLE_READ_URL_LIMIT_BYTES
 
 type ThumbRecord = { v: number, src: string } | { v: number, skip: true }
-type GenResult = { src: string } | { skip: true } | null
+/** `retryNextSession`: an expensive attempt failed; the page memoizes "no thumbnail" for the rest of its life and stores nothing. */
+type GenResult = { src: string } | { skip: true } | { retryNextSession: true } | null
 /** Public generator shape used by tests: no cleanup plumbing to inject. */
 type Generator = (loc: string) => Promise<GenResult>
 type ReadImageFn = (loc: string) => Promise<Uint8Array | null | undefined>
@@ -88,6 +100,7 @@ let memoMaxEntries = DEFAULT_MEMO_MAX_ENTRIES
 let memoMaxBytes = DEFAULT_MEMO_MAX_BYTES
 let storeTimeoutMs = DEFAULT_STORE_TIMEOUT_MS
 let maxPendingWrites = DEFAULT_MAX_PENDING_WRITES
+let boundedAboveBytes = BOUNDED_THUMB_ABOVE_BYTES
 
 /** Sentinel returned by `withStoreTimeout` when the timeout wins the race;
  *  a rejection from the underlying call still propagates normally. */
@@ -496,6 +509,12 @@ async function runTask(task: QueueTask) {
             // request retries.
             finishAndFree(null)
         }
+        else if ('retryNextSession' in result) {
+            // An expensive attempt failed: remembered for this page load only,
+            // so the attempt is not repeated now and not stored for later.
+            memoize(task.loc, null)
+            finishAndFree(null)
+        }
         else if ('skip' in result) {
             // Memoize and free the slot first: the store write is not
             // awaited, so a slow store cannot hold generation back. The
@@ -833,10 +852,13 @@ async function readHeader(loc: string, scope: TaskScope): Promise<{ header: Imag
     return null
 }
 
-/** Reads the whole file, classifies it as a whole file and decodes it from a
- *  `Blob`. `decoded` is true when the decode step ran to a result. */
-async function generateFromBytes(loc: string, scope: TaskScope): Promise<{ result: GenResult, decoded: boolean }> {
-    const bytes = await currentReadImage(loc)
+/** Reads the whole file (or takes `preloaded`, bytes the size source already
+ *  loaded, so a value is never loaded twice), classifies it as a whole file and
+ *  decodes it from a `Blob`. `decoded` is true when the decode step ran to a
+ *  result. Bytes above the bounded limit are never decoded in full: the load
+ *  could not be avoided, so the bounded rules apply to them instead. */
+async function generateFromBytes(loc: string, scope: TaskScope, preloaded: Uint8Array | null = null): Promise<{ result: GenResult, decoded: boolean }> {
+    const bytes = preloaded ?? await currentReadImage(loc)
     if (scope.isCancelled()) {
         // The queue's timeout already resolved the caller with null while
         // this read was still pending; decoding and drawing the full image
@@ -845,6 +867,10 @@ async function generateFromBytes(loc: string, scope: TaskScope): Promise<{ resul
     }
     if (!bytes) {
         return { result: null, decoded: false }
+    }
+    if (bytes.length > boundedAboveBytes) {
+        const loaded: BoundedSource = { platform: isAndroidTransport() ? 'android' : 'web', url: null, blob: null, loaded: bytes }
+        return { result: await generateBounded(loc, loaded, scope), decoded: false }
     }
     const cls = classifyImage(bytes, true)
     if (cls.kind === 'animated' || cls.kind === 'unknown') {
@@ -891,32 +917,278 @@ async function renderFromUrl(loc: string, url: string, scope: TaskScope, ctx: Ge
     }
 }
 
+type BoundedPlatform = 'android' | 'desktop' | 'node' | 'web'
+
+/** What a bounded thumbnail can be read from; at most one of `blob` and `loaded` is set. */
+interface BoundedSource {
+    platform: BoundedPlatform
+    /** The asset URL the Node size read used. */
+    url: string | null
+    /** A Blob over the stored value: a slice of it reads only that slice. */
+    blob: Blob | null
+    /** The whole value, where the store could only hand it over whole. */
+    loaded: Uint8Array | null
+}
+
 /**
- * Where the first 64 KiB can be read without the whole file (Node-hosted
- * pages, Tauri), animation is decided from it and a still is decoded from the
- * asset URL, so no JS copy of the file is made. Everything else, and every
- * failure of that path, reads the whole file and decodes it from a `Blob`.
+ * Where an avatar's size came from, as a closed list. `none`: no size source
+ * exists here, and today's path (header or whole read) applies unchanged.
+ * `failed`: a size read was attempted and failed, so there is no thumbnail
+ * this time. `sized`: the size is known, with the header the read already
+ * delivered, when it was usable.
+ */
+type SizedSource =
+    | { kind: 'none' }
+    | { kind: 'failed' }
+    | { kind: 'sized', size: number, header: ImageHeader | null, source: BoundedSource }
+
+const NO_SIZE_SOURCE: SizedSource = { kind: 'none' }
+const SIZE_READ_FAILED: SizedSource = { kind: 'failed' }
+
+/** Avatars above the bounded limit whose one off-Android decode was already tried in this page load. */
+const boundedDecodeAttempted = new Set<string>()
+
+async function resolveSizedSource(loc: string, scope: TaskScope): Promise<SizedSource> {
+    try {
+        if (isTauri) {
+            const prefix = await readTauriPrefix(loc)
+            if (prefix.kind === 'none') {
+                return NO_SIZE_SOURCE
+            }
+            if (prefix.kind === 'failed') {
+                return SIZE_READ_FAILED
+            }
+            return { kind: 'sized', size: prefix.total, header: prefix.header, source: { platform: 'desktop', url: null, blob: null, loaded: null } }
+        }
+        if (isNodeServer) {
+            const url = await assetUrlFor(loc)
+            if (url === null) {
+                return NO_SIZE_SOURCE
+            }
+            const prefix = await readUrlPrefix(url, scope.signal)
+            if (prefix === null || prefix.total === null) {
+                return SIZE_READ_FAILED
+            }
+            return { kind: 'sized', size: prefix.total, header: prefix.header, source: { platform: 'node', url, blob: null, loaded: null } }
+        }
+        let store: Awaited<ReturnType<typeof getAppStore>>
+        try {
+            store = await getAppStore()
+        } catch {
+            return NO_SIZE_SOURCE
+        }
+        // A key the browser store can address but not create (written by
+        // upstream) is read whole, as every other reader of it does.
+        if (assetOrInlayBodyKeyViolation(loc) !== null) {
+            return NO_SIZE_SOURCE
+        }
+        // The OPFS-transitional store offers a lazy Blob instead: its size is the
+        // stored size and a slice reads only that slice.
+        if (store.readValue === undefined && store.readLazyBlob !== undefined) {
+            const lazy = await store.readLazyBlob(loc)
+            if (lazy === null) {
+                return SIZE_READ_FAILED
+            }
+            return { kind: 'sized', size: lazy.size, header: null, source: { platform: 'web', url: null, blob: lazy, loaded: null } }
+        }
+        if (store.readValue === undefined) {
+            return NO_SIZE_SOURCE
+        }
+        const value = await store.readValue(loc)
+        if (value === null) {
+            return SIZE_READ_FAILED
+        }
+        if (value instanceof Uint8Array) {
+            return { kind: 'sized', size: value.length, header: null, source: { platform: 'web', url: null, blob: null, loaded: value } }
+        }
+        return { kind: 'sized', size: value.size, header: null, source: { platform: 'web', url: null, blob: value, loaded: null } }
+    } catch {
+        return SIZE_READ_FAILED
+    }
+}
+
+/**
+ * The first `EMBEDDED_THUMB_SCAN_BYTES` of the avatar, read without reading
+ * the file: a slice of the stored Blob, the head of the bytes already loaded,
+ * a ranged GET (Node) or the first piece of the ranged transport (Tauri). The
+ * piece reader is closed on every path. `null` when the read failed.
+ */
+async function readBoundedPrefix(loc: string, source: BoundedSource, scope: TaskScope): Promise<Uint8Array | null> {
+    try {
+        if (source.loaded !== null) {
+            return source.loaded.subarray(0, EMBEDDED_THUMB_SCAN_BYTES)
+        }
+        if (source.blob !== null) {
+            return new Uint8Array(await source.blob.slice(0, EMBEDDED_THUMB_SCAN_BYTES).arrayBuffer())
+        }
+        if (source.platform === 'node') {
+            if (source.url === null) {
+                return null
+            }
+            return (await readUrlHeader(source.url, scope.signal, EMBEDDED_THUMB_SCAN_BYTES))?.bytes ?? null
+        }
+        const pieces = readRangedPieces(loc, EMBEDDED_THUMB_SCAN_BYTES)
+        scope.own(() => {
+            void pieces.return(undefined).catch(() => {})
+        })
+        try {
+            const first = await pieces.next()
+            return first.done === true ? null : first.value.bytes.slice(0, EMBEDDED_THUMB_SCAN_BYTES)
+        } finally {
+            try {
+                await pieces.return(undefined)
+            } catch {
+                // the reader is being dropped
+            }
+        }
+    } catch {
+        return null
+    }
+}
+
+const RETRY_NEXT_SESSION: GenResult = { retryNextSession: true }
+
+/**
+ * Off Android, an avatar above the limit with no embedded thumbnail is decoded
+ * once per page load from its asset URL or from an object URL of its stored
+ * bytes, and never read whole. The attempt is recorded before the decode, so a
+ * rejection, a timeout or a failed store write cannot lead to a second decode
+ * in the same page load. With the page-wide URL decode switch off an asset URL
+ * is not decoded at all.
+ */
+async function decodeBoundedOnce(loc: string, source: BoundedSource, scope: TaskScope, mime: string): Promise<GenResult> {
+    if (boundedDecodeAttempted.has(loc)) {
+        return RETRY_NEXT_SESSION
+    }
+    const body = source.blob ?? (source.loaded !== null ? new Blob([asBuffer(source.loaded)], { type: mime }) : null)
+    let target: string
+    let revoke = () => {}
+    if (body !== null) {
+        const objectUrl = URL.createObjectURL(body)
+        let revoked = false
+        revoke = () => {
+            if (!revoked) {
+                revoked = true
+                URL.revokeObjectURL(objectUrl)
+            }
+        }
+        scope.own(revoke)
+        target = objectUrl
+    } else {
+        if (urlDecodeOff) {
+            return RETRY_NEXT_SESSION
+        }
+        const assetUrl = source.url ?? await assetUrlFor(loc)
+        if (scope.isCancelled() || assetUrl === null) {
+            return null
+        }
+        target = assetUrl
+    }
+    boundedDecodeAttempted.add(loc)
+    try {
+        const result = await currentRenderThumb({ kind: 'url', url: target }, scope)
+        return scope.isCancelled() ? null : result
+    } catch {
+        return scope.isCancelled() ? null : RETRY_NEXT_SESSION
+    } finally {
+        revoke()
+    }
+}
+
+/**
+ * The thumbnail of an avatar above the limit, from a bounded read of its first
+ * 256 KiB. A JPEG with a usable Exif thumbnail gets that thumbnail (on Android
+ * a failed render is `null`, never a stored skip: the file is the same next
+ * time but the render may not be). Animated and unknown formats are a skip
+ * everywhere. Without an embedded thumbnail Android stores a skip, and the
+ * other platforms decode once per page load (`decodeBoundedOnce`).
+ */
+async function generateBounded(loc: string, source: BoundedSource, scope: TaskScope): Promise<GenResult> {
+    const prefix = await readBoundedPrefix(loc, source, scope)
+    if (scope.isCancelled() || prefix === null) {
+        return null
+    }
+    const cls = classifyImage(prefix, false)
+    if (cls.kind === 'still' && cls.mime === 'image/jpeg') {
+        const thumb = extractEmbeddedJpegThumb(prefix)
+        if (thumb !== null) {
+            let rendered: GenResult = null
+            try {
+                rendered = await currentRenderThumb({ kind: 'embedded', bytes: thumb.bytes, orientation: thumb.orientation, crop: thumb.crop }, scope)
+            } catch {
+                // the embedded preview did not decode this time
+            }
+            if (scope.isCancelled()) {
+                return null
+            }
+            if (rendered !== null && 'src' in rendered) {
+                return rendered
+            }
+            if (source.platform === 'android') {
+                return null
+            }
+        }
+    }
+    if (cls.kind === 'animated' || cls.kind === 'unknown') {
+        return { skip: true }
+    }
+    if (cls.kind === 'null') {
+        return null
+    }
+    if (source.platform === 'android') {
+        return { skip: true }
+    }
+    return await decodeBoundedOnce(loc, source, scope, cls.kind === 'still' ? cls.mime : '')
+}
+
+/**
+ * An avatar above `BOUNDED_THUMB_ABOVE_BYTES` is never read whole into JS where
+ * its size can be learned without reading it, and on Android never reaches a
+ * URL decode: its thumbnail comes from a bounded read (`generateBounded`).
+ * Below that, where the first 64 KiB can be read without the whole file
+ * (Node-hosted pages, Tauri), animation is decided from it and a still is
+ * decoded from the asset URL, so no JS copy of the file is made. Everything
+ * else, and every failure of that path, reads the whole file and decodes it
+ * from a `Blob`.
  */
 async function realGenerate(loc: string, ctx: GenContext): Promise<GenResult> {
     const scope = makeTaskScope(ctx)
     try {
         // Before any URL decode or byte read: on Android a file above the
-        // whole-read limit gets no thumbnail (a skip, stored per content-hash
-        // key), and an unreadable size gets none this time (null, so nothing
-        // is memoized and the next request asks again).
+        // whole-read limit gets a bounded thumbnail or a skip (stored per
+        // content-hash key), and an unreadable size gets none this time (null,
+        // so nothing is memoized and the next request asks again).
         const sizeVerdict = await androidAssetSizeVerdict(loc)
         if (scope.isCancelled()) {
             return null
         }
         if (sizeVerdict === 'over') {
-            return { skip: true }
+            return await generateBounded(loc, { platform: 'android', url: null, blob: null, loaded: null }, scope)
         }
         if (sizeVerdict === 'unknown') {
             return null
         }
+        let sized: Extract<SizedSource, { kind: 'sized' }> | null = null
+        if (!isAndroidTransport()) {
+            const resolved = await resolveSizedSource(loc, scope)
+            if (scope.isCancelled()) {
+                return null
+            }
+            if (resolved.kind === 'failed') {
+                return null
+            }
+            if (resolved.kind === 'sized') {
+                if (resolved.size > boundedAboveBytes) {
+                    return await generateBounded(loc, resolved.source, scope)
+                }
+                sized = resolved
+            }
+        }
         let urlFailed = false
         if (!urlDecodeOff) {
-            const probe = await readHeader(loc, scope)
+            const probe = sized === null
+                ? await readHeader(loc, scope)
+                : (sized.header === null ? null : { header: sized.header, url: sized.source.url })
             if (scope.isCancelled()) {
                 return null
             }
@@ -946,7 +1218,7 @@ async function realGenerate(loc: string, ctx: GenContext): Promise<GenResult> {
                 }
             }
         }
-        const outcome = await generateFromBytes(loc, scope)
+        const outcome = await generateFromBytes(loc, scope, sized?.source.loaded ?? null)
         if (urlFailed && outcome.decoded) {
             urlDecodeOff = true
         }
@@ -956,12 +1228,63 @@ async function realGenerate(loc: string, ctx: GenContext): Promise<GenResult> {
     }
 }
 
-/** What the render step decodes: a URL the page can load directly, or the
- *  file's bytes wrapped in a same-origin blob: URL. */
+/** What the render step decodes: a URL the page can load directly, the
+ *  file's bytes wrapped in a same-origin blob: URL, or the sanitised Exif
+ *  thumbnail of a JPEG with the main image's orientation and the crop that
+ *  removes the camera's letterboxing. */
 type RenderSource =
     | { kind: 'url', url: string }
     | { kind: 'bytes', bytes: Uint8Array, mime: string }
+    | { kind: 'embedded', bytes: Uint8Array, orientation: ExifOrientation, crop: EmbeddedCrop | null }
 type RenderThumbFn = (source: RenderSource, scope: TaskScope) => Promise<GenResult>
+
+/** The source rectangle, the drawn size (before orientation) and the whole decision of one draw. */
+export interface DrawPlan {
+    sx: number
+    sy: number
+    sw: number
+    sh: number
+    dw: number
+    dh: number
+}
+
+/** Pure. A whole image draws at thumbnail size; `null` when it is already small enough to need no thumbnail. */
+export function planWholeDraw(naturalWidth: number, naturalHeight: number): DrawPlan | null {
+    const dims = thumbDimensions(naturalWidth, naturalHeight, THUMB_SHORT_SIDE)
+    return dims === null ? null : { sx: 0, sy: 0, sw: naturalWidth, sh: naturalHeight, dw: dims.w, dh: dims.h }
+}
+
+/**
+ * Pure. The embedded thumbnail draws its cropped part at thumbnail size, never
+ * upscaled (a short side at or under the thumbnail size keeps its size), with
+ * the long side capped as a second guard against a hostile frame header.
+ * `null` when the decoded size is unusable.
+ */
+export function planEmbeddedDraw(naturalWidth: number, naturalHeight: number, crop: EmbeddedCrop | null): DrawPlan | null {
+    if (!(naturalWidth > 0) || !(naturalHeight > 0)) {
+        return null
+    }
+    let sx = 0
+    let sy = 0
+    let sw = naturalWidth
+    let sh = naturalHeight
+    if (crop !== null) {
+        sx = Math.min(Math.max(0, crop.x), naturalWidth - 1)
+        sy = Math.min(Math.max(0, crop.y), naturalHeight - 1)
+        sw = Math.max(1, Math.min(crop.w, naturalWidth - sx))
+        sh = Math.max(1, Math.min(crop.h, naturalHeight - sy))
+    }
+    const dims = thumbDimensions(sw, sh, THUMB_SHORT_SIDE)
+    let dw = dims === null ? sw : dims.w
+    let dh = dims === null ? sh : dims.h
+    const long = Math.max(dw, dh)
+    if (long > MAX_EMBEDDED_THUMB_LONG_SIDE) {
+        const scale = MAX_EMBEDDED_THUMB_LONG_SIDE / long
+        dw = Math.max(1, Math.round(dw * scale))
+        dh = Math.max(1, Math.round(dh * scale))
+    }
+    return { sx, sy, sw, sh, dw, dh }
+}
 
 /** Load, draw and export: decodes the source, scales it to the thumbnail size
  *  and encodes it. Rejects when the image fails to load, decode or export, so
@@ -970,10 +1293,10 @@ type RenderThumbFn = (source: RenderSource, scope: TaskScope) => Promise<GenResu
 async function renderThumb(source: RenderSource, scope: TaskScope): Promise<GenResult> {
     const img = new Image()
     let objectUrl: string | null = null
-    if (source.kind === 'bytes') {
+    if (source.kind === 'bytes' || source.kind === 'embedded') {
         // A same-origin blob: URL, so the asset protocol's cross-origin
         // behaviour never reaches the canvas.
-        objectUrl = URL.createObjectURL(new Blob([asBuffer(source.bytes)], { type: source.mime }))
+        objectUrl = URL.createObjectURL(new Blob([asBuffer(source.bytes)], { type: source.kind === 'bytes' ? source.mime : 'image/jpeg' }))
     } else {
         // Loaded with CORS, so a response the page may not read fails to load
         // instead of tainting the canvas.
@@ -1002,19 +1325,26 @@ async function renderThumb(source: RenderSource, scope: TaskScope): Promise<GenR
         if (scope.isCancelled()) {
             return null
         }
-        const dims = thumbDimensions(img.naturalWidth, img.naturalHeight, THUMB_SHORT_SIDE)
-        if (!dims) {
-            return { skip: true }
+        const plan: DrawPlan | null = source.kind === 'embedded'
+            ? planEmbeddedDraw(img.naturalWidth, img.naturalHeight, source.crop)
+            : planWholeDraw(img.naturalWidth, img.naturalHeight)
+        if (plan === null) {
+            return source.kind === 'embedded' ? null : { skip: true }
         }
+        const orientation: ExifOrientation = source.kind === 'embedded' ? source.orientation : 1
+        const canvasSize = orientedSize(plan.dw, plan.dh, orientation)
         canvas = document.createElement('canvas')
-        canvas.width = dims.w
-        canvas.height = dims.h
+        canvas.width = canvasSize.w
+        canvas.height = canvasSize.h
         const c2d = canvas.getContext('2d')
         if (!c2d) {
             return null
         }
         c2d.imageSmoothingQuality = 'high'
-        c2d.drawImage(img, 0, 0, dims.w, dims.h)
+        if (orientation !== 1) {
+            c2d.setTransform(...orientationTransform(orientation, plan.dw, plan.dh))
+        }
+        c2d.drawImage(img, plan.sx, plan.sy, plan.sw, plan.sh, 0, 0, plan.dw, plan.dh)
         let dataUrl = canvas.toDataURL('image/webp', 0.85)
         if (!dataUrl.startsWith('data:image/webp')) {
             // WebKit historically has no WebP encoder; PNG keeps alpha too.
@@ -1123,7 +1453,10 @@ export const __avatarThumbTestHooks = {
         readbackCheckFn = fn
         readbackChecked = false
     },
-    setLimits(limits: { concurrency?: number, readConcurrency?: number, timeoutMs?: number, storeTimeoutMs?: number, memoMaxEntries?: number, memoMaxBytes?: number, maxPendingWrites?: number }) {
+    setLimits(limits: { concurrency?: number, readConcurrency?: number, timeoutMs?: number, storeTimeoutMs?: number, memoMaxEntries?: number, memoMaxBytes?: number, maxPendingWrites?: number, boundedAboveBytes?: number }) {
+        if (limits.boundedAboveBytes !== undefined) {
+            boundedAboveBytes = limits.boundedAboveBytes
+        }
         if (limits.maxPendingWrites !== undefined) {
             maxPendingWrites = limits.maxPendingWrites
         }
@@ -1173,6 +1506,8 @@ export const __avatarThumbTestHooks = {
         currentReadImage = readImage
         currentRenderThumb = renderThumb
         urlDecodeOff = false
+        boundedDecodeAttempted.clear()
+        boundedAboveBytes = BOUNDED_THUMB_ABOVE_BYTES
         storeOverride = null
         concurrency = DEFAULT_CONCURRENCY
         timeoutMs = DEFAULT_TIMEOUT_MS

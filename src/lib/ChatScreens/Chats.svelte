@@ -12,6 +12,8 @@
     import { chatSurface, isChatSurfaceInstalled, onSurfaceHiding } from './chatSurface.svelte';
     import { scopeOf } from './chatBodyRenderCache';
     import { holdWarmAsks } from './deferredAssetImages';
+    import { holdRowLayout, holdUntilRowsRendered, releaseRowHoldAfterFrames } from 'src/ts/gui/legacyRowVisibility';
+    import { forgetRows } from 'src/ts/gui/rowBodySettle';
 
     const getCurrentChatRoomId = () => {
         const charId = get(selectedCharID);
@@ -91,10 +93,19 @@
     // the hide takes and clears it; a rebuild return restores only this value, and only for the same owner, because
     // anything read later sees rows the release flush has already changed.
     let hideCapture: { top: number, owner: string | null } | null = null;
+    // Rows stay laid out from the hide until two frames after the return restored the position, so they are measured
+    // at their real size. A plain variable on purpose: nothing renders from it.
+    let surfaceRowHold: (() => void) | null = null;
+    // The holds of runs that mounted older rows, open until those rows have rendered; destroying the list ends them.
+    const rowHolds = new Set<{ cancel(): void }>();
+    // Width-change holds waiting for their frames.
+    const widthHolds = new Set<() => void>();
     if(surfaceInstalled){
         const stopCapturing = onSurfaceHiding(() => {
             const host = chatBody?.parentElement ?? null;
             hideCapture = host ? { top: host.scrollTop, owner: ownerKey() } : null;
+            surfaceRowHold?.();
+            surfaceRowHold = chatBody ? holdRowLayout(chatBody) : null;
         });
         onDestroy(stopCapturing);
     }
@@ -167,6 +178,10 @@
         const reloadPointerMap = get(ReloadChatPointer);
         // The loop keeps every reactive read; mounting is deferred to one holder after it, in the same order.
         const pendingMounts: Array<(run: MountHolderRun<number>) => void> = [];
+        // Rows this run mounts at or beyond the fourth DOM position are skipped by the engine once they render, so the list is
+        // held until they have rendered. Only rows that render a body can report; a comment row never does.
+        let olderMounted = 0;
+        const olderBodyRows: HTMLDivElement[] = [];
 
         for(let i=loadStart ; i >= loadEnd; i--){
             if(i < 0) break; // Prevent out of bounds
@@ -228,6 +243,12 @@
                 const b = document.createElement('div');
                 b.setAttribute('x-hashed', currentHash.toString());
                 b.classList.add('chat-message-container');
+                if(loadStart - i >= 3){
+                    olderMounted++;
+                    if(!message.isComment){
+                        olderBodyRows.push(b);
+                    }
+                }
                 // A tail mounted at the end of a carried stream keeps the translated view the carried instance showed.
                 // Read here, before the removal below unmounts that instance.
                 const startTranslated = !offTail
@@ -295,6 +316,11 @@
         }
 
         if(pendingMounts.length > 0){
+            // Taken before the first row is inserted, so no older row is laid out skipped at an unmeasured size.
+            if(olderMounted > 0){
+                const rowHold = holdUntilRowsRendered(chatBody, olderBodyRows, () => { rowHolds.delete(rowHold); });
+                rowHolds.add(rowHold);
+            }
             const run = mountHolders.begin();
             try{
                 // Untracked: nothing the mounted components read may become a dependency of the Chats effect.
@@ -320,6 +346,7 @@
             mountHolders.release(hash);
             const element = chatBody.querySelector(`[x-hashed="${hash}"]`);
             if(element){
+                forgetRows([element]);
                 chatBody.removeChild(element);
             }
         });
@@ -372,6 +399,11 @@
         console.log('Unmounting Chats');
         cancelOpenWarmFrame();
         releaseOpenWarmHold(openWarmHold);
+        surfaceRowHold?.();
+        surfaceRowHold = null;
+        for(const rowHold of [...rowHolds]){
+            rowHold.cancel();
+        }
         hashes.clear();
         hashMemo.clear();
         mountInstances.forEach((inst) => {
@@ -389,6 +421,7 @@
         mountInstances.clear();
         mountHolders.destroyAll();
         chatBody.querySelectorAll('[x-hashed]').forEach((element) => {
+            forgetRows([element]);
             element.remove();
         });
         hashes = new Set();
@@ -413,6 +446,45 @@
              element.scrollIntoView({ behavior: 'instant', block: 'start' });
         }
     }
+
+    // Held for the whole bookmark jump or screenshot run by the caller, which releases it.
+    export const holdRows = (): (() => void) => chatBody ? holdRowLayout(chatBody) : () => {};
+
+    // A change of the list's width re-wraps every row, so rows are laid out for two frames after it. The first callback
+    // only records the width; a height-only change takes no hold.
+    $effect(() => {
+        const list = chatBody;
+        if(!list || typeof ResizeObserver !== 'function'){
+            return;
+        }
+        let lastWidth: number | null = null;
+        const observer = new ResizeObserver((entries) => {
+            const entry = entries[entries.length - 1];
+            if(!entry){
+                return;
+            }
+            const width = entry.contentRect.width;
+            const previous = lastWidth;
+            lastWidth = width;
+            if(previous === null || Math.abs(width - previous) < 1){
+                return;
+            }
+            const release = holdRowLayout(list);
+            const onFrames = () => {
+                release();
+                widthHolds.delete(onFrames);
+            };
+            widthHolds.add(onFrames);
+            releaseRowHoldAfterFrames(onFrames, 2);
+        });
+        observer.observe(list);
+        return () => {
+            observer.disconnect();
+            for(const release of [...widthHolds]){
+                release();
+            }
+        };
+    });
 
     let previousLength = 0;
     let previousChatRoomId: string | null = null;
@@ -467,6 +539,10 @@
         updateChatBody()
         if(restoreTop !== null && scrollHost){
             scrollHost.scrollTop = restoreTop;
+        }
+        if(surfaceRowHold !== null){
+            releaseRowHoldAfterFrames(surfaceRowHold, 2);
+            surfaceRowHold = null;
         }
         if(signalHold !== null){
             releaseAfterFrames(signalHold, signalFrames);

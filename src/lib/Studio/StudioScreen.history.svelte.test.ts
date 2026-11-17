@@ -393,6 +393,65 @@ describe('a replay that finds the field already at the replayed value says so on
     })
 })
 
+// ---------------------------------------------------------------- the list reason joins the outcome
+
+describe('a skipped first-message list says why, after the outcome sentence', () => {
+    test('Ctrl+Z over a first-message delete whose list was changed elsewhere is refused and names the list', async () => {
+        const rig = makeRig()
+        await mountScreen({ panel: false })
+        expect(rig.service.greetingDelete(A, 2).ok).toBe(true)
+        live().alternateGreetings.unshift('p')
+        flushSync()
+        await ctrl({ key: 'z' })
+        expect(shownMessages()).toEqual({ notice: 'studioRefusalPrecondition studioHistoryListChangedElsewhere', panel: null })
+        expect(rig.service.view(A).done).toHaveLength(1)
+        expect(live().alternateGreetings).toEqual(['p', 'g0', 'g1'])
+    })
+
+    test('the panel Undo over the same list shows the refusal and the reason', async () => {
+        const rig = makeRig()
+        await mountScreen({ panel: true })
+        expect(rig.service.greetingDelete(A, 2).ok).toBe(true)
+        live().alternateGreetings.unshift('p')
+        flushSync()
+        await press('studio-history-undo')
+        expect(shownMessages()).toEqual({ notice: null, panel: 'studioRefusalPrecondition studioHistoryListChangedElsewhere' })
+    })
+
+    test('Ctrl+Z after a lost delete write moves the step and adds the unfinished-save sentence', async () => {
+        const rig = makeRig()
+        await mountScreen({ panel: false })
+        expect(rig.service.greetingDelete(A, 2).ok).toBe(true)
+        live().alternateGreetings = ['g0', 'g1', 'g2']
+        live().chats[0].fmIndex = 2
+        flushSync()
+        await ctrl({ key: 'z' })
+        expect(shownMessages()).toEqual({ notice: 'studioHistoryAlreadyUndone studioHistoryListSaveUnfinished', panel: null })
+        expect(rig.service.view(A).undone).toHaveLength(1)
+    })
+
+    test('the panel Undo after a lost delete write shows the note and the unfinished-save sentence', async () => {
+        const rig = makeRig()
+        await mountScreen({ panel: true })
+        expect(rig.service.greetingDelete(A, 2).ok).toBe(true)
+        live().alternateGreetings = ['g0', 'g1', 'g2']
+        live().chats[0].fmIndex = 2
+        flushSync()
+        await press('studio-history-undo')
+        expect(shownMessages()).toEqual({ notice: null, panel: 'studioHistoryAlreadyUndone studioHistoryListSaveUnfinished' })
+    })
+
+    test('a description refusal keeps the single sentence', async () => {
+        const rig = makeRig()
+        await mountScreen({ panel: false })
+        edit(rig, 'typed')
+        live().desc = 'changed outside Studio'
+        flushSync()
+        await ctrl({ key: 'z' })
+        expect(shownMessages()).toEqual({ notice: 'studioRefusalPrecondition', panel: null })
+    })
+})
+
 // ---------------------------------------------------------------- a step that can no longer be undone here
 
 // The record as the producer before the list fingerprint wrote it: a first-message delete of the real

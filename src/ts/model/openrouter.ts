@@ -1,5 +1,6 @@
 import { getDatabase } from "../storage/database.svelte"
 import { resolveSecret } from "../secretRef"
+import { currentKey } from "../process/request/secretKey"
 import type { ModelGridItem } from "./modelGrid"
 
 /** Per-1M-token price entry. undefined means the field is not available for this model. */
@@ -35,7 +36,7 @@ export async function getOpenRouterProviders(): Promise<{ name: string, slug: st
     try {
         const db = getDatabase()
         const headers = {
-            "Authorization": "Bearer " + await resolveSecret(db.openrouterKey),
+            "Authorization": "Bearer " + await resolveSecret(currentKey('openrouterKey', db)),
             "Content-Type": "application/json"
         }
 
@@ -53,7 +54,7 @@ export async function getOpenRouterModels(): Promise<OpenRouterModelInfo[]> {
     try {
         const db = getDatabase()
         const headers = {
-            "Authorization": "Bearer " + await resolveSecret(db.openrouterKey),
+            "Authorization": "Bearer " + await resolveSecret(currentKey('openrouterKey', db)),
             "Content-Type": "application/json"
         }
 

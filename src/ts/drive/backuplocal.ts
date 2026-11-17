@@ -1,9 +1,10 @@
 import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertMd, alertConfirm, alertClear } from "../alert";
-import { takeExportWriteStats, type ExportWriteCall } from "../exportWriters";
+import { takeExportWriteStats, webWriterNeedsGesture, type ExportByteWriter, type ExportWriteCall } from "../exportWriters";
+import type { ExportCancelToken } from "../exportCancel";
 import { localBackupFileName } from "./backupFileName";
 import { LocalWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
-import { isTauri } from "src/ts/platform"
+import { isNodeServer, isTauri } from "src/ts/platform"
 import { backupNoticeHeader, downloadNotice } from "../exportNotice";
 import { decodeRisuSave, encodeRisuSaveStreamed, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock, type StreamedRisuSave } from "../storage/risuSave";
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
@@ -17,7 +18,9 @@ import { StoreBlobUnsupportedError, StoreInvalidKeyError, UploadCapacityError, U
 import { ASSET_PIECE_SAVE_MIN_BYTES } from "../assetHash";
 import { assetBatchWriteMode, isAssetBatchAvailable, isAssetBatchReadAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, writeAssetBatchB64, type AssetBatchWriteMode, type AssetPutEntry, type AssetPutResult, type SizedAssetKey } from "../storage/tauriAssetBatch";
 import { CHUNK_MAX, createChunkedWriter, takeRangeReadStats, transportKind, WRITE_CHUNK_BYTES, type ChunkedWriter } from "../storage/tauriByteTransport";
-import { tauriAddressableViolation, tauriCreatableViolation } from "../storage/store/keyRules";
+import { nodeAddressableViolation, nodeAssetRouteViolation, tauriAddressableViolation, tauriCreatableViolation } from "../storage/store/keyRules";
+import { nodeServerAuthHeader, serverExportAvailable } from "../storage/nodeStorage";
+import { ServerExportWriter, submitDownloadForm } from "./serverExportWriter";
 import { ASSET_BATCH_MAX_ENTRIES, ASSET_MAX_STREAMS, ExportAssetReader, RestoreAssetPipeline, parseCopyMeasureKnob, streamAssetEntry, type AssetBatchLimits, type StreamedAssetEntry } from "./assetBatchPipeline";
 import { MEASURE } from "../process/memory/measureFlag";
 import { peekNetTickStats, residentCharacterCount, resetNetTickStats } from "../storage/measureExportHold";
@@ -480,6 +483,64 @@ async function nodeRestoreAssetLimit(): Promise<number | null> {
 }
 
 /**
+ * Writes the header of an asset entry whose `total` bytes of body follow. A size above `MAX_BACKUP_ENTRY_BYTES`
+ * throws `BackupAssetTooLargeError` before anything of the entry is written. Every way an asset body reaches the file
+ * (streamed by this page, or spliced in by the server) goes through here, so none of them can write a header whose
+ * length field would wrap.
+ */
+async function writeAssetEntryHeader(writer: LocalWriter, key: string, total: number): Promise<void> {
+    if (total > MAX_BACKUP_ENTRY_BYTES) {
+        throw new BackupAssetTooLargeError(key, total)
+    }
+    await writer.writeBackupHeader(key, total)
+}
+
+/**
+ * How an asset of a server-streamed export reaches the file: `missing` for a key the store cannot address (nothing is
+ * written, as on the page's own path), `pin` when the server's asset route serves the key and the server splices the
+ * body in, `page` for a key the route refuses, which keeps the page's own read.
+ */
+function serverAssetRoute(key: string): 'missing' | 'pin' | 'page' {
+    if (nodeAddressableViolation(key) !== null) {
+        return 'missing'
+    }
+    return nodeAssetRouteViolation(key) === null ? 'pin' : 'page'
+}
+
+/**
+ * Writes one asset entry of a server-streamed export: the server pins the asset's file and reports its size, the page
+ * writes the header, and the body is inserted by the server at the marked point. Resolves `missing` when the server
+ * holds no such file, with nothing written.
+ */
+async function writeAssetSpliced(writer: LocalWriter, key: string): Promise<'written' | 'missing'> {
+    const pinned = await writer.pinAsset(key)
+    if (pinned === 'missing') {
+        return 'missing'
+    }
+    await writeAssetEntryHeader(writer, key, pinned.size)
+    writer.markSplice()
+    return 'written'
+}
+
+/** Whether this export goes through the server's streamed export: only a Node-served page that is not the desktop app, whose server advertises it. */
+async function pageServerExportAvailable(): Promise<boolean> {
+    return isNodeServer && !isTauri && await serverExportAvailable()
+}
+
+/** Opens the server's staging writer for an export; the progress of the download is shown on the export's wait dialog. */
+function serverExportOpener(session: ExportSession): (fileName: string, cancel?: ExportCancelToken) => Promise<ExportByteWriter> {
+    return (fileName) => ServerExportWriter.open(fileName, {
+        fetch: (url, init) => globalThis.fetch(url, init),
+        authHeader: nodeServerAuthHeader,
+        sleep: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+        now: () => Date.now(),
+        trigger: submitDownloadForm,
+        ensureActivation: () => ensureGestureForWriter(session, true),
+        onProgress: (sent, total) => session.gate.wait(`Saving local Backup... downloading (${formatMiB(sent)} / ${formatMiB(total)})`),
+    })
+}
+
+/**
  * Writes one asset entry from the ranged reader, piece by piece: the entry
  * header carries the size the first piece reported, and the pieces follow in
  * order. Nothing of the asset is held beyond the piece being written.
@@ -518,10 +579,7 @@ async function writeAssetStreamed(writer: LocalWriter, key: string, source: Asse
             return 'missing'
         }
         const total = first.value.total
-        if (total > MAX_BACKUP_ENTRY_BYTES) {
-            throw new BackupAssetTooLargeError(key, total)
-        }
-        await writer.writeBackupHeader(key, total)
+        await writeAssetEntryHeader(writer, key, total)
         await writer.write(first.value.bytes)
         let written = first.value.bytes.length
         for (;;) {
@@ -836,10 +894,13 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     }
 
     session.cancel.throwIfCancelled()
-    await ensureGestureForWriter(session)
+    // Read once per export, after the last prompt: the gesture step and the writer open both follow this answer.
+    const serverExport = await pageServerExportAvailable()
+    session.cancel.throwIfCancelled()
+    await ensureGestureForWriter(session, !serverExport && webWriterNeedsGesture())
     const writer = new LocalWriter()
     session.writer = writer
-    const r = await writer.init(undefined, undefined, localBackupFileName(new Date()), session.cancel)
+    const r = await writer.init(undefined, undefined, localBackupFileName(new Date()), session.cancel, serverExport ? serverExportOpener(session) : undefined)
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
@@ -886,12 +947,17 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
             if (taken?.kind !== 'bytes' && taken?.kind !== 'missing') {
                 fallbackAssets += 1
             }
+            const serverRoute = serverExport && writer.splices ? serverAssetRoute(key) : 'page'
             if (taken?.kind === 'bytes') {
                 batchedAssets += 1
                 await writer.writeBackup(key, taken.bytes)
                 outcome = 'written'
             } else if (taken?.kind === 'missing') {
                 outcome = 'missing'
+            } else if (serverRoute === 'missing') {
+                outcome = 'missing'
+            } else if (serverRoute === 'pin') {
+                outcome = await writeAssetSpliced(writer, key)
             } else if (streamAssets || nodeSource !== null || webSource !== null) {
                 outcome = await writeAssetStreamed(writer, key, tauriSource ?? nodeSource ?? webSource!)
             } else {
@@ -1171,12 +1237,15 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     }
 
     session.cancel.throwIfCancelled()
-    await ensureGestureForWriter(session)
+    // Read once per export, after the last prompt: the gesture step and the writer open both follow this answer.
+    const serverExport = await pageServerExportAvailable()
+    session.cancel.throwIfCancelled()
+    await ensureGestureForWriter(session, !serverExport && webWriterNeedsGesture())
     const writer = new LocalWriter()
     session.writer = writer
     // Computed once: the name reported in the outcome is the one the writer was asked for, also across midnight.
     const suggestedName = localBackupFileName(new Date(), true)
-    const r = await writer.init(undefined, undefined, suggestedName, session.cancel)
+    const r = await writer.init(undefined, undefined, suggestedName, session.cancel, serverExport ? serverExportOpener(session) : undefined)
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
@@ -1211,6 +1280,17 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         // backup goes on. On the Node store a first range that fails again
         // after one re-send fails the export instead; elsewhere an unreadable
         // asset is also reported as missing.
+        const serverRoute = serverExport && writer.splices ? serverAssetRoute(key) : 'page'
+        if (serverRoute === 'missing') {
+            missingAssets.push(key)
+            continue
+        }
+        if (serverRoute === 'pin') {
+            if (await writeAssetSpliced(writer, key) === 'missing') {
+                missingAssets.push(key)
+            }
+            continue
+        }
         if (streamAssets || nodeSource !== null || webSource !== null) {
             if (await writeAssetStreamed(writer, key, tauriSource ?? nodeSource ?? webSource!) === 'missing') {
                 missingAssets.push(key)
@@ -2243,6 +2323,7 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
                         bootEnd = await commitBootImport({
                             target: store2Import.boot,
                             decode: () => readBinDatabaseTree(file, databaseEntry, facts.omitted),
+                            stream: { file, entry: databaseEntry, omitted: facts.omitted },
                             reader: createBinImportReader(file, store2Import.index, store2Import.boot.readColdStorageItem),
                             onAccepted: (items) => { facts.incomplete = items; },
                         });
@@ -2282,6 +2363,7 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
                         target: store2Import.target,
                         busy,
                         decode: async () => withFirstSetupDone(await readBinDatabaseTree(file, databaseEntry, facts.omitted), completeFirstSetup),
+                        stream: { file, entry: databaseEntry, omitted: facts.omitted, adjustRoot: (root) => withFirstSetupDone(root, completeFirstSetup) },
                         reader: createBinImportReader(file, store2Import.index),
                     });
                     switch (end.kind) {

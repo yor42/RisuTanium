@@ -108,7 +108,7 @@ export class DuplicateSession {
         const options = laterFiles ? [...labels, ...labels.map((label) => language.moduleDuplicateAll(label))] : labels
         //The select joins its options with the separator, so no run of bars may stay in the header, whatever the number of bars.
         const display = language.moduleDuplicatePrompt(name, file).replace(/\|{2,}/g, '|')
-        const answer = parseInt(await alertSelect(options, display))
+        const answer = parseInt(await alertSelect(options, display, { cancel: '1' }))
         //An answer that is not an option leaves the file out: nothing is written.
         if(!(answer >= 0 && answer < options.length)){
             return 'skip'

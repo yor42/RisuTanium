@@ -70,7 +70,7 @@
 
             const id = DBState.db.translatorPresetId;
             const preset = presets[id];
-            const newName = await alertInput(fillLang(language.alerts.enterNewName, { name: preset.name }), [], preset.name);
+            const newName = await alertInput(fillLang(language.alerts.enterNewName, { name: preset.name }), [], preset.name, { cancel: '' });
 
             if (!newName || newName.trim().length === 0) return;
 
