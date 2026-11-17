@@ -89,6 +89,18 @@ describe('with the switch on', () => {
         expect(handleOf()).toBeDefined()
     })
 
+    test('the handle noteApi counts one api event for the character and leaves the other lanes alone', () => {
+        installOn()
+        const handle = requireHandle()
+        handle.noteApi('A')
+        handle.noteApi('A')
+        const signals = handle.signals('A')
+        expect(signals.api.n).toBe(2)
+        expect(signals.api.lastAt).toBeGreaterThan(0)
+        expect(signals.identity.n).toBe(0)
+        expect(signals.part.n).toBe(0)
+    })
+
     test('each signal source counts: api, identity, part, partGlobal, partFirst, tagOverwritten', () => {
         installOn()
         noteSignal('api', 'A')
