@@ -1,6 +1,6 @@
 import type { toSaveType } from "./risuSave"
 import { MEASURE } from "../process/memory/measureFlag"
-import { noteSignal } from "./netSignalMeter"
+import type { NetSignalHandle } from "./netSignalMeter"
 import { isUsableCharacterId } from "./characterIds"
 
 /**
@@ -67,6 +67,11 @@ export type DbWriteMark =
     | { kind: 'root', prop: string }
     | { kind: 'fallback', cause: 'noCharId' | 'error', id?: unknown }
 
+/** Counts one `api` signal through the meter's published handle; does nothing before `ensureInstalled` published it. */
+function noteApiSignal(id: string): void {
+    ;(globalThis as { __risuNetSignals?: NetSignalHandle }).__risuNetSignals?.noteApi(id)
+}
+
 /**
  * Appends `id` to `tracker.character` at the end, only if it is not already
  * present. Shared by `markCharacterForSave` and the identity tracker effect
@@ -106,7 +111,7 @@ export function markCharacterForSave(chaId: unknown): void {
     // toSave.character is declared string[] but holds raw chaIds, numbers included.
     const id = chaId as string
     if (MEASURE) {
-        noteSignal('api', String(id))
+        noteApiSignal(String(id))
     }
     if (!installed) {
         pendingQueue.add(id)
@@ -154,7 +159,7 @@ export function markDbWrite(mark: DbWriteMark): void {
             break
     }
     if (MEASURE && id !== undefined) {
-        noteSignal('api', String(id))
+        noteApiSignal(String(id))
     }
     // The queue and the tracker hold raw chaIds, numbers included, though both are declared string-typed.
     const rawId = id as string | undefined

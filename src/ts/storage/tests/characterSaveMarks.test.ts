@@ -3,8 +3,8 @@
  *
  * Drives the real `src/ts/storage/characterSaveMarks.ts` module directly --
  * no mocks needed, since it only imports a *type* from `risuSave.ts` (erased
- * at runtime) and otherwise imports only the build flag and the net-signal
- * meter, whose only runtime dependency is the import-free `inFlightWork`.
+ * at runtime) and otherwise imports only the build flag and the character-id
+ * helpers; it reaches the net-signal meter only through its published handle.
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import {
