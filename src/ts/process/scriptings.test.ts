@@ -152,3 +152,36 @@ test('the Lua runtime loads its wasm from the app build, not a CDN', async () =>
   expect(luaFactoryWasmUris.length).toBeGreaterThan(0)
   expect(luaFactoryWasmUris.every((uri) => uri === bundledGlueWasm)).toBe(true)
 })
+
+// An editDisplay run's access id grants setChatVar only while that run is in progress. A script that
+// keeps the id in a global must not write chat variables with it from a later run.
+const STALE_ID_DISPLAY_SCRIPT = `
+  listenEdit("editDisplay", function(id, value, meta)
+    if staleDisplayId ~= nil then
+      setChatVar(staleDisplayId, "stale", "written")
+    end
+    setChatVar(id, "current", "written")
+    staleDisplayId = id
+    return value
+  end)
+`
+
+test('CHORE-157 an editDisplay access id stops working once its run ends', async () => {
+  const writes: string[] = []
+  const run = () => runScripted(STALE_ID_DISPLAY_SCRIPT, {
+    char: {} as never,
+    chat: { message: [] } as never,
+    data: 'shown',
+    setVar: (key: string) => { writes.push(key) },
+    getVar: () => 'null',
+    mode: 'editDisplay',
+  })
+
+  const first = await run()
+  const second = await run()
+
+  // guard: the display text still passes through, and the run's own id still writes
+  expect(first.res).toBe('shown')
+  expect(second.res).toBe('shown')
+  expect(writes).toEqual(['current', 'current'])
+})

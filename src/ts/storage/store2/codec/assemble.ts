@@ -2,7 +2,7 @@ import type { JsonObject, JsonValue } from '../../blockFrame'
 import type { Database } from '../../database.svelte'
 import {
     FRAME_OVERHEAD, keyOfRef, readUnit, refOfFrame, UNIT_TYPE,
-    type ChatAltUnit, type ChatChunk, type ChatCore, type ContentBody, type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndexRoot, type PluginBucket, type Ref, type Shard,
+    type ChatAltUnit, type ChatChunk, type ChatCore, type ChatEntry, type ContentBody, type Manifest, type ModuleBucket, type ModuleEntry, type ModuleIndexRoot, type PluginBucket, type Ref, type Shard,
     type ShardEntry, type UnitBody, type UnitType,
 } from '../format'
 import {
@@ -160,27 +160,29 @@ export function assembleCharacter(entry: ShardEntry, source: UnitSource): JsonOb
             defineOwn(character, name, value)
         }
     }
-    const chats = entry.chats.map((chatEntry, index) => {
-        const chatWhere = `${where} chat ${index}`
-        const core = readChecked(source, chatEntry.core, UNIT_TYPE.chatCore, `${chatWhere} core`) as ChatCore
-        const chunks = chatEntry.chunks.map((ref, chunkIndex) => {
-            const chunk = readChecked(source, ref, UNIT_TYPE.chatChunk, `${chatWhere} chunk ${chunkIndex}`) as ChatChunk
-            if (bodyCountMismatch(UNIT_TYPE.chatChunk, chunk, ref)) {
-                throw new CodecAssembleError(`${chatWhere} chunk ${chunkIndex} holds ${chunk.msgs.length} messages, its Ref says ${ref[3]}.`)
-            }
-            return chunk
-        })
-        const alt = (chatEntry.alt ?? []).map((ref, altIndex) => {
-            const unit = readChecked(source, ref, UNIT_TYPE.chatAlt, `${chatWhere} alternatives ${altIndex}`) as ChatAltUnit
-            if (bodyCountMismatch(UNIT_TYPE.chatAlt, unit, ref)) {
-                throw new CodecAssembleError(`${chatWhere} alternatives ${altIndex} holds ${unit.recs.length} records, its Ref says ${ref[3]}.`)
-            }
-            return unit
-        })
-        return assembleChat(core, chunks, chatWhere, alt)
-    })
+    const chats = entry.chats.map((chatEntry, index) => assembleChatEntry(chatEntry, source, `${where} chat ${index}`))
     defineOwn(character, 'chats', chats)
     return character
+}
+
+/** The chat one chat entry and its units describe; `chatWhere` names it in the errors. */
+export function assembleChatEntry(chatEntry: ChatEntry, source: UnitSource, chatWhere: string): ReturnType<typeof assembleChat> {
+    const core = readChecked(source, chatEntry.core, UNIT_TYPE.chatCore, `${chatWhere} core`) as ChatCore
+    const chunks = chatEntry.chunks.map((ref, chunkIndex) => {
+        const chunk = readChecked(source, ref, UNIT_TYPE.chatChunk, `${chatWhere} chunk ${chunkIndex}`) as ChatChunk
+        if (bodyCountMismatch(UNIT_TYPE.chatChunk, chunk, ref)) {
+            throw new CodecAssembleError(`${chatWhere} chunk ${chunkIndex} holds ${chunk.msgs.length} messages, its Ref says ${ref[3]}.`)
+        }
+        return chunk
+    })
+    const alt = (chatEntry.alt ?? []).map((ref, altIndex) => {
+        const unit = readChecked(source, ref, UNIT_TYPE.chatAlt, `${chatWhere} alternatives ${altIndex}`) as ChatAltUnit
+        if (bodyCountMismatch(UNIT_TYPE.chatAlt, unit, ref)) {
+            throw new CodecAssembleError(`${chatWhere} alternatives ${altIndex} holds ${unit.recs.length} records, its Ref says ${ref[3]}.`)
+        }
+        return unit
+    })
+    return assembleChat(core, chunks, chatWhere, alt)
 }
 
 /** The module an index entry and its unit describe: the whole stored object, read through the entry's Ref like the module list of `assembleDatabase`. */

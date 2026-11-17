@@ -5,6 +5,7 @@ import { getModuleMcpEntries, getModuleMcps } from "../modules";
 import { parseMcpUrl } from "./stdioSpec";
 import { admitStdio, type StdioOwner } from "./stdioApproval";
 import { alertError, alertInput, alertNormal } from "src/ts/alert";
+import { ALERT_INPUT_CANCEL } from "src/ts/alertCancel";
 import { language } from "src/lang";
 import { fillLang } from "src/lang/fill";
 import { v4 } from "uuid";
@@ -475,7 +476,11 @@ export async function importMCPModule(){
         ['https://rag-mcp-2.whatsmcp.workers.dev/sse', 'OneContext MCP (https://rag-mcp-2.whatsmcp.workers.dev/sse)'],
         ['https://browser.mcp.cloudflare.com/sse', 'Cloudflare Browser MCP (https://browser.mcp.cloudflare.com/sse)'],
         ['https://mcp.deepwiki.com/mcp', 'DeepWiki MCP (https://mcp.deepwiki.com/mcp)'],
-    ])
+    ], undefined, { cancel: ALERT_INPUT_CANCEL })
+
+    if(x === ALERT_INPUT_CANCEL){
+        return
+    }
 
     if(
         !x.startsWith('http://localhost') &&

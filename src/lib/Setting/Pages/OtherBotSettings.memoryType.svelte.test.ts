@@ -64,10 +64,6 @@ vi.mock(import('src/ts/tokenizer'), () => ({
     getCharToken: vi.fn(async () => ({ persistant: 0, dynamic: 0 })),
 }) as unknown as typeof import('src/ts/tokenizer'))
 
-vi.mock(import('src/ts/process/memory/hypav3'), () => ({
-    createHypaV3Preset: vi.fn((name: string) => ({ name })),
-}) as unknown as typeof import('src/ts/process/memory/hypav3'))
-
 vi.mock('src/lib/UI/GUI/TextAreaInput.svelte', () => ({ default: () => {} }))
 
 //#endregion
@@ -90,6 +86,7 @@ function installDb(flags: Partial<Record<'hypaV3' | 'hypav2' | 'hanuraiEnable', 
         hypaV3Presets: [{ name: 'A' }],
         hypaV3PresetId: 0,
         characters: [{ chaId: 'c0', chats: [], chatPage: 0 }],
+        memoryAlgorithmType: 'none',
         ...flags,
     } as unknown as Database
 }
@@ -97,7 +94,7 @@ function installDb(flags: Partial<Record<'hypaV3' | 'hypav2' | 'hanuraiEnable', 
 interface Mounted { target: HTMLElement, app: Record<string, unknown> }
 let mounted: Mounted[] = []
 
-async function selectedType(): Promise<string> {
+async function typeSelect(): Promise<HTMLSelectElement> {
     const target = document.createElement('div')
     document.body.appendChild(target)
     const app = mount(OtherBotSettings, { target, props: {} }) as unknown as Record<string, unknown>
@@ -108,8 +105,28 @@ async function selectedType(): Promise<string> {
     const select = Array.from(target.querySelectorAll('select')).find((el) =>
         Array.from(el.options).some((option) => option.value === 'hypaV3'))
     if (!select) throw new Error('the memory type dropdown is not shown')
-    return select.value
+    return select
 }
+
+async function selectedType(): Promise<string> {
+    return (await typeSelect()).value
+}
+
+async function choose(select: HTMLSelectElement, value: string): Promise<void> {
+    select.value = value
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    flushSync()
+    await sleep(20)
+    flushSync()
+}
+
+const memoryFields = () => ({
+    supaModelType: DBState.db.supaModelType,
+    memoryAlgorithmType: DBState.db.memoryAlgorithmType,
+    hypav2: DBState.db.hypav2,
+    hanuraiEnable: DBState.db.hanuraiEnable,
+    hypaV3: DBState.db.hypaV3,
+})
 
 afterEach(async () => {
     for (const m of mounted) {
@@ -157,4 +174,33 @@ describe('the memory Type dropdown follows the request path precedence', () => {
         installDb({})
         expect(await selectedType()).toBe('none')
     })
+})
+
+describe('choosing an option in the memory Type dropdown writes all five engine fields', () => {
+    // compatibility guard: the table is the one the page wrote before the engine helper existed,
+    // so it passes before and after the change.
+    const table: Array<[string, ReturnType<typeof memoryFields>]> = [
+        ['none', { supaModelType: 'none', memoryAlgorithmType: 'none', hypav2: false, hanuraiEnable: false, hypaV3: false }],
+        ['supaMemory', { supaModelType: 'distilbart', memoryAlgorithmType: 'supaMemory', hypav2: false, hanuraiEnable: false, hypaV3: false }],
+        ['hypaV2', { supaModelType: 'distilbart', memoryAlgorithmType: 'hypaMemoryV2', hypav2: true, hanuraiEnable: false, hypaV3: false }],
+        ['hanuraiMemory', { supaModelType: 'none', memoryAlgorithmType: 'hanuraiMemory', hypav2: false, hanuraiEnable: true, hypaV3: false }],
+        ['hypaV3', { supaModelType: 'none', memoryAlgorithmType: 'hypaMemoryV3', hypav2: false, hanuraiEnable: false, hypaV3: true }],
+    ]
+
+    for (const [option, expected] of table) {
+        test(`guard: ${option}, starting from every flag set`, async () => {
+            installDb({ hypaV3: true, hypav2: true, hanuraiEnable: true, supaModelType: 'subModel' })
+            DBState.db.memoryAlgorithmType = 'hypaMemoryV3'
+            const select = await typeSelect()
+            await choose(select, option)
+            expect(memoryFields()).toEqual(expected)
+        })
+
+        test(`guard: ${option}, starting from no memory system`, async () => {
+            installDb({})
+            const select = await typeSelect()
+            await choose(select, option)
+            expect(memoryFields()).toEqual(expected)
+        })
+    }
 })

@@ -3,6 +3,7 @@
     import { language } from "src/lang";
     import { fillLang } from "src/lang/fill";
     import { alertConfirm, alertInput, alertNormal } from "src/ts/alert";
+    import { ALERT_INPUT_CANCEL } from "src/ts/alertCancel";
     import { hubURL, type hubType, downloadRisuHub, getRealmInfo } from "src/ts/characterCards";
     import { askUpstreamAgreement } from "src/ts/upstreamAgreement";
 
@@ -120,7 +121,10 @@
                 e.stopPropagation()
                 const conf = await alertConfirm(language.alerts.realmReportConfirm)
                 if(conf){
-                    const report = await alertInput(language.alerts.realmReportPrompt)
+                    const report = await alertInput(language.alerts.realmReportPrompt, undefined, undefined, { cancel: ALERT_INPUT_CANCEL })
+                    if(report === ALERT_INPUT_CANCEL){
+                        return
+                    }
                     if(!(await askUpstreamAgreement())){
                         return
                     }

@@ -18,12 +18,13 @@ import { flushSync, mount, unmount } from 'svelte'
 import { get, writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { hubType } from 'src/ts/characterCards'
+import { ALERT_INPUT_CANCEL } from 'src/ts/alertCancel'
 import { UPSTREAM_AGREEMENT_DECLINE, UPSTREAM_AGREEMENT_KEY, resetUpstreamAgreementForTests } from 'src/ts/upstreamAgreement'
 
 //#region module mocks
 
 const alertConfirmSpy = vi.hoisted(() => vi.fn(async () => true))
-const alertInputSpy = vi.hoisted(() => vi.fn(async () => 'a report'))
+const alertInputSpy = vi.hoisted(() => vi.fn<(msg: string, list?: unknown, value?: string, options?: { cancel?: string }) => Promise<string>>(async () => 'a report'))
 const alertNormalSpy = vi.hoisted(() => vi.fn())
 const downloadRisuHubSpy = vi.hoisted(() => vi.fn())
 const getRealmInfoSpy = vi.hoisted(() => vi.fn())
@@ -149,6 +150,21 @@ describe('RealmPopUp.svelte: the report control asks before it sends anything', 
         await settle()
 
         expect(fetch).not.toHaveBeenCalled()
+    })
+
+    test('the report prompt offers a cancel: answering it asks no agreement and sends nothing', async () => {
+        localStorage.setItem(UPSTREAM_AGREEMENT_KEY, 'accepted')
+        resetUpstreamAgreementForTests()
+        alertInputSpy.mockImplementationOnce(async (_msg, _list, _value, options) => options?.cancel ?? Promise.reject(new Error('no cancel offered')))
+
+        const target = mountRealmPopUp()
+        reportButton(target).click()
+        await settle()
+
+        expect(alertInputSpy.mock.calls[0][3]).toEqual({ cancel: ALERT_INPUT_CANCEL })
+        expect(get(alertStore).type).toBe('none')
+        expect(fetch).not.toHaveBeenCalled()
+        expect(alertNormalSpy).not.toHaveBeenCalled()
     })
 
     test('with acceptance, the report is sent with its existing shape', async () => {

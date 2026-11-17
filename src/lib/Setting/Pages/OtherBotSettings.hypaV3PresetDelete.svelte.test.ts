@@ -74,10 +74,6 @@ vi.mock(import('src/ts/tokenizer'), () => ({
     getCharToken: vi.fn(async () => ({ persistant: 0, dynamic: 0 })),
 }) as unknown as typeof import('src/ts/tokenizer'))
 
-vi.mock(import('src/ts/process/memory/hypav3'), () => ({
-    createHypaV3Preset: vi.fn((name: string) => ({ name })),
-}) as unknown as typeof import('src/ts/process/memory/hypav3'))
-
 vi.mock('src/lib/UI/GUI/TextAreaInput.svelte', () => ({ default: () => {} }))
 
 //#endregion
@@ -102,7 +98,7 @@ function installDb(presetNames: string[], selected: number): void {
         supaModelType: 'none',
         useLegacyGUI: false,
         wavespeedImage: {},
-        hypaV3Presets: presetNames.map((name) => ({ name })),
+        hypaV3Presets: presetNames.map((name) => ({ id: `id-${name}`, name })),
         hypaV3PresetId: selected,
         characters: [{ chaId: 'c0', chats: [], chatPage: 0 }],
     } as unknown as Database
@@ -183,7 +179,7 @@ describe('a HypaV3 preset delete', () => {
         installDb(['A', 'B', 'C'], 1)
         const target = mountSettings()
         await clickDelete(target)
-        DBState.db.hypaV3Presets.unshift({ name: 'new' } as never)
+        DBState.db.hypaV3Presets.unshift({ id: 'id-new', name: 'new' } as never)
         flushSync()
         await answer(true)
         expect(names()).toEqual(['new', 'A', 'C'])

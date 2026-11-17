@@ -54,7 +54,12 @@ vi.mock('../../ts/process/moduleRefList', () => ({
 vi.mock('../../ts/process/moduleLoader', () => ({ loadModuleStubsOf: async () => ({ kind: 'refused' }), loadModule: async () => null }))
 vi.mock('../../lang', async () => {
     const helpers = await import('../../ts/studio/studioFixtures.test-helpers')
-    return { language: helpers.studioLanguageMock() }
+    const base = helpers.studioLanguageMock()
+    // The toggle builder's keys that take arguments answer with the key and its arguments.
+    const withArguments = (key: string) => (...args: (string | number)[]) => `${key}(${args.join(',')})`
+    const own: Record<string, unknown> = {}
+    for (const key of ['studioTgDeleted', 'studioTgMoved', 'studioTgOptionN', 'studioTgSummarySelect', 'studioTgSummaryGroup', 'studioTgUnreadableCount', 'studioTgLineN']) own[key] = withArguments(key)
+    return { language: new Proxy(base, { get: (target, key) => typeof key === 'string' && key in own ? own[key] : Reflect.get(target, key) }) }
 })
 
 import type { SaveAck } from '../../ts/studio/edit/saveAck.svelte'
@@ -213,7 +218,6 @@ describe('4d text of each kind of the bound character', () => {
         ['lore', 'cha-1/lore:0', ['LORE-BODY']],
         ['regex', 'cha-1/regex:0', ['IN-PATTERN', 'OUT-TEXT']],
         ['scripts', 'cha-1/scripts:0', ['print("lua-body")']],
-        ['toggles', 'cha-1/toggles:0', ['TOGGLE-DEF']],
         ['html', 'cha-1/html:0', ['<div>BACKGROUND</div>']],
         ['basic', 'cha-1/basic:0', ['DESC-TEXT', 'FIRST-TEXT']],
         ['advanced', 'cha-1/advanced:0', ['SYSTEM-TEXT']],
@@ -575,5 +579,63 @@ describe('a selected owner that leaves the model', () => {
         flushSync()
         expect(studioScreen.selectedOwnerKey).not.toBeNull()
         expect(studioScreen.notice).toBeNull()
+    })
+})
+
+describe('S3d1 the toggle builder in the detail', () => {
+    const togglesTarget = ownerItem('character', 'cha-1', 'toggles', 'cha-1/toggles:0')
+
+    test('the toggles of the character mount the list builder and the chip in place of the text dump and the read-only note', () => {
+        setFull(makeInput({ character: makeTextCharacter({ chats: [makeChat({ id: 'chat-1', name: 'First chat' })], customModuleToggle: 'a=On\nb=Off\n' }) }))
+        openStudio(togglesTarget, null)
+        show()
+        flushSync()
+        expect(part('studio-toggle-builder')).not.toBeNull()
+        expect(document.querySelectorAll('[data-part="studio-toggle-row"]')).toHaveLength(2)
+        expect(part('studio-detail-text')).toBeNull()
+        expect(part('studio-detail-readonly')).toBeNull()
+        expect(part('studio-chip')).not.toBeNull()
+        expect(part('studio-detail-classic')).not.toBeNull()
+        expect(history.useOwner).toEqual(['character:cha-1'])
+    })
+
+    test('an empty definition shows the builder with its empty state, not the empty-kind line', () => {
+        setFull(makeInput({ character: makeTextCharacter({ chats: [makeChat({ id: 'chat-1', name: 'First chat' })], customModuleToggle: '' }) }))
+        openStudio(togglesTarget, null)
+        show()
+        flushSync()
+        expect(part('studio-toggle-empty')).not.toBeNull()
+        expect(document.body.textContent).not.toContain('studioEmptyKind')
+    })
+
+    test('opening the builder writes nothing', () => {
+        setFull(makeInput({ character: makeTextCharacter({ chats: [makeChat({ id: 'chat-1', name: 'First chat' })], customModuleToggle: 'a=On\r\n' }) }))
+        const before = JSON.stringify(db.db)
+        openStudio(togglesTarget, null)
+        show()
+        flushSync()
+        expect(JSON.stringify(db.db)).toBe(before)
+    })
+
+    test('the toggles of a resident module, of the active preset and of a private character keep their read-only text, with no builder', () => {
+        setFull(makeInput({
+            character: makeCharacter({ modules: ['res'], chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }),
+            modules: [residentModule('res', { customModuleToggle: 'MODULE-TOGGLE' })],
+            presets: [makePreset('P0', { toggles: 'PRESET-TOGGLE' })],
+            activePreset: 0,
+        }))
+        openStudio(ownerItem('module', 'res', 'toggles', 'res/toggles:0'), null)
+        show()
+        expect(part('studio-detail-text')?.textContent).toContain('MODULE-TOGGLE')
+        expect(part('studio-toggle-builder')).toBeNull()
+    })
+
+    test('a private character shows no builder and none of its toggle text', () => {
+        setFull(makeInput({ character: makeTextCharacter({ license: 'private', chats: [makeChat({ id: 'chat-1', name: 'First chat' })], customModuleToggle: 'SECRET-TOGGLE' }) }))
+        openStudio(togglesTarget, null)
+        show()
+        flushSync()
+        expect(part('studio-toggle-builder')).toBeNull()
+        expect(document.body.textContent).not.toContain('SECRET')
     })
 })
