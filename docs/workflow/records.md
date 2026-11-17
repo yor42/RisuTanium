@@ -36,6 +36,17 @@ Records are batched per stage or batch where no maintainer decision is involved.
 
 Preserve useful context and use a fresh Sonnet parent at a coherent handoff or when size, contamination or scope warrants it; do not reset per ticket or solely because a provider/stage changed. Write a factual `/handoff` first and retain workflow state/acceptance/parked-check lineage. The next session first checks the handoff against `git status` and `git log` before relying on it.
 
+## Orphan sweep and leftover disposal (MC-2064)
+
+Every records batch runs an orphan sweep. The sweep lists every open Roadmap row where either:
+
+- the owner is not an active session and the row has had no log, git or Roadmap activity for 7 days; or
+- the row waits on a ticket ID or batch that is closed or already planned.
+
+Lane A gives each listed row a named owner with a trigger, or asks the maintainer to park it (AskUserQuestion, multiSelect).
+
+A merge, slice close, batch plan or lane retirement is not recorded until every leftover item has a named owner with a trigger, or a maintainer park. Device results go back to the affected Roadmap rows in the same records batch. A wait names a ticket ID, never a batch such as "owed to devbatchN".
+
 ## Canonical reports and selected evidence
 
 Track canonical reports and selected self-contained evidence needed to understand or reproduce accepted claims. Future curated evidence uses `Agents/Evidence/<item-id>/`. Each item folder has a brief README with:
