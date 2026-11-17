@@ -6,6 +6,7 @@ import {
     type KeyEnv, type Manifest, type Ref, type Shard, type ShardEntry, type UnitType,
 } from '../format'
 import type { BuildContext, BuiltCommit, KeyMint } from '../commit'
+import { ENTRY_MOVED_FIELDS } from './bodies'
 import { manifestStateEquals } from './manifest'
 import { defineOwn } from './normalize'
 import { isUnchanged, unitDigest, UnitNotReusedError, UnitSink, type UnitKeyKind } from './reuse'
@@ -863,6 +864,86 @@ class ReuseOnlyEncoder extends Encoder {
     // The bytes do not depend on the prewritten strings, so the check path ignores them.
     override putReusing(identity: string, type: UnitType, body: object, _family: string): EncodedUnit {
         return this.checking.put(identity, type, body)
+    }
+}
+
+/**
+ * An encoder that collects what a fresh encode of one character would produce over a previous encoding: a unit that is
+ * the previous encoding's keeps its key, every other unit gets a fresh key, and nothing stops at the first difference.
+ */
+class CollectingEncoder extends Encoder {
+    private readonly collecting: UnitSink
+    /** Whether the character core body names an absent field or holds a moved field in `f`: the entry cannot describe it alone. */
+    splitCore = false
+
+    constructor(options: EncodeOptions, previous: PreviousEncoding) {
+        super(options, { units: new Map<string, ReusableUnit>(), entities: previous.entities, objects: previous.objects })
+        this.collecting = new UnitSink(options.env, previous, undefined, { collect: true })
+    }
+
+    get units(): readonly EncodedUnit[] {
+        return this.collecting.units
+    }
+
+    get diverged(): ReadonlySet<string> {
+        return this.collecting.diverged
+    }
+
+    override put(identity: string, type: UnitType, body: object, kind: UnitKeyKind = 'unit'): EncodedUnit {
+        if (type === UNIT_TYPE.characterCore) {
+            const core = body as { f?: object, a?: readonly unknown[] }
+            this.splitCore = (core.a?.length ?? 0) > 0 || Object.keys(core.f ?? {}).some(name => (ENTRY_MOVED_FIELDS as readonly string[]).includes(name))
+        }
+        return this.collecting.put(identity, type, body, kind)
+    }
+
+    override putReusing(identity: string, type: UnitType, body: object, family: string, prewritten?: ReadonlyMap<object, string>): EncodedUnit {
+        return this.collecting.putReusing(identity, type, body, family, prewritten)
+    }
+}
+
+/** What a fresh encode of a live character gives: its entry and the digest of every unit it names. */
+export interface FreshEntry {
+    entry: ShardEntry
+    /** The digest of each unit the encode produced, by store key. A reused unit's key is the previous encoding's. */
+    digests: ReadonlyMap<string, string>
+    /** The identities of the units that are not the previous encoding's. */
+    diverged: ReadonlySet<string>
+    /** The core unit holds an absent list or a moved field, so the character is one record. */
+    splitCore: boolean
+}
+
+/**
+ * The entry a pass would write for a live character, judged against `options.previous` (the acknowledged encoding or the
+ * peer's), with every differing unit collected instead of stopping at the first. `unknown` exactly where
+ * `verdictBaseOf` is null (a stub, a shared id, a missing entry or a unit with no digest) and where the character
+ * cannot be read or encoded; it never writes into the character.
+ */
+export function freshEntry(slot: Slot, options: VerdictOptions): FreshEntry | 'unknown' {
+    const { previous } = options
+    if (verdictBaseOf(slot, previous) === null) {
+        return 'unknown'
+    }
+    let normalized: NormalizedCharacter
+    try {
+        normalized = normalizeCharacter(slot, 0)
+    } catch {
+        return 'unknown'
+    }
+    const encodeOptions: EncodeOptions = { env: options.env, lists: options.lists, seq: 0, createdAt: 0, previous }
+    const encoder = new CollectingEncoder(encodeOptions, previous)
+    try {
+        const entry = emitCharacter(normalized, encoder)
+        const digests = new Map<string, string>()
+        for (const unit of encoder.units) {
+            digests.set(unit.key, unit.digest)
+        }
+        return { entry, digests, diverged: encoder.diverged, splitCore: encoder.splitCore }
+    } catch (error) {
+        if (error instanceof CodecError) {
+            return 'unknown'
+        }
+        throw error
     }
 }
 

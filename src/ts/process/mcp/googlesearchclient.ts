@@ -62,12 +62,12 @@ export class GoogleSearchClient extends MCPClientLike {
             return;
         }
 
-        const apiKey = await alertInput(language.alerts.googleSearchEnterApiKey);
+        const apiKey = await alertInput(language.alerts.googleSearchEnterApiKey, undefined, undefined, { cancel: '' });
         if (!apiKey || apiKey.trim() === '') {
             throw new Error('Google Custom Search API Key is required');
         }
 
-        const searchEngineId = await alertInput(language.alerts.googleSearchEnterEngineId);
+        const searchEngineId = await alertInput(language.alerts.googleSearchEnterEngineId, undefined, undefined, { cancel: '' });
         if (!searchEngineId || searchEngineId.trim() === '') {
             throw new Error('Google Custom Search Engine ID is required');
         }

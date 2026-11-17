@@ -150,9 +150,11 @@ describe('deferral', () => {
             hostHandle.host.state.busy = true
             expect((await fastForward.run(await frame())).kind).toBe('deferred')
             hostHandle.host.state.busy = false
-            hostHandle.host.state.inUse.add(chaIdOf(b.db, 3))
+            // A same-record conflict ends the deferral in a park: this page and the peer changed the same card.
+            const original = chars(b.db)[3].personality
+            chars(b.db)[3].personality = 'my edit'
             expect((await fastForward.run(await frame())).kind).toBe('park')
-            hostHandle.host.state.inUse.clear()
+            chars(b.db)[3].personality = original
             vi.setSystemTime(Date.now() + 3 * 60 * 60_000)
             hostHandle.host.state.busy = true
             expect((await fastForward.run(await frame())).kind).toBe('deferred')
@@ -161,15 +163,30 @@ describe('deferral', () => {
         }
     })
 
-    test('G3 a character in use here is never swapped: a peer body change parks with today\'s prompt', async () => {
+    test('G3 a character in use here is never swapped: a peer body change is merged into the same full character', async () => {
         const { memory, page } = await ffWorld()
         const b = await bootB(memory)
         const loop = runLoopOver(b.context, b.db)
         hostHandle.host.state.inUse.add(chaIdOf(b.db, 3))
         await page.commitEdit((db) => { chars(db)[3].personality = 'peer edit' })
         signal(loop)
-        await until(() => b.peer.clean.length >= 1, 'the clean notice', 4000)
+        await caughtUp(b, memory)
         expect(isColdStub(chars(b.db)[3])).toBe(false)
+        expect(chars(b.db)[3].personality).toBe('peer edit')
+        expect(b.peer.clean).toEqual([])
+    })
+
+    test('G3b a character in use here parks when this page changed the same record, and stays a full character with its edit', async () => {
+        const { memory, page } = await ffWorld()
+        const b = await bootB(memory)
+        const loop = runLoopOver(b.context, b.db)
+        hostHandle.host.state.inUse.add(chaIdOf(b.db, 3))
+        chars(b.db)[3].personality = 'my edit'
+        await page.commitEdit((db) => { chars(db)[3].personality = 'peer edit' })
+        signal(loop)
+        await until(() => b.peer.clean.length >= 1 || b.peer.asked.length >= 1, 'the notice', 4000)
+        expect(isColdStub(chars(b.db)[3])).toBe(false)
+        expect(chars(b.db)[3].personality).toBe('my edit')
     })
 
     test('G1b a send that outlasts 30 s shows the waiting line without stopping saving, and the apply clears it', async () => {

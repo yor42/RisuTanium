@@ -182,6 +182,11 @@ export interface CommitRequest {
     /** A replacement of the whole profile always keeps the state it replaces: the previous `current` enters `retained` whatever the admission interval says. */
     force?: boolean
     /**
+     * The previous `current` enters `retained` whatever the admission interval says, without the other effects of `force`:
+     * the descent line is judged as for an ordinary delta. A resolution that keeps both versions of a record asks for it.
+     */
+    keepPrevious?: boolean
+    /**
      * Required; any other value throws a TypeError. Either a `Carry`, when the build was planned over an acknowledged
      * manifest: `from` is that manifest's key and `units` counts the pre-existing units the new manifest names without
      * writing them, the legacy keep excluded because it travels by value. A commit that carries from `from` is refused
@@ -605,7 +610,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
         const manifestUnit: UnitWrite = { key: built.manifest.key, bytes: encodeUnit(UNIT_TYPE.manifest, built.manifest.body) }
         const next = nextOwnKey(base.key, {
             current: { key: built.manifest.key, at: now },
-            retained: nextRetained(base.key, now, force),
+            retained: nextRetained(base.key, now, force || request.keepPrevious === true),
             manifests: [built.manifest.body],
         }, env)
         // Only a delta planned over the tree this base names descends; a force (save-mine, import) never does.
@@ -776,7 +781,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
             const now = env.now()
             const next = nextOwnKey(heldKey, {
                 current: { key: built.manifest.key, at: now },
-                retained: nextRetained(heldKey, now, request.force === true || heldKey.current?.key !== markerKey.current?.key),
+                retained: nextRetained(heldKey, now, request.force === true || request.keepPrevious === true || heldKey.current?.key !== markerKey.current?.key),
                 staging: null,
                 manifests: [built.manifest.body],
             }, env)

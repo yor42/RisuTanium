@@ -28,6 +28,7 @@
 <script lang="ts">
     import { language } from "src/lang";
     import { SecretRefError } from "src/ts/secretRef";
+    import { currentKey } from "src/ts/process/request/secretKey";
     import { fillLang } from "src/lang/fill";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import TextAreaInput from "../UI/GUI/TextAreaInput.svelte";
@@ -39,6 +40,7 @@
     import { hasModuleStubs } from "src/ts/process/moduleRefList";
     import { asBuffer, selectFileByDom, selectSingleFile, sleep } from "src/ts/util";
     import { alertError, alertSelect } from "src/ts/alert";
+    import { ALERT_SELECT_CANCEL } from "src/ts/alertCancel";
     import { risuChatParser } from "src/ts/parser/parser.svelte";
     import { AppendableBuffer, downloadFile, getLanguageCodes } from "src/ts/globalApi.svelte";
     import SelectInput from "../UI/GUI/SelectInput.svelte";
@@ -320,7 +322,7 @@
         }
         else{
             try {
-                outputText = await requestOpenAITranscription(requestFile, DBState.db.openAIKey)
+                outputText = await requestOpenAITranscription(requestFile, currentKey('openAIKey', DBState.db))
             } catch (error) {
                 if(error instanceof SecretRefError){
                     alertError(error.message)
@@ -547,7 +549,7 @@
         const sel = parseInt(await alertSelect([
             'WebVTT',
             'SRT'
-        ]))
+        ], undefined, { cancel: ALERT_SELECT_CANCEL }))
         const a = document.createElement('a')
 
         // WebVTT

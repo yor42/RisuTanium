@@ -78,6 +78,12 @@ export interface UnitSinkOptions {
      * profile) and throws `UnitNotReusedError` at the first unit that is not reused. It never hands out a key.
      */
     reuseOnly?: boolean
+    /**
+     * The sink answers what an encode would produce without stopping at the first unit that is not reused: such a unit
+     * gets a fresh key (never copied from the previous encoding, so no key set is built) and its identity is listed in
+     * `diverged`. Nothing it hands out is ever written.
+     */
+    collect?: boolean
     /** Measurement builds only: counts each put and the time its framing and digest take. */
     split?: SplitRecorder
     /**
@@ -106,6 +112,9 @@ export class UnitSink {
     private readonly keys = new Set<string>()
     private readonly claimedKeys = new Set<string>()
     private readonly reuseOnly: boolean
+    private readonly collect: boolean
+    /** The identities of the units a collecting sink met that are not the previous encoding's units. */
+    readonly diverged = new Set<string>()
     private declare readonly split: SplitRecorder | undefined
     private readonly chunkMemo: ChunkMemo | undefined
 
@@ -116,11 +125,12 @@ export class UnitSink {
         options: UnitSinkOptions = {},
     ) {
         this.reuseOnly = options.reuseOnly === true
+        this.collect = options.collect === true
         this.chunkMemo = options.chunkMemo
         if (MEASURE && options.split !== undefined) {
             this.split = options.split
         }
-        if (previous !== null && !this.reuseOnly) {
+        if (previous !== null && !this.reuseOnly && !this.collect) {
             for (const unit of previous.units.values()) {
                 this.keys.add(unit.key)
             }
@@ -155,7 +165,15 @@ export class UnitSink {
         if (this.reuseOnly) {
             throw new UnitNotReusedError(identity)
         }
+        this.noteDiverged(identity)
         return this.record(identity, type, this.freshKey(kind), bytes, digest, false)
+    }
+
+    /** A collecting sink lists the identity of a unit it is about to give a fresh key. */
+    private noteDiverged(identity: string): void {
+        if (this.collect) {
+            this.diverged.add(identity)
+        }
     }
 
     /**
@@ -206,6 +224,7 @@ export class UnitSink {
         if (this.reuseOnly) {
             throw new UnitNotReusedError(identity)
         }
+        this.noteDiverged(identity)
         return this.record(identity, type, this.freshKey('unit'), bytes, digest, false)
     }
 

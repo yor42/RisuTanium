@@ -63,7 +63,7 @@
             language.alerts.importPluginHotReload,
             language.alerts.downloadPluginTemplate,
             language.cancel,
-        ]))
+        ], undefined, { cancel: '2' }))
         if (choice === 0) {
             await hotReloadPluginFiles()
         } else if (choice === 1) {

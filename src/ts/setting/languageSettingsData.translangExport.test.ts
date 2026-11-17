@@ -52,7 +52,8 @@ import { changeLanguage } from 'src/lang'
 import { languageEnglish } from 'src/lang/en'
 import { languageSpanish } from 'src/lang/es'
 import { languageJapanese } from 'src/lang/ja'
-import { languageSettingsItems } from './languageSettingsData.svelte'
+import { ALERT_SELECT_CANCEL } from 'src/ts/alertCancel'
+import { downloadTranslationFile, languageSettingsItems } from './languageSettingsData.svelte'
 
 type OnChange = (val: string, ctx: { db: { language: string } }) => Promise<void>
 
@@ -117,6 +118,43 @@ describe('the translation-cache export notice', () => {
         expect(mocks.downloadFile).toHaveBeenCalledTimes(1)
         expect(mocks.alertClear).toHaveBeenCalledTimes(1)
         expect(mocks.alertNormal).not.toHaveBeenCalled()
+    })
+})
+
+describe('the translation file prompts offer a cancel that downloads nothing', () => {
+    /** Answers each prompt from `script`; 'offered-cancel' answers with the cancel its caller offered, and rejects when none was offered. */
+    function script(...answers: string[]): void {
+        mocks.alertSelect.mockImplementation(async (_list: string[], _display?: string, options?: { cancel?: string }) => {
+            const next = answers.shift() ?? '0'
+            if (next === 'offered-cancel') {
+                return options?.cancel ?? Promise.reject(new Error('no cancel offered'))
+            }
+            return next
+        })
+    }
+
+    test('the first prompt: its cancel downloads nothing and asks nothing more', async () => {
+        script('offered-cancel')
+
+        await downloadTranslationFile()
+
+        expect(mocks.alertSelect).toHaveBeenCalledTimes(1)
+        expect(mocks.alertSelect.mock.calls[0][2]).toEqual({ cancel: ALERT_SELECT_CANCEL })
+        expect(mocks.downloadFile).not.toHaveBeenCalled()
+        expect(mocks.alertNormal).not.toHaveBeenCalled()
+    })
+
+    test('the language list: its cancel downloads nothing and leaves the runtime language as it was', async () => {
+        changeLanguage('es')
+        script('0', 'offered-cancel')
+
+        await downloadTranslationFile()
+
+        const { language } = await import('src/lang')
+        expect(mocks.alertSelect).toHaveBeenCalledTimes(2)
+        expect(mocks.alertSelect.mock.calls[1][2]).toEqual({ cancel: ALERT_SELECT_CANCEL })
+        expect(mocks.downloadFile).not.toHaveBeenCalled()
+        expect(language.settingsPage.unknown).toBe(languageSpanish.settingsPage.unknown)
     })
 })
 

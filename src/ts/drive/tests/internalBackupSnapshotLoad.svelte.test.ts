@@ -67,6 +67,8 @@ interface FsEntry {
 const alertBox = vi.hoisted(() => ({
     history: [] as AlertState[],
     selectAnswer: '1',
+    /** The picker answers with the cancel its caller offered, and rejects when none was offered. */
+    answerOfferedCancel: false,
     selectCalls: [] as string[][],
     selectThrows: undefined as Error | undefined,
     onSelect: undefined as undefined | (() => Promise<void> | void),
@@ -226,11 +228,14 @@ vi.mock(import('../../alert'), async () => {
         alertNormal: (msg: string) => { show('normal', msg) },
         alertMd: (msg: string) => { show('markdown', msg) },
         alertClear: () => { show('none', '') },
-        alertSelect: async (options: string[]) => {
+        alertSelect: async (options: string[], _display?: string, offered?: { cancel?: string }) => {
             alertBox.selectCalls.push(options)
             await alertBox.onSelect?.()
             if (alertBox.selectThrows) {
                 throw alertBox.selectThrows
+            }
+            if (alertBox.answerOfferedCancel) {
+                return offered?.cancel ?? Promise.reject(new Error('no cancel offered'))
             }
             return alertBox.selectAnswer
         },
@@ -945,6 +950,7 @@ beforeAll(async () => {
 beforeEach(() => {
     alertBox.history.length = 0
     alertBox.selectAnswer = '1'
+    alertBox.answerOfferedCancel = false
     alertBox.selectCalls.length = 0
     alertBox.selectThrows = undefined
     alertBox.onSelect = undefined
@@ -1024,6 +1030,16 @@ describe('loadInternalBackup commits the chosen snapshot', () => {
     test('returns canceled when the person picks Cancel, and the picker\'s message is unchanged', async () => {
         const { world } = await worldWithSnapshot()
         alertBox.selectAnswer = '0'
+
+        const end = await world.load()
+
+        expect(end).toMatchObject({ operation: 'restore-numbered', target: null, outcome: 'canceled' })
+        expectNothingChanged(world)
+    })
+
+    test('the picker offers the Cancel option as its cancel: answering it loads nothing and writes nothing', async () => {
+        const { world } = await worldWithSnapshot()
+        alertBox.answerOfferedCancel = true
 
         const end = await world.load()
 
