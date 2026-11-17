@@ -84,8 +84,13 @@ interface OpenEditor {
     readonly origin: RowOrigin
 }
 
-/** The toggle keys the app's other readable sources define: characters, resident modules and working presets. */
-export function appToggleKeys(exceptChaId: string): ReadonlySet<string> {
+/** The owner whose toggle definition a builder edits. */
+export type ToggleTarget =
+    | { readonly kind: 'character', readonly chaId: string }
+    | { readonly kind: 'module', readonly moduleId: string }
+
+/** The toggle keys the app's other readable sources define: characters, resident modules and working presets, except the edited owner's own. */
+export function appToggleKeys(except: ToggleTarget): ReadonlySet<string> {
     const keys = new Set<string>()
     const add = (text: unknown) => {
         if (typeof text === 'string') {
@@ -95,12 +100,12 @@ export function appToggleKeys(exceptChaId: string): ReadonlySet<string> {
         }
     }
     for (const character of DBState.db.characters ?? []) {
-        if (character && character.type !== 'group' && character.chaId !== exceptChaId) {
+        if (character && character.type !== 'group' && !(except.kind === 'character' && character.chaId === except.chaId)) {
             add(character.customModuleToggle)
         }
     }
     for (const module of DBState.db.modules ?? []) {
-        if (module && !isModuleStub(module)) {
+        if (module && !isModuleStub(module) && !(except.kind === 'module' && module.id === except.moduleId)) {
             add(module.customModuleToggle)
         }
     }
@@ -224,6 +229,8 @@ export function createToggleBuilder(port: ToggleTextPort, options: BuilderOption
     }
 
     return {
+        /** The owner the port writes; the refusal texts name it. */
+        owner: port.owner,
         get def() { return def },
         get editor() { return editor },
         get pending() { return pending },

@@ -10,10 +10,10 @@ import type { toSaveType } from 'src/ts/storage/risuSave'
 import { createToastHost, DEFAULT_TOAST_CONFIG, resetToastHostForTests, toastHost, type ToastClock, type ToastHost, type UndoOutcome, type UndoToastInit } from 'src/ts/toast/toastHost.svelte'
 import { resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { createOwnerHistoryService, REPLAY_BUDGET_MS, type OwnerHistoryService, type OwnerView, type StudioRefusal, type StudioResult } from '../../history/ownerHistory.svelte'
-import { characterOwnerKey, SAVE_DEBOUNCE_MS } from '../../history/ownerPhase'
+import { characterOwnerKey, moduleOwnerKey, SAVE_DEBOUNCE_MS } from '../../history/ownerPhase'
 import { createFakeClock, drainMicrotasks } from '../../history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../history/tests/studioStoreDoubles'
-import { createStudioToasts, refusalText, resetStudioToastsForTests, retireAssetToasts, runDismissingConsumed, type StudioToasts } from '../studioToasts'
+import { createStudioToasts, refusalText, refusalTextOf, resetStudioToastsForTests, retireAssetToasts, runDismissingConsumed, type StudioToasts } from '../studioToasts'
 
 const h = vi.hoisted(() => ({ marks: 0 }))
 
@@ -615,5 +615,34 @@ describe('the asset Undo toast runs through the replay queue', () => {
 
     test('the replay budget leaves the host margin of its own Undo timeout', () => {
         expect(REPLAY_BUDGET_MS).toBeLessThanOrEqual(DEFAULT_TOAST_CONFIG.undoRunTimeoutMs - 2000)
+    })
+})
+
+describe('T-RT refusalTextOf names a module only for a module owner', () => {
+    const moduleReasons: [StudioRefusal, string][] = [
+        ['not-selected', 'studioRefusalModuleNotSelected'],
+        ['gone', 'studioRefusalModuleGone'],
+        ['duplicate-module-id', 'studioRefusalModuleSharedId'],
+    ]
+
+    test.each(moduleReasons)('a module owner reads %s as %s', (reason, key) => {
+        expect(refusalTextOf({ reason }, moduleOwnerKey('M1'))).toBe(key)
+    })
+
+    test('every other reason keeps its own text for a module owner', () => {
+        for (const reason of ['loading', 'precondition', 'duplicate-id', 'restricted', 'empty', 'asset-no-undo'] as const) {
+            expect(refusalTextOf({ reason }, moduleOwnerKey('M1'))).toBe(refusalText(reason))
+        }
+        expect(refusalTextOf({ reason: 'asset-file-unchecked', name: 'grin' }, moduleOwnerKey('M1'))).toBe('studioAssetFileUnchecked(grin)')
+    })
+
+    test('a character owner or no owner keeps the character and asset wording for the same reasons', () => {
+        for (const [reason] of moduleReasons) {
+            expect(refusalTextOf({ reason }, characterOwnerKey('A'))).toBe(refusalText(reason))
+            expect(refusalTextOf({ reason })).toBe(refusalText(reason))
+        }
+        expect(refusalText('not-selected')).toBe('studioRefusalNotSelected')
+        expect(refusalText('gone')).toBe('studioRefusalGone')
+        expect(refusalText('duplicate-module-id')).toBe('studioAssetModuleSharedId')
     })
 })

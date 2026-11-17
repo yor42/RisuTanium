@@ -121,8 +121,8 @@
         switch (value.kind) {
             case 'field': return language[fieldErrorKeyOf(value.refusal)]
             case 'held': return language.studioTgTextHeld
-            case 'refused': return refusalTextOf({ reason: value.reason })
-            case 'unavailable': return refusalTextOf({ reason: 'loading' })
+            case 'refused': return refusalTextOf({ reason: value.reason }, builder.owner)
+            case 'unavailable': return refusalTextOf({ reason: 'loading' }, builder.owner)
             case 'cantMove': return language.studioTgCantMove
         }
     }
