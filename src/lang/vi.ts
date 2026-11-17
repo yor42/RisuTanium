@@ -729,6 +729,8 @@ export const languageVietnamese = {
         "characterNotFound": "Không tìm thấy nhân vật: {id}",
         "requiredTokens": "Số Token bắt buộc: {tokens}",
         "requiredTokensRecheck": "Đang kiểm tra lại Token. Số Token bắt buộc: {tokens}",
+        "hypaV2NoSummaryModel": "[HypaV2] Chưa đặt mô hình tóm tắt nên không thể tóm tắt cuộc trò chuyện và không có gì được gửi đi. Hãy chọn SupaBộ Nhớ Người mẫu trong Cài đặt > Bot khác > Bộ nhớ dài hạn.",
+        "openMemorySettings": "Mở cài đặt bộ nhớ",
         "stableDiffusionGroupUnsupported": "Stable Diffusion không được hỗ trợ trong trò chuyện nhóm",
         "websocketConnectFailed": "Kết nối WebSocket tới '{url}' không thành công.",
         "pluginProviderError": "Lỗi plugin từ {provider}: {error}",
@@ -2717,7 +2719,13 @@ export const languageVietnamese = {
         "enableSimilarityCorrectionLabel": "Bật Hiệu chỉnh Độ tương tự",
         "preserveOrphanedMemoryLabel": "Giữ Bộ nhớ Mồ côi",
         "applyRegexScriptWhenRerollingLabel": "Áp dụng Script Regex khi Tạo lại",
-        "doNotSummarizeUserMessageLabel": "Không Tóm tắt Tin nhắn Người dùng"
+        "doNotSummarizeUserMessageLabel": "Không Tóm tắt Tin nhắn Người dùng",
+        "newPresetNamePrompt": "Nhập tên cho cài đặt trước",
+        "blankPresetNameError": "Cài đặt trước cần có tên.",
+        "duplicatePresetLabel": "Nhân bản cài đặt trước",
+        "duplicatePresetDefaultName": "{name} bản sao",
+        "presetImportBrokenError": "Không thể đọc tệp này như một cài đặt trước. Tệp có thể bị hỏng hoặc không phải là tệp JSON.",
+        "presetImportForeignError": "Tệp này không phải là tệp xuất cài đặt trước HypaMemory V3 nên không có gì được nhập."
     },
     "hypaV3Modal": {
         "titleLabel": "HypaV3",

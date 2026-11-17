@@ -2,13 +2,14 @@ import { language } from 'src/lang'
 import { alertError, alertNormal } from '../../alert'
 import { DBState } from '../../stores.svelte'
 import { selectSingleFile } from '../../util'
-import { createHypaV3Preset } from './hypav3'
+import { parseHypaV3PresetFile } from './hypaV3Presets'
 
 /**
  * Lets the user choose an exported HypaV3 preset file and adds it as a new
  * preset, selected. Choosing nothing does nothing: no error, no message, no
- * change. A file that is not a RisuAI preset export is ignored; a file that
- * cannot be read or parsed shows its error.
+ * change. A file that does not parse, or that is not a RisuAI preset export
+ * with usable HypaV3 settings, is refused with a message and adds nothing; the
+ * imported ratios are clamped and the file's id is never used.
  */
 export async function importHypaV3PresetFile(): Promise<void> {
     try {
@@ -17,17 +18,18 @@ export async function importHypaV3PresetFile(): Promise<void> {
 
         if(!bytesImport) return
 
-        const objImport = JSON.parse(Buffer.from(bytesImport).toString('utf-8'))
+        const parsed = parseHypaV3PresetFile(bytesImport)
 
-        if(objImport.type !== 'risu' || !objImport.data) return
+        if(parsed.ok === false){
+            alertError(parsed.reason === 'broken'
+                ? language.hypaV3Settings.presetImportBrokenError
+                : language.hypaV3Settings.presetImportForeignError)
+            return
+        }
 
-        const newPreset = createHypaV3Preset(
-            objImport.data.name || "Imported Preset",
-            objImport.data.settings || {}
-        );
         const presets = DBState.db.hypaV3Presets
 
-        presets.push(newPreset)
+        presets.push(parsed.preset)
         DBState.db.hypaV3Presets = presets
         DBState.db.hypaV3PresetId = DBState.db.hypaV3Presets.length - 1
 

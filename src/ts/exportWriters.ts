@@ -26,6 +26,21 @@ export interface ExportByteWriter extends ByteWriter {
     readonly heldInMemory?: boolean
 }
 
+/**
+ * A writer whose destination can take an asset body from the file it already is stored in: the page asks it to pin
+ * the asset (`pinAsset` answers the size the body will have, or `missing`), writes the entry header, and calls
+ * `markSplice`; the body itself never passes through the page.
+ */
+export interface SplicingExportWriter extends ExportByteWriter {
+    pinAsset(key: string): Promise<{ size: number } | 'missing'>
+    /** Marks the end of the bytes written so far as the point where the pinned body is inserted. */
+    markSplice(): void
+}
+
+export function isSplicingWriter(writer: ExportByteWriter): writer is SplicingExportWriter {
+    return 'pinAsset' in writer && typeof writer.pinAsset === 'function' && 'markSplice' in writer && typeof writer.markSplice === 'function'
+}
+
 /** A backup entry body below this size is written together with its header. */
 export const BACKUP_ENTRY_COALESCE_BYTES = 1024 * 1024
 
