@@ -803,6 +803,7 @@ export const languageGerman = {
         "googleSearchEnterApiKey": "Bitte geben Sie Ihren Google-Custom-Search-API-Schlüssel ein:",
         "googleSearchEnterEngineId": "Bitte geben Sie Ihre Google-Custom-Search-Suchmaschinen-ID ein:",
         "mcpInputAuthorizationCode": "Autorisierungscode eingeben",
+        "mcpOAuthHelperConsent": "Der MCP-Server {server} verlangt eine Anmeldung. Die Anmeldung läuft über einen Hilfsdienst unter {host}, den das Upstream-Projekt betreibt und nicht diese App: Nach der Anmeldung wird Ihr Browser an {host} weitergeleitet, und der Autorisierungscode, den Sie einfügen, wird an {host} gesendet. {host} zur Anmeldung verwenden?",
         "updatingTo": "Aktualisierung auf {version}...",
         "addingAssets": "Wird geladen... (Medien werden hinzugefügt {completed} / {total})",
         "writingExif": "Wird geladen... (Exif wird geschrieben)",
