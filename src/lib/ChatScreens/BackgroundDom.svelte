@@ -7,6 +7,7 @@
     import { moduleRunVersion, selectedModulesPending } from "src/ts/process/moduleEnsure";
     import { BACKGROUND_SLOT, lookup, record, scopeOf, type RenderFingerprint } from "./chatBodyRenderCache";
     import { chatSurface, isChatSurfaceInstalled } from "./chatSurface.svelte";
+    import { CARD_BACKGROUND_ATTR } from "src/ts/gui/cardAnimationHold";
 
     let backgroundHTML = $derived(DBState.db?.characters?.[selIdState.selId]?.backgroundHTML)
     let currentChar:character|groupChat = $derived(DBState.db?.characters?.[selIdState.selId])
@@ -118,7 +119,7 @@
 
 
 {#if shown && selIdState.selId > -1}
-    <div class="absolute top-0 left-0 w-full h-full">
+    <div class="absolute top-0 left-0 w-full h-full" {...{ [CARD_BACKGROUND_ATTR]: '' }}>
         {@html shown.html}
     </div>
 {/if}

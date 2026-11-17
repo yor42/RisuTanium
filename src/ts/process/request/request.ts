@@ -1400,13 +1400,10 @@ async function requestCohere(arg:RequestDataArgumentExtended):Promise<requestDat
         body.safety_mode = "NONE"
     }
     
+    // The first system message is the preamble even with an empty history; folding it into
+    // message would replace the user's text.
     if(preamble){
-        if(body.chat_history.length > 0){
-            body.preamble = preamble
-        }
-        else{
-            body.message = `system: ${preamble}`
-        }
+        body.preamble = preamble
     }
 
     let headers: Record<string, string> = {

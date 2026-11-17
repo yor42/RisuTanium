@@ -34,7 +34,7 @@ export type DisplaySectionId =
     | 'display.advanced';
 
 /** Shell components a row can name; the page maps each to its component. */
-export type ShellRowComponent = 'ThemeCards' | 'AssetWidthRow' | 'QuoteBoxesRow' | 'LowPowerRow' | 'ReducedMotionRow';
+export type ShellRowComponent = 'ThemeCards' | 'AssetWidthRow' | 'QuoteBoxesRow' | 'LowPowerRow' | 'ReduceCardEffectsRow' | 'ReducedMotionRow';
 
 /** A row that has no effect in the current state: it stays operable and says why. */
 export interface DimRule {
@@ -162,7 +162,7 @@ const ANIMATION_DIM_KEYS: Readonly<Record<AnimationDimReason, string>> = {
 };
 
 /** The rows of this device's own motion choices; they are not legacy Display items. */
-export const DEVICE_MOTION_ROW_IDS: readonly string[] = ['display.lowPower', 'display.reducedMotion'];
+export const DEVICE_MOTION_ROW_IDS: readonly string[] = ['display.lowPower', 'display.reduceCardEffects', 'display.reducedMotion'];
 
 /** The animation speed has no effect while low power or reduced motion is on (the engine uses the nominal speed then). */
 const animationDim: DimRule = {
@@ -263,6 +263,7 @@ export const DISPLAY_SHELL_SECTIONS: readonly DisplaySection[] = [
         collapsed: false,
         rows: [
             { kind: 'shell', id: 'display.lowPower', component: 'LowPowerRow' },
+            { kind: 'shell', id: 'display.reduceCardEffects', component: 'ReduceCardEffectsRow' },
             { kind: 'shell', id: 'display.reducedMotion', component: 'ReducedMotionRow' },
             {
                 kind: 'setting',
