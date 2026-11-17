@@ -141,10 +141,12 @@ describe('a record that is not a chat (restore point)', () => {
     test('keep both for the card keeps this page\'s card, and the commit that follows keeps the peer\'s tree as a restore point', async () => {
         const w = await mergeWorld()
         const { b } = w
-        resolver(w)
+        // Held so this page cannot commit its own tree before the peer's tree key is read.
+        const held = resolver(w, () => undefined, { held: true })
         chars(b.db)[3].personality = 'mine card'
         await peerCommits(w, (db) => { chars(db)[3].personality = 'peer card' })
         const peerTree = (await parsedKey(w.memory)).current?.key
+        held.release()
         await takenBy(b, w.memory)
         expect(personalityOf(b.db, 3)).toBe('mine card')
         await until(async () => (await parsedKey(w.memory)).current?.key !== peerTree, 'the own commit', 8000)
@@ -157,7 +159,8 @@ describe('a record that is not a chat (restore point)', () => {
     test('25 settings kept both: one restore point', async () => {
         const w = await mergeWorld()
         const { b } = w
-        resolver(w)
+        // Held so this page cannot commit its own tree before the peer's tree key is read.
+        const held = resolver(w, () => undefined, { held: true })
         const names = Array.from({ length: 25 }, (_, index) => `peerTestSetting${index}`)
         for (const name of names) {
             Reflect.set(b.db, name, 1)
@@ -170,6 +173,7 @@ describe('a record that is not a chat (restore point)', () => {
         })
         const peerKey = await parsedKey(w.memory)
         const peerTree = peerKey.current?.key
+        held.release()
         await takenBy(b, w.memory)
         await until(async () => (await parsedKey(w.memory)).current?.key !== peerTree, 'the own commit', 8000)
         const key = await parsedKey(w.memory)

@@ -241,10 +241,12 @@ describe('the peer fast-forwards over a deleted-against-edited resolution (P11b,
         const w = await mergeWorld()
         const { b } = w
         const id = chaIdOf(b.db, 1)
-        resolver(w)
+        // Held so this page cannot commit its own tree before the peer's order is read from the store.
+        const held = resolver(w, () => undefined, { held: true })
         remove(b.db, 1)
         const { atTree } = await peerCommitsAt(w, (db) => { chars(db)[1].personality = 'peer edit of D' })
         const peerOrder = idsOf((await w.page.freeze()).db)
+        held.release()
         await takenBy(b, w.memory)
         expect(order(w)).toEqual(peerOrder)
         chars(b.db)[0].personality = 'this page\'s next edit'
@@ -264,7 +266,8 @@ describe('the peer fast-forwards over a deleted-against-edited resolution (P11b,
         const w = await mergeWorld()
         const { b } = w
         const [d, d2] = [chaIdOf(b.db, 1), chaIdOf(b.db, 2)]
-        const held = resolver(w, record => record.id.includes(d2) ? 'mine' : 'theirs')
+        // Held so this page cannot commit its own tree before the peer's order is read from the store.
+        const held = resolver(w, record => record.id.includes(d2) ? 'mine' : 'theirs', { held: true })
         remove(b.db, 1)
         remove(b.db, 1)
         const { atTree } = await peerCommitsAt(w, (db) => {
@@ -272,6 +275,7 @@ describe('the peer fast-forwards over a deleted-against-edited resolution (P11b,
             chars(db)[2].personality = 'peer edit of D2'
         })
         const peerOrder = idsOf((await w.page.freeze()).db)
+        held.release()
         await takenBy(b, w.memory)
         expect(held.calls[0].map(record => record.id).sort()).toEqual([`char:${d}:deletedHere`, `char:${d2}:deletedHere`].sort())
         expect(order(w)).toEqual(peerOrder.filter(item => item !== d2))
@@ -390,13 +394,15 @@ describe('trash against restore (R23, R24)', () => {
         const w = await trashedWorld(Date.now())
         const { b } = w
         const id = chaIdOf(b.db, 1)
-        const held = resolver(w, () => 'theirs')
+        // Held so this page cannot commit its own tree before the peer's order is read from the store.
+        const held = resolver(w, () => 'theirs', { held: true })
         emptyTrash(b.db, 1)
         const { atTree } = await peerCommitsAt(w, db => restore(db, 1))
         const peerListed = (await w.page.freeze()).db.characterOrder
         await until(() => held.calls.length === 1, 'the dialog', 8000)
         expect(held.calls[0]).toHaveLength(1)
         expect(held.calls[0][0]).toMatchObject({ id: `char:${id}:deletedHere`, choices: ['mine', 'theirs'], keepBoth: null, preselect: 'theirs' })
+        held.release()
         await takenBy(b, w.memory)
         const at = order(w).indexOf(id)
         expect(at).toBeGreaterThanOrEqual(0)

@@ -430,6 +430,8 @@ describe('the dialog and a running send (R-SEND2b, P12, P12b)', () => {
         const asked = resolver(w)
         const send = startSend(['Hello', 'Hello World!'], [chaIdOf(b.db, 3)])
         await send.step(0, 'Hello', messages)
+        // The dialog names the chat as it is before the answer; keep both then puts a copy at index 0.
+        const xid = String(chatsAt(b.db, 3)[0].id)
         chars(b.db)[0].personality = 'mine card'
         const run = w.run.mock.calls.length
         await w.page.commitEdit((db) => {
@@ -444,7 +446,7 @@ describe('the dialog and a running send (R-SEND2b, P12, P12b)', () => {
         await send.step(1, 'Hello World!', messages)
         expect(await send.done).toBe(true)
         await until(() => asked.calls.length === 1, 'the dialog after the reply', 8000)
-        expect(asked.calls[0].map(record => record.id).sort()).toEqual([`char:${chaIdOf(b.db, 0)}:core`, `char:${chaIdOf(b.db, 3)}:chat:${String(chatsAt(b.db, 3)[0].id)}`].sort())
+        expect(asked.calls[0].map(record => record.id).sort()).toEqual([`char:${chaIdOf(b.db, 0)}:core`, `char:${chaIdOf(b.db, 3)}:chat:${xid}`].sort())
     })
     test('P12 keep both is answered for X, a send starts into X before the pass: the pass waits, the reply lands in X\'s own object, and after the end X is asked again', async () => {
         const w = await sendWorld()

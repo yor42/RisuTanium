@@ -219,13 +219,21 @@ describe('the park lifecycle with an open dialog (P3, P4, P5)', () => {
         const chaId = chaIdOf(b.db, 3)
         let gate: () => void = () => { }
         const open = new Promise<void>((resolve) => { gate = resolve })
+        // The second dialog stays open until the test has read the state it pins; an immediate answer
+        // would let the loop apply 'theirs' before the read under load.
+        let releaseSecond: () => void = () => { }
+        const openSecond = new Promise<void>((resolve) => { releaseSecond = resolve })
         const calls: string[][] = []
+        const fingerprints: string[] = []
         b.peer.resolve = async ({ conflicts }) => {
             calls.push(conflicts.map(record => record.id))
+            fingerprints.push(JSON.stringify(conflicts.map(record => record.fingerprint)))
             if (calls.length === 1) {
                 // The answer comes back and, in the same step, the page edits the record again.
                 queueMicrotask(() => { chars(b.db)[3].personality = 'mine card again' })
                 await open
+            } else {
+                await openSecond
             }
             return Object.fromEntries(conflicts.map(record => [record.id, 'theirs' as const]))
         }
@@ -235,7 +243,10 @@ describe('the park lifecycle with an open dialog (P3, P4, P5)', () => {
         gate()
         await until(() => calls.length === 2, 'the second dialog', 8000)
         expect(calls[1]).toEqual([`char:${chaId}:core`])
+        // The stale answer was dropped because the shown record's fingerprint changed.
+        expect(fingerprints[1]).not.toBe(fingerprints[0])
         expect(personalityOf(b.db, 3)).toBe('mine card again')
+        releaseSecond()
     })
 })
 
