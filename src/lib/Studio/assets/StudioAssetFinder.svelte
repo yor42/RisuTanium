@@ -52,8 +52,9 @@
         // How many places reach this file under this name; absent counts none, so the survivor falls back to the first copy.
         references?: (name: string, path: string) => number
         onremoveextras: (array: FinderArray, group: DuplicateGroup<FinderRow>, deps: SurvivorDeps) => void
-        // Merge belongs to the merge stage: without this there is no Merge button.
-        onmerge?: (array: FinderArray, group: DuplicateGroup<FinderRow>) => void
+        // Merge is the list's to run: without this there is no Merge button. The survivor deps are the ones of Remove
+        // extras, because a "same file, different names" group may be equal by hash over different paths.
+        onmerge?: (array: FinderArray, group: DuplicateGroup<FinderRow>, deps: SurvivorDeps) => void
         onclose: () => void
     }
 
@@ -167,11 +168,18 @@
         onclose()
     }
 
-    function removeExtras(array: FinderArray, group: DuplicateGroup<FinderRow>): void {
+    // Without a loaded byte layer no pass has run, so no hash exists and only identical paths count.
+    function survivorDeps(): SurvivorDeps {
         const bytes = loadedPort
-        // Without a loaded byte layer no pass has run, so no hash exists and only identical paths count.
-        const deps: SurvivorDeps = bytes ? survivorDepsFrom(bytes.hashCache, (path) => bytes.sizes.peek(path) ?? null) : { hashOf: () => undefined }
-        onremoveextras(array, group, deps)
+        return bytes ? survivorDepsFrom(bytes.hashCache, (path) => bytes.sizes.peek(path) ?? null) : { hashOf: () => undefined }
+    }
+
+    function removeExtras(array: FinderArray, group: DuplicateGroup<FinderRow>): void {
+        onremoveextras(array, group, survivorDeps())
+    }
+
+    function merge(array: FinderArray, group: DuplicateGroup<FinderRow>): void {
+        onmerge?.(array, group, survivorDeps())
     }
 
     const buttonClass = 'min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer disabled:cursor-default disabled:opacity-50'
@@ -219,7 +227,7 @@
                         </div>
                     {:else if group.mergeCandidate && onmerge}
                         <div>
-                            <button type="button" data-part="studio-asset-dup-merge" class={buttonClass} disabled={!editable} onclick={() => onmerge(array, group)}>{language.studioAssetMerge}</button>
+                            <button type="button" data-part="studio-asset-dup-merge" class={buttonClass} disabled={!editable} onclick={() => merge(array, group)}>{language.studioAssetMerge}</button>
                         </div>
                     {/if}
                 </div>

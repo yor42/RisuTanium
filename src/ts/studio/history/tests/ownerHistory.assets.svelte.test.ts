@@ -727,34 +727,35 @@ describe('the folder document of an owner write', () => {
 
 describe('text edits of a merge land in the same write', () => {
     test('a lorebook edit of a module and a greeting edit of a character are one step with the rows', async () => {
-        putModules(makeModule('M1', { lorebook: [{ key: 'k', content: 'see smile2 now' }] }))
+        putCharacters(makeCharacter('A', { desc: '{{image::d0}}', alternateGreetings: ['g0', '{{image::g1}}'] }))
+        putModules(makeModule('M1', { lorebook: [{ key: 'k', content: 'see {{image::smile2}} now' }] }))
         harness.openModule = 'M1'
         await ready(M1)
         const model = mergeModel()
         model.ownerKind = 'module'
         model.array = 'assets'
         model.rowOps = [{ kind: 'assetRowRemove', array: 'assets', index: 3, tuple: [...SMILE_COPY], count: 1 }]
-        model.textEdits = [{ target: 'lore/0/content', offset: 4, from: 'smile2', to: 'smile' }]
+        model.textEdits = [{ target: 'lore/0/content', offset: 13, from: 'smile2', to: 'smile' }]
         expect(harness.service.assetMerge(M1, model, byPathOnly).ok).toBe(true)
-        expect(liveModule().lorebook?.[0].content).toBe('see smile now')
+        expect(liveModule().lorebook?.[0].content).toBe('see {{image::smile}} now')
         expect(liveModule().assets).toHaveLength(3)
         expect(harness.service.view(M1).done).toHaveLength(1)
         expect(harness.service.undo(M1).ok).toBe(true)
-        expect(liveModule().lorebook?.[0].content).toBe('see smile2 now')
+        expect(liveModule().lorebook?.[0].content).toBe('see {{image::smile2}} now')
 
         await ready(A)
         const own = mergeModel()
         own.textEdits = [
-            { target: 'desc', offset: 0, from: 'd0', to: 'smile' },
-            { target: 'alternateGreetings/1', offset: 0, from: 'g1', to: 'smile' },
+            { target: 'desc', offset: 9, from: 'd0', to: 'smile' },
+            { target: 'alternateGreetings/1', offset: 9, from: 'g1', to: 'smile' },
         ]
         expect(harness.service.assetMerge(A, own, byPathOnly).ok).toBe(true)
-        expect(live().desc).toBe('smile')
-        expect(live().alternateGreetings).toEqual(['g0', 'smile'])
+        expect(live().desc).toBe('{{image::smile}}')
+        expect(live().alternateGreetings).toEqual(['g0', '{{image::smile}}'])
         expect(harness.service.view(A).done).toHaveLength(1)
         expect(harness.service.undo(A).ok).toBe(true)
-        expect(live().desc).toBe('d0')
-        expect(live().alternateGreetings).toEqual(['g0', 'g1'])
+        expect(live().desc).toBe('{{image::d0}}')
+        expect(live().alternateGreetings).toEqual(['g0', '{{image::g1}}'])
     })
 
     test('a merge whose removed row has no survivor is refused', async () => {
@@ -787,75 +788,75 @@ function textOnlyModel(array: 'additionalAssets' | 'assets', edits: MergePreview
 describe('a merge edit of a registry text lands in the live owner, undoes and redoes', () => {
     test('a character: the first message, the system prompt, a depth prompt and a trigger value change once per undo and redo', async () => {
         putCharacters(makeCharacter('A', {
-            firstMessage: 'hi smile2 there',
-            systemPrompt: 'sys smile2',
-            depth_prompt: { depth: 4, prompt: 'dp smile2' },
-            triggerscript: triggers(valueEffect('eff smile2')),
+            firstMessage: 'hi {{image::smile2}} there',
+            systemPrompt: 'sys {{image::smile2}}',
+            depth_prompt: { depth: 4, prompt: 'dp {{image::smile2}}' },
+            triggerscript: triggers(valueEffect('eff {{image::smile2}}')),
         }))
         await ready(A)
         const model = textOnlyModel('additionalAssets', [
-            { target: 'firstMessage', offset: 3, from: 'smile2', to: 'smile' },
-            { target: 'systemPrompt', offset: 4, from: 'smile2', to: 'smile' },
-            { target: 'depth_prompt/prompt', offset: 3, from: 'smile2', to: 'smile' },
-            { target: 'trigger/0/effect/0/value', offset: 4, from: 'smile2', to: 'smile' },
+            { target: 'firstMessage', offset: 12, from: 'smile2', to: 'smile' },
+            { target: 'systemPrompt', offset: 13, from: 'smile2', to: 'smile' },
+            { target: 'depth_prompt/prompt', offset: 12, from: 'smile2', to: 'smile' },
+            { target: 'trigger/0/effect/0/value', offset: 13, from: 'smile2', to: 'smile' },
         ])
         const merged = (): void => {
-            expect(live().firstMessage).toBe('hi smile there')
-            expect(live().systemPrompt).toBe('sys smile')
-            expect(live().depth_prompt?.prompt).toBe('dp smile')
-            expect((live().triggerscript?.[0].effect[0] as { value: string }).value).toBe('eff smile')
+            expect(live().firstMessage).toBe('hi {{image::smile}} there')
+            expect(live().systemPrompt).toBe('sys {{image::smile}}')
+            expect(live().depth_prompt?.prompt).toBe('dp {{image::smile}}')
+            expect((live().triggerscript?.[0].effect[0] as { value: string }).value).toBe('eff {{image::smile}}')
         }
         expect(harness.service.assetMerge(A, model, byPathOnly).ok).toBe(true)
         merged()
         expect(harness.service.undo(A).ok).toBe(true)
-        expect(live().firstMessage).toBe('hi smile2 there')
-        expect(live().systemPrompt).toBe('sys smile2')
-        expect(live().depth_prompt?.prompt).toBe('dp smile2')
-        expect((live().triggerscript?.[0].effect[0] as { value: string }).value).toBe('eff smile2')
+        expect(live().firstMessage).toBe('hi {{image::smile2}} there')
+        expect(live().systemPrompt).toBe('sys {{image::smile2}}')
+        expect(live().depth_prompt?.prompt).toBe('dp {{image::smile2}}')
+        expect((live().triggerscript?.[0].effect[0] as { value: string }).value).toBe('eff {{image::smile2}}')
         expect(harness.service.redo(A).ok).toBe(true)
         merged()
     })
 
     test('a character: a merge that rewrites the first message and the example message gives the restore point both keys, and restoring puts both texts back', async () => {
-        putCharacters(makeCharacter('A', { firstMessage: 'hi smile2 there', exampleMessage: 'ex smile2' }))
+        putCharacters(makeCharacter('A', { firstMessage: 'hi {{image::smile2}} there', exampleMessage: 'ex {{image::smile2}}' }))
         await ready(A)
         expect(harness.service.editField(A, 'desc', 'studio desc').ok).toBe(true)
         const model = textOnlyModel('additionalAssets', [
-            { target: 'firstMessage', offset: 3, from: 'smile2', to: 'smile' },
-            { target: 'exampleMessage', offset: 3, from: 'smile2', to: 'smile' },
+            { target: 'firstMessage', offset: 12, from: 'smile2', to: 'smile' },
+            { target: 'exampleMessage', offset: 12, from: 'smile2', to: 'smile' },
         ])
         expect(harness.service.assetMerge(A, model, byPathOnly).ok).toBe(true)
-        expect(live().firstMessage).toBe('hi smile there')
-        expect(live().exampleMessage).toBe('ex smile')
+        expect(live().firstMessage).toBe('hi {{image::smile}} there')
+        expect(live().exampleMessage).toBe('ex {{image::smile}}')
         const fields = harness.service.view(A).restore?.fields
-        expect(fields?.firstMessage).toEqual({ before: { had: true, value: 'hi smile2 there' }, last: { had: true, value: 'hi smile there' } })
-        expect(fields?.exampleMessage).toEqual({ before: { had: true, value: 'ex smile2' }, last: { had: true, value: 'ex smile' } })
+        expect(fields?.firstMessage).toEqual({ before: { had: true, value: 'hi {{image::smile2}} there' }, last: { had: true, value: 'hi {{image::smile}} there' } })
+        expect(fields?.exampleMessage).toEqual({ before: { had: true, value: 'ex {{image::smile2}}' }, last: { had: true, value: 'ex {{image::smile}}' } })
         expect(harness.service.restore(A, new Set()).ok).toBe(true)
         expect(live().desc).toBe('d0')
-        expect(live().firstMessage).toBe('hi smile2 there')
-        expect(live().exampleMessage).toBe('ex smile2')
+        expect(live().firstMessage).toBe('hi {{image::smile2}} there')
+        expect(live().exampleMessage).toBe('ex {{image::smile2}}')
     })
 
     test('a module: the background embedding and a trigger value change once per undo and redo, next to a removed row', async () => {
-        putModules(makeModule('M1', { backgroundEmbedding: 'be smile2', trigger: triggers(valueEffect('eff smile2')) }))
+        putModules(makeModule('M1', { backgroundEmbedding: 'be {{image::smile2}}', trigger: triggers(valueEffect('eff {{image::smile2}}')) }))
         harness.openModule = 'M1'
         await ready(M1)
         const model = textOnlyModel('assets', [
-            { target: 'backgroundEmbedding', offset: 3, from: 'smile2', to: 'smile' },
-            { target: 'trigger/0/effect/0/value', offset: 4, from: 'smile2', to: 'smile' },
+            { target: 'backgroundEmbedding', offset: 12, from: 'smile2', to: 'smile' },
+            { target: 'trigger/0/effect/0/value', offset: 13, from: 'smile2', to: 'smile' },
         ])
         model.rowOps = [{ kind: 'assetRowRemove', array: 'assets', index: 3, tuple: [...SMILE_COPY], count: 1 }]
         expect(harness.service.assetMerge(M1, model, byPathOnly).ok).toBe(true)
-        expect(liveModule().backgroundEmbedding).toBe('be smile')
-        expect((liveModule().trigger?.[0].effect[0] as { value: string }).value).toBe('eff smile')
+        expect(liveModule().backgroundEmbedding).toBe('be {{image::smile}}')
+        expect((liveModule().trigger?.[0].effect[0] as { value: string }).value).toBe('eff {{image::smile}}')
         expect(liveModule().assets).toHaveLength(3)
         expect(harness.service.undo(M1).ok).toBe(true)
-        expect(liveModule().backgroundEmbedding).toBe('be smile2')
-        expect((liveModule().trigger?.[0].effect[0] as { value: string }).value).toBe('eff smile2')
+        expect(liveModule().backgroundEmbedding).toBe('be {{image::smile2}}')
+        expect((liveModule().trigger?.[0].effect[0] as { value: string }).value).toBe('eff {{image::smile2}}')
         expect(liveModule().assets).toHaveLength(4)
         expect(harness.service.redo(M1).ok).toBe(true)
-        expect(liveModule().backgroundEmbedding).toBe('be smile')
-        expect((liveModule().trigger?.[0].effect[0] as { value: string }).value).toBe('eff smile')
+        expect(liveModule().backgroundEmbedding).toBe('be {{image::smile}}')
+        expect((liveModule().trigger?.[0].effect[0] as { value: string }).value).toBe('eff {{image::smile}}')
         expect(liveModule().assets).toHaveLength(3)
     })
 

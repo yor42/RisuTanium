@@ -15,7 +15,7 @@
     import { readOwnerFields, type OwnerFields } from '../../ts/studio/ownerFields'
     import { trackStudioFocus } from '../../ts/studio/layerFocus'
     import { closeStudioDrawer, closeStudioHistory, closeStudioRestoreSheet, closeStudioSearch, installStudioBack } from '../../ts/studio/studioBack.svelte'
-    import { selectedHistoryOwner, setStudioHistoryOpen, setStudioLayout, setStudioNotice, showStudioList, studioScreen } from '../../ts/studio/studioScreen.svelte'
+    import { selectedHistoryOwner, setStudioHistoryOpen, setStudioLayout, setStudioNotice, setStudioNotRestoredNotice, showStudioList, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
     import StudioHeader from './StudioHeader.svelte'
     import StudioDetail from './StudioDetail.svelte'
@@ -132,12 +132,14 @@
         if (destroyed || studioScreen.visitId !== visitId) return
         // A replay that outlasts a switch to another owner has nothing to say on the new screen.
         if (selectedHistoryOwner() !== owner) return
-        // Exactly one message: the refusal, a gone file, or the note of a step that moved or dropped without a write. A gone
-        // file comes first, because it is the reason a step was dropped. A queued replay that finds nothing left to replay
-        // says nothing: the key was already taken.
+        // Exactly one message: the refusal, a gone file, the places a merge undo left, or the note of a step that moved or
+        // dropped without a write. A gone file comes first, because it is the reason a step was dropped; the places a merge
+        // undo left follow it, and only an undo says them (a redo of a merge shows nothing of its own). A queued replay
+        // that finds nothing left to replay says nothing: the key was already taken.
         if (result.ok === false) {
             if (result.reason !== 'empty') setStudioNotice(refusalTextOf(result))
         } else if (result.goneRows !== undefined && result.goneRows.length > 0) setStudioNotice(language.studioAssetFileGone(result.goneName ?? result.goneRows[0]))
+        else if (direction === 'undo' && result.notRestored !== undefined && result.notRestored.length > 0) setStudioNotRestoredNotice(owner, language.studioAssetNotRestored(result.notRestored.length), result.notRestored)
         else if (result.already === 'undo') setStudioNotice(language.studioHistoryAlreadyUndone)
         else if (result.already === 'redo') setStudioNotice(language.studioHistoryAlreadyRedone)
         else if (result.dropped) setStudioNotice(language.studioHistoryStepDropped)
@@ -204,7 +206,7 @@
         historyAvailable={selectedHistoryOwner() !== null}
         onhistory={() => { if (studioScreen.historyOpen) closeStudioHistory(); else setStudioHistoryOpen(true) }}
     />
-    <StudioNotice message={studioScreen.notice} ondismiss={() => setStudioNotice(null)} />
+    <StudioNotice message={studioScreen.notice} places={studioScreen.noticePlaces?.places} ownerKind={studioScreen.noticePlaces?.ownerKind} ondismiss={() => setStudioNotice(null)} />
     {#if studioScreen.searchOpen}
         <section data-part="studio-search" aria-label={language.studioSearch} class="shrink-0 border-b border-darkborderc"><StudioSearch /></section>
     {/if}

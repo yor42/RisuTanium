@@ -130,10 +130,14 @@
     import { assetPoolKey, folderNameKey, folderOf, readFolderDoc } from '../../../ts/studio/assets/folderCodec'
     import { createRowMount } from '../../../ts/studio/assets/rowMount.svelte'
     import type { DuplicateGroup } from '../../../ts/studio/assets/duplicateGroups'
-    import type { AssetArrayName } from '../../../ts/studio/assets/mergePreview'
+    import type { MergeSource } from '../../../ts/studio/assets/mergeCommit'
+    import { countChatMentions, countEnablingCharacters } from '../../../ts/studio/assets/mergeCounts'
+    import type { AssetArrayName, ModuleSource } from '../../../ts/studio/assets/mergePreview'
     import type { SurvivorDeps } from '../../../ts/studio/edit/assetSetters'
     import { createStudioToasts, refusalText, refusalTextOf } from '../../../ts/studio/edit/studioToasts'
     import { characterOwnerKey, moduleOwnerKey } from '../../../ts/studio/history/ownerPhase'
+    import { setStudioNotRestoredNoticeFromToast, studioScreen } from '../../../ts/studio/studioScreen.svelte'
+    import { matchesModuleRef, referencedModuleIds } from '../../../ts/process/moduleRefs'
     import type { RisuModule } from '../../../ts/process/modules'
     import { isModuleStub } from '../../../ts/storage/moduleStub'
     import type { StudioResult } from '../../../ts/studio/history/ownerHistory.svelte'
@@ -143,6 +147,7 @@
     import StudioAssetBulkBar from './StudioAssetBulkBar.svelte'
     import StudioAssetFinder, { type FinderArray, type FinderRow } from './StudioAssetFinder.svelte'
     import StudioAssetFolderHeader from './StudioAssetFolderHeader.svelte'
+    import StudioAssetMergePreview from './StudioAssetMergePreview.svelte'
     import StudioAssetRow, { type MoveChoice } from './StudioAssetRow.svelte'
 
     // The additional assets of one character, read by id: rows with their thumbnail or type tile, the name field that
@@ -174,11 +179,9 @@
         references?: (name: string, path: string) => number
         // The byte layer of Check bytes; the page session's own when absent (tests pass a double).
         finderPort?: () => Promise<FinderPort>
-        // Merge belongs to the merge stage: while it is absent a "same file, different names" group has no Merge button.
-        onmerge?: (group: DuplicateGroup<FinderRow>) => void
     }
 
-    let { chaId = '', moduleId, moduleIndex, readOnly = false, host, sizeJob, usedIn, picker, enabledModules, references, finderPort, onmerge }: Props = $props()
+    let { chaId = '', moduleId, moduleIndex, readOnly = false, host, sizeJob, usedIn, picker, enabledModules, references, finderPort }: Props = $props()
 
     interface ListRow {
         key: string
@@ -214,7 +217,15 @@
     const forModule = untrack(() => moduleId !== undefined && moduleIndex !== undefined)
     const arrayId: AssetArrayName = forModule ? 'assets' : 'additionalAssets'
     const owner = $derived(forModule ? moduleOwnerKey(moduleId ?? '') : characterOwnerKey(chaId))
-    const toasts = createStudioToasts({ service: getStudioHistoryService, host: untrack(() => host) })
+    // A merge's Undo that leaves places as they were also puts them in the Studio notice, if that visit and owner are still on screen.
+    const toasts = createStudioToasts({
+        service: getStudioHistoryService,
+        host: untrack(() => host),
+        notRestored: {
+            visit: () => studioScreen.visitId,
+            show: (visit, key, places) => setStudioNotRestoredNoticeFromToast(visit, key, language.studioAssetNotRestored(places.length), places),
+        },
+    })
 
     const service = $derived(getStudioHistoryService())
     // A module whose id is shared starts no history lifecycle: its form changes nothing, and the service would claim and
@@ -942,6 +953,62 @@
             : language.studioAssetSurvivorFirst
         toasts.postAssetAction(owner, result.stepId, language.studioAssetRemovedExtras(extras.length, name), pool ? `${kept} ${language.studioAssetPoolWarning}` : kept)
     }
+
+    // ---------------------------------------------------------------- merge
+
+    // The group being merged, with the survivor deps of the finder pass that listed it. The preview ends with the owner
+    // or kind it was opened for (it closes itself), and a merge that lands or a Cancel ends it here.
+    let merging = $state.raw<{ group: DuplicateGroup<FinderRow>, deps: SurvivorDeps } | null>(null)
+    let mergeOpener: HTMLElement | null = null
+
+    function startMerge(array: FinderArray, group: DuplicateGroup<FinderRow>, deps: SurvivorDeps): void {
+        if (!service || array.reportOnly || array.id !== arrayId || !group.mergeCandidate) return
+        const active = document.activeElement
+        mergeOpener = active instanceof HTMLElement ? active : null
+        merging = { group, deps }
+    }
+
+    // Focus returns to the button that opened the preview when the preview's own control held it; focus elsewhere stays.
+    function closeMerge(): void {
+        merging = null
+        const opener = mergeOpener
+        mergeOpener = null
+        void afterFlush().then(() => {
+            const active = document.activeElement
+            if (active !== null && active !== document.body && active.isConnected) return
+            ;(opener !== null && opener.isConnected ? opener : container)?.focus()
+        })
+    }
+
+    // What the preview reads of the live owner and of the other owners it counts. The reads happen where they are called,
+    // from the preview's handlers, its derived checks and its count jobs.
+    const mergeSource: MergeSource = {
+        targetOwner: () => forModule
+            ? (moduleSlot === undefined ? null : { kind: 'module', source: moduleSlot })
+            : (live === undefined ? null : { kind: 'character', source: live }),
+        modules: (): ModuleSource[] => forModule ? [] : (enabledModules?.() ?? []).map((module) => ({
+            id: module.id,
+            name: module.name,
+            assets: module.assets.map((asset): [string, ...string[]] => [asset[0] ?? '', ...asset.slice(1)]),
+        })),
+        settings: () => ({
+            assetMaxDifference: DBState.db.assetMaxDifference ?? 4,
+            legacyMediaFindings: DBState.db.legacyMediaFindings === true,
+            newImageHandlingBeta: DBState.db.newImageHandlingBeta === true,
+        }),
+        countChats: (query, signal, onProgress) => countChatMentions(live?.chats ?? [], query, { signal, onProgress }),
+        countCharacters: (query, signal, onProgress) => countEnablingCharacters({
+            module: { id: moduleId ?? '', namespace: moduleSlot?.namespace },
+            characters: DBState.db.characters ?? [],
+            enabledModules: DBState.db.enabledModules ?? [],
+            moduleIntergration: DBState.db.moduleIntergration ?? '',
+        }, query, { signal, onProgress }),
+        enabledEverywhere: () => matchesModuleRef(
+            { id: moduleId ?? '', namespace: moduleSlot?.namespace },
+            new Set(referencedModuleIds({ enabledModules: DBState.db.enabledModules ?? [], moduleIntergration: DBState.db.moduleIntergration })),
+        ),
+        characterName: (id) => DBState.db.characters?.find((candidate) => candidate?.chaId === id)?.name ?? id,
+    }
 </script>
 
 {#if present && !hidden}
@@ -1028,8 +1095,23 @@
                     {editable}
                     {references}
                     onremoveextras={removeExtras}
-                    onmerge={onmerge ? (_array, group) => onmerge(group) : undefined}
+                    onmerge={startMerge}
                     onclose={() => { finderOpen = false }}
+                />
+            {/if}
+            {#if merging !== null && service}
+                <StudioAssetMergePreview
+                    {owner}
+                    ownerKind={forModule ? 'module' : 'character'}
+                    ownerId={forModule ? (moduleId ?? '') : chaId}
+                    kind="asset"
+                    group={merging.group}
+                    deps={merging.deps}
+                    {service}
+                    {toasts}
+                    source={mergeSource}
+                    {references}
+                    onclose={closeMerge}
                 />
             {/if}
             {#if groups.length === 0}

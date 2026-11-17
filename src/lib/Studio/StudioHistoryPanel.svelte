@@ -13,7 +13,7 @@
     import { closeStudioHistory } from '../../ts/studio/studioBack.svelte'
     import { focusLost, placeFocusAfterHistory } from '../../ts/studio/historyFocus'
     import { readOwnerFields, type OwnerFields } from '../../ts/studio/ownerFields'
-    import { selectedHistoryOwner, setStudioRestoreSheetOpen, studioScreen } from '../../ts/studio/studioScreen.svelte'
+    import { selectedHistoryOwner, setStudioNotRestoredNotice, setStudioRestoreSheetOpen, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import { DBState } from '../../ts/stores.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
 
@@ -138,16 +138,22 @@
         if (destroyed) return
         // The panel may have moved to another owner meanwhile: its message belongs to this one.
         if (historyOwner !== key) return
-        showOutcome(key, result, read.before)
+        showOutcome(key, result, read.before, desc.kind === 'undo')
     }
 
-    function showOutcome(key: OwnerKey, result: StudioResult, before: OwnerFields | null): void {
+    // `undone` is true for an Undo only: the places a merge undo left as they were go to the Studio notice, whose Show lists
+    // them; a redo or a revert of a merge says nothing of its own about them.
+    function showOutcome(key: OwnerKey, result: StudioResult, before: OwnerFields | null, undone = false): void {
         if (result.ok === false) {
             message = refusalTextOf(result)
             return
         }
+        const goneFile = result.goneRows !== undefined && result.goneRows.length > 0
+        if (undone && !goneFile && result.notRestored !== undefined && result.notRestored.length > 0) {
+            setStudioNotRestoredNotice(key, language.studioAssetNotRestored(result.notRestored.length), result.notRestored)
+        }
         const notes: string[] = []
-        if (result.goneRows !== undefined && result.goneRows.length > 0) notes.push(language.studioAssetFileGone(result.goneName ?? result.goneRows[0]))
+        if (goneFile && result.goneRows !== undefined) notes.push(language.studioAssetFileGone(result.goneName ?? result.goneRows[0]))
         if (result.already === 'undo') notes.push(language.studioHistoryAlreadyUndone)
         else if (result.already === 'redo') notes.push(language.studioHistoryAlreadyRedone)
         else if (result.dropped) notes.push(language.studioHistoryStepDropped)
