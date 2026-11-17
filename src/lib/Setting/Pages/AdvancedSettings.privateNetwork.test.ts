@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 /**
- * The Advanced settings page offers the device-local "Allow private network for plugins, cards and
+ * The Advanced settings page offers the device-local "Allow local network for plugins, cards and
  * MCP" toggle on Tauri builds only: enabling it needs the warning accepted, disabling never asks, and a
  * declined warning leaves it off and stores nothing.
  *
@@ -101,7 +101,7 @@ afterEach(() => {
 describe('the private-network toggle for plugins, cards and MCP', () => {
     test('is offered on Tauri with its label and help, off by default', async () => {
         const text = await render()
-        expect(text).toContain('Allow private network for plugins, cards and MCP')
+        expect(text).toContain('Allow local network for plugins, cards and MCP')
         expect(text).toContain(language.allowPrivateNetworkNativeHelp)
         expect(checkbox().checked).toBe(false)
     })
