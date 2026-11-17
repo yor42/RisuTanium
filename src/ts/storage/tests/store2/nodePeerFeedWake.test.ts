@@ -51,6 +51,7 @@ import type { toSaveType } from 'src/ts/storage/risuSave'
 import { until } from '../saveLoopWorld'
 import { bootThroughDispatch, countedBackend, createClock, seedTree, testEnv } from '../store2SaveKit'
 import { buildSmall, fakeLists } from './codecFixtures'
+import { bootB, ffSetup, ffTeardown, ffWorld, runLoopWorld, takenBy } from './ffFixtures'
 
 /**
  * The Node change feed wakes a page's peer check and nothing else. F2a: a Node page booted through the real dispatch,
@@ -281,6 +282,38 @@ describe('F2a a feed event wakes exactly one peer check', () => {
         expect(counted.writeCalls()).toBe(0)
         expect(counted.reads).toEqual([])
         stopped = true
+    }, 30_000)
+})
+
+describe('F2b a feed event over a descending peer commit is taken by the owed tick', () => {
+    beforeEach(() => {
+        ffSetup()
+    })
+
+    afterEach(() => {
+        ffTeardown()
+    })
+
+    test('page B holds the peer\'s change after the event and does not park', async () => {
+        const { memory, page } = await ffWorld()
+        const b = await bootB(memory)
+        expect(b.context.idleNet ?? null).toBeNull()
+        const world = runLoopWorld(b.context, b.db)
+        const script = scriptedFetch()
+        // The glue the page installs: the flag the broadcast path sets, and the idle wake.
+        startFeed(script, peerCommitWake(() => { world.state.peerHeard = true }, () => { }))
+        await until(() => script.pending() === 1, 'the feed to ask', 4000)
+        script.answer(1)
+        await until(() => script.pending() === 1, 'the feed to ask again after its baseline', 4000)
+
+        await page.commitEdit((db) => { db.temperature = 123 })
+        script.answer(2)
+        await takenBy(b, memory)
+
+        expect(b.db.temperature).toBe(123)
+        expect(world.stoppedLog.filter((reason) => reason !== '')).toEqual([])
+        expect(b.peer.asked).toEqual([])
+        expect(world.crashed).toEqual([])
     }, 30_000)
 })
 

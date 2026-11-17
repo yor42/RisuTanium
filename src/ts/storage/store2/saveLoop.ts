@@ -153,6 +153,9 @@ export interface IdleNetOptions {
 /** The idle net's default cadence: one resident character per tick. */
 export const IDLE_NET_INTERVAL_MS = 2000
 
+/** While the peer feed is live, the longest an idle-net slot goes without reading the commit key. */
+export const FEED_BACKSTOP_MS = 30_000
+
 /**
  * A resident whose verdict was clean less than this long ago is passed over at its next turn. The rotation itself is
  * unchanged, so a quiet resident is re-verdicted at its first turn at or after this age: this plus up to one rotation.
@@ -327,6 +330,11 @@ export interface Store2LoopPort {
      * a frozen page runs no message or timer, so the pass would wait for the user to return. Absent means never.
      */
     yieldImmediately?(): boolean
+    /**
+     * Whether the Node server's change feed is live now: a peer commit then wakes the peer check, so an idle-net slot reads
+     * the commit key at most once per `FEED_BACKSTOP_MS`. Absent or false means every slot reads, as without a feed.
+     */
+    peerFeedLive?(): boolean
     /**
      * The owners a reply streams into now, by `chaId`. The idle net never verdicts or names such a character while it is
      * listed and not unsavable; marked passes and the leave flushes still write it. Absent means none.
@@ -702,6 +710,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let lastActivityAt = port.now()
     /** When the last slot that ran `netScan` ran it; the quiet scan interval counts from here. */
     let lastScanAt = Number.NEGATIVE_INFINITY
+    /** When `netDecision` last read the commit key; a live peer feed lets later slots skip the read until `FEED_BACKSTOP_MS` has passed. */
+    let lastCommitReadAt = Number.NEGATIVE_INFINITY
     /** The database object the last scan gate saw; a different one is activity. */
     let lastSeenDb: Database | null = null
     /** Whether the current net slot ran `netScan`; set by the scan gate, read by `netSlot`. */
@@ -2058,37 +2068,45 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
             return { kind: 'full' }
         }
-        const lockRequestedAt = MEASURE ? performance.now() : 0
-        // The measured read notes the lock wait when the lock is granted and the read time even when the read throws.
-        const readUnderLock = MEASURE
-            ? async () => {
-                const lockedAt = performance.now()
-                noteNetSlotPart('lockWaitMs', lockedAt - lockRequestedAt)
-                try {
-                    return await committer.readCommit()
-                } finally {
-                    noteNetSlotPart('readMs', performance.now() - lockedAt)
+        // A live peer feed wakes the peer check on a peer commit, so the commit key is read here only as a backstop once
+        // `FEED_BACKSTOP_MS` has passed since the last read; a clock that moved back counts as stale. Nothing later in the
+        // slot depends on that read, so a skipped slot continues with every later check unchanged.
+        const sinceCommitRead = port.now() - lastCommitReadAt
+        const feedCovers = port.peerFeedLive?.() === true && sinceCommitRead >= 0 && sinceCommitRead < FEED_BACKSTOP_MS
+        if (!feedCovers) {
+            const lockRequestedAt = MEASURE ? performance.now() : 0
+            // The measured read notes the lock wait when the lock is granted and the read time even when the read throws.
+            const readUnderLock = MEASURE
+                ? async () => {
+                    const lockedAt = performance.now()
+                    noteNetSlotPart('lockWaitMs', lockedAt - lockRequestedAt)
+                    try {
+                        return await committer.readCommit()
+                    } finally {
+                        noteNetSlotPart('readMs', performance.now() - lockedAt)
+                    }
                 }
-            }
-            : () => committer.readCommit()
-        const read = await port.withWriteLock(readUnderLock)
-        const judgeStartedAt = MEASURE ? performance.now() : 0
-        const judged = judge(read)
-        if (MEASURE) {
-            noteNetSlotPart('judgeMs', performance.now() - judgeStartedAt)
-            netJudgeStartedAt = judgeStartedAt
-            netReadDone = true
-        }
-        if (descendsStop(judged)) {
-            // The full tick reads the base again and fast-forwards over it.
-            return { kind: 'full' }
-        }
-        if (judged.kind === 'stop') {
-            setPark(parkOf(judged))
+                : () => committer.readCommit()
+            const read = await port.withWriteLock(readUnderLock)
+            lastCommitReadAt = port.now()
+            const judgeStartedAt = MEASURE ? performance.now() : 0
+            const judged = judge(read)
             if (MEASURE) {
-                noteNetSlotEnd('parked')
+                noteNetSlotPart('judgeMs', performance.now() - judgeStartedAt)
+                netJudgeStartedAt = judgeStartedAt
+                netReadDone = true
             }
-            return { kind: 'none' }
+            if (descendsStop(judged)) {
+                // The full tick reads the base again and fast-forwards over it.
+                return { kind: 'full' }
+            }
+            if (judged.kind === 'stop') {
+                setPark(parkOf(judged))
+                if (MEASURE) {
+                    noteNetSlotEnd('parked')
+                }
+                return { kind: 'none' }
+            }
         }
         if (port.isDue()) {
             if (MEASURE) {
