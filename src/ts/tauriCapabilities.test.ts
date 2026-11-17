@@ -1,6 +1,6 @@
 /**
  * The shipped capability files grant nothing to remote origins, keep the process tools on desktop targets only,
- * and the tracked schema mirrors them.
+ * let the http scope reach http and https on any port and nothing else, and the tracked schema mirrors them.
  *
  * Reads the real capability files and the schema the build writes. Tests titled `guard:` pass with or without
  * the split and pin behaviour that must be preserved.
@@ -75,6 +75,17 @@ describe('capability files', () => {
             .filter((permission): permission is Exclude<Permission, string> => typeof permission !== 'string' && permission.identifier === 'fs:scope')
         const allowed = scopes.flatMap((scope) => (scope.allow ?? []).filter((entry): entry is string => typeof entry === 'string'))
         expect(allowed).toContain('/data/**/*')
+    })
+
+    test('the http scope allows http and https on any port and no other scheme', () => {
+        const urls = capabilities.flatMap((capability) => capability.permissions)
+            .filter((permission): permission is Exclude<Permission, string> => typeof permission !== 'string' && permission.identifier === 'http:default')
+            .flatMap((permission) => (permission.allow ?? []).map((entry) => (entry as { url: string }).url))
+        expect(urls).toContain('http://*:**')
+        expect(urls).toContain('https://*:**')
+        for (const url of urls) {
+            expect(url, url).toMatch(/^https?:\/\/\*[:/]/)
+        }
     })
 
     test('guard: the tracked schema mirrors each source capability', () => {
