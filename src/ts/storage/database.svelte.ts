@@ -15,7 +15,7 @@ import { prebuiltNAIpresets, prebuiltPresets } from '../process/templates/templa
 import { defaultColorScheme, type ColorScheme } from '../gui/colorscheme';
 import type { PromptItem, PromptSettings } from '../process/prompt';
 import type { OobaChatCompletionRequestParams } from '../model/ooba';
-import { type HypaV3Settings, type HypaV3Preset, createHypaV3Preset } from '../process/memory/hypav3'
+import { type HypaV3Settings, type HypaV3Preset, createHypaV3Preset, normalizeHypaV3Presets } from '../process/memory/hypaV3Presets'
 import { normalizeTranslatorPresetState, type TranslatorPreset } from '../translator/presets'
 import type { TaskPreset } from '../process/utility/taskPreset'
 import { isTauri, isNodeServer } from "src/ts/platform"
@@ -620,15 +620,7 @@ export function setDatabase(data:Database){
             ...data.hypaV3Settings
         })
     ]
-    if (data.hypaV3Presets.length > 0) {
-        data.hypaV3Presets = data.hypaV3Presets.map((preset, i) =>
-            createHypaV3Preset(
-                preset.name || `Preset ${i + 1}`,
-                preset.settings || {}
-            )
-        )
-    }
-    data.hypaV3PresetId ??= 0
+    normalizeHypaV3Presets(data)
     normalizeTranslatorPresetState(data)
     data.showDeprecatedTriggerV2 ??= false
     data.returnCSSError ??= true

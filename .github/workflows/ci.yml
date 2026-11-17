@@ -77,8 +77,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # svelte-check outgrew Node's default ~4 GB heap; the runner has 16 GB.
       - name: Type check
         run: pnpm check
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
 
       - name: Build
         run: pnpm build

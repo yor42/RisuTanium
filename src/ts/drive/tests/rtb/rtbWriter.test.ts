@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { describe, test, expect } from 'vitest'
 import { encodeFrame } from 'src/ts/storage/store2/format/frame'
 import { KEY_ALPHABET, type KeyEnv } from 'src/ts/storage/store2/format/keys'
@@ -511,5 +512,146 @@ describe('writeRtb entry forms', () => {
         const first = await write(standardInput())
         const second = await write(standardInput())
         expect(Array.from(first.bytes)).toEqual(Array.from(second.bytes))
+    })
+
+    test('eager byte pin: a fixed eager input hashes to the digest the pre-deferral writer produced (compatibility guard)', async () => {
+        const { bytes } = await write({
+            ...standardInput(),
+            omitted: [{ kind: 'unit', name: 'tail-x', reason: 'damaged' }],
+        })
+        expect(createHash('sha256').update(bytes).digest('hex')).toBe('cff92dd729a888680af387c3515fa8af5d1c1f4ad1b49070404b1bf7086edbf1')
+    })
+})
+
+/** The entry name of a local file header chunk, or null for any other chunk. */
+function localHeaderName(chunk: Uint8Array): string | null {
+    if (chunk.length < 30 || chunk[0] !== 0x50 || chunk[1] !== 0x4b || chunk[2] !== 3 || chunk[3] !== 4) {
+        return null
+    }
+    const nameLength = chunk[26] | (chunk[27] << 8)
+    return decoder.decode(chunk.subarray(30, 30 + nameLength))
+}
+
+interface WatchedWrite {
+    sink: SegmentSink
+    /** Local header names, in the order written. */
+    headers: string[]
+    events: string[]
+}
+
+function watchedSink(): WatchedWrite {
+    const sink = new SegmentSink()
+    const headers: string[] = []
+    const events: string[] = []
+    const plainWrite = sink.write.bind(sink)
+    sink.write = (chunk: Uint8Array) => {
+        const name = localHeaderName(chunk)
+        if (name !== null) {
+            headers.push(name)
+            events.push(`header:${name}`)
+        }
+        plainWrite(chunk)
+    }
+    return { sink, headers, events }
+}
+
+const DEFERRED_UNITS = [
+    { tail: 'tail-a', frame: encodeFrame(UNIT_TYPE.shard, encoder.encode('shard-one')) },
+    { tail: 'tail-b', frame: encodeFrame(UNIT_TYPE.lore, encoder.encode('lore-one')) },
+]
+
+describe('writeRtb deferred store2 input and late source (T-S8-6)', () => {
+    function deferred(events: string[], over: Partial<{ refs: string[], req: string[], units: number, omitted: { kind: string, name: string, reason: string }[] }> = {}) {
+        async function* units(): AsyncGenerator<(typeof DEFERRED_UNITS)[number]> {
+            for (const unit of DEFERRED_UNITS) {
+                events.push('unit')
+                yield unit
+            }
+        }
+        const calls = { summary: 0 }
+        return {
+            calls,
+            store2: {
+                units: units(),
+                summary: () => {
+                    calls.summary++
+                    events.push('summary')
+                    return {
+                        root: ['tail-a', 41, 99] as const,
+                        req: over.req ?? ['chat-alt'],
+                        refs: over.refs ?? [...V1_REF_STRINGS].slice(0, 3),
+                        units: over.units ?? DEFERRED_UNITS.length,
+                        omitted: over.omitted ?? [],
+                    }
+                },
+            },
+        }
+    }
+
+    test('summary is called once, after the last unit and before the first s/ entry, and its values fill the store2 row', async () => {
+        const watch = watchedSink()
+        const input = deferred(watch.events, { refs: [...V1_REF_STRINGS].slice(0, 3).reverse() })
+        const result = await writeRtb(baseInput(watch.sink, { store2: input.store2 }))
+        expect(input.calls.summary).toBe(1)
+        const at = watch.events.indexOf('summary')
+        expect(at).toBeGreaterThan(watch.events.lastIndexOf('unit'))
+        const lastBlock = watch.events.map((e) => e.startsWith('header:u/')).lastIndexOf(true)
+        expect(at).toBeGreaterThan(lastBlock)
+        expect(at).toBeLessThan(watch.events.findIndex((e) => e.startsWith('header:s/')))
+        const row = result.manifest.sections.find((s) => s.id === 'store2')
+        expect(row?.meta).toMatchObject({ root: ['tail-a', 41, 99], req: ['chat-alt'], units: 2 })
+        expect(row?.meta?.refs).toEqual([...V1_REF_STRINGS].slice(0, 3).sort())
+        expect((await classifyRtb(rangeSourceOfBytes(watch.sink.toBytes()))).kind).toBe('ok')
+    })
+
+    test('a summary with unknown refs or req tokens fails the export before any s/ entry', async () => {
+        for (const over of [{ refs: ['nope:x'] }, { req: ['not-a-token'] }]) {
+            const watch = watchedSink()
+            const input = deferred(watch.events, over)
+            await expect(writeRtb(baseInput(watch.sink, { store2: input.store2 }))).rejects.toThrow(RangeError)
+            expect(watch.headers.some((name) => name.startsWith('s/'))).toBe(false)
+        }
+    })
+
+    test('a summary whose unit count differs from what the writer counted fails the export', async () => {
+        const watch = watchedSink()
+        const input = deferred(watch.events, { units: 3 })
+        await expect(writeRtb(baseInput(watch.sink, { store2: input.store2 }))).rejects.toThrow(/counts 3 units, 2 were written/)
+    })
+
+    test('late is called once, at the manifest, after the last a/ entry; its source replaces the input and its omissions sit between the summary units and the writer\'s own', async () => {
+        const watch = watchedSink()
+        const input = deferred(watch.events, { omitted: [{ kind: 'unit', name: 'tail-u', reason: 'damaged' }] })
+        const lateList: { kind: string, name: string, reason: string }[] = []
+        const lateCalls: { headersSeen: string[] }[] = []
+        async function* assets(): AsyncGenerator<{ key: string, size: number, body: AsyncGenerator<Uint8Array> }> {
+            yield { key: 'k'.repeat(2000), size: 1, body: mustNotRun() }
+            lateList.push({ kind: 'asset', name: 'gone', reason: 'unreadable' })
+            yield { key: 'ok.png', size: 3, body: bodyOf('abc') as AsyncGenerator<Uint8Array> }
+        }
+        const lateSource = { device: { label: 'Late device', platform: 'node' }, committedAt: 12345, unsavedExcluded: true }
+        const { source: _unused, ...rest } = baseInput(watch.sink)
+        const result = await writeRtb({
+            ...rest,
+            store2: input.store2,
+            omitted: [{ kind: 'unit', name: 'tail-x', reason: 'damaged' }],
+            sides: { 'side.iris': { unreadable: true } },
+            assets: assets(),
+            late: () => {
+                lateCalls.push({ headersSeen: [...watch.headers] })
+                return { source: lateSource, omitted: [...lateList] }
+            },
+        })
+        expect(lateCalls).toHaveLength(1)
+        expect(lateCalls[0].headersSeen.at(-1)?.startsWith('a/')).toBe(true)
+        expect(lateCalls[0].headersSeen).not.toContain('manifest.json')
+        expect(result.manifest.source).toEqual(lateSource)
+        expect(result.manifest.omitted).toEqual([
+            { kind: 'unit', name: 'tail-x', reason: 'damaged' },
+            { kind: 'unit', name: 'tail-u', reason: 'damaged' },
+            { kind: 'asset', name: 'gone', reason: 'unreadable' },
+            { kind: 'side', name: 'side.iris', reason: 'unreadable' },
+            { kind: 'asset', name: 'k'.repeat(2000), reason: 'name' },
+        ])
     })
 })
