@@ -2243,6 +2243,7 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
                         bootEnd = await commitBootImport({
                             target: store2Import.boot,
                             decode: () => readBinDatabaseTree(file, databaseEntry, facts.omitted),
+                            stream: { file, entry: databaseEntry, omitted: facts.omitted },
                             reader: createBinImportReader(file, store2Import.index, store2Import.boot.readColdStorageItem),
                             onAccepted: (items) => { facts.incomplete = items; },
                         });
@@ -2282,6 +2283,7 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
                         target: store2Import.target,
                         busy,
                         decode: async () => withFirstSetupDone(await readBinDatabaseTree(file, databaseEntry, facts.omitted), completeFirstSetup),
+                        stream: { file, entry: databaseEntry, omitted: facts.omitted, adjustRoot: (root) => withFirstSetupDone(root, completeFirstSetup) },
                         reader: createBinImportReader(file, store2Import.index),
                     });
                     switch (end.kind) {

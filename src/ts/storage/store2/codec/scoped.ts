@@ -731,6 +731,102 @@ export async function planScopedEncode(db: Database, options: EncodeOptions, sco
     }
 }
 
+// ---- streamed encode ----
+
+/** What `StreamedEncode.finish` returns: the tail commit (front, modules, finish units and the manifest) and the count of every unit the stream produced. */
+export interface StreamedFinish {
+    /** The units `character` did not already hand out, and the manifest. */
+    built: BuiltCommit
+    /** Every unit the whole stream wrote, the manifest included: the `newUnits` a `ScopedPlan` of the same tree reports. */
+    count: number
+}
+
+/**
+ * An encode of a resolved tree that arrives characters first and root last, with no earlier encoding (nothing is
+ * reused, as in an import). It holds each character's shard entry and the identity, key, type, Ref and digest of each
+ * unit it produced, never a unit's frame after the caller has it.
+ */
+export interface StreamedEncode {
+    /**
+     * Encodes the character `slot` at position `index` and returns its units, frames included, once; the encode keeps
+     * none. A `CodecError` is held, not thrown: the call and every later one return no units, and `finish` reports the
+     * error where `encodeScoped` would. Any other error is thrown. A slot must be resolved: a stub is refused.
+     */
+    character(slot: unknown, index: number): Promise<BuiltCommit['units']>
+    /**
+     * Encodes the rest of the tree from `root` (the database with its characters left out: `root.characters` must be
+     * a list, and is not read) and ends the stream. It throws the `CodecError` `encodeScoped` would throw for the same tree, in
+     * `encodeScoped`'s order: the inputs check, the front, the modules, the first character error, then the finish.
+     */
+    finish(root: Database): Promise<StreamedFinish>
+}
+
+/**
+ * The streamed counterpart of `encodeScoped(db, options, { modules: true, characters: 'all' })` without a previous
+ * encoding. Under the same tree it produces the same units, up to the keys, the order they are put in and the Refs that
+ * follow from the keys. `context` supplies the attempt's mint, `seq` and clock, and the manifest's `legacyKeep`
+ * override, exactly as `rekey` applies them; absent, the encode runs under placeholder keys, which name nothing real
+ * (a dry pass that learns the count and the first error). `yieldFn` is awaited after each character and each module.
+ * The one `CodecError` precedence of the stream lives here, so no caller restates it.
+ */
+export function createStreamedEncode(
+    env: KeyEnv, lists: ListDerivation, yieldFn?: () => Promise<void>, context?: BuildContext,
+): StreamedEncode {
+    const encoder = new Encoder({
+        env, lists, seq: context?.seq ?? 0, createdAt: context?.now ?? env.now(), previous: null, keys: context?.mint ?? placeholderMint(),
+    }, null)
+    const entries: ShardEntry[] = []
+    let held: CodecError | null = null
+    let written = 0
+    return {
+        async character(slot, index) {
+            if (held !== null) {
+                return []
+            }
+            try {
+                if (typeof slot !== 'object' || slot === null) {
+                    throw new CodecInputError(`characters[${index}] is not an object.`)
+                }
+                const chaId = String((slot as { chaId?: unknown }).chaId ?? '')
+                if (isColdStub(slot as Slot)) {
+                    throw new StubRefusedError('character', chaId, null)
+                }
+                entries.push(encodeCharacter(slot as Slot, index, encoder))
+            } catch (error) {
+                if (!(error instanceof CodecError)) {
+                    throw error
+                }
+                held = error
+                encoder.sink.drain()
+                return []
+            }
+            const units = builtUnitsOf(encoder.sink.drain())
+            written += units.length
+            await yieldFn?.()
+            return units
+        },
+        async finish(root) {
+            checkDatabase(root, encoder.options)
+            const front = encodeFront(root, encoder)
+            const moduleSet = await encodeModuleSetYielding(root, encoder, yieldFn)
+            if (held !== null) {
+                throw held
+            }
+            const tree = finishTree(root, encoder, front, moduleSet, entries, new Map())
+            const built = builtCommitOf(tree)
+            if (context?.legacyKeep !== undefined) {
+                // The keep of the base this attempt replaces, not the one the build planned with.
+                built.manifest.body = { ...built.manifest.body, fixed: { ...built.manifest.body.fixed, legacyKeep: context.legacyKeep } }
+            }
+            return { built, count: written + built.units.length + 1 }
+        },
+    }
+}
+
+function builtUnitsOf(units: readonly WrittenUnit[]): BuiltCommit['units'] {
+    return units.map(unit => ({ key: unit.key, bytes: unit.bytes }))
+}
+
 // ---- acknowledged-state verdict ----
 
 /**

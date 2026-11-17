@@ -154,7 +154,7 @@ export type Carry = { from: string, units: number }
 export const IMPORT_REPLACES_BASE: unique symbol = Symbol.for('risu.store2.IMPORT_REPLACES_BASE')
 
 /** Fail-closed read of a request's carry: a Carry, or null for the sentinel; anything else is a programming error. */
-function plannedCarry(request: CommitRequest): Carry | null {
+function plannedCarry(request: Pick<CommitRequest, 'carry'>): Carry | null {
     const carry = request.carry as unknown
     if (carry === IMPORT_REPLACES_BASE) {
         return null
@@ -192,6 +192,21 @@ export interface CommitRequest {
      * by value, unjudged on the bulk path.
      */
     carry: Carry | typeof IMPORT_REPLACES_BASE
+}
+
+/**
+ * The context of a streamed build: the attempt's `BuildContext` plus `put`, which uploads one unit at once. A streamed
+ * build returns a `BuiltCommit` whose `units` are only the units it did not put; every put unit stays out of that list.
+ * `put` rejects with a `TypeError` for a key the attempt's mint did not issue, a key put twice, or more puts than the
+ * request leaves room for (`newUnits - 1`, the manifest being the last unit). A failed or unflushed upload stops the
+ * whole commit with a signal that must reach the committer: a build must await `put` outside every `catch` that could
+ * swallow or rewrap it.
+ */
+export type StreamContext = BuildContext & { put(unit: UnitWrite): Promise<void> }
+
+/** A `CommitRequest` whose `build` may upload units early through `context.put`. */
+export type StreamedCommitRequest = Omit<CommitRequest, 'build'> & {
+    build(context: StreamContext): BuiltCommit | Promise<BuiltCommit>
 }
 
 /** How many of its newest commit-key epochs a committer remembers as its own. */
@@ -365,6 +380,11 @@ export interface Committer {
     /** Reads the commit key as a base. */
     readCommit(): Promise<Store2Read>
     commit(read: Store2Read, request: CommitRequest): Promise<CommitResult>
+    /**
+     * A bulk commit whose build uploads units as it goes (`StreamContext.put`): the entry checks of `commit`, then the
+     * bulk route always (no threshold choice). Optional so a wrapper that spreads or lists a committer need not name it.
+     */
+    commitStreamed?(read: Store2Read, request: StreamedCommitRequest): Promise<CommitResult>
     restore(read: Store2Read, manifestKey: string): Promise<WriteResult>
     saveMine(freshRead: Store2Read, request: CommitRequest): Promise<CommitResult>
     pin(read: Store2Read, key: string, reason: string): Promise<WriteResult>
@@ -428,6 +448,83 @@ export function checkBuiltUnits(built: BuiltCommit, issued: ReadonlySet<string>,
     return null
 }
 
+/**
+ * The signal of a failed or unflushed streamed upload. `put` throws it and the committer or installer that owns the
+ * attempt turns it into its upload-failed result; it is never a build failure.
+ */
+export class StreamedPutStop extends Error {
+    constructor(readonly cause: Store2BackendError) {
+        super('A streamed unit upload failed.')
+        this.name = 'StreamedPutStop'
+    }
+}
+
+/** What `put` refuses before any write: a programming error of the build, never a device outcome. */
+export function guardStreamedPut(key: string, issued: ReadonlySet<string>, putKeys: ReadonlySet<string>, declared: number): void {
+    if (!issued.has(key)) {
+        throw new TypeError(`${key} was not issued by this attempt's key mint.`)
+    }
+    if (putKeys.has(key)) {
+        throw new TypeError(`${key} was put twice.`)
+    }
+    if (putKeys.size >= declared - 1) {
+        throw new TypeError(`The request declared ${declared} new units, so at most ${declared - 1} can be put before the manifest.`)
+    }
+}
+
+/** The failure of one streamed unit write, or null when it landed flushed. */
+async function putStreamedUnit(backend: Store2Backend, unit: UnitWrite): Promise<StreamedPutStop | null> {
+    let flushed: boolean | undefined
+    try {
+        flushed = (await backend.putUnit(unit.key, unit.bytes)).flushed
+    } catch (error) {
+        if (error instanceof Store2BackendError) {
+            return new StreamedPutStop(error)
+        }
+        throw error
+    }
+    if (flushed === false) {
+        // The final write must not name a unit that may not survive power loss.
+        return new StreamedPutStop(new Store2BackendFailureError(`The unit ${unit.key} was written but its flush failed or was not reported as done, so the commit was abandoned.`))
+    }
+    return null
+}
+
+/** Whether a streamed build is exactly the declared set of units: the put ones plus the tail, all under keys this attempt issued. */
+export function checkStreamedUnits(built: BuiltCommit, issued: ReadonlySet<string>, putKeys: ReadonlySet<string>, declared: number): Refused | null {
+    const refused = (reason: Refusal, detail: string): Refused => ({ status: 'refused', reason, detail })
+    if (putKeys.size + built.units.length + 1 !== declared) {
+        return refused('bad-unit-set', `The request declared ${declared} new units but built ${putKeys.size + built.units.length + 1}.`)
+    }
+    const manifestShape = parseStore2Key(built.manifest.key)
+    if (manifestShape === null || manifestShape.shape !== 'staged-manifest') {
+        return refused('bad-manifest-key', 'The manifest key is not a manifest key of this commit.')
+    }
+    const keys = new Set<string>()
+    for (const key of [built.manifest.key, ...built.units.map(unit => unit.key)]) {
+        if (!issued.has(key)) {
+            return refused('bad-unit-set', `${key} was not issued by this attempt's key mint.`)
+        }
+        if (putKeys.has(key)) {
+            return refused('bad-unit-set', `${key} was already put and is named again.`)
+        }
+        if (keys.has(key)) {
+            return refused('bad-unit-set', `${key} appears twice.`)
+        }
+        keys.add(key)
+    }
+    return null
+}
+
+/** What `openMarker` hands the rest of a bulk commit: the marker this attempt wrote and the read that confirmed it. */
+interface OpenedMarker {
+    status: 'opened'
+    markerKey: CommitKey
+    held: Store2Read
+    prefix: string
+    stagingId: string
+}
+
 export function createCommitter(backend: Store2Backend, options: CommitterOptions): Committer {
     const env: KeyEnv = { ...defaultKeyEnv, ...options.env }
     const owner = options.owner
@@ -483,7 +580,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
         return checkBuiltUnits(built, issued, declared, staged)
     }
 
-    function refuseUnnamed(request: CommitRequest): Refused {
+    function refuseUnnamed(request: Pick<CommitRequest, 'carry'>): Refused {
         return refuse('base-unnamed', `The commit key no longer names the manifest ${plannedCarry(request)?.from ?? ''} this build was planned over.`)
     }
 
@@ -532,7 +629,11 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
         }
     }
 
-    async function bulk(base: Base, request: CommitRequest): Promise<CommitResult> {
+    /**
+     * The marker half of a bulk commit: the carry and standing-marker refusals, the marker compare-and-write and its
+     * read-back. Nothing is built before this returns `opened`.
+     */
+    async function openMarker(base: Base, request: Pick<CommitRequest, 'carry' | 'label'>): Promise<OpenedMarker | CommitResult> {
         // A bulk build may reference anything `from` names (units by key or digest, the legacy keep, opaque fields), so
         // any carry over a base that does not name `from` is refused whatever the unit count says.
         const carry = plannedCarry(request)
@@ -565,18 +666,85 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
         if (held.bytes === null || !sameBytes(held.bytes, markerBytes)) {
             return { status: 'conflict', current: held }
         }
+        return { status: 'opened', markerKey, held, prefix, stagingId }
+    }
 
-        const { mint, issued } = createMint(stagingId)
+    /** A build that threw after the marker was set: the own marker is cleared and the original travels in the abort error. */
+    async function abortBuild(prefix: string, error: unknown): Promise<never> {
+        throw new Store2BulkAbortError(error, await clearOwnMarker(prefix))
+    }
+
+    async function bulk(base: Base, request: CommitRequest): Promise<CommitResult> {
+        const opened = await openMarker(base, request)
+        if (opened.status === 'opened') {
+            const { mint, issued } = createMint(opened.stagingId)
+            let built: BuiltCommit
+            try {
+                built = await request.build({ mint, seq: opened.markerKey.seq + 1, now: env.now() })
+            } catch (error) {
+                return abortBuild(opened.prefix, error)
+            }
+            const refused = checkBuilt(built, issued, request.newUnits, true)
+            if (refused !== null) {
+                return { ...refused, cleared: await clearOwnMarker(opened.prefix) }
+            }
+            return finishBulk(opened, built, request)
+        }
+        return opened
+    }
+
+    /**
+     * A bulk commit whose build puts units as it goes. The entry checks run in `commitStreamed`; this opens the marker,
+     * builds with a `put` that uploads at once, checks the declared set and hands the tail and the manifest to the same
+     * `finishBulk` the whole path uses.
+     */
+    async function streamed(base: Base, request: StreamedCommitRequest): Promise<CommitResult> {
+        const opened = await openMarker(base, request)
+        if (opened.status !== 'opened') {
+            return opened
+        }
+        const { mint, issued } = createMint(opened.stagingId)
+        const putKeys = new Set<string>()
+        const upload: { stop: StreamedPutStop | null } = { stop: null }
+        const put = async (unit: UnitWrite): Promise<void> => {
+            if (upload.stop !== null) {
+                throw upload.stop
+            }
+            guardStreamedPut(unit.key, issued, putKeys, request.newUnits)
+            putKeys.add(unit.key)
+            const failure = await putStreamedUnit(backend, unit)
+            if (failure !== null) {
+                upload.stop = failure
+                throw failure
+            }
+        }
         let built: BuiltCommit
         try {
-            built = await request.build({ mint, seq: markerKey.seq + 1, now: env.now() })
+            built = await request.build({ mint, seq: opened.markerKey.seq + 1, now: env.now(), put })
         } catch (error) {
-            throw new Store2BulkAbortError(error, await clearOwnMarker(prefix))
+            if (error instanceof StreamedPutStop) {
+                return { status: 'abandoned', reason: 'upload-failed', cleared: await clearOwnMarker(opened.prefix), cause: error.cause }
+            }
+            return abortBuild(opened.prefix, error)
         }
-        const refused = checkBuilt(built, issued, request.newUnits, true)
+        if (upload.stop !== null) {
+            // A build that swallowed the stop still never lands: the upload it needs failed.
+            return { status: 'abandoned', reason: 'upload-failed', cleared: await clearOwnMarker(opened.prefix), cause: upload.stop.cause }
+        }
+        const refused = checkStreamedUnits(built, issued, putKeys, request.newUnits)
         if (refused !== null) {
-            return { ...refused, cleared: await clearOwnMarker(prefix) }
+            return { ...refused, cleared: await clearOwnMarker(opened.prefix) }
         }
+        return finishBulk(opened, built, request)
+    }
+
+    /**
+     * The upload and final-write half of a bulk commit: the built units and the manifest (the manifest last), then the
+     * re-judge loop whose compare-and-write is the last write.
+     */
+    async function finishBulk(opened: OpenedMarker, built: BuiltCommit, request: Pick<CommitRequest, 'carry' | 'label' | 'force'>): Promise<CommitResult> {
+        const { markerKey, held, prefix } = opened
+        const carry = plannedCarry(request)
         const manifestUnit: UnitWrite = { key: built.manifest.key, bytes: encodeUnit(UNIT_TYPE.manifest, built.manifest.body) }
         try {
             for (const unit of [...built.units, manifestUnit]) {
@@ -707,6 +875,15 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
                 return parsed
             }
             return request.newUnits > BULK_UNIT_THRESHOLD ? bulk(parsed.base, request) : ordinary(parsed.base, request, request.force === true)
+        },
+
+        async commitStreamed(read, request) {
+            plannedCarry(request)
+            const parsed = baseOf(read)
+            if (parsed.status === 'refused') {
+                return parsed
+            }
+            return streamed(parsed.base, request)
         },
 
         async restore(read, manifestKey) {

@@ -1,5 +1,5 @@
-import { BULK_UNIT_THRESHOLD, type Store2Backend, type UnitWrite } from './backend/types'
-import type { CommitRequest, CommitResult, Committer } from './commit'
+import { BULK_UNIT_THRESHOLD, type Store2Backend, type Store2Read, type UnitWrite } from './backend/types'
+import type { CommitResult, Committer, StreamedCommitRequest } from './commit'
 import { parseStore2Key } from './format'
 
 /**
@@ -141,7 +141,7 @@ function statusOf(result: unknown): string {
     return typeof status === 'string' ? status : 'unknown'
 }
 
-function kindOfCommit(request: CommitRequest, result: CommitResult | null, forced: boolean): CommitMeterKind {
+function kindOfCommit(request: Pick<StreamedCommitRequest, 'force' | 'newUnits'>, result: CommitResult | null, forced: boolean): CommitMeterKind {
     if (forced || request.force === true) {
         return 'forced'
     }
@@ -210,9 +210,16 @@ export function meterCommitter(backend: Store2Backend, make: (backend: Store2Bac
         return make(backend)
     }
     const inner = make(metered)
+    const innerStreamed = inner.commitStreamed
     return {
         ...inner,
         commit: (read, request) => measured(() => inner.commit(read, request), result => kindOfCommit(request, result, false)),
+        ...(innerStreamed === undefined ? {} : {
+            commitStreamed: (read: Store2Read, request: StreamedCommitRequest) => measured(
+                () => innerStreamed(read, request),
+                result => kindOfCommit(request, result, false),
+            ),
+        }),
         saveMine: (read, request) => measured(() => inner.saveMine(read, request), result => kindOfCommit(request, result, true)),
         restore: (read, manifestKey) => measured(() => inner.restore(read, manifestKey), () => 'restore'),
     }

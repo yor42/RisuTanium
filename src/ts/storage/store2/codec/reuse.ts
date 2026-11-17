@@ -63,6 +63,15 @@ export class UnitNotReusedError extends CodecError {
     }
 }
 
+/** What `UnitSink.drain` keeps of a unit it handed out. */
+export interface DrainedUnit {
+    identity: string
+    key: string
+    type: UnitType
+    ref: Ref
+    digest: string
+}
+
 export interface UnitSinkOptions {
     /**
      * The sink only checks reuse: it copies no key of the previous encoding (its cost would grow with every unit of the
@@ -88,6 +97,11 @@ export interface UnitSinkOptions {
  */
 export class UnitSink {
     readonly units: EncodedUnit[] = []
+    /**
+     * What `drain` kept of the units it handed out: the identity, key, type, Ref and digest, never the frame. Every
+     * unit of the encode is in `drained` or in `units`, in the order it was put.
+     */
+    readonly drained: DrainedUnit[] = []
     private readonly identities = new Set<string>()
     private readonly keys = new Set<string>()
     private readonly claimedKeys = new Set<string>()
@@ -193,6 +207,22 @@ export class UnitSink {
             throw new UnitNotReusedError(identity)
         }
         return this.record(identity, type, this.freshKey('unit'), bytes, digest, false)
+    }
+
+    /**
+     * Hands out the units put since the last drain that need writing (their frames included) and empties `units`, so a
+     * long encode need not hold every frame until its end. The identity and key sets stay, so a drained identity or key
+     * is still refused as a duplicate. What is kept of a drained unit is in `drained`.
+     */
+    drain(): WrittenUnit[] {
+        const written: WrittenUnit[] = []
+        for (const unit of this.units.splice(0)) {
+            this.drained.push({ identity: unit.identity, key: unit.key, type: unit.type, ref: unit.ref, digest: unit.digest })
+            if (isWrittenUnit(unit)) {
+                written.push(unit)
+            }
+        }
+        return written
     }
 
     /** A write-once unit (the manifest): always a fresh key. */
