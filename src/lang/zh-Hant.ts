@@ -3134,6 +3134,28 @@ export const languageChineseTraditional = {
         }[reason]
         return `備份在向檔案寫入任何內容之前就已停止，因為模組「${name}」${clause}`
     },
+    "rtbExportButton": "儲存 RisuTanium 備份 (.rtb)",
+    "rtbExportConfirm": (bin: string) =>
+        `儲存 RisuTanium 備份 (.rtb)？只有 RisuTanium 可以還原它。若要將資料移至 RisuAI，請改用「${bin}」。`,
+    "rtbExportRefusedReadOnly": (bin: string) =>
+        `此頁面為唯讀，無法建立 .rtb 備份。請改用「${bin}」儲存 .bin 備份。`,
+    "rtbExportUnavailable": (bin: string) =>
+        `此頁面無法建立 .rtb 備份。請改用「${bin}」儲存 .bin 備份。`,
+    "rtbExportProgressOpening": "正在準備備份檔案...",
+    "rtbExportProgressUnits": (count: number) => `正在儲存對話、角色和設定... (${count})`,
+    "rtbExportProgressSide": "正在儲存其他應用程式資料...",
+    "rtbExportProgressInlays": (done: number, total: number) => `正在儲存對話圖片、影片和音訊... (${done} / ${total})`,
+    "rtbExportProgressAssets": (done: number, total: number) => `正在儲存圖片和檔案... (${done} / ${total})`,
+    "rtbExportProgressFinishing": "正在完成備份檔案...",
+    "rtbExportSaved": "備份已儲存到您選擇的位置。",
+    "rtbExportUnsavedExcluded": (savedAt: string) =>
+        `您的最新變更無法先行儲存，因此不在此備份中。備份內容為 ${savedAt} 時已儲存的資料。`,
+    "rtbExportUnitsLeftOut": (count: number) =>
+        `有 ${count} 個已儲存項目（任務預設集或備選回覆）已損毀且無法讀取，因此不在備份中。`,
+    "rtbExportAssetsLeftOut": (count: number, names: string[]) =>
+        `有 ${count} 個圖片或檔案資源無法讀取，因此不在備份中。使用其中任何一個的角色會將其顯示為缺失。已略過：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "rtbExportSideLeftOut": (count: number) =>
+        `有 ${count} 類其他應用程式資料（如外掛資料、搜尋或記憶資料，或偏好設定）無法讀取，因此不在備份中。`,
     "internalBackupUnreadable":"此備份已損毀或不完整，因此未載入。目前的資料未被變更。",
     "internalBackupWriteFailed": "無法儲存此備份。目前的資料未被變更。",
     "internalBackupListFailed": "無法讀取備份清單。未變更任何內容。",

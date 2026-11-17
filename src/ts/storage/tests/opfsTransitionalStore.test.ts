@@ -12,9 +12,10 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { OpfsStorage } from 'src/ts/storage/opfsStorage'
 import { createOpfsTransitionalStore } from 'src/ts/storage/store/opfsTransitionalStore'
-import { StoreUnsupportedConditionError } from 'src/ts/storage/store/errors'
+import { StoreInvalidKeyError, StoreUnsupportedConditionError } from 'src/ts/storage/store/errors'
 import { describeByteStoreConformance } from './byteStoreConformance'
 import { FakeOpfsRoot, hexName } from './fakeOpfsRoot'
+import { SliceableFakeOpfsRoot } from './sliceableFakeOpfsRoot'
 
 vi.mock(import('src/ts/util'), () => ({
     asBuffer: (value: Uint8Array) => value,
@@ -85,5 +86,81 @@ describe('OPFS transitional store', () => {
         await expect(store.write('database/database.bin', Uint8Array.from([1]), { ifVersion: 0 })).rejects.toBeInstanceOf(StoreUnsupportedConditionError)
 
         expect(root.files.size).toBe(0)
+    })
+})
+
+describe('OPFS transitional store: readLazyBlob', () => {
+    let lazyRoot: SliceableFakeOpfsRoot
+
+    function makeLazyStore() {
+        lazyRoot = new SliceableFakeOpfsRoot()
+        const opfs = new OpfsStorage()
+        opfs.opfs = lazyRoot as unknown as FileSystemDirectoryHandle
+        return createOpfsTransitionalStore(opfs)
+    }
+
+    async function bytesOf(blob: Blob): Promise<number[]> {
+        return Array.from(new Uint8Array(await blob.arrayBuffer()))
+    }
+
+    test('spec: the Blob reports the stored size and a slice reads only its own bytes, with no whole read', async () => {
+        const store = makeLazyStore()
+        await store.write('assets/a.bin', Uint8Array.from([10, 11, 12, 13, 14]), 'unconditional')
+
+        const blob = await store.readLazyBlob?.('assets/a.bin')
+
+        expect(blob?.size).toBe(5)
+        expect(await bytesOf(blob!.slice(1, 3))).toEqual([11, 12])
+        expect(lazyRoot.wholeReads).toBe(0)
+        expect(await bytesOf(blob!)).toEqual([10, 11, 12, 13, 14])
+        expect(lazyRoot.wholeReads).toBe(1)
+    })
+
+    test('spec: a key that holds no value gives null', async () => {
+        const store = makeLazyStore()
+
+        expect(await store.readLazyBlob?.('assets/none.bin')).toBeNull()
+    })
+
+    test('spec: a key the store cannot address is refused like read', async () => {
+        const store = makeLazyStore()
+
+        await expect(store.readLazyBlob?.('')).rejects.toBeInstanceOf(StoreInvalidKeyError)
+    })
+
+    test('spec: the file is found under the hex name of the key, so an odd key reads', async () => {
+        const store = makeLazyStore()
+        lazyRoot.files.set(hexName('assets/x.v2\\smile'), Uint8Array.from([7, 8]))
+
+        const blob = await store.readLazyBlob?.('assets/x.v2\\smile')
+
+        expect(await bytesOf(blob!)).toEqual([7, 8])
+    })
+
+    test('spec: a value removed after the call makes its reads fail as a stale file does', async () => {
+        const store = makeLazyStore()
+        await store.write('assets/a.bin', Uint8Array.from([1, 2, 3]), 'unconditional')
+        const blob = await store.readLazyBlob?.('assets/a.bin')
+
+        await store.delete('assets/a.bin', 'unconditional')
+
+        await expect(blob!.slice(0, 2).arrayBuffer()).rejects.toMatchObject({ name: 'NotReadableError' })
+        await expect(blob!.arrayBuffer()).rejects.toMatchObject({ name: 'NotReadableError' })
+    })
+
+    test('spec: a refusal other than a missing name rejects instead of reading as no value', async () => {
+        const store = makeLazyStore()
+        await store.write('assets/a.bin', Uint8Array.from([1]), 'unconditional')
+        lazyRoot.lookupError = new DOMException('the entry is a directory', 'TypeMismatchError')
+
+        await expect(store.readLazyBlob?.('assets/a.bin')).rejects.toMatchObject({ name: 'TypeMismatchError' })
+    })
+
+    test('guard: this store offers readLazyBlob and still offers neither readValue nor readBlob', async () => {
+        const store = makeLazyStore()
+
+        expect(typeof store.readLazyBlob).toBe('function')
+        expect(store.readValue).toBeUndefined()
+        expect(store.readBlob).toBeUndefined()
     })
 })

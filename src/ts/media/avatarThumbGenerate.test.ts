@@ -359,12 +359,12 @@ describe('a Node-hosted page decides animation from the first 64 KiB', () => {
         expect(renderedKinds()).toEqual(['bytes'])
     })
 
-    test('guard: a failed header read (416 for an empty file) falls back to the whole read, which gives null', async () => {
+    test('a failed size read (416 for an empty file) gives null without a whole read', async () => {
         const loc = addFile('assets/empty.png', new Uint8Array(0))
 
         expect(await getAvatarThumbSrc(loc)).toBeNull()
 
-        expect(readImageMock).toHaveBeenCalledTimes(1)
+        expect(readImageMock).not.toHaveBeenCalled()
         expect(store.setItem).not.toHaveBeenCalled()
     })
 })
@@ -399,7 +399,8 @@ describe('a JPEG with bytes after its end marker is a still JPEG on every platfo
         fetchMock.mockClear()
         renderMock.mockClear()
         expect(await getAvatarThumbSrc(second)).toBe('thumb:bytes')
-        expect(fetchMock).not.toHaveBeenCalled()
+        // The size read still runs with the switch off (one ranged GET); no URL decode follows.
+        expect(fetchMock).toHaveBeenCalledTimes(1)
         expect(renderedKinds()).toEqual(['bytes'])
     })
 })
