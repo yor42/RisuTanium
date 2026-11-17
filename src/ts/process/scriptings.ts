@@ -24,6 +24,7 @@ import { getPersonaPrompt, getUserName, getUserIcon, parseKeyValue } from '../ut
 import { createRunSubject, type Origin, type RunSubject } from "./chatOrigin";
 import { clearSupaMemoryIfEmpty, withSupaRepoint } from "./memory/supaResume";
 import { clearAltOnFullClear, reattachOrphans } from "./chatTree";
+import { countLuaScripts } from "./luaScriptCount";
 let luaFactory:LuaFactory
 let ScriptingSafeIds = new Set<string>()
 let ScriptingEditDisplayIds = new Set<string>()
@@ -33,7 +34,6 @@ let lastRequestsCount = 0
 
 interface BasicScriptingEngineState {
     code?: string;
-    mutex: Mutex;
     chat?: Chat;
     // The call's own runner (the member in a group call, else the owner) and
     // origin subject, refreshed on every call -- never a value a `declareAPI`
@@ -162,9 +162,23 @@ interface PythonScriptingEngineState extends BasicScriptingEngineState {
 
 type ScriptingEngineState = LuaScriptingEngineState | PythonScriptingEngineState;
 
-let ScriptingEngines = new Map<string, ScriptingEngineState>()
+/**
+ * Engines a mode keeps for stale code even when its own setup has fewer
+ * scripts; a setup with more scripts raises the cap to its own script count.
+ */
+export const LUA_ENGINES_PER_MODE_FLOOR = 8
+
+interface ScriptingModeRecord {
+    // One call runs at a time per mode, and engines close only under it, so an
+    // engine is never closed while a call on it is in flight.
+    mutex: Mutex;
+    // Per engine kind, keyed by script code. Insertion order is recency order:
+    // a hit re-inserts its state, so the oldest state is first.
+    engines: Map<'lua'|'py', Map<string, ScriptingEngineState>>;
+}
+
+let ScriptingModes = new Map<string, ScriptingModeRecord>()
 let luaFactoryPromise: Promise<void> | null = null;
-let pendingEngineCreations = new Map<string, Promise<ScriptingEngineState>>();
 
 export async function runScripted(code:string, arg:{
     char?:character|groupChat|simpleCharacterArgument,
@@ -177,6 +191,9 @@ export async function runScripted(code:string, arg:{
     mode?: string,
     type?: 'lua'|'py'
     origin?: Origin,
+    // Distinct Lua scripts the caller's own trigger list can run in this mode;
+    // raises the engine cap above the floor for that list. Never persisted.
+    liveScripts?: number,
 }){
     const type: 'lua'|'py' = arg.type ?? 'lua'
     const char = arg.char ?? getCurrentCharacter()
@@ -191,21 +208,23 @@ export async function runScripted(code:string, arg:{
     if(type === 'lua'){
         await ensureLuaFactory()
     }
-    let ScriptingEngineState = await getOrCreateEngineState(mode, type);
+    const modeRecord = getOrCreateModeRecord(mode);
 
-    // A call with an origin and no explicit override resolves `setChatVar`/
-    // `getChatVar` through it, never the selection; a call with no origin
-    // keeps the selection-bound defaults. An explicit `setVar`/`getVar` always
-    // wins over either default: `triggerlua` passes both, and
-    // `runLuaEditTrigger` passes a `getVar` for a send subject.
-    const setVar = arg.setVar ?? (arg.origin
-        ? (key: string, value: string) => defaultSetVarFor(ScriptingEngineState, key, value)
-        : setChatVar)
-    const getVar = arg.getVar ?? (arg.origin
-        ? (key: string) => defaultGetVarFor(ScriptingEngineState, key)
-        : getChatVar)
+    return await modeRecord.mutex.runExclusive(async () => {
+        const ScriptingEngineState = resolveEngineState(modeRecord, type, code, arg.liveScripts)
 
-    return await ScriptingEngineState.mutex.runExclusive(async () => {
+        // A call with an origin and no explicit override resolves `setChatVar`/
+        // `getChatVar` through it, never the selection; a call with no origin
+        // keeps the selection-bound defaults. An explicit `setVar`/`getVar` always
+        // wins over either default: `triggerlua` passes both, and
+        // `runLuaEditTrigger` passes a `getVar` for a send subject.
+        const setVar = arg.setVar ?? (arg.origin
+            ? (key: string, value: string) => defaultSetVarFor(ScriptingEngineState, key, value)
+            : setChatVar)
+        const getVar = arg.getVar ?? (arg.origin
+            ? (key: string) => defaultGetVarFor(ScriptingEngineState, key)
+            : getChatVar)
+
         ScriptingEngineState.chat = chat
         ScriptingEngineState.char = char
         ScriptingEngineState.subject = arg.origin ? createRunSubject(arg.origin) : null
@@ -1428,35 +1447,62 @@ async function ensureLuaFactory() {
     }
 }
 
-async function getOrCreateEngineState(
-    mode: string, 
-    type: 'lua'|'py'
-): Promise<ScriptingEngineState> {
-    let engineState = ScriptingEngines.get(mode);
-    if (engineState) {
-        return engineState;
+// Synchronous, so two callers of a new mode never get two records.
+function getOrCreateModeRecord(mode: string): ScriptingModeRecord {
+    let record = ScriptingModes.get(mode);
+    if (!record) {
+        record = { mutex: new Mutex(), engines: new Map() };
+        ScriptingModes.set(mode, record);
     }
-    
-    let pendingCreation = pendingEngineCreations.get(mode);
-    if (pendingCreation) {
-        return pendingCreation;
+    return record;
+}
+
+function closeEngineState(state: ScriptingEngineState) {
+    if (state.type === 'lua') {
+        state.engine?.global.close()
     }
-    
-    const creationPromise = (() => {
-        const engineState: ScriptingEngineState = {
-            mutex: new Mutex(),
-            type: type,
-        };
-        ScriptingEngines.set(mode, engineState);
+    else {
+        state.pyodide?.close()
+    }
+}
 
-        pendingEngineCreations.delete(mode);
-
-        return Promise.resolve(engineState);
-    })();
-    
-    pendingEngineCreations.set(mode, creationPromise);
-    
-    return creationPromise;
+/**
+ * The state of this code in this mode, called under the mode's mutex. A hit
+ * moves it to the newest position and never trims. A miss inserts it and then
+ * closes the oldest other states until the kind holds at most
+ * `max(floor, liveScripts)`.
+ */
+function resolveEngineState(
+    record: ScriptingModeRecord,
+    type: 'lua'|'py',
+    code: string,
+    liveScripts: number | undefined
+): ScriptingEngineState {
+    let states = record.engines.get(type)
+    if (!states) {
+        states = new Map()
+        record.engines.set(type, states)
+    }
+    const existing = states.get(code)
+    if (existing) {
+        states.delete(code)
+        states.set(code, existing)
+        return existing
+    }
+    const state: ScriptingEngineState = type === 'lua' ? { type: 'lua' } : { type: 'py' }
+    states.set(code, state)
+    const cap = Math.max(LUA_ENGINES_PER_MODE_FLOOR, liveScripts ?? 0)
+    for (const [oldCode, oldState] of states) {
+        if (states.size <= cap) {
+            break
+        }
+        if (oldState === state) {
+            continue
+        }
+        closeEngineState(oldState)
+        states.delete(oldCode)
+    }
+    return state
 }
 
 function luaCodeWrapper(code:string){
@@ -1666,6 +1712,7 @@ export async function runLuaEditTrigger<T extends string|OpenAIChat[]>(char:char
         const triggers = char.type === 'group' ? (getModuleTriggers(subject)) : (char.triggerscript.map((v): triggerscript => {
             return { ...v, lowLevelAccess: false }
         }).concat(getModuleTriggers(subject)))
+        const liveScripts = countLuaScripts(triggers)
 
         let luaOrigin = origin
         let luaSubject: RunSubject | undefined
@@ -1683,6 +1730,7 @@ export async function runLuaEditTrigger<T extends string|OpenAIChat[]>(char:char
                     data,
                     meta,
                     origin: luaOrigin,
+                    liveScripts,
                     getVar: varSubject ? (key: string) => getChatVar(key, varSubject) : undefined,
                 })
                 data = runResult.res ?? data
@@ -1709,6 +1757,7 @@ export async function runLuaInteractionTrigger(type:'button'|'form', char:charac
             ...v,
             lowLevelAccess: char.type !== 'simple' ? char.lowLevelAccess ?? false : false
         })).concat(getModuleTriggers())
+        const liveScripts = countLuaScripts(triggers)
 
         for(let trigger of triggers){
             if(trigger?.effect?.[0]?.type === 'triggerlua'){
@@ -1719,6 +1768,7 @@ export async function runLuaInteractionTrigger(type:'button'|'form', char:charac
                     meta,
                     mode,
                     origin,
+                    liveScripts,
                 })
             }
         }
