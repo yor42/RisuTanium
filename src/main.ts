@@ -17,6 +17,7 @@ import { markerOwnerProbeFor } from "./ts/storage/store2/abandonedMarker";
 import { holdsOwnTabPresence } from "./ts/globalApi.svelte";
 import { createProductionBootUi } from "./ts/storage/store2/ui/productionBootUi";
 import { installMotionPrefs } from "./ts/chatShell/motionPrefs.svelte";
+import { installCardAnimationVisibilityHold } from "./ts/gui/cardAnimationHold";
 
 window.addEventListener('vite:preloadError', (event) => {
     console.error("Chunk load error detected:", event);
@@ -24,6 +25,8 @@ window.addEventListener('vite:preloadError', (event) => {
 });
 // The device's low-power and reduced-motion marks are on the root before anything paints.
 installMotionPrefs()
+// Card animations are held while the page is hidden.
+installCardAnimationVisibilityHold()
 
 preLoadCheck()
 let app = mount(App, {
