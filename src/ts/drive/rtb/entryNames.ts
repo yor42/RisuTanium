@@ -28,6 +28,9 @@ const SIDE_NAMES = ['iris', 'google-search', 'hypa-vector', 'plugin-safe', 'plug
 /** The eight optional side sections of version 1 (`side.<name>`, prefix `s/<name>/`). */
 export const SIDE_SECTION_IDS: readonly string[] = SIDE_NAMES.map((name) => `side.${name}`)
 
+/** The id of one of the eight version 1 side sections. */
+export type SideSectionId = `side.${typeof SIDE_NAMES[number]}`
+
 const SIDE_NAME_SET: ReadonlySet<string> = new Set<string>(SIDE_NAMES)
 
 /** The prefix a version 1 side id owns, or null for any other id. */

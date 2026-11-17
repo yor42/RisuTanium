@@ -44,6 +44,12 @@ export const FAR_MARGIN = '300% 0px'
  */
 export interface NearViewportOptions {
     onChange: (visible: boolean, node: Element) => void
+    /**
+     * Bands for this action instance, fixed at setup: `update()` swaps only `onChange`. Setup, the failure
+     * path and destroy all resolve the same pair, so a custom band's observers are torn down with the node.
+     * Omitted, the shared NEAR_MARGIN and FAR_MARGIN apply.
+     */
+    margins?: { near: string, far: string }
 }
 
 interface Entry {
@@ -241,6 +247,8 @@ export function nearViewport(node: Element, options: NearViewportOptions) {
     }
 
     let onChange = options.onChange
+    const nearMargin = options.margins?.near ?? NEAR_MARGIN
+    const farMargin = options.margins?.far ?? FAR_MARGIN
 
     // Fail open: a real but
     // broken/throwing IntersectionObserver -- the constructor, `.observe()`,
@@ -255,8 +263,8 @@ export function nearViewport(node: Element, options: NearViewportOptions) {
     let root: Element | null = null
     try {
         root = findScrollRoot(node)
-        const nearEntry = getOrCreateEntry(root, NEAR_MARGIN, IO)
-        const farEntry = getOrCreateEntry(root, FAR_MARGIN, IO)
+        const nearEntry = getOrCreateEntry(root, nearMargin, IO)
+        const farEntry = getOrCreateEntry(root, farMargin, IO)
 
         nearEntry.targets.set(node, (isIntersecting) => {
             if (isIntersecting) {
@@ -277,8 +285,8 @@ export function nearViewport(node: Element, options: NearViewportOptions) {
         // correctly no-ops for a target/entry that was never actually
         // registered, so calling it unconditionally for both bands is safe
         // and leaves no half-created entry in the registry either way.
-        removeTarget(root, NEAR_MARGIN, node)
-        removeTarget(root, FAR_MARGIN, node)
+        removeTarget(root, nearMargin, node)
+        removeTarget(root, farMargin, node)
         return alwaysVisibleAction(node, onChange)
     }
 
@@ -287,8 +295,8 @@ export function nearViewport(node: Element, options: NearViewportOptions) {
             onChange = newOptions.onChange
         },
         destroy() {
-            removeTarget(root, NEAR_MARGIN, node)
-            removeTarget(root, FAR_MARGIN, node)
+            removeTarget(root, nearMargin, node)
+            removeTarget(root, farMargin, node)
             // An item must leave its
             // caller's visible-set on unmount, not only via the far band --
             // otherwise a tab switch, a folder closing, or a search that

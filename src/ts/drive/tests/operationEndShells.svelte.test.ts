@@ -30,6 +30,7 @@ import type { WriteResult } from 'src/ts/storage/store2/commit'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { BootImportResult, BootImportTarget } from 'src/ts/storage/store2/legacy/bootImport'
+import { firstCommitKey } from 'src/ts/storage/store2/commitKey'
 import type { IncompleteItem, LegacyEntryReader } from 'src/ts/storage/store2/legacy/resolve'
 import type { BootImportEnd } from 'src/ts/storage/store2/legacy/bootImport'
 import type { LocalBackupEnd } from 'src/ts/drive/backuplocal'
@@ -293,7 +294,7 @@ async function blockFileBytes(page: Page, db: Entry): Promise<Uint8Array> {
     return new Uint8Array(encoder.encode()!)
 }
 
-const installedResult: BootImportResult ={ status: 'installed', manifestKey: 'm', flushed: true, repair: { dropped: 1, changed: 2, recovered: 3 } }
+const installedResult: BootImportResult ={ status: 'installed', manifestKey: 'm', value: firstCommitKey({ current: { key: 'm', at: 0 }, staging: null }), flushed: true, repair: { dropped: 1, changed: 2, recovered: 3 } }
 
 const REFUSED_ASSET = new Uint8Array([1, 2, 3, 4])
 

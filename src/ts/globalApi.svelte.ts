@@ -17,7 +17,7 @@ import { type Database, defaultSdDataFunc, getDatabase, appVer, getCurrentCharac
 import { collectPackAssetRefs } from "./themePack/packRefs";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
-import { botMakerMode, loadedStore, DBState, LoadingStatusState, selIdState, selectedCharID, ReloadGUIPointer, bodyIntercepterStore, savingStoppedReason, frozenSaveKeysStore, type FrozenSaveKeyInfo } from "./stores.svelte";
+import { botMakerMode, loadedStore, DBState, LoadingStatusState, selIdState, selectedCharID, ReloadGUIPointer, bodyIntercepterStore, savingStoppedReason, peerWaitingStatus, frozenSaveKeysStore, type FrozenSaveKeyInfo } from "./stores.svelte";
 import { loadPlugins } from "./plugins/plugins.svelte";
 import { alertConfirm, alertError, alertMd, alertSelect, alertStore, alertToast, waitAlert } from "./alert";
 import { ASSET_PIECE_SAVE_MIN_BYTES, Sha256, sha256Hex } from "./assetHash";
@@ -31,7 +31,7 @@ import { ASSET_RETAINED_KEY } from "./studio/assets/assetOwnerKeys";
 import { appendIfAbsent, installCharacterSaveMarks } from "./storage/characterSaveMarks";
 import { createSaveScheduler } from "./storage/saveScheduler";
 import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
-import type { Store2LoopPort } from "./storage/store2/saveLoop";
+import type { ModuleHold, Store2LoopPort } from "./storage/store2/saveLoop";
 import type { SkippedItem } from "./storage/store2/codec";
 import { activeStreamOwners } from "./process/activeStreams";
 import { takeResidentLoaded } from "./storage/store2/residentLoads";
@@ -78,7 +78,7 @@ import { isTauri, isNodeServer } from "./platform";
 import { isLocalNetworkUrl } from "./network/localNetwork";
 import { decodeProxyJobWsChunk, formatProxyStreamErrorMessage, parseProxyJobWsEvent } from "./network/proxyJobWs";
 import { getNodeServerProxyAuth, NodeStorage } from "./storage/nodeStorage";
-import { peerCommitWake, startNodePeerFeed } from "./storage/store2/nodePeerFeed";
+import { peerCommitWake, startNodePeerFeed, type NodePeerFeed } from "./storage/store2/nodePeerFeed";
 import { assertNoSecretRef, redactResolved } from "./secretRef";
 import { getMultiTabAction, isRevisionAwareBackend, nextAutoReloadHistory, resolvePromptChoice, resolveRevisionAwarePromptChoice, readAutoReloadHistory, writeAutoReloadHistory, shouldRetainOtherTabSavedSignal, type AutoReloadHistory } from "./storage/multiTabReload";
 import { hasLocalDrafts } from "./localDrafts";
@@ -1312,12 +1312,32 @@ export function hasUnsavedSaveMarks(): boolean {
 const nextCommitCallbacks = new Set<() => void>()
 
 /**
- * The `snapshotMarkCount` of the latest commit: every character and chat mark counted at or below it was in the
- * blocks that commit covered. A module mark is the exception: a commit that carried the modules whole past a module it
- * could not encode covers no module change, and the module mark stays held. It only grows, so a later iteration
- * beginning never un-covers a mark. It counts a commit in which the mark's character could not be saved as covering it.
+ * The `snapshotMarkCount` of the latest commit: every character, chat and module mark counted at or below it was
+ * covered by that commit's pass. A module mark counts as covered even when the pass carried the modules whole past a
+ * module it could not encode: whether the module change is in the store is `moduleCommitVerdict`'s answer, not this
+ * count's. It only grows, so a later iteration beginning never un-covers a mark. It counts a commit in which the mark's
+ * character could not be saved as covering it.
  */
 let committedMarkCount = 0
+
+/**
+ * The module hold the store2 loop reported with its latest saved notice. The loop's own literal is the clean state; the
+ * legacy loop never reports one, and its encoder has no module carry, so the clean state stays truthful there.
+ */
+let lastModuleHold: ModuleHold = { carriedWhole: false, faultIds: [] }
+
+/**
+ * Whether the latest reported commit holds module `moduleId`'s change: `saved` when the module set is not carried whole
+ * and the id is not named, `unsavable` when the id's own saved copy is kept, `blocked` when the set is carried whole
+ * for another cause. It reflects the hold as of the last reported commit, so it is meaningful outside a callback too;
+ * inside a next-commit callback it speaks for the commit that fired it.
+ */
+export function moduleCommitVerdict(moduleId: string): 'saved' | 'unsavable' | 'blocked' {
+    if (lastModuleHold.faultIds.includes(moduleId)) {
+        return 'unsavable'
+    }
+    return lastModuleHold.carriedWhole ? 'blocked' : 'saved'
+}
 
 /** True when saving has stopped. The store's running value is the empty string, so test truthiness, never `!== null`. */
 export function isSavingStopped(): boolean {
@@ -1333,7 +1353,7 @@ export function onSavingStopped(callback: () => void): () => void {
     })
 }
 
-/** The mark count the latest commit covered, module marks excepted (see `committedMarkCount`); compare with `getSaveMarkCount()` taken after a mark. */
+/** The mark count the latest commit covered (see `committedMarkCount`); compare with `getSaveMarkCount()` taken after a mark. */
 export function getCommittedSaveMarkCount(): number {
     return committedMarkCount
 }
@@ -1405,6 +1425,9 @@ function isNodeBodyRefusal(error: unknown): boolean {
  * was too large to save. Read by the save indicator once the reason is set.
  */
 let savingStoppedDetail = ''
+
+/** Whether the waiting line is on; the store is touched only when the value changes, so the loop's clearing on every pass costs nothing. */
+let peerWaitingShown = false
 
 export function getSavingStoppedDetail(): string {
     return savingStoppedDetail
@@ -2144,12 +2167,12 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
     // The Node server's commit-key feed only wakes the peer check, through the flag the broadcast path sets: it counts no
     // save mark, marks nothing dirty and takes no idle-net slot. A page without it loses promptness, nothing else.
     const nodeStorage = forageStorage.realStorage
-    if (isNodeServer && nodeStorage instanceof NodeStorage) {
-        startNodePeerFeed({
+    const peerFeed: NodePeerFeed | null = isNodeServer && nodeStorage instanceof NodeStorage
+        ? startNodePeerFeed({
             authHeader: () => nodeStorage.authHeader(),
             onPeerCommit: peerCommitWake(() => { peerHeard = true }, () => scheduler.wakeIdle()),
         })
-    }
+        : null
 
     // The boot window still counts what the effects below cannot see; with no encoder to initialise it is empty
     // unless a boot-time import wrote before it closed.
@@ -2265,7 +2288,9 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
                 alertToast(unsavableItemNotice(item))
             }
         },
-        saved() {
+        saved(hold) {
+            // First, before anything that can throw and before the callbacks: a callback reads the hold of its own commit.
+            lastModuleHold = hold
             saveFailureStore.set(null)
             lastIterationCommitted = true
             fireNextCommitCallbacks()
@@ -2290,6 +2315,12 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
             // Only a real stop ends the token: the empty reason clears a park and the owed redo still runs.
             if (reason) {
                 endRedoHold()
+            }
+        },
+        setPeerWaiting(waiting) {
+            if (waiting !== peerWaitingShown) {
+                peerWaitingShown = waiting
+                peerWaitingStatus.set(waiting)
             }
         },
         notifyTooLarge(label) {
@@ -2336,6 +2367,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         takeResidentLoaded: takeResidentLoaded,
         pageHidden: () => document.visibilityState === 'hidden',
         yieldImmediately: shouldBypassFrozenPagePaths,
+        peerFeedLive: peerFeed === null ? undefined : () => peerFeed.isPeerFeedLive(),
         replyOwners: activeStreamOwners,
     }
     if (MEASURE) {

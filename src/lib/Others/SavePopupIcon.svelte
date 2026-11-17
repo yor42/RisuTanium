@@ -2,7 +2,7 @@
   import { OctagonAlert, SaveIcon } from "@lucide/svelte";
   import { alertNormal } from "src/ts/alert";
   import { getSavingStoppedDetail, saving } from "src/ts/globalApi.svelte";
-  import { DBState, savingStoppedReason, frozenSaveKeysStore } from "src/ts/stores.svelte";
+  import { DBState, savingStoppedReason, peerWaitingStatus, frozenSaveKeysStore } from "src/ts/stores.svelte";
   import { language } from "src/lang";
   import { NODE_BODY_LIMIT_BYTES } from "src/ts/storage/nodeBodyLimit";
   import { storeAssetLimitBytes } from "src/ts/storage/assetLimit";
@@ -87,6 +87,13 @@
   }}>
       <OctagonAlert size={24} />
   </button>
+{:else if $peerWaitingStatus}
+  <div
+    role="status"
+    class="absolute top-3 right-3 z-10 max-w-xs text-xs text-textcolor bg-darkbg border border-darkborderc p-2 rounded-sm pointer-events-none"
+  >
+    {language.store2Boot.peerWaitingSend}
+  </div>
 {:else if DBState?.db?.showSavingIcon && saving.state}
   <div
     class="absolute top-3 right-3 z-10 text-white p-2 rounded-sm bg-linear-to-br from-blue-500 to-purple-800 saving-animation pointer-events-none opacity-15"

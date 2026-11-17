@@ -4,7 +4,7 @@ import {
 import {
     BULK_UNIT_THRESHOLD, sameBytes, type Store2Backend, type Store2Read, type Store2WriteResult, type UnitWrite,
 } from './backend/types'
-import { classifyCommitRead, nextCommitKey, RETAINED_MAX } from './commitKey'
+import { classifyCommitRead, nextCommitKey, RETAINED_MAX, withLine, withReplaced, type CommitKeyChange } from './commitKey'
 import {
     defaultKeyEnv, encodeUnit, newManifestKey, newShardKey, newStagedKey, newStagedManifestKey, newStagingId,
     newUnitKey, parseStore2Key, readUnit, refOfFrame, refsOf, stagingPrefix, UNIT_TYPE, type CommitKey, type KeyEnv,
@@ -194,6 +194,9 @@ export interface CommitRequest {
     carry: Carry | typeof IMPORT_REPLACES_BASE
 }
 
+/** How many of its newest commit-key epochs a committer remembers as its own. */
+const OWN_EPOCHS_MAX = 64
+
 export interface CommitterOptions {
     /** The owner id of this page load (`owner.ts`). */
     owner: string
@@ -354,6 +357,11 @@ async function attempt(run: () => Promise<Store2WriteResult>): Promise<Cas> {
 
 export interface Committer {
     readonly owner: string
+    /**
+     * Whether a commit key with this epoch was built by this committer (a commit, a bulk marker, a pin, a drop, a restore or a
+     * marker clear), among its most recent keys. A key it answers true for is this page's own write, never a peer's.
+     */
+    ownsEpoch?(epoch: string): boolean
     /** Reads the commit key as a base. */
     readCommit(): Promise<Store2Read>
     commit(read: Store2Read, request: CommitRequest): Promise<CommitResult>
@@ -423,6 +431,17 @@ export function checkBuiltUnits(built: BuiltCommit, issued: ReadonlySet<string>,
 export function createCommitter(backend: Store2Backend, options: CommitterOptions): Committer {
     const env: KeyEnv = { ...defaultKeyEnv, ...options.env }
     const owner = options.owner
+    /** The epochs of the most recent commit keys this committer built, newest last; a key with one of them was written by this page. */
+    const ownEpochs: string[] = []
+
+    function nextOwnKey(base: CommitKey, change: CommitKeyChange, keyEnv: KeyEnv): CommitKey {
+        const next = nextCommitKey(base, change, keyEnv)
+        ownEpochs.push(next.epoch)
+        if (ownEpochs.length > OWN_EPOCHS_MAX) {
+            ownEpochs.shift()
+        }
+        return next
+    }
 
     function refuse(reason: Refusal, detail: string, missing?: string[]): Refused {
         return missing === undefined ? { status: 'refused', reason, detail } : { status: 'refused', reason, detail, missing }
@@ -487,11 +506,16 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
             return refused
         }
         const manifestUnit: UnitWrite = { key: built.manifest.key, bytes: encodeUnit(UNIT_TYPE.manifest, built.manifest.body) }
-        const next = nextCommitKey(base.key, {
+        const next = nextOwnKey(base.key, {
             current: { key: built.manifest.key, at: now },
             retained: nextRetained(base.key, now, force),
             manifests: [built.manifest.body],
         }, env)
+        // Only a delta planned over the tree this base names descends; a force (save-mine, import) never does.
+        withLine(next, base.key, !force && carry !== null && carry.from === base.key.current?.key)
+        if (request.label === 'import') {
+            withReplaced(next, 'import')
+        }
         const nextBytes = encodeUnit(UNIT_TYPE.commit, next)
         const result = await settle(next, nextBytes, () => backend.commitOrdinary(base.read.token, [...built.units, manifestUnit], nextBytes))
         return result.status === 'committed' ? { ...result, manifestKey: built.manifest.key, mode: 'ordinary' } : result
@@ -521,7 +545,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
         const stagingId = newStagingId(env)
         const prefix = stagingPrefix(stagingId)
         const marker: Staging = { owner, prefix, startedAt: env.now(), label: request.label ?? 'bulk' }
-        const markerKey = nextCommitKey(base.key, { staging: marker }, env)
+        const markerKey = nextOwnKey(base.key, { staging: marker }, env)
         const markerBytes = encodeUnit(UNIT_TYPE.commit, markerKey)
 
         // The marker is on the commit key before any unit exists under its prefix.
@@ -582,12 +606,18 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
                 return { ...refuseUnnamed(request), cleared: await clearOwnMarker(prefix) }
             }
             const now = env.now()
-            const next = nextCommitKey(heldKey, {
+            const next = nextOwnKey(heldKey, {
                 current: { key: built.manifest.key, at: now },
                 retained: nextRetained(heldKey, now, request.force === true || heldKey.current?.key !== markerKey.current?.key),
                 staging: null,
                 manifests: [built.manifest.body],
             }, env)
+            // The descent predicate is judged against this round's held key, so a peer commit under the marker mints.
+            withLine(next, heldKey, request.force !== true && carry !== null
+                && carry.from === markerKey.current?.key && heldKey.current?.key === markerKey.current?.key)
+            if (request.label === 'import') {
+                withReplaced(next, 'import')
+            }
             const nextBytes = encodeUnit(UNIT_TYPE.commit, next)
             const outcome = await attempt(() => backend.casCommit(heldRead.token, nextBytes))
             let reread: Store2Read
@@ -637,7 +667,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
             if (staging.owner !== clearOwner || staging.prefix !== prefix) {
                 return refuse('not-mine', 'The marker on the commit key is not this owner\'s with this prefix.')
             }
-            const next = nextCommitKey(parsed.base.key, { staging: null }, env)
+            const next = nextOwnKey(parsed.base.key, { staging: null }, env)
             const nextBytes = encodeUnit(UNIT_TYPE.commit, next)
             const outcome = await attempt(() => backend.casCommit(current.token, nextBytes))
             if (outcome.kind === 'written') {
@@ -665,6 +695,8 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
 
     return {
         owner,
+
+        ownsEpoch: epoch => ownEpochs.includes(epoch),
 
         readCommit: () => backend.readCommit(),
 
@@ -702,11 +734,13 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
                 return refuse('tree-incomplete', 'The manifest names a unit that is missing or damaged.', tree.missing)
             }
             const now = env.now()
-            const next = nextCommitKey(base.key, {
+            const next = nextOwnKey(base.key, {
                 current: { key: manifestKey, at: now },
                 retained: nextRetained(base.key, now, true, manifestKey),
                 manifests: [tree.manifest],
             }, env)
+            withLine(next, base.key, false)
+            withReplaced(next, 'restore')
             const nextBytes = encodeUnit(UNIT_TYPE.commit, next)
             return settle(next, nextBytes, () => backend.casCommit(base.read.token, nextBytes))
         },
@@ -772,7 +806,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
             if (base.key.current?.key !== key && !base.key.retained.some(entry => entry.key === key)) {
                 return refuse('not-named', `${key} is neither current nor retained.`)
             }
-            const next = nextCommitKey(base.key, { pins: [...base.key.pins, { key, reason }] }, env)
+            const next = nextOwnKey(base.key, { pins: [...base.key.pins, { key, reason }] }, env)
             const nextBytes = encodeUnit(UNIT_TYPE.commit, next)
             return settle(next, nextBytes, () => backend.casCommit(base.read.token, nextBytes))
         },
@@ -786,7 +820,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
             if (!base.key.pins.some(pin => pin.key === key)) {
                 return refuse('not-pinned', `${key} is not pinned.`)
             }
-            const next = nextCommitKey(base.key, { pins: base.key.pins.filter(pin => pin.key !== key) }, env)
+            const next = nextOwnKey(base.key, { pins: base.key.pins.filter(pin => pin.key !== key) }, env)
             const nextBytes = encodeUnit(UNIT_TYPE.commit, next)
             return settle(next, nextBytes, () => backend.casCommit(base.read.token, nextBytes))
         },
@@ -807,7 +841,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
             if (held.key !== expected.key || held.digest !== expected.digest || held.count !== expected.count) {
                 return refuse('snapshot-mismatch', 'The commit key holds another snapshot pointer than the one expected.')
             }
-            const next = nextCommitKey(base.key, { dropSnapshot: true }, env)
+            const next = nextOwnKey(base.key, { dropSnapshot: true }, env)
             const nextBytes = encodeUnit(UNIT_TYPE.commit, next)
             return settle(next, nextBytes, () => backend.casCommit(base.read.token, nextBytes))
         },

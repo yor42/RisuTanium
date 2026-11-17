@@ -11,6 +11,7 @@
 import { describe, expect, test } from 'vitest'
 import { BLOCKED_REASONS, type BlockedReason } from 'src/ts/storage/store2/bootActive'
 import type { BootImportFinish } from 'src/ts/storage/store2/legacy/bootImport'
+import { firstCommitKey } from 'src/ts/storage/store2/commitKey'
 import { endOfExport, exportOmitsData, numberedBackupTarget, outcomeOfBootFinish, type ExportOmitted, type ExportOutcome } from 'src/ts/drive/operationEnd'
 
 const blocked = (reason: BlockedReason): BootImportFinish => ({ status: 'blocked', reason, detail: 'recorded' })
@@ -20,7 +21,7 @@ const exitWith = (status: string): BootImportFinish => ({ status: 'exit', exit: 
 
 describe('boot import result mapping', () => {
     test('new behaviour: an installed profile is committed', () => {
-        expect(outcomeOfBootFinish({ status: 'installed', manifestKey: 'm', flushed: true, repair: { dropped: 0, changed: 0, recovered: 0 } }))
+        expect(outcomeOfBootFinish({ status: 'installed', manifestKey: 'm', value: firstCommitKey({ current: { key: 'm', at: 0 }, staging: null }), flushed: true, repair: { dropped: 0, changed: 0, recovered: 0 } }))
             .toEqual({ outcome: 'committed', cause: null })
     })
 

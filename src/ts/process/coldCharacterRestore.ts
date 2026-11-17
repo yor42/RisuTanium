@@ -215,13 +215,50 @@ function announceDroppedAlt(restored: Slot, dropped: readonly FlaggedLeaf[]): vo
     alertNormal(language.errors.coldStorageAltRepliesDropped(restored.name, names.join(', ')))
 }
 
+/** A structural comparison that ignores key order, so an entry parsed from a shard equals the same entry an encoder built. */
+function sameStructure(a: unknown, b: unknown): boolean {
+    if (a === b) {
+        return true
+    }
+    if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null || Array.isArray(a) !== Array.isArray(b)) {
+        return false
+    }
+    const left = a as Record<string, unknown>
+    const right = b as Record<string, unknown>
+    const names = Object.keys(left)
+    return names.length === Object.keys(right).length && names.every(name => name in right && sameStructure(left[name], right[name]))
+}
+
+/**
+ * Whether a store2 read still describes the acknowledged entry of its entity. A fast-forward moves the acknowledged
+ * encoding while the read is pending, so a read of the old units must never be installed over the new entry. A result
+ * that did not come from a residency (a legacy cold unit) has no entry to compare and is current.
+ */
+function readIsCurrent(result: ColdStorageReadResult): boolean {
+    const loaded = residencyReadOf(result)
+    const residency = getResidency()
+    if (loaded === undefined || residency === null) {
+        return true
+    }
+    const held = residency.entryOf(loaded.entry.u)
+    return held !== null && sameStructure(held, loaded.entry)
+}
+
 async function restoreOnce(stub: Slot, options: ColdRestoreOptions): Promise<ColdRestoreOutcome> {
     const key = stub.coldstorage
     if (!key) {
         return { status: 'restored', character: stub, installedHere: false }
     }
     const chaId = stub.chaId
-    const result = await readUnit(key)
+    let result = await readUnit(key)
+    // No await sits between this check and the install below, so the unit installed is the acknowledged one. A stale read
+    // is read once more; a second stale read installs nothing.
+    if (!readIsCurrent(result)) {
+        result = await readUnit(key)
+        if (!readIsCurrent(result)) {
+            return { status: 'gone' }
+        }
+    }
 
     // The slot is found again after the read: entries may have been inserted,
     // deleted or replaced while it was pending, so an index taken before it

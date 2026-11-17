@@ -802,7 +802,8 @@ describe('a load that fails', () => {
 
 describe('a store2 page (a residency is registered)', () => {
     const residency: Residency = {
-        entryOf: () => null,
+        // The acknowledged entry of the one entity the residency reads below: the stale-read guard compares a read's entry with it.
+        entryOf: (u) => u === 'u-alpha' ? ({ u } as never) : null,
         moduleEntryOf: () => null,
         readModule: async () => ({ status: 'error', reason: 'no-entry', error: new Error('unused') }),
         hydrateModule: () => { },

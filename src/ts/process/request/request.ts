@@ -1337,12 +1337,12 @@ async function requestCohere(arg:RequestDataArgumentExtended):Promise<requestDat
     let preamble = ''
 
     let lastChat = formated[formated.length-1]
-    if(lastChat.role === 'user'){
+    if(lastChat?.role === 'user'){
         lastChatPrompt = lastChat.content
         formated.pop()
     }
     else{
-        while(lastChat.role !== 'user'){
+        while(lastChat?.role !== 'user'){
             lastChat = formated.pop()
             if(!lastChat){
                 return {
@@ -1355,7 +1355,7 @@ async function requestCohere(arg:RequestDataArgumentExtended):Promise<requestDat
     }
 
     const firstChat = formated[0]
-    if(firstChat.role === 'system'){
+    if(firstChat?.role === 'system'){
         preamble = firstChat.content
         formated.shift()
     }
@@ -1400,13 +1400,10 @@ async function requestCohere(arg:RequestDataArgumentExtended):Promise<requestDat
         body.safety_mode = "NONE"
     }
     
+    // The first system message is the preamble even with an empty history; folding it into
+    // message would replace the user's text.
     if(preamble){
-        if(body.chat_history.length > 0){
-            body.preamble = preamble
-        }
-        else{
-            body.message = `system: ${preamble}`
-        }
+        body.preamble = preamble
     }
 
     let headers: Record<string, string> = {

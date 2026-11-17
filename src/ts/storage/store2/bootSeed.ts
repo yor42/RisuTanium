@@ -3,7 +3,7 @@ import type { Store2Backend, Store2Read } from './backend/types'
 import type { BlockedReason } from './bootActive'
 import type { ListDerivation } from './codec'
 import { firstLifeInstall, installBuilt, type FirstLifeGrant, type FirstLifeResult } from './firstLife'
-import { defaultKeyEnv, type KeyEnv } from './format'
+import { defaultKeyEnv, type CommitKey, type KeyEnv } from './format'
 import { planWholeTreeInstall } from './legacy/install'
 import { planOldDataSnapshot, withSnapshot, type OldDataSource } from './oldData/plan'
 import type { ForeignClearHook } from './owner'
@@ -48,7 +48,7 @@ export async function probeNumberedBackups(list: () => Promise<number[]>): Promi
  * next boot's to classify.
  */
 export type SeedOutcome =
-    | { status: 'installed', manifestKey: string, flushed: boolean | undefined }
+    | { status: 'installed', manifestKey: string, value: CommitKey, flushed: boolean | undefined }
     | { status: 'reclassify' }
     | { status: 'blocked', reason: BlockedReason, detail: string }
     /** An `exit` entry only: the fenced exit did not end `marked`. No marker landed, except that after `unknown` it may have. */
@@ -115,7 +115,7 @@ export async function seedStore2Profile(backend: Store2Backend, entry: SeedEntry
     }
     switch (result.status) {
         case 'installed':
-            return { status: 'installed', manifestKey: result.manifestKey, flushed: result.flushed }
+            return { status: 'installed', manifestKey: result.manifestKey, value: result.value, flushed: result.flushed }
         case 'abandoned':
             return { status: 'reclassify' }
         case 'not-marked':

@@ -1,5 +1,5 @@
 import type { JsonObject, JsonValue } from '../../blockFrame'
-import type { AssetList, InlayList, KeyEnv, Manifest, ModuleIndex, Ref, Shard, UnitType } from '../format'
+import type { AssetList, ContentBody, InlayList, KeyEnv, Manifest, ModuleIndex, Ref, Shard, UnitType } from '../format'
 import type { KeyMint } from '../commit'
 import type { ChunkMemo } from './chunkMemo'
 
@@ -173,6 +173,16 @@ export interface PreviousObjects {
      * read is put back from here.
      */
     config?: JsonObject
+    /** The statics unit's body as the encoding holds it. In memory only (never written): the fast-forward merges it per key. */
+    statics?: ContentBody
+    /** The order unit's body (`chars`, `characterOrder`) as the encoding holds it. In memory only (never written). */
+    order?: ContentBody
+    /**
+     * The decoded bot preset bodies, in list order, of the encoding. In memory only (never written). Absent when the
+     * encoding does not hold them all (a carried list, or a unit the boot did not read): a preset record is then never
+     * merged from it.
+     */
+    presets?: readonly JsonObject[]
 }
 
 /** The earlier encoding a new encode reuses keys from. */

@@ -136,3 +136,66 @@ export function firstCommitKey(first: FirstCommitKey, env: Pick<KeyEnv, 'random'
     applySnapshot(key, null, first)
     return key
 }
+
+type ReplacedKind = 'restore' | 'import' | 'install'
+
+/** The commit-key extras this module owns: both are additive top-level fields outside `KNOWN_FIELDS.commitKey`. */
+type KeyExtras = Record<string, unknown>
+
+function canonicalJson(value: unknown): string {
+    if (value === null || typeof value !== 'object') {
+        return JSON.stringify(value) ?? 'null'
+    }
+    if (Array.isArray(value)) {
+        return `[${value.map(canonicalJson).join(',')}]`
+    }
+    const record = value as Record<string, unknown>
+    return `{${Object.keys(record).sort().map(name => `${JSON.stringify(name)}:${canonicalJson(record[name])}`).join(',')}}`
+}
+
+/**
+ * Marks `next` as the key of a tree-replacing write (an import, a restore or an install). The stamp takes the `seq` and
+ * `epoch` of `next` itself, so every stamp is unique. It is a fresh object: a carried older stamp is never mutated.
+ */
+export function withReplaced(next: CommitKey, kind: ReplacedKind): CommitKey {
+    ;(next as unknown as KeyExtras).replaced = { kind, seq: next.seq, epoch: next.epoch }
+    return next
+}
+
+/** The canonical JSON of the key's `replaced` field, or null. No validation: an odd value is just another stamp. */
+export function replacedStamp(key: CommitKey): string | null {
+    const stamp = (key as unknown as KeyExtras).replaced
+    return stamp === undefined ? null : canonicalJson(stamp)
+}
+
+/**
+ * The line a key proves, or null. A line is proven only while `line.tip` names the key's own `current`: a writer that
+ * moves `current` without knowing the rule leaves a stale tip, and `firstCommitKey` carries no line at all. A key
+ * without a valid line is never proven, whatever manifest it names. A marker over a damaged key is built from
+ * `firstCommitKey`: its `seq` is only advisory and it drops the line, so a key recovered through it is never proven.
+ */
+export function lineIdOf(key: CommitKey): string | null {
+    const line = (key as unknown as KeyExtras).line
+    if (typeof line !== 'object' || line === null || Array.isArray(line)) {
+        return null
+    }
+    const { id, tip } = line as { id?: unknown, tip?: unknown }
+    if (typeof id !== 'string' || typeof tip !== 'string' || key.current === null || tip !== key.current.key) {
+        return null
+    }
+    return id
+}
+
+/**
+ * Stamps the line on a key whose `current` moved. A writer that descends from `base` (a delta over the tree `base`
+ * names) keeps `base`'s line id when `base` proves one; every other writer, and a descending writer over an unproven
+ * base, mints `next.epoch`. The line is always a fresh object, never written into the carried one.
+ */
+export function withLine(next: CommitKey, base: CommitKey, descends: boolean): CommitKey {
+    if (next.current === null) {
+        throw new TypeError('A line is stamped only over a non-null current.')
+    }
+    const inherited = descends ? lineIdOf(base) : null
+    ;(next as unknown as KeyExtras).line = { id: inherited ?? next.epoch, tip: next.current.key }
+    return next
+}

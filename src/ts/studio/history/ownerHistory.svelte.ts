@@ -9,7 +9,7 @@ import { registerLeaveFlush as registerPageLeaveFlush } from '../../process/save
 import { studioScreen } from '../studioScreen.svelte'
 import type { AssetFileReader, AssetFileState } from '../assets/assetFileState'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../assets/assetOwnerKeys'
-import { applyFolderOps } from '../assets/folderCodec'
+import { applyFolderOps, type FolderRefusal } from '../assets/folderCodec'
 import type { AssetArrayName, MergePreview } from '../assets/mergePreview'
 import {
     buildAssetDelete,
@@ -150,8 +150,9 @@ export interface StudioWriteNotes {
 }
 
 // `name` is the row a refusal is about (`asset-file-unchecked`). `targetChanged` says the steps the replay was asked for
-// are no longer the ones on top while it waited for its answers, so nothing was applied.
-export type StudioResult = ({ ok: true } & StudioWriteNotes) | { ok: false; reason: StudioRefusal; name?: string; targetChanged?: true }
+// are no longer the ones on top while it waited for its answers, so nothing was applied. `folderRefusal` says which folder
+// rule an explicit folder action broke; the refusal is `precondition` either way.
+export type StudioResult = ({ ok: true } & StudioWriteNotes) | { ok: false; reason: StudioRefusal; name?: string; targetChanged?: true; folderRefusal?: FolderRefusal }
 
 // What a replay is asked to do. `expectTop` makes an undo or a redo apply only while that step is still the one it
 // would replay.
@@ -219,6 +220,8 @@ export interface OwnerHistoryService {
     whenReady(owner: OwnerKey): Promise<void>
     view(owner: OwnerKey): OwnerView
     setAck(chaId: string, ack: OwnerAck | null): void
+    // The ack told of a landed write to module `moduleId`, kept apart from the character acks (which are keyed by chaId).
+    setModuleAck(moduleId: string, ack: OwnerAck | null): void
     editField(owner: OwnerKey, path: SetPath, value: string | boolean): StudioResult
     // A whole-value text edit. `typing` coalesces with the previous typing step of the same path; `single` is always its own step.
     editText(owner: OwnerKey, path: SetPath, value: string, mode?: 'typing' | 'single'): StudioResult
@@ -376,6 +379,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     const slots = new Map<OwnerKey, OwnerSlot>()
     const claims = new Map<string, Entry<ClaimResult>>()
     const acks = new Map<string, OwnerAck>()
+    const moduleAcks = new Map<string, OwnerAck>()
     let openEntry: Entry<OpenResult> | null = null
     // Read by `view`, so a view taken before an owner's first use updates when the owner appears.
     let slotCount = $state(0)
@@ -813,7 +817,10 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             }
             const built = intent.build(live)
             if (built.ok === false) {
-                return built.reason === 'unchanged' ? { ok: true, unchanged: true } : refused('precondition')
+                if (built.reason === 'unchanged') {
+                    return { ok: true, unchanged: true }
+                }
+                return built.folderRefusal === undefined ? refused('precondition') : { ok: false, reason: 'precondition', folderRefusal: built.folderRefusal }
             }
             // Every text edit must apply to the live owner as it is now: a stale or unreadable one refuses the
             // intent before anything is written.
@@ -1135,6 +1142,9 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         if (chaId !== null) {
             acks.get(chaId)?.noteEdit(chaId, before)
+        } else if (isModuleTarget(target)) {
+            // `before` was read ahead of the write; the module's own ack reads the count again and finds its mark counted.
+            moduleAcks.get(slot.claimSubject.id)?.noteEdit(slot.claimSubject.id, before)
         }
         landedNotice(owner, slot)
         return { ok: true, ...planned.notes, ...(intent.kind === 'asset' ? { stepId: slot.record.done.at(-1)?.id } : {}) }
@@ -1323,6 +1333,13 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 if (warmJob?.chaId === chaId) {
                     cancelWarm()
                 }
+            }
+        },
+        setModuleAck(moduleId, ack) {
+            if (ack) {
+                moduleAcks.set(moduleId, ack)
+            } else {
+                moduleAcks.delete(moduleId)
             }
         },
         editField: (owner, path, value) =>

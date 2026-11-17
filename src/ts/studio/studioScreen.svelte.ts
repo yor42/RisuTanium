@@ -11,7 +11,8 @@ import { ownerKeyOf, type OwnerModel, type StudioKind } from './ownerModel'
 import type { StudioLayout } from './studioLayout'
 import type { StudioFrom, StudioTarget } from './studioTarget'
 import { createPageSession } from './history/historyModel'
-import { characterOwnerKey, chatOwnerKey, type OwnerKey } from './history/ownerPhase'
+import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, type OwnerKey } from './history/ownerPhase'
+import { openStudioModuleId } from './assets/openModuleForm.svelte'
 
 /**
  * Where a visit started. Back returns focus to `element` while it is still in the page, else to the first
@@ -206,13 +207,17 @@ export const ownerRowId = (ownerKey: string): string => `o:${ownerKey}`
 export const kindRowId = (ownerKey: string, kind: StudioKind): string => `k:${ownerKey}/${kind}`
 
 /**
- * The history owner of the selected owner: the bound character, or the chat of its current page. Null for every
- * other selection (modules, presets, plugins, another character) and for no selection. Whether that chat has a
+ * The history owner of the selected owner: the bound character, the chat of its current page, or the module the
+ * detail has selected. A module is the owner only while the selection is that module's own row (the first row of its
+ * id) and the detail publishes the id, which it does not while the module is unloaded or another module shares it.
+ * Null for every other selection (presets, plugins, another character, an unpublished module) and for no selection. Whether that chat has a
  * unique id is checked where the history is read.
  */
 export function selectedHistoryOwner(): OwnerKey | null {
     const key = studioScreen.selectedOwnerKey
     const chaId = studioScreen.chaId
+    const openModule = openStudioModuleId()
+    if (key !== null && openModule !== null && key === ownerKeyOf('module', openModule)) return moduleOwnerKey(openModule)
     if (key === null || chaId === '') return null
     if (key === ownerKeyOf('character', chaId)) return characterOwnerKey(chaId)
     const chatPrefix = ownerKeyOf('chat', '')

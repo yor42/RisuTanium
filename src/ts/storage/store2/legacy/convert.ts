@@ -9,7 +9,7 @@ import type { BlockedReason } from '../bootActive'
 import { CodecError, type ListDerivation } from '../codec/types'
 import type { BuildContext, BuiltCommit } from '../commit'
 import { firstLifeInstall, installBuilt, type BuiltInstall, type FirstLifeGrant, type FirstLifeResult } from '../firstLife'
-import { defaultKeyEnv, encodeUnit, refOfFrame, UNIT_TYPE, type KeyEnv, type LegacyList } from '../format'
+import { defaultKeyEnv, encodeUnit, refOfFrame, UNIT_TYPE, type CommitKey, type KeyEnv, type LegacyList } from '../format'
 import { isPluginStorageIndex, slotsOfIndex } from '../../../process/pluginStorageIndex'
 import { LegacyListBuilder } from '../lists/legacyList'
 import type { ListParams } from '../lists/params'
@@ -124,6 +124,8 @@ export type ConvertResult =
     | {
         status: 'installed'
         manifestKey: string
+        /** The landed commit key, as the final write returned it. */
+        value: CommitKey
         flushed: boolean | undefined
         /** The numbered backup the tree came from, when the main file did not decode strictly. */
         fromBackup: number | null
@@ -415,6 +417,7 @@ function resultOfInstall(result: FirstLifeResult, origin: ConvertOrigin): Settle
             return {
                 status: 'installed',
                 manifestKey: result.manifestKey,
+                value: result.value,
                 flushed: result.flushed,
                 fromBackup: origin.kind === 'backup' ? origin.backup : null,
             }

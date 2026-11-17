@@ -414,14 +414,24 @@ export async function listAppInlayKeys(store: ByteStore): Promise<{ ids: string[
     return { ids, keys }
 }
 
-/** The summary of the inlay `id` in the app store when its metadata parses and its body is among the `listed` keys; no body is read. */
+/** The size of the bytes a base64 data URI string stands for, estimated from its length. */
+export function decodedTextSize(length: number): number {
+    return Math.floor(length * 0.75)
+}
+
+/** The size of the file an app-store record stands for: a string body is estimated, any other keeps its length. */
+export function inlayRecordSize(record: InlayRecord): number {
+    return record.repr === 'string' ? decodedTextSize(record.len) : record.len
+}
+
+/** The summary of the inlay `id` in the app store when its metadata parses and its body is among the `listed` keys; no body is read. Its size is `inlayRecordSize`, as `getInlaySummary` reports. */
 export async function summarizeAppInlay(store: ByteStore, id: string, listed: ReadonlySet<string>): Promise<InlaySummary | null> {
     try {
         const record = await readRecord(store, id)
         if (record === null || !listed.has(record.body)) {
             return null
         }
-        return { ...(record.fields as unknown as Omit<InlayAsset, 'data'>), size: record.len }
+        return { ...(record.fields as unknown as Omit<InlayAsset, 'data'>), size: inlayRecordSize(record) }
     } catch {
         return null
     }
