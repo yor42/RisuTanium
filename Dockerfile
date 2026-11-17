@@ -4,6 +4,9 @@ FROM node:24-slim AS base
 WORKDIR /app
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
+# onnxruntime-node's install script downloads its CUDA binaries on Linux x64 when nvcc is absent.
+# The server never uses the CUDA provider, and that download can fail, so the install skips it.
+ENV ONNXRUNTIME_NODE_INSTALL_CUDA=skip
 # Copy dependency-related file
 COPY package.json .
 COPY pnpm-lock.yaml .
