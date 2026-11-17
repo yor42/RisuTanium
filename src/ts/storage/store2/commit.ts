@@ -747,7 +747,7 @@ export function createCommitter(backend: Store2Backend, options: CommitterOption
      * The upload and final-write half of a bulk commit: the built units and the manifest (the manifest last), then the
      * re-judge loop whose compare-and-write is the last write.
      */
-    async function finishBulk(opened: OpenedMarker, built: BuiltCommit, request: Pick<CommitRequest, 'carry' | 'label' | 'force'>): Promise<CommitResult> {
+    async function finishBulk(opened: OpenedMarker, built: BuiltCommit, request: Pick<CommitRequest, 'carry' | 'label' | 'force' | 'keepPrevious'>): Promise<CommitResult> {
         const { markerKey, held, prefix } = opened
         const carry = plannedCarry(request)
         const manifestUnit: UnitWrite = { key: built.manifest.key, bytes: encodeUnit(UNIT_TYPE.manifest, built.manifest.body) }
