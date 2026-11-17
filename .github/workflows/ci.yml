@@ -26,10 +26,16 @@ permissions:
   contents: read
 
 jobs:
-  check:
-    name: Check, test and build
+  # The full unit test run takes about 25 minutes on one runner, so it is split into three shards.
+  # fail-fast is off so one failing shard does not hide failures in the others.
+  test:
+    name: Unit tests (shard ${{ matrix.shard }}/3)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
 
     steps:
       - uses: actions/checkout@v7
@@ -48,11 +54,31 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Unit tests
+        run: pnpm exec vitest run --shard=${{ matrix.shard }}/3
+
+  check:
+    name: Check, build and release check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Type check
         run: pnpm check
-
-      - name: Unit tests
-        run: pnpm test
 
       - name: Build
         run: pnpm build
