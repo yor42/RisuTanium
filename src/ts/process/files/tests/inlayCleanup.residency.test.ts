@@ -84,7 +84,11 @@ const token = (id: string) => `{{inlayed::${id}}}`
 const X = 'aaaaaaaa-0000-4000-8000-0000000000a1'
 const Y = 'aaaaaaaa-0000-4000-8000-0000000000a2'
 const W = 'aaaaaaaa-0000-4000-8000-0000000000a3'
-/** What the batch reports when a store2 page refuses to delete: the reader redirect is still exercised, the deletion is not. */
+/**
+ * What the batch reports when a store2 page refuses to delete: the refusal comes before the walk, so no candidate is
+ * collected and the reader redirect is not exercised here. Redirect coverage (kept and unreadable-unit cases) returns
+ * with the store2 inlay-deletion follow-up (CHORE-837).
+ */
 const STORE2_REFUSAL = 'inlay deletion is off on this page'
 
 interface Page {
@@ -185,27 +189,28 @@ afterEach(() => {
 })
 
 describe('the clean-up reads an unloaded character through the reader', () => {
-    test('an inlay that a stub still shows is kept, and one that nothing shows is found unreferenced but not deleted on a store2 page', async () => {
+    test('a store2 page refuses before the walk: no candidate is collected and nothing is deleted', async () => {
         // The removed character shows X and Y; the stub shows Y.
         const page = await pageOf([`${token(X)} ${token(Y)}`, token(Y), ''])
 
         const log = await runCleanup([page.removed])
 
-        expect(log.candidates).toBe(2)
+        expect(log.candidates).toBe(0)
         expect(deleted()).toEqual([])
-        expect(log).toMatchObject({ kept: 1, deleted: 0, skipped: STORE2_REFUSAL })
+        expect(log).toMatchObject({ kept: 0, deleted: 0, skipped: STORE2_REFUSAL })
     })
 
-    test('a stub purged from the trash gives its inlays as candidates, and another stub keeps the one it shows', async () => {
+    test('a stub purged from the trash is refused before the walk as well', async () => {
         const page = await pageOf([`${token(X)} ${token(Y)}`, token(Y), ''])
         const log = await runCleanup([stubFromEntry(page.removedEntry) as unknown as Obj])
 
-        expect(log.candidates).toBe(2)
-        expect(log.kept).toBe(1)
+        expect(log.candidates).toBe(0)
+        expect(log.kept).toBe(0)
+        expect(log.skipped).toBe(STORE2_REFUSAL)
         expect(deleted()).toEqual([])
     })
 
-    test('a stub with an absent chunk makes the walk incomplete: nothing is deleted although another of its chats is intact and shows the inlay', async () => {
+    test('a stub with an absent chunk deletes nothing on a store2 page', async () => {
         const page = await pageOf([`${token(X)} ${token(Y)}`, token(Y), ''])
         const damaged = page.stubs[0]
         expect(damaged.chats.length).toBeGreaterThan(1)
@@ -213,20 +218,20 @@ describe('the clean-up reads an unloaded character through the reader', () => {
 
         const log = await runCleanup([page.removed])
 
-        expect(log.candidates).toBe(2)
+        expect(log.candidates).toBe(0)
         expect(deleted()).toEqual([])
-        expect(log.skipped).toBe('a cold unit could not be read')
+        expect(log.skipped).toBe(STORE2_REFUSAL)
     })
 
-    test('with no residency registered a stub cannot be read, so nothing is deleted', async () => {
+    test('with no residency registered the page mode alone refuses, so nothing is deleted', async () => {
         const page = await pageOf([`${token(X)} ${token(Y)}`, token(Y), ''])
         resetResidencyForTest()
 
         const log = await runCleanup([page.removed])
 
-        expect(log.candidates).toBe(2)
+        expect(log.candidates).toBe(0)
         expect(deleted()).toEqual([])
-        expect(log.skipped).toBe('a cold unit could not be read')
+        expect(log.skipped).toBe(STORE2_REFUSAL)
     })
 
     test('guard: a purged stub whose own units are damaged yields no candidates and deletes nothing', async () => {
@@ -241,28 +246,28 @@ describe('the clean-up reads an unloaded character through the reader', () => {
 })
 
 describe('a summary of a store2 entity is never remembered (N4)', () => {
-    test('an inlay that a stub came to show after an earlier run is kept by the next run', async () => {
-        // Run 1: Y is a candidate, kept by the stub.
+    test('two runs over the same entity with new content both refuse before the walk', async () => {
+        // Run 1 and run 2 use the same entity; run 2 shows W instead of Y. The store2 refusal precedes the walk, so no
+        // summary is made or read; the summary-staleness coverage returns with the store2 inlay-deletion follow-up (CHORE-837).
         const first = await pageOf([`${token(X)} ${token(Y)}`, token(Y), ''])
         const stubU = first.stubs[0].u
-        expect((await runCleanup([first.removed])).kept).toBe(1)
+        expect((await runCleanup([first.removed])).skipped).toBe(STORE2_REFUSAL)
         expect(deleted()).toEqual([])
         vi.mocked(removeInlayAsset).mockClear()
         resetResidencyForTest()
 
-        // Run 2, the same entity with new content: it now shows W (and no longer Y); W is a candidate of the removed character.
         const second = await pageOf([`${token(X)} ${token(W)}`, token(W), ''])
         expect(second.stubs[0].u).toBe(stubU)
         const log = await runCleanup([second.removed])
 
-        expect(log.candidates).toBe(2)
+        expect(log.candidates).toBe(0)
         expect(deleted()).toEqual([])
-        expect(log).toMatchObject({ kept: 1, deleted: 0 })
+        expect(log).toMatchObject({ kept: 0, deleted: 0 })
     })
 })
 
 describe('the boot purge, with the residency registered as the boot registers it', () => {
-    test('a trash-due stub purged while another stub shows an inlay keeps that inlay, and the candidates are not empty', async () => {
+    test('a trash-due stub purged while another stub shows an inlay is refused before the walk', async () => {
         // Three stubs: the purged one shows X and Y, the next shows Y only.
         const memory = createMemoryBackend()
         const source = { ...(buildSmall(3) as unknown as Obj), archiveCharacters: true } as unknown as Database
@@ -286,8 +291,8 @@ describe('the boot purge, with the residency registered as the boot registers it
 
         const log = await runCleanup([purged])
 
-        expect(log.candidates).toBe(2)
+        expect(log.candidates).toBe(0)
         expect(deleted()).toEqual([])
-        expect(log).toMatchObject({ kept: 1, deleted: 0, skipped: STORE2_REFUSAL })
+        expect(log).toMatchObject({ kept: 0, deleted: 0, skipped: STORE2_REFUSAL })
     })
 })

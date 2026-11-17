@@ -1,6 +1,7 @@
 import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertMd, alertConfirm, alertClear } from "../alert";
 import { takeExportWriteStats, type ExportWriteCall } from "../exportWriters";
 import { localBackupFileName } from "./backupFileName";
+import { assetDeletionSettled } from "../storage/assetDeleteHold";
 import { LocalWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isTauri } from "src/ts/platform"
@@ -1881,6 +1882,8 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
                 // written and nothing returns while an asset is still being
                 // written. After a batch fails no further entry is read.
                 // The pass and the inlay restore below write assets, inlays and (on a block-era page) cold-storage items.
+                // A sweep's delete in flight settles before the first asset of this restore is written.
+                await assetDeletionSettled();
                 writeMayHaveBegun = true;
                 // Assets handed to the store; the written count is this less the names the pipeline refused, once it has drained.
                 let assetsSubmitted = 0;
