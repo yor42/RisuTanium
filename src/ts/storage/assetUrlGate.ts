@@ -5,7 +5,8 @@ import { isAndroidTransport, statStoredSize } from './tauriByteTransport'
  * read: tauri answers a request without a Range header by reading the entire
  * file, and the WebView copies that body into one Java array. A change of this
  * value changes what a persisted thumbnail skip means, so it needs a
- * `THUMB_VERSION` bump in the same change.
+ * `THUMB_VERSION` bump in the same change. Every platform bounds an avatar
+ * thumbnail by this same value (`BOUNDED_THUMB_ABOVE_BYTES` in avatarThumb.ts).
  */
 export const ANDROID_WHOLE_READ_URL_LIMIT_BYTES = 64 * 1024 * 1024
 

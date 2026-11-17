@@ -3174,6 +3174,28 @@ export const languageKorean = {
         }[reason]
         return `파일에 아무것도 기록되기 전에 백업이 중단되었습니다. 모듈 "${name}"이(가) ${clause}`
     },
+    "rtbExportButton": "RisuTanium 백업 저장 (.rtb)",
+    "rtbExportConfirm": (bin: string) =>
+        `RisuTanium 백업(.rtb)을 저장하시겠습니까? 복원은 RisuTanium에서만 할 수 있습니다. 데이터를 RisuAI로 옮기려면 대신 "${bin}"을(를) 사용하세요.`,
+    "rtbExportRefusedReadOnly": (bin: string) =>
+        `이 페이지는 읽기 전용이라 .rtb 백업을 만들 수 없습니다. 대신 "${bin}"을(를) 사용해 .bin 백업을 저장하세요.`,
+    "rtbExportUnavailable": (bin: string) =>
+        `이 페이지에서는 .rtb 백업을 만들 수 없습니다. 대신 "${bin}"을(를) 사용해 .bin 백업을 저장하세요.`,
+    "rtbExportProgressOpening": "백업 파일을 준비하는 중...",
+    "rtbExportProgressUnits": (count: number) => `채팅, 캐릭터, 설정을 저장하는 중... (${count})`,
+    "rtbExportProgressSide": "기타 앱 데이터를 저장하는 중...",
+    "rtbExportProgressInlays": (done: number, total: number) => `채팅 이미지, 동영상, 오디오를 저장하는 중... (${done} / ${total})`,
+    "rtbExportProgressAssets": (done: number, total: number) => `이미지와 파일을 저장하는 중... (${done} / ${total})`,
+    "rtbExportProgressFinishing": "백업 파일을 마무리하는 중...",
+    "rtbExportSaved": "선택한 위치에 백업을 저장했습니다.",
+    "rtbExportUnsavedExcluded": (savedAt: string) =>
+        `최신 변경 사항을 먼저 저장할 수 없어 이 백업에 포함되지 않았습니다. ${savedAt}에 저장된 내용이 들어 있습니다.`,
+    "rtbExportUnitsLeftOut": (count: number) =>
+        `저장된 항목 ${count}개(작업 프리셋 또는 다른 답변)가 손상되어 읽을 수 없으므로 백업에 포함되지 않았습니다.`,
+    "rtbExportAssetsLeftOut": (count: number, names: string[]) =>
+        `이미지 또는 파일 에셋 ${count}개를 읽을 수 없어 백업에 포함되지 않았습니다. 이 중 하나를 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 제외된 파일:\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "rtbExportSideLeftOut": (count: number) =>
+        `기타 앱 데이터 ${count}종류(플러그인 데이터, 검색·메모리 데이터, 환경설정 등)를 읽을 수 없어 백업에 포함되지 않았습니다.`,
     "internalBackupUnreadable":"이 백업이 손상되었거나 불완전하여 불러오지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
     "internalBackupWriteFailed": "백업을 저장할 수 없었습니다. 현재 데이터는 변경되지 않았습니다.",
     "internalBackupListFailed": "백업 목록을 읽을 수 없었습니다. 아무것도 변경되지 않았습니다.",

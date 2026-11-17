@@ -71,15 +71,46 @@ export interface Store2Input {
     refs: readonly string[]
 }
 
-export interface RtbWriteInput {
+/** What the walk learned once the last unit was handed over; see `Store2DeferredInput`. */
+export interface Store2Summary {
+    root: readonly [string, number, number]
+    req: readonly string[]
+    refs: readonly string[]
+    /** Must equal the number of units the writer itself counted. */
+    units: number
+    omitted: readonly OmittedEntry[]
+}
+
+/**
+ * Store2 input whose root, `req`, refs and omissions are known only after the units were
+ * produced. `summary` is called exactly once, after the last unit and before the first
+ * `s/` entry, so its values are final when the store2 row is written.
+ */
+export interface Store2DeferredInput {
+    units: AsyncIterable<BlockUnit>
+    summary: () => Store2Summary
+}
+
+export interface RtbSource {
+    device: { label: string, platform: string }
+    committedAt: number
+    unsavedExcluded: boolean
+}
+
+/**
+ * Called exactly once, when the manifest is built, after every section was written. Its `source` replaces the
+ * input's, and its `omitted` follows the input's and the store2 summary's and precedes the writer's own.
+ */
+export type RtbLate = () => { source: RtbSource, omitted: readonly OmittedEntry[] }
+
+interface RtbWriteBase {
     sink: ZipSink
     writer: { app: string, version: string, build: string }
-    source: { device: { label: string, platform: string }, committedAt: number, unsavedExcluded: boolean }
     snapshot?: { parent: string | null, lineage: readonly string[] }
     /** Milliseconds; read once, at the start of the export. */
     clock?: () => number
     keyEnv?: KeyEnv
-    store2: Store2Input
+    store2: Store2Input | Store2DeferredInput
     assets?: AsyncIterable<AssetInput>
     inlays?: AsyncIterable<InlayInput>
     /** By section id (`side.iris` ...); an id that is absent is an empty store. */
@@ -91,6 +122,12 @@ export interface RtbWriteInput {
     manifestCap?: number
     m6ZeroLocalSizes?: boolean
 }
+
+/** The source is required, unless `late` supplies it when the manifest is built. */
+export type RtbWriteInput = RtbWriteBase & (
+    | { source: RtbSource, late?: RtbLate }
+    | { source?: RtbSource, late: RtbLate }
+)
 
 export interface WrittenRow {
     id: string
@@ -107,7 +144,7 @@ export interface WrittenManifest {
     writer: RtbWriteInput['writer']
     createdAt: number
     snapshot: { id: string, parent: string | null, lineage: string[] }
-    source: RtbWriteInput['source']
+    source: RtbSource
     sections: WrittenRow[]
     omitted: OmittedEntry[]
 }
@@ -194,6 +231,20 @@ async function selfCheck(directory: ZipDirectoryView): Promise<void> {
     }
 }
 
+/** The sorted, de-duplicated refs; an unknown ref or `req` token fails the export. */
+function checkedRefs(rawRefs: readonly string[], req: readonly string[]): string[] {
+    const refs = normalizeRefs(rawRefs)
+    const refsCheck = checkRefs(refs)
+    if (refsCheck.kind !== 'ok') {
+        throw new RangeError(refsCheck.kind === 'damaged' ? refsCheck.reason : `meta.refs holds strings this build does not know: ${refsCheck.refs.join(', ')}`)
+    }
+    const reqCheck = checkReqTokens(req)
+    if (reqCheck.kind !== 'ok') {
+        throw new RangeError(reqCheck.kind === 'damaged' ? reqCheck.reason : `req holds tokens this build does not know: ${reqCheck.tokens.join(', ')}`)
+    }
+    return refs
+}
+
 async function writeSideSection(zip: Zip64Writer, name: string, records: AsyncIterable<SideRecord>, registry: SideTagRegistry, limit: number): Promise<number> {
     const iterator = records[Symbol.asyncIterator]()
     const held: Uint8Array[] = []
@@ -246,15 +297,9 @@ async function writeSideSection(zip: Zip64Writer, name: string, records: AsyncIt
 export async function writeRtb(input: RtbWriteInput): Promise<RtbWriteResult> {
     const createdAt = (input.clock ?? Date.now)()
     const snapshotId = randomId26(input.keyEnv ?? defaultKeyEnv)
-    const refs = normalizeRefs(input.store2.refs)
-    const refsCheck = checkRefs(refs)
-    if (refsCheck.kind !== 'ok') {
-        throw new RangeError(refsCheck.kind === 'damaged' ? refsCheck.reason : `meta.refs holds strings this build does not know: ${refsCheck.refs.join(', ')}`)
-    }
-    const reqCheck = checkReqTokens(input.store2.req)
-    if (reqCheck.kind !== 'ok') {
-        throw new RangeError(reqCheck.kind === 'damaged' ? reqCheck.reason : `req holds tokens this build does not know: ${reqCheck.tokens.join(', ')}`)
-    }
+    const store2 = input.store2
+    const eager = 'root' in store2 ? store2 : null
+    const eagerRefs = eager ? checkedRefs(eager.refs, eager.req) : null
     const sides = input.sides ?? {}
     for (const id of Object.keys(sides)) {
         if (!SIDE_SECTION_IDS.includes(id)) {
@@ -264,7 +309,7 @@ export async function writeRtb(input: RtbWriteInput): Promise<RtbWriteResult> {
 
     const limit = input.bufferLimit ?? DEFAULT_BUFFER_LIMIT
     const zip = new Zip64Writer({ sink: input.sink, createdAt, bufferLimit: input.bufferLimit, m6ZeroLocalSizes: input.m6ZeroLocalSizes })
-    const omitted: OmittedEntry[] = [...(input.omitted ?? [])]
+    const own: OmittedEntry[] = []
     const rows: WrittenRow[] = []
 
     const mime = encoder.encode(RTB_MIMETYPE)
@@ -273,11 +318,26 @@ export async function writeRtb(input: RtbWriteInput): Promise<RtbWriteResult> {
     let blockEntries = 0
     let blockBytes = 0
     let unitCount = 0
-    for await (const block of groupBlocks(input.store2.units)) {
+    for await (const block of groupBlocks(store2.units)) {
         await zip.addBuffered(block.name, 8, block.bytes, block.bytes.length)
         blockEntries++
         blockBytes += block.bytes.length
         unitCount += block.units
+    }
+    let summaryOmitted: readonly OmittedEntry[] = []
+    let storeMeta: { root: readonly [string, number, number], req: readonly string[], refs: readonly string[] }
+    if (eager && eagerRefs) {
+        storeMeta = { root: eager.root, req: eager.req, refs: eagerRefs }
+    } else if ('summary' in store2) {
+        const summary = store2.summary()
+        const refs = checkedRefs(summary.refs, summary.req)
+        if (summary.units !== unitCount) {
+            throw new RangeError(`the summary counts ${summary.units} units, ${unitCount} were written`)
+        }
+        summaryOmitted = summary.omitted
+        storeMeta = { root: summary.root, req: summary.req, refs }
+    } else {
+        throw new RangeError('store2 input has neither a root nor a summary')
     }
     rows.push({
         id: 'store2',
@@ -286,14 +346,14 @@ export async function writeRtb(input: RtbWriteInput): Promise<RtbWriteResult> {
         prefix: 'u/',
         entries: blockEntries,
         bytes: blockBytes,
-        meta: { root: [...input.store2.root], req: [...input.store2.req], frameFmt: FRAME_FMT, units: unitCount, refs },
+        meta: { root: [...storeMeta.root], req: [...storeMeta.req], frameFmt: FRAME_FMT, units: unitCount, refs: storeMeta.refs },
     })
 
     const sideRows: WrittenRow[] = []
     for (const id of SIDE_SECTION_IDS) {
         const side = sides[id]
         if (side && 'unreadable' in side) {
-            omitted.push({ kind: 'side', name: id, reason: 'unreadable' })
+            own.push({ kind: 'side', name: id, reason: 'unreadable' })
             continue
         }
         const name = sideDataName(id) as string
@@ -321,7 +381,7 @@ export async function writeRtb(input: RtbWriteInput): Promise<RtbWriteResult> {
             names = null
         }
         if (names === null || nameProblem(names.metaName) || nameProblem(names.bodyName)) {
-            omitted.push({ kind: 'inlay', name: inlay.id, reason: 'name' })
+            own.push({ kind: 'inlay', name: inlay.id, reason: 'name' })
             continue
         }
         await zip.addBuffered(names.metaName, 8, meta, meta.length)
@@ -341,7 +401,7 @@ export async function writeRtb(input: RtbWriteInput): Promise<RtbWriteResult> {
             name = null
         }
         if (name === null || nameProblem(name)) {
-            omitted.push({ kind: 'asset', name: asset.key, reason: 'name' })
+            own.push({ kind: 'asset', name: asset.key, reason: 'name' })
             continue
         }
         const tally = { length: 0 }
@@ -356,6 +416,12 @@ export async function writeRtb(input: RtbWriteInput): Promise<RtbWriteResult> {
         ...sideRows,
     )
 
+    const late = input.late?.()
+    const source = late ? late.source : input.source
+    if (!source) {
+        throw new RangeError('the input names no source')
+    }
+    const omitted: OmittedEntry[] = [...(input.omitted ?? []), ...summaryOmitted, ...(late?.omitted ?? []), ...own]
     const manifest: WrittenManifest = {
         rtb: 1,
         writer: input.writer,
@@ -365,7 +431,7 @@ export async function writeRtb(input: RtbWriteInput): Promise<RtbWriteResult> {
             parent: input.snapshot?.parent ?? null,
             lineage: (input.snapshot?.lineage ?? []).slice(0, MAX_WRITE_LINEAGE),
         },
-        source: input.source,
+        source,
         sections: rows,
         omitted,
     }

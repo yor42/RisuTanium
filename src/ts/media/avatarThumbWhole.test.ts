@@ -3,8 +3,11 @@
 /**
  * The real generator of `avatarThumb.ts` on an Android page: an avatar whose
  * stored size is above the whole-read limit gets a persisted skip before any
- * URL decode or byte read, on every path that would read it (a still header, the
- * page-wide URL-decode switch, and a header that could not be read); an avatar
+ * URL decode or byte read when its bounded prefix (the first piece of the ranged
+ * transport) holds no embedded thumbnail, on every path that would read it (a
+ * still prefix and the page-wide URL-decode switch); a prefix that cannot be
+ * read gives null with nothing stored (the embedded-thumbnail cases are in
+ * `avatarThumbBounded.test.ts`); an avatar
  * whose size cannot be read gets `null` with nothing memoized or stored, so the
  * next request asks again. The stored size is a declared number from the
  * module-boundary stand-in `statStoredSize`; no file body is made. The header
@@ -24,12 +27,13 @@ vi.mock('localforage', () => ({
     },
 }))
 
-const { readImageMock, platformState, urlForMock, fetchMock, transport } = vi.hoisted(() => ({
+const { readImageMock, platformState, urlForMock, fetchMock, transport, readRangedPiecesMock } = vi.hoisted(() => ({
     readImageMock: vi.fn(async (_loc: string) => undefined as Uint8Array | null | undefined),
     platformState: { node: true },
     urlForMock: vi.fn(async (loc: string) => `http://node.test/api/asset/${loc}?risu-auth=t`),
     fetchMock: vi.fn(),
     transport: { android: true, stat: vi.fn() },
+    readRangedPiecesMock: vi.fn(),
 }))
 
 vi.mock(
@@ -85,7 +89,7 @@ vi.mock('../storage/store/appStore', () => ({
 
 vi.mock('../storage/tauriByteTransport', async (importOriginal) => {
     const actual = await importOriginal<Record<string, unknown>>()
-    return { ...actual, isAndroidTransport: () => transport.android, statStoredSize: (key: string) => transport.stat(key) }
+    return { ...actual, isAndroidTransport: () => transport.android, statStoredSize: (key: string) => transport.stat(key), readRangedPieces: readRangedPiecesMock }
 })
 
 import { __avatarThumbTestHooks, THUMB_VERSION, getAvatarThumbSrc } from './avatarThumb'
@@ -174,6 +178,13 @@ function serveFilesWithRanges(): void {
     })
 }
 
+/** The bounded prefix read of an Android avatar over the limit: the first piece of `bytes`, declared as a file of `total` bytes. */
+function servePrefixPiece(bytes: Uint8Array, total: number): void {
+    readRangedPiecesMock.mockImplementation(async function* () {
+        yield { bytes, offset: 0, total, identity: 'id' }
+    })
+}
+
 const renderMock = vi.fn()
 let store: FakeStore
 
@@ -187,6 +198,7 @@ beforeEach(() => {
     urlForMock.mockClear()
     transport.android = true
     transport.stat.mockReset()
+    readRangedPiecesMock.mockReset()
     renderMock.mockReset()
     renderMock.mockImplementation(async (source: { kind: string }) => ({ src: `thumb:${source.kind}` }))
     vi.stubGlobal('fetch', fetchMock)
@@ -210,6 +222,7 @@ describe('an avatar over the whole-read limit on Android', () => {
     test('reproducer: a still header with a size over the limit is a persisted skip, with no URL decode and no byte read', async () => {
         files.set('assets/huge.png', stillPng())
         transport.stat.mockResolvedValue(OVER)
+        servePrefixPiece(stillPng(), OVER)
 
         expect(await getAvatarThumbSrc('assets/huge.png')).toBeNull()
 
@@ -228,6 +241,7 @@ describe('an avatar over the whole-read limit on Android', () => {
         files.set('assets/first.png', stillPng())
         files.set('assets/huge.png', stillPng())
         transport.stat.mockImplementation(async (key: string) => (key === 'assets/huge.png' ? OVER : 1000))
+        servePrefixPiece(stillPng(), OVER)
 
         expect(await getAvatarThumbSrc('assets/first.png')).toBe('thumb:bytes')
         readImageMock.mockClear()
@@ -240,8 +254,10 @@ describe('an avatar over the whole-read limit on Android', () => {
         expect(store.setItem).toHaveBeenCalledWith('assets/huge.png', { v: THUMB_VERSION, skip: true })
     })
 
-    test('reproducer: a header that cannot be read does not fall back to a whole read of an avatar over the limit', async () => {
-        fetchMock.mockImplementation(async () => fakeResponse(404, {}, null))
+    test('reproducer: a prefix that cannot be read does not fall back to a whole read of an avatar over the limit, and stores nothing', async () => {
+        readRangedPiecesMock.mockImplementation(async function* () {
+            throw new Error('the range read failed')
+        })
         files.set('assets/huge.png', stillPng())
         transport.stat.mockResolvedValue(OVER)
 
@@ -249,7 +265,7 @@ describe('an avatar over the whole-read limit on Android', () => {
 
         expect(readImageMock).not.toHaveBeenCalled()
         expect(renderMock).not.toHaveBeenCalled()
-        expect(store.setItem).toHaveBeenCalledWith('assets/huge.png', { v: THUMB_VERSION, skip: true })
+        expect(store.setItem).not.toHaveBeenCalled()
     })
 })
 
