@@ -797,7 +797,7 @@ export const languageSpanish = {
         "mcpStdioConsent": (moduleName: string) => `El módulo ${moduleName} quiere iniciar un programa en este dispositivo para proporcionar herramientas MCP.`,
         "mcpStdioConsentCommand": (command: string) => `Comando: ${command}`,
         "mcpStdioConsentArgument": (index: number, argument: string) => `Argumento ${index}: ${argument}`,
-        "mcpStdioConsentEnvironment": (name: string, value: string) => `Entorno ${name}: ${value}`,
+        "mcpStdioConsentEnvironment": (name: string, value: string) => `Variable de entorno ${name}: ${value}`,
         "mcpStdioConsentQuestion": "¿Iniciar este programa con estos argumentos? Permítelo solo si confías en el origen de este módulo: un programa que inicies puede leer y modificar archivos de este dispositivo.",
         "mcpStdioApprovalsUnreadable": (location: string) => `No se pudieron leer las aprobaciones guardadas de los programas MCP, así que se dejaron sin modificar y no se guardará ninguna aprobación hasta que se reinicie la aplicación. Se te preguntará de nuevo por cada programa. Ubicación: ${location}`,
         "googleSearchEnterApiKey": "Introduce tu clave de API de Google Custom Search:",
