@@ -4158,7 +4158,7 @@ export const languageChinese = {
         "peerRecordSetting": "设置：{name}",
         "peerRecordPresets": "预设",
         "peerRecordPersonas": "角色设定",
-        "peerRecordLoadouts": "配装",
+        "peerRecordLoadouts": "配置组包",
         "peerRecordCore": "{character}：角色卡",
         "peerRecordLore": "{character}：世界书",
         "peerRecordScripts": "{character}：脚本",

@@ -4202,7 +4202,7 @@ export const languageChineseTraditional = {
         "peerRecordSetting": "設定：{name}",
         "peerRecordPresets": "預設",
         "peerRecordPersonas": "角色設定",
-        "peerRecordLoadouts": "配置組合",
+        "peerRecordLoadouts": "設定組合",
         "peerRecordCore": "{character}：角色卡",
         "peerRecordLore": "{character}：世界書",
         "peerRecordScripts": "{character}：腳本",
