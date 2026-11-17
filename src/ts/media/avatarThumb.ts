@@ -1183,7 +1183,19 @@ async function resolveSizedSource(loc: string, scope: TaskScope): Promise<SizedS
         }
         // A key the browser store can address but not create (written by
         // upstream) is read whole, as every other reader of it does.
-        if (store.readValue === undefined || assetOrInlayBodyKeyViolation(loc) !== null) {
+        if (assetOrInlayBodyKeyViolation(loc) !== null) {
+            return NO_SIZE_SOURCE
+        }
+        // The OPFS-transitional store offers a lazy Blob instead: its size is the
+        // stored size and a slice reads only that slice.
+        if (store.readValue === undefined && store.readLazyBlob !== undefined) {
+            const lazy = await store.readLazyBlob(loc)
+            if (lazy === null) {
+                return SIZE_READ_FAILED
+            }
+            return { kind: 'sized', size: lazy.size, header: null, source: { platform: 'web', url: null, blob: lazy, loaded: null } }
+        }
+        if (store.readValue === undefined) {
             return NO_SIZE_SOURCE
         }
         const value = await store.readValue(loc)

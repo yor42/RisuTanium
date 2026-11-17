@@ -41,6 +41,11 @@ export function createOpfsTransitionalStore(opfs: OpfsStorage): ByteStore {
             return { bytes: ownBytes(new Uint8Array(stored.buffer, stored.byteOffset, stored.byteLength)), version: null }
         },
 
+        async readLazyBlob(key: string): Promise<Blob | null> {
+            checkAddressable(key)
+            return await opfs.getFile(key)
+        },
+
         async write(key: string, bytes: Uint8Array, condition: StoreCondition): Promise<WriteResult> {
             const reason = indexedDbAddressableViolation(key) ?? indexedDbCreatableViolation(key)
             if (reason !== null) {
