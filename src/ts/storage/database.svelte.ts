@@ -1565,6 +1565,11 @@ export interface character{
      * a card. Typed `unknown` because a stored value may have another shape; the readers narrow it.
      */
     risutanium_asset_retained?:unknown
+    /**
+     * Viewer preference, fork-only: carried by the store and `.bin`, never by a card; absent = off. While a reply
+     * streams, the new chat screen shows a character count instead of the text.
+     */
+    risutanium_render_when_complete?:boolean
 }
 
 
@@ -2646,6 +2651,7 @@ export async function importPreset(f:{
         pre[field] = ''
     }
     delete pre.koboldURL
+    //A key field holds one key per line, so the field is blanked when any of its lines is a whole reference.
     pre.openAIKey = typeof pre.openAIKey === 'string' ? blankSecretRef(pre.openAIKey) : ''
     pre.proxyKey = typeof pre.proxyKey === 'string' ? blankSecretRef(pre.proxyKey) : ''
     db.botPresets.push(pre)

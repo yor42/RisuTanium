@@ -244,6 +244,35 @@ describe('importPreset blanks whole-field references', () => {
         expect(imported.openAIKey).toBe('')
         expect(imported.proxyKey).toBe('')
     })
+
+    // The fixture is what downloadPreset writes: the preset template with the keys edited, pretty-printed.
+    function producedPreset(keys: { openAIKey: string, proxyKey: string }) {
+        return {
+            name: 'shared.json',
+            data: new TextEncoder().encode(JSON.stringify({ ...presetTemplate, name: 'Shared', ...keys }, null, 2)),
+        }
+    }
+
+    test('a field with a reference on any line is imported blank (LF, CRLF, either position)', async () => {
+        await importPreset(producedPreset({ openAIKey: '${RISU_A_KEY}\nsk-test-B', proxyKey: 'sk-test-A\r\n${RISU_A_KEY}' }))
+        const [imported] = DBState.db.botPresets
+        expect(imported.openAIKey).toBe('')
+        expect(imported.proxyKey).toBe('')
+    })
+
+    test('a reference after a lone CR is blanked, since a lone CR separates keys', async () => {
+        await importPreset(producedPreset({ openAIKey: 'sk-test-A\r${RISU_A_KEY}', proxyKey: 'sk-test-B' }))
+        const [imported] = DBState.db.botPresets
+        expect(imported.openAIKey).toBe('')
+        expect(imported.proxyKey).toBe('sk-test-B')
+    })
+
+    test('guard: a whole reference is blanked and a plain multi-line key list is kept as written', async () => {
+        await importPreset(producedPreset({ openAIKey: '${RISU_A_KEY}', proxyKey: 'sk-test-A\nsk-test-B' }))
+        const [imported] = DBState.db.botPresets
+        expect(imported.openAIKey).toBe('')
+        expect(imported.proxyKey).toBe('sk-test-A\nsk-test-B')
+    })
 })
 
 describe('importPreset never lets a preset choose where stored secrets are sent', () => {

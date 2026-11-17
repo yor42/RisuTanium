@@ -82,6 +82,7 @@ export const languageEnglish = {
     chatShellFindMatchLabelPartial: (index: string, total: string) => `Match ${index} of at least ${total}`,
     chatShellFindMatchInside: 'The match is inside this message',
     chatShellThinking: (words: number) => `Thinking… ${words} ${words === 1 ? 'word' : 'words'}`,
+    chatShellWritingCount: (n: number) => `Writing the reply… ${n} ${n === 1 ? 'character' : 'characters'}`,
     chatShellMessage: 'Message',
     chatShellRemoveAttachment: 'Remove attachment',
     chatShellSend: 'Send',
@@ -612,6 +613,8 @@ export const languageEnglish = {
         requestLogRemovedDesc: "This request log removes when client is refreshed or reloaded.",
         secretRefUnavailable: (name: string) =>
             `Environment variable ${name} is unavailable: it is not set, the server does not allow it, or the server refused the request.`,
+        allKeysLimited: (count: number) =>
+            `All ${count} keys hit a rate or quota limit.`,
         secretRefUnsupported: (name: string) =>
             `Environment variable ${name} cannot be used here: this platform has no access to the server's environment.`,
         secretRefNotForeign: (name: string) =>
@@ -927,6 +930,9 @@ export const languageEnglish = {
         nameApiKey: "{name} API Key",
         nameApiKeyLower: "{name} API key",
         apiKeyEnvRefNote: "Instead of a key, you can enter ${NAME}: the name of an environment variable on the machine that runs the desktop app or the Node server. Only names like RISU_OPENAI_KEY are read (RISU_, a name, then _KEY or _TOKEN), unless they are listed in the RISU_ALLOWED_ENV variable on that machine. A web build without the Node server cannot read environment variables.",
+        addAnotherKey: "Add another key",
+        keyRowLabel: "Key {n}",
+        keySeparatorHint: "One key per box. A space or line break starts the next key.",
         nameKey: "{name} Key",
         nameUrl: "{name} URL",
         nameSettings: "{name} Settings",
@@ -2342,6 +2348,8 @@ export const languageEnglish = {
     studioFormLoading: "Loading history…",
     studioGreetingsEmpty: "No alternative first messages yet",
     studioGreetingDelete: "Delete first message",
+    studioFormRenderWhenComplete: "Show replies only when complete",
+    studioFormRenderWhenCompleteHint: "Applies to the new chat screen.",
     studioBannerOtherTab: "Another tab is saving this character's history. Changes made here are kept in memory only.",
     studioBannerNoLocks: "History can't be saved on this page (not a secure connection).",
     studioBannerFailed: "History could not be loaded, so it won't be saved on this page. Reload to try again.",
@@ -2453,6 +2461,8 @@ export const languageEnglish = {
     studioHistoryAlreadyUndone: "That step was already undone, so Undo moved past it.",
     studioHistoryAlreadyRedone: "That step was already redone, so Redo moved past it.",
     studioHistoryStepDropped: "Undo moved past a step that can no longer be undone here.",
+    studioHistoryListChangedElsewhere: "The first messages were changed elsewhere since then.",
+    studioHistoryListSaveUnfinished: "An earlier save of the first messages may not have finished.",
     studioStepGreetingAdd: "First message added",
     studioStepGreetingRemove: "First message deleted",
     studioStepGreetingEdit: "First message edited",
@@ -3685,6 +3695,17 @@ export const languageEnglish = {
     store2ImportUnconfirmed: "RisuTanium could not confirm whether the backup was imported. Your earlier data is kept either way. Reload the page to see which one is in use.",
     store2ImportNotFlushed: "The backup was imported, but the device did not confirm that it was written to disk. The app reloads now and finishes writing it when it starts.",
     store2ImportDone: "The backup was imported. The data you had before is kept in the list of earlier saved versions, where it ages out like any other. Refreshing your app.",
+    rtbRestoreNeedsStore2: "This page is not using RisuTanium's current storage, so a .rtb backup cannot be restored here. Nothing was restored.",
+    rtbRestoreNotRtb: "This file is not a RisuTanium .rtb backup, so nothing was restored. Your current data was not changed.",
+    rtbRestoreEncrypted: "This .rtb backup is encrypted, and this version cannot open an encrypted backup, so nothing was restored. Your current data was not changed.",
+    rtbRestoreDamaged: "This .rtb backup is damaged or incomplete, so nothing was restored. Your current data was not changed.",
+    rtbRestoreNewer: (item: string) =>
+        `This .rtb backup was made by a newer version of RisuTanium and needs ${item}, which this version cannot read, so nothing was restored. Update the app and try again. Your current data was not changed.`,
+    rtbRestoreTargetNewerConfirm: (targetSaved: string, backupTime: string, exportedAt: string | null, device: string) =>
+        `Your current data was saved at ${targetSaved}, which is later than this backup (${backupTime}${exportedAt === null ? '' : `; the file was made at ${exportedAt}`}). The backup came from the device "${device}". Restoring it replaces your current data with the older backup. The data you have now is kept in the list of earlier saved versions, where it ages out like any other. Continue?`,
+    rtbRestoreUncreatableConfirm: (count: number, names: string[]) =>
+        `${count} asset file(s) in this backup have names this app's storage cannot create, so they cannot be restored here. A character that uses one of them will show it as missing. Continue without them?\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    rtbRestoreChecking: (percent: number) => `Checking the backup... (${percent}%)`,
     coldStorageCleanupDateUnknown: "date unknown",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `When a damaged save was replaced from a backup, the older saved copies of your data were set aside instead of being deleted (created ${dates}). Images and archived data that only they use are still protected, so the cleanup cannot run while they exist.\n\nDelete these older copies and then clean up? They cannot be recovered. Choose Cancel to keep them; the cleanup then does not run.`,

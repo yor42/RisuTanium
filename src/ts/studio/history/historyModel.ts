@@ -25,7 +25,7 @@ export interface HistoryClock {
 
 // ---------------------------------------------------------------- field paths and values
 
-export type CharacterField = 'desc' | 'firstMessage' | 'exampleMessage' | 'customModuleToggle' | 'hideChatIcon'
+export type CharacterField = 'desc' | 'firstMessage' | 'exampleMessage' | 'customModuleToggle' | 'hideChatIcon' | 'risutanium_render_when_complete'
 export type ChatField = 'note'
 export type SetPath = CharacterField | ChatField
 export type ListPath = 'alternateGreetings'
@@ -37,7 +37,7 @@ export type OwnerKind = ParsedOwnerKey['kind']
 // accepts. The module row holds `customModuleToggle` only: a module record holding a `set` op on any other path is
 // refused whole.
 export const SET_PATHS_BY_KIND: { readonly [K in OwnerKind]: readonly SetPath[] } = {
-    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon'],
+    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete'],
     chat: ['note'],
     module: ['customModuleToggle'],
 }
@@ -50,7 +50,12 @@ export const RESTORE_PATHS_BY_KIND: { readonly [K in OwnerKind]: readonly Restor
 }
 export const CHARACTER_SET_PATHS: readonly SetPath[] = SET_PATHS_BY_KIND.character
 export const CHAT_SET_PATHS: readonly SetPath[] = SET_PATHS_BY_KIND.chat
-export const RESTORE_PATH_ORDER: readonly RestorePath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'note', 'alternateGreetings']
+export const RESTORE_PATH_ORDER: readonly RestorePath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', 'alternateGreetings']
+// The set paths whose value is a boolean; every other set path carries text.
+export const BOOLEAN_SET_PATHS: readonly SetPath[] = ['hideChatIcon', 'risutanium_render_when_complete']
+export function isBooleanSetPath(path: SetPath): boolean {
+    return BOOLEAN_SET_PATHS.includes(path)
+}
 // The character text fields whose whole value a set op carries.
 export type TextFieldPath = 'desc' | 'firstMessage' | 'exampleMessage'
 export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = ['desc', 'firstMessage', 'exampleMessage']
@@ -226,7 +231,7 @@ function parseFieldValue(path: SetPath, value: unknown): FieldValue | null {
     if (value.had !== true) {
         return null
     }
-    if (path === 'hideChatIcon') {
+    if (isBooleanSetPath(path)) {
         return typeof value.value === 'boolean' ? { had: true, value: value.value } : null
     }
     return typeof value.value === 'string' ? { had: true, value: value.value } : null
@@ -322,9 +327,9 @@ export function isOpAllowedFor(kind: OwnerKind, op: Op): boolean {
     }
 }
 
-// The set paths of an owner kind that carry text: its row of the table minus the boolean `hideChatIcon`.
+// The set paths of an owner kind that carry text: its row of the table minus the boolean paths.
 export function textPathsFor(kind: OwnerKind): readonly SetPath[] {
-    return SET_PATHS_BY_KIND[kind].filter((path) => path !== 'hideChatIcon')
+    return SET_PATHS_BY_KIND[kind].filter((path) => !isBooleanSetPath(path))
 }
 
 const ASSET_ARRAYS: readonly string[] = ['additionalAssets', 'emotionImages', 'assets']
@@ -643,6 +648,11 @@ export interface RestoreWrite {
 // first messages would land only one of the two, so it stops whole (the bound-step rule).
 export type ModelRefusal = 'empty' | 'unknown' | 'precondition' | 'unchanged' | 'pairSplit'
 
+// Why a greeting-list skip happened, from the side of a fingerprinted step the live list was on: `neither` is a list
+// changed elsewhere, `other` a list that already holds the step's result (an earlier save may not have finished).
+// In memory only: never stored, never posted, never part of a committed step.
+export type ListSkipReason = 'neither' | 'other'
+
 export interface StepPlan {
     ok: true
     label: StepLabel
@@ -660,6 +670,10 @@ export interface StepPlan {
     // Revert only: list ops the revert did not apply because their step's list did not fit or the
     // per-op check failed. Absent when none.
     listSkipped?: number
+    // Why the list ops were skipped, when the hash decision of a fingerprinted step says so. A replay sets it on an
+    // `already` move over side `other`; a revert sets it only when every skipped list op was skipped at or after its
+    // hash stop. Absent otherwise.
+    listReason?: ListSkipReason
     // Revert only: steps left whole because they changed the first message together with the alternate first
     // messages and one of the two no longer fits. Absent when none.
     pairSkipped?: number
@@ -681,8 +695,8 @@ export interface StepPlan {
 
 export type PlanResult =
     | StepPlan
-    | { ok: false; reason: Exclude<ModelRefusal, 'unchanged'> }
-    | { ok: false; reason: 'unchanged'; listSkipped?: number; pairSkipped?: number; fmNotRestored?: boolean; goneRows?: string[] }
+    | { ok: false; reason: Exclude<ModelRefusal, 'unchanged'>; listReason?: ListSkipReason }
+    | { ok: false; reason: 'unchanged'; listSkipped?: number; listReason?: ListSkipReason; pairSkipped?: number; fmNotRestored?: boolean; goneRows?: string[] }
 
 interface Working {
     field(path: SetPath): FieldValue
@@ -1387,7 +1401,7 @@ export function planReplay(
     // steps push the step out. Steps without a fingerprint keep the per-op checks. An expected-side
     // replay whose chat op fails stays partial: only the list witnesses a fingerprint.
     if (side === 'neither') {
-        return { ok: false, reason: 'precondition' }
+        return { ok: false, reason: 'precondition', listReason: 'neither' }
     }
     // A step that holds a greeting-list op is refused whole when the list cannot be read, with or
     // without a fingerprint, so no chat index or field lands against a list nobody could check.
@@ -1536,6 +1550,7 @@ export function planReplay(
             skipped: 0,
             fmNotRestored: false,
             ...(unreplayable > 0 ? { dropStep: true as const } : { already: direction }),
+            ...(unreplayable === 0 && side === 'other' ? { listReason: 'other' as const } : {}),
             ...(goneSeen.size > 0 ? { goneRows: [...goneSeen].sort() } : {}),
         }
     }
@@ -1723,6 +1738,11 @@ export function planRevert(
     // fingerprint keeps its per-op checks after a suspension, so on that route a repeated text can still
     // be applied. A bound-step stop skipping only `listSet` ops shifts no index and leaves it unchanged.
     let stopped = false
+    // The side of the revert's hash stop, and the list ops counted before it. The reason is shown only when the hash
+    // stop is the first cause and every counted list skip came at or after it: from the stop on, each list op is
+    // skipped because the list is on that side. Bound-step stops, suspensions and per-op failures give no reason.
+    let hashStop: ListSkipReason | null = null
+    let skippedBeforeHashStop = 0
     let pairSkipped = 0
     for (const step of above) {
         let side: ListSide = 'none'
@@ -1739,6 +1759,9 @@ export function planRevert(
                     side = sideFromHash(step.listFingerprint, 'undo', tracker.hash(list))
                     if (side !== 'expected') {
                         stopped = true
+                        // `none` cannot occur here: the step has a fingerprint and the list is readable.
+                        hashStop = side === 'none' ? null : side
+                        skippedBeforeHashStop = listSkipped
                     }
                 }
             }
@@ -1868,6 +1891,7 @@ export function planRevert(
         }
     }
     const gone = goneSeen.size > 0 ? { goneRows: [...goneSeen].sort() } : {}
+    const reason = hashStop !== null && skippedBeforeHashStop === 0 && listSkipped > 0 ? { listReason: hashStop } : {}
     if (ops.length === 0) {
         // Nothing applied: a pair stop with no other failure refuses with its own reason, which wins over the
         // gone-rows note (nothing was changed). A revert whose only failures are re-inserts of gone rows lands
@@ -1876,7 +1900,7 @@ export function planRevert(
             return { ok: false, reason: 'pairSplit' }
         }
         if (goneSeen.size > 0 && failedOther === 0) {
-            return { ok: false, reason: 'unchanged', ...gone, ...(listSkipped > 0 ? { listSkipped } : {}), ...(fmNotRestored ? { fmNotRestored } : {}) }
+            return { ok: false, reason: 'unchanged', ...gone, ...(listSkipped > 0 ? { listSkipped } : {}), ...reason, ...(fmNotRestored ? { fmNotRestored } : {}) }
         }
         return { ok: false, reason: 'precondition' }
     }
@@ -1922,6 +1946,7 @@ export function planRevert(
             reason: 'unchanged',
             ...gone,
             ...(listSkipped > 0 ? { listSkipped } : {}),
+            ...reason,
             ...(pairSkipped > 0 ? { pairSkipped } : {}),
             ...(fmNotRestored ? { fmNotRestored } : {}),
         }
@@ -1936,6 +1961,7 @@ export function planRevert(
         ...gone,
         skipped,
         ...(listSkipped > 0 ? { listSkipped } : {}),
+        ...reason,
         ...(pairSkipped > 0 ? { pairSkipped } : {}),
         fmNotRestored,
         // The final fill hashes only the slots the revert changed and is never budgeted.

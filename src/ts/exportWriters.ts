@@ -242,7 +242,8 @@ function startWriteTiming(bytes: number, append: boolean, closing: boolean): Wri
  *
  * Bytes handed to `write` may still be held until a later `write` or `close`, so a caller must treat a file as
  * complete only after `close` resolves. A failing file-system call rejects the `write` or `close` that made it, and
- * every later `write` or `close` rejects with the same error, because the file is then incomplete.
+ * every later `write` or `close` rejects with the same error, because the file is then incomplete. On the Android
+ * append path, `close` also rejects when the closing reopen reports a size other than the bytes written.
  */
 export class TauriWriter {
     path: string
@@ -252,7 +253,7 @@ export class TauriWriter {
     private failed = false
     private failure: unknown = undefined
     private attempted = false
-    /** Bytes the append command has confirmed, for the closing log line. */
+    /** Bytes the append command has confirmed; the closing call compares the reopened size with it, and logs both. */
     private bytesWritten = 0
     /** Fixed at construction: whether chunks go to `export_append_b64` (the Android save dialog's `content://` document) instead of `writeFile`. */
     private readonly viaAppendCommand: boolean
@@ -310,6 +311,10 @@ export class TauriWriter {
         }
         if (closing) {
             this.logReopenSize(result.reopenSize, result.reopen)
+            // A reopen that saw a different size means the document lost or gained bytes; its failure codes stay a success.
+            if (typeof result.reopenSize === 'number' && result.reopenSize !== this.bytesWritten) {
+                throw new Error(`The saved file is ${result.reopenSize} bytes, but ${this.bytesWritten} bytes were written`)
+            }
         }
     }
 

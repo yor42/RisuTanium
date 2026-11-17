@@ -82,6 +82,7 @@ export const languageJapanese = {
     chatShellFindMatchLabelPartial: (index: string, total: string) => `${total}件以上のうち${index}件目`,
     chatShellFindMatchInside: "一致した部分はこのメッセージ内にあります",
     chatShellThinking: (words: number) => `考え中… ${words}語`,
+    chatShellWritingCount: (n: number) => `返信を作成中… ${n}文字`,
     chatShellMessage: "メッセージ",
     chatShellRemoveAttachment: "添付ファイルを削除",
     chatShellSend: "送信",
@@ -613,6 +614,8 @@ export const languageJapanese = {
         requestLogRemovedDesc: "このリクエストログは、クライアントが更新または再読み込みされたときに削除されます。",
         secretRefUnavailable: (name: string) =>
             `環境変数 ${name} は利用できません：設定されていないか、サーバーで許可されていないか、サーバーによってリクエストが拒否されました。`,
+        allKeysLimited: (count: number) =>
+            `${count} 個のキーすべてがレート制限またはクォータ制限に達しました。`,
         secretRefUnsupported: (name: string) =>
             `環境変数 ${name} はここでは使用できません：このプラットフォームからはサーバーの環境にアクセスできません。`,
         secretRefNotForeign: (name: string) =>
@@ -928,6 +931,9 @@ export const languageJapanese = {
         nameApiKey: "{name} APIキー",
         nameApiKeyLower: "{name} APIキー",
         apiKeyEnvRefNote: "キーの代わりに${NAME}を入力できます。これはデスクトップアプリまたはNodeサーバーを実行しているマシン上の環境変数名です。該当マシン上のRISU_ALLOWED_ENV変数に記載されている場合を除き、RISU_OPENAI_KEYのような名前（RISU_、任意の名前、_KEYまたは_TOKEN）のみが読み取られます。NodeサーバーのないWebビルドでは環境変数を読み取ることができません。",
+        addAnotherKey: "別のキーを追加",
+        keyRowLabel: "キー {n}",
+        keySeparatorHint: "1つの欄に1つのキーを入力します。スペースまたは改行で次のキーになります。",
         nameKey: "{name} キー",
         nameUrl: "{name} URL",
         nameSettings: "{name} 設定",
@@ -2343,6 +2349,8 @@ export const languageJapanese = {
     studioFormLoading: "履歴を読み込み中…",
     studioGreetingsEmpty: "代替の最初のメッセージはまだありません",
     studioGreetingDelete: "最初のメッセージを削除",
+    studioFormRenderWhenComplete: "返信が完成してから表示する",
+    studioFormRenderWhenCompleteHint: "新しいチャット画面に適用されます。",
     studioBannerOtherTab: "別のタブがこのキャラクターの履歴を保存しています。ここで行った変更はメモリ上にのみ保持されます。",
     studioBannerNoLocks: "このページでは履歴を保存できません（安全な接続ではありません）。",
     studioBannerFailed: "履歴を読み込めなかったため、このページでは履歴を保存しません。再読み込みすると再試行します。",
@@ -2454,6 +2462,8 @@ export const languageJapanese = {
     studioHistoryAlreadyUndone: "そのステップはすでに元に戻されているため、「元に戻す」はそれを飛ばして進みました。",
     studioHistoryAlreadyRedone: "そのステップはすでにやり直されているため、「やり直す」はそれを飛ばして進みました。",
     studioHistoryStepDropped: "「元に戻す」は、ここではもう元に戻せないステップを飛ばして進みました。",
+    studioHistoryListChangedElsewhere: "その後、最初のメッセージが別の場所で変更されました。",
+    studioHistoryListSaveUnfinished: "最初のメッセージの以前の保存が完了していない可能性があります。",
     studioStepGreetingAdd: "最初のメッセージを追加",
     studioStepGreetingRemove: "最初のメッセージを削除",
     studioStepGreetingEdit: "最初のメッセージを編集",
@@ -3686,6 +3696,17 @@ export const languageJapanese = {
     store2ImportUnconfirmed: "RisuTaniumはバックアップがインポートされたか確認できませんでした。いずれにしても以前のデータは保持されます。ページを再読み込みしてどちらが使用中か確認してください。",
     store2ImportNotFlushed: "バックアップはインポートされましたが、端末からディスクへの書き込み完了が確認できませんでした。アプリを今すぐ再読み込みし、起動時に書き込みを完了します。",
     store2ImportDone: "バックアップがインポートされました。以前お持ちだったデータは以前の保存バージョン一覧に保持され、他のバージョンと同様に古いものから順に削除されます。アプリを再読み込みしています。",
+    rtbRestoreNeedsStore2: "このページはRisuTaniumの現在のストレージを使用していないため、ここでは.rtbバックアップを復元できません。何も復元されませんでした。",
+    rtbRestoreNotRtb: "このファイルはRisuTaniumの.rtbバックアップではないため、何も復元されませんでした。現在のデータは変更されていません。",
+    rtbRestoreEncrypted: "この.rtbバックアップは暗号化されており、このバージョンでは暗号化されたバックアップを開けないため、何も復元されませんでした。現在のデータは変更されていません。",
+    rtbRestoreDamaged: "この.rtbバックアップは破損しているか不完全なため、何も復元されませんでした。現在のデータは変更されていません。",
+    rtbRestoreNewer: (item: string) =>
+        `この.rtbバックアップは新しいバージョンのRisuTaniumで作成されており、${item}が必要ですが、このバージョンでは読み取れないため、何も復元されませんでした。アプリを更新してもう一度お試しください。現在のデータは変更されていません。`,
+    rtbRestoreTargetNewerConfirm: (targetSaved: string, backupTime: string, exportedAt: string | null, device: string) =>
+        `現在のデータは${targetSaved}に保存されており、このバックアップ（${backupTime}${exportedAt === null ? '' : `；ファイル作成日時：${exportedAt}`}）より新しいものです。このバックアップは端末「${device}」のものです。復元すると、現在のデータは古いバックアップに置き換えられます。現在お持ちのデータは以前の保存バージョン一覧に保持され、他のバージョンと同様に古いものから順に削除されます。続行しますか？`,
+    rtbRestoreUncreatableConfirm: (count: number, names: string[]) =>
+        `このバックアップ内のアセットファイル ${count} 件は、このアプリのストレージで作成できない名前のため、ここでは復元できません。そのいずれかを使用するキャラクターでは、見つからない項目として表示されます。これらを除いて続行しますか？\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
+    rtbRestoreChecking: (percent: number) => `バックアップを確認しています… (${percent}%)`,
     coldStorageCleanupDateUnknown: "日付不明",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `破損した保存データをバックアップから置き換えた際、古いデータの保存コピーは削除されずに退避されました（作成日時：${dates}）。それらのみが使用している画像やアーカイブデータは保護されたままとなるため、それらが存在する間はクリーンアップを実行できません。\n\nこれらの古いコピーを削除してクリーンアップを実行しますか？これらは復元できません。保持する場合は「キャンセル」を選択してください。その場合、クリーンアップは実行されません。`,

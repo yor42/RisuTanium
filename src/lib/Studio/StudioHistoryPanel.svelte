@@ -5,7 +5,7 @@
     import { alertError } from '../../ts/alert'
     import { language } from '../../lang'
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
-    import { createStudioToasts, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
+    import { createStudioToasts, listReasonText, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
     import type { StepLabel } from '../../ts/studio/history/historyModel'
     import type { OwnerHistoryService, ReplayDesc, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import { parseOwnerKey, type OwnerKey } from '../../ts/studio/history/ownerPhase'
@@ -152,6 +152,8 @@
         else if (result.already === 'redo') notes.push(language.studioHistoryAlreadyRedone)
         else if (result.dropped) notes.push(language.studioHistoryStepDropped)
         if (result.listSkipped !== undefined && result.listSkipped > 0) notes.push(language.studioHistoryRevertListSkipped)
+        const reason = listReasonText(result.listReason)
+        if (reason !== null) notes.push(reason)
         if (result.pairSkipped !== undefined && result.pairSkipped > 0) notes.push(language.studioHistoryRevertPairSkipped)
         if (result.fmNotRestored) notes.push(language.studioToastRestoredFmNotice)
         message = notes.length > 0 ? notes.join(' ') : null
@@ -167,6 +169,7 @@
                     case 'exampleMessage': return language.exampleMessage
                     case 'customModuleToggle': return language.customPromptTemplateToggle
                     case 'hideChatIcon': return language.hideChatIcon
+                    case 'risutanium_render_when_complete': return language.studioFormRenderWhenComplete
                     case 'note': return language.note
                 }
             case 'greetingAdd': return language.studioStepGreetingAdd
