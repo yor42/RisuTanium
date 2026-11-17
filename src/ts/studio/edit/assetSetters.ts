@@ -6,6 +6,8 @@
 import { assetPoolKey, carryFolderOnRename, createFolder, deleteFolder, dropFolderEntries, moveManyToFolder, renameFolder, reorderFolders, type FolderOp, type FolderRefusal } from '../assets/folderCodec'
 import type { HashCache } from '../assets/assetHashJob'
 import type { AssetArrayName, MergePreview } from '../assets/mergePreview'
+import { spliceTextEdits, type TextEdit } from '../assets/referenceRewrite'
+import { parseTargetPath } from '../assets/referenceTargets'
 import type { LiveReader, Op, Step, StepLabel, WriteOp } from '../history/historyModel'
 import { stepPathPairs } from '../history/retainedPaths'
 
@@ -137,8 +139,61 @@ export function buildAssetRemoveExtras(array: AssetArrayName, name: string, inde
     return { ok: true, label: { kind: 'assetRemoveExtras', count: indexes.length, name }, ops: [...removal.ops, ...folderOps] }
 }
 
+type PairTarget = { kind: 'firstMessage' } | { kind: 'greeting'; index: number }
+
+// The two targets a merge writes as whole values: the first message and an alternate first message entry. They are
+// the targets of the bound-step rule, which keys on `set firstMessage` plus the ops on the alternate list.
+function pairTargetOf(target: string): PairTarget | null {
+    if (target === 'firstMessage') {
+        return { kind: 'firstMessage' }
+    }
+    const parsed = parseTargetPath('character', target)
+    return parsed !== null && 'greeting' in parsed ? { kind: 'greeting', index: parsed.greeting } : null
+}
+
+// The text after `edits`, applied in the given order (the model's highest offset first), or null when one of them does
+// not sit on its own `from`. `spliceTextEdits` only splices, so the check is made here, edit by edit, against the
+// running value: a stale edit never becomes a whole-value write.
+function applyEditsChecked(value: string, edits: readonly TextEdit[]): string | null {
+    let next = value
+    for (const edit of edits) {
+        if (!Number.isInteger(edit.offset) || edit.offset < 0 || next.slice(edit.offset, edit.offset + edit.from.length) !== edit.from) {
+            return null
+        }
+        next = spliceTextEdits(next, [edit])
+    }
+    return next
+}
+
+// The one whole-value op of a pair target, read against the live owner. A first message that is not a present string,
+// an alternate list that cannot be read and an entry that is not a string all refuse (null), so nothing is built for
+// them; an absent first message key has no target at all, and an edit against one is stale.
+//
+// Cost of the whole-value shape (parent ruling O-B1, MC-1814): the op's `before` and `after` are the whole field, so
+// any later edit anywhere in the first message or in a touched alternate makes that place not restored by the undo,
+// where a per-occurrence edit would still have been restored; and when both the first message and an alternate are
+// touched, such an edit stops the whole undo (pairSplit).
+function pairOpOf(pair: PairTarget, edits: readonly TextEdit[], live: LiveReader): Op | null {
+    if (pair.kind === 'firstMessage') {
+        const field = live.field('firstMessage')
+        if (!field.had || typeof field.value !== 'string') {
+            return null
+        }
+        const after = applyEditsChecked(field.value, edits)
+        return after === null ? null : { op: 'set', path: 'firstMessage', before: { had: true, value: field.value }, after: { had: true, value: after } }
+    }
+    const before = live.greetings()?.[pair.index]
+    if (typeof before !== 'string') {
+        return null
+    }
+    const after = applyEditsChecked(before, edits)
+    return after === null ? null : { op: 'listSet', index: pair.index, before, after }
+}
+
 // Applies a rebuilt merge preview as one step: its row removals, its folder entry ops and its text edits. Every row
-// op is checked against the live rows, and every removed row needs a survivor.
+// op is checked against the live rows, and every removed row needs a survivor. The first message and each touched
+// alternate first message become one whole-value op (`set`, `listSet`) at the place of their first edit, so a merge
+// that changed both is a bound step; every other target keeps one `textEdit` per occurrence.
 export function buildAssetMerge(model: MergePreview, live: LiveReader, survivors: SurvivorDeps): AssetBuildResult {
     const rows = copyRows(live, model.array)
     if (rows === null) {
@@ -161,8 +216,30 @@ export function buildAssetMerge(model: MergePreview, live: LiveReader, survivors
     for (const folderOp of model.folderOps) {
         ops.push(fromFolderOp(folderOp))
     }
+    const pairEdits = new Map<string, TextEdit[]>()
     for (const edit of model.textEdits) {
-        ops.push({ op: 'textEdit', target: edit.target, offset: edit.offset, from: edit.from, to: edit.to })
+        if (pairTargetOf(edit.target) !== null) {
+            pairEdits.set(edit.target, [...(pairEdits.get(edit.target) ?? []), edit])
+        }
+    }
+    // Only a character holds a first message and a list of alternates; a module model that names one is refused.
+    if (pairEdits.size > 0 && model.ownerKind !== 'character') {
+        return { ok: false, reason: 'precondition' }
+    }
+    const converted = new Set<string>()
+    for (const edit of model.textEdits) {
+        const group = pairEdits.get(edit.target)
+        const pair = pairTargetOf(edit.target)
+        if (group === undefined || pair === null) {
+            ops.push({ op: 'textEdit', target: edit.target, offset: edit.offset, from: edit.from, to: edit.to })
+        } else if (!converted.has(edit.target)) {
+            converted.add(edit.target)
+            const op = pairOpOf(pair, group, live)
+            if (op === null) {
+                return { ok: false, reason: 'precondition' }
+            }
+            ops.push(op)
+        }
     }
     if (ops.length === 0) {
         return { ok: false, reason: 'unchanged' }

@@ -84,6 +84,8 @@ vi.mock('src/lang', async () => {
         studioStepAssetRename: (from: string, to: string) => `studioStepAssetRename(${from},${to})`,
         studioStepAssetMerge: (from: string, to: string) => `studioStepAssetMerge(${from},${to})`,
         studioStepAssetAdd: (n: number) => `studioStepAssetAdd(${n})`,
+        studioAssetNotRestored: (j: number) => `studioAssetNotRestored(${j})`,
+        studioAssetPlaceNumbered: (label: string, n: number) => `studioAssetPlaceNumbered(${label},${n})`,
     }
     return { language: new Proxy(named, { get: (target, key) => (typeof key === 'symbol' ? undefined : key in target ? target[key] : base[key]) }) }
 })
@@ -94,6 +96,9 @@ import type { toSaveType } from 'src/ts/storage/risuSave'
 import { createSaveAck, type SaveAck, type SaveAckDeps } from 'src/ts/studio/edit/saveAck.svelte'
 import type { ChatSource } from 'src/ts/studio/ownerModel'
 import { makeCharacter, makeChat, makeInput, studioDbOf } from 'src/ts/studio/studioFixtures.test-helpers'
+import { DEFAULT_SETTINGS } from 'src/ts/studio/assets/assetFixtures.test-helpers'
+import { groupDuplicates } from 'src/ts/studio/assets/duplicateGroups'
+import { buildMergePreview } from 'src/ts/studio/assets/mergePreview'
 import { openStudio, resetStudioScreenForTests, studioScreen } from 'src/ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { resetToastHostForTests } from 'src/ts/toast/toastHost.svelte'
@@ -112,6 +117,7 @@ interface LiveChat extends ChatSource {
 
 interface Live {
     desc: string
+    systemPrompt: string
     alternateGreetings: string[]
     chats: LiveChat[]
     additionalAssets: string[][]
@@ -511,18 +517,18 @@ describe('a step that can no longer be undone here is dropped with its note', ()
 
 // ---------------------------------------------------------------- focus after an Undo of a text-merge step
 
-// A step of the shape a text merge records: one text edit of the description. No producer writes it yet, so the
-// record is built by hand and stored through the store's own writer.
+// A step of the shape a text merge records: one name edit of a reference in the description. No producer writes it
+// yet, so the record is built by hand and stored through the store's own writer.
 function mergedDescRig(): Rig {
     const step: Step = {
         id: 'seed:1',
         at: 1,
         label: { kind: 'assetMerge', from: 'a', to: 'b' },
-        ops: [{ op: 'textEdit', target: 'desc', offset: 2, from: '', to: ' plus' }],
+        ops: [{ op: 'textEdit', target: 'desc', offset: 9, from: 'd0', to: 'd0 plus' }],
     }
     const shared = new Map<string, string>()
     seedOwner(shared, { ...emptyRecord(A, 1), done: [step] }, 'w:seed')
-    live().desc = 'd0 plus'
+    live().desc = '{{image::d0 plus}}'
     return makeRig(shared)
 }
 
@@ -534,7 +540,7 @@ describe('focus after an Undo of a text-merge step', () => {
         const panelRoot = vi.spyOn(part('studio-history')!, 'focus')
         await press('studio-history-undo')
         expect(shownMessages()).toEqual({ notice: null, panel: null })
-        expect(live().desc).toBe('d0')
+        expect(live().desc).toBe('{{image::d0}}')
         expect(rig.service.view(A).undone).toHaveLength(1)
         expect(document.activeElement).toBe(part('studio-form-desc'))
         expect(studioRoot).not.toHaveBeenCalled()
@@ -547,7 +553,7 @@ describe('focus after an Undo of a text-merge step', () => {
         part('studio')!.focus()
         const studioRoot = vi.spyOn(part('studio')!, 'focus')
         await ctrl({ key: 'z' })
-        expect(live().desc).toBe('d0')
+        expect(live().desc).toBe('{{image::d0}}')
         expect(document.activeElement).toBe(part('studio-form-desc'))
         expect(studioRoot).not.toHaveBeenCalled()
     })
@@ -793,4 +799,149 @@ describe('a replay that rejects reaches the error alert', () => {
         expect(alerts.errors).toEqual([failure])
     })
 
+})
+
+// ---------------------------------------------------------------- a merge undo that leaves places as they were (MC-2105)
+
+describe('an Undo of a merge that leaves places as they were says how many, and Show lists them', () => {
+    const SMILE: [string, string, string] = ['smile', 'assets/a.png', 'png']
+    const GRIN: [string, string, string] = ['grin', 'assets/a.png', 'png']
+
+    // The merge of `grin` into `smile` over the live character the screen shows, as the preview builds it.
+    function mergeGrin(service: OwnerHistoryService, editOutside = true, withTexts = true): void {
+        // Two texts name `grin`: the undo leaves the description (edited outside) and restores the system prompt, so it is a
+        // partial one, and a gone file for the row can be told from it.
+        // Without texts the merge holds rows only.
+        const promptText = withTexts ? 'sp {{image::grin}}' : 'sp'
+        Object.assign(live(), { additionalAssets: [[...SMILE], [...GRIN]], desc: withTexts ? 'a {{image::grin}} b' : 'a b', systemPrompt: promptText })
+        flushSync()
+        const rows = live().additionalAssets
+        const group = groupDuplicates(rows.map((row, index) => ({ name: row[0], path: row[1], index, folder: null }))).find((candidate) => candidate.cls === 'sameFileDifferentNames')
+        if (!group) throw new Error('no candidate group')
+        const model = buildMergePreview({ kind: 'character', source: { desc: live().desc, systemPrompt: promptText, additionalAssets: [[...SMILE], [...GRIN]] } }, 'asset', group, 'smile', [], DEFAULT_SETTINGS)
+        expect(service.assetMerge(A, model, { hashOf: () => undefined }).ok).toBe(true)
+        flushSync()
+        // An outside edit of the description: the undo puts the row back and leaves the description.
+        if (editOutside) {
+            live().desc = 'changed outside'
+            flushSync()
+        }
+    }
+
+    const names = (): string[] => live().additionalAssets.map((row) => row[0])
+
+    test('Ctrl+Z restores the row, shows "1 places not restored" alone, and Show lists the description', async () => {
+        const rig = makeRig()
+        await mountScreen({ panel: false })
+        await rig.service.whenReady(A)
+        mergeGrin(rig.service)
+        await ctrl({ key: 'z' })
+        expect(names()).toEqual(['smile', 'grin'])
+        expect(live().desc).toBe('changed outside')
+        expect(shownMessages()).toEqual({ notice: 'studioAssetNotRestored(1)', panel: null })
+        expect(part('studio-notice-text')!.textContent).toBe('studioAssetNotRestored(1)')
+        expect(parts('studio-notice-place')).toHaveLength(0)
+        part('studio-notice-show')!.click()
+        flushSync()
+        expect(parts('studio-notice-place').map((entry) => entry.textContent)).toEqual(['description'])
+    })
+
+    test('the History panel\'s Undo shows the same notice, and its panel message stays empty', async () => {
+        const rig = makeRig()
+        await mountScreen({ panel: true })
+        await rig.service.whenReady(A)
+        mergeGrin(rig.service)
+        await press('studio-history-undo')
+        expect(names()).toEqual(['smile', 'grin'])
+        expect(shownMessages()).toEqual({ notice: 'studioAssetNotRestored(1)', panel: null })
+        expect(studioScreen.noticePlaces).toEqual({ ownerKind: 'character', places: ['desc'] })
+    })
+
+    // The step is undone whole (nothing to say), then the description is edited outside, so the Redo rewrites the row and the
+    // system prompt and leaves the description: the replay result lists it, and a Redo shows nothing of that.
+    test('a Redo that leaves a place, by Ctrl+Y, shows nothing of its own', async () => {
+        const rig = makeRig()
+        await mountScreen({ panel: true })
+        await rig.service.whenReady(A)
+        mergeGrin(rig.service, false)
+        await ctrl({ key: 'z' })
+        expect(names()).toEqual(['smile', 'grin'])
+        expect(shownMessages()).toEqual({ notice: null, panel: null })
+        live().desc = 'changed outside'
+        flushSync()
+        await ctrl({ key: 'y' })
+        expect(names()).toEqual(['smile'])
+        expect(live().desc).toBe('changed outside')
+        expect(shownMessages()).toEqual({ notice: null, panel: null })
+        expect(studioScreen.noticePlaces).toBeNull()
+    })
+
+    test('a Redo that leaves a place, by the panel, shows nothing of its own', async () => {
+        const rig = makeRig()
+        await mountScreen({ panel: true })
+        await rig.service.whenReady(A)
+        mergeGrin(rig.service, false)
+        await press('studio-history-undo')
+        expect(shownMessages()).toEqual({ notice: null, panel: null })
+        live().desc = 'changed outside'
+        flushSync()
+        await press('studio-history-redo')
+        expect(names()).toEqual(['smile'])
+        expect(live().desc).toBe('changed outside')
+        expect(shownMessages()).toEqual({ notice: null, panel: null })
+        expect(studioScreen.noticePlaces).toBeNull()
+    })
+
+    test('a newer notice replaces it, and the list goes with it', async () => {
+        const rig = makeRig()
+        await mountScreen({ panel: false })
+        await rig.service.whenReady(A)
+        mergeGrin(rig.service)
+        await ctrl({ key: 'z' })
+        expect(studioScreen.noticePlaces).not.toBeNull()
+        // A later Undo that finds its field already at the undone value brings its own note, which replaces the list.
+        edit(rig, 'typed')
+        live().desc = 'changed outside'
+        await ctrl({ key: 'z' })
+        expect(shownMessages().notice).toBe('studioHistoryAlreadyUndone')
+        expect(studioScreen.noticePlaces).toBeNull()
+    })
+
+    test('the History panel says a gone file in its own line and puts no list in the notice', async () => {
+        const rig = makeRig(undefined, true)
+        await mountScreen({ panel: true })
+        await rig.service.whenReady(A)
+        mergeGrin(rig.service, false, false)
+        files.states.set('assets/a.png', 'gone')
+        await press('studio-history-undo')
+        // A rows-only step has nothing else to put back, so the step is dropped after the gone line.
+        expect(shownMessages()).toEqual({ notice: null, panel: 'studioAssetFileGone(grin) studioHistoryStepDropped' })
+        expect(studioScreen.noticePlaces).toBeNull()
+    })
+
+    test('a merge with texts whose removed row\'s file is gone is refused whole, with the refusal notice and nothing changed', async () => {
+        const rig = makeRig(undefined, true)
+        await mountScreen({ panel: false })
+        await rig.service.whenReady(A)
+        mergeGrin(rig.service)
+        files.states.set('assets/a.png', 'gone')
+        await ctrl({ key: 'z' })
+        expect(shownMessages().notice).toBe('studioRefusalPrecondition')
+        expect(studioScreen.noticePlaces).toBeNull()
+        expect(names()).toEqual(['smile'])
+        expect(live().desc).toBe('changed outside')
+        expect(live().systemPrompt).toBe('sp {{image::smile}}')
+    })
+
+    // A gone file and left places cannot occur together: a step holding rows and texts is refused whole on a gone file.
+    test('a gone file in a rows-only merge is said alone: the row is left out and the notice names the file', async () => {
+        const rig = makeRig(undefined, true)
+        await mountScreen({ panel: false })
+        await rig.service.whenReady(A)
+        mergeGrin(rig.service, true, false)
+        files.states.set('assets/a.png', 'gone')
+        await ctrl({ key: 'z' })
+        expect(shownMessages().notice).toBe('studioAssetFileGone(grin)')
+        expect(studioScreen.noticePlaces).toBeNull()
+    })
 })

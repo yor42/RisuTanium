@@ -151,6 +151,11 @@ export interface StudioWriteNotes {
     changedElsewhere?: RestorePath[]
     // An asset intent that landed: the id of the step it recorded.
     stepId?: string
+    // Replay of a step that holds a `textEdit`, or asset rows together with a text op: the registry targets of its texts
+    // that were left as they were because the live text no longer holds the expected name at the recorded span
+    // (`firstMessage`, `desc`, `exampleMessage`, `alternateGreetings/<i>`, `lore/<i>/content`, ...), unique and in the
+    // step's order. Absent for every other step and when nothing was left. In memory only: never stored or posted.
+    notRestored?: string[]
 }
 
 // `name` is the row a refusal is about (`asset-file-unchecked`). `targetChanged` says the steps the replay was asked for
@@ -816,7 +821,8 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         const hashFor = slot.chaId === null ? undefined : listHashOf(slot.chaId)
         if (intent.kind === 'asset') {
             // Asset intents belong to a character or a module owner, never to one of a character's chats.
-            if (parseOwnerKey(slot.key)?.kind === 'chat') {
+            const assetOwnerKind = parseOwnerKey(slot.key)?.kind
+            if (assetOwnerKind === undefined || assetOwnerKind === 'chat') {
                 return refused('unknown')
             }
             const built = intent.build(live)
@@ -825,6 +831,11 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                     return { ok: true, unchanged: true }
                 }
                 return built.folderRefusal === undefined ? refused('precondition') : { ok: false, reason: 'precondition', folderRefusal: built.folderRefusal }
+            }
+            // Rule K, as for an edit or a text intent: an op the owner's own record would refuse on reading (a merge step
+            // carries `set` and `listSet`, which a module record does not hold) is never written, marked or recorded.
+            if (!built.ops.every((op) => isOpAllowedFor(assetOwnerKind, op))) {
+                return refused('precondition')
             }
             // Every text edit must apply to the live owner as it is now: a stale or unreadable one refuses the
             // intent before anything is written.
@@ -1001,6 +1012,12 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         if (goneName !== undefined) {
             notes.goneName = goneName
+        }
+        // The plan names skipped texts only for a step that holds a `textEdit`, or rows together with a text op, whatever
+        // its label: the notice that lists them belongs to a merge's replay, to the replay of a revert that crossed one,
+        // and to any other step that holds rows and a text.
+        if (plan.notRestored !== undefined) {
+            notes.notRestored = [...plan.notRestored]
         }
         return notes
     }
