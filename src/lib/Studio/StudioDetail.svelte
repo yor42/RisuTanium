@@ -18,6 +18,7 @@
     import StudioCharacterForm from './StudioCharacterForm.svelte'
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
     import StudioStatusChip from './StudioStatusChip.svelte'
+    import StudioToggleBuilder from './StudioToggleBuilder.svelte'
     import type { StudioItem } from '../../ts/studio/ownerModel'
     import { ownerRoleLabelOf } from './StudioTree.svelte'
     import { badgeLabelOf, itemLabelOf, kindLabelOf, noticeTextOf, tagLabelOf } from './TreeRow.svelte'
@@ -104,6 +105,8 @@
     const assetFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'display')
     const chatFormLive = $derived(owner?.type === 'chat' && !owner.restricted && !owner.stub && studioScreen.selectedKind === null)
     const formLive = $derived(characterFormLive || assetFormLive || chatFormLive)
+    // The character's toggle list builder; module and preset toggles keep the read-only text until their write exists.
+    const toggleBuilderLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'toggles')
     // A loaded module's asset list. It is no part of `formLive`: that carries the character's save chip.
     const moduleAssetFormLive = $derived(owner?.type === 'module' && !owner.restricted && !owner.stub && kindNode?.kind === 'display' && moduleRawId !== null && moduleSlotIndex !== null)
 
@@ -189,7 +192,7 @@
             {/if}
             {#if kindNode}
                 <p data-part="studio-detail-kind" class="font-bold">{kindLabelOf(kindNode.kind)}</p>
-                {#if kindNode.count + kindNode.folderCount === 0 && !assetFormLive && !moduleAssetFormLive}
+                {#if kindNode.count + kindNode.folderCount === 0 && !assetFormLive && !moduleAssetFormLive && !toggleBuilderLive}
                     <p class="text-textcolor2">{language.studioEmptyKind}</p>
                 {:else if kindNode.kind === 'lore' || kindNode.kind === 'regex'}
                     <p class="text-textcolor2">{language.studioItemCount(kindNode.count)}</p>
@@ -198,11 +201,15 @@
             {#if item}
                 <p data-part="studio-detail-item" class="break-words font-bold">{itemLabelOf(item)}</p>
             {/if}
-            {#if itemText}
+            {#if itemText && !toggleBuilderLive}
                 <pre data-part="studio-detail-text" class="whitespace-pre-wrap break-words rounded-md border border-darkborderc bg-darkbg p-3 font-sans">{itemText.shown}</pre>
                 {#if itemText.cut}
                     <p data-part="studio-detail-truncated" class="text-sm text-textcolor2">{language.studioTruncated(DETAIL_TEXT_LIMIT)}</p>
                 {/if}
+            {/if}
+            {#if toggleBuilderLive}
+                <StudioStatusChip ack={currentVisitAck()} />
+                <StudioToggleBuilder chaId={studioScreen.chaId} />
             {/if}
             {#if formLive}
                 <StudioStatusChip ack={currentVisitAck()} />
@@ -222,7 +229,7 @@
                 {#key ownerKey}
                     <StudioModuleAssetForm moduleId={moduleRawId} slotIndex={moduleSlotIndex} enabledModules={enabledModuleAssets} />
                 {/key}
-            {:else}
+            {:else if !toggleBuilderLive}
                 <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{language.studioReadOnlyNote}</p>
             {/if}
             {#if destination && !stubLoading}

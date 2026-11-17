@@ -76,6 +76,9 @@ export interface StudioToasts {
     postAssetAction(owner: OwnerKey, stepId: string, text: string, sub?: string): ToastId
     // Wire this to the service's `onLanded`: ends the asset toasts of `owner` whose step is no longer on top.
     retireAssetToasts(owner: OwnerKey, topStepId: string | null): void
+    // One Undo toast whose action is the caller's own `run`; it replays no history, so it needs no service and
+    // outlives the component that posted it.
+    postUndoAction(text: string, run: () => UndoOutcome | Promise<UndoOutcome>): ToastId
     // Holds the toast stack back until the calling component is destroyed. Call during component initialisation.
     suspendWhileMounted(): void
 }
@@ -102,6 +105,9 @@ export function retireAssetToasts(owner: OwnerKey, topStepId: string | null): vo
         }
     }
 }
+
+// Ids of the caller-run Undo toasts; a counter keeps two toasts of one page from sharing an action id.
+let undoActionCounter = 0
 
 export function resetStudioToastsForTests(): void {
     assetRecords.clear()
@@ -153,6 +159,14 @@ export function createStudioToasts(deps: StudioToastDeps): StudioToasts {
             })
         },
         retireAssetToasts,
+        postUndoAction(text, run) {
+            undoActionCounter += 1
+            return host.postUndo({
+                text,
+                actionLabel: language.studioToastUndo,
+                action: { id: 'undo-action:' + undoActionCounter, failedText: language.studioToastRestoreFailed, run },
+            })
+        },
         postDeleted(owner, deletedId) {
             return host.postUndo({
                 text: language.studioToastGreetingDeleted,
