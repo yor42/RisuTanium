@@ -10,6 +10,7 @@ import { fillLang } from "src/lang/fill";
 import { v4 } from "uuid";
 import type { MCPClientLike } from "./internalmcp";
 import localforage from "localforage";
+import { MCP_TOOL_CALLS_STORE } from "src/ts/drive/rtb/sideStoreConfig";
 import { isTauri } from "src/ts/platform"
 import { isAndroidTransport } from "src/ts/storage/tauriByteTransport";
 import { sleep } from "src/ts/util";
@@ -531,10 +532,7 @@ export type toolCallData = {
     response: RPCToolCallContent[],
 }
 
-const inst = localforage.createInstance({
-    name: 'mcp-tool-calls',
-    storeName: 'mcp-tool-calls'
-});
+const inst = localforage.createInstance(MCP_TOOL_CALLS_STORE);
 
 export async function encodeToolCall(call:toolCallData){
     call.call.id = call.call.id || v4();

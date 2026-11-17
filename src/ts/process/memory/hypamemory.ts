@@ -1,4 +1,5 @@
 import localforage from "localforage";
+import { HYPA_VECTOR_STORE } from "src/ts/drive/rtb/sideStoreConfig";
 import { globalFetch } from "src/ts/globalApi.svelte";
 import { runEmbedding } from "../transformers";
 import { appendLastPath } from "src/ts/util";
@@ -45,9 +46,7 @@ export class HypaProcesser{
     customEmbeddingUrl:string
 
     constructor(model:HypaModel|'auto' = 'auto',customEmbeddingUrl?:string){
-        this.forage = localforage.createInstance({
-            name: "hypaVector"
-        })
+        this.forage = localforage.createInstance(HYPA_VECTOR_STORE)
         this.vectors = []
         const db = getDatabase()
         if(model === 'auto'){
