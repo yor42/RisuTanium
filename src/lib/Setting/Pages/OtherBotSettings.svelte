@@ -1100,7 +1100,7 @@
 
             <div class="flex items-center mb-8">
                 <button class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer" onclick={async () => {
-                    const newName = await alertInput(language.hypaV3Settings.newPresetNamePrompt, [], '')
+                    const newName = await alertInput(language.hypaV3Settings.newPresetNamePrompt, [], '', { cancel: '' })
 
                     if (!newName) return
 
@@ -1124,7 +1124,7 @@
                     if (!preset) return
 
                     const id = preset.id
-                    const newName = await alertInput(fillLang(language.alerts.enterNewName, { name: preset.name }), [], preset.name)
+                    const newName = await alertInput(fillLang(language.alerts.enterNewName, { name: preset.name }), [], preset.name, { cancel: '' })
 
                     if (!newName || newName.trim().length === 0) return
 
@@ -1194,7 +1194,8 @@
                     const newName = await alertInput(
                         language.hypaV3Settings.newPresetNamePrompt,
                         [],
-                        fillLang(language.hypaV3Settings.duplicatePresetDefaultName, { name: preset.name })
+                        fillLang(language.hypaV3Settings.duplicatePresetDefaultName, { name: preset.name }),
+                        { cancel: '' }
                     )
 
                     if (!newName) return

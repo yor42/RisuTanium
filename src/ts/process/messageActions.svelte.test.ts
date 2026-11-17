@@ -222,7 +222,15 @@ describe('T34 delete core', () => {
         vi.mocked(alertSelect).mockResolvedValue('1')
         expect(await requestRemove(owner, chat, chat.message[1], { rec: true })).toBe(false)
         expect(vi.mocked(alertConfirm)).not.toHaveBeenCalled()
-        expect(vi.mocked(alertSelect)).toHaveBeenCalledWith(['one', 'cancel', 'from'], 'which?')
+        expect(vi.mocked(alertSelect)).toHaveBeenCalledWith(['one', 'cancel', 'from'], 'which?', { cancel: '1' })
+        expect(chat.message).toHaveLength(4)
+        expect(schedule).not.toHaveBeenCalled()
+    })
+
+    it('offers the cancel row as the select cancel: answering it removes nothing', async () => {
+        const { owner, chat } = setup()
+        vi.mocked(alertSelect).mockImplementation(async (_msg, _display, options) => options?.cancel ?? Promise.reject(new Error('no cancel offered')))
+        expect(await requestRemove(owner, chat, chat.message[1], { rec: true })).toBe(false)
         expect(chat.message).toHaveLength(4)
         expect(schedule).not.toHaveBeenCalled()
     })
@@ -251,7 +259,7 @@ describe('T34 delete core', () => {
         vi.mocked(alertSelect).mockResolvedValue('2')
         expect(await requestRemove(owner, chat, chat.message[1])).toBe(true)
         expect(alertConfirm).not.toHaveBeenCalled()
-        expect(alertSelect).toHaveBeenCalledWith(['one', 'cancel', 'from'], 'which?')
+        expect(alertSelect).toHaveBeenCalledWith(['one', 'cancel', 'from'], 'which?', { cancel: '1' })
         expect(chat.message.map((item) => item.chatId)).toEqual(['u1'])
     })
 

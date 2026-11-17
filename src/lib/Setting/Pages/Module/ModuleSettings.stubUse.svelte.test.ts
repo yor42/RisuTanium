@@ -21,6 +21,8 @@ import type { RisuModule } from 'src/ts/process/modules'
 
 const h = vi.hoisted(() => ({
     select: '0',
+    /** The options each format prompt was shown with. */
+    offered: [] as ({ cancel?: string } | undefined)[],
     alertError: vi.fn(),
     alertNormal: vi.fn(),
     exported: [] as { kind: string, module: unknown }[],
@@ -32,7 +34,11 @@ vi.mock(import('src/ts/alert'), () => {
         alertStore: writable({ type: 'none', msg: '' }),
         alertError: h.alertError,
         alertNormal: h.alertNormal,
-        alertSelect: async () => h.select,
+        // 'offered-cancel' answers with the cancel the caller offered, and rejects when none was offered.
+        alertSelect: async (_items: string[], _display?: string, options?: { cancel?: string }) => {
+            h.offered.push(options)
+            return h.select === 'offered-cancel' ? (options?.cancel ?? Promise.reject(new Error('no cancel offered'))) : h.select
+        },
         alertConfirm: async () => true,
     }
     return new Proxy(stub, {
@@ -84,6 +90,7 @@ vi.mock('src/lib/Setting/Pages/Module/ModuleMenu.svelte', () => ({
 
 import { DBState } from 'src/ts/stores.svelte'
 import { language } from 'src/lang'
+import { ALERT_SELECT_CANCEL } from 'src/ts/alertCancel'
 import { MODULE_STUB_KEY, MODULE_STUB_VALUE, isModuleStub } from 'src/ts/storage/moduleStub'
 import * as acquire from 'src/ts/storage/store2/moduleAcquire'
 import ModuleSettings from './ModuleSettings.svelte'
@@ -195,6 +202,7 @@ function saveButton(target: HTMLElement): HTMLButtonElement {
 
 beforeEach(() => {
     h.select = '0'
+    h.offered.length = 0
     h.exported = []
     h.menu.props = null
     h.menu.renders = 0
@@ -223,6 +231,19 @@ describe('share of a module stub', () => {
         expect(exported.lorebook?.length).toBe(1)
         expect(MODULE_STUB_KEY in exported).toBe(false)
         expect(JSON.stringify(exported)).not.toContain(MODULE_STUB_KEY)
+    })
+
+    test('the format prompt offers a cancel that exports nothing and does not load the module', async () => {
+        installDb([stubOf('Ma')])
+        registerInstalling({ 'id-Ma': bodyOf('Ma') })
+        const counts = countReleases()
+        h.select = 'offered-cancel'
+        const target = mountModules()
+        await click(rowButtons(target, 'Ma')[SHARE])
+        expect(h.offered).toEqual([{ cancel: ALERT_SELECT_CANCEL }])
+        expect(h.exported).toHaveLength(0)
+        expect(counts).toEqual({ acquired: 0, released: 0 })
+        expect(h.alertError).not.toHaveBeenCalled()
     })
 
     test('a load failure exports nothing and names the module', async () => {

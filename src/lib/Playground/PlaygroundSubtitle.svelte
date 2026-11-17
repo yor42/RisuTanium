@@ -39,6 +39,7 @@
     import { hasModuleStubs } from "src/ts/process/moduleRefList";
     import { asBuffer, selectFileByDom, selectSingleFile, sleep } from "src/ts/util";
     import { alertError, alertSelect } from "src/ts/alert";
+    import { ALERT_SELECT_CANCEL } from "src/ts/alertCancel";
     import { risuChatParser } from "src/ts/parser/parser.svelte";
     import { AppendableBuffer, downloadFile, getLanguageCodes } from "src/ts/globalApi.svelte";
     import SelectInput from "../UI/GUI/SelectInput.svelte";
@@ -547,7 +548,7 @@
         const sel = parseInt(await alertSelect([
             'WebVTT',
             'SRT'
-        ]))
+        ], undefined, { cancel: ALERT_SELECT_CANCEL }))
         const a = document.createElement('a')
 
         // WebVTT

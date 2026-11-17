@@ -4,6 +4,7 @@
     import { busyRefusalLine } from "../../ts/process/memory/busyActions";
     import { alertIdle, ANSWER_GUARD_MS, isConsentType, isPromptType } from "../../ts/alertPrompts";
     import { coversPage } from "../../ts/alertEscape";
+    import { cancelHasOwnButton, offeredCancel } from "../../ts/alertBack";
     import { UPSTREAM_AGREEMENT_ACCEPT, UPSTREAM_AGREEMENT_DECLINE } from "../../ts/upstreamAgreement";
     
     import { DBState } from 'src/ts/stores.svelte';
@@ -423,6 +424,7 @@
                 </div>
             {:else if a.type === 'select'}
                 {@const hasDisplay = a.msg.startsWith('__DISPLAY__')}
+                {@const cancel = offeredCancel(a)}
                 {#if hasDisplay}
                     {@const parts = a.msg.substring(11).split('||')}
                     <div class="mb-4 text-textcolor">{parts[0]}</div>
@@ -444,6 +446,16 @@
                             })
                         }}>{n}</Button>
                     {/each}
+                {/if}
+                {#if cancel !== undefined && !cancelHasOwnButton(a)}
+                    <div class="flex w-full">
+                        <Button styled="outlined" className="mt-4 grow" onclick={() => {
+                            alertStore.set({
+                                type: 'none',
+                                msg: cancel
+                            })
+                        }}>{language.cancel}</Button>
+                    </div>
                 {/if}
             {:else if a.type === 'error' || a.type === 'normal' || a.type === 'markdown'}
                <Button className="mt-4" onclick={() => {
@@ -471,6 +483,17 @@
                         msg: document.querySelector('#alert-input')?.value
                     })
                 }}>{language.alertComp.ok}</Button>
+                {@const cancel = offeredCancel(a)}
+                {#if cancel !== undefined}
+                    <div class="flex w-full">
+                        <Button styled="outlined" className="mt-4 grow" onclick={() => {
+                            alertStore.set({
+                                type: 'none',
+                                msg: cancel
+                            })
+                        }}>{language.cancel}</Button>
+                    </div>
+                {/if}
                 {#if a.datalist}
                     <datalist id="alert-input-list">
                         {#each a.datalist as item}

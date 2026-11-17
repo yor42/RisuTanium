@@ -14,6 +14,7 @@
 
     import { exportChat, importChat, exportAllChats, createNewChat, removeChatConfirmed } from "src/ts/characters";
     import { alertChatOptions, alertConfirm, alertNormal, alertSelect, alertStore } from "src/ts/alert";
+    import { ALERT_SELECT_CANCEL } from "src/ts/alertCancel";
     import { sleep, sortableOptions } from "src/ts/util";
     import { bookmarkListOpen } from "src/ts/stores.svelte";
     import { language } from "src/lang";
@@ -196,10 +197,10 @@
                             }
                         }} class="text-textcolor2 hover:text-green-500 mr-1 cursor-pointer" onclick={async (e) => {
                             e.stopPropagation()
-                            const sel = parseInt(await alertSelect([language.changeFolderColor, language.cancel]))
+                            const sel = parseInt(await alertSelect([language.changeFolderColor, language.cancel], undefined, { cancel: '1' }))
                             switch (sel) {
                                 case 0:
-                                    const colorValue = getFolderColorValue(parseInt(await alertSelect(getFolderColorLabels())))
+                                    const colorValue = getFolderColorValue(parseInt(await alertSelect(getFolderColorLabels(), undefined, { cancel: ALERT_SELECT_CANCEL })))
                                     if(colorValue !== undefined){
                                         folder.color = colorValue
                                     }

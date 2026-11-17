@@ -41,9 +41,10 @@ vi.mock(import('src/ts/alert'), async () => {
                 }
             })
         }),
-        alertSelect: async (msg: string[], display?: string) => await askPrompt({
+        alertSelect: async (msg: string[], display?: string, options?: { cancel?: string }) => await askPrompt({
             type: 'select',
             msg: display !== undefined ? `__DISPLAY__${display}||${msg.join('||')}` : msg.join('||'),
+            ...(options?.cancel !== undefined ? { cancelAnswer: options.cancel } : {}),
         }),
     } as unknown as typeof import('src/ts/alert')
 })
@@ -51,6 +52,7 @@ vi.mock(import('src/ts/alert'), async () => {
 import { changeLanguage, language } from 'src/lang'
 import type { alertData } from 'src/ts/alert'
 import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from 'src/ts/alertPrompts'
+import { dispatchBack, resetBackHandlersForTests } from 'src/ts/backHandlers'
 import { alertStore } from 'src/ts/stores.svelte'
 import type { ConflictRecord } from 'src/ts/storage/store2/fastForward'
 import type { ParkCheck, PeerLiveState, PeerOffer, PeerParkPrompt } from 'src/ts/storage/store2/saveLoop'
@@ -122,6 +124,7 @@ beforeEach(() => {
     changeLanguage('en')
     posted.markdown.length = 0
     posted.toasts.length = 0
+    resetBackHandlersForTests()
     resetAlertPromptsForTests()
     alertStore.set({ type: 'none', msg: '' })
 })
@@ -669,6 +672,56 @@ describe('foreignMarker: the existing foreign-marker question, Wait first', () =
         alertStore.set({ type: 'none', msg: '' })
         await waitForSelect()
         expect(selectParts().labels).toEqual([text().foreignWait, text().foreignClear])
+    })
+})
+
+describe('Back on the peer prompts answers the option that writes nothing', () => {
+    test('the clean park prompt: Back is Keep reading, and nothing reloads', async () => {
+        const { ui, reload } = newUi()
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload'] }), () => calm(), cleanNow)
+        await waitForSelect()
+
+        expect(dispatchBack()).toBe(true)
+
+        await vi.waitFor(() => expect(shown().type).toBe('none'))
+        await sleep(40)
+        expect(reload).not.toHaveBeenCalled()
+    })
+
+    test('the clean park prompt with the export offered: Back is still Keep reading, the last button', async () => {
+        const { ui, reload } = newUi({ exportAvailable: true })
+        ui.parkedClean(prompt({ unsaved: false, offers: ['reload', 'export-first'] }), () => calm(), cleanNow, () => 'manifest')
+        await waitForSelect()
+
+        expect(selectParts().labels).toHaveLength(3)
+        expect(dispatchBack()).toBe(true)
+
+        await vi.waitFor(() => expect(shown().type).toBe('none'))
+        await sleep(40)
+        expect(reload).not.toHaveBeenCalled()
+    })
+
+    test('the edited module prompt: Back is Keep working, and nothing reloads', async () => {
+        const { ui, reload } = newUi()
+        ui.moduleEdited({ moduleId: 'mod-1', moduleName: 'Edited module' }, () => true)
+        await waitForSelect()
+
+        expect(dispatchBack()).toBe(true)
+
+        await vi.waitFor(() => expect(shown().type).toBe('none'))
+        await sleep(40)
+        expect(reload).not.toHaveBeenCalled()
+    })
+
+    test('the foreign marker prompt: Back is Wait, never Clear', async () => {
+        const { ui } = newUi()
+        const marker: Staging = { owner: 'peer-page', prefix: 'prefix-1', startedAt: 1_700_000_000_000, label: 'bulk' }
+        const answer = ui.foreignMarker?.(marker)
+        await waitForSelect()
+
+        expect(dispatchBack()).toBe(true)
+
+        await expect(answer).resolves.toBe('wait')
     })
 })
 

@@ -11,8 +11,9 @@ export type AlertEscapeAction = 'ignore' | 'close' | 'idle'
 
 /**
  * Total over `alertData['type']`, so a new alert type fails the type check until it is classified.
- * A prompt waiting for an answer is never answered by Escape. A `wait` alert carrying `onCancel`
- * is handled earlier in hotkey.ts and never reaches this table.
+ * A prompt waiting for an answer is not answered through this table. A `wait` alert carrying
+ * `onCancel`, and a `select` or `input` whose caller offered a cancel, are handled earlier in
+ * hotkey.ts and never reach it; `isPromptType` depends on the `ignore` values here.
  */
 export const ALERT_ESCAPE_ACTIONS: Record<alertData['type'], AlertEscapeAction> = {
     ask: 'ignore',

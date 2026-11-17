@@ -356,9 +356,11 @@ describe('guard: the new shell Delete asks the same questions as the old shell a
         await requestDelete()
         await until(() => shownPrompt().type === 'select', 'the three-way select')
         expect(alertConfirm).not.toHaveBeenCalled()
+        // The in-list Cancel is the prompt's cancel, so Back and Escape answer it too (MC-2151).
         expect(alertSelect).toHaveBeenCalledWith(
             [language.removeOnlyThisMessage, language.cancel, language.removeThisAndFollowingMessages],
-            language.removeMessageQuestion)
+            language.removeMessageQuestion,
+            { cancel: '1' })
         expect(answerShownPrompt('1')).toBe(true)
         await settle()
         expect(texts()).toEqual(['Hi', 'Reply', 'More'])
