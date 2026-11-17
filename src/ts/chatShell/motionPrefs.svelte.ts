@@ -27,7 +27,7 @@ export type AnimationDimReason = 'lowPower' | 'system' | 'reduced'
 const LOW_POWER_KEY = 'risuChatShell.lowPower'
 const REDUCED_MOTION_KEY = 'risuChatShell.reducedMotion'
 const REDUCE_CARD_EFFECTS_KEY = 'risuChatShell.reduceCardEffects'
-const REDUCED_MOTION_QUERY ='(prefers-reduced-motion: reduce)'
+const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
 
 /** An absent, unknown or unreadable value reads as off and is never rewritten. */
 export function readLowPower(): boolean {
