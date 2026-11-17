@@ -212,6 +212,21 @@ export interface UnsavableCharacter {
     cause: unknown
 }
 
+/**
+ * What the module data in the store says about the modules, as of the last pass that planned them and whose data is in
+ * the store. `carriedWhole`: the acknowledged module set was kept as it stood (a stub the planner could not carry, a
+ * module set it could not read, or an open module question held on a hidden page), so no module change is stored.
+ * `faultIds`: the ids of the modules whose own last saved copy is kept (the refused stub, the set's named fault, or a
+ * skipped module). A module change is in the store only when `carriedWhole` is false and its id is not in `faultIds`.
+ */
+export interface ModuleHold {
+    readonly carriedWhole: boolean
+    readonly faultIds: readonly string[]
+}
+
+/** No module is held: the last module-planning pass stored the module set as it stood. */
+export const NO_MODULE_HOLD: ModuleHold = { carriedWhole: false, faultIds: [] }
+
 /** What the loop needs from the page: the shared marks and flags, the page's own state and effects. `saveDbStore2` builds it. */
 export interface Store2LoopPort {
     /** The live tracker the mark paths write into. */
@@ -259,8 +274,12 @@ export interface Store2LoopPort {
      * empty; a throw is logged and ignored. Optional so that the many test ports of other behaviours need not declare it.
      */
     unsavableItems?(current: readonly SkippedItem[], newly: readonly SkippedItem[]): void
-    /** The pass's data is in the store (or the store already held it): next-commit callbacks fire. */
-    saved(): void
+    /**
+     * The pass's data is in the store (or the store already held it): next-commit callbacks fire. `hold` is the standing
+     * module hold: it describes the module data of the last pass that planned the modules and whose data is in the store,
+     * so a pass that planned no modules reports the one before it.
+     */
+    saved(hold: ModuleHold): void
     /** Tells the other tabs a commit landed. */
     broadcast(epoch: string): void
     /** A peer announced a save since the last call; clears the flag. */
@@ -516,6 +535,11 @@ interface PassRun {
     standingLiveness: MarkerLiveness | null
     /** The open module question this pass saved past on a hidden page (`hiddenHeldAdmits`); `null` otherwise. */
     held: Promise<void> | null
+    /**
+     * What the pass's own plan says about the modules; null when the pass planned none. Read only by `landModuleHold`,
+     * at the point where the pass's data is in the store: it never changes the standing hold by itself.
+     */
+    moduleHold: ModuleHold | null
 }
 
 /** A plan and how the pass degraded to make it: a module refusal, a module set carried whole, or a held module question. */
@@ -523,6 +547,8 @@ interface PlannedPass {
     plan: SavePlan
     moduleRefusal: StubRefusedError | null
     moduleSet: SkippedItem | null
+    /** The id of the module that made the set unreadable (`ModuleSetUnsavableError.id`); null without one. */
+    moduleSetFaultId: string | null
     held: Promise<void> | null
 }
 
@@ -609,6 +635,12 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let editedAnnounced: string | null = null
     /** The module id whose not-saved notice was told; cleared like `editedAnnounced`. */
     let unsavedAnnounced: string | null = null
+    /**
+     * The standing module hold: what the last pass that planned the modules and whose data is in the store says about them.
+     * It is replaced only by `landModuleHold`, never when a pass is planned, so a pass that planned the modules and did not
+     * land leaves it as it was, and a pass that planned no modules repeats it.
+     */
+    let moduleHold: ModuleHold = NO_MODULE_HOLD
     let park: Park | null = null
     readParked = () => park !== null
     /** Set once by a too-large refusal and never cleared: no pass, idle net or park handling runs again on this page load. */
@@ -1230,7 +1262,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         let planRequest = request
         for (;;) {
             try {
-                return { plan: await planWithStubLoads(planDb, planRequest), moduleRefusal: null, moduleSet: null, held: null }
+                return { plan: await planWithStubLoads(planDb, planRequest), moduleRefusal: null, moduleSet: null, moduleSetFaultId: null, held: null }
             } catch (error) {
                 if (error instanceof ModuleSetUnsavableError) {
                     // One module cannot be read and cannot be carried alone: the whole acknowledged module set is carried,
@@ -1240,7 +1272,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     }
                     const name = error.moduleName !== '' ? error.moduleName : error.id
                     const moduleSet: SkippedItem = { scope: 'moduleSet', key: 'modules', label: `"${name}"`, saved: true, cause: error.fault }
-                    return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: null, moduleSet, held: null }
+                    return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: null, moduleSet, moduleSetFaultId: error.id !== '' ? error.id : null, held: null }
                 }
                 if (!(error instanceof StubRefusedError) || error.kind !== 'module') {
                     throw error
@@ -1257,7 +1289,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                             if (MEASURE) {
                                 activeGaps?.resume()
                             }
-                            return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: null, moduleSet: null, held: result.settled }
+                            return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: null, moduleSet: null, moduleSetFaultId: null, held: result.settled }
                         }
                         throw new ModuleLoadDeferred(result.settled)
                     }
@@ -1273,7 +1305,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 if (!encoder.carriesModules()) {
                     throw error
                 }
-                return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: error, moduleSet: null, held: null }
+                return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: error, moduleSet: null, moduleSetFaultId: null, held: null }
             }
         }
     }
@@ -1305,10 +1337,19 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
     }
 
-    function outcomeOf(result: CommitResult, plan: SavePlan, flags: { landed: boolean }): Outcome {
+    /** Takes the pass's module statement as the standing hold; a pass that planned no modules leaves the hold as it was. */
+    function landModuleHold(run: Pick<PassRun, 'moduleHold'>): void {
+        if (run.moduleHold !== null) {
+            moduleHold = run.moduleHold
+        }
+    }
+
+    function outcomeOf(result: CommitResult, plan: SavePlan, flags: Pick<PassRun, 'landed' | 'moduleHold'>): Outcome {
         switch (result.status) {
             case 'committed':
                 flags.landed = true
+                // The commit stored this pass's module encoding; this is before anything below that can throw.
+                landModuleHold(flags)
                 plan.acknowledge()
                 seedBaseline(result.value)
                 lastOwnEpoch = result.value.epoch
@@ -1555,6 +1596,16 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             activeCut?.()
             const planned = await planOf(db, planRequest)
             plan = planned.plan
+            // The pass's own module statement, kept on the run until `landModuleHold` reads it at the landing point.
+            if (planned.moduleRefusal !== null) {
+                run.moduleHold = { carriedWhole: true, faultIds: [planned.moduleRefusal.chaId] }
+            } else if (planned.moduleSet !== null) {
+                run.moduleHold = { carriedWhole: true, faultIds: planned.moduleSetFaultId !== null ? [planned.moduleSetFaultId] : [] }
+            } else if (planned.held !== null) {
+                run.moduleHold = { carriedWhole: true, faultIds: [] }
+            } else if (plan.modulesEncoded) {
+                run.moduleHold = { carriedWhole: false, faultIds: plan.skippedItems.filter(item => item.scope === 'module').map(item => item.key) }
+            }
             if (planned.moduleRefusal !== null) {
                 // Folded before the commit so that every later outcome keeps it: the held module changes are retried by
                 // each marked pass until the refusal is gone, and the page stays dirty meanwhile. It sets dirty only and
@@ -1603,6 +1654,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             if (MEASURE) {
                 noteSignalUnchanged(plan.encoded)
             }
+            // The store already holds this pass's module encoding, so the standing hold is replaced here.
+            landModuleHold(run)
             return { kind: 'saved', wrote: false }
         }
         if (fastForward !== undefined) {
@@ -1808,7 +1861,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
 
     /** Runs one pass; resolves `true` when it was a tick cut at a yield (nothing written or counted), `false` otherwise. */
     async function pass(tick: boolean, netChaId: string | null = null): Promise<boolean> {
-        const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleSet: null, moduleScope: false, foreignCleared: false, standingMarker: null, standingLiveness: null, held: null }
+        const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleSet: null, moduleScope: false, foreignCleared: false, standingMarker: null, standingLiveness: null, held: null, moduleHold: null }
         let cut = false
         // A tick that saved with nothing written and no module refusal is the one outcome that is not activity.
         let endedUnchanged = false
@@ -1837,7 +1890,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                         settleItems(run.plan, run.moduleSet)
                     }
                     if (!tick || outcome.wrote) {
-                        port.saved()
+                        port.saved(moduleHold)
                     }
                     break
                 case 'retry':
