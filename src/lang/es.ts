@@ -3550,6 +3550,17 @@ export const languageSpanish = {
     store2ImportUnconfirmed: "RisuTanium no pudo confirmar si el respaldo se importó. En cualquier caso, se conservan tus datos anteriores. Recarga la página para ver cuáles están en uso.",
     store2ImportNotFlushed: "El respaldo se importó, pero el dispositivo no confirmó que se escribiera en el disco. La aplicación se recarga ahora y termina de escribirlo al iniciarse.",
     store2ImportDone: "El respaldo se importó. Los datos que tenías antes se conservan en la lista de versiones guardadas anteriores, donde caducan como cualquier otra. Actualizando la aplicación.",
+    rtbRestoreNeedsStore2: "Esta página no usa el almacenamiento actual de RisuTanium, así que aquí no se puede restaurar un respaldo .rtb. No se restauró nada.",
+    rtbRestoreNotRtb: "Este archivo no es un respaldo .rtb de RisuTanium, así que no se restauró nada. Tus datos actuales no se cambiaron.",
+    rtbRestoreEncrypted: "Este respaldo .rtb está cifrado y esta versión no puede abrir un respaldo cifrado, así que no se restauró nada. Tus datos actuales no se cambiaron.",
+    rtbRestoreDamaged: "Este respaldo .rtb está dañado o incompleto, así que no se restauró nada. Tus datos actuales no se cambiaron.",
+    rtbRestoreNewer: (item: string) =>
+        `Este respaldo .rtb fue creado por una versión más reciente de RisuTanium y necesita ${item}, que esta versión no puede leer, así que no se restauró nada. Actualiza la aplicación e inténtalo de nuevo. Tus datos actuales no se cambiaron.`,
+    rtbRestoreTargetNewerConfirm: (targetSaved: string, backupTime: string, exportedAt: string | null, device: string) =>
+        `Tus datos actuales se guardaron el ${targetSaved}, que es posterior a este respaldo (${backupTime}${exportedAt === null ? '' : `; el archivo se creó el ${exportedAt}`}). El respaldo proviene del dispositivo "${device}". Al restaurarlo, tus datos actuales se reemplazan por el respaldo más antiguo. Los datos que tienes ahora se conservan en la lista de versiones guardadas anteriores, donde caducan como cualquier otra. ¿Continuar?`,
+    rtbRestoreUncreatableConfirm: (count: number, names: string[]) =>
+        `${count} archivo(s) de recursos de este respaldo tienen nombres que el almacenamiento de esta aplicación no puede crear, así que no se pueden restaurar aquí. Un personaje que use uno de ellos lo mostrará como faltante. ¿Continuar sin ellos?\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
+    rtbRestoreChecking: (percent: number) => `Comprobando el respaldo... (${percent}%)`,
     coldStorageCleanupDateUnknown: "fecha desconocida",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `Cuando se reemplazó un guardado dañado desde un respaldo, las copias guardadas más antiguas de tus datos se apartaron en lugar de eliminarse (creadas: ${dates}). Las imágenes y los datos archivados que solo ellas usan siguen protegidos, por lo que la limpieza no se puede ejecutar mientras existan.\n\n¿Eliminar estas copias antiguas y luego limpiar? No se pueden recuperar. Elige Cancelar para conservarlas; la limpieza entonces no se ejecuta.`,

@@ -3547,6 +3547,17 @@ export const languageVietnamese = {
     store2ImportUnconfirmed: "RisuTanium không thể xác nhận bản sao lưu đã được nhập hay chưa. Dù theo cách nào, dữ liệu trước đó của bạn vẫn được giữ. Hãy tải lại trang để xem bản nào đang được dùng.",
     store2ImportNotFlushed: "Bản sao lưu đã được nhập, nhưng thiết bị chưa xác nhận đã ghi nó vào ổ đĩa. Ứng dụng sẽ tải lại ngay bây giờ và hoàn tất việc ghi khi khởi động.",
     store2ImportDone: "Bản sao lưu đã được nhập. Dữ liệu bạn có trước đó được giữ trong danh sách các phiên bản đã lưu trước đó, và sẽ bị dọn dần theo thời gian như mọi phiên bản khác. Đang làm mới ứng dụng.",
+    rtbRestoreNeedsStore2: "Trang này không dùng bộ lưu trữ hiện tại của RisuTanium nên không thể khôi phục bản sao lưu .rtb tại đây. Không có gì được khôi phục.",
+    rtbRestoreNotRtb: "Tệp này không phải bản sao lưu .rtb của RisuTanium nên không có gì được khôi phục. Dữ liệu hiện tại của bạn không bị thay đổi.",
+    rtbRestoreEncrypted: "Bản sao lưu .rtb này đã được mã hóa và phiên bản này không thể mở bản sao lưu được mã hóa, nên không có gì được khôi phục. Dữ liệu hiện tại của bạn không bị thay đổi.",
+    rtbRestoreDamaged: "Bản sao lưu .rtb này bị hỏng hoặc không đầy đủ nên không có gì được khôi phục. Dữ liệu hiện tại của bạn không bị thay đổi.",
+    rtbRestoreNewer: (item: string) =>
+        `Bản sao lưu .rtb này được tạo bởi phiên bản RisuTanium mới hơn và cần ${item}, mà phiên bản này không thể đọc được, nên không có gì được khôi phục. Hãy cập nhật ứng dụng rồi thử lại. Dữ liệu hiện tại của bạn không bị thay đổi.`,
+    rtbRestoreTargetNewerConfirm: (targetSaved: string, backupTime: string, exportedAt: string | null, device: string) =>
+        `Dữ liệu hiện tại của bạn được lưu lúc ${targetSaved}, muộn hơn bản sao lưu này (${backupTime}${exportedAt === null ? '' : `; tệp được tạo lúc ${exportedAt}`}). Bản sao lưu này đến từ thiết bị "${device}". Khôi phục sẽ thay dữ liệu hiện tại của bạn bằng bản sao lưu cũ hơn. Dữ liệu bạn có hiện tại được giữ trong danh sách các phiên bản đã lưu trước đó, và sẽ bị dọn dần theo thời gian như mọi phiên bản khác. Tiếp tục?`,
+    rtbRestoreUncreatableConfirm: (count: number, names: string[]) =>
+        `${count} tệp tài nguyên (asset) trong bản sao lưu này có tên mà bộ lưu trữ của ứng dụng không thể tạo, nên không thể khôi phục tại đây. Nhân vật nào dùng một trong số đó sẽ hiển thị là bị thiếu. Tiếp tục mà không có chúng?\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} tệp nữa` : ''}`,
+    rtbRestoreChecking: (percent: number) => `Đang kiểm tra bản sao lưu... (${percent}%)`,
     coldStorageCleanupDateUnknown: "không rõ ngày",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `Khi một bản lưu bị hỏng được thay thế từ bản sao lưu, các bản sao dữ liệu đã lưu cũ hơn được để riêng ra thay vì bị xóa (được tạo ${dates}). Hình ảnh và dữ liệu lưu trữ chỉ chúng sử dụng vẫn được bảo vệ, nên việc dọn dẹp không thể chạy khi chúng còn tồn tại.\n\nXóa các bản sao cũ này rồi dọn dẹp? Không thể khôi phục chúng. Chọn Hủy để giữ lại; khi đó việc dọn dẹp sẽ không chạy.`,

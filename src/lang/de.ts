@@ -3565,6 +3565,17 @@ export const languageGerman = {
     "store2ImportUnconfirmed": "RisuTanium konnte nicht bestätigen, ob das Backup importiert wurde. In beiden Fällen bleiben Ihre früheren Daten erhalten. Laden Sie die Seite neu, um zu sehen, welche Daten in Verwendung sind.",
     "store2ImportNotFlushed": "Das Backup wurde importiert, aber das Gerät hat nicht bestätigt, dass es auf die Festplatte geschrieben wurde. Die App wird jetzt neu geladen und schließt das Schreiben beim Start ab.",
     "store2ImportDone": "Das Backup wurde importiert. Die Daten, die Sie zuvor hatten, bleiben in der Liste der früheren gespeicherten Versionen erhalten und werden dort wie jede andere Version mit der Zeit entfernt. Die App wird neu geladen.",
+    "rtbRestoreNeedsStore2": "Diese Seite verwendet nicht den aktuellen Speicher von RisuTanium, daher kann hier kein .rtb-Backup wiederhergestellt werden. Es wurde nichts wiederhergestellt.",
+    "rtbRestoreNotRtb": "Diese Datei ist kein RisuTanium-.rtb-Backup, daher wurde nichts wiederhergestellt. Ihre aktuellen Daten wurden nicht geändert.",
+    "rtbRestoreEncrypted": "Dieses .rtb-Backup ist verschlüsselt und diese Version kann kein verschlüsseltes Backup öffnen, daher wurde nichts wiederhergestellt. Ihre aktuellen Daten wurden nicht geändert.",
+    "rtbRestoreDamaged": "Dieses .rtb-Backup ist beschädigt oder unvollständig, daher wurde nichts wiederhergestellt. Ihre aktuellen Daten wurden nicht geändert.",
+    "rtbRestoreNewer": (item: string) =>
+        `Dieses .rtb-Backup wurde mit einer neueren Version von RisuTanium erstellt und benötigt ${item}, was diese Version nicht lesen kann, daher wurde nichts wiederhergestellt. Aktualisieren Sie die App und versuchen Sie es erneut. Ihre aktuellen Daten wurden nicht geändert.`,
+    "rtbRestoreTargetNewerConfirm": (targetSaved: string, backupTime: string, exportedAt: string | null, device: string) =>
+        `Ihre aktuellen Daten wurden am ${targetSaved} gespeichert, also nach diesem Backup (${backupTime}${exportedAt === null ? '' : `; die Datei wurde am ${exportedAt} erstellt`}). Das Backup stammt vom Gerät "${device}". Beim Wiederherstellen werden Ihre aktuellen Daten durch das ältere Backup ersetzt. Die Daten, die Sie jetzt haben, bleiben in der Liste der früheren gespeicherten Versionen erhalten und werden dort wie jede andere Version mit der Zeit entfernt. Fortfahren?`,
+    "rtbRestoreUncreatableConfirm": (count: number, names: string[]) =>
+        `${count} Asset-Datei(en) in diesem Backup haben Namen, die der Speicher dieser App nicht anlegen kann, daher können sie hier nicht wiederhergestellt werden. Ein Charakter, der eines davon verwendet, zeigt es als fehlend an. Ohne sie fortfahren?\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "rtbRestoreChecking": (percent: number) => `Backup wird geprüft... (${percent}%)`,
     "coldStorageCleanupDateUnknown": "Datum unbekannt",
     "coldStorageCleanupKeptConfirm": (dates: string) =>
         `Als ein beschädigter Speicherstand aus einem Backup ersetzt wurde, wurden die älteren gespeicherten Kopien Ihrer Daten beiseitegelegt, statt gelöscht zu werden (erstellt: ${dates}). Bilder und archivierte Daten, die nur von ihnen verwendet werden, sind weiterhin geschützt, daher kann die Bereinigung nicht ausgeführt werden, solange sie existieren.\n\nDiese älteren Kopien löschen und dann bereinigen? Sie können nicht wiederhergestellt werden. Wählen Sie Abbrechen, um sie zu behalten; die Bereinigung wird dann nicht ausgeführt.`,

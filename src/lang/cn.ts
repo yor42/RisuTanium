@@ -3548,6 +3548,17 @@ export const languageChinese = {
     "store2ImportUnconfirmed": "RisuTanium 无法确认备份是否已导入。无论哪种情况，您之前的数据都会保留。请重新加载页面，查看正在使用的是哪一份。",
     "store2ImportNotFlushed": "备份已导入，但设备未确认已将其写入磁盘。应用现在会重新加载，并在启动时完成写入。",
     "store2ImportDone": "备份已导入。您之前的数据保留在更早保存的版本列表中，并会像其他版本一样随时间被清理。正在刷新应用。",
+    "rtbRestoreNeedsStore2": "此页面未使用 RisuTanium 当前的存储方式，因此无法在此恢复 .rtb 备份。未恢复任何内容。",
+    "rtbRestoreNotRtb": "此文件不是 RisuTanium 的 .rtb 备份，因此未恢复任何内容。您当前的数据没有更改。",
+    "rtbRestoreEncrypted": "此 .rtb 备份已加密，而此版本无法打开加密的备份，因此未恢复任何内容。您当前的数据没有更改。",
+    "rtbRestoreDamaged": "此 .rtb 备份已损坏或不完整，因此未恢复任何内容。您当前的数据没有更改。",
+    "rtbRestoreNewer": (item: string) =>
+        `此 .rtb 备份由更新版本的 RisuTanium 创建，需要 ${item}，而此版本无法读取，因此未恢复任何内容。请更新应用后重试。您当前的数据没有更改。`,
+    "rtbRestoreTargetNewerConfirm": (targetSaved: string, backupTime: string, exportedAt: string | null, device: string) =>
+        `您当前的数据保存于 ${targetSaved}，晚于此备份（${backupTime}${exportedAt === null ? '' : `；文件创建于 ${exportedAt}`}）。此备份来自设备“${device}”。恢复后，您当前的数据会被较旧的备份替换。您现在的数据会保留在更早保存的版本列表中，并会像其他版本一样随时间被清理。是否继续？`,
+    "rtbRestoreUncreatableConfirm": (count: number, names: string[]) =>
+        `此备份中有 ${count} 个资源文件的名称无法在此应用的存储中创建，因此无法在此恢复。使用其中任何一个的角色会将其显示为缺失。是否不恢复它们而继续？\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "rtbRestoreChecking": (percent: number) => `正在检查备份... (${percent}%)`,
     "coldStorageCleanupDateUnknown": "日期未知",
     "coldStorageCleanupKeptConfirm": (dates: string) =>
         `在用备份替换已损坏的已保存数据时，数据的较旧已保存副本被保留下来，而没有被删除（创建于 ${dates}）。仅被它们使用的图片和归档数据仍受保护，因此只要这些副本存在，就无法运行清理。\n\n是否删除这些较旧的副本，然后进行清理？删除后无法恢复。选择“取消”则保留它们，此时不会运行清理。`,
