@@ -1,5 +1,7 @@
 import localforage from "localforage";
+import { HYPA_VECTOR_STORE } from "src/ts/drive/rtb/sideStoreConfig";
 import { type HypaModel, localModels } from "./hypamemory";
+import { DEFAULT_HYPA_MODEL } from "./embeddingModels";
 import { isContextModel, getContextProvider } from "./contextualEmbedding";
 import { TaskRateLimiter, TaskCanceledError } from "./taskRateLimiter";
 import { runEmbedding } from "../transformers";
@@ -34,15 +36,13 @@ export class HypaProcessorV2<TMetadata> {
   public readonly options: HypaProcessorV2Options;
   public progressCallback: (queuedCount: number) => void = null;
   public vectors: Map<string, EmbeddingResult<TMetadata>> = new Map();
-  private forage: LocalForage = localforage.createInstance({
-    name: "hypaVector",
-  });
+  private forage: LocalForage = localforage.createInstance(HYPA_VECTOR_STORE);
 
   public constructor(options?: HypaProcessorV2Options) {
     const db = getDatabase();
 
     this.options = {
-      model: db.hypaModel || "MiniLM",
+      model: db.hypaModel || DEFAULT_HYPA_MODEL,
       customEmbeddingUrl: db.hypaCustomSettings?.url?.trim() || "",
       oaiKey: db.supaMemoryKey?.trim() || "",
       rateLimiter: new TaskRateLimiter(),

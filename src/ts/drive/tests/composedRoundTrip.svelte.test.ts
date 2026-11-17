@@ -173,6 +173,36 @@ function project(db: Obj): Obj {
     return structuredClone(db)
 }
 
+function buildChunk(name: string, data: Uint8Array): Uint8Array {
+    const nameBytes = new TextEncoder().encode(name)
+    const out = new Uint8Array(4 + nameBytes.length + 4 + data.length)
+    const view = new DataView(out.buffer)
+    view.setUint32(0, nameBytes.length, true)
+    out.set(nameBytes, 4)
+    view.setUint32(4 + nameBytes.length, data.length, true)
+    out.set(data, 8 + nameBytes.length)
+    return out
+}
+
+/**
+ * `file` with only its database entry rebuilt: decoded, passed through `rewrite`, and encoded by the producer the upstream
+ * goldens use (`encodeRisuSaveLegacy` with compression). Every other entry keeps its bytes and its place.
+ */
+async function rewriteDatabaseEntry(file: Uint8Array, rewrite: (tree: Obj) => void): Promise<Uint8Array> {
+    const { decodeRisuSave, encodeRisuSaveLegacy } = await import('src/ts/storage/risuSave')
+    const chunks: Uint8Array[] = []
+    for (const entry of parseEntries(file)) {
+        if (entry.name !== 'database.risudat') {
+            chunks.push(buildChunk(entry.name, entry.data))
+            continue
+        }
+        const tree = await decodeRisuSave(entry.data) as unknown as Obj
+        rewrite(tree)
+        chunks.push(buildChunk(entry.name, encodeRisuSaveLegacy(tree as unknown as Database, 'compression')))
+    }
+    return concat(chunks)
+}
+
 interface Trip {
     /** The original file's database with every pointer and stub resolved against the file's own units. */
     original: Obj
@@ -194,7 +224,7 @@ interface Trip {
  * One composed round trip on a store2 page: the real `LoadLocalBackup` of `file`, a fresh boot over what it committed
  * (the page reloads after an import), the real `SaveLocalBackup` in `mode`, then the legacy decoder over the file it wrote.
  */
-async function roundTrip(file: string, mode: 'inline' | 'stub' = 'inline'): Promise<Trip> {
+async function roundTrip(file: string, mode: 'inline' | 'stub' = 'inline', rewrite?: (tree: Obj) => void): Promise<Trip> {
     const locks = new FakeLockManagerCore()
     Object.defineProperty(window.navigator, 'locks', { value: new FakeTabLockManagerView(locks, 'this'), configurable: true })
     h.db = makeDb('base', ['alpha'])
@@ -216,7 +246,8 @@ async function roundTrip(file: string, mode: 'inline' | 'stub' = 'inline'): Prom
     await settled(w)
 
     const { LoadLocalBackup, SaveLocalBackup } = await import('src/ts/drive/backuplocal')
-    const bytes = new Uint8Array(fs.readFileSync(path.join(GOLDEN_DIR, file)))
+    const goldenBytes = new Uint8Array(fs.readFileSync(path.join(GOLDEN_DIR, file)))
+    const bytes = rewrite === undefined ? goldenBytes : await rewriteDatabaseEntry(goldenBytes, rewrite)
     const realCreateElement = document.createElement.bind(document)
     let input: HTMLInputElement | null = null
     const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
@@ -258,6 +289,7 @@ async function roundTrip(file: string, mode: 'inline' | 'stub' = 'inline'): Prom
     const { getColdStorageBackupKey } = await import('src/ts/process/coldstorageData')
     const options = { newId: () => 'placeholder-chat', now: () => 1 }
     const golden = await loadGolden(file)
+    rewrite?.(golden.tree as unknown as Obj)
     const original = await resolveLegacyTree(golden.tree, readerOver(golden.units), options)
 
     const database = entries.find((entry) => entry.name === 'database.risudat')
@@ -413,6 +445,18 @@ describe('composed round trip on a store2 page: LoadLocalBackup, a fresh boot, S
         const inline = messages.find((entry) => entry.chaId === 'cha-inline')?.chats as string[]
         expect(inline.slice(0, 2)).toEqual(['inline hello', 'archived inline chat'])
         expect(messages.find((entry) => entry.chaId === 'cha-stub')?.chats).toEqual(['blob hello', 'archived blob chat'])
+    })
+
+    // Compatibility guard (passes before and after): an upstream `.bin` whose database entry holds an embedding model the
+    // fork does not list goes in and out unchanged. `setDatabase` is mocked in this harness, so the import-side default is
+    // covered by `databaseHypaModelDefault.test.ts`, not here.
+    test.each(['futureUpstreamModel', 'bgeM3Ko'])('upstream-full.bin with hypaModel %s: the export carries the value unchanged', async (value) => {
+        const trip = await roundTrip('upstream-full.bin', 'inline', (tree) => { tree.hypaModel = value })
+
+        expect(trip.errors).toEqual([])
+        expect(trip.original.hypaModel).toBe(value)
+        expect(trip.exportedRaw.hypaModel).toBe(value)
+        expect(trip.exported).toEqual(afterTrip(trip.original, trip.exported))
     })
 })
 

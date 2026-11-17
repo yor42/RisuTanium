@@ -57,6 +57,7 @@ interface LiveCharacter {
     firstMessage?: string
     exampleMessage?: string
     hideChatIcon?: boolean
+    risutanium_render_when_complete?: boolean
     alternateGreetings: string[]
     chats: LiveChat[]
     chatPage: number
@@ -167,6 +168,14 @@ describe('the live reader', () => {
         expect(reader.fmIndex('missing')).toBeNull()
     })
 
+    test('render-when-complete reads from its own key, never from hideChatIcon', () => {
+        const flagged = createLiveReader(targetOf(makeCharacter('A', { hideChatIcon: true })))
+        expect(flagged.field('risutanium_render_when_complete')).toEqual({ had: false })
+        const own = createLiveReader(targetOf(makeCharacter('A', { risutanium_render_when_complete: true })))
+        expect(own.field('risutanium_render_when_complete')).toEqual({ had: true, value: true })
+        expect(own.field('hideChatIcon')).toEqual({ had: false })
+    })
+
     test('the first message and the example message read as their own strings, absent as had false', () => {
         const live = makeCharacter('A', { firstMessage: 'hello', exampleMessage: 'ex', hideChatIcon: true })
         const reader = createLiveReader(targetOf(live))
@@ -199,6 +208,15 @@ describe('the op builders', () => {
         expect(buildFieldEdit('hideChatIcon', 'yes', reader)).toEqual({ ok: false, reason: 'precondition' })
         const absent = buildFieldEdit('hideChatIcon', false, reader)
         expect(absent).toMatchObject({ ok: true, ops: [{ before: { had: false }, after: { had: true, value: false } }] })
+    })
+
+    test('render-when-complete builds from a boolean and refuses a string', () => {
+        const reader = createLiveReader(targetOf(makeCharacter('A')))
+        expect(buildFieldEdit('risutanium_render_when_complete', true, reader)).toMatchObject({
+            ok: true,
+            ops: [{ op: 'set', path: 'risutanium_render_when_complete', before: { had: false }, after: { had: true, value: true } }],
+        })
+        expect(buildFieldEdit('risutanium_render_when_complete', 'x', reader)).toEqual({ ok: false, reason: 'precondition' })
     })
 
     test('a first message edit builds exactly one set op and no list op', () => {
@@ -285,6 +303,15 @@ describe('the write functions', () => {
         expect('hideChatIcon' in live).toBe(false)
         applyCharacterWrites(live as unknown as character, [{ op: 'set', path: 'hideChatIcon', value: { had: true, value: false } }], null)
         expect(live.hideChatIcon).toBe(false)
+    })
+
+    test('render-when-complete set to absent deletes the key and a boolean assigns it', () => {
+        const live = makeCharacter('A', { risutanium_render_when_complete: true, hideChatIcon: true })
+        applyCharacterWrites(live as unknown as character, [{ op: 'set', path: 'risutanium_render_when_complete', value: { had: false } }], null)
+        expect('risutanium_render_when_complete' in live).toBe(false)
+        expect(live.hideChatIcon).toBe(true)
+        applyCharacterWrites(live as unknown as character, [{ op: 'set', path: 'risutanium_render_when_complete', value: { had: true, value: true } }], null)
+        expect(live.risutanium_render_when_complete).toBe(true)
     })
 
     test('the first message and the example message are assigned; absent is a no-op, as for the description', () => {

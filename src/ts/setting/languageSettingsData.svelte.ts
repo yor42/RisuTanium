@@ -12,6 +12,7 @@ import { downloadNotice } from 'src/ts/exportNotice';
 import { languageEnglish } from 'src/lang/en';
 import { sleep } from '../util';
 import { alertNormal, alertSelect, alertConfirm, alertError, alertWait, alertClear } from '../alert';
+import { ALERT_SELECT_CANCEL } from '../alertCancel';
 import { downloadFile } from '../globalApi.svelte';
 import { selectFileByDom } from '../util';
 import { exportLLMCacheAsJSON, importLLMCacheFromJSON, clearLLMCache } from '../translator/translator';
@@ -27,11 +28,19 @@ export async function downloadTranslationFile(): Promise<void> {
     const j = await alertSelect([
         language.alerts.translangContinue,
         language.alerts.translangNew,
-    ]);
+    ], undefined, { cancel: ALERT_SELECT_CANCEL });
+
+    if (j === ALERT_SELECT_CANCEL) {
+        return;
+    }
 
     if (parseInt(j) === 0) {
         const langs = ['de', 'ko', 'cn', 'vi', 'zh-Hant', 'es', 'ja'];
-        const lang = parseInt(await alertSelect(langs));
+        const langAnswer = await alertSelect(langs, undefined, { cancel: ALERT_SELECT_CANCEL });
+        if (langAnswer === ALERT_SELECT_CANCEL) {
+            return;
+        }
+        const lang = parseInt(langAnswer);
         changeLanguage(langs[lang]);
         const saved = await downloadFile(
             'lang.json',

@@ -18,6 +18,9 @@
 //     shares) with the message share left out, scaled by `nonChatScale` (1 = the real profile).
 //   - Modules: lognormal sizes, median 72 KiB, sigma 1.452, maximum 3.4 MiB; the first three are enabled globally.
 //   - archiveCharacters is always written explicitly (true or false), so a first boot never mutates the root setting.
+//   - Optional `heavy: { index, chatsPerCharacter, messagesPerChat, messageCountMax }` gives character `index` its own chat and message
+//     counts (exactly `messagesPerChat` messages in every chat). Its random stream is the plain one, so every other character is
+//     byte-equal to the library without `heavy`; without `heavy` nothing changes.
 // Text comes from synth-bin-gen's vocabulary (3,000 syllable words and 800 Hangul words); the Hangul share of the bytes is
 // the real one per field. Every value is synthetic: no key, token or credential is ever written.
 import { createHash } from 'node:crypto'
@@ -76,7 +79,29 @@ export function normalizeParams(input) {
     if (typeof params[field] !== 'number' || !Number.isFinite(params[field]) || params[field] < 0) throw new Error(`${field} must be a non-negative number`)
   }
   if (typeof params.archiveCharacters !== 'boolean') throw new Error('archiveCharacters must be set explicitly to true or false')
+  // `heavy` is present in the result only when the input has it, so a plain library's parameters (and tree.json) stay as they were
+  if (input.heavy !== undefined && input.heavy !== null) params.heavy = normalizeHeavy(input.heavy, params.characters)
   return params
+}
+
+/** One character built with its own chat and message counts: exactly `messagesPerChat` messages in each of `chatsPerCharacter` chats. */
+function normalizeHeavy(heavy, characters) {
+  const heavyParams = {
+    index: heavy.index, chatsPerCharacter: heavy.chatsPerCharacter, messagesPerChat: heavy.messagesPerChat, messageCountSigma: 0,
+    messageCountMax: heavy.messageCountMax ?? heavy.messagesPerChat,
+  }
+  for (const field of ['index', 'chatsPerCharacter', 'messagesPerChat', 'messageCountMax']) {
+    if (!Number.isInteger(heavyParams[field]) || heavyParams[field] < 0) throw new Error(`heavy.${field} must be a non-negative integer`)
+  }
+  if (heavyParams.index >= characters) throw new Error('heavy.index must name a character of the library')
+  if (heavyParams.messageCountMax < heavyParams.messagesPerChat) throw new Error('heavy.messageCountMax must not be below heavy.messagesPerChat')
+  return heavyParams
+}
+
+/** The chat and message counts the heavy character must show in a census: null for a plain library. */
+export function heavyExpected(input) {
+  const { heavy } = normalizeParams(input)
+  return heavy === undefined ? null : { index: heavy.index, chats: heavy.chatsPerCharacter, messages: heavy.chatsPerCharacter * heavy.messagesPerChat }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -199,7 +224,9 @@ function buildChat(params, text, rnd, variant, chatIndex) {
 
 /** Character `index` of the library: a function of (seed, index, chat and message parameters) only. */
 export function buildCharacter(input, index) {
-  const params = normalizeParams(input)
+  const { heavy, ...plain } = normalizeParams(input)
+  // the heavy character keeps its own random stream (seed, 'character', index); only its chat and message counts differ
+  const params = heavy !== undefined && heavy.index === index ? { ...plain, ...heavy } : plain
   const rnd = entityRandom(params.seed, 'character', index)
   const text = textMaker(vocabularyOf(params.seed), rnd)
   const chaId = uuidOf(rnd)

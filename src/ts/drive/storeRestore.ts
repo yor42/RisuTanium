@@ -165,7 +165,7 @@ export async function loadStoreRestorePoint(options: StoreRestoreOptions): Promi
         return endBeforePick('nothing-replaced')
     }
 
-    const picked = parseInt(await alertSelect(['Cancel', ...rows.map(rowLabel), ...oldTimes.map(oldRowLabel)])) - 1
+    const picked = parseInt(await alertSelect(['Cancel', ...rows.map(rowLabel), ...oldTimes.map(oldRowLabel)], undefined, { cancel: '0' })) - 1
     let target: Picked
     if (picked >= 0 && picked < rows.length) {
         target = { kind: 'point', row: rows[picked] }

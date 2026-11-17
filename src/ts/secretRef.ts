@@ -2,20 +2,21 @@ import { invoke } from '@tauri-apps/api/core'
 import { language } from 'src/lang'
 import { isNodeServer, isTauri } from 'src/ts/platform'
 import { isSecretRef, secretRefName } from 'src/ts/secretRefPattern'
+import { splitKeys } from 'src/ts/process/request/keyRing'
 
 export { isSecretRef, secretRefName }
 
 /**
  * Environment-variable references in secret fields.
  *
- * A secret field whose whole trimmed value is `${NAME}` (uppercase only) names
- * an environment variable of the machine that runs the server or the desktop
- * app. The reference is resolved at use time, in memory only: the resolved
- * value is never stored in the database, a save, a backup, a preset or an
- * export. The fetch log stores the reference in its place, except that a
- * resolved value shorter than `MIN_REDACTED_LENGTH` is not redacted, because
- * replacing it would shred unrelated text. Every other value is used exactly
- * as typed.
+ * A secret field whose trimmed value, or any trimmed line of a multi-line key
+ * field, is `${NAME}` (uppercase only) names an environment variable of the
+ * machine that runs the server or the desktop app. The reference is resolved
+ * at use time, in memory only: the resolved value is never stored in the
+ * database, a save, a backup, a preset or an export. The fetch log stores the
+ * reference in its place, except that a resolved value shorter than
+ * `MIN_REDACTED_LENGTH` is not redacted, because replacing it would shred
+ * unrelated text. Every other value is used exactly as typed.
  */
 
 /** Auth-scheme prefixes a header value may carry in front of a reference. */
@@ -51,9 +52,12 @@ function secretRefMessage(variable: string, kind: SecretRefErrorKind): string {
     }
 }
 
-/** '' when the value is a whole reference, else the value unchanged. */
+/**
+ * '' when the value, or any line of a multi-line value, is a whole reference, else the value
+ * unchanged. A key field holds one key per line and every line resolves on its own.
+ */
 export function blankSecretRef<T>(value: T): T | '' {
-    return isSecretRef(value) ? '' : value
+    return splitKeys(value).some((line) => isSecretRef(line)) ? '' : value
 }
 
 //#region resolution

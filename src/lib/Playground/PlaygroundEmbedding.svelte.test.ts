@@ -246,3 +246,32 @@ describe('the embedding page: a failing run', () => {
         expect(hypa.created.length).toBe(2)
     })
 })
+
+describe('the embedding page: the default model', () => {
+    // regression reproducer: T11
+    test('regression reproducer: the multilingual E5 option is offered and selected first', async () => {
+        const target = mountPage()
+        const select = target.querySelector('select') as HTMLSelectElement
+        expect(Array.from(select.options).map((o) => o.value)).toContain('multiE5Small')
+        expect(select.value).toBe('multiE5Small')
+        await run(target)
+        expect(hypa.created).toEqual([{ model: 'multiE5Small', url: 'http://live.example/v1', oaikey: 'sk-live' }])
+    })
+
+    test('regression reproducer: a database holding MiniLM starts on MiniLM', async () => {
+        DBState.db.hypaModel = 'MiniLM'
+        const target = mountPage()
+        const select = target.querySelector('select') as HTMLSelectElement
+        expect(select.value).toBe('MiniLM')
+        await run(target)
+        expect(hypa.created.map((c) => c.model)).toEqual(['MiniLM'])
+    })
+
+    test('guard: an unset or empty hypaModel starts on the default', async () => {
+        for (const unset of [undefined, '']) {
+            DBState.db.hypaModel = unset as unknown as Database['hypaModel']
+            const target = mountPage()
+            expect((target.querySelector('select') as HTMLSelectElement).value).toBe('multiE5Small')
+        }
+    })
+})

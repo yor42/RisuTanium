@@ -48,6 +48,11 @@ concurrency:
 permissions:
   contents: read
 
+# onnxruntime-node's install script downloads its CUDA binaries on Linux x64 when nvcc is absent.
+# The build never uses the CUDA provider, and that download can fail, so the install skips it.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
 jobs:
   build-android:
     runs-on: ubuntu-latest

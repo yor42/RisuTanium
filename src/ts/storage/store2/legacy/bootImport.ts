@@ -2,7 +2,7 @@ import { LEGACY_MAIN_FILE_KEY } from '../../blockKeys'
 import type { Store2Backend, Store2Read } from '../backend/types'
 import type { BlockedReason } from '../bootActive'
 import type { ListDerivation } from '../codec/types'
-import { firstLifeInstall, installBuilt, type BuiltInstall, type FirstLifeGrant, type FirstLifeResult } from '../firstLife'
+import { firstLifeInstall, firstLifeInstallStreamed, installBuilt, installStreamed, type BuiltInstall, type FirstLifeGrant, type FirstLifeResult } from '../firstLife'
 import { defaultKeyEnv, type CommitKey, type KeyEnv, type LegacyList } from '../format'
 import { LegacyListBuilder } from '../lists/legacyList'
 import { planOldDataSnapshot, withSnapshot, type OldDataSource } from '../oldData/plan'
@@ -10,6 +10,7 @@ import type { ForeignClearHook } from '../owner'
 import { runExit, type ExitResult } from '../recovery'
 import { withLegacyKeep } from './convert'
 import type { ImportHooks, ImportSource, PrepareStop, RepairSummary } from './importTree'
+import type { StreamPrepared, StreamSource } from './importStream'
 import type { LegacyEntryReader, ResolveOptions } from './resolve'
 import type { ColdUnitRead } from './storeReader'
 
@@ -76,8 +77,22 @@ export type BootImportEnd =
  */
 export interface BootImportTarget {
     install(source: ImportSource, reader: LegacyEntryReader, hooks: ImportHooks): Promise<BootImportResult>
+    /**
+     * The streamed counterpart of `install`, in two steps. `prepareStream` is the dry pass over the file (nothing is
+     * written): 'whole' for a file the whole path must take, a stop before any write, or what `installStream` must
+     * reproduce. `installStream` is the install over a second read of the file, the units uploaded as they are encoded.
+     * A target without them takes every file through `install`.
+     */
+    prepareStream?(input: BootStreamInput, reader: LegacyEntryReader, hooks: ImportHooks): Promise<'whole' | PrepareStop | StreamPrepared>
+    installStream?(input: BootStreamInput, prepared: StreamPrepared, reader: LegacyEntryReader, hooks: ImportHooks): Promise<BootImportResult>
     /** Answers an id the file holds no accepted entry for: the old upstream unit the store still holds. */
     readColdStorageItem: (key: string) => Promise<ColdUnitRead>
+}
+
+/** The file of a streamed boot import and how it yields. */
+export interface BootStreamInput {
+    stream: StreamSource
+    yieldToMain: () => Promise<void>
 }
 
 function backupKey(time: number): string {
@@ -158,6 +173,12 @@ export function createBootImportTarget(
     return {
         readColdStorageItem,
         install: (source, reader, hooks) => bootImportLegacyTree({ ...base, source, reader }, hooks),
+        async prepareStream(input, reader, hooks) {
+            // Loaded on first use, like `importTree`: a boot that never imports a file does not need the stream.
+            const { prepareImportStream } = await import('./importStream')
+            return prepareImportStream({ ...input, reader, lists: base.lists, env: base.env, resolve: base.resolve }, hooks)
+        },
+        installStream: (input, prepared, reader, hooks) => bootImportStreamed({ ...base, ...input, reader, prepared }, hooks),
     }
 }
 
@@ -199,4 +220,43 @@ export async function bootImportLegacyTree(request: BootImportRequest, hooks: Im
         return { status: 'exit', exit }
     }
     return resultOfInstall(await installBuilt({ backend: request.backend, env, marked: exit }, install), prepared.repair)
+}
+
+export interface BootStreamRequest extends Omit<BootImportRequest, 'source'>, BootStreamInput {
+    /** What the dry pass of `prepareImportStream` learned; the install reads the file again and must reproduce it. */
+    prepared: StreamPrepared
+}
+
+/**
+ * `bootImportLegacyTree` for a file the dry pass (`prepareImportStream`) accepted: the same steps after the prepare (the
+ * keep list of the old files, the page import's own build, the snapshot, `convertedFrom: 'import'`, the same installer
+ * entries), with the characters uploaded as the file is read. A failed upload is the result `blocked` as in the whole
+ * path; any other throw of the build (the file changed, a unit could not be read) leaves the marker standing and
+ * surfaces as `Store2InstallAbortError`.
+ */
+export async function bootImportStreamed(request: BootStreamRequest, hooks: ImportHooks): Promise<BootImportResult> {
+    if (request.entry.kind === 'first-life' && request.entry.grant.label !== 'import') {
+        throw new TypeError('A boot import installs under a grant labelled import.')
+    }
+    const { buildImport } = await import('./importTree')
+    const { streamedImportUnits } = await import('./importStream')
+    const keep = await listOldFilesUnreadable(request)
+    if (keep.status === 'blocked') {
+        return keep
+    }
+    const units = streamedImportUnits(request.prepared, {
+        stream: request.stream, yieldToMain: request.yieldToMain, reader: request.reader, lists: request.lists, env: request.env, resolve: request.resolve,
+    }, hooks)
+    const base: BuiltInstall = { ...buildImport(units), convertedFrom: 'import' }
+    const snapshot = await planOldDataSnapshot(request.oldData, null)
+    const install = withSnapshot(keep.status === 'none' ? base : withLegacyKeep(base, keep.list), snapshot)
+    const env: KeyEnv = { ...defaultKeyEnv, ...request.env }
+    if (request.entry.kind === 'first-life') {
+        return resultOfInstall(await firstLifeInstallStreamed(request.backend, request.entry.grant, install, { owner: request.owner, env }), request.prepared.repair)
+    }
+    const exit = await runExit(request.backend, request.entry.commitRead, { kind: 'import' }, { owner: request.owner, env, foreignClear: request.entry.foreignClear })
+    if (exit.status !== 'marked') {
+        return { status: 'exit', exit }
+    }
+    return resultOfInstall(await installStreamed({ backend: request.backend, env, marked: exit }, install), request.prepared.repair)
 }

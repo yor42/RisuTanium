@@ -49,6 +49,7 @@ import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, se
 import { createFakeClock, drainMicrotasks } from '../../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../../ts/studio/history/tests/studioStoreDoubles'
 import { assetRow } from '../../../ts/studio/assets/assetFixtures.test-helpers'
+import { ASSET_FOLDER_KEY } from '../../../ts/studio/assets/assetOwnerKeys'
 import type { AssetPickerPort, UsedInPort } from '../../../ts/studio/assets/assetPresentation'
 import StudioAssetList, { setSessionAssetSizeJobForTests } from './StudioAssetList.svelte'
 
@@ -63,6 +64,7 @@ interface LiveCharacter {
     additionalAssets: string[][]
     emotionImages: string[][]
     prebuiltAssetExclude?: string[]
+    extentions?: Record<string, unknown>
 }
 
 const A = characterOwnerKey('A')
@@ -350,6 +352,49 @@ describe('the exclude item', () => {
         item?.click()
         await settle()
         expect(h.marks).toBe(marks)
+    })
+})
+
+describe('a row that is not displayed holds no player', () => {
+    const rawPlayers = () => document.querySelectorAll('[data-part="studio-asset-media"]').length
+
+    async function previewMp3(): Promise<void> {
+        ;(rowOf('n-mp3').querySelector('[data-part="studio-asset-row-more"]') as HTMLElement).click()
+        await settle()
+        ;(rowOf('n-mp3').querySelector('[data-part="studio-asset-menu-preview"]') as HTMLElement).click()
+        await settle()
+    }
+
+    async function typeFilter(text: string): Promise<void> {
+        const field = parts('studio-asset-filter')[0] as HTMLInputElement
+        field.value = text
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+        await settle()
+    }
+
+    test('filtering the previewing row out removes its player, and clearing the filter brings it back', async () => {
+        await show()
+        await previewMp3()
+        expect(rawPlayers()).toBe(1)
+        await typeFilter('n-mp4')
+        expect(rawPlayers()).toBe(0)
+        await typeFilter('')
+        expect(rawPlayers()).toBe(1)
+    })
+
+    test('collapsing the previewing row\'s folder removes its player, and opening the folder again brings it back', async () => {
+        db.db.characters = [makeCharacter(rowsOfEveryExtension(), { extentions: { [ASSET_FOLDER_KEY]: { v: 1, additional: { order: ['Music'], of: [['n-mp3', 'Music']] } } } })]
+        await show()
+        await previewMp3()
+        expect(rawPlayers()).toBe(1)
+        const header = parts('studio-asset-folder-header').find((candidate) => candidate.textContent?.includes('Music')) as HTMLElement
+        header.click()
+        await settle()
+        expect(header.getAttribute('aria-expanded')).toBe('false')
+        expect(rawPlayers()).toBe(0)
+        header.click()
+        await settle()
+        expect(rawPlayers()).toBe(1)
     })
 })
 

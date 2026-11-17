@@ -522,7 +522,7 @@ describe('absent keys and per-op preconditions', () => {
         const s = newSession({ alternateGreetings: [] })
         s.addGreeting('y', 0)
         s.live.obj.alternateGreetings[0] = 'other'
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['other'])
     })
 
@@ -1182,7 +1182,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         const snap = snapshot(s)
         s.deleteGreeting(1, 0)
         lose(s, snap)
-        expect(s.undo()).toMatchObject({ ok: true, already: 'undo', writes: [] })
+        expect(s.undo()).toMatchObject({ ok: true, already: 'undo', writes: [], listReason: 'other' })
         expect(s.live.obj.alternateGreetings).toEqual(['x', 'y'])
         expect(s.record.done).toHaveLength(0)
         expect(s.record.undone).toHaveLength(1)
@@ -1314,7 +1314,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         const s = newSession({ alternateGreetings: ['g'] })
         s.addGreeting('h', 0)
         s.live.obj.alternateGreetings.push('c')
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['g', 'h', 'c'])
         expect(s.record.done).toHaveLength(1)
     })
@@ -1323,18 +1323,18 @@ describe('list fingerprint: replay after a lost owner write', () => {
         const a = newSession({ alternateGreetings: ['a', 'a', 'b'] })
         a.deleteGreeting(0, 0, null)
         a.live.obj.alternateGreetings.unshift('c')
-        expect(a.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(a.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(a.live.obj.alternateGreetings).toEqual(['c', 'a', 'b'])
 
         const c = newSession({ alternateGreetings: ['', '', 'b'] })
         c.deleteGreeting(0, 0, null)
         c.live.obj.alternateGreetings.unshift('c')
-        expect(c.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(c.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
 
         const d = newSession({ alternateGreetings: ['a', 'b'] })
         d.deleteGreeting(0, 0, null)
         listOnly(d, ['b', 'c'])
-        expect(d.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(d.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(d.live.obj.alternateGreetings).toEqual(['b', 'c'])
     })
 
@@ -1345,7 +1345,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         s.addGreeting('n', 5000)
         expect(s.undo().ok).toBe(true)
         expect(s.live.obj.alternateGreetings).toEqual(['c', 'b'])
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
     })
 
     test('T66 a revert skips a step whose write was lost and applies the rest', () => {
@@ -1490,7 +1490,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         s.deleteGreeting(2, 0, null)
         s.deleteGreeting(1, 5000, null)
         lose(s, snap)
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b', 'c'])
     })
 
@@ -1500,7 +1500,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         s.editGreeting(0, 'z', 0)
         s.deleteGreeting(1, 5000, null)
         lose(s, snap)
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b'])
     })
 
@@ -1512,7 +1512,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         s.undo()
         s.undo()
         lose(s, snap)
-        expect(s.redo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'x', 'y'])
     })
 
@@ -1524,7 +1524,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         s.undo()
         s.undo()
         lose(s, snap)
-        expect(s.redo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['a'])
     })
 
@@ -1546,8 +1546,8 @@ describe('list fingerprint: replay after a lost owner write', () => {
         s.addGreeting('c', 0)
         s.deleteGreeting(0, 5000, null)
         lose(s, snap)
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b'])
     })
 })
@@ -1677,8 +1677,8 @@ describe('list fingerprint: further replay rows', () => {
         s.restoreDeleted(id, 5000)
         s.undo()
         s.live.obj.alternateGreetings.unshift('c')
-        expect(s.redo()).toEqual({ ok: false, reason: 'precondition' })
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['c', 'a', 'b'])
     })
 
@@ -2360,7 +2360,7 @@ describe('deleted-item lifecycle: reverts and their undo and redo', () => {
         s.revertTo(anchor, 10000)
         s.live.obj.alternateGreetings[1] = 'b2'
         const record = s.record
-        expect(s.undo(15000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo(15000)).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.record).toBe(record)
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b2', 'c'])
         expect(s.live.obj.chats.chatA.fmIndex).toBe(1)
@@ -2590,7 +2590,7 @@ describe('deleted-item lifecycle: Restore deleted redo', () => {
         s.live.obj.alternateGreetings.splice(1, 1)
         expect(s.live.obj.alternateGreetings).toEqual(['a'])
         const record = s.record
-        expect(s.redo(15000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo(15000)).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.record).toBe(record)
         expect(s.live.obj.chats.chatA.fmIndex).toBe(-1)
         expect(s.live.obj.alternateGreetings).toEqual(['a'])
@@ -3131,6 +3131,8 @@ describe('S2b: a step whose list is on neither side keeps its chat index; item e
         expect(s.live.obj.chats.chatA.fmIndex).toBe(-1)
         expect(plan.ok && plan.skipped).toBe(2)
         expect(plan.ok && plan.listSkipped).toBe(1)
+        // A budget suspension is not a hash decision, so it names no reason.
+        expect(plan.ok && 'listReason' in plan).toBe(false)
         expect(s.live.obj.alternateGreetings).toEqual([p, 's1'])
         expect(deletedIds(s)).toEqual([del])
         s.restoreDeleted(del, 14000)
@@ -3151,6 +3153,7 @@ describe('S2b: a step whose list is on neither side keeps its chat index; item e
         expect(plan.ok && plan.listSkipped).toBe(1)
         expect(s.live.obj.desc).toBe('E')
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b', 'z'])
+        expect(plan.ok && plan.listReason).toBe('neither')
     })
 
     test('T87 a revert that consumes and re-produces the same item changes nothing and records nothing', () => {
@@ -3190,10 +3193,48 @@ describe('S2b: a step whose list is on neither side keeps its chat index; item e
         expect(plan.ok).toBe(true)
         expect(plan.ok && plan.deletedRemove).toEqual([])
         expect(plan.ok && plan.listSkipped).toBe(1)
+        expect(plan.ok && plan.listReason).toBe('other')
         expect(deletedIds(s)).toEqual([y])
         expect(s.undo(12000).ok).toBe(true)
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b'])
         expect(deletedIds(s)).toEqual([y])
+    })
+
+    test('T86c a count after the hash stop through an unfingerprinted step still names the stop side', () => {
+        const s = newSession({ desc: 'd', alternateGreetings: ['a', 'b', 'c'], chats: { chatA: { fmIndex: 2 } } })
+        s.typeDesc('E', 0)
+        const anchor = s.record.done[s.record.done.length - 1].id
+        s.editGreeting(0, 'a2', 1000)
+        s.deleteGreeting(2, 2000)
+        s.typeDesc('F', 4000)
+        s.state = { record: { ...s.record, done: s.record.done.map((step, i) => (i === 1 ? asPreChange(step) : step)) }, open: null }
+        s.live.obj.alternateGreetings.push('z')
+        const plan = s.revertTo(anchor, 6000)
+        expect(plan.ok && plan.listSkipped).toBe(2)
+        expect(plan.ok && plan.listReason).toBe('neither')
+    })
+
+    test('T86d a per-op list failure with no hash stop names no reason', () => {
+        const s = newSession({ desc: 'd', alternateGreetings: ['a', 'b'] })
+        s.typeDesc('E', 0)
+        const anchor = s.record.done[s.record.done.length - 1].id
+        s.editGreeting(0, 'a2', 2000)
+        s.typeDesc('F', 4000)
+        s.live.obj.alternateGreetings[0] = 'X'
+        const plan = s.revertTo(anchor, 6000)
+        expect(plan.ok && plan.listSkipped).toBe(1)
+        expect(plan.ok && 'listReason' in plan).toBe(false)
+    })
+
+    test('T86e an unfingerprinted all-held undo moves the step and names no reason', () => {
+        const s = newSession({ alternateGreetings: ['x', 'y'] })
+        const snap = snapshot(s)
+        s.editGreeting(0, 'x2', 0)
+        lose(s, snap)
+        stripAll(s)
+        const plan = s.undo()
+        expect(plan).toMatchObject({ ok: true, already: 'undo' })
+        expect('listReason' in plan).toBe(false)
     })
 
     test('T88b a plain revert across deletes reports no skipped list op', () => {
@@ -3344,7 +3385,7 @@ describe('S2b: an expected-side delete whose Deleted entry left the list is rest
         s.typeDesc('a', 15000)
         s.live.obj.alternateGreetings.push('z')
         const record = s.record
-        expect(s.revertTo(anchor, 20000)).toEqual({ ok: false, reason: 'unchanged', listSkipped: 1 })
+        expect(s.revertTo(anchor, 20000)).toEqual({ ok: false, reason: 'unchanged', listSkipped: 1, listReason: 'neither' })
         expect(s.record).toBe(record)
         expect(s.live.obj.alternateGreetings).toEqual(['g0', 'g1', 'z'])
         expect(s.live.obj.desc).toBe('a')
@@ -3358,7 +3399,7 @@ describe('S2b: undo and redo of a fingerprinted step off its expected side are r
         s.deleteGreeting(2, 0)
         s.live.obj.alternateGreetings.push('z')
         const record = s.record
-        expect(s.undo(5000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo(5000)).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.chats.chatA.fmIndex).toBe(-1)
         expect(s.record).toBe(record)
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b', 'z'])
@@ -3370,7 +3411,7 @@ describe('S2b: undo and redo of a fingerprinted step off its expected side are r
         expect(s.undo(5000).ok).toBe(true)
         s.live.obj.alternateGreetings.push('z')
         const record = s.record
-        expect(s.redo(10000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo(10000)).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.chats.chatA.fmIndex).toBe(2)
         expect(s.record).toBe(record)
     })
@@ -3396,7 +3437,7 @@ describe('S2b: undo and redo of a fingerprinted step off its expected side are r
         expect(s.live.obj.desc).toBe('E')
         s.live.obj.alternateGreetings.push('z')
         const record = s.record
-        expect(s.undo(8000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo(8000)).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.desc).toBe('E')
         expect(s.record).toBe(record)
         expect(s.live.obj.chats.chatA.fmIndex).toBe(1)
@@ -4038,10 +4079,10 @@ describe('replay rules on asset ops (the atTarget table)', () => {
                 },
             },
             {
-                op: { op: 'textEdit', target: 'lore/0/content', offset: 0, from: 'ab', to: 'xy' },
-                world: { texts: { 'lore/0/content': 'ab cd' } },
+                op: { op: 'textEdit', target: 'lore/0/content', offset: 9, from: 'ab', to: 'xy' },
+                world: { texts: { 'lore/0/content': '{{image::ab}} cd' } },
                 lose: (live) => {
-                    live.assets.texts['lore/0/content'] = 'ab cd'
+                    live.assets.texts['lore/0/content'] = '{{image::ab}} cd'
                 },
             },
         ]
@@ -4067,17 +4108,17 @@ describe('replay rules on asset ops (the atTarget table)', () => {
     })
 
     test('a text edit whose text moved on is refused and a step on side other applies no asset op', () => {
-        const live = makeAssetLive({}, { texts: { 'lore/0/content': 'ab cd' } })
+        const live = makeAssetLive({}, { texts: { 'lore/0/content': '{{image::ab}} cd' } })
         const s = new Session(live)
-        commitOps(s, ASSET_LABELS[3], [{ op: 'textEdit', target: 'lore/0/content', offset: 0, from: 'ab', to: 'xy' }], 0)
-        live.assets.texts['lore/0/content'] = 'qq cd'
+        commitOps(s, ASSET_LABELS[3], [{ op: 'textEdit', target: 'lore/0/content', offset: 9, from: 'ab', to: 'xy' }], 0)
+        live.assets.texts['lore/0/content'] = '{{image::qq}} cd'
         expect(planReplay(s.record, 'undo', live.reader)).toEqual({ ok: false, reason: 'precondition' })
     })
 
     test('T89 an asset-only step leaves the deleted list as it is through commit, undo and redo', () => {
         const live = makeAssetLive(
             { alternateGreetings: ['a', 'b'], pageChat: { fmIndex: 1 } },
-            { additionalAssets: [T('a', 'p1'), T('b', 'p2')], texts: { 'lore/0/content': 'hi' } },
+            { additionalAssets: [T('a', 'p1'), T('b', 'p2')], texts: { 'lore/0/content': '{{image::hi}}' } },
         )
         const s = new Session(live)
         s.deleteGreeting(0, 0, null)
@@ -4088,7 +4129,7 @@ describe('replay rules on asset ops (the atTarget table)', () => {
             { op: 'assetRowInsert', array: 'additionalAssets', index: 1, tuple: T('c', 'p3'), count: 0 },
             { op: 'assetRowSet', array: 'additionalAssets', index: 0, before: T('b', 'p2'), after: T('B', 'p2') },
             { op: 'assetFolderSet', name: 'x', before: { had: false }, after: { had: true, value: 'F' } },
-            { op: 'textEdit', target: 'lore/0/content', offset: 0, from: 'hi', to: 'yo' },
+            { op: 'textEdit', target: 'lore/0/content', offset: 9, from: 'hi', to: 'yo' },
         ]
         ops.forEach((op, i) => {
             commitOps(s, ASSET_LABELS[i], [op], 5000 * (i + 1))
@@ -4236,11 +4277,11 @@ describe('replay rules on first messages and fields (R1, R1c, R2)', () => {
         expect(planReplay(s.record, 'undo', unreadable)).toEqual({ ok: false, reason: 'precondition' })
         stripAll(s)
         expect(planReplay(s.record, 'undo', unreadable)).toEqual({ ok: false, reason: 'precondition' })
-        const merge = makeAssetLive({ desc: 'x logo.png', alternateGreetings: ['g', 'h logo.png'] })
+        const merge = makeAssetLive({ desc: 'x {{image::logo.png}}', alternateGreetings: ['g', 'h {{image::logo.png}}'] })
         const m = new Session(merge)
         commitOps(m, ASSET_LABELS[3], [
-            { op: 'textEdit', target: 'alternateGreetings/1', offset: 2, from: 'logo.png', to: 'kept.png' },
-            { op: 'textEdit', target: 'desc', offset: 2, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'alternateGreetings/1', offset: 11, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'desc', offset: 11, from: 'logo.png', to: 'kept.png' },
         ], 0)
         const noList: LiveReader = { ...merge.reader, greetings: () => null }
         expect(planReplay(m.record, 'undo', noList)).toEqual({ ok: false, reason: 'precondition' })
@@ -4272,17 +4313,17 @@ describe('replay rules on first messages and fields (R1, R1c, R2)', () => {
 describe('restore point learns text edits', () => {
     test('T79 a merge step committed without replacing the restore point is not reported as changed elsewhere', () => {
         const live = makeAssetLive(
-            { desc: 'start', alternateGreetings: ['g0', 'g1', 'x logo.png'] },
-            { texts: { 'lore/0/content': 'l logo.png' } },
+            { desc: 'start', alternateGreetings: ['g0', 'g1', 'x {{image::logo.png}}'] },
+            { texts: { 'lore/0/content': 'l {{image::logo.png}}' } },
         )
         const s = new Session(live)
-        s.typeDesc('d logo.png', 0)
+        s.typeDesc('d {{image::logo.png}}', 0)
         commitOps(s, ASSET_LABELS[3], [
-            { op: 'textEdit', target: 'lore/0/content', offset: 2, from: 'logo.png', to: 'kept.png' },
-            { op: 'textEdit', target: 'alternateGreetings/2', offset: 2, from: 'logo.png', to: 'kept.png' },
-            { op: 'textEdit', target: 'desc', offset: 2, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'lore/0/content', offset: 11, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'alternateGreetings/2', offset: 11, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'desc', offset: 11, from: 'logo.png', to: 'kept.png' },
         ], 5000)
-        expect(live.obj.desc).toBe('d kept.png')
+        expect(live.obj.desc).toBe('d {{image::kept.png}}')
         const restore = s.record.restore!
         expect(listChangedElsewhere(restore, live.reader)).toEqual([])
         const plan = planRestorePoint(restore, live.reader, new Set())
@@ -4358,29 +4399,29 @@ describe('revert across asset and text steps', () => {
 
     test('T99 a merge across desc, a greeting and a lore entry reverts to one net set, one hunk and a stored lore chain', () => {
         const live = makeAssetLive(
-            { desc: 'start', alternateGreetings: ['g0', 'g1', 'x logo.png'] },
-            { texts: { 'lore/0/content': 'l logo.png' } },
+            { desc: 'start', alternateGreetings: ['g0', 'g1', 'x {{image::logo.png}}'] },
+            { texts: { 'lore/0/content': 'l {{image::logo.png}}' } },
         )
         const s = new Session(live)
-        s.typeDesc('d logo.png', 0)
+        s.typeDesc('d {{image::logo.png}}', 0)
         const anchor = s.record.done[0].id
         commitOps(s, ASSET_LABELS[3], [
-            { op: 'textEdit', target: 'lore/0/content', offset: 2, from: 'logo.png', to: 'kept.png' },
-            { op: 'textEdit', target: 'alternateGreetings/2', offset: 2, from: 'logo.png', to: 'kept.png' },
-            { op: 'textEdit', target: 'desc', offset: 2, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'lore/0/content', offset: 11, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'alternateGreetings/2', offset: 11, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'desc', offset: 11, from: 'logo.png', to: 'kept.png' },
         ], 5000)
         const plan = planOf(s.revertTo(anchor, 10000))
         expect(plan.ops.filter((op) => op.op === 'textEdit')).toEqual([
-            { op: 'textEdit', target: 'lore/0/content', offset: 2, from: 'kept.png', to: 'logo.png' },
+            { op: 'textEdit', target: 'lore/0/content', offset: 11, from: 'kept.png', to: 'logo.png' },
         ])
-        expect(plan.ops).toEqual(expect.arrayContaining([{ op: 'listSet', index: 2, before: 'x kept.png', after: 'x logo.png' }]))
-        expect(plan.ops.filter((op) => op.op === 'set').map((op) => (op.op === 'set' ? op.after : null))).toEqual([present('d logo.png')])
-        expect(live.obj.desc).toBe('d logo.png')
-        expect(live.assets.texts['lore/0/content']).toBe('l logo.png')
+        expect(plan.ops).toEqual(expect.arrayContaining([{ op: 'listSet', index: 2, before: 'x {{image::kept.png}}', after: 'x {{image::logo.png}}' }]))
+        expect(plan.ops.filter((op) => op.op === 'set').map((op) => (op.op === 'set' ? op.after : null))).toEqual([present('d {{image::logo.png}}')])
+        expect(live.obj.desc).toBe('d {{image::logo.png}}')
+        expect(live.assets.texts['lore/0/content']).toBe('l {{image::logo.png}}')
         expect(s.undo(20000).ok).toBe(true)
-        expect(live.obj.desc).toBe('d kept.png')
-        expect(live.obj.alternateGreetings[2]).toBe('x kept.png')
-        expect(live.assets.texts['lore/0/content']).toBe('l kept.png')
+        expect(live.obj.desc).toBe('d {{image::kept.png}}')
+        expect(live.obj.alternateGreetings[2]).toBe('x {{image::kept.png}}')
+        expect(live.assets.texts['lore/0/content']).toBe('l {{image::kept.png}}')
     })
 
     test('a revert does not re-insert a row whose file is gone and names it; with nothing else applied it is unchanged', () => {
@@ -4397,17 +4438,53 @@ describe('revert across asset and text steps', () => {
     })
 })
 
+describe('a revert stopped by the row check of a step with rows, a text and a list insert', () => {
+    // The newest step holds an asset row op that cannot be reverted (its index is past the rows), a text edit and a list
+    // insert. It is left whole, so its insert stays in the list; the older step has no fingerprint and removes an entry
+    // by index, which would land against a list the newer step would have reshaped.
+    function stoppedRevertWorld() {
+        const live = makeAssetLive({ desc: 'f', alternateGreetings: ['Y', 'p', 'b'] }, { additionalAssets: [T('wave', 'p2')], texts: { 'lore/0/content': '{{image::smile}}' } })
+        const field = (before: string, after: string): Op => ({ op: 'set', path: 'desc', before: present(before), after: present(after) })
+        const anchor: Step = { id: 's0', at: 1, label: { kind: 'field', field: 'desc' }, ops: [field('d', 'e')] }
+        const older: Step = {
+            id: 's1',
+            at: 2,
+            label: { kind: 'field', field: 'desc' },
+            ops: [field('e', 'f'), { op: 'listRemove', index: 1, value: 'a', deletedId: null }],
+        }
+        const merge: Step = {
+            id: 's2',
+            at: 3,
+            label: { kind: 'assetMerge', from: 'grin', to: 'smile' },
+            ops: [
+                { op: 'assetRowRemove', array: 'additionalAssets', index: 5, tuple: T('grin', 'p1'), count: 1 },
+                { op: 'textEdit', target: 'lore/0/content', offset: 9, from: 'grin', to: 'smile' },
+                { op: 'listInsert', index: 0, value: 'Y' },
+            ],
+        }
+        return { live, record: recordWith([anchor, older, merge]) }
+    }
+
+    test('E2 the older list op is skipped with the stopped step, both are counted, and no list write lands', () => {
+        const { live, record } = stoppedRevertWorld()
+        const plan = planOf(planRevert(record, 's0', live.reader))
+        expect(plan.writes).toEqual([{ op: 'set', path: 'desc', value: present('e') }])
+        expect(plan.listSkipped).toBe(2)
+        expect(plan.skipped).toBe(4)
+    })
+})
+
 describe('a revert across a greeting text edit keeps the list hashes exact', () => {
     test('the revert step fingerprint after a greeting text edit and an insert equals the hash of the list it leaves', () => {
-        const live = makeAssetLive({ desc: 'd', alternateGreetings: ['g0', 'h logo.png'] })
+        const live = makeAssetLive({ desc: 'd', alternateGreetings: ['g0', 'h {{image::logo.png}}'] })
         const s = new Session(live)
         s.typeDesc('e', 0)
         const anchor = s.record.done[0].id
         s.addGreeting('z', 5000)
-        commitOps(s, ASSET_LABELS[3], [{ op: 'textEdit', target: 'alternateGreetings/1', offset: 2, from: 'logo.png', to: 'kept.png' }], 10000)
+        commitOps(s, ASSET_LABELS[3], [{ op: 'textEdit', target: 'alternateGreetings/1', offset: 11, from: 'logo.png', to: 'kept.png' }], 10000)
         const plan = planOf(planRevert(s.record, anchor, live.reader))
-        expect(plan.afterListHash).toBe(listFingerprintOf(['g0', 'h logo.png']))
-        expect(plan.liveListHash).toBe(listFingerprintOf(['g0', 'h kept.png', 'z']))
+        expect(plan.afterListHash).toBe(listFingerprintOf(['g0', 'h {{image::logo.png}}']))
+        expect(plan.liveListHash).toBe(listFingerprintOf(['g0', 'h {{image::kept.png}}', 'z']))
     })
 })
 
@@ -4501,7 +4578,7 @@ describe('replay past a step already in place: further rows', () => {
         listOnly(s, ['z'])
         s.live.obj.chats.chatA.fmIndex = 1
         const record = s.record
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.record).toBe(record)
     })
 
@@ -4653,7 +4730,7 @@ describe('replay past a step already in place: further rows', () => {
         cutDeleted(s, id)
         s.live.obj.alternateGreetings.unshift('z')
         const record = s.record
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.record).toBe(record)
         expect(s.record.deleted).toEqual([])
         s.live.obj.alternateGreetings.shift()
@@ -4667,7 +4744,7 @@ describe('replay past a step already in place: further rows', () => {
         cutDeleted(s, id)
         s.live.obj.alternateGreetings.unshift('z')
         const record = s.record
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.record).toBe(record)
         expect(s.live.obj.chats.chatA.fmIndex).toBe(-1)
     })
@@ -4701,17 +4778,17 @@ describe('replay past a step already in place: further rows', () => {
     })
 
     test('a merge step with a greeting text edit and a desc text edit is refused whole while the list cannot be read, and its stacks stay', () => {
-        const live = makeAssetLive({ desc: 'x logo.png', alternateGreetings: ['g', 'h logo.png'] })
+        const live = makeAssetLive({ desc: 'x {{image::logo.png}}', alternateGreetings: ['g', 'h {{image::logo.png}}'] })
         const s = new Session(live)
         commitOps(s, ASSET_LABELS[3], [
-            { op: 'textEdit', target: 'alternateGreetings/1', offset: 2, from: 'logo.png', to: 'kept.png' },
-            { op: 'textEdit', target: 'desc', offset: 2, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'alternateGreetings/1', offset: 11, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'desc', offset: 11, from: 'logo.png', to: 'kept.png' },
         ], 0)
         const json = JSON.stringify(s.record)
         expect(planReplay(s.record, 'undo', unreadableReader(live))).toEqual({ ok: false, reason: 'precondition' })
         expect(JSON.stringify(s.record)).toBe(json)
-        expect(live.obj.desc).toBe('x kept.png')
-        expect(live.obj.alternateGreetings[1]).toBe('h kept.png')
+        expect(live.obj.desc).toBe('x {{image::kept.png}}')
+        expect(live.obj.alternateGreetings[1]).toBe('h {{image::kept.png}}')
     })
 
     test('a redo of a fingerprinted delete with a chat op is refused while the list cannot be read', () => {
@@ -4764,13 +4841,13 @@ describe('replay past a step already in place: further rows', () => {
     })
 
     test('after a stop the greeting text edit of an older merge is skipped and counted, and its desc text edit still reverts', () => {
-        const live = makeAssetLive({ desc: 'start', alternateGreetings: ['g0', 'x logo.png'] })
+        const live = makeAssetLive({ desc: 'start', alternateGreetings: ['g0', 'x {{image::logo.png}}'] })
         const s = new Session(live)
-        s.typeDesc('d logo.png', 0)
+        s.typeDesc('d {{image::logo.png}}', 0)
         const anchor = s.record.done[0].id
         commitOps(s, ASSET_LABELS[3], [
-            { op: 'textEdit', target: 'alternateGreetings/1', offset: 2, from: 'logo.png', to: 'kept.png' },
-            { op: 'textEdit', target: 'desc', offset: 2, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'alternateGreetings/1', offset: 11, from: 'logo.png', to: 'kept.png' },
+            { op: 'textEdit', target: 'desc', offset: 11, from: 'logo.png', to: 'kept.png' },
         ], 5000)
         s.addGreeting('z', 10000)
         // An outside append puts the list on neither side of the add, and leaves the merge's greeting text where it was.
@@ -4778,8 +4855,8 @@ describe('replay past a step already in place: further rows', () => {
         const plan = planOf(s.revertTo(anchor, 20000))
         expect(plan.listSkipped).toBe(2)
         expect(plan.writes.some((write) => write.op === 'listSet' || write.op === 'textSet')).toBe(false)
-        expect(live.obj.alternateGreetings).toEqual(['g0', 'x kept.png', 'z', 'o'])
-        expect(live.obj.desc).toBe('d logo.png')
+        expect(live.obj.alternateGreetings).toEqual(['g0', 'x {{image::kept.png}}', 'z', 'o'])
+        expect(live.obj.desc).toBe('d {{image::logo.png}}')
     })
 
     test('a typed desc step older than the merge applies on the text the merge undo left', () => {
@@ -4787,38 +4864,38 @@ describe('replay past a step already in place: further rows', () => {
         const s = new Session(live)
         s.editField('hideChatIcon', present(true), 0)
         const anchor = s.record.done[0].id
-        s.typeDesc('d logo.png', 5000)
-        commitOps(s, ASSET_LABELS[3], [{ op: 'textEdit', target: 'desc', offset: 2, from: 'logo.png', to: 'kept.png' }], 10000)
+        s.typeDesc('d {{image::logo.png}}', 5000)
+        commitOps(s, ASSET_LABELS[3], [{ op: 'textEdit', target: 'desc', offset: 11, from: 'logo.png', to: 'kept.png' }], 10000)
         const plan = planOf(s.revertTo(anchor, 20000))
         expect(live.obj.desc).toBe('start')
         expect(plan.ops.filter((op) => op.op === 'set' && op.path === 'desc')).toEqual([
-            { op: 'set', path: 'desc', before: present('d kept.png'), after: present('start') },
+            { op: 'set', path: 'desc', before: present('d {{image::kept.png}}'), after: present('start') },
         ])
         expect(plan.skipped).toBe(0)
     })
 
     test('a full merge undo lets an older first-message delete apply; an outside edit of the rewritten text first refuses it and the stacks stay', () => {
         const world = () => {
-            const live = makeAssetLive({ desc: 'x logo.png', alternateGreetings: ['g0', 'x logo.png'], chats: { chatA: { fmIndex: 1 } } })
+            const live = makeAssetLive({ desc: 'x {{image::logo.png}}', alternateGreetings: ['g0', 'x {{image::logo.png}}'], chats: { chatA: { fmIndex: 1 } } })
             const s = new Session(live)
             s.deleteGreeting(0, 0)
             commitOps(s, ASSET_LABELS[3], [
-                { op: 'textEdit', target: 'alternateGreetings/0', offset: 2, from: 'logo.png', to: 'kept.png' },
-                { op: 'textEdit', target: 'desc', offset: 2, from: 'logo.png', to: 'kept.png' },
+                { op: 'textEdit', target: 'alternateGreetings/0', offset: 11, from: 'logo.png', to: 'kept.png' },
+                { op: 'textEdit', target: 'desc', offset: 11, from: 'logo.png', to: 'kept.png' },
             ], 5000)
             return { live, s }
         }
         const a = world()
         expect(a.s.undo(10000).ok).toBe(true)
-        expect(a.live.obj.alternateGreetings).toEqual(['x logo.png'])
+        expect(a.live.obj.alternateGreetings).toEqual(['x {{image::logo.png}}'])
         expect(a.s.undo(15000).ok).toBe(true)
-        expect(a.live.obj.alternateGreetings).toEqual(['g0', 'x logo.png'])
+        expect(a.live.obj.alternateGreetings).toEqual(['g0', 'x {{image::logo.png}}'])
         const b = world()
         b.live.obj.alternateGreetings[0] = 'x outside'
         const merge = planOf(b.s.undo(10000))
         expect(merge.skipped).toBe(1)
         const record = b.s.record
-        expect(b.s.undo(15000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(b.s.undo(15000)).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(b.s.record).toBe(record)
         expect(b.live.obj.alternateGreetings).toEqual(['x outside'])
     })

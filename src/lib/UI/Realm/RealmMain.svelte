@@ -4,6 +4,7 @@
     import { handleHubHtmlClick, sanitizeHubHtml } from "src/ts/hubHtml";
     import { ArrowLeft, ArrowRight, MenuIcon, SearchIcon, XIcon } from "@lucide/svelte";
     import { alertInput } from "src/ts/alert";
+    import { ALERT_INPUT_CANCEL } from "src/ts/alertCancel";
     import { language } from "src/lang";
     import RisuHubIcon from "./RealmHubIcon.svelte";
     import { RealmInitialOpenChar } from "src/ts/stores.svelte";
@@ -283,7 +284,10 @@
             <button class="w-full hover:bg-selected p-4" onclick={(async (e) => {
                 e.stopPropagation()
                 menuOpen = false
-                const input = await alertInput(language.alerts.realmInputUrlOrId)
+                const input = await alertInput(language.alerts.realmInputUrlOrId, undefined, undefined, { cancel: ALERT_INPUT_CANCEL })
+                if(input === ALERT_INPUT_CANCEL){
+                    return
+                }
                 if(input.startsWith("http")){
                     const url = new URL(input)
                     const id = url.searchParams.get("realm") ?? url.searchParams.get("code") ?? input.split("/").at(-1)

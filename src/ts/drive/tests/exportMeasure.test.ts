@@ -288,7 +288,7 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 //#endregion
 
 import { SaveLocalBackup, SavePartialLocalBackup, type BackupExportOptions } from 'src/ts/drive/backuplocal'
-import { setStubReadClockForTest } from 'src/ts/drive/exportInline'
+import { setStubReadClockForTest, takeStubReadStats } from 'src/ts/drive/exportInline'
 import { resetExportWriteStatsForTest, setExportWriteClockForTest } from 'src/ts/exportWriters'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
@@ -498,6 +498,7 @@ afterEach(() => {
 describe('SaveLocalBackup measurement notes', () => {
     test('new behaviour: the cold-collected note carries the stub read split, and the three write notes carry the exact calls the file system saw', async () => {
         await pageOf(GROWN)
+        ;(getDatabaseMock() as Database).modules = [{ id: 'm1', name: 'm1' }, { id: 'm2', name: 'm2' }] as unknown as Database['modules']
         localStorage.setItem(MEASURE_KEY, 'on')
         setExportWriteClockForTest(counting())
         setStubReadClockForTest(counting())
@@ -512,6 +513,12 @@ describe('SaveLocalBackup measurement notes', () => {
         expect(numberIn(collected, 'stubReadMs')).toBe(2)
         expect(numberIn(collected, 'stubEncodeMs')).toBe(2)
         expect(numberIn(collected, 'stubEncodeMsMax')).toBe(1)
+        // The untimed spans of the collect: each is one reading apart, and the loop contains the three timed parts of it.
+        expect(numberIn(collected, 'stubColdRootsMs')).toBe(2)
+        expect(numberIn(collected, 'stubLoopMs')).toBeGreaterThanOrEqual(numberIn(collected, 'stubReadMs') + numberIn(collected, 'stubEncodeMs') + numberIn(collected, 'stubColdRootsMs'))
+        expect(numberIn(collected, 'legacyCollectMs')).toBe(1)
+        expect(numberIn(collected, 'moduleSnapshotMs')).toBe(1)
+        expect(numberIn(collected, 'moduleSnapshotCount')).toBe(2)
         // The raw figure is the bodies the file carries; the grown characters repeat one message, so they pack far smaller.
         const rawWritten = unitBodyBytes(fileOfCalls())
         expect(rawWritten).toBeGreaterThan(5 * MIB)
@@ -559,6 +566,31 @@ describe('SaveLocalBackup measurement notes', () => {
         expect(numberIn(noteOf('export cold collected'), 'stubChars')).toBe(2)
     }, 120_000)
 
+    test('new behaviour: a partial export after a full export that failed past its snapshot carries no module figures', async () => {
+        await pageOf()
+        localStorage.setItem(MEASURE_KEY, 'on')
+        setStubReadClockForTest(counting())
+        const db = getDatabaseMock() as Database
+        db.modules = [{ id: 'm1', name: 'm1' }] as unknown as Database['modules']
+        // The full export fails in its collect, after its snapshot was recorded and before the note takes the figures.
+        const storage = db.pluginCustomStorage
+        let failures = 1
+        Object.defineProperty(db, 'pluginCustomStorage', {
+            configurable: true,
+            get: () => {
+                if (failures-- > 0) {
+                    throw new Error('the plugin storage read failed')
+                }
+                return storage
+            },
+        })
+        await expect(SaveLocalBackup(STUB)).resolves.not.toMatchObject({ status: 'saved' })
+        expect(failures).toBe(0)
+        expect((await SavePartialLocalBackup(STUB)).status).toBe('saved')
+
+        expect(takeStubReadStats()).toMatchObject({ moduleSnapshotMs: 0, moduleSnapshotCount: 0 })
+    }, 120_000)
+
     test('new behaviour: with the key off nothing is noted, and the export still saves', async () => {
         await pageOf()
 
@@ -585,6 +617,9 @@ describe('SaveLocalBackup measurement notes', () => {
         expect(numberIn(collected, 'stubReadMs')).toBe(0)
         expect(numberIn(collected, 'stubEncodeMs')).toBe(0)
         expect(numberIn(collected, 'stubEncodeMsMax')).toBe(0)
+        for (const name of ['stubColdRootsMs', 'stubLoopMs', 'legacyCollectMs', 'moduleSnapshotMs']) {
+            expect(numberIn(collected, name), name).toBe(0)
+        }
         expect(numberIn(noteOf('export closed'), 'writeCalls')).toBe(0)
     }, 120_000)
 

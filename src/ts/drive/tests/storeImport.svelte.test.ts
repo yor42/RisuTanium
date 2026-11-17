@@ -24,7 +24,10 @@ import { encodeUnit, REQ_MODULE_BUCKETS, UNIT_TYPE } from 'src/ts/storage/store2
 import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
 import { assembleDatabase } from 'src/ts/storage/store2/codec'
 import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
-import type { Committer, CommitResult } from 'src/ts/storage/store2/commit'
+import * as kitCommit from 'src/ts/storage/store2/commit'
+import type { CommitRequest, Committer, CommitResult, StreamedCommitRequest } from 'src/ts/storage/store2/commit'
+import type { Store2Read } from 'src/ts/storage/store2/backend/types'
+import { toPlainJson } from 'src/ts/storage/store2/codec/normalize'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { BACKUP_ENCRYPTION_MARKER_NAME, indexBackupEntries } from 'src/ts/drive/backupContainer'
@@ -34,6 +37,12 @@ import { breakDataChecksum } from 'src/ts/storage/tests/risuSaveBlockFile'
 vi.setConfig({ testTimeout: 60_000 })
 
 const platformBox = vi.hoisted(() => ({ isNodeServer: false }))
+
+type ImportStreamModule = typeof import('src/ts/storage/store2/legacy/importStream')
+type Arm = 'whole' | 'stream'
+
+/** The arm the running test is in, and what the streamed prepare decided in it (`onPrepared`, once per attempt that reached it). */
+const armBox = vi.hoisted(() => ({ arm: 'whole' as 'whole' | 'stream', verdicts: [] as string[] }))
 
 vi.mock(import('src/ts/platform'), () => ({
     isTauri: false,
@@ -74,6 +83,7 @@ beforeAll(() => {
 beforeEach(() => {
     vi.clearAllMocks()
     coldUnits.clear()
+    armBox.verdicts = []
     platformBox.isNodeServer = false
     h.broadcasts.length = 0
     h.channels.length = 0
@@ -102,6 +112,44 @@ beforeEach(() => {
         getColdStorageBackupKey: (await import('src/ts/process/coldstorageData')).getColdStorageBackupKey,
         readColdStorageItem: async (key: string) => coldUnits.has(key) ? { status: 'ok', value: coldUnits.get(key) } : { status: 'missing' },
         setColdStorageItem: setColdStorageItemMock,
+    }))
+    // The shared world mock of the database module has no `presetFromWorkingSettings`, which the botPresetsId repair of an
+    // import calls; the stand-in keeps the working prompt so the appended preset is recognisable.
+    vi.doMock('src/ts/storage/database.svelte', () => ({
+        getDatabase: vi.fn(() => h.db),
+        setDatabase: vi.fn(),
+        presetTemplate: { name: 'test-preset' },
+        defaultSdDataFunc: vi.fn(() => ({})),
+        appVer: 'test',
+        appSubVer: 'test',
+        getCurrentCharacter: vi.fn(),
+        presetFromWorkingSettings: (db: Entry, name: string) => ({ name, mainPrompt: db.mainPrompt }),
+    }))
+    // The arm seam: production never passes `minUnits`, so the streamed prepare is steered here, through the module the
+    // page's import loads. The whole arm never reaches the threshold; the stream arm always does.
+    vi.doMock('src/ts/storage/store2/legacy/importStream', async () => {
+        const actual = await vi.importActual<ImportStreamModule>('src/ts/storage/store2/legacy/importStream')
+        return {
+            ...actual,
+            prepareImportStream: (request: Parameters<ImportStreamModule['prepareImportStream']>[0], hooks: Parameters<ImportStreamModule['prepareImportStream']>[1]) => actual.prepareImportStream({
+                ...request,
+                stream: {
+                    ...request.stream,
+                    minUnits: armBox.arm === 'stream' ? 0 : Number.POSITIVE_INFINITY,
+                    onPrepared: (verdict) => {
+                        armBox.verdicts.push(verdict)
+                        request.stream.onPrepared?.(verdict)
+                    },
+                },
+            }, hooks),
+        }
+    })
+    // The committer of the page is built by the kit in this file's module graph, the import code runs in the world's: a
+    // streamed commit always runs under a bulk marker and fails with the kit's `Store2BulkAbortError`, which the import
+    // must recognise by class as it does in the one graph of the app.
+    vi.doMock('src/ts/storage/store2/commit', async () => ({
+        ...await vi.importActual<typeof import('src/ts/storage/store2/commit')>('src/ts/storage/store2/commit'),
+        Store2BulkAbortError: kitCommit.Store2BulkAbortError,
     }))
     vi.spyOn(console, 'log').mockImplementation(() => { })
     vi.spyOn(console, 'warn').mockImplementation(() => { })
@@ -270,7 +318,7 @@ async function loadBin(page: Page, bytes: Uint8Array): Promise<void> {
     } finally {
         spy.mockRestore()
     }
-    void page
+    await observeArm(page)
 }
 
 async function databaseOf(page: Page, manifestKey: string): Promise<Database> {
@@ -286,7 +334,71 @@ const namesOf = (db: Database): string[] => (db.characters as unknown as { name:
 /** The store operations that wrote or deleted anything. */
 const mutations = (page: Page) => page.w.store.mutating()
 
-describe('the .bin import of a store2 page', () => {
+// ---- the whole and the stream arm ----
+
+/** What one import showed: the fields the two arms must give alike. The commit mode and the commit key's seq and epoch are left out. */
+interface ArmView {
+    confirms: string[]
+    errors: string[]
+    waits: string[]
+    reloads: number
+    /** The committed current tree as plain JSON with each uuid replaced by its order of first appearance; null when it cannot be read. */
+    tree: string | null
+}
+
+interface ArmRecord {
+    view: ArmView
+    verdicts: string[]
+}
+
+/** By test name without the arm: the last import of the test in each arm. */
+const observed = new Map<string, Partial<Record<Arm, ArmRecord>>>()
+
+const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g
+
+function normalizeUuids(text: string): string {
+    const seen = new Map<string, string>()
+    return text.replace(UUID_PATTERN, (uuid) => {
+        if (!seen.has(uuid)) {
+            seen.set(uuid, `<uuid${seen.size}>`)
+        }
+        return seen.get(uuid) as string
+    })
+}
+
+/** Records what the import that just ended showed, under the running test's name, for the arm agreement test at the end of the file. */
+async function observeArm(page: Page): Promise<void> {
+    let tree: string | null = null
+    try {
+        const key = await currentKey(page)
+        if (key !== undefined) {
+            tree = normalizeUuids(JSON.stringify(toPlainJson(await databaseOf(page, key))))
+        }
+    } catch {
+        tree = null
+    }
+    const view: ArmView = {
+        confirms: confirmTexts(page),
+        errors: alertErrorTexts(page).map((text) => String(text)),
+        waits: [...vi.mocked(page.alert.alertWait).mock.calls, ...vi.mocked(page.alert.alertNormalWait).mock.calls].map((call) => String(call[0])),
+        reloads: page.reloads.count,
+        tree,
+    }
+    const name = (expect.getState().currentTestName ?? '').replace(/ \((whole|stream) arm\)/, '')
+    observed.set(name, { ...observed.get(name), [armBox.arm]: { view, verdicts: [...armBox.verdicts] } })
+}
+
+/** Runs `body` once per arm: the same tests with the streamed prepare held off (whole) and with it always taken when the file allows (stream). */
+function armed(name: string, body: () => void): void {
+    for (const arm of ['whole', 'stream'] as const) {
+        describe(`${name} (${arm} arm)`, () => {
+            beforeEach(() => { armBox.arm = arm })
+            body()
+        })
+    }
+}
+
+armed('the .bin import of a store2 page', () => {
     // Regression: on the base a store2 page copies the assets, fails every cold-storage write, and throws at the missing
     // block store, so nothing is installed.
     test.each(GOLDEN_WINDOWS)('regression: upstream-full.bin becomes current and the pre-import manifest is the newest retained one (windows: %s)', async (windowBytes) => {
@@ -364,7 +476,7 @@ describe('the .bin import of a store2 page', () => {
     })
 })
 
-describe('preconditions are checked before the first asset is written', () => {
+armed('preconditions are checked before the first asset is written', () => {
     test('another page\'s bulk marker refuses the import with nothing written', async () => {
         const page = await openPage()
         await commitEdit(page, 'second')
@@ -490,7 +602,7 @@ describe('preconditions are checked before the first asset is written', () => {
     })
 })
 
-describe('task presets over the .bin import of a store2 page', () => {
+armed('task presets over the .bin import of a store2 page', () => {
     // The page's `getDatabase` is the reactive `DBState.db` object, so the list read for the import is a `$state` proxy.
     const OWN = [{ id: 'own-0', name: 'From the file', instructions: 'x', model: 'm' }]
 
@@ -556,7 +668,7 @@ describe('task presets over the .bin import of a store2 page', () => {
     })
 })
 
-describe('fork-only chat keys over the .bin import of a store2 page', () => {
+armed('fork-only chat keys over the .bin import of a store2 page', () => {
     // Compatibility guard (passes before and after the export leave-out): an import changes nothing about these keys. A
     // `.bin` an earlier fork build wrote still carries them, and they come back with the chat.
     test('guard (G4): a fork .bin whose chat holds alt, a coverage pointer and an interrupted reply imports with all three kept', async () => {
@@ -579,7 +691,7 @@ describe('fork-only chat keys over the .bin import of a store2 page', () => {
     })
 })
 
-describe('the database is decoded and confirmed before the copy', () => {
+armed('the database is decoded and confirmed before the copy', () => {
     /** A block-format backup of three characters with its last block damaged: the intact blocks can be salvaged. */
     async function damagedBackup(page: Page): Promise<{ bytes: Uint8Array, lines: string[] }> {
         const source = makeDb('backup', ['alpha', 'beta', 'gamma'])
@@ -643,7 +755,7 @@ describe('the database is decoded and confirmed before the copy', () => {
     })
 })
 
-describe('busy work', () => {
+armed('busy work', () => {
     test('guard: work in progress refuses the import before anything is read or written', async () => {
         const page = await openPage()
         const handle = page.busy.beginBusy('export')
@@ -679,20 +791,43 @@ describe('busy work', () => {
     })
 })
 
-describe('the commit and its outcomes', () => {
-    /** The page's committer with `commit` replaced; the library calls it once per attempt. */
-    function committingWith(page: Page, commit: (real: Committer, read: Parameters<Committer['commit']>[0], request: Parameters<Committer['commit']>[1], call: number) => Promise<CommitResult>) {
-        const real = page.k.committer
-        const calls: number[] = []
-        page.useCommitter({
-            ...real,
-            commit: async (read, request) => {
-                calls.push(calls.length + 1)
-                return await commit(real, read, request, calls.length)
-            },
-        })
-        return calls
+/** The real committer as one entry point of it reaches it: `commit` delegates to the same entry point the double stands in for. */
+interface Delegate {
+    readCommit(): Promise<Store2Read>
+    commit(read: Store2Read, request: CommitRequest | StreamedCommitRequest): Promise<CommitResult>
+}
+
+/**
+ * The page's committer with both commit entry points replaced by one double, so the scenario reaches the same outcome
+ * whichever path the import takes (the whole commit, or the streamed commit of a file over the bulk threshold); the
+ * library calls one of them once per attempt. The `real` it hands the double delegates to the entry point being doubled.
+ */
+function committingWith(page: Page, commit: (real: Delegate, read: Store2Read, request: CommitRequest | StreamedCommitRequest, call: number) => Promise<CommitResult>) {
+    const real = page.k.committer
+    const calls: number[] = []
+    const wholeDelegate: Delegate = {
+        readCommit: () => real.readCommit(),
+        commit: (read, request) => real.commit(read, request as CommitRequest),
     }
+    const streamedDelegate: Delegate = {
+        readCommit: () => real.readCommit(),
+        commit: (read, request) => real.commitStreamed!(read, request as StreamedCommitRequest),
+    }
+    page.useCommitter({
+        ...real,
+        commit: async (read, request) => {
+            calls.push(calls.length + 1)
+            return await commit(wholeDelegate, read, request, calls.length)
+        },
+        commitStreamed: async (read, request) => {
+            calls.push(calls.length + 1)
+            return await commit(streamedDelegate, read, request, calls.length)
+        },
+    })
+    return calls
+}
+
+armed('the commit and its outcomes', () => {
 
     test('an unknown outcome is not claimed as nothing imported: told to reload, no reload made, the write lock stays closed', async () => {
         const page = await openPage()
@@ -712,8 +847,7 @@ describe('the commit and its outcomes', () => {
     test('a conflict is answered by one rebuild and a fresh read, which lands', async () => {
         const page = await openPage()
         const reads: number[] = []
-        const real = page.k.committer
-        const calls = committingWith(page, async (_real, read, request, call) => {
+        const calls = committingWith(page, async (real, read, request, call) => {
             if (call === 1) {
                 return { status: 'conflict', current: read }
             }
@@ -739,8 +873,7 @@ describe('the commit and its outcomes', () => {
             binEntry('database.risudat', await blockFileBytes(page, source)),
             binEntry(`coldstorage_${pointer}.json`, new TextEncoder().encode(JSON.stringify(index))),
         )
-        const real = page.k.committer
-        const calls = committingWith(page, async (_real, read, request, call) => {
+        const calls = committingWith(page, async (real, read, request, call) => {
             if (call === 1) {
                 return { status: 'conflict', current: read }
             }
@@ -802,7 +935,7 @@ describe('the commit and its outcomes', () => {
     })
 })
 
-describe('the write lock is taken before the commit key is read (no Web Locks)', () => {
+armed('the write lock is taken before the commit key is read (no Web Locks)', () => {
     // New behaviour, pinned by mutants: on a page that took no tab hold, the write lock comes before the fresh commit-key
     // read, the unsaved-edits check and the build, so the loop cannot commit between the read and the commit.
     test('while another holder has the write lock the import has read the commit key no more than before the copy', async () => {
@@ -827,7 +960,7 @@ describe('the write lock is taken before the commit key is read (no Web Locks)',
     })
 })
 
-describe('a bulk marker this page load left behind', () => {
+armed('a bulk marker this page load left behind', () => {
     /** More characters than one ordinary commit can carry, so the import is a bulk commit. */
     async function bulkBackup(page: Page): Promise<Uint8Array> {
         const names = Array.from({ length: 70 }, (_, index) => `bulk-${index}`)
@@ -896,7 +1029,7 @@ describe('unit: hasDatabaseEntry answers presence only', () => {
     })
 })
 
-describe('Gate 2 pins', () => {
+armed('Gate 2 pins', () => {
     // New behaviour, pinned by mutants: only this page load's own marker is cleared. A foreign marker that appears after
     // the up-front check (so the clear path really runs) is refused and left standing, after a single commit attempt.
     test('a foreign marker that appears after the up-front check is refused and never cleared', async () => {
@@ -905,21 +1038,15 @@ describe('Gate 2 pins', () => {
         const names = Array.from({ length: 70 }, (_, index) => `bulk-${index}`)
         const bytes = binOf(binEntry('golden-avatar.png', AVATAR), binEntry('database.risudat', await blockFileBytes(page, makeDb('bulk', names))))
         const foreign = 'q'.repeat(26)
-        const real = page.k.committer
-        let calls = 0
-        page.useCommitter({
-            ...real,
-            commit: async (_read, request) => {
-                calls++
-                if (calls === 1) {
-                    const parsed = classifyCommitRead(await page.k.counted.backend.readCommit())
-                    if (parsed.status !== 'parsed') {
-                        throw new Error('the commit key did not parse')
-                    }
-                    page.k.memory.poke(COMMIT_KEY, encodeUnit(UNIT_TYPE.commit, { ...parsed.value, staging: { owner: foreign, prefix: 'store2/g-0000000000000000-', startedAt: 5, label: 'bulk' } }))
+        const calls = committingWith(page, async (real, _read, request, call) => {
+            if (call === 1) {
+                const parsed = classifyCommitRead(await page.k.counted.backend.readCommit())
+                if (parsed.status !== 'parsed') {
+                    throw new Error('the commit key did not parse')
                 }
-                return await real.commit(await real.readCommit(), request)
-            },
+                page.k.memory.poke(COMMIT_KEY, encodeUnit(UNIT_TYPE.commit, { ...parsed.value, staging: { owner: foreign, prefix: 'store2/g-0000000000000000-', startedAt: 5, label: 'bulk' } }))
+            }
+            return await real.commit(await real.readCommit(), request)
         })
 
         await loadBin(page, bytes)
@@ -928,7 +1055,7 @@ describe('Gate 2 pins', () => {
         expect(alertErrorTexts(page)).toContain(language.store2RestoreBulkMarker)
         expect(key.current?.key).toBe(before)
         expect(key.staging?.owner).toBe(foreign)
-        expect(calls).toBe(1)
+        expect(calls).toHaveLength(1)
         expect(page.reloads.count).toBe(0)
         expect(await writeLockIsFree(page)).toBe(true)
     })
@@ -980,7 +1107,7 @@ async function splitBin(bytes: Uint8Array): Promise<{ name: string, bytes: Uint8
 // the import must carry the same content whatever the order. The character names, every chat message text (the cold-backed
 // chats included) and the plugin value must equal the golden's. Each case is also run at windows so small that entries
 // straddle edges.
-describe.each([undefined, 16] as const)('the order of the entries does not change what a store2 import carries (windows: %s)', (windowBytes) => {
+for (const windowBytes of [undefined, 16] as const) armed(`the order of the entries does not change what a store2 import carries (windows: ${windowBytes})`, () => {
     /** Imports `entries` and returns what landed, after the import has finished cleanly. */
     async function landed(entries: Uint8Array[]): Promise<{ page: Page, database: Database }> {
         const page = await openPage()
@@ -1053,7 +1180,7 @@ describe.each([undefined, 16] as const)('the order of the entries does not chang
     })
 })
 
-describe('a first-run restore completes first setup in the committed tree (store2 path)', () => {
+armed('a first-run restore completes first setup in the committed tree (store2 path)', () => {
     async function flaggedBin(page: Page, flag: boolean | undefined): Promise<Uint8Array> {
         const source = makeDb('backup', ['alpha'])
         if (flag !== undefined) {
@@ -1085,7 +1212,7 @@ describe('a first-run restore completes first setup in the committed tree (store
         } finally {
             spy.mockRestore()
         }
-        void page
+        await observeArm(page)
     }
 
     test.each([false, undefined] as const)('regression reproducer: a file whose flag is %s commits true when restored with the option', async (flag) => {
@@ -1109,23 +1236,56 @@ describe('a first-run restore completes first setup in the committed tree (store
 
     test('a conflict on the first attempt still commits the mark on the second', async () => {
         const page = await openPage()
-        const real = page.k.committer
-        let calls = 0
-        page.useCommitter({
-            ...real,
-            commit: async (read, request) => {
-                calls++
-                if (calls === 1) {
-                    return { status: 'conflict', current: read }
-                }
-                return await real.commit(await real.readCommit(), request)
-            },
+        const calls = committingWith(page, async (real, read, request, call) => {
+            if (call === 1) {
+                return { status: 'conflict', current: read }
+            }
+            return await real.commit(await real.readCommit(), request)
         })
 
         await loadBinAtFirstRun(page, await flaggedBin(page, false))
 
-        expect(calls).toBe(2)
+        expect(calls).toHaveLength(2)
         expect(page.reloads.count).toBe(1)
         expect((await databaseOf(page, await currentKey(page) as string)).didFirstSetup).toBe(true)
+    })
+})
+
+armed('a database whose botPresetsId names no preset', () => {
+    // Both prepares repair the root through the one shared step, so the working settings come back as an appended preset
+    // and the id points at it, whichever path read the file.
+    test('the working settings are appended as a preset and the id points at it', async () => {
+        const page = await openPage()
+        const source = makeDb('backup', ['alpha'])
+        source.botPresetsId = 9
+        const presetsInFile = (source.botPresets as unknown[]).length
+
+        // The entry is upstream's legacy msgpack, as the real producer writes it; the block encoder would not keep the dangling id.
+        await loadBin(page, binOf(binEntry('golden-avatar.png', AVATAR), binEntry('database.risudat', await page.w.risuSave.encodeRisuSaveLegacy(source, 'compression'))))
+
+        const stored = await databaseOf(page, await currentKey(page) as string)
+        expect(stored.botPresets).toHaveLength(presetsInFile + 1)
+        expect(stored.botPresetsId).toBe(presetsInFile)
+        expect((stored.botPresets[presetsInFile] as { name: string }).name).toBe('New Preset')
+        expect(alertErrorTexts(page)).toEqual([])
+        expect(page.reloads.count).toBe(1)
+    })
+})
+
+// The arm tests above ran first (one file, tests in order): what each import showed in the two arms must be equal.
+describe('the whole arm and the stream arm agree', () => {
+    test('every import showed the same confirmations, error texts, waits, reload count and read-back tree in both arms', () => {
+        const compared: string[] = []
+        for (const [name, arms] of observed) {
+            if (arms.whole === undefined || arms.stream === undefined) {
+                continue
+            }
+            compared.push(name)
+            expect(arms.whole.verdicts.filter((verdict) => verdict === 'stream'), `${name}: the whole arm streamed`).toEqual([])
+            expect(arms.stream.verdicts.filter((verdict) => verdict === 'whole'), `${name}: the stream arm fell back to the whole path`).toEqual([])
+            expect(arms.stream.view, name).toEqual(arms.whole.view)
+        }
+        expect(compared.length).toBeGreaterThan(0)
+        expect([...observed.values()].some((arms) => arms.stream?.verdicts.includes('stream')), 'no import took the streamed path').toBe(true)
     })
 })

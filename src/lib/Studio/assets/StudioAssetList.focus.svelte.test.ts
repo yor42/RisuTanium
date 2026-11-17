@@ -51,7 +51,7 @@ vi.mock('src/lang', async () => {
     const base = helpers.studioLanguageMock()
     const call = (key: string) => (...args: (string | number)[]) => `${key}(${args.join(',')})`
     const table: Record<string, unknown> = { sidebarUi: { noAssets: 'noAssets' } }
-    for (const key of ['studioAssetEmotionsElsewhere', 'studioAssetRowMenu', 'studioAssetDeletedOne', 'studioStepAssetDeleteOne', 'studioStepAssetRename', 'studioAssetFileGone', 'studioAssetFileUnchecked']) table[key] = call(key)
+    for (const key of ['studioAssetEmotionsElsewhere', 'studioAssetRowMenu', 'studioAssetDeletedOne', 'studioStepAssetDeleteOne', 'studioStepAssetRename', 'studioStepAssetMerge', 'studioStepAssetAdd', 'studioAssetFileGone', 'studioAssetFileUnchecked']) table[key] = call(key)
     return { language: new Proxy(table, { get: (target, key) => (typeof key === 'symbol' ? undefined : key in target ? target[key] : base[key]) }) }
 })
 
@@ -405,6 +405,7 @@ describe('focus after an undo or redo of an asset step', () => {
     test('the History panel\'s Undo of a merge that rewrote the description focuses the description, as for any text change', async () => {
         // Two rows over one file: the merge removes the copy and rewrites the description.
         install([assetRow('smile', 'assets/smile.png'), assetRow('smile2', 'assets/smile.png')])
+        db.db.characters[0].desc = '{{image::d0}}'
         await service.whenReady(A)
         await showScreen({ panel: true, target: { owner: { type: 'character', id: 'A' }, kind: 'basic', item: 'A/basic:0', from: 'chat' } })
         const merge = service.assetMerge(A, {
@@ -417,7 +418,7 @@ describe('focus after an undo or redo of an asset step', () => {
             keptRows: [['smile', 'assets/smile.png', 'png']],
             missingRows: [],
             folderOps: [],
-            textEdits: [{ target: 'desc', offset: 0, from: 'd0', to: 'smile' }],
+            textEdits: [{ target: 'desc', offset: 9, from: 'd0', to: 'smile' }],
             preWrite: [],
             alreadyShows: [],
             notRewritten: [],
@@ -430,10 +431,10 @@ describe('focus after an undo or redo of an asset step', () => {
         }, { hashOf: () => undefined })
         expect(merge.ok).toBe(true)
         await settle()
-        expect(db.db.characters[0].desc).toBe('smile')
+        expect(db.db.characters[0].desc).toBe('{{image::smile}}')
         part('studio-history-undo')!.focus()
         await press('studio-history-undo')
-        expect(db.db.characters[0].desc).toBe('d0')
+        expect(db.db.characters[0].desc).toBe('{{image::d0}}')
         expect(rowNames()).toEqual(['smile', 'smile2'])
         expect(document.activeElement).toBe(part('studio-form-desc'))
     })

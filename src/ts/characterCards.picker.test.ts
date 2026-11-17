@@ -234,12 +234,13 @@ vi.mock('@tauri-apps/plugin-deep-link', () => ({
 
 //#endregion
 
-import { importCharacter, importCharacterProcess, importOpenedFiles, importOpenedSources, isOpenedSourceImportable } from 'src/ts/characterCards'
+import { importCharacter, importCharacterProcess, importOpenedFiles, importOpenedSources, isOpenedSourceImportable, OPENED_JSON_LIMIT_BYTES } from 'src/ts/characterCards'
 import { alertError } from 'src/ts/alert'
 import { importPreset } from 'src/ts/storage/database.svelte'
 import { open } from '@tauri-apps/plugin-fs'
 import { charxLimits } from 'src/ts/process/processzip'
 import { language } from 'src/lang'
+import { fflateZipArchive } from 'src/ts/process/tests/zipFixtures'
 
 // ---------------------------------------------------------------------------------------------
 // Synthetic files (no real images, no user data)
@@ -277,12 +278,14 @@ function pngChunk(type: string, body: Uint8Array): Uint8Array {
     return out
 }
 
+const v2Json = (name: string) => JSON.stringify({
+    spec: 'chara_card_v2',
+    spec_version: '2.0',
+    data: { name, description: 'd', personality: '', scenario: '', first_mes: 'hi', mes_example: '', creator_notes: '', system_prompt: '', post_history_instructions: '', alternate_greetings: [], tags: [], creator: '', character_version: '1', extensions: { risuai: {} } },
+})
+
 function pngBytes(name: string): Uint8Array {
-    const card = JSON.stringify({
-        spec: 'chara_card_v2',
-        spec_version: '2.0',
-        data: { name, description: 'd', personality: '', scenario: '', first_mes: 'hi', mes_example: '', creator_notes: '', system_prompt: '', post_history_instructions: '', alternate_greetings: [], tags: [], creator: '', character_version: '1', extensions: { risuai: {} } },
-    })
+    const card = v2Json(name)
     const parts = [
         new U8([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
         pngChunk('IHDR', new U8(13).fill(1)),
@@ -300,6 +303,35 @@ const png = (name: string) => new File([new U8(pngBytes(name))], `${name}.png`, 
 /** A card image cut inside its card chunk. */
 const cutPng = (name: string) => new File([new U8(pngBytes(name).subarray(0, 33 + 20))], `${name}.png`, { type: 'image/png' })
 const textFile = (name: string) => new File([new U8([1, 2, 3])], name, { type: 'text/plain' })
+
+const concatBytes = (parts: Uint8Array[]): Uint8Array => {
+    const out = new U8(parts.reduce((n, p) => n + p.length, 0))
+    let at = 0
+    for (const p of parts) { out.set(p, at); at += p.length }
+    return out
+}
+/** A complete PNG with no card chunk: signature, IHDR, IDAT and IEND. */
+const pngPhoto = (): Uint8Array => concatBytes([
+    new U8([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk('IHDR', new U8(13).fill(1)),
+    pngChunk('IDAT', new U8(20).fill(2)),
+    pngChunk('IEND', new U8(0)),
+])
+/** A JPEG image with no archive behind it. */
+const JPEG_HEAD = concatBytes([new U8([0xff, 0xd8, 0xff, 0xe0]), new U8(600).fill(0x11), new U8([0xff, 0xd9])])
+/** A card archive written behind a JPEG image, the way a jpg-charx is. */
+const jpgCharx = (name: string): Uint8Array => fflateZipArchive([['card.json', enc.encode(v3Json(name))]], { prefix: JPEG_HEAD })
+/** The largest JSON an opened or shared source may be before it is read. */
+const JSON_CAP = 64 * 1024 * 1024
+const bigZeros = (size: number): Uint8Array => new U8(size)
+/** A v2 card padded with trailing spaces to exactly `size` bytes. */
+const paddedV2 = (name: string, size: number): Uint8Array => {
+    const card = enc.encode(v2Json(name))
+    const out = new U8(size).fill(0x20)
+    out.set(card, 0)
+    return out
+}
+const putFile = (path: string, bytes: Uint8Array) => { h.files.set(path, bytes) }
 
 const names = () => h.characters.map((c) => (c as { name?: string }).name)
 
@@ -468,9 +500,15 @@ describe('importCharacterProcess outcomes', () => {
         expect(h.last).toBe('error:' + language.errors.noData)
     })
 
-    test('a json file that is not a card is refused with noData', async () => {
+    test('a json file that is not a card is refused as not a card file', async () => {
         await importCharacterProcess({ name: 'other.json', data: enc.encode('{"a":1}') })
-        expect(h.last).toBe('error:' + language.errors.noData)
+        expect(h.last).toBe('error:' + language.importNotCardFile)
+    })
+
+    test('a complete image with no card data is refused as not a card file on the picker route too', async () => {
+        await importCharacterProcess({ name: 'photo.png', data: pngPhoto() })
+        expect(h.last).toBe('error:' + language.importNotCardFile)
+        expect(h.characters).toEqual([])
     })
 
     test('a file of another type is refused as not a card file', async () => {
@@ -549,6 +587,16 @@ describe('importOpenedFiles', () => {
 // ---------------------------------------------------------------------------------------------
 // A module the operating system hands to the desktop app: read in pieces through one shared handle
 // ---------------------------------------------------------------------------------------------
+
+describe('importOpenedFiles with a JSON card', () => {
+    test('a JSON over the cap is refused as not a card file before any of it is read, and its handle is closed', async () => {
+        putFile('/x/big.json', bigZeros(JSON_CAP + 1))
+        await importOpenedFiles(['/x/big.json'])
+        expect(h.last).toBe('error:' + language.importNotCardFile)
+        expect(h.bytesRead).toBe(0)
+        expect(h.openHandles).toBe(0)
+    })
+})
 
 describe('importOpenedFiles with a .risum module', () => {
     const KIB = 1024
@@ -714,15 +762,105 @@ describe('importOpenedSources', () => {
         expect(vi.mocked(importPreset)).toHaveBeenCalledTimes(1)
     })
 
-    test('names outside the allow-list are refused with the unsupported-file reason and never opened', async () => {
-        for (const name of ['notes.png', 'card.json', 'backup.bin', 'noextension', '', 'photo.jpg', 'x.charx.zip', 'a.byaf', 'A.BYAF']) {
+    // Guard: passes before and after; the widened allow-list does not reach these.
+    test('names and types outside the allow-list are refused with the unsupported-file reason and never opened', async () => {
+        const entries: Array<[string, string]> = [
+            ['backup.bin', ''], ['noextension', ''], ['', ''], ['x.charx.zip', ''], ['a.byaf', ''], ['A.BYAF', ''], ['notes.txt', ''], ['IMG.webp', ''],
+            ['noextension', 'application/octet-stream'], ['a.byaf', 'image/png'], ['IMG.webp', 'image/webp'],
+        ]
+        for (const [name, type] of entries) {
             vi.mocked(open).mockClear()
             h.last = 'none'
-            await importOpenedSources([{ name, path: 'content://p/9' }])
-            expect(h.last).toBe('error:' + language.importFilesNotImported(1, 1, name + ': ' + language.importUnsupportedFile))
+            await importOpenedSources([{ name, path: 'content://p/9', type }])
+            expect(h.last, `${name} (${type})`).toBe('error:' + language.importFilesNotImported(1, 1, name + ': ' + language.importUnsupportedFile))
             expect(vi.mocked(open)).not.toHaveBeenCalled()
         }
         expect(names()).toEqual([])
+    })
+
+    test('a PNG card imports from an opened source and its handle is closed', async () => {
+        putFile('content://p/1', pngBytes('Pic'))
+        await importOpenedSources([{ name: 'Card.png', path: 'content://p/1' }])
+        expect(names()).toEqual(['Pic'])
+        expect(h.openHandles).toBe(0)
+    })
+
+    test('a jpg-charx imports under .jpg and .jpeg in any case', async () => {
+        putFile('content://p/1', jpgCharx('Jpg'))
+        putFile('content://p/2', jpgCharx('Jpeg'))
+        await importOpenedSources([
+            { name: 'Card.jpg', path: 'content://p/1' },
+            { name: 'Card2.JPEG', path: 'content://p/2' },
+        ])
+        expect(names()).toEqual(['Jpg', 'Jpeg'])
+    })
+
+    test('a JSON card imports from an opened source', async () => {
+        putFile('content://p/1', enc.encode(v2Json('Json')))
+        await importOpenedSources([{ name: 'Card.json', path: 'content://p/1' }])
+        expect(names()).toEqual(['Json'])
+    })
+
+    test('an entry with no usable suffix is classified by its type, whatever the type parameters or case', async () => {
+        putFile('content://p/1', pngBytes('ByPng'))
+        putFile('content://p/2', enc.encode(v2Json('ByJson')))
+        putFile('content://p/3', jpgCharx('ByJpeg'))
+        await importOpenedSources([
+            { name: 'download', path: 'content://p/1', type: 'image/png' },
+            { name: 'x', path: 'content://p/2', type: 'application/json; charset=utf-8' },
+            { name: 'y', path: 'content://p/3', type: 'IMAGE/JPEG' },
+        ])
+        expect(names()).toEqual(['ByPng', 'ByJson', 'ByJpeg'])
+    })
+
+    test.each([
+        ['a PNG with no card chunk', 'photo.png', () => pngPhoto()],
+        ['a JPEG image named .png', 'photo.png', () => JPEG_HEAD],
+        ['a JPEG photo', 'IMG_1.jpg', () => JPEG_HEAD],
+        ['a JSON file with no card in it', 'data.json', () => enc.encode('{"a":1}')],
+        ['malformed JSON', 'broken.json', () => enc.encode('{ not json')],
+    ])('%s is refused as not a card file on its own and nothing is saved', async (_label, name, bytes) => {
+        putFile('content://p/1', bytes())
+        await importOpenedSources([{ name, path: 'content://p/1' }])
+        expect(h.last).toBe('error:' + language.importNotCardFile)
+        expect(h.saves).toEqual([])
+        expect(names()).toEqual([])
+        expect(h.openHandles).toBe(0)
+    })
+
+    test('a JSON over the cap is refused as not a card file before any of it is read, and its handle is closed', async () => {
+        putFile('content://p/1', bigZeros(JSON_CAP + 1))
+        await importOpenedSources([{ name: 'big.json', path: 'content://p/1' }])
+        expect(h.last).toBe('error:' + language.importNotCardFile)
+        expect(h.bytesRead).toBe(0)
+        expect(h.openHandles).toBe(0)
+    })
+
+    test('a JSON of exactly the cap is read and imports', async () => {
+        putFile('content://p/1', paddedV2('Exact', JSON_CAP))
+        await importOpenedSources([{ name: 'exact.json', path: 'content://p/1' }])
+        expect(names()).toEqual(['Exact'])
+    })
+
+    // Guard: the base lacks the export, so this cannot be a reproducer.
+    test('the cap is 64 MiB and applies to JSON only', async () => {
+        expect(OPENED_JSON_LIMIT_BYTES).toBe(JSON_CAP)
+        putFile('content://p/1', bigZeros(JSON_CAP + 1))
+        await importOpenedSources([{ name: 'big.risum', path: 'content://p/1' }])
+        expect(h.last).not.toBe('error:' + language.importNotCardFile)
+    })
+
+    test('a batch with a photo imports the cards and the summary names the photo', async () => {
+        putFile('content://p/1', pngBytes('Card'))
+        putFile('content://p/2', JPEG_HEAD)
+        putFile('content://p/3', new U8(await charx('Card2').arrayBuffer()))
+        await importOpenedSources([
+            { name: 'Card.png', path: 'content://p/1' },
+            { name: 'photo.jpg', path: 'content://p/2' },
+            { name: 'Card2.charx', path: 'content://p/3' },
+        ])
+        expect(names()).toEqual(['Card', 'Card2'])
+        expect(h.last).toBe('error:' + language.importFilesNotImported(1, 3, 'photo.jpg: ' + language.importNotCardFile))
     })
 
     test('a refused .bin in a batch does not stop the allowed files', async () => {
@@ -738,15 +876,28 @@ describe('importOpenedSources', () => {
     })
 
     // Guard: the drain routing asks this predicate, and the import must agree with it for every name.
-    test('isOpenedSourceImportable is true exactly for the names the import does not refuse', async () => {
-        for (const name of ['a.charx', 'A.CHARX', 'b.risum', 'c.risup', 'd.risupreset', 'e.preset', 'notes.png', 'backup.bin', 'x.charx.zip', 'a.byaf', 'A.BYAF', 'noextension', '']) {
+    test('isOpenedSourceImportable is true exactly for the (name, type) pairs the import does not refuse as unsupported', async () => {
+        const pairs: Array<[string, string]> = [
+            ['a.charx', ''], ['A.CHARX', ''], ['b.risum', ''], ['c.risup', ''], ['d.risupreset', ''], ['e.preset', ''],
+            ['notes.png', ''], ['card.json', ''], ['photo.JPG', ''], ['photo.jpeg', ''],
+            ['backup.bin', ''], ['x.charx.zip', ''], ['a.byaf', ''], ['A.BYAF', ''], ['noextension', ''], ['', ''], ['notes.txt', ''], ['IMG.webp', ''],
+            ['noextension', 'application/octet-stream'], ['a.byaf', 'image/png'], ['IMG.webp', 'image/webp'], ['x.yaml', 'application/json'],
+            ['x', 'image/png'], ['x', 'image/jpeg'], ['x', 'application/json'], ['x', 'text/plain'],
+            // A name with an unrecognised extension still falls back to the type.
+            ['IMG.webp', 'image/png'], ['backup.bin', 'image/png'], ['notes.txt', 'application/json'],
+        ]
+        for (const [name, type] of pairs) {
             vi.mocked(open).mockClear()
             h.files.set('content://p/9', new U8([1, 2, 3]))
             h.last = 'none'
-            await importOpenedSources([{ name, path: 'content://p/9' }])
+            await importOpenedSources([{ name, path: 'content://p/9', type }])
             const refused = h.last === 'error:' + language.importFilesNotImported(1, 1, name + ': ' + language.importUnsupportedFile)
-            expect(isOpenedSourceImportable(name)).toBe(!refused)
+            expect(isOpenedSourceImportable(name, type), `${name} (${type})`).toBe(!refused)
         }
+        expect(isOpenedSourceImportable('IMG.webp', 'image/png')).toBe(true)
+        expect(isOpenedSourceImportable('backup.bin', 'image/png')).toBe(true)
+        expect(isOpenedSourceImportable('notes.txt', 'application/json')).toBe(true)
+        expect(isOpenedSourceImportable('a.byaf', 'image/png')).toBe(false)
     })
 
     test('a URI that cannot be opened is reported for that file and never rejects', async () => {

@@ -72,6 +72,7 @@ interface LiveCharacter {
     license?: string
     desc: string
     hideChatIcon?: boolean
+    risutanium_render_when_complete?: boolean
     alternateGreetings: string[]
     chats: LiveChat[]
     chatPage: number
@@ -229,6 +230,7 @@ const parts = (name: string) => Array.from(document.querySelectorAll<HTMLElement
 const desc = () => part('studio-form-desc') as HTMLTextAreaElement
 const note = () => part('studio-form-note') as HTMLTextAreaElement
 const hideIcon = () => part('studio-form-hide-icon') as HTMLInputElement
+const renderBox = () => part('studio-form-render-when-complete') as HTMLInputElement
 const greetingInputs = () => parts('studio-greeting-input') as HTMLTextAreaElement[]
 
 function type(field: HTMLTextAreaElement, value: string): void {
@@ -313,6 +315,23 @@ describe('T-UI11 the form is read-only while the owner loads', () => {
         expect(live().desc).toBe('typed')
         await rig.clock.advance(SAVE_DEBOUNCE_MS)
         expect(rig.store.counts.save).toBe(0)
+    })
+
+    test('the render-when-complete checkbox is disabled while loading and writes nothing', async () => {
+        const rig = makeRig()
+        const gate = createGate()
+        rig.claim.hook = () => gate.promise
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        expect(renderBox().disabled).toBe(true)
+        expect(renderBox().getAttribute('aria-busy')).toBe('true')
+        renderBox().click()
+        flushSync()
+        expect('risutanium_render_when_complete' in live()).toBe(false)
+        expect(h.marks).toBe(0)
+        gate.release()
+        await settle()
+        expect(renderBox().disabled).toBe(false)
     })
 
     test('the chat note form is read-only and busy while loading too', async () => {
@@ -708,6 +727,48 @@ describe('the character form edits through the history service', () => {
         expect(live().hideChatIcon).toBe(false)
         expect(h.marks).toBe(2)
         expect(rig.service.view(A).done).toHaveLength(2)
+    })
+
+    test('the render-when-complete checkbox writes true, then false, through the service and leaves hideChatIcon alone', async () => {
+        const rig = makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        expect(renderBox()).not.toBeNull()
+        expect(renderBox().checked).toBe(false)
+        renderBox().click()
+        flushSync()
+        expect(live().risutanium_render_when_complete).toBe(true)
+        renderBox().click()
+        flushSync()
+        expect(live().risutanium_render_when_complete).toBe(false)
+        expect('hideChatIcon' in live()).toBe(false)
+        expect(h.marks).toBe(2)
+        expect(rig.service.view(A).done).toHaveLength(2)
+    })
+
+    test('the render-when-complete checkbox is described by its hint', async () => {
+        makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        const hint = part('studio-form-render-when-complete-hint')
+        expect(hint?.textContent).toBe('studioFormRenderWhenCompleteHint')
+        expect(hint?.id).toBeTruthy()
+        expect(renderBox().getAttribute('aria-describedby')).toBe(hint?.id)
+    })
+
+    test('undo of the render-when-complete toggle deletes the key it added, and redo sets it again', async () => {
+        const rig = makeRig()
+        mountInto(StudioCharacterForm, { chaId: 'A' })
+        await settle()
+        expect(rig.service.editField(A, 'risutanium_render_when_complete', true).ok).toBe(true)
+        expect(live().risutanium_render_when_complete).toBe(true)
+        rig.service.closeOpenStep(A)
+        expect(rig.service.undo(A).ok).toBe(true)
+        expect('risutanium_render_when_complete' in live()).toBe(false)
+        expect(rig.service.redo(A).ok).toBe(true)
+        expect(live().risutanium_render_when_complete).toBe(true)
+        flushSync()
+        expect(renderBox().checked).toBe(true)
     })
 
     test('the field follows the live value when the service changes it (undo)', async () => {

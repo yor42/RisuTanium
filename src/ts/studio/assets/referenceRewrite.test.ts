@@ -182,6 +182,32 @@ describe('flagged places are listed and never rewritten', () => {
         expect(plan({ desc: '{{image::smile}}' }, 'asset', 'smile', 'x}y').edits).toHaveLength(1)
     })
 
+    test('a kept name with a blank at either end is listed for @@emo, whose name the engine trims, and written in the other syntaxes', () => {
+        for (const kept of ['smile ', ' smile', ' smile ']) {
+            const inOut = plan({ customscript: [{ out: '@@emo grin' }] }, 'emotion', 'grin', kept)
+            expect(inOut.edits, JSON.stringify(kept)).toEqual([])
+            expect(inOut.notRewritten.map((hit) => [hit.path, hit.syntax, hit.reason]), JSON.stringify(kept)).toEqual([['regex/0/out', 'emoScript', 'unsafeKeptName']])
+            expect(plan({ desc: '{{emotion::grin}}' }, 'emotion', 'grin', kept).edits, JSON.stringify(kept)).toHaveLength(1)
+            expect(plan({ customscript: [{ out: '{{asset_prompt::grin}}' }] }, 'asset', 'grin', kept).edits, JSON.stringify(kept)).toHaveLength(1)
+        }
+        expect(plan({ customscript: [{ out: '@@emo grin' }] }, 'emotion', 'grin', 'sm ile').edits).toHaveLength(1)
+    })
+
+    test('an empty kept name is listed in every reference form and never written, because no pattern reads an empty name', () => {
+        const cases: Array<[CharacterTargetFields, 'asset' | 'emotion', string]> = [
+            [{ desc: '{{image::smile}}' }, 'asset', 'desc'],
+            [{ desc: '{{asset_prompt::smile}}' }, 'asset', 'desc'],
+            [{ desc: '<img src="smile">' }, 'asset', 'desc'],
+            [{ desc: '{{emotion::smile}}' }, 'emotion', 'desc'],
+            [{ customscript: [{ out: '@@emo smile' }] }, 'emotion', 'regex/0/out'],
+        ]
+        for (const [fields, kind, path] of cases) {
+            const result = plan(fields, kind, 'smile', '')
+            expect(result.edits, path + JSON.stringify(fields)).toEqual([])
+            expect(result.notRewritten.map((hit) => [hit.path, hit.reason]), JSON.stringify(fields)).toEqual([[path, 'unsafeKeptName']])
+        }
+    })
+
     test('a kept name that the image lookup never takes for a name is listed in an img src: a colon, or more than 200 characters', () => {
         for (const kept of ['a:b', 'x'.repeat(201)]) {
             const result = plan({ desc: '<img src="smile">' }, 'asset', 'smile', kept)

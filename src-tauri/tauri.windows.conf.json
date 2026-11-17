@@ -1,0 +1,11 @@
+{
+  "bundle": {
+    "fileAssociations": [
+      {
+        "ext": [
+          "risum", "risup", "charx", "byaf"
+        ]
+      }
+    ]
+  }
+}

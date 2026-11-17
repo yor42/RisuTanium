@@ -99,7 +99,7 @@
         const name = plugin.name
         await openPluginSettingsMenu(name, {
             plugins: () => DBState.db.plugins,
-            select: alertSelect,
+            select: (items, options) => alertSelect(items, undefined, options),
             confirm: alertConfirm,
             notify: alertNormal,
             fail: alertError,

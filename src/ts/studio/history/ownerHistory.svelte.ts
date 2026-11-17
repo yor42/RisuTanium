@@ -9,7 +9,7 @@ import { registerLeaveFlush as registerPageLeaveFlush } from '../../process/save
 import { studioScreen } from '../studioScreen.svelte'
 import type { AssetFileReader, AssetFileState } from '../assets/assetFileState'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../assets/assetOwnerKeys'
-import { applyFolderOps } from '../assets/folderCodec'
+import { applyFolderOps, type FolderRefusal } from '../assets/folderCodec'
 import type { AssetArrayName, MergePreview } from '../assets/mergePreview'
 import {
     buildAssetDelete,
@@ -73,6 +73,7 @@ import {
     textPathsFor,
     type DeletedItem,
     type HistoryClock,
+    type ListSkipReason,
     type LiveReader,
     type ModelState,
     type OpenStep,
@@ -140,6 +141,9 @@ export interface StudioWriteNotes {
     // Revert only: list ops that were not undone because their step's list no longer fit. Also set on
     // an `unchanged` revert, which lands nothing.
     listSkipped?: number
+    // Why the list was skipped, when the model can say: the list was changed elsewhere (`neither`) or already holds
+    // the step's result (`other`). In memory only, shown after the outcome sentence; never stored or posted.
+    listReason?: ListSkipReason
     // Revert only: steps left whole because they changed the first message together with the alternate first
     // messages and one of the two no longer fit. Also set on an `unchanged` revert.
     pairSkipped?: number
@@ -147,11 +151,17 @@ export interface StudioWriteNotes {
     changedElsewhere?: RestorePath[]
     // An asset intent that landed: the id of the step it recorded.
     stepId?: string
+    // Replay of a step that holds a `textEdit`, or asset rows together with a text op: the registry targets of its texts
+    // that were left as they were because the live text no longer holds the expected name at the recorded span
+    // (`firstMessage`, `desc`, `exampleMessage`, `alternateGreetings/<i>`, `lore/<i>/content`, ...), unique and in the
+    // step's order. Absent for every other step and when nothing was left. In memory only: never stored or posted.
+    notRestored?: string[]
 }
 
 // `name` is the row a refusal is about (`asset-file-unchecked`). `targetChanged` says the steps the replay was asked for
-// are no longer the ones on top while it waited for its answers, so nothing was applied.
-export type StudioResult = ({ ok: true } & StudioWriteNotes) | { ok: false; reason: StudioRefusal; name?: string; targetChanged?: true }
+// are no longer the ones on top while it waited for its answers, so nothing was applied. `folderRefusal` says which folder
+// rule an explicit folder action broke; the refusal is `precondition` either way.
+export type StudioResult = ({ ok: true } & StudioWriteNotes) | { ok: false; reason: StudioRefusal; name?: string; targetChanged?: true; folderRefusal?: FolderRefusal; listReason?: ListSkipReason }
 
 // What a replay is asked to do. `expectTop` makes an undo or a redo apply only while that step is still the one it
 // would replay.
@@ -811,12 +821,21 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         const hashFor = slot.chaId === null ? undefined : listHashOf(slot.chaId)
         if (intent.kind === 'asset') {
             // Asset intents belong to a character or a module owner, never to one of a character's chats.
-            if (parseOwnerKey(slot.key)?.kind === 'chat') {
+            const assetOwnerKind = parseOwnerKey(slot.key)?.kind
+            if (assetOwnerKind === undefined || assetOwnerKind === 'chat') {
                 return refused('unknown')
             }
             const built = intent.build(live)
             if (built.ok === false) {
-                return built.reason === 'unchanged' ? { ok: true, unchanged: true } : refused('precondition')
+                if (built.reason === 'unchanged') {
+                    return { ok: true, unchanged: true }
+                }
+                return built.folderRefusal === undefined ? refused('precondition') : { ok: false, reason: 'precondition', folderRefusal: built.folderRefusal }
+            }
+            // Rule K, as for an edit or a text intent: an op the owner's own record would refuse on reading (a merge step
+            // carries `set` and `listSet`, which a module record does not hold) is never written, marked or recorded.
+            if (!built.ops.every((op) => isOpAllowedFor(assetOwnerKind, op))) {
+                return refused('precondition')
             }
             // Every text edit must apply to the live owner as it is now: a stale or unreadable one refuses the
             // intent before anything is written.
@@ -903,7 +922,8 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         if (intent.kind === 'replay') {
             const plan = planReplay(record, intent.direction, live, hashFor, goneRows)
             if (plan.ok === false) {
-                return refused(plan.reason === 'empty' || plan.reason === 'pairSplit' ? plan.reason : 'precondition')
+                const refusal = refused(plan.reason === 'empty' || plan.reason === 'pairSplit' ? plan.reason : 'precondition')
+                return plan.reason === 'precondition' && plan.listReason !== undefined ? { ...refusal, listReason: plan.listReason } : refusal
             }
             return {
                 writes: plan.writes,
@@ -929,6 +949,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                     ok: true,
                     unchanged: true,
                     ...(plan.listSkipped === undefined ? {} : { listSkipped: plan.listSkipped }),
+                    ...(plan.listReason === undefined ? {} : { listReason: plan.listReason }),
                     ...(plan.pairSkipped === undefined ? {} : { pairSkipped: plan.pairSkipped }),
                     ...(plan.fmNotRestored ? { fmNotRestored: true } : {}),
                     ...(plan.goneRows === undefined ? {} : { goneRows: plan.goneRows }),
@@ -974,6 +995,9 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         if (plan.listSkipped !== undefined && plan.listSkipped > 0) {
             notes.listSkipped = plan.listSkipped
         }
+        if (plan.listReason !== undefined) {
+            notes.listReason = plan.listReason
+        }
         if (plan.pairSkipped !== undefined && plan.pairSkipped > 0) {
             notes.pairSkipped = plan.pairSkipped
         }
@@ -988,6 +1012,12 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         if (goneName !== undefined) {
             notes.goneName = goneName
+        }
+        // The plan names skipped texts only for a step that holds a `textEdit`, or rows together with a text op, whatever
+        // its label: the notice that lists them belongs to a merge's replay, to the replay of a revert that crossed one,
+        // and to any other step that holds rows and a text.
+        if (plan.notRestored !== undefined) {
+            notes.notRestored = [...plan.notRestored]
         }
         return notes
     }

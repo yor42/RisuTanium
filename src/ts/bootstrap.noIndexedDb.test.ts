@@ -201,6 +201,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     setUsingSw: vi.fn(),
     checkCharOrder: vi.fn(),
     getUncleanablesSync: vi.fn((): string[] => []),
+    wasAssetWrittenThisPage: vi.fn(() => false),
     AppendableBuffer: class {
         chunks: Uint8Array[] = []
         append(chunk: Uint8Array) { this.chunks.push(chunk) }
@@ -244,8 +245,14 @@ function baseDb(extra: Record<string, unknown> = {}): Record<string, unknown> {
 }
 dbState.baseline = () => baseDb({ characters: [] })
 
+// The boot starts its legacy clean-up without awaiting it. Each test waits for it in `afterEach`, so no clean-up
+// work or log outlives the test that started it (a log after teardown fails the run).
+let startupCleanupOf: () => Promise<void> | null = () => null
+
 async function freshLoadData() {
     const { loadData } = await import('src/ts/bootstrap')
+    const { getStartupCleanup } = await import('src/ts/storage/startupCleanupState')
+    startupCleanupOf = getStartupCleanup
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
         loadedStore: ReturnType<typeof writable<boolean>>
@@ -282,7 +289,9 @@ beforeEach(async () => {
     vi.resetModules()
 })
 
-afterEach(() => {
+afterEach(async () => {
+    await startupCleanupOf()
+    startupCleanupOf = () => null
     vi.unstubAllGlobals()
 })
 

@@ -4,6 +4,7 @@ import { fetchNative } from "../../globalApi.svelte";
 import { alertInput } from "../../alert";
 import { language } from "src/lang";
 import localforage from "localforage";
+import { GOOGLE_SEARCH_STORE } from "../../drive/rtb/sideStoreConfig";
 
 interface WebSearchArgs {
     query: string;
@@ -35,10 +36,7 @@ export class GoogleSearchClient extends MCPClientLike {
     private initialized: boolean = false;
     private API_KEY = "";
     private SEARCH_ENGINE_ID = "";
-    private credentialsStorage = localforage.createInstance({
-        name: 'google-search-credentials',
-        storeName: 'credentials'
-    });
+    private credentialsStorage = localforage.createInstance(GOOGLE_SEARCH_STORE);
 
     constructor() {
         super("internal:googlesearch");
@@ -64,12 +62,12 @@ export class GoogleSearchClient extends MCPClientLike {
             return;
         }
 
-        const apiKey = await alertInput(language.alerts.googleSearchEnterApiKey);
+        const apiKey = await alertInput(language.alerts.googleSearchEnterApiKey, undefined, undefined, { cancel: '' });
         if (!apiKey || apiKey.trim() === '') {
             throw new Error('Google Custom Search API Key is required');
         }
 
-        const searchEngineId = await alertInput(language.alerts.googleSearchEnterEngineId);
+        const searchEngineId = await alertInput(language.alerts.googleSearchEnterEngineId, undefined, undefined, { cancel: '' });
         if (!searchEngineId || searchEngineId.trim() === '') {
             throw new Error('Google Custom Search Engine ID is required');
         }

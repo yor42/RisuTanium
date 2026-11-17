@@ -11,7 +11,8 @@ import { ownerKeyOf, type OwnerModel, type StudioKind } from './ownerModel'
 import type { StudioLayout } from './studioLayout'
 import type { StudioFrom, StudioTarget } from './studioTarget'
 import { createPageSession } from './history/historyModel'
-import { characterOwnerKey, chatOwnerKey, type OwnerKey } from './history/ownerPhase'
+import { characterOwnerKey, chatOwnerKey, moduleOwnerKey, parseOwnerKey, type OwnerKey } from './history/ownerPhase'
+import { openStudioModuleId } from './assets/openModuleForm.svelte'
 
 /**
  * Where a visit started. Back returns focus to `element` while it is still in the page, else to the first
@@ -20,6 +21,12 @@ import { characterOwnerKey, chatOwnerKey, type OwnerKey } from './history/ownerP
 export interface StudioOpener {
     element: HTMLElement | null
     selector?: string
+}
+
+/** The registry targets a merge undo left as they were, and the kind of owner whose labels name them. */
+export interface StudioNoticePlaces {
+    ownerKind: 'character' | 'module'
+    places: readonly string[]
 }
 
 /**
@@ -55,6 +62,9 @@ export const studioScreen = $state({
     historyOpen: false,
     restoreSheetOpen: false,
     notice: null as string | null,
+    // The places a merge undo left as they were, behind the notice's Show. Set only with the notice text it belongs
+    // to; every other write of the notice clears it.
+    noticePlaces: null as StudioNoticePlaces | null,
     targetPending: false,
     selectedOwnerKey: null as string | null,
     selectedKind: null as StudioKind | null,
@@ -87,6 +97,7 @@ function resetVisitState(): void {
     studioScreen.historyOpen = false
     studioScreen.restoreSheetOpen = false
     studioScreen.notice = null
+    studioScreen.noticePlaces = null
     studioScreen.targetPending = false
     studioScreen.selectedOwnerKey = null
     studioScreen.selectedKind = null
@@ -179,6 +190,7 @@ export function pickStudioItem(): void {
     studioScreen.drawerOpen = false
     if (fromDrawer) void returnFocusAfterClose('drawer', () => studioScreen.drawerOpen, () => document.querySelector<HTMLElement>('[data-part="studio"] [data-part="studio-detail"]'))
     studioScreen.notice = null
+    studioScreen.noticePlaces = null
 }
 
 /** The phone header title: shows the owner list. */
@@ -186,6 +198,7 @@ export function showStudioList(): void {
     flushStudioFields('leave')
     studioScreen.detailShown = false
     studioScreen.notice = null
+    studioScreen.noticePlaces = null
 }
 
 /** Back on a phone detail goes to the list only when the user came from that list. */
@@ -193,8 +206,28 @@ export function studioViaList(): boolean {
     return studioScreen.layout === 'stack' && studioScreen.pickedInVisit && studioScreen.detailShown
 }
 
+/** Shows one message, or none. A newer notice replaces an older one whole: the places of the older one go with it. */
 export function setStudioNotice(message: string | null): void {
     studioScreen.notice = message
+    studioScreen.noticePlaces = null
+}
+
+/**
+ * The notice of a merge undo that left places as they were: `message` ("{j} places not restored") with the list behind
+ * Show. Ctrl+Z and the History panel call it from their own replay, which has already checked its visit and owner.
+ */
+export function setStudioNotRestoredNotice(owner: OwnerKey, message: string, places: readonly string[]): void {
+    studioScreen.notice = message
+    studioScreen.noticePlaces = { ownerKind: parseOwnerKey(owner)?.kind === 'module' ? 'module' : 'character', places: [...places] }
+}
+
+/**
+ * The same notice for the Undo toast's outcome, which arrives after an await and can outlive the visit or the owner it
+ * was posted for: it lands only while Studio is open in that visit with that owner selected, else nothing is shown.
+ */
+export function setStudioNotRestoredNoticeFromToast(visitId: string, owner: OwnerKey, message: string, places: readonly string[]): void {
+    if (!studioScreen.open || studioScreen.visitId !== visitId || selectedHistoryOwner() !== owner) return
+    setStudioNotRestoredNotice(owner, message, places)
 }
 
 /** Rows of a long list rendered per page. */
@@ -206,13 +239,17 @@ export const ownerRowId = (ownerKey: string): string => `o:${ownerKey}`
 export const kindRowId = (ownerKey: string, kind: StudioKind): string => `k:${ownerKey}/${kind}`
 
 /**
- * The history owner of the selected owner: the bound character, or the chat of its current page. Null for every
- * other selection (modules, presets, plugins, another character) and for no selection. Whether that chat has a
+ * The history owner of the selected owner: the bound character, the chat of its current page, or the module the
+ * detail has selected. A module is the owner only while the selection is that module's own row (the first row of its
+ * id) and the detail publishes the id, which it does not while the module is unloaded or another module shares it.
+ * Null for every other selection (presets, plugins, another character, an unpublished module) and for no selection. Whether that chat has a
  * unique id is checked where the history is read.
  */
 export function selectedHistoryOwner(): OwnerKey | null {
     const key = studioScreen.selectedOwnerKey
     const chaId = studioScreen.chaId
+    const openModule = openStudioModuleId()
+    if (key !== null && openModule !== null && key === ownerKeyOf('module', openModule)) return moduleOwnerKey(openModule)
     if (key === null || chaId === '') return null
     if (key === ownerKeyOf('character', chaId)) return characterOwnerKey(chaId)
     const chatPrefix = ownerKeyOf('chat', '')
@@ -252,6 +289,7 @@ export function clearStudioSelection(notice: string): void {
     studioScreen.selectedKind = null
     studioScreen.selectedItemId = null
     studioScreen.notice = notice
+    studioScreen.noticePlaces = null
 }
 
 /** A choice made in the tree or the list: selects, then moves a phone to the detail. */
@@ -288,7 +326,7 @@ export function applyStudioTarget(model: OwnerModel, noticeText: (notice: Studio
     if (!studioScreen.targetPending) return
     studioScreen.targetPending = false
     const resolved = resolveStudioTarget(model, studioScreen.target)
-    if (resolved.notice) studioScreen.notice = noticeText(resolved.notice)
+    if (resolved.notice) setStudioNotice(noticeText(resolved.notice))
     if (resolved.ownerKey === null) return
     const owner = model.ownerByKey(resolved.ownerKey)
     if (!owner) return

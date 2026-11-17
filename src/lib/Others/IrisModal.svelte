@@ -14,6 +14,7 @@
     import { isImeComposing } from "src/ts/ime/compositionGuard";
     import { RisuAccessClient } from "src/ts/process/mcp/risuaccess";
     import localforage from "localforage";
+    import { IRIS_STORE } from "src/ts/drive/rtb/sideStoreConfig";
     import { getModelInfo, LLMFormat } from "src/ts/model/modellist";
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
 
@@ -35,10 +36,7 @@
         ];
     }
 
-    const forageInstance = localforage.createInstance({
-        name: "iris_dialogues",
-        storeName: "iris_dialogues",
-    });
+    const forageInstance = localforage.createInstance(IRIS_STORE);
 
     let dialogue = $state<DialogueLine[]>(
         buildIntroDialogue()

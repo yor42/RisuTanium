@@ -1,7 +1,7 @@
 import { checkUnit, bodyCountMismatch } from '../codec/assemble'
 import {
-    ASSET_REF_V, FRAME_FMT, IL_REF_V, KNOWN_REQ, UNIT_TYPE, decodeFrame, keyOfRef,
-    type AssetList, type InlayList, type Ref, type UnitBody, type UnitType,
+    ASSET_REF_V, FRAME_FMT, FRAME_OVERHEAD, IL_REF_V, KNOWN_REQ, UNIT_TYPE, decodeFrame, isKnownUnitType, keyOfRef, keyOfTail, refOfFrame,
+    type AssetList, type ChatAltUnit, type ChatChunk, type InlayList, type Ref, type UnitBody, type UnitType,
 } from '../format'
 
 /**
@@ -70,6 +70,58 @@ export function classifyRtbUnit(ref: Ref, type: UnitType, bytes: Uint8Array | nu
         case 'missing':
         case 'damaged':
             return checked
+    }
+}
+
+/**
+ * A unit judged without a parent: `items` is the number of messages of a chat chunk (type 8) or of records of an
+ * alternatives unit (type 25), and null for every other type.
+ */
+export interface RtbUnitAlone {
+    cls: RtbUnitClass
+    items: number | null
+}
+
+/**
+ * The restore's unit pass judges each unit of a file before it knows its parent. The unit is checked against its own
+ * Ref (its framed length and checksum), with the frame's type byte as the authority, so the frame, the body parser and
+ * the derived-list versions are judged as `classifyRtbUnit` judges them. The count a parent's Ref states for a chunk or an
+ * alternatives unit is not known here, so `bodyCountMismatch` is never applied; the closure walk compares `items` with
+ * the Ref's count where a parent names the unit.
+ */
+export function classifyRtbUnitAlone(tail: string, frameType: number, frame: Uint8Array): RtbUnitAlone {
+    // A damaged header has no trustworthy type byte, so damage is decided before the type is judged.
+    const decoded = decodeFrame(frame)
+    if (decoded.status === 'damaged') {
+        return { cls: { status: 'damaged', reason: decoded.reason }, items: null }
+    }
+    if (!isKnownUnitType(frameType)) {
+        return { cls: { status: 'newer', reason: `Unit type ${frameType} is unknown to this build.` }, items: null }
+    }
+    if (frame.length < FRAME_OVERHEAD) {
+        return { cls: { status: 'damaged', reason: 'The frame is shorter than a frame header.' }, items: null }
+    }
+    const key = keyOfTail(tail)
+    const checked = checkUnit({ get: asked => asked === key ? frame : undefined }, refOfFrame(key, frame), frameType)
+    switch (checked.status) {
+        case 'missing':
+            return { cls: { status: 'missing' }, items: null }
+        case 'damaged':
+            return { cls: { status: 'damaged', reason: checked.reason }, items: null }
+        case 'too-new':
+            return { cls: { status: 'newer', reason: checked.reason }, items: null }
+        case 'newer-list':
+            return { cls: { status: 'unreadable-list', reason: checked.reason }, items: null }
+        case 'ok': {
+            const stale = staleListReason(frameType, checked.body)
+            if (stale !== null) {
+                return { cls: { status: 'unreadable-list', reason: stale }, items: null }
+            }
+            const items = frameType === UNIT_TYPE.chatChunk
+                ? (checked.body as ChatChunk).msgs.length
+                : frameType === UNIT_TYPE.chatAlt ? (checked.body as ChatAltUnit).recs.length : null
+            return { cls: { status: 'ok', body: checked.body }, items }
+        }
     }
 }
 

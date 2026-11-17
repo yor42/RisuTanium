@@ -300,3 +300,22 @@ describe('openWriter as a Blob accumulator', () => {
         expect(await store.has('database/database.bin')).toBe(false)
     })
 })
+
+describe('key operations on a Blob record and a bytes record under assets/', () => {
+    test('guard: list, has and deleteMany treat both shapes alike', async () => {
+        const store = createIndexedDbStore()
+        await store.writeBlob!('assets/b.mp4', new Blob([pattern(300, 5)]), 'unconditional')
+        await store.write('assets/s.png', pattern(300, 6), 'unconditional')
+
+        expect((await store.list('assets/')).sort()).toEqual(['assets/b.mp4', 'assets/s.png'])
+        expect(await store.has('assets/b.mp4')).toBe(true)
+        expect(await store.has('assets/s.png')).toBe(true)
+
+        await store.deleteMany([{ key: 'assets/b.mp4', condition: 'unconditional' }, { key: 'assets/s.png', condition: 'unconditional' }])
+
+        expect(await store.has('assets/b.mp4')).toBe(false)
+        expect(await store.has('assets/s.png')).toBe(false)
+        expect(await store.readValue!('assets/b.mp4')).toBeNull()
+        expect(await store.readValue!('assets/s.png')).toBeNull()
+    })
+})

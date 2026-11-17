@@ -1,4 +1,5 @@
 import localforage from "localforage";
+import { HYPA_VECTOR_STORE } from "src/ts/drive/rtb/sideStoreConfig";
 import { globalFetch } from "src/ts/globalApi.svelte";
 import { runEmbedding } from "../transformers";
 import { appendLastPath } from "src/ts/util";
@@ -7,7 +8,9 @@ import { resolveSecret } from "src/ts/secretRef";
 import { isContextModel, getContextProvider } from "./contextualEmbedding";
 import { withInFlight } from "../inFlightWork";
 
-export type HypaModel = 'custom'|'ada'|'openai3small'|'openai3large'|'MiniLM'|'MiniLMGPU'|'nomic'|'nomicGPU'|'bgeSmallEn'|'bgeSmallEnGPU'|'bgem3'|'bgem3GPU'|'multiMiniLM'|'multiMiniLMGPU'|'bgeM3Ko'|'bgeM3KoGPU'|'voyageContext3'
+import { DEFAULT_HYPA_MODEL, type HypaModel } from "./embeddingModels";
+
+export type { HypaModel } from "./embeddingModels";
 
 // In a typical environment, bge-m3 is a heavy model.
 // If your GPU can't handle this model, you'll see errror below.
@@ -26,7 +29,8 @@ export const localModels = {
         'multiMiniLMGPU': 'Xenova/paraphrase-multilingual-MiniLM-L12-v2',
         'bgeM3Ko': 'HyperBlaze/BGE-m3-ko',
         'bgeM3KoGPU': 'HyperBlaze/BGE-m3-ko',
-    },
+        'multiE5Small': 'Xenova/multilingual-e5-small',
+    } satisfies Partial<Record<HypaModel, string>>,
     gpuModels:[
         'MiniLMGPU',
         'nomicGPU',
@@ -45,13 +49,11 @@ export class HypaProcesser{
     customEmbeddingUrl:string
 
     constructor(model:HypaModel|'auto' = 'auto',customEmbeddingUrl?:string){
-        this.forage = localforage.createInstance({
-            name: "hypaVector"
-        })
+        this.forage = localforage.createInstance(HYPA_VECTOR_STORE)
         this.vectors = []
         const db = getDatabase()
         if(model === 'auto'){
-            this.model = db.hypaModel || 'MiniLM'
+            this.model = db.hypaModel || DEFAULT_HYPA_MODEL
         }
         else{
             this.model = model

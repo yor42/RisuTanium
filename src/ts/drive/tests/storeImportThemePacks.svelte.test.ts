@@ -24,8 +24,15 @@ import { readerOver } from 'src/ts/storage/tests/store2/legacyFixtures'
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Committer } from 'src/ts/storage/store2/commit'
 import type { Database } from 'src/ts/storage/database.svelte'
+import * as kitCommit from 'src/ts/storage/store2/commit'
 
 vi.setConfig({ testTimeout: 60_000 })
+
+type ImportStreamModule = typeof import('src/ts/storage/store2/legacy/importStream')
+type Arm = 'whole' | 'stream'
+
+/** The arm the running test is in, and what the streamed prepare decided in it (`onPrepared`, once per attempt that reached it). */
+const armBox = vi.hoisted(() => ({ arm: 'whole' as 'whole' | 'stream', verdicts: [] as string[] }))
 
 vi.mock(import('src/ts/platform'), () => ({
     isTauri: false,
@@ -57,6 +64,7 @@ beforeAll(() => {
 
 beforeEach(() => {
     vi.clearAllMocks()
+    armBox.verdicts = []
     h.broadcasts.length = 0
     h.channels.length = 0
     vi.doUnmock('src/ts/storage/dbChangeEffects.svelte')
@@ -83,6 +91,32 @@ beforeEach(() => {
         getColdStorageBackupKey: (await import('src/ts/process/coldstorageData')).getColdStorageBackupKey,
         readColdStorageItem: async () => ({ status: 'missing' }),
         setColdStorageItem: vi.fn(async () => false),
+    }))
+    // The arm seam: production never passes `minUnits`, so the streamed prepare is steered here, through the module the
+    // page's import loads. The whole arm never reaches the threshold; the stream arm always does.
+    vi.doMock('src/ts/storage/store2/legacy/importStream', async () => {
+        const actual = await vi.importActual<ImportStreamModule>('src/ts/storage/store2/legacy/importStream')
+        return {
+            ...actual,
+            prepareImportStream: (request: Parameters<ImportStreamModule['prepareImportStream']>[0], hooks: Parameters<ImportStreamModule['prepareImportStream']>[1]) => actual.prepareImportStream({
+                ...request,
+                stream: {
+                    ...request.stream,
+                    minUnits: armBox.arm === 'stream' ? 0 : Number.POSITIVE_INFINITY,
+                    onPrepared: (verdict) => {
+                        armBox.verdicts.push(verdict)
+                        request.stream.onPrepared?.(verdict)
+                    },
+                },
+            }, hooks),
+        }
+    })
+    // The committer of the page is built by the kit in this file's module graph, the import code runs in the world's: a
+    // streamed commit always runs under a bulk marker and fails with the kit's `Store2BulkAbortError`, which the import
+    // must recognise by class as it does in the one graph of the app.
+    vi.doMock('src/ts/storage/store2/commit', async () => ({
+        ...await vi.importActual<typeof import('src/ts/storage/store2/commit')>('src/ts/storage/store2/commit'),
+        Store2BulkAbortError: kitCommit.Store2BulkAbortError,
     }))
     vi.spyOn(console, 'log').mockImplementation(() => { })
     vi.spyOn(console, 'warn').mockImplementation(() => { })
@@ -178,7 +212,7 @@ async function blockFileBytes(page: Page, db: Entry): Promise<Uint8Array> {
 const AVATAR = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
 
 /** Drives the real `LoadLocalBackup()` with `bytes` as the chosen file and awaits its change handler. */
-async function loadBin(bytes: Uint8Array): Promise<void> {
+async function loadBin(page: Page, bytes: Uint8Array): Promise<void> {
     const { LoadLocalBackup } = await import('src/ts/drive/backuplocal')
     const realCreateElement = document.createElement.bind(document)
     let input: HTMLInputElement | null = null
@@ -200,6 +234,7 @@ async function loadBin(bytes: Uint8Array): Promise<void> {
     } finally {
         spy.mockRestore()
     }
+    await observeArm(page)
 }
 
 // ---- fixtures ----
@@ -232,12 +267,49 @@ async function pageHolds(page: Page, fields: Entry): Promise<void> {
     })
 }
 
-describe('theme packs over the .bin import of a store2 page', () => {
+// ---- the whole and the stream arm ----
+
+/** What one import showed: the fields the two arms must give alike. */
+interface ArmView {
+    errors: string[]
+    reloads: number
+    /** The committed current tree as JSON with the minted ids replaced; null when it cannot be read. */
+    stored: string | null
+}
+
+interface ArmRecord {
+    view: ArmView
+    verdicts: string[]
+}
+
+/** By test name without the arm: the last import of the test in each arm. */
+const observed = new Map<string, Partial<Record<Arm, ArmRecord>>>()
+
+/** Records what the import that just ended showed, under the running test's name, for the arm agreement test at the end of the file. */
+async function observeArm(page: Page): Promise<void> {
+    let stored: string | null = null
+    try {
+        stored = JSON.stringify(await storedDatabase(page)).replace(/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/g, '<id>')
+    } catch {
+        stored = null
+    }
+    const view: ArmView = {
+        errors: vi.mocked(page.alert.alertError).mock.calls.map((call) => String(call[0])),
+        reloads: vi.mocked(window.location.reload).mock.calls.length,
+        stored,
+    }
+    const name = (expect.getState().currentTestName ?? '').replace(/ \((whole|stream) arm\)/, '')
+    observed.set(name, { ...observed.get(name), [armBox.arm]: { view, verdicts: [...armBox.verdicts] } })
+}
+
+for (const arm of ['whole', 'stream'] as const) describe(`theme packs over the .bin import of a store2 page (${arm} arm)`, () => {
+    beforeEach(() => { armBox.arm = arm })
+
     test('T2-15 reproducer: the page\'s packs and active id are kept by value, an unreadable entry included; the file\'s own are dropped', async () => {
         const page = await openPage()
         await pageHolds(page, { themePacks: [pageRecord('page-1'), { v: 99, future: { deep: ['assets/tp-x.risutheme'] } }], activeThemePack: 'page-1' })
 
-        await loadBin(await binWith(page, { themePacks: [fileRecord('file-1')], activeThemePack: 'file-1' }))
+        await loadBin(page, await binWith(page, { themePacks: [fileRecord('file-1')], activeThemePack: 'file-1' }))
 
         const stored = await storedDatabase(page)
         const kept = stored.themePacks as Entry[]
@@ -252,7 +324,7 @@ describe('theme packs over the .bin import of a store2 page', () => {
     test('T2-15 reproducer: with no packs on the page, the file\'s own list creates none and no active id', async () => {
         const page = await openPage()
 
-        await loadBin(await binWith(page, { themePacks: [fileRecord('file-1')], activeThemePack: 'file-1' }))
+        await loadBin(page, await binWith(page, { themePacks: [fileRecord('file-1')], activeThemePack: 'file-1' }))
 
         const stored = await storedDatabase(page)
         expect(Object.hasOwn(stored, 'themePacks')).toBe(false)
@@ -263,7 +335,7 @@ describe('theme packs over the .bin import of a store2 page', () => {
         const page = await openPage()
         await pageHolds(page, { activeThemePack: 'builtin:origin-navy' })
 
-        await loadBin(await binWith(page, { activeThemePack: 'file-1' }))
+        await loadBin(page, await binWith(page, { activeThemePack: 'file-1' }))
 
         const stored = await storedDatabase(page)
         expect(stored.mainPrompt).toBe('backup')
@@ -275,7 +347,7 @@ describe('theme packs over the .bin import of a store2 page', () => {
         const page = await openPage()
         await pageHolds(page, { themePacks: [pageRecord('page-1')] })
 
-        await loadBin(await binWith(page, { activeThemePack: 'file-1' }))
+        await loadBin(page, await binWith(page, { activeThemePack: 'file-1' }))
 
         const stored = await storedDatabase(page)
         expect(stored.mainPrompt).toBe('backup')
@@ -286,11 +358,29 @@ describe('theme packs over the .bin import of a store2 page', () => {
     test('T2-15 guard: a page with no pack field and a file with none leaves the profile without either key', async () => {
         const page = await openPage()
 
-        await loadBin(await binWith(page, {}))
+        await loadBin(page, await binWith(page, {}))
 
         const stored = await storedDatabase(page)
         expect(Object.hasOwn(stored, 'themePacks')).toBe(false)
         expect(Object.hasOwn(stored, 'activeThemePack')).toBe(false)
+    })
+})
+
+// The arm tests above ran first (one file, tests in order): what each import showed in the two arms must be equal.
+describe('the whole arm and the stream arm agree', () => {
+    test('every import showed the same error texts, reload count and stored database in both arms', () => {
+        const compared: string[] = []
+        for (const [name, arms] of observed) {
+            if (arms.whole === undefined || arms.stream === undefined) {
+                continue
+            }
+            compared.push(name)
+            expect(arms.whole.verdicts.filter((verdict) => verdict === 'stream'), `${name}: the whole arm streamed`).toEqual([])
+            expect(arms.stream.verdicts.filter((verdict) => verdict === 'whole'), `${name}: the stream arm fell back to the whole path`).toEqual([])
+            expect(arms.stream.view, name).toEqual(arms.whole.view)
+        }
+        expect(compared.length).toBeGreaterThan(0)
+        expect([...observed.values()].some((arms) => arms.stream?.verdicts.includes('stream')), 'no import took the streamed path').toBe(true)
     })
 })
 
