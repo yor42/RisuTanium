@@ -92,6 +92,19 @@ beforeEach(() => {
         readColdStorageItem: async () => ({ status: 'missing' }),
         setColdStorageItem: vi.fn(async () => false),
     }))
+    // These tests are about the whole commit's decode: the streamed prepare is held off (a file below the threshold of
+    // units, as every small library is), so the commit decodes the entry once and the question is what stays reachable
+    // across it. The entry is still read in pieces before the copy (P1a), which the tests below pin.
+    vi.doMock('src/ts/storage/store2/legacy/importStream', async () => {
+        const actual = await vi.importActual<typeof import('src/ts/storage/store2/legacy/importStream')>('src/ts/storage/store2/legacy/importStream')
+        return {
+            ...actual,
+            prepareImportStream: (request: Parameters<typeof actual.prepareImportStream>[0], hooks: Parameters<typeof actual.prepareImportStream>[1]) => actual.prepareImportStream({
+                ...request,
+                stream: { ...request.stream, minUnits: Number.POSITIVE_INFINITY },
+            }, hooks),
+        }
+    })
     vi.spyOn(console, 'log').mockImplementation(() => { })
     vi.spyOn(console, 'warn').mockImplementation(() => { })
     vi.spyOn(console, 'error').mockImplementation(() => { })
@@ -204,7 +217,9 @@ async function loadBin(bytes: Uint8Array): Promise<void> {
  * Wraps the world's decoders so the tree of the first decode is watched weakly, and answers, at each later
  * `alertWait` of the import, whether a forced collection has reclaimed it.
  */
-function watchFirstTree(page: Page): { probes: () => { text: string, collected: boolean }[], watched: () => boolean } {
+function watchFirstTree(page: Page): { probes: () => { text: string, collected: boolean }[], watched: () => boolean, decodedAtLoading: () => number | null, probeNow: (text: string) => void } {
+    // How many decode calls had begun when the import first showed its load phase.
+    let decodedAtLoading: number | null = null
     let held: object | null = null
     let ref: WeakRef<object> | null = null
     const watch = (tree: unknown): void => {
@@ -232,7 +247,7 @@ function watchFirstTree(page: Page): { probes: () => { text: string, collected: 
         return salvaged
     })
     const probes: { text: string, collected: boolean }[] = []
-    vi.mocked(page.alert.alertWait).mockImplementation((text: string) => {
+    const probeNow = (text: string): void => {
         if (ref !== null) {
             // A spy records every argument and result it saw: the decoders' results, and the tree the block
             // decoder logs. Those records would keep the tree alive.
@@ -243,9 +258,15 @@ function watchFirstTree(page: Page): { probes: () => { text: string, collected: 
             gc()
             probes.push({ text, collected: ref.deref() === undefined })
         }
+    }
+    vi.mocked(page.alert.alertWait).mockImplementation((text: string) => {
+        if (text === 'Loading backup...' && decodedAtLoading === null) {
+            decodedAtLoading = decodeSpy.mock.calls.length + salvageSpy.mock.calls.length
+        }
+        probeNow(text)
         return { type: 'wait', msg: text }
     })
-    return { probes: () => probes, watched: () => ref !== null }
+    return { probes: () => probes, watched: () => ref !== null, decodedAtLoading: () => decodedAtLoading, probeNow }
 }
 
 /** A page as a boot sees it: no page mode and no residency. */
@@ -306,8 +327,10 @@ interface BytesProbe {
  * probe's and the commit's). `probe` answers how many are still reachable after a forced collection; the spies' own
  * records are cleared first, because they would keep the arguments alive.
  */
-function watchDatabaseBytes(page: Page): { probe: (at: string) => void, probes: BytesProbe[] } {
+function watchDatabaseBytes(page: Page): { probe: (at: string) => void, probes: BytesProbe[], decodedAtLoading: () => number | null } {
     const refs: WeakRef<object>[] = []
+    // How many decode calls had begun when the import first showed its load phase, which follows the entry's first read (P1a) and the copy.
+    let decodedAtLoading: number | null = null
     let pending: object[] = []
     const watch = (bytes: unknown): void => {
         if (!ArrayBuffer.isView(bytes)) {
@@ -345,6 +368,9 @@ function watchDatabaseBytes(page: Page): { probe: (at: string) => void, probes: 
     }
     vi.mocked(page.alert.alertWait).mockImplementation((text: string) => {
         const seen = refs.length + pending.length
+        if (text === 'Loading backup...' && decodedAtLoading === null) {
+            decodedAtLoading = seen
+        }
         if (pending.length === 0 && seen > 0) {
             probe(text)
         } else if (seen > 0) {
@@ -353,25 +379,51 @@ function watchDatabaseBytes(page: Page): { probe: (at: string) => void, probes: 
         }
         return { type: 'wait', msg: text }
     })
-    return { probe, probes }
+    return { probe, probes, decodedAtLoading: () => decodedAtLoading }
+}
+
+/** The sizes of the slices the import takes of the chosen file: the entry's first read is in pieces, none of them longer than this. */
+const MAX_SLICE_BYTES = 4 * 1024 * 1024
+
+function watchFileSlices(): number[] {
+    const sizes: number[] = []
+    const original = Blob.prototype.slice
+    vi.spyOn(Blob.prototype, 'slice').mockImplementation(function (this: Blob, ...args: Parameters<typeof original>) {
+        const piece = original.apply(this, args)
+        sizes.push(piece.size)
+        return piece
+    })
+    return sizes
 }
 
 describe('the database bytes of a .bin import are not held across the asset copy or the commit', () => {
     // Regression reproducer: red when the restore function keeps the entry's bytes from the validity probe to the end of the import.
     // Not a measure of device memory.
-    function expectNotHeld(probes: BytesProbe[]): void {
-        const loading = probes.filter((entry) => entry.at === 'Loading backup...')
-        expect(loading.length, 'the import must have reached its load phase with bytes to watch').toBeGreaterThan(0)
-        expect(loading.every((entry) => entry.watched >= 1), 'the validity probe decoded the entry').toBe(true)
-        const commit = probes.filter((entry) => entry.at.startsWith('commit window'))
-        expect(commit.length, 'the commit window must have been probed').toBeGreaterThan(0)
-        expect(commit.every((entry) => entry.watched >= 2), 'the validity probe and the commit both decoded the entry').toBe(true)
-        expect(probes.filter((entry) => entry.alive > 0).map((entry) => `${entry.at} (${entry.alive} of ${entry.watched} alive)`)).toEqual([])
+    interface Observed {
+        probes: BytesProbe[]
+        /** Decode calls begun when the load phase was first shown; null when it never was. */
+        decodedAtLoading: number | null
+        /** The sizes of the slices taken of the chosen file. */
+        slices: number[]
     }
 
-    async function page(backup: (page: Page) => Promise<Uint8Array>): Promise<BytesProbe[]> {
+    // The entry's first read (P1a) takes it in pieces and decodes nothing whole, so before the copy there is nothing to hold.
+    // The commit then decodes the entry once, and that decode's bytes must be unreachable while the commit works.
+    function expectNotHeld(observed: Observed): void {
+        expect(observed.decodedAtLoading, 'the import must have reached its load phase').not.toBeNull()
+        expect(observed.decodedAtLoading, 'nothing is decoded whole before the copy').toBe(0)
+        expect(observed.slices.length, 'the file must have been read in slices').toBeGreaterThan(0)
+        expect(Math.max(...observed.slices), 'no slice of the file is longer than 4 MiB').toBeLessThanOrEqual(MAX_SLICE_BYTES)
+        const commit = observed.probes.filter((entry) => entry.at.startsWith('commit window'))
+        expect(commit.length, 'the commit window must have been probed').toBeGreaterThan(0)
+        expect(commit.every((entry) => entry.watched >= 1), 'the commit decoded the entry').toBe(true)
+        expect(observed.probes.filter((entry) => entry.alive > 0).map((entry) => `${entry.at} (${entry.alive} of ${entry.watched} alive)`)).toEqual([])
+    }
+
+    async function page(backup: (page: Page) => Promise<Uint8Array>): Promise<Observed> {
         const opened = await openPage()
         const bytes = await backup(opened)
+        const slices = watchFileSlices()
         const watcher = watchDatabaseBytes(opened)
         const backend = opened.k.counted.backend
         const putUnit = backend.putUnit.bind(backend)
@@ -395,12 +447,13 @@ describe('the database bytes of a .bin import are not held across the asset copy
 
         await loadBin(bytes)
 
-        return watcher.probes
+        return { probes: watcher.probes, decodedAtLoading: watcher.decodedAtLoading(), slices }
     }
 
-    async function boot(backup: (page: Page) => Promise<Uint8Array>): Promise<BytesProbe[]> {
+    async function boot(backup: (page: Page) => Promise<Uint8Array>): Promise<Observed> {
         const opened = await openBoot()
         const bytes = await backup(opened)
+        const slices = watchFileSlices()
         const watcher = watchDatabaseBytes(opened)
         const target: BootImportTarget = {
             readColdStorageItem: async () => ({ status: 'missing' }),
@@ -416,7 +469,7 @@ describe('the database bytes of a .bin import are not held across the asset copy
 
         await pickAtBoot(target, bytes)
 
-        return watcher.probes
+        return { probes: watcher.probes, decodedAtLoading: watcher.decodedAtLoading(), slices }
     }
 
     test('regression: a legacy-format file on a page', async () => {
@@ -436,26 +489,51 @@ describe('the database bytes of a .bin import are not held across the asset copy
     })
 })
 
-describe('the validity-probe decode of a store2 .bin import', () => {
-    // Regression reproducer (red when the restore function awaits the decoded tree itself). Not a measure of device memory.
+describe('the decodes of a store2 .bin import', () => {
+    // Regression reproducer (red when the restore function awaits the decoded tree itself, or decodes the entry whole
+    // before the copy). Not a measure of device memory.
     async function expectTreeCollected(backup: (page: Page) => Promise<Uint8Array>): Promise<void> {
         const page = await openPage()
         const bytes = await backup(page)
+        const slices = watchFileSlices()
         const probe = watchFirstTree(page)
+        const backend = page.k.counted.backend
+        const putUnit = backend.putUnit.bind(backend)
+        backend.putUnit = async (...args: Parameters<typeof putUnit>) => {
+            await yieldTask()
+            probe.probeNow('commit window: putUnit')
+            return putUnit(...args)
+        }
+        const commitOrdinary = backend.commitOrdinary.bind(backend)
+        backend.commitOrdinary = async (...args: Parameters<typeof commitOrdinary>) => {
+            await yieldTask()
+            probe.probeNow('commit window: commitOrdinary')
+            return commitOrdinary(...args)
+        }
+        const casCommit = backend.casCommit.bind(backend)
+        backend.casCommit = async (...args: Parameters<typeof casCommit>) => {
+            await yieldTask()
+            probe.probeNow('commit window: casCommit')
+            return casCommit(...args)
+        }
 
         await loadBin(bytes)
 
-        expect(probe.watched(), 'the first decode must have produced a tree to watch').toBe(true)
-        const last = probe.probes().filter((entry) => entry.text === 'Loading backup...')
-        expect(last.length, 'the import must have reached its load phase').toBeGreaterThan(0)
-        expect(last.every((entry) => entry.collected)).toBe(true)
+        expect(probe.decodedAtLoading(), 'the import must have reached its load phase').not.toBeNull()
+        expect(probe.decodedAtLoading(), 'no tree of the entry exists before the copy: its first read decodes nothing whole').toBe(0)
+        expect(slices.length, 'the file must have been read in slices').toBeGreaterThan(0)
+        expect(Math.max(...slices), 'no slice of the file is longer than 4 MiB').toBeLessThanOrEqual(MAX_SLICE_BYTES)
+        expect(probe.watched(), 'the commit must have decoded a tree to watch').toBe(true)
+        const commit = probe.probes().filter((entry) => entry.text.startsWith('commit window'))
+        expect(commit.length, 'the commit window must have been probed').toBeGreaterThan(0)
+        expect(commit.every((entry) => entry.collected), 'the commit\'s decoded tree is unreachable while the commit works').toBe(true)
     }
 
-    test('regression: the tree of the first decode of a legacy-format file is collected once the restore function has moved on to the copy', async () => {
+    test('regression: a legacy-format file has no decoded tree before the copy, and the commit\'s tree is collected while the commit works', async () => {
         await expectTreeCollected(async () => golden('upstream-full.bin'))
     })
 
-    test('regression: the tree of the first decode of a block-format salvage is collected once the restore function has moved on to the copy', async () => {
+    test('regression: a block-format salvage has no decoded tree before the copy, and the commit\'s tree is collected while the commit works', async () => {
         await expectTreeCollected(damagedBackup)
     })
 

@@ -7,7 +7,7 @@
     import { dispatchBack } from '../../ts/backHandlers'
     import { provideOwnerSource } from '../../ts/studio/ownerSource.svelte'
     import { studioLayoutOf } from '../../ts/studio/studioLayout'
-    import { createStudioToasts, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
+    import { createStudioToasts, refusalTextOf, runDismissingConsumed, withListReason } from '../../ts/studio/edit/studioToasts'
     import type { OwnerHistoryService, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import type { OwnerKey } from '../../ts/studio/history/ownerPhase'
     import { getStudioHistoryService, noteStudioInput } from '../../ts/studio/history/studioHistoryService.svelte'
@@ -140,8 +140,8 @@
             if (result.reason !== 'empty') setStudioNotice(refusalTextOf(result))
         } else if (result.goneRows !== undefined && result.goneRows.length > 0) setStudioNotice(language.studioAssetFileGone(result.goneName ?? result.goneRows[0]))
         else if (direction === 'undo' && result.notRestored !== undefined && result.notRestored.length > 0) setStudioNotRestoredNotice(owner, language.studioAssetNotRestored(result.notRestored.length), result.notRestored)
-        else if (result.already === 'undo') setStudioNotice(language.studioHistoryAlreadyUndone)
-        else if (result.already === 'redo') setStudioNotice(language.studioHistoryAlreadyRedone)
+        else if (result.already === 'undo') setStudioNotice(withListReason(language.studioHistoryAlreadyUndone, result.listReason))
+        else if (result.already === 'redo') setStudioNotice(withListReason(language.studioHistoryAlreadyRedone, result.listReason))
         else if (result.dropped) setStudioNotice(language.studioHistoryStepDropped)
         // The field now holds the replayed value; the next Ctrl+Z in it continues through the owner's history.
         if (entry !== null) void afterFlush().then(() => { entry.dataset.studioFocusValue = entry.value })

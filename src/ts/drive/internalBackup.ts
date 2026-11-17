@@ -250,7 +250,7 @@ export async function loadInternalBackup(): Promise<OperationEnd<ImportFacts>> {
         ]
 
         const alertResult = parseInt(
-            await alertSelect(selectOptions)
+            await alertSelect(selectOptions, undefined, { cancel: '0' })
         ) - 1
 
         selectedBackup = internalBackups[alertResult]

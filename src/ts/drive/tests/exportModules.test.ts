@@ -792,3 +792,230 @@ describe('snapshotModuleList', () => {
         expect(snapshot.modules?.[1]).toBe(two)
     })
 })
+
+describe('snapshotModuleList reads several stubs at once', () => {
+    const IDS = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8']
+    const KNOB_KEY = 'risu-measure-export-module-reads'
+
+    interface ReadWatch {
+        /** Module ids in the order their unit reads started. */
+        started: string[]
+        /** Module ids whose unit read has returned (or thrown). */
+        settled: Set<string>
+        inFlight: number
+        max: number
+        open: (id: string) => void
+        openAll: () => void
+    }
+
+    /** Waits `count` macrotask turns, so every read that can progress has progressed. */
+    async function turns(count: number): Promise<void> {
+        for (let at = 0; at < count; at++) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 0))
+        }
+    }
+
+    /** Eight modules the global lists do not keep, so every one is a stub. */
+    async function stubPage(): Promise<{ rig: Rig, db: Database }> {
+        const rig = await rigOf(IDS.map((id) => moduleBody(id)))
+        const booted = await boot(rig)
+        expect(stubIdsOf(booted.db)).toEqual(IDS)
+        rig.counted.reset()
+        return { rig, db: booted.db }
+    }
+
+    /**
+     * Wraps the unit read: a read of the unit of one of `IDS` is recorded, held until its gate opens when `id` is in
+     * `gated`, and `inside` runs once it is released and before the real read. Other reads pass through unrecorded.
+     */
+    function watchReads(rig: Rig, gated: readonly string[], inside?: (id: string) => Promise<void>): ReadWatch {
+        const backend = rig.counted.backend
+        const realRead = backend.readUnits
+        const idOfKey = new Map(IDS.map((id) => [keyOfRef(entryOf(rig, id).unit as never), id] as const))
+        const opens = new Map<string, () => void>()
+        const gates = new Map(gated.map((id) => [id, new Promise<void>((resolve) => opens.set(id, resolve))] as const))
+        const watch: ReadWatch = {
+            started: [],
+            settled: new Set(),
+            inFlight: 0,
+            max: 0,
+            open: (id) => opens.get(id)?.(),
+            openAll: () => opens.forEach((open) => open()),
+        }
+        backend.readUnits = async (keys) => {
+            const id = keys.map((key) => idOfKey.get(key)).find((found) => found !== undefined)
+            if (id === undefined) {
+                return realRead(keys)
+            }
+            watch.started.push(id)
+            watch.inFlight++
+            watch.max = Math.max(watch.max, watch.inFlight)
+            try {
+                await gates.get(id)
+                await inside?.(id)
+                return await realRead(keys)
+            } finally {
+                watch.inFlight--
+                watch.settled.add(id)
+            }
+        }
+        return watch
+    }
+
+    function idsOf(modules: unknown[] | null): string[] {
+        return (modules ?? []).map((one) => String((one as Plain).id))
+    }
+
+    test('more than one module read is in flight at once', async () => {
+        const { rig, db } = await stubPage()
+        const watch = watchReads(rig, IDS)
+
+        const done = snapshotModuleList(db)
+        await turns(10)
+        watch.openAll()
+        await done
+
+        expect(watch.max).toBeGreaterThanOrEqual(2)
+    })
+
+    test('guard: reads that finish in reverse order still give the list order and the serial result', async () => {
+        const { rig, db } = await stubPage()
+        const serial = await snapshotModuleList(db)
+        const watch = watchReads(rig, IDS)
+
+        const done = snapshotModuleList(db)
+        await turns(10)
+        for (const id of [...IDS].reverse()) {
+            watch.open(id)
+        }
+        const snapshot = await done
+
+        expect(idsOf(snapshot.modules)).toEqual(IDS)
+        expect(snapshot.modules).toEqual(serial.modules)
+    })
+
+    test('guard: the first failing slot in list order is the one named, whatever order the reads end', async () => {
+        const { rig, db } = await stubPage()
+        dropUnit(rig, 'm2')
+        dropUnit(rig, 'm4')
+        const watch = watchReads(rig, IDS)
+
+        const done = errorOf(db)
+        await turns(10)
+        watch.open('m4')
+        await turns(2)
+        watch.openAll()
+
+        expect((await done).moduleName).toBe('Module m2')
+    })
+
+    test('at most four reads are in flight and a fifth starts when one is released', async () => {
+        const { rig, db } = await stubPage()
+        const watch = watchReads(rig, IDS)
+
+        const done = snapshotModuleList(db)
+        await turns(10)
+        expect(watch.started).toEqual(['m1', 'm2', 'm3', 'm4'])
+
+        watch.open('m1')
+        await turns(10)
+        expect(watch.started).toEqual(['m1', 'm2', 'm3', 'm4', 'm5'])
+        expect(watch.inFlight).toBe(4)
+
+        watch.openAll()
+        await done
+        expect(watch.started).toEqual(IDS)
+        expect(watch.max).toBe(4)
+    })
+
+    test.each([1, 2, 3])('the measurement knob %i caps the reads in flight at that number', async (knob) => {
+        vi.stubGlobal('localStorage', { getItem: (key: string) => (key === KNOB_KEY ? String(knob) : null) })
+        try {
+            const { rig, db } = await stubPage()
+            const watch = watchReads(rig, [])
+
+            const snapshot = await snapshotModuleList(db)
+
+            expect(idsOf(snapshot.modules)).toEqual(IDS)
+            expect(watch.max).toBe(knob)
+        } finally {
+            vi.unstubAllGlobals()
+        }
+    })
+
+    test('after a known failure no read is admitted and the reads in flight settle before the snapshot rejects', async () => {
+        const { rig, db } = await stubPage()
+        dropUnit(rig, 'm1')
+        const watch = watchReads(rig, IDS.slice(1))
+        const unhandled: unknown[] = []
+        const onUnhandled = (reason: unknown): void => { unhandled.push(reason) }
+        process.on('unhandledRejection', onUnhandled)
+        try {
+            let ended = false
+            const done = errorOf(db)
+            void done.then(() => { ended = true }, () => { ended = true })
+            await turns(10)
+
+            expect(ended, 'the snapshot waits for the reads in flight').toBe(false)
+            expect(watch.started).toEqual(['m1', 'm2', 'm3', 'm4'])
+
+            watch.openAll()
+            const error = await done
+            await turns(2)
+
+            expect(error.moduleName).toBe('Module m1')
+            expect(watch.started).toEqual(['m1', 'm2', 'm3', 'm4'])
+            expect(watch.inFlight).toBe(0)
+            expect(unhandled).toEqual([])
+        } finally {
+            process.off('unhandledRejection', onUnhandled)
+        }
+    })
+
+    async function errorOf(db: Database): Promise<ExportModuleUnreadableError> {
+        const error = await snapshotModuleList(db).catch((caught: unknown) => caught)
+        expect(error).toBeInstanceOf(ExportModuleUnreadableError)
+        return error as ExportModuleUnreadableError
+    }
+
+    test('a stub removed and the removal saved while an earlier slot is still being read, after a later slot read, is changed', async () => {
+        const rig = await rigOf(fiveModules())
+        const booted = await boot(rig)
+        const backend = rig.counted.backend
+        const realRead = backend.readUnits
+        const keyOf = (id: string): string => keyOfRef(entryOf(rig, id).unit as never)
+        const settled = new Set<string>()
+        let raced = false
+        let iddSettledBeforePass = false
+        backend.readUnits = async (keys) => {
+            const forIdc = keys.includes(keyOf('idc'))
+            const forIdd = keys.includes(keyOf('idd'))
+            if (forIdc && !raced) {
+                raced = true
+                for (let at = 0; at < 20 && !settled.has('idd'); at++) {
+                    await new Promise<void>((resolve) => setTimeout(resolve, 0))
+                }
+                iddSettledBeforePass = settled.has('idd')
+                const at = slotsOf(booted.db).findIndex((slot) => slot.id === 'idd')
+                slotsOf(booted.db).splice(at, 1)
+                await pass(booted.db)
+            }
+            try {
+                return await realRead(keys)
+            } finally {
+                if (forIdd) {
+                    settled.add('idd')
+                }
+            }
+        }
+        try {
+            const error = await errorOf(booted.db)
+
+            expect(iddSettledBeforePass, 'idd was read before the removal was saved').toBe(true)
+            expect(error.reason).toBe('changed')
+            expect(error.moduleName).toBe('Module idd')
+        } finally {
+            backend.readUnits = realRead
+        }
+    })
+})

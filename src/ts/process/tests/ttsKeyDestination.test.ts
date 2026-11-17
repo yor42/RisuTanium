@@ -132,3 +132,34 @@ describe('the app-wide OpenAI key and a foreign TTS host', () => {
         expect(alertTexts()).toEqual([])
     })
 })
+
+describe('a multi-line app-wide OpenAI key is read per line', () => {
+    const KEYS = '${RISU_A_KEY}\nsk-test-B'
+
+    test('the default host takes the current line, so a referenced first line is refused as a reference, never sent whole', async () => {
+        dbHolder.db.openAIKey = KEYS
+
+        await sayTTS(openAICharacter({ baseURL: 'https://api.openai.com/v1', apiKey: '' }), 'Hello')
+
+        expect(sentHeaders().map((h) => h.Authorization)).toEqual([])
+        expect(alertTexts().join('\n')).toContain('RISU_A_KEY')
+    })
+
+    test('a foreign host refuses a referenced current line as a foreign reference', async () => {
+        dbHolder.db.openAIKey = KEYS
+
+        await sayTTS(openAICharacter({ baseURL: 'https://evil.test/v1', apiKey: '' }), 'Hello')
+
+        expect(globalFetchMock).not.toHaveBeenCalled()
+        expect(alertTexts().join('\n')).toContain('RISU_A_KEY')
+        expect(alertTexts().join('\n')).not.toContain('app-wide OpenAI key was not sent')
+    })
+
+    test('TTS1 (plain): a plain multi-line key sends the current line to the default host', async () => {
+        dbHolder.db.openAIKey = 'sk-test-A\nsk-test-B'
+
+        await sayTTS(openAICharacter({ baseURL: 'https://api.openai.com/v1', apiKey: '' }), 'Hello')
+
+        expect(sentHeaders().map((h) => h.Authorization)).toEqual(['Bearer sk-test-A'])
+    })
+})

@@ -9,6 +9,7 @@
     import { v4 } from "uuid";
     import { tooltip } from "src/ts/gui/tooltip";
     import { alertConfirm, alertNormal, alertSelect } from "src/ts/alert";
+    import { ALERT_SELECT_CANCEL } from "src/ts/alertCancel";
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import { onDestroy } from "svelte";
     import { importMCPModule } from "src/ts/process/mcp/mcp";
@@ -122,7 +123,11 @@
                             {#if !rmodule.mcp}
                                 <button class="text-textcolor2 hover:text-green-500 mr-2 cursor-pointer" use:tooltip={language.download} onclick={async (e) => {
                                     e.stopPropagation()
-                                    const sel = parseInt(await alertSelect([`CharX (${language.recommended})`, language.alerts.risumLegacy]))
+                                    const answer = await alertSelect([`CharX (${language.recommended})`, language.alerts.risumLegacy], undefined, { cancel: ALERT_SELECT_CANCEL })
+                                    if(answer === ALERT_SELECT_CANCEL){
+                                        return
+                                    }
+                                    const sel = parseInt(answer)
                                     const used = await useModuleRow(rmodule)
                                     if(!used){
                                         return

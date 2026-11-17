@@ -23,7 +23,7 @@ const JPEG_QUALITY = 0.85
 const JPEG_PREFIX = 'data:image/jpeg;base64,'
 const FALLBACK_BACKGROUND = '#ffffff'
 
-interface Decoded {
+export interface Decoded {
     source: CanvasImageSource
     width: number
     height: number
@@ -67,8 +67,10 @@ function untilAborted<T>(promise: Promise<T>, signal: AbortSignal, discard: (lat
     })
 }
 
-async function decodeWithBitmap(blob: Blob, signal: AbortSignal): Promise<Decoded | null> {
-    const bitmap = await untilAborted(createImageBitmap(blob), signal, (late) => late.close())
+async function decodeWithBitmap(blob: Blob, signal: AbortSignal, bitmapOptions?: ImageBitmapOptions): Promise<Decoded | null> {
+    // Options are forwarded only when given, so a caller without them keeps the one-argument call.
+    const pending = bitmapOptions === undefined ? createImageBitmap(blob) : createImageBitmap(blob, bitmapOptions)
+    const bitmap = await untilAborted(pending, signal, (late) => late.close())
     if (bitmap === null) return null
     return { source: bitmap, width: bitmap.width, height: bitmap.height, release: () => bitmap.close() }
 }
@@ -100,10 +102,10 @@ async function decodeWithImage(blob: Blob, signal: AbortSignal): Promise<Decoded
     }
 }
 
-async function decode(blob: Blob, signal: AbortSignal): Promise<Decoded | null> {
+export async function decode(blob: Blob, signal: AbortSignal, bitmapOptions?: ImageBitmapOptions): Promise<Decoded | null> {
     if (typeof createImageBitmap === 'function') {
         try {
-            return await decodeWithBitmap(blob, signal)
+            return await decodeWithBitmap(blob, signal, bitmapOptions)
         } catch {
             if (signal.aborted) return null
         }

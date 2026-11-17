@@ -23,8 +23,10 @@ vi.mock(import('../stores.svelte'), () => ({
 }) as unknown as typeof import('../stores.svelte'))
 vi.mock('../characterCards', () => ({
     importOpenedSources: importOpenedSourcesMock,
-    // Stand-in for the shared allow-list; the real list is pinned in characterCards.picker.test.ts.
-    isOpenedSourceImportable: (name: string) => /\.(charx|risum|risup|risupreset|preset)$/i.test(name),
+    // Stand-in for the shared rule: a recognised suffix decides by the allow-list, otherwise the type decides. The real rule is pinned in characterCards.picker.test.ts.
+    isOpenedSourceImportable: (name: string, type = '') => /\.(charx|byaf|png|jpe?g|json|ya?ml|risupreset|risup|preset|risum)$/i.test(name)
+        ? /\.(charx|risum|risup|risupreset|preset|png|jpe?g|json)$/i.test(name)
+        : /^(image\/png|image\/jpeg|application\/json)$/i.test(type.split(';')[0].trim()),
 }))
 vi.mock('../alert', () => ({
     alertNormalWait: alertNormalWaitMock,
@@ -42,6 +44,7 @@ const { androidOpenedFilesImport, resetOpenedFilesForTests } = await import('./o
 interface HostEntry {
     uri: string
     name: unknown
+    type?: unknown
 }
 
 /** What the native queue holds; `take` hands it over and clears it, like the host does. */
@@ -96,6 +99,24 @@ describe('androidOpenedFilesImport', () => {
         await settle()
         expect(importOpenedSourcesMock).toHaveBeenCalledTimes(1)
         expect(importOpenedSourcesMock).toHaveBeenCalledWith([{ name: 'a.charx', path: 'content://p/1' }])
+    })
+
+    test('the type the host reports reaches the import beside the name and the URI', async () => {
+        queued = [[{ uri: 'content://p/1', name: 'download', type: 'image/png' }]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(importOpenedSourcesMock).toHaveBeenCalledWith([{ name: 'download', path: 'content://p/1', type: 'image/png' }])
+    })
+
+    // Guard: passes before and after; an entry without a usable type keeps its two-field shape.
+    test('an entry with no type, or a type that is not a string, is passed on as name and path only', async () => {
+        queued = [[{ uri: 'content://p/1', name: 'a.charx' }, { uri: 'content://p/2', name: 'b.charx', type: 7 }]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(importOpenedSourcesMock).toHaveBeenCalledWith([
+            { name: 'a.charx', path: 'content://p/1' },
+            { name: 'b.charx', path: 'content://p/2' },
+        ])
     })
 
     test('the hook the host calls drains what arrived later', async () => {

@@ -34,7 +34,7 @@ const CHAT_PART_NAMES: readonly string[] = [
     'chat-save-guard', 'chat-scrubber', 'chat-scrubber-bubble', 'chat-scrubber-thumb', 'chat-scrubber-track', 'chat-search-character', 'chat-search-chat', 'chat-search-group', 'chat-search-results', 'chat-search-scroller', 'chat-search-status', 'chat-send',
     'chat-sheet', 'chat-sheet-body', 'chat-sheet-handle', 'chat-sheet-item', 'chat-sheet-item-value', 'chat-sheet-layer', 'chat-sheet-scrim', 'chat-sheet-title',
     'chat-shell', 'chat-sidebar', 'chat-sidebar-footer', 'chat-sidebar-header', 'chat-sidebar-list', 'chat-sidebar-search', 'chat-sidebar-search-field',
-    'chat-sidebar-strip', 'chat-sidebar-toggle', 'chat-status-row', 'chat-sticker-assets', 'chat-stream-finished', 'chat-stream-open', 'chat-stream-thinking',
+    'chat-sidebar-strip', 'chat-sidebar-toggle', 'chat-status-row', 'chat-sticker-assets', 'chat-stream-finished', 'chat-stream-open', 'chat-stream-placeholder', 'chat-stream-thinking',
     'chat-streaming-view', 'chat-suggestions', 'chat-swipe-arm', 'chat-swipe-commit-mark', 'chat-swipe-meter', 'chat-swipe-peek', 'chat-swipe-peek-chip', 'chat-swipe-peek-text',
     'chat-switch-actions', 'chat-switch-back', 'chat-switch-frame', 'chat-switch-retry', 'chat-switch-skeleton', 'chat-switch-text', 'chat-toast', 'chat-transcript',
     'chat-translate-preview', 'more-list', 'more-studio', 'more-subview', 'notifications-off-notice', 'plus-chip', 'plus-chip-label', 'plus-chip-mark', 'plus-chip-more',

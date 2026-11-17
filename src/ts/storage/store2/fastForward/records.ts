@@ -127,3 +127,64 @@ export function decideSwitch(base: SwitchSide, mine: SwitchSide, theirs: SwitchS
     }
     return { kind: 'park', reason: 'both-changed' }
 }
+
+/** What one answer chooses. `both` keeps this page's version and keeps the peer's one too (a copy of a chat, or a restore point). */
+export type ConflictChoice = 'mine' | 'theirs' | 'both'
+
+/** What a conflict row names, as data: the dialog turns it into text in the person's language. */
+export type ConflictLabel =
+    | { kind: 'setting', name: string }
+    | { kind: 'presets' | 'personas' | 'loadouts' }
+    | { kind: 'core' | 'lore' | 'scripts' | 'whole' | 'deletedThere' | 'deletedHere', character: string }
+    | { kind: 'chat' | 'chatDeletedThere' | 'chatDeletedHere', character: string, chat: string }
+
+/** One record both sides changed (or one side removed and the other changed). */
+export interface ConflictRecord {
+    /** `config:<field>`, `presets`, `personas`, `loadouts`, `char:<chaId>:core|lore|scripts|whole|deletedThere|deletedHere`, `char:<chaId>:chat:<cid>[:deletedThere|:deletedHere]`. */
+    id: string
+    label: ConflictLabel
+    /** Three choices, or two for a record one side deleted (keep the edited version, or take the deletion). */
+    choices: readonly ConflictChoice[]
+    /** What keep both does: a copy of the chat, or the peer's version kept as a restore point; null where it is not offered. */
+    keepBoth: 'copy' | 'restore-point' | null
+    preselect: ConflictChoice
+    /** Content fingerprints of both sides: an answer applies only while both still match. */
+    fingerprint: { mine: string, theirs: string }
+    /** The reason the page parks with where it cannot ask. */
+    legacy: string
+}
+
+export interface ConflictAnswer {
+    choice: ConflictChoice
+    fingerprint: { mine: string, theirs: string }
+}
+
+/** The answers of a resolution, by record id. */
+export type ConflictAnswers = ReadonlyMap<string, ConflictAnswer>
+
+/** A 53-bit content hash of a plain value's JSON text, for fingerprints of values that carry no unit digest. */
+export function valueFingerprint(value: JsonValue | undefined): string {
+    const text = value === undefined ? 'undefined' : JSON.stringify(value)
+    let h1 = 0xdeadbeef
+    let h2 = 0x41c6ce57
+    for (let index = 0; index < text.length; index++) {
+        const code = text.charCodeAt(index)
+        h1 = Math.imul(h1 ^ code, 2654435761)
+        h2 = Math.imul(h2 ^ code, 1597334677)
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+    return `h:${(4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36)}:${text.length}`
+}
+
+/**
+ * The answer of `answers` that applies to `record`: the id matches and both fingerprints still equal the current ones.
+ * A changed record is asked again.
+ */
+export function answerFor(answers: ConflictAnswers | undefined, record: ConflictRecord): ConflictChoice | undefined {
+    const answer = answers?.get(record.id)
+    if (answer === undefined || answer.fingerprint.mine !== record.fingerprint.mine || answer.fingerprint.theirs !== record.fingerprint.theirs) {
+        return undefined
+    }
+    return record.choices.includes(answer.choice) ? answer.choice : undefined
+}

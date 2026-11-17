@@ -522,7 +522,7 @@ describe('absent keys and per-op preconditions', () => {
         const s = newSession({ alternateGreetings: [] })
         s.addGreeting('y', 0)
         s.live.obj.alternateGreetings[0] = 'other'
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['other'])
     })
 
@@ -1182,7 +1182,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         const snap = snapshot(s)
         s.deleteGreeting(1, 0)
         lose(s, snap)
-        expect(s.undo()).toMatchObject({ ok: true, already: 'undo', writes: [] })
+        expect(s.undo()).toMatchObject({ ok: true, already: 'undo', writes: [], listReason: 'other' })
         expect(s.live.obj.alternateGreetings).toEqual(['x', 'y'])
         expect(s.record.done).toHaveLength(0)
         expect(s.record.undone).toHaveLength(1)
@@ -1314,7 +1314,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         const s = newSession({ alternateGreetings: ['g'] })
         s.addGreeting('h', 0)
         s.live.obj.alternateGreetings.push('c')
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['g', 'h', 'c'])
         expect(s.record.done).toHaveLength(1)
     })
@@ -1323,18 +1323,18 @@ describe('list fingerprint: replay after a lost owner write', () => {
         const a = newSession({ alternateGreetings: ['a', 'a', 'b'] })
         a.deleteGreeting(0, 0, null)
         a.live.obj.alternateGreetings.unshift('c')
-        expect(a.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(a.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(a.live.obj.alternateGreetings).toEqual(['c', 'a', 'b'])
 
         const c = newSession({ alternateGreetings: ['', '', 'b'] })
         c.deleteGreeting(0, 0, null)
         c.live.obj.alternateGreetings.unshift('c')
-        expect(c.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(c.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
 
         const d = newSession({ alternateGreetings: ['a', 'b'] })
         d.deleteGreeting(0, 0, null)
         listOnly(d, ['b', 'c'])
-        expect(d.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(d.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(d.live.obj.alternateGreetings).toEqual(['b', 'c'])
     })
 
@@ -1345,7 +1345,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         s.addGreeting('n', 5000)
         expect(s.undo().ok).toBe(true)
         expect(s.live.obj.alternateGreetings).toEqual(['c', 'b'])
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
     })
 
     test('T66 a revert skips a step whose write was lost and applies the rest', () => {
@@ -1490,7 +1490,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         s.deleteGreeting(2, 0, null)
         s.deleteGreeting(1, 5000, null)
         lose(s, snap)
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b', 'c'])
     })
 
@@ -1500,7 +1500,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         s.editGreeting(0, 'z', 0)
         s.deleteGreeting(1, 5000, null)
         lose(s, snap)
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b'])
     })
 
@@ -1512,7 +1512,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         s.undo()
         s.undo()
         lose(s, snap)
-        expect(s.redo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'x', 'y'])
     })
 
@@ -1524,7 +1524,7 @@ describe('list fingerprint: replay after a lost owner write', () => {
         s.undo()
         s.undo()
         lose(s, snap)
-        expect(s.redo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['a'])
     })
 
@@ -1546,8 +1546,8 @@ describe('list fingerprint: replay after a lost owner write', () => {
         s.addGreeting('c', 0)
         s.deleteGreeting(0, 5000, null)
         lose(s, snap)
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b'])
     })
 })
@@ -1677,8 +1677,8 @@ describe('list fingerprint: further replay rows', () => {
         s.restoreDeleted(id, 5000)
         s.undo()
         s.live.obj.alternateGreetings.unshift('c')
-        expect(s.redo()).toEqual({ ok: false, reason: 'precondition' })
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.alternateGreetings).toEqual(['c', 'a', 'b'])
     })
 
@@ -2360,7 +2360,7 @@ describe('deleted-item lifecycle: reverts and their undo and redo', () => {
         s.revertTo(anchor, 10000)
         s.live.obj.alternateGreetings[1] = 'b2'
         const record = s.record
-        expect(s.undo(15000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo(15000)).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.record).toBe(record)
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b2', 'c'])
         expect(s.live.obj.chats.chatA.fmIndex).toBe(1)
@@ -2590,7 +2590,7 @@ describe('deleted-item lifecycle: Restore deleted redo', () => {
         s.live.obj.alternateGreetings.splice(1, 1)
         expect(s.live.obj.alternateGreetings).toEqual(['a'])
         const record = s.record
-        expect(s.redo(15000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo(15000)).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.record).toBe(record)
         expect(s.live.obj.chats.chatA.fmIndex).toBe(-1)
         expect(s.live.obj.alternateGreetings).toEqual(['a'])
@@ -3131,6 +3131,8 @@ describe('S2b: a step whose list is on neither side keeps its chat index; item e
         expect(s.live.obj.chats.chatA.fmIndex).toBe(-1)
         expect(plan.ok && plan.skipped).toBe(2)
         expect(plan.ok && plan.listSkipped).toBe(1)
+        // A budget suspension is not a hash decision, so it names no reason.
+        expect(plan.ok && 'listReason' in plan).toBe(false)
         expect(s.live.obj.alternateGreetings).toEqual([p, 's1'])
         expect(deletedIds(s)).toEqual([del])
         s.restoreDeleted(del, 14000)
@@ -3151,6 +3153,7 @@ describe('S2b: a step whose list is on neither side keeps its chat index; item e
         expect(plan.ok && plan.listSkipped).toBe(1)
         expect(s.live.obj.desc).toBe('E')
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b', 'z'])
+        expect(plan.ok && plan.listReason).toBe('neither')
     })
 
     test('T87 a revert that consumes and re-produces the same item changes nothing and records nothing', () => {
@@ -3190,10 +3193,48 @@ describe('S2b: a step whose list is on neither side keeps its chat index; item e
         expect(plan.ok).toBe(true)
         expect(plan.ok && plan.deletedRemove).toEqual([])
         expect(plan.ok && plan.listSkipped).toBe(1)
+        expect(plan.ok && plan.listReason).toBe('other')
         expect(deletedIds(s)).toEqual([y])
         expect(s.undo(12000).ok).toBe(true)
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b'])
         expect(deletedIds(s)).toEqual([y])
+    })
+
+    test('T86c a count after the hash stop through an unfingerprinted step still names the stop side', () => {
+        const s = newSession({ desc: 'd', alternateGreetings: ['a', 'b', 'c'], chats: { chatA: { fmIndex: 2 } } })
+        s.typeDesc('E', 0)
+        const anchor = s.record.done[s.record.done.length - 1].id
+        s.editGreeting(0, 'a2', 1000)
+        s.deleteGreeting(2, 2000)
+        s.typeDesc('F', 4000)
+        s.state = { record: { ...s.record, done: s.record.done.map((step, i) => (i === 1 ? asPreChange(step) : step)) }, open: null }
+        s.live.obj.alternateGreetings.push('z')
+        const plan = s.revertTo(anchor, 6000)
+        expect(plan.ok && plan.listSkipped).toBe(2)
+        expect(plan.ok && plan.listReason).toBe('neither')
+    })
+
+    test('T86d a per-op list failure with no hash stop names no reason', () => {
+        const s = newSession({ desc: 'd', alternateGreetings: ['a', 'b'] })
+        s.typeDesc('E', 0)
+        const anchor = s.record.done[s.record.done.length - 1].id
+        s.editGreeting(0, 'a2', 2000)
+        s.typeDesc('F', 4000)
+        s.live.obj.alternateGreetings[0] = 'X'
+        const plan = s.revertTo(anchor, 6000)
+        expect(plan.ok && plan.listSkipped).toBe(1)
+        expect(plan.ok && 'listReason' in plan).toBe(false)
+    })
+
+    test('T86e an unfingerprinted all-held undo moves the step and names no reason', () => {
+        const s = newSession({ alternateGreetings: ['x', 'y'] })
+        const snap = snapshot(s)
+        s.editGreeting(0, 'x2', 0)
+        lose(s, snap)
+        stripAll(s)
+        const plan = s.undo()
+        expect(plan).toMatchObject({ ok: true, already: 'undo' })
+        expect('listReason' in plan).toBe(false)
     })
 
     test('T88b a plain revert across deletes reports no skipped list op', () => {
@@ -3344,7 +3385,7 @@ describe('S2b: an expected-side delete whose Deleted entry left the list is rest
         s.typeDesc('a', 15000)
         s.live.obj.alternateGreetings.push('z')
         const record = s.record
-        expect(s.revertTo(anchor, 20000)).toEqual({ ok: false, reason: 'unchanged', listSkipped: 1 })
+        expect(s.revertTo(anchor, 20000)).toEqual({ ok: false, reason: 'unchanged', listSkipped: 1, listReason: 'neither' })
         expect(s.record).toBe(record)
         expect(s.live.obj.alternateGreetings).toEqual(['g0', 'g1', 'z'])
         expect(s.live.obj.desc).toBe('a')
@@ -3358,7 +3399,7 @@ describe('S2b: undo and redo of a fingerprinted step off its expected side are r
         s.deleteGreeting(2, 0)
         s.live.obj.alternateGreetings.push('z')
         const record = s.record
-        expect(s.undo(5000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo(5000)).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.chats.chatA.fmIndex).toBe(-1)
         expect(s.record).toBe(record)
         expect(s.live.obj.alternateGreetings).toEqual(['a', 'b', 'z'])
@@ -3370,7 +3411,7 @@ describe('S2b: undo and redo of a fingerprinted step off its expected side are r
         expect(s.undo(5000).ok).toBe(true)
         s.live.obj.alternateGreetings.push('z')
         const record = s.record
-        expect(s.redo(10000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.redo(10000)).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.chats.chatA.fmIndex).toBe(2)
         expect(s.record).toBe(record)
     })
@@ -3396,7 +3437,7 @@ describe('S2b: undo and redo of a fingerprinted step off its expected side are r
         expect(s.live.obj.desc).toBe('E')
         s.live.obj.alternateGreetings.push('z')
         const record = s.record
-        expect(s.undo(8000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo(8000)).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.live.obj.desc).toBe('E')
         expect(s.record).toBe(record)
         expect(s.live.obj.chats.chatA.fmIndex).toBe(1)
@@ -4537,7 +4578,7 @@ describe('replay past a step already in place: further rows', () => {
         listOnly(s, ['z'])
         s.live.obj.chats.chatA.fmIndex = 1
         const record = s.record
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.record).toBe(record)
     })
 
@@ -4689,7 +4730,7 @@ describe('replay past a step already in place: further rows', () => {
         cutDeleted(s, id)
         s.live.obj.alternateGreetings.unshift('z')
         const record = s.record
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.record).toBe(record)
         expect(s.record.deleted).toEqual([])
         s.live.obj.alternateGreetings.shift()
@@ -4703,7 +4744,7 @@ describe('replay past a step already in place: further rows', () => {
         cutDeleted(s, id)
         s.live.obj.alternateGreetings.unshift('z')
         const record = s.record
-        expect(s.undo()).toEqual({ ok: false, reason: 'precondition' })
+        expect(s.undo()).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(s.record).toBe(record)
         expect(s.live.obj.chats.chatA.fmIndex).toBe(-1)
     })
@@ -4854,7 +4895,7 @@ describe('replay past a step already in place: further rows', () => {
         const merge = planOf(b.s.undo(10000))
         expect(merge.skipped).toBe(1)
         const record = b.s.record
-        expect(b.s.undo(15000)).toEqual({ ok: false, reason: 'precondition' })
+        expect(b.s.undo(15000)).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
         expect(b.s.record).toBe(record)
         expect(b.live.obj.alternateGreetings).toEqual(['x outside'])
     })
