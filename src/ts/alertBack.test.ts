@@ -42,7 +42,7 @@ import {
     alertWait,
     alertClear,
 } from './alert'
-import { ALERT_BACK_ACTIONS } from './alertBack'
+import { ALERT_BACK_ACTIONS, cancelHasOwnButton, offeredCancel } from './alertBack'
 import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from './alertPrompts'
 import { dispatchBack, resetBackHandlersForTests } from './backHandlers'
 import { alertStore } from './stores.svelte'
@@ -185,6 +185,77 @@ describe('an alert of the same type as the current prompt', () => {
     })
 })
 
+describe('a select or input whose caller offered a cancel', () => {
+    test('a select resolves with its cancel on Back and the store closes', async () => {
+        const out = track(alertSelect(['a', 'b'], undefined, { cancel: '-1' }))
+        expect(shown().type).toBe('select')
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(out).toEqual({ settled: true, value: '-1' })
+        expect(shown().type).toBe('none')
+    })
+
+    test('an input resolves with its cancel on Back and the store closes', async () => {
+        const out = track(alertInput('Name?', [], '', { cancel: '' }))
+        expect(shown().type).toBe('input')
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(out).toEqual({ settled: true, value: '' })
+        expect(shown().type).toBe('none')
+    })
+
+    test('a notice over an opted-in select is closed alone, then Back answers the select', async () => {
+        const prompt = track(alertSelect(['a', 'b'], undefined, { cancel: '-1' }))
+        const notice = track(alertNormalWait('Heads up'))
+        expect(shown().type).toBe('normal')
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(notice.settled).toBe(true)
+        expect(prompt.settled).toBe(false)
+        expect(shown().type).toBe('select')
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(prompt).toEqual({ settled: true, value: '-1' })
+    })
+
+    test('a queued opted-in select is not answered by a press meant for the prompt in front', async () => {
+        const first = track(alertConfirm('First?'))
+        const queued = track(alertSelect(['a', 'b'], undefined, { cancel: '-1' }))
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(first).toEqual({ settled: true, value: false })
+        expect(shown().type).toBe('select')
+        expect(queued.settled).toBe(false)
+    })
+
+    test('a select that is not opted in has no cancelAnswer key', () => {
+        void alertSelect(['a', 'b'])
+        expect('cancelAnswer' in shown()).toBe(false)
+    })
+
+    test('a foreign select carrying cancelAnswer is not answered by Back, with or without a real prompt waiting', async () => {
+        const foreign: alertData = { type: 'select', msg: 'a||b', cancelAnswer: '-1' }
+        alertStore.set(foreign)
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(shown()).toBe(foreign)
+
+        alertStore.set({ type: 'none', msg: '' })
+        const real = track(alertSelect(['x', 'y'], undefined, { cancel: '-1' }))
+        const realShown = shown()
+        alertStore.set(foreign)
+        await vi.advanceTimersByTimeAsync(ANSWER_GUARD_MS + 1)
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(shown()).toBe(foreign)
+        expect(real.settled).toBe(false)
+        alertStore.set(realShown)
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(real).toEqual({ settled: true, value: '-1' })
+    })
+})
+
 describe('notices and waits', () => {
     test('a notice closes and releases a waiter on it', async () => {
         const waiter = track(alertNormalWait('Done'))
@@ -270,6 +341,38 @@ describe('alerts Back leaves on screen', () => {
             .filter(([, action]) => action.kind === 'hold')
             .map(([type]) => type)
             .sort()
-        expect(held).toEqual(['input', 'none', 'progress', 'select', 'staleAccountNotice', 'toast', 'tos'])
+        expect(held).toEqual(['none', 'progress', 'staleAccountNotice', 'toast', 'tos'])
+    })
+
+    test('exactly the select and the input are classified as a per-instance cancel', () => {
+        const perInstance = Object.entries(ALERT_BACK_ACTIONS)
+            .filter(([, action]) => action.kind === 'cancelIfOffered')
+            .map(([type]) => type)
+            .sort()
+        expect(perInstance).toEqual(['input', 'select'])
+    })
+})
+
+describe('offeredCancel and cancelHasOwnButton', () => {
+    test('offeredCancel reads cancelAnswer only for a per-instance cancel type and only when it is set', () => {
+        expect(offeredCancel({ type: 'select', msg: 'a||b', cancelAnswer: '-1' })).toBe('-1')
+        expect(offeredCancel({ type: 'input', msg: 'Name?', cancelAnswer: '' })).toBe('')
+        expect(offeredCancel({ type: 'select', msg: 'a||b' })).toBeUndefined()
+        expect(offeredCancel({ type: 'ask', msg: 'Sure?', cancelAnswer: 'x' })).toBeUndefined()
+    })
+
+    test('cancelHasOwnButton is true only for an in-range option index of a select', () => {
+        expect(cancelHasOwnButton({ type: 'select', msg: 'a||b||c', cancelAnswer: '1' })).toBe(true)
+        expect(cancelHasOwnButton({ type: 'select', msg: 'a||b||c', cancelAnswer: '2' })).toBe(true)
+        expect(cancelHasOwnButton({ type: 'select', msg: 'a||b||c', cancelAnswer: '3' })).toBe(false)
+        expect(cancelHasOwnButton({ type: 'select', msg: 'a||b||c', cancelAnswer: '-1' })).toBe(false)
+        expect(cancelHasOwnButton({ type: 'select', msg: 'a||b||c', cancelAnswer: '' })).toBe(false)
+        expect(cancelHasOwnButton({ type: 'select', msg: 'a||b||c' })).toBe(false)
+        expect(cancelHasOwnButton({ type: 'input', msg: 'Name?', cancelAnswer: '0' })).toBe(false)
+    })
+
+    test('a __DISPLAY__ heading is not counted as an option', () => {
+        expect(cancelHasOwnButton({ type: 'select', msg: '__DISPLAY__Title||a||b', cancelAnswer: '1' })).toBe(true)
+        expect(cancelHasOwnButton({ type: 'select', msg: '__DISPLAY__Title||a||b', cancelAnswer: '2' })).toBe(false)
     })
 })

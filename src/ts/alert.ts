@@ -4,6 +4,7 @@ import { isTauri, isNodeServer } from "src/ts/platform"
 import { getDatabase, type MessageGenerationInfo } from "./storage/database.svelte"
 import { alertStore as alertStoreImported } from "./stores.svelte"
 import { askPrompt, promptShowing, promptWaiting } from "./alertPrompts"
+import type { PromptCancel } from "./alertCancel"
 
 export interface alertData{
     type: 'error'|'normal'|'none'|'ask'|'wait'|'selectChar'
@@ -20,6 +21,8 @@ export interface alertData{
     defaultValue?: string
     /** Set on a wait alert that can be cancelled: the action that ends the wait early. */
     onCancel?: () => void
+    /** Set on a select or input prompt whose caller offered a cancel: the answer its Cancel button, Back and Escape write. */
+    cancelAnswer?: string
 }
 
 type AlertGenerationInfoStoreData = {
@@ -207,12 +210,16 @@ export function alertStaleAccountNotice(): Promise<void> {
     })
 }
 
-export async function alertSelect(msg:string[], display?:string){
+export async function alertSelect(msg:string[], display?:string, options?:PromptCancel){
     const message = display !== undefined ? `__DISPLAY__${display}||${msg.join('||')}` : msg.join('||')
-    return await askPrompt({
+    const data: alertData = {
         'type': 'select',
         'msg': message
-    })
+    }
+    if(options?.cancel !== undefined){
+        data.cancelAnswer = options.cancel
+    }
+    return await askPrompt(data)
 }
 
 export async function alertErrorWait(msg:string){
@@ -309,14 +316,18 @@ export async function alertCardExport(type:string = ''){
     }
 }
 
-export async function alertInput(msg:string, datalist?:[string, string][], defaultValue?:string) {
+export async function alertInput(msg:string, datalist?:[string, string][], defaultValue?:string, options?:PromptCancel) {
 
-    return await askPrompt({
+    const data: alertData = {
         'type': 'input',
         'msg': msg,
         'datalist': datalist ?? [],
         'defaultValue': defaultValue ?? ''
-    })
+    }
+    if(options?.cancel !== undefined){
+        data.cancelAnswer = options.cancel
+    }
+    return await askPrompt(data)
 }
 
 export async function alertModuleSelect(){

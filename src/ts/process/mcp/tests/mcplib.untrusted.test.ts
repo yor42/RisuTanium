@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 const h = vi.hoisted(() => ({
     fetchNative: vi.fn(),
+    alertInput: vi.fn(),
 }))
 
 vi.mock('src/ts/globalApi.svelte', () => ({
@@ -20,7 +21,7 @@ vi.mock('src/ts/globalApi.svelte', () => ({
     openURL: vi.fn(),
 }))
 vi.mock('src/ts/alert', () => ({
-    alertInput: vi.fn(async () => 'auth-code'),
+    alertInput: h.alertInput,
 }))
 vi.mock('src/ts/network/privateNetworkConsent', () => ({
     getAllowPrivate: vi.fn(async () => false),
@@ -59,9 +60,47 @@ function answer(replies: Record<string, () => Response>) {
 
 beforeEach(() => {
     h.fetchNative.mockReset()
+    h.alertInput.mockReset()
+    h.alertInput.mockImplementation(async () => 'auth-code')
     vi.spyOn(console, 'log').mockImplementation(() => {})
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.spyOn(console, 'error').mockImplementation(() => {})
+})
+
+describe('the authorization code prompt offers a cancel that sends nothing to the helper', () => {
+    const DISCOVERY = 'https://mcp.example.invalid/.well-known/oauth-authorization-server'
+    const REGISTER = 'https://mcp.example.invalid/register'
+    const HELPER = 'https://account.sionyw.com/oauthhelper/api'
+
+    test('answering the offered cancel makes no helper request, throws the helper error and stores no token', async () => {
+        h.alertInput.mockImplementation(async (_msg: string, _list?: unknown, _value?: string, options?: { cancel?: string }) => {
+            return options?.cancel ?? Promise.reject(new Error('no cancel offered'))
+        })
+        answer({
+            [DISCOVERY]: () => json({}, 404),
+            [REGISTER]: () => json({ client_id: 'id', client_secret: 'secret' }, 201),
+        })
+        const client = new MCPClient(SERVER)
+        const registered = vi.fn()
+        client.registerRefreshToken = registered
+
+        await expect(client.oauthLogin()).rejects.toThrow('Failed to get authorization code from helper')
+
+        expect(calls().map((call) => call.url)).not.toContain(HELPER)
+        expect(registered).not.toHaveBeenCalled()
+        expect(client.accessToken).toBeNull()
+    })
+
+    test('guard: a typed code still goes to the helper', async () => {
+        answer({
+            [DISCOVERY]: () => json({}, 404),
+            [REGISTER]: () => json({ client_id: 'id', client_secret: 'secret' }, 201),
+        })
+
+        await expect(new MCPClient(SERVER).oauthLogin()).rejects.toThrow('stop')
+
+        expect(calls().map((call) => call.url)).toContain(HELPER)
+    })
 })
 
 describe('MCPClient native requests carry the policy', () => {

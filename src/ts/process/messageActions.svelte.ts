@@ -32,7 +32,8 @@ export function copyMessageAsCard(options: {
 }): void {
     startCardCopy({
         owner: options.owner,
-        captureText: options.captureText,
+        // The card hides closed thinking sections, so the card text (the `text/plain` companion and the card body) leaves them out too.
+        captureText: () => stripThoughtsForCopy(options.captureText()),
         captureCard: (copyText: string) => {
             const isUser = options.role() === 'user'
             const character = getCurrentCharacter()
@@ -121,7 +122,7 @@ export async function requestRemove(owner: character | groupChat, chat: Chat, ta
             language.removeOnlyThisMessage,
             language.cancel,
             language.removeThisAndFollowingMessages,
-        ], language.removeMessageQuestion)
+        ], language.removeMessageQuestion, { cancel: '1' })
         if (choice === '2') mode = 'from'
         else if (choice !== '0') return false
     }
@@ -295,7 +296,7 @@ export async function toggleBookmark(idx: number, name: string) {
         chat.bookmarks.push(messageId);
 
         const msgSender = chat.message[idx]?.role === 'user' ? getUserName() : name;
-        const newName= await alertInput(language.bookmarkAskNameOrDefault, [], chat.bookmarkNames[messageId] || '');
+        const newName= await alertInput(language.bookmarkAskNameOrDefault, [], chat.bookmarkNames[messageId] || '', { cancel: '' });
 
         if (newName && newName.trim() !== '') {
             chat.bookmarkNames[messageId] = newName;

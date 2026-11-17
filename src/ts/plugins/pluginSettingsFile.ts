@@ -1,5 +1,6 @@
 import { language } from '../../lang'
 import { fillLang } from '../../lang/fill'
+import type { PromptCancel } from '../alertCancel'
 import { pluginFileBaseName } from './pluginExport'
 import type { RisuPlugin } from './plugins.svelte'
 
@@ -221,7 +222,7 @@ const shorten = (text: string): string => (text.length > nameLimit ? text.slice(
 /** Everything the dialogs and file operations need, injected so the flows are testable. */
 export interface PluginSettingsDeps {
     plugins: () => RisuPlugin[] | undefined
-    select: (items: string[]) => Promise<string>
+    select: (items: string[], options: Required<PromptCancel>) => Promise<string>
     confirm: (message: string) => Promise<boolean>
     notify: (message: string) => void
     fail: (message: string) => void
@@ -270,7 +271,7 @@ const errorText = (error: unknown): string => (error instanceof Error ? error.me
  */
 export async function openPluginSettingsMenu(name: string, deps: PluginSettingsDeps): Promise<void> {
     const text = language.pluginSettingsFile
-    const choice = parseInt(await deps.select([text.exportAction, text.importAction, language.cancel]))
+    const choice = parseInt(await deps.select([text.exportAction, text.importAction, language.cancel], { cancel: '2' }))
     if (choice === 0) {
         await exportPluginSettings(name, deps)
     } else if (choice === 1) {

@@ -213,7 +213,7 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
                     : (warned ? text.peerCleanCommitDrafts : text.peerCleanCommit)
             const reloadLabel = warned ? text.peerReloadDrafts : text.peerReloadOnly
             const labels = exportOffered ? [reloadLabel, text.peerExportFirst, text.peerKeepReading] : [reloadLabel, text.peerKeepReading]
-            const index = await alertSelect(labels, title)
+            const index = await alertSelect(labels, title, { cancel: String(labels.length - 1) })
             if (exportOffered && index === '1' && manifestKey !== undefined) {
                 const now = live()
                 if (!now.parked || now.dirty) {
@@ -302,7 +302,7 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         await untilClear()
         const text = language.store2Boot
         const name = cleanNames([info.moduleName])[0] ?? ''
-        const index = await alertSelect([text.peerReload, text.moduleEditedKeep], text.moduleEditedTitle.replace('{name}', () => name))
+        const index = await alertSelect([text.peerReload, text.moduleEditedKeep], text.moduleEditedTitle.replace('{name}', () => name), { cancel: '1' })
         if (index === '0' && stillBlocked()) {
             options.reload()
         }
@@ -310,13 +310,14 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
 
     /**
      * The existing foreign-marker question, Wait first. Only the Clear button gives 'clear'; an index with no button or
-     * any other key reads as 'wait'. Select prompts ignore Escape.
+     * any other key reads as 'wait'. Back and Escape press the Wait button.
      */
     async function askForeignMarker(marker: Staging): Promise<'wait' | 'clear'> {
         await untilClear()
         const question = foreignMarkerScreen(marker)
         const buttons = question.model.buttons
-        const index = await alertSelect(buttons.map((button) => button.label), `${question.model.title} ${question.model.paragraphs.join(' ')}`)
+        const waitIndex = buttons.findIndex((button) => button.key === 'foreignWait')
+        const index = await alertSelect(buttons.map((button) => button.label), `${question.model.title} ${question.model.paragraphs.join(' ')}`, { cancel: String(waitIndex) })
         const pressed = buttons[Number(index)]
         return pressed !== undefined && pressed.key === 'foreignClear' && question.answers[pressed.key] === 'clear' ? 'clear' : 'wait'
     }

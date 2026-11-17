@@ -1,7 +1,8 @@
 import { get } from "svelte/store"
 import { alertSelect, alertToast, alertClear, doingAlert, alertRequestLogs, type alertData } from "./alert"
 import { escapeActionFor } from "./alertEscape"
-import { ANSWER_GUARD_MS, pageCovered } from "./alertPrompts"
+import { offeredCancel } from "./alertBack"
+import { ANSWER_GUARD_MS, answerShownPrompt, pageCovered } from "./alertPrompts"
 import { recordKeyEventBlocked, setLiveKeysBlockedReader } from "./keyEventBlocked"
 import { changeToPreset as changeToPreset2, getDatabase, type Database } from "./storage/database.svelte"
 import { alertStore, DBState, loadoutModalStore, openPersonaList, openPresetList, OpenRealmStore, PlaygroundStore, QuickSettings, SafeModeStore, selectedCharID, settingsOpen } from "./stores.svelte"
@@ -107,11 +108,23 @@ export function initHotkey(){
     window.addEventListener('keydown', captureKeydown, true)
     document.addEventListener('keydown', async (ev) => {
         // Escape cancels a wait notice that offers a Cancel button, whatever
-        // has focus, and is consumed so that nothing else acts on it.
+        // has focus, and is consumed so that nothing else acts on it. A select or
+        // input whose caller offered a cancel is answered with that cancel the same
+        // way, but only past its answer guard and never by a repeated key or one the
+        // IME is composing with; a composing key falls through to the IME.
         if(ev.key === 'Escape'){
             const shown = get(alertStore)
             if(shown.type === 'wait' && shown.onCancel){
                 shown.onCancel()
+                ev.preventDefault()
+                ev.stopPropagation()
+                return
+            }
+            const cancel = offeredCancel(shown)
+            if(cancel !== undefined && !ev.isComposing && ev.keyCode !== 229){
+                if(!ev.repeat){
+                    answerShownPrompt(cancel, true)
+                }
                 ev.preventDefault()
                 ev.stopPropagation()
                 return
@@ -393,7 +406,8 @@ export function initHotkey(){
             }
         }
         if(ev.key === 'Escape'){
-            // A prompt waiting for an answer is never answered by Escape, and
+            // A prompt waiting for an answer is answered by Escape only when its caller
+            // offered a cancel, which the first Escape block above handles; otherwise
             // nothing behind it reacts to the key either.
             const escapeAction = escapeActionFor(get(alertStore).type)
             if(escapeAction === 'ignore'){
@@ -475,7 +489,7 @@ async function quickMenu(){
         language.persona,
         language.hotkeyDesc.loadout,
         language.cancel
-    ])
+    ], undefined, { cancel: '3' })
     const sel = parseInt(selStr)
     if(sel === 0){
         openPresetList.set(!get(openPresetList))

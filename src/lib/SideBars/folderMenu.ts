@@ -7,6 +7,7 @@ import { pickedAssetLimitBytes, saveAssetFromBlob } from 'src/ts/globalApi.svelt
 import { reportRefusedAssets } from 'src/ts/storage/pickedAssetLimit'
 import { beginBusy } from 'src/ts/process/memory/busyActions'
 import { alertInput, alertSelect } from 'src/ts/alert'
+import { ALERT_SELECT_CANCEL } from 'src/ts/alertCancel'
 import { applyFolderImage } from './folderImage'
 import { getFolderColorLabels, getFolderColorValue } from './folderColors'
 import type { folder } from 'src/ts/storage/database.svelte'
@@ -84,7 +85,7 @@ async function deleteFolderMenu(host: FolderMenuHost, ref: FolderRef, folderName
     const labels = count > 0
         ? [language.deleteFolderKeep, language.deleteFolderTrash(count), language.cancel]
         : [language.deleteFolderKeep, language.cancel]
-    const sel = parseInt(await alertSelect(labels))
+    const sel = parseInt(await alertSelect(labels, undefined, { cancel: String(labels.length - 1) }))
     if(sel === 0){
         ungroup(host, ref)
     }
@@ -105,7 +106,7 @@ async function deleteFolderMenu(host: FolderMenuHost, ref: FolderRef, folderName
  */
 export async function runFolderMenu(target: FolderMenuTarget, host: FolderMenuHost) {
     const { ref, id: folderId, name: folderName } = target
-    const sel = parseInt(await alertSelect([language.renameFolder,language.changeFolderColor,language.changeFolderImage,language.ungroupFolder,language.deleteFolder,language.cancel]))
+    const sel = parseInt(await alertSelect([language.renameFolder,language.changeFolderColor,language.changeFolderImage,language.ungroupFolder,language.deleteFolder,language.cancel], undefined, { cancel: '5' }))
     if(sel === 3){
         ungroup(host, ref)
     }
@@ -113,13 +114,13 @@ export async function runFolderMenu(target: FolderMenuTarget, host: FolderMenuHo
         await deleteFolderMenu(host, ref, folderName)
     }
     else if(sel === 0){
-        const v = await alertInput(language.changeFolderName, [], folderName)
+        const v = await alertInput(language.changeFolderName, [], folderName, { cancel: '' })
         if(v){
             editFolderById(host, folderId, (entry) => { entry.name = v })
         }
     }
     else if(sel === 1){
-        const sel = parseInt(await alertSelect(getFolderColorLabels()))
+        const sel = parseInt(await alertSelect(getFolderColorLabels(), undefined, { cancel: ALERT_SELECT_CANCEL }))
         const colorValue = getFolderColorValue(sel)
         if(colorValue === undefined){
             return
@@ -127,7 +128,7 @@ export async function runFolderMenu(target: FolderMenuTarget, host: FolderMenuHo
         editFolderById(host, folderId, (entry) => { entry.color = colorValue })
     }
     else if(sel === 2) {
-        const sel = parseInt(await alertSelect([language.alerts.resetToDefaultImage, language.alerts.selectImageFile]))
+        const sel = parseInt(await alertSelect([language.alerts.resetToDefaultImage, language.alerts.selectImageFile], undefined, { cancel: ALERT_SELECT_CANCEL }))
 
         switch (sel) {
             case 0:
