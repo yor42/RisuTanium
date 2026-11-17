@@ -3229,7 +3229,7 @@ export const languageEnglish = {
     },
     rtbExportButton: "Save RisuTanium Backup (.rtb)",
     rtbExportConfirm: (bin: string) =>
-        `Save a RisuTanium backup (.rtb)? Only RisuTanium can restore it. To move your data to RisuAI, use "${bin}" instead.`,
+        `Save a RisuTanium backup (.rtb)? Only RisuTanium can restore it. To move your data to upstream RisuAI, use "${bin}" instead.`,
     rtbExportRefusedReadOnly: (bin: string) =>
         `This page is read-only, so it cannot make an .rtb backup. Use "${bin}" to save a .bin backup instead.`,
     rtbExportUnavailable: (bin: string) =>
