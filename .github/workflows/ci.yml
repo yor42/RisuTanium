@@ -25,6 +25,11 @@ concurrency:
 permissions:
   contents: read
 
+# onnxruntime-node's install script downloads its CUDA binaries on Linux x64 when nvcc is absent.
+# CI never uses the CUDA provider, and that download can fail, so the install skips it.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
 jobs:
   # The full unit test run takes about 25 minutes on one runner, so it is split into three shards.
   # fail-fast is off so one failing shard does not hide failures in the others.
