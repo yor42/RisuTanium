@@ -218,6 +218,18 @@ export interface ByteStore {
     readValue?(key: string): Promise<Blob | Uint8Array | null>
 
     /**
+     * A Blob backed by the stored value of `key`, not loaded: its `size` is the
+     * stored size and a slice read reads only that slice. `null` when the key
+     * holds no value; a key the store cannot address is refused like `read`.
+     * Optional and OPFS-transitional only: IndexedDB hands byte values over
+     * whole through `readValue`. The Blob reads the file as it is when the slice
+     * is read, so a read may fail once the key is written again or removed; the
+     * caller uses it at once and treats such a failure as transient. Read-only:
+     * nothing is written and no handle stays open.
+     */
+    readLazyBlob?(key: string): Promise<Blob | null>
+
+    /**
      * Starts a write of one value that arrives in pieces, so the caller never
      * holds the whole value. `key` is only the folder and the name of the
      * temporary file: a caller that finishes with a `finalKey` never creates
