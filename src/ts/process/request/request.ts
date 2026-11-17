@@ -1337,12 +1337,12 @@ async function requestCohere(arg:RequestDataArgumentExtended):Promise<requestDat
     let preamble = ''
 
     let lastChat = formated[formated.length-1]
-    if(lastChat.role === 'user'){
+    if(lastChat?.role === 'user'){
         lastChatPrompt = lastChat.content
         formated.pop()
     }
     else{
-        while(lastChat.role !== 'user'){
+        while(lastChat?.role !== 'user'){
             lastChat = formated.pop()
             if(!lastChat){
                 return {
@@ -1355,7 +1355,7 @@ async function requestCohere(arg:RequestDataArgumentExtended):Promise<requestDat
     }
 
     const firstChat = formated[0]
-    if(firstChat.role === 'system'){
+    if(firstChat?.role === 'system'){
         preamble = firstChat.content
         formated.shift()
     }
