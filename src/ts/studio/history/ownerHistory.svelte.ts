@@ -9,7 +9,7 @@ import { registerLeaveFlush as registerPageLeaveFlush } from '../../process/save
 import { studioScreen } from '../studioScreen.svelte'
 import type { AssetFileReader, AssetFileState } from '../assets/assetFileState'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../assets/assetOwnerKeys'
-import { applyFolderOps } from '../assets/folderCodec'
+import { applyFolderOps, type FolderRefusal } from '../assets/folderCodec'
 import type { AssetArrayName, MergePreview } from '../assets/mergePreview'
 import {
     buildAssetDelete,
@@ -149,8 +149,9 @@ export interface StudioWriteNotes {
 }
 
 // `name` is the row a refusal is about (`asset-file-unchecked`). `targetChanged` says the steps the replay was asked for
-// are no longer the ones on top while it waited for its answers, so nothing was applied.
-export type StudioResult = ({ ok: true } & StudioWriteNotes) | { ok: false; reason: StudioRefusal; name?: string; targetChanged?: true }
+// are no longer the ones on top while it waited for its answers, so nothing was applied. `folderRefusal` says which folder
+// rule an explicit folder action broke; the refusal is `precondition` either way.
+export type StudioResult = ({ ok: true } & StudioWriteNotes) | { ok: false; reason: StudioRefusal; name?: string; targetChanged?: true; folderRefusal?: FolderRefusal }
 
 // What a replay is asked to do. `expectTop` makes an undo or a redo apply only while that step is still the one it
 // would replay.
@@ -812,7 +813,10 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             }
             const built = intent.build(live)
             if (built.ok === false) {
-                return built.reason === 'unchanged' ? { ok: true, unchanged: true } : refused('precondition')
+                if (built.reason === 'unchanged') {
+                    return { ok: true, unchanged: true }
+                }
+                return built.folderRefusal === undefined ? refused('precondition') : { ok: false, reason: 'precondition', folderRefusal: built.folderRefusal }
             }
             // Every text edit must apply to the live owner as it is now: a stale or unreadable one refuses the
             // intent before anything is written.

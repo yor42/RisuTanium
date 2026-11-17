@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
     tauri: false,
     claimAnswer: 'granted' as string,
     stores: [] as { counts: { open: number; load: number; save: number }; shared: Map<string, string> }[],
+    moduleCalls: [] as string[],
 }))
 
 const fileStates = vi.hoisted(() => new Map<string, 'present' | 'gone' | 'unknown'>())
@@ -69,6 +70,9 @@ vi.mock('src/ts/studio/assets/assetFileState', () => ({
         stateOf: async (path: string) => fileStates.get(path) ?? 'present',
     }),
 }))
+// What follows a landed module write: the module loader's own two calls, which the port runs in this order.
+vi.mock('src/ts/process/modules', () => ({ refreshModules: vi.fn(() => { h.moduleCalls.push('refreshModules') }) }))
+vi.mock('src/ts/process/moduleGuiBump', () => ({ bumpModuleGui: vi.fn(() => { h.moduleCalls.push('bumpModuleGui') }) }))
 vi.mock('src/ts/studio/edit/saveAck.svelte', () => ({
     productionSaveAckDeps: vi.fn(() => ({})),
     createSaveAck: vi.fn(() => {
@@ -133,6 +137,7 @@ async function fresh(): Promise<Fresh> {
 
 beforeEach(() => {
     fileStates.clear()
+    h.moduleCalls.length = 0
     h.marks = 0
     h.tauri = false
     h.claimAnswer = 'granted'
@@ -628,5 +633,45 @@ describe('the service the accessor builds checks files and ends asset toasts', (
         expect(names()).toEqual(['smile'])
         expect(await service.replay(owner, { kind: 'undo' })).toMatchObject({ ok: true })
         expect(names()).toEqual(['smile', 'wave'])
+    })
+})
+
+describe('the service the accessor builds writes a module only while the detail has that module selected', () => {
+    async function builtWithModule() {
+        const m = await fresh()
+        const { toAssetList } = await import('src/ts/storage/assetList')
+        const form = await import('src/ts/studio/assets/openModuleForm.svelte')
+        const row = (name: string): [string, string, string] => [name, `assets/${name}.png`, 'png']
+        m.stores.DBState.db.modules = [{ id: 'M1', name: 'M1', description: '', assets: toAssetList([row('smile'), row('grin')]) }] as unknown as typeof m.stores.DBState.db.modules
+        const service = await m.accessor.loadStudioHistoryService()
+        const owner = m.phase.moduleOwnerKey('M1')
+        service.useOwner(owner)
+        await service.whenReady(owner)
+        const names = (): string[] => (m.stores.DBState.db.modules[0].assets ?? []).map((tuple) => tuple[0])
+        return { service, owner, form, names }
+    }
+
+    test('with no module selected the write is refused as not selected and the module is untouched', async () => {
+        const { service, owner, names } = await builtWithModule()
+        expect(service.assetRename(owner, 'assets', 0, 'smile2')).toEqual({ ok: false, reason: 'not-selected' })
+        expect(names()).toEqual(['smile', 'grin'])
+        expect(h.moduleCalls).toEqual([])
+    })
+
+    test('with the module selected the write lands, and the module loader\'s two calls follow it in their order', async () => {
+        const { service, owner, form, names } = await builtWithModule()
+        form.publishOpenModuleId('M1')
+        expect(service.assetRename(owner, 'assets', 0, 'smile2')).toMatchObject({ ok: true })
+        expect(names()).toEqual(['smile2', 'grin'])
+        // A port that is not built yet loads the module code first, so its calls follow at the next turn.
+        await vi.advanceTimersByTimeAsync(0)
+        expect(h.moduleCalls).toEqual(['refreshModules', 'bumpModuleGui'])
+    })
+
+    test('with another module selected the write is refused too', async () => {
+        const { service, owner, form, names } = await builtWithModule()
+        form.publishOpenModuleId('M2')
+        expect(service.assetRename(owner, 'assets', 0, 'smile2')).toEqual({ ok: false, reason: 'not-selected' })
+        expect(names()).toEqual(['smile', 'grin'])
     })
 })
