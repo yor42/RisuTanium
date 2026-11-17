@@ -803,6 +803,7 @@ export const languageSpanish = {
         "googleSearchEnterApiKey": "Introduce tu clave de API de Google Custom Search:",
         "googleSearchEnterEngineId": "Introduce el ID de tu motor de Google Custom Search:",
         "mcpInputAuthorizationCode": "Introduce el código de autorización",
+        "mcpOAuthHelperConsent": "El servidor MCP {server} necesita que inicies sesión. El inicio de sesión pasa por un servicio auxiliar en {host}, operado por el proyecto upstream y no por esta aplicación: después de iniciar sesión, tu navegador se redirige a {host}, y el código de autorización que pegues se envía a {host}. ¿Usar {host} para iniciar sesión?",
         "updatingTo": "Actualizando a {version}...",
         "addingAssets": "Cargando... (Añadiendo activos {completed} / {total})",
         "writingExif": "Cargando... (Escribiendo Exif)",

@@ -803,6 +803,7 @@ export const languageChineseTraditional = {
         "googleSearchEnterApiKey": "請輸入您的 Google Custom Search API 金鑰：",
         "googleSearchEnterEngineId": "請輸入您的 Google Custom Search 引擎 ID：",
         "mcpInputAuthorizationCode": "輸入授權碼",
+        "mcpOAuthHelperConsent": "MCP 伺服器 {server} 需要您登入。登入將透過位於 {host} 的輔助服務進行，該服務由上游專案營運，而非本應用程式：登入後，您的瀏覽器會被導向 {host}，您貼上的授權碼也會傳送到 {host}。是否使用 {host} 登入？",
         "updatingTo": "正在更新至 {version}...",
         "addingAssets": "載入中...（正在新增資源 {completed} / {total}）",
         "writingExif": "載入中...（正在寫入 Exif）",
