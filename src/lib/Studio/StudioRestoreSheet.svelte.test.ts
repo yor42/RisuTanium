@@ -442,12 +442,14 @@ describe('the sheet lists what it restores and lands one step', () => {
         service.closeOpenStep(A)
         expect(service.editField(A, 'hideChatIcon', true).ok).toBe(true)
         service.closeOpenStep(A)
+        expect(service.editField(A, 'risutanium_render_when_complete', true).ok).toBe(true)
+        service.closeOpenStep(A)
         click('studio-history-restore-open')
         await settle()
         expect(parts('studio-restore-field').map((row) => row.dataset.path)).toEqual(
-            ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'alternateGreetings'])
+            ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'alternateGreetings'])
         expect(parts('studio-restore-field').map((row) => row.querySelector('span')?.textContent)).toEqual(
-            ['description', 'firstMessage', 'exampleMessage', 'customPromptTemplateToggle', 'hideChatIcon', 'altGreet'])
+            ['description', 'firstMessage', 'exampleMessage', 'customPromptTemplateToggle', 'hideChatIcon', 'studioFormRenderWhenComplete', 'altGreet'])
     })
 
     test('a field changed outside Studio is kept by default, and overwritten when the user unchecks it', async () => {

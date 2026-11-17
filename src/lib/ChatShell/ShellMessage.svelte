@@ -31,7 +31,7 @@
     // A swipe starts only where the nearest part of the row is one of the message's own parts. Editors, modal layers, the pager and the end row, and anything rendered into the row later, are not listed, so they start nothing until they are named here.
     const SWIPE_START_PARTS: ReadonlySet<string> = new Set([
         'chat-message', 'chat-message-name-row', 'chat-message-meta', 'chat-message-name', 'chat-message-avatar', 'chat-message-badges',
-        'chat-message-stage', 'chat-message-body', 'chat-streaming-view', 'chat-stream-finished', 'chat-stream-open', 'chat-stream-thinking',
+        'chat-message-stage', 'chat-message-body', 'chat-streaming-view', 'chat-stream-finished', 'chat-stream-open', 'chat-stream-thinking', 'chat-stream-placeholder',
         'chat-swipe-peek', 'chat-swipe-peek-chip', 'chat-swipe-peek-text', 'chat-swipe-meter', 'chat-swipe-arm', 'chat-swipe-commit-mark', 'chat-long-press-ring',
         'chat-status-row', 'chat-message-delete-pending', 'chat-message-render-failed', 'chat-message-interrupted', 'chat-message-memory-limit', 'chat-message-divider',
     ])
@@ -131,6 +131,8 @@
         interrupted?: boolean
         deferAutoTranslate?: boolean
         streaming?: boolean
+        // Per-character setting: while the row streams, it shows a character count instead of the text.
+        renderWhenComplete?: boolean
         run?: 'first' | 'middle' | 'last' | 'single'
         guiRevision?: number
         onReroll?: () => void
@@ -151,7 +153,7 @@
     }
     let { idx, message, chatId, name, img = '', character = null, firstMessage = false, expectedId, stepRow, onBranch, getTreeView, neighbourText, getBusy, onReroll, unReroll, onOpenActions, onCloseActions, onOpenCustomize, onOverlay,
         isLastMemory = false, messageGenerationInfo, interrupted = message.interrupted === true,
-        deferAutoTranslate = false, streaming = false, run = 'single', disabled = false, guiRevision = 0 }: Props = $props()
+        deferAutoTranslate = false, streaming = false, renderWhenComplete = false, run = 'single', disabled = false, guiRevision = 0 }: Props = $props()
     let translated = $state(false)
     let translating = $state(false)
     let retranslate = $state(false)
@@ -849,6 +851,8 @@
                 {/if}
             {:else if firstMessage && (message.data === '' || message.data === '{{blank}}' || message.data === '{{none}}')}
                 {language.noMessage}
+            {:else if streaming && renderWhenComplete}
+                <div data-part="chat-stream-placeholder">{language.chatShellWritingCount(message.data.length)}</div>
             {:else if streaming}
                 <StreamingView text={message.data} {modelShortName} {character} parseContext={{ chatID: idx, cbsConditions: cbsConditions(), displayOptions: buildDisplayParseOptions({ chara: name, chatID: idx, firstmsg: firstMessage, chatRole: chat?.message?.[idx]?.role ?? null }) }} />
             {:else}
@@ -938,6 +942,7 @@
     :global(html[data-low-power]) [data-part="chat-swipe-commit-mark"], :global(html.nexus-low-power) [data-part="chat-swipe-commit-mark"] { animation-timing-function: steps(1, end); }
     @keyframes commit-mark { 0%, 50% { opacity: 1; } 100% { opacity: 0; } }
     [data-part="chat-message-interrupted"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
+    [data-part="chat-stream-placeholder"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
     [data-part="chat-status-row"] { color: var(--nexus-text-secondary); font-size: var(--font-size-xs); }
     [data-part="chat-message-delete-pending"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }
     [data-part="chat-message-render-failed"] { color: var(--nexus-text-secondary); font-style: italic; font-size: var(--font-size-xs); }

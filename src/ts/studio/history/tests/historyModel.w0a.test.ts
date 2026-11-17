@@ -23,16 +23,16 @@ const KEYS: Record<OwnerKind, OwnerKey> = {
     module: moduleOwnerKey('m1'),
 }
 
-const ALL_SET_PATHS: readonly SetPath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'note']
+const ALL_SET_PATHS: readonly SetPath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note']
 
 const EXPECTED_SET: Record<OwnerKind, readonly SetPath[]> = {
-    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon'],
+    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete'],
     chat: ['note'],
     module: ['customModuleToggle'],
 }
 
 const EXPECTED_RESTORE: Record<OwnerKind, readonly RestorePath[]> = {
-    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'alternateGreetings'],
+    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'alternateGreetings'],
     chat: ['note'],
     module: ['customModuleToggle'],
 }
@@ -41,7 +41,7 @@ function fieldValue(path: RestorePath, value: string): unknown {
     if (path === 'alternateGreetings') {
         return { list: [value] }
     }
-    return { had: true, value: path === 'hideChatIcon' ? true : value }
+    return { had: true, value: path === 'hideChatIcon' || path === 'risutanium_render_when_complete' ? true : value }
 }
 
 function rawRecord(kind: OwnerKind, parts: { done?: unknown[]; restore?: unknown }): unknown {
@@ -94,7 +94,7 @@ describe('A2: the set-path table is the only list of what each owner kind accept
 
 describe('A8 (model half): the restore order lists every restore key once, the toggle before hideChatIcon', () => {
     test('RESTORE_PATH_ORDER is the literal order', () => {
-        expect([...RESTORE_PATH_ORDER]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'note', 'alternateGreetings'])
+        expect([...RESTORE_PATH_ORDER]).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', 'alternateGreetings'])
     })
 
     test('every restore key of every owner kind has a place in the order', () => {

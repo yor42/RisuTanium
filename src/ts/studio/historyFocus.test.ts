@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { changedFieldTarget, focusLost, placeFocusAfterHistory } from './historyFocus'
 import type { OwnerFields } from './ownerFields'
 
-const fields = (greetings: string[], rest: Partial<OwnerFields> = {}): OwnerFields => ({ greetings, desc: 'd', hideChatIcon: false, note: undefined, ...rest })
+const fields = (greetings: string[], rest: Partial<OwnerFields> = {}): OwnerFields => ({ greetings, desc: 'd', hideChatIcon: false, renderWhenComplete: false, note: undefined, ...rest })
 
 describe('changedFieldTarget', () => {
     test('U1 an insert in the middle is the inserted row', () => {
@@ -32,6 +32,13 @@ describe('changedFieldTarget', () => {
     })
     test('U9 only the hide-icon box', () => {
         expect(changedFieldTarget(fields(['a'], { hideChatIcon: false }), fields(['a'], { hideChatIcon: true }))).toEqual({ kind: 'hideChatIcon' })
+    })
+    test('U9b only the render-when-complete box, after the hide-icon box in the field order', () => {
+        expect(changedFieldTarget(fields(['a'], { renderWhenComplete: false }), fields(['a'], { renderWhenComplete: true }))).toEqual({ kind: 'risutanium_render_when_complete' })
+        expect(changedFieldTarget(
+            fields(['a'], { hideChatIcon: false, renderWhenComplete: false }),
+            fields(['a'], { hideChatIcon: true, renderWhenComplete: true }),
+        )).toEqual({ kind: 'hideChatIcon' })
     })
     test('U19 among the non-row fields the order is description, then hide-icon, then note', () => {
         expect(changedFieldTarget(

@@ -73,6 +73,7 @@ import {
     textPathsFor,
     type DeletedItem,
     type HistoryClock,
+    type ListSkipReason,
     type LiveReader,
     type ModelState,
     type OpenStep,
@@ -140,6 +141,9 @@ export interface StudioWriteNotes {
     // Revert only: list ops that were not undone because their step's list no longer fit. Also set on
     // an `unchanged` revert, which lands nothing.
     listSkipped?: number
+    // Why the list was skipped, when the model can say: the list was changed elsewhere (`neither`) or already holds
+    // the step's result (`other`). In memory only, shown after the outcome sentence; never stored or posted.
+    listReason?: ListSkipReason
     // Revert only: steps left whole because they changed the first message together with the alternate first
     // messages and one of the two no longer fit. Also set on an `unchanged` revert.
     pairSkipped?: number
@@ -152,7 +156,7 @@ export interface StudioWriteNotes {
 // `name` is the row a refusal is about (`asset-file-unchecked`). `targetChanged` says the steps the replay was asked for
 // are no longer the ones on top while it waited for its answers, so nothing was applied. `folderRefusal` says which folder
 // rule an explicit folder action broke; the refusal is `precondition` either way.
-export type StudioResult = ({ ok: true } & StudioWriteNotes) | { ok: false; reason: StudioRefusal; name?: string; targetChanged?: true; folderRefusal?: FolderRefusal }
+export type StudioResult = ({ ok: true } & StudioWriteNotes) | { ok: false; reason: StudioRefusal; name?: string; targetChanged?: true; folderRefusal?: FolderRefusal; listReason?: ListSkipReason }
 
 // What a replay is asked to do. `expectTop` makes an undo or a redo apply only while that step is still the one it
 // would replay.
@@ -907,7 +911,8 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         if (intent.kind === 'replay') {
             const plan = planReplay(record, intent.direction, live, hashFor, goneRows)
             if (plan.ok === false) {
-                return refused(plan.reason === 'empty' || plan.reason === 'pairSplit' ? plan.reason : 'precondition')
+                const refusal = refused(plan.reason === 'empty' || plan.reason === 'pairSplit' ? plan.reason : 'precondition')
+                return plan.reason === 'precondition' && plan.listReason !== undefined ? { ...refusal, listReason: plan.listReason } : refusal
             }
             return {
                 writes: plan.writes,
@@ -933,6 +938,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                     ok: true,
                     unchanged: true,
                     ...(plan.listSkipped === undefined ? {} : { listSkipped: plan.listSkipped }),
+                    ...(plan.listReason === undefined ? {} : { listReason: plan.listReason }),
                     ...(plan.pairSkipped === undefined ? {} : { pairSkipped: plan.pairSkipped }),
                     ...(plan.fmNotRestored ? { fmNotRestored: true } : {}),
                     ...(plan.goneRows === undefined ? {} : { goneRows: plan.goneRows }),
@@ -977,6 +983,9 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         if (plan.listSkipped !== undefined && plan.listSkipped > 0) {
             notes.listSkipped = plan.listSkipped
+        }
+        if (plan.listReason !== undefined) {
+            notes.listReason = plan.listReason
         }
         if (plan.pairSkipped !== undefined && plan.pairSkipped > 0) {
             notes.pairSkipped = plan.pairSkipped
