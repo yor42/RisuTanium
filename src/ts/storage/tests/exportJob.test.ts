@@ -43,6 +43,7 @@ interface ExportJobs {
     download(ticket: string, res: FakeResponse): Promise<Answer | null>
     status(id: string): Answer
     abort(id: string): Promise<Answer>
+    reap(): Promise<void>
 }
 
 type FsLike = typeof realFs

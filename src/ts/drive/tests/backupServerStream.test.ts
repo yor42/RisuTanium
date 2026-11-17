@@ -16,6 +16,7 @@ import { join } from 'node:path'
 import { writable } from 'svelte/store'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
+import type { alertData } from 'src/ts/alert'
 
 vi.hoisted(() => {
     const memory = new Map<string, string>()
@@ -120,7 +121,7 @@ vi.mock(import('src/ts/alert'), () => ({
     alertClear: vi.fn(),
     alertConfirm: vi.fn(async () => alerts.confirmAnswers.shift() ?? true),
     alertError: vi.fn((message: string) => { alerts.error.push(message) }),
-    alertWait: vi.fn((message: string, cancel?: () => void) => {
+    alertWait: vi.fn((message: string, cancel?: () => void): alertData => {
         h.cancelNow = cancel ?? null
         return { type: 'wait', msg: message }
     }),
@@ -271,7 +272,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
 
 //#endregion
 
-import { LoadLocalBackup, SaveLocalBackup, SavePartialLocalBackup } from 'src/ts/drive/backuplocal'
+import { LoadLocalBackup, SaveLocalBackup, SavePartialLocalBackup, type ExportOutcome } from 'src/ts/drive/backuplocal'
 import { BackupAssetChangedError, BackupAssetTooLargeError } from 'src/ts/drive/exportShell'
 import { dbWriteLock, LocalWriter } from 'src/ts/globalApi.svelte'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
@@ -427,7 +428,7 @@ async function ownSinkFile(run: () => Promise<{ status: string }>): Promise<{ ou
     }
 }
 
-async function serverFile(run: () => Promise<{ status: string }>): Promise<{ outcome: { status: string }, bytes: Buffer }> {
+async function serverFile(run: () => Promise<ExportOutcome>): Promise<{ outcome: ExportOutcome, bytes: Buffer }> {
     sink.writes.length = 0
     sink.closed = false
     h.download = null
@@ -537,7 +538,7 @@ describe('plain-HTTP page (no secure context, memory-only streamsaver)', () => {
         expect(sameBytes(entries.find((entry) => entry.name === 'twenty.png')?.data, TREE[2].bytes)).toBe(true)
         expect(sameBytes(entries.find((entry) => entry.name === 'name.png')?.data, TREE[3].bytes)).toBe(true)
         if (outcome.status === 'saved') {
-            expect((outcome as { omitted: { assets: string[] } }).omitted.assets).toEqual(['assets/never-existed.png'])
+            expect(outcome.omitted.assets).toEqual(['assets/never-existed.png'])
         }
     }, 120_000)
 

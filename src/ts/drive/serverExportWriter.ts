@@ -330,7 +330,8 @@ export class ServerExportWriter implements SplicingExportWriter {
             this.total = total
             this.closed = true
             this.triggered = true
-            this.releaseTrigger = this.options.trigger(ticket) ?? null
+            const release = this.options.trigger(ticket)
+            this.releaseTrigger = typeof release === 'function' ? release : null
             const triggeredAt = this.options.now()
             try {
                 await this.follow(triggeredAt)
