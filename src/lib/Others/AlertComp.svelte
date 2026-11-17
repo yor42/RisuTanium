@@ -353,6 +353,16 @@
                     </div>
                 {/if}
             {/if}
+            {#if a.type === 'error' && a.link}
+                <Button styled="outlined" className="mt-4" onclick={() => {
+                    const open = a.link?.open
+                    alertStore.set({
+                        type: 'none',
+                        msg: ''
+                    })
+                    open?.()
+                }}>{a.link.label}</Button>
+            {/if}
             {#if a.type === 'wait' && a.onCancel}
                 <div class="flex w-full">
                     <Button styled="outlined" className="mt-4 grow" onclick={() => {

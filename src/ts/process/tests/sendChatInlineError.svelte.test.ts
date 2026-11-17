@@ -258,6 +258,8 @@ vi.mock('../coldMemberRestore', () => ({
 
 import { sendChat, doingChat } from '../index.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
+import { hypaMemoryV2 } from '../memory/hypav2'
+import { openMemorySettings } from '../memory/memorySettingsLink'
 
 //#region fixtures
 
@@ -504,6 +506,61 @@ describe('an inline error stays out of messages before the generation\'s own out
         expect(chat.message[0].data).toBe('c0')
         expect(chat.message[2].role).toBe('char')
         expect(chat.message[2].data).toBe(errorBlock('boom'))
+    })
+})
+
+describe('a HypaV2 error that names a setting is an alert with a link to it', () => {
+    const v2Overrides = (inlayErrorResponse: boolean) => ({ hypav2: true, inlayErrorResponse })
+    const v2Character = { supaMemory: true }
+
+    test('with inline errors off, the summary-model error calls alertError with a link that opens the memory settings', async () => {
+        const chat = installSingleChat([msg('user', 'u0')], v2Character, v2Overrides(false))
+        vi.mocked(hypaMemoryV2).mockResolvedValueOnce({ error: 'X', errorSetting: 'summaryModel' } as Awaited<ReturnType<typeof hypaMemoryV2>>)
+
+        const result = await settled(() => sendChat())
+
+        expect(result).toBe(false)
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        const [message, options] = alertErrorMock.mock.calls[0]
+        expect(message).toBe('X')
+        expect(options.link.label).toBe(language.errors.openMemorySettings)
+        expect(options.link.open).toBe(openMemorySettings)
+        expect(chat.message.length).toBe(1)
+    })
+
+    test('with inline errors on, the summary-model error is still the alert with the link and adds no message', async () => {
+        const chat = installSingleChat([msg('user', 'u0')], v2Character, v2Overrides(true))
+        vi.mocked(hypaMemoryV2).mockResolvedValueOnce({ error: 'X', errorSetting: 'summaryModel' } as Awaited<ReturnType<typeof hypaMemoryV2>>)
+
+        const result = await settled(() => sendChat())
+
+        expect(result).toBe(false)
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock.mock.calls[0][1].link.open).toBe(openMemorySettings)
+        expect(chat.message.length).toBe(1)
+    })
+
+    test('guard: a HypaV2 error without a setting stays inline and calls no alert', async () => {
+        const chat = installSingleChat([msg('user', 'u0')], v2Character, v2Overrides(true))
+        vi.mocked(hypaMemoryV2).mockResolvedValueOnce({ error: 'Y' } as Awaited<ReturnType<typeof hypaMemoryV2>>)
+
+        const result = await settled(() => sendChat())
+
+        expect(result).toBe(false)
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(chat.message.length).toBe(2)
+        expect(chat.message[1].data).toBe(errorBlock('Y'))
+    })
+
+    test('guard: with inline errors off, a HypaV2 error without a setting calls alertError with no link', async () => {
+        installSingleChat([msg('user', 'u0')], v2Character, v2Overrides(false))
+        vi.mocked(hypaMemoryV2).mockResolvedValueOnce({ error: 'Y' } as Awaited<ReturnType<typeof hypaMemoryV2>>)
+
+        await settled(() => sendChat())
+
+        expect(alertErrorMock).toHaveBeenCalledTimes(1)
+        expect(alertErrorMock.mock.calls[0][0]).toBe('Y')
+        expect(alertErrorMock.mock.calls[0][1]).toBeUndefined()
     })
 })
 
