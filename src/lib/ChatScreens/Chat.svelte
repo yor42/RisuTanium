@@ -5,6 +5,7 @@
     import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, type CardReport } from "src/ts/chatCard"
     import { ColorSchemeTypeStore } from "src/ts/gui/colorscheme"
     import { longpress } from "src/ts/gui/longtouch"
+    import { cardAnimationHold } from "src/ts/gui/cardAnimationHold"
     import { LIGHT_SURFACE_STYLE } from "src/ts/gui/lightSurface"
     import { getModelInfo } from "src/ts/model/modellist"
     import { risuChatParser } from "src/ts/process/scripts"
@@ -690,6 +691,7 @@
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <span class="text chat-width chattext prose minw-0"
+            use:cardAnimationHold
             class:hidden={editor.editTranslationMode}
             class:prose-invert={$ColorSchemeTypeStore && !markerOnLightSurface}
             bind:this={bodyRoot}

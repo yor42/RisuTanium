@@ -1,0 +1,3 @@
+[data-risu-anim-hold~="self"] { animation-play-state: paused !important }
+[data-risu-anim-hold~="before"]::before { animation-play-state: paused !important }
+[data-risu-anim-hold~="after"]::after { animation-play-state: paused !important }
