@@ -1,4 +1,5 @@
 import localforage from "localforage";
+import { HYPA_VECTOR_STORE } from "src/ts/drive/rtb/sideStoreConfig";
 import { type HypaModel, localModels } from "./hypamemory";
 import { isContextModel, getContextProvider } from "./contextualEmbedding";
 import { TaskRateLimiter, TaskCanceledError } from "./taskRateLimiter";
@@ -34,9 +35,7 @@ export class HypaProcessorV2<TMetadata> {
   public readonly options: HypaProcessorV2Options;
   public progressCallback: (queuedCount: number) => void = null;
   public vectors: Map<string, EmbeddingResult<TMetadata>> = new Map();
-  private forage: LocalForage = localforage.createInstance({
-    name: "hypaVector",
-  });
+  private forage: LocalForage = localforage.createInstance(HYPA_VECTOR_STORE);
 
   public constructor(options?: HypaProcessorV2Options) {
     const db = getDatabase();

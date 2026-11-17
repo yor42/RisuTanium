@@ -630,7 +630,7 @@ describe('the folder document of an owner write', () => {
         expect(live().additionalAssets.map((row) => row[0])).toEqual(['smile', 'grin2'])
         expect(JSON.stringify(live().extentions?.[ASSET_FOLDER_KEY])).toBe(text)
         // Only an explicit folder action refuses on it.
-        expect(harness.service.assetFolder(A, { kind: 'create', name: 'F' })).toEqual({ ok: false, reason: 'precondition' })
+        expect(harness.service.assetFolder(A, { kind: 'create', name: 'F' })).toEqual({ ok: false, reason: 'precondition', folderRefusal: 'newerVersion' })
     })
 
     test('deleting a folder over two entries that fold alike lands one step, the entry leaves the document, and Undo restores the first entry', async () => {
@@ -715,7 +715,7 @@ describe('the folder document of an owner write', () => {
             await ready(A)
             const before = snapshot('character')
             const marks = h.marks
-            expect(harness.service.assetFolder(A, { kind: 'reorder', order: ['G', 'F'] })).toEqual({ ok: false, reason: 'precondition' })
+            expect(harness.service.assetFolder(A, { kind: 'reorder', order: ['G', 'F'] })).toEqual({ ok: false, reason: 'precondition', folderRefusal: 'newerVersion' })
             expect(snapshot('character')).toBe(before)
             expect(h.marks).toBe(marks)
             expect(harness.service.view(A).done).toHaveLength(0)

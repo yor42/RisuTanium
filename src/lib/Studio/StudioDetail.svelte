@@ -6,7 +6,14 @@
     import { currentVisitAck } from '../../ts/studio/history/studioHistoryService.svelte'
     import { ownerSourceFor, readTextSources } from '../../ts/studio/ownerSource.svelte'
     import { applyStudioTarget, clearStudioSelection, studioScreen } from '../../ts/studio/studioScreen.svelte'
-    import StudioAssetList from './assets/StudioAssetList.svelte'
+    import { moduleListOf, moduleRefIdsOf } from '../../ts/process/moduleRefList'
+    import { isModuleStub } from '../../ts/storage/moduleStub'
+    import { isStudioModuleLoading, requestStudioModuleLoad } from '../../ts/studio/assets/moduleStubLoad.svelte'
+    import { clearOpenModuleId, moduleRowOf, publishOpenModuleId } from '../../ts/studio/assets/openModuleForm.svelte'
+    import { moduleSlotsWithId } from '../../ts/studio/edit/assetSetters'
+    import { DBState } from '../../ts/stores.svelte'
+    import StudioAssetList, { type EnabledModuleAssets } from './assets/StudioAssetList.svelte'
+    import StudioModuleAssetForm from './assets/StudioModuleAssetForm.svelte'
     import StudioChatNoteForm from './StudioChatNoteForm.svelte'
     import StudioCharacterForm from './StudioCharacterForm.svelte'
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
@@ -41,6 +48,54 @@
     }
 
     const item = $derived(selectedItemOf())
+    // What the asset subtree is given are named primitives, never the owner or kind node: those are rebuilt with every
+    // model rebuild, and a subtree that read them would reset its filter, selection and open panels each time.
+    const ownerKey = $derived(owner?.key ?? null)
+    const characterId = $derived(studioScreen.chaId)
+    // A module owner's row in the module list. The owner id of a later row sharing an id is `id#row`, so the stored id and
+    // the slot come from the row itself (never cut out of the owner id), and only these two primitives go on.
+    const moduleRow = $derived(owner?.type === 'module' ? moduleRowOf(DBState.db.modules ?? [], owner.id) : null)
+    const moduleRawId = $derived(moduleRow?.id ?? null)
+    const moduleSlotIndex = $derived(moduleRow?.index ?? null)
+    // The owner key while the selected owner is a module that is not loaded, else null. The effect below reads this and
+    // nothing else, so a rebuild of the model that leaves the key as it was does not ask for the load again.
+    const stubToLoad = $derived(owner?.type === 'module' && owner.stub && !owner.restricted ? owner.key : null)
+    const stubLoading = $derived(stubToLoad !== null && isStudioModuleLoading(moduleRawId))
+
+    // A module that is not loaded is loaded when it is selected. A refused load leaves it as it is and asks no more.
+    $effect(() => {
+        const key = stubToLoad
+        if (key === null) return
+        untrack(() => {
+            if (moduleRawId !== null) void requestStudioModuleLoad(moduleRawId)
+        })
+    })
+
+    // The raw id of the selected module while it can take writes: loaded and not private, on any kind (or none yet). A
+    // module that is not loaded or is private publishes nothing. These two are primitives, so a rebuild of the model that
+    // leaves them as they were does not run the effect below again.
+    const openableModuleId = $derived(owner?.type === 'module' && !owner.restricted && !owner.stub ? moduleRawId : null)
+    // True while another module row holds the same id: such an id names several slots, so no write may target it.
+    const moduleIdShared = $derived(openableModuleId !== null && moduleSlotsWithId(DBState.db.modules, openableModuleId).length > 1)
+
+    // The history service accepts a module write only while the module's id is published, and the History panel reaches
+    // its steps through it. Each run publishes with a new token and clears by that token, so a run that ends after a newer
+    // one began never clears the newer one's id. Deselecting, selecting another owner, a module that stops being loaded
+    // and the detail unmounting all end with null published. The effect reads only the two primitives above, never the
+    // owner or kind node.
+    $effect(() => {
+        const id = openableModuleId
+        const shared = moduleIdShared
+        const token = publishOpenModuleId(shared ? null : id)
+        return () => clearOpenModuleId(token)
+    })
+
+    // The enabled modules' loaded assets in module order, as the engine's own module asset list reads them.
+    function enabledModuleAssets(): EnabledModuleAssets[] {
+        return moduleListOf(moduleRefIdsOf())
+            .filter((row) => !isModuleStub(row))
+            .map((row) => ({ id: row.id, name: row.name, assets: row.assets ?? [] }))
+    }
     const roleLabel = $derived(owner ? ownerRoleLabelOf(owner.type) : null)
     const destination = $derived(owner && !owner.restricted ? classicDestinationOf(owner.type, kindNode?.kind ?? null) : null)
     // The live forms: the character's basic info, its asset list, and the chat owner's own screen. None exists for a
@@ -49,6 +104,8 @@
     const assetFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'display')
     const chatFormLive = $derived(owner?.type === 'chat' && !owner.restricted && !owner.stub && studioScreen.selectedKind === null)
     const formLive = $derived(characterFormLive || assetFormLive || chatFormLive)
+    // A loaded module's asset list. It is no part of `formLive`: that carries the character's save chip.
+    const moduleAssetFormLive = $derived(owner?.type === 'module' && !owner.restricted && !owner.stub && kindNode?.kind === 'display' && moduleRawId !== null && moduleSlotIndex !== null)
 
     // A selected owner the model no longer has (the chat page moved, a module was removed) leaves the detail
     // empty; the selection is dropped and the notice says so.
@@ -124,11 +181,15 @@
             <p data-part="studio-detail-private" class="text-textcolor2">{language.sidebarUi.notAllowed}</p>
         {:else}
             {#if owner.stub}
-                <p data-part="studio-detail-notloaded" class="text-textcolor2">{language.studioNotLoaded}</p>
+                {#if stubLoading}
+                    <p role="status" data-part="studio-asset-module-loading" class="text-textcolor2">{language.studioAssetModuleLoading}</p>
+                {:else}
+                    <p data-part="studio-detail-notloaded" class="text-textcolor2">{language.studioNotLoaded}</p>
+                {/if}
             {/if}
             {#if kindNode}
                 <p data-part="studio-detail-kind" class="font-bold">{kindLabelOf(kindNode.kind)}</p>
-                {#if kindNode.count + kindNode.folderCount === 0 && !assetFormLive}
+                {#if kindNode.count + kindNode.folderCount === 0 && !assetFormLive && !moduleAssetFormLive}
                     <p class="text-textcolor2">{language.studioEmptyKind}</p>
                 {:else if kindNode.kind === 'lore' || kindNode.kind === 'regex'}
                     <p class="text-textcolor2">{language.studioItemCount(kindNode.count)}</p>
@@ -149,14 +210,22 @@
                 {#if characterFormLive}
                     <StudioCharacterForm chaId={studioScreen.chaId} />
                 {:else if assetFormLive}
-                    <StudioAssetList chaId={studioScreen.chaId} />
+                    <!-- Keyed by the owner: a new owner builds the list again, with a new filter, selection and panels. -->
+                    {#key ownerKey}
+                        <StudioAssetList chaId={characterId} enabledModules={enabledModuleAssets} />
+                    {/key}
                 {:else if owner}
                     <StudioChatNoteForm chaId={studioScreen.chaId} chatId={owner.id} />
                 {/if}
+            {:else if moduleAssetFormLive && moduleRawId !== null && moduleSlotIndex !== null}
+                <!-- Keyed by the owner, as the character's list is; the module's id and slot are primitives, never the owner node. -->
+                {#key ownerKey}
+                    <StudioModuleAssetForm moduleId={moduleRawId} slotIndex={moduleSlotIndex} enabledModules={enabledModuleAssets} />
+                {/key}
             {:else}
                 <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{language.studioReadOnlyNote}</p>
             {/if}
-            {#if destination}
+            {#if destination && !stubLoading}
                 <div>
                     <button type="button" data-part="studio-detail-classic" class="min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer" onclick={openClassic}>
                         {owner.type === 'module' && owner.stub ? language.studioOpenModules : language.studioOpenClassic}

@@ -51,7 +51,7 @@ vi.mock('src/lang', async () => {
     const base = helpers.studioLanguageMock()
     const call = (key: string) => (...args: (string | number)[]) => `${key}(${args.join(',')})`
     const table: Record<string, unknown> = { sidebarUi: { noAssets: 'noAssets' } }
-    for (const key of ['studioAssetEmotionsElsewhere', 'studioAssetRowMenu', 'studioAssetDeletedOne', 'studioStepAssetDeleteOne', 'studioStepAssetRename', 'studioAssetFileGone', 'studioAssetFileUnchecked']) table[key] = call(key)
+    for (const key of ['studioAssetEmotionsElsewhere', 'studioAssetRowMenu', 'studioAssetDeletedOne', 'studioStepAssetDeleteOne', 'studioStepAssetRename', 'studioStepAssetMerge', 'studioStepAssetAdd', 'studioAssetFileGone', 'studioAssetFileUnchecked']) table[key] = call(key)
     return { language: new Proxy(table, { get: (target, key) => (typeof key === 'symbol' ? undefined : key in target ? target[key] : base[key]) }) }
 })
 
