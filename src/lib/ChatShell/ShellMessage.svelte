@@ -71,6 +71,7 @@
     import { CARD_DEADLINE_MS, CARD_PENDING_MARGIN_MS, type CardReport } from '../../ts/chatCard'
     import { createSwipeGesture, createWheelSteps, meterFill, peekNeighbour, peekText, ARM_HOLD_MS, RUBBER_BAND_PX, type SwipeResult, type WheelSteps } from '../../ts/chatShell/swipeGesture'
     import { lowPowerMarked } from '../../ts/chatShell/lowPower'
+    import { cardAnimationHold } from '../../ts/gui/cardAnimationHold'
     import { siblingsAt } from '../../ts/process/chatTree'
     import { RefreshCwIcon } from '@lucide/svelte'
     import { inFollowOpenZone, INSET_MAX_CSS, INSET_PROBE_MAX_CSS } from '../SideBars/panelGesture'
@@ -838,7 +839,7 @@
                 {#if peek.text}<span data-part="chat-swipe-peek-text">{peek.text}</span>{/if}
             </div>
         {/if}
-        <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" class:prose-invert={$ColorSchemeTypeStore} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={dragX !== 0 || spring ? `translateX(${dragX}px)` : undefined} style:touch-action="pan-y" data-spring={spring ? '' : undefined} data-settle={settle ? '' : undefined} data-commit={commitDirection ?? undefined} onanimationend={() => { commitDirection = null }} ontransitionend={() => { spring = false }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
+        <div data-part="chat-message-body" class="text chat-width chattext prose minw-0" use:cardAnimationHold class:prose-invert={$ColorSchemeTypeStore} style:font-size={`${0.875 * ((DBState.db.zoomsize ?? 100) / 100)}rem`} style:line-height={`${(DBState.db.lineHeight ?? 1.25) * ((DBState.db.zoomsize ?? 100) / 100)}rem`} bind:this={bodyRoot} style:transform={dragX !== 0 || spring ? `translateX(${dragX}px)` : undefined} style:touch-action="pan-y" data-spring={spring ? '' : undefined} data-settle={settle ? '' : undefined} data-commit={commitDirection ?? undefined} onanimationend={(event) => { if (event.target === event.currentTarget) commitDirection = null }} ontransitionend={() => { spring = false }} onwheel={onWheel} onclick={() => { if (DBState.db.clickToEdit && idx >= 0 && !streaming) editor.startOriginalEdit() }}>
             {#if editor.editMode || editor.editTranslationMode}<!-- the editors replace the body while open -->
             {:else if message.isComment}
                 {#if msgDisplay.startsWith('{{specialcomment') && msgDisplay.split('::')[1] === 'branchedfrom'}

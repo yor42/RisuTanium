@@ -10,6 +10,7 @@ import { fillLang } from "src/lang/fill";
 import { v4 } from "uuid";
 import type { MCPClientLike } from "./internalmcp";
 import localforage from "localforage";
+import { MCP_TOOL_CALLS_STORE } from "src/ts/drive/rtb/sideStoreConfig";
 import { isTauri } from "src/ts/platform"
 import { isAndroidTransport } from "src/ts/storage/tauriByteTransport";
 import { sleep } from "src/ts/util";
@@ -489,8 +490,20 @@ export async function importMCPModule(){
     }
     try {
         const id = v4()
+        // A client that declined the sign-in stays quiet for automatic activity; this explicit import asks again.
+        const existing = MCPs[x]
+        if(existing instanceof MCPClient && existing.oauthDeclined){
+            existing.clearOAuthDecline()
+            await existing.checkHandshake()
+        }
         const metas = (await getMCPMeta([x], undefined, new Map([[x, [{ moduleId: id, moduleName: x }]]])))
         console.log(metas)
+        // A declined client may carry stale metadata, so this check precedes the missing-metadata one. The
+        // cancel was the user's answer: no module and no error.
+        const client = MCPs[x]
+        if(client instanceof MCPClient && client.oauthDeclined){
+            return
+        }
         const meta = metas[x];
         if(!meta) {
             alertError(language.errors.mcpModuleNotFound);
@@ -531,10 +544,7 @@ export type toolCallData = {
     response: RPCToolCallContent[],
 }
 
-const inst = localforage.createInstance({
-    name: 'mcp-tool-calls',
-    storeName: 'mcp-tool-calls'
-});
+const inst = localforage.createInstance(MCP_TOOL_CALLS_STORE);
 
 export async function encodeToolCall(call:toolCallData){
     call.call.id = call.call.id || v4();

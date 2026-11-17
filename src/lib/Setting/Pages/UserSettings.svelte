@@ -23,6 +23,13 @@
 
 <Button
     onclick={async () => {
+        (await import("src/ts/drive/rtbExportEntry")).startRtbExport()
+    }} className="mt-2">
+    {language.rtbExportButton}
+</Button>
+
+<Button
+    onclick={async () => {
         if(await alertConfirm(language.backupConfirm)){
             SavePartialLocalBackup()
         }

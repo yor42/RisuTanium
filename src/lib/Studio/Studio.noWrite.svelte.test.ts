@@ -38,7 +38,8 @@ const writes = vi.hoisted(() => ({
 }))
 const route = vi.hoisted(() => ({ shell: false }))
 
-vi.mock('../../ts/storage/database.svelte', () => ({ setDatabase: writes.setDatabase }))
+// `getDatabase` is a read: the parser's asset-cache effect reaches it through process/modules after a stub load starts.
+vi.mock('../../ts/storage/database.svelte', () => ({ setDatabase: writes.setDatabase, getDatabase: () => db.db }))
 vi.mock('../../ts/storage/characterSaveMarks', () => ({ markCharacterForSave: writes.markCharacterForSave }))
 vi.mock('../../ts/liveCharacterWrite', () => ({ writeLiveCharacter: writes.writeLiveCharacter, writeLiveChat: writes.writeLiveChat }))
 vi.mock('../../ts/storage/store2/moduleAcquire', () => ({ acquireModule: writes.acquireModule }))
@@ -87,8 +88,11 @@ vi.mock('../../ts/stores.svelte', () => ({
     get QuickSettings() { return QuickSettings },
 }))
 vi.mock('../../ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => route.shell }))
+// Selecting a module stub starts its load, which imports process/modules and with it the parser, whose asset-cache
+// effect reads the run's module ids. The visit runs no chat, so it references no module.
 vi.mock('../../ts/process/moduleRefList', () => ({
     moduleListOf: (ids: string[]) => listerOver(db.db.modules)(ids),
+    moduleRefIdsOf: (): string[] => [],
 }))
 vi.mock('../../ts/alertPrompts', () => ({ pageCovered: () => false }))
 vi.mock('../../ts/alertBack', () => ({ closeDialogForBack: vi.fn() }))

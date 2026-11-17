@@ -10,7 +10,7 @@ const http = require('http');
 const path = require('path');
 const net = require('net');
 const htmlparser = require('node-html-parser');
-const { existsSync, mkdirSync, readFileSync, writeFileSync, openSync, closeSync, fsyncSync, renameSync, unlinkSync, readdirSync } = require('fs');
+const { existsSync, mkdirSync, readFileSync, writeFileSync, openSync, closeSync, fsyncSync, renameSync, unlinkSync, readdirSync, rmSync } = require('fs');
 const fs = require('fs/promises')
 const crypto = require('crypto')
 const rateLimit = require('express-rate-limit');
@@ -19,6 +19,7 @@ const { NODE_BODY_LIMIT_BYTES, NODE_PUBLIC_BODY_LIMIT_BYTES, NODE_ASSET_LIMIT_BY
 const { hubTargetURL, hubRedirectTarget, hubRequestHeaders, hubResponseHeaders, hubForwardBody } = require('./hubProxy.cjs');
 const { ASSET_READ_AUDIENCE, assetKeyFromHex, contentTypeForKey, sniffContentType, cacheControlForKey } = require('./assetRoute.cjs');
 const { store2KeyFromHex } = require('./store2Keys.cjs');
+const { createExportJobs } = require('./exportJob.cjs');
 const { isKindAllowed, literalHostKind, createCheckedLookup, blockedError, ProxyPolicyError, InvalidHeaderError, sanitizeOutboundHeaders } = require('./proxyPolicy.cjs');
 
 // A positive integer from the environment, else `fallback`. The environment
@@ -101,6 +102,14 @@ const savePath = path.join(process.cwd(), "save")
 if(!existsSync(savePath)){
     mkdirSync(savePath)
 }
+// The file that holds a key's value, for the canonical lowercase hex of the key.
+// Reads by range and the export splice share it. A splice is valid only while a
+// key file's bytes are the key's value bytes: a storage-layout or at-rest
+// encoding change must update this helper or turn `exportStream` off.
+function keyFile(lowerHex){
+    return path.join(savePath, lowerHex)
+}
+const exportsPath = path.join(savePath, '__exports')
 
 const passwordPath = path.join(process.cwd(), 'save', '__password')
 if(existsSync(passwordPath)){
@@ -314,6 +323,22 @@ for(const entry of readdirSync(savePath, { withFileTypes: true })){
         }
     }
 }
+// Export staging belongs to one process run: whatever a previous run left under
+// `__exports` (job directories and their pins) goes before the server listens.
+try {
+    rmSync(exportsPath, { recursive: true, force: true })
+} catch (error) {
+    console.error('Could not remove the leftover export staging:', error?.code ?? error)
+}
+const exportJobs = createExportJobs({
+    fs,
+    keyFile,
+    statfs: typeof fs.statfs === 'function' ? (target) => fs.statfs(target) : undefined,
+    saveDir: savePath,
+    exportsDir: exportsPath,
+    env: process.env,
+    log: (message) => console.error(`[Export] ${message}`),
+})
 
 // Appends one record per key in `keys` (their current in-memory revisions) to
 // the revision log. Does NOT queue itself — callers must already be inside
@@ -621,6 +646,22 @@ const authenticatedRouteLimiter = rateLimit({
 const storageRouteLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: 20000,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests. Please retry shortly.' }
+});
+// A staged export sends one request per few MiB of .bin, so its routes draw on a
+// bucket apart from the storage routes'; the ticketed download has its own.
+const exportRouteLimiter = rateLimit({
+    windowMs: positiveIntegerFromEnv('RISU_EXPORT_RATE_LIMIT_WINDOW_MS', 60 * 1000),
+    max: positiveIntegerFromEnv('RISU_EXPORT_RATE_LIMIT_MAX', 120000),
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many requests. Please retry shortly.' }
+});
+const exportDownloadLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Too many requests. Please retry shortly.' }
@@ -2151,7 +2192,7 @@ app.get('/api/caps', storageRouteLimiter, asyncRoute(async (req, res, next) => {
     if(!await checkAuth(req, res)){
         return;
     }
-    res.send({ checkOnly: true, retire: true, pieces: true, listPrefix: true, privateProxy: PROXY_ALLOW_PRIVATE });
+    res.send({ checkOnly: true, retire: true, pieces: true, listPrefix: true, privateProxy: PROXY_ALLOW_PRIVATE, ...exportJobs.caps() });
 }));
 
 // Only whole, even-length hex names are keys. Everything else in the
@@ -2696,6 +2737,7 @@ const uploadReapTimer = setInterval(() => {
     }
 }, Math.max(20, Math.min(60000, Math.floor(UPLOAD_IDLE_REAP_MS / 4))))
 uploadReapTimer.unref()
+exportJobs.startReaper()
 
 app.post('/api/upload/begin', storageRouteLimiter, asyncRoute(async (req, res) => {
     if(!await checkAuth(req, res)){
@@ -3005,7 +3047,7 @@ app.get('/api/read-range', storageRouteLimiter, asyncRoute(async (req, res, next
             currentRevision = revisions[filePath] ?? 0
             let handle
             try {
-                handle = await fs.open(path.join(savePath, filePath), 'r')
+                handle = await fs.open(keyFile(filePath), 'r')
             } catch (error) {
                 if(error?.code === 'ENOENT'){
                     return
@@ -3043,12 +3085,80 @@ app.get('/api/read-range', storageRouteLimiter, asyncRoute(async (req, res, next
     }
 }))
 
+// Streamed .bin export (exportJob.cjs). Every route but the download needs a
+// storage token; the download is opened by a single-use ticket in its POST body,
+// never in a URL, because the browser starts it as a navigation with no headers.
+function sendExportAnswer(res, answer){
+    res.status(answer.status).send(answer.body)
+}
+
+function exportIdOfRequest(req){
+    return req.headers['export-id']
+}
+
+app.post('/api/export/begin', exportRouteLimiter, authBeforeBody(checkAuth), publicJsonParser, asyncRoute(async (req, res) => {
+    sendExportAnswer(res, await exportJobs.begin(req.body))
+}))
+
+app.post('/api/export/append', exportRouteLimiter, authBeforeBody(checkAuth), uploadChunkParser, asyncRoute(async (req, res) => {
+    sendExportAnswer(res, await exportJobs.append({
+        id: exportIdOfRequest(req),
+        seq: req.headers['export-seq'],
+        spliceAt: req.headers['splice-at'],
+        pinKey: req.headers['pin-key'],
+        body: req.body,
+    }))
+}))
+
+app.post('/api/export/finalize', exportRouteLimiter, asyncRoute(async (req, res) => {
+    if(!await checkAuth(req, res)){
+        return
+    }
+    sendExportAnswer(res, await exportJobs.finalize(exportIdOfRequest(req)))
+}))
+
+app.get('/api/export/status', exportRouteLimiter, asyncRoute(async (req, res) => {
+    if(!await checkAuth(req, res)){
+        return
+    }
+    res.setHeader('Cache-Control', 'no-store')
+    sendExportAnswer(res, exportJobs.status(exportIdOfRequest(req)))
+}))
+
+app.post('/api/export/abort', exportRouteLimiter, asyncRoute(async (req, res) => {
+    if(!await checkAuth(req, res)){
+        return
+    }
+    sendExportAnswer(res, await exportJobs.abort(exportIdOfRequest(req)))
+}))
+
+app.post('/api/export/download', exportDownloadLimiter, express.urlencoded({ extended: false, limit: NODE_PUBLIC_BODY_LIMIT_BYTES }), asyncRoute(async (req, res) => {
+    const ticket = req.body !== undefined && req.body !== null ? req.body.ticket : undefined
+    const refusal = await exportJobs.download(ticket, res)
+    if(refusal !== null){
+        sendExportAnswer(res, refusal)
+    }
+}))
+
 // A body over a parser's limit is refused before the route handler runs, so it
 // is answered here, as JSON and without the framework's error page (which
 // carries a stack and absolute paths). A route-level parser's error reaches only
 // handlers registered after that route, so this stays after the last route.
 // /api/write-checked is a guarded route and keeps its marker on the answer.
 app.use((error, req, res, next) => {
+    if (error?.type === 'entity.too.large' && req.path === '/api/export/append') {
+        res.status(413).send({
+            error: 'Export chunk is too large',
+            code: 'PAYLOAD_TOO_LARGE',
+            message: `Export chunks are limited to ${UPLOAD_CHUNK_MAX_BYTES} bytes.`,
+        });
+        return;
+    }
+    if (req.path === '/api/export/download') {
+        // The download carries no credentials; every refusal looks alike.
+        res.status(404).send({ error: 'Not found' });
+        return;
+    }
     if (error?.type === 'entity.too.large' && req.path === '/api/upload/append') {
         res.status(413).send({
             error: 'Upload chunk is too large',

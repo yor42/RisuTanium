@@ -12,7 +12,66 @@
  * ignores fields it does not know. A line that is not JSON, has no string `k`, or has
  * neither `j` nor `t`, and a known tag with a payload that is not exact base64, are
  * damaged. When a line has both `j` and `t`, `j` is the value.
+ *
+ * Every line is held to the bounds below on both sides: the writer refuses to emit a
+ * line the reader would refuse, and the reader rejects a hostile line before it parses
+ * or allocates for it.
  */
+
+/** The longest line, without its newline, in bytes. */
+export const SIDE_LINE_MAX_BYTES = 67_108_864
+
+/**
+ * The deepest JSON nesting a line may hold. It is counted over the whole line text,
+ * envelope included (the `{` of `{"k":...}` is depth 1, so a `j` value may nest 255
+ * levels), and again, separately, over the JSON of an `sv1` payload.
+ */
+export const SIDE_VALUE_MAX_DEPTH = 256
+
+/**
+ * The most JSON nodes a line may hold: one plus every `,`, `[` and `{` outside a string.
+ * It is counted over the whole line text, envelope included, and again, separately, over
+ * the JSON of an `sv1` payload.
+ */
+export const SIDE_VALUE_MAX_NODES = 1_048_576
+
+const BOUNDS_DEPTH = `the JSON nests deeper than ${SIDE_VALUE_MAX_DEPTH} levels`
+const BOUNDS_NODES = `the JSON holds more than ${SIDE_VALUE_MAX_NODES} nodes`
+
+/** Whether `text` stays within the depth and node bounds; one linear pass, before any `JSON.parse`. */
+export function scanSideJson(text: string): { ok: true, reason?: undefined } | { ok: false, reason: string } {
+    let depth = 0
+    let nodes = 1
+    let inString = false
+    for (let i = 0; i < text.length; i++) {
+        const code = text.charCodeAt(i)
+        if (inString) {
+            if (code === 0x5c) {
+                i++
+            } else if (code === 0x22) {
+                inString = false
+            }
+            continue
+        }
+        if (code === 0x22) {
+            inString = true
+        } else if (code === 0x5b || code === 0x7b) {
+            depth++
+            nodes++
+            if (depth > SIDE_VALUE_MAX_DEPTH) {
+                return { ok: false, reason: BOUNDS_DEPTH }
+            }
+        } else if (code === 0x5d || code === 0x7d) {
+            depth--
+        } else if (code === 0x2c) {
+            nodes++
+        }
+        if (nodes > SIDE_VALUE_MAX_NODES) {
+            return { ok: false, reason: BOUNDS_NODES }
+        }
+    }
+    return { ok: true }
+}
 
 export interface SideTagCodec {
     tag: string
@@ -26,10 +85,22 @@ export type SideTagRegistry = readonly SideTagCodec[]
 export class RtbSideValueError extends Error {
     readonly key: string
 
-    constructor(key: string) {
-        super(`the side value for key ${JSON.stringify(key.length > 80 ? key.slice(0, 80) + '...' : key)} is neither JSON-exact nor taken by a tag codec`)
+    /** `reason` names a bounds failure; without it the value is simply not taken by any codec. */
+    constructor(key: string, reason?: string) {
+        const shown = JSON.stringify(key.length > 80 ? key.slice(0, 80) + '...' : key)
+        super(reason === undefined
+            ? `the side value for key ${shown} is neither JSON-exact nor taken by a tag codec`
+            : `the side value for key ${shown} is over the line bounds: ${reason}`)
         this.name = 'RtbSideValueError'
         this.key = key
+    }
+}
+
+/** Thrown by a codec's `encode` for a value over a bound; `encodeSideLine` turns it into an `RtbSideValueError` naming the key. */
+export class RtbSideBoundsError extends Error {
+    constructor(reason: string) {
+        super(reason)
+        this.name = 'RtbSideBoundsError'
     }
 }
 
@@ -42,6 +113,9 @@ function isPlainObject(value: object): boolean {
 }
 
 function pure(value: unknown, path: Set<object>): boolean {
+    if (path.size >= SIDE_VALUE_MAX_DEPTH) {
+        return false
+    }
     if (value === null || typeof value === 'boolean' || typeof value === 'string') {
         return true
     }
@@ -114,15 +188,36 @@ function base64ToBytes(text: string): Uint8Array | null {
 /** One line of a side section, including its newline. */
 export function encodeSideLine(key: string, value: unknown, registry: SideTagRegistry = []): Uint8Array {
     if (jsonRoundTrips(value)) {
-        return encoder.encode(`${JSON.stringify({ k: key, j: value })}\n`)
+        return boundedLine(key, JSON.stringify({ k: key, j: value }))
     }
     for (const codec of registry) {
-        const bytes = codec.encode(value)
+        let bytes: Uint8Array | null
+        try {
+            bytes = codec.encode(value)
+        } catch (error) {
+            if (error instanceof RtbSideBoundsError) {
+                throw new RtbSideValueError(key, error.message)
+            }
+            throw error
+        }
         if (bytes !== null) {
-            return encoder.encode(`${JSON.stringify({ k: key, t: codec.tag, b: bytesToBase64(bytes) })}\n`)
+            return boundedLine(key, JSON.stringify({ k: key, t: codec.tag, b: bytesToBase64(bytes) }))
         }
     }
     throw new RtbSideValueError(key)
+}
+
+/** The bytes of `text` plus a newline, refusing a line the reader would refuse. */
+function boundedLine(key: string, text: string): Uint8Array {
+    const scan = scanSideJson(text)
+    if (!scan.ok) {
+        throw new RtbSideValueError(key, scan.reason)
+    }
+    const bytes = encoder.encode(`${text}\n`)
+    if (bytes.length - 1 > SIDE_LINE_MAX_BYTES) {
+        throw new RtbSideValueError(key, `the line is longer than ${SIDE_LINE_MAX_BYTES} bytes`)
+    }
+    return bytes
 }
 
 export type SideLine =
@@ -136,6 +231,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** One line without its newline. */
 export function decodeSideLine(text: string, registry: SideTagRegistry = []): SideLine {
+    try {
+        return decodeBoundedLine(text, registry)
+    } catch (error) {
+        return { kind: 'damaged', reason: `the line cannot be decoded: ${error instanceof Error ? error.message : 'unknown failure'}` }
+    }
+}
+
+function decodeBoundedLine(text: string, registry: SideTagRegistry): SideLine {
+    if (text.length > SIDE_LINE_MAX_BYTES) {
+        return { kind: 'damaged', reason: `the line is longer than ${SIDE_LINE_MAX_BYTES} bytes` }
+    }
+    const scan = scanSideJson(text)
+    if (!scan.ok) {
+        return { kind: 'damaged', reason: `the line is over the bounds: ${scan.reason}` }
+    }
     let parsed: unknown
     try {
         parsed = JSON.parse(text)

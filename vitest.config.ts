@@ -43,6 +43,6 @@ export default defineConfig({
     // loaded full run that cold cost alone can pass 5 s, so the default leaves room for it.
     testTimeout: 20000,
     // The theme-pack validator bundles the design token stylesheets with ?raw, and adoptSheet installs the app's global sheets the same way; Vitest empties a CSS import unless it is listed here.
-    css: { include: [/docs\/design\/.+\.css/, /src\/ts\/chatShell\/streamTextHold\.css/] },
+    css: { include: [/docs\/design\/.+\.css/, /src\/ts\/chatShell\/streamTextHold\.css/, /src\/ts\/gui\/cardAnimationHold\.css/, /src\/ts\/chatShell\/cardEffects\.css/] },
   },
 })

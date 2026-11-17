@@ -26,10 +26,18 @@
     import { untrack } from "svelte";
     import { tokenizePreset } from "src/ts/process/prompt";
     import { getCharToken } from "src/ts/tokenizer";
-    import { PlusIcon, PencilIcon, TrashIcon, DownloadIcon, HardDriveUploadIcon } from "@lucide/svelte";
+    import { PlusIcon, PencilIcon, TrashIcon, DownloadIcon, HardDriveUploadIcon, CopyIcon } from "@lucide/svelte";
     import { alertError, alertInput, alertConfirm, alertNormal } from "src/ts/alert";
-    import { createHypaV3Preset } from "src/ts/process/memory/hypav3";
     import { importHypaV3PresetFile } from "src/ts/process/memory/hypaV3PresetImport";
+    import {
+        addHypaV3Preset,
+        clampHypaV3Ratios,
+        deleteHypaV3Preset,
+        duplicateHypaV3Preset,
+        hypaV3PresetFileOf,
+        renameHypaV3Preset,
+    } from "src/ts/process/memory/hypaV3Presets";
+    import { memoryEngineOf, setMemoryEngine, type MemoryEngine } from "src/ts/process/memory/memoryEngine";
 
     // One hold per reference image; they end with the page.
     const lookups = useCharImageLookups();
@@ -37,38 +45,37 @@
     let submenu = $state(DBState.db.useLegacyGUI ? -1 : 0);
 
     // HypaV3
+    // Each effect tracks only its own field, so the field passed to the clamp is the one the
+    // user just edited and the other ratio yields. A preset switch runs all three.
     $effect(() => {
         const settings = DBState.db.hypaV3Presets?.[DBState.db.hypaV3PresetId]?.settings;
-        const currentValue = settings?.similarMemoryRatio;
 
-        if (!currentValue) return;
+        if (!settings) return;
 
-        untrack(() => {
-            const newValue = Math.min(currentValue, 1);
+        void settings.similarMemoryRatio;
 
-            settings.similarMemoryRatio = newValue;
-
-            if (newValue + settings.recentMemoryRatio > 1) {
-                settings.recentMemoryRatio = 1 - newValue;
-            }
-        })
+        untrack(() => clampHypaV3Ratios(settings, 'similar'));
     });
 
     $effect(() => {
         const settings = DBState.db.hypaV3Presets?.[DBState.db.hypaV3PresetId]?.settings;
-        const currentValue = settings?.recentMemoryRatio;
 
-        if (!currentValue) return;
+        if (!settings) return;
 
-        untrack(() => {
-            const newValue = Math.min(currentValue, 1);
+        void settings.recentMemoryRatio;
 
-            settings.recentMemoryRatio = newValue;
+        untrack(() => clampHypaV3Ratios(settings, 'recent'));
+    });
 
-            if (newValue + settings.similarMemoryRatio > 1) {
-                settings.similarMemoryRatio = 1 - newValue;
-            }
-        })
+    $effect(() => {
+        const settings = DBState.db.hypaV3Presets?.[DBState.db.hypaV3PresetId]?.settings;
+
+        if (!settings) return;
+
+        void settings.memoryTokensRatio;
+        void settings.extraSummarizationRatio;
+
+        untrack(() => clampHypaV3Ratios(settings, 'memoryTokens'));
     });
 
     async function getMaxMemoryRatio(): Promise<number> {
@@ -1043,45 +1050,10 @@
     <Accordion name={language.longTermMemory} styled disabled={submenu !== -1}>
         <span class="text-textcolor mt-4">{language.type}</span>
 
-        <SelectInput className="mb-4" value={
-            DBState.db.hanuraiEnable ? 'hanuraiMemory' :
-            DBState.db.hypav2 ? 'hypaV2' :
-            DBState.db.hypaV3 ? 'hypaV3' :
-            DBState.db.supaModelType !== 'none' ? 'supaMemory' : 'none'
-        } onchange={(v) => {
+        <SelectInput className="mb-4" value={memoryEngineOf(DBState.db)} onchange={(v) => {
             //@ts-expect-error 'value' doesn't exist on EventTarget, but target is HTMLSelectElement here
-            const value = v.target.value
-            if (value === 'supaMemory'){
-                DBState.db.supaModelType = 'distilbart'
-                DBState.db.memoryAlgorithmType = 'supaMemory'
-                DBState.db.hypav2 = false
-                DBState.db.hanuraiEnable = false
-                DBState.db.hypaV3 = false
-            } else if (value === 'hanuraiMemory'){
-                DBState.db.supaModelType = 'none'
-                DBState.db.memoryAlgorithmType = 'hanuraiMemory'
-                DBState.db.hypav2 = false
-                DBState.db.hanuraiEnable = true
-                DBState.db.hypaV3 = false
-            } else if (value === 'hypaV2') {
-                DBState.db.supaModelType = 'distilbart'
-                DBState.db.memoryAlgorithmType = 'hypaMemoryV2'
-                DBState.db.hypav2= true
-                DBState.db.hanuraiEnable = false
-                DBState.db.hypaV3 = false
-            } else if (value === 'hypaV3') {
-                DBState.db.memoryAlgorithmType = 'hypaMemoryV3'
-                DBState.db.supaModelType = 'none'
-                DBState.db.hanuraiEnable = false
-                DBState.db.hypav2 = false
-                DBState.db.hypaV3 = true
-            } else {
-                DBState.db.supaModelType = 'none'
-                DBState.db.memoryAlgorithmType = 'none'
-                DBState.db.hypav2 = false
-                DBState.db.hanuraiEnable = false
-                DBState.db.hypaV3 = false
-            }
+            const value: MemoryEngine = v.target.value
+            setMemoryEngine(DBState.db, value)
         }}>
             <OptionInput value="none" >{language.none}</OptionInput>
             <OptionInput value="supaMemory" >{language.SuperMemory}</OptionInput>
@@ -1127,13 +1099,14 @@
             </select>
 
             <div class="flex items-center mb-8">
-                <button class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer" onclick={() => {
-                    const newPreset = createHypaV3Preset()
-                    const presets = DBState.db.hypaV3Presets
+                <button class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer" onclick={async () => {
+                    const newName = await alertInput(language.hypaV3Settings.newPresetNamePrompt, [], '')
 
-                    presets.push(newPreset)
-                    DBState.db.hypaV3Presets = presets
-                    DBState.db.hypaV3PresetId = DBState.db.hypaV3Presets.length - 1
+                    if (!newName) return
+
+                    if (!addHypaV3Preset(DBState.db, newName)) {
+                        alertError(language.hypaV3Settings.blankPresetNameError)
+                    }
                 }}>
                     <PlusIcon size={24}/>
                 </button>
@@ -1146,14 +1119,16 @@
                         return
                     }
 
-                    const id = DBState.db.hypaV3PresetId
-                    const preset = presets[id]
+                    const preset = presets[DBState.db.hypaV3PresetId]
+
+                    if (!preset) return
+
+                    const id = preset.id
                     const newName = await alertInput(fillLang(language.alerts.enterNewName, { name: preset.name }), [], preset.name)
 
                     if (!newName || newName.trim().length === 0) return
 
-                    preset.name = newName
-                    DBState.db.hypaV3Presets = presets
+                    renameHypaV3Preset(DBState.db, id, newName)
                 }}>
                     <PencilIcon size={24}/>
                 </button>
@@ -1167,18 +1142,15 @@
                     }
 
                     const preset = presets[DBState.db.hypaV3PresetId]
+
+                    if (!preset) return
+
+                    const id = preset.id
                     const confirmed = await alertConfirm(`${language.removeConfirm}${preset.name}`)
 
                     if (!confirmed) return
 
-                    const presetsNow = DBState.db.hypaV3Presets
-                    const index = presetsNow.indexOf(preset)
-
-                    if (index === -1 || presetsNow.length <= 1) return
-
-                    DBState.db.hypaV3PresetId = 0
-                    presetsNow.splice(index, 1)
-                    DBState.db.hypaV3Presets = presetsNow
+                    deleteHypaV3Preset(DBState.db, id)
                 }}>
                     <TrashIcon size={24}/>
                 </button>
@@ -1194,13 +1166,8 @@
                             return
                         }
 
-                        const id = DBState.db.hypaV3PresetId
-                        const preset = presets[id]
-                        const bytesExport = Buffer.from(JSON.stringify({
-                            type: 'risu',
-                            ver: 1,
-                            data: preset
-                        }), 'utf-8')
+                        const preset = presets[DBState.db.hypaV3PresetId]
+                        const bytesExport = Buffer.from(JSON.stringify(hypaV3PresetFileOf(preset)), 'utf-8')
                         
                         const saved = await downloadFile(`hypaV3_export_${preset.name}.json`, bytesExport)
                         if(!saved){
@@ -1216,6 +1183,27 @@
 
                 <button class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer" onclick={importHypaV3PresetFile}>
                     <HardDriveUploadIcon size={24}/>
+                </button>
+
+                <button class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer" title={language.hypaV3Settings.duplicatePresetLabel} aria-label={language.hypaV3Settings.duplicatePresetLabel} onclick={async () => {
+                    const preset = DBState.db.hypaV3Presets[DBState.db.hypaV3PresetId]
+
+                    if (!preset) return
+
+                    const id = preset.id
+                    const newName = await alertInput(
+                        language.hypaV3Settings.newPresetNamePrompt,
+                        [],
+                        fillLang(language.hypaV3Settings.duplicatePresetDefaultName, { name: preset.name })
+                    )
+
+                    if (!newName) return
+
+                    if (!duplicateHypaV3Preset(DBState.db, id, newName)) {
+                        alertError(language.hypaV3Settings.blankPresetNameError)
+                    }
+                }}>
+                    <CopyIcon size={24}/>
                 </button>
             </div>
 

@@ -284,6 +284,25 @@ describe('3j a stub is never asked for a body key', () => {
         expect(display?.count).toBe(1)
     })
 
+    test('a character\'s asset rows are only counted when the tree opens: no tuple is read, in any kind or merged group', () => {
+        const reads: string[] = []
+        const watched = (label: string, rows: unknown[]): unknown[] => new Proxy(rows, {
+            get(target, key, receiver) {
+                if (typeof key === 'string' && /^\d+$/.test(key)) reads.push(`${label}:${key}`)
+                return Reflect.get(target, key, receiver)
+            },
+        })
+        const model = buildOwnerModel(makeInput({
+            character: makeCharacter({
+                additionalAssets: watched('additional', [['a', 'p', 'png'], ['b', 'q', 'png'], ['c', 'r', 'png']]),
+                emotionImages: watched('emotion', [['happy', 'x']]),
+            }),
+        }))
+        touchEverything(model)
+        expect(model.character.kinds().find((node) => node.kind === 'display')?.count).toBe(4)
+        expect(reads).toEqual([])
+    })
+
     test('lua scripts on a module read as a scripts item', () => {
         const model = buildOwnerModel(makeInput({
             modules: [residentModule('l1', { trigger: [{ comment: '', type: 'start', conditions: [], effect: [{ type: 'triggerlua', code: '' }] }] })],
