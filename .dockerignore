@@ -40,6 +40,8 @@ build
 # Only the two named evidence directories are gitignored; the rest remains tracked.
 Agents
 docs
+# The theme-pack validator bundles token stylesheets and part registries from docs/design (src/ts/themePack/tokens.ts).
+!docs/design
 src-tauri
 util
 server/hono
