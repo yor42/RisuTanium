@@ -1,7 +1,8 @@
 // The Studio save chip's state machine: when may a Studio edit be called "saved". An edit is saved
 // only after a commit whose snapshot covers its save mark, for a character the store can encode and
-// the legacy loop does not hold frozen. Every dependency is injected, as in hiddenReplySaveGuard.ts;
-// `productionSaveAckDeps()` builds them from the existing exports.
+// the legacy loop does not hold frozen. A module ack asks the commit's module verdict instead: the module must be
+// stored by a commit that did not carry the module set whole. Every dependency is injected, as in
+// hiddenReplySaveGuard.ts; `productionSaveAckDeps()` builds them from the existing exports.
 
 import { untrack } from 'svelte'
 import { get } from 'svelte/store'
@@ -12,6 +13,7 @@ import {
     getSaveMarkCount,
     isCharacterUnsavable,
     isSavingStopped,
+    moduleCommitVerdict,
     onSavingStopped,
     requestSaveNow,
     saving,
@@ -54,11 +56,19 @@ export interface SaveAckDeps {
     clock: HistoryClock
 }
 
+// What the latest reported commit says about one module: `saved` (stored), `blocked` (the module set was carried whole
+// for another cause, so the change is not in the store yet) or `unsavable` (the module itself is refused or cannot be
+// encoded, and its saved copy is kept).
+export type ModuleCommitVerdict = 'saved' | 'unsavable' | 'blocked'
+
+// What an ack is for. A character ack is judged by the character rules; a module ack by the module's commit verdict.
+export type AckSubject = { readonly kind: 'character' } | { readonly kind: 'module', verdict(moduleId: string): ModuleCommitVerdict }
+
 export interface SaveAck {
     readonly state: AckState
     readonly changedElsewhere: boolean
     readonly display: AckDisplay
-    // The chaId of the latest edit; null before the first one.
+    // The id of the subject of the latest edit (a chaId, or a module id for a module ack); null before the first one.
     readonly chaId: string | null
     canRetry(): boolean
     noteEdit(chaId: string, before: number): void
@@ -113,6 +123,11 @@ export function productionSaveAckDeps(clock: HistoryClock): SaveAckDeps {
     }
 }
 
+// The subject of a module ack in production: the module verdict of the latest commit the loop reported.
+export function productionModuleAckSubject(): AckSubject {
+    return { kind: 'module', verdict: moduleCommitVerdict }
+}
+
 class SaveAckImpl implements SaveAck {
     state = $state<AckState>('idle')
     changedElsewhere = $state(false)
@@ -121,6 +136,9 @@ class SaveAckImpl implements SaveAck {
     private pendingShown = $state(false)
     // What a not-yet-shown pending state looks like: the state before it.
     private calm = $state<'idle' | 'saved'>('idle')
+    // A failed state that only a commit storing the module ends: Retry cannot help, the module itself is refused.
+    // Only a `unsavable` verdict sets it; every other entry into a sticky state clears it.
+    private permanent = $state(false)
 
     private target = 0
     private peerBase: number
@@ -133,7 +151,7 @@ class SaveAckImpl implements SaveAck {
     private readonly stops: (() => void)[] = []
     private readonly onCommit = (): void => this.handleCommit()
 
-    constructor(private readonly deps: SaveAckDeps) {
+    constructor(private readonly deps: SaveAckDeps, private readonly subject: AckSubject) {
         this.peerBase = deps.getPeerSaveCount()
         this.stops.push(deps.onPassStart(() => this.handlePassStart()))
         this.stops.push(deps.subscribeFailure((value) => this.handleFailure(value)))
@@ -158,6 +176,7 @@ class SaveAckImpl implements SaveAck {
     canRetry(): boolean {
         return (
             (this.state === 'failed' || this.state === 'unconfirmed') &&
+            !this.permanent &&
             !this.changedElsewhere &&
             !this.deps.isStopped()
         )
@@ -215,6 +234,7 @@ class SaveAckImpl implements SaveAck {
             this.calm = this.state
         }
         this.state = 'pending'
+        this.permanent = false
         this.pendingShown = false
         this.failureAtEdit = this.deps.currentFailure()
         this.startBound()
@@ -228,8 +248,9 @@ class SaveAckImpl implements SaveAck {
         }, PENDING_DELAY_MS)
     }
 
-    private enterSticky(next: 'failed' | 'unconfirmed'): void {
+    private enterSticky(next: 'failed' | 'unconfirmed', permanent = false): void {
         this.state = next
+        this.permanent = permanent
         this.pendingShown = false
         this.clearBound()
         this.clearCeiling()
@@ -238,6 +259,7 @@ class SaveAckImpl implements SaveAck {
 
     private enterSaved(): void {
         this.state = 'saved'
+        this.permanent = false
         this.calm = 'saved'
         this.pendingShown = false
         this.clearBound()
@@ -261,7 +283,9 @@ class SaveAckImpl implements SaveAck {
             this.startCeiling()
         }
         const covered = chaId !== null && this.deps.getCommittedMarkCount() >= this.target && this.target > 0
-        if (covered && chaId !== null) {
+        if (covered && chaId !== null && this.subject.kind === 'module') {
+            this.settleModuleCommit(this.subject.verdict(chaId))
+        } else if (covered && chaId !== null) {
             const blocked = this.deps.isCharacterUnsavable(chaId) || this.deps.frozenKeys().has(chaId)
             if (this.state === 'pending') {
                 if (blocked) {
@@ -281,6 +305,32 @@ class SaveAckImpl implements SaveAck {
         }
         if (this.state === 'pending' || this.state === 'failed' || this.state === 'unconfirmed') {
             this.armCommit()
+        }
+    }
+
+    // A covering commit for a module ack, by the commit's verdict for the module. A permanent failed ends only when a
+    // commit stores the module; a later `blocked` verdict leaves it a refusal, never a "not confirmed" that Retry could
+    // not help. Any other sticky state stays until Retry, as for a character.
+    private settleModuleCommit(verdict: ModuleCommitVerdict): void {
+        if (this.state === 'pending') {
+            if (verdict === 'unsavable') {
+                this.enterSticky('failed', true)
+            } else if (verdict === 'blocked') {
+                this.enterSticky('unconfirmed')
+            } else {
+                this.enterSaved()
+                this.peerBase = this.deps.getPeerSaveCount()
+                this.changedElsewhere = false
+            }
+        } else if (this.state === 'failed' && this.permanent) {
+            if (verdict === 'saved') {
+                this.enterSaved()
+                this.peerBase = this.deps.getPeerSaveCount()
+                this.changedElsewhere = false
+            }
+        } else if (verdict === 'saved' && (this.state === 'failed' || this.state === 'unconfirmed')) {
+            this.peerBase = this.deps.getPeerSaveCount()
+            this.changedElsewhere = false
         }
     }
 
@@ -398,6 +448,6 @@ class SaveAckImpl implements SaveAck {
 }
 
 // One ack per Studio visit; `dispose()` at visit close ends every timer, listener and effect.
-export function createSaveAck(deps: SaveAckDeps): SaveAck {
-    return new SaveAckImpl(deps)
+export function createSaveAck(deps: SaveAckDeps, subject: AckSubject = { kind: 'character' }): SaveAck {
+    return new SaveAckImpl(deps, subject)
 }
