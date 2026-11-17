@@ -7,8 +7,11 @@
 <script lang="ts">
     import { onDestroy } from "svelte";
     import { language } from "src/lang";
-    let currentSrc:string[] = $state([])
-    let oldSrc:string[] = $state([]);
+    import { currentPortraitMaxSide } from "src/ts/media/portraitDisplay";
+    import { portraitCache, type DisplayImage } from "src/ts/media/portraitVariants";
+    // Replaced wholesale, never mutated.
+    let currentSrc:DisplayImage[] = $state.raw([])
+    let oldSrc:DisplayImage[] = $state.raw([]);
     let showOldImage = $state(false);
     let styleType:string = $state('normal')
     let oldStyleType:string = $state('normal')
@@ -23,6 +26,19 @@
     // Plain counters, never state: they are written inside the effect that calls processSrc.
     let requestSeq = 0
     let fadeTimer: ReturnType<typeof setTimeout> | undefined
+    // The originals and style marker last committed. Plain, so comparing against them is never a dependency.
+    let shownOriginals: string[] = []
+    let shownStyle = 'normal'
+    // The seq whose shrunk set is being waited for; 0 when none.
+    let requestingSeq = 0
+    // This instance's references into the app-wide shrunk-portrait store.
+    const holder = portraitCache().createHolder()
+
+    // What is on screen now, including the old layer while it fades. Reads state: call it only after the
+    // first await of processSrc, so the effect that calls processSrc depends on `src` alone.
+    function rendered(): DisplayImage[] {
+        return showOldImage ? [...currentSrc, ...oldSrc] : currentSrc
+    }
 
     async function processSrc(src:string[]|Promise<string[]>) {
         // Only the most recently started request may change what is displayed; a superseded one,
@@ -33,11 +49,12 @@
             resolved = await src
         } catch (reason) {
             console.warn('TransitionImage: emotion images rejected', reason)
+            if (seq === requestSeq) holder.retain(rendered())
             return
         }
         if (seq !== requestSeq) return
 
-        let styl = styleType
+        let styl = shownStyle
         let resultSrc = resolved
         // The leading entry is always the style marker, never an image; a lone marker leaves nothing to render.
         // The received array is never mutated: the producer may hand the same array to another render.
@@ -45,29 +62,57 @@
             styl = resolved[0]
             resultSrc = resolved.slice(1)
         }
-        if (JSON.stringify(resultSrc) !== JSON.stringify(currentSrc) || styl !== styleType) {
-            handleTransitionEnd()
-            if(currentSrc.length === 0){
-                currentSrc = resultSrc
-                styleType = styl
-            }
-            else{
-                oldSrc = currentSrc
-                oldStyleType = styleType
-                currentSrc = resultSrc
-                styleType = styl
-                showOldImage = true;
-                fadeTimer = setTimeout(handleTransitionEnd, FADE_FALLBACK_MS)
-            }
+        if (JSON.stringify(resultSrc) === JSON.stringify(shownOriginals) && styl === shownStyle) {
+            holder.retain(rendered())
+            return
         }
+
+        let display:DisplayImage[]
+        const maxSide = currentPortraitMaxSide()
+        if (maxSide === null) {
+            display = resultSrc.map((original) => ({ src: original }))
+        } else {
+            // On a phone the previous portrait stays until the shrunk set is ready.
+            requestingSeq = seq
+            const shrunk = await holder.request(resultSrc, maxSide, rendered())
+            if (requestingSeq === seq) requestingSeq = 0
+            if (seq !== requestSeq || shrunk === null) return
+            display = shrunk
+        }
+
+        stopFade()
+        if(currentSrc.length === 0){
+            currentSrc = display
+            styleType = styl
+        }
+        else{
+            oldSrc = currentSrc
+            oldStyleType = styleType
+            currentSrc = display
+            styleType = styl
+            showOldImage = true;
+            fadeTimer = setTimeout(handleTransitionEnd, FADE_FALLBACK_MS)
+        }
+        shownOriginals = resultSrc
+        shownStyle = styl
+        holder.retain(rendered())
     }
 
-    function handleTransitionEnd() {
+    // Ends a fade without releasing anything; the caller releases once the new set is in place.
+    function stopFade(): boolean {
         clearTimeout(fadeTimer)
         fadeTimer = undefined
         if (showOldImage) {
             showOldImage = false;
+            return true
         }
+        return false
+    }
+
+    function handleTransitionEnd() {
+        // The old set's references end with its fade, unless a newer shrunk set is being waited for: that
+        // request holds references `rendered()` does not list yet.
+        if (stopFade() && requestingSeq === 0) holder.retain(rendered())
     }
 
     $effect.pre(() => {
@@ -77,6 +122,8 @@
     onDestroy(() => {
         requestSeq++
         clearTimeout(fadeTimer)
+        // Cached URLs stay for the next instance; only this instance's references end.
+        holder.dispose()
     })
 
 
@@ -152,7 +199,10 @@
             {#each currentSrc as img, i}
                 {#if styleType === 'normal'}
                     <img
-                        src={img}
+                        src={img.src}
+                        width={img.width}
+                        height={img.height}
+                        decoding="async"
                         alt={language.uiCommon.imageAlt}
                         style:width={`${100 / currentSrc.length}%`}
                         style:left={`${100 / currentSrc.length * i}%`}
@@ -160,7 +210,10 @@
                 {:else if styleType === 'emp'}
                     {#if i <= 1}
                         <img
-                            src={img}
+                            src={img.src}
+                            width={img.width}
+                            height={img.height}
+                            decoding="async"
                             alt={language.uiCommon.imageAlt}
                             style:width={`${80 - (i*10)}%`}
                             style:left={`${30-(i*30)}%`}
@@ -173,7 +226,10 @@
             {#if oldStyleType === 'normal'}
                 {#each oldSrc as img2, i}
                     <img
-                        src={oldSrc[i]}
+                        src={img2.src}
+                        width={img2.width}
+                        height={img2.height}
+                        decoding="async"
                         alt={language.uiCommon.imageAlt}
                         class="old-image"
                         onanimationend={handleTransitionEnd}
@@ -186,7 +242,10 @@
                 {#each oldSrc as img2, i}
                     {#if i <= 1}
                         <img
-                            src={oldSrc[i]}
+                            src={img2.src}
+                            width={img2.width}
+                            height={img2.height}
+                            decoding="async"
                             alt={language.uiCommon.imageAlt}
                             class="old-image"
                             onanimationend={handleTransitionEnd}
@@ -200,7 +259,10 @@
             {#if styleType === 'normal'}
                 {#each currentSrc as img3, i}
                     <img
-                        src={currentSrc[i]}
+                        src={img3.src}
+                        width={img3.width}
+                        height={img3.height}
+                        decoding="async"
                         alt={language.uiCommon.imageAlt}
                         class="new-image"
                         style:width={`${100 / currentSrc.length}%`}
@@ -212,7 +274,10 @@
                 {#each currentSrc as img3, i}
                     {#if i <= 1}
                         <img
-                            src={currentSrc[i]}
+                            src={img3.src}
+                            width={img3.width}
+                            height={img3.height}
+                            decoding="async"
                             alt={language.uiCommon.imageAlt}
                             class="new-image"
                             style:width={`${80 - (i*10)}%`}

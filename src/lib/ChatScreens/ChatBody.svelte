@@ -21,6 +21,7 @@
     import { chatSurface } from "./chatSurface.svelte";
     import { UNRESOLVED_IMAGE_SELECTOR } from "./imageRepairSelector";
     import { createDeferredImageLoader } from "./deferredAssetImages";
+    import { noteRowBodyRendered } from "src/ts/gui/rowBodySettle";
     import {
         AWAITING, lookup, pendingDisplay, record, runShowsSpinner, scopeOf, slotKeyOf,
         type CacheLookup, type PendingDisplay, type RenderFingerprint,
@@ -509,7 +510,12 @@
         }
         // Only a scan of rendered markup ends this body's wait in an open warm hold; a blank or spinner scan does not.
         const rendered = display.kind === 'html'
-        untrack(() => loader.scan(root, rendered))
+        untrack(() => {
+            loader.scan(root, rendered)
+            if(rendered){
+                noteRowBodyRendered(root)
+            }
+        })
     })
 </script>
 

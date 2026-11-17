@@ -1,10 +1,10 @@
 /**
  * Page side of opening files from other Android apps. The host queues what the
  * system hands the activity (a view or share intent) as batches of content
- * URIs with their display names. The page takes the queue with `take()` and
+ * URIs with their display names and MIME types. The page takes the queue with `take()` and
  * imports each batch one after another through `importOpenedSources`, which
- * accepts only the card, module and preset kinds. A `.bin` backup is restored only when it is the one backup of its
- * batch and the drain imports nothing else (a name the import refuses as unsupported does not count, in its batch or
+ * accepts only the card (including PNG, JPEG and JSON), module and preset kinds. A `.bin` backup is restored only when it is the one backup of its
+ * batch and the drain imports nothing else (a name or type the import refuses as unsupported does not count, in its batch or
  * another); the first such backup goes to `restoreOpenedBackup`, every other `.bin`
  * is refused with a notice. Everywhere the host bridge is
  * absent (web, desktop, iOS, an old host) it does nothing.
@@ -24,7 +24,7 @@ import { hasOpenedFilesHost, openedFilesTake, type OpenedFilesTake } from './hos
 
 /** The host object `OpenedFilesBridge` exposes to the page. */
 export interface OpenedFilesHost {
-    /** Hands over every queued batch as a JSON array of `[{uri, name}]` arrays and empties the queue. */
+    /** Hands over every queued batch as a JSON array of `[{uri, name, type}]` arrays and empties the queue. */
     take(): unknown
 }
 
@@ -40,6 +40,8 @@ declare global {
 interface OpenedEntry {
     name: string
     path: string
+    /** The MIME type the provider reported; absent when the host sent none. */
+    type?: string
 }
 
 //Drains run one at a time, in arrival order; a failed drain never stops the next one.
@@ -85,7 +87,11 @@ function entryOf(value: unknown): OpenedEntry | null {
     if (typeof record.uri !== 'string') {
         return null
     }
-    return { name: baseName(record.name), path: record.uri }
+    const entry: OpenedEntry = { name: baseName(record.name), path: record.uri }
+    if (typeof record.type === 'string') {
+        entry.type = record.type
+    }
+    return entry
 }
 
 /** A malformed payload, or a part of it with the wrong shape, is dropped and never thrown on. */
@@ -164,8 +170,9 @@ async function drain(): Promise<void> {
     }
     const batches = parseBatches(taken.raw)
     // A restore replaces everything an import in the same drain just added, so a backup is restored only when this
-    // drain imports nothing; a name the import would refuse as unsupported does not count.
-    const importsSomething = batches.some((batch) => batch.some((entry) => isOpenedSourceImportable(entry.name)))
+    // drain imports nothing; a name or type the import would refuse as unsupported does not count, and a backup never
+    // counts itself, whatever type its provider reported.
+    const importsSomething = batches.some((batch) => batch.some((entry) => !isBackupEntry(entry) && isOpenedSourceImportable(entry.name, entry.type ?? '')))
     const importBatches: OpenedEntry[][] = []
     const notAlone: string[] = []
     const oneAtATime: string[] = []

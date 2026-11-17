@@ -27,7 +27,7 @@
                 <!-- AndroidTV support -->
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
-            <!-- Files other apps open or share: a content URI of a generic binary or zip type; the page checks the name. -->
+            <!-- Files other apps open or share: a content URI of a generic binary or zip type; the page checks the name. PNG, JPEG and JSON are registered by the generated block below, which the build writes from the base fileAssociations of tauri.conf.json (no platform file); the page decides by name and then by type. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -58,6 +58,35 @@
                 <data android:pathPattern=".*\\.risum" />
                 <data android:pathPattern=".*\\.risup" />
                 <data android:pathPattern=".*\\.charx" />
+                <data android:pathPattern=".*\\.byaf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="image/png" />
+                <data android:pathPattern=".*\\.png" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="image/jpeg" />
+                <data android:pathPattern=".*\\.jpg" />
+                <data android:pathPattern=".*\\.jpeg" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:mimeType="application/json" />
+                <data android:pathPattern=".*\\.json" />
             </intent-filter>
             
             <!-- tauri-file-associations. AUTO-GENERATED. DO NOT REMOVE. -->

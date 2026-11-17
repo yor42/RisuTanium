@@ -61,6 +61,7 @@
     import { beginChatFileUpload, createComposerSurface, trackChatFileUpload } from 'src/ts/process/composerSurface.svelte';
     import { chatSurface } from './chatSurface.svelte';
     import { streamTextHold } from 'src/ts/chatShell/streamTextHold';
+    import { holdRowLayout, releaseRowHoldAfterFrames } from 'src/ts/gui/legacyRowVisibility';
 
     const loadPlaygroundMenu = () => import('../Playground/PlaygroundMenu.svelte').then(m => m.default);
     
@@ -235,6 +236,8 @@
     })
 
     async function scrollToMessage(index: number){
+        // Every row stays laid out for the whole jump and two frames after it, so each scroll lands on measured rows.
+        const releaseRows: () => void = chatsInstance?.holdRows?.() ?? (() => {})
         // Forces the loading of past messages not rendered on the screen
         isScrollingToMessage = true
         try {
@@ -295,6 +298,7 @@
             }
         } finally {
             isScrollingToMessage = false
+            releaseRowHoldAfterFrames(releaseRows, 2)
         }
     }
 
@@ -441,6 +445,8 @@
     }
 
     async function screenShot(){
+        // Every row is laid out while the capture runs, so no row is captured blank.
+        const releaseRows: () => void = chatsInstance?.holdRows?.() ?? (() => {})
         try {
             await runWithFullWindow(chatWindowPolicyInstance, () => loadPages, (v) => { loadPages = v }, async () => {
                 const html2canvas = await import('html-to-image');
@@ -497,6 +503,8 @@
         } catch (error) {
             console.error(error)
             alertError(language.errors.screenshotFailed)
+        } finally {
+            releaseRowHoldAfterFrames(releaseRows, 2)
         }
     }
 
