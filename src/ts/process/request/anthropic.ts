@@ -916,6 +916,7 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
 }
 
 async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:string}, body:any, arg:RequestDataArgumentExtended):Promise<requestDataResponse> {
+    const db = getDatabase()
     
     if(arg.useStreaming){
         
@@ -941,7 +942,9 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
             async start(controller){
                 let text = ''
                 let reader = res.body.getReader()
-                let parserData = ''
+                // The decoded text after the last LF: at most one unfinished line carried to the next read.
+                let tail = ''
+                let retries = 0
                 let decoder = new TextDecoder()
                 const parseEvent = ((e:string) => {
                     try {               
@@ -975,7 +978,7 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
 
                         if(parsedData?.type === 'error'){
                             const errormsg:string = parsedData?.error?.message
-                            if(errormsg && errormsg.toLocaleLowerCase().includes('overload') && db.antiServerOverloads){
+                            if(errormsg && errormsg.toLocaleLowerCase().includes('overload') && db.antiServerOverloads && retries < (db.requestRetrys ?? 0)){
                                 // console.log('Overload detected, retrying...')
                                 controller.enqueue({
                                     "0": "Overload detected, retrying..."
@@ -995,8 +998,6 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                         
                 })
                 let breakWhile = false
-                let i = 0;
-                let prevText = ''
                 while(true){
                     try {
                         if(arg?.abortSignal?.aborted || breakWhile){
@@ -1004,49 +1005,60 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                         }
                         const {done, value} = await reader.read() 
                         if(done){
-                            parserData += decoder.decode()
                             break
                         }
-                        parserData += decoder.decode(value, {stream: true})
-                        let parts = parserData.split('\n')
-                        for(;i<parts.length-1;i++){
-                            prevText = text
-                            if(parts?.[i]?.startsWith('data: ')){
-                                const d = await parseEvent(parts[i].slice(6))
-                                if(d === 'overload'){
-                                    parserData = ''
-                                    decoder = new TextDecoder()
-                                    prevText = ''
-                                    text = ''
-                                    reader.cancel()
-                                    const res = await fetchNative(replacerURL, {
-                                        body: JSON.stringify(body),
-                                        headers: headers,
-                                        method: "POST",
-                                        chatId: arg.chatId,
-                                        signal: arg.abortSignal,
-                                        interceptor: 'anthropic_streaming_retry'
-                                    })
-                            
-                                    if(res.status !== 200){
-                                        controller.enqueue({
-                                            "0": await textifyReadableStream(res.body)
-                                        })
-                                        breakWhile = true
-                                        break
-                                    }
-
-                                    reader = res.body.getReader()
-                                    break
-                                }
-                            }
+                        const decoded = decoder.decode(value, {stream: true})
+                        let lines:string[] = []
+                        if(decoded.includes('\n')){
+                            lines = (tail + decoded).split('\n')
+                            tail = lines.pop() ?? ''
                         }
-                        i--;
-                        text = prevText
+                        else{
+                            tail += decoded
+                        }
+                        let emit = true
+                        for(const line of lines){
+                            if(!line.startsWith('data: ') || parseEvent(line.slice(6)) !== 'overload'){
+                                continue
+                            }
+                            // The retried reply starts from nothing: no text, no open thinking block, no partial line.
+                            retries++
+                            thinking = false
+                            text = ''
+                            tail = ''
+                            decoder = new TextDecoder()
+                            reader.cancel().catch(() => {})
+                            await sleep(1000)
+                            if(arg?.abortSignal?.aborted){
+                                breakWhile = true
+                                emit = false
+                                break
+                            }
+                            const retryRes = await fetchNative(replacerURL, {
+                                body: JSON.stringify(body),
+                                headers: headers,
+                                method: "POST",
+                                chatId: arg.chatId,
+                                signal: arg.abortSignal,
+                                interceptor: 'anthropic_streaming_retry'
+                            })
+                            if(retryRes.status !== 200){
+                                controller.enqueue({
+                                    "0": await textifyReadableStream(retryRes.body)
+                                })
+                                breakWhile = true
+                                emit = false
+                                break
+                            }
+                            reader = retryRes.body.getReader()
+                            break
+                        }
 
-                        controller.enqueue({
-                            "0": text
-                        })
+                        if(emit){
+                            controller.enqueue({
+                                "0": text
+                            })
+                        }
 
                     } catch (error) {
                         if(!arg?.abortSignal?.aborted){
@@ -1076,7 +1088,6 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
 
     }
 
-    const db = getDatabase()
     const res = await globalFetch(replacerURL, {
         body: body,
         headers: headers,
