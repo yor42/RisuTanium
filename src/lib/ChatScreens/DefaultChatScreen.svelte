@@ -60,6 +60,7 @@
     import * as composerDrafts from 'src/ts/process/composerDrafts.svelte';
     import { beginChatFileUpload, createComposerSurface, trackChatFileUpload } from 'src/ts/process/composerSurface.svelte';
     import { chatSurface } from './chatSurface.svelte';
+    import { streamTextHold } from 'src/ts/chatShell/streamTextHold';
 
     const loadPlaygroundMenu = () => import('../Playground/PlaygroundMenu.svelte').then(m => m.default);
     
@@ -715,7 +716,7 @@
                             class="peer-focus:border-textcolor  flex justify-center border-y border-darkborderc items-center text-textcolor p-3 hover:bg-blue-500 hover:text-white transition-colors" onclick={abortChat}
                             style:height={inputHeight}
                     >
-                        <div class="loadmove chat-process-stage-{$chatProcessStage}" class:autoload={isAutoModeActive()}></div>
+                        <div class="loadmove chat-process-stage-{$chatProcessStage}" class:autoload={isAutoModeActive()} use:streamTextHold={{ origin: shownOrigin }}></div>
                     </button>
                 {:else}
                     <button
@@ -1214,6 +1215,10 @@
     .autoload{
         border-top: 0.4rem solid #10b981;
         border-left: 0.4rem solid #10b981;
+    }
+
+    :global(html.rm) .loadmove, :global(html[data-low-power]) .loadmove, :global(html.nexus-low-power) .loadmove {
+        animation: none;
     }
 
     @keyframes spin {

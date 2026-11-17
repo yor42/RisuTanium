@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
-import { activeStreamChars, activeStreamOwners, activeStreams, addActiveStream, addReplySpeaker, isActiveStreamReply, noteStreamReceived, noteStreamText, replySpeakerOf, resetActiveStreamsForTest, subscribeStreamChanges, type StreamChange } from 'src/ts/process/activeStreams'
+import { activeStreamChars, activeStreamOwners, activeStreams, addActiveStream, addReplySpeaker, isActiveStreamReply, noteStreamReceived, noteStreamText, replySpeakerOf, resetActiveStreamsForTest, streamWroteText, subscribeStreamChanges, type StreamChange } from 'src/ts/process/activeStreams'
 
 beforeEach(() => {
     resetActiveStreamsForTest()
@@ -27,6 +27,34 @@ describe('the active-stream registry', () => {
         expect(activeStreams().map((entry) => entry.replyChatId)).toEqual(['r2'])
         removeSecond()
         expect(activeStreams()).toEqual([])
+    })
+
+    test('streamWroteText is true only for the chat the stream writes into, after it wrote text', () => {
+        addActiveStream({ chaId: 'a', chatId: 'chat-1', replyChatId: 'r1' })
+        expect(streamWroteText('a', 'chat-1')).toBe(false)
+
+        noteStreamText('r1', '')
+        expect(streamWroteText('a', 'chat-1')).toBe(false)
+
+        noteStreamText('r1', 'Hi')
+        expect(streamWroteText('a', 'chat-1')).toBe(true)
+        expect(streamWroteText('a', 'chat-2')).toBe(false)
+        expect(streamWroteText('b', 'chat-1')).toBe(false)
+        expect(streamWroteText('a', 'r1')).toBe(false)
+    })
+
+    test('streamWroteText never matches an entry without a chat id, and ends with the stream', () => {
+        const removeBare = addActiveStream({ chaId: 'a', replyChatId: 'r1' })
+        noteStreamText('r1', 'Hi')
+        expect(streamWroteText('a', 'r1')).toBe(false)
+        expect(streamWroteText('a', 'undefined')).toBe(false)
+        removeBare()
+
+        const remove = addActiveStream({ chaId: 'a', chatId: 'chat-1', replyChatId: 'r2' })
+        noteStreamText('r2', 'Hi')
+        expect(streamWroteText('a', 'chat-1')).toBe(true)
+        remove()
+        expect(streamWroteText('a', 'chat-1')).toBe(false)
     })
 
     test('an undefined chat id is never an active reply', () => {

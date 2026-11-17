@@ -357,6 +357,7 @@ import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { preLoadChat, retryLegacyColdChatLoad } from 'src/ts/process/coldstorage.svelte'
 import { forgetInlayRender, getInlayAsset, getInlayDraftPreview } from 'src/ts/process/files/inlays'
 import { coldStorageHeader, formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
+import { addActiveStream, noteStreamText, resetActiveStreamsForTest } from 'src/ts/process/activeStreams'
 
 //#region fixtures
 
@@ -1790,5 +1791,110 @@ describe('Enter right after an IME composition ends', () => {
         await sendWouldHaveStarted()
         expect(events.map((event) => event.defaultPrevented)).toEqual([false, false, false, false])
         expect(sendChatMock).not.toHaveBeenCalled()
+    })
+})
+
+describe('the Cancel ring holds still once the shown chat has streamed text', () => {
+    let pendingRelease: (() => void) | null = null
+
+    beforeEach(() => {
+        resetActiveStreamsForTest()
+    })
+
+    // A failed assertion must not leave a gated send behind for the next test.
+    afterEach(async () => {
+        pendingRelease?.()
+        pendingRelease = null
+        await waitFor(() => !isComposerBusy(), 3000).catch(() => {})
+    })
+
+    /** The selector list of the adopted hold rule, so a renamed class or data part turns a ring assertion red. */
+    function holdSelectors(): string {
+        const sheet = document.head.querySelector('style[data-risu-sheet="stream-text-hold"]')
+        const css = (sheet?.textContent ?? '').replace(/\/\*[\s\S]*?\*\//g, '')
+        const rule = /([^{}]+)\{[^}]*paused/.exec(css)
+        expect(rule).not.toBeNull()
+        return rule![1].trim()
+    }
+
+    function ringOf(target: HTMLElement): HTMLElement {
+        return busyButton(target)!.querySelector<HTMLElement>('.loadmove')!
+    }
+
+    async function startBusySend(target: HTMLElement) {
+        const release = gateNextGeneration()
+        pendingRelease = release
+        typeInto(mainTextarea(target), 'send-text')
+        sendButton(target).click()
+        await waitFor(() => busyButton(target) !== null)
+        await settle()
+        return release
+    }
+
+    test('a stream of the shown chat with written text latches the ring', async () => {
+        const chatA = makeChat(freshId('chat'), [])
+        const charA = makeCharacter(freshId('cha'), [chatA])
+        installDb([charA])
+        const { target } = mountScreen()
+        const release = await startBusySend(target)
+
+        const ring = ringOf(target)
+        expect(ring.hasAttribute('data-still')).toBe(false)
+
+        const removeStream = addActiveStream({ chaId: charA.chaId as string, chatId: chatA.id as string, replyChatId: 'reply-1' })
+        noteStreamText('reply-1', '')
+        expect(ring.hasAttribute('data-still')).toBe(false)
+        noteStreamText('reply-1', 'Hi')
+        expect(ring.hasAttribute('data-still')).toBe(true)
+        expect(ring.matches(holdSelectors())).toBe(true)
+
+        removeStream()
+        release()
+        await waitFor(() => !isComposerBusy())
+    })
+
+    test('the latch survives the stream ending, and the next busy period ticks again', async () => {
+        const chatA = makeChat(freshId('chat'), [])
+        const charA = makeCharacter(freshId('cha'), [chatA])
+        installDb([charA])
+        const { target } = mountScreen()
+        const release = await startBusySend(target)
+
+        const removeStream = addActiveStream({ chaId: charA.chaId as string, chatId: chatA.id as string, replyChatId: 'reply-1' })
+        noteStreamText('reply-1', 'Hi')
+        const ring = ringOf(target)
+        expect(ring.hasAttribute('data-still')).toBe(true)
+
+        removeStream()
+        await settle()
+        expect(ringOf(target)).toBe(ring)
+        expect(ring.hasAttribute('data-still')).toBe(true)
+
+        release()
+        await waitFor(() => !isComposerBusy())
+        await settle()
+        expect(busyButton(target)).toBeNull()
+
+        const releaseNext = await startBusySend(target)
+        expect(ringOf(target).hasAttribute('data-still')).toBe(false)
+        releaseNext()
+        await waitFor(() => !isComposerBusy())
+    })
+
+    test('a stream of another chat of the same owner does not latch the ring', async () => {
+        const chatA = makeChat(freshId('chat'), [])
+        const chatB = makeChat(freshId('chat'), [])
+        const charA = makeCharacter(freshId('cha'), [chatA, chatB])
+        installDb([charA])
+        const { target } = mountScreen()
+        const release = await startBusySend(target)
+
+        const removeStream = addActiveStream({ chaId: charA.chaId as string, chatId: chatB.id as string, replyChatId: 'reply-b' })
+        noteStreamText('reply-b', 'Hi')
+        expect(ringOf(target).hasAttribute('data-still')).toBe(false)
+
+        removeStream()
+        release()
+        await waitFor(() => !isComposerBusy())
     })
 })
