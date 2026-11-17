@@ -27,7 +27,6 @@ afterEach(() => {
     setTokenCounterForTests(null)
     h.created = 0
     h.texts.length = 0
-    vi.doMock('./tokenCountApp', () => h.counterModule())
 })
 
 describe('E1-U2 the token service', () => {

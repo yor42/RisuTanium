@@ -20,7 +20,6 @@ import { loadMacroIndex, setMacroIndexForTests } from './macroIndexService'
 afterEach(() => {
     setMacroIndexForTests(null)
     h.collected = 0
-    vi.doMock('./macroRegistry', () => h.registryModule())
 })
 
 describe('C1-U4 the macro index service', () => {
