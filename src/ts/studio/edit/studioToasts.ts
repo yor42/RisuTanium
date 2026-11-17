@@ -5,6 +5,7 @@
 
 import { language } from '../../../lang'
 import { toastHost, type ToastHost, type ToastId, type UndoOutcome } from '../../toast/toastHost.svelte'
+import type { ListSkipReason } from '../history/historyModel'
 import type { OwnerHistoryService, StudioRefusal, StudioResult } from '../history/ownerHistory.svelte'
 import type { OwnerKey } from '../history/ownerPhase'
 
@@ -30,9 +31,24 @@ export function refusalText(reason: StudioRefusal): string {
     }
 }
 
-// The text of a refused result: the refusal's own, and for an unchecked file the line that names the row.
-export function refusalTextOf(result: { reason: StudioRefusal; name?: string }): string {
-    return result.reason === 'asset-file-unchecked' && result.name !== undefined ? language.studioAssetFileUnchecked(result.name) : refusalText(result.reason)
+// The sentence that says why the first messages were skipped; null when the model named no reason.
+export function listReasonText(reason: ListSkipReason | undefined): string | null {
+    return reason === 'neither' ? language.studioHistoryListChangedElsewhere : reason === 'other' ? language.studioHistoryListSaveUnfinished : null
+}
+
+// `text` followed by the reason sentence, joined as the History panel joins its notes.
+export function withListReason(text: string, reason?: ListSkipReason): string {
+    const added = listReasonText(reason)
+    return added === null ? text : text + ' ' + added
+}
+
+// The text of a refused result: the refusal's own, and for an unchecked file the line that names the row. Only a
+// precondition refusal carries the list reason; every other refusal keeps its single sentence.
+export function refusalTextOf(result: { reason: StudioRefusal; name?: string; listReason?: ListSkipReason }): string {
+    if (result.reason === 'asset-file-unchecked' && result.name !== undefined) {
+        return language.studioAssetFileUnchecked(result.name)
+    }
+    return result.reason === 'precondition' ? withListReason(refusalText(result.reason), result.listReason) : refusalText(result.reason)
 }
 
 /**

@@ -1565,6 +1565,11 @@ export interface character{
      * a card. Typed `unknown` because a stored value may have another shape; the readers narrow it.
      */
     risutanium_asset_retained?:unknown
+    /**
+     * Viewer preference, fork-only: carried by the store and `.bin`, never by a card; absent = off. While a reply
+     * streams, the new chat screen shows a character count instead of the text.
+     */
+    risutanium_render_when_complete?:boolean
 }
 
 

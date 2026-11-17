@@ -449,7 +449,7 @@ describe('a fingerprinted bound step in an undo', () => {
     test('the list on neither side keeps the refusal that comes before the rule', () => {
         const { live, chain } = removeChain()
         live.state.list = ['X', 'Y', 'Z']
-        expect(chain.replay('undo')).toEqual(PRECONDITION)
+        expect(chain.replay('undo')).toEqual({ ...PRECONDITION, listReason: 'neither' })
     })
 
     test('a list op that fails on the expected side stops the step: equal-length list changed elsewhere', () => {
@@ -525,6 +525,7 @@ describe('a fingerprinted bound step in a revert', () => {
         expect(plan.ok && plan.pairSkipped).toBe(1)
         expect(plan.ok && plan.writes).toContainEqual({ op: 'set', path: 'desc', value: text('d1') })
         expect(plan.ok && 'listSkipped' in plan).toBe(false)
+        expect(plan.ok && 'listReason' in plan).toBe(false)
     })
 
     test('a stop that applies nothing refuses with the plain reason when an older op also fails', () => {
@@ -697,6 +698,8 @@ describe('a bound step that stops in a revert', () => {
         const plan = chain.revert(anchor, 0)
         expect(plan.ok && plan.pairSkipped).toBe(1)
         expect(plan.ok && plan.listSkipped).toBe(2)
+        // A suspension is not a hash decision, so it names no reason.
+        expect(plan.ok && 'listReason' in plan).toBe(false)
         expect(shown(live)).toEqual({ firstMessage: 'N', list: ['a2', 'B'] })
     })
 
@@ -737,6 +740,8 @@ describe('a bound step that stops in a revert', () => {
         expect(plan.ok && plan.pairSkipped).toBe(1)
         expect(plan.ok && plan.listSkipped).toBe(2)
         expect(plan.ok && plan.skipped).toBe(3)
+        // A bound-step stop sets the revert stop but is not a hash decision: the counts after it name no reason.
+        expect(plan.ok && 'listReason' in plan).toBe(false)
         expect(shown(live).list).toEqual(['C', 'C', 'D'])
     })
 
@@ -751,6 +756,22 @@ describe('a bound step that stops in a revert', () => {
         expect(writesOf(plan)).toEqual([{ op: 'listSet', index: 0, value: 'A' }])
         expect(plan.ok && plan.pairSkipped).toBe(1)
         expect(plan.ok && plan.listSkipped).toBe(1)
+        // The first message was edited elsewhere: a bound-step stop, not a list on the wrong side.
+        expect(plan.ok && 'listReason' in plan).toBe(false)
+    })
+
+    test('a skip before the hash stop keeps the reason off: the counted skips are the only input', () => {
+        const live = createLive({ desc: 'd0', firstMessage: 'M', list: ['A', 'B', 'C'] })
+        const chain = new Chain(live)
+        const anchor = chain.land(DESC_LABEL, [setDesc('d0', 'd1')])
+        chain.land({ kind: 'greetingRemove' }, [listRemove(2, 'C')])
+        chain.land(FIRST_MESSAGE_LABEL, [setFm('M', 'N'), listSet(0, 'A', 'a1')])
+        chain.land(DESC_LABEL, [setDesc('d1', 'd2')])
+        live.state.firstMessage = 'Z'
+        const plan = chain.revertPlan(anchor)
+        expect(plan.ok && plan.pairSkipped).toBe(1)
+        expect(plan.ok && plan.listSkipped).toBe(2)
+        expect(plan.ok && 'listReason' in plan).toBe(false)
     })
 
     test('a revert whose other steps net to nothing reports the pair skip with the unchanged result', () => {

@@ -347,6 +347,14 @@ describe('T-P1 / T-P2: replays respect what changed elsewhere', () => {
         expect(live().desc).toBe('classic')
     })
 
+    test('T-P1b: a greeting list changed by the classic path refuses the undo and names the list as changed elsewhere', async () => {
+        putCharacters(makeCharacter('A', { alternateGreetings: ['g0', 'g1', 'g2'], chats: [{ id: 'c1', note: '', fmIndex: 0 }] }))
+        await ready()
+        harness.service.greetingDelete(A, 2)
+        live().alternateGreetings.unshift('p')
+        expect(harness.service.undo(A)).toEqual({ ok: false, reason: 'precondition', listReason: 'neither' })
+    })
+
     test('T-P2: an archived or removed target refuses the replay and leaves both stacks alone', async () => {
         await ready()
         harness.service.editField(A, 'desc', 'one')
@@ -524,7 +532,7 @@ describe('deleted items', () => {
         // The delete's owner write was lost: the list and the chat index already read as the Undo would leave them.
         live().alternateGreetings.splice(0, live().alternateGreetings.length, 'a', 'a')
         live().chats[0].fmIndex = 1
-        expect(harness.service.undo(A)).toEqual({ ok: true, already: 'undo' })
+        expect(harness.service.undo(A)).toEqual({ ok: true, already: 'undo', listReason: 'other' })
         await harness.clock.advance(SAVE_DEBOUNCE_MS)
         const reloaded = build(harness.store.shared)
         await reloaded.service.whenReady(A)
@@ -714,7 +722,7 @@ describe('list fingerprint through the service (CHORE-690 S1)', () => {
         harness.service.greetingDelete(A, 0)
         live().alternateGreetings.splice(0, live().alternateGreetings.length, 'a', 'a')
         live().chats[0].fmIndex = 1
-        expect(harness.service.undo(A)).toEqual({ ok: true, already: 'undo' })
+        expect(harness.service.undo(A)).toEqual({ ok: true, already: 'undo', listReason: 'other' })
         expect(live().alternateGreetings).toEqual(['a', 'a'])
 
         putCharacters(makeCharacter('A', { alternateGreetings: ['a', 'a'], chats: [{ id: 'c1', note: '', fmIndex: 1 }] }))
@@ -734,7 +742,7 @@ describe('list fingerprint through the service (CHORE-690 S1)', () => {
         const noted = harness.noted.length
         const marks = h.marks
         const marked = tracker.character.length
-        expect(harness.service.undo(A)).toEqual({ ok: true, already: 'undo' })
+        expect(harness.service.undo(A)).toEqual({ ok: true, already: 'undo', listReason: 'other' })
         expect(harness.noted).toHaveLength(noted)
         expect(h.marks).toBe(marks)
         expect(tracker.character).toHaveLength(marked)
@@ -888,7 +896,7 @@ describe('list fingerprint through the service (CHORE-690 S1)', () => {
         const marks = h.marks
         const noted = harness.noted.length
         const saves = JSON.stringify(harness.store.counts)
-        expect(harness.service.revertTo(A, anchor)).toEqual({ ok: true, unchanged: true, listSkipped: 1 })
+        expect(harness.service.revertTo(A, anchor)).toEqual({ ok: true, unchanged: true, listSkipped: 1, listReason: 'neither' })
         await harness.clock.advance(SAVE_DEBOUNCE_MS)
         expect(JSON.stringify(DBState.db.characters)).toBe(characters)
         expect(harness.service.view(A).done).toBe(done)
