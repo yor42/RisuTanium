@@ -803,6 +803,7 @@ export const languageGerman = {
         "googleSearchEnterApiKey": "Bitte geben Sie Ihren Google-Custom-Search-API-Schlüssel ein:",
         "googleSearchEnterEngineId": "Bitte geben Sie Ihre Google-Custom-Search-Suchmaschinen-ID ein:",
         "mcpInputAuthorizationCode": "Autorisierungscode eingeben",
+        "mcpOAuthHelperConsent": "Der MCP-Server {server} verlangt eine Anmeldung. Die Anmeldung läuft über einen Hilfsdienst unter {host}, den das Upstream-Projekt betreibt und nicht diese App: Nach der Anmeldung wird Ihr Browser an {host} weitergeleitet, und der Autorisierungscode, den Sie einfügen, wird an {host} gesendet. {host} zur Anmeldung verwenden?",
         "updatingTo": "Aktualisierung auf {version}...",
         "addingAssets": "Wird geladen... (Medien werden hinzugefügt {completed} / {total})",
         "writingExif": "Wird geladen... (Exif wird geschrieben)",
@@ -3106,6 +3107,28 @@ export const languageGerman = {
         }[reason]
         return `Das Backup wurde angehalten, bevor etwas in die Datei geschrieben wurde, weil das Modul "${name}" ${clause}`
     },
+    "rtbExportButton": "RisuTanium-Backup speichern (.rtb)",
+    "rtbExportConfirm": (bin: string) =>
+        `Ein RisuTanium-Backup (.rtb) speichern? Nur RisuTanium kann es wiederherstellen. Um Ihre Daten zu RisuAI zu übertragen, verwenden Sie stattdessen "${bin}".`,
+    "rtbExportRefusedReadOnly": (bin: string) =>
+        `Diese Seite ist schreibgeschützt und kann kein .rtb-Backup erstellen. Verwenden Sie "${bin}", um stattdessen ein .bin-Backup zu speichern.`,
+    "rtbExportUnavailable": (bin: string) =>
+        `Diese Seite kann kein .rtb-Backup erstellen. Verwenden Sie "${bin}", um stattdessen ein .bin-Backup zu speichern.`,
+    "rtbExportProgressOpening": "Backup-Datei wird vorbereitet...",
+    "rtbExportProgressUnits": (count: number) => `Chats, Charaktere und Einstellungen werden gespeichert... (${count})`,
+    "rtbExportProgressSide": "Weitere App-Daten werden gespeichert...",
+    "rtbExportProgressInlays": (done: number, total: number) => `Chat-Bilder, -Videos und -Audio werden gespeichert... (${done} / ${total})`,
+    "rtbExportProgressAssets": (done: number, total: number) => `Bilder und Dateien werden gespeichert... (${done} / ${total})`,
+    "rtbExportProgressFinishing": "Backup-Datei wird abgeschlossen...",
+    "rtbExportSaved": "Backup am gewählten Speicherort gespeichert.",
+    "rtbExportUnsavedExcluded": (savedAt: string) =>
+        `Ihre neuesten Änderungen konnten nicht vorher gespeichert werden und sind daher nicht in diesem Backup enthalten. Es enthält den Stand von ${savedAt}.`,
+    "rtbExportUnitsLeftOut": (count: number) =>
+        `${count} gespeicherte(s) Element(e) (Aufgaben-Voreinstellungen oder alternative Antworten) sind beschädigt und konnten nicht gelesen werden, daher sind sie nicht im Backup enthalten.`,
+    "rtbExportAssetsLeftOut": (count: number, names: string[]) =>
+        `${count} Bild- oder Datei-Asset(s) konnten nicht gelesen werden und sind daher nicht im Backup enthalten. Ein Charakter, der eines davon verwendet, zeigt es als fehlend an. Ausgelassen:\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "rtbExportSideLeftOut": (count: number) =>
+        `${count} Art(en) weiterer App-Daten (etwa Plugin-Daten, Such- oder Gedächtnisdaten oder Einstellungen) konnten nicht gelesen werden und sind daher nicht im Backup enthalten.`,
     "internalBackupUnreadable":"Dieses Backup ist beschädigt oder unvollständig und wurde daher nicht geladen. Ihre aktuellen Daten wurden nicht verändert.",
     "internalBackupWriteFailed": "Das Backup konnte nicht gespeichert werden. Ihre aktuellen Daten wurden nicht verändert.",
     "internalBackupListFailed": "Die Backup-Liste konnte nicht gelesen werden. Es wurde nichts verändert.",

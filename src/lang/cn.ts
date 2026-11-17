@@ -803,6 +803,7 @@ export const languageChinese = {
         "googleSearchEnterApiKey": "请输入您的 Google Custom Search API 密钥：",
         "googleSearchEnterEngineId": "请输入您的 Google Custom Search 引擎 ID：",
         "mcpInputAuthorizationCode": "输入授权码",
+        "mcpOAuthHelperConsent": "MCP 服务器 {server} 需要您登录。登录将通过位于 {host} 的辅助服务进行，该服务由上游项目运营，而非本应用：登录后，您的浏览器会被转到 {host}，您粘贴的授权码也会发送到 {host}。是否使用 {host} 登录？",
         "updatingTo": "正在更新到 {version}...",
         "addingAssets": "加载中...（正在添加资源 {completed} / {total}）",
         "writingExif": "加载中...（正在写入 Exif）",
@@ -3089,6 +3090,28 @@ export const languageChinese = {
         }[reason]
         return `备份在向文件写入任何内容之前就已停止，因为模块“${name}”${clause}`
     },
+    "rtbExportButton": "保存 RisuTanium 备份 (.rtb)",
+    "rtbExportConfirm": (bin: string) =>
+        `保存 RisuTanium 备份 (.rtb)？只有 RisuTanium 可以恢复它。若要将数据迁移到 RisuAI，请改用“${bin}”。`,
+    "rtbExportRefusedReadOnly": (bin: string) =>
+        `此页面为只读，无法创建 .rtb 备份。请改用“${bin}”保存 .bin 备份。`,
+    "rtbExportUnavailable": (bin: string) =>
+        `此页面无法创建 .rtb 备份。请改用“${bin}”保存 .bin 备份。`,
+    "rtbExportProgressOpening": "正在准备备份文件...",
+    "rtbExportProgressUnits": (count: number) => `正在保存聊天、角色和设置... (${count})`,
+    "rtbExportProgressSide": "正在保存其他应用数据...",
+    "rtbExportProgressInlays": (done: number, total: number) => `正在保存聊天图片、视频和音频... (${done} / ${total})`,
+    "rtbExportProgressAssets": (done: number, total: number) => `正在保存图片和文件... (${done} / ${total})`,
+    "rtbExportProgressFinishing": "正在完成备份文件...",
+    "rtbExportSaved": "备份已保存到您选择的位置。",
+    "rtbExportUnsavedExcluded": (savedAt: string) =>
+        `您的最新更改无法先行保存，因此不在此备份中。备份内容为 ${savedAt} 时已保存的数据。`,
+    "rtbExportUnitsLeftOut": (count: number) =>
+        `有 ${count} 个已保存项目（任务预设或备选回复）已损坏且无法读取，因此不在备份中。`,
+    "rtbExportAssetsLeftOut": (count: number, names: string[]) =>
+        `有 ${count} 个图片或文件资源无法读取，因此不在备份中。使用其中任何一个的角色会将其显示为缺失。已略过：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "rtbExportSideLeftOut": (count: number) =>
+        `有 ${count} 类其他应用数据（如插件数据、搜索或记忆数据，或偏好设置）无法读取，因此不在备份中。`,
     "internalBackupUnreadable":"此备份已损坏或不完整，因此未被读取。当前数据未被更改。",
     "internalBackupWriteFailed": "无法保存该备份。当前数据未被更改。",
     "internalBackupListFailed": "无法读取备份列表。未更改任何内容。",

@@ -803,6 +803,7 @@ export const languageVietnamese = {
         "googleSearchEnterApiKey": "Vui lòng nhập khóa API Google Custom Search của bạn:",
         "googleSearchEnterEngineId": "Vui lòng nhập ID công cụ Google Custom Search của bạn:",
         "mcpInputAuthorizationCode": "Nhập mã ủy quyền",
+        "mcpOAuthHelperConsent": "Máy chủ MCP {server} yêu cầu bạn đăng nhập. Việc đăng nhập được thực hiện qua một dịch vụ trung gian tại {host}, do dự án gốc (upstream) vận hành chứ không phải ứng dụng này: sau khi đăng nhập, trình duyệt của bạn sẽ được chuyển đến {host}, và mã ủy quyền bạn dán vào sẽ được gửi đến {host}. Dùng {host} để đăng nhập?",
         "updatingTo": "Đang cập nhật lên {version}...",
         "addingAssets": "Đang tải... (Đang thêm tài sản {completed} / {total})",
         "writingExif": "Đang tải... (Đang ghi Exif)",
@@ -3088,6 +3089,28 @@ export const languageVietnamese = {
         }[reason]
         return `Quá trình sao lưu đã dừng trước khi có bất kỳ gì được ghi vào tệp, vì mô-đun "${name}" ${clause}`
     },
+    "rtbExportButton": "Lưu bản sao lưu RisuTanium (.rtb)",
+    "rtbExportConfirm": (bin: string) =>
+        `Lưu bản sao lưu RisuTanium (.rtb)? Chỉ RisuTanium mới khôi phục được bản này. Để chuyển dữ liệu sang RisuAI, hãy dùng "${bin}" thay thế.`,
+    "rtbExportRefusedReadOnly": (bin: string) =>
+        `Trang này ở chế độ chỉ đọc nên không thể tạo bản sao lưu .rtb. Hãy dùng "${bin}" để lưu bản sao lưu .bin thay thế.`,
+    "rtbExportUnavailable": (bin: string) =>
+        `Trang này không thể tạo bản sao lưu .rtb. Hãy dùng "${bin}" để lưu bản sao lưu .bin thay thế.`,
+    "rtbExportProgressOpening": "Đang chuẩn bị tệp sao lưu...",
+    "rtbExportProgressUnits": (count: number) => `Đang lưu cuộc trò chuyện, nhân vật và cài đặt... (${count})`,
+    "rtbExportProgressSide": "Đang lưu dữ liệu ứng dụng khác...",
+    "rtbExportProgressInlays": (done: number, total: number) => `Đang lưu hình ảnh, video và âm thanh trong cuộc trò chuyện... (${done} / ${total})`,
+    "rtbExportProgressAssets": (done: number, total: number) => `Đang lưu hình ảnh và tệp... (${done} / ${total})`,
+    "rtbExportProgressFinishing": "Đang hoàn tất tệp sao lưu...",
+    "rtbExportSaved": "Đã lưu bản sao lưu vào vị trí bạn đã chọn.",
+    "rtbExportUnsavedExcluded": (savedAt: string) =>
+        `Không thể lưu trước các thay đổi mới nhất của bạn nên chúng không có trong bản sao lưu này. Bản sao lưu chứa những gì đã được lưu lúc ${savedAt}.`,
+    "rtbExportUnitsLeftOut": (count: number) =>
+        `${count} mục đã lưu (cài đặt trước tác vụ hoặc phản hồi thay thế) bị hỏng và không thể đọc được nên không có trong bản sao lưu.`,
+    "rtbExportAssetsLeftOut": (count: number, names: string[]) =>
+        `${count} tệp tài nguyên (asset) hình ảnh hoặc tệp không thể đọc được nên không có trong bản sao lưu. Nhân vật nào dùng một trong số đó sẽ hiển thị là bị thiếu. Đã bỏ qua:\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} tệp nữa` : ''}`,
+    "rtbExportSideLeftOut": (count: number) =>
+        `${count} loại dữ liệu ứng dụng khác (như dữ liệu plugin, dữ liệu tìm kiếm hoặc bộ nhớ, hoặc tùy chọn) không thể đọc được nên không có trong bản sao lưu.`,
     "internalBackupUnreadable":"Bản sao lưu này bị hỏng hoặc không đầy đủ nên không được tải. Dữ liệu hiện tại của bạn không bị thay đổi.",
     "internalBackupWriteFailed": "Không thể lưu bản sao lưu. Dữ liệu hiện tại của bạn không bị thay đổi.",
     "internalBackupListFailed": "Không thể đọc danh sách sao lưu. Không có gì bị thay đổi.",

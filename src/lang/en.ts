@@ -809,6 +809,7 @@ export const languageEnglish = {
         googleSearchEnterApiKey: "Please enter your Google Custom Search API Key:",
         googleSearchEnterEngineId: "Please enter your Google Custom Search Engine ID:",
         mcpInputAuthorizationCode: "Input Authorization Code",
+        mcpOAuthHelperConsent: "The MCP server {server} needs you to sign in. Sign-in goes through a helper at {host}, a service operated by the upstream project, not by this app: after you sign in, your browser is sent to {host}, and the authorization code you paste is sent to {host}. Use {host} to sign in?",
         updatingTo: "Updating to {version}...",
         addingAssets: "Loading... (Adding Assets {completed} / {total})",
         writingExif: "Loading... (Writing Exif)",
@@ -3226,6 +3227,28 @@ export const languageEnglish = {
         }[reason]
         return `The backup stopped before anything was written to the file because the module "${name}" ${clause}`
     },
+    rtbExportButton: "Save RisuTanium Backup (.rtb)",
+    rtbExportConfirm: (bin: string) =>
+        `Save a RisuTanium backup (.rtb)? Only RisuTanium can restore it. To move your data to upstream RisuAI, use "${bin}" instead.`,
+    rtbExportRefusedReadOnly: (bin: string) =>
+        `This page is read-only, so it cannot make an .rtb backup. Use "${bin}" to save a .bin backup instead.`,
+    rtbExportUnavailable: (bin: string) =>
+        `This page cannot make an .rtb backup. Use "${bin}" to save a .bin backup instead.`,
+    rtbExportProgressOpening: "Preparing the backup file...",
+    rtbExportProgressUnits: (count: number) => `Saving chats, characters and settings... (${count})`,
+    rtbExportProgressSide: "Saving other app data...",
+    rtbExportProgressInlays: (done: number, total: number) => `Saving chat images, video and audio... (${done} / ${total})`,
+    rtbExportProgressAssets: (done: number, total: number) => `Saving images and files... (${done} / ${total})`,
+    rtbExportProgressFinishing: "Finishing the backup file...",
+    rtbExportSaved: "Backup saved to the location you chose.",
+    rtbExportUnsavedExcluded: (savedAt: string) =>
+        `Your latest changes could not be saved first, so they are not in this backup. It holds what was saved at ${savedAt}.`,
+    rtbExportUnitsLeftOut: (count: number) =>
+        `${count} saved item(s) (task presets or alternative replies) are damaged and could not be read, so they are not in the backup.`,
+    rtbExportAssetsLeftOut: (count: number, names: string[]) =>
+        `${count} image or file asset(s) could not be read, so they are not in the backup. A character that uses one of them will show it as missing. Left out:\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    rtbExportSideLeftOut: (count: number) =>
+        `${count} kind(s) of other app data (such as plugin data, search or memory data, or preferences) could not be read, so they are not in the backup.`,
     internalBackupUnreadable: "This backup is damaged or incomplete, so it was not loaded. Your current data was not changed.",
     internalBackupWriteFailed: "The backup could not be saved. Your current data was not changed.",
     internalBackupListFailed: "The backup list could not be read. Nothing was changed.",
