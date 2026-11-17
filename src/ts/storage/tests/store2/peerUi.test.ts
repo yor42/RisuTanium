@@ -52,6 +52,7 @@ import { changeLanguage, language } from 'src/lang'
 import type { alertData } from 'src/ts/alert'
 import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from 'src/ts/alertPrompts'
 import { alertStore } from 'src/ts/stores.svelte'
+import type { ConflictRecord } from 'src/ts/storage/store2/fastForward'
 import type { ParkCheck, PeerLiveState, PeerOffer, PeerParkPrompt } from 'src/ts/storage/store2/saveLoop'
 import type { Staging } from 'src/ts/storage/store2/owner'
 import { formatTime } from 'src/ts/storage/store2/ui/bootText'
@@ -1089,5 +1090,76 @@ describe('describeSaveFailure: a CodecInputError that no skip rule covers is tol
         const reports = [4, 5, 6].map(attempts => describeSaveFailure(new Error('x'), attempts, false))
         expect(reports.map(report => report.showRaw)).toEqual([false, true, true])
         expect(reports.map(report => report.waitMs)).toEqual([1000, 1000, 1000])
+    })
+})
+
+
+describe('resolve: the dialog of the records both tabs changed (J6)', () => {
+    const record = (fields: Partial<ConflictRecord> & Pick<ConflictRecord, 'id' | 'label'>): ConflictRecord => ({
+        choices: ['mine', 'theirs', 'both'], keepBoth: 'restore-point', preselect: 'both', fingerprint: { mine: 'm', theirs: 't' }, legacy: 'x', ...fields,
+    })
+
+    async function answerWith(message: string): Promise<void> {
+        await vi.waitFor(() => expect(shown().type).toBe('peerConflicts'))
+        await sleep(ANSWER_GUARD_MS + 40)
+        alertStore.set({ type: 'none', msg: message })
+    }
+
+    test('the rows carry the text in the person\'s language, the choices, the preselection and the keep-both note', async () => {
+        const { ui } = newUi()
+        const asked = ui.resolve?.({
+            conflicts: [
+                record({ id: 'config:zoomsize', label: { kind: 'setting', name: 'zoomsize' } }),
+                record({ id: 'char:a:chat:b', label: { kind: 'chat', character: 'Ann', chat: 'Chat <b>1</b>' }, keepBoth: 'copy' }),
+                record({ id: 'char:a:deletedThere', label: { kind: 'deletedThere', character: 'Ann' }, choices: ['mine', 'theirs'], keepBoth: null, preselect: 'mine' }),
+            ],
+        })
+        await vi.waitFor(() => expect(shown().type).toBe('peerConflicts'))
+        const data = shown()
+        expect(data.msg).toBe(text().peerConflictTitle)
+        expect(data.peerConflicts?.map(row => row.label)).toEqual([
+            'Setting: zoomsize',
+            text().peerRecordChat.replace('{character}', 'Ann').replace('{chat}', 'Chat <b>1</b>'),
+            text().peerRecordDeletedThere.replace('{character}', 'Ann'),
+        ])
+        expect(data.peerConflicts?.map(row => row.choices)).toEqual([['mine', 'theirs', 'both'], ['mine', 'theirs', 'both'], ['mine', 'theirs']])
+        expect(data.peerConflicts?.map(row => row.preselect)).toEqual(['both', 'both', 'mine'])
+        expect(data.peerConflicts?.map(row => row.note)).toEqual([text().peerKeepBothRestorePoint, text().peerKeepBothCopy, null])
+        await answerWith(JSON.stringify({ 'config:zoomsize': 'theirs', 'char:a:chat:b': 'mine', 'char:a:deletedThere': 'theirs' }))
+        expect(await asked).toEqual({ 'config:zoomsize': 'theirs', 'char:a:chat:b': 'mine', 'char:a:deletedThere': 'theirs' })
+    })
+
+    test('a malformed answer is the preselection, and a choice a row does not offer is replaced by its preselection', async () => {
+        const { ui } = newUi()
+        const conflicts = [
+            record({ id: 'a', label: { kind: 'presets' } }),
+            record({ id: 'b', label: { kind: 'deletedHere', character: 'Bo' }, choices: ['mine', 'theirs'], keepBoth: null, preselect: 'theirs' }),
+        ]
+        const first = ui.resolve?.({ conflicts })
+        await answerWith('not json at all')
+        expect(await first).toEqual({ a: 'both', b: 'theirs' })
+        const second = ui.resolve?.({ conflicts })
+        await answerWith(JSON.stringify({ a: 'sideways', b: 'both' }))
+        expect(await second).toEqual({ a: 'both', b: 'theirs' })
+    })
+
+    test('it waits for an alert that Escape closes, and asks in the same step it is clear', async () => {
+        const { ui } = newUi()
+        alertStore.set({ type: 'error', msg: 'something failed' })
+        const asked = ui.resolve?.({ conflicts: [record({ id: 'a', label: { kind: 'loadouts' } })] })
+        await sleep(30)
+        expect(shown().type).toBe('error')
+        alertStore.set({ type: 'none', msg: '' })
+        await answerWith(JSON.stringify({ a: 'mine' }))
+        expect(await asked).toEqual({ a: 'mine' })
+    })
+
+    test('names are shown as one clean line: control and format characters go, and "$&" stays literal', async () => {
+        const { ui } = newUi()
+        const asked = ui.resolve?.({ conflicts: [record({ id: 'a', label: { kind: 'core', character: 'An\u202Ene\n$&' } })] })
+        await vi.waitFor(() => expect(shown().type).toBe('peerConflicts'))
+        expect(shown().peerConflicts?.[0].label).toBe(text().peerRecordCore.replace('{character}', () => 'Anne $&'))
+        await answerWith('{}')
+        await asked
     })
 })

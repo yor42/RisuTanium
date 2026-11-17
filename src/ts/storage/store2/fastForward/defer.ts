@@ -13,7 +13,8 @@ export const D1_STATUS_AFTER_MS = 30_000
 /** A busy action older than this is treated as stuck: the fast-forward parks instead of waiting for it. */
 export const D2_BUSY_MAX_MS = 2 * 60 * 60_000
 
-export type DeferClass = 'd1' | 'd2'
+/** `d1w`: a record the peer changed lies in what a send is writing; the page waits until that work ends, not for every send. */
+export type DeferClass = 'd1' | 'd1w' | 'd2'
 
 /** Resolves once `ready()` is true, checked now and then every `DEFER_RECHECK_MS`; `onSlow` is called once after `slowAfterMs`. */
 export function settledWhen(ready: () => boolean, options: { slowAfterMs?: number, onSlow?: () => void, now: () => number }): Promise<void> {

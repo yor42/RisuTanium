@@ -1,10 +1,12 @@
 import { language } from 'src/lang'
-import { alertClear, alertMd, alertSelect, alertToast, alertWait, waitAlert, type alertData } from 'src/ts/alert'
+import { alertClear, alertMd, alertSelect, alertToast, alertWait, waitAlert, type alertData, type PeerConflictRowView } from 'src/ts/alert'
+import { askPrompt } from 'src/ts/alertPrompts'
 import { escapeActionFor } from 'src/ts/alertEscape'
 import { alertStore } from 'src/ts/stores.svelte'
 import { get } from 'svelte/store'
 import { Store2CommitRefusedError, Store2NotFlushedError, type ParkCheck, type PeerLiveState, type PeerOffer, type PeerParkPrompt, type Store2PeerHandler } from '../saveLoop'
 import { CodecInputError, StubRefusedError } from '../codec'
+import type { ConflictChoice, ConflictLabel, ConflictRecord } from '../fastForward'
 import type { Staging } from '../owner'
 import { foreignMarkerScreen } from './bootText'
 import type { SaveFailureClass } from '../saveFailure'
@@ -163,6 +165,60 @@ function titleOf(prompt: PeerParkPrompt, exportShown: boolean, fileName: string 
     }
 }
 
+/** A name for the conflict dialog: one line, no control or format characters, and a bounded length. It is shown as text, never as markup. */
+function shownName(name: string): string {
+    const clean = name.replace(/\s+/g, ' ').replace(/[\p{Cc}\p{Cf}]/gu, '').trim()
+    const letters = Array.from(clean)
+    return letters.length > SHOWN_NAME_LENGTH_MAX * 2 ? `${letters.slice(0, SHOWN_NAME_LENGTH_MAX * 2 - 1).join('')}…` : clean
+}
+
+/** The line a conflict row shows for its record (`peerRecord*`). */
+export function conflictLabelText(label: ConflictLabel): string {
+    const text = language.store2Boot
+    switch (label.kind) {
+        case 'setting': return text.peerRecordSetting.replace('{name}', () => shownName(label.name))
+        case 'presets': return text.peerRecordPresets
+        case 'personas': return text.peerRecordPersonas
+        case 'loadouts': return text.peerRecordLoadouts
+        case 'core': return text.peerRecordCore.replace('{character}', () => shownName(label.character))
+        case 'lore': return text.peerRecordLore.replace('{character}', () => shownName(label.character))
+        case 'scripts': return text.peerRecordScripts.replace('{character}', () => shownName(label.character))
+        case 'whole': return text.peerRecordCharacter.replace('{character}', () => shownName(label.character))
+        case 'deletedThere': return text.peerRecordDeletedThere.replace('{character}', () => shownName(label.character))
+        case 'deletedHere': return text.peerRecordDeletedHere.replace('{character}', () => shownName(label.character))
+        case 'chat': return text.peerRecordChat.replace('{character}', () => shownName(label.character)).replace('{chat}', () => shownName(label.chat))
+        case 'chatDeletedThere': return text.peerRecordChatDeletedThere.replace('{character}', () => shownName(label.character)).replace('{chat}', () => shownName(label.chat))
+        case 'chatDeletedHere': return text.peerRecordChatDeletedHere.replace('{character}', () => shownName(label.character)).replace('{chat}', () => shownName(label.chat))
+    }
+}
+
+function rowOf(record: ConflictRecord): PeerConflictRowView {
+    const text = language.store2Boot
+    return {
+        id: record.id,
+        label: conflictLabelText(record.label),
+        choices: [...record.choices],
+        preselect: record.preselect,
+        note: record.keepBoth === 'copy' ? text.peerKeepBothCopy : record.keepBoth === 'restore-point' ? text.peerKeepBothRestorePoint : null,
+    }
+}
+
+/** The answer of the dialog: the JSON of `{ id: choice }`. A record without a valid choice keeps its preselection, so a malformed answer is the preselection. */
+export function parseConflictAnswer(answer: string, conflicts: readonly ConflictRecord[]): Record<string, ConflictChoice> {
+    let given: unknown
+    try {
+        given = JSON.parse(answer)
+    } catch {
+        given = null
+    }
+    const out: Record<string, ConflictChoice> = {}
+    for (const record of conflicts) {
+        const choice: unknown = typeof given === 'object' && given !== null ? Reflect.get(given, record.id) : undefined
+        out[record.id] = record.choices.find(candidate => candidate === choice) ?? record.preselect
+    }
+    return out
+}
+
 function labelOf(offer: PeerOffer): string {
     const text = language.store2Boot
     switch (offer) {
@@ -182,6 +238,18 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
         const displayed = prompt.offers.filter((offer) => offer !== 'export-first' || exportAvailable)
         const index = await alertSelect(displayed.map(labelOf), titleOf(prompt, displayed.includes('export-first'), autoExportName))
         return displayed[Number(index)] ?? 'reload'
+    }
+
+    /**
+     * One dialog for every record both tabs changed. It cannot be dismissed: Escape and Back leave it, and only Apply
+     * answers. It waits for any alert that Escape closes first, like every prompt here, and asks in the same step.
+     */
+    async function resolve(request: { conflicts: readonly ConflictRecord[] }): Promise<Readonly<Record<string, ConflictChoice>>> {
+        await untilClear()
+        const answer = await askPrompt({
+            type: 'peerConflicts', msg: language.store2Boot.peerConflictTitle, peerConflicts: request.conflicts.map(rowOf),
+        })
+        return parseConflictAnswer(answer, request.conflicts)
     }
 
     /** Whether the loop found every resident character clean. Cancel, like any answer but `clean`, reloads nothing. */
@@ -334,6 +402,7 @@ export function createPeerUi(options: PeerUiOptions): Store2PeerHandler {
             alertToast(language.store2Boot.moduleNotSaved.replaceAll('{name}', () => name))
         },
         decide,
+        resolve,
         exportThisTab,
         autoExport,
         foreignMarker: askForeignMarker,
