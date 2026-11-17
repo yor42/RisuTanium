@@ -810,6 +810,7 @@ export const languageJapanese = {
         googleSearchEnterApiKey: "Google Custom Search APIキーを入力してください：",
         googleSearchEnterEngineId: "Google Custom SearchエンジンIDを入力してください：",
         mcpInputAuthorizationCode: "認証コードを入力",
+        mcpOAuthHelperConsent: "MCPサーバー {server} でサインインが必要です。サインインは、このアプリではなくアップストリームプロジェクトが運営する {host} のヘルパーサービスを経由します。サインイン後、ブラウザーは {host} に転送され、貼り付けた認証コードも {host} に送信されます。サインインに {host} を使用しますか？",
         updatingTo: "{version}にアップデート中…",
         addingAssets: "読み込み中…（アセット追加中 {completed} / {total}）",
         writingExif: "読み込み中…（Exif書き込み中）",

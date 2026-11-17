@@ -803,6 +803,7 @@ export const languageKorean = {
         "googleSearchEnterApiKey": "Google Custom Search API 키를 입력해 주세요:",
         "googleSearchEnterEngineId": "Google Custom Search 엔진 ID를 입력해 주세요:",
         "mcpInputAuthorizationCode": "인증 코드 입력",
+        "mcpOAuthHelperConsent": "MCP 서버 {server}에 로그인해야 합니다. 로그인은 이 앱이 아니라 업스트림 프로젝트가 운영하는 {host}의 도우미 서비스를 거칩니다. 로그인하면 브라우저가 {host}로 이동되고, 붙여넣은 인증 코드도 {host}로 전송됩니다. {host}를 사용해 로그인할까요?",
         "updatingTo": "{version}(으)로 업데이트하는 중...",
         "addingAssets": "불러오는 중... (에셋 추가 중 {completed} / {total})",
         "writingExif": "불러오는 중... (Exif 기록 중)",

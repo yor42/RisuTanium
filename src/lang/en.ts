@@ -809,6 +809,7 @@ export const languageEnglish = {
         googleSearchEnterApiKey: "Please enter your Google Custom Search API Key:",
         googleSearchEnterEngineId: "Please enter your Google Custom Search Engine ID:",
         mcpInputAuthorizationCode: "Input Authorization Code",
+        mcpOAuthHelperConsent: "The MCP server {server} needs you to sign in. Sign-in goes through a helper at {host}, a service operated by the upstream project, not by this app: after you sign in, your browser is sent to {host}, and the authorization code you paste is sent to {host}. Use {host} to sign in?",
         updatingTo: "Updating to {version}...",
         addingAssets: "Loading... (Adding Assets {completed} / {total})",
         writingExif: "Loading... (Writing Exif)",

@@ -803,6 +803,7 @@ export const languageVietnamese = {
         "googleSearchEnterApiKey": "Vui lòng nhập khóa API Google Custom Search của bạn:",
         "googleSearchEnterEngineId": "Vui lòng nhập ID công cụ Google Custom Search của bạn:",
         "mcpInputAuthorizationCode": "Nhập mã ủy quyền",
+        "mcpOAuthHelperConsent": "Máy chủ MCP {server} yêu cầu bạn đăng nhập. Việc đăng nhập được thực hiện qua một dịch vụ trung gian tại {host}, do dự án gốc (upstream) vận hành chứ không phải ứng dụng này: sau khi đăng nhập, trình duyệt của bạn sẽ được chuyển đến {host}, và mã ủy quyền bạn dán vào sẽ được gửi đến {host}. Dùng {host} để đăng nhập?",
         "updatingTo": "Đang cập nhật lên {version}...",
         "addingAssets": "Đang tải... (Đang thêm tài sản {completed} / {total})",
         "writingExif": "Đang tải... (Đang ghi Exif)",
