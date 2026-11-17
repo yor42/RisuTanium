@@ -38,6 +38,7 @@
     import { requestSubtitleModel } from "src/ts/process/subtitleRequest";
     import { ensurePlaygroundModulesOrAlert } from "src/ts/process/moduleEnsure";
     import { hasModuleStubs } from "src/ts/process/moduleRefList";
+    import { useBundledOnnxRuntime } from "src/ts/process/onnxRuntimeSource";
     import { asBuffer, selectFileByDom, selectSingleFile, sleep } from "src/ts/util";
     import { alertError, alertSelect } from "src/ts/alert";
     import { ALERT_SELECT_CANCEL } from "src/ts/alertCancel";
@@ -251,7 +252,8 @@
 
         if(mode === 'whisperLocal'){
             try {
-                const {pipeline} = await import('@huggingface/transformers')
+                const {pipeline, env} = await import('@huggingface/transformers')
+                useBundledOnnxRuntime(env)
                 let stats:{
                     [key:string]:{
                         name:string

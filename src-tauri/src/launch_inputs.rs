@@ -8,7 +8,10 @@ use std::path::{Path, PathBuf};
 /// restart child has then already had its command line consumed.
 pub const LAUNCH_CONSUMED_ENV: &str = "RISU_LAUNCH_CONSUMED";
 
-const FILE_EXTENSIONS: [&str; 3] = ["risum", "risup", "charx"];
+/// One list on every operating system. It decides which path the system or the
+/// user already handed in may be imported, not what the installer registers; the
+/// page refuses an image or JSON file that is no card.
+const FILE_EXTENSIONS: [&str; 8] = ["risum", "risup", "charx", "byaf", "png", "jpg", "jpeg", "json"];
 const DEEP_LINK_PREFIXES: [&str; 2] = ["risutaniumlocal:", "risuailocal:"];
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -51,7 +54,7 @@ pub fn is_deep_link(arg: &str) -> bool {
 }
 
 /// The path to import when `path` is an existing regular file with a card,
-/// preset or module extension. A relative path is resolved against `cwd`.
+/// card image, JSON, preset or module extension. A relative path is resolved against `cwd`.
 pub fn file_input(path: &Path, cwd: Option<&Path>) -> Option<PathBuf> {
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
     if !FILE_EXTENSIONS.contains(&extension.as_str()) {
@@ -137,9 +140,40 @@ mod tests {
     }
 
     #[test]
+    fn accepts_card_image_json_and_byaf_files_in_any_case() {
+        let dir = scratch_dir("media");
+        let names = ["a.byaf", "b.PNG", "c.jpg", "d.JPEG", "e.json"];
+        let paths: Vec<PathBuf> = names.iter().map(|name| touch(&dir, name)).collect();
+        let mut list = vec!["risu.exe"];
+        list.extend(paths.iter().map(|p| p.to_str().unwrap()));
+        let found = classify(args(&list), None);
+        let found_names: Vec<String> = found
+            .files
+            .iter()
+            .map(|f| f.file_name().unwrap().to_str().unwrap().to_string())
+            .collect();
+        assert_eq!(found_names, names.to_vec());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_missing_image_and_a_directory_named_like_json_are_not_files_to_import() {
+        let dir = scratch_dir("mediamissing");
+        let missing = dir.join("x.png");
+        let folder = dir.join("d.json");
+        fs::create_dir_all(&folder).unwrap();
+        assert_eq!(file_input(&missing, None), None);
+        assert_eq!(file_input(&folder, None), None);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn ignores_missing_files_directories_and_other_extensions() {
         let dir = scratch_dir("ignore");
         let text = touch(&dir, "notes.txt");
+        let webp = touch(&dir, "photo.webp");
+        let gif = touch(&dir, "anim.gif");
+        let yaml = touch(&dir, "card.yaml");
         let folder = dir.join("folder.charx");
         fs::create_dir_all(&folder).unwrap();
         let missing = dir.join("missing.risum");
@@ -147,6 +181,9 @@ mod tests {
             args(&[
                 "risu.exe",
                 text.to_str().unwrap(),
+                webp.to_str().unwrap(),
+                gif.to_str().unwrap(),
+                yaml.to_str().unwrap(),
                 folder.to_str().unwrap(),
                 missing.to_str().unwrap(),
                 "--flag",

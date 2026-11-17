@@ -6,6 +6,7 @@ import { v4 } from 'uuid';
 import { beginClip, currentTTSSignal, releaseClip, startClip } from './ttsPlayback';
 import { beginBusy } from './memory/busyActions';
 import { beginInFlight, withInFlight } from './inFlightWork';
+import { useBundledOnnxRuntime } from './onnxRuntimeSource';
 const VITS_DECODE_MAX_AGE_MS = 30_000
 let tfCache: Cache = null
 let tfLoaded = false
@@ -15,6 +16,7 @@ async function initTransformers() {
         return
     }
     const { env } = await import('@huggingface/transformers');
+    useBundledOnnxRuntime(env)
     tfCache = await caches.open('tfCache')
     // Cache-key namespace only: tfCache entries written while this host answered, and imported-model tfMap keys, are keyed under this path, and
     // it is never fetched because local models are disabled below.

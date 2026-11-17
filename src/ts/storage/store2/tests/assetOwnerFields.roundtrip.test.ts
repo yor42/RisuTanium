@@ -306,6 +306,35 @@ describe('an archived character keeps both owner fields in its unit', () => {
     })
 })
 
+describe('an archived character keeps the render-when-complete key in its unit', () => {
+    test('guard: archive, unit encode and restore return the key, and the stub that stands for the character holds none', async () => {
+        const key = 'risutanium_render_when_complete'
+        const character = await importedCharacterWithBothFields()
+        character[key] = true
+        const chaId = character.chaId as string
+        const loaded = clone(character)
+
+        const result = await archiveCharacterNow({ kind: 'loaded', character: character as never })
+
+        expect(result.ok).toBe(true)
+        if (result.ok === false) {
+            return
+        }
+        const stub = h.db.characters[result.index]
+        expect(stub).not.toHaveProperty(key)
+
+        const base = buildSmall(1) as unknown as Obj
+        const tree = encodeWith(asDatabase({ ...base, characters: [clone(loaded)], characterOrder: [chaId], modules: [] }), { env: seededEnv(7) })
+        const assembled = assembleDatabase(tree.manifest, unitMapSource(tree.units)) as unknown as { characters: Obj[] }
+        expect(assembled.characters[0][key]).toBe(true)
+
+        const restored = await restoreColdCharacter(stub as never)
+
+        expect(restored.status).toBe('restored')
+        expect(h.db.characters[result.index][key]).toBe(true)
+    })
+})
+
 function moduleBody(id: string, extra: Obj = {}): Obj {
     return {
         id, name: `Module ${id}`, description: `about ${id}`, regex: [], trigger: [], assets: [],
