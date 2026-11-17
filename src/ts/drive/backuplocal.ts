@@ -37,7 +37,7 @@ import { repairDatabaseIds } from "../process/chatIds";
 import { reloadAfterRestore } from "./restoreReload";
 import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
-import { characterListNeedsRepair, kvBlockNamesOf, collectBackupColdStorage, inlinedCharacter, exportForkOnlyLabels, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, unpackStubEntry, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
+import { characterListNeedsRepair, kvBlockNamesOf, collectBackupColdStorage, inlinedCharacter, exportForkOnlyLabels, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, beginModuleSnapshotMark, endModuleSnapshotMark, clearModuleSnapshotMarks, unpackStubEntry, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
 import { convertPluginStorageIndex, unavailableKeysOfMissing } from "../process/pluginStorageIndex";
 import { v4 } from "uuid";
@@ -167,14 +167,18 @@ async function writeDatabaseEntry(
     }
 }
 
-/** Measurement builds only: the stub read and `read_range` counts since the export began, as phase-note fields. */
+/**
+ * Measurement builds only: the stub read and `read_range` counts since the export began, as phase-note fields.
+ * `stubEncodeMs` leaves out the packing a worker did, so a difference between the worker arm and the main-thread arm
+ * (`risu-measure-export-pack` = `main`) is not a saving; `stubPackWaitMs`, `stubPackDrainMs` and `stubLoopMs` show where the wait went.
+ */
 function describeReadMeasure(): string {
     try {
         const stubs = takeStubReadStats()
         const ranges = takeRangeReadStats()
         const parts: string[] = []
         if (stubs) {
-            parts.push(`stubChars=${stubs.characters} stubReadMs=${Math.round(stubs.readMs)} stubEncodeMs=${Math.round(stubs.encodeMs)} stubEncodeMsMax=${Math.round(stubs.encodeMsMax)} stubRawBytes=${stubs.rawBytes} stubPackedBytes=${stubs.packedBytes} stubAhead=${stubs.ahead} stubHeldMax=${stubs.heldMax} stubRetries=${stubs.retries} stubFailed=${stubs.failed}`)
+            parts.push(`stubChars=${stubs.characters} stubReadMs=${Math.round(stubs.readMs)} stubEncodeMs=${Math.round(stubs.encodeMs)} stubEncodeMsMax=${Math.round(stubs.encodeMsMax)} stubRawBytes=${stubs.rawBytes} stubPackedBytes=${stubs.packedBytes} stubAhead=${stubs.ahead} stubHeldMax=${stubs.heldMax} stubRetries=${stubs.retries} stubFailed=${stubs.failed} stubColdRootsMs=${Math.round(stubs.coldRootsMs)} stubLoopMs=${Math.round(stubs.loopMs)} legacyCollectMs=${Math.round(stubs.legacyCollectMs)} moduleSnapshotMs=${Math.round(stubs.moduleSnapshotMs)} moduleSnapshotCount=${stubs.moduleSnapshotCount} stubPackWaitMs=${Math.round(stubs.packWaitMs)} stubPackDrainMs=${Math.round(stubs.packDrainMs)} stubPackFallbacks=${stubs.packFallbacks} stubPackHeldMax=${stubs.packHeldMax}`)
         }
         if (ranges) {
             parts.push(`rangeReads=${ranges.reads} rangeMs=${Math.round(ranges.ms)} rangeWallMs=${Math.round(ranges.wallMs)} store2Reads=${ranges.store2Reads} store2Ms=${Math.round(ranges.store2Ms)} rangeMaxInFlight=${ranges.maxInFlight}`)
@@ -776,9 +780,14 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         takeExportWriteStats()
         resetNetTickStats()
     }
+    clearModuleSnapshotMarks()
     const db = getDatabase()
     // Every module body is read before anything is opened; a module that cannot be read stops the export here.
+    const moduleSnapshotAt = beginModuleSnapshotMark()
     const moduleSnapshot = await snapshotModuleList(db)
+    if (MEASURE) {
+        endModuleSnapshotMark(moduleSnapshotAt, moduleSnapshot.modules?.length ?? 0)
+    }
     return await writeLocalBackupWithModules(session, options, db, moduleSnapshot.modules)
 }
 
@@ -1128,6 +1137,7 @@ export function exportThisTabBackup(options: BackupExportOptions = {}): Promise<
 
 async function writePartialLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
     session.gate.wait("Saving partial local backup...")
+    clearModuleSnapshotMarks()
     const db = getDatabase()
     const moduleSnapshot = await snapshotModuleList(db)
     return await writePartialLocalBackupWithModules(session, options, db, moduleSnapshot.modules)
