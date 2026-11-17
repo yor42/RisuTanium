@@ -66,6 +66,7 @@ import { announceStore2Import, binChangeText, checkStore2Import, commitBootImpor
 
 import { forkOnlyChatLabels, forkOnlyConfirmKeys, lateForkOnlyChats, withoutForkOnlyChatData, type ForkOnlyChatLabel, type ForkOnlyKind } from "./exportAlternatives";
 import { isPackAssetName } from "../themePack/packRefs";
+import { isForkOnlyHypaModel } from "../process/memory/embeddingModels";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -248,6 +249,10 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     // (the export confirm names the packs first); both keys are removed, not set to undefined.
     delete plain.themePacks
     delete plain.activeThemePack
+    // A fork-only embedding model key is unreadable upstream, so the copy omits it (silently); the page keeps its value.
+    if (isForkOnlyHypaModel(plain.hypaModel)) {
+        delete plain.hypaModel
+    }
     // Set before either return below, so every encoder gets the module list read before the export opened, never the live one.
     if (modules !== null) {
         plain.modules = modules

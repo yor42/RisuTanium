@@ -28,6 +28,7 @@ import {
     normalizeChatLoadPages,
 } from '../chatLoadPages';
 import { normalizeHideUnusedModes, normalizeVisibleModes, type HomeMode } from './homeModes';
+import { DEFAULT_HYPA_MODEL } from '../process/memory/embeddingModels';
 
 //APP_VERSION_POINT is to locate the app version in the database file for version bumping
 export let appVer = "0.1.0" //<APP_VERSION_POINT>
@@ -415,7 +416,7 @@ export function setDatabase(data:Database){
     data.colorSchemeName ??= 'default'
     data.customColorScheme ??= safeStructuredClone(data.colorSchemeName === 'custom' ? data.colorScheme : defaultColorScheme)
     data.NAIsettings.starter ??= ""
-    data.hypaModel ??= 'MiniLM'
+    data.hypaModel ??= DEFAULT_HYPA_MODEL
     data.mancerHeader ??= ''
     data.emotionProcesser ??= 'submodel'
     data.translatorType ??= 'google'
