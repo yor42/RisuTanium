@@ -2,7 +2,14 @@
 // database or a backup. The producer marks the document root, and every consumer reads only the root:
 // low power is the `nexus-low-power` class plus the `data-low-power` attribute (consumers read either),
 // resolved reduced motion is the `rm` class, and an explicit "off" is the `rm-off` class, which the chat
-// shell's OS media-query rules step aside for.
+// shell's OS media-query rules step aside for. Card content is reached through two marks: `data-card-motion-off`
+// (the card setting, low power or resolved reduced motion) and `data-card-effects-off` (the card setting or low
+// power); the sheet that reads them is adopted with this module.
+
+import { adoptSheet } from '../gui/adoptSheet'
+import cardEffectsSheet from './cardEffects.css?raw'
+
+adoptSheet('card-effects', cardEffectsSheet)
 
 export type ReducedMotionMode = 'system' | 'on' | 'off'
 
@@ -10,6 +17,8 @@ export interface MotionState {
     lowPower: boolean
     reducedMotion: ReducedMotionMode
     systemReduced: boolean
+    /** This device's choice to drop card looping animations, entrance animations, blur and shadows; absent reads as off. */
+    reduceCardEffects?: boolean
 }
 
 /** Why the animation speed has no effect right now, or null while it applies. */
@@ -17,12 +26,22 @@ export type AnimationDimReason = 'lowPower' | 'system' | 'reduced'
 
 const LOW_POWER_KEY = 'risuChatShell.lowPower'
 const REDUCED_MOTION_KEY = 'risuChatShell.reducedMotion'
-const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)'
+const REDUCE_CARD_EFFECTS_KEY = 'risuChatShell.reduceCardEffects'
+const REDUCED_MOTION_QUERY ='(prefers-reduced-motion: reduce)'
 
 /** An absent, unknown or unreadable value reads as off and is never rewritten. */
 export function readLowPower(): boolean {
     try {
         return localStorage.getItem(LOW_POWER_KEY) === '1'
+    } catch {
+        return false
+    }
+}
+
+/** An absent, unknown or unreadable value reads as off and is never rewritten. */
+export function readReduceCardEffects(): boolean {
+    try {
+        return localStorage.getItem(REDUCE_CARD_EFFECTS_KEY) === '1'
     } catch {
         return false
     }
@@ -55,6 +74,9 @@ export function applyMotionClasses(root: Element, state: MotionState): void {
     root.toggleAttribute('data-low-power', state.lowPower)
     root.classList.toggle('rm', resolveReducedMotion(state.reducedMotion, state.systemReduced))
     root.classList.toggle('rm-off', state.reducedMotion === 'off')
+    const cardSetting = state.reduceCardEffects === true
+    root.toggleAttribute('data-card-motion-off', cardSetting || state.lowPower || resolveReducedMotion(state.reducedMotion, state.systemReduced))
+    root.toggleAttribute('data-card-effects-off', cardSetting || state.lowPower)
 }
 
 export function animationDimReason(state: MotionState): AnimationDimReason | null {
@@ -76,7 +98,7 @@ export function reducedMotionActive(
     return typeof matchMedia === 'function' && matchMedia(REDUCED_MOTION_QUERY).matches
 }
 
-const state = $state<MotionState>({ lowPower: readLowPower(), reducedMotion: readReducedMotion(), systemReduced: false })
+const state = $state<MotionState>({ lowPower: readLowPower(), reducedMotion: readReducedMotion(), systemReduced: false, reduceCardEffects: readReduceCardEffects() })
 
 /** The device's current choices, reactive; change them through the setters. */
 export const motionPrefs: Readonly<MotionState> = state
@@ -104,6 +126,12 @@ export function setLowPower(enabled: boolean): void {
     apply()
 }
 
+export function setReduceCardEffects(enabled: boolean): void {
+    state.reduceCardEffects = enabled
+    store(REDUCE_CARD_EFFECTS_KEY, enabled ? '1' : '0')
+    apply()
+}
+
 export function setReducedMotion(mode: ReducedMotionMode): void {
     state.reducedMotion = mode
     store(REDUCED_MOTION_KEY, mode)
@@ -124,6 +152,7 @@ export function installMotionPrefs(host: MotionHost = window): () => void {
     } else {
         state.lowPower = readLowPower()
         state.reducedMotion = readReducedMotion()
+        state.reduceCardEffects = readReduceCardEffects()
         const list = typeof host.matchMedia === 'function' ? host.matchMedia(REDUCED_MOTION_QUERY) : null
         state.systemReduced = list?.matches === true
         const onChange = (event: { matches: boolean }) => {
