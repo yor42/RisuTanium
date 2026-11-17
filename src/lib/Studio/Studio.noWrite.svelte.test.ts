@@ -87,8 +87,11 @@ vi.mock('../../ts/stores.svelte', () => ({
     get QuickSettings() { return QuickSettings },
 }))
 vi.mock('../../ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => route.shell }))
+// Selecting a module stub starts its load, which imports process/modules and with it the parser, whose asset-cache
+// effect reads the run's module ids. The visit runs no chat, so it references no module.
 vi.mock('../../ts/process/moduleRefList', () => ({
     moduleListOf: (ids: string[]) => listerOver(db.db.modules)(ids),
+    moduleRefIdsOf: (): string[] => [],
 }))
 vi.mock('../../ts/alertPrompts', () => ({ pageCovered: () => false }))
 vi.mock('../../ts/alertBack', () => ({ closeDialogForBack: vi.fn() }))
