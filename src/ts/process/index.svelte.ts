@@ -44,6 +44,7 @@ import { getGlobalChatVar } from "../parser/chatVar.svelte";
 import { runImageEmbedding } from "./transformers";
 import { hanuraiMemory } from "./memory/hanuraiMemory";
 import { hypaMemoryV2 } from "./memory/hypav2";
+import { openMemorySettings } from "./memory/memorySettingsLink";
 import { runLuaEditTrigger } from "./scriptings";
 import { getModelInfo, LLMFlags } from "../model/modellist";
 import { LLMTokenizer } from "../model/types";
@@ -621,8 +622,13 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         return data.trim()
     }
 
-    function throwError(error:string){
+    function throwError(error:string, link?:{label:string, open:() => void}){
         noteUnitFailure(abortSignal)
+        // An error with a place to fix it is always the alert, so its link stays reachable.
+        if(link){
+            alertError(error, {link})
+            return
+        }
         if(!DBState?.db?.inlayErrorResponse){
             alertError(error)
             return
@@ -1729,7 +1735,9 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             const sp = await hypaMemoryV2(chats, currentTokens, maxContextTokens, currentChat, nowChatroom, tokenizer, subject)
             if(sp.error){
                 console.log(sp)
-                throwError(sp.error)
+                throwError(sp.error, sp.errorSetting === 'summaryModel'
+                    ? {label: language.errors.openMemorySettings, open: openMemorySettings}
+                    : undefined)
                 return false
             }
             chats = sp.chats

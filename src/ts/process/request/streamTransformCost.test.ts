@@ -56,6 +56,7 @@ import { fetchNative } from '../../globalApi.svelte'
 import { LLMFlags, LLMFormat, LLMProvider, LLMTokenizer, type LLMModel } from '../../model/types'
 import { requestOpenAI } from './openAI/requests'
 import { requestGoogleCloudVertex } from './google'
+import { requestClaude } from './anthropic'
 import { saveInlayedSignature } from '../files/inlays'
 
 /**
@@ -74,6 +75,7 @@ beforeEach(() => {
     for (const key of Object.keys(h.db)) { delete h.db[key] }
     Object.assign(h.db, {
         openAIKey: 'plain-key',
+        claudeAPIKey: 'plain-key',
         proxyKey: 'plain-key',
         gptVisionQuality: 'low',
         additionalParams: [],
@@ -289,5 +291,81 @@ describe('Gemini signature records over a long reply', () => {
         const saved = new Set(savedIds())
         expect(referencedIds(values).length).toBeGreaterThan(0)
         expect(referencedIds(values).every((id) => saved.has(id))).toBe(true)
+    })
+})
+
+describe('Anthropic stream cost over a long reply', () => {
+    const MARKER = 'cost-marker'
+    const anthropicEvent = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
+    const deltaPayload = (index: number) => ({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: `${MARKER} word${index} ` } })
+    const expectedText = Array.from({ length: EVENTS }, (_v, i) => `${MARKER} word${i} `).join('')
+
+    /** The events of one reply, each as its own string: start, block start, EVENTS deltas, stop. */
+    function events(): string[] {
+        return [
+            anthropicEvent('message_start', { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', content: [], model: 'claude-3-5-sonnet-20241022', usage: { input_tokens: 1, output_tokens: 1 } } }),
+            anthropicEvent('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }),
+            ...Array.from({ length: EVENTS }, (_v, i) => anthropicEvent('content_block_delta', deltaPayload(i))),
+            anthropicEvent('message_stop', { type: 'message_stop' }),
+        ]
+    }
+
+    async function runAnthropic(chunks: Uint8Array[]): Promise<Record<string, string>[]> {
+        fetchNativeMock.mockImplementation(async () => chunkedResponse(chunks))
+        const response = await requestClaude({
+            formated: [{ role: 'user', content: 'hello' }],
+            aiModel: 'claude-3-5-sonnet-20241022',
+            maxTokens: 100,
+            mode: 'model',
+            useStreaming: true,
+            bias: {},
+            modelInfo: {
+                id: 'claude-3-5-sonnet-20241022', name: 'claude', internalID: 'claude-3-5-sonnet-20241022',
+                provider: LLMProvider.Anthropic, format: LLMFormat.Anthropic, flags: [LLMFlags.hasStreaming],
+                parameters: ['temperature'], tokenizer: LLMTokenizer.Claude,
+            },
+        } as unknown as Parameters<typeof requestClaude>[0])
+        expect(response.type).toBe('streaming')
+        return readToEnd(response.result as ReadableStream<unknown>)
+    }
+
+    test('the text split into lines costs the size of the reads, not of everything received so far', async () => {
+        // Every read is one whole event, so no unfinished tail is carried: each read is split once, as itself.
+        const reads = events()
+        const expected = reads.filter((read) => read.includes(MARKER)).reduce((sum, read) => sum + read.length, 0)
+        const original = String.prototype.split
+        let splitChars = 0
+        String.prototype.split = function (this: string, separator: string | RegExp, limit?: number) {
+            if (separator === '\n' && this.includes(MARKER)) {
+                splitChars += this.length
+            }
+            return original.call(this, separator, limit)
+        } as typeof String.prototype.split
+        let values: Record<string, string>[]
+        try {
+            values = await runAnthropic(reads.map((read) => encoder.encode(read)))
+        } finally {
+            String.prototype.split = original
+        }
+        expect(values[values.length - 1]['0']).toBe(expectedText)
+        expect(splitChars).toBe(expected)
+    })
+
+    test('each delta payload is parsed once when every read ends right after its data line', async () => {
+        const chunks: Uint8Array[] = []
+        for (const event of events()) {
+            const cut = event.indexOf('\n\n') + 1
+            chunks.push(encoder.encode(event.slice(0, cut)), encoder.encode(event.slice(cut)))
+        }
+        const parse = vi.spyOn(JSON, 'parse')
+        try {
+            const values = await runAnthropic(chunks)
+            expect(values[values.length - 1]['0']).toBe(expectedText)
+            const counts = Array.from({ length: EVENTS }, (_v, i) => JSON.stringify(deltaPayload(i)))
+                .map((payload) => parse.mock.calls.filter((call) => call[0] === payload).length)
+            expect(counts).toEqual(Array.from({ length: EVENTS }, () => 1))
+        } finally {
+            parse.mockRestore()
+        }
     })
 })
