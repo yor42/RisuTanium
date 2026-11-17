@@ -22,7 +22,7 @@ vi.mock('../storage/tauriByteTransport', () => ({
     transportKind: transportKindMock,
 }))
 
-import { HEADER_BYTES, readTauriHeader, readUrlHeader } from './avatarThumbHeader'
+import { HEADER_BYTES, readTauriHeader, readTauriPrefix, readUrlHeader, readUrlPrefix } from './avatarThumbHeader'
 
 const PNG_SIG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 
@@ -291,5 +291,110 @@ describe('readTauriHeader', () => {
         transportKindMock.mockReturnValue('other')
         expect(await readTauriHeader('assets/a.png')).toBeNull()
         expect(readRangedPiecesMock).not.toHaveBeenCalled()
+    })
+})
+
+describe('readTauriPrefix tells "no read", "failed read" and "piece" apart and reports the size', () => {
+    const SCAN = 262144
+
+    function install(piece: { bytes: Uint8Array, offset: number, total: number, identity: string } | Error): { closed: { value: boolean } } {
+        const closed = { value: false }
+        readRangedPiecesMock.mockImplementation(async function* () {
+            try {
+                if (piece instanceof Error) {
+                    throw piece
+                }
+                yield piece
+            } finally {
+                closed.value = true
+            }
+        })
+        return { closed }
+    }
+
+    beforeEach(() => {
+        readRangedPiecesMock.mockReset()
+        transportKindMock.mockReset()
+        transportKindMock.mockReturnValue('desktop')
+    })
+
+    test('a ranged transport that is not there is "none" and requests nothing', async () => {
+        transportKindMock.mockReturnValue('other')
+        expect(await readTauriPrefix('assets/a.png')).toEqual({ kind: 'none' })
+        expect(readRangedPiecesMock).not.toHaveBeenCalled()
+    })
+
+    test('a first-piece error is "failed", not a short piece', async () => {
+        install(new Error('failed to open (os error 2)'))
+        expect(await readTauriPrefix('assets/a.png')).toEqual({ kind: 'failed' })
+    })
+
+    test('a short piece of a larger file has no header but still reports the size, and the reader is closed', async () => {
+        const { closed } = install({ bytes: bytesOf(4096), offset: 0, total: 300 * 1024, identity: 'id' })
+        expect(await readTauriPrefix('assets/a.png')).toEqual({ kind: 'piece', header: null, total: 300 * 1024 })
+        expect(closed.value).toBe(true)
+    })
+
+    test('a full piece gives its header and the size, and the byte count asked for is passed through', async () => {
+        install({ bytes: bytesOf(SCAN), offset: 0, total: 80 * 1024 * 1024, identity: 'id' })
+
+        const prefix = await readTauriPrefix('assets/a.png', SCAN)
+
+        expect(readRangedPiecesMock).toHaveBeenCalledWith('assets/a.png', SCAN)
+        expect(prefix.kind).toBe('piece')
+        if (prefix.kind === 'piece') {
+            expect(prefix.total).toBe(80 * 1024 * 1024)
+            expect(prefix.header?.whole).toBe(false)
+            expect(prefix.header?.bytes.length).toBe(SCAN)
+        }
+    })
+
+    test('the default request is still one piece of 65536 bytes', async () => {
+        install({ bytes: bytesOf(HEADER_BYTES), offset: 0, total: 300 * 1024, identity: 'id' })
+        await readTauriPrefix('assets/a.png')
+        expect(readRangedPiecesMock).toHaveBeenCalledWith('assets/a.png', 65536)
+    })
+})
+
+describe('readUrlPrefix reports the size the server stated', () => {
+    const fetchMock = vi.fn()
+
+    beforeEach(() => {
+        fetchMock.mockReset()
+        vi.stubGlobal('fetch', fetchMock)
+    })
+
+    afterEach(() => {
+        vi.unstubAllGlobals()
+    })
+
+    function respond(status: number, headers: Record<string, string>, bytes: Uint8Array): void {
+        fetchMock.mockResolvedValue(new Response(new Blob([bytes as BlobPart]), { status, headers }))
+    }
+
+    test('a 206 gives the Content-Range total', async () => {
+        respond(206, { 'content-range': 'bytes 0-65535/90000000' }, bytesOf(HEADER_BYTES))
+        const prefix = await readUrlPrefix('http://node.test/a', new AbortController().signal)
+        expect(prefix?.total).toBe(90000000)
+        expect(prefix?.header.whole).toBe(false)
+    })
+
+    test('a 200 gives the Content-Length total, and none gives null', async () => {
+        respond(200, { 'content-length': String(HEADER_BYTES) }, bytesOf(HEADER_BYTES))
+        expect((await readUrlPrefix('http://node.test/a', new AbortController().signal))?.total).toBe(HEADER_BYTES)
+
+        // A body larger than the cut without a Content-Length: a usable prefix of unknown size.
+        respond(200, {}, bytesOf(HEADER_BYTES + 10))
+        const open = await readUrlPrefix('http://node.test/a', new AbortController().signal)
+        expect(open?.total).toBeNull()
+        expect(open?.header.bytes.length).toBe(HEADER_BYTES)
+    })
+
+    test('the byte count asked for sets the Range end and the cut', async () => {
+        respond(206, { 'content-range': 'bytes 0-262143/90000000' }, bytesOf(262144))
+        const header = await readUrlHeader('http://node.test/a', new AbortController().signal, 262144)
+        expect(fetchMock.mock.calls[0][1]).toMatchObject({ headers: { Range: 'bytes=0-262143' } })
+        expect(header?.bytes.length).toBe(262144)
+        expect(header?.whole).toBe(false)
     })
 })
