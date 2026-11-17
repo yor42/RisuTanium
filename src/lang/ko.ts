@@ -3553,6 +3553,17 @@ export const languageKorean = {
     store2ImportUnconfirmed: "RisuTanium이 백업을 가져왔는지 확인하지 못했습니다. 어느 쪽이든 이전 데이터는 보관됩니다. 페이지를 새로고침하여 어느 쪽이 사용 중인지 확인하세요.",
     store2ImportNotFlushed: "백업을 가져왔지만, 기기에서 디스크에 기록되었다는 확인을 받지 못했습니다. 앱을 지금 새로고침하며, 시작할 때 기록을 마무리합니다.",
     store2ImportDone: "백업을 가져왔습니다. 이전에 가지고 있던 데이터는 이전 저장 버전 목록에 보관되며, 다른 버전과 마찬가지로 시간이 지나면 정리됩니다. 앱을 새로 고치는 중입니다.",
+    rtbRestoreNeedsStore2: "이 페이지는 RisuTanium의 현재 저장소를 사용하고 있지 않아 여기에서는 .rtb 백업을 복원할 수 없습니다. 아무것도 복원되지 않았습니다.",
+    rtbRestoreNotRtb: "이 파일은 RisuTanium .rtb 백업이 아니므로 아무것도 복원되지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
+    rtbRestoreEncrypted: "이 .rtb 백업은 암호화되어 있고, 이 버전에서는 암호화된 백업을 열 수 없어 아무것도 복원되지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
+    rtbRestoreDamaged: "이 .rtb 백업은 손상되었거나 불완전하여 아무것도 복원되지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
+    rtbRestoreNewer: (item: string) =>
+        `이 .rtb 백업은 더 새로운 버전의 RisuTanium에서 만들어졌으며 ${item}이(가) 필요한데, 이 버전에서는 읽을 수 없어 아무것도 복원되지 않았습니다. 앱을 업데이트한 후 다시 시도하세요. 현재 데이터는 변경되지 않았습니다.`,
+    rtbRestoreTargetNewerConfirm: (targetSaved: string, backupTime: string, exportedAt: string | null, device: string) =>
+        `현재 데이터는 ${targetSaved}에 저장되었으며, 이 백업(${backupTime}${exportedAt === null ? '' : `; 파일 생성 시각: ${exportedAt}`})보다 나중입니다. 이 백업은 "${device}" 기기에서 만들어졌습니다. 복원하면 현재 데이터가 더 오래된 이 백업으로 교체됩니다. 지금 가지고 있는 데이터는 이전 저장 버전 목록에 보관되며, 다른 버전과 마찬가지로 시간이 지나면 정리됩니다. 계속하시겠습니까?`,
+    rtbRestoreUncreatableConfirm: (count: number, names: string[]) =>
+        `이 백업의 에셋 파일 ${count}개는 이 앱의 저장소에서 만들 수 없는 이름이라 여기에서 복원할 수 없습니다. 이 중 하나를 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 이 파일들을 제외하고 계속하시겠습니까?\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    rtbRestoreChecking: (percent: number) => `백업을 확인하는 중... (${percent}%)`,
     coldStorageCleanupDateUnknown: "날짜 알 수 없음",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `손상된 저장 데이터를 백업으로 교체할 때, 이전에 저장된 데이터 사본이 삭제되지 않고 따로 보관되었습니다(생성: ${dates}). 이 사본만 사용하는 이미지와 보관된 데이터는 계속 보호되므로, 사본이 남아 있는 동안에는 정리를 실행할 수 없습니다.\n\n이 이전 사본을 삭제한 뒤 정리하시겠습니까? 삭제한 사본은 복구할 수 없습니다. 취소를 선택하면 사본을 유지하며, 이 경우 정리는 실행되지 않습니다.`,
