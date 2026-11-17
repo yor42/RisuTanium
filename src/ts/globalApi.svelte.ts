@@ -11,7 +11,7 @@ import { v4 as uuidv4, v4 } from 'uuid';
 import { get } from "svelte/store";
 import { flushSync } from "svelte";
 import { open } from '@tauri-apps/plugin-shell'
-import { TauriWriter, openWebExportWriter, writeBackupEntry, encodeBackupEntryHeader, type ExportByteWriter } from "./exportWriters";
+import { TauriWriter, openWebExportWriter, writeBackupEntry, encodeBackupEntryHeader, isSplicingWriter, type ExportByteWriter } from "./exportWriters";
 import { ExportCancelledError, type ExportCancelToken } from "./exportCancel";
 import { type Database, defaultSdDataFunc, getDatabase, appVer, getCurrentCharacter, type character, type groupChat, type Chat, appSubVer } from "./storage/database.svelte";
 import { collectPackAssetRefs } from "./themePack/packRefs";
@@ -4199,9 +4199,10 @@ export class LocalWriter {
      * @param {string[]} [ext=['bin']] - The file extensions.
      * @param {string} [suggestedFileName] - A complete file name (with extension) offered as the download name on web and as the save dialog's default path on Tauri. Without it, the web name is `name.ext[0]` and the dialog suggests none.
      * @param {ExportCancelToken} [cancel] - The export's cancel switch; a cancel seen while the web writer opens aborts the new writer, and the caller's next checkpoint ends the export.
+     * @param {(fileName: string, cancel?: ExportCancelToken) => Promise<ExportByteWriter>} [openWriter] - Opens the writer of a non-desktop export in place of the browser download writer.
      * @returns {Promise<boolean>} - A promise that resolves to a boolean indicating success.
      */
-    async init(name = 'Binary', ext = ['bin'], suggestedFileName?: string, cancel?: ExportCancelToken): Promise<boolean> {
+    async init(name = 'Binary', ext = ['bin'], suggestedFileName?: string, cancel?: ExportCancelToken, openWriter?: (fileName: string, cancel?: ExportCancelToken) => Promise<ExportByteWriter>): Promise<boolean> {
         if (cancel) {
             this.useCancel(cancel)
         }
@@ -4220,7 +4221,8 @@ export class LocalWriter {
             return true
         }
         const fileName = suggestedFileName ?? name + '.' + ext[0]
-        this.writer = cancel ? await openWebExportWriter(fileName, cancel) : await openWebExportWriter(fileName)
+        const open = openWriter ?? openWebExportWriter
+        this.writer = cancel ? await open(fileName, cancel) : await open(fileName)
         if (cancel?.cancelled) {
             // The cancel came while the writer opened, before there was a writer to abort.
             this.abortInner()
@@ -4268,6 +4270,32 @@ export class LocalWriter {
     async write(data: Uint8Array): Promise<void> {
         this.cancel?.throwIfCancelled()
         await this.raced(this.writer.write(data))
+    }
+
+    /** Whether the opened writer can take an asset body by reference (`pinAsset`). */
+    get splices(): boolean {
+        return this.writer !== undefined && isSplicingWriter(this.writer)
+    }
+
+    /**
+     * Pins an asset on the server side of a splicing writer: its size, or `missing` when the server holds no such
+     * file. Call only where `splices` is true.
+     */
+    async pinAsset(key: string): Promise<{ size: number } | 'missing'> {
+        this.cancel?.throwIfCancelled()
+        if (!isSplicingWriter(this.writer)) {
+            throw new Error('The export writer cannot pin an asset.')
+        }
+        return await this.raced(this.writer.pinAsset(key))
+    }
+
+    /** Marks the end of the bytes written so far as the point where the pinned body is inserted. */
+    markSplice(): void {
+        this.cancel?.throwIfCancelled()
+        if (!isSplicingWriter(this.writer)) {
+            throw new Error('The export writer cannot splice an asset.')
+        }
+        this.writer.markSplice()
     }
 
     /**

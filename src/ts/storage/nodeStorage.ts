@@ -2,6 +2,7 @@ import { language } from "src/lang"
 import { alertError, alertInput, waitAlert } from "../alert"
 import { base64url, getKeypairStore, saveKeypairStore } from "../util"
 import { createAssetTokenSource } from "./nodeAssetToken"
+import { retryTransientRequest } from "./store/nodeHttpStore"
 
 /**
  * Thrown by NodeStorage.setItem() when the self-hosted Node server rejects a
@@ -433,6 +434,44 @@ export async function nodeServerPrivateProxyEnabled(): Promise<boolean> {
         }
         const body: unknown = await response.json()
         return typeof body === 'object' && body !== null && 'privateProxy' in body && body.privateProxy === true
+    } catch {
+        return false
+    }
+}
+
+/** The `risu-auth` header value of this page, after its auth check has settled. */
+export async function nodeServerAuthHeader(): Promise<string> {
+    return await sharedNodeStorage.authHeader()
+}
+
+/** What `serverExportAvailable` reads and waits through; the defaults are the page's own. */
+export interface ServerExportProbeOptions {
+    fetch?: (url: string, init: RequestInit) => Promise<Response>
+    authHeader?: () => Promise<string>
+    sleep?: (ms: number) => Promise<void>
+    now?: () => number
+}
+
+/**
+ * Whether this server advertises the streamed `.bin` export: `exportStream` with `exportStreamVersion` 1 in its
+ * `/api/caps`. The caller asks only on a Node-served page that is not the desktop app. A 429 is waited out and a
+ * read that fails in transit or answers 500, 502, 503 or 504 is retried three times; after that, or on any other
+ * failure, the answer is false and the export takes the page's own writer.
+ */
+export async function serverExportAvailable(options: ServerExportProbeOptions = {}): Promise<boolean> {
+    const doFetch = options.fetch ?? ((url, init) => globalThis.fetch(url, init))
+    const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+    const now = options.now ?? (() => Date.now())
+    try {
+        const auth = await (options.authHeader ?? nodeServerAuthHeader)()
+        const response = await retryTransientRequest(() => doFetch('/api/caps', { headers: { 'risu-auth': auth }, cache: 'no-store' }), sleep, now)
+        if (!response.ok) {
+            return false
+        }
+        const body: unknown = await response.json()
+        return typeof body === 'object' && body !== null
+            && 'exportStream' in body && body.exportStream === true
+            && 'exportStreamVersion' in body && body.exportStreamVersion === 1
     } catch {
         return false
     }
