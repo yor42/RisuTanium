@@ -13,6 +13,7 @@
     import type { MacroIndex } from '../../ts/studio/longText/macroIndex'
     import { loadMacroIndex } from '../../ts/studio/longText/macroIndexService'
     import { filterPicks, macroTrigger, pickItems, type MacroTrigger, type PickItem } from '../../ts/studio/longText/macroPick'
+    import { LT_TEXT_LAYOUT } from '../../ts/studio/longText/overlayMetrics'
     import { createPauseScheduler } from '../../ts/studio/longText/pauseScheduler'
     import { fixApplies, problemRows, shiftRows, type CheckedText, type ProblemCopy, type ProblemRow } from '../../ts/studio/longText/problemsModel'
     import { tokenChipView, type TokenChipCopy, type TokenChipView } from '../../ts/studio/longText/tokenChip'
@@ -53,6 +54,8 @@
     const problemCountId = `${instanceId}-problems`
 
     let area = $state<HTMLTextAreaElement | undefined>()
+    // An invisible `M` whose box follows the effective font size: a text-zoom change moves it with no resize of the textarea.
+    let metricProbe = $state<HTMLElement | undefined>()
 
     // The field's text as the textarea shows it. Every reader of the text takes it from here, never from the port:
     // a stored CRLF text and its LF display have different offsets.
@@ -86,6 +89,8 @@
     let capNow = $state(0)
     let fine = $state(false)
     let budgetTripped = $state(false)
+    // Set when the overlay reports that its lines no longer match the textarea's; sticky until the field remounts.
+    let misaligned = $state(false)
     let disposed = false
     const budget = createUpdateBudget()
 
@@ -150,9 +155,9 @@
 
     const length = $derived(seen === null ? 0 : seen.length)
     const lowPowerOff = $derived(motionPrefs.lowPower && (!focused || length > WINDOW_LIMIT))
-    const overlayState: 'on' | 'off' | 'typing' = $derived(budgetTripped || lowPowerOff ? 'off' : typing ? 'typing' : 'on')
+    const overlayState: 'on' | 'off' | 'typing' = $derived(budgetTripped || misaligned || lowPowerOff ? 'off' : typing ? 'typing' : 'on')
     const showOverlay = $derived(mode !== 'plain')
-    const noteShown = $derived(showOverlay && (budgetTripped || (motionPrefs.lowPower && length > WINDOW_LIMIT)))
+    const noteShown = $derived(showOverlay && (budgetTripped || misaligned || (motionPrefs.lowPower && length > WINDOW_LIMIT)))
     const describedBy = $derived([chipView ? chipId : null, rows.length > 0 ? problemCountId : null, noteShown ? noteId : null].filter((id) => id !== null).join(' '))
     // Before the first run the overlay shows the field's own text without spans.
     const segments = $derived(overlayState !== 'on' ? [] : seen === null ? segmentsOf(lf(port.read() ?? ''), [], []) : segmentsOf(seen, spans, marks))
@@ -415,6 +420,12 @@
         area.style.height = `${Math.round(Math.max(floor, Math.min(area.scrollHeight + borders, cap)))}px`
     }
 
+    // The one reaction to a change of the text metrics (font scale or font size) that does not resize the textarea.
+    // The overlay notices the resulting height change through its own area observer.
+    function onMetricsChange(): void {
+        fit()
+    }
+
     function setCap(next: number, persist: boolean): void {
         capPx = Math.round(Math.max(CAP_MIN_PX, Math.min(CAP_MAX_PX, next)))
         if (persist) writeCap(kind, capPx)
@@ -476,10 +487,23 @@
             fit()
         })
         if (area) observer?.observe(area)
+        // The probe's first callback reports the size it already has; the unchanged-size return skips it.
+        let probeWidth = metricProbe?.offsetWidth ?? 0
+        let probeHeight = metricProbe?.offsetHeight ?? 0
+        const probeObserver = typeof ResizeObserver === 'undefined' || !metricProbe ? null : new ResizeObserver(() => {
+            const nextWidth = metricProbe?.offsetWidth ?? 0
+            const nextHeight = metricProbe?.offsetHeight ?? 0
+            if (nextWidth === probeWidth && nextHeight === probeHeight) return
+            probeWidth = nextWidth
+            probeHeight = nextHeight
+            onMetricsChange()
+        })
+        if (metricProbe) probeObserver?.observe(metricProbe)
         const onViewport = (): void => fit()
         window.addEventListener('resize', onViewport)
         return () => {
             observer?.disconnect()
+            probeObserver?.disconnect()
             window.removeEventListener('resize', onViewport)
         }
     })
@@ -562,7 +586,7 @@
             id={areaId}
             data-part={part}
             data-index={index}
-            class={fieldClass}
+            class="{fieldClass} {LT_TEXT_LAYOUT}"
             class:caret-textcolor={showOverlay && overlayState === 'on'}
             style:color={showOverlay && overlayState === 'on' ? 'transparent' : undefined}
             dir="auto"
@@ -588,8 +612,9 @@
                 if (motionPrefs.lowPower) requestCount()
             }}
         ></textarea>
+        <span bind:this={metricProbe} aria-hidden="true" data-part="studio-lt-metric-probe" class="invisible absolute inline-block">M</span>
         {#if showOverlay}
-            <LongTextOverlay {area} {segments} phase={overlayState} {scrollTop} />
+            <LongTextOverlay {area} {segments} phase={overlayState} {scrollTop} onmisalign={() => { misaligned = true }} />
         {/if}
         {#if trigger !== null && pickerShown}
             <MacroPicker
