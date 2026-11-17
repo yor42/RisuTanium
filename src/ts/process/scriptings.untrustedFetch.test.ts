@@ -97,7 +97,7 @@ async function runRequest(url: string): Promise<{ status: number, data: string }
 }
 
 test('T7 a card request goes through the untrusted wrapper and a refusal is status 400', async () => {
-  h.untrusted.mockRejectedValue(new Error('Blocked: 192.168.1.10 is a private-network address.'))
+  h.untrusted.mockRejectedValue(new Error('Blocked: 192.168.1.10 is a local-network address.'))
 
   const reply = await runRequest('https://192.168.1.10/')
 
