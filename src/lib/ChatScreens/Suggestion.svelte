@@ -292,6 +292,10 @@
         border-left: 0.4rem solid var(--risu-theme-textcolor);
     }
 
+    :global(html.rm) .loadmove, :global(html[data-low-power]) .loadmove, :global(html.nexus-low-power) .loadmove {
+        animation: none;
+    }
+
     @keyframes spin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
