@@ -143,6 +143,9 @@ const SETTINGS_VALUES = {
   globalChatVariables: { synthetic_variable: '1' },
 }
 
+// The app stores a preset icon inline as a small JPEG data URL (setCurrentPresetImage), never as a stored asset.
+const PRESET_IMAGE_DATA_URL = 'data:image/jpeg;base64,/9j/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERXRTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAAwADADASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAT/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFgEBAQEAAAAAAAAAAAAAAAAAAAIF/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AnAbCwAAAAAAAAAAAAAAAH//Z'
+
 const SCALES = {
   mid: {
     characters: 500, stubEvery: 10, additional: 36000, emotionCharacters: 36, emotionPerCharacter: 50,
@@ -546,7 +549,7 @@ function buildPlan(seed, cfg, p3Modules) {
     // persona 0 is the selected persona: its icon is the user icon, as the app keeps them equal
     personas: Array.from({ length: cfg.personas }, (_, k) => ({ id: uuid(), icon: k === 0 ? -1 : addAsset('personaIcon', 'png', 'png', imageSize(20, 100)) })),
     folders: Array.from({ length: cfg.folders }, () => ({ id: uuid(), image: addAsset('folderImage', 'png', 'png', imageSize(20, 100)) })),
-    presets: Array.from({ length: cfg.presets }, () => ({ id: uuid(), image: addAsset('presetImage', 'png', 'png', imageSize(20, 100)) })),
+    presets: Array.from({ length: cfg.presets }, () => ({ id: uuid(), image: PRESET_IMAGE_DATA_URL })),
   }
   // Everything below draws after the asset plan, so the assets are the same with or without it.
   const groups = Array.from({ length: cfg.groups }, (_, g) => ({
@@ -759,7 +762,7 @@ function buildDatabase(seed, cfg, plan, refOf, withProjections) {
   const personas = misc.personas.map((p, i) => (i === 0
     ? { id: p.id, name: SETTINGS_VALUES.username, personaPrompt: SETTINGS_VALUES.personaPrompt, icon: refOf(misc.userIcon), note: SETTINGS_VALUES.userNote }
     : { id: p.id, name: `Persona ${i}`, personaPrompt: text(300), icon: refOf(p.icon), note: '' }))
-  const botPresets = misc.presets.map((p, i) => ({ id: p.id, name: `Synthetic Preset ${i}`, temperature: 80, maxContext: 4000, maxResponse: 300, image: refOf(p.image), localNetworkMode: false, localNetworkTimeoutSec: 600, ...pick(cfg.rootSettings, cfg.presetSettings) }))
+  const botPresets = misc.presets.map((p, i) => ({ id: p.id, name: `Synthetic Preset ${i}`, temperature: 80, maxContext: 4000, maxResponse: 300, image: p.image, localNetworkMode: false, localNetworkTimeoutSec: 600, ...pick(cfg.rootSettings, cfg.presetSettings) }))
   // The first untrashed characters of the list move into folders; every other untrashed character or group stays in the
   // order by id. A trashed character is in no order entry (checkCharOrder leaves it out).
   const everyone = [...characters, ...groups]

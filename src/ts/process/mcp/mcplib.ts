@@ -2,6 +2,7 @@ import { v4 } from "uuid"
 import { openURL } from "../../globalApi.svelte"
 import { untrustedNativeFetch } from "../../network/untrustedFetch"
 import { alertConfirm, alertInput } from "../../alert";
+import { ALERT_INPUT_CANCEL } from "../../alertCancel";
 import { language } from "src/lang";
 import { fillLang } from "src/lang/fill";
 import type { RunSubject } from "../chatOrigin";
@@ -771,7 +772,10 @@ export class MCPClient{
         authUrl.searchParams.set("code_challenge_method", "S256")
 
         openURL(authUrl.toString())
-        const code = await alertInput(language.alerts.mcpInputAuthorizationCode)
+        const code = await alertInput(language.alerts.mcpInputAuthorizationCode, undefined, undefined, { cancel: ALERT_INPUT_CANCEL })
+        if(code === ALERT_INPUT_CANCEL){
+            throw new Error("Failed to get authorization code from helper")
+        }
 
         const authHelperResponse = await untrustedNativeFetch(`${OAUTH_HELPER_ORIGIN}/oauthhelper/api`, {
             method: "POST",

@@ -12,6 +12,7 @@ import { language } from "src/lang"
 import { fillLang } from "src/lang/fill"
 import random from "lodash/random"
 import { resolveSecret } from "../secretRef"
+import { currentKey } from "./request/secretKey"
 
 /**
  * The credential to send for an image provider, or null after telling the user why it cannot be
@@ -424,7 +425,7 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
         }
     }
     if(db.sdProvider === 'dalle'){
-        const dalleKey = await resolveImageKey(db.openAIKey)
+        const dalleKey = await resolveImageKey(currentKey('openAIKey', db))
         if(dalleKey === null){
             return returnSdData === 'inlay' ? '' : false
         }
@@ -717,7 +718,7 @@ async function generateAIImageUntracked(genPrompt:string, currentChar:character,
             }
         }
 
-        const imagenKey = await resolveImageKey(db.google.accessToken)
+        const imagenKey = await resolveImageKey(currentKey('google.accessToken', db))
         if(imagenKey === null){
             return returnSdData === 'inlay' ? '' : false
         }

@@ -410,11 +410,11 @@ describe('PNG import of complete cards (compatibility guard)', () => {
         }
     })
 
-    test('a complete PNG with no card data gives noData and saves nothing', async () => {
+    test('a complete PNG with no card data is refused as not a card file and saves nothing', async () => {
         const bytes = build([ihdr(), idat(), iend()], []).bytes
         for (const input of ['file', 'uint8array'] as const) {
             const out = await runImport(bytes, input)
-            expect(out.errors, input).toEqual([language.errors.noData])
+            expect(out.errors, input).toEqual([language.importNotCardFile])
             expect(out.saved, input).toEqual([])
             expect(out.characters, input).toEqual([])
         }
@@ -476,11 +476,11 @@ describe('PNG import of cut cards (regression reproducer)', () => {
         expectRefused(await runImport(cut, 'stream'), 'ReadableStream')
     })
 
-    test('a PNG that is not a card but has asset chunks gives noData and saves nothing', async () => {
+    test('a PNG that is not a card but has asset chunks is refused as not a card file and saves nothing', async () => {
         const bytes = build([ihdr(), assetText(0, 100), assetText(1, 100), iend()], []).bytes
         for (const input of ['file', 'uint8array'] as const) {
             const out = await runImport(bytes, input)
-            expect(out.errors, input).toEqual([language.errors.noData])
+            expect(out.errors, input).toEqual([language.importNotCardFile])
             expect(out.saved, input).toEqual([])
         }
     })

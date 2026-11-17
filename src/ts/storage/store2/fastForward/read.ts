@@ -45,6 +45,57 @@ export function wantedOf(manifest: Manifest): Wanted[] {
     return wanted
 }
 
+/** A unit of an entity the fast-forward needs the bytes of: its Ref and the type its frame must have. */
+export interface EntityUnit {
+    ref: Ref
+    type: UnitType
+}
+
+export type EntityRead =
+    | { status: 'ok', tree: StoredTree }
+    | { status: 'park', reason: 'too-new' | 'structure', detail: string }
+    | { status: 'retry', detail: string }
+
+/**
+ * Phase 3 of the read: the units of the characters the peer changed that a decision needs, fetched after the first
+ * decision named them. The result is a tree whose source also holds those bytes; `tree` itself is never changed. Each
+ * unit passes the codec's own check, so a damaged or newer unit parks and a failing store retries.
+ */
+export async function readEntityUnits(backend: Store2Backend, tree: StoredTree, units: readonly EntityUnit[]): Promise<EntityRead> {
+    const pending = [...new Set(units.map(unit => keyOfRef(unit.ref)))].filter(key => tree.source.get(key) === undefined)
+    const fetched = new Map<string, Uint8Array>()
+    if (pending.length > 0) {
+        const read = await readBatch(backend, pending)
+        if (read.status === 'unreadable') {
+            return { status: 'retry', detail: read.cause.message }
+        }
+        if (read.status === 'not-binary') {
+            return { status: 'park', reason: 'structure', detail: `${read.key} is not binary.` }
+        }
+        for (const [key, value] of read.units) {
+            if (value !== null) {
+                fetched.set(key, value)
+            }
+        }
+    }
+    const source: UnitSource = { get: key => fetched.get(key) ?? tree.source.get(key) }
+    for (const unit of units) {
+        const checked = checkUnit(source, unit.ref, unit.type)
+        switch (checked.status) {
+            case 'ok':
+            case 'newer-list':
+                break
+            case 'too-new':
+                return { status: 'park', reason: 'too-new', detail: checked.reason }
+            case 'missing':
+                return { status: 'park', reason: 'structure', detail: `${keyOfRef(unit.ref)} is missing.` }
+            case 'damaged':
+                return { status: 'park', reason: 'structure', detail: `${keyOfRef(unit.ref)}: ${checked.reason}` }
+        }
+    }
+    return { status: 'ok', tree: { ...tree, source } }
+}
+
 /**
  * Reads the tree `manifestKey` names, against `old`, the acknowledged encoding. After the units are read the commit key
  * is read once more: a `current` that is no longer `manifestKey` is `moved` (a later peer commit), never damage.

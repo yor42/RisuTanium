@@ -38,7 +38,8 @@ const writes = vi.hoisted(() => ({
 }))
 const route = vi.hoisted(() => ({ shell: false }))
 
-vi.mock('../../ts/storage/database.svelte', () => ({ setDatabase: writes.setDatabase }))
+// `getDatabase` is a read: the parser's asset-cache effect reaches it through process/modules after a stub load starts.
+vi.mock('../../ts/storage/database.svelte', () => ({ setDatabase: writes.setDatabase, getDatabase: () => db.db }))
 vi.mock('../../ts/storage/characterSaveMarks', () => ({ markCharacterForSave: writes.markCharacterForSave }))
 vi.mock('../../ts/liveCharacterWrite', () => ({ writeLiveCharacter: writes.writeLiveCharacter, writeLiveChat: writes.writeLiveChat }))
 vi.mock('../../ts/storage/store2/moduleAcquire', () => ({ acquireModule: writes.acquireModule }))

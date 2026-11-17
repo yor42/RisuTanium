@@ -662,6 +662,17 @@ describe('#share= hash', () => {
         expect(shares.has(id)).toBe(false)
     })
 
+    test('a shared JSON over the cap is refused as not a card file without one read of its content', async () => {
+        const id = seedShare([{ name: 'big.json', type: 'application/json', bytes: new U8(64 * 1024 * 1024 + 1) }])
+        setUrl('/#share=' + id)
+        const spies = (['arrayBuffer', 'slice', 'stream', 'text'] as const).map((method) => vi.spyOn(Blob.prototype, method))
+        await characterURLImport()
+        expect(h.last).toBe('error:' + language.importNotCardFile)
+        expect(spies.map((spy) => spy.mock.calls.length)).toEqual([0, 0, 0, 0])
+        expect(h.characters).toEqual([])
+        expect(shares.has(id)).toBe(false)
+    })
+
     test('a file that fails to import reports its own failure and does not stop the files after it', async () => {
         const id = seedShare([
             { name: 'broken.charx', type: '', bytes: new U8(10).fill(7) },
@@ -823,6 +834,18 @@ describe('launchQueue', () => {
         await vi.waitFor(() => expect(h.characters).toHaveLength(1))
         expect(parseArgs[0]).toBeInstanceOf(File)
         expect(charName(0)).toBe('Queued')
+    })
+
+    test('a launched JSON over the cap is refused as not a card file without one read of its content', async () => {
+        let consumer: ((params: LaunchParams) => Promise<void>) | null = null
+        ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer: (fn: (params: LaunchParams) => Promise<void>) => { consumer = fn } }
+        await characterURLImport()
+        const file = new File([new U8(64 * 1024 * 1024 + 1)], 'big.json', { type: 'application/json' })
+        const spies = (['arrayBuffer', 'slice', 'stream', 'text'] as const).map((method) => vi.spyOn(file, method))
+        await consumer!({ files: [{ name: 'big.json', getFile: async () => file }] })
+        expect(h.last).toBe('error:' + language.importNotCardFile)
+        expect(spies.map((spy) => spy.mock.calls.length)).toEqual([0, 0, 0, 0])
+        expect(h.characters).toEqual([])
     })
 
     test('a launch during a restore is refused and nothing is imported; once the restore is over the same launch imports', async () => {

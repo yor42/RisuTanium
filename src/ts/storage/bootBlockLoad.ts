@@ -44,8 +44,11 @@ import { SaveParkError } from './saveHold'
 export interface BootLoadUi {
     /** Shows text the person reads and acknowledges. */
     notify(text: string): Promise<void>
-    /** Offers choices under a short title and resolves the index chosen. */
-    choose(title: string, options: readonly string[]): Promise<number>
+    /**
+     * Offers choices under a short title and resolves the index chosen. `cancel` is the index
+     * Back and Escape answer; it must be an option that writes nothing.
+     */
+    choose(title: string, options: readonly string[], cancel: number): Promise<number>
     confirm(text: string): Promise<boolean>
 }
 
@@ -174,7 +177,7 @@ async function offerBackup(ctx: BootLoadContext, scenario: Scenario): Promise<Re
     }
     const date = new Date(found.time * 100).toLocaleString()
     await ctx.ui.notify(scenario.note === '' ? scenario.intro : `${scenario.intro}\n\n${scenario.note}`)
-    const choice = await ctx.ui.choose(language.saveDamagedChoiceTitle, [language.saveDamagedLoadBackup(date), language.saveDamagedStop])
+    const choice = await ctx.ui.choose(language.saveDamagedChoiceTitle, [language.saveDamagedLoadBackup(date), language.saveDamagedStop], 1)
     if (choice !== 0) {
         throw scenario.stopped
     }
@@ -285,7 +288,7 @@ async function takeHold(ctx: BootLoadContext, stopped: string): Promise<() => Pr
         if (hold.reloading) {
             return await ctx.waitForReload()
         }
-        const choice = await ctx.ui.choose(language.saveDamagedOtherTab, [language.saveDamagedRetry, language.saveDamagedStop])
+        const choice = await ctx.ui.choose(language.saveDamagedOtherTab, [language.saveDamagedRetry, language.saveDamagedStop], 1)
         if (choice !== 0) {
             throw stopped
         }

@@ -1943,3 +1943,81 @@ Check: `pwsh -NoProfile -File .claude/scripts/update-decision-index.ps1 -Check`
 | [MC-2114](Maintainer-Context.md#mc-2114--c35-upstream-id-block-grant-no-answer-text-found-2026-11-17) | c35-upstream ID block grant, no answer text found, 2026-11-17 |
 | [MC-2115](Maintainer-Context.md#mc-2115--c35-upstream-id-block-grant-no-answer-text-found-2026-11-17) | c35-upstream ID block grant, no answer text found, 2026-11-17 |
 | [MC-2116](Maintainer-Context.md#mc-2116--c35-upstream-id-block-grant-no-answer-text-found-2026-11-17) | c35-upstream ID block grant, no answer text found, 2026-11-17 |
+| [MC-2117](Maintainer-Context.md#mc-2117--blurred-text-shadow-halo-judged-at-its-own-colour-only-fade-through-text-colour-is-a-named-v1-residue-2026-11-17) | Blurred text-shadow halo judged at its own colour only; fade through text colour is a named v1 residue, 2026-11-17 |
+| [MC-2118](Maintainer-Context.md#mc-2118--chore-667-no-send-control-run-on-phone-2-2026-11-17) | CHORE-667 no-send control run on phone 2, 2026-11-17 |
+| [MC-2119](Maintainer-Context.md#mc-2119--rtb-restore-refused-on-block-or-legacy-storage-pages-with-its-own-message-2026-11-17) | .rtb restore refused on block or legacy storage pages with its own message, 2026-11-17 |
+| [MC-2120](Maintainer-Context.md#mc-2120--chore-128-s8-export-pushed-as-pr-33-with-auto-fix-on-after-opus-gate-2-r2-2026-11-17) | CHORE-128 S8 export pushed as PR #33 with Auto-fix on, after opus Gate 2 r2, 2026-11-17 |
+| [MC-2127](Maintainer-Context.md#mc-2127--chore-656-measured-with-a-fixture-fix-not-an-app-change-2026-11-17) | CHORE-656 measured with a fixture fix, not an app change, 2026-11-17 |
+| [MC-2128](Maintainer-Context.md#mc-2128--pr-31-red-on-missing-studiotg-keys-routed-to-translation-then-re-run-2026-11-17) | PR #31 red on missing studioTg keys, routed to translation then re-run, 2026-11-17 |
+| [MC-2129](Maintainer-Context.md#mc-2129--close-all-38-verified-done-orphan-tickets-noting-their-device-gaps-2026-11-17) | Close all 38 verified-done orphan tickets, noting their device gaps, 2026-11-17 |
+| [MC-2130](Maintainer-Context.md#mc-2130--close-the-32-merged-with-gaps-orphan-tickets-with-six-exceptions-moved-to-keep-or-product-call-2026-11-17) | Close the 32 merged-with-gaps orphan tickets, with six exceptions moved to Keep or product call, 2026-11-17 |
+| [MC-2131](Maintainer-Context.md#mc-2131--park-41-of-45-unscheduled-orphan-tickets-four-go-to-the-ready-to-size-queue-2026-11-17) | Park 41 of 45 unscheduled orphan tickets; four go to the ready-to-size queue, 2026-11-17 |
+| [MC-2132](Maintainer-Context.md#mc-2132--close-chore-396-as-a-known-limit-2026-11-17) | Close CHORE-396 as a known limit, 2026-11-17 |
+| [MC-2133](Maintainer-Context.md#mc-2133--close-chore-322-with-no-change-correct-its-stale-owed-note-2026-11-17) | Close CHORE-322 with no change; correct its stale owed note, 2026-11-17 |
+| [MC-2134](Maintainer-Context.md#mc-2134--close-chore-595-not-filed-upstream-2026-11-17) | Close CHORE-595, not filed upstream, 2026-11-17 |
+| [MC-2135](Maintainer-Context.md#mc-2135--chore-92-drops-thinking-from-copy-as-cards-textplain-companion-2026-11-17) | CHORE-92 drops thinking from Copy as card's text/plain companion, 2026-11-17 |
+| [MC-2136](Maintainer-Context.md#mc-2136--chore-620-measure-first-multilingual-embedding-candidates-measured-on-a-note-9-before-a-default-is-picked-2026-11-17) | CHORE-620 "Measure first": multilingual embedding candidates measured on a Note 9 before a default is picked, 2026-11-17 |
+| [MC-2137](Maintainer-Context.md#mc-2137--chore-668-downscale-on-phones-decode-at-display-size-on-phones-2026-11-17) | CHORE-668 "Downscale on phones": decode at display size on phones, 2026-11-17 |
+| [MC-2138](Maintainer-Context.md#mc-2138--chore-241-re-measure-now-comparable-chat-open-pass-before-s3s4-2026-11-17) | CHORE-241 "Re-measure now": comparable chat-open pass before S3/S4, 2026-11-17 |
+| [MC-2139](Maintainer-Context.md#mc-2139--chore-390-parked-until-the-memory-footprint-work-lands-2026-11-17) | CHORE-390 parked until the memory-footprint work lands, 2026-11-17 |
+| [MC-2140](Maintainer-Context.md#mc-2140--chore-323-parked-until-ui-s1-polish-keeping-the-entry-count-as-designed-2026-11-17) | CHORE-323 parked until UI-S1 polish, keeping the entry count as designed, 2026-11-17 |
+| [MC-2141](Maintainer-Context.md#mc-2141--chore-326-design-it-persona-builder-design-added-to-ui-s2-personas-work-2026-11-17) | CHORE-326 "Design it": persona builder design added to UI-S2 personas work, 2026-11-17 |
+| [MC-2142](Maintainer-Context.md#mc-2142--chore-471-accept-all-refuse-non-cards-open-with-for-pngjpegjson-with-a-non-card-notice-2026-11-17) | CHORE-471 "Accept all, refuse non-cards": open-with for PNG/JPEG/JSON, with a non-card notice, 2026-11-17 |
+| [MC-2143](Maintainer-Context.md#mc-2143--chore-637-investigate-fling-trace-on-the-note-9-before-a-fix-is-sized-2026-11-17) | CHORE-637 "Investigate": fling trace on the Note 9 before a fix is sized, 2026-11-17 |
+| [MC-2144](Maintainer-Context.md#mc-2144--leftover-checks-for-chore-372-62-114-and-565-each-ticket-closes-when-its-check-passes-2026-11-17) | Leftover checks for CHORE-372, 62, 114 and 565; each ticket closes when its check passes, 2026-11-17 |
+| [MC-2145](Maintainer-Context.md#mc-2145--chore-676-fix-anthropic-too-size-an-anthropic-incremental-parse-stage-2026-11-17) | CHORE-676 "Fix Anthropic too": size an Anthropic incremental-parse stage, 2026-11-17 |
+| [MC-2146](Maintainer-Context.md#mc-2146--close-chore-218-and-file-chore-830-for-the-post-bin-restore-leftover-2026-11-17) | Close CHORE-218 and file CHORE-830 for the post-.bin-restore leftover, 2026-11-17 |
+| [MC-2147](Maintainer-Context.md#mc-2147--close-chore-452-and-chore-463-park-chore-109-with-chore-108-2026-11-17) | Close CHORE-452 and CHORE-463; park CHORE-109 with CHORE-108, 2026-11-17 |
+| [MC-2148](Maintainer-Context.md#mc-2148--check-if-it-grows-per-send-five-sends-in-one-chat-to-test-for-a-leak-2026-11-17) | "Check if it grows per send": five sends in one chat to test for a leak, 2026-11-17 |
+| [MC-2149](Maintainer-Context.md#mc-2149--chore-351-opt-in-cancel-on-alert-select-and-input-prompts-2026-11-17) | CHORE-351 opt-in cancel on alert select and input prompts, 2026-11-17 |
+| [MC-2150](Maintainer-Context.md#mc-2150--chore-351-all-57-call-sites-in-one-pr-2026-11-17) | CHORE-351 all 57 call sites in one PR, 2026-11-17 |
+| [MC-2151](Maintainer-Context.md#mc-2151--chore-351-cancel-equal-to-a-shown-option-reuses-that-button-2026-11-17) | CHORE-351 cancel equal to a shown option reuses that button, 2026-11-17 |
+| [MC-2152](Maintainer-Context.md#mc-2152--chore-351-bookmark-name-cancel-keeps-the-default-name-2026-11-17) | CHORE-351 bookmark-name cancel keeps the default name, 2026-11-17 |
+| [MC-2155](Maintainer-Context.md#mc-2155--chore-450-api-key-rotation-answers-four-questions-2026-11-17) | CHORE-450 API key rotation answers (four questions), 2026-11-17 |
+| [MC-2156](Maintainer-Context.md#mc-2156--chore-676-streamed-overload-handling-make-it-work-as-designed-2026-11-17) | CHORE-676 streamed overload handling, make it work as designed, 2026-11-17 |
+| [MC-2157](Maintainer-Context.md#mc-2157--chore-676-in-stream-overload-retry-bound-2026-11-17) | CHORE-676 in-stream overload retry bound, 2026-11-17 |
+| [MC-2158](Maintainer-Context.md#mc-2158--chore-450-plan-r1-open-questions-oq1-oq2-oq5-and-oq7-2026-11-17) | CHORE-450 plan r1 open questions OQ1, OQ2, OQ5 and OQ7, 2026-11-17 |
+| [MC-2159](Maintainer-Context.md#mc-2159--chore-450-key-box-separator-any-space-or-line-break-2026-11-17) | CHORE-450 key-box separator: any space or line break, 2026-11-17 |
+| [MC-2161](Maintainer-Context.md#mc-2161--android-open-with-and-share-entry-point-2026-11-17) | Android open-with and share entry point, 2026-11-17 |
+| [MC-2162](Maintainer-Context.md#mc-2162--android-json-size-cap-for-card-import-at-64-mb-2026-11-17) | Android JSON size cap for card import at 64 MB, 2026-11-17 |
+| [MC-2163](Maintainer-Context.md#mc-2163--android-no-suffix-entries-classified-by-mime-type-2026-11-17) | Android no-suffix entries classified by MIME type, 2026-11-17 |
+| [MC-2164](Maintainer-Context.md#mc-2164--desktop-file-associations-for-byaf-png-jpg-jpeg-and-json-2026-11-17) | Desktop file associations for byaf, png, jpg, jpeg and json, 2026-11-17 |
+| [MC-2165](Maintainer-Context.md#mc-2165--chore-668-plan-questions-q1-to-q4-downscale-on-phones-2026-11-17) | CHORE-668 plan questions Q1 to Q4 (downscale on phones), 2026-11-17 |
+| [MC-2166](Maintainer-Context.md#mc-2166--chore-471-product-answers-import-route-restore-windows-registration-and-share-cap-2026-11-17) | CHORE-471 product answers: import route, restore, Windows registration and share cap, 2026-11-17 |
+| [MC-2167](Maintainer-Context.md#mc-2167--chore-693-f1-keeps-the-known-limit-2026-11-17) | CHORE-693 F1 keeps the known limit, 2026-11-17 |
+| [MC-2168](Maintainer-Context.md#mc-2168--chore-693-f2-two-notes-when-undo-or-redo-skips-first-message-list-ops-2026-11-17) | CHORE-693 F2 two notes when undo or redo skips first-message list ops, 2026-11-17 |
+| [MC-2169](Maintainer-Context.md#mc-2169--chore-568-consumer-new-chat-shell-only-2026-11-17) | CHORE-568 consumer: new chat shell only, 2026-11-17 |
+| [MC-2170](Maintainer-Context.md#mc-2170--chore-568-storage-bin-and-store-only-2026-11-17) | CHORE-568 storage: .bin and store only, 2026-11-17 |
+| [MC-2171](Maintainer-Context.md#mc-2171--chore-568-count-unit-is-raw-length-2026-11-17) | CHORE-568 count unit is raw length, 2026-11-17 |
+| [MC-2173](Maintainer-Context.md#mc-2173--chore-830-becomes-a-wiring-ticket-for-the-store2-asset-sweep-2026-11-17) | CHORE-830 becomes a wiring ticket for the store2 asset sweep, 2026-11-17 |
+| [MC-2174](Maintainer-Context.md#mc-2174--chore-114-folds-into-chore-830-and-closes-2026-11-17) | CHORE-114 folds into CHORE-830 and closes, 2026-11-17 |
+| [MC-2175](Maintainer-Context.md#mc-2175--chore-241-gap-threshold-for-stages-s3-and-s4-2026-11-17) | CHORE-241 gap threshold for stages S3 and S4, 2026-11-17 |
+| [MC-2176](Maintainer-Context.md#mc-2176--chore-620-embedding-model-candidates-for-phone-1-2026-11-17) | CHORE-620 embedding model candidates for phone 1, 2026-11-17 |
+| [MC-2177](Maintainer-Context.md#mc-2177--chore-738-gate-2-f1-composite-layers-for-rule-p-2026-11-17) | CHORE-738 Gate 2 F1: composite layers for Rule P, 2026-11-17 |
+| [MC-2178](Maintainer-Context.md#mc-2178--chore-375-d2-budget-webp-native-deadline-and-cargolock-answers-2026-11-17) | CHORE-375 D2 budget, WebP, native deadline and Cargo.lock answers, 2026-11-17 |
+| [MC-2179](Maintainer-Context.md#mc-2179--chore-375-d2-cap-native-buffers-at-32-mib-on-32-bit-builds-2026-11-17) | CHORE-375 D2 cap native buffers at 32 MiB on 32-bit builds, 2026-11-17 |
+| [MC-2181](Maintainer-Context.md#mc-2181--ci-leaky-test-failures-rerun-and-a-lane-d-fix-2026-11-17) | CI leaky-test failures: rerun and a lane D fix, 2026-11-17 |
+| [MC-2182](Maintainer-Context.md#mc-2182--chore-818-dv4-accepted-on-the-hold-evidence-2026-11-17) | CHORE-818 DV4 accepted on the hold evidence, 2026-11-17 |
+| [MC-2193](Maintainer-Context.md#mc-2193--workflow-track-cap-raised-from-8-to-10-2026-11-17) | Workflow track cap raised from 8 to 10, 2026-11-17 |
+| [MC-2194](Maintainer-Context.md#mc-2194--chore-223-stage-b-speed-up-the-cold-collect-2026-11-17) | CHORE-223 stage B: speed up the cold collect, 2026-11-17 |
+| [MC-2195](Maintainer-Context.md#mc-2195--chore-668-q5-blank-with-app-wide-shrunk-portrait-cache-2026-11-17) | CHORE-668 Q5 blank with app-wide shrunk-portrait cache, 2026-11-17 |
+| [MC-2196](Maintainer-Context.md#mc-2196--chore-471-p15-one-accept-list-with-a-notice-2026-11-17) | CHORE-471 P15 one accept list with a notice, 2026-11-17 |
+| [MC-2197](Maintainer-Context.md#mc-2197--chore-471-o-5-linux-file-manager-registration-recorded-as-a-limit-2026-11-17) | CHORE-471 O-5 Linux file-manager registration recorded as a limit, 2026-11-17 |
+| [MC-2199](Maintainer-Context.md#mc-2199--chore-223-stage-b-measure-before-any-target-time-2026-11-17) | CHORE-223 stage B: measure before any target time, 2026-11-17 |
+| [MC-2200](Maintainer-Context.md#mc-2200--chore-223-collect-overlapped-with-the-save-picker-wait-c9-is-in-scope-2026-11-17) | CHORE-223: collect overlapped with the save-picker wait (C9) is in scope, 2026-11-17 |
+| [MC-2201](Maintainer-Context.md#mc-2201--chore-223-measure-only-phase-marks-allowed-before-the-device-split-2026-11-17) | CHORE-223: measure-only phase marks allowed before the device split, 2026-11-17 |
+| [MC-2202](Maintainer-Context.md#mc-2202--chore-223-fork-local-batch-read-rust-command-accepted-as-a-candidate-2026-11-17) | CHORE-223: fork-local batch-read Rust command accepted as a candidate, 2026-11-17 |
+| [MC-2203](Maintainer-Context.md#mc-2203--close-chore-62-on-lane-bs-pc-node-pass-2026-11-17) | Close CHORE-62 on lane B's PC Node PASS, 2026-11-17 |
+| [MC-2204](Maintainer-Context.md#mc-2204--chore-819-confirm-leg-is-borderline-run-a-second-clean-regime-leg-before-ruling-2026-11-17) | CHORE-819 confirm leg is borderline: run a second clean-regime leg before ruling, 2026-11-17 |
+| [MC-2205](Maintainer-Context.md#mc-2205--chore-375-d2-pq-1-keep-native-jpeg-in-d2-2026-11-17) | CHORE-375 D2 PQ-1: keep native JPEG in D2, 2026-11-17 |
+| [MC-2206](Maintainer-Context.md#mc-2206--chore-824-scheduled-minimal-web-saves-at-or-above-16-mib-stored-as-blob-2026-11-17) | CHORE-824 scheduled minimal: web saves at or above 16 MiB stored as Blob, 2026-11-17 |
+| [MC-2207](Maintainer-Context.md#mc-2207--chore-565-partial-run-m1-with-hypav3-through-the-ui-rerun-h1-to-n3-then-close-2026-11-17) | CHORE-565 partial: run M1 with HypaV3 through the UI, rerun H1 to n=3, then close, 2026-11-17 |
+| [MC-2208](Maintainer-Context.md#mc-2208--ci-svelte-check-oom-lane-a-opens-a-pr-to-raise-the-heap-2026-11-17) | CI svelte-check OOM: lane A opens a PR to raise the heap, 2026-11-17 |
+| [MC-2209](Maintainer-Context.md#mc-2209--chore-375-d2-after-gate-1-r2-reject-revise-jpeg-once-more-2026-11-17) | CHORE-375 D2 after Gate 1 r2 REJECT: "Revise JPEG once more", 2026-11-17 |
+| [MC-2210](Maintainer-Context.md#mc-2210--chore-656-recount-incident-fix-now-as-chore-833-fixture-push-without--serial-2026-11-17) | CHORE-656 recount incident: fix now as CHORE-833 (fixture-push without -Serial), 2026-11-17 |
+| [MC-2211](Maintainer-Context.md#mc-2211--chore-833-scope-stages-1-and-2-of-the-spec-2026-11-17) | CHORE-833 scope: stages 1 and 2 of the spec, 2026-11-17 |
+| [MC-2212](Maintainer-Context.md#mc-2212--chore-833-omitted--allowedserials-defaults-to--serial-2026-11-17) | CHORE-833: omitted -AllowedSerials defaults to @(-Serial), 2026-11-17 |
+| [MC-2213](Maintainer-Context.md#mc-2213--file-chore-834-as-unscheduled-stage-3-route-remaining-device-scripts-through-adbg-2026-11-17) | File CHORE-834 as unscheduled stage 3: route remaining device scripts through adbg, 2026-11-17 |
+| [MC-2214](Maintainer-Context.md#mc-2214--chore-656-sweep-option-b-delete-only-notinany-assets-2026-11-17) | CHORE-656 sweep option (b): delete only notInAny assets, 2026-11-17 |
+| [MC-2215](Maintainer-Context.md#mc-2215--chore-656-notinany-sweep-always-on-at-boot-behind-the-keep-set-complete-guard-2026-11-17) | CHORE-656 notInAny sweep always on at boot, behind the keep-set complete guard, 2026-11-17 |
+| [MC-2216](Maintainer-Context.md#mc-2216--merge-pr-42-mc-2127-fixture-fix-without-ci-on-its-approve-review-2026-11-17) | Merge PR #42 (MC-2127 fixture fix) without CI on its APPROVE review, 2026-11-17 |

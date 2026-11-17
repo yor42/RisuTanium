@@ -14,14 +14,16 @@
  *   compare  C806_CENSUS_A and C806_CENSUS_B (census.json files): counts per unit type equal, totals within 1%; writes checks.json.
  *   bin      writes a .bin of the same library (c806-bin-write.mjs) to C806_BIN_OUT, with its sidecar.
  * Parameters as in c806-census.harness.ts: C806_SEED, C806_CHARACTERS (default 3), C806_CHATS (2), C806_MEDIAN (3),
- * C806_MODULES (8), C806_ARCHIVE on|off (on). C806_TAG names the run; outputs go to <C806_OUT_ROOT>/<tag>/ (default
+ * C806_MODULES (8), C806_ARCHIVE on|off (on), C806_HEAVY=index,chats,messages (one character with its own chat and message counts; unset
+ * means the plain library, whose tree is unchanged). C806_TAG names the run; outputs go to <C806_OUT_ROOT>/<tag>/ (default
  * <os temp>/risu-b715/b61/c806/runs/stage1), never inside the repository.
  *
  * Run (from the repo root; name this one file, never the whole folder: a folder run rewrites golden fixtures):
  *   npx --no-install vitest run --config Agents/Tools/vitest.harness.config.ts Agents/Tools/save-gen/c806-tree.harness.ts
  *
  * C806_FAULT=<name> must turn a check red: drop-chat (T1c: one chat missing on the written side), drop-unit and bad-hex (T1a:
- * a unit file missing / named with UTF-16 hex, so the offline census differs from the in-memory one).
+ * a unit file missing / named with UTF-16 hex, so the offline census differs from the in-memory one), heavy-off (T2a: the library is
+ * built without its heavy character while the recorded parameters still name it).
  * Scale writes expect NODE_OPTIONS=--max-old-space-size=16384.
  */
 import { afterAll, describe, expect, test, vi } from 'vitest'
@@ -77,7 +79,7 @@ import { bootImportLegacyTree } from 'src/ts/storage/store2/legacy/bootImport'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
 import type { Database } from 'src/ts/storage/database.svelte'
 // @ts-expect-error - plain ESM tooling files without type declarations
-import { buildLibrary, libraryCounts, normalizeParams, GENERATOR_ID } from './c806-library.mjs'
+import { buildLibrary, libraryCounts, normalizeParams, charactersDigest, heavyExpected, GENERATOR_ID } from './c806-library.mjs'
 // @ts-expect-error - plain ESM tooling files without type declarations
 import { writeBin } from './c806-bin-write.mjs'
 // @ts-expect-error - plain ESM tooling files without type declarations
@@ -132,7 +134,25 @@ function writeJson(dir: string, name: string, value: unknown): void {
 const hexOf = (key: string) => Buffer.from(key, 'utf8').toString('hex')
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex')
 
-function paramsFromEnv(): Record<string, number | boolean> {
+/** One character with its own chat and message counts (see c806-library.mjs); absent from the parameters of a plain library. */
+interface HeavyParams { index: number, chatsPerCharacter: number, messagesPerChat: number, messageCountMax?: number }
+type LibraryParams = Record<string, number | boolean | HeavyParams>
+
+/** C806_HEAVY=index,chats,messages; unset means no heavy character. */
+function heavyFromEnv(): HeavyParams | undefined {
+    const text = process.env.C806_HEAVY
+    if (text === undefined || text === '') {
+        return undefined
+    }
+    const parts = text.split(',').map(Number)
+    if (parts.length !== 3 || parts.some(part => !Number.isInteger(part) || part < 0)) {
+        throw new Error(`C806_HEAVY must be index,chats,messages (non-negative integers): ${text}`)
+    }
+    return { index: parts[0], chatsPerCharacter: parts[1], messagesPerChat: parts[2] }
+}
+
+function paramsFromEnv(): LibraryParams {
+    const heavy = heavyFromEnv()
     return normalizeParams({
         seed: Number(process.env.C806_SEED ?? '806'),
         characters: Number(process.env.C806_CHARACTERS ?? '3'),
@@ -140,7 +160,8 @@ function paramsFromEnv(): Record<string, number | boolean> {
         messagesPerChat: Number(process.env.C806_MEDIAN ?? '3'),
         modules: Number(process.env.C806_MODULES ?? '8'),
         archiveCharacters: (process.env.C806_ARCHIVE ?? 'on') !== 'off',
-    }) as Record<string, number | boolean>
+        ...(heavy === undefined ? {} : { heavy }),
+    }) as LibraryParams
 }
 
 /** The tool files a tree is made with, by path under the repository; their hashes go into run.json so a tree names its tools. */
@@ -200,8 +221,10 @@ async function importInto(db: Database, backend: Store2Backend): Promise<{ impor
     return { importMs: Math.round(performance.now() - begun) }
 }
 
-function builtLibrary(params: Record<string, number | boolean>): Database {
-    const db = buildLibrary(params, { onCharacter: (i: number) => { if (i % 50 === 0) guard(`build character ${i}`) } }) as Database & { characters: { chats: unknown[] }[] }
+function builtLibrary(params: LibraryParams): Database {
+    // heavy-off: the tree is built plain while the recorded parameters still name the heavy character (T2a must see the difference)
+    const { heavy: _heavy, ...withoutHeavy } = params
+    const db = buildLibrary(FAULT === 'heavy-off' ? withoutHeavy : params, { onCharacter: (i: number) => { if (i % 50 === 0) guard(`build character ${i}`) } }) as Database & { characters: { chats: unknown[] }[] }
     if (FAULT === 'drop-chat') {
         db.characters[0].chats.pop()
     }
@@ -563,7 +586,7 @@ const TINY = { seed: 806, characters: 5, chatsPerCharacter: 2, messagesPerChat: 
 describe.skipIf(MODE !== '')('c806 tree self-checks', () => {
     test('T1a: the offline census of a written route A tree equals the in-memory census', async () => {
         const backend = createMemoryBackend()
-        const db = builtLibrary(normalizeParams(TINY) as Record<string, number | boolean>)
+        const db = builtLibrary(normalizeParams(TINY) as LibraryParams)
         await importInto(db, backend)
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'c806-tree-'))
         try {
@@ -580,7 +603,7 @@ describe.skipIf(MODE !== '')('c806 tree self-checks', () => {
     })
 
     test('T1c: two trees of the same parameters compare equal, and a dropped chat is seen', async () => {
-        const params = normalizeParams(TINY) as Record<string, number | boolean>
+        const params = normalizeParams(TINY) as LibraryParams
         const left = createMemoryBackend()
         await importInto(buildLibrary(params) as Database, left)
         const right = createMemoryBackend()
@@ -591,6 +614,28 @@ describe.skipIf(MODE !== '')('c806 tree self-checks', () => {
         await importInto(second, right)
         const diff = diffCensus(await walkCensus(left), await walkCensus(right), 0.01)
         expect(diff.differences).toEqual([])
+    })
+
+    test('T2a: the heavy character shows its own chat and message counts in the census; every other character equals the plain library', async () => {
+        const heavyIndex = 2
+        const params = normalizeParams({ ...TINY, heavy: { index: heavyIndex, chatsPerCharacter: 3, messagesPerChat: 5 } }) as LibraryParams
+        const expected = heavyExpected(params) as { index: number, chats: number, messages: number }
+        const plain = buildLibrary(normalizeParams(TINY)) as Database
+        const db = builtLibrary(params)
+        const heavyChaId = db.characters[heavyIndex].chaId
+        // digests are taken before the import, which consumes the library
+        for (let i = 0; i < TINY.characters; i++) {
+            if (i !== heavyIndex) {
+                expect(charactersDigest(db, i, i + 1), `character ${i}`).toBe(charactersDigest(plain, i, i + 1))
+            }
+        }
+        const backend = createMemoryBackend()
+        await importInto(db, backend)
+        const census = await walkCensus(backend)
+        const row = census.characters.rows.find(candidate => candidate.chaId === heavyChaId)
+        expect(row, 'the heavy character has a census row').toBeDefined()
+        expect({ chats: row?.chats, messages: row?.messages }).toEqual({ chats: expected.chats, messages: expected.messages })
+        expect(census.chats).toBe((TINY.characters - 1) * TINY.chatsPerCharacter + expected.chats)
     })
 
     test('the directory census refuses a damaged tree', async () => {

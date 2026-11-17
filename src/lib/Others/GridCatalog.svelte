@@ -682,7 +682,7 @@
             }
             actions.push('trash', 'cancel')
             labels.push(language.othersUi.editMoveToTrash, language.cancel)
-            const chosen = actions[parseInt(await alertSelect(labels))]
+            const chosen = actions[parseInt(await alertSelect(labels, undefined, { cancel: String(labels.length - 1) }))]
             if (chosen === 'studio' && toStudio) {
                 const index = DBState.db.characters.indexOf(toStudio.char)
                 if (index !== -1 && studio?.available(index)) {

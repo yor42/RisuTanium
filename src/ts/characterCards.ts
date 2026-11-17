@@ -126,9 +126,13 @@ async function importFiles(items:ImportItem[], added:(character|groupChat)[] = [
     return added
 }
 
-//One entry of a multi-file import whose kind is decided by its name: a name that is not a card, preset or module, or a read that yields no data, is refused with a reason of its own; a read that throws is a failure.
+//The largest JSON card an opened or shared source may be; a larger one is refused before any of it is read.
+export const OPENED_JSON_LIMIT_BYTES = 64 * 1024 * 1024
+
+//One entry of a multi-file import whose kind is decided by its name, then by its type: a name and type that are not a card, preset or module, or a read that yields no data, is refused with a reason of its own; a read that throws is a failure.
+//With `jsonLimitBytes` set, a JSON card larger than that is refused as not a card file as soon as the read has handed over its source, before any content is read.
 //A source the read hands over is closed on every exit of the item, whichever way the import ends.
-function classifiedImport(label:string, name:string, type:string, read:(kind:ClassifiedImport) => Promise<File|ImportSource|null>, run:ImportArchiveRun|null):ImportItem {
+function classifiedImport(label:string, name:string, type:string, read:(kind:ClassifiedImport) => Promise<File|ImportSource|null>, run:ImportArchiveRun|null, opts?:{jsonLimitBytes?:number}):ImportItem {
     return {
         name: label,
         run: async () => {
@@ -141,6 +145,10 @@ function classifiedImport(label:string, name:string, type:string, read:(kind:Cla
                 return {kind: 'refused', reason: language.importFileNotReceived, summaryOnly: true}
             }
             try {
+                const limit = opts?.jsonLimitBytes
+                if(limit !== undefined && kind.kind === 'card' && kind.name.toLowerCase().endsWith('.json') && data.size > limit){
+                    return {kind: 'refused', reason: language.importNotCardFile}
+                }
                 return await importClassified(kind, data, run)
             } finally {
                 if(isImportSource(data)){
@@ -155,29 +163,33 @@ function classifiedImport(label:string, name:string, type:string, read:(kind:Cla
 export async function importOpenedFiles(paths:string[]):Promise<void> {
     try {
         const run = newImportArchiveRun()
-        await importFiles(paths.map((path) => classifiedImport(path.split(/[\\/]/).pop() || path, path, '', () => openDesktopImportSource(path), run)))
+        await importFiles(paths.map((path) => classifiedImport(path.split(/[\\/]/).pop() || path, path, '', () => openDesktopImportSource(path), run, {jsonLimitBytes: OPENED_JSON_LIMIT_BYTES})))
     } catch (error) {
         alertError(error)
     }
 }
 
-//Only these kinds are opened from another Android app; every other name, whatever the classifier would make of it, is refused.
-const openedSourceSuffixes = ['.charx', '.risum', '.risup', '.risupreset', '.preset']
+//Only these kinds are opened from another Android app; every other name, whatever the classifier would make of it, is refused. A photo or a JSON file that is no card is refused by the card reader, not here.
+const openedSourceSuffixes = ['.charx', '.risum', '.risup', '.risupreset', '.preset', '.png', '.jpg', '.jpeg', '.json']
 
-//Whether `importOpenedSources` would import a file of this display name. The drain routing asks the same question, so the list lives once.
-export function isOpenedSourceImportable(name:string):boolean {
-    const lower = name.toLowerCase()
+//Whether `importOpenedSources` would import an entry of this display name and reported type. The name decides first, then the type, through the same classification as every other route (`importTypeSuffixes` is the only list of types); the drain routing asks the same question, so the list lives once.
+export function isOpenedSourceImportable(name:string, type:string = ''):boolean {
+    const kind = classifyImportFile(name, type)
+    if(!kind){
+        return false
+    }
+    const lower = kind.name.toLowerCase()
     return openedSourceSuffixes.some((suffix) => lower.endsWith(suffix))
 }
 
-//Files another Android app opened or shared: each entry is a content URI with the display name its provider gave. The name decides: a name outside the allow-list is refused with the unsupported-file reason and its URI is never opened. Allowed kinds go through the same classification, open-in-pieces import and close as `importOpenedFiles`. Never rejects.
-export async function importOpenedSources(entries:{name:string, path:string}[]):Promise<void> {
+//Files another Android app opened or shared: each entry is a content URI with the display name and type its provider gave. The name decides, then the type: an entry outside the allow-list is refused with the unsupported-file reason and its URI is never opened. Allowed kinds go through the same classification, open-in-pieces import and close as `importOpenedFiles`; a JSON over `OPENED_JSON_LIMIT_BYTES` is refused unread. Never rejects.
+export async function importOpenedSources(entries:{name:string, path:string, type?:string}[]):Promise<void> {
     try {
         const run = newImportArchiveRun()
         await importFiles(entries.map((entry) => {
-            const allowed = isOpenedSourceImportable(entry.name)
-            //An empty classification name never matches a suffix, so the shared refusal applies and the read is not called.
-            return classifiedImport(entry.name, allowed ? entry.name : '', '', () => openDesktopImportSource(entry.path), run)
+            const allowed = isOpenedSourceImportable(entry.name, entry.type ?? '')
+            //An empty classification name and type never match, so the shared refusal applies and the read is not called.
+            return classifiedImport(entry.name, allowed ? entry.name : '', allowed ? entry.type ?? '' : '', () => openDesktopImportSource(entry.path), run, {jsonLimitBytes: OPENED_JSON_LIMIT_BYTES})
         }))
     } catch (error) {
         alertError(error)
@@ -303,7 +315,13 @@ async function readCharacterFile(f:{
             return refusedOutcome(language.errors.noData)
         }
         const data = f.data instanceof Uint8Array ? f.data : isImportSource(f.data) ? await f.data.read(0, f.data.size) : new Uint8Array(await f.data.arrayBuffer())
-        const da = JSON.parse(Buffer.from(data).toString('utf-8'))
+        //Text that is not JSON is not a card file, the same as JSON with no card in it.
+        let da
+        try {
+            da = JSON.parse(Buffer.from(data).toString('utf-8'))
+        } catch {
+            return refusedOutcome(language.importNotCardFile)
+        }
         const spec = await importCharacterCardSpec(da, undefined, 'normal', undefined, undefined, undefined, undefined, undefined, run)
         //A v2 or v3 card that was refused is not an old card: its top-level fields are not the card.
         if(spec === null && (da?.spec === 'chara_card_v2' || da?.spec === 'chara_card_v3')){
@@ -314,6 +332,10 @@ async function readCharacterFile(f:{
         }
         if(spec === false){
             return {kind: 'declined'}
+        }
+        //A value that is no old card at all is not a card file; an old card whose character book cannot be converted keeps its own refusal.
+        if(readOldCard(da) === null){
+            return refusedOutcome(language.importNotCardFile)
         }
         const oldCard = planOldCard(da)
         if(oldCard === null){
@@ -328,7 +350,7 @@ async function readCharacterFile(f:{
             return refusedOutcome(language.errors.noData)
         }
         const data = f.data instanceof Uint8Array ? f.data : isImportSource(f.data) ? await f.data.read(0, f.data.size) : new Uint8Array(await f.data.arrayBuffer())
-        //The parser is fetched only when a YAML card is imported. A parse error is not caught here: it ends the import as a failure, like malformed JSON.
+        //The parser is fetched only when a YAML card is imported. A parse error is not caught here: it ends the import as a failure, unlike malformed JSON, which is refused as not a card file.
         const { parse } = await import('yaml')
         const parsed: unknown = parse(Buffer.from(data).toString('utf-8'))
         const oldCard = planOldCard(yamlCardValue(parsed))
@@ -362,9 +384,9 @@ async function readCharacterFile(f:{
             const charxData:File|Uint8Array|ImportSource = f.data instanceof ReadableStream
                 ? new File([await new Response(f.data).blob()], f.name, {type: 'application/zip'})
                 : f.data
-            //An archive without its end record was cut short. A jpg or jpeg without one is treated as a plain image (a jpg-charx cut short cannot be told apart by its tail).
+            //An archive without its end record was cut short. A jpg or jpeg without one is a plain image, which is not a card file (a jpg-charx cut short cannot be told apart by its tail).
             if(!(await hasZipEndRecord(charxData))){
-                return refusedOutcome(lower.endsWith('charx') ? language.cardFileIncomplete : language.errors.noData)
+                return refusedOutcome(lower.endsWith('charx') ? language.cardFileIncomplete : language.importNotCardFile)
             }
             await importer.parse(charxData)
         } catch (error) {
@@ -731,7 +753,7 @@ async function planRccCard(value:string, assetKeys:Set<string>):Promise<PngCardP
         return refusedOutcome(language.errors.noData)
     }
     if(metaData.usePassword){
-        const password = await alertInput(language.inputCardPassword)
+        const password = await alertInput(language.inputCardPassword, undefined, undefined, { cancel: '' })
         if(!password){
             return {kind: 'declined'}
         }
@@ -817,6 +839,14 @@ async function planPngCard(source:ImportSource, chunks:PngLayoutChunk[], assetKe
     }
 }
 
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+
+//False only when the bytes the source has differ from the PNG signature; a file cut inside the signature still goes to the scan, which reports it as cut.
+async function hasPngSignature(source:ImportSource):Promise<boolean> {
+    const head = await source.read(0, PNG_SIGNATURE.length)
+    return head.every((byte, i) => byte === PNG_SIGNATURE[i])
+}
+
 /**
  * Imports a PNG card in two passes over the file, which is never held as a whole. The first pass walks the chunk
  * headers and decides, before anything is saved, whether the card is imported (see planPngCard); the second reads the
@@ -831,12 +861,17 @@ async function importPngCard(name:string, data:File|Uint8Array|ImportSource, run
             throw new PngCardSourceChanged('the card file changed')
         }
         //Counts the assets and checks that no chunk body (nor the CRC of a chunk other than tEXt) is cut short before anything is saved, so such a card saves nothing.
+        //The scan walks chunk lengths and never checks the signature, so another kind of image would be read as garbage chunks.
+        if(!(await hasPngSignature(source))){
+            return refusedOutcome(language.importNotCardFile)
+        }
         const scan = await PngChunk.scanCard(data, {layout: true})
         if(scan.cut || (!scan.hasCardData && !scan.iendReached)){
             return refusedOutcome(language.cardFileIncomplete)
         }
+        //A whole image whose end was reached with no card chunk in it is a picture, not a card.
         if(!scan.hasCardData){
-            return refusedOutcome(language.errors.noData)
+            return refusedOutcome(language.importNotCardFile)
         }
         const chunks = scan.chunks ?? []
         const imageBytes = scan.imageBytes ?? 0
@@ -1197,7 +1232,7 @@ export async function characterURLImport() {
         const handleFiles = (files:FileSystemFileHandle[]) => {
             const run = newImportArchiveRun()
             return importFiles(
-                files.map((f) => classifiedImport(f.name, f.name, '', () => f.getFile(), run))
+                files.map((f) => classifiedImport(f.name, f.name, '', () => f.getFile(), run, {jsonLimitBytes: OPENED_JSON_LIMIT_BYTES}))
             ).catch((error) => alertError(error))
         }
         //@ts-expect-error launchQueue is File Handling API for PWA, not yet in TypeScript's Window interface
@@ -1256,7 +1291,7 @@ export async function characterURLImport() {
                 }
                 //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
                 return new File([await res.blob()], kind.name, {type: entry.type})
-            }, run)))
+            }, run, {jsonLimitBytes: OPENED_JSON_LIMIT_BYTES})))
         } finally {
             try {
                 await fetch(base, {method: 'DELETE'})

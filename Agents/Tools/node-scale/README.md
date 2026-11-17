@@ -16,7 +16,21 @@ changes app, server or format code; every output goes under `%TEMP%\risu-b715\b6
 | `c806-savepass.mjs` | Stage 3: per character, open it, make one UI edit and read the save-pass and commit meters (`run`, `arms`, `selfcheck`). Search, open, marker and edit-record times are page-side `performance.now()` deltas (`timeInPage` in `c806-page.mjs`). |
 | `c806-import.mjs` | Stage 4: the `.bin` import peak through the page on a ladder of message medians (`run`, `selfcheck`); generates each `.bin` in a child process (`gen`). |
 | `c806-proc-sampler.ps1` | Read-only OS sampler of private bytes and working set of a PID list every 250 ms (used by stage 4); ends on its stop file, when its parent process is gone, or after `-MaxSeconds`. |
-| `../save-gen/c806-tree.harness.ts` | Writes a tree (route A: hex files; route C: through the server) and takes the offline census of any tree. |
+| `../save-gen/c806-tree.harness.ts` | Writes a tree (route A: hex files; route C: through the server) and takes the offline census of any tree. `C806_HEAVY=index,chats,messages` makes one character of the tree heavy (`heavy` in the library params); `C806_FAULT=heavy-off` writes the same tree without it. |
+| `c807-slot.mjs` | CHORE-807: the full-run slot library and a slot-holding command runner (`run --which a\|b\|any --text <owner> -- <command>`, `selfcheck`, `checks`). Slot A is `%TEMP%\risu-b715\fullrun-slot`, slot B is `fullrun-slot-b`; at least 95 s pass between a release and the next take of the same slot. |
+| `c807-pageend.mjs` | CHORE-807: library only (no commands). Tells how a page end of the import ladder looks, which stop class a rung ends in, and what the ladder says. The self-check mutants run through `c807-pageend.harness.ts`. |
+| `c807-export.mjs` | CHORE-807 G1: peak memory and main-thread blocks of a "Save Backup Locally" export through the real page (`probe-origin`, `export --arm SERVER\|PAGE-STREAM\|LAN`, `recheck`, `selfcheck`, `pure-checks`). |
+| `c807-keyscale.mjs` | CHORE-807 G3: key-scale measurement of the repository's Node server on a data dir of N key files (`build`, `run`, `scenario`, `selfcheck`); starts the server with `c807-srvprobe.cjs`. |
+| `c807-srvprobe.cjs` | `--require` shim for the server: one JSON line per startup read, parse, readdir, compaction, listen and event-loop gap, to `C807_PROBE_OUT` (does nothing without it). Changes no response. |
+| `../save-gen/c807-pageend.harness.ts` | Self-check of `c807-pageend.mjs` (T4s, T4v) built from the app's own English and Korean strings; no Chrome, no server. Run this one file, never the folder. |
+| `../save-gen/c807-bin-census.harness.ts` | Census of an exported `.bin` decoded with the application's own import reader (`C807_BIN`, `C807_ROOT`, `C807_OUT`; `C807_FAULT=flip-bytes`). |
+
+The c807 tools write under `%TEMP%\risu-b715\b61\c807` when `C806_ROOT` is set to it.
+
+New flags (CHORE-807; without them every old default is unchanged):
+
+- `c806-import.mjs run`: `--slot a|b|any` and `--slot-text <owner>` take a slot through `c807-slot.mjs`; `--host-free-floor-gib <n>` (default 8) stops a rung as `host-floor` when free host memory falls below it; `--confirm-failure` re-runs a breaking rung once, and two breaking outcomes are the breaking point; `--preflight <preflight.json>` caps the ladder at the highest rung whose generator preflight passed (`gen-preflight` writes it). Its `selfcheck` adds the ids T4a-T4h, T4p, T4r and T4u (`--only <id,id>` picks some).
+- `c806-savepass.mjs run`: `--slot a|b|any`, `--slot-text <owner>`, `--sample` (heap, process and phase samplers around the open of each measured character) and `--host-free-floor-gib <n>` (default 2). `heavycheck --arm <tree with a heavy character> --off-arm <the same tree written with C806_FAULT=heavy-off> --index <heavy index>` runs the heavy-character checks T2a-T2c against their mutants. A run adds T2a and T2b only when it measures the heavy character, and T2c only with `--sample`.
 
 The stage 0 files `../save-gen/c806-library.mjs`, `c806-bin-write.mjs` and `c806-census.harness.ts` make the library, the `.bin` and the in-process census.
 

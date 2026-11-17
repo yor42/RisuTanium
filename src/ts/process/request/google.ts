@@ -14,7 +14,7 @@ import type { RequestDataArgumentExtended, requestDataResponse, StreamResponseCh
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters, type LLMParameter } from './shared'
 import { bodyIntercepterStore } from "src/ts/stores.svelte"
 import { isSecretRef, registerSensitive, resolveSecret } from "src/ts/secretRef"
-import { resolveRequestKey } from "./secretKey"
+import { limitedField, sendArgKey, sendKeyLine } from "./secretKey"
 import { beginToolRound, endStreamForGate, gateResult, toolBlockGate } from "./toolLoop"
 import { isAndroidTransport } from "src/ts/storage/tauriByteTransport"
 import { parseJsonBody, readBodyText } from "src/ts/network/frozenBody"
@@ -566,7 +566,9 @@ export async function requestGoogleCloudVertex(arg:RequestDataArgumentExtended):
     // A Vertex request without a custom URL authenticates with the minted token, not this key, so
     // an unusable reference in the Gemini key must not fail it.
     const urlCarriesKey = !!arg.customURL || arg.modelInfo.format !== LLMFormat.VertexAIGemini
-    let apiKey = urlCarriesKey ? await resolveRequestKey(arg, arg.key || db.google.accessToken) : (arg.key || db.google.accessToken)
+    let apiKey = urlCarriesKey
+        ? (arg.key ? await sendArgKey(arg) : await sendKeyLine(arg, 'google.accessToken'))
+        : (arg.key || db.google.accessToken)
 
     if(arg.customURL){
         let baseURL = arg.customURL
@@ -696,6 +698,14 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
 
         if(f.status !== 200){
             const text = await textifyReadableStream(f.body)
+            const limited = limitedField(arg, f.status)
+            if(limited){
+                return {
+                    type: 'fail',
+                    result: text,
+                    keyLimited: limited
+                }
+            }
             if(text.includes('RESOURCE_EXHAUSTED')){
                 return fallBackGemini(text)
             }
@@ -735,6 +745,14 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
     if(!res.ok){
         const data = android ? await readBodyText(res) : await res.text()
         const text = JSON.stringify(data)
+        const limited = limitedField(arg, res.status)
+        if(limited){
+            return {
+                type: 'fail',
+                result: `${text} (status: ${res.status})`,
+                keyLimited: limited
+            }
+        }
         if(text.includes('RESOURCE_EXHAUSTED')){
             return fallBackGemini(text)
         }

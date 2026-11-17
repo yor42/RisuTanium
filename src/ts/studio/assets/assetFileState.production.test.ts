@@ -2,7 +2,7 @@
 // files store and the store's own absence rule. Each module the production calls come from is replaced by a double that
 // keeps the module's other names, so the wiring (which function answers which question) is what the rows observe: a
 // stat that resolves is `present`, and a stat that rejects is `gone` only when the store's absence rule says so.
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { ExportAssetSource } from 'src/ts/drive/assetPieces'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { openAssetFileReader } from './assetFileState'
@@ -42,6 +42,13 @@ vi.mock('src/ts/storage/store/tauriFilesStore', async (importOriginal) => ({
 
 const PATH = 'assets/grin.png'
 const FAILURE = new Error('stat failed')
+
+// The reader opens through dynamic imports of heavy modules, and each `importOriginal` above loads one of them for real.
+// Opening it once here puts that cold import in a hook with its own, longer timeout, so a loaded machine cannot spend a
+// test's time on it. It asks no stat, so no row observes it.
+beforeAll(async () => {
+    await openAssetFileReader()
+}, 180_000)
 
 beforeEach(() => {
     h.statStoredSize.mockReset()

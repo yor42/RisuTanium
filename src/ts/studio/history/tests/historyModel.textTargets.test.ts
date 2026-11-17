@@ -234,15 +234,15 @@ function freshState(owner: OwnerKey): ModelState {
 // ---------------------------------------------------------------- a merged step is replayed from the landed state
 
 describe('a landed text step replays from the owner as it stands', () => {
-    const ORIGINAL = 'first smile2 message'
-    const MERGED = 'first smile message'
+    const ORIGINAL = 'first {{image::smile2}} message'
+    const MERGED = 'first {{image::smile}} message'
     const EXTRA_ROW = ['smile2', 'assets/smile.png', 'png']
     const rowRemove: Op = { op: 'assetRowRemove', array: 'additionalAssets', index: 1, tuple: EXTRA_ROW, count: 1 }
-    const firstMessageEdit = edit('firstMessage', 6, 'smile2', 'smile')
+    const firstMessageEdit = edit('firstMessage', 15, 'smile2', 'smile')
 
     // The record holds the step `commitStep` makes from the merge; the live owner already holds the merged state.
     function landedWith(withRow: boolean): { c: TestCharacter; state: ModelState } {
-        const before = makeCharacter()
+        const before = makeCharacter({ firstMessage: ORIGINAL })
         const ops: Op[] = withRow ? [rowRemove, firstMessageEdit] : [firstMessageEdit]
         const state = commitOf(freshState(A), charReader(before), ops)
         const landed = makeCharacter({ firstMessage: MERGED, additionalAssets: withRow ? [['smile', 'assets/smile.png', 'png']] : before.additionalAssets })
@@ -277,19 +277,24 @@ describe('a landed text step replays from the owner as it stands', () => {
 
 describe('a module text step lands, undoes and redoes through the module body', () => {
     test('a background embedding and a trigger leaf change once per undo and redo, and the live module is never touched', () => {
-        const holder: ModuleHolder = { module: makeModule() }
+        const holder: ModuleHolder = {
+            module: makeModule({
+                backgroundEmbedding: 'embedding {{image::smile2}}',
+                trigger: [{ comment: 'event', type: 'manual', conditions: [], effect: [setVarEffect('effect {{image::smile2}}')] }],
+            }),
+        }
         const original = structuredClone(holder.module)
-        const ops = [edit('backgroundEmbedding', 10, 'smile2', 'smile'), edit('trigger/0/effect/0/value', 7, 'smile2', 'smile')]
+        const ops = [edit('backgroundEmbedding', 19, 'smile2', 'smile'), edit('trigger/0/effect/0/value', 16, 'smile2', 'smile')]
         const live = holder.module
         const landed = landModule(freshState(M), holder, ops)
         expect(live).toEqual(original)
-        expect(holder.module.backgroundEmbedding).toBe('embedding smile')
-        expect((holder.module.trigger[0].effect[0] as { value: string }).value).toBe('effect smile')
+        expect(holder.module.backgroundEmbedding).toBe('embedding {{image::smile}}')
+        expect((holder.module.trigger[0].effect[0] as { value: string }).value).toBe('effect {{image::smile}}')
         const undone = replayModule(landed.state, holder, 'undo')
         expect(holder.module).toEqual(original)
         replayModule(undone.state, holder, 'redo')
-        expect(holder.module.backgroundEmbedding).toBe('embedding smile')
-        expect((holder.module.trigger[0].effect[0] as { value: string }).value).toBe('effect smile')
+        expect(holder.module.backgroundEmbedding).toBe('embedding {{image::smile}}')
+        expect((holder.module.trigger[0].effect[0] as { value: string }).value).toBe('effect {{image::smile}}')
     })
 })
 
@@ -297,29 +302,35 @@ describe('a module text step lands, undoes and redoes through the module body', 
 
 describe('the write kind follows the target', () => {
     test('a text field is a set, a first message entry a listSet, and every other registry text a textSet, with unequal lengths', () => {
-        const c = makeCharacter()
+        const c = makeCharacter({
+            firstMessage: 'first {{image::smile2}} message',
+            desc: '{{image::desc}} smile2',
+            alternateGreetings: ['g0 {{image::smile2}}', 'g1'],
+            globalLore: [{ key: 'k0', content: 'lore0' }, { key: 'k1', content: '{{image::lore1}} smile2' }],
+            systemPrompt: '{{image::system}} smile2',
+        })
         const reader = charReader(c)
         const writes = assetStepWrites(
             [
-                edit('firstMessage', 6, 'smile2', 'smile'),
-                edit('desc', 0, 'desc', 'a much longer description'),
-                edit('alternateGreetings/0', 3, 'smile2', ''),
-                edit('lore/1/content', 0, 'lore1', 'l'),
-                edit('systemPrompt', 0, 'system', 'sys'),
+                edit('firstMessage', 15, 'smile2', 'smile'),
+                edit('desc', 9, 'desc', 'a much longer description'),
+                edit('alternateGreetings/0', 12, 'smile2', ''),
+                edit('lore/1/content', 9, 'lore1', 'l'),
+                edit('systemPrompt', 9, 'system', 'sys'),
             ],
             reader,
         )
         expect(writes).toEqual([
-            { op: 'set', path: 'firstMessage', value: { had: true, value: 'first smile message' } },
-            { op: 'set', path: 'desc', value: { had: true, value: 'a much longer description smile2' } },
-            { op: 'listSet', index: 0, value: 'g0 ' },
-            { op: 'textSet', target: 'lore/1/content', value: 'l smile2' },
-            { op: 'textSet', target: 'systemPrompt', value: 'sys smile2' },
+            { op: 'set', path: 'firstMessage', value: { had: true, value: 'first {{image::smile}} message' } },
+            { op: 'set', path: 'desc', value: { had: true, value: '{{image::a much longer description}} smile2' } },
+            { op: 'listSet', index: 0, value: 'g0 {{image::}}' },
+            { op: 'textSet', target: 'lore/1/content', value: '{{image::l}} smile2' },
+            { op: 'textSet', target: 'systemPrompt', value: '{{image::sys}} smile2' },
         ])
 
-        const module = makeModule()
-        const moduleWrites = assetStepWrites([edit('lore/0/content', 0, 'lore0', 'x')], createModuleLiveReader(asModule(module)))
-        expect(moduleWrites).toEqual([{ op: 'textSet', target: 'lore/0/content', value: 'x smile2' }])
+        const module = makeModule({ lorebook: [{ key: 'k0', content: '{{image::lore0}} smile2' }, { key: 'k1', content: 'lore1 smile2' }] })
+        const moduleWrites = assetStepWrites([edit('lore/0/content', 9, 'lore0', 'x')], createModuleLiveReader(asModule(module)))
+        expect(moduleWrites).toEqual([{ op: 'textSet', target: 'lore/0/content', value: '{{image::x}} smile2' }])
     })
 
     test('an edit that no longer matches the live text refuses the step', () => {
@@ -328,18 +339,18 @@ describe('the write kind follows the target', () => {
     })
 
     test('two edits of one target in one step follow the running value', () => {
-        const c = makeCharacter({ systemPrompt: 'abc def' })
-        const ops = [edit('systemPrompt', 4, 'def', 'DEFGH'), edit('systemPrompt', 0, 'abc', 'Z')]
+        const c = makeCharacter({ systemPrompt: '{{image::abc}} {{image::def}}' })
+        const ops = [edit('systemPrompt', 24, 'def', 'DEFGH'), edit('systemPrompt', 9, 'abc', 'Z')]
         const landed = landCharacter(freshState(A), c, ops)
         expect(landed.writes).toEqual([
-            { op: 'textSet', target: 'systemPrompt', value: 'abc DEFGH' },
-            { op: 'textSet', target: 'systemPrompt', value: 'Z DEFGH' },
+            { op: 'textSet', target: 'systemPrompt', value: '{{image::abc}} {{image::DEFGH}}' },
+            { op: 'textSet', target: 'systemPrompt', value: '{{image::Z}} {{image::DEFGH}}' },
         ])
-        expect(c.systemPrompt).toBe('Z DEFGH')
+        expect(c.systemPrompt).toBe('{{image::Z}} {{image::DEFGH}}')
         const undone = replayCharacter(landed.state, c, 'undo')
-        expect(c.systemPrompt).toBe('abc def')
+        expect(c.systemPrompt).toBe('{{image::abc}} {{image::def}}')
         replayCharacter(undone.state, c, 'redo')
-        expect(c.systemPrompt).toBe('Z DEFGH')
+        expect(c.systemPrompt).toBe('{{image::Z}} {{image::DEFGH}}')
     })
 })
 
@@ -354,22 +365,22 @@ describe('a replay emits the write kind of its target', () => {
     }
 
     test('a first message entry gives a listSet, a character lore a textSet and a module lore a textSet, with unequal lengths', () => {
-        const c = makeCharacter({ alternateGreetings: ['g0', 'x 1'], globalLore: [{ key: 'k', content: 'l tail' }] })
-        const greeting = planReplay(stepOf(A, edit('alternateGreetings/1', 0, 'orig', 'x')).record, 'undo', charReader(c))
-        expect(greeting.ok && greeting.writes).toEqual([{ op: 'listSet', index: 1, value: 'orig 1' }])
-        const lore = planReplay(stepOf(A, edit('lore/0/content', 0, 'lore0', 'l')).record, 'undo', charReader(c))
-        expect(lore.ok && lore.writes).toEqual([{ op: 'textSet', target: 'lore/0/content', value: 'lore0 tail' }])
-        const m = makeModule({ lorebook: [{ key: 'k', content: 'l tail' }] })
-        const moduleLore = planReplay(stepOf(M, edit('lore/0/content', 0, 'lore0', 'l')).record, 'undo', createModuleLiveReader(asModule(m)))
-        expect(moduleLore.ok && moduleLore.writes).toEqual([{ op: 'textSet', target: 'lore/0/content', value: 'lore0 tail' }])
+        const c = makeCharacter({ alternateGreetings: ['g0', '{{image::x}} 1'], globalLore: [{ key: 'k', content: '{{image::l}} tail' }] })
+        const greeting = planReplay(stepOf(A, edit('alternateGreetings/1', 9, 'orig', 'x')).record, 'undo', charReader(c))
+        expect(greeting.ok && greeting.writes).toEqual([{ op: 'listSet', index: 1, value: '{{image::orig}} 1' }])
+        const lore = planReplay(stepOf(A, edit('lore/0/content', 9, 'lore0', 'l')).record, 'undo', charReader(c))
+        expect(lore.ok && lore.writes).toEqual([{ op: 'textSet', target: 'lore/0/content', value: '{{image::lore0}} tail' }])
+        const m = makeModule({ lorebook: [{ key: 'k', content: '{{image::l}} tail' }] })
+        const moduleLore = planReplay(stepOf(M, edit('lore/0/content', 9, 'lore0', 'l')).record, 'undo', createModuleLiveReader(asModule(m)))
+        expect(moduleLore.ok && moduleLore.writes).toEqual([{ op: 'textSet', target: 'lore/0/content', value: '{{image::lore0}} tail' }])
     })
 
     test('a redo applies the edit itself: the splice uses the length of the text it replaces', () => {
-        const c = makeCharacter({ systemPrompt: 'abcdef' })
-        const state = stepOf(A, edit('systemPrompt', 1, 'bcd', 'X'))
+        const c = makeCharacter({ systemPrompt: '{{image::abcdef}}' })
+        const state = stepOf(A, edit('systemPrompt', 9, 'abcdef', 'X'))
         state.record = { ...state.record, undone: state.record.done, done: [] }
         const plan = planReplay(state.record, 'redo', charReader(c))
-        expect(plan.ok && plan.writes).toEqual([{ op: 'textSet', target: 'systemPrompt', value: 'aXef' }])
+        expect(plan.ok && plan.writes).toEqual([{ op: 'textSet', target: 'systemPrompt', value: '{{image::X}}' }])
     })
 })
 
@@ -409,11 +420,11 @@ describe('a replay never treats an unreadable target as in place', () => {
     })
 
     test('a trigger leaf switched to var mode after the step fails the undo', () => {
-        const c = makeCharacter()
-        const state = landCharacter(freshState(A), c, [edit('trigger/0/effect/0/value', 7, 'smile2', 'smile')]).state
+        const c = makeCharacter({ triggerscript: [{ comment: 'event', type: 'manual', conditions: [], effect: [setVarEffect('effect {{image::smile2}}')] }] })
+        const state = landCharacter(freshState(A), c, [edit('trigger/0/effect/0/value', 16, 'smile2', 'smile')]).state
         ;(c.triggerscript[0].effect[0] as { valueType: string }).valueType = 'var'
         expect(planReplay(state.record, 'undo', charReader(c))).toEqual({ ok: false, reason: 'precondition' })
-        expect((c.triggerscript[0].effect[0] as { value: string }).value).toBe('effect smile')
+        expect((c.triggerscript[0].effect[0] as { value: string }).value).toBe('effect {{image::smile}}')
     })
 
     test('a module owner never holds a text field or a first message entry', () => {
@@ -450,10 +461,10 @@ describe('a revert and a restore point carry the first message and the example m
     }
 
     test('a revert across a merge restores the first message, stores it as a set, and its undo re-applies the merge', () => {
-        const c = makeCharacter()
+        const c = makeCharacter({ firstMessage: 'first {{image::smile2}} message' })
         let state = typeDesc(freshState(A), c, 'desc one')
         const anchor = state.record.done[0].id
-        state = landCharacter(state, c, [edit('firstMessage', 6, 'smile2', 'smile')]).state
+        state = landCharacter(state, c, [edit('firstMessage', 15, 'smile2', 'smile')]).state
         state = typeDesc(state, c, 'desc two')
         const plan = planRevert(state.record, anchor, charReader(c))
         if (plan.ok === false) {
@@ -461,11 +472,11 @@ describe('a revert and a restore point carry the first message and the example m
         }
         expect(plan.ops).toEqual(
             expect.arrayContaining([
-                { op: 'set', path: 'firstMessage', before: { had: true, value: 'first smile message' }, after: { had: true, value: 'first smile2 message' } },
+                { op: 'set', path: 'firstMessage', before: { had: true, value: 'first {{image::smile}} message' }, after: { had: true, value: 'first {{image::smile2}} message' } },
             ]),
         )
         applyCharacterWrites(asCharacter(c), plan.writes, null)
-        expect(c.firstMessage).toBe('first smile2 message')
+        expect(c.firstMessage).toBe('first {{image::smile2}} message')
         expect(c.desc).toBe('desc one')
         stepCounter += 1
         const reverted = commitStep(state, {
@@ -479,17 +490,21 @@ describe('a revert and a restore point carry the first message and the example m
             replacesRestore: false,
         })
         replayCharacter(reverted, c, 'undo')
-        expect(c.firstMessage).toBe('first smile message')
+        expect(c.firstMessage).toBe('first {{image::smile}} message')
         expect(c.desc).toBe('desc two')
     })
 
     test('a restore point learns both messages from a merge and restores them; a text with no restore key contributes nothing', () => {
-        const c = makeCharacter()
+        const c = makeCharacter({
+            firstMessage: 'first {{image::smile2}} message',
+            exampleMessage: 'example {{image::smile2}}',
+            systemPrompt: 'system {{image::smile2}}',
+        })
         let state = typeDesc(freshState(A), c, 'desc one')
         state = landCharacter(state, c, [
-            edit('firstMessage', 6, 'smile2', 'smile'),
-            edit('exampleMessage', 8, 'smile2', 'smile'),
-            edit('systemPrompt', 7, 'smile2', 'smile'),
+            edit('firstMessage', 15, 'smile2', 'smile'),
+            edit('exampleMessage', 17, 'smile2', 'smile'),
+            edit('systemPrompt', 16, 'smile2', 'smile'),
         ]).state
         const restore = state.record.restore
         expect(Object.keys(restore?.fields ?? {})).toEqual(expect.arrayContaining(['desc', 'firstMessage', 'exampleMessage']))
@@ -501,8 +516,8 @@ describe('a revert and a restore point carry the first message and the example m
         expect(plan.changedElsewhere).toEqual([])
         expect(plan.writes).toEqual(
             expect.arrayContaining([
-                { op: 'set', path: 'firstMessage', value: { had: true, value: 'first smile2 message' } },
-                { op: 'set', path: 'exampleMessage', value: { had: true, value: 'example smile2' } },
+                { op: 'set', path: 'firstMessage', value: { had: true, value: 'first {{image::smile2}} message' } },
+                { op: 'set', path: 'exampleMessage', value: { had: true, value: 'example {{image::smile2}}' } },
             ]),
         )
     })
@@ -541,24 +556,29 @@ interface PlannedEdit {
     to: string
 }
 
-const REPLACEMENTS = ['', 'Q', 'a longer replacement', 'zz', 'x y']
+// Names of the rewritten references: never empty, so each reference is one the scanner reads.
+const REPLACEMENTS = ['Q', 'a longer replacement', 'zz', 'x y', 'longer name 2']
 
-// Non-overlapping edits of one text, highest offset first, so each edit's offset is valid on the text the earlier
-// edits left.
-function editsOfText(target: string, text: string, rng: () => number): PlannedEdit[] {
+interface ShapedTarget {
+    path: string
+    text: string
+    edits: PlannedEdit[]
+}
+
+// A text of one to three asset references and one name edit per reference, highest offset first, so each edit's offset
+// is valid on the text the earlier edits left. A `textEdit` applies only to a whole scanned reference name, so every
+// generated target holds references and not arbitrary text.
+function shapedTarget(path: string, rng: () => number): ShapedTarget {
     const count = 1 + Math.floor(rng() * 3)
-    const cuts: number[] = []
-    for (let i = 0; i < count * 2; i++) {
-        cuts.push(Math.floor(rng() * (text.length + 1)))
-    }
-    cuts.sort((a, b) => a - b)
-    const out: PlannedEdit[] = []
+    let text = ''
+    const edits: PlannedEdit[] = []
     for (let i = 0; i < count; i++) {
-        const offset = cuts[i * 2]
-        const end = cuts[i * 2 + 1]
-        out.push({ target, offset, from: text.slice(offset, end), to: REPLACEMENTS[Math.floor(rng() * REPLACEMENTS.length)] })
+        text += `${i === 0 ? '' : ' '}{{image::`
+        const name = `n${i}${Math.floor(rng() * 100)}`
+        edits.push({ target: path, offset: text.length, from: name, to: REPLACEMENTS[Math.floor(rng() * REPLACEMENTS.length)] })
+        text += `${name}}}`
     }
-    return out.reverse()
+    return { path, text, edits: edits.reverse() }
 }
 
 function applyEdits(text: string, edits: readonly PlannedEdit[]): string {
@@ -659,23 +679,27 @@ const moduleArb: fc.Arbitrary<TestModule> = fc.record({
 })
 
 // Plans edits of every given rewritable target, forcing one edit of the step to change the text's length.
-function planStep(targets: readonly { path: string; text: string }[], rng: () => number): { ops: Op[]; finals: Map<string, string> } {
-    const perTarget = targets.map((target) => ({ target, edits: editsOfText(target.path, target.text, rng) }))
-    const all = perTarget.flatMap((entry) => entry.edits)
+function planStep(targets: readonly ShapedTarget[]): { ops: Op[]; finals: Map<string, string> } {
+    const all = targets.flatMap((entry) => entry.edits)
     if (all.length > 0 && all.every((e) => e.from.length === e.to.length)) {
         all[all.length - 1].to += '!'
     }
     const finals = new Map<string, string>()
-    for (const { target, edits } of perTarget) {
-        finals.set(target.path, applyEdits(target.text, edits))
+    for (const target of targets) {
+        finals.set(target.path, applyEdits(target.text, target.edits))
     }
     return { ops: all.map((e) => edit(e.target, e.offset, e.from, e.to)), finals }
 }
 
-function roundTrip(kind: 'character' | 'module', owner: TestCharacter | TestModule, targets: readonly { path: string; text: string }[], rng: () => number): void {
+function roundTrip(kind: 'character' | 'module', owner: TestCharacter | TestModule, paths: readonly { path: string; text: string }[], rng: () => number): void {
+    const targets = paths.map((entry) => shapedTarget(entry.path, rng))
+    for (const target of targets) {
+        const slot = holderOf(kind, owner, target.path)
+        slot.holder[slot.key] = target.text
+    }
     const original = structuredClone(owner)
     const expected = structuredClone(owner)
-    const { ops, finals } = planStep(targets, rng)
+    const { ops, finals } = planStep(targets)
     if (ops.length === 0) {
         return
     }

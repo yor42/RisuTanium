@@ -12,7 +12,7 @@ import { v4 as uuidv4, v4 } from 'uuid';
 import { get } from "svelte/store";
 import { flushSync } from "svelte";
 import { open } from '@tauri-apps/plugin-shell'
-import { TauriWriter, openWebExportWriter, writeBackupEntry, encodeBackupEntryHeader, type ExportByteWriter } from "./exportWriters";
+import { TauriWriter, openWebExportWriter, writeBackupEntry, encodeBackupEntryHeader, isSplicingWriter, type ExportByteWriter } from "./exportWriters";
 import { ExportCancelledError, type ExportCancelToken } from "./exportCancel";
 import { type Database, defaultSdDataFunc, getDatabase, appVer, getCurrentCharacter, type character, type groupChat, type Chat, appSubVer } from "./storage/database.svelte";
 import { collectPackAssetRefs } from "./themePack/packRefs";
@@ -712,14 +712,19 @@ export async function readImage(data: string) {
  * @param {Uint8Array} data - The data of the asset file; an ArrayBuffer or another typed-array view is taken as it is. Any other value rejects with a TypeError.
  * @param {string} [customId=''] - The custom ID for the asset file.
  * @param {string} [fileName=''] - The name of the asset file. Its extension (the part after the last dot) is kept when it is 1 to 16 ASCII letters or digits, and is `png` otherwise.
- * @returns {Promise<string>} - A promise that resolves to the path of the saved asset file.
+ * @returns {Promise<string>} - A promise that resolves to the path of the saved asset file. On a store that keeps Blobs (the browser's IndexedDB) a value of `ASSET_PIECE_SAVE_MIN_BYTES` or more is stored as a Blob.
  */
 export async function saveAsset(data: Uint8Array | ArrayBuffer | ArrayBufferView, customId: string = '', fileName: string = '') {
     return await saveAssetBytes(assetBytesOf(data), customId, fileName, assetDisplayName(null, fileName))
 }
 
-/** `saveAsset` for bytes already taken as a `Uint8Array`; `displayName` is the name a storage-full message shows. */
-async function saveAssetBytes(bytes: Uint8Array, customId: string, fileName: string, displayName: string): Promise<string> {
+/**
+ * `saveAsset` for bytes already taken as a `Uint8Array`; `displayName` is the name a storage-full message shows.
+ * On a store that keeps Blobs (the browser's IndexedDB) a value of `ASSET_PIECE_SAVE_MIN_BYTES` or more is stored as a
+ * Blob under its final key, unless `blobRefused` says the browser already refused a Blob for these bytes. Where a Blob
+ * cannot be kept the bytes are stored; a quota or any other failure of the Blob put is not retried as bytes.
+ */
+async function saveAssetBytes(bytes: Uint8Array, customId: string, fileName: string, displayName: string, options: { blobRefused?: boolean } = {}): Promise<string> {
     const endInFlight = beginChokePoint('asset')
     try {
         let id = ''
@@ -749,6 +754,21 @@ async function saveAssetBytes(bytes: Uint8Array, customId: string, fileName: str
             return key
         }
         try {
+            // The bytes are whole and already hashed, so a large value goes straight to its final key: one put is one
+            // transaction, and a failed put keeps the previous value, so no temporary key is needed.
+            if (store.readBlob !== undefined && store.writeBlob !== undefined
+                && bytes.byteLength >= ASSET_PIECE_SAVE_MIN_BYTES && options.blobRefused !== true) {
+                try {
+                    // The Blob is built from the view itself, never its backing buffer, and copies the bytes at construction.
+                    await store.writeBlob(key, new Blob([bytes as Uint8Array<ArrayBuffer>]), 'unconditional')
+                    return key
+                } catch (error) {
+                    if (!(error instanceof StoreBlobUnsupportedError)) {
+                        throw error
+                    }
+                    // The browser keeps no Blob: every such save builds one copy and fails once before the bytes are stored below.
+                }
+            }
             await store.write(key, bytes, 'unconditional')
         } catch (error) {
             rethrowStorageFull(error, displayName)
@@ -1023,7 +1043,7 @@ export async function saveAssetFromBlob(blob: Blob, fileName: string = '', optio
         if (blob.size > WEB_ASSET_LIMIT_BYTES) {
             throw browserStorageTooLargeError(displayName === 'unnamed file' ? '' : displayName)
         }
-        return await saveAssetBytes(new Uint8Array(await blob.arrayBuffer()), '', fileName, displayName)
+        return await saveAssetBytes(new Uint8Array(await blob.arrayBuffer()), '', fileName, displayName, { blobRefused: true })
     }
     if (store.openWriter === undefined || blob.size < threshold) {
         return await saveAssetBytes(new Uint8Array(await blob.arrayBuffer()), '', fileName, displayName)
@@ -1069,7 +1089,7 @@ export async function saveAssetFromBlob(blob: Blob, fileName: string = '', optio
  * leaves the temporary key; on a `tauri` or `indexeddb` store2 page the asset sweep deletes it once two passes at least a
  * day apart found it, and until then a full backup exports it (a Node server keeps it; CHORE-836). An orphan of 100 MiB or more can appear by its raw key in the upstream-size prompt. After the final write, a value of
  * the right size, Blob or bytes, completes the save, so a concurrent same-content `saveAsset` that replaced the Blob with
- * bytes leaves both saves with a valid key. Only a Blob of the wrong size is deleted; an absent key, or bytes of another
+ * bytes or a Blob leaves both saves with a valid key. Only a Blob of the wrong size is deleted; an absent key, or bytes of another
  * size, end the save with an error and nothing is deleted.
  */
 async function saveAssetBlobKept(writeBlob: NonNullable<ByteStore['writeBlob']>, store: ByteStore, blob: Blob, fileName: string, displayName: string, pieceBytes: number): Promise<string | null> {
@@ -1128,8 +1148,8 @@ async function hashBlobBySlices(blob: Blob, pieceBytes: number): Promise<string>
 type FinalKeyState = 'complete' | 'wrong-blob' | 'wrong-bytes' | 'absent'
 
 /**
- * What `key` holds relative to `size`. A store writes one value per key, so a same-content `saveAsset` (bytes, no dedupe)
- * may have replaced the Blob: that value counts when its size is right. The branch without `readValue` exists only for a
+ * What `key` holds relative to `size`. A store writes one value per key, so a same-content `saveAsset` (no dedupe)
+ * may have replaced the Blob with bytes or a Blob: that value counts when its size is right. The branch without `readValue` exists only for a
  * store that offers `readBlob` alone (the browser store offers both); a `null` there is judged by `has` and never
  * reported as a wrong value.
  */
@@ -4220,9 +4240,10 @@ export class LocalWriter {
      * @param {string[]} [ext=['bin']] - The file extensions.
      * @param {string} [suggestedFileName] - A complete file name (with extension) offered as the download name on web and as the save dialog's default path on Tauri. Without it, the web name is `name.ext[0]` and the dialog suggests none.
      * @param {ExportCancelToken} [cancel] - The export's cancel switch; a cancel seen while the web writer opens aborts the new writer, and the caller's next checkpoint ends the export.
+     * @param {(fileName: string, cancel?: ExportCancelToken) => Promise<ExportByteWriter>} [openWriter] - Opens the writer of a non-desktop export in place of the browser download writer.
      * @returns {Promise<boolean>} - A promise that resolves to a boolean indicating success.
      */
-    async init(name = 'Binary', ext = ['bin'], suggestedFileName?: string, cancel?: ExportCancelToken): Promise<boolean> {
+    async init(name = 'Binary', ext = ['bin'], suggestedFileName?: string, cancel?: ExportCancelToken, openWriter?: (fileName: string, cancel?: ExportCancelToken) => Promise<ExportByteWriter>): Promise<boolean> {
         if (cancel) {
             this.useCancel(cancel)
         }
@@ -4241,7 +4262,8 @@ export class LocalWriter {
             return true
         }
         const fileName = suggestedFileName ?? name + '.' + ext[0]
-        this.writer = cancel ? await openWebExportWriter(fileName, cancel) : await openWebExportWriter(fileName)
+        const open = openWriter ?? openWebExportWriter
+        this.writer = cancel ? await open(fileName, cancel) : await open(fileName)
         if (cancel?.cancelled) {
             // The cancel came while the writer opened, before there was a writer to abort.
             this.abortInner()
@@ -4289,6 +4311,32 @@ export class LocalWriter {
     async write(data: Uint8Array): Promise<void> {
         this.cancel?.throwIfCancelled()
         await this.raced(this.writer.write(data))
+    }
+
+    /** Whether the opened writer can take an asset body by reference (`pinAsset`). */
+    get splices(): boolean {
+        return this.writer !== undefined && isSplicingWriter(this.writer)
+    }
+
+    /**
+     * Pins an asset on the server side of a splicing writer: its size, or `missing` when the server holds no such
+     * file. Call only where `splices` is true.
+     */
+    async pinAsset(key: string): Promise<{ size: number } | 'missing'> {
+        this.cancel?.throwIfCancelled()
+        if (!isSplicingWriter(this.writer)) {
+            throw new Error('The export writer cannot pin an asset.')
+        }
+        return await this.raced(this.writer.pinAsset(key))
+    }
+
+    /** Marks the end of the bytes written so far as the point where the pinned body is inserted. */
+    markSplice(): void {
+        this.cancel?.throwIfCancelled()
+        if (!isSplicingWriter(this.writer)) {
+            throw new Error('The export writer cannot splice an asset.')
+        }
+        this.writer.markSplice()
     }
 
     /**

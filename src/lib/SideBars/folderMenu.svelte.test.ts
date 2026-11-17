@@ -17,14 +17,16 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 import type { Database, folder } from 'src/ts/storage/database.svelte'
 import { DBState } from 'src/ts/stores.svelte'
 import { language } from 'src/lang'
-import { alertError } from 'src/ts/alert'
+import { alertError, alertInput } from 'src/ts/alert'
 import { runFolderMenu, type FolderMenuHost, type FolderMenuTarget } from './folderMenu'
 
 type TestCharacter = { chaId: string, name: string, trashTime?: number, hidden?: boolean }
 type OrderEntry = string | folder
 type OrderChange = Parameters<FolderMenuHost['applyOrderChange']>[0]
 
-const { world, checkCharOrderSpy, saveAssetSpy, selectSingleFileSpy, trashSpy, busyHandles, answers, offers, inputs, onOffer } = vi.hoisted(() => ({
+const { world, checkCharOrderSpy, saveAssetSpy, selectSingleFileSpy, trashSpy, busyHandles, answers, offers, inputs, onOffer, cancelAt } = vi.hoisted(() => ({
+    /** The prompt that answers with the cancel its caller offered: the select at this offer index, or the next input. Rejects when none was offered. */
+    cancelAt: { select: -1, input: false },
     world: { characters: [] as TestCharacter[] },
     checkCharOrderSpy: vi.fn(),
     saveAssetSpy: vi.fn(),
@@ -72,12 +74,20 @@ vi.mock(import('../../ts/characters'), () => ({
 }) as unknown as typeof import('../../ts/characters'))
 
 vi.mock(import('src/ts/alert'), () => ({
-    alertSelect: vi.fn(async (offered: string[]) => {
+    alertSelect: vi.fn(async (offered: string[], _display?: string, options?: { cancel?: string }) => {
         offers.push([...offered])
         onOffer.current?.(offered)
+        if (offers.length - 1 === cancelAt.select) {
+            return options?.cancel ?? Promise.reject(new Error('no cancel offered'))
+        }
         return answers.shift() ?? '99'
     }),
-    alertInput: vi.fn(async () => inputs.shift() ?? ''),
+    alertInput: vi.fn(async (_msg: string, _list?: unknown, _value?: string, options?: { cancel?: string }) => {
+        if (cancelAt.input) {
+            return options?.cancel ?? Promise.reject(new Error('no cancel offered'))
+        }
+        return inputs.shift() ?? ''
+    }),
     alertError: vi.fn(),
 }) as unknown as typeof import('src/ts/alert'))
 
@@ -141,6 +151,8 @@ beforeEach(() => {
     answers.length = 0
     offers.length = 0
     inputs.length = 0
+    cancelAt.select = -1
+    cancelAt.input = false
     onOffer.current = null
     busyHandles.length = 0
     for (const spy of [checkCharOrderSpy, saveAssetSpy, selectSingleFileSpy, trashSpy]) {
@@ -171,6 +183,75 @@ describe('1. the offered lists', () => {
         await runFolderMenu(targetOf('f'), makeHost().host)
         expect(offers[3]).toHaveLength(8)
         expect(offers[3][0]).toBe(language.sidebarUi.folderColorRed)
+    })
+})
+
+describe('1b. every prompt of the menu offers a cancel that changes nothing', () => {
+    function expectUntouched(state: ReturnType<typeof setupDb>, host: ReturnType<typeof makeHost>) {
+        expect(state.writes).toHaveLength(0)
+        expect(host.applyOrderChange).not.toHaveBeenCalled()
+        expect(host.closeFolder).not.toHaveBeenCalled()
+        expect(trashSpy).not.toHaveBeenCalled()
+        expect(selectSingleFileSpy).not.toHaveBeenCalled()
+        expect(saveAssetSpy).not.toHaveBeenCalled()
+    }
+
+    test('the top list: its cancel is its Cancel row', async () => {
+        const state = setupDb([fold('f', ['a'])], characters())
+        const host = makeHost()
+        cancelAt.select = 0
+        vi.mocked(alertInput).mockClear()
+        await runFolderMenu(targetOf('f'), host.host)
+        expectUntouched(state, host)
+        expect(offers).toHaveLength(1)
+        expect(alertInput).not.toHaveBeenCalled()
+    })
+
+    test('the delete list with members: its cancel is the last row, so nothing is trashed or ungrouped', async () => {
+        const state = setupDb([fold('f', ['a'])], characters())
+        const host = makeHost()
+        answers.push(TOP.del)
+        cancelAt.select = 1
+        await runFolderMenu(targetOf('f'), host.host)
+        expectUntouched(state, host)
+        expect(offers[1]).toHaveLength(3)
+    })
+
+    test('the delete list of an empty folder: its cancel is its second row', async () => {
+        const state = setupDb([fold('f', [])], characters())
+        const host = makeHost()
+        answers.push(TOP.del)
+        cancelAt.select = 1
+        await runFolderMenu(targetOf('f'), host.host)
+        expectUntouched(state, host)
+        expect(offers[1]).toHaveLength(2)
+    })
+
+    test('the rename input: its cancel keeps the name', async () => {
+        const state = setupDb([fold('f', ['a'])], characters())
+        const host = makeHost()
+        answers.push(TOP.rename)
+        cancelAt.input = true
+        await runFolderMenu(targetOf('f'), host.host)
+        expectUntouched(state, host)
+    })
+
+    test('the colour list: its cancel names no colour', async () => {
+        const state = setupDb([fold('f', ['a'])], characters())
+        const host = makeHost()
+        answers.push(TOP.colour)
+        cancelAt.select = 1
+        await runFolderMenu(targetOf('f'), host.host)
+        expectUntouched(state, host)
+    })
+
+    test('the picture list: its cancel resets nothing and opens no file picker', async () => {
+        const state = setupDb([fold('f', ['a'])], characters())
+        const host = makeHost()
+        answers.push(TOP.picture)
+        cancelAt.select = 1
+        await runFolderMenu(targetOf('f'), host.host)
+        expectUntouched(state, host)
     })
 })
 

@@ -6,6 +6,7 @@ import type { ModuleEntry } from '../storage/store2/format'
 import { sameEntryUnits, slotIsRecordedStub } from '../storage/store2/moduleStubMatch'
 import { getResidency } from '../storage/store2/residencyActive'
 import { ModuleAmbiguousError, ModuleLoadError } from '../storage/store2/moduleAcquire'
+import { MEASURE } from '../process/memory/measureFlag'
 
 /**
  * What a person is told about an unreadable module. `unreadable` claims no cause; `duplicate` states only that the id is
@@ -59,9 +60,35 @@ export interface ExportModuleSnapshot {
 }
 
 /** A slot of the list copy, with the stored entry its stub was recorded under at the call. */
+type PlannedStub = { kind: 'stub', slot: RisuModule, handle: string, entry: ModuleEntry }
 type PlannedSlot =
     | { kind: 'keep', slot: RisuModule }
-    | { kind: 'stub', slot: RisuModule, handle: string, entry: ModuleEntry }
+    | PlannedStub
+
+type ModuleRead = Awaited<ReturnType<NonNullable<ReturnType<typeof getResidency>>['readModule']>>
+
+/** One admitted read once it has ended: its answer, or what it rejected with. */
+type SettledRead =
+    | { ok: true, read: ModuleRead }
+    | { ok: false, error: unknown }
+
+/** The most module reads in flight at once; the stored bodies are held until the write anyway, so this adds only raw bytes. */
+export const MODULE_READ_PARALLELISM = 4
+
+const MODULE_READS_KNOB_KEY = 'risu-measure-export-module-reads'
+
+/**
+ * Measurement builds only (`MEASURE`): the reads in flight the stored knob names, an integer 1 to 4, read once per
+ * snapshot; `undefined` when the knob is absent, invalid or unreadable. 1 is the serial read.
+ */
+function moduleReadsKnob(): number | undefined {
+    try {
+        const raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(MODULE_READS_KNOB_KEY)
+        return raw !== null && /^[1-4]$/.test(raw) ? Number(raw) : undefined
+    } catch {
+        return undefined
+    }
+}
 
 function textOf(value: unknown): string {
     return typeof value === 'string' ? value : ''
@@ -115,8 +142,13 @@ export function assertNoForeignModuleStubs(modules: unknown, where: string): voi
  * Every stub's checks and its stored entry are settled in one synchronous phase before the first await, so they are the
  * state at the call: a stub that is not the recorded one, has no entry, or shares its id with another slot fails there
  * (`ExportModuleUnreadableError`), and a page with no residency keeps the stub for the live check to refuse. The reads
- * then run in order. An entry that moved after the call (a later save pass, or a removed entry) is `changed`, whether it
- * shows in the read or in the current entry afterwards; the other read failures keep their own reasons. The snapshot is
+ * are then admitted in list order, up to `MODULE_READ_PARALLELISM` at a time, and no read is admitted after one has
+ * failed. Every admitted read settles before anything is judged; the slots are then checked together in list order, so
+ * the first failing slot in list order is the one named. An entry that moved after the call (a later save pass, or a
+ * removed entry) is `changed`, whether it shows in the read or in the current entry afterwards: a stub's body is written
+ * only if its read entry and its current entry, checked after every admitted read has settled, both equal the entry
+ * recorded at the call. A move that lands after the last admitted read has settled is detected only if it lands before
+ * that check; the snapshot does not guarantee it. The other read failures keep their own reasons. The snapshot is
  * independent of later edits to the live list, so a module removed while the export runs is still written.
  */
 export async function snapshotModuleList(db: Database): Promise<ExportModuleSnapshot> {
@@ -149,6 +181,35 @@ export async function snapshotModuleList(db: Database): Promise<ExportModuleSnap
             throw new ExportModuleUnreadableError(slot.id, slot.name, error)
         }
     }
+    const stubs: PlannedStub[] = []
+    for (const one of planned) {
+        if (one.kind === 'stub') {
+            stubs.push(one)
+        }
+    }
+    const settled = new Map<PlannedStub, SettledRead>()
+    if (residency !== null && stubs.length > 0) {
+        const reader = residency
+        const parallelism = (MEASURE ? moduleReadsKnob() : undefined) ?? MODULE_READ_PARALLELISM
+        let next = 0
+        let failed = false
+        const lane = async (): Promise<void> => {
+            while (!failed && next < stubs.length) {
+                const one = stubs[next++]
+                try {
+                    const read = await reader.readModule(one.handle)
+                    settled.set(one, { ok: true, read })
+                    if (read.status === 'error' || !sameEntryUnits(read.entry, one.entry)) {
+                        failed = true
+                    }
+                } catch (error) {
+                    settled.set(one, { ok: false, error })
+                    failed = true
+                }
+            }
+        }
+        await Promise.all(Array.from({ length: Math.min(parallelism, stubs.length) }, lane))
+    }
     const modules: RisuModule[] = []
     for (const one of planned) {
         if (one.kind === 'keep' || residency === null) {
@@ -157,7 +218,15 @@ export async function snapshotModuleList(db: Database): Promise<ExportModuleSnap
         }
         const { slot, handle, entry } = one
         try {
-            const read = await residency.readModule(handle)
+            const outcome = settled.get(one)
+            if (outcome === undefined) {
+                // Admission is in list order, so a slot never admitted lies after a failed one that threw earlier in this walk.
+                throw new ModuleLoadError('unreadable', slot.id, entry.name)
+            }
+            if ('error' in outcome) {
+                throw outcome.error
+            }
+            const read = outcome.read
             if (read.status === 'error') {
                 // No entry after the call means the entry moved since; it is not a missing or damaged body.
                 const detail = read.error instanceof Error ? read.error.message : undefined

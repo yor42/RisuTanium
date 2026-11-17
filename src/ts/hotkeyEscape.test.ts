@@ -80,8 +80,8 @@ vi.mock(import('./process/index.svelte'), () => ({
 
 import { initHotkey } from './hotkey'
 import { alertStore, settingsOpen } from './stores.svelte'
-import { alertConfirm } from './alert'
-import { resetAlertPromptsForTests } from './alertPrompts'
+import { alertConfirm, alertInput, alertSelect } from './alert'
+import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from './alertPrompts'
 
 //#region helpers
 
@@ -298,6 +298,145 @@ describe('Escape with a text field focused', () => {
 
         expect.soft(shown(), 'the store').toBe(ask)
         expect.soft(get(settingsOpen), 'the settings panel').toBe(true)
+        expect.soft(key.defaultPrevented, 'the key was consumed').toBe(true)
+    })
+})
+
+describe('Escape on a select or input whose caller offered a cancel', () => {
+    interface Outcome {
+        settled: boolean
+        value?: string
+    }
+
+    function track(promise: Promise<string>): Outcome {
+        const outcome: Outcome = { settled: false }
+        void promise.then((value) => {
+            outcome.settled = true
+            outcome.value = value
+        })
+        return outcome
+    }
+
+    async function pastGuard(): Promise<void> {
+        await vi.advanceTimersByTimeAsync(ANSWER_GUARD_MS + 1)
+    }
+
+    test('a select is answered with its cancel after the answer guard and the key is consumed', async () => {
+        vi.useFakeTimers()
+        const out = track(alertSelect(['a', 'b'], undefined, { cancel: '-1' }))
+        await pastGuard()
+
+        const key = press(escapeKey())
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect.soft(out, 'the select').toEqual({ settled: true, value: '-1' })
+        expect.soft(shown().type, 'the store').toBe('none')
+        expect.soft(key.defaultPrevented, 'the key was consumed').toBe(true)
+    })
+
+    test('an input is answered with its cancel while a text field has focus', async () => {
+        vi.useFakeTimers()
+        const out = track(alertInput('Name?', [], '', { cancel: '' }))
+        await pastGuard()
+        const box = document.createElement('input')
+        box.type = 'text'
+        document.body.append(box)
+        box.focus()
+        expect(document.activeElement).toBe(box)
+
+        press(escapeKey(), box)
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect(out).toEqual({ settled: true, value: '' })
+    })
+
+    test('an Escape inside the answer guard does not answer, and a later one does', async () => {
+        vi.useFakeTimers()
+        const out = track(alertSelect(['a', 'b'], undefined, { cancel: '-1' }))
+        const prompt = shown()
+
+        const early = press(escapeKey())
+        await vi.advanceTimersByTimeAsync(0)
+        expect.soft(out.settled, 'the prompt after an early Escape').toBe(false)
+        expect.soft(shown(), 'the store after an early Escape').toBe(prompt)
+        expect.soft(early.defaultPrevented, 'the early key was consumed').toBe(true)
+
+        await pastGuard()
+        press(escapeKey())
+        await vi.advanceTimersByTimeAsync(0)
+        expect(out).toEqual({ settled: true, value: '-1' })
+    })
+
+    test('a repeated Escape and a composing Escape do not answer; only the composing one is left to the IME', async () => {
+        vi.useFakeTimers()
+        const out = track(alertSelect(['a', 'b'], undefined, { cancel: '-1' }))
+        await pastGuard()
+
+        const repeated = press(escapeKey({ repeat: true }))
+        await vi.advanceTimersByTimeAsync(0)
+        expect.soft(out.settled, 'after a repeated Escape').toBe(false)
+        expect.soft(repeated.defaultPrevented, 'the repeated key was consumed').toBe(true)
+
+        const box = document.createElement('input')
+        box.type = 'text'
+        document.body.append(box)
+        box.focus()
+        const composing = press(escapeKey({ isComposing: true }), box)
+        await vi.advanceTimersByTimeAsync(0)
+        expect.soft(out.settled, 'after a composing Escape').toBe(false)
+        expect.soft(composing.defaultPrevented, 'the composing key was not consumed').toBe(false)
+    })
+
+    test('a notice over the prompt is closed alone and the prompt returns pending', async () => {
+        vi.useFakeTimers()
+        const out = track(alertSelect(['a', 'b'], undefined, { cancel: '-1' }))
+        const prompt = shown()
+        await pastGuard()
+        alertStore.set({ type: 'normal', msg: 'Heads up' })
+
+        press(escapeKey())
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect.soft(out.settled, 'the prompt').toBe(false)
+        expect.soft(shown(), 'the store').toBe(prompt)
+    })
+
+    test('a foreign select carrying cancelAnswer is never answered, with or without a real prompt waiting', async () => {
+        vi.useFakeTimers()
+        const foreign: alertData = { type: 'select', msg: 'a||b', cancelAnswer: '-1' }
+        alertStore.set(foreign)
+        press(escapeKey())
+        await vi.advanceTimersByTimeAsync(ANSWER_GUARD_MS + 1)
+        press(escapeKey())
+        expect.soft(shown(), 'the store with no real prompt').toBe(foreign)
+
+        alertStore.set(NONE)
+        const real = track(alertSelect(['x', 'y'], undefined, { cancel: '-1' }))
+        const realShown = shown()
+        alertStore.set(foreign)
+        await pastGuard()
+        press(escapeKey())
+        await vi.advanceTimersByTimeAsync(0)
+        expect.soft(shown(), 'the store with a real prompt waiting').toBe(foreign)
+        expect.soft(real.settled, 'the real prompt').toBe(false)
+
+        alertStore.set(realShown)
+        press(escapeKey())
+        await vi.advanceTimersByTimeAsync(0)
+        expect(real).toEqual({ settled: true, value: '-1' })
+    })
+
+    test('guard: a select that is not opted in is consumed and left as it is', async () => {
+        vi.useFakeTimers()
+        const out = track(alertSelect(['a', 'b']))
+        const prompt = shown()
+        await pastGuard()
+
+        const key = press(escapeKey())
+        await vi.advanceTimersByTimeAsync(0)
+
+        expect.soft(out.settled, 'the select').toBe(false)
+        expect.soft(shown(), 'the store').toBe(prompt)
         expect.soft(key.defaultPrevented, 'the key was consumed').toBe(true)
     })
 })

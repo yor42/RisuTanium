@@ -32,7 +32,7 @@ export const SECRET_FIELDS = [
     { scope: 'database', field: 'proxyKey', class: 'resolved', stage: 1, reader: 'openAI requests/responses (reverse proxy)' },
     { scope: 'botPreset', field: 'openAIKey', class: 'resolved', stage: 1, reader: 'preset copy of db.openAIKey; blanked on preset import' },
     { scope: 'botPreset', field: 'proxyKey', class: 'resolved', stage: 1, reader: 'preset copy of db.proxyKey; blanked on preset import' },
-    { scope: 'database', field: 'claudeAPIKey', class: 'resolved', stage: 1, reader: 'anthropic (Bedrock: whole AKID:SECRET:region triple); modellist' },
+    { scope: 'database', field: 'claudeAPIKey', class: 'resolved', stage: 1, reader: 'anthropic (one key per line; Bedrock: one AKID:SECRET:region triple per line); modellist' },
     { scope: 'database', field: 'openrouterKey', class: 'resolved', stage: 1, reader: 'openAI requests (OpenRouter)' },
     { scope: 'database', field: 'nanogptKey', class: 'resolved', stage: 1, reader: 'openAI requests/responses (NanoGPT)' },
     { scope: 'database', field: 'mistralKey', class: 'resolved', stage: 1, reader: 'openAI requests (Mistral)' },
