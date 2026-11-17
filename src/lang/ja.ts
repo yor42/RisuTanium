@@ -3227,6 +3227,28 @@ export const languageJapanese = {
         }[reason]
         return `ファイルに何も書き込まれる前にバックアップを中止しました。モジュール「${name}」が${clause}`
     },
+    rtbExportButton: "RisuTanium バックアップを保存 (.rtb)",
+    rtbExportConfirm: (bin: string) =>
+        `RisuTanium バックアップ (.rtb) を保存しますか？復元できるのは RisuTanium だけです。データを RisuAI に移す場合は、代わりに「${bin}」を使用してください。`,
+    rtbExportRefusedReadOnly: (bin: string) =>
+        `このページは読み取り専用のため、.rtb バックアップを作成できません。代わりに「${bin}」で .bin バックアップを保存してください。`,
+    rtbExportUnavailable: (bin: string) =>
+        `このページでは .rtb バックアップを作成できません。代わりに「${bin}」で .bin バックアップを保存してください。`,
+    rtbExportProgressOpening: "バックアップファイルを準備しています…",
+    rtbExportProgressUnits: (count: number) => `チャット、キャラクター、設定を保存しています… (${count})`,
+    rtbExportProgressSide: "その他のアプリデータを保存しています…",
+    rtbExportProgressInlays: (done: number, total: number) => `チャットの画像、動画、音声を保存しています… (${done} / ${total})`,
+    rtbExportProgressAssets: (done: number, total: number) => `画像とファイルを保存しています… (${done} / ${total})`,
+    rtbExportProgressFinishing: "バックアップファイルを仕上げています…",
+    rtbExportSaved: "選択した場所にバックアップを保存しました。",
+    rtbExportUnsavedExcluded: (savedAt: string) =>
+        `最新の変更を先に保存できなかったため、このバックアップには含まれていません。${savedAt} に保存されていた内容が入っています。`,
+    rtbExportUnitsLeftOut: (count: number) =>
+        `保存済みの項目 ${count} 件（タスクプリセットまたは代替の返信）が破損していて読み取れなかったため、バックアップに含まれていません。`,
+    rtbExportAssetsLeftOut: (count: number, names: string[]) =>
+        `画像またはファイルのアセット ${count} 件を読み取れなかったため、バックアップに含まれていません。そのいずれかを使用するキャラクターでは、見つからない項目として表示されます。除外：\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
+    rtbExportSideLeftOut: (count: number) =>
+        `その他のアプリデータ ${count} 種類（プラグインデータ、検索データやメモリーデータ、設定など）を読み取れなかったため、バックアップに含まれていません。`,
     internalBackupUnreadable: "このバックアップは破損しているか不完全なため、読み込まれませんでした。現在のデータは変更されていません。",
     internalBackupWriteFailed: "バックアップを保存できませんでした。現在のデータは変更されていません。",
     internalBackupListFailed: "バックアップ一覧を読み取ることができませんでした。何も変更されていません。",

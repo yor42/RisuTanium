@@ -3091,6 +3091,28 @@ export const languageSpanish = {
         }[reason]
         return `La copia de seguridad se detuvo antes de que se escribiera nada en el archivo, porque el módulo "${name}" ${clause}`
     },
+    "rtbExportButton": "Guardar Respaldo de RisuTanium (.rtb)",
+    "rtbExportConfirm": (bin: string) =>
+        `¿Guardar un respaldo de RisuTanium (.rtb)? Solo RisuTanium puede restaurarlo. Para mover tus datos a RisuAI, usa "${bin}" en su lugar.`,
+    "rtbExportRefusedReadOnly": (bin: string) =>
+        `Esta página es de solo lectura, así que no puede crear un respaldo .rtb. Usa "${bin}" para guardar un respaldo .bin en su lugar.`,
+    "rtbExportUnavailable": (bin: string) =>
+        `Esta página no puede crear un respaldo .rtb. Usa "${bin}" para guardar un respaldo .bin en su lugar.`,
+    "rtbExportProgressOpening": "Preparando el archivo de respaldo...",
+    "rtbExportProgressUnits": (count: number) => `Guardando chats, personajes y ajustes... (${count})`,
+    "rtbExportProgressSide": "Guardando otros datos de la app...",
+    "rtbExportProgressInlays": (done: number, total: number) => `Guardando imágenes, video y audio de los chats... (${done} / ${total})`,
+    "rtbExportProgressAssets": (done: number, total: number) => `Guardando imágenes y archivos... (${done} / ${total})`,
+    "rtbExportProgressFinishing": "Finalizando el archivo de respaldo...",
+    "rtbExportSaved": "Respaldo guardado en la ubicación que elegiste.",
+    "rtbExportUnsavedExcluded": (savedAt: string) =>
+        `No se pudieron guardar antes tus últimos cambios, así que no están en este respaldo. Contiene lo que estaba guardado a las ${savedAt}.`,
+    "rtbExportUnitsLeftOut": (count: number) =>
+        `${count} elemento(s) guardado(s) (presets de tarea o respuestas alternativas) están dañados y no se pudieron leer, así que no están en el respaldo.`,
+    "rtbExportAssetsLeftOut": (count: number, names: string[]) =>
+        `${count} archivo(s) de recursos de imagen o archivo no se pudieron leer, así que no están en el respaldo. Un personaje que use uno de ellos lo mostrará como faltante. Omitidos:\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
+    "rtbExportSideLeftOut": (count: number) =>
+        `${count} tipo(s) de otros datos de la app (como datos de plugins, datos de búsqueda o memoria, o preferencias) no se pudieron leer, así que no están en el respaldo.`,
     "internalBackupUnreadable":"Esta copia de seguridad está dañada o incompleta, por lo que no se cargó. Tus datos actuales no se modificaron.",
     "internalBackupWriteFailed": "No se pudo guardar la copia de seguridad. Tus datos actuales no se modificaron.",
     "internalBackupListFailed": "No se pudo leer la lista de copias de seguridad. No se modificó nada.",
