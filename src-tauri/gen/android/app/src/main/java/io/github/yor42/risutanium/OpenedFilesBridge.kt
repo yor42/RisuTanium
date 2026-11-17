@@ -16,12 +16,12 @@ import org.json.JSONObject
 // takeHeld() on its worker thread and confirm() when the page acknowledges. The queue is
 // process-wide: a file that arrives before the page exists, or before first setup is done, waits
 // here until the page takes it (legacy) or confirms it (channel), so a batch the page never
-// confirmed is offered again. The main thread only enqueues URIs; the display names are resolved
-// in take() or takeHeld(), off the main thread, so a slow provider never blocks the UI. Nothing
-// here filters by file name: the page decides what is importable.
+// confirmed is offered again. The main thread only enqueues URIs; the display names and MIME types
+// are resolved in take() or takeHeld(), off the main thread, so a slow provider never blocks the UI.
+// Nothing here filters by file name or type: the page decides what is importable.
 class OpenedFilesBridge(private val resolver: ContentResolver) {
   // Returns every queued batch (one per intent that carried content URIs) as
-  // [[{uri, name}]] and empties the queue; "[]" when nothing waits.
+  // [[{uri, name, type}]] and empties the queue; "[]" when nothing waits.
   @JavascriptInterface
   fun take(): String = batchesJson(queue.takeAll())
 
@@ -44,7 +44,12 @@ class OpenedFilesBridge(private val resolver: ContentResolver) {
     for (batch in batches) {
       val entries = JSONArray()
       for (uri in batch) {
-        entries.put(JSONObject().put("uri", uri.toString()).put("name", displayName(uri)))
+        entries.put(
+          JSONObject()
+            .put("uri", uri.toString())
+            .put("name", displayName(uri))
+            .put("type", mimeType(uri))
+        )
       }
       result.put(entries)
     }
@@ -68,6 +73,17 @@ class OpenedFilesBridge(private val resolver: ContentResolver) {
       Log.w("OpenedFilesBridge", "display name query failed", error)
     }
     return uri.lastPathSegment ?: ""
+  }
+
+  // The provider's MIME type for the URI, which the page uses when the name has no usable suffix;
+  // empty when the provider gives none or fails the query.
+  private fun mimeType(uri: Uri): String {
+    try {
+      return resolver.getType(uri) ?: ""
+    } catch (error: Exception) {
+      Log.w("OpenedFilesBridge", "mime type query failed", error)
+      return ""
+    }
   }
 
   // The queue is shared by every bridge instance, so a recreated WebView finds what its

@@ -555,11 +555,11 @@ describe('import of complete charx and jpg-charx archives (compatibility guard)'
         }
     })
 
-    test.each([['card.jpg'], ['card.jpeg']])('a plain JPEG named %s gives noData and saves nothing', async (name) => {
+    test.each([['card.jpg'], ['card.jpeg']])('a plain JPEG named %s is refused as not a card file and saves nothing', async (name) => {
         for (const input of ['file', 'uint8array', 'stream'] as const) {
             reset()
             const out = await runImport(JPEG_HEAD, name, input)
-            expect(out.errors, input).toEqual([language.errors.noData])
+            expect(out.errors, input).toEqual([language.importNotCardFile])
             expect(out.saveCalls, input).toBe(0)
             expect(out.characters, input).toEqual([])
         }
@@ -631,16 +631,16 @@ describe('import of cut charx archives (regression reproducer)', () => {
         expect(lastLog(out)).toBe('error:' + language.cardFileIncomplete)
     })
 
-    test('a jpg-charx cut inside an entry is refused as an incomplete file only for a .charx name, and as noData for a .jpg name', async () => {
+    test('a jpg-charx cut inside an entry is refused as an incomplete file only for a .charx name, and as not a card file for a .jpg name', async () => {
         const z = await writerArchive(cardEntries(), 6, { prefix: JPEG_HEAD })
         const g = geometry(z, JPEG_HEAD.length)
         const e = entryOf(g, 'assets/b.bin')
         const cut = z.subarray(0, e.dataStart + 100)
         expectRefusedBeforeSaving(await runImport(cut, 'card.charx', 'file'), '.charx name')
         reset()
-        expectRefusedBeforeSaving(await runImport(cut, 'card.jpg', 'uint8array'), '.jpg name', language.errors.noData)
+        expectRefusedBeforeSaving(await runImport(cut, 'card.jpg', 'uint8array'), '.jpg name', language.importNotCardFile)
         reset()
-        expectRefusedBeforeSaving(await runImport(cut, 'card.jpeg', 'file'), '.jpeg name', language.errors.noData)
+        expectRefusedBeforeSaving(await runImport(cut, 'card.jpeg', 'file'), '.jpeg name', language.importNotCardFile)
     })
 
     test('an input with no end record at all is refused as an incomplete file for a .charx name', async () => {
