@@ -3473,6 +3473,17 @@ export const languageChineseTraditional = {
     "store2ImportUnconfirmed": "RisuTanium 無法確認備份是否已匯入。無論哪種情況，您之前的資料都會保留。請重新載入頁面，查看正在使用的是哪一份。",
     "store2ImportNotFlushed": "備份已匯入，但裝置未確認已將其寫入磁碟。應用程式現在會重新載入，並在啟動時完成寫入。",
     "store2ImportDone": "備份已匯入。您之前的資料保留在較早儲存的版本清單中，並會像其他版本一樣隨時間被清理。正在重新整理應用程式。",
+    "rtbRestoreNeedsStore2": "此頁面未使用 RisuTanium 目前的儲存方式，因此無法在此還原 .rtb 備份。未還原任何內容。",
+    "rtbRestoreNotRtb": "此檔案不是 RisuTanium 的 .rtb 備份，因此未還原任何內容。您目前的資料沒有變更。",
+    "rtbRestoreEncrypted": "此 .rtb 備份已加密，而此版本無法開啟加密的備份，因此未還原任何內容。您目前的資料沒有變更。",
+    "rtbRestoreDamaged": "此 .rtb 備份已損毀或不完整，因此未還原任何內容。您目前的資料沒有變更。",
+    "rtbRestoreNewer": (item: string) =>
+        `此 .rtb 備份由較新版本的 RisuTanium 建立，需要 ${item}，而此版本無法讀取，因此未還原任何內容。請更新應用程式後再試一次。您目前的資料沒有變更。`,
+    "rtbRestoreTargetNewerConfirm": (targetSaved: string, backupTime: string, exportedAt: string | null, device: string) =>
+        `您目前的資料儲存於 ${targetSaved}，晚於此備份（${backupTime}${exportedAt === null ? '' : `；檔案建立於 ${exportedAt}`}）。此備份來自裝置「${device}」。還原後，您目前的資料會被較舊的備份取代。您現在的資料會保留在較早儲存的版本清單中，並會像其他版本一樣隨時間被清理。是否繼續？`,
+    "rtbRestoreUncreatableConfirm": (count: number, names: string[]) =>
+        `此備份中有 ${count} 個資源檔案的名稱無法在此應用程式的儲存空間中建立，因此無法在此還原。使用其中任何一個的角色會將其顯示為缺失。是否不還原它們而繼續？\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "rtbRestoreChecking": (percent: number) => `正在檢查備份... (${percent}%)`,
     "coldStorageCleanupDateUnknown": "日期未知",
     "coldStorageCleanupKeptConfirm": (dates: string) =>
         `在用備份取代已損毀的已儲存資料時，資料的較舊已儲存副本被保留下來，而沒有被刪除（建立於 ${dates}）。僅被它們使用的圖片和封存資料仍受保護，因此只要這些副本存在，就無法執行清理。\n\n是否刪除這些較舊的副本，然後進行清理？刪除後無法復原。選擇「取消」則保留它們，此時不會執行清理。`,

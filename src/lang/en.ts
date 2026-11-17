@@ -3570,6 +3570,17 @@ export const languageEnglish = {
     store2ImportUnconfirmed: "RisuTanium could not confirm whether the backup was imported. Your earlier data is kept either way. Reload the page to see which one is in use.",
     store2ImportNotFlushed: "The backup was imported, but the device did not confirm that it was written to disk. The app reloads now and finishes writing it when it starts.",
     store2ImportDone: "The backup was imported. The data you had before is kept in the list of earlier saved versions, where it ages out like any other. Refreshing your app.",
+    rtbRestoreNeedsStore2: "This page is not using RisuTanium's current storage, so a .rtb backup cannot be restored here. Nothing was restored.",
+    rtbRestoreNotRtb: "This file is not a RisuTanium .rtb backup, so nothing was restored. Your current data was not changed.",
+    rtbRestoreEncrypted: "This .rtb backup is encrypted, and this version cannot open an encrypted backup, so nothing was restored. Your current data was not changed.",
+    rtbRestoreDamaged: "This .rtb backup is damaged or incomplete, so nothing was restored. Your current data was not changed.",
+    rtbRestoreNewer: (item: string) =>
+        `This .rtb backup was made by a newer version of RisuTanium and needs ${item}, which this version cannot read, so nothing was restored. Update the app and try again. Your current data was not changed.`,
+    rtbRestoreTargetNewerConfirm: (targetSaved: string, backupTime: string, exportedAt: string | null, device: string) =>
+        `Your current data was saved at ${targetSaved}, which is later than this backup (${backupTime}${exportedAt === null ? '' : `; the file was made at ${exportedAt}`}). The backup came from the device "${device}". Restoring it replaces your current data with the older backup. The data you have now is kept in the list of earlier saved versions, where it ages out like any other. Continue?`,
+    rtbRestoreUncreatableConfirm: (count: number, names: string[]) =>
+        `${count} asset file(s) in this backup have names this app's storage cannot create, so they cannot be restored here. A character that uses one of them will show it as missing. Continue without them?\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    rtbRestoreChecking: (percent: number) => `Checking the backup... (${percent}%)`,
     coldStorageCleanupDateUnknown: "date unknown",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `When a damaged save was replaced from a backup, the older saved copies of your data were set aside instead of being deleted (created ${dates}). Images and archived data that only they use are still protected, so the cleanup cannot run while they exist.\n\nDelete these older copies and then clean up? They cannot be recovered. Choose Cancel to keep them; the cleanup then does not run.`,

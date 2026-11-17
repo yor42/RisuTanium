@@ -3571,6 +3571,17 @@ export const languageJapanese = {
     store2ImportUnconfirmed: "RisuTaniumはバックアップがインポートされたか確認できませんでした。いずれにしても以前のデータは保持されます。ページを再読み込みしてどちらが使用中か確認してください。",
     store2ImportNotFlushed: "バックアップはインポートされましたが、端末からディスクへの書き込み完了が確認できませんでした。アプリを今すぐ再読み込みし、起動時に書き込みを完了します。",
     store2ImportDone: "バックアップがインポートされました。以前お持ちだったデータは以前の保存バージョン一覧に保持され、他のバージョンと同様に古いものから順に削除されます。アプリを再読み込みしています。",
+    rtbRestoreNeedsStore2: "このページはRisuTaniumの現在のストレージを使用していないため、ここでは.rtbバックアップを復元できません。何も復元されませんでした。",
+    rtbRestoreNotRtb: "このファイルはRisuTaniumの.rtbバックアップではないため、何も復元されませんでした。現在のデータは変更されていません。",
+    rtbRestoreEncrypted: "この.rtbバックアップは暗号化されており、このバージョンでは暗号化されたバックアップを開けないため、何も復元されませんでした。現在のデータは変更されていません。",
+    rtbRestoreDamaged: "この.rtbバックアップは破損しているか不完全なため、何も復元されませんでした。現在のデータは変更されていません。",
+    rtbRestoreNewer: (item: string) =>
+        `この.rtbバックアップは新しいバージョンのRisuTaniumで作成されており、${item}が必要ですが、このバージョンでは読み取れないため、何も復元されませんでした。アプリを更新してもう一度お試しください。現在のデータは変更されていません。`,
+    rtbRestoreTargetNewerConfirm: (targetSaved: string, backupTime: string, exportedAt: string | null, device: string) =>
+        `現在のデータは${targetSaved}に保存されており、このバックアップ（${backupTime}${exportedAt === null ? '' : `；ファイル作成日時：${exportedAt}`}）より新しいものです。このバックアップは端末「${device}」のものです。復元すると、現在のデータは古いバックアップに置き換えられます。現在お持ちのデータは以前の保存バージョン一覧に保持され、他のバージョンと同様に古いものから順に削除されます。続行しますか？`,
+    rtbRestoreUncreatableConfirm: (count: number, names: string[]) =>
+        `このバックアップ内のアセットファイル ${count} 件は、このアプリのストレージで作成できない名前のため、ここでは復元できません。そのいずれかを使用するキャラクターでは、見つからない項目として表示されます。これらを除いて続行しますか？\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
+    rtbRestoreChecking: (percent: number) => `バックアップを確認しています… (${percent}%)`,
     coldStorageCleanupDateUnknown: "日付不明",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `破損した保存データをバックアップから置き換えた際、古いデータの保存コピーは削除されずに退避されました（作成日時：${dates}）。それらのみが使用している画像やアーカイブデータは保護されたままとなるため、それらが存在する間はクリーンアップを実行できません。\n\nこれらの古いコピーを削除してクリーンアップを実行しますか？これらは復元できません。保持する場合は「キャンセル」を選択してください。その場合、クリーンアップは実行されません。`,
