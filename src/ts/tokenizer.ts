@@ -10,6 +10,7 @@ import { pluginV2 } from "./plugins/plugins.svelte";
 import type { GemmaTokenizer } from "@huggingface/transformers";
 import { LRUMap } from 'mnemonist';
 import { resolveSecret } from "./secretRef";
+import { currentKey } from "./process/request/secretKey";
 
 const MAX_CACHE_SIZE = 1500;
 
@@ -228,7 +229,7 @@ async function tokenizeGoogleCloud(text:string) {
 
     let apiKey: string
     try {
-        apiKey = await resolveSecret(db.google?.accessToken)
+        apiKey = await resolveSecret(currentKey('google.accessToken', db))
     } catch (error) {
         // An unresolvable reference sends nothing; counting falls back to the local tokenizer like any failed request.
         console.error('Gemini token count key', error)
@@ -303,7 +304,7 @@ async function geminiTokenizer(text:string) {
     const db = getDatabase()
     let apiKey: string
     try {
-        apiKey = await resolveSecret(db.google.accessToken)
+        apiKey = await resolveSecret(currentKey('google.accessToken', db))
     } catch (error) {
         // An unresolvable reference sends nothing; counting falls back to the local tokenizer like any failed request.
         console.error('Gemini token count key', error)

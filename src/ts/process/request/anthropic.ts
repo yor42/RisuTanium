@@ -16,7 +16,7 @@ import type { RPCToolCallContent } from "../mcp/mcplib"
 import type { RequestDataArgumentExtended, requestDataResponse, StreamResponseChunk } from './request'
 import { abortedResult, beginToolRound, gateResult, refusedToolContent, runAborted, toolBlockGate } from './toolLoop'
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters } from './shared'
-import { resolveRequestKey } from './secretKey'
+import { limitedField, sendArgKey, sendKeyLine } from './secretKey'
 import { isSecretRef } from 'src/ts/secretRef'
 
 interface Claude3TextBlock {
@@ -81,8 +81,10 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
     const useStreaming = arg.useStreaming
     const ollamaCloudAnthropic = aiModel === 'ollama-cloud'
     let replacerURL = arg.customURL ?? ('https://api.anthropic.com/v1/messages')
-    // Resolved once, whole: a Bedrock key is the AKID:SECRET:region triple and is split after resolution.
-    let apiKey = await resolveRequestKey(arg, arg.key || ((aiModel === 'reverse_proxy') ? db.proxyKey : db.claudeAPIKey))
+    // One line of the field, resolved whole: a Bedrock key line is the AKID:SECRET:region triple and is split after resolution.
+    let apiKey = arg.key
+        ? await sendArgKey(arg)
+        : await sendKeyLine(arg, (aiModel === 'reverse_proxy') ? 'proxyKey' : 'claudeAPIKey')
     const maxTokens = arg.maxTokens
     if(aiModel === 'reverse_proxy' && db.autofillRequestUrl){
         if(replacerURL.endsWith('v1')){
@@ -512,7 +514,8 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
         if(!res.ok){
             return {
                 type: 'fail',
-                result: JSON.stringify(res.data)
+                result: JSON.stringify(res.data),
+                keyLimited: limitedField(arg, res.status)
             }
         }
         if(res.data.error){
@@ -666,7 +669,8 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
             })
             return {
                 type: 'fail',
-                result: responseText
+                result: responseText,
+                keyLimited: limitedField(arg, resp.status)
             }
         }
 
@@ -932,7 +936,8 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
         if(res.status !== 200){
             return {
                 type: 'fail',
-                result: await textifyReadableStream(res.body)
+                result: await textifyReadableStream(res.body),
+                keyLimited: limitedField(arg, res.status)
             }
         }
         let breakError = ''
@@ -1106,7 +1111,8 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
         return {
             type: 'fail',
             result: stringlified,
-            failByServerError: stringlified?.toLocaleLowerCase()?.includes('overload')
+            failByServerError: stringlified?.toLocaleLowerCase()?.includes('overload'),
+            keyLimited: limitedField(arg, res.status)
         }
     }
     if(res.data.error){

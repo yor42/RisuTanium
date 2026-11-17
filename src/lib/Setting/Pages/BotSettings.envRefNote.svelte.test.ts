@@ -42,6 +42,10 @@ vi.mock(import('src/ts/platform'), () => ({
     isNodeServer: false,
 }) as unknown as typeof import('src/ts/platform'))
 
+vi.mock(import('src/ts/process/request/secretKey'), () => ({
+    currentKey: vi.fn(() => ''),
+}) as unknown as typeof import('src/ts/process/request/secretKey'))
+
 vi.mock(import('src/ts/util'), () => ({
     selectSingleFile: vi.fn(),
 }) as unknown as typeof import('src/ts/util'))
