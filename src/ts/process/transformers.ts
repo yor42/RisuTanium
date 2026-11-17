@@ -16,11 +16,14 @@ async function initTransformers() {
     }
     const { env } = await import('@huggingface/transformers');
     tfCache = await caches.open('tfCache')
+    // Cache-key namespace only: tfCache entries written while this host answered, and imported-model tfMap keys, are keyed under this path, and
+    // it is never fetched because local models are disabled below.
     env.localModelPath = "https://sv.risuai.xyz/transformers/"
     env.useBrowserCache = false
     env.useFSCache = false
     env.useCustomCache = true
-    env.allowLocalModels = true
+    // Only env.remoteHost (huggingface.co) is fetched for a file that no cache holds.
+    env.allowLocalModels = false
     env.customCache = {
         put: async (url: URL | string, response: Response) => {
             await tfCache.put(url, response)

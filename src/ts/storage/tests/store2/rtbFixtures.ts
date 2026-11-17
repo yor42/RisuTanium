@@ -1,4 +1,13 @@
 import { crc32 } from 'src/ts/storage/blockFrame'
+import type { ExportCancelToken } from 'src/ts/exportCancel'
+import type { ExportableInlay } from 'src/ts/drive/inlayBackupExport'
+import type { RtbExportDeps } from 'src/ts/drive/rtbExport'
+import { parseStoreBlockName } from 'src/ts/drive/rtb/entryNames'
+import { decodeBlock } from 'src/ts/drive/rtb/unitBlocks'
+import { readDirectory, readEntry } from 'src/ts/drive/rtb/zip64Reader'
+import type { ByteStore } from 'src/ts/storage/store/contract'
+import { IRIS_STORE } from 'src/ts/drive/rtb/sideStoreConfig'
+import { rangeSourceOfBytes } from 'src/ts/drive/tests/rtb/sparseSource'
 import { createMemoryBackend, type MemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
 import { assembleDatabase, encodeDatabase, type EncodedTree } from 'src/ts/storage/store2/codec'
 import type { AssembleOptions } from 'src/ts/storage/store2/codec/assemble'
@@ -351,4 +360,187 @@ export function reachedTails(world: RtbWorld): Set<string> {
         }
     }
     return tails
+}
+
+// ---- the `.rtb` export core (CHORE-128 S8) ----
+
+/** Every entry of an `.rtb` file by name, read with the product reader (a directory finding fails the call). */
+export async function readRtbFile(bytes: Uint8Array): Promise<Map<string, Uint8Array>> {
+    const source = rangeSourceOfBytes(bytes)
+    const walk = await readDirectory(source)
+    if (walk.findings.length > 0 || !walk.index) {
+        throw new Error(`the file's directory is not readable: ${walk.findings.map(finding => finding.code).join(', ')}`)
+    }
+    const files = new Map<string, Uint8Array>()
+    for (let i = 0; i < walk.index.count; i++) {
+        const parts: Uint8Array[] = []
+        const read = await readEntry(source, walk.index, i, chunk => { parts.push(chunk.slice()) })
+        if (!read.ok) {
+            throw new Error(`the entry ${walk.index.entry(i).name} does not read`)
+        }
+        const out = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0))
+        let at = 0
+        for (const part of parts) {
+            out.set(part, at)
+            at += part.length
+        }
+        files.set(walk.index.entry(i).name, out)
+    }
+    return files
+}
+
+/** The store2 frames the file carries, by tail, decoded from its `u/` blocks. */
+export function framesOfRtbFile(files: ReadonlyMap<string, Uint8Array>): Map<string, Uint8Array> {
+    const frames = new Map<string, Uint8Array>()
+    for (const [name, bytes] of files) {
+        if (parseStoreBlockName(name) === null) {
+            continue
+        }
+        const block = decodeBlock(bytes)
+        if (block.kind !== 'ok') {
+            throw new Error(`the block ${name} is damaged: ${block.reason}`)
+        }
+        for (const unit of block.units) {
+            frames.set(unit.tail, unit.frame)
+        }
+    }
+    return frames
+}
+
+export function rtbManifestOf(files: ReadonlyMap<string, Uint8Array>): {
+    createdAt: number
+    source: { device: { label: string, platform: string }, committedAt: number, unsavedExcluded: boolean }
+    sections: { id: string, entries: number, meta?: { root: [string, number, number], refs: string[], units: number, req: string[] } }[]
+    omitted: { kind: string, name: string, reason: string }[]
+} {
+    return JSON.parse(new TextDecoder().decode(files.get('manifest.json')))
+}
+
+/** The `LocalWriter` of a test: it keeps what it was given, applies the cancel switch like the real one, and can fail on a chosen write or on close. */
+export class FakeLocalWriter {
+    readonly chunks: Uint8Array[] = []
+    writes = 0
+    closes = 0
+    aborts = 0
+    /** What the shell sees as the opened writer: a stream (`kept` after a failure), a memory writer (`untouched`) or a file writer a test supplies (`deleted`). */
+    readonly writer: { write(chunk: Uint8Array): Promise<void>, close(): Promise<void>, abort?: () => Promise<void>, heldInMemory?: boolean }
+
+    constructor(
+        private readonly options: { held?: 'stream' | 'memory', file?: { write(chunk: Uint8Array): Promise<void>, close(): Promise<void> }, failWriteNumber?: number, failClose?: boolean } = {},
+        /** The run's cancel switch; `rtbDeps` ties it when the writer is opened. */
+        public cancel?: ExportCancelToken,
+    ) {
+        this.writer = options.file ?? {
+            write: async () => { },
+            close: async () => { },
+            abort: async () => { this.aborts++ },
+            heldInMemory: options.held === 'memory',
+        }
+    }
+
+    async write(chunk: Uint8Array): Promise<void> {
+        this.cancel?.throwIfCancelled()
+        if (this.closes > 0) {
+            // A download writer builds its file at close; a byte that arrives later is lost without an error of its own.
+            throw new Error('a chunk was written after the writer was closed')
+        }
+        this.writes++
+        if (this.options.failWriteNumber === this.writes) {
+            throw new Error('the disk is full')
+        }
+        this.chunks.push(chunk.slice())
+    }
+
+    async close(): Promise<void> {
+        this.cancel?.throwIfCancelled()
+        this.closes++
+        if (this.options.failClose === true) {
+            throw new Error('the file could not be completed')
+        }
+    }
+
+    bytes(): Uint8Array {
+        const out = new Uint8Array(this.chunks.reduce((sum, chunk) => sum + chunk.length, 0))
+        let at = 0
+        for (const chunk of this.chunks) {
+            out.set(chunk, at)
+            at += chunk.length
+        }
+        return out
+    }
+}
+
+/** A byte store of fixed files: only the calls the export makes (`list`, `read`). */
+export function fakeAssetStore(files: Readonly<Record<string, Uint8Array>>): ByteStore {
+    return {
+        list: async (prefix: string) => Object.keys(files).filter(key => key.startsWith(prefix)),
+        read: async (key: string) => ({ bytes: key in files ? files[key] : null }),
+    } as unknown as ByteStore
+}
+
+export interface RtbDepsOptions {
+    backend: Store2Backend
+    env: KeyEnv
+    /** Store files by key (`assets/...`). */
+    files?: Readonly<Record<string, Uint8Array>>
+    /** Inlay copies by id, held by the app store or by the old store. */
+    appInlays?: Readonly<Record<string, ExportableInlay>>
+    oldInlays?: Readonly<Record<string, ExportableInlay>>
+    /** Records of the iris side store. */
+    iris?: Readonly<Record<string, unknown>>
+    writer?: FakeLocalWriter
+    over?: Partial<RtbExportDeps>
+}
+
+export const RTB_TEST_CLOCK = 1_800_000_000_000
+
+/** Dependencies of `runRtbExportGuarded` over the world's backend and fake stores. Only the stores, the writer and the platform are fake. */
+export function rtbDeps(options: RtbDepsOptions): { deps: RtbExportDeps, writer: FakeLocalWriter } {
+    const writer = options.writer ?? new FakeLocalWriter()
+    const store = fakeAssetStore(options.files ?? {})
+    const appInlays = options.appInlays ?? {}
+    const oldInlays = options.oldInlays ?? {}
+    const iris = options.iris ?? {}
+    const deps: RtbExportDeps = {
+        pageMode: () => ({ kind: 'store2' }),
+        opfsTransitional: async () => false,
+        session: () => ({ committer: {} as never, backend: options.backend }),
+        openWriter: async (session) => {
+            writer.cancel = session.cancel
+            const opened = writer as never
+            session.writer = opened
+            return opened
+        },
+        saveFirst: async () => { },
+        isSaveClean: () => true,
+        moduleVerdicts: () => [],
+        store: async () => store,
+        sideBackends: {
+            forage: config => ({
+                ready: async () => { },
+                keys: async () => config === IRIS_STORE ? Object.keys(iris) : [],
+                getItem: async (key: string) => config === IRIS_STORE && key in iris ? iris[key] : null,
+            }) as never,
+            local: () => ({ length: 0, key: () => null, getItem: () => null }) as never,
+        },
+        assets: {
+            listSized: async () => null,
+            readBatch: async keys => keys.map(() => ({ status: 'large' as const })),
+            readerLimits: {},
+            pieceSource: async () => null,
+        },
+        inlays: {
+            legacyKeys: async () => Object.keys(oldInlays),
+            appIds: async () => Object.keys(appInlays),
+            open: async (_store, id, _streaming, fromApp) => (fromApp ? appInlays : oldInlays)[id] ?? null,
+            withLock: (_id, work) => work(),
+            options: async () => ({ streaming: false }),
+        },
+        writerInfo: { app: 'risutanium', version: '0.0.0-test', build: 'test' },
+        platform: () => ({ platform: 'web', label: 'Browser' }),
+        clock: () => RTB_TEST_CLOCK,
+        keyEnv: options.env,
+        ...options.over,
+    }
+    return { deps, writer }
 }
