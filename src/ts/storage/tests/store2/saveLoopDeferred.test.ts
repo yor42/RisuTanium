@@ -12,7 +12,7 @@ import { afterEach, describe, expect, test } from 'vitest'
 import { moduleStubOf } from '../../store2/moduleStubMatch'
 import type { ModuleStubLoad } from '../../store2/saveActive'
 import { createSaveEncoder, type SaveEncoder, type SavePassRequest } from '../../store2/saveEncoder'
-import { runStore2SaveLoop, type IdleNetOptions, type Store2LoopPort } from '../../store2/saveLoop'
+import { runStore2SaveLoop, type IdleNetOptions, type ModuleHold, type Store2LoopPort } from '../../store2/saveLoop'
 import type { Committer } from '../../store2/commit'
 import type { Database } from '../../database.svelte'
 import type { toSaveType } from '../../risuSave'
@@ -68,6 +68,8 @@ interface Run {
     sweepOwed: boolean
     /** How many coming `saved` notices throw, as a failed hand-off after a landed commit does. */
     savedThrows: number
+    /** The module hold each `saved` notice carried. */
+    holds: ModuleHold[]
     /** Marks the modules dirty and asks for a pass, as an edit does. */
     mark(): void
     /** Puts the full body back into the stub's slot, as a finished load does. */
@@ -127,7 +129,7 @@ async function startRun(options: StartOptions = {}): Promise<Run> {
         state: { due: false, dirty: false, saved: 0, begun: 0, ended: 0 },
         failures: [], uncounted: [], sleeps: [], requests, valveCalls,
         valve: () => ({ kind: 'loaded' }),
-        commits: 0, reads: 0, crashed: [], heard: false, landed: 0, commitHold: null, sweepOwed: false, savedThrows: 0,
+        commits: 0, reads: 0, crashed: [], heard: false, landed: 0, commitHold: null, sweepOwed: false, savedThrows: 0, holds: [],
         mark() {
             run.tracker.modules = true
             run.state.dirty = true
@@ -208,7 +210,8 @@ async function startRun(options: StartOptions = {}): Promise<Run> {
             run.state.due = true
         },
         unsavable: () => {},
-        saved() {
+        saved(hold) {
+            run.holds.push(hold)
             if (run.savedThrows > 0) {
                 run.savedThrows -= 1
                 throw new Error('The saved notice failed.')
@@ -578,6 +581,20 @@ describe('c699 a hidden page saves past an open module question (MC-1233)', () =
         expect(run.peer.edited).toEqual([])
         expect(run.state.dirty).toBe(true)
         expect(run.tracker.modules).toBe(true)
+        gate.settle()
+    })
+
+    test('T1c the pass that saved past the open question reports the modules as carried whole, with no module of its own at fault', async () => {
+        const hidden = { value: false }
+        const run = await startRun({ hidden })
+        const gate = gateOf()
+        run.valve = () => ({ kind: 'deferred', settled: gate.promise })
+        run.mark()
+        await until(() => run.valveCalls.length === 1, 'the visible deferred pass')
+        hidden.value = true
+        editCharacter(run, 'saved while hidden')
+        await until(() => run.holds.length >= 1, 'the saved notice of the hidden pass')
+        expect(run.holds[0]).toEqual({ carriedWhole: true, faultIds: [] })
         gate.settle()
     })
 
