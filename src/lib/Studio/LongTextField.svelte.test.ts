@@ -10,6 +10,7 @@ import { checkCbs } from '../../ts/studio/longText/cbsCheck'
 import { setUpdateClockForTests, tokenSpans, WINDOW_LIMIT } from '../../ts/studio/longText/highlightSpans'
 import { createMacroIndex, type MacroEntry, type MacroIndex } from '../../ts/studio/longText/macroIndex'
 import { loadMacroIndex, setMacroIndexForTests } from '../../ts/studio/longText/macroIndexService'
+import { LT_TEXT_LAYOUT } from '../../ts/studio/longText/overlayMetrics'
 import type { TokenResult } from '../../ts/studio/longText/tokenCount'
 import { tokenChipView } from '../../ts/studio/longText/tokenChip'
 import { setTokenCounterForTests } from '../../ts/studio/longText/tokenService'
@@ -1689,5 +1690,172 @@ describe('C2 the macro picker', () => {
         await typeOpen(area, '{{')
         for (const app of mounted.splice(0)) await unmount(app)
         expect(document.querySelector('[data-part="studio-lt-picker"]')).toBeNull()
+    })
+})
+
+describe('CHORE-815 the shared text layout', () => {
+    // Records every observer the field creates: its observed targets, its disconnect, and a manual callback.
+    class ProbeObserverStub {
+        static instances: ProbeObserverStub[] = []
+        static callOnObserve = false
+        targets: Element[] = []
+        disconnected = false
+        constructor(private readonly callback: ResizeObserverCallback) {
+            ProbeObserverStub.instances.push(this)
+        }
+        observe(target: Element): void {
+            this.targets.push(target)
+            if (ProbeObserverStub.callOnObserve) this.emit()
+        }
+        disconnect(): void { this.disconnected = true }
+        emit(): void { this.callback([], this as unknown as ResizeObserver) }
+    }
+
+    function stubObservers(callOnObserve: boolean): void {
+        ProbeObserverStub.instances = []
+        ProbeObserverStub.callOnObserve = callOnObserve
+        vi.stubGlobal('ResizeObserver', ProbeObserverStub)
+    }
+
+    function probeObserverOf(probe: Element): ProbeObserverStub {
+        const found = ProbeObserverStub.instances.find((instance) => instance.targets.includes(probe))
+        if (!found) throw new Error('no observer on the probe')
+        return found
+    }
+
+    // Counts the reads of the textarea's `scrollHeight`, which `fit()` makes once per run and nothing else here does.
+    function countScrollHeightReads(run: () => void): number {
+        let reads = 0
+        Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', { configurable: true, get: () => { reads += 1; return 0 } })
+        try {
+            run()
+        } finally {
+            delete (HTMLTextAreaElement.prototype as { scrollHeight?: number }).scrollHeight
+        }
+        return reads
+    }
+
+    function stubProbeBox(probe: HTMLElement, box: { width: number, height: number }): void {
+        Object.defineProperty(probe, 'offsetWidth', { configurable: true, get: () => box.width })
+        Object.defineProperty(probe, 'offsetHeight', { configurable: true, get: () => box.height })
+    }
+
+    test('T5a one aria-hidden probe holding an M sits inside the relative wrapper', () => {
+        const { area, host } = mountField(fixture('hi'))
+        const probes = host.querySelectorAll('[data-part="studio-lt-metric-probe"]')
+        expect(probes.length).toBe(1)
+        const probe = probes[0] as HTMLElement
+        expect(probe.getAttribute('aria-hidden')).toBe('true')
+        expect(probe.textContent).toBe('M')
+        for (const token of ['invisible', 'absolute', 'inline-block']) expect(probe.classList.contains(token), `probe lacks ${token}`).toBe(true)
+        expect(probe.parentElement).toBe(area.parentElement)
+        expect(area.parentElement?.classList.contains('relative')).toBe(true)
+    })
+
+    test('T5 a change of the probe box re-fits the textarea; an unchanged box does not', () => {
+        stubObservers(false)
+        const { host } = mountField(fixture('hi'))
+        const probe = host.querySelector('[data-part="studio-lt-metric-probe"]') as HTMLElement
+        const box = { width: 10, height: 20 }
+        stubProbeBox(probe, box)
+        const observer = probeObserverOf(probe)
+        expect(countScrollHeightReads(() => observer.emit())).toBe(1)
+        box.height = 26
+        expect(countScrollHeightReads(() => observer.emit()), 'a taller probe re-fits once').toBeGreaterThan(0)
+        expect(countScrollHeightReads(() => observer.emit()), 'the same box again does nothing').toBe(0)
+        box.width = 13
+        expect(countScrollHeightReads(() => observer.emit()), 'a wider probe re-fits').toBeGreaterThan(0)
+    })
+
+    test('T5b the probe skips its first callback: a mount with an observer that calls back on observe reads scrollHeight as often as a mount with none', () => {
+        const none = countScrollHeightReads(() => { vi.stubGlobal('ResizeObserver', undefined); mountField(fixture('hi')) })
+        stubObservers(true)
+        const calling = countScrollHeightReads(() => { mountField(fixture('hi')) })
+        expect(ProbeObserverStub.instances.length).toBeGreaterThan(1)
+        expect(calling).toBe(none)
+    })
+
+    test('T5c the probe observer is disconnected when the field is destroyed', async () => {
+        stubObservers(false)
+        const { host } = mountField(fixture('hi'))
+        const probe = host.querySelector('[data-part="studio-lt-metric-probe"]') as HTMLElement
+        const observer = probeObserverOf(probe)
+        expect(observer.disconnected).toBe(false)
+        for (const app of mounted.splice(0)) await unmount(app)
+        expect(observer.disconnected).toBe(true)
+    })
+
+    test('T3c the textarea and the overlay both carry every layout token, so they break lines identically', () => {
+        const { area, host } = mountField(fixture('{{char}} hi'))
+        for (const token of LT_TEXT_LAYOUT.split(' ')) {
+            expect(area.classList.contains(token), `textarea lacks ${token}`).toBe(true)
+            expect(overlayOf(host).classList.contains(token), `overlay lacks ${token}`).toBe(true)
+        }
+        expect(area.classList.contains('w-full')).toBe(true)
+    })
+
+    // The textarea and the overlay report different heights at a 24 px line height. `visible` stands for a field that
+    // has layout; jsdom never gives one, so the check's hidden-field guard would otherwise skip every read.
+    function divergeHeights(area: HTMLTextAreaElement, host: HTMLElement, visible: boolean): void {
+        const lineHeight = document.createElement('div').style
+        lineHeight.setProperty('line-height', '24px')
+        vi.stubGlobal('getComputedStyle', () => lineHeight)
+        Object.defineProperty(area, 'offsetParent', { configurable: true, get: () => (visible ? host : null) })
+        Object.defineProperty(area, 'scrollHeight', { configurable: true, get: () => 1000 })
+        Object.defineProperty(overlayOf(host), 'scrollHeight', { configurable: true, get: () => 952 })
+    }
+
+    test('T6 a textarea and overlay that break lines differently turn colouring off with the note, until remount', () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        const { area, host } = mountField(fixture('hello'))
+        divergeHeights(area, host, true)
+        typeInto(area, 'hello!')
+        advance(250)
+        expect(overlayOf(host).getAttribute('data-overlay')).toBe('off')
+        expect(host.querySelector('[data-part="studio-lt-hl-off"]')).not.toBeNull()
+        typeInto(area, 'hello!!')
+        advance(250)
+        expect(overlayOf(host).getAttribute('data-overlay'), 'sticky for the mount').toBe('off')
+    })
+
+    test('T6d the misalignment switch-off survives a low-power flip on and off', () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        const { area, host } = mountField(fixture('hello'))
+        divergeHeights(area, host, true)
+        typeInto(area, 'hello!')
+        advance(250)
+        expect(overlayOf(host).getAttribute('data-overlay')).toBe('off')
+        // The heights agree again, so a re-check on a re-enabled overlay could not trip it a second time; only the sticky flag keeps colouring off.
+        Object.defineProperty(overlayOf(host), 'scrollHeight', { configurable: true, get: () => 1000 })
+        setLowPower(true)
+        flushSync()
+        setLowPower(false)
+        flushSync()
+        advance(250)
+        expect(overlayOf(host).getAttribute('data-overlay'), 'sticky across the flip').toBe('off')
+        expect(host.querySelector('[data-part="studio-lt-hl-off"]')).not.toBeNull()
+    })
+
+    test('T6c a diverged height does not trip a hidden field or an overlay that is not on (compatibility guard)', () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        const hidden = mountField(fixture('hello'))
+        divergeHeights(hidden.area, hidden.host, false)
+        typeInto(hidden.area, 'hello!')
+        advance(250)
+        expect(overlayOf(hidden.host).getAttribute('data-overlay')).toBe('on')
+        expect(hidden.host.querySelector('[data-part="studio-lt-hl-off"]')).toBeNull()
+        const typing = mountField(fixture('hello'))
+        divergeHeights(typing.area, typing.host, true)
+        typeInto(typing.area, 'x'.repeat(WINDOW_LIMIT + 1))
+        flushSync()
+        expect(overlayOf(typing.host).getAttribute('data-overlay')).toBe('typing')
+        expect(typing.host.querySelector('[data-part="studio-lt-hl-off"]')).toBeNull()
+        setLowPower(true)
+        const off = mountField(fixture('hello'))
+        divergeHeights(off.area, off.host, true)
+        typeInto(off.area, 'hello!')
+        advance(250)
+        expect(overlayOf(off.host).getAttribute('data-overlay')).toBe('off')
+        expect(off.host.querySelector('[data-part="studio-lt-hl-off"]')).toBeNull()
     })
 })
