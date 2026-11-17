@@ -51,6 +51,7 @@ vi.mock('../../ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => f
 vi.mock('../../ts/process/moduleRefList', () => ({
     moduleListOf: (ids: string[]) => listerOver(db.db.modules)(ids),
 }))
+vi.mock('../../ts/process/moduleLoader', () => ({ loadModuleStubsOf: async () => ({ kind: 'refused' }), loadModule: async () => null }))
 vi.mock('../../lang', async () => {
     const helpers = await import('../../ts/studio/studioFixtures.test-helpers')
     return { language: helpers.studioLanguageMock() }
@@ -299,11 +300,14 @@ describe('4d text of the chat, a resident module and a preset', () => {
         expect(part('studio-detail-text')?.textContent).toContain('PRESET-IN')
     })
 
-    test('an unloaded module shows the not-loaded line and its body is never read', () => {
+    test('an unloaded module shows the not-loaded line and its body is never read', async () => {
         const reads: string[] = []
         setFull(makeInput({ modules: [watchBodyKeys(stubModule('stub'), reads)] }))
         openStudio({ owner: { type: 'module', id: 'stub' }, from: 'chat' }, null)
         show()
+        await vi.dynamicImportSettled()
+        await Promise.resolve()
+        flushSync()
         expect(part('studio-detail-notloaded')?.textContent).toBe('studioNotLoaded')
         expect(part('studio-detail-text')).toBeNull()
         expect(reads).toEqual([])
@@ -428,10 +432,13 @@ describe('4e link-outs from the detail', () => {
         expect(get(botMakerMode)).toBe(true)
     })
 
-    test('an unloaded module shows the stub fields only and links to Modules settings', () => {
+    test('an unloaded module shows the stub fields only and links to Modules settings', async () => {
         setDb({}, true)
         openStudio({ owner: { type: 'module', id: 'stub' }, from: 'chat' }, null)
         show()
+        await vi.dynamicImportSettled()
+        await Promise.resolve()
+        flushSync()
         expect(part('studio-detail-title')?.textContent).toBe('Module stub')
         expect(part('studio-detail-text')).toBeNull()
         expect(part('studio-detail-classic')?.textContent?.trim()).toBe('studioOpenModules')
