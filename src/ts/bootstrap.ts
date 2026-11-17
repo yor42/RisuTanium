@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { get } from "svelte/store";
 import { setDatabase, defaultSdDataFunc, getDatabase, type Database } from "./storage/database.svelte";
 import { repairBotPresetsId } from "./storage/botPresetRepair";
+import { takePresetIdsMinted } from "./storage/presetMeta";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
 import { botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState, alertStore } from "./stores.svelte";
@@ -1194,6 +1195,11 @@ async function checkNewFormat(): Promise<void> {
         }
     }
     setDatabase(db);
+    // Ids minted by any setDatabase of the boot, and the id of a preset the repair appended, exist only in memory
+    // until the boot's normal save writes them; the mark makes it write, so the ids are the same on the next load.
+    if (takePresetIdsMinted()) {
+        markBootWrite();
+    }
     checkCharOrder();
     queueInlayCleanupForCharacters(purged);
 }

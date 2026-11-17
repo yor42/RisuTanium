@@ -6,8 +6,9 @@ import { describe, expect, test } from 'vitest'
 import { defaultHotkeys, type Hotkey } from '../defaulthotkeys'
 import {
     applyPlan, duplicateGroups, findConflict, hotkeyUndoAction, isChanged, keyboardSignal, listedRows, pageReadOnly,
-    planResetAll, planSwap, planUnbind, rowChord,
+    planResetAll, planSwap, planUnbind, rowChord, slotUndoAction,
 } from './hotkeyPage'
+import { applySlotPlan, planSlotAssign } from '../storage/presetMeta'
 
 function freshRows(): Hotkey[] {
     return JSON.parse(JSON.stringify(defaultHotkeys)) as Hotkey[]
@@ -31,6 +32,15 @@ describe('listedRows', () => {
         expect(actions).toContain('home')
     })
 
+    test('the nine slot rows form their own group between navigation and tools', () => {
+        const actions = listedRows(freshRows(), { scrollToActiveChar: true }).map((row) => row.action)
+        const slots = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `presetSlot${n}`)
+        const first = actions.indexOf('presetSlot1')
+        expect(actions.slice(first, first + 9)).toEqual(slots)
+        expect(first).toBeGreaterThan(actions.indexOf('focusInput'))
+        expect(first + 9).toBe(actions.indexOf('toggleCSS'))
+    })
+
     test('scrollToActiveChar follows its setting', () => {
         const rows = freshRows()
         expect(listedRows(rows, { scrollToActiveChar: true }).map((row) => row.action)).toContain('scrollToActiveChar')
@@ -48,10 +58,18 @@ describe('findConflict', () => {
         })
     })
 
-    test('Ctrl+1 and Esc are fixed', () => {
+    test('Esc is fixed, and Ctrl+1 is the ordinary row of preset slot 1 that can be swapped', () => {
         const listed = listedRows(freshRows(), { scrollToActiveChar: true })
-        expect(findConflict(listed, 'home', { key: '1', ctrl: true, alt: false, shift: false })?.kind).toBe('fixed')
         expect(findConflict(listed, 'home', { key: 'Escape', ctrl: false, alt: false, shift: false })?.kind).toBe('fixed')
+        expect(findConflict(listed, 'home', { key: '1', ctrl: true, alt: false, shift: false })).toEqual({
+            kind: 'action', action: 'presetSlot1', otherOld: { key: 'h', ctrl: true, alt: false, shift: false },
+        })
+    })
+
+    test('a slot row can take a free chord and swap with another slot row', () => {
+        const listed = listedRows(freshRows(), { scrollToActiveChar: true })
+        expect(findConflict(listed, 'presetSlot1', { key: '1', ctrl: false, alt: true, shift: false })).toBeNull()
+        expect(findConflict(listed, 'presetSlot1', { key: '2', ctrl: true, alt: false, shift: false })).toMatchObject({ kind: 'action', action: 'presetSlot2' })
     })
 
     test('a hidden row\'s chord and the own row are ignored', () => {
@@ -123,6 +141,28 @@ describe('undo', () => {
         expect(byAction(rows, 'home').key).toBe('j')
         const gone = hotkeyUndoAction(() => rows.filter((row) => row.action !== 'home'), plan, texts).run()
         expect(gone).toMatchObject({ ok: false })
+    })
+
+    test('slot undo restores the slots a swap changed, refuses after a later edit, and refuses when a preset is gone', () => {
+        const presets = [{ name: 'A', id: 'a', slot: 1 }, { name: 'B', id: 'b', slot: 2 }]
+        const plan = planSlotAssign(presets, 2, 0)
+        applySlotPlan(presets, plan)
+        expect(presets.map((p) => p.slot)).toEqual([2, 1])
+        expect(slotUndoAction(() => presets, plan, texts).run()).toEqual({ ok: true, text: 'undone' })
+        expect(presets.map((p) => p.slot)).toEqual([1, 2])
+
+        applySlotPlan(presets, plan)
+        presets[0].slot = 5
+        expect(slotUndoAction(() => presets, plan, texts).run()).toMatchObject({ ok: false, text: 'refused' })
+        expect(presets.map((p) => p.slot)).toEqual([5, 1])
+        expect(slotUndoAction(() => presets.slice(1), plan, texts).run()).toMatchObject({ ok: false })
+    })
+
+    test('reset all covers a slot row that was rebound', () => {
+        const rows = freshRows()
+        byAction(rows, 'presetSlot3').alt = true
+        const plan = planResetAll(listedRows(rows, { scrollToActiveChar: true }))
+        expect(plan.map((step) => step.action)).toEqual(['presetSlot3'])
     })
 
     test('every undo has its own id', () => {

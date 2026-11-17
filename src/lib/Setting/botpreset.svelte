@@ -8,6 +8,7 @@
     import { CopyIcon, Share2Icon, PencilIcon, HardDriveUploadIcon, PlusIcon, TrashIcon, XIcon, GitCompare } from "@lucide/svelte";
     import TextInput from "../UI/GUI/TextInput.svelte";
     import { prebuiltPresets } from "src/ts/process/templates/templates";
+    import { freshPresetMeta, slotBadgeFor } from "src/ts/storage/presetMeta";
     import { openRealmUpload } from "src/ts/characterCards";
     import PromptDiffModal from "../Others/PromptDiffModal.svelte";
     import { RISU_PRESET_DRAG_TYPE } from "src/ts/dragTypes";
@@ -201,8 +202,8 @@
                 {#if editMode}
                     <TextInput bind:value={DBState.db.botPresets[i].name} placeholder={language.name} padding={false}/>
                 {:else}
-                    {#if i < 9}
-                        <span class="w-2 text-center mr-2 text-textcolor2">{i + 1}</span>
+                    {#if slotBadgeFor(DBState.db.botPresets, i) !== undefined}
+                        <span class="w-2 text-center mr-2 text-textcolor2">{slotBadgeFor(DBState.db.botPresets, i)}</span>
                     {/if}
                     {#if preset.image}
                         <img src={preset.image} alt={language.settingsPage.iconAlt} class="mr-2 min-w-6 min-h-6 w-6 h-6 rounded-md" decoding="async"/>
@@ -311,7 +312,7 @@
                 let botPresets = DBState.db.botPresets
                 let newPreset = safeStructuredClone(prebuiltPresets.OAI2)
                 newPreset.name = `New Preset`
-                botPresets.push(newPreset)
+                botPresets.push(freshPresetMeta(newPreset, { keepFolder: false }))
 
                 DBState.db.botPresets = botPresets
             }}>

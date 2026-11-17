@@ -245,6 +245,14 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     // (the export confirm names the packs first); both keys are removed, not set to undefined.
     delete plain.themePacks
     delete plain.activeThemePack
+    // Upstream resolves a loadout's preset by name only. A loadout whose preset id resolves carries that preset's current
+    // name in the copy, so both builds select the same preset; the page's loadouts are never changed.
+    if (Array.isArray(db.loadouts) && Array.isArray(db.botPresets)) {
+        plain.loadouts = db.loadouts.map((loadout) => {
+            const target = loadout.presetId ? db.botPresets.find((preset) => preset.id === loadout.presetId) : undefined
+            return target?.name !== undefined && target.name !== loadout.presetName ? { ...loadout, presetName: target.name } : loadout
+        })
+    }
     // Set before either return below, so every encoder gets the module list read before the export opened, never the live one.
     if (modules !== null) {
         plain.modules = modules

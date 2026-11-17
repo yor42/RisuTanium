@@ -103,6 +103,7 @@ import { language } from 'src/lang'
 import { fillLang } from 'src/lang/fill'
 import { DBState } from 'src/ts/stores.svelte'
 import { presetTemplate, type botPreset } from 'src/ts/storage/database.svelte'
+import { withoutPresetMeta } from 'src/ts/storage/presetMeta'
 import { detectPromptJSONType, promptConvertion } from 'src/ts/process/prompt'
 
 type Message = { role: 'user' | 'assistant' | 'system', content: string }
@@ -115,7 +116,7 @@ function convert(files: { name: string, json: object }[]): void {
 }
 
 function pushedPresets(): botPreset[] {
-    return DBState.db.botPresets
+    return DBState.db.botPresets.map(withoutPresetMeta)
 }
 
 /** Same context `applyChatTemplate` passes to the engine. */
