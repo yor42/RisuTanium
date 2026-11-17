@@ -2,7 +2,8 @@
  * A prompt for a Cohere-format model whose formatted list holds only one user message, or nothing
  * at all, reaches the request without throwing. The last user message becomes `message`; when it
  * is the only one, the history is empty and there is no preamble. An empty list gets the same
- * failure as a prompt with no user message.
+ * failure as a prompt with no user message. A first system message is always the preamble, even
+ * when the history is empty, so the user message is never replaced by it.
  *
  * The catalog's Cohere models all start the list with a user message, so these tests use a custom
  * model in the Cohere format with a first system prompt only; that is the one way the list reaches
@@ -138,6 +139,16 @@ describe('the Cohere request body', () => {
         ])
         expect(body.preamble).toBe('rules')
         expect(body.chat_history).toEqual([{ role: 'CHATBOT', message: 'hello' }])
+        expect(body.message).toBe('hi')
+    })
+
+    test('a system message and one user message give the preamble and keep the user text as the message', async () => {
+        const body = await cohereBody([
+            { role: 'system', content: 'rules' },
+            { role: 'user', content: 'hi' },
+        ])
+        expect(body.preamble).toBe('rules')
+        expect(body.chat_history).toEqual([])
         expect(body.message).toBe('hi')
     })
 
