@@ -38,12 +38,17 @@
     const service = $derived(getStudioHistoryService())
     const owner = $derived(selectedHistoryOwner())
     const bound = $derived(DBState.db.characters?.find((candidate) => candidate?.chaId === studioScreen.chaId))
-    const hiddenCharacter = $derived(bound === undefined || bound.type === 'group' || bound.license === 'private')
+    const parsedOwner = $derived(owner === null ? null : parseOwnerKey(owner))
+    // A module's history is the module's own: the bound character being private or a group does not hide it, as it
+    // does not stop Ctrl+Z from replaying it.
+    const moduleOwner = $derived(parsedOwner?.kind === 'module')
+    const hiddenCharacter = $derived(!moduleOwner && (bound === undefined || bound.type === 'group' || bound.license === 'private'))
     // A chat without a unique id has no history.
     const historyOwner = $derived.by((): OwnerKey | null => {
-        const parsed = owner === null ? null : parseOwnerKey(owner)
-        if (owner === null || parsed === null || bound === undefined || bound.type === 'group') return null
-        return parsed.kind === 'chat' && uniqueChatById(bound.chats, parsed.chatId) === null ? null : owner
+        if (owner === null || parsedOwner === null) return null
+        if (parsedOwner.kind === 'module') return owner
+        if (bound === undefined || bound.type === 'group') return null
+        return parsedOwner.kind === 'chat' && uniqueChatById(bound.chats, parsedOwner.chatId) === null ? null : owner
     })
     const view = $derived(service && historyOwner !== null && !hiddenCharacter ? service.view(historyOwner) : null)
     const hidden = $derived(hiddenCharacter || view?.restricted === true)
@@ -163,7 +168,6 @@
                     case 'customModuleToggle': return language.customPromptTemplateToggle
                     case 'hideChatIcon': return language.hideChatIcon
                     case 'note': return language.note
-                    default: return label.kind
                 }
             case 'greetingAdd': return language.studioStepGreetingAdd
             case 'greetingRemove': return language.studioStepGreetingRemove
@@ -174,11 +178,18 @@
             case 'restorePoint': return language.studioStepRestorePoint
             case 'revert': return language.studioStepRevert
             case 'restoreDeleted': return language.studioStepRestoreDeleted
-            // A delete of several rows has no name to show: it keeps the kind until the bulk lists name it.
-            case 'assetDelete': return label.name === null ? label.kind : language.studioStepAssetDeleteOne(label.name)
+            // A delete of several rows has no name to show: it says how many.
+            case 'assetDelete': return label.name === null ? language.studioStepAssetDeleteMany(label.count) : language.studioStepAssetDeleteOne(label.name)
             case 'assetRename': return language.studioStepAssetRename(label.from, label.to)
-            // The other asset step labels have their texts with the asset lists; until then the kind names the step.
-            default: return label.kind
+            case 'assetRemoveExtras': return language.studioStepAssetRemoveExtras(label.count, label.name)
+            case 'assetMerge': return language.studioStepAssetMerge(label.from, label.to)
+            // A move to no folder has no folder name to show.
+            case 'assetMove': return language.studioStepAssetMove(label.count, label.folder ?? language.studioAssetNoFolder)
+            case 'folderRename': return language.studioStepFolderRename(label.from, label.to)
+            case 'folderDelete': return language.studioStepFolderDelete(label.name)
+            case 'assetAdd': return language.studioStepAssetAdd(label.count)
+            case 'folderCreate': return language.studioStepFolderCreate(label.name)
+            case 'folderReorder': return language.studioStepFolderReorder
         }
     }
 
