@@ -2613,6 +2613,9 @@ export const languageEnglish = {
     select: "Select",
     lowLevelAccessConfirm:
         "This content uses Low Level Access. which means this content can access the AI model and your storage directly. Do you really want to import this content?",
+    importLinkConfirm: "This link wants to import a file from {host}. Only continue if you trust it. Import?",
+    importModuleLinkConfirm: "This link contains a module. Import it?",
+    importPresetLinkConfirm: "This link contains a preset. Import it?",
     triggerLowLevelOnly: "This trigger only works with Low Level Access. To enable this trigger, enable Low Level Access in advanced settings in the character or module.",
     truthy: "Truthy",
     extractRegex: "Extract Text with Regex",

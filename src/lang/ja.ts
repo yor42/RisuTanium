@@ -2614,6 +2614,9 @@ export const languageJapanese = {
     select: "選択",
     lowLevelAccessConfirm:
         "このコンテンツは低レベルアクセスを使用しています。これは、このコンテンツがAIモデルやストレージに直接アクセスできることを意味します。このコンテンツを本当にインポートしますか？",
+    importLinkConfirm: "このリンクは {host} からファイルをインポートしようとしています。信頼できる場合のみ続行してください。インポートしますか？",
+    importModuleLinkConfirm: "このリンクにはモジュールが含まれています。インポートしますか？",
+    importPresetLinkConfirm: "このリンクにはプリセットが含まれています。インポートしますか？",
     triggerLowLevelOnly: "このトリガーは低レベルアクセスでのみ動作します。このトリガーを有効にするには、キャラクターまたはモジュールの詳細設定で低レベルアクセスを有効にしてください。",
     truthy: "真値",
     extractRegex: "正規表現でテキストを抽出",
