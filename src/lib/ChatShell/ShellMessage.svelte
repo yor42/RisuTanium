@@ -386,7 +386,7 @@
             if (!requestStopDelete(owner, chat, target, mode)) alertNormal(language.chatShellStopDeleteCannot)
         } else if (mode === 'from') {
             const count = after + 1
-            const choice = await alertSelect([language.cancel, language.chatShellDeleteRangeButton(count)], language.chatShellDeleteRangeConfirm(count, excerptOf(target.data)))
+            const choice = await alertSelect([language.cancel, language.chatShellDeleteRangeButton(count)], language.chatShellDeleteRangeConfirm(count, excerptOf(target.data)), { cancel: '0' })
             if (choice !== '1') return
             deleteNow(owner, chat, target, 'from')
         } else await requestRemove(owner, chat, target)

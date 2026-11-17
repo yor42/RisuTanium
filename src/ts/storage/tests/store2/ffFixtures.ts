@@ -13,7 +13,7 @@ import { resetStore2BootForTest, type Store2BootNotice } from 'src/ts/storage/st
 import type { Store2BootUi } from 'src/ts/storage/store2/bootDispatch'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { createNodeHttpStore } from 'src/ts/storage/store/nodeHttpStore'
-import { setFastForwardHostForTest, type FastForwardHost } from 'src/ts/storage/store2/fastForward'
+import { setFastForwardHostForTest, type ConflictChoice, type ConflictRecord, type FastForwardHost, type FastForwardOutcome } from 'src/ts/storage/store2/fastForward'
 import { PERSONA_OPS } from 'src/ts/storage/store2/fastForward/records'
 import { resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import { getActiveStore2Save, resetStore2SaveForTest, type Store2SaveContext } from 'src/ts/storage/store2/saveActive'
@@ -42,17 +42,41 @@ export interface HostState {
     writing: Set<string>
     busy: boolean
     sending: boolean
+    /** The chats written, by owner `chaId`; the owners also belong to `writing`. */
+    writingChats?: Map<string, Set<string>>
+    /** The selected character's index (-1 for none); the host's `select` sets it. */
+    selected?: number
+    /** Called by the host's mark, so a loop world can take the mark as a real page would. */
+    onMark?: (chaId: string) => void
+    /** What the host was asked to do, in order. */
+    calls?: { marked: string[], forgotten: unknown[], selects: number[] }
 }
 
-/** A host with nothing open, nothing busy and no send running; a test flips `state`. */
+
+let lastHostState: HostState | null = null
+
 export function testHost(state: HostState = { inUse: new Set(), writing: new Set(), busy: false, sending: false }): { host: FastForwardHost, state: HostState } {
+    const calls = state.calls ?? { marked: [], forgotten: [], selects: [] }
+    state.calls = calls
+    state.selected ??= -1
+    lastHostState = state
     const host: FastForwardHost = {
         inUse: () => state.inUse,
         writing: chaId => state.writing.has(chaId),
+        writingTargets: () => ({ chars: state.writing, chats: state.writingChats ?? new Map<string, Set<string>>() }),
         busy: () => state.busy,
         sending: () => state.sending,
         installQuietly: fn => fn(),
-        forgetLoaded: () => { },
+        forgetLoaded: (slot) => { calls.forgotten.push(slot) },
+        mark: (chaId) => {
+            calls.marked.push(chaId)
+            state.onMark?.(chaId)
+        },
+        selection: () => state.selected ?? -1,
+        select: (index) => {
+            state.selected = index
+            calls.selects.push(index)
+        },
         presetOps: () => PERSONA_OPS,
     }
     return { host, state }
@@ -447,4 +471,92 @@ export async function scenarioR30(name: BackendName, backend: Store2Backend): Pr
     expect(personalityOf(final.db, 0)).toBe('b3')
     expect(personalityOf(final.db, 1)).toBe('a3')
     expect(loop.crashed).toEqual([])
+}
+
+/** The chats of the live or assembled character at `index`. */
+export function chatsAt(db: Database, index: number): Array<Record<string, unknown>> {
+    return chars(db)[index].chats as Array<Record<string, unknown>>
+}
+
+export interface MergeWorld {
+    memory: Store2Backend
+    /** The clock the store's peer pages run on; another peer page over `memory` takes it. */
+    clock: ReturnType<typeof createClock>
+    page: ReturnType<typeof peerPage>
+    b: PageB
+    world: LoopWorld
+    run: ReturnType<typeof runSpyOf>
+}
+
+/** A dispatch-booted page over a line-seeded store with its save loop, and a spy on the fast-forward's runs. */
+export async function mergeWorld(options: { count?: number, backend?: Store2Backend, kind?: 'indexeddb' | 'node', before?: (page: ReturnType<typeof peerPage>) => Promise<void> } = {}): Promise<MergeWorld> {
+    const memory = options.backend ?? createMemoryBackend()
+    const seeded = await ffWorldOver(memory, { mintLine: true, count: options.count })
+    await options.before?.(seeded.page)
+    const b = await bootB(memory, options.kind ?? 'indexeddb')
+    const world = runLoopWorld(b.context, b.db)
+    if (lastHostState !== null) {
+        lastHostState.onMark = chaId => world.mark(chaId)
+    }
+    return { memory, clock: seeded.clock, page: seeded.page, b, world, run: runSpyOf(b) }
+}
+
+export interface BootedPage {
+    b: PageB
+    world: LoopWorld
+    run: ReturnType<typeof runSpyOf>
+}
+
+/**
+ * A page dispatch-booted over a store that already holds a tree, with its save loop and a spy on its fast-forward runs. It
+ * replaces the page-global state of an earlier booted page, so the earlier page's loop must be stopped first. The host's
+ * mark callback now feeds this page's loop.
+ */
+export async function bootPageOver(backend: Store2Backend, kind: 'indexeddb' | 'node' = 'indexeddb'): Promise<BootedPage> {
+    const b = await bootB(backend, kind)
+    const world = runLoopWorld(b.context, b.db)
+    if (lastHostState !== null) {
+        lastHostState.onMark = chaId => world.mark(chaId)
+    }
+    return { b, world, run: runSpyOf(b) }
+}
+
+export interface Resolver {
+    /** The records of each `resolve` call, in call order. */
+    calls: ConflictRecord[][]
+    /** Lets a held dialog answer. */
+    release(): void
+}
+
+/**
+ * Installs a `resolve` handler on the page's peer double, so the fast-forward asks instead of parking with today's
+ * prompt. `choose` gives the answer per record (a record it leaves out keeps its preselection); `held` keeps the dialog
+ * open until `release()`.
+ */
+export function resolver(w: MergeWorld, choose: (record: ConflictRecord) => ConflictChoice | undefined = () => undefined, options: { held?: boolean } = {}): Resolver {
+    const calls: ConflictRecord[][] = []
+    let release: () => void = () => { }
+    const gate = options.held === true ? new Promise<void>((resolve) => { release = resolve }) : Promise.resolve()
+    w.b.peer.resolve = async ({ conflicts }) => {
+        calls.push([...conflicts])
+        await gate
+        const answer: Record<string, ConflictChoice> = {}
+        for (const record of conflicts) {
+            const choice = choose(record)
+            if (choice !== undefined) {
+                answer[record.id] = choice
+            }
+        }
+        return answer
+    }
+    return { calls, release: () => release() }
+}
+
+/** The peer commits `edit`, this page hears it, and the next fast-forward run's outcome is returned. */
+export async function peerCommits(w: MergeWorld, edit: (db: Database) => void): Promise<FastForwardOutcome> {
+    const before = w.run.mock.calls.length
+    await w.page.commitEdit(edit)
+    signal(w.world)
+    await until(() => w.run.mock.calls.length > before, 'the fast-forward run', 8000)
+    return await w.run.mock.results[before].value
 }

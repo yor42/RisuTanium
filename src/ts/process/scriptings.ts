@@ -1377,6 +1377,7 @@ export async function runScripted(code:string, arg:{
         }
         ScriptingSafeIds.delete(accessKey)
         ScriptingLowLevelIds.delete(accessKey)
+        ScriptingEditDisplayIds.delete(accessKey)
         chat = currentChatFor(ScriptingEngineState) ?? ScriptingEngineState.chat
         stopSending = stopSending || !!ScriptingEngineState.stopSending
 

@@ -825,7 +825,7 @@ describe('the card copy and the plain copy button of one message', () => {
         expect(unhandled).toEqual([])
     })
 
-    test('guard: the card of a message with thinking still captures the thinking in its text/plain companion', async () => {
+    test('guard: the card of a message with thinking leaves the thinking out of its text/plain companion and its card (MC-2135)', async () => {
         const clipboard = stubClipboard()
         const { root } = await mountChat({ message: THINKING_MESSAGE })
         await openMenu(root)
@@ -833,8 +833,10 @@ describe('the card copy and the plain copy button of one message', () => {
         requireCopyCardItem().click()
         await settle()
 
-        const { plain } = await writtenCard(clipboard)
-        expect(plain).toBe(THINKING_MESSAGE)
+        const { plain, html } = await writtenCard(clipboard)
+        expect(plain).toBe(THINKING_STRIPPED)
+        expect(html).not.toContain('private reasoning')
+        expect(html).toContain('Answer')
     })
 
     test('a second tap on the card item of the same message while its card is pending writes nothing more and shows Loading', async () => {

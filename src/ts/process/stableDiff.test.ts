@@ -8,7 +8,22 @@ vi.mock('../stores.svelte', () => ({ CharEmotion: { set: vi.fn() } }))
 vi.mock('./processzip', () => ({ processZip: vi.fn() }))
 vi.mock('./request/request', () => ({ requestChatData: vi.fn() }))
 
-import { applyImageOrientation } from './stableDiff'
+import { applyImageOrientation, generateAIImage } from './stableDiff'
+import { getDatabase, type character } from '../storage/database.svelte'
+import { globalFetch } from '../globalApi.svelte'
+
+describe('DALL-E reads one line of a multi-line OpenAI key', () => {
+  test('the request carries the current line and never the whole value', async () => {
+    vi.mocked(getDatabase).mockReturnValue({ sdProvider: 'dalle', openAIKey: 'sk-test-A\nsk-test-B', dallEQuality: '' } as unknown as ReturnType<typeof getDatabase>)
+    vi.mocked(globalFetch).mockResolvedValue({ ok: true, data: { data: [{ b64_json: 'AAAA' }] } } as unknown as Awaited<ReturnType<typeof globalFetch>>)
+
+    const image = await generateAIImage('a prompt', {} as character, '', 'inlay')
+
+    expect(image).toBe('data:image/png;base64,AAAA')
+    const [, init] = vi.mocked(globalFetch).mock.calls[0]
+    expect((init as { headers: Record<string, string> }).headers.Authorization).toBe('Bearer sk-test-A')
+  })
+})
 
 describe('applyImageOrientation', () => {
   test('keeps configured dimensions without an orientation', () => {

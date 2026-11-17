@@ -164,6 +164,8 @@ interface Harness {
     ctx: BootLoadContext
     notices: string[]
     chosen: string[][]
+    /** The cancel index each `choose` call offered, in order. */
+    cancels: number[]
     confirms: string[]
     holds: ReplaceHold[]
     released: number
@@ -175,6 +177,10 @@ interface HarnessOptions {
     backups?: Array<[number, Uint8Array]>
     /** Index chosen at each `choose` call, in order; the last answer repeats. */
     choices?: number[]
+    /** Every `choose` answers with the cancel its caller offered, and rejects when none was offered. */
+    answerCancel?: boolean
+    /** The zero-based `choose` calls that answer with the cancel their caller offered; the other calls use `choices`. */
+    answerCancelAt?: number[]
     confirm?: boolean
     holds?: ReplaceHold[]
     nodeBodyLimit?: number
@@ -189,6 +195,7 @@ function harness(options: HarnessOptions = {}): Harness {
         owner,
         notices: [],
         chosen: [],
+        cancels: [],
         confirms: [],
         holds: [],
         released: 0,
@@ -199,8 +206,16 @@ function harness(options: HarnessOptions = {}): Harness {
     let choiceIndex = 0
     state.ui = {
         notify: async (text) => { state.notices.push(text) },
-        choose: async (_title, offered) => {
+        choose: async (_title, offered, cancel) => {
             state.chosen.push([...offered])
+            const callIndex = state.chosen.length - 1
+            if (options.answerCancel || options.answerCancelAt?.includes(callIndex)) {
+                if (cancel === undefined) {
+                    throw new Error('no cancel offered')
+                }
+                state.cancels.push(cancel)
+                return cancel
+            }
             const answer = choices[Math.min(choiceIndex, choices.length - 1)]
             choiceIndex++
             return answer
@@ -350,12 +365,12 @@ describe('a block whose frame holds but whose content does not decode', () => {
         let peerActs = true
         const h = harness({ store, choices: [0, 0], backups: [[100, await backupBytes(tree([character('from-backup')]))]] })
         const originalChoose = h.ui.choose
-        h.ui.choose = async (title, options) => {
+        h.ui.choose = async (title, options, cancel) => {
             if (peerActs) {
                 peerActs = false
                 breakContent(store, generation, 'c')
             }
-            return originalChoose(title, options)
+            return originalChoose(title, options, cancel)
         }
 
         const result = await loadBlockProfile(h.ctx)
@@ -379,9 +394,9 @@ describe('two tabs that both choose the backup', () => {
         const loserDeciding = new Promise<void>((resolve) => { release = resolve })
         const loser = harness({ store, backups: [[100, backup]] })
         const loserChoose = loser.ui.choose
-        loser.ui.choose = async (title, options) => {
+        loser.ui.choose = async (title, options, cancel) => {
             await loserDeciding
-            return loserChoose(title, options)
+            return loserChoose(title, options, cancel)
         }
 
         const loserRun = loadBlockProfile(loser.ctx)
@@ -411,6 +426,45 @@ describe('the prompt', () => {
         const stopped = await stopText(loadBlockProfile(h.ctx))
 
         expect(stopped).toContain(language.saveDamageItem('character', 'a', 'absent'))
+        expect(store.mutating().length).toBe(writes)
+        expect(h.owner.isLive()).toBe(false)
+    })
+
+    test('the prompt offers Stop as its cancel: answering it stops and writes nothing', async () => {
+        const store = createFakeStore({ versioned: false })
+        const generation = await seed(store, tree([character('a')]))
+        store.unplant(ownBlockKey(generation, 'a'))
+        const writes = store.mutating().length
+        const h = harness({ store, answerCancel: true, backups: [[100, await backupBytes(tree([character('old')]))]] })
+
+        const stopped = await stopText(loadBlockProfile(h.ctx))
+
+        expect(h.cancels).toEqual([1])
+        expect(stopped).toContain(language.saveDamageItem('character', 'a', 'absent'))
+        expect(store.mutating().length).toBe(writes)
+        expect(h.holds).toHaveLength(0)
+        expect(h.owner.isLive()).toBe(false)
+    })
+
+    test('the other-tab prompt offers Stop as its cancel: answering it stops, takes no hold and writes nothing', async () => {
+        const store = createFakeStore({ versioned: false })
+        const generation = await seed(store, tree([character('a')]))
+        breakContent(store, generation, 'a')
+        const writes = store.mutating().length
+        const h = harness({
+            store,
+            choices: [0],
+            answerCancelAt: [1],
+            holds: [{ kind: 'refused', reloading: false }, { kind: 'held', release: async () => { } }],
+            backups: [[100, await backupBytes(tree([character('old')]))]],
+        })
+
+        const stopped = await stopText(loadBlockProfile(h.ctx))
+
+        expect(h.chosen[1], 'the retry prompt').toEqual([language.saveDamagedRetry, language.saveDamagedStop])
+        expect(h.cancels).toEqual([1])
+        expect(stopped).toContain(language.saveDamageItem('character', 'a', 'unreadable-content'))
+        expect(h.holds.map((hold) => hold.kind), 'the held hold was never taken').toEqual(['refused'])
         expect(store.mutating().length).toBe(writes)
         expect(h.owner.isLive()).toBe(false)
     })
@@ -708,8 +762,8 @@ describe('the exclusive hold for the replace', () => {
         const store = await damagedStore()
         const h = harness({ store, backups: [[100, await backupBytes(tree([character('mine')]))]] })
         const originalChoose = h.ui.choose
-        h.ui.choose = async (title, options) => {
-            const answer = await originalChoose(title, options)
+        h.ui.choose = async (title, options, cancel) => {
+            const answer = await originalChoose(title, options, cancel)
             // A rival's replace flips the head while the person was choosing.
             const rival = harness({ store, backups: [[100, await backupBytes(tree([character('rival')]))]] })
             await loadBlockProfile(rival.ctx)
