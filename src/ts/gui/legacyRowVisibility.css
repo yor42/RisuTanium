@@ -1,0 +1,11 @@
+/*
+ * Rows of the legacy chat list. The newest three rows (which include the streaming tail) and rows with an open
+ * editor or a partial-edit overlay are never skipped. Every row remembers its last rendered size, so a skipped row
+ * keeps it instead of a fixed estimate. While `data-risu-cv-hold` is set on the list, no row is skipped, so rows
+ * can be measured. The clip margin keeps card decoration that overflows a row by up to 80px visible; the skipping
+ * rule sits inside the support query so an engine without the margin or `:has()` skips nothing.
+ */
+[data-part="chat-messages"] > .chat-message-container { contain-intrinsic-size: auto 400px }
+@supports (overflow-clip-margin: 80px) {
+  [data-part="chat-messages"]:not([data-risu-cv-hold]) > .chat-message-container:nth-child(n+4):not(:has(.partial-edit-overlay)):not(:has(.message-edit-area)) { content-visibility: auto; overflow-clip-margin: 80px }
+}
