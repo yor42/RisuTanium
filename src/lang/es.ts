@@ -729,6 +729,8 @@ export const languageSpanish = {
         "characterNotFound": "No se encontró el personaje: {id}",
         "requiredTokens": "Tokens requeridos: {tokens}",
         "requiredTokensRecheck": "Reverificando tokens. Tokens requeridos: {tokens}",
+        "hypaV2NoSummaryModel": "[HypaV2] No se ha establecido un modelo de resumen, por lo que no se pudo resumir el chat y no se envió nada. Elige un SupaMemoria Modelo en Configuración > Otros Bots > Memoria a Largo Plazo.",
+        "openMemorySettings": "Abrir configuración de memoria",
         "stableDiffusionGroupUnsupported": "Stable Diffusion no es compatible con el chat grupal",
         "websocketConnectFailed": "Falló la conexión WebSocket con '{url}'.",
         "pluginProviderError": "Error del plugin de {provider}: {error}",
@@ -2581,7 +2583,13 @@ export const languageSpanish = {
         "enableSimilarityCorrectionLabel": "Activar Corrección de Similitud",
         "preserveOrphanedMemoryLabel": "Preservar Memoria Huérfana",
         "applyRegexScriptWhenRerollingLabel": "Aplicar Script Regex al Regenerar",
-        "doNotSummarizeUserMessageLabel": "No Resumir Mensajes del Usuario"
+        "doNotSummarizeUserMessageLabel": "No Resumir Mensajes del Usuario",
+        "newPresetNamePrompt": "Introduce un nombre para el preset",
+        "blankPresetNameError": "Un preset necesita un nombre.",
+        "duplicatePresetLabel": "Duplicar preset",
+        "duplicatePresetDefaultName": "{name} copia",
+        "presetImportBrokenError": "No se pudo leer este archivo como preset. Puede estar dañado o no ser un archivo JSON.",
+        "presetImportForeignError": "Este archivo no es una exportación de preset de HypaMemory V3, por lo que no se importó nada."
     },
     "hypaV3Modal": {
         "titleLabel": "HypaV3",

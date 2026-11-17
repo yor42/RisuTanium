@@ -14,6 +14,7 @@ import { HypaProcesser } from "./hypamemory";
 import { globalFetch } from "src/ts/globalApi.svelte";
 import { runSummarizer } from "../transformers";
 import { resolveSecret, SecretRefError } from "src/ts/secretRef";
+import { language } from "src/lang";
 
 export interface HypaV2Data {
     lastMainChunkID: number; // can be removed, but exists to more readability of the code.
@@ -42,8 +43,20 @@ export interface SerializableHypaV2Data extends Omit<HypaV2Data, 'mainChunks'> {
 async function summary(
     stringlizedChat: string,
     subject: RunSubject | undefined
-): Promise<{ success: boolean; data: string; retryable?: boolean }> {
+): Promise<{ success: boolean; data: string; retryable?: boolean; missingModel?: boolean }> {
     const db = getDatabase();
+
+    // With no summary model nothing may be requested: the default branch below
+    // would send the text to a retired model.
+    if (db.supaModelType === "none") {
+        return {
+            success: false,
+            data: language.errors.hypaV2NoSummaryModel,
+            retryable: false,
+            missingModel: true,
+        };
+    }
+
     console.log("Summarizing");
 
     if (db.supaModelType === "distilbart") {
@@ -367,6 +380,8 @@ export async function hypaMemoryV2(
     currentTokens: number;
     chats: OpenAIChat[];
     error?: string;
+    /** Names the setting that fixes `error`, when the error is a missing setting. */
+    errorSetting?: "summaryModel";
     memory?: SerializableHypaV2Data;
 }> {
     const db = getDatabase();
@@ -513,11 +528,12 @@ export async function hypaMemoryV2(
         if (!summaryData.success) {
             console.log("Summarization failed:", summaryData.data);
             if (summaryData.retryable === false) {
-                // A key that cannot be resolved fails identically on every retry.
+                // Retrying cannot help: an unresolvable key and a missing summary model fail identically every time.
                 return {
                     currentTokens: currentTokens,
                     chats: chats,
                     error: summaryData.data,
+                    ...(summaryData.missingModel ? { errorSetting: "summaryModel" as const } : {}),
                 };
             }
             summarizationFailures++;

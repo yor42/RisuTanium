@@ -729,6 +729,8 @@ export const languageKorean = {
         "characterNotFound": "캐릭터를 찾을 수 없습니다: {id}",
         "requiredTokens": "필요한 토큰: {tokens}",
         "requiredTokensRecheck": "토큰을 다시 확인하는 중입니다. 필요한 토큰: {tokens}",
+        "hypaV2NoSummaryModel": "[HypaV2] 요약 모델이 설정되어 있지 않아 채팅을 요약하지 못했고 아무것도 전송되지 않았습니다. 설정 > 기타 봇 > 장기기억에서 수파메모리 모델을 선택해 주세요.",
+        "openMemorySettings": "메모리 설정 열기",
         "stableDiffusionGroupUnsupported": "그룹 채팅에서는 Stable Diffusion을 지원하지 않습니다",
         "websocketConnectFailed": "'{url}'에 대한 WebSocket 연결에 실패했습니다.",
         "pluginProviderError": "{provider}의 플러그인 오류: {error}",
@@ -2580,7 +2582,13 @@ export const languageKorean = {
         "enableSimilarityCorrectionLabel": "유사도 보정 활성화",
         "preserveOrphanedMemoryLabel": "고아 메모리 보존",
         "applyRegexScriptWhenRerollingLabel": "재생성 시 정규식 스크립트 적용",
-        "doNotSummarizeUserMessageLabel": "유저 메시지 요약하지 않기"
+        "doNotSummarizeUserMessageLabel": "유저 메시지 요약하지 않기",
+        "newPresetNamePrompt": "프리셋 이름을 입력해 주세요",
+        "blankPresetNameError": "프리셋에는 이름이 필요합니다.",
+        "duplicatePresetLabel": "프리셋 복제",
+        "duplicatePresetDefaultName": "{name} 복사본",
+        "presetImportBrokenError": "이 파일을 프리셋으로 읽을 수 없습니다. 파일이 손상되었거나 JSON 파일이 아닐 수 있습니다.",
+        "presetImportForeignError": "이 파일은 HypaMemory V3 프리셋 내보내기 파일이 아니므로 아무것도 가져오지 않았습니다."
     },
     "hypaV3Modal": {
         "titleLabel": "HypaV3",

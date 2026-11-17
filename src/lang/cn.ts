@@ -729,6 +729,8 @@ export const languageChinese = {
         "characterNotFound": "找不到角色：{id}",
         "requiredTokens": "所需 Token 数：{tokens}",
         "requiredTokensRecheck": "正在重新检查 Token。所需 Token 数：{tokens}",
+        "hypaV2NoSummaryModel": "[HypaV2] 未设置总结模型，因此无法总结聊天，也没有发送任何内容。请在 设置 > 其他机器人 > 长期记忆 中选择 SupaMemory 模型。",
+        "openMemorySettings": "打开记忆设置",
         "stableDiffusionGroupUnsupported": "群聊中不支持 Stable Diffusion",
         "websocketConnectFailed": "与 '{url}' 的 WebSocket 连接失败。",
         "pluginProviderError": "来自 {provider} 的插件错误：{error}",
@@ -2579,7 +2581,13 @@ export const languageChinese = {
         "enableSimilarityCorrectionLabel": "启用相似度校正",
         "preserveOrphanedMemoryLabel": "保留孤立记忆",
         "applyRegexScriptWhenRerollingLabel": "重新生成时应用正则脚本",
-        "doNotSummarizeUserMessageLabel": "不要总结用户消息"
+        "doNotSummarizeUserMessageLabel": "不要总结用户消息",
+        "newPresetNamePrompt": "请输入预设名称",
+        "blankPresetNameError": "预设需要一个名称。",
+        "duplicatePresetLabel": "复制预设",
+        "duplicatePresetDefaultName": "{name} 副本",
+        "presetImportBrokenError": "无法将此文件读取为预设。文件可能已损坏，或不是 JSON 文件。",
+        "presetImportForeignError": "此文件不是 HypaMemory V3 预设导出文件，因此未导入任何内容。"
     },
     "hypaV3Modal": {
         "titleLabel": "HypaV3",

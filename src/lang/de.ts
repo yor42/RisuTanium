@@ -729,6 +729,8 @@ export const languageGerman = {
         "characterNotFound": "Charakter nicht gefunden: {id}",
         "requiredTokens": "Erforderliche Tokens: {tokens}",
         "requiredTokensRecheck": "Token werden erneut geprüft. Erforderliche Tokens: {tokens}",
+        "hypaV2NoSummaryModel": "[HypaV2] Es ist kein Zusammenfassungsmodell festgelegt, daher konnte der Chat nicht zusammengefasst werden und es wurde nichts gesendet. Wählen Sie ein SupaMemory Modell unter Einstellungen > Hilfs-KIs > Langzeitgedächtnis.",
+        "openMemorySettings": "Gedächtniseinstellungen öffnen",
         "stableDiffusionGroupUnsupported": "Stable Diffusion wird im Gruppenchat nicht unterstützt",
         "websocketConnectFailed": "Die WebSocket-Verbindung zu '{url}' ist fehlgeschlagen.",
         "pluginProviderError": "Plugin-Fehler von {provider}: {error}",
@@ -2581,7 +2583,13 @@ export const languageGerman = {
         "enableSimilarityCorrectionLabel": "Ähnlichkeitskorrektur aktivieren",
         "preserveOrphanedMemoryLabel": "Verwaiste Erinnerungen bewahren",
         "applyRegexScriptWhenRerollingLabel": "Regex-Skript beim Neugenerieren anwenden",
-        "doNotSummarizeUserMessageLabel": "Benutzernachrichten nicht zusammenfassen"
+        "doNotSummarizeUserMessageLabel": "Benutzernachrichten nicht zusammenfassen",
+        "newPresetNamePrompt": "Geben Sie einen Namen für die Voreinstellung ein",
+        "blankPresetNameError": "Eine Voreinstellung benötigt einen Namen.",
+        "duplicatePresetLabel": "Voreinstellung duplizieren",
+        "duplicatePresetDefaultName": "{name} Kopie",
+        "presetImportBrokenError": "Diese Datei konnte nicht als Voreinstellung gelesen werden. Sie ist möglicherweise beschädigt oder keine JSON-Datei.",
+        "presetImportForeignError": "Diese Datei ist kein HypaMemory-V3-Voreinstellungsexport, daher wurde nichts importiert."
     },
     "hypaV3Modal": {
         "titleLabel": "HypaV3",

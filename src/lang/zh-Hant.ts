@@ -729,6 +729,8 @@ export const languageChineseTraditional = {
         "characterNotFound": "找不到角色：{id}",
         "requiredTokens": "所需 Token 數：{tokens}",
         "requiredTokensRecheck": "正在重新檢查 Token。所需 Token 數：{tokens}",
+        "hypaV2NoSummaryModel": "[HypaV2] 尚未設定摘要模型，因此無法摘要聊天，也沒有傳送任何內容。請在 設定 > 其他 Bot > 長期記憶 中選擇 SupaMemory 模型。",
+        "openMemorySettings": "開啟記憶設定",
         "stableDiffusionGroupUnsupported": "群組聊天中不支援 Stable Diffusion",
         "websocketConnectFailed": "與 '{url}' 的 WebSocket 連線失敗。",
         "pluginProviderError": "來自 {provider} 的外掛錯誤：{error}",
@@ -2625,7 +2627,13 @@ export const languageChineseTraditional = {
         "enableSimilarityCorrectionLabel": "啟用相似度修正",
         "preserveOrphanedMemoryLabel": "保留原始訊息已被刪除的摘要",
         "applyRegexScriptWhenRerollingLabel": "重新產生時套用 Regex 腳本",
-        "doNotSummarizeUserMessageLabel": "不摘要使用者訊息"
+        "doNotSummarizeUserMessageLabel": "不摘要使用者訊息",
+        "newPresetNamePrompt": "請輸入預設集名稱",
+        "blankPresetNameError": "預設集需要名稱。",
+        "duplicatePresetLabel": "複製預設集",
+        "duplicatePresetDefaultName": "{name} 副本",
+        "presetImportBrokenError": "無法將此檔案讀取為預設集。檔案可能已損毀，或不是 JSON 檔案。",
+        "presetImportForeignError": "此檔案不是 HypaMemory V3 預設集匯出檔，因此未匯入任何內容。"
     },
     "hypaV3Modal": {
         "titleLabel": "HypaV3",
