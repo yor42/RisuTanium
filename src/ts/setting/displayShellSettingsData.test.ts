@@ -139,9 +139,9 @@ describe('placement of the legacy Display ids (T-B5)', () => {
         expect(displayShellRowIds().filter((id) => !legacy.has(id) && !own.has(id))).toEqual([])
     })
 
-    test('the motion section starts with the device rows (low power, reduced motion), then the animation speed (MC-1529)', () => {
-        expect(rowIdsOf('display.motion')).toEqual(['display.lowPower', 'display.reducedMotion', 'display.animationSpeed'])
-        expect(DEVICE_MOTION_ROW_IDS).toEqual(['display.lowPower', 'display.reducedMotion'])
+    test('the motion section starts with the device rows (low power, reduce card effects, reduced motion), then the animation speed (MC-1529, CHORE-818)', () => {
+        expect(rowIdsOf('display.motion')).toEqual(['display.lowPower', 'display.reduceCardEffects', 'display.reducedMotion', 'display.animationSpeed'])
+        expect(DEVICE_MOTION_ROW_IDS).toEqual(['display.lowPower', 'display.reduceCardEffects', 'display.reducedMotion'])
     })
 
     test('the animation speed dims under low power or reduced motion with the reason that applies', () => {

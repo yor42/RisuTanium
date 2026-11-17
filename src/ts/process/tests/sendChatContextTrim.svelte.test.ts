@@ -5,7 +5,7 @@
  * `ChatTokenizer.tokenizeChat` calls it makes changes.
  *
  * - The send of a very long chat counts tokens for about as many chats as the
- *   trim keeps, not for every message of the chat (the one reproducer here).
+ *   trim keeps, not for every message of the chat (the reproducers here).
  * - `guard:` tests freeze what the base produced for the same inputs: the
  *   provider request, the text of the too-much-token error, and the
  *   `currentTokens` and chats the memory systems receive. Call counts and call
@@ -1690,6 +1690,18 @@ describe('guard: the trim over the other inputs the context takes', () => {
         expectFrozen('continue', outcome(result))
     })
 
+    // The Local tokenizer of hf::: models counts with cl100k_base, so the trim
+    // counts it like any deterministic tokenizer.
+    test('guard: the Local tokenizer of hf::: models, counted by the trim, trims and sends the same request, and hands the memory systems the same inputs', async () => {
+        h.modelInfo = { tokenizer: 12 }
+        const db = {}
+        const trimmed = outcome(await runChat(db))
+        memoryRecords.length = 0
+        h.request.mockReset()
+        const remembered = outcome(await runChat({ ...db, hypaV3: true }, { supaMemory: true }))
+        expectFrozen('tokenizer-local tokenizer', { trimmed, remembered })
+    })
+
     // Tokenizers whose count may leave the process or the page: the counts
     // themselves are the stand-in's, only the model selection differs.
     const tokenizers: Array<[string, Record<string, unknown>, () => void]> = [
@@ -1698,9 +1710,6 @@ describe('guard: the trim over the other inputs the context takes', () => {
         }],
         ['Google Cloud tokenizing with googleClaudeTokenizing', { googleClaudeTokenizing: true }, () => {
             h.modelInfo = { tokenizer: 10 }
-        }],
-        ['local tokenizer', {}, () => {
-            h.modelInfo = { tokenizer: 12 }
         }],
     ]
 
@@ -1719,7 +1728,7 @@ describe('guard: the trim over the other inputs the context takes', () => {
     // on a dropped message still turns the trim off, as on the base. Each case
     // tells its route apart: counted only by the trim, the NaN would be skipped
     // and the newest window kept.
-    for (const [label, db, setup] of tokenizers.filter(([name]) => name !== 'local tokenizer')) {
+    for (const [label, db, setup] of tokenizers) {
         test(`guard: a NaN count for an old message with the ${label} sends every message`, async () => {
             setup()
             h.nanMarker = 'NANMARK'
@@ -1751,15 +1760,20 @@ describe('guard: the trim over the other inputs the context takes', () => {
         })
     }
 
-    test('guard: a NaN count for an old message with the local tokenizer sends every message', async () => {
+    test('regression reproducer: with the Local tokenizer of hf::: models, a NaN count on a dropped message no longer turns the trim off', async () => {
         h.modelInfo = { tokenizer: 12 }
         h.nanMarker = 'NANMARK'
         const result = await runChat({}, {}, plain(COUNT, (i, data) => i === 3 ? `${data} NANMARK` : data))
-        expectFrozen('nan-local', outcome(result))
+        const base = FROZEN['nan-local'] as { keptCount: number }
+        const now = outcome(result) as { result: unknown, keptCount: number, keptLast: number }
+        expect(base.keptCount).toBe(61)
+        expect(now.result).toBe(true)
+        expect(now.keptCount).toBeLessThan(base.keptCount)
+        expect(now.keptLast).toBe(60)
     })
 
     // The default tokenizers count a text chat as an array length plus a whole
-    // number, so they never give NaN; the local model server and a plugin's
+    // number, so they never give NaN; a plugin's
     // tokenizer can, and their counts are taken as each message is prepared
     // (the tests above). With
     // the stand-in's NaN on a dropped message, the base sent every message (a

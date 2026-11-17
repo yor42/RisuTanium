@@ -7,12 +7,13 @@ import { isBusy } from '../../process/memory/busyActions'
 import { MEASURE } from '../../process/memory/measureFlag'
 import { netHeldNow, noteNetHeldTick, noteNetPassTick } from '../measureExportHold'
 import { isModuleStub } from '../moduleStub'
-import { isColdStub, ModuleSetUnsavableError, SharedChaIdStubError, StubRefusedError, type SkippedItem } from './codec'
+import { isColdStub, ModuleSetUnsavableError, SharedChaIdStubError, StubRefusedError, toPlainJson, type SkippedItem } from './codec'
 import { isUsableCharacterId } from '../characterIds'
 import { namesManifest, type AbandonResult, type CommitResult, type Committer } from './commit'
-import { classifyCommitRead } from './commitKey'
+import { classifyCommitRead, lineIdOf, replacedStamp } from './commitKey'
 import { clearAbandonedMarker, type MarkerLiveness, type MarkerOwnerProbe } from './abandonedMarker'
 import type { Staging } from './owner'
+import type { GuardEntry } from './fastForward'
 import type { CommitKey } from './format'
 import type { Store2SaveContext } from './saveActive'
 import { createSaveEncoder, type SavePassRequest, type SavePlan } from './saveEncoder'
@@ -43,12 +44,12 @@ export type PeerOffer = 'reload' | 'save-mine' | 'export-first'
 
 /** What the person is asked when the page is parked on a commit it did not make. */
 export interface PeerParkPrompt {
-    reason: 'peer-commit' | 'replaced'
+    reason: 'peer-commit' | 'replaced' | 'tree-replaced' | 'ff-revert'
     unsaved: boolean
     /** The default first: it always starts with 'reload'. */
     offers: readonly PeerOffer[]
     /** Why 'save-mine' is not offered, for the wording the screen chooses. */
-    saveMineUnavailable?: 'node' | 'replaced' | 'carries'
+    saveMineUnavailable?: 'node' | 'replaced' | 'carries' | 'tree-replaced'
     /** Present after a Save mine was refused in this park: the items it could not carry, named when the plan knew their names. */
     blocked?: { names: readonly string[], count: number }
     /**
@@ -91,7 +92,7 @@ export interface Store2PeerHandler {
      * `PARK_CHECK_MAX_MS`); the loop's reads and the release of a pending marker wait on the write lock without a bound,
      * so the person can cancel the wait. The promise settles whenever the loop serves the request or the park ends.
      */
-    parkedClean(prompt: PeerParkPrompt, live: () => PeerLiveState, requestReload: () => Promise<ParkCheck>): void
+    parkedClean(prompt: PeerParkPrompt, live: () => PeerLiveState, requestReload: () => Promise<ParkCheck>, manifestKey?: () => string): void
     /**
      * A module stub was edited in this tab, so no save pass can encode it: changes to modules are held in memory while
      * characters and chats keep saving. Nothing is awaited and no lock is held. `stillBlocked()` is read when Reload is
@@ -152,6 +153,9 @@ export interface IdleNetOptions {
 /** The idle net's default cadence: one resident character per tick. */
 export const IDLE_NET_INTERVAL_MS = 2000
 
+/** While the peer feed is live, the longest an idle-net slot goes without reading the commit key. */
+export const FEED_BACKSTOP_MS = 30_000
+
 /**
  * A resident whose verdict was clean less than this long ago is passed over at its next turn. The rotation itself is
  * unchanged, so a quiet resident is re-verdicted at its first turn at or after this age: this plus up to one rotation.
@@ -211,6 +215,21 @@ export interface UnsavableCharacter {
     cause: unknown
 }
 
+/**
+ * What the module data in the store says about the modules, as of the last pass that planned them and whose data is in
+ * the store. `carriedWhole`: the acknowledged module set was kept as it stood (a stub the planner could not carry, a
+ * module set it could not read, or an open module question held on a hidden page), so no module change is stored.
+ * `faultIds`: the ids of the modules whose own last saved copy is kept (the refused stub, the set's named fault, or a
+ * skipped module). A module change is in the store only when `carriedWhole` is false and its id is not in `faultIds`.
+ */
+export interface ModuleHold {
+    readonly carriedWhole: boolean
+    readonly faultIds: readonly string[]
+}
+
+/** No module is held: the last module-planning pass stored the module set as it stood. */
+export const NO_MODULE_HOLD: ModuleHold = { carriedWhole: false, faultIds: [] }
+
 /** What the loop needs from the page: the shared marks and flags, the page's own state and effects. `saveDbStore2` builds it. */
 export interface Store2LoopPort {
     /** The live tracker the mark paths write into. */
@@ -258,8 +277,12 @@ export interface Store2LoopPort {
      * empty; a throw is logged and ignored. Optional so that the many test ports of other behaviours need not declare it.
      */
     unsavableItems?(current: readonly SkippedItem[], newly: readonly SkippedItem[]): void
-    /** The pass's data is in the store (or the store already held it): next-commit callbacks fire. */
-    saved(): void
+    /**
+     * The pass's data is in the store (or the store already held it): next-commit callbacks fire. `hold` is the standing
+     * module hold: it describes the module data of the last pass that planned the modules and whose data is in the store,
+     * so a pass that planned no modules reports the one before it.
+     */
+    saved(hold: ModuleHold): void
     /** Tells the other tabs a commit landed. */
     broadcast(epoch: string): void
     /** A peer announced a save since the last call; clears the flag. */
@@ -272,6 +295,11 @@ export interface Store2LoopPort {
      * test ports of other behaviours need not declare it.
      */
     notifyTooLarge?(label: string): void
+    /**
+     * Shows or clears the informational line that this tab waits for a running reply before it takes a peer's changes. It is
+     * not a stop: saving continues. Optional so that the many test ports of other behaviours need not declare it.
+     */
+    setPeerWaiting?(waiting: boolean): void
     /** Tells the person a save failed; answers how long the loop waits before it tries again. */
     reportFailure(error: unknown, attempts: number): number
     /**
@@ -302,6 +330,11 @@ export interface Store2LoopPort {
      * a frozen page runs no message or timer, so the pass would wait for the user to return. Absent means never.
      */
     yieldImmediately?(): boolean
+    /**
+     * Whether the Node server's change feed is live now: a peer commit then wakes the peer check, so an idle-net slot reads
+     * the commit key at most once per `FEED_BACKSTOP_MS`. Absent or false means every slot reads, as without a feed.
+     */
+    peerFeedLive?(): boolean
     /**
      * The owners a reply streams into now, by `chaId`. The idle net never verdicts or names such a character while it is
      * listed and not unsavable; marked passes and the leave flushes still write it. Absent means none.
@@ -404,6 +437,10 @@ export function blockedOf(plan: Pick<SavePlan, 'carried'>): { names: readonly st
     return { names, count: names.length > 0 ? names.length : plan.carried.units }
 }
 
+function sameClean(older: PeerParkPrompt, newer: PeerParkPrompt): boolean {
+    return older.offers.length === newer.offers.length && older.offers.every((offer, index) => offer === newer.offers[index])
+}
+
 function presentChaIds(db: Database): Set<string> {
     const out = new Set<string>()
     if (Array.isArray(db.characters)) {
@@ -418,11 +455,20 @@ function presentChaIds(db: Database): Set<string> {
 
 type Judged =
     | { kind: 'ok' }
-    | { kind: 'stop', reason: 'peer-commit' | 'replaced', key: CommitKey | null, revision: boolean }
+    /**
+     * `descends` is set only on a lineage-judged `peer-commit` stop: true when the key's line proves every commit since
+     * the baseline was a delta over the tree before it, false when that is unproven. A `tree-replaced` stop is a peer
+     * restore, import or install and is never consentable.
+     */
+    | { kind: 'stop', reason: 'peer-commit' | 'replaced' | 'tree-replaced', key: CommitKey | null, revision: boolean, descends?: boolean }
 
 /** A parked loop: what it is parked on, and what has been told or asked. */
 interface Park {
-    reason: 'peer-commit' | 'replaced'
+    reason: 'peer-commit' | 'replaced' | 'tree-replaced' | 'ff-revert'
+    /** The guard entries a plan was about to revert (`ff-revert` only): pinned while the park stands. */
+    guard?: readonly GuardEntry[]
+    /** Carried from the judged stop: false means the descent from this page's baseline is unproven. */
+    descends?: boolean
     /** The epoch the commit key held when the park was judged; Save mine's consent covers this one only. */
     epoch: string | null
     /** The base still names this page's acknowledged manifest (current, retained or pinned). */
@@ -497,6 +543,11 @@ interface PassRun {
     standingLiveness: MarkerLiveness | null
     /** The open module question this pass saved past on a hidden page (`hiddenHeldAdmits`); `null` otherwise. */
     held: Promise<void> | null
+    /**
+     * What the pass's own plan says about the modules; null when the pass planned none. Read only by `landModuleHold`,
+     * at the point where the pass's data is in the store: it never changes the standing hold by itself.
+     */
+    moduleHold: ModuleHold | null
 }
 
 /** A plan and how the pass degraded to make it: a module refusal, a module set carried whole, or a held module question. */
@@ -504,6 +555,8 @@ interface PlannedPass {
     plan: SavePlan
     moduleRefusal: StubRefusedError | null
     moduleSet: SkippedItem | null
+    /** The id of the module that made the set unreadable (`ModuleSetUnsavableError.id`); null without one. */
+    moduleSetFaultId: string | null
     held: Promise<void> | null
 }
 
@@ -512,6 +565,15 @@ const REPLACED_REFUSALS: ReadonlySet<string> = new Set(['absent', 'no-current', 
 
 /** Consecutive retries the loop makes without a report; the next one goes through the failure path. */
 const QUIET_RETRIES = 2
+
+/** Consecutive `peer-advanced` retries (a peer committed again before this page's pass landed) that do not count toward `QUIET_RETRIES`. */
+const FF_RETRY_FREE = 5
+
+/** A foreign marker is not asked about while a foreign commit-key write was seen this recently (Node, fast-forward pages only). */
+export const FOREIGN_LIVE_MS = 5 * 60_000
+
+/** ... and its marker was first seen on this page this recently: a marker that stands longer is asked about as today. */
+export const MARKER_YOUNG_MS = 10 * 60_000
 
 /** Consecutive cut ticks the loop allows; the next tick finishes whatever becomes due. */
 const CUT_TICKS_LIMIT = 2
@@ -581,6 +643,12 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let editedAnnounced: string | null = null
     /** The module id whose not-saved notice was told; cleared like `editedAnnounced`. */
     let unsavedAnnounced: string | null = null
+    /**
+     * The standing module hold: what the last pass that planned the modules and whose data is in the store says about them.
+     * It is replaced only by `landModuleHold`, never when a pass is planned, so a pass that planned the modules and did not
+     * land leaves it as it was, and a pass that planned no modules repeats it.
+     */
+    let moduleHold: ModuleHold = NO_MODULE_HOLD
     let park: Park | null = null
     readParked = () => park !== null
     /** Set once by a too-large refusal and never cleared: no pass, idle net or park handling runs again on this page load. */
@@ -599,6 +667,16 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     /** A commit reported that it was not flushed: the next pass commits even when it changed nothing. */
     let forced = false
     let peerSignal = false
+    /** A peer commit that provably descends from this page's baseline was seen outside a pass: one tick takes it (fast-forward pages only). */
+    let peerTickOwed = false
+    /** Consecutive `peer-advanced` retries; the first `FF_RETRY_FREE` of a run are not counted toward the quiet budget. */
+    let peerAdvancedRuns = 0
+    /** The epoch of this page's own last landed commit, and when a commit-key write of anyone else was last seen (`port.now()`). */
+    let lastOwnEpoch: string | null = null
+    let lastForeignAt: number | null = null
+    let lastSeenEpoch: string | null = null
+    /** When each foreign marker (owner and prefix) was first seen on this page. */
+    const markerFirstSeen = new Map<string, number>()
     /** A Reload press waiting for the loop's check: the one owner of the park runs it inside `settlePark`. */
     let reloadAsk: { result: Promise<ParkCheck>, settle: (verdict: ParkCheck) => void } | null = null
     let netIndex = 0
@@ -632,6 +710,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let lastActivityAt = port.now()
     /** When the last slot that ran `netScan` ran it; the quiet scan interval counts from here. */
     let lastScanAt = Number.NEGATIVE_INFINITY
+    /** When `netDecision` last read the commit key; a live peer feed lets later slots skip the read until `FEED_BACKSTOP_MS` has passed. */
+    let lastCommitReadAt = Number.NEGATIVE_INFINITY
     /** The database object the last scan gate saw; a different one is activity. */
     let lastSeenDb: Database | null = null
     /** Whether the current net slot ran `netScan`; set by the scan gate, read by `netSlot`. */
@@ -676,19 +756,59 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (classified.status !== 'parsed' || classified.value.current === null) {
             return { kind: 'stop', reason: 'replaced', key: classified.status === 'parsed' ? classified.value : null, revision }
         }
+        const key = classified.value
         const current = classified.value.current.key
+        if (key.epoch !== lastSeenEpoch) {
+            if (lastSeenEpoch !== null && key.epoch !== lastOwnEpoch && committer.ownsEpoch?.(key.epoch) !== true) {
+                lastForeignAt = port.now()
+            }
+            lastSeenEpoch = key.epoch
+        }
         if (current === encoder.manifestKey || encoder.adoptIfCurrent(current)) {
             if (MEASURE && pendingBefore !== null && encoder.pendingKey === null) {
                 noteSignalAdopted()
             }
+            seedBaseline(key)
             return { kind: 'ok' }
         }
-        return { kind: 'stop', reason: 'peer-commit', key: classified.value, revision }
+        const lineage = context.lineage
+        if (lineage === undefined) {
+            return { kind: 'stop', reason: 'peer-commit', key, revision }
+        }
+        // A peer restore, import or install is never consentable, whether or not the line proves anything: the stamp
+        // differs from the baseline's until a judged `ok` moves the baseline.
+        const base = lineage.base
+        const stamp = replacedStamp(key)
+        if (base === 'unknown' ? stamp !== null : stamp !== base.stamp) {
+            return { kind: 'stop', reason: 'tree-replaced', key, revision }
+        }
+        // Proven only along one line over a growing `seq`; a key without a valid line, a stale tip or a baseline that is
+        // unknown is unproven, and the page parks as it did before the proof existed.
+        const line = lineIdOf(key)
+        const descends = base !== 'unknown' && line !== null && line === base.line && key.seq > base.seq
+        return { kind: 'stop', reason: 'peer-commit', key, revision, descends }
+    }
+
+    /**
+     * Replaces the descent baseline whole from a commit key. Called only for a judged `ok` and, in the same synchronous
+     * step as `acknowledge`, for an own landed commit, so the baseline and the encoder's manifest never diverge.
+     */
+    function seedBaseline(key: CommitKey): void {
+        if (context.lineage !== undefined) {
+            context.lineage.base = { line: lineIdOf(key), stamp: replacedStamp(key), seq: key.seq }
+        }
+    }
+
+    /** A peer commit the line proves descends from this page's baseline, on a page with a fast-forward, and not the epoch Save mine was agreed over. */
+    function descendsStop(judged: Judged): boolean {
+        return context.fastForward !== undefined && judged.kind === 'stop' && judged.reason === 'peer-commit' && judged.descends === true
+            && !(consent !== null && judged.key?.epoch === consent)
     }
 
     function parkOf(judged: Extract<Judged, { kind: 'stop' }>): Park {
         return {
             reason: judged.reason,
+            descends: judged.descends,
             epoch: judged.key?.epoch ?? null,
             namedMine: judged.key === null ? false : namedByBase(judged.key),
             revision: judged.revision,
@@ -698,8 +818,18 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
     }
 
+    /** Clears the waiting line: every exit of a deferral (applied, parked, unparked, committed over an ok base, stopped) ends it. */
+    function clearPeerWaiting(): void {
+        context.fastForward?.invalidate()
+        port.setPeerWaiting?.(false)
+    }
+
+    /** Counts the clean parks a person was shown a question for: a dialog built for an older one is answered `moved`. */
+    let cleanPromptSerial = 0
+
     /** Ends the park. A Reload press still waiting for its check is answered `moved`. */
     function unpark(): void {
+        clearPeerWaiting()
         park = null
         lastActivityAt = port.now()
         port.setStopped('')
@@ -795,8 +925,12 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     }
 
     function setPark(next: Park): void {
+        clearPeerWaiting()
         consent = null
         park = next
+        if (next.guard !== undefined) {
+            context.fastForward?.guard.pin(next.guard)
+        }
         if (next.reason === 'replaced') {
             port.setStopped('replaced')
         }
@@ -806,13 +940,31 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (parked.reason === 'replaced') {
             return { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'replaced' }
         }
-        if (context.session.kind === 'node' || parked.revision) {
+        // A peer restore, import or install: this tab's version never replaces it, on web or Node.
+        if (parked.reason === 'tree-replaced') {
             return unsaved
+                ? { reason: parked.reason, unsaved, offers: ['reload', 'export-first'], saveMineUnavailable: 'tree-replaced' }
+                : { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'tree-replaced' }
+        }
+        // A plan was about to undo what the fast-forward took from a peer: asked once, and the park stands until answered.
+        if (parked.reason === 'ff-revert') {
+            if (context.session.kind === 'node' || parked.revision) {
+                return unsaved
+                    ? { reason: parked.reason, unsaved, offers: ['reload', 'export-first'], saveMineUnavailable: 'node' }
+                    : { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'node' }
+            }
+            return unsaved ? { reason: parked.reason, unsaved, offers: ['reload', 'save-mine'] } : { reason: parked.reason, unsaved, offers: ['reload'] }
+        }
+        // A clean page whose descent is unproven may be missing its own committed edits from the store, so it is offered
+        // the export too.
+        const exportFirst = unsaved || parked.descends === false
+        if (context.session.kind === 'node' || parked.revision) {
+            return exportFirst
                 ? { reason: parked.reason, unsaved, offers: ['reload', 'export-first'], saveMineUnavailable: 'node' }
                 : { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'node' }
         }
         if (!unsaved) {
-            return { reason: parked.reason, unsaved, offers: ['reload'] }
+            return { reason: parked.reason, unsaved, offers: exportFirst ? ['reload', 'export-first'] : ['reload'] }
         }
         if (parked.blocked !== undefined) {
             return { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'carries', blocked: parked.blocked }
@@ -833,18 +985,28 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             return
         }
         const judged = judge(read)
+        // An ff-revert park is replaced only by a replaced tree; an `ok` or a later peer commit keeps the one question.
+        if (parked.reason === 'ff-revert' && !(judged.kind === 'stop' && judged.reason !== 'peer-commit')) {
+            return
+        }
         if (judged.kind === 'ok') {
             unpark()
             return
         }
         const next = parkOf(judged)
-        if (next.epoch === parked.epoch && next.reason === parked.reason) {
+        if (next.epoch === parked.epoch && next.reason === parked.reason && next.descends === parked.descends) {
             return
         }
-        next.noticed = parked.noticed
         next.autoExport = parked.autoExport
         if (parked.blocked !== undefined && !next.namedMine) {
             next.blocked = parked.blocked
+        }
+        // A person who saw the clean question keeps it only while the newer park offers the same things: other offers
+        // (the export once the descent is unproven) are shown afresh, and a Reload pressed on the older dialog after the newer park was judged is answered `moved`.
+        const sameOffers = sameClean(promptOf(parked, false), promptOf(next, false))
+        next.noticed = parked.noticed && sameOffers
+        if (parked.noticed && !sameOffers) {
+            cleanPromptSerial += 1
         }
         setPark(next)
     }
@@ -874,11 +1036,12 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (!port.isDirty()) {
             if (!parked.noticed) {
                 parked.noticed = true
+                const serial = cleanPromptSerial
                 context.peer.parkedClean(promptOf(parked, false), () => ({
                     parked: park !== null,
                     dirty: port.isDirty(),
                     drafts: port.hasDrafts(),
-                }), requestReload)
+                }), () => serial === cleanPromptSerial ? requestReload().then((verdict): ParkCheck => serial === cleanPromptSerial ? verdict : 'moved') : Promise.resolve<ParkCheck>('moved'), () => encoder.manifestKey)
             }
             return
         }
@@ -916,6 +1079,13 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             return
         }
         const choice: PeerOffer = prompt.offers.includes(answer) ? answer : 'reload'
+        if (choice === 'save-mine' && parked.reason === 'ff-revert') {
+            // No consent: the pass that follows judges `ok` and commits through `commit`, so it never overwrites a peer.
+            context.fastForward?.guard.disarm(parked.guard ?? [])
+            unpark()
+            port.requestPass()
+            return
+        }
         if (choice === 'save-mine' && parked.epoch !== null) {
             consent = parked.epoch
             unpark()
@@ -1102,7 +1272,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         let planRequest = request
         for (;;) {
             try {
-                return { plan: await planWithStubLoads(planDb, planRequest), moduleRefusal: null, moduleSet: null, held: null }
+                return { plan: await planWithStubLoads(planDb, planRequest), moduleRefusal: null, moduleSet: null, moduleSetFaultId: null, held: null }
             } catch (error) {
                 if (error instanceof ModuleSetUnsavableError) {
                     // One module cannot be read and cannot be carried alone: the whole acknowledged module set is carried,
@@ -1112,7 +1282,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     }
                     const name = error.moduleName !== '' ? error.moduleName : error.id
                     const moduleSet: SkippedItem = { scope: 'moduleSet', key: 'modules', label: `"${name}"`, saved: true, cause: error.fault }
-                    return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: null, moduleSet, held: null }
+                    return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: null, moduleSet, moduleSetFaultId: error.id !== '' ? error.id : null, held: null }
                 }
                 if (!(error instanceof StubRefusedError) || error.kind !== 'module') {
                     throw error
@@ -1129,7 +1299,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                             if (MEASURE) {
                                 activeGaps?.resume()
                             }
-                            return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: null, moduleSet: null, held: result.settled }
+                            return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: null, moduleSet: null, moduleSetFaultId: null, held: result.settled }
                         }
                         throw new ModuleLoadDeferred(result.settled)
                     }
@@ -1145,7 +1315,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 if (!encoder.carriesModules()) {
                     throw error
                 }
-                return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: error, moduleSet: null, held: null }
+                return { plan: await planWithStubLoads(planDb, { ...planRequest, carryModules: true }), moduleRefusal: error, moduleSet: null, moduleSetFaultId: null, held: null }
             }
         }
     }
@@ -1177,11 +1347,22 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
     }
 
-    function outcomeOf(result: CommitResult, plan: SavePlan, flags: { landed: boolean }): Outcome {
+    /** Takes the pass's module statement as the standing hold; a pass that planned no modules leaves the hold as it was. */
+    function landModuleHold(run: Pick<PassRun, 'moduleHold'>): void {
+        if (run.moduleHold !== null) {
+            moduleHold = run.moduleHold
+        }
+    }
+
+    function outcomeOf(result: CommitResult, plan: SavePlan, flags: Pick<PassRun, 'landed' | 'moduleHold'>): Outcome {
         switch (result.status) {
             case 'committed':
                 flags.landed = true
+                // The commit stored this pass's module encoding; this is before anything below that can throw.
+                landModuleHold(flags)
                 plan.acknowledge()
+                seedBaseline(result.value)
+                lastOwnEpoch = result.value.epoch
                 if (MEASURE) {
                     noteSignalAck(plan.encoded)
                 }
@@ -1196,8 +1377,12 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 return { kind: 'saved', wrote: true }
             case 'conflict': {
                 const judged = judge(result.current)
-                return judged.kind === 'ok'
-                    ? { kind: 'retry', reason: 'conflict', detail: 'A peer\'s write kept landing first.' }
+                if (judged.kind === 'ok') {
+                    return { kind: 'retry', reason: 'conflict', detail: 'A peer\'s write kept landing first.' }
+                }
+                // A peer commit proven to descend is taken by the next attempt's fast-forward, not parked on.
+                return descendsStop(judged)
+                    ? { kind: 'retry', reason: 'peer-advanced', detail: 'A peer committed first.' }
                     : { kind: 'park', park: parkOf(judged) }
             }
             case 'failed':
@@ -1265,6 +1450,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (stopped) {
             return
         }
+        clearPeerWaiting()
         stopped = true
         console.error(cause)
         markerPending = markerPending || (cleared !== null && cleared.status !== 'cleared' && cleared.status !== 'nothing')
@@ -1375,11 +1561,36 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         }
         const read = await committer.readCommit()
         peerSignal = false
-        const judged = judge(read)
+        let judged = judge(read)
+        const fastForward = context.fastForward
+        if (fastForward !== undefined && judged.kind === 'stop' && descendsStop(judged) && judged.key !== null) {
+            // The peer's commit descends from this page's baseline: its changes are taken here, under the write lock.
+            const stop = judged
+            const taken = await fastForward.run({ read, key: judged.key, baseKey: encoder.manifestKey, encoder, port, snapshot: run.snapshot })
+            switch (taken.kind) {
+                case 'applied':
+                    // The acknowledged encoding is the peer's tree now, so the same read judges `ok` and replaces the baseline.
+                    cleanVerdictAt.clear()
+                    clearPeerWaiting()
+                    judged = judge(read)
+                    if (judged.kind !== 'ok') {
+                        throw new Store2CommitRefusedError('ff-rejudge', 'The base did not judge ok after a fast-forward.')
+                    }
+                    break
+                case 'deferred':
+                    void taken.settled.then(() => { peerTickOwed = true })
+                    return { kind: 'deferred', settled: taken.settled }
+                case 'park':
+                    return { kind: 'park', park: parkOf(stop) }
+                case 'retry':
+                    return { kind: 'retry', reason: taken.reason, detail: taken.detail }
+            }
+        }
         if (judged.kind === 'stop' && !(consent !== null && judged.reason === 'peer-commit' && judged.key?.epoch === consent)) {
             return { kind: 'park', park: parkOf(judged) }
         }
         const saveMine = judged.kind === 'stop'
+        clearPeerWaiting()
         if (!saveMine) {
             consent = null
         }
@@ -1395,6 +1606,16 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             activeCut?.()
             const planned = await planOf(db, planRequest)
             plan = planned.plan
+            // The pass's own module statement, kept on the run until `landModuleHold` reads it at the landing point.
+            if (planned.moduleRefusal !== null) {
+                run.moduleHold = { carriedWhole: true, faultIds: [planned.moduleRefusal.chaId] }
+            } else if (planned.moduleSet !== null) {
+                run.moduleHold = { carriedWhole: true, faultIds: planned.moduleSetFaultId !== null ? [planned.moduleSetFaultId] : [] }
+            } else if (planned.held !== null) {
+                run.moduleHold = { carriedWhole: true, faultIds: [] }
+            } else if (plan.modulesEncoded) {
+                run.moduleHold = { carriedWhole: false, faultIds: plan.skippedItems.filter(item => item.scope === 'module').map(item => item.key) }
+            }
             if (planned.moduleRefusal !== null) {
                 // Folded before the commit so that every later outcome keeps it: the held module changes are retried by
                 // each marked pass until the refusal is gone, and the page stays dirty meanwhile. It sets dirty only and
@@ -1443,7 +1664,19 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             if (MEASURE) {
                 noteSignalUnchanged(plan.encoded)
             }
+            // The store already holds this pass's module encoding, so the standing hold is replaced here.
+            landModuleHold(run)
             return { kind: 'saved', wrote: false }
+        }
+        if (fastForward !== undefined) {
+            // A plan that would write back what the fast-forward took from a peer is not committed: the page parks once and asks.
+            const hit = fastForward.guard.check(plan.written, path => toPlainJson(Reflect.get(db, path)))
+            if (hit !== null) {
+                return {
+                    kind: 'park',
+                    park: { reason: 'ff-revert', guard: hit.entries, epoch: null, namedMine: true, revision: read.token.kind === 'revision', asked: false, noticed: false, autoExport: 'pending' },
+                }
+            }
         }
         const planned = plan.commitRequest()
         const request = MEASURE && activeGaps !== null ? activeGaps.wrapBuild(planned) : planned
@@ -1498,6 +1731,9 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 fresh = judge(await committer.readCommit())
             } catch (error) {
                 console.error(error)
+            }
+            if (fresh !== null && fresh.kind === 'stop' && descendsStop(fresh)) {
+                return { kind: 'retry', reason: 'peer-advanced', detail: 'A peer committed first.' }
             }
             return fresh !== null && fresh.kind === 'stop'
                 ? { kind: 'park', park: parkOf(fresh) }
@@ -1605,6 +1841,20 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     }
 
     /**
+     * Whether the question about a standing foreign marker is skipped: Node pages with a fast-forward only, while a
+     * foreign commit-key write was seen within `FOREIGN_LIVE_MS` (its owner is alive and committing) and the marker was
+     * first seen here less than `MARKER_YOUNG_MS` ago. Otherwise the person is asked as before.
+     */
+    function markerSuppressed(marker: Staging): boolean {
+        if (context.fastForward === undefined || context.session.kind !== 'node') {
+            return false
+        }
+        const now = port.now()
+        const first = markerFirstSeen.get(`${marker.owner}:${marker.prefix}`) ?? now
+        return lastForeignAt !== null && now - lastForeignAt < FOREIGN_LIVE_MS && now - first < MARKER_YOUNG_MS
+    }
+
+    /**
      * A back-off after a pass or a peer read. `rearmWait` ends it on a save request and keeps that request for the wait
      * after the pass; without it the back-off is the plain timed sleep. The delay is computed by the caller, once.
      */
@@ -1621,7 +1871,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
 
     /** Runs one pass; resolves `true` when it was a tick cut at a yield (nothing written or counted), `false` otherwise. */
     async function pass(tick: boolean, netChaId: string | null = null): Promise<boolean> {
-        const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleSet: null, moduleScope: false, foreignCleared: false, standingMarker: null, standingLiveness: null, held: null }
+        const run: PassRun = { snapshot: null, landed: false, plan: null, moduleRefusal: null, moduleSet: null, moduleScope: false, foreignCleared: false, standingMarker: null, standingLiveness: null, held: null, moduleHold: null }
         let cut = false
         // A tick that saved with nothing written and no module refusal is the one outcome that is not activity.
         let endedUnchanged = false
@@ -1634,6 +1884,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             switch (outcome.kind) {
                 case 'saved':
                     retries = 0
+                    peerAdvancedRuns = 0
                     endedUnchanged = tick && !outcome.wrote && run.moduleRefusal === null && run.moduleSet === null && run.held === null
                     if (tick && run.moduleScope) {
                         moduleSweepOwed = false
@@ -1649,13 +1900,30 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                         settleItems(run.plan, run.moduleSet)
                     }
                     if (!tick || outcome.wrote) {
-                        port.saved()
+                        port.saved(moduleHold)
                     }
                     break
                 case 'retry':
                     if (run.foreignCleared) {
                         // The retry a foreign clear causes is not a failed save: the quiet budget starts over.
                         retries = 0
+                    }
+                    if (run.standingMarker !== null) {
+                        const markerId = `${run.standingMarker.owner}:${run.standingMarker.prefix}`
+                        if (!markerFirstSeen.has(markerId)) {
+                            markerFirstSeen.set(markerId, port.now())
+                        }
+                    }
+                    if (outcome.reason === 'peer-advanced') {
+                        // A peer that keeps committing is not a failing save: the first few retries are free.
+                        peerAdvancedRuns += 1
+                        if (peerAdvancedRuns <= FF_RETRY_FREE) {
+                            foldBack(run.snapshot)
+                            await backOff(500)
+                            break
+                        }
+                    } else {
+                        peerAdvancedRuns = 0
                     }
                     retries += 1
                     foldBack(run.snapshot)
@@ -1665,7 +1933,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     }
                     // A run of retries that does not end is a failed save: the person is told and the attempts are counted.
                     savetrys += 1
-                    if (run.standingMarker !== null && run.standingLiveness === 'unknown') {
+                    if (run.standingMarker !== null && run.standingLiveness === 'unknown' && !markerSuppressed(run.standingMarker)) {
                         askForeignMarker(run.standingMarker)
                     }
                     // While a question is up, every refusal that names a standing foreign marker is prompted, so a report never covers it.
@@ -1763,7 +2031,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             const judged = judge(read)
             // The epoch the person agreed to overwrite is not a new peer commit: a deferral that gates the pass must not
             // make this check clear the consent and ask again.
-            if (judged.kind === 'stop' && !(consent !== null && judged.reason === 'peer-commit' && judged.key?.epoch === consent)) {
+            if (descendsStop(judged)) {
+                // A proven descent is taken by a pass: one tick, owed until it runs.
+                peerTickOwed = true
+            } else if (judged.kind === 'stop' && !(consent !== null && judged.reason === 'peer-commit' && judged.key?.epoch === consent)) {
                 setPark(parkOf(judged))
             }
         } catch (error) {
@@ -1797,33 +2068,45 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
             return { kind: 'full' }
         }
-        const lockRequestedAt = MEASURE ? performance.now() : 0
-        // The measured read notes the lock wait when the lock is granted and the read time even when the read throws.
-        const readUnderLock = MEASURE
-            ? async () => {
-                const lockedAt = performance.now()
-                noteNetSlotPart('lockWaitMs', lockedAt - lockRequestedAt)
-                try {
-                    return await committer.readCommit()
-                } finally {
-                    noteNetSlotPart('readMs', performance.now() - lockedAt)
+        // A live peer feed wakes the peer check on a peer commit, so the commit key is read here only as a backstop once
+        // `FEED_BACKSTOP_MS` has passed since the last read; a clock that moved back counts as stale. Nothing later in the
+        // slot depends on that read, so a skipped slot continues with every later check unchanged.
+        const sinceCommitRead = port.now() - lastCommitReadAt
+        const feedCovers = port.peerFeedLive?.() === true && sinceCommitRead >= 0 && sinceCommitRead < FEED_BACKSTOP_MS
+        if (!feedCovers) {
+            const lockRequestedAt = MEASURE ? performance.now() : 0
+            // The measured read notes the lock wait when the lock is granted and the read time even when the read throws.
+            const readUnderLock = MEASURE
+                ? async () => {
+                    const lockedAt = performance.now()
+                    noteNetSlotPart('lockWaitMs', lockedAt - lockRequestedAt)
+                    try {
+                        return await committer.readCommit()
+                    } finally {
+                        noteNetSlotPart('readMs', performance.now() - lockedAt)
+                    }
                 }
-            }
-            : () => committer.readCommit()
-        const read = await port.withWriteLock(readUnderLock)
-        const judgeStartedAt = MEASURE ? performance.now() : 0
-        const judged = judge(read)
-        if (MEASURE) {
-            noteNetSlotPart('judgeMs', performance.now() - judgeStartedAt)
-            netJudgeStartedAt = judgeStartedAt
-            netReadDone = true
-        }
-        if (judged.kind === 'stop') {
-            setPark(parkOf(judged))
+                : () => committer.readCommit()
+            const read = await port.withWriteLock(readUnderLock)
+            lastCommitReadAt = port.now()
+            const judgeStartedAt = MEASURE ? performance.now() : 0
+            const judged = judge(read)
             if (MEASURE) {
-                noteNetSlotEnd('parked')
+                noteNetSlotPart('judgeMs', performance.now() - judgeStartedAt)
+                netJudgeStartedAt = judgeStartedAt
+                netReadDone = true
             }
-            return { kind: 'none' }
+            if (descendsStop(judged)) {
+                // The full tick reads the base again and fast-forwards over it.
+                return { kind: 'full' }
+            }
+            if (judged.kind === 'stop') {
+                setPark(parkOf(judged))
+                if (MEASURE) {
+                    noteNetSlotEnd('parked')
+                }
+                return { kind: 'none' }
+            }
         }
         if (port.isDue()) {
             if (MEASURE) {
@@ -2158,6 +2441,13 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             }
             if (peerSignal) {
                 await checkPeer()
+                await port.wait(500)
+                continue
+            }
+            if (peerTickOwed && (deferral === null || hiddenHeldAdmits())) {
+                // A peer commit that provably descends from this page's baseline is taken by a tick pass.
+                peerTickOwed = false
+                await pass(true)
                 await port.wait(500)
                 continue
             }

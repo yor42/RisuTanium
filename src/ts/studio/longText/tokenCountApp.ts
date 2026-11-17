@@ -51,7 +51,6 @@ function modelRoute(tokenizer: LLMTokenizer, googleClaudeTokenizing: boolean): T
         case LLMTokenizer.NovelAI: return { kind: 'local', tokenizer: 'novelai' }
         case LLMTokenizer.Mistral: return { kind: 'local', tokenizer: 'mistral' }
         case LLMTokenizer.Llama: return { kind: 'local', tokenizer: 'llama' }
-        case LLMTokenizer.Local: return { kind: 'local', tokenizer: 'gguf' }
         case LLMTokenizer.tiktokenO200Base: return { kind: 'local', tokenizer: 'o200k_base' }
         case LLMTokenizer.GoogleCloud:
             return googleClaudeTokenizing ? { kind: 'online-only' } : { kind: 'local', tokenizer: 'gemma' }

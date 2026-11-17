@@ -28,12 +28,6 @@ vi.mock('../../storage/database.svelte', () => ({
 }))
 vi.mock('../../process/files/inlays', () => ({ supportsInlayImage: () => false }))
 vi.mock('../../parser/parser.svelte', () => ({ risuChatParser: (text: string) => text }))
-vi.mock('../../process/models/local', () => ({
-    tokenizeGGUFModel: async () => {
-        state.recorded.push('gguf')
-        return [1]
-    },
-}))
 vi.mock('../../globalApi.svelte', () => ({
     globalFetch: async () => {
         throw new Error('globalFetch must not be reached')
@@ -225,7 +219,7 @@ describe('A2-d1 resolveTokenRoute equals what encode runs', () => {
         const { route, observed } = await runCase(c)
         expect(observed).toBe(expectedRoute(route))
         for (const url of state.urls) {
-            const allowed = url.startsWith('/token/') || url.includes('localhost:10026')
+            const allowed = url.startsWith('/token/')
                 || url.startsWith('https://generativelanguage.googleapis.com/')
             expect(allowed, url).toBe(true)
         }
@@ -233,8 +227,20 @@ describe('A2-d1 resolveTokenRoute equals what encode runs', () => {
 
     test('the harness observed every kind of route', () => {
         for (const id of ['o200k_base', 'cl100k_base', 'mistral', 'llama', 'novelai', 'claude', 'novellist', 'gemma', 'cohere',
-            'deepseek', 'deepseek-v4', 'glm4', 'glm5', 'gguf', 'plugin', 'online-only', 'unavailable']) {
+            'deepseek', 'deepseek-v4', 'glm4', 'glm5', 'plugin', 'online-only', 'unavailable']) {
             expect(seen.has(id), id).toBe(true)
         }
+    })
+})
+
+describe('Local tokenizer of hf::: models', () => {
+    test('regression reproducer: the Local tokenizer of hf::: models runs cl100k_base in encode', async () => {
+        state.db.aiModel = 'gpt'
+        state.db.customTokenizer = 'tik'
+        state.db.googleClaudeTokenizing = false
+        state.modelTokenizer = LLMTokenizer.Local
+        state.providers.clear()
+        const observed = await observedRoute()
+        expect(observed).toBe('cl100k_base')
     })
 })

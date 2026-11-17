@@ -404,6 +404,65 @@ describe('parkedClean: a closable prompt asked once', () => {
     })
 })
 
+describe('parkedClean: a clean page whose descent is unproven is offered the export', () => {
+    const unproven = () => prompt({ reason: 'peer-commit', unsaved: false, offers: ['reload', 'export-first'] })
+    const writer = () => vi.fn(async (_manifestKey: string): Promise<PeerExportResult> => ({ status: 'saved', notices: [] }))
+
+    test('the buttons are Reload, Export this tab first and Keep reading, under a title that does not say nothing is unsaved', async () => {
+        const { reload } = newUi()
+        const ui = createPeerUi({ reload, exportAvailable: true, exportThisTab: writer() })
+        ui.parkedClean(unproven(), () => calm(), cleanNow, () => 'manifest-a')
+        await waitForSelect()
+        expect(selectParts()).toEqual({
+            title: text().peerCleanUnproven,
+            labels: [text().peerReloadOnly, text().peerExportFirst, text().peerKeepReading],
+        })
+        expect(text().peerCleanUnproven).not.toContain('Nothing in this tab is unsaved')
+    })
+
+    test('Export this tab first writes the export of the loop manifest and then reloads', async () => {
+        const write = writer()
+        const reload = vi.fn()
+        const ui = createPeerUi({ reload, exportAvailable: true, exportThisTab: write })
+        ui.parkedClean(unproven(), () => calm(), cleanNow, () => 'manifest-a')
+        await waitForSelect()
+        await press(1)
+        await vi.waitFor(() => expect(write).toHaveBeenCalledWith('manifest-a'))
+        await vi.waitFor(() => expect(shown().type).toBe('markdown'))
+        alertStore.set({ type: 'none', msg: '' })
+        await waitForSelect()
+        expect(reload).not.toHaveBeenCalled()
+        await press(0)
+        await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1))
+    })
+
+    test('Keep reading after the export offer reloads nothing and exports nothing', async () => {
+        const write = writer()
+        const reload = vi.fn()
+        const ui = createPeerUi({ reload, exportAvailable: true, exportThisTab: write })
+        ui.parkedClean(unproven(), () => calm(), cleanNow, () => 'manifest-a')
+        await waitForSelect()
+        await press(2)
+        await vi.waitFor(() => expect(shown().type).toBe('none'))
+        expect(write).not.toHaveBeenCalled()
+        expect(reload).not.toHaveBeenCalled()
+    })
+
+    test('without an export seam the offer is not shown and the plain clean prompt stands', async () => {
+        const { ui } = newUi()
+        ui.parkedClean(unproven(), () => calm(), cleanNow, () => 'manifest-a')
+        await waitForSelect()
+        expect(selectParts()).toEqual({ title: text().peerCleanCommit, labels: [text().peerReloadOnly, text().peerKeepReading] })
+    })
+
+    test('a tree-replaced clean prompt keeps its Reload-only buttons and title', async () => {
+        const ui = createPeerUi({ reload: vi.fn(), exportAvailable: true, exportThisTab: writer() })
+        ui.parkedClean(prompt({ reason: 'tree-replaced', unsaved: false, offers: ['reload'], saveMineUnavailable: 'tree-replaced' }), () => calm(), cleanNow, () => 'manifest-a')
+        await waitForSelect()
+        expect(selectParts()).toEqual({ title: text().peerCleanReplaced, labels: [text().peerReloadOnly, text().peerKeepReading] })
+    })
+})
+
 describe('both prompts wait for an alert that needs its OK', () => {
     // Every type whose Escape action closes it: an alert that waits for an OK, or a viewer the prompt would replace.
     const holding = ['error', 'normal', 'markdown', 'wait2', 'requestdata', 'hypaV2', 'branches', 'requestlogs', 'pukmakkurit'] as const

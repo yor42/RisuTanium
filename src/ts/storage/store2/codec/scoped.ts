@@ -637,6 +637,16 @@ function rekey(tree: EncodedTree, parents: ReadonlyMap<string, ParentBody>, cont
     if (before?.config !== undefined) {
         objects.config = before.config
     }
+    // The leaf bodies hold no Ref, so the rekey leaves them as the plan made them.
+    if (before?.statics !== undefined) {
+        objects.statics = before.statics
+    }
+    if (before?.order !== undefined) {
+        objects.order = before.order
+    }
+    if (before?.presets !== undefined) {
+        objects.presets = before.presets
+    }
     return {
         manifestKey: units[units.length - 1].key,
         manifest,
@@ -671,6 +681,12 @@ export interface ScopedPlan {
     /** The pass encoded the modules (`scope.modules`); false means it carried them whole, so it said nothing about any module. */
     modulesEncoded: boolean
     /**
+     * The identity and digest of every unit the commit writes that holds no Ref of another unit (not the manifest, a
+     * shard, a module index or bucket, or a plugin-storage bucket). Such a unit's bytes do not depend on the keys of
+     * the attempt, so each digest equals the digest of the same identity in every `finalize` tree.
+     */
+    written: ReadonlyMap<string, string>
+    /**
      * The tree under the keys of `context.mint`, its manifest carrying `context.seq` and `context.now`. Pure over the
      * plan: a commit that builds again on a retry calls it again with the retry's own context, and every call gives a
      * tree whose written units are exactly `newUnits` under that mint's keys. The next pass's `previous` must come only
@@ -692,6 +708,12 @@ export async function planScopedEncode(db: Database, options: EncodeOptions, sco
     const split = MEASURE ? scope.split : undefined
     const tailStarted = readClock(split)
     const newUnits = tree.units.filter(unit => !unit.reused).length
+    const written = new Map<string, string>()
+    for (const unit of tree.units) {
+        if (!unit.reused && !parents.has(unit.identity)) {
+            written.set(unit.identity, unit.digest)
+        }
+    }
     const unchanged = isUnchanged(tree) && manifestStateEquals(tree.manifest, options.previous?.objects?.manifest)
     if (MEASURE && split !== undefined) {
         split.addMs('splitPlanTailMs', split.now() - tailStarted)
@@ -704,6 +726,7 @@ export async function planScopedEncode(db: Database, options: EncodeOptions, sco
         carried: { units: tree.index.units.size - newUnits, owners, modules, items: skippedItems.filter(item => item.saved).map(item => item.label) },
         skippedItems,
         modulesEncoded: scope.modules,
+        written,
         finalize: context => rekey(tree, parents, context),
     }
 }
@@ -797,9 +820,9 @@ function sameRefFields(a: readonly unknown[] | null, b: readonly unknown[] | nul
  * carries and a pass rewrites from the live object; `dsp`, which every pass writes as `true`; and every field this
  * build does not know, which the shard carry copies forward and so never differs in what the next pass writes.
  */
-function sameKnownFields(fresh: ShardEntry, acknowledged: ShardEntry): boolean {
+function sameKnownFields(fresh: ShardEntry, acknowledged: ShardEntry, ignoreMoved = false): boolean {
     if (fresh.u !== acknowledged.u || fresh.type !== acknowledged.type || fresh.chaId !== acknowledged.chaId
-        || fresh.chatPage !== acknowledged.chatPage || fresh.firstMsgIndex !== acknowledged.firstMsgIndex
+        || (!ignoreMoved && (fresh.chatPage !== acknowledged.chatPage || fresh.firstMsgIndex !== acknowledged.firstMsgIndex))
         || !sameRefFields(fresh.core, acknowledged.core, 3) || !sameRefFields(fresh.lore, acknowledged.lore, 3)
         || !sameRefFields(fresh.scripts, acknowledged.scripts, 3) || !sameRefFields(fresh.al, acknowledged.al, 4)
         || !sameRefFields(fresh.il, acknowledged.il, 4) || fresh.chats.length !== acknowledged.chats.length) {
@@ -838,6 +861,27 @@ export function characterMatchesAcknowledged(slot: Slot, options: VerdictOptions
         return 'unknown'
     }
     return verdictOfNormalized(normalized, base, options)
+}
+
+/**
+ * `characterMatchesAcknowledged` with every `ENTRY_MOVED_FIELDS` member left out of the comparison: whether the
+ * character's body (every unit and the entry's other known fields) is what the acknowledged encoding holds, whatever
+ * its `chatPage`, `firstMsgIndex`, `lastInteraction` and `trashTime` are. Where the moved fields are equal it answers
+ * as `characterMatchesAcknowledged` does. A moved field whose value does not fit the entry stays in the core unit, and
+ * then a change of it is a change of the core: `dirty`, the conservative answer.
+ */
+export function characterBodyMatches(slot: Slot, options: VerdictOptions): AcknowledgedVerdict {
+    const base = verdictBaseOf(slot, options.previous)
+    if (base === null) {
+        return 'unknown'
+    }
+    let normalized: NormalizedCharacter
+    try {
+        normalized = normalizeCharacter(slot, 0)
+    } catch {
+        return 'unknown'
+    }
+    return verdictOfNormalized(normalized, base, options, true)
 }
 
 /** What the verdict's prologue found: the character's `chaId` and the acknowledged entry it is judged against. */
@@ -898,12 +942,12 @@ export function characterMatchesAcknowledgedPlain(slot: Slot, plain: JsonObject,
     return verdictOfNormalized(normalized, base, options)
 }
 
-function verdictOfNormalized(normalized: NormalizedCharacter, base: VerdictBase, options: VerdictOptions): AcknowledgedVerdict {
+function verdictOfNormalized(normalized: NormalizedCharacter, base: VerdictBase, options: VerdictOptions, ignoreMoved = false): AcknowledgedVerdict {
     const { previous } = options
     const encodeOptions: EncodeOptions = { env: options.env, lists: options.lists, seq: 0, createdAt: 0, previous }
     try {
         const fresh = emitCharacter(normalized, new ReuseOnlyEncoder(encodeOptions, previous))
-        return sameKnownFields(fresh, base.acknowledged) ? 'clean' : 'dirty'
+        return sameKnownFields(fresh, base.acknowledged, ignoreMoved) ? 'clean' : 'dirty'
     } catch (error) {
         if (error instanceof UnitNotReusedError) {
             return 'dirty'

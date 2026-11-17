@@ -1,6 +1,7 @@
 import type { RisuModule } from '../../process/modules'
 import type { MarkerOwnerProbe } from './abandonedMarker'
 import type { ListDerivation, PreviousEncoding } from './codec'
+import type { FastForward } from './fastForward'
 import type { KeyEnv } from './format'
 import type { SaveEncoder } from './saveEncoder'
 import type { IdleNetOptions, Store2PeerHandler } from './saveLoop'
@@ -21,6 +22,22 @@ export type ModuleStubLoad =
     | { kind: 'loaded' }
     | { kind: 'refused' }
     | { kind: 'deferred', settled: Promise<void> }
+
+/** What the page has acknowledged of the commit key: the line it proved, the tree-replacement stamp it saw and the `seq`. */
+export interface LineageBase {
+    line: string | null
+    stamp: string | null
+    seq: number
+}
+
+/**
+ * The descent baseline of a loop whose store can carry several pages (indexeddb and node). The record is replaced
+ * whole, only by the boot seed, a judged `ok` or an own landed commit; `'unknown'` is the fail-closed default.
+ * Tauri, the kit and the opfs-transitional store never get one, so their loops judge as before.
+ */
+export interface Store2Lineage {
+    base: LineageBase | 'unknown'
+}
 
 export interface Store2SaveContext {
     /** The part of the session the loop uses: the committer, and the kind that decides whether Save mine is offered. */
@@ -54,6 +71,10 @@ export interface Store2SaveContext {
     loadModuleStub?: (moduleId: string) => Promise<ModuleStubLoad>
     /** The idle net's cadence; `null` switches it off. Absent runs it at its default cadence. */
     idleNet?: IdleNetOptions | null
+    /** Present for indexeddb and node only: switches on the descent verdicts and the tree-replaced park. */
+    lineage?: Store2Lineage
+    /** Present for indexeddb and node only, with `lineage`: a descent-proven peer commit is taken instead of parking. */
+    fastForward?: FastForward
 }
 
 /** A context handed to `activateStore2Save` that cannot save: the session has no committer. */

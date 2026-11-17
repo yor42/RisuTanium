@@ -499,7 +499,7 @@ afterEach(() => {
 
 //#endregion
 
-import { activeStreams, isActiveStreamReply, resetActiveStreamsForTest } from 'src/ts/process/activeStreams'
+import { activeStreams, isActiveStreamReply, resetActiveStreamsForTest, streamWroteText } from 'src/ts/process/activeStreams'
 import { resetChatStreamingState } from 'src/ts/storage/characterDefaults'
 
 type StreamingMode = 'off' | 'balanced' | 'strong'
@@ -542,9 +542,26 @@ describe('the interrupted flag on a streaming reply', () => {
 
         expect(reply.data).toBe('')
         expect(reply.interrupted).toBe(true)
-        expect(activeStreams()).toEqual([{ chaId: 'char-0', memberChaId: undefined, replyChatId: reply.chatId }])
+        expect(activeStreams()).toEqual([{ chaId: 'char-0', chatId: 'chat-0', memberChaId: undefined, replyChatId: reply.chatId }])
 
         source.push('Hello')
+        source.close()
+        await outcome
+    })
+
+    test('the shown chat has written text only after the first chunk reaches the reply', async () => {
+        installSingleChat()
+        const source = controlledStream()
+        requestChatDataMock.mockResolvedValueOnce({ type: 'streaming', result: source.stream })
+        const outcome = settled(() => sendChat())
+
+        await waitForReply('char-0', 'chat-0', 2)
+        expect(streamWroteText('char-0', 'chat-0')).toBe(false)
+
+        source.push('Hello')
+        await until(() => streamWroteText('char-0', 'chat-0'), 'the first chunk to be written')
+        expect(streamWroteText('char-0', 'chat-other')).toBe(false)
+
         source.close()
         await outcome
     })
@@ -732,6 +749,7 @@ describe('the interrupted flag on a streaming reply', () => {
         expect(lastMessage('group-1', 'group-chat').interrupted).toBe(true)
         expect(activeStreams()).toEqual([{
             chaId: 'group-1',
+            chatId: 'group-chat',
             memberChaId: 'member-a',
             replyChatId: lastMessage('group-1', 'group-chat').chatId,
         }])

@@ -513,7 +513,7 @@ describe('a record keeps the new fields to the owner that has them', () => {
         return JSON.parse(JSON.stringify({ ownerKey: owner, touchedAt: 1, done: [], undone: [], deleted: [], restore: null, ...over }))
     }
 
-    test('a character record holding a stored text edit of a non-legacy target reads, and a module record never holds a set op', () => {
+    test('a character record holding a stored text edit of a non-legacy target reads, and a module record holds no set op but customModuleToggle', () => {
         const step = { id: 's1', at: 1, label: { kind: 'assetMerge', from: 'a', to: 'b' }, ops: [edit('systemPrompt', 0, 'a', 'b')] }
         expect(parseOwnerRecord(serialized(A, { done: [step] }), A)).not.toBeNull()
         const set = { id: 's2', at: 1, label: { kind: 'field', field: 'firstMessage' }, ops: [{ op: 'set', path: 'firstMessage', before: { had: false }, after: { had: true, value: 'x' } }] }

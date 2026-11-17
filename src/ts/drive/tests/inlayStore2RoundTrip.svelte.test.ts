@@ -19,6 +19,7 @@ import { FakeLockManagerCore, FakeTabLockManagerView } from 'src/ts/storage/test
 import type { Store2Session } from 'src/ts/storage/store2/session'
 import type { Database } from 'src/ts/storage/database.svelte'
 import type { BootImportResult, BootImportTarget } from 'src/ts/storage/store2/legacy/bootImport'
+import { firstCommitKey } from 'src/ts/storage/store2/commitKey'
 
 vi.setConfig({ testTimeout: 60_000 })
 
@@ -295,7 +296,7 @@ describe('compatibility guard (CHORE-48): app-store inlays (not the old browser 
         const bytes = await exportThenEmpty(page)
         page.w.pageMode.setPageStorageMode({ kind: 'unset' })
         ;(await import('src/ts/storage/store2/residencyActive')).resetResidencyForTest()
-        const installed: BootImportResult = { status: 'installed', manifestKey: 'm', flushed: true, repair: { dropped: 0, changed: 0, recovered: 0 } }
+        const installed: BootImportResult = { status: 'installed', manifestKey: 'm', value: firstCommitKey({ current: { key: 'm', at: 0 }, staging: null }), flushed: true, repair: { dropped: 0, changed: 0, recovered: 0 } }
         const target: BootImportTarget = {
             readColdStorageItem: async () => ({ status: 'missing' }),
             install: async () => installed,

@@ -35,6 +35,8 @@ jobs:
             target: aarch64-unknown-linux-gnu
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
+          - platform: windows-11-arm # native arm64 runner
+            target: aarch64-pc-windows-msvc
 
     runs-on: ${{ matrix.settings.platform }}
     timeout-minutes: 90
@@ -57,6 +59,25 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      # ring compiles C for aarch64-pc-windows-msvc and needs clang there. Fail early if the
+      # runner image has none instead of failing deep inside the cargo build.
+      - name: Put clang on PATH (ring needs it for ARM64 Windows)
+        if: matrix.settings.target == 'aarch64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $clang = $null
+          if (Test-Path $vswhere) {
+            foreach ($pattern in @('**\Llvm\ARM64\bin\clang.exe', '**\Llvm\bin\clang.exe')) {
+              $found = & $vswhere -latest -products * -find $pattern | Select-Object -First 1
+              if ($found) { $clang = $found; break }
+            }
+          }
+          if (-not $clang -and (Test-Path 'C:\Program Files\LLVM\bin\clang.exe')) { $clang = 'C:\Program Files\LLVM\bin\clang.exe' }
+          if (-not $clang) { Write-Error 'clang.exe not found on this runner'; exit 1 }
+          Split-Path $clang -Parent | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          & $clang --version
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable

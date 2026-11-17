@@ -7,11 +7,12 @@ import { clearCharEmotionCache, DBState } from '../../stores.svelte'
 import type { RisuModule } from '../../process/modules'
 import { toAssetList, type AssetTuple } from '../../storage/assetList'
 import { isModuleStub } from '../../storage/moduleStub'
+import { firstMessageIndexOf } from '../../process/firstMessage'
 import type { Chat, character, groupChat } from '../../storage/database.svelte'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../assets/assetOwnerKeys'
 import { parseTargetPath, rewritableTextAt } from '../assets/referenceTargets'
 import { selectedStudioCharacterId, studioScreen } from '../studioScreen.svelte'
-import { TEXT_FIELD_PATHS, type FieldValue, type FmValue, type LiveReader, type Op, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
+import { TEXT_FIELD_PATHS, fmAfterRemove, type FieldValue, type FmValue, type LiveReader, type Op, type RestoreContext, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
 import { parseOwnerKey, type OwnerKey } from '../history/ownerPhase'
 import { moduleSlotsWithId, orderAssetWrites, type RetainedResult } from './assetSetters'
 
@@ -183,10 +184,10 @@ function rowsOfList(value: unknown): readonly (readonly string[])[] | null {
 }
 
 // The reader of a module owner: asset rows of `assets`, the folder document under its prefixed key, and the module's
-// own registry texts. A module has no fields, first messages or chats.
+// own registry texts. A module has no first messages or chats, and its only field is the toggle definition.
 export function createModuleLiveReader(module: RisuModule): LiveReader {
     return {
-        field: () => ({ had: false }),
+        field: (path) => (path === 'customModuleToggle' && typeof module.customModuleToggle === 'string' ? { had: true, value: module.customModuleToggle } : { had: false }),
         greetings: () => null,
         fmIndex: () => null,
         text(target) {
@@ -211,7 +212,7 @@ export interface EditBuild {
     // Identifies a coalescible edit; null for add and delete.
     coalesceKey: string | null
     // A list edit that moves the context chat's first message, on a chat without a unique id, also sets `fmIndex` to
-    // this value on `chats[chatPage]` (delete passes -1). Null: no page write.
+    // this value on `chats[chatPage]` (a delete passes the index the chat follows its text to). Null: no page write.
     pageFm: number | null
 }
 
@@ -250,13 +251,29 @@ export function chatFmFollow(target: LiveTarget, after: number): { op: Op; write
     if (!context) {
         return null
     }
-    const chatId = context.id && uniqueChatById(target.character.chats, context.id) === context ? context.id : null
+    const chatId = uniqueContextChatId(target, context)
     const next: FmValue = { had: true, value: after }
     return {
         op: { op: 'chatFm', chatId, before: fmValueOf(context), after: next },
         write: chatId === null ? null : { op: 'chatFm', chatId, value: next },
         pageFm: chatId === null ? after : null,
     }
+}
+
+// The id by which the context chat can be addressed: its own id when no other chat shares it, else null.
+function uniqueContextChatId(target: LiveTarget, context: Chat): string | null {
+    return context.id && uniqueChatById(target.character.chats, context.id) === context ? context.id : null
+}
+
+// The open chat a restore follows: by its unique id, or, without one, by the stored value (the commit then writes it by
+// page index). Null when the character has no context chat.
+export function restoreContextOf(target: LiveTarget): RestoreContext | null {
+    const context = target.character.chats?.[target.character.chatPage]
+    if (!context) {
+        return null
+    }
+    const chatId = uniqueContextChatId(target, context)
+    return chatId === null ? { chatId: null, fm: fmValueOf(context) } : { chatId }
 }
 
 // An append may make the stored index of a chat that reads as the default (an integer at or past the old length) name
@@ -310,9 +327,10 @@ export function buildGreetingEdit(index: number, value: string, live: LiveReader
     }
 }
 
-// One step with the removal and the classic side effect `fmIndex = -1` on the context chat
-// (`chats[chatPage]`). A context chat without a unique id still gets the side effect, by index, and
-// its op records `chatId: null`, which an undo cannot replay.
+// One step with the removal and the follow of the context chat (`chats[chatPage]`) to the text it shows: an earlier
+// entry moves it down one, its own entry sends it to the default first message, a later entry or a chat that already
+// shows the default leaves it. Other chats are not adjusted. A context chat without a unique id is followed by index,
+// and its op records `chatId: null`, which an undo cannot replay.
 export function buildGreetingDelete(index: number, deletedId: string, target: LiveTarget, live: LiveReader): EditBuildResult {
     const list = live.greetings()
     const value = list?.[index]
@@ -322,7 +340,11 @@ export function buildGreetingDelete(index: number, deletedId: string, target: Li
     const ops: Op[] = [{ op: 'listRemove', index, value, deletedId }]
     const writes: WriteOp[] = [{ op: 'listRemove', index }]
     let pageFm: number | null = null
-    const follow = chatFmFollow(target, -1)
+    // The effective index is read before the removal; a stale stored value shows the default and gets no op.
+    const context = target.character.chats?.[target.character.chatPage]
+    const shown = context ? firstMessageIndexOf(target.character, context) : -1
+    const nextShown = fmAfterRemove(shown, index)
+    const follow = nextShown === shown ? null : chatFmFollow(target, nextShown)
     if (follow) {
         ops.push(follow.op)
         if (follow.write) {
@@ -541,6 +563,13 @@ export function buildWrittenModule(live: RisuModule, writes: readonly WriteOp[],
             }
         } else if (write.op === 'textSet') {
             writeModuleText(next, write.target, write.value)
+        } else if (write.op === 'set' && write.path === 'customModuleToggle') {
+            // An absent value deletes the optional key on the copy; the live module is never written.
+            if (write.value.had && typeof write.value.value === 'string') {
+                next.customModuleToggle = write.value.value
+            } else {
+                delete next.customModuleToggle
+            }
         }
     }
     if (rows) {

@@ -41,6 +41,7 @@ import {
     isModuleTarget,
     isRestrictedChaId,
     resolveLiveTarget,
+    restoreContextOf,
     writeLiveModule,
     type AssetWriteExtras,
     type EditBuildResult,
@@ -219,6 +220,8 @@ export interface OwnerHistoryService {
     whenReady(owner: OwnerKey): Promise<void>
     view(owner: OwnerKey): OwnerView
     setAck(chaId: string, ack: OwnerAck | null): void
+    // The ack told of a landed write to module `moduleId`, kept apart from the character acks (which are keyed by chaId).
+    setModuleAck(moduleId: string, ack: OwnerAck | null): void
     editField(owner: OwnerKey, path: SetPath, value: string | boolean): StudioResult
     // A whole-value text edit. `typing` coalesces with the previous typing step of the same path; `single` is always its own step.
     editText(owner: OwnerKey, path: SetPath, value: string, mode?: 'typing' | 'single'): StudioResult
@@ -376,6 +379,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
     const slots = new Map<OwnerKey, OwnerSlot>()
     const claims = new Map<string, Entry<ClaimResult>>()
     const acks = new Map<string, OwnerAck>()
+    const moduleAcks = new Map<string, OwnerAck>()
     let openEntry: Entry<OpenResult> | null = null
     // Read by `view`, so a view taken before an owner's first use updates when the owner appears.
     let slotCount = $state(0)
@@ -858,11 +862,21 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
             if (intent.kind === 'text' && !textPathsFor(ownerKind).includes(intent.path)) {
                 return refused('precondition')
             }
-            if (target === null) {
+            // A text intent reads only the live reader, so it needs no character target: a module owner has none and
+            // still carries `customModuleToggle`. Every edit intent is refused without a character target.
+            if (intent.kind === 'edit' && target === null) {
                 return refused('gone')
             }
             const id = stepIdFor(pageSession, ++counter)
-            const built = intent.kind === 'text' ? buildFieldEdit(intent.path, intent.value, live, intent.coalesce) : intent.build(id, live, target)
+            let built: EditBuildResult
+            if (intent.kind === 'text') {
+                built = buildFieldEdit(intent.path, intent.value, live, intent.coalesce)
+            } else if (target === null) {
+                // Unreachable: an edit intent without a target was refused above.
+                built = { ok: false, reason: 'precondition' }
+            } else {
+                built = intent.build(id, live, target)
+            }
             if (built.ok === false) {
                 return built.reason === 'unchanged' ? { ok: true, unchanged: true } : refused('precondition')
             }
@@ -909,7 +923,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 ? planRevert(record, intent.stepId, live, undefined, hashFor, goneRows)
                 : intent.kind === 'restore'
                   ? planRestorePoint(record.restore, live, intent.keep)
-                  : planRestoreDeleted(record, intent.deletedId, live)
+                  : planRestoreDeleted(record, intent.deletedId, live, target === null ? null : restoreContextOf(target))
         if (plan.ok === false) {
             // A net-nothing revert lands nothing: no write, mark, step or save. It may still tell the
             // caller that older list changes were not undone or that a chat index could not be restored.
@@ -934,7 +948,7 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         return {
             writes: plan.writes,
-            pageFm: null,
+            pageFm: plan.pageFm ?? null,
             notes,
             land: (state) =>
                 commitStep(state, {
@@ -1128,6 +1142,9 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
         }
         if (chaId !== null) {
             acks.get(chaId)?.noteEdit(chaId, before)
+        } else if (isModuleTarget(target)) {
+            // `before` was read ahead of the write; the module's own ack reads the count again and finds its mark counted.
+            moduleAcks.get(slot.claimSubject.id)?.noteEdit(slot.claimSubject.id, before)
         }
         landedNotice(owner, slot)
         return { ok: true, ...planned.notes, ...(intent.kind === 'asset' ? { stepId: slot.record.done.at(-1)?.id } : {}) }
@@ -1316,6 +1333,13 @@ export function createOwnerHistoryService(deps: OwnerHistoryDeps): OwnerHistoryS
                 if (warmJob?.chaId === chaId) {
                     cancelWarm()
                 }
+            }
+        },
+        setModuleAck(moduleId, ack) {
+            if (ack) {
+                moduleAcks.set(moduleId, ack)
+            } else {
+                moduleAcks.delete(moduleId)
             }
         },
         editField: (owner, path, value) =>

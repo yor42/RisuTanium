@@ -69,8 +69,8 @@
   },
   "enabledPlugins": {
     "rust-analyzer-lsp@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true,
-    "svelte-lsp@risutanium-lsp": true,
+    "typescript-lsp@claude-plugins-official": false,
+    "svelte-lsp@risutanium-lsp": false,
     "eli5@claude-community": false,
     "mattpocock-skills@claude-plugins-official": false,
     "cheapag@cheapag": false

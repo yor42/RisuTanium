@@ -118,7 +118,6 @@ vi.mock('../../plugins/plugins.svelte', () => ({
 }))
 vi.mock('../../plugins/apiV3/v3.svelte', () => ({ customV3ProviderMetaStore: writable(new Map()) }))
 vi.mock('../files/inlays', () => ({ supportsInlayImage: vi.fn(() => false) }))
-vi.mock('../models/local', () => ({ tokenizeGGUFModel: vi.fn(async () => []) }))
 vi.mock('@mlc-ai/web-tokenizers', () => {
     const tokenizer = { encode: () => new Int32Array(2), free() {} }
     return { Tokenizer: { fromJSON: async () => tokenizer, fromSentencePiece: async () => tokenizer } }

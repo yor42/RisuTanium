@@ -6,10 +6,12 @@ import {
     installMotionPrefs,
     motionPrefs,
     readLowPower,
+    readReduceCardEffects,
     readReducedMotion,
     reducedMotionActive,
     resolveReducedMotion,
     setLowPower,
+    setReduceCardEffects,
     setReducedMotion,
     type ReducedMotionMode,
 } from './motionPrefs.svelte'
@@ -20,6 +22,8 @@ const root = document.documentElement
 function clearRoot(): void {
     root.classList.remove('nexus-low-power', 'rm', 'rm-off')
     root.removeAttribute('data-low-power')
+    root.removeAttribute('data-card-motion-off')
+    root.removeAttribute('data-card-effects-off')
 }
 
 /** A media query list whose `matches` the test flips, with the listener bookkeeping a real one has. */
@@ -182,5 +186,85 @@ describe('installMotionPrefs', () => {
         expect(media.listeners.size).toBe(0)
         media.set(true)
         expect(root.classList.contains('rm')).toBe(false)
+    })
+})
+
+describe('card motion and effects marks (CHORE-818 S3)', () => {
+    const MOTION = 'data-card-motion-off'
+    const EFFECTS = 'data-card-effects-off'
+    const marks = () => [root.hasAttribute(MOTION), root.hasAttribute(EFFECTS)]
+
+    afterEach(() => { setReduceCardEffects(false) })
+
+    // REPRODUCER (T3.1): on the base neither mark exists.
+    it('marks motion off for the setting, low power and resolved reduced motion, and effects off for the first two only', () => {
+        const base = { lowPower: false, reducedMotion: 'off', systemReduced: false, reduceCardEffects: false } as const
+        applyMotionClasses(root, base)
+        expect(marks()).toEqual([false, false])
+        applyMotionClasses(root, { ...base, reduceCardEffects: true })
+        expect(marks()).toEqual([true, true])
+        applyMotionClasses(root, { ...base, lowPower: true })
+        expect(marks()).toEqual([true, true])
+        applyMotionClasses(root, { ...base, reducedMotion: 'on' })
+        expect(marks()).toEqual([true, false])
+        applyMotionClasses(root, { ...base, reducedMotion: 'system', systemReduced: true })
+        expect(marks()).toEqual([true, false])
+        applyMotionClasses(root, { ...base, reducedMotion: 'system', systemReduced: false })
+        expect(marks()).toEqual([false, false])
+        applyMotionClasses(root, { ...base, reduceCardEffects: true })
+        applyMotionClasses(root, base)
+        expect(marks()).toEqual([false, false])
+    })
+    it('reads an absent value as off, never switches it on by default and never writes on read', () => {
+        expect(readReduceCardEffects()).toBe(false)
+        expect(localStorage.getItem('risuChatShell.reduceCardEffects')).toBeNull()
+    })
+    it('reads an unknown stored value as off and leaves it in place', () => {
+        localStorage.setItem('risuChatShell.reduceCardEffects', 'yes')
+        expect(readReduceCardEffects()).toBe(false)
+        expect(localStorage.getItem('risuChatShell.reduceCardEffects')).toBe('yes')
+    })
+    it('reads off and keeps working when storage throws', () => {
+        vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied') })
+        vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied') })
+        expect(readReduceCardEffects()).toBe(false)
+        expect(() => setReduceCardEffects(true)).not.toThrow()
+        expect(motionPrefs.reduceCardEffects).toBe(true)
+        expect(marks()).toEqual([true, true])
+    })
+    it('stores the choice in localStorage only and marks the root at once', () => {
+        setReduceCardEffects(true)
+        expect(localStorage.getItem('risuChatShell.reduceCardEffects')).toBe('1')
+        expect(readReduceCardEffects()).toBe(true)
+        expect(marks()).toEqual([true, true])
+        setReduceCardEffects(false)
+        expect(localStorage.getItem('risuChatShell.reduceCardEffects')).toBe('0')
+        expect(marks()).toEqual([false, false])
+    })
+    it('keeps the stored choice when low power changes', () => {
+        setReduceCardEffects(true)
+        setLowPower(true)
+        setLowPower(false)
+        expect(localStorage.getItem('risuChatShell.reduceCardEffects')).toBe('1')
+        expect(motionPrefs.reduceCardEffects).toBe(true)
+        expect(marks()).toEqual([true, true])
+        setReduceCardEffects(false)
+        setLowPower(true)
+        expect(localStorage.getItem('risuChatShell.reduceCardEffects')).toBe('0')
+        expect(motionPrefs.reduceCardEffects).toBe(false)
+        setLowPower(false)
+    })
+    it('applies the stored choice at install', () => {
+        localStorage.setItem('risuChatShell.reduceCardEffects', '1')
+        dispose = installMotionPrefs(fakeMedia(false).win)
+        expect(motionPrefs.reduceCardEffects).toBe(true)
+        expect(marks()).toEqual([true, true])
+    })
+    // GUARD (T3.7, the module text is absent on the base): the sheet reaches the document with the module.
+    it('adopts the card effects sheet with both mark rules', () => {
+        const sheet = document.head.querySelector('style[data-risu-sheet="card-effects"]')
+        expect(sheet).not.toBeNull()
+        expect(sheet!.textContent).toContain('html[data-card-motion-off]')
+        expect(sheet!.textContent).toContain('html[data-card-effects-off]')
     })
 })

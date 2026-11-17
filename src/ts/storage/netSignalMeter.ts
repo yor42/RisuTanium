@@ -10,11 +10,11 @@ import { inFlightKinds, subscribeInFlight, type InFlightKind } from '../process/
  * which is all the offline classification needs: whether any event fell between two instants is `lastAt` against the
  * first instant.
  *
- * This module is imported at runtime only by `characterSaveMarks.ts` and `dbChangeEffects.svelte.ts`, and every call
- * sits under `if (MEASURE)`, so a normal build folds the calls away and drops the module. The `saveLoop` chunk must not
- * import it: it reaches this module only through the `globalThis.__risuNetSignals` handle that `ensureInstalled`
- * publishes, and `store2/savePassMeter.ts` types that handle with an `import type`. Two modules, one per chunk, because
- * one module imported from both chunks is hoisted into a shared chunk that keeps its exports in a release build.
+ * `dbChangeEffects.svelte.ts` is the only module that imports this one at runtime, and every call sits under
+ * `if (MEASURE)`, so a normal build folds the calls away and drops the module. `characterSaveMarks.ts` and
+ * `store2/savePassMeter.ts` reach it only through the `globalThis.__risuNetSignals` handle that `ensureInstalled`
+ * publishes (`noteApi` for the `api` lane) and type that handle with an `import type`. A second runtime importer in
+ * another chunk would hoist this module into a shared chunk that keeps its exports in a release build.
  *
  * Use: set localStorage `risu-measure-savepass` to `on`, reload, and read `__risuNetSignals.dump()` for the cumulative
  * counters; the per-slot records are `__risuSavePassMeter.signalSlots()` and `.signalAcks()`. The switch is read once,
@@ -70,6 +70,8 @@ export interface NetSignalHandle {
     inFlightKinds(): InFlightKind[]
     /** The selected character's `chaId`, or null before the reader is installed or when none is selected. */
     selected(): string | null
+    /** Counts one `api` event for `chaId`, as `noteSignal('api', chaId)` does. */
+    noteApi(chaId: string): void
     dump(): NetSignalDump
     reset(): void
 }
@@ -245,6 +247,7 @@ function buildHandle(): NetSignalHandle {
         },
         inFlightKinds: () => inFlightKinds(),
         selected: () => readSelected === null ? null : readSelected(),
+        noteApi: (chaId) => noteSignal('api', chaId),
         dump: () => ({
             perChar: [...stateNow().perChar].map(([chaId, entry]): [string, CharSignals] => [chaId, copySignals(entry)]),
             globals: { ...stateNow().globals },

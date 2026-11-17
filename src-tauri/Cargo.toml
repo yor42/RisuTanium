@@ -14,14 +14,15 @@ tauri-build = { version = "2.7.1", features = [] }
 
 [dependencies]
 tauri = { version = "2.12.1", features = ["protocol-asset", "devtools"] }
+# A version floor only: tauri brings wry in, and Android plays a video from a file
+# only from wry 0.57.1 on. No features are added here, so tauri's selection stands.
+wry = { version = "0.57.1", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1.0"
 tiktoken-rs = "0.4.0"
 base64 = "0.21.0"
 reqwest = { version = "0.12.28", default-features = false, features = ["json", "http2", "system-proxy"] }
 darling = "0.20.3"
-zip = { version = "9.0.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
-tar = "0.4.40"
 futures = "0.3.30"
 url = "2.2"
 uuid = { version = "1.9.1", features = [ "v4" ] }
@@ -44,9 +45,6 @@ reqwest = { version = "0.12.28", default-features = false, features = ["rustls-t
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
-
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Threading", "Win32_System_SystemInformation"] }
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem

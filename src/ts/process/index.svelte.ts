@@ -1461,8 +1461,8 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     // The memory systems take every message's count; the context trim needs
     // only the newest messages', so without a memory system the message chats
     // are counted by the trim, as far as its decisions need. A count that may
-    // differ between calls or be no whole number (a plugin's tokenizer, a
-    // counting request, the local model server) is taken here as before. The
+    // differ between calls or be no whole number (a plugin's tokenizer or a
+    // counting request) is taken here as before. The
     // prompt is the same either way while the tokenizer settings stay unchanged
     // during the send. A message the trim drops without counting can no longer
     // fail the send through its count (tiktoken refuses special-token text).
@@ -1470,7 +1470,6 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
     const countTokenizer = getModelInfo(DBState.db.aiModel)?.tokenizer
     const countVaries = (DBState.db.aiModel === 'custom' && pluginV2.providerOptions?.get(DBState.db.currentPluginProvider)?.tokenizer === 'custom')
         || countTokenizer === LLMTokenizer.GoogleCloud
-        || countTokenizer === LLMTokenizer.Local
     const countMessagesInTrim = !memoryTakesChats() && !countVaries
     const firstMessageChat = chats.length
     const tokensBeforeMessages = currentTokens
@@ -2375,7 +2374,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         const streamedReplyId = replyGone ? undefined : replyId
         const streamsIntoReply = streamedReplyId !== undefined
         const removeActiveStream = streamedReplyId !== undefined
-            ? addActiveStream({ chaId: origin.chaId, memberChaId: origin.memberChaId, replyChatId: streamedReplyId })
+            ? addActiveStream({ chaId: origin.chaId, chatId: origin.chatId, memberChaId: origin.memberChaId, replyChatId: streamedReplyId })
             : () => {}
         const performanceMode: StreamingDisplayOptimizationMode = DBState.db.streamingDisplayOptimizationMode ?? 'off'
         streamCtx.chat.isStreaming = true
