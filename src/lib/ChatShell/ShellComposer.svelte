@@ -15,6 +15,7 @@
     import Suggestion from '../ChatScreens/Suggestion.svelte'
     import ExtrasStrip from './ExtrasStrip.svelte'
     import { createEnterKeyController } from '../../ts/chatShell/enterKey'
+    import { streamTextHold } from '../../ts/chatShell/streamTextHold'
     import { readEnterMode, writeEnterMode, type EnterMode } from '../../ts/chatShell/deviceSettings'
 
     interface Props {
@@ -209,7 +210,7 @@
         <button data-part="chat-composer-plus" data-kind="icon-button" aria-label={language.chatShellMoreActions} onclick={(event) => onplus(event.currentTarget)}>+</button>
         <textarea bind:this={input} data-part="chat-composer-input" data-kind="field" aria-label={language.chatShellMessage} placeholder={language.chatShellMessage} value={shownDraft.messageInput} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInput = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, false) }} onpaste={paste} onkeydown={keydown} oncontextmenu={openPopup}></textarea>
         {#if shownBusy && shownOrigin}
-            <button data-part="chat-composer-stop" data-kind="icon-button" aria-label={language.chatShellStop} onclick={() => stopComposerWorkIn(shownOrigin)}><span data-part="chat-composer-progress" data-stage={$chatProcessStage}></span>■</button>
+            <button data-part="chat-composer-stop" data-kind="icon-button" aria-label={language.chatShellStop} onclick={() => stopComposerWorkIn(shownOrigin)}><span data-part="chat-composer-progress" data-stage={$chatProcessStage} use:streamTextHold={{ origin: shownOrigin }}></span>■</button>
         {:else}
             <button data-part="chat-send" data-kind="icon-button" aria-label={language.chatShellSend} disabled={sendBlocked} title={sendWaitsForDelete ? language.chatShellSendWaitsForDelete : (writingElsewhere ? language.chatShellSendBlockedWriting : undefined)} aria-describedby={writingElsewhere ? blockedReasonId : undefined} onclick={() => { if (!sendBlocked) void sendMain(source, false) }}>➤</button>
             {#if writingElsewhere}<span id={blockedReasonId} hidden>{language.chatShellSendBlockedWriting}</span>{/if}
@@ -237,7 +238,7 @@
     [data-part="chat-composer-persona"]::before { content: ''; position: absolute; inset: 0; z-index: -1; background: var(--nexus-canvas); border: 1px solid var(--nexus-edge); border-block-end: 0; border-start-start-radius: var(--radius-field); clip-path: polygon(0 0, calc(100% - var(--space-7)) 0, 100% 100%, 0 100%); }
     [data-part="chat-composer-persona"]:dir(rtl)::before { clip-path: polygon(var(--space-7) 0, 100% 0, 100% 100%, 0 100%); }
     [data-part="chat-composer-progress"] { display: inline-block; width: var(--size-7); height: var(--size-7); border: var(--stroke-bold) solid currentColor; border-radius: var(--radius-circle); }
-    [data-part="chat-composer-progress"] { animation: progress var(--dur-spin) var(--ease-linear) infinite; }
+    [data-part="chat-composer-progress"] { animation: progress var(--dur-spin) steps(8) infinite; }
     @media (prefers-reduced-motion: reduce) { :global(html:not(.rm-off)) [data-part="chat-composer-progress"] { animation: none; } }
     :global(html.rm) [data-part="chat-composer-progress"], :global(html[data-low-power]) [data-part="chat-composer-progress"], :global(html.nexus-low-power) [data-part="chat-composer-progress"] { animation: none; }
     @keyframes progress { to { transform: rotate(var(--angle-turn)); } }

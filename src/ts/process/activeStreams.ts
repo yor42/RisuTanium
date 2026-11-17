@@ -18,6 +18,8 @@ export interface ActiveStream {
     readonly chaId: string
     /** The speaking member of a group, when the owner is a group. */
     readonly memberChaId?: string
+    /** The `chatId` of the chat the reply is written to; absent on an entry that cannot say which chat. */
+    readonly chatId?: string
     /** The `chatId` of the reply message being written. */
     readonly replyChatId: string
 }
@@ -83,6 +85,19 @@ export function noteStreamReceived(replyChatId: string, length: number): void {
             return
         }
     }
+}
+
+/**
+ * True once a live stream writing into the chat `chatId` of the owner `chaId` has written text. An entry
+ * that carries no `chatId` never matches, and a reply id is not a chat id.
+ */
+export function streamWroteText(chaId: string, chatId: string): boolean {
+    for (const entry of streams) {
+        if (entry.chaId === chaId && entry.chatId === chatId && (writtenChars.get(entry) ?? 0) > 0) {
+            return true
+        }
+    }
+    return false
 }
 
 /**

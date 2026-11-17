@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import * as drafts from '../../ts/process/composerDrafts.svelte'
 import { hasLocalDrafts, resetLocalDraftsForTest } from '../../ts/localDrafts'
 import { pendingChatFileUploads } from '../../ts/process/composerSurface.svelte'
+import { addActiveStream, noteStreamText, resetActiveStreamsForTest } from '../../ts/process/activeStreams'
 
 const state = $state({ db: {
     characters: [{ chaId: 'c', name: 'Character', chatPage: 0, chats: [{ id: 'chat', message: [] }] }],
@@ -208,6 +209,69 @@ describe('ShellComposer draft and actions', () => {
         expect(stopComposerWorkIn).toHaveBeenCalledTimes(1)
         expect(stopComposerWorkIn).toHaveBeenCalledWith({ chaId: 'c', chatId: 'chat' })
         expect(abortChat).not.toHaveBeenCalled()
+    })
+
+    describe('the progress ring holds still once the shown chat has streamed text', () => {
+        const fixtureChaId = state.db.characters[0].chaId
+        const fixtureChatId = state.db.characters[0].chats[0].id
+
+        /** The selector list of the adopted hold rule, so a renamed class or data part turns a ring assertion red. */
+        function holdSelectors(): string {
+            const sheet = document.head.querySelector('style[data-risu-sheet="stream-text-hold"]')
+            const css = (sheet?.textContent ?? '').replace(/\/\*[\s\S]*?\*\//g, '')
+            const rule = /([^{}]+)\{[^}]*paused/.exec(css)
+            expect(rule).not.toBeNull()
+            return rule![1].trim()
+        }
+
+        async function showBusy() {
+            const node = await show()
+            busy.set(true)
+            work.shown = true
+            flushSync()
+            return node.querySelector<HTMLElement>('[data-part="chat-composer-progress"]')!
+        }
+
+        afterEach(() => {
+            resetActiveStreamsForTest()
+        })
+
+        test('a stream of the shown chat with written text latches the ring', async () => {
+            const ring = await showBusy()
+            expect(ring.hasAttribute('data-still')).toBe(false)
+            addActiveStream({ chaId: fixtureChaId, chatId: fixtureChatId, replyChatId: 'reply-1' })
+            noteStreamText('reply-1', '')
+            expect(ring.hasAttribute('data-still')).toBe(false)
+            noteStreamText('reply-1', 'Hi')
+            expect(ring.hasAttribute('data-still')).toBe(true)
+            expect(ring.matches(holdSelectors())).toBe(true)
+        })
+
+        test('the latch survives the stream ending, and a new ring after the busy period ticks again', async () => {
+            const ring = await showBusy()
+            const removeStream = addActiveStream({ chaId: fixtureChaId, chatId: fixtureChatId, replyChatId: 'reply-1' })
+            noteStreamText('reply-1', 'Hi')
+            expect(ring.hasAttribute('data-still')).toBe(true)
+            removeStream()
+            flushSync()
+            expect(ring.hasAttribute('data-still')).toBe(true)
+
+            work.shown = false
+            busy.set(false)
+            flushSync()
+            expect(target!.querySelector('[data-part="chat-composer-progress"]')).toBeNull()
+            work.shown = true
+            busy.set(true)
+            flushSync()
+            expect(target!.querySelector('[data-part="chat-composer-progress"]')!.hasAttribute('data-still')).toBe(false)
+        })
+
+        test('a stream of another chat of the same owner does not latch the ring', async () => {
+            const ring = await showBusy()
+            addActiveStream({ chaId: fixtureChaId, chatId: 'other-chat', replyChatId: 'reply-b' })
+            noteStreamText('reply-b', 'Hi')
+            expect(ring.hasAttribute('data-still')).toBe(false)
+        })
     })
 
     test('T10: a reply written in another chat shows no Stop, disables Send with the reason, and leaves typing alone', async () => {

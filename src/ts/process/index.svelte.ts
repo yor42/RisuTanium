@@ -2374,7 +2374,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         const streamedReplyId = replyGone ? undefined : replyId
         const streamsIntoReply = streamedReplyId !== undefined
         const removeActiveStream = streamedReplyId !== undefined
-            ? addActiveStream({ chaId: origin.chaId, memberChaId: origin.memberChaId, replyChatId: streamedReplyId })
+            ? addActiveStream({ chaId: origin.chaId, chatId: origin.chatId, memberChaId: origin.memberChaId, replyChatId: streamedReplyId })
             : () => {}
         const performanceMode: StreamingDisplayOptimizationMode = DBState.db.streamingDisplayOptimizationMode ?? 'off'
         streamCtx.chat.isStreaming = true
