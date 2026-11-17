@@ -13,7 +13,7 @@ import { namesManifest, type AbandonResult, type CommitResult, type Committer } 
 import { classifyCommitRead, lineIdOf, replacedStamp } from './commitKey'
 import { clearAbandonedMarker, type MarkerLiveness, type MarkerOwnerProbe } from './abandonedMarker'
 import type { Staging } from './owner'
-import type { GuardEntry } from './fastForward'
+import type { ConflictAnswers, ConflictChoice, ConflictRecord, GuardEntry } from './fastForward'
 import type { CommitKey } from './format'
 import type { Store2SaveContext } from './saveActive'
 import { createSaveEncoder, type SavePassRequest, type SavePlan } from './saveEncoder'
@@ -107,6 +107,13 @@ export interface Store2PeerHandler {
      * that took module scope has saved cleanly.
      */
     moduleNotSaved(info: { moduleId: string, moduleName: string }): void
+    /**
+     * Records that this tab and a peer both changed (a fast-forward found them): one question for all of them, no lock
+     * held, nothing changed while it is open. Resolves with a choice per record id; a missing or unknown choice reads
+     * as the record's preselection. The answers apply in the next pass, over the peer's newest tree. Absent (the kit),
+     * such a park asks `decide` as it did before.
+     */
+    resolve?(request: { conflicts: readonly ConflictRecord[] }): Promise<Readonly<Record<string, ConflictChoice>>>
     /** Parked with unsaved edits: resolves with one of `prompt.offers`; anything else is read as 'reload'. */
     decide(prompt: PeerParkPrompt): Promise<PeerOffer>
     /**
@@ -464,7 +471,9 @@ type Judged =
 
 /** A parked loop: what it is parked on, and what has been told or asked. */
 interface Park {
-    reason: 'peer-commit' | 'replaced' | 'tree-replaced' | 'ff-revert'
+    /** `same-record`: the fast-forward found records both sides changed; `conflicts` lists the ones no answer covers. */
+    reason: 'peer-commit' | 'replaced' | 'tree-replaced' | 'ff-revert' | 'same-record'
+    conflicts?: ConflictRecord[]
     /** The guard entries a plan was about to revert (`ff-revert` only): pinned while the park stands. */
     guard?: readonly GuardEntry[]
     /** Carried from the judged stop: false means the descent from this page's baseline is unproven. */
@@ -666,6 +675,17 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let deferral: Promise<void> | null = null
     /** A commit reported that it was not flushed: the next pass commits even when it changed nothing. */
     let forced = false
+    /**
+     * The person's answers to a `same-record` park, by record id. They are applied by the next fast-forward under the write
+     * lock, over the newest peer tree, and only where the record's fingerprints still match. Cleared by an applied
+     * fast-forward, a landed own commit and any park that is not `same-record`.
+     */
+    let resolution: ConflictAnswers | null = null
+    /**
+     * An applied resolution kept both versions of a record that is not a chat: the next own commit asks for the peer's tree
+     * to enter `retained` (once, whatever the number of records). Cleared when an own commit lands or the park is replaced.
+     */
+    let keepPreviousOwed = false
     let peerSignal = false
     /** A peer commit that provably descends from this page's baseline was seen outside a pass: one tick takes it (fast-forward pages only). */
     let peerTickOwed = false
@@ -928,6 +948,13 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         clearPeerWaiting()
         consent = null
         park = next
+        if (next.reason !== 'same-record') {
+            // Answers belong to a `same-record` park: a park of any other kind asks its own question.
+            resolution = null
+            if (next.reason === 'replaced' || next.reason === 'tree-replaced') {
+                keepPreviousOwed = false
+            }
+        }
         if (next.guard !== undefined) {
             context.fastForward?.guard.pin(next.guard)
         }
@@ -937,6 +964,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     }
 
     function promptOf(parked: Park, unsaved: boolean): PeerParkPrompt {
+        // Records both sides changed are answered one by one in their own dialog: never Save mine, never an export.
+        if (parked.reason === 'same-record') {
+            return { reason: 'peer-commit', unsaved, offers: ['reload'], saveMineUnavailable: 'carries' }
+        }
         if (parked.reason === 'replaced') {
             return { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'replaced' }
         }
@@ -989,7 +1020,12 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (parked.reason === 'ff-revert' && !(judged.kind === 'stop' && judged.reason !== 'peer-commit')) {
             return
         }
+        if (parked.reason === 'same-record' && judged.kind === 'stop' && judged.reason === 'peer-commit' && judged.descends === true) {
+            // A further peer commit that descends: the park stands and the next pass derives its records afresh, so no answer is left stale.
+            return
+        }
         if (judged.kind === 'ok') {
+            resolution = null
             unpark()
             return
         }
@@ -1009,6 +1045,41 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             cleanPromptSerial += 1
         }
         setPark(next)
+    }
+
+    /**
+     * Asks the person about the records of a `same-record` park, once per park. The question runs outside the loop's turn
+     * and under no lock: the park can be replaced while it is open (a restore, an import), and then its answer is dropped.
+     * An answer only sets the resolution and ends the park; the next pass applies it under the write lock, over the newest
+     * peer tree, so nothing in the database changes while the dialog is open.
+     */
+    function askConflicts(parked: Park): void {
+        const conflicts = parked.conflicts ?? []
+        const resolve = context.peer.resolve
+        if (parked.asked || resolve === undefined) {
+            return
+        }
+        parked.asked = true
+        void new Promise<Readonly<Record<string, ConflictChoice>>>((settle) => { settle(resolve.call(context.peer, { conflicts })) }).then(
+            (given) => {
+                if (park !== parked) {
+                    return
+                }
+                const answers = new Map(resolution ?? [])
+                for (const record of conflicts) {
+                    const choice = given[record.id]
+                    answers.set(record.id, { choice: choice !== undefined && record.choices.includes(choice) ? choice : record.preselect, fingerprint: record.fingerprint })
+                }
+                resolution = answers
+                unpark()
+                peerTickOwed = true
+                port.requestPass()
+            },
+            (error: unknown) => {
+                port.reportUncountedFailure(error, 1)
+                void port.sleep(1000).then(() => { parked.asked = false })
+            },
+        )
     }
 
     async function settlePark(): Promise<void> {
@@ -1032,6 +1103,11 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
             if (parked === null) {
                 return
             }
+        }
+        // Routed before the clean branch: a conflict whose mine side is an unmarked edit must still be asked.
+        if (parked.reason === 'same-record') {
+            askConflicts(parked)
+            return
         }
         if (!port.isDirty()) {
             if (!parked.noticed) {
@@ -1367,6 +1443,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     noteSignalAck(plan.encoded)
                 }
                 consent = null
+                resolution = null
+                keepPreviousOwed = false
                 port.broadcast(result.value.epoch)
                 // The commit landed and is the acknowledged encoding; only its durability is unconfirmed.
                 if (result.flushed === false) {
@@ -1566,10 +1644,19 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (fastForward !== undefined && judged.kind === 'stop' && descendsStop(judged) && judged.key !== null) {
             // The peer's commit descends from this page's baseline: its changes are taken here, under the write lock.
             const stop = judged
-            const taken = await fastForward.run({ read, key: judged.key, baseKey: encoder.manifestKey, encoder, port, snapshot: run.snapshot })
+            const taken = await fastForward.run({
+                read, key: judged.key, baseKey: encoder.manifestKey, encoder, port, snapshot: run.snapshot,
+                collect: context.peer.resolve !== undefined, answers: resolution ?? undefined,
+            })
             switch (taken.kind) {
+                case 'conflict':
+                    return { kind: 'park', park: { ...parkOf(stop), reason: 'same-record', conflicts: taken.conflicts, epoch: taken.epoch } }
                 case 'applied':
                     // The acknowledged encoding is the peer's tree now, so the same read judges `ok` and replaces the baseline.
+                    resolution = null
+                    if (taken.restorePoint === true) {
+                        keepPreviousOwed = true
+                    }
                     cleanVerdictAt.clear()
                     clearPeerWaiting()
                     judged = judge(read)
@@ -1678,7 +1765,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 }
             }
         }
-        const planned = plan.commitRequest()
+        // An applied resolution that kept both versions of a record asks once for the peer's tree to enter `retained`.
+        const planned = keepPreviousOwed ? { ...plan.commitRequest(), keepPrevious: true } : plan.commitRequest()
         const request = MEASURE && activeGaps !== null ? activeGaps.wrapBuild(planned) : planned
         // A commit that did not land may have left this page load's own bulk marker standing; only the parked or stopped
         // release lowers the flag, because it reads the marker's ownership afresh.

@@ -1011,6 +1011,43 @@ export function isWriting(target: { chaId: string, chatId?: string }): boolean {
     })
 }
 
+export interface WritingTargets {
+    /** Every owner and member id of a registration, and every member of a group owner. */
+    chars: ReadonlySet<string>
+    /** The chats a registration writes, by the owner's `chaId`. */
+    chats: ReadonlyMap<string, ReadonlySet<string>>
+}
+
+/**
+ * What registered work is writing right now, read only: the characters it may write into (a group's members included)
+ * and the chats it writes. A peer change to a record in these sets waits until the work ends.
+ */
+export function writingTargets(): WritingTargets {
+    const chars = new Set<string>()
+    const chats = new Map<string, Set<string>>()
+    const characters: readonly unknown[] = Array.isArray(DBState.db?.characters) ? DBState.db.characters : []
+    for (const registration of registrations) {
+        chars.add(registration.chaId)
+        if (registration.memberChaId !== undefined) {
+            chars.add(registration.memberChaId)
+        }
+        for (const slot of characters) {
+            if (typeof slot === 'object' && slot !== null && Reflect.get(slot, 'chaId') === registration.chaId && Reflect.get(slot, 'type') === 'group') {
+                const members: unknown = Reflect.get(slot, 'characters')
+                for (const member of Array.isArray(members) ? members : []) {
+                    if (typeof member === 'string') {
+                        chars.add(member)
+                    }
+                }
+            }
+        }
+        const held = chats.get(registration.chaId) ?? new Set<string>()
+        held.add(registration.chatId)
+        chats.set(registration.chaId, held)
+    }
+    return { chars, chats }
+}
+
 function ownedBy(registration: Registration, target: { chaId: string, chatId?: string }): boolean {
     return registration.chaId === target.chaId
         && (target.chatId === undefined || registration.chatId === target.chatId)

@@ -270,6 +270,6 @@ describe('alerts Back leaves on screen', () => {
             .filter(([, action]) => action.kind === 'hold')
             .map(([type]) => type)
             .sort()
-        expect(held).toEqual(['input', 'none', 'progress', 'select', 'staleAccountNotice', 'toast', 'tos'])
+        expect(held).toEqual(['input', 'none', 'peerConflicts', 'progress', 'select', 'staleAccountNotice', 'toast', 'tos'])
     })
 })
