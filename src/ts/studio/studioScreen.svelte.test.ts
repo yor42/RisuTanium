@@ -21,6 +21,7 @@ import {
 import { setStudioEnabled } from './studioSwitch.svelte'
 import { studioOpen } from './studioOpen'
 import { classicLinks } from './classicLinks.svelte'
+import { clearOpenModuleId, publishOpenModuleId, resetOpenModuleIdForTests } from './assets/openModuleForm.svelte'
 
 interface TestCharacter {
     chaId: string
@@ -402,6 +403,48 @@ describe('the history owner of the selection', () => {
         expect(selectedHistoryOwner()).toBe('chat:char/chat')
         clearStudioSelection('gone')
         expect(selectedHistoryOwner()).toBeNull()
+    })
+
+    describe('a module', () => {
+        afterEach(() => {
+            resetOpenModuleIdForTests()
+        })
+
+        test('is the owner while its form is open and the selection is its own row', () => {
+            openOn('module:res')
+            expect(selectedHistoryOwner()).toBeNull()
+            publishOpenModuleId('res')
+            expect(selectedHistoryOwner()).toBe('module:res')
+        })
+
+        test('is not the owner for a later row that shares its id, for another module, or for another kind of owner', () => {
+            openOn('module:res')
+            publishOpenModuleId('res')
+            for (const key of ['module:res#2', 'module:other', 'character:char', 'chat:chat']) {
+                studioScreen.selectedOwnerKey = key
+                expect(selectedHistoryOwner()).not.toBe('module:res')
+            }
+            studioScreen.selectedOwnerKey = 'module:res#2'
+            expect(selectedHistoryOwner()).toBeNull()
+        })
+
+        test('is not the owner while the detail publishes no id, which a shared id does, or once the detail is closed', () => {
+            openOn('module:res')
+            publishOpenModuleId(null)
+            expect(selectedHistoryOwner()).toBeNull()
+            const token = publishOpenModuleId('res')
+            expect(selectedHistoryOwner()).toBe('module:res')
+            clearOpenModuleId(token)
+            expect(selectedHistoryOwner()).toBeNull()
+        })
+
+        test('leaves the bound character and its chat as they were while another module is selected in the detail', () => {
+            publishOpenModuleId('res')
+            openOn('character:char')
+            expect(selectedHistoryOwner()).toBe('character:char')
+            studioScreen.selectedOwnerKey = 'chat:chat'
+            expect(selectedHistoryOwner()).toBe('chat:char/chat')
+        })
     })
 })
 

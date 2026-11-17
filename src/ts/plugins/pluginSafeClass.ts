@@ -1,9 +1,7 @@
 import localforage from "localforage";
+import { PLUGIN_SAFE_STORE } from "../drive/rtb/sideStoreConfig";
 
-const pluginStorage = localforage.createInstance({
-    name: 'plugin',
-    storeName: 'plugin'
-})
+const pluginStorage = localforage.createInstance(PLUGIN_SAFE_STORE)
 
 export class SafeLocalStorage {
     getItem(key: string): string | null {

@@ -242,7 +242,7 @@ class RangedSource implements BodySource {
     }
 }
 
-interface ExportableInlay {
+export interface ExportableInlay {
     repr: InlayRecord['repr']
     mime: string
     fields: Record<string, unknown>
@@ -254,7 +254,7 @@ interface ExportableInlay {
  * The inlay `id` ready to be written, from the app store (`fromApp`) when it holds the id with a body of the
  * length its record says, or from the old store; `null` when that store does not hold it now.
  */
-async function openInlay(store: ByteStore, id: string, streaming: boolean, fromApp: boolean, openPieces?: PieceOpener, pieceBytes?: number): Promise<ExportableInlay | 'unsupported' | null> {
+export async function openInlay(store: ByteStore, id: string, streaming: boolean, fromApp: boolean, openPieces?: PieceOpener, pieceBytes?: number): Promise<ExportableInlay | 'unsupported' | null> {
     const record = fromApp ? await readAppInlayRecord(store, id) : null
     if (fromApp) {
         if (record === null || !await store.has(record.body)) {
