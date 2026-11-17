@@ -132,10 +132,15 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
+    // The edit shortcut focuses the edit field from a timer. It must not outlive the test: after teardown it would
+    // touch a document that is gone.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     DBState.db = { botPresets: [], characters: [] } as unknown as Database
 })
 
 afterEach(() => {
+    vi.runOnlyPendingTimers()
+    vi.useRealTimers()
     document.body.replaceChildren()
     settingsOpen.set(false)
     studioOpen.set(false)
