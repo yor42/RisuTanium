@@ -1271,113 +1271,121 @@ export async function runScripted(code:string, arg:{
             }
         }
         let res:any
-        if(ScriptingEngineState.type === 'lua'){
-            const luaEngine = ScriptingEngineState.engine
-            try {
+        try {
+            if(ScriptingEngineState.type === 'lua'){
+                const luaEngine = ScriptingEngineState.engine
+                try {
+                    switch(mode){
+                        case 'input':{
+                            const func = luaEngine.global.get('onInput')
+                            if(func){
+                                res = await func(accessKey)
+                            }
+                            break
+                        }
+                        case 'output':{
+                            const func = luaEngine.global.get('onOutput')
+                            if(func){
+                                res = await func(accessKey)
+                            }
+                            break
+                        }
+                        case 'start':{
+                            const func = luaEngine.global.get('onStart')
+                            if(func){
+                                res = await func(accessKey)
+                            }
+                            break
+                        }
+                        case 'onButtonClick':{
+                            const func = luaEngine.global.get('onButtonClick')
+                            if(func){
+                                res = await func(accessKey, data)
+                            }
+                            break
+                        }
+                        case 'onFormSubmit':{
+                            const func = luaEngine.global.get('onFormSubmit')
+                            if(func){
+                                res = await func(accessKey, data, JSON.stringify(meta))
+                            }
+                            break
+                        }
+                        case 'editRequest':
+                        case 'editDisplay':
+                        case 'editInput':
+                        case 'editOutput':{
+                            const func = luaEngine.global.get('callListenMain')
+                            if(func){
+                                // editDisplay takes a raw string, and must output a raw string
+                                const directString = mode === 'editDisplay'
+                                const value = directString ? data : JSON.stringify(data)
+                                const serializedMeta = JSON.stringify(meta)
+
+                                res = await func(mode, accessKey, value, serializedMeta)
+                                if (!directString) {
+                                    res = JSON.parse(res)
+                                }
+                            }
+                            break
+                        }
+                        default:{
+                            const func = luaEngine.global.get(mode)
+                            if(func){
+                                res = await func(accessKey)
+                            }
+                            break
+                        }
+                    }   
+                    if(res === false){
+                        stopSending = true
+                    }
+                } catch (error) {
+                    console.error(error)
+                }
+            }
+            if(ScriptingEngineState.type === 'py'){
                 switch(mode){
                     case 'input':{
-                        const func = luaEngine.global.get('onInput')
-                        if(func){
-                            res = await func(accessKey)
-                        }
+                        res = await ScriptingEngineState.pyodide?.python(`onInput('${accessKey}')`)
                         break
                     }
                     case 'output':{
-                        const func = luaEngine.global.get('onOutput')
-                        if(func){
-                            res = await func(accessKey)
-                        }
+                        res = await ScriptingEngineState.pyodide?.python(`onOutput('${accessKey}')`)
                         break
                     }
                     case 'start':{
-                        const func = luaEngine.global.get('onStart')
-                        if(func){
-                            res = await func(accessKey)
-                        }
+                        res = await ScriptingEngineState.pyodide?.python(`onStart('${accessKey}')`)
                         break
                     }
                     case 'onButtonClick':{
-                        const func = luaEngine.global.get('onButtonClick')
-                        if(func){
-                            res = await func(accessKey, data)
-                        }
-                        break
-                    }
-                    case 'onFormSubmit':{
-                        const func = luaEngine.global.get('onFormSubmit')
-                        if(func){
-                            res = await func(accessKey, data, JSON.stringify(meta))
-                        }
+                        res = await ScriptingEngineState.pyodide?.python(`onButtonClick('${accessKey}', '${data as string}')`)
                         break
                     }
                     case 'editRequest':
                     case 'editDisplay':
                     case 'editInput':
                     case 'editOutput':{
-                        const func = luaEngine.global.get('callListenMain')
-                        if(func){
-                            // editDisplay takes a raw string, and must output a raw string
-                            const directString = mode === 'editDisplay'
-                            const value = directString ? data : JSON.stringify(data)
-                            const serializedMeta = JSON.stringify(meta)
-
-                            res = await func(mode, accessKey, value, serializedMeta)
-                            if (!directString) {
-                                res = JSON.parse(res)
-                            }
-                        }
+                        res = await ScriptingEngineState.pyodide?.python(`callListenMain('${mode}', '${accessKey}', '${JSON.stringify(data)}', '${JSON.stringify(meta)}')`)
+                        res = JSON.parse(res)
                         break
                     }
                     default:{
-                        const func = luaEngine.global.get(mode)
-                        if(func){
-                            res = await func(accessKey)
-                        }
+                        res = await ScriptingEngineState.pyodide?.python(`${mode}('${accessKey}')`)
                         break
                     }
-                }   
-                if(res === false){
-                    stopSending = true
-                }
-            } catch (error) {
-                console.error(error)
-            }
-        }
-        if(ScriptingEngineState.type === 'py'){
-            switch(mode){
-                case 'input':{
-                    res = await ScriptingEngineState.pyodide?.python(`onInput('${accessKey}')`)
-                    break
-                }
-                case 'output':{
-                    res = await ScriptingEngineState.pyodide?.python(`onOutput('${accessKey}')`)
-                    break
-                }
-                case 'start':{
-                    res = await ScriptingEngineState.pyodide?.python(`onStart('${accessKey}')`)
-                    break
-                }
-                case 'onButtonClick':{
-                    res = await ScriptingEngineState.pyodide?.python(`onButtonClick('${accessKey}', '${data as string}')`)
-                    break
-                }
-                case 'editRequest':
-                case 'editDisplay':
-                case 'editInput':
-                case 'editOutput':{
-                    res = await ScriptingEngineState.pyodide?.python(`callListenMain('${mode}', '${accessKey}', '${JSON.stringify(data)}', '${JSON.stringify(meta)}')`)
-                    res = JSON.parse(res)
-                    break
-                }
-                default:{
-                    res = await ScriptingEngineState.pyodide?.python(`${mode}('${accessKey}')`)
-                    break
                 }
             }
+        } finally {
+            // An access id grants its capabilities only while its own run is in
+            // progress. Every exit from the engine call (a normal return, a
+            // rejected Python call, a result that fails to parse) revokes it here,
+            // so a script that kept the id cannot use it from a later run. Only
+            // this run's id is removed; concurrent runs of other modes keep theirs.
+            ScriptingSafeIds.delete(accessKey)
+            ScriptingLowLevelIds.delete(accessKey)
+            ScriptingEditDisplayIds.delete(accessKey)
         }
-        ScriptingSafeIds.delete(accessKey)
-        ScriptingLowLevelIds.delete(accessKey)
-        ScriptingEditDisplayIds.delete(accessKey)
         chat = currentChatFor(ScriptingEngineState) ?? ScriptingEngineState.chat
         stopSending = stopSending || !!ScriptingEngineState.stopSending
 
