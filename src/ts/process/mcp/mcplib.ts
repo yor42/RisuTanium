@@ -1,8 +1,9 @@
 import { v4 } from "uuid"
 import { openURL } from "../../globalApi.svelte"
 import { untrustedNativeFetch } from "../../network/untrustedFetch"
-import { alertInput } from "../../alert";
+import { alertConfirm, alertInput } from "../../alert";
 import { language } from "src/lang";
+import { fillLang } from "src/lang/fill";
 import type { RunSubject } from "../chatOrigin";
 
 export type MCPPrompt = {
@@ -90,6 +91,21 @@ export interface MCPToolCallContext {
     subject?: RunSubject
 }
 
+const OAUTH_HELPER_ORIGIN = "https://account.sionyw.com"
+const OAUTH_HELPER_HOST = new URL(OAUTH_HELPER_ORIGIN).hostname
+
+/**
+ * Whether the URL targets the sign-in helper. A stored token URL came from a server's discovery document, so
+ * this covers the URLs the app itself targets; a redirect the server issues is out of its reach.
+ */
+function isHelperHost(url:string):boolean {
+    try {
+        return new URL(url).hostname.replace(/\.$/, "") === OAUTH_HELPER_HOST
+    } catch {
+        return false
+    }
+}
+
 export abstract class MCPToolHandler {
     abstract getTools(): MCPTool[];
     abstract handle(toolName: string, args: any, ctx?: MCPToolCallContext): Promise<RPCToolCallContent[] | null>;
@@ -99,6 +115,14 @@ export class MCPClient{
     mcpClientObjectId:string = v4()
     sessionId:string|null = null
     initialized:boolean = false
+    /**
+     * The user declined the sign-in helper for this client. While it is set the client sends nothing and asks
+     * nothing: its methods return their empty result until `clearOAuthDecline`. It records a decline only,
+     * never an acceptance.
+     */
+    oauthDeclined:boolean = false
+    /** The one handshake in flight. Concurrent callers share it, and with it one sign-in prompt and its outcome. */
+    private handshaking:ReturnType<MCPClient['handshake']> | null = null
     url:string
     sseEndpoint:string
     accessToken:string|null = null
@@ -492,12 +516,21 @@ export class MCPClient{
 
     async getCapabilities(){
         await this.checkHandshake()
+        if(this.oauthDeclined){
+            return {}
+        }
         return this.serverInfo?.capabilities || {}
     }
 
-    
+
     async loadPrompt(mcpPrompt:MCPPrompt){
         await this.checkHandshake()
+        if(this.oauthDeclined){
+            return {
+                rpc: { jsonrpc: "2.0", id: '', error: { code: 401, message: "Sign-in was cancelled" } },
+                http: { status: 401, headers: {} }
+            } as RPCRequestResult
+        }
         const d = await this.request("prompts/get", {
             name: mcpPrompt.name
         })
@@ -505,13 +538,21 @@ export class MCPClient{
         return d
     }
 
+    /** An explicit user action asks for the sign-in again. */
+    clearOAuthDecline(){
+        this.oauthDeclined = false
+        this.initialized = false
+    }
+
     checkHandshake(){
+        if(this.oauthDeclined){
+            return this.serverInfo
+        }
         if(this.initialized){
             return this.serverInfo
         }
-        else{
-            return this.handshake()
-        }
+        this.handshaking ??= this.handshake().finally(() => { this.handshaking = null })
+        return this.handshaking
     }
     
     async handshake(){
@@ -602,6 +643,9 @@ export class MCPClient{
 
         if(http.status === 401){
             await this.oauthLogin()
+            if(this.oauthDeclined){
+                return this.serverInfo
+            }
             return this.handshake()
         }
 
@@ -634,7 +678,7 @@ export class MCPClient{
 
         if(this.getRefreshToken){
             const refreshTokenData = await this.getRefreshToken()
-            if(refreshTokenData){
+            if(refreshTokenData && !isHelperHost(refreshTokenData.tokenUrl)){
                 //get access token using refresh token
                 const tokenResponse = await untrustedNativeFetch(refreshTokenData.tokenUrl, {
                     method: "POST",
@@ -654,6 +698,17 @@ export class MCPClient{
                     return
                 }
             }
+        }
+
+        // Every later step names the helper (registration) or contacts it (browser redirect, code POST), so
+        // none runs without this answer. It is asked on every login attempt and an acceptance is not kept.
+        const consented = await alertConfirm(fillLang(language.alerts.mcpOAuthHelperConsent, {
+            server: new URL(this.url).host,
+            host: OAUTH_HELPER_HOST
+        }))
+        if(!consented){
+            this.oauthDeclined = true
+            return
         }
 
         const OauthDiscovery = new URL(this.url)
@@ -676,7 +731,7 @@ export class MCPClient{
             discoveryURLS = await oauthResponse.json()
         }
 
-        const redirectURL = "https://account.sionyw.com/oauthhelper" //Just a placeholder, should be replaced with actual redirect URL
+        const redirectURL = `${OAUTH_HELPER_ORIGIN}/oauthhelper` //Just a placeholder, should be replaced with actual redirect URL
 
         const registerResponse = await untrustedNativeFetch(discoveryURLS.registration_endpoint, {
             method: "POST",
@@ -715,7 +770,7 @@ export class MCPClient{
         openURL(authUrl.toString())
         const code = await alertInput(language.alerts.mcpInputAuthorizationCode)
 
-        const authHelperResponse = await untrustedNativeFetch("https://account.sionyw.com/oauthhelper/api", {
+        const authHelperResponse = await untrustedNativeFetch(`${OAUTH_HELPER_ORIGIN}/oauthhelper/api`, {
             method: "POST",
             body: JSON.stringify({
                 code: code,
@@ -768,6 +823,9 @@ export class MCPClient{
 
     async getPromptList():Promise<MCPPrompt[]>{
         await this.checkHandshake()
+        if(this.oauthDeclined){
+            return []
+        }
         if(!this.serverInfo.capabilities?.prompts){
             return []
         }
@@ -807,6 +865,9 @@ export class MCPClient{
 
     async getToolList():Promise<MCPTool[]>{
         await this.checkHandshake()
+        if(this.oauthDeclined){
+            return []
+        }
         if(!this.serverInfo.capabilities?.tools){
             return []
         }
@@ -847,6 +908,12 @@ export class MCPClient{
 
     async callTool(toolName:string, args:any):Promise<RPCToolCallContent[]>{
         await this.checkHandshake()
+        if(this.oauthDeclined){
+            return [{
+                type: 'text',
+                text: `Tool ${toolName} did not run: the user cancelled the sign-in to its MCP server.`
+            }]
+        }
         if(!this.serverInfo.capabilities?.tools){
             throw new Error("MCP Server does not support tools")
         }
