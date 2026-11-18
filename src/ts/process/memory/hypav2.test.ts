@@ -560,6 +560,268 @@ describe('hypaMemoryV2 memo-less chats and resume', () => {
     })
 })
 
+// Old-format data names chat ids; the converter must resolve them against the whole message list, not only the visible `chats`.
+describe('hypaMemoryV2 old-format conversion', () => {
+    const greeting: OpenAIChat = { role: 'assistant', content: 'greeting' }
+    const ids = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => `m${from + i}`)
+    const chatOf = (id: string): OpenAIChat => ({ role: 'user', content: id, memo: id })
+    const messageOf = (chatId: string, disabled?: true | 'allBefore') =>
+        ({ role: 'char', data: chatId, chatId, ...(disabled ? { disabled } : {}) }) as Message
+    /** A hidden message that was never sent has no chat id. */
+    const unsent = { role: 'char', data: 'unsent', disabled: true } as Message
+    const at = (text: string, targetId: string) => ({ text, targetId })
+    /** Real producer shape: `mainChunks` newest first, every entry `{text, targetId, chatRange}`; the 2024-05 producer omitted `chatRange`. */
+    const oldData = (
+        mainChunks: { text: string, targetId: string }[],
+        chunks: { text: string, targetId: string }[],
+        withRange = true,
+    ) => {
+        const entry = (item: { text: string, targetId: string }) => (withRange ? { ...item, chatRange: [0, 0] } : item)
+        return { mainChunks: mainChunks.map(entry), chunks: chunks.map(entry) } as unknown as SerializableHypaV2Data
+    }
+    const old3 = () => oldData(
+        [at('S3', 'm8'), at('S2', 'm5'), at('S1', 'm2')],
+        [at('c1', 'm2'), at('c2', 'm5'), at('c3a', 'm8'), at('c3b', 'm8')],
+    )
+    /** m0..m11 with m5 hidden; `chats` leaves m5 out. */
+    const h12 = () => ({
+        messages: ids(0, 11).map((id) => messageOf(id, id === 'm5' ? true : undefined)),
+        chats: [newChatMarker, greeting, ...ids(0, 4).map(chatOf), ...ids(6, 11).map(chatOf)],
+    })
+    /** m0..m11 with m4 an `allBefore` reset; `chats` starts after it and has no greeting. */
+    const rst = () => ({
+        messages: ids(0, 11).map((id) => messageOf(id, id === 'm4' ? 'allBefore' : undefined)),
+        chats: [newChatMarker, ...ids(5, 11).map(chatOf)],
+    })
+    const rstOld = (previousTarget: string) => oldData(
+        [at('S3', 'm9'), at('S2', 'm6'), at('S1', previousTarget)],
+        [at('c1', previousTarget), at('c2', 'm6'), at('c3', 'm9')],
+    )
+    const fed = (text: string) => summarizer.inputs.some((input) => new RegExp(`\\b${text}\\b`).test(input))
+    const run = (
+        fixture: { messages: Message[], chats: OpenAIChat[] },
+        hypaV2Data: SerializableHypaV2Data,
+        maxContextTokens = 100000,
+        currentTokens = 10,
+    ) => {
+        room = { hypaV2Data, message: fixture.messages }
+        return callV2(fixture.chats, maxContextTokens, currentTokens)
+    }
+    const summary = (memory: SerializableHypaV2Data | undefined, text: string) =>
+        memory?.mainChunks.find((mainChunk) => mainChunk.text === text)
+
+    // regression reproducer: a hidden target and a hidden previous target each lost their summary
+    it('keeps the summaries whose target is hidden, with their sub-chunks', async () => {
+        const { messages, chats } = h12()
+        const result = await run({ messages, chats }, old3())
+        expect(result.error).toBeUndefined()
+        expect(summaryTexts(result.memory)).toEqual(['S1', 'S2', 'S3'])
+        expect(summary(result.memory, 'S1')?.chatMemos).toStrictEqual(['NewChat', undefined, 'm0', 'm1', 'm2'])
+        expect(summary(result.memory, 'S2')?.chatMemos).toStrictEqual(['m2', 'm3', 'm4', 'm5'])
+        expect(result.memory?.chunks).toContainEqual({ mainChunkID: 1, text: 'c2' })
+    })
+
+    // regression reproducer: only the previous target is hidden
+    it('keeps a summary whose previous target is hidden, with both sub-chunks', async () => {
+        const { messages, chats } = h12()
+        const result = await run({ messages, chats }, old3())
+        expect(result.error).toBeUndefined()
+        const s3 = summary(result.memory, 'S3')
+        expect(s3?.chatMemos).toStrictEqual(['m5', 'm6', 'm7', 'm8'])
+        expect(s3?.id).toBe(2)
+        expect(result.memory?.chunks.filter((chunk) => chunk.mainChunkID === s3?.id).map((chunk) => chunk.text)).toEqual(['c3a', 'c3b'])
+    })
+
+    // regression reproducer: summaries before an allBefore reset
+    it('keeps the summaries before an allBefore reset and leaves the visible one unchanged', async () => {
+        const result = await run(rst(), rstOld('m2'))
+        expect(result.error).toBeUndefined()
+        expect(summaryTexts(result.memory)).toEqual(['S1', 'S2', 'S3'])
+        expect(summary(result.memory, 'S1')?.chatMemos).toStrictEqual(['NewChat', 'm2'])
+        expect(summary(result.memory, 'S2')?.chatMemos).toStrictEqual(['m2', 'm5', 'm6'])
+        expect(result.memory?.mainChunks[2]).toStrictEqual({ id: 2, text: 'S3', chatMemos: ['m6', 'm7', 'm8', 'm9'], lastChatMemo: 'm9' })
+        expect(result.memory?.lastMainChunkID).toBe(2)
+    })
+
+    // regression reproducer: the allBefore marker itself is a target, and the next summary's previous target
+    it('keeps summaries whose target is the allBefore marker', async () => {
+        const old = oldData(
+            [at('S3', 'm9'), at('S2', 'm4'), at('S1', 'm2')],
+            [at('c1', 'm2'), at('c2', 'm4'), at('c3', 'm9')],
+        )
+        const result = await run(rst(), old)
+        expect(result.error).toBeUndefined()
+        expect(summaryTexts(result.memory)).toEqual(['S1', 'S2', 'S3'])
+        expect(summary(result.memory, 'S1')?.chatMemos).toStrictEqual(['NewChat', 'm2'])
+        expect(summary(result.memory, 'S2')?.chatMemos).toStrictEqual(['m2', 'm4'])
+        expect(summary(result.memory, 'S3')?.chatMemos).toStrictEqual(['m4', 'm5', 'm6', 'm7', 'm8', 'm9'])
+    })
+
+    // regression reproducer: base resumes after m2 and feeds m3..m8 again
+    it('does not summarise again a message the restored summaries cover', async () => {
+        const messages = ids(0, 19).map((id) => messageOf(id, id === 'm5' ? true : undefined))
+        const chats = [newChatMarker, greeting, ...ids(0, 4).map(chatOf), ...ids(6, 19).map(chatOf)]
+        const result = await run({ messages, chats }, old3(), 150, chats.length * 10)
+        expect(result.error).toBeUndefined()
+        expect(summarizer.calls).toBeGreaterThan(0)
+        for (const id of ids(0, 8)) expect(fed(id)).toBe(false)
+        const lines = summarizer.inputs.flatMap((input) => input.split('\n'))
+        expect(new Set(lines).size).toBe(lines.length)
+    })
+
+    // regression reproducer: a marker is the previous target and the target is hidden
+    it('keeps a summary whose previous target is the new-chat marker and whose target is hidden', async () => {
+        const messages = ids(0, 9).map((id) => messageOf(id, id === 'm5' ? true : undefined))
+        const chats = [newChatMarker, greeting, ...ids(0, 4).map(chatOf), ...ids(6, 9).map(chatOf)]
+        const old = oldData([at('S2', 'm5'), at('S1', 'NewChat')], [at('c1', 'NewChat'), at('c2', 'm5')], false)
+        const result = await run({ messages, chats }, old)
+        expect(result.error).toBeUndefined()
+        expect(summaryTexts(result.memory)).toEqual(['S1', 'S2'])
+        expect(summary(result.memory, 'S2')?.chatMemos).toStrictEqual(['NewChat', undefined, 'm0', 'm1', 'm2', 'm3', 'm4', 'm5'])
+    })
+
+    // regression reproducer: an unsent hidden message inside a restored range is not a chat id
+    it('keeps an unsent hidden message out of a restored range', async () => {
+        const messages = [
+            ...ids(0, 3).map((id) => messageOf(id)), unsent, messageOf('m4'), messageOf('m5', true), ...ids(6, 9).map((id) => messageOf(id)),
+        ]
+        const chats = [newChatMarker, greeting, ...ids(0, 4).map(chatOf), ...ids(6, 9).map(chatOf)]
+        const old = oldData([at('S2', 'm5'), at('S1', 'm2')], [at('c1', 'm2'), at('c2', 'm5')])
+        const result = await run({ messages, chats }, old)
+        expect(result.error).toBeUndefined()
+        expect(summaryTexts(result.memory)).toEqual(['S1', 'S2'])
+        expect(summary(result.memory, 'S2')?.chatMemos).toStrictEqual(['m2', 'm3', 'm4', 'm5'])
+    })
+
+    // compatibility guard (passes before and after): all visible, examples present; the output is what the unfixed converter writes
+    it('guard: all-visible old data converts to the same summaries as before', async () => {
+        const messages = ids(0, 11).map((id) => messageOf(id))
+        const chats = [exampleMarker, ...exampleTurns(2), newChatMarker, greeting, ...ids(0, 11).map(chatOf)]
+        const result = await run({ messages, chats }, old3())
+        expect(result.error).toBeUndefined()
+        expect(result.memory).toStrictEqual({
+            lastMainChunkID: 2,
+            mainChunks: [
+                { id: 0, text: 'S1', chatMemos: ['NewChatExample', undefined, 'NewChat', 'm0', 'm1', 'm2'], lastChatMemo: 'm2' },
+                { id: 1, text: 'S2', chatMemos: ['m2', 'm3', 'm4', 'm5'], lastChatMemo: 'm5' },
+                { id: 2, text: 'S3', chatMemos: ['m5', 'm6', 'm7', 'm8'], lastChatMemo: 'm8' },
+            ],
+            chunks: [
+                { mainChunkID: 0, text: 'c1' },
+                { mainChunkID: 1, text: 'c2' },
+                { mainChunkID: 2, text: 'c3a' },
+                { mainChunkID: 2, text: 'c3b' },
+            ],
+        })
+    })
+
+    // compatibility guard (passes before and after): a new-chat marker target still converts
+    it('guard: a new-chat marker target still converts', async () => {
+        const messages = ids(0, 9).map((id) => messageOf(id))
+        const chats = [newChatMarker, greeting, ...ids(0, 9).map(chatOf)]
+        const old = oldData([at('S2', 'm3'), at('S1', 'NewChat')], [at('c1', 'NewChat'), at('c2', 'm3')], false)
+        const result = await run({ messages, chats }, old)
+        expect(result.error).toBeUndefined()
+        expect(summaryTexts(result.memory)).toEqual(['S1', 'S2'])
+        expect(summary(result.memory, 'S1')?.chatMemos).toStrictEqual(['NewChat'])
+        expect(summary(result.memory, 'S2')?.chatMemos).toStrictEqual(['NewChat', undefined, 'm0', 'm1', 'm2', 'm3'])
+    })
+
+    // compatibility guard (passes before and after): an unsent hidden message between visible targets
+    it('guard: an unsent hidden message between visible targets stays out of the range', async () => {
+        const messages = [...ids(0, 3).map((id) => messageOf(id)), unsent, ...ids(4, 9).map((id) => messageOf(id))]
+        const chats = [newChatMarker, greeting, ...ids(0, 9).map(chatOf)]
+        const old = oldData([at('S2', 'm5'), at('S1', 'm2')], [at('c1', 'm2'), at('c2', 'm5')])
+        const result = await run({ messages, chats }, old)
+        expect(result.error).toBeUndefined()
+        expect(summary(result.memory, 'S2')?.chatMemos).toStrictEqual(['m2', 'm3', 'm4', 'm5'])
+    })
+
+    // compatibility guard (passes before and after): a deleted target drops its summary, its sub-chunks and the next summary
+    it('guard: a target that is no message at all is still dropped with its sub-chunks', async () => {
+        const messages = ids(0, 11).filter((id) => id !== 'm5').map((id) => messageOf(id))
+        const chats = [newChatMarker, greeting, ...ids(0, 11).filter((id) => id !== 'm5').map(chatOf)]
+        const result = await run({ messages, chats }, old3())
+        expect(result.error).toBeUndefined()
+        expect(summaryTexts(result.memory)).toEqual(['S1'])
+        expect(result.memory?.chunks).toEqual([{ mainChunkID: 0, text: 'c1' }])
+        expect(result.memory?.lastMainChunkID).toBe(0)
+    })
+
+    // compatibility guard (passes before and after): the converted output is kept unchanged when it is saved and sent again
+    it.each([
+        ['all visible', () => ({
+            messages: ids(0, 11).map((id) => messageOf(id)),
+            chats: [exampleMarker, ...exampleTurns(2), newChatMarker, greeting, ...ids(0, 11).map(chatOf)],
+        })],
+        ['hidden target', h12],
+    ])('guard: the converted data survives a save and a second send (%s)', async (_label, build) => {
+        const fixture = build()
+        const first = await run(fixture, old3())
+        expect(first.error).toBeUndefined()
+        room = { hypaV2Data: toPlainJson(first.memory) as unknown as SerializableHypaV2Data, message: fixture.messages }
+        const second = await callV2(fixture.chats, 100000, 10)
+        expect(second.error).toBeUndefined()
+        expect(second.memory?.mainChunks).toStrictEqual(first.memory?.mainChunks)
+        expect(second.memory?.chunks).toStrictEqual(first.memory?.chunks)
+    })
+
+    // compatibility guard (passes before and after): a second new-chat example marker as target resolves at its first occurrence
+    it('guard: a repeated example marker target resolves at its first occurrence', async () => {
+        const messages = ids(0, 9).map((id) => messageOf(id))
+        const chats = [
+            exampleMarker, ...exampleTurns(2), exampleMarker, ...exampleTurns(2), newChatMarker, greeting, ...ids(0, 9).map(chatOf),
+        ]
+        const old = oldData([at('S2', 'm2'), at('S1', 'NewChatExample')], [at('c1', 'NewChatExample'), at('c2', 'm2')])
+        const result = await run({ messages, chats }, old)
+        expect(result.error).toBeUndefined()
+        expect(result.memory?.mainChunks).toStrictEqual([
+            { id: 0, text: 'S1', chatMemos: ['NewChatExample'], lastChatMemo: 'NewChatExample' },
+            { id: 1, text: 'S2', chatMemos: ['NewChatExample', undefined, 'NewChat', 'm0', 'm1', 'm2'], lastChatMemo: 'm2' },
+        ])
+    })
+
+    // compatibility guard (passes before and after): a duplicated chat id keeps the range over `chats`
+    it('guard: a duplicated chat id with a hidden earlier copy keeps the ranges over chats', async () => {
+        const messages = [
+            messageOf('m0'), messageOf('m1'), messageOf('dup', true), messageOf('m2'), messageOf('m3'), messageOf('dup'), ...ids(4, 9).map((id) => messageOf(id)),
+        ]
+        const chats = [newChatMarker, greeting, ...ids(0, 3).map(chatOf), chatOf('dup'), ...ids(4, 9).map(chatOf)]
+        const old = oldData([at('S3', 'm6'), at('S2', 'dup'), at('S1', 'm2')], [at('c1', 'm2'), at('c2', 'dup'), at('c3', 'm6')])
+        const result = await run({ messages, chats }, old)
+        expect(result.error).toBeUndefined()
+        expect(result.memory?.mainChunks.map((mainChunk) => mainChunk.chatMemos)).toStrictEqual([
+            ['NewChat', undefined, 'm0', 'm1', 'm2'],
+            ['m2', 'm3', 'dup'],
+            ['dup', 'm4', 'm5', 'm6'],
+        ])
+    })
+
+    // compatibility guard (passes before and after): a summary the old code kept in a reset chat is unchanged apart from its id
+    it('guard: a summary kept before the fix keeps its memos and sub-chunks when others are restored', async () => {
+        const result = await run(rst(), rstOld('m2'))
+        expect(result.error).toBeUndefined()
+        const s3 = summary(result.memory, 'S3')
+        expect({ text: s3?.text, chatMemos: s3?.chatMemos, lastChatMemo: s3?.lastChatMemo }).toStrictEqual({
+            text: 'S3',
+            chatMemos: ['m6', 'm7', 'm8', 'm9'],
+            lastChatMemo: 'm9',
+        })
+        expect(result.memory?.chunks.filter((chunk) => chunk.mainChunkID === s3?.id).map((chunk) => chunk.text)).toEqual(['c3'])
+    })
+
+    // compatibility guard (passes before and after; must pass on the unmodified converter): a hidden message strictly between two visible targets stays out
+    it('guard: a hidden message between two visible targets stays out of the range', async () => {
+        const messages = ids(0, 9).map((id) => messageOf(id, id === 'm3' ? true : undefined))
+        const chats = [newChatMarker, greeting, ...ids(0, 2).map(chatOf), ...ids(4, 9).map(chatOf)]
+        const old = oldData([at('S2', 'm5'), at('S1', 'm2')], [at('c1', 'm2'), at('c2', 'm5')])
+        const result = await run({ messages, chats }, old)
+        expect(result.error).toBeUndefined()
+        expect(summaryTexts(result.memory)).toEqual(['S1', 'S2'])
+        expect(summary(result.memory, 'S2')?.chatMemos).toStrictEqual(['m2', 'm4', 'm5'])
+    })
+})
+
 // The tree module's `hypaV2WithoutMemos` stands in for the send-time cleanup on a branch switch; this ties the two together.
 describe('cleanInvalidChunks and hypaV2WithoutMemos', () => {
     const pathIds = ['p1', 'p2', 'p3']
