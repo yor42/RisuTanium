@@ -36,7 +36,7 @@ vi.mock('../../ts/parser/chatML', () => ({ parseChatML: () => [] }))
 vi.mock('../ChatScreens/Suggestion.svelte', () => ({ default: () => ({}) }))
 vi.mock('../ChatScreens/AssetInput.svelte', () => ({ default: () => ({}) }))
 vi.mock('../../lang', () => ({ language: {
-    chatShellMessage: 'Message', chatShellMoreActions: 'More actions', chatShellChoosePersona: 'Choose persona',
+    chatShellMessage: 'Message', chatShellMoreActions: 'More actions', tools: 'Tools', chatShellChoosePersona: 'Choose persona',
     asPersona: (name: string) => `as ${name}`, chatShellStop: 'Stop', chatShellSend: 'Send', chatShellSendWaitsForDelete: 'Waiting for the reply to be deleted…',
     chatShellSendBlockedWriting: 'Another chat is writing a reply. Send when it finishes.',
     chatShellRemoveAttachment: 'Remove attachment', enterKey: 'Enter key',
@@ -85,6 +85,12 @@ describe('ShellComposer draft and actions', () => {
         if (app) await unmount(app)
         app = null
         expect(hasLocalDrafts()).toBe(false)
+    })
+
+    test('the plus button is named Tools, the name of the sheet it opens, and not the message action name', async () => {
+        const node = await show()
+        const plus = node.querySelector<HTMLButtonElement>('[data-part="chat-composer-plus"]')!
+        expect(plus.getAttribute('aria-label')).toBe('Tools')
     })
 
     test('Send is disabled with the reason while a stop-and-delete is pending for this chat, enabled for another chat and after it clears', async () => {

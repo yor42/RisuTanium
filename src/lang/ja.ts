@@ -3273,6 +3273,7 @@ export const languageJapanese = {
     loadMore: "さらに読み込む",
     disableMessage: "メッセージを無効化",
     disableAbove: "AIへの送信メッセージをカット",
+    chatPlaygroundSwitchRole: "ユーザーとアシスタントを切り替え",
     autoScrollToNewMessage: "新しいメッセージへ自動スクロール",
     alwaysScrollToNewMessage: "常に新しいメッセージへスクロール（スクロール位置を無視）",
     newMessage: "新しいメッセージ",

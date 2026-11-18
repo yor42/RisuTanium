@@ -2,6 +2,7 @@
     import { onDestroy, tick, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
+    import { appIntlTag } from '../../ts/appIntl.svelte'
     import { DBState, additionalChatMenu, hypaV3ModalOpen, settingsOpen } from '../../ts/stores.svelte'
     import type { Chat, character, groupChat } from '../../ts/storage/database.svelte'
     import { alertError, showHypaV2Alert } from '../../ts/alert'
@@ -215,7 +216,7 @@
         void edits
         if (!session) return ''
         const { count, lastTime } = chatStats(session.chat)
-        return language.chatShellChatStats(count, lastTime === undefined ? '' : relativeTime(lastTime, Date.now()))
+        return language.chatShellChatStats(count, lastTime === undefined ? '' : relativeTime(lastTime, Date.now(), appIntlTag()))
     })
     let personaName = $derived.by(() => {
         void edits
