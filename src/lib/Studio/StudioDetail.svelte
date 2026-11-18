@@ -174,7 +174,7 @@
         {#if model}
             <StudioCombined {model} kind={combinedKind} />
         {/if}
-        <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{language.studioReadOnlyNote}</p>
+        <p data-part="studio-detail-readonly" class="text-sm text-textcolor2">{combinedKind === 'toggles' ? language.studioTgCombinedHint : language.studioReadOnlyNote}</p>
     {:else if owner}
         <div class="flex flex-wrap items-center gap-2">
             <h2 id="studio-detail-title" data-part="studio-detail-title" class="min-w-0 break-words text-lg font-bold">{owner.name !== '' ? owner.name : (roleLabel ?? owner.name)}</h2>

@@ -687,3 +687,33 @@ describe('S3d1 the toggle builder in the detail', () => {
         expect(document.body.textContent).not.toContain('SECRET')
     })
 })
+
+describe('CU-4 the combined branch of the detail by kind', () => {
+    function showCombined(kind: 'toggles' | 'regex'): void {
+        setFull(makeInput({
+            character: makeCharacter({
+                chats: [makeChat({ id: 'chat-1', name: 'First chat' })],
+                customscript: [regexBody('Fix', 'COMBINED-IN', 'COMBINED-OUT')],
+            }),
+        }))
+        openStudio({ from: 'chat' }, null)
+        studioScreen.targetPending = false
+        studioScreen.selectedOwnerKey = `combined:${kind}`
+        studioScreen.selectedKind = kind
+        show()
+    }
+
+    test('the combined toggles show the hint to open a source, not the read-only note, and the combined view itself', async () => {
+        showCombined('toggles')
+        await vi.waitFor(() => expect(part('studio-tg-combined')).not.toBeNull())
+        expect(part('studio-combined')?.getAttribute('data-kind')).toBe('toggles')
+        expect(part('studio-detail-readonly')?.textContent).toBe('studioTgCombinedHint')
+        expect(document.body.textContent).not.toContain('studioReadOnlyNote')
+    })
+
+    test('the combined regex keeps the read-only note (compatibility guard; passes before and after)', () => {
+        showCombined('regex')
+        expect(part('studio-detail-readonly')?.textContent).toBe('studioReadOnlyNote')
+        expect(document.body.textContent).not.toContain('studioTgCombinedHint')
+    })
+})
