@@ -5,6 +5,7 @@
 import * as chat from '../engine'
 import type { ContrastPair, LintError, LintResult, NameMatch, RegistryInput, Rgba, SurfaceCheck, TokenMap } from '../engine'
 import type { GeometryChain, GeometrySheet, SheetTerm } from '../geometry'
+import { parseConcrete } from '../colour'
 import { decls } from '../csslit'
 import type { Decl } from '../csslit'
 import { tokenFile } from '../tokens'
@@ -205,19 +206,6 @@ const APP_TOKENS: TokenMap = readTokens(rootOf('home/home-tokens.css'), readToke
 const LOCKED: string[] = ['--home-dialog-bg', '--home-danger-edge', '--home-danger-edge-strong', '--home-warning-edge', '--home-danger-text']
 // var() chains resolve to at most 12 levels; an unresolved var() with no fallback stays as written
 const solve = (v: string, T: TokenMap, d = 0): string => (d > 12 ? v : v.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*((?:[^()]|\([^()]*\))*))?\)/g, (m: string, n: string, fb: string | undefined) => (T.has(n) ? solve(T.get(n), T, d + 1) : fb !== undefined ? solve(fb, T, d + 1) : m)))
-const rgbOf = (s0: string): Rgba | null => {
-    const s = s0.trim().toLowerCase()
-    let m = /^#([0-9a-f]{3,8})$/.exec(s)
-    if (m) {
-        let h = m[1]
-        if (h.length <= 4) h = [...h].map((c) => c + c).join('')
-        const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16))
-        return [r, g, b, h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1]
-    }
-    m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[\/,]\s*([\d.]+%?))?\s*\)$/.exec(s)
-    if (m) return [+m[1], +m[2], +m[3], m[4] === undefined ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4])]
-    return null
-}
 const lum1 = (c: Rgba): number => {
     const f = c.slice(0, 3).map((x) => {
         x /= 255
@@ -244,7 +232,7 @@ export function homeSupplement(css: string): LintError[] {
         if (d.ctx.selector.trim() === ':root') T.set(d.prop, d.value.replace(/\s*!important\s*$/, '').trim())
     }
     for (const d of own) if (LOCKED.includes(d.prop)) fail(d.ctx.selector.trim(), d.prop, `${d.prop} is locked: a critical surface reads it in place of the shared token that the surfaces check judges (set its source instead)`)
-    const on = rgbOf(solve(T.get('--home-on-accent') || '', T)), acc = rgbOf(solve(T.get('--nexus-accent') || '', T))
+    const on = parseConcrete(solve(T.get('--home-on-accent') || '', T)), acc = parseConcrete(solve(T.get('--nexus-accent') || '', T))
     if (!on || !acc) fail(':root', '--home-on-accent', 'the primary button label and fill cannot be checked (a colour that does not resolve)')
     else {
         // a translucent label is composited over the accent fill before the ratio is taken

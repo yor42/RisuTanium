@@ -269,7 +269,7 @@ vi.mock(import('../../process/coldstorage.svelte'), () => ({
 
 //#endregion
 
-//#region byte-layout and File harness, matching backuplocalIdRepair.test.ts's own pattern
+//#region byte-layout and File harness
 
 function u32le(n: number): Uint8Array {
     const buf = new Uint8Array(4)

@@ -6,6 +6,9 @@
 |---|---|---|
 | `origin-navy.risutheme` | 7083 bytes | `a3572fc7b4dfea788566a3bf707a806c91b4a26116470ccbc402ad62fb90a06b` |
 | `banana-cocoa.risutheme` | 13148 bytes | `d8bda3ae97e300e619d13096eb6a79b56ee3d7fc1ded426080e2e04b6b9327d5` |
+| `tile-v1.risutheme` | 2770 bytes | `1c8ed6148098f26f8e58d71bcb7f21f39557f4f15d8b9300808c993f800ae3e3` |
+
+`tile-v1.risutheme` is the third golden. It holds `manifest.json` (with `colors` `{"main": "#3366ff", "secondary": "#101820"}` and `icon` `images/icon.png`), the `origin-navy` `chat.css` and a 64x64 PNG at `images/icon.png`, in that entry order. Every later build must read its tile colours and install its icon.
 
 The size and hash are also pinned in `goldenPacks.test.ts`; a change to either file must change all three places, which is a deliberate format decision, not a refresh.
 
@@ -33,3 +36,4 @@ These sentences are frozen with the goldens. Intake (`intake.ts`) and the valida
 4. An entry name is at most 255 bytes.
 5. `name` and `version` in the manifest hold no C0 or C1 control character (DEL included), no U+2028 or U+2029, and no bidi embedding, override or isolate character (U+202A-U+202E, U+2066-U+2069); `license` and `attribution` may hold line ends.
 6. An empty or comment-only `chat.css` is a valid sheet.
+7. The optional manifest `colors` (`main`, `secondary`: `#rgb` or `#rrggbb`, any case) and `icon` (a path) describe the pack's tile. A pack whose `icon` is a still PNG or WebP of at most 262144 bytes and at most 512 by 512 pixels, at `images/<name>.png` or `images/<name>.webp` in the archive, installs it. An animated PNG or WebP, an SVG, a path outside `images/` and an absent file are refused. This build writes a pack icon as an asset next to the archive.

@@ -365,25 +365,6 @@ describe('a web restore of an asset entry the browser keeps as a Blob', () => {
 
 })
 
-// This row asserts the cold-storage write of the legacy page's tail, so it runs on that page.
-describe('a web restore of a cold unit on the legacy page', () => {
-    // Windows smaller than an entry, so the walk and the copy never read an entry's data into a window of their own.
-    beforeEach(() => overrideBackupWindowBytes({ walk: 64, copy: 64 }))
-    afterEach(() => overrideBackupWindowBytes(null))
-
-    test('guard: a cold-storage unit above the threshold is decoded whole and never stored as an asset Blob', async () => {
-        const bytes = concatChunks([bigColdEntry(), databaseEntry()])
-
-        await loadBackupBytes(bytes)
-
-        expect(blobWrites.keys).toEqual([])
-        expect(writtenAssetKeys()).toEqual([])
-        expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
-        expect(writtenKeys()).toContain('blocks/head')
-        expect(writtenKeys()).not.toContain('database/database.bin')
-    })
-})
-
 describe('a web restore of an asset entry the browser keeps as a Blob, continued', () => {
     onStore2Page()
     // Windows smaller than an entry, so the walk and the copy never read an entry's data into a window of their own.

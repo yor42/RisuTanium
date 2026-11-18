@@ -1,6 +1,7 @@
 /**
- * Generator of the two golden v1 theme packs, `origin-navy.risutheme` and `banana-cocoa.risutheme`: the shipped
- * themes of docs/design (chat, studio, settings and home sheets) in the v1 archive layout, built with the shared
+ * Generator of the golden v1 theme packs `origin-navy.risutheme` and `banana-cocoa.risutheme` (the shipped
+ * themes of docs/design: chat, studio, settings and home sheets) and `tile-v1.risutheme` (a chat sheet, tile colours and a
+ * PNG icon), in the v1 archive layout, built with the shared
  * builder src/ts/themePack/fixtures/packBuilder.ts (fflate zipSync, deflate level 9, a local-field DOS time so the
  * bytes are the same in every time zone, fixed entry order).
  *
@@ -17,6 +18,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { goldenOutDir, writeGoldenFile } from 'src/ts/drive/tests/rtb/goldenOut'
+import { pngBytes } from 'src/ts/themePack/fixtures/imageBuilder'
 import { zipPack } from 'src/ts/themePack/fixtures/packBuilder'
 
 const GENERATE = process.env.THEMEPACK_GENERATE === '1'
@@ -62,7 +64,42 @@ function buildGolden(spec: GoldenSpec): Uint8Array {
     return zipPack(files)
 }
 
+/**
+ * The third golden: the origin-navy chat sheet with a manifest that declares tile colours and a 64x64 PNG icon, so a later
+ * build must still read `colors` and `icon` of a v1 pack. Entry order `manifest.json`, `chat.css`, `images/icon.png`.
+ */
+function buildTileGolden(): Uint8Array {
+    const manifest = {
+        kind: 'risutheme',
+        format: 1,
+        id: 'risutanium.tile-v1',
+        name: 'Tile V1',
+        version: '1.0.0',
+        license: 'GPL-3.0',
+        attribution: 'RisuTanium contributors',
+        modes: ['dark'],
+        fonts: [],
+        colors: { main: '#3366ff', secondary: '#101820' },
+        icon: 'images/icon.png',
+    }
+    return zipPack({
+        'manifest.json': `${JSON.stringify(manifest, null, 2)}\n`,
+        'chat.css': sheetOf('chat', 'origin-navy'),
+        'images/icon.png': pngBytes(64, 64),
+    })
+}
+
 describe.skipIf(!GENERATE)('theme pack golden generation (THEMEPACK_GENERATE=1)', () => {
+    test('writes tile-v1.risutheme', () => {
+        const dir = goldenOutDir()
+        const bytes = buildTileGolden()
+        expect(buildTileGolden(), 'tile-v1 is not deterministic').toEqual(bytes)
+        const file = writeGoldenFile(dir, 'tile-v1.risutheme', bytes)
+        process.stdout.write(`golden file: ${file}\n`)
+        process.stdout.write(`golden tile-v1 size: ${bytes.length} bytes\n`)
+        process.stdout.write(`golden tile-v1 sha256: ${createHash('sha256').update(bytes).digest('hex')}\n`)
+    })
+
     test('writes origin-navy.risutheme and banana-cocoa.risutheme', () => {
         const dir = goldenOutDir()
         for (const spec of SPECS) {

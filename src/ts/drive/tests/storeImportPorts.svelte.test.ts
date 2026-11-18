@@ -812,3 +812,52 @@ armed('T4-P10: the router restores exactly as the picker does', () => {
         expect(page.reloads.count).toBe(0)
     })
 })
+
+// ---- T4-N1c ----
+
+/** A picked file that counts every read of its bytes. */
+function countingFile(bytes: Uint8Array): { file: File, reads: () => number } {
+    let reads = 0
+    const real = file(bytes)
+    const watched = new Proxy(real, {
+        get(target, property) {
+            const value = Reflect.get(target, property, target)
+            if (typeof value !== 'function') {
+                return value
+            }
+            return (...args: unknown[]) => {
+                if (property === 'slice' || property === 'arrayBuffer' || property === 'stream' || property === 'text') {
+                    reads++
+                }
+                return (value as (...rest: unknown[]) => unknown).apply(target, args)
+            }
+        },
+    })
+    return { file: watched, reads: () => reads }
+}
+
+describe('T4-N1c: a page whose mode left store2 while its session is still reachable', () => {
+    // REPRO: the session is writable, so `checkStore2Import` would answer `ready` and the restore would walk and copy the
+    // asset; only the mode refusal stops it.
+    test('REPRO: the picker restore is refused with the mode named before one byte is read or written', async () => {
+        const page = await openPage()
+        page.w.pageMode.setPageStorageMode({ kind: 'unset' })
+        const before = await currentKey(page)
+        page.w.store.ops.length = 0
+        const counted = countingFile(golden('upstream-full.bin'))
+
+        const end = await loadFile(counted.file)
+
+        expect(end.outcome).toBe('nothing-replaced')
+        expect(end.cause).toBeNull()
+        const shown = alertErrorTexts(page)
+        expect(shown).toHaveLength(1)
+        expect(shown[0]).toBeInstanceOf(Error)
+        expect((shown[0] as Error).message).toContain('unset')
+        expect(counted.reads()).toBe(0)
+        expect(mutations(page)).toEqual([])
+        expect(await currentKey(page)).toBe(before)
+        expect(page.reloads.count).toBe(0)
+        expect(await writeLockIsFree(page)).toBe(true)
+    })
+})

@@ -1,8 +1,45 @@
 <script lang="ts">
+    import { getAppStore } from 'src/ts/storage/store/appStore'
+    import { loadPackIconBlob } from 'src/ts/themePack/packIcon'
     import type { TileSpec } from 'src/ts/themePack/tileDesign'
 
-    /** The picker tile of one pack, drawn from its spec; null draws the None tile. Pack colours appear only as SVG paint. */
-    let { spec }: { spec: TileSpec | null } = $props()
+    async function readStored(key: string): Promise<Uint8Array | null> {
+        return (await (await getAppStore()).read(key)).bytes
+    }
+
+    /**
+     * The picker tile of one pack, drawn from its spec; null draws the None tile. Pack colours appear only as SVG paint.
+     * A stored icon key replaces the pattern with the icon, cropped to the square, once its bytes pass the render-time
+     * checks; until then, and whenever they fail, the pattern stays.
+     */
+    let { spec, icon, name = '' }: { spec: TileSpec | null, icon?: string, name?: string } = $props()
+
+    let iconUrl = $state<string | null>(null)
+
+    // The object URL belongs to this run of the effect: the cleanup revokes it, and a load that resolves after the cleanup
+    // creates none.
+    $effect(() => {
+        const key = icon
+        iconUrl = null
+        if (key === undefined) {
+            return
+        }
+        let live = true
+        let made: string | null = null
+        void loadPackIconBlob(key, readStored).then((blob) => {
+            if (live && blob !== null) {
+                made = URL.createObjectURL(blob)
+                iconUrl = made
+            }
+        })
+        return () => {
+            live = false
+            if (made !== null) {
+                URL.revokeObjectURL(made)
+            }
+            iconUrl = null
+        }
+    })
 
     const paint = $derived(spec === null || spec.neutral ? null : { ground: spec.ground, ink: spec.ink, glyph: spec.glyphInk })
 
@@ -48,7 +85,10 @@
     }
 </script>
 
-<svg viewBox="0 0 64 64" class="w-full h-full block" aria-hidden="true" style="forced-color-adjust:none" data-part="theme-pack-tile">
+{#if iconUrl !== null}
+    <img src={iconUrl} alt={name} class="object-cover w-full h-full block" data-part="theme-pack-icon" onerror={() => { iconUrl = null }} />
+{/if}
+<svg viewBox="0 0 64 64" class={iconUrl === null ? 'w-full h-full block' : 'hidden'} aria-hidden="true" style="forced-color-adjust:none" data-part="theme-pack-tile">
     {#if spec === null || geometry === null}
         <rect width="64" height="64" class="fill-bgcolor" data-part="tile-ground" />
         <line x1="10" y1="54" x2="54" y2="10" class="stroke-borderc" stroke-width="3" stroke-linecap="round" data-part="tile-none-mark" />
