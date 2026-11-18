@@ -2831,7 +2831,17 @@ export const languageGerman = {
         "convertErrorNoMainChunks": "Keine Haupt-Chunks gefunden.",
         "convertErrorChunkNotArray": "chatMemos von Chunk {index} ist kein Array.",
         "convertErrorChunkEmpty": "chatMemos von Chunk {index} ist leer.",
-        "convertErrorUnexpected": "Es ist ein Fehler aufgetreten: {message}"
+        "convertErrorUnexpected": "Es ist ein Fehler aufgetreten: {message}",
+        "exportToLorebookLabel": "Zusammenfassungen in das Lore-Buch dieses Chats exportieren",
+        "importFromLorebookLabel": "Einträge des Lore-Buchs dieses Chats als Zusammenfassungen importieren",
+        "exportToLorebookConfirm": "{count} Zusammenfassungen als neue Einträge zum Lore-Buch dieses Chats hinzufügen? Vorhandene Einträge bleiben unverändert. Die Tags und die Kategorie einer Zusammenfassung werden zu den Schlüsselwörtern des Eintrags, sodass ein passender Eintrag wiederholen kann, was HypaV3 bereits sendet.",
+        "importFromLorebookConfirm": "{count} Einträge aus dem Lore-Buch dieses Chats als neue Zusammenfassungen vor den vorhandenen hinzufügen? Vorhandene Zusammenfassungen bleiben unverändert.",
+        "lorebookTransferSkippedNote": "{skipped} bereits vorhandene werden übersprungen.",
+        "exportToLorebookDone": "{count} Einträge wurden zum Lore-Buch dieses Chats hinzugefügt.",
+        "importFromLorebookDone": "{count} Zusammenfassungen wurden hinzugefügt.",
+        "exportToLorebookNothing": "Nichts Neues zu exportieren: Es gibt keine Zusammenfassungen, oder jede Zusammenfassung ist bereits im Lore-Buch dieses Chats.",
+        "importFromLorebookNothing": "Nichts Neues zu importieren: Das Lore-Buch dieses Chats enthält keine Einträge mit Text, die nicht bereits Zusammenfassungen sind.",
+        "lorebookEntryComment": "HypaV3-Zusammenfassung #{index}"
     },
     "bulkEnabling": "Lorebook-Massenaktivierung",
     "showTranslationLoading": "Übersetzungsladen anzeigen",

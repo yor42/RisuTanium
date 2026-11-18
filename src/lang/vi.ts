@@ -2829,7 +2829,17 @@ export const languageVietnamese = {
         "convertErrorNoMainChunks": "Không tìm thấy chunk chính nào.",
         "convertErrorChunkNotArray": "chatMemos của chunk {index} không phải là mảng.",
         "convertErrorChunkEmpty": "chatMemos của chunk {index} trống.",
-        "convertErrorUnexpected": "Đã xảy ra lỗi: {message}"
+        "convertErrorUnexpected": "Đã xảy ra lỗi: {message}",
+        "exportToLorebookLabel": "Xuất các bản tóm tắt sang Lorebook của cuộc trò chuyện này",
+        "importFromLorebookLabel": "Nhập các mục Lorebook của cuộc trò chuyện này thành bản tóm tắt",
+        "exportToLorebookConfirm": "Thêm {count} bản tóm tắt vào Lorebook của cuộc trò chuyện này dưới dạng các mục mới? Các mục hiện có sẽ không bị thay đổi. Thẻ và danh mục của bản tóm tắt sẽ trở thành từ khóa của mục, nên một mục khớp có thể lặp lại những gì HypaV3 đã gửi.",
+        "importFromLorebookConfirm": "Thêm {count} mục từ Lorebook của cuộc trò chuyện này thành bản tóm tắt mới, đặt trước các bản tóm tắt hiện có? Các bản tóm tắt hiện có sẽ không bị thay đổi.",
+        "lorebookTransferSkippedNote": "{skipped} mục đã có sẽ bị bỏ qua.",
+        "exportToLorebookDone": "Đã thêm {count} mục vào Lorebook của cuộc trò chuyện này.",
+        "importFromLorebookDone": "Đã thêm {count} bản tóm tắt.",
+        "exportToLorebookNothing": "Không có gì mới để xuất: không có bản tóm tắt nào, hoặc mọi bản tóm tắt đều đã có trong Lorebook của cuộc trò chuyện này.",
+        "importFromLorebookNothing": "Không có gì mới để nhập: Lorebook của cuộc trò chuyện này không có mục nào có văn bản mà chưa là bản tóm tắt.",
+        "lorebookEntryComment": "Tóm tắt HypaV3 #{index}"
     },
     "bulkEnabling": "Bật hàng loạt Lorebook",
     "showTranslationLoading": "Hiển thị đang tải bản dịch",
