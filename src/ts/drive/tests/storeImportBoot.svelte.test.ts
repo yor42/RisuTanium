@@ -449,3 +449,32 @@ describe('the start-up .bin import never writes a cold-storage unit (Gate 1 C1)'
         expect(boot.w.store.mutating()).toEqual([])
     })
 })
+
+describe('the router\'s picked file at boot ends the flow (T-DONE)', () => {
+    const within = async <T>(promise: Promise<T>): Promise<T | 'timeout'> => await Promise.race([promise, sleepReal(5000).then(() => 'timeout' as const)])
+
+    test('guard of a new rule: loadPickedBackupAtBoot over a recognised .bin resolves with the installer\'s result (the picked branch calls done; M4)', async () => {
+        await openBoot()
+        const { loadPickedBackupAtBoot } = await import('src/ts/drive/backuplocal')
+        const seen: Seen = { reads: new Map(), sourceHadTree: false }
+        const file = new File([golden('upstream-full.bin') as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')
+
+        const end = await within(loadPickedBackupAtBoot(file, recordingTarget(seen, { status: 'blocked', reason: 'install-failed', detail: 'recorded' })))
+
+        expect(end).toEqual({ kind: 'finished', result: { status: 'blocked', reason: 'install-failed', detail: 'recorded' } })
+    })
+
+    test('a target whose install throws still resolves, cancelled, and the generic error is shown (M4)', async () => {
+        const boot = await openBoot()
+        const { loadPickedBackupAtBoot } = await import('src/ts/drive/backuplocal')
+        const target: BootImportTarget = {
+            readColdStorageItem: async () => ({ status: 'missing' }),
+            install: async () => { throw new Error('the installer failed') },
+        }
+
+        const end = await within(loadPickedBackupAtBoot(new File([golden('upstream-full.bin') as unknown as Uint8Array<ArrayBuffer>], 'backup.bin'), target))
+
+        expect(end).toEqual({ kind: 'cancelled' })
+        expect(vi.mocked(boot.alert.alertError)).toHaveBeenCalled()
+    })
+})

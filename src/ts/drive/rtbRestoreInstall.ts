@@ -84,7 +84,7 @@ function emptyFacts(): RtbInstallFacts {
 }
 
 /** The units of the file's blocks as the verification saw them, or the reason they are not. */
-async function rereadUnits(plan: RtbInstallPlan): Promise<{ kind: 'ok', frames: Map<string, Uint8Array> } | { kind: 'changed', detail: string }> {
+export async function rereadUnits(plan: Pick<RestorePlan, 'source' | 'index' | 'store2'>): Promise<{ kind: 'ok', frames: Map<string, Uint8Array> } | { kind: 'changed', detail: string }> {
     const frames = new Map<string, Uint8Array>()
     const seenTails = new Set<string>()
     for (const block of plan.store2.blocks) {
@@ -139,7 +139,7 @@ async function rereadUnits(plan: RtbInstallPlan): Promise<{ kind: 'ok', frames: 
 }
 
 /** Clears the plugin grants (MC-2252). A failure is handled here and named by the finish stage's own application of the same action. */
-async function clearPluginGrants(plan: RtbInstallPlan, backends: SideBackends): Promise<void> {
+export async function clearPluginGrants(plan: Pick<RestorePlan, 'side'>, backends: SideBackends): Promise<void> {
     const item = plan.side.find((candidate) => candidate.action.id === PLUGIN_PERMISSIONS)
     try {
         const result = await applySideAction(item?.action ?? { kind: 'clear', id: PLUGIN_PERMISSIONS, status: 'absent' }, null, backends)
