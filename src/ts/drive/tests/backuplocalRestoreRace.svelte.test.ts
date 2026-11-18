@@ -51,6 +51,20 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database } from '../../storage/database.svelte'
 import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
+import { language } from 'src/lang'
+import { resetStore2ShellBox, store2ShellMock, type Store2ShellBox } from './store2ShellStub'
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
+// The real save loop with one answer fixed: a parked loop is left alone by the restore's save-first step, which then
+// returns at once instead of waiting for a save the real globalApi cannot report clean here. `globalApi.svelte` stays
+// unmocked so the restore and the save cycle share its one write lock.
+vi.mock(import('../../storage/store2/saveLoop'), async (importOriginal) => ({
+    ...await importOriginal(),
+    isSaveLoopParked: () => true,
+}))
 
 //#region module mocks -- copied verbatim from globalApi.storageTabLocksIdentity.svelte.test.ts,
 //#region extended where backuplocal.ts itself needs more
@@ -466,24 +480,71 @@ function armGatedSetItem(): { release: () => void, landed: string[] } {
     return { release: () => resolveGate(), landed }
 }
 
-describe('LoadLocalBackup(): a failed restore write never leaves dbWriteLock held (guard)', () => {
-    test('a later writer still acquires dbWriteLock after the restore write rejects', async () => {
+describe('LoadLocalBackup() on a store2 page: the commit decides who holds dbWriteLock (guard)', () => {
+    beforeEach(async () => {
+        resetStore2ShellBox(shell)
+        const pageMode = await import('../../storage/pageStorageMode')
+        pageMode.setPageStorageMode({ kind: 'store2' })
+    })
+
+    /** Whether a later writer gets `dbWriteLock` within a short wait. */
+    async function laterWriterAcquires(): Promise<boolean> {
+        let acquired = false
+        void globalApi.dbWriteLock.acquire().then((release) => {
+            acquired = true
+            release()
+        })
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        return acquired
+    }
+
+    test('a later writer still acquires dbWriteLock after the restore commit is refused', async () => {
         const restoreDb = { characters: [], mainPrompt: 'restored-marker-guard' } as unknown as Database
         const restoreBytes = encodeRisuSaveLegacy(restoreDb, 'noCompression')
         const fixtureBytes = buildChunk('database.risudat', restoreBytes)
+        shell.end = { kind: 'refused', cause: 'commit-read-failed' }
 
-        vi.mocked(globalApi.forageStorage.setItem).mockImplementation(async (key: unknown) => {
-            if (typeof key === 'string' && key.startsWith('blocks/')) {
-                throw new Error('scratch: restore write failed')
-            }
-            return null
-        })
+        await loadBackupBytes(fixtureBytes)
 
-        await loadBackupBytes(fixtureBytes).catch(() => { })
+        expect(shell.commits).toHaveLength(1)
+        expect(await laterWriterAcquires()).toBe(true)
+        const alert = await import('../../alert')
+        expect(vi.mocked(alert.alertWait)).not.toHaveBeenCalledWith(language.store2RestoreSaving)
+    })
 
-        const release = await globalApi.dbWriteLock.acquire()
-        expect(typeof release).toBe('function')
-        release()
+    test('a later writer never acquires dbWriteLock after a commit that could not be confirmed', async () => {
+        const restoreDb = { characters: [], mainPrompt: 'restored-marker-unconfirmed' } as unknown as Database
+        const restoreBytes = encodeRisuSaveLegacy(restoreDb, 'noCompression')
+        const fixtureBytes = buildChunk('database.risudat', restoreBytes)
+        shell.end = { kind: 'unconfirmed' }
+
+        await loadBackupBytes(fixtureBytes)
+
+        expect(shell.commits).toHaveLength(1)
+        expect(await laterWriterAcquires()).toBe(false)
+        const alert = await import('../../alert')
+        expect(vi.mocked(alert.alertWait)).not.toHaveBeenCalledWith(language.store2RestoreSaving)
+    })
+
+    test('with no Web Locks (no exclusive hold to keep it closed) a later writer never acquires dbWriteLock after a commit that could not be confirmed', async () => {
+        // The write lock is then kept closed by the restore itself, not by the hold's release.
+        vi.resetModules()
+        Object.defineProperty(window.navigator, 'locks', { value: undefined, configurable: true })
+        globalApi = await import('../../globalApi.svelte')
+        const pageMode = await import('../../storage/pageStorageMode')
+        pageMode.setPageStorageMode({ kind: 'store2' })
+        const { injectAppStore } = await import('../../storage/store/appStore')
+        injectAppStore(createForageBackedStore(globalApi.forageStorage as unknown as ForageLike), 'tauri')
+        loadLocalBackup = (await import('../backuplocal')).LoadLocalBackup
+        encodeRisuSaveLegacy = (await import('../../storage/risuSave')).encodeRisuSaveLegacy
+        const restoreDb = { characters: [], mainPrompt: 'restored-marker-unconfirmed-no-locks' } as unknown as Database
+        const fixtureBytes = buildChunk('database.risudat', encodeRisuSaveLegacy(restoreDb, 'noCompression'))
+        shell.end = { kind: 'unconfirmed' }
+
+        await loadBackupBytes(fixtureBytes)
+
+        expect(shell.commits).toHaveLength(1)
+        expect(await laterWriterAcquires()).toBe(false)
     })
 })
 

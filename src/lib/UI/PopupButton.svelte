@@ -2,6 +2,7 @@
     import { MenuIcon } from "@lucide/svelte";
     import { popupStore } from "src/ts/stores.svelte";
     import { sleep } from "src/ts/util";
+    import { language } from "src/lang";
 
     const {
         children
@@ -28,6 +29,6 @@
     popupStore.mouseY = mouseY
     popupStore.children = children
     popupStore.openId = buttonId
-}} class="hover:text-blue-500 transition-colors button-icon-menu">
+}} class="hover:text-blue-500 transition-colors button-icon-menu" aria-label={language.chatShellMoreActions}>
     <MenuIcon size={20} />
 </button>

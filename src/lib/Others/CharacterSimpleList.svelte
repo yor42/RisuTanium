@@ -17,6 +17,7 @@
     import { LayoutPanelLeftIcon, MessageSquareIcon, PlusIcon } from "@lucide/svelte";
     import { coldStubChatCount } from "src/ts/process/coldCharacter";
     import { language } from "src/lang";
+    import { appRelativeFormat } from "src/ts/appIntl.svelte";
     import { createCharacterSearch, type CharacterSearch } from "src/ts/gui/characterSearch.svelte";
     import { slotKeys } from "src/ts/gui/characterSearch";
     import CharacterWindow from "./CharacterWindow.svelte";
@@ -42,7 +43,7 @@
         studio?: LibraryStudio;
     }
 
-    const agoFormatter = new Intl.RelativeTimeFormat(navigator.languages, { style: 'short' });
+    const AGO_OPTIONS = { style: 'short' } as const;
 
     let {endGrid = () => {}, search, hideTrash = true, results, onpick, opening, studio}: Props = $props();
     // Fixed for the component's life: the effect inside createCharacterSearch
@@ -59,26 +60,26 @@
         const diff = Date.now() - time;
         if(diff < 3600000){
             const min = Math.floor(diff / 60000);
-            return agoFormatter.format(-min, 'minute');
+            return appRelativeFormat(AGO_OPTIONS).format(-min, 'minute');
         }
         if(diff < 86400000){
             const hour = Math.floor(diff / 3600000);
-            return agoFormatter.format(-hour, 'hour');
+            return appRelativeFormat(AGO_OPTIONS).format(-hour, 'hour');
         }
         if(diff < 604800000){
             const day = Math.floor(diff / 86400000);
-            return agoFormatter.format(-day, 'day');
+            return appRelativeFormat(AGO_OPTIONS).format(-day, 'day');
         }
         if(diff < 2592000000){
             const week = Math.floor(diff / 604800000);
-            return agoFormatter.format(-week, 'week');
+            return appRelativeFormat(AGO_OPTIONS).format(-week, 'week');
         }
         if(diff < 31536000000){
             const month = Math.floor(diff / 2592000000);
-            return agoFormatter.format(-month, 'month');
+            return appRelativeFormat(AGO_OPTIONS).format(-month, 'month');
         }
         const year = Math.floor(diff / 31536000000);
-        return agoFormatter.format(-year, 'year');
+        return appRelativeFormat(AGO_OPTIONS).format(-year, 'year');
     }
 
     // The order of the list: most recent first, then by name. It depends on

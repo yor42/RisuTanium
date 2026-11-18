@@ -34,6 +34,8 @@ const setDatabaseMock = vi.hoisted(() => vi.fn())
 const alertErrorMock = vi.hoisted(() => vi.fn())
 const alertNormalWaitMock = vi.hoisted(() => vi.fn(async (_message: string): Promise<void> => { }))
 const reloadMark = vi.hoisted(() => ({ marked: false }))
+/** Runs whenever the page's clean check is asked; the restore asks it last in `UnsavedGuard.check`, just before its final change check. */
+const cleanAsk = vi.hoisted((): { onAsk?: () => void } => ({}))
 
 vi.mock(import('src/ts/reloadGuard'), () => ({
     markAppInitiatedReload: () => { reloadMark.marked = true },
@@ -253,8 +255,21 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
     } as unknown as typeof import('src/ts/process/coldstorage.svelte')
 })
 
+// A clean page: the restore's save-first step returns at its clean check instead of waiting out its bound.
+vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
+    ...await importOriginal<typeof import('src/ts/globalApi.svelte')>(),
+    isSaveClean: () => {
+        cleanAsk.onAsk?.()
+        return true
+    },
+}))
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
 //#endregion
 
+import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
 import { LoadLocalBackup, type LocalBackupEnd } from 'src/ts/drive/backuplocal'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { language } from 'src/lang'
@@ -472,10 +487,23 @@ async function storedInlay(id: string): Promise<Uint8Array | null> {
     return asset === null ? null : new Uint8Array(await (asset.data as Blob).arrayBuffer())
 }
 
+/** The restore stopped before its commit and marked no reload. */
 function expectNothingInstalled(): void {
-    expect(setDatabaseMock).not.toHaveBeenCalled()
-    expect(fakeFs.files.has('blocks/head')).toBe(false)
+    expect(shell.commits).toHaveLength(0)
     expect(reloadMark.marked).toBe(false)
+}
+
+/**
+ * Makes the page a store2 page over a desktop-files store, where the restore ends at the stubbed commit, and has each
+ * row of the describe assert the restore waited for no save first: `saveFirst` returned at its clean check.
+ */
+function onStore2Page(): void {
+    beforeEach(() => {
+        useStore2RestorePage(createTauriFilesStore({ platform: 'posix' }))
+    })
+    afterEach(() => {
+        expect(vi.mocked(alertWait).mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)
+    })
 }
 
 //#endregion
@@ -489,6 +517,8 @@ beforeEach(() => {
     fakeFs.reset()
     fakeFs.directories.add('assets')
     setDatabaseMock.mockReset()
+    resetStore2ShellBox(shell)
+    cleanAsk.onAsk = undefined
     alertErrorMock.mockReset()
     alertNormalWaitMock.mockReset().mockImplementation(async () => { })
     reloadMark.marked = false
@@ -569,6 +599,8 @@ describe('a restore from an opened source on an Android page', () => {
     })
 
     describe('on a page whose store keeps Blobs', () => {
+        onStore2Page()
+
         // The store hands back what it was given, and counts the Blob writes. A page that is not Tauri streams nothing, so
         // an entry of ASSET_PIECE_SAVE_MIN_BYTES or more reaches `writeBlob` as a slice of the file.
         function blobKeepingStore(blobWrites: string[]) {
@@ -587,7 +619,7 @@ describe('a restore from an opened source on an Android page', () => {
         test('guard: a picked File of an entry that large is stored through writeBlob', async () => {
             platformBox.isTauri = false
             const blobWrites: string[] = []
-            injectRestoreStore(blobKeepingStore(blobWrites) as unknown as Parameters<typeof injectRestoreStore>[0], 'tauri')
+            useStore2RestorePage(blobKeepingStore(blobWrites) as unknown as Parameters<typeof useStore2RestorePage>[0], 'tauri')
             const built = build([['huge.bin', patterned(ASSET_PIECE_SAVE_MIN_BYTES, 1)]])
 
             await restoreFile(built.bytes)
@@ -600,7 +632,7 @@ describe('a restore from an opened source on an Android page', () => {
         test('reproducer: an entry that large from a source is written as bytes and never offered to writeBlob', async () => {
             platformBox.isTauri = false
             const blobWrites: string[] = []
-            injectRestoreStore(blobKeepingStore(blobWrites) as unknown as Parameters<typeof injectRestoreStore>[0], 'tauri')
+            useStore2RestorePage(blobKeepingStore(blobWrites) as unknown as Parameters<typeof useStore2RestorePage>[0], 'tauri')
             const data = patterned(ASSET_PIECE_SAVE_MIN_BYTES, 1)
             const built = build([['huge.bin', data]])
 
@@ -616,6 +648,8 @@ describe('a restore from an opened source on an Android page', () => {
         ['throw'],
         ['short'],
     ] as const)('a read that is a %s', (mode) => {
+        onStore2Page()
+
         const inlay = async () => await inlayEntries('fault-inlay', [patterned(40, 1), patterned(60, 2)])
 
         interface Case {
@@ -667,6 +701,8 @@ describe('a restore from an opened source on an Android page', () => {
     })
 
     describe('a file that changed while it was read', () => {
+        onStore2Page()
+
         const inlayBody = [patterned(40, 1), patterned(60, 2)] as [Uint8Array, Uint8Array]
 
         // Reproducer against the mutant without the `changed()` check before the inlay restore: the inlay would be written
@@ -685,12 +721,21 @@ describe('a restore from an opened source on an Android page', () => {
             expectNothingInstalled()
         })
 
+    })
+
+    // On a store2 page the change check before the commit runs ahead of the 'Loading backup...' notice, so the file is
+    // flipped inside the guard's clean check, the last await before that change check.
+    describe('a file that changed at the commit stage', () => {
+        onStore2Page()
+
         // Reproducer against the mutant without the `changed()` check before the commit: the restore would install the
         // database although the file changed after the last check of the copy pass.
         test('reproducer: a change that appears only at the commit stage stops the restore before the install', async () => {
             const built = build([['a.png', patterned(300, 1)]])
             let flipped = false
-            trackPhase(() => { flipped = true })
+            // The clean check before the copy pass belongs to an earlier step; only an ask after the pass began is the last one.
+            trackPhase()
+            cleanAsk.onAsk = () => { flipped = flipped || phase.value === 'copy' }
             const probe = probeSource(built.bytes, { stat: () => ({ size: built.bytes.length, modified: flipped ? 9 : 7 }) })
 
             const end = await restoreOpened(probe.source)
@@ -700,6 +745,11 @@ describe('a restore from an opened source on an Android page', () => {
             expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
             expectNothingInstalled()
         })
+
+    })
+
+    describe('a file that did not change while it was read', () => {
+        onStore2Page()
 
         test('guard: an unchanged file with a modification time restores', async () => {
             const built = build([['a.png', patterned(300, 1)]])

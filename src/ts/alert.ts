@@ -3,7 +3,7 @@ import { language } from "../lang"
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { getDatabase, type MessageGenerationInfo } from "./storage/database.svelte"
 import { alertStore as alertStoreImported } from "./stores.svelte"
-import { askPrompt, promptShowing, promptWaiting } from "./alertPrompts"
+import { askPrompt, noticeShowing, promptShowing, promptWaiting } from "./alertPrompts"
 import type { PromptCancel } from "./alertCancel"
 
 /** What the per-record conflict dialog shows for one record: text already in the person's language, and the choices offered. */
@@ -46,8 +46,8 @@ type AlertGenerationInfoStoreData = {
 export const alertGenerationInfoStore = writable<AlertGenerationInfoStoreData>(null)
 export const alertStore = {
     set: (d:alertData) => {
-        // Code never closes a prompt that is on screen; only the user's answer does.
-        if(d.type === 'none' && promptShowing()){
+        // Code never closes a prompt that is on screen, or a boot notice from the queue; only the user's answer does.
+        if(d.type === 'none' && (promptShowing() || noticeShowing())){
             return
         }
         alertStoreImported.set(d)
@@ -293,9 +293,9 @@ export function displayAlertText(value: alertData, line: string | null): string 
 }
 
 
-/** Closes the alert on screen. A prompt that is on screen is left alone: only its answer closes it. */
+/** Closes the alert on screen. A prompt or a boot notice from the queue that is on screen is left alone: only the person's answer closes it. */
 export function alertClear(){
-    if(promptShowing()){
+    if(promptShowing() || noticeShowing()){
         return
     }
     alertStoreImported.set({

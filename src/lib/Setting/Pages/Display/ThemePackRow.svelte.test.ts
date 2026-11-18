@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 /**
- * The Theme pack row: the list (None, built-ins, installed packs with their details, fonts in a disclosure, unreadable
- * entries with Remove only), the checked state, the broken notice, the install progress, the help text, the focus after every
+ * The Theme pack row: the list (None, built-ins, installed packs as cards with their details, fonts and Remove in a disclosure,
+ * unreadable entries with Remove only), the checked state, the broken notice, the install progress, the help text, the focus after every
  * dialog, and that mounting writes nothing. All are guards for new behaviour: the row does not exist on the base, so each
  * fails only when a scratch mutant breaks the rule it names.
  *
@@ -32,6 +32,7 @@ const world = vi.hoisted(() => ({
     existing: null as ThemePackRecordV1 | null,
     intakeOverride: null as null | (() => Promise<unknown>),
     installed: 0,
+    busy: false,
     requestSaveNow: vi.fn(),
     alertNormal: vi.fn(),
     alertToast: vi.fn(),
@@ -45,6 +46,10 @@ vi.mock(import('src/ts/alert'), () => ({
     alertNormal: world.alertNormal,
     alertToast: world.alertToast,
 }) as unknown as typeof import('src/ts/alert'))
+vi.mock(import('src/ts/process/memory/busyActions'), async (importOriginal) => ({
+    ...await importOriginal(),
+    isBusy: () => world.busy,
+}))
 vi.mock(import('src/ts/util'), () => ({
     selectSingleFileObject: () => world.pickFile!(),
     readPickedFileBytes: () => world.readFile!(),
@@ -211,6 +216,7 @@ beforeEach(() => {
     world.existing = null
     world.intakeOverride = null
     world.installed = 0
+    world.busy = false
     world.requestSaveNow.mockClear()
     world.alertNormal.mockClear()
     world.alertToast.mockClear()
@@ -264,19 +270,97 @@ describe('T4-3 the list', () => {
         expect(builtin.textContent).not.toContain(language.themePackSize('0.0 KiB'))
     })
 
-    test('the font licenses sit inside a disclosure', () => {
-        setPacks([recordOf('dark', { fonts: [{ file: 'fonts/a.woff2', license: 'OFL', attribution: 'A foundry' }] })])
+    test('T1-2 the details, the font licenses and Remove sit inside one disclosure per installed pack; a built-in has no Remove', () => {
+        setPacks([
+            recordOf('dark', { fonts: [{ file: 'fonts/a.woff2', license: 'OFL', attribution: 'A foundry' }, { file: 'fonts/b.woff2', license: 'MIT' }] }),
+            recordOf('plain'),
+        ])
         const target = show()
-        const details = entryOf(target, 'dark').querySelector('details')!
-        expect(details.querySelector('summary')!.textContent).toBe(language.themePackFonts)
-        expect(details.textContent).toContain(language.themePackFontLicense('fonts/a.woff2', 'OFL'))
-        expect(details.textContent).toContain(language.themePackAttribution('A foundry'))
-        expect(entryOf(target, 'dark').querySelectorAll('details')).toHaveLength(1)
+        for (const id of ['dark', 'plain']) {
+            const entry = entryOf(target, id)
+            const all = entry.querySelectorAll('details')
+            expect(all).toHaveLength(1)
+            const details = entry.querySelector('[data-part="theme-pack-details"]')!
+            expect(details).toBe(all[0])
+            expect(details.querySelector('summary')!.textContent).toBe(language.themePackDetails)
+            expect(details.textContent).toContain(language.themePackVersion('1.2.3'))
+            expect(details.textContent).toContain(language.themePackLicense('MIT'))
+            expect(details.querySelector('[data-part="theme-pack-remove"]')).not.toBeNull()
+            expect(entry.querySelectorAll('[data-part="theme-pack-remove"]')).toHaveLength(1)
+        }
+        const fonts = entryOf(target, 'dark').querySelector('[data-part="theme-pack-details"]')!
+        expect(fonts.textContent).toContain(language.themePackFonts)
+        expect(fonts.textContent).toContain(language.themePackFontLicense('fonts/a.woff2', 'OFL'))
+        expect(fonts.textContent).toContain(language.themePackFontLicense('fonts/b.woff2', 'MIT'))
+        expect(fonts.textContent).toContain(language.themePackAttribution('A foundry'))
+        expect(fonts.querySelectorAll('li')).toHaveLength(2)
+        expect(entryOf(target, 'plain').textContent).not.toContain(language.themePackFonts)
+
+        const builtin = entryOf(target, BUILTIN_PACKS[0].id)
+        expect(builtin.querySelectorAll('[data-part="theme-pack-details"]')).toHaveLength(1)
+        expect(builtin.querySelector('[data-part="theme-pack-remove"]')).toBeNull()
+        expect(target.querySelector('[data-part="theme-pack-none"] details')).toBeNull()
     })
 
-    test('a pack with no fonts has no disclosure', () => {
-        setPacks([recordOf('plain')])
-        expect(entryOf(show(), 'plain').querySelector('details')).toBeNull()
+    test('T1-1 every card has a tile; the unreadable card has a tile and Remove but no radio', () => {
+        setPacks([recordOf('a'), { v: 99, id: 'future' }])
+        const target = show()
+        const cards = [
+            target.querySelector<HTMLElement>('[data-part="theme-pack-none"]')!,
+            ...BUILTIN_PACKS.map((pack) => entryOf(target, pack.id)),
+            entryOf(target, 'a'),
+            target.querySelector<HTMLElement>('[data-part="theme-pack-unreadable"]')!,
+        ]
+        for (const card of cards) {
+            expect(card.querySelectorAll('svg[data-part="theme-pack-tile"]')).toHaveLength(1)
+        }
+        const unreadable = cards[cards.length - 1]
+        expect(unreadable.querySelector('input')).toBeNull()
+        expect(unreadable.querySelector('[data-part="theme-pack-remove"]')).not.toBeNull()
+    })
+
+    test('T1-3 all radios share one name, and a busy select puts the radio back', async () => {
+        setPacks([recordOf('a'), recordOf('b')], 'a')
+        const target = show()
+        expect(new Set(radios(target).map((radio) => radio.name)).size).toBe(1)
+        expect(radios(target)[0].name).not.toBe('')
+        world.busy = true
+        radios(target).find((radio) => radio.value === 'b')!.click()
+        await settle()
+        expect(DBState.db.activeThemePack).toBe('a')
+        expect(radios(target).filter((radio) => radio.checked).map((radio) => radio.value)).toEqual(['a'])
+    })
+
+    test('T1-12 each radio is named through aria-labelledby by the visible name, and the summary label starts with its text', () => {
+        setPacks([recordOf('a')])
+        const target = show()
+        const names = new Map<string, string>([['', language.themePackNone], ['a', 'Pack a'], [BUILTIN_PACKS[0].id, BUILTIN_PACKS[0].name]])
+        for (const [value, name] of names) {
+            const radio = radios(target).find((candidate) => candidate.value === value)!
+            const labelled = radio.getAttribute('aria-labelledby')!
+            expect(document.getElementById(labelled)!.textContent).toBe(name)
+        }
+        const summary = entryOf(target, 'a').querySelector('summary')!
+        expect(summary.getAttribute('aria-label')).toBe(language.themePackDetailsFor('Pack a'))
+        expect(summary.getAttribute('aria-label')!.startsWith(summary.textContent!)).toBe(true)
+    })
+
+    test('the card state classes sit on siblings of the radio inside one label', () => {
+        setPacks([recordOf('a')])
+        const target = show()
+        const radio = radios(target).find((candidate) => candidate.value === 'a')!
+        expect(radio.className).toContain('peer')
+        const label = radio.closest('label')!
+        const siblings = [...label.children].filter((child) => child !== radio)
+        const frame = siblings.find((child) => child.querySelector('svg'))!
+        expect(frame.className).toContain('peer-checked:outline-2')
+        expect(frame.className).toContain('peer-checked:outline-textcolor')
+        expect(frame.className).toContain('peer-focus-visible:ring-2')
+        expect(frame.className).toContain('peer-focus-visible:forced-colors:outline-2')
+        const badge = siblings.find((child) => child.className.includes('peer-checked:flex'))!
+        expect(badge.className).toContain('hidden')
+        expect(badge.querySelector('svg')).not.toBeNull()
+        expect(label.querySelector(`#${radio.getAttribute('aria-labelledby')}`)!.className).toContain('peer-checked:font-semibold')
     })
 
     test('the checked radio follows the stored id: None when no id is stored, the pack otherwise, whatever the apply status says', async () => {

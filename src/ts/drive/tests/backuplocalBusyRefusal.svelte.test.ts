@@ -41,6 +41,7 @@ type TriggerHandler = (arg: TriggerRunArg) => unknown
 
 const requestChatDataMock = vi.hoisted(() => vi.fn())
 const alertErrorMock = vi.hoisted(() => vi.fn())
+const alertWaitMock = vi.hoisted(() => vi.fn())
 const runTriggerMock = vi.hoisted(() => vi.fn())
 const triggerHandlers = vi.hoisted(() => ({} as Record<string, TriggerHandler | undefined>))
 const downloadFileMock = vi.hoisted(() => vi.fn(async () => {}))
@@ -199,13 +200,24 @@ vi.mock(import('src/ts/alert'), () => ({
     alertNormal: alertNormalMock,
     alertSelect: alertSelectMock,
     alertConfirm: alertConfirmMock,
-    alertWait: vi.fn(),
+    alertWait: alertWaitMock,
     alertClear: vi.fn(),
     alertNormalWait: vi.fn(),
     alertAddCharacter: vi.fn(),
     alertStore: writable({ type: 'none', msg: '' }),
     waitAlert: vi.fn(async () => {}),
 }) as unknown as typeof import('src/ts/alert'))
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
+// The real save loop with one answer fixed: a parked loop is left alone by the restore's save-first step, which then
+// returns at once; the real `globalApi.svelte` stays in place for the busy and write-lock state.
+vi.mock(import('src/ts/storage/store2/saveLoop'), async (importOriginal) => ({
+    ...await importOriginal(),
+    isSaveLoopParked: () => true,
+}))
 
 vi.mock(import('src/ts/parser/chatML'), () => ({
     parseChatML: vi.fn(() => []),
@@ -549,6 +561,7 @@ vi.mock(import('src/ts/hotkey'), () => ({
 
 //#endregion
 
+import { resetStore2ShellBox, store2ShellMock, type Store2ShellBox } from 'src/ts/drive/tests/store2ShellStub'
 import { sendChat, doingChat } from 'src/ts/process/index.svelte'
 import { send, reroll, unReroll, runAutoMode, abortChat, isAutoModeActive, resetComposerActionsForTests, type ComposerActionsSource } from 'src/ts/process/composerActions.svelte'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
@@ -564,6 +577,7 @@ import { setDatabase } from 'src/ts/storage/database.svelte'
 import { RisuSaveEncoder, encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { LoadLocalBackup } from 'src/ts/drive/backuplocal'
 import { injectRestoreStore } from 'src/ts/drive/tests/restoreSupport'
+import { setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
 import { isWriting } from 'src/ts/process/chatOrigin'
 import { busyKinds, isBusy } from 'src/ts/process/memory/busyActions'
@@ -1010,6 +1024,8 @@ beforeEach(() => {
         keys: async () => Array.from(forageMemStore.keys()),
         removeItem: async (key) => { forageMemStore.delete(key) },
     }))
+    resetStore2ShellBox(shell)
+    alertWaitMock.mockClear()
     decodeHooks.onDecode = undefined
     coldHooks.onConfirmIncomplete = undefined
     requiresFullEncoderReload.state = false
@@ -1032,6 +1048,10 @@ async function startHeldSendBk(): Promise<{ running: Promise<boolean> }> {
 //#endregion
 
 describe('LoadLocalBackup is registered as busy once its file is chosen', () => {
+    beforeEach(() => {
+        setPageStorageMode({ kind: 'store2' })
+    })
+
     test('LoadLocalBackup is registered while it runs and the entry ends when it stops early', async () => {
         installWorld()
         let during: string[] = []
@@ -1042,6 +1062,24 @@ describe('LoadLocalBackup is registered as busy once its file is chosen', () => 
         expect(alertErrorMock).toHaveBeenCalled()
         expect(during).toEqual(['backupLoad'])
         expect(isBusy()).toBe(false)
+        expect(shell.commits).toEqual([])
+        expect(alertWaitMock).not.toHaveBeenCalledWith(language.store2RestoreSaving)
+    })
+
+    test('a send streaming: the restore is refused before the commit, DBState.db is the same object and the picker is not asked', async () => {
+        installWorld()
+        const { running } = await startHeldSendBk()
+        const dbBefore = DBState.db
+        const { fixture } = localBackupBytes('restored-marker-b4-store2')
+
+        await loadBackupBytes(fixture).catch(() => {})
+        const dbAfter = DBState.db
+        await drain(running)
+
+        expect.soft(shell.commits, 'the commit was called').toEqual([])
+        expect.soft(dbAfter === dbBefore, 'DBState.db is the same object').toBe(true)
+        expect.soft(alertSelectMock, 'the picker was asked').not.toHaveBeenCalled()
+        expect.soft(alertWaitMock).not.toHaveBeenCalledWith(language.store2RestoreSaving)
     })
 
     test('LoadLocalBackup leaves no entry when the picker delivers no file', async () => {

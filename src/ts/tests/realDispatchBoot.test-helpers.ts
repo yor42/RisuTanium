@@ -43,7 +43,7 @@ export interface RealDispatchOptions {
     backend?: MemoryBackend
     /** False leaves the backend to the store kind, so the dispatch's own capability facts decide (a read-only page); true by default. */
     injectBackend?: boolean
-    /** Dismiss every `normal` alert the boot posts, so a notice the boot awaits does not stall it; the mocked `alertStore` of the caller's graph is used. */
+    /** Dismiss every `normal` alert that is still on screen one microtask after it was written, so a notice the boot awaits does not stall it; the mocked `alertStore` of the caller's graph is used. */
     acknowledgeAlerts?: boolean
     /** The answer to the conversion confirmation; true by default. */
     convertAnswer?: boolean
@@ -57,7 +57,11 @@ export interface RealDispatchOptions {
 export interface RealDispatchHandle {
     backend: MemoryBackend
     ui: RealDispatchUi
-    /** The `normal` alerts the boot posted, in order; filled only when `acknowledgeAlerts` is true. */
+    /**
+     * The `normal` alerts this acknowledger dismissed, in order, recorded when it dismissed them (not when they were
+     * written); filled only when `acknowledgeAlerts` is true. A notice a cover replaced before the dismissal is not in
+     * it, so it cannot prove that no notice was written: read a write-time record of the alert store for that.
+     */
     shownAlerts: string[]
 }
 
@@ -144,12 +148,21 @@ export async function registerRealDispatch(options: RealDispatchOptions): Promis
     const shownAlerts: string[] = []
     stopAcknowledgingAlerts()
     if (options.acknowledgeAlerts === true) {
-        // The boot awaits each notice it posts until it is dismissed; this stands in for the person pressing OK.
+        // The boot awaits some notices it posts (the storage-fallback notice) and queues others; this stands in for
+        // the person pressing OK. It presses OK only on a notice still on screen at the microtask, so a notice a
+        // consent or another alert has covered since is not acknowledged, and it records the text at that moment.
         const { alertStore } = await import('src/ts/stores.svelte')
+        let onScreen: object | null = null
         stopAcknowledging = alertStore.subscribe((value) => {
+            onScreen = value
             if (value.type === 'normal') {
-                shownAlerts.push(value.msg)
-                queueMicrotask(() => alertStore.set({ type: 'none', msg: '' }))
+                queueMicrotask(() => {
+                    if (onScreen !== value) {
+                        return
+                    }
+                    shownAlerts.push(value.msg)
+                    alertStore.set({ type: 'none', msg: '' })
+                })
             }
         })
     }
