@@ -77,14 +77,18 @@ export function clearAltOnFullClear(chat: Chat): void {
 
 const ROOT = "R";
 
-interface TreeIndex {
+export interface AltTreeIndex {
     pathFirst: Map<string, number>;
     altFirst: Map<string, number>;
     /** Owner key (ROOT, `P<path index>`, `A<alt index>`) to the alt indexes that follow it, in list order. */
     children: Map<string, number[]>;
 }
 
-function indexTree(path: readonly Message[], alt: readonly ChatAlt[]): TreeIndex {
+/**
+ * The owner rule of the tree: the one place that says which path message or record a record follows. A `p` resolves to
+ * the first path message holding that id, otherwise to the first record in list order holding it, otherwise to the root.
+ */
+export function altTreeIndex(path: readonly Message[], alt: readonly ChatAlt[]): AltTreeIndex {
     const pathFirst = new Map<string, number>();
     for (let k = 0; k < path.length; k++) {
         const id = path[k].chatId;
@@ -118,8 +122,71 @@ function indexTree(path: readonly Message[], alt: readonly ChatAlt[]): TreeIndex
     return { pathFirst, altFirst, children };
 }
 
+/** An end of the tree: `chain` is the alt indexes from the record that follows `attachAt` (-1: the root) down to the leaf. */
+export interface TreeLeaf {
+    attachAt: number;
+    chain: number[];
+}
+
+export interface TreeLeaves {
+    leaves: TreeLeaf[];
+    /** The alt indexes no walk from the root or the path reaches: records in a cycle and everything below one. */
+    unreachable: number[];
+}
+
+/**
+ * Every leaf of the alternatives, read from the `children` map of `altTreeIndex` so the owner rule has one copy. A leaf
+ * is a reached record that no record follows. Null for a chat whose `alt` cannot be read; an absent or empty `alt` has
+ * no leaves. The walk is depth first from the root, then from each path position in order, and below a record in list order.
+ */
+export function treeLeaves(chat: Chat): TreeLeaves | null {
+    if (!isChatAltReadable(chat) || !Array.isArray(chat.message)) {
+        return null;
+    }
+    const alt = chat.alt;
+    if (alt === undefined || alt.length === 0) {
+        return { leaves: [], unreachable: [] };
+    }
+    const { children } = altTreeIndex(chat.message, alt);
+    const visited = new Set<number>();
+    const leaves: TreeLeaf[] = [];
+    const walkFrom = (attachAt: number, owner: string): void => {
+        const stack: { k: number, chain: number[] }[] = [];
+        const push = (kids: readonly number[], chain: number[]): void => {
+            for (let n = kids.length - 1; n >= 0; n--) {
+                stack.push({ k: kids[n], chain });
+            }
+        };
+        push(children.get(owner) ?? [], []);
+        for (let next = stack.pop(); next !== undefined; next = stack.pop()) {
+            if (visited.has(next.k)) {
+                continue;
+            }
+            visited.add(next.k);
+            const here = [...next.chain, next.k];
+            const kids = children.get(`A${next.k}`) ?? [];
+            if (kids.length === 0) {
+                leaves.push({ attachAt, chain: here });
+            } else {
+                push(kids, here);
+            }
+        }
+    };
+    walkFrom(-1, ROOT);
+    for (let k = 0; k < chat.message.length; k++) {
+        walkFrom(k, `P${k}`);
+    }
+    const unreachable: number[] = [];
+    for (let k = 0; k < alt.length; k++) {
+        if (!visited.has(k)) {
+            unreachable.push(k);
+        }
+    }
+    return { leaves, unreachable };
+}
+
 /** The owner key of the children of the message that precedes position `i`, or null when no record can follow it. */
-function ownerBefore(path: readonly Message[], index: TreeIndex, i: number): string | null {
+function ownerBefore(path: readonly Message[], index: AltTreeIndex, i: number): string | null {
     if (i === 0) {
         return ROOT;
     }
@@ -164,7 +231,7 @@ export function siblingsAt(chat: Chat, i: number): Message[] {
         heads.push(path[i]);
     }
     if (chat.alt !== undefined && isChatAltReadable(chat)) {
-        const index = indexTree(path, chat.alt);
+        const index = altTreeIndex(path, chat.alt);
         const owner = ownerBefore(path, index, i);
         for (const k of (owner === null ? [] : index.children.get(owner) ?? [])) {
             heads.push(chat.alt[k].m);
@@ -184,7 +251,7 @@ export function endTarget(chat: Chat): string | null {
     if (!isChatAltReadable(chat) || !Array.isArray(path) || alt === undefined) {
         return null;
     }
-    const index = indexTree(path, alt);
+    const index = altTreeIndex(path, alt);
     const owner = ownerBefore(path, index, path.length);
     let best = -1;
     for (const k of (owner === null ? [] : index.children.get(owner) ?? [])) {
@@ -524,7 +591,7 @@ export function switchTo(chat: Chat, i: number, headId: string): boolean {
     if (alt === undefined) {
         return false;
     }
-    const index = indexTree(path, alt);
+    const index = altTreeIndex(path, alt);
     const owner = ownerBefore(path, index, i);
     const target = owner === null ? undefined : (index.children.get(owner) ?? []).find((k) => alt[k].m.chatId === headId);
     if (target === undefined) {
@@ -574,7 +641,7 @@ export function reattachOrphans(chat: Chat, previousPath: readonly PathMessage[]
         return false;
     }
     const alt = chat.alt;
-    const index = indexTree(chat.message, alt);
+    const index = altTreeIndex(chat.message, alt);
     const previousAt = new Map<string, number>();
     for (let k = 0; k < previousPath.length; k++) {
         const id = previousPath[k]?.chatId;

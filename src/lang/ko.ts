@@ -3214,8 +3214,6 @@ export const languageKorean = {
         `${items.length}개 항목이 4 GiB 이상이라 백업 파일의 항목 하나에 담을 수 있는 크기를 넘으므로 해당 내용은 백업에 들어 있지 않습니다(캐릭터에는 자리 표시자만 남습니다):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `이 백업의 항목 ${count}개가 100 MiB보다 큽니다. 업스트림 RisuAI Node 서버는 이만큼 큰 항목을 복원할 수 없어, 이 백업을 그곳에서 복원하면 해당 항목을 건너뜁니다. 이 앱과 다른 플랫폼에서는 복원됩니다. 해당 항목을 포함하여 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
-    "backupAlternativesConfirm": (count: number, names: string[]) =>
-        `채팅 ${count}개에 다른 답변이 있으며, 백업 파일에는 이를 담을 공간이 없어 이 백업에서 제외됩니다 (채팅과 메시지는 저장됩니다). 다른 답변은 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `작업 프리셋 ${count}개는 이 기기에만 저장되어 있으며, 백업 파일에는 이를 담을 공간이 없어 이 백업에서 제외됩니다. 작업 프리셋은 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
@@ -3279,6 +3277,8 @@ export const languageKorean = {
     "themePackSize": (size: string) => `크기: ${size}`,
     "themePackLicense": (license: string) => `라이선스: ${license}`,
     "themePackAttribution": (attribution: string) => `출처 표기: ${attribution}`,
+    "themePackDetails": "상세 정보",
+    "themePackDetailsFor": (name: string) => `상세 정보: ${name}`,
     "themePackFonts": "폰트 라이선스",
     "themePackFontLicense": (file: string, license: string) => `${file}: ${license}`,
     "themePackUnreadableName": "읽을 수 없는 테마 팩",
@@ -3330,6 +3330,20 @@ export const languageKorean = {
     "themePackLintLine": (selector: string, prop: string, why: string) => `${selector} ${prop}: ${why}`,
     "backupAlternativesLeftOut": (count: number, names: string[]) =>
         `백업이 진행되는 동안 채팅 ${count}개에서 다른 답변이 발견되었으며, 백업 파일에는 이를 담을 공간이 없어 백업에 포함되지 않았습니다 (채팅과 메시지는 저장됩니다):\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "backupBranchesConfirm": (count: number, lines: string[]) =>
+        `채팅 ${count}개에 다른 답변이 있으며, 백업 파일에는 이를 담을 공간이 없습니다. 대화가 이어진 다른 답변(이후의 사용자 메시지를 포함하는 답변)은 해당 캐릭터의 채팅 목록 끝에 "Chat (Branch)"와 같은 이름의 추가 채팅으로 기록되므로, 백업이 표시된 크기만큼 커집니다. 그 외의 다른 답변은 제외됩니다. 채팅과 메시지는 저장되며, 이 앱에서는 아무것도 바뀌지 않습니다. 이 방식으로 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${lines.join('\n')}${count > lines.length ? `\n...외 ${count - lines.length}개` : ''}`,
+    "backupBranchesLine": (chat: string, branchChats: number, bytes: number | null, leftOut: number) => {
+        const parts: string[] = []
+        if (branchChats > 0) {
+            const size = bytes === null ? '크기 알 수 없음' : bytes < 0.1 * 1024 * 1024 ? '0.1 MiB 미만' : `약 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+            parts.push(`분기 채팅 ${branchChats}개, ${size}`)
+        }
+        if (leftOut > 0) {
+            parts.push(`답변 ${leftOut}개 제외`)
+        }
+        return parts.length > 0 ? `${chat} (${parts.join('; ')})` : chat
+    },
+    "backupBranchesLeftOutLine": (chat: string) => `${chat} (다른 답변 제외됨)`,
     "backupForkChatDataConfirm": (count: number, names: string[]) =>
         `채팅 ${count}개에 이 앱에서만 사용하는 데이터(종류는 괄호 안에 표시)가 있으며, 백업 파일에는 이를 담을 공간이 없어 이 백업에서 제외됩니다 (채팅과 메시지는 저장됩니다). 이 데이터는 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupForkChatDataLeftOut": (count: number, names: string[]) =>

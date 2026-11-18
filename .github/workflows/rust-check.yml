@@ -59,6 +59,21 @@ jobs:
         working-directory: src-tauri
         run: cargo test --lib
 
+      # The allocation rows measure one process-wide peak, so they run one at a time.
+      - name: cargo test avatar preview allocations
+        working-directory: src-tauri
+        run: cargo test --test avatar_preview_alloc -- --test-threads=1
+
+      # The avatar preview's peak prediction assumes jpeg-decoder's rayon worker (rows are
+      # handled synchronously, no detached threads or unbounded queue). If the feature is
+      # dropped the decoder falls back to the mpsc worker and the prediction no longer holds.
+      - name: jpeg-decoder keeps its rayon feature
+        working-directory: src-tauri
+        run: |
+          tree="$(cargo tree -e features -i jpeg-decoder)"
+          echo "$tree"
+          echo "$tree" | grep -q 'jpeg-decoder feature "rayon"'
+
       # Report only: the project has no lint baseline, so warnings do not fail the run.
       - name: cargo clippy (report only)
         working-directory: src-tauri

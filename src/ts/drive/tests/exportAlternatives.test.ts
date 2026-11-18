@@ -2,7 +2,7 @@
 // `reproducer` fails when the strip is absent; `guard` passes before and after (or pins a new API) and pins that nothing is
 // copied or changed when there is nothing to strip; `diagnostic` pins which values are named.
 import { describe, test, expect } from 'vitest'
-import { FORK_ONLY_CHAT_KEYS, chatHoldsAlternatives, forkOnlyChatLabels, forkOnlyConfirmKeys, lateForkOnlyChats, withoutColdValueForkOnly, withoutForkOnlyChatData, type ForkOnlyChatLabel } from '../exportAlternatives'
+import { FORK_ONLY_CHAT_KEYS, chatHoldsAlternatives, chatLabelKey, forkOnlyChatLabels, forkOnlyConfirmKeys, lateForkOnlyChats, withoutColdValueForkOnly, withoutForkOnlyChatData, type ForkOnlyChatLabel } from '../exportAlternatives'
 
 const ALT = [{ m: { time: 2, data: 'x', role: 'char' }, p: null, a: 1 }]
 
@@ -158,6 +158,17 @@ describe('forkOnlyChatLabels', () => {
         expect(forkOnlyChatLabels({ name: 'Bob', chats: [{ name: 'A', alt: ALT }] }).map((label) => label.key)).toEqual(['?:Bob/at:0'])
     })
 
+    // The export expands a chat only when `chatLabelKey` of its position is in the confirmed set, so the label key and the
+    // confirmed-check key must be one function (guard: pins the shared helper).
+    test('guard: chatLabelKey is the key every label carries, for an id, an empty id, a missing id and a character without chaId', () => {
+        const input = character([{ id: 'chat-a', name: 'A', alt: ALT }, { name: 'B', alt: ALT }, { id: '', name: 'C', alt: ALT }])
+        const chats = input.chats as Record<string, unknown>[]
+        expect(forkOnlyChatLabels(input).map((label) => label.key)).toEqual(chats.map((chat, index) => chatLabelKey(input, chat, index)))
+        const nameless = { name: 'Bob', chats: [{ name: 'A', alt: ALT }] }
+        expect(chatLabelKey(nameless, nameless.chats[0], 0)).toBe('?:Bob/at:0')
+        expect(chatLabelKey(input, 'not a chat', 3)).toBe('c:c1/at:3')
+    })
+
     // T80 regression reproducer: the key tells chats apart where the text cannot
     test('reproducer: two characters with equally named chats give two labels with distinct keys and the same text', () => {
         const first = forkOnlyChatLabels({ chaId: 'one', name: 'Alice', chats: [{ name: 'Chat 1', alt: ALT }] })
@@ -262,6 +273,16 @@ describe('lateForkOnlyChats', () => {
         const late = lateForkOnlyChats([label('k1', 'A / x', 'interruptedNote'), label('k1', 'A / x', 'interruptedNote', 'memoryCoverage')], new Set())
 
         expect(late).toEqual({ alternatives: [], other: [{ text: 'A / x', kinds: ['interruptedNote', 'memoryCoverage'] }] })
+    })
+
+    // What a chat's alternatives become (`branches`) is display data of the prompt; it never decides what counts as named.
+    test('guard: a label that says what its alternatives become is confirmed and late exactly like one that does not', () => {
+        const plain = label('k1', 'A / x', 'alternatives', 'interruptedNote')
+        const withBranches: ForkOnlyChatLabel = { ...plain, branches: { chats: 2, omitted: 1, bytes: 10 } }
+        expect(forkOnlyConfirmKeys([withBranches])).toEqual(forkOnlyConfirmKeys([plain]))
+        const confirmed = forkOnlyConfirmKeys([label('k1', 'A / x', 'alternatives')])
+        expect(lateForkOnlyChats([withBranches], confirmed)).toEqual(lateForkOnlyChats([plain], confirmed))
+        expect(lateForkOnlyChats([withBranches], confirmed).other).toEqual([{ text: 'A / x', kinds: ['interruptedNote'] }])
     })
 
     test('guard: everything confirmed gives nothing late', () => {

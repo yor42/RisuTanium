@@ -605,20 +605,39 @@ describe('a still that is not queued', () => {
         expect(result.value).toBe('thumb:url')
     })
 
-    test('guard: a skip verdict and an unreadable size are answered with the queue full', async () => {
+    test('reproducer: a still over the whole-read limit takes no grant from the full queue and is answered by the native preview, by key', async () => {
+        const native = vi.fn(async () => ({ kind: 'refused' as const, status: 2 as const }))
+        // Optional: on the code before the native preview the hook does not exist, and a reproducer must fail on its assertions, not on setup.
+        __avatarThumbTestHooks.setNativePreview?.(native)
         seedStill('assets/over.png', 65)
         await preHold(64)
+        const acquire = vi.spyOn(androidWholeReadQueue(), 'acquire')
 
         const over = track(getAvatarThumbSrc('assets/over.png'))
-        const unreadable = track(getAvatarThumbSrc('assets/unknown.png'))
         await tick()
 
+        expect(native).toHaveBeenCalledTimes(1)
+        expect(native).toHaveBeenCalledWith('assets/over.png', expect.objectContaining({ shortSide: 168 }))
+        expect(acquire).not.toHaveBeenCalled()
         expect(over.done).toBe(true)
         expect(over.value).toBeNull()
         expect(store.setItem).toHaveBeenCalledWith('assets/over.png', { v: THUMB_VERSION, skip: true })
+        expect(urlRenders).toHaveLength(0)
+        expect(readImageMock).not.toHaveBeenCalled()
+    })
+
+    test('guard: an unreadable size is answered at once with the queue full, stores nothing and never asks the native preview', async () => {
+        const native = vi.fn(async () => ({ kind: 'transient' as const }))
+        __avatarThumbTestHooks.setNativePreview?.(native)
+        await preHold(64)
+
+        const unreadable = track(getAvatarThumbSrc('assets/unknown.png'))
+        await tick()
+
         expect(unreadable.done).toBe(true)
         expect(unreadable.value).toBeNull()
-        expect(store.setItem).toHaveBeenCalledTimes(1)
+        expect(store.setItem).not.toHaveBeenCalled()
+        expect(native).not.toHaveBeenCalled()
         expect(urlRenders).toHaveLength(0)
     })
 
