@@ -61,6 +61,8 @@ export interface FastForwardHost {
     installQuietly<T>(fn: () => T): T
     /** Forgets what the page keeps about a loaded character object that is being replaced. */
     forgetLoaded(slot: character | groupChat): void
+    /** A character object the fast-forward just installed, read back from the live list; the page records it as known. */
+    installed(slot: character | groupChat): void
     /** Marks a character for the next save pass. */
     mark(chaId: string): void
     /** The selected character's index, -1 for none. */
@@ -266,29 +268,73 @@ function sideOf(config: JsonObject, listName: string, idName: string, list: read
     return { list: list ?? own, id: config[idName], working: pickFields(config, fields) }
 }
 
+/** What an install step holds of its own write: the live list's element at the written index, empty until the step applied. */
+interface Placed {
+    slot: Slot | undefined
+}
+
+/** The stub of `entry` as a slot; the step's plan-time check already holds that the entry names a chaId. */
+function stubSlotOf(entry: ShardEntry): Slot {
+    const built = stubFromEntry(entry)
+    if (!isSlotObject(built)) {
+        throw new Error('The peer entry names no chaId.')
+    }
+    return built
+}
+
 /**
- * Inserts the stub `stub` before the live slot `before` (at the end when `before` is null), addressed by identity at
- * apply time. A `before` that is not live, once replacement by an earlier stub install is followed, inserts nothing and its verify is false, so check A undoes the journal.
+ * Installs the stub `makeStub` builds, written by `write` (which returns the index it wrote), and returns the element the
+ * live list holds there. On a state-proxied list that element is not the raw object, so a step finds its own install only
+ * through this read-back, and the raw stub never leaves here. The page learns of the read-back; that is best-effort, since
+ * a throwing host must not leave a write the journal has no undo for.
  */
-export function insertionStep(db: Database, host: FastForwardHost, stub: Slot, before: Slot | null, replacedBy?: ReadonlyMap<Slot, Slot>): Step {
+function installStub(db: Database, host: FastForwardHost, makeStub: () => Slot, write: (characters: Database['characters'], stub: Slot) => number): Slot {
+    const characters = db.characters
+    const stub = makeStub()
+    let at = -1
+    host.installQuietly(() => { at = write(characters, stub) })
+    const placed = characters[at]
+    try {
+        host.installed(placed)
+    } catch (error) {
+        console.error(error)
+    }
+    return placed
+}
+
+/** Takes `placed`, a step's own read-back, out of the live list again. */
+function removeInstalled(host: FastForwardHost, characters: Database['characters'], placed: Slot | undefined): void {
+    if (placed === undefined) {
+        return
+    }
+    host.installQuietly(() => {
+        const held = characters.indexOf(placed)
+        if (held >= 0) {
+            characters.splice(held, 1)
+        }
+    })
+}
+
+/**
+ * Inserts the stub `makeStub` builds before the live slot whose chaId is `anchorChaId` (at the end when it is null), the
+ * anchor found at apply time. An anchor that is not live inserts nothing and its verify is false, so check A undoes the journal.
+ */
+export function insertionStep(db: Database, host: FastForwardHost, makeStub: () => Slot, anchorChaId: string | null): Step {
+    const cell: Placed = { slot: undefined }
     return {
         apply() {
             const characters = db.characters
-            const at = before === null ? characters.length : characters.indexOf(replacedBy?.get(before) ?? before)
+            const at = anchorChaId === null ? characters.length : characters.findIndex(slot => slotChaId(slot) === anchorChaId)
             if (at < 0) {
                 return () => { }
             }
-            host.installQuietly(() => { characters.splice(at, 0, stub) })
-            return () => {
-                host.installQuietly(() => {
-                    const held = characters.indexOf(stub)
-                    if (held >= 0) {
-                        characters.splice(held, 1)
-                    }
-                })
-            }
+            cell.slot = installStub(db, host, makeStub, (list, stub) => {
+                list.splice(at, 0, stub)
+                return at
+            })
+            return () => removeInstalled(host, characters, cell.slot)
         },
-        verify: () => db.characters.indexOf(stub) >= 0,
+        verify: () => cell.slot !== undefined && db.characters.indexOf(cell.slot) >= 0,
     }
 }
 
@@ -1096,7 +1142,7 @@ export function prepareFastForward(input: PrepareInput): Prepared {
     const sendingSet = (chaId: string): boolean => writing.chars.has(chaId) || input.replyOwners.has(chaId)
     const membershipSteps: Step[] = []
     const removedSlots = new Set<Slot>()
-    const replacedBy = new Map<Slot, Slot>()
+    const replacedBy = new Map<Slot, Placed>()
     const oracle: Array<() => boolean> = []
     const needUnits: EntityUnit[] = []
     const marked: string[] = []
@@ -1116,19 +1162,17 @@ export function prepareFastForward(input: PrepareInput): Prepared {
                 if (entry === undefined) {
                     return parked('membership:no-entry')
                 }
-                const stub = stubFromEntry(entry)
+                if (typeof entry.chaId !== 'string') {
+                    return parked('membership:no-entry')
+                }
+                const cell: Placed = { slot: undefined }
                 steps.push({
                     apply() {
                         const characters = db.characters
-                        host.installQuietly(() => {
-                            if (isSlotObject(stub)) {
-                                characters.push(stub)
-                            }
-                        })
-                        const index = characters.length - 1
-                        return () => { host.installQuietly(() => { characters.splice(index, 1) }) }
+                        cell.slot = installStub(db, host, () => stubSlotOf(entry), (list, stub) => list.push(stub) - 1)
+                        return () => removeInstalled(host, characters, cell.slot)
                     },
-                    verify: () => isColdStub(db.characters[db.characters.length - 1]) && Reflect.get(db.characters[db.characters.length - 1], 'coldstorage') === entry.u,
+                    verify: () => cell.slot !== undefined && db.characters.indexOf(cell.slot) >= 0 && Reflect.get(cell.slot, 'coldstorage') === entry.u,
                 })
             }
         }
@@ -1249,20 +1293,16 @@ export function prepareFastForward(input: PrepareInput): Prepared {
                     after: () => host.forgetLoaded(slot),
                 })
             }
-            const stubs = new Map<string, Slot>()
             for (const placement of placeInsertions(remaining, target)) {
                 const member = theirsMembers.find(candidate => candidate.chaId === placement.chaId)
                 const entry = member === undefined ? undefined : theirsEntries.get(member.u)
                 if (entry === undefined) {
                     return parked('membership:no-entry')
                 }
-                const stub = stubFromEntry(entry)
-                if (!isSlotObject(stub)) {
+                if (typeof entry.chaId !== 'string') {
                     return parked('membership:no-entry')
                 }
-                stubs.set(placement.chaId, stub)
-                const beforeSlot = placement.before === null ? null : stubs.get(placement.before) ?? (slots.find((_, at) => mineMembers[at].chaId === placement.before) ?? null)
-                membershipSteps.push(insertionStep(db, host, stub, beforeSlot, replacedBy))
+                membershipSteps.push(insertionStep(db, host, () => stubSlotOf(entry), placement.before))
             }
             membershipSteps.push(orderVerifyStep(db, target))
         }
@@ -1376,11 +1416,11 @@ export function prepareFastForward(input: PrepareInput): Prepared {
         }
         needDefer('d2')
         const finalMoved: MovedFields = { lastInteraction: movedOf('lastInteraction').value, trashTime: movedOf('trashTime').value }
-        const replacement = stubFromEntry(theirsEntry)
-        if (!isSlotObject(replacement)) {
+        if (typeof theirsEntry.chaId !== 'string') {
             return parked('character:no-chaid')
         }
-        replacedBy.set(slot, replacement)
+        const cell: Placed = { slot: undefined }
+        replacedBy.set(slot, cell)
         guard.push(...unitEntries(old, baseEntry, theirsEntry))
         steps.push({
             apply() {
@@ -1389,24 +1429,30 @@ export function prepareFastForward(input: PrepareInput): Prepared {
                 if (at < 0) {
                     return () => { }
                 }
-                host.installQuietly(() => { characters[at] = replacement })
-                for (const name of ['lastInteraction', 'trashTime'] as const) {
-                    if (finalMoved[name] === undefined) {
-                        Reflect.deleteProperty(replacement, name)
-                    } else {
-                        Reflect.set(replacement, name, finalMoved[name])
+                cell.slot = installStub(db, host, () => {
+                    // The moved fields are final before the write: afterwards the raw object is not the list's element.
+                    const replacement = stubSlotOf(theirsEntry)
+                    for (const name of ['lastInteraction', 'trashTime'] as const) {
+                        if (finalMoved[name] === undefined) {
+                            Reflect.deleteProperty(replacement, name)
+                        } else {
+                            Reflect.set(replacement, name, finalMoved[name])
+                        }
                     }
-                }
+                    return replacement
+                }, (list, built) => {
+                    list[at] = built
+                    return at
+                })
                 return () => {
-                    const held = characters.indexOf(replacement)
+                    const held = cell.slot === undefined ? -1 : characters.indexOf(cell.slot)
                     if (held >= 0) {
                         host.installQuietly(() => { characters[held] = slot })
                     }
                 }
             },
             verify() {
-                const at = db.characters.indexOf(replacement)
-                return at >= 0 && stubProjectionMatches(db.characters[at], theirsEntry, finalMoved)
+                return cell.slot !== undefined && db.characters.indexOf(cell.slot) >= 0 && stubProjectionMatches(cell.slot, theirsEntry, finalMoved)
             },
             after: () => host.forgetLoaded(slot),
         })
@@ -1442,7 +1488,7 @@ export function prepareFastForward(input: PrepareInput): Prepared {
                     host.select(-1)
                     return
                 }
-                const at = db.characters.indexOf(replacedBy.get(selectedSlot) ?? selectedSlot)
+                const at = db.characters.indexOf(replacedBy.get(selectedSlot)?.slot ?? selectedSlot)
                 if (at >= 0 && at !== host.selection()) {
                     host.select(at)
                 }
