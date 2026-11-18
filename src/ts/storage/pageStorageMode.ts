@@ -82,20 +82,6 @@ export function pageRunsLegacyDeleters(): boolean {
     return modeRunsLegacyDeleters(mode)
 }
 
-/** Whether boot starts the legacy startup clean-up (remote blocks and the asset sweep) on this page. */
-export function startsLegacyStartupCleanup(): boolean {
-    return pageRunsLegacyDeleters()
-}
-
-/**
- * Whether boot records the load-time listing of units and assets. Its only
- * consumer is the manual clean-up, so a page that refuses that clean-up does
- * not pay for the listing.
- */
-export function recordsLoadTimeListing(): boolean {
-    return pageRunsLegacyDeleters()
-}
-
 // -- the startup asset sweep --------------------------------------------------
 
 /**

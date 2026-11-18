@@ -630,9 +630,8 @@ describe('CHORE-07 stage 7a: boot-time asset sweep must skip on an incomplete co
 
         armTransientTauriReadFailure(coldKey)
 
-        // Drive the REAL wiring exactly the way bootstrap.ts's cleanChunks
-        // does: buildAssetKeepSet, then spread its result into
-        // sweepTauriAssets.
+        // Drive the REAL wiring: buildAssetKeepSet, then spread its result
+        // into sweepTauriAssets.
         const keepSet = await buildAssetKeepSet(db)
         await sweepTauriAssets({
             ...keepSet,
@@ -667,8 +666,8 @@ describe('CHORE-07 stage 7a: boot-time asset sweep must skip on an incomplete co
         armTransientTauriReadFailure(coldKey)
 
         const keepSet = await buildAssetKeepSet(db)
-        // Matches bootstrap.ts's web/Node asset-sweep loop: one
-        // sweepForageAssetKey call per 'assets/'-prefixed key.
+        // The web/Node asset-sweep loop: one sweepForageAssetKey call per
+        // 'assets/'-prefixed key.
         for (const key of Array.from(forageAssetStore.keys())) {
             await sweepForageAssetKey(key, {
                 ...keepSet,
@@ -758,19 +757,6 @@ describe('CHORE-07 stage 7a: boot-time asset sweep must skip on an incomplete co
         expect(tauriFsHas('assets/additional-bg.png')).toBe(true)
         expect(tauriFsHas('assets/truly-orphaned.png')).toBe(false)
     })
-
-    // a6 (CHAR, "remotes/ cleanup still runs when the asset sweep is
-    // skipped") is SKIPPED: the remotes/ loop lives inline inside
-    // bootstrap.ts's non-exported cleanChunks and has
-    // no extracted seam (unlike the two asset-deletion loops, which
-    // src/ts/storage/assetSweep.ts already isolates). Reaching it for a test
-    // would mean importing bootstrap.ts itself, which pulls in its own large,
-    // separately-mocked import graph (loadPlugins,
-    // characterURLImport, model/modellist,
-    // registerModelDynamic, etc.) well beyond this file's scope. Per the
-    // task's instruction, this is reported rather than faked.
-    test.skip('a6 SKIPPED: remotes/ cleanup coverage requires bootstrap.ts, out of scope for this seam-only file', () => {})
-
 })
 
 describe('CHORE-07 stage 7a: manual cold-storage cleanup must not delete recoverable blobs', () => {

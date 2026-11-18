@@ -29,7 +29,7 @@ import { registerDbChangeEffects } from "./storage/dbChangeEffects.svelte";
 import { isModuleStub } from "./storage/moduleStub";
 import { retainedNamesOf } from "./storage/store2/lists/assetList";
 import { ASSET_RETAINED_KEY } from "./studio/assets/assetOwnerKeys";
-import { appendIfAbsent, installCharacterSaveMarks } from "./storage/characterSaveMarks";
+import { appendIfAbsent, installCharacterSaveMarks, type SaveMarkKind } from "./storage/characterSaveMarks";
 import { createSaveScheduler } from "./storage/saveScheduler";
 import { getActiveStore2Save, parseStore2Broadcast, type Store2SaveContext } from "./storage/store2/saveActive";
 import type { ModuleHold, Store2LoopPort } from "./storage/store2/saveLoop";
@@ -2201,7 +2201,14 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
     })
     saveLoopPending = () => changed || scheduler.debouncePending() || dirtySinceLastSave
     saveLoopUnsaved = () => dirtySinceLastSave
-    function saveTimeoutExecute(markDirty = true) {
+    // Set by every dirty mark that no value verdict can judge (`content`), by the port's `markUnsaved`, `requestPass` and
+    // the liveCheck repair, and cleared only when a pass takes its snapshot. A `judged` mark leaves it alone: the prompt
+    // judges that change by value.
+    let unsavedContent = false
+    function saveTimeoutExecute(markDirty = true, kind: SaveMarkKind = 'content') {
+        if (markDirty && kind === 'content') {
+            unsavedContent = true
+        }
         scheduler.schedule(markDirty)
     }
 
@@ -2221,14 +2228,15 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         getCharacters: () => getDatabase()?.characters,
         markUnsaved: () => saveTimeoutExecute(true)
     })
-    installCharacterSaveMarks({ tracker: changeTracker, schedule: () => saveTimeoutExecute() })
+    installCharacterSaveMarks({ tracker: changeTracker, schedule: (kind) => saveTimeoutExecute(true, kind) })
     requestSaveNowImpl = () => scheduler.requestNow()
     netSweepWakeImpl = () => scheduler.wakeIdle()
     const bootWindowAnswer = bootWindow.close()
     $effect.root(() => {
         registerDbChangeEffects({
             tracker: changeTracker,
-            markChanged: saveTimeoutExecute,
+            markChanged: (markDirty) => saveTimeoutExecute(markDirty, 'judged'),
+            markContentChanged: (markDirty) => saveTimeoutExecute(markDirty, 'content'),
         })
     })
     for (const chaId of bootWindowAnswer.selectedChaIds) {
@@ -2284,12 +2292,14 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
             if (liveCharacterCheck({ holds: false }).repaired) {
                 saveMarkCount += 1
                 dirtySinceLastSave = true
+                unsavedContent = true
                 changed = true
             }
         },
         sweep: () => sweepDraftRegistrations(),
         isDue: () => changed,
         isDirty: () => dirtySinceLastSave,
+        contentState: () => ({ unsaved: unsavedContent, marks: saveMarkCount }),
         hasDrafts: () => hasLocalDrafts(),
         beginIteration() {
             saving.state = true
@@ -2301,10 +2311,16 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         },
         snapshotTaken() {
             dirtySinceLastSave = false
+            unsavedContent = false
             snapshotMarkCount = saveMarkCount
         },
-        requestPass() {
+        // `content` is false only for the fold-back of a pass that took judged marks alone: the page is dirty and a pass is
+        // due, but no content flag is raised.
+        requestPass(content = true) {
             dirtySinceLastSave = true
+            if (content) {
+                unsavedContent = true
+            }
             saveMarkCount += 1
             changed = true
         },
@@ -2312,6 +2328,7 @@ async function saveDbStore2(active: Store2SaveContext): Promise<never> {
         // the held edits keep the page from reading clean.
         markUnsaved() {
             dirtySinceLastSave = true
+            unsavedContent = true
         },
         unsavable(current, newly) {
             unsavableCharacterCount = current.length

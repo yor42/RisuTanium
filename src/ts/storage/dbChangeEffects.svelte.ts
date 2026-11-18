@@ -12,6 +12,11 @@ export interface DbChangeEffectOptions {
     /** Called by every effect. `markDirty` is false on an effect's first run. */
     markChanged: (markDirty: boolean) => void
     /**
+     * Called by the module effects instead of `markChanged`. A module edit is not visible to the prompt's value verdicts, so
+     * the page counts it as unsaved content. Without it, the module effects call `markChanged` like every other effect.
+     */
+    markContentChanged?: (markDirty: boolean) => void
+    /**
      * Character proxies to seed the identity tracker's "already seen" set
      * with -- normally the set `RisuSaveEncoder.init` just encoded, so a
      * replacement that happened WHILE that init was still running isn't
@@ -77,7 +82,7 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
             notePartitionTag()
             innerPartitionRun?.(kind, index)
         }
-        opts.markChanged = (markDirty) => {
+        const measured = (inner: (markDirty: boolean) => void) => (markDirty: boolean): void => {
             try {
                 if (classifyChange(markDirty)) {
                     const chaId = readSelected()
@@ -88,7 +93,12 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
             } catch {
                 // A measurement failure never reaches the save.
             }
-            innerMarkChanged(markDirty)
+            inner(markDirty)
+        }
+        opts.markChanged = measured(innerMarkChanged)
+        const innerMarkContentChanged = opts.markContentChanged
+        if (innerMarkContentChanged) {
+            opts.markContentChanged = measured(innerMarkContentChanged)
         }
     }
 
@@ -99,6 +109,17 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
             noteTopLevelChange()
         }
         opts.markChanged(markDirty)
+    }
+    // The module effects' counterpart: the same top-level count, but the page's content flag when it supplied one.
+    const markModulesChanged = (markDirty: boolean): void => {
+        if (opts.markContentChanged === undefined) {
+            markSettingsChanged(markDirty)
+            return
+        }
+        if (markDirty) {
+            noteTopLevelChange()
+        }
+        opts.markContentChanged(markDirty)
     }
 
     let ranOnce = false
@@ -148,12 +169,12 @@ export function registerDbChangeEffects(opts: DbChangeEffectOptions): void {
             $effect(() => {
                 $state.snapshot(m)             // deep-read THIS element only
                 opts.tracker.modules = true
-                markSettingsChanged(childRanOnce)
+                markModulesChanged(childRanOnce)
                 childRanOnce = true
             })
         }
         opts.tracker.modules = true
-        markSettingsChanged(modulesRanOnce)
+        markModulesChanged(modulesRanOnce)
         modulesRanOnce = true
     })
     let ranOnce3 = false

@@ -12,10 +12,8 @@ import {
     noteMainFileLeftOverLimit,
     pageRunsLegacyDeleters,
     pendingConvertedFrom,
-    recordsLoadTimeListing,
     resetPageStorageModeForTests,
     setPageStorageMode,
-    startsLegacyStartupCleanup,
     takeMainFileLeftOverLimit,
 } from 'src/ts/storage/pageStorageMode'
 import type { PageStorageMode } from 'src/ts/storage/pageStorageMode'
@@ -65,8 +63,7 @@ describe('the storage mode', () => {
 })
 
 /**
- * Labels: guard (the predicate and the two boot decisions are new functions, so no case can fail on the base for the
- * intended reason). The `read-only` and `unset` rows kill a predicate written as `kind !== 'store2'`.
+ * Labels: guard. The `read-only` and `unset` rows kill a predicate written as `kind !== 'store2'`.
  */
 describe('which pages may run the legacy deleters', () => {
     const modes: Array<[string, PageStorageMode, boolean]> = [
@@ -81,12 +78,10 @@ describe('which pages may run the legacy deleters', () => {
         expect(modeRunsLegacyDeleters(mode)).toBe(expected)
     })
 
-    test.each(modes)('%s: the page, the startup clean-up and the load-time listing follow the mode', (_label, mode, expected) => {
+    test.each(modes)('%s: the page follows the mode', (_label, mode, expected) => {
         setPageStorageMode(mode)
 
         expect(pageRunsLegacyDeleters()).toBe(expected)
-        expect(startsLegacyStartupCleanup()).toBe(expected)
-        expect(recordsLoadTimeListing()).toBe(expected)
     })
 })
 

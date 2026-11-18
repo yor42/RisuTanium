@@ -392,3 +392,64 @@ describe('markDbWrite (the explicit write hook\'s sink)', () => {
         expect(schedule).toHaveBeenCalledTimes(1)
     })
 })
+
+// The kind a mark schedules with: `judged` when a value verdict (a character's content verdict or the front verdict) sees
+// the change, `content` otherwise. An absent kind is `content`.
+describe('mark kinds (MC-2293)', () => {
+    test.each([
+        ['an owner mark with a markable id', { kind: 'owner', id: 'a' }, 'judged'],
+        ['a placed mark with a markable id', { kind: 'placed', id: 'a' }, 'judged'],
+        ['a setting other than modules', { kind: 'setting', key: 'username' }, 'judged'],
+        ['a setting that sets a tracker flag', { kind: 'setting', key: 'botPresets' }, 'judged'],
+        ['the modules setting', { kind: 'setting', key: 'modules' }, 'content'],
+        ['a list shape change', { kind: 'listShape', prop: '1' }, 'judged'],
+        ['a whole-list replacement', { kind: 'listWhole' }, 'judged'],
+        ['a root replacement', { kind: 'root', prop: 'db' }, 'content'],
+        ['another root write', { kind: 'root', prop: 'other' }, 'content'],
+        ['a fallback with a usable selected id', { kind: 'fallback', cause: 'error', id: 'selected' }, 'content'],
+        ['a fallback with no id', { kind: 'fallback', cause: 'noCharId' }, 'content'],
+    ] as const)('K1 %s schedules as %s', (_label, mark, kind) => {
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker: makeTracker([]), schedule })
+
+        markDbWrite(mark)
+
+        expect(schedule).toHaveBeenCalledTimes(1)
+        expect(schedule).toHaveBeenCalledWith(kind)
+    })
+
+    test('K2 markCharacterForSave schedules as judged', () => {
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker: makeTracker([]), schedule })
+
+        markCharacterForSave('a')
+
+        expect(schedule).toHaveBeenCalledWith('judged')
+    })
+
+    test('K3 the install drain schedules with no kind, which counts as content', () => {
+        markCharacterForSave('early')
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker: makeTracker([]), schedule })
+
+        expect(schedule).toHaveBeenCalledTimes(1)
+        expect(schedule).toHaveBeenCalledWith()
+    })
+
+    test.each([
+        ['an owner mark with the refused id 0', { kind: 'owner', id: 0 }],
+        ['an owner mark with an empty id', { kind: 'owner', id: '' }],
+        ['a placed mark with the refused id 0', { kind: 'placed', id: 0 }],
+        ['a placed mark with an empty id', { kind: 'placed', id: '' }],
+        ['a placed mark with a value that is no id', { kind: 'placed', id: undefined }],
+    ] as const)('K4/K5 %s names no tracked character, so it is content', (_label, mark) => {
+        const tracker = makeTracker(['front'])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        markDbWrite(mark)
+
+        expect(tracker.character).toEqual(['front'])
+        expect(schedule).toHaveBeenCalledWith('content')
+    })
+})
