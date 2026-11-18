@@ -44,7 +44,7 @@ import { createFastForward, setFastForwardHostForTest, type FastForwardFrame } f
 import { defaultKeyEnv } from 'src/ts/storage/store2/format'
 import { fakeLists } from './codecFixtures'
 import { chaIdOf, chars, clone, parsedKey, until } from './lineFixtures'
-import { bootB, chatsAt, ffSetup, ffTeardown, ffWorld, mergeWorld, peerCommits, testHost, type PageB } from './ffFixtures'
+import { bootB, chatsAt, FF_HOSTS, ffSetup, ffTeardown, ffWorld, mergeWorld, peerCommits, testHost, useFfHost, type PageB } from './ffFixtures'
 
 /**
  * The fast-forward's oracle, the caught `after` hooks and the content rules of the steps (O, K, G rows of stage 3B).
@@ -85,7 +85,8 @@ async function manual() {
 
 const snapshotOf = (b: PageB): { json: string, identities: unknown[] } => ({ json: JSON.stringify(b.db.characters), identities: [...b.db.characters] })
 
-describe('the oracle (O1, O1b, O3)', () => {
+describe.each(FF_HOSTS)('the oracle (O1, O1b, O3) (%s host)', (mode) => {
+    useFfHost(mode)
     test('O1 a taken step that was skipped but reported applied: park oracle, nothing changed, the encoder stays', async () => {
         const { memory, page, b, frame } = await manual()
         hostHandle.host.state.inUse.add(chaIdOf(b.db, 3))
@@ -155,13 +156,45 @@ describe('the oracle (O1, O1b, O3)', () => {
         expect(hostHandle.host.state.calls?.selects).toEqual([])
         expect(hostHandle.host.state.calls?.forgotten).toEqual([])
     })
+
+    test('T16 an oracle trip in a fast-forward that removes, inserts and installs a replacement stub undoes all three: the original objects stay in order, the selection alone and no forget call', async () => {
+        const { memory, page, b, frame } = await manual()
+        hostHandle.host.state.inUse.add(chaIdOf(b.db, 3))
+        hostHandle.host.state.selected = 3
+        let detection: PreviousEncoding | null = null
+        const fastForward = createFastForward({
+            backend: memory, kind: 'indexeddb', lists: fakeLists, env: defaultKeyEnv,
+            freshEntry: (slot, options) => {
+                detection ??= options.previous
+                return options.previous === detection ? freshEntry(slot, options) : 'unknown'
+            },
+        })
+        await page.commitEdit((db) => {
+            const added = clone(chars(db)[0])
+            added.chaId = 'inserted-by-peer'
+            ;(db.characters as unknown as Slots).splice(2, 0, added)
+            db.characterOrder = [...db.characterOrder, 'inserted-by-peer']
+            remove(db, 0)
+            chars(db)[0].personality = 'peer replaced card'
+            chars(db)[3].personality = 'peer merged card'
+        })
+        const before = snapshotOf(b)
+        expect(await fastForward.run(await frame())).toEqual({ kind: 'park', reason: 'oracle' })
+        expect(b.db.characters).toHaveLength(before.identities.length)
+        expect(b.db.characters.every((slot, index) => slot === before.identities[index])).toBe(true)
+        expect(JSON.stringify(b.db.characters)).toBe(before.json)
+        expect(hostHandle.host.state.selected).toBe(3)
+        expect(hostHandle.host.state.calls?.forgotten).toEqual([])
+    })
 })
 
-describe('after hooks (O4)', () => {
+describe.each(FF_HOSTS)('after hooks (O4) (%s host)', (mode) => {
+    useFfHost(mode)
     test('O4 a forgetLoaded that throws is reported, the encoder is the peer\'s and the selection remap still ran', async () => {
         const { memory, page, b, frame } = await manual()
         const { host, state } = testHost()
-        host.forgetLoaded = () => { throw new Error('forget failed') }
+        const forgetError = new Error('forget failed')
+        host.forgetLoaded = () => { throw forgetError }
         state.selected = 2
         setFastForwardHostForTest(host)
         const fastForward = createFastForward({ backend: memory, kind: 'indexeddb', lists: fakeLists, env: defaultKeyEnv })
@@ -169,13 +202,14 @@ describe('after hooks (O4)', () => {
         const kept = chaIdOf(b.db, 2)
         expect(await fastForward.run(await frame())).toEqual({ kind: 'applied' })
         expect(b.context.encoder.manifestKey).toBe(edited.current?.key)
-        expect(console.error).toHaveBeenCalled()
+        expect(console.error).toHaveBeenCalledWith(forgetError)
         expect(state.selected).toBe(1)
         expect(chaIdOf(b.db, 1)).toBe(kept)
     })
 })
 
-describe('what the steps write (K1, K2, G1 to G3, G5 to G7)', () => {
+describe.each(FF_HOSTS)('what the steps write (K1, K2, G1 to G3, G5 to G7) (%s host)', (mode) => {
+    useFfHost(mode)
     test('K1 a taken core writes only the keys that differ: an unchanged nested object keeps its identity and a key the peer dropped is gone', async () => {
         const w = await mergeWorld()
         hostHandle.host.state.inUse.add(chaIdOf(w.b.db, 3))

@@ -7,6 +7,9 @@ import { getDatabase } from "src/ts/storage/database.svelte";
 import { resolveSecret } from "src/ts/secretRef";
 import { isContextModel, getContextProvider } from "./contextualEmbedding";
 import { withInFlight } from "../inFlightWork";
+import { isMobile } from "src/ts/platform";
+import { yieldByMessage } from "src/ts/storage/saveYield";
+import { embeddingBatchSize, type EmbeddingRuntime } from "./embeddingBatch";
 
 import { DEFAULT_HYPA_MODEL, type HypaModel } from "./embeddingModels";
 
@@ -62,19 +65,28 @@ export class HypaProcesser{
     }
 
     async embedDocuments(texts: string[]): Promise<VectorArray[]> {
-        const subPrompts = chunkArray(texts,50);
-    
-        const embeddings: VectorArray[] = [];
-    
-        for (let i = 0; i < subPrompts.length; i += 1) {
-          const input = subPrompts[i];
-    
-          const data = await this.getEmbeds(input, 'document')
-    
-          embeddings.push(...data);
-        }
-    
-        return embeddings;
+        const runtime: EmbeddingRuntime = !Object.keys(localModels.models).includes(this.model)
+            ? 'remote'
+            : localModels.gpuModels.includes(this.model) ? 'webgpu' : 'wasm';
+        const subPrompts = chunkArray(texts, embeddingBatchSize(runtime, isMobile));
+
+        // One token spans the whole loop, so a task yield between local calls never leaves the embedding unregistered.
+        return withInFlight('embed', async () => {
+            const embeddings: VectorArray[] = [];
+
+            for (let i = 0; i < subPrompts.length; i += 1) {
+              if (i > 0 && runtime !== 'remote') {
+                await yieldByMessage();
+              }
+              const input = subPrompts[i];
+
+              const data = await this.getEmbeds(input, 'document')
+
+              embeddings.push(...data);
+            }
+
+            return embeddings;
+        })
     }
     
     
