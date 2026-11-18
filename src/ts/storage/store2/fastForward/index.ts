@@ -110,7 +110,7 @@ let realHost: Promise<FastForwardHost> | null = null
 
 function loadRealHost(): Promise<FastForwardHost> {
     realHost ??= (async (): Promise<FastForwardHost> => {
-        const [putBack, retained, restored, hook, origin, busy, proc, database, marks, stores] = await Promise.all([
+        const [putBack, retained, restored, hook, origin, busy, proc, database, marks, stores, effects] = await Promise.all([
             import('../../../process/memory/characterPutBack'),
             import('../../../process/coldRetained'),
             import('../../../process/memory/restoredBytes'),
@@ -121,6 +121,7 @@ function loadRealHost(): Promise<FastForwardHost> {
             import('../../database.svelte'),
             import('../../characterSaveMarks'),
             import('../../../stores.svelte'),
+            import('../../dbChangeEffects.svelte'),
         ])
         return {
             inUse: () => putBack.putBackKeepSet(),
@@ -139,6 +140,7 @@ function loadRealHost(): Promise<FastForwardHost> {
                 }
                 restored.clearRestoredBytes(String(Reflect.get(slot, 'chaId') ?? ''))
             },
+            installed: slot => effects.markIdentitySeen(slot),
             presetOps: () => ({
                 saveInto(working, slot) {
                     const copy = structuredClone(working)

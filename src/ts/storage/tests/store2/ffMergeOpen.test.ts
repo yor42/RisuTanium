@@ -45,7 +45,7 @@ import { createMemoryBackend } from 'src/ts/storage/store2/backend'
 import { createFastForward } from 'src/ts/storage/store2/fastForward'
 import { defaultKeyEnv } from 'src/ts/storage/store2/format'
 import { fakeLists } from './codecFixtures'
-import { chatsAt, ffSetup, ffTeardown, mergeWorld, peerCommits, personalityOf, signal, type MergeWorld } from './ffFixtures'
+import { chatsAt, FF_HOSTS, ffSetup, ffTeardown, mergeWorld, peerCommits, personalityOf, signal, useFfHost, type MergeWorld } from './ffFixtures'
 
 /**
  * Stage 3B: the library shapes around the per-record merge. A resident id (`§`) is merged in place where stage 1 parked;
@@ -105,7 +105,29 @@ function repeatedWorld(): Promise<MergeWorld> {
     })
 }
 
-describe('resident id and the stage-1 stub install', () => {
+/** Writes an object into the page database under an unused top-level key and reports whether it reads back as the same object. */
+async function readsBackIdentical(): Promise<boolean> {
+    const w = await mergeWorld()
+    const written = { probe: 'host' }
+    Reflect.set(w.b.db, 'hostProbe', written)
+    return Reflect.get(w.b.db, 'hostProbe') === written
+}
+
+describe('the default host (H0)', () => {
+    test('H0 default: the page database is the state host unless FF_TEST_HOST=plain selects the plain one', async () => {
+        expect(await readsBackIdentical()).toBe(process.env.FF_TEST_HOST === 'plain')
+    })
+})
+
+describe('the plain host (H0)', () => {
+    useFfHost('plain')
+    test('H0 plain: an object written into the page database reads back identical', async () => {
+        expect(await readsBackIdentical()).toBe(true)
+    })
+})
+
+describe.each(FF_HOSTS)('resident id and the stage-1 stub install (%s host)', (mode) => {
+    useFfHost(mode)
     test('R7 a loaded character with a resident id the peer edited is taken in place where stage 1 parked resident-id', async () => {
         const w = await residentWorld()
         const owner = chars(w.b.db)[2]
@@ -136,7 +158,8 @@ describe('resident id and the stage-1 stub install', () => {
     })
 })
 
-describe('a repeated chaId keeps today\'s membership rules', () => {
+describe.each(FF_HOSTS)('a repeated chaId keeps today\'s membership rules (%s host)', (mode) => {
+    useFfHost(mode)
     test('C2 a shared chaId the peer changed parks shared-id', async () => {
         const w = await repeatedWorld()
         const outcome = await peerCommits(w, (db) => { chars(db)[1].personality = 'peer card' })
@@ -163,9 +186,51 @@ describe('a repeated chaId keeps today\'s membership rules', () => {
         expect(chaIdOf(w.b.db, chars(w.b.db).length - 1)).toBe('appended-last')
         expect(isColdStub(chars(w.b.db)[chars(w.b.db).length - 1])).toBe(true)
     })
+
+    /** The peer's `u` of the appended entry `chaId`, from the encoding the page acknowledged after its take. */
+    const peerUnitOf = (w: MergeWorld, chaId: string): unknown => w.b.context.encoder.acknowledged().objects?.shards.flatMap(shard => shard.entries).find(entry => entry.chaId === chaId)?.u
+
+    test('T29 outside the domain a peer that appends two characters is taken: each append step verifies its own installed slot, whatever the order of the verifies', async () => {
+        const w = await repeatedWorld()
+        const outcome = await peerCommits(w, (db) => {
+            append(db, 'app-one')
+            append(db, 'app-two')
+        })
+        expect(outcome).toEqual({ kind: 'applied' })
+        const tail = chars(w.b.db).slice(-2)
+        expect(tail.map(slot => String(slot.chaId))).toEqual(['app-one', 'app-two'])
+        expect(tail.map(slot => Reflect.get(slot, 'coldstorage'))).toEqual([peerUnitOf(w, 'app-one'), peerUnitOf(w, 'app-two')])
+        expect(tail.every(slot => isColdStub(slot))).toBe(true)
+    })
+
+    test('T30 the same take with an own unsaved edit asks nothing, and the next own pass saves both appended characters and the edit', async () => {
+        const w = await repeatedWorld()
+        const own = chars(w.b.db)[3]
+        own.personality = 'own edit char3'
+        w.world.tracker.character.push(String(own.chaId))
+        w.world.state.dirty = true
+        const outcome = await peerCommits(w, (db) => {
+            append(db, 'app-one')
+            append(db, 'app-two')
+        })
+        expect(outcome).toEqual({ kind: 'applied' })
+        expect(w.b.peer.asked).toEqual([])
+        const saved = w.world.state.saved
+        w.world.state.dirty = true
+        w.world.state.due = true
+        await until(() => w.world.state.saved > saved, 'the own pass', 8000)
+        const read = await w.page.freeze()
+        const ids = chars(read.db).map(slot => String(slot.chaId))
+        expect(ids).toContain('app-one')
+        expect(ids).toContain('app-two')
+        expect(ids.indexOf('app-one')).toBeLessThan(ids.indexOf('app-two'))
+        expect(personalityOf(read.db, 3)).toBe('own edit char3')
+        expect(w.world.failures).toEqual([])
+    })
 })
 
-describe('what stays out of the merge (C1, C3)', () => {
+describe.each(FF_HOSTS)('what stays out of the merge (C1, C3) (%s host)', (mode) => {
+    useFfHost(mode)
     test('C1 a page of any other kind never fast-forwards, and a page without a fast-forward parks a body change clean with today\'s offers and changes nothing', async () => {
         for (const kind of ['tauri', 'opfs-transitional'] as const) {
             const fastForward = createFastForward({ backend: createMemoryBackend(), kind: kind as 'tauri', lists: fakeLists, env: defaultKeyEnv })
