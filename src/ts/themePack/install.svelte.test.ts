@@ -35,6 +35,11 @@ const world = vi.hoisted(() => ({
     perValueLimit: Number.POSITIVE_INFINITY,
     /** The key `saveAsset` answers instead of the derived one. */
     answerKey: null as string | null,
+    /** Icon writes only (a `.png` or `.webp` key): the key answered instead, a thrown error, or damaged stored bytes. */
+    answerIconKey: null as string | null,
+    failIconWrite: null as Error | null,
+    damageIcon: false,
+    dropIcon: false,
     saveCalls: [] as Uint8Array[],
     selection: { answer: false as boolean | 'throws' },
     snapshotPacks: (): unknown => undefined,
@@ -79,19 +84,27 @@ vi.mock(import('../globalApi.svelte'), () => ({
     // The page's save: the key is the content name and the extension of the file name, written through the store stand-in.
     saveAsset: vi.fn(async (data: Uint8Array, customId = '', fileName = '') => {
         world.saveCalls.push(data)
-        const key = world.answerKey ?? `assets/${customId}.${fileName.split('.').pop()}`
+        const extension = fileName.split('.').pop()
+        const isIcon = extension === 'png' || extension === 'webp'
+        const key = (isIcon ? world.answerIconKey : null) ?? world.answerKey ?? `assets/${customId}.${extension}`
         world.log.push(`write:${key}`)
         world.busyAtWrite.push([...world.busyKinds()])
         world.packsAtWrite.push(world.snapshotPacks())
         if (world.failWrite !== null) {
             throw world.failWrite
         }
+        if (isIcon && world.failIconWrite !== null) {
+            throw world.failIconWrite
+        }
         if (data.length > world.perValueLimit) {
             throw new Error('the store refuses a value this large')
         }
-        if (world.afterWrite === 'keep') {
+        const damageThis = world.afterWrite === 'damage' || (isIcon && world.damageIcon)
+        if (isIcon && world.dropIcon) {
+            // The store acknowledges the write but holds nothing under the key.
+        } else if (world.afterWrite === 'keep' && !damageThis) {
             world.files.set(key, data.slice())
-        } else if (world.afterWrite === 'damage') {
+        } else if (damageThis) {
             const damaged = data.slice()
             damaged[0] ^= 0xff
             world.files.set(key, damaged)
@@ -143,7 +156,8 @@ vi.mock(import('../plugins/apiV3/transpiler'), () => ({ pluginCodeTranspiler: vi
 //#endregion
 
 import { DBState } from '../stores.svelte'
-import { installThemePack, removeThemePackAt, setActiveThemePack, type InstallOutcome, type InstallRequest, type PackTileColours, type PackVerifyOutcome } from './install'
+import { pngBytes, WEBP_LOSSY } from './fixtures/imageBuilder'
+import { installThemePack, removeThemePackAt, setActiveThemePack, type InstallOutcome, type InstallRequest, type PackTileColours, type PackVerifyIcon, type PackVerifyOutcome } from './install'
 import { listThemePacks, readPackRecord, type PackManifestFields, type ThemePackRecordV1 } from './packRecord'
 import { allowedDbKeys, getV2PluginAPIs } from '../plugins/plugins.svelte'
 
@@ -182,6 +196,7 @@ interface Calls {
 function requestOf(options: {
     manifest?: PackManifestFields
     tile?: PackTileColours
+    icon?: PackVerifyIcon
     refusal?: string
     replaceAnswer?: boolean
     newId?: string
@@ -189,7 +204,7 @@ function requestOf(options: {
     onConfirm?: () => void
 } = {}): { request: InstallRequest<string>, calls: Calls } {
     const verify = vi.fn(async (): Promise<PackVerifyOutcome<string>> =>
-        options.refusal === undefined ? { ok: true, manifest: options.manifest ?? manifestOf(), ...(options.tile === undefined ? {} : { tile: options.tile }) } :{ ok: false, refusal: options.refusal })
+        options.refusal === undefined ? { ok: true, manifest: options.manifest ?? manifestOf(), ...(options.tile === undefined ? {} : { tile: options.tile }), ...(options.icon === undefined ? {} : { icon: options.icon }) } :{ ok: false, refusal: options.refusal })
     const confirmReplace = vi.fn(async (): Promise<boolean> => {
         options.onConfirm?.()
         return options.replaceAnswer ?? true
@@ -234,6 +249,10 @@ beforeEach(() => {
     world.storeAccesses = 0
     world.perValueLimit = Number.POSITIVE_INFINITY
     world.answerKey = null
+    world.answerIconKey = null
+    world.failIconWrite = null
+    world.damageIcon = false
+    world.dropIcon = false
     world.selection.answer = false
     world.snapshotPacks = () => snapshotOf(fields().themePacks)
     world.busyKinds = busyKinds
@@ -771,6 +790,107 @@ describe('Remove and the active id', () => {
         setActiveThemePack(undefined)
 
         expect(Object.hasOwn(fields(), 'activeThemePack')).toBe(false)
+    })
+})
+
+describe('T3 the optional icon', () => {
+    const sha = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
+    const PNG_ICON = pngBytes(8, 8)
+    const png: PackVerifyIcon = { bytes: PNG_ICON, ext: 'png' }
+    const webp: PackVerifyIcon = { bytes: WEBP_LOSSY, ext: 'webp' }
+    const iconKeyOf = (icon: PackVerifyIcon): string => `assets/tp-${sha(icon.bytes)}.${icon.ext}`
+
+    test.each([['png', png], ['webp', webp]])('T3-2: a %s icon is saved under its own content key, read back, and only then is the record written', async (_label, icon) => {
+        const outcome = okOf(await installThemePack(requestOf({ icon }).request))
+
+        expect(world.log).toEqual([`write:${KEY}`, `read:${KEY}`, `write:${iconKeyOf(icon)}`, `read:${iconKeyOf(icon)}`])
+        // Neither write nor read sees a record: the list does not exist before the whole write phase ends.
+        expect(world.packsAtWrite).toEqual([undefined, undefined])
+        expect(world.packsAtRead).toEqual([undefined, undefined])
+        expect(outcome.record).toStrictEqual(recordFixture({ icon: iconKeyOf(icon) }))
+        expect(snapshotOf(livePacks())).toStrictEqual([recordFixture({ icon: iconKeyOf(icon) })])
+    })
+
+    test('T3-2b: the icon the verdict carries is the icon saved, whatever the archive holds', async () => {
+        okOf(await installThemePack(requestOf({ icon: png }).request))
+
+        expect(world.saveCalls).toEqual([ARCHIVE, PNG_ICON])
+        expect(world.saveCalls[1]).toBe(PNG_ICON)
+        expect(world.files.get(iconKeyOf(png))).toEqual(PNG_ICON)
+    })
+
+    test('T3-2: a pack without an icon writes no icon asset and the record has no icon key', async () => {
+        const outcome = okOf(await installThemePack(requestOf().request))
+
+        expect(world.log).toEqual([`write:${KEY}`, `read:${KEY}`])
+        expect(Object.hasOwn(outcome.record, 'icon')).toBe(false)
+    })
+
+    test('T3-3: an icon the store reads back damaged is filesDamaged and writes no record', async () => {
+        world.damageIcon = true
+
+        const outcome = await installThemePack(requestOf({ icon: png }).request)
+
+        expect(outcome).toEqual({ ok: false, kind: 'filesDamaged' })
+        expect(fields().themePacks).toBeUndefined()
+        expect(fields().activeThemePack).toBeUndefined()
+        expect(requestSaveNow).not.toHaveBeenCalled()
+    })
+
+    test('T3-3: an icon the store cannot read back is filesDamaged and writes no record', async () => {
+        world.dropIcon = true
+
+        const outcome = await installThemePack(requestOf({ icon: png }).request)
+
+        // The archive reads back intact; only the icon read-back returns nothing.
+        expect(world.log).toContain(`read:${iconKeyOf(png)}`)
+        expect(outcome).toEqual({ ok: false, kind: 'filesDamaged' })
+        expect(fields().themePacks).toBeUndefined()
+        expect(fields().activeThemePack).toBeUndefined()
+    })
+
+    test('T3-3: a failing icon write is writeFailed with the cause, writes no record, and the archive is not deleted', async () => {
+        const failure = new Error('disk full')
+        world.failIconWrite = failure
+
+        const outcome = await installThemePack(requestOf({ icon: webp }).request)
+
+        expect(outcome).toEqual({ ok: false, kind: 'writeFailed', error: failure })
+        expect(fields().themePacks).toBeUndefined()
+        expect(world.files.has(KEY)).toBe(true)
+    })
+
+    test('T3-3: a key the store answers that is not the icon form is writeFailed and writes no record', async () => {
+        world.answerIconKey = 'assets/user-photo.png'
+
+        const outcome = await installThemePack(requestOf({ icon: png }).request)
+
+        expect(outcome).toMatchObject({ ok: false, kind: 'writeFailed' })
+        expect(fields().themePacks).toBeUndefined()
+    })
+
+    test('T3-3: an icon that fails leaves an existing pack and the active id as they were', async () => {
+        okOf(await installThemePack(requestOf().request))
+        world.damageIcon = true
+
+        const outcome = await installThemePack(requestOf({ newId: 'pack-2', icon: png }).request)
+
+        expect(outcome).toEqual({ ok: false, kind: 'filesDamaged' })
+        expect(snapshotOf(livePacks())).toEqual([recordFixture()])
+        expect(fields().activeThemePack).toBe('pack-1')
+    })
+
+    test('T3-10: Remove and Replace never delete the icon file', async () => {
+        okOf(await installThemePack(requestOf({ icon: png }).request))
+        okOf(await installThemePack(requestOf({ newId: 'pack-2', icon: webp }).request))
+        expect(world.files.has(iconKeyOf(png))).toBe(true)
+        expect(world.files.has(iconKeyOf(webp))).toBe(true)
+
+        const entry = listThemePacks(livePacks())[0]
+        expect(removeThemePackAt(entry.index, entry.entry)).toEqual({ ok: true })
+
+        expect(world.files.has(iconKeyOf(png))).toBe(true)
+        expect(world.files.has(iconKeyOf(webp))).toBe(true)
     })
 })
 

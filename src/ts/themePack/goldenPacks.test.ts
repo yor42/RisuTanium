@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { judgePackSheets } from './index'
 import { intakePackBytes, type IntakeResult, type PackJudge } from './intake'
+import { checkPackIcon, inspectIcon } from './packIcon'
 
 const GOLDENS = new URL('./goldens/', import.meta.url)
 
@@ -24,6 +25,37 @@ function acceptedPack(result: IntakeResult) {
     if (result.ok === false) throw new Error(`golden refused: ${JSON.stringify(result.refusals)}`)
     return result.pack
 }
+
+describe('T3-11 golden tile-v1 pack (icon and colours)', () => {
+    const file = 'tile-v1.risutheme'
+    const size = 2770
+    const sha256 = '1c8ed6148098f26f8e58d71bcb7f21f39557f4f15d8b9300808c993f800ae3e3'
+
+    it('keeps its pinned size and SHA-256, in the test and in the README', () => {
+        const bytes = bytesOf(file)
+        const readme = readFileSync(new URL('README.md', GOLDENS), 'utf8')
+        expect(bytes.length).toBe(size)
+        expect(createHash('sha256').update(bytes).digest('hex')).toBe(sha256)
+        expect(readme).toContain(sha256)
+        expect(readme).toContain(`${size} bytes`)
+    })
+
+    it('is accepted with its colours and icon read, and the icon passes the install-time check', async () => {
+        const bytes = bytesOf(file)
+        const pack = acceptedPack(await intakePackBytes(bytes, judge))
+        expect(pack.manifest.tile).toStrictEqual({
+            main: { kind: 'ok', value: '#3366ff' },
+            secondary: { kind: 'ok', value: '#101820' },
+            icon: { kind: 'ok', value: 'images/icon.png' },
+        })
+        expect([...pack.files.keys()]).toEqual(['images/icon.png'])
+
+        const checked = await checkPackIcon(bytes, pack, 'images/icon.png')
+
+        expect(checked.ok && checked.ext).toBe('png')
+        expect(checked.ok && inspectIcon(checked.bytes, 'image/png')).toEqual({ width: 64, height: 64, animated: false })
+    })
+})
 
 describe('T1-31 golden v1 packs', () => {
     const readme = readFileSync(new URL('README.md', GOLDENS), 'utf8')

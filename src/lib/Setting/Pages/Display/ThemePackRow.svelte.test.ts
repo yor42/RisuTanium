@@ -18,6 +18,7 @@ import type { Database } from 'src/ts/storage/database.svelte'
 import type { ThemePackApplyState } from 'src/ts/themePack/activePack.svelte'
 import type { ThemePackRecordV1 } from 'src/ts/themePack/packRecord'
 import { BUILTIN_PACKS } from 'src/ts/themePack/builtins'
+import { pngBytes } from 'src/ts/themePack/fixtures/imageBuilder'
 import { manifestText, validPackFiles, zipPack } from 'src/ts/themePack/fixtures/packBuilder'
 import { PACK_SIZE_WARN_BYTES } from 'src/ts/themePack/packSize'
 import { focusFirstControl } from 'src/ts/settingsShell/settingsArrival'
@@ -33,6 +34,8 @@ const world = vi.hoisted(() => ({
     intakeOverride: null as null | (() => Promise<unknown>),
     installed: 0,
     busy: false,
+    /** Stored asset bytes by key, read by the tile's icon loader. */
+    assets: new Map<string, Uint8Array>(),
     requestSaveNow: vi.fn(),
     alertNormal: vi.fn(),
     alertToast: vi.fn(),
@@ -59,7 +62,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     saveAsset: vi.fn(),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 vi.mock(import('src/ts/storage/store/appStore'), () => ({
-    getAppStore: async () => ({ read: async () => ({ bytes: null }) }),
+    getAppStore: async () => ({ read: async (key: string) => ({ bytes: world.assets.get(key) ?? null }) }),
     pageStoreIsOpfsTransitional: async () => false,
 }) as unknown as typeof import('src/ts/storage/store/appStore'))
 vi.mock(import('src/ts/stores.svelte'), () => {
@@ -217,6 +220,7 @@ beforeEach(() => {
     world.intakeOverride = null
     world.installed = 0
     world.busy = false
+    world.assets.clear()
     world.requestSaveNow.mockClear()
     world.alertNormal.mockClear()
     world.alertToast.mockClear()
@@ -338,6 +342,28 @@ describe('T4-3 the list', () => {
         }
         const name = entryOf(target, 'a').querySelector('label span[id]')!
         expect(name.getAttribute('style')).toBeNull()
+    })
+
+    test('T3-6 an installed pack with a stored icon shows it with the pack name as alt text, the radio keeps its one accessible name, and the other cards keep their pattern', async () => {
+        const key = `assets/tp-${'ab'.repeat(32)}.png`
+        world.assets.set(key, pngBytes(24, 16))
+        const urls: string[] = []
+        URL.createObjectURL = vi.fn(() => { urls.push(`blob:row-${urls.length + 1}`); return urls[urls.length - 1] })
+        URL.revokeObjectURL = vi.fn()
+        setPacks([recordOf('a', { icon: key }), recordOf('b')])
+        const target = show()
+
+        await settle()
+
+        const card = entryOf(target, 'a')
+        const img = card.querySelector('img')!
+        expect(img.getAttribute('alt')).toBe('Pack a')
+        expect(img.getAttribute('src')).toBe(urls[0])
+        const radio = card.querySelector<HTMLInputElement>('input[type="radio"]')!
+        const labelled = radio.getAttribute('aria-labelledby')!
+        expect(card.querySelector(`#${labelled}`)!.textContent).toBe('Pack a')
+        expect(entryOf(target, 'b').querySelector('img')).toBeNull()
+        expect(urls).toHaveLength(1)
     })
 
     test('T1-3 all radios share one name, and a busy select puts the radio back', async () => {

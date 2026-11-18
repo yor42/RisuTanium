@@ -1,7 +1,7 @@
 // The stored record of an installed theme pack (layout A: one stored archive per pack), its reader, and the input the
 // install needs from a verified pack. The record lives under `Database.themePacks` as plain data; a build that cannot
 // read an entry keeps it untouched (an unreadable or newer-version entry is shown as broken and can only be removed).
-import { PACK_ARCHIVE_KEY } from './packRefs'
+import { PACK_ARCHIVE_KEY, PACK_ICON_KEY } from './packRefs'
 
 export type PackMode = 'light' | 'dark'
 
@@ -43,6 +43,8 @@ export interface ThemePackRecordV1 {
     /** Tile colours derived or declared at install, lower-case `#rrggbb`; absent for a pack installed without them. */
     mainColor?: string
     secondaryColor?: string
+    /** The stored icon's asset key (`PACK_ICON_KEY`); absent for a pack without one. */
+    icon?: string
 }
 
 export type PackReadFailure = 'notAnObject' | 'unknownVersion' | 'badField'
@@ -170,6 +172,10 @@ export function readPackRecord(value: unknown): PackReadResult {
     const secondaryColor = readColour(value.secondaryColor)
     if (secondaryColor !== undefined) {
         record.secondaryColor = secondaryColor
+    }
+    // A key that is not the icon form reads as absent, so a crafted record cannot point the renderer at a user's asset.
+    if (typeof value.icon === 'string' && PACK_ICON_KEY.test(value.icon)) {
+        record.icon = value.icon
     }
     return { ok: true, record }
 }

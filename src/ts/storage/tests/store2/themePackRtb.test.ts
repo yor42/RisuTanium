@@ -19,13 +19,14 @@ vi.mock('src/ts/storage/store2/codec/moduleIndexParams', () => ({ MODULE_INDEX_P
 const HEX_PACK = 'ab'.repeat(32)
 const HEX_OTHER = '3c'.repeat(32)
 const ARCHIVE = `assets/tp-${HEX_PACK}.risutheme`
+const ICON = `assets/tp-${'5d'.repeat(32)}.png`
 
 /** A stored record v1, the shape `installThemePack` emits. */
 function record(id: string, archive = ARCHIVE): Obj {
     return {
         v: 1, id, packId: 'origin-navy', name: 'Origin Navy', version: '1.0.0', license: 'MIT', attribution: 'A. Author',
         modes: ['light', 'dark'], fonts: [{ file: 'fonts/a.woff2', license: 'OFL-1.1' }], archive, bytes: 4096, installedAt: 1_700_000_000_000,
-        mainColor: '#8be9fd', secondaryColor: '#21222c',
+        mainColor: '#8be9fd', secondaryColor: '#21222c', icon: ICON,
     }
 }
 
@@ -49,6 +50,8 @@ describe('the .rtb export of a profile that holds theme packs', () => {
         if (closure.referenced.assets.mode === 'filter') {
             const holds = closure.referenced.assets.holds
             expect(holds(ARCHIVE)).toBe(true)
+            expect(holds(ICON)).toBe(true)
+            expect(holds(`assets/tp-${'5d'.repeat(31)}00.png`)).toBe(false)
             expect(holds(`assets/tp-${HEX_OTHER}.risutheme`)).toBe(true)
             expect(holds(`assets/tp-${'9'.repeat(64)}.risutheme`)).toBe(false)
         }

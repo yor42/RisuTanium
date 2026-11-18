@@ -93,6 +93,28 @@ describe('readPackRecord of a good record', () => {
         }
     })
 
+    test.each([
+        ['png', `assets/tp-${'ab'.repeat(32)}.png`], ['webp', `assets/tp-${'ab'.repeat(32)}.webp`],
+    ])('T3-4: a stored %s icon key is kept', (_label, icon) => {
+        const result = readPackRecord(record({ icon }))
+
+        expect(result.ok && result.record.icon).toBe(icon)
+    })
+
+    test.each([
+        ['a user asset', 'assets/6f2f1c0e9e5d4c8a.png'], ['the archive key', `assets/tp-${'ab'.repeat(32)}.risutheme`],
+        ['an svg', `assets/tp-${'ab'.repeat(32)}.svg`], ['upper-case hex', `assets/tp-${'AB'.repeat(32)}.png`],
+        ['a short name', 'assets/tp-x.png'], ['a traversal', `assets/../assets/tp-${'ab'.repeat(32)}.png`],
+        ['no folder', `tp-${'ab'.repeat(32)}.png`], ['a number', 7], ['null', null], ['an own undefined', undefined],
+    ])('T3-5: an icon that is %s reads as absent, the record stays readable and no own key is made', (_label, bad) => {
+        const result = readPackRecord(record({ icon: bad }))
+
+        expect(result.ok).toBe(true)
+        if (result.ok) {
+            expect(Object.hasOwn(result.record, 'icon')).toBe(false)
+        }
+    })
+
     test('a record without a packId reads ok and has no packId key', () => {
         const result = readPackRecord(without('packId'))
 
