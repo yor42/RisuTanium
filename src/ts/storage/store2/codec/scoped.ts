@@ -977,6 +977,12 @@ function identitiesOf(entry: ShardEntry): string[] {
     return identities
 }
 
+/**
+ * Which moved entry fields `sameKnownFields` leaves out: `all` compares them, `body` leaves out `chatPage` and
+ * `firstMsgIndex`, and `content` leaves out `chatPage` only (the view state of the open chat).
+ */
+type KnownFieldsMode = 'all' | 'body' | 'content'
+
 /** Whether two Refs agree on their first `known` fields; a field past them is one this build does not know. */
 function sameRefFields(a: readonly unknown[] | null, b: readonly unknown[] | null, known: number): boolean {
     if (a === null || b === null) {
@@ -997,9 +1003,10 @@ function sameRefFields(a: readonly unknown[] | null, b: readonly unknown[] | nul
  * carries and a pass rewrites from the live object; `dsp`, which every pass writes as `true`; and every field this
  * build does not know, which the shard carry copies forward and so never differs in what the next pass writes.
  */
-function sameKnownFields(fresh: ShardEntry, acknowledged: ShardEntry, ignoreMoved = false): boolean {
+function sameKnownFields(fresh: ShardEntry, acknowledged: ShardEntry, mode: KnownFieldsMode = 'all'): boolean {
     if (fresh.u !== acknowledged.u || fresh.type !== acknowledged.type || fresh.chaId !== acknowledged.chaId
-        || (!ignoreMoved && (fresh.chatPage !== acknowledged.chatPage || fresh.firstMsgIndex !== acknowledged.firstMsgIndex))
+        || (mode === 'all' && (fresh.chatPage !== acknowledged.chatPage || fresh.firstMsgIndex !== acknowledged.firstMsgIndex))
+        || (mode === 'content' && fresh.firstMsgIndex !== acknowledged.firstMsgIndex)
         || !sameRefFields(fresh.core, acknowledged.core, 3) || !sameRefFields(fresh.lore, acknowledged.lore, 3)
         || !sameRefFields(fresh.scripts, acknowledged.scripts, 3) || !sameRefFields(fresh.al, acknowledged.al, 4)
         || !sameRefFields(fresh.il, acknowledged.il, 4) || fresh.chats.length !== acknowledged.chats.length) {
@@ -1058,7 +1065,27 @@ export function characterBodyMatches(slot: Slot, options: VerdictOptions): Ackno
     } catch {
         return 'unknown'
     }
-    return verdictOfNormalized(normalized, base, options, true)
+    return verdictOfNormalized(normalized, base, options, 'body')
+}
+
+/**
+ * `characterMatchesAcknowledged` with the entry's `chatPage` left out of the comparison: whether the character's
+ * content (every unit, `firstMsgIndex` and the other known entry fields) is what the acknowledged encoding holds,
+ * whatever chat page the person has open. `lastInteraction` is left to the caller, as for the other verdicts, and
+ * `trashTime` is not compared here either. Where `chatPage` is equal it answers as `characterMatchesAcknowledged` does.
+ */
+export function characterContentMatches(slot: Slot, options: VerdictOptions): AcknowledgedVerdict {
+    const base = verdictBaseOf(slot, options.previous)
+    if (base === null) {
+        return 'unknown'
+    }
+    let normalized: NormalizedCharacter
+    try {
+        normalized = normalizeCharacter(slot, 0)
+    } catch {
+        return 'unknown'
+    }
+    return verdictOfNormalized(normalized, base, options, 'content')
 }
 
 /** What the verdict's prologue found: the character's `chaId` and the acknowledged entry it is judged against. */
@@ -1119,12 +1146,12 @@ export function characterMatchesAcknowledgedPlain(slot: Slot, plain: JsonObject,
     return verdictOfNormalized(normalized, base, options)
 }
 
-function verdictOfNormalized(normalized: NormalizedCharacter, base: VerdictBase, options: VerdictOptions, ignoreMoved = false): AcknowledgedVerdict {
+function verdictOfNormalized(normalized: NormalizedCharacter, base: VerdictBase, options: VerdictOptions, mode: KnownFieldsMode = 'all'): AcknowledgedVerdict {
     const { previous } = options
     const encodeOptions: EncodeOptions = { env: options.env, lists: options.lists, seq: 0, createdAt: 0, previous }
     try {
         const fresh = emitCharacter(normalized, new ReuseOnlyEncoder(encodeOptions, previous))
-        return sameKnownFields(fresh, base.acknowledged, ignoreMoved) ? 'clean' : 'dirty'
+        return sameKnownFields(fresh, base.acknowledged, mode) ? 'clean' : 'dirty'
     } catch (error) {
         if (error instanceof UnitNotReusedError) {
             return 'dirty'
