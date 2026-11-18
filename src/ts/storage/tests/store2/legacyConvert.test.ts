@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'vitest'
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { coldStorageHeader } from 'src/ts/process/coldstorageData'
+import { characterIdProblem } from 'src/ts/storage/characterIds'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { fingerprintMainFile } from 'src/ts/storage/mainFileFingerprint'
 import { createMemoryBackend, Store2BackendFailureError, type MemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
@@ -1023,5 +1024,157 @@ describe('new behaviour: the fenced exit entry', () => {
 
         expect((await commitKeyOf(test.memory)).current?.key).toBe(rerun.manifestKey)
         expect((await test.memory.readFence()).bytes).toEqual(fenceLeft)
+    })
+})
+
+describe('new behaviour: a conversion gives a character with an unusable id a fresh one and every reference follows it', () => {
+    const say = (saying: string, data: string, role = 'char'): Obj => ({ role, data, saying, time: 1, chatId: `m-${data}` })
+    const altOf = (m: Obj): Obj => ({ m, p: `parent-${String(m.data)}`, a: 2, mem: { kept: String(m.data) } })
+    const chatOf = (id: string, message: Obj[], alt?: Obj[]): Obj => ({
+        id, name: id, note: '', localLore: [], message, ...(alt !== undefined ? { alt } : {}),
+    })
+    const pointer = (unit: string): Obj => ({ role: 'char', data: coldStorageHeader + unit, time: 1 })
+
+    /** The producer's shapes: hot chats with and without `alt`, a group with a pointer chat, an archived group whose unit names the id. */
+    function build(id: string): { tree: Tree, units: Map<string, StoredUnit> } {
+        const base = JSON.parse(JSON.stringify(buildSmall(1))) as Obj
+        const units = new Map<string, StoredUnit>([
+            [CHAT_UNIT, { status: 'ok', value: { message: [say(id, 'gu:0')] } }],
+            [OTHER_UNIT, { status: 'ok', value: { character: {
+                chaId: 'H1', name: 'H', type: 'group', characters: [id],
+                chats: [chatOf('hc', [say(id, 'hc:0')])],
+            } } }],
+        ])
+        const characters: Obj[] = [
+            {
+                chaId: id, name: 'B', type: 'character', chats: [
+                    chatOf('ba', [say('hello', 'ba:0', 'user')], [altOf(say(id, 'ba:alt0'))]),
+                    chatOf('bm', [say(id, 'bm:0')], [altOf(say('x', 'bm:alt0', 'user'))]),
+                    chatOf('bn', [say(id, 'bn:0')]),
+                ],
+            },
+            { chaId: 'G1', name: 'G', type: 'group', characters: [id], chats: [chatOf('gp', [pointer(CHAT_UNIT)])] },
+            { chaId: 'H1', name: 'H-archived', type: 'group', coldstorage: OTHER_UNIT, chats: [] },
+        ]
+        return { tree: { ...base, characters } as unknown as Tree, units }
+    }
+
+    async function convertedCharacters(trees: Tree, units: ReadonlyMap<string, StoredUnit>, hooks = accept): Promise<Obj[]> {
+        const test = await rig({ trees: { 1: trees }, mainByte: 1, units })
+        installed(await convertLegacyProfile(test.request, hooks))
+        const stored = await storedTree(test.memory)
+        return (assembleDatabase(stored.manifest, stored.source) as unknown as { characters: Obj[] }).characters
+    }
+
+    /** A message or alternative message with every key but `saying`, so a rebuilt record that loses any other key shows. */
+    function withoutSaying(message: Obj): Obj {
+        const { saying: _saying, ...rest } = message
+        return rest
+    }
+
+    function shapeOf(characters: Obj[]): unknown {
+        return characters.map(character => ({
+            name: character.name,
+            type: character.type,
+            chats: Array.isArray(character.chats) ? (character.chats as Obj[]).map(chat => ({
+                id: chat.id,
+                keys: Object.keys(chat).sort(),
+                message: Object.hasOwn(chat, 'message') ? (chat.message as Obj[]).map(withoutSaying) : 'absent',
+                alt: !Object.hasOwn(chat, 'alt') ? 'absent'
+                    : Array.isArray(chat.alt) ? (chat.alt as { m: Obj }[]).map(record => ({ ...record, m: withoutSaying(record.m) })) : typeof chat.alt,
+            })) : null,
+        }))
+    }
+
+    function sayingOf(chat: Obj, index = 0): unknown {
+        return (chat.message as Obj[])[index].saying
+    }
+
+    test('reproducer: the stored character has a usable id, every reference names it, and nothing is asked', async () => {
+        const { tree, units } = build('config')
+        const test = await rig({ trees: { 1: tree }, mainByte: 1, units })
+        const before = new Map(test.store.files)
+        let asked = 0
+
+        installed(await convertLegacyProfile(test.request, { ...accept, async confirmIncomplete() { asked++; return true } }))
+
+        const stored = await storedTree(test.memory)
+        const characters = (assembleDatabase(stored.manifest, stored.source) as unknown as { characters: Obj[] }).characters
+        const [b, g, h] = characters
+        expect(characterIdProblem(b.chaId)).toBeNull()
+        expect(g.characters).toEqual([b.chaId])
+        expect(sayingOf((g.chats as Obj[])[0])).toBe(b.chaId)
+        expect(h.characters).toEqual([b.chaId])
+        expect(sayingOf((h.chats as Obj[])[0])).toBe(b.chaId)
+        expect(((((b.chats as Obj[])[0].alt as { m: Obj }[])[0]).m.saying)).toBe(b.chaId)
+        expect(asked).toBe(0)
+        expect(new Map(test.store.files)).toEqual(before)
+        expect(test.store.writes).toEqual([])
+        expect(test.store.deletes).toEqual([])
+    })
+
+    test('guard: the stored chats keep their content, whatever the ids (a twin without id problems has the same shape)', async () => {
+        const real = build('config')
+        const twin = build('B1')
+
+        expect(shapeOf(await convertedCharacters(real.tree, real.units))).toEqual(shapeOf(await convertedCharacters(twin.tree, twin.units)))
+    })
+
+    test('reproducer: two characters that hold one unusable id get distinct usable ids, and the references follow the first by position', async () => {
+        const tree = {
+            ...JSON.parse(JSON.stringify(buildSmall(1))) as Obj,
+            characters: [
+                { chaId: 'config', name: 'one', type: 'character', chats: [chatOf('c1', [say('config', 'c1:0')])] },
+                { chaId: 'config', name: 'two', type: 'character', chats: [chatOf('c2', [say('config', 'c2:0')])] },
+                { chaId: 'G1', name: 'G', type: 'group', characters: ['config'], chats: [] },
+            ],
+        } as unknown as Tree
+
+        const characters = await convertedCharacters(tree, new Map())
+
+        const [one, two, group] = characters
+        expect(characterIdProblem(one.chaId)).toBeNull()
+        expect(characterIdProblem(two.chaId)).toBeNull()
+        expect(one.chaId).not.toBe(two.chaId)
+        expect(group.characters).toEqual([one.chaId])
+        expect(sayingOf((one.chats as Obj[])[0])).toBe(one.chaId)
+        expect(sayingOf((two.chats as Obj[])[0])).toBe(one.chaId)
+    })
+
+    test('guard: a speaker and a member that name a usable id no character holds stay as they are', async () => {
+        const { tree } = build('config')
+        const all = tree.characters as unknown as Obj[]
+        all[1].characters = ['ghost', 'config']
+        ;(all[0].chats as Obj[])[2].message = [say('ghost', 'bn:ghost')]
+
+        const characters = await convertedCharacters(tree, new Map())
+
+        expect(characters[1].characters).toEqual(['ghost', characters[0].chaId])
+        expect(sayingOf((characters[0].chats as Obj[])[2])).toBe('ghost')
+    })
+
+    test('guard: two characters that share a usable id keep it', async () => {
+        const tree = {
+            ...JSON.parse(JSON.stringify(buildSmall(1))) as Obj,
+            characters: [
+                { chaId: 'k', name: 'one', type: 'character', chats: [] },
+                { chaId: 'k', name: 'two', type: 'character', chats: [] },
+            ],
+        } as unknown as Tree
+
+        const characters = await convertedCharacters(tree, new Map())
+
+        expect(characters.map(character => character.chaId)).toEqual(['k', 'k'])
+    })
+
+    test('guard: a character without an id keeps the empty one', async () => {
+        const tree = {
+            ...JSON.parse(JSON.stringify(buildSmall(1))) as Obj,
+            characters: [{ chaId: '', name: 'blank', type: 'character', chats: [] }],
+        } as unknown as Tree
+
+        const characters = await convertedCharacters(tree, new Map())
+
+        expect(characters[0].chaId).toBe('')
     })
 })

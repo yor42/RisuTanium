@@ -3,11 +3,11 @@ import { language } from '../../lang'
 /** Stored on the device as the last page shown, so a later rename must map old ids. */
 export type SettingsPageId =
     | 'models' | 'features' | 'display' | 'input' | 'language'
-    | 'personas' | 'extensions' | 'data' | 'shortcuts' | 'advanced'
+    | 'personas' | 'extensions' | 'data' | 'shortcuts' | 'statistics' | 'advanced'
 
 export type SettingsViewId =
     | 'chatBot' | 'prompt' | 'features' | 'display' | 'input' | 'language'
-    | 'personas' | 'plugins' | 'modules' | 'data' | 'shortcuts' | 'advanced'
+    | 'personas' | 'plugins' | 'modules' | 'data' | 'shortcuts' | 'statistics' | 'advanced'
 
 export interface SettingsViewEntry {
     id: SettingsViewId
@@ -50,6 +50,7 @@ const PAGES: readonly SettingsPageEntry[] = [
     },
     { id: 'data', labelKey: 'settingsShellPageData', views: single('data', 0, 'settingsShellPageData') },
     { id: 'shortcuts', labelKey: 'settingsShellPageShortcuts', views: single('shortcuts', 15, 'settingsShellPageShortcuts') },
+    { id: 'statistics', labelKey: 'settingsShellPageStatistics', views: single('statistics', 17, 'settingsShellPageStatistics') },
     { id: 'advanced', labelKey: 'settingsShellPageAdvanced', views: single('advanced', 6, 'settingsShellPageAdvanced') },
 ]
 

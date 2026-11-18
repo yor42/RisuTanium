@@ -78,6 +78,8 @@ export interface RepairOptions {
      * export only; boot and restore ignore it.
      */
     reservedBlockNames?: ReadonlySet<string>
+    /** Receives every old id the repair replaced and the id that replaced it: the map the lists followed. */
+    replacedIds?: Map<string, string>
 }
 
 type Entry = Record<string, unknown>
@@ -99,18 +101,35 @@ function changesIds(list: unknown[], remaps: ReadonlyMap<string, string>): boole
 }
 
 /**
+ * The new `saying` of a message (a chat message, or the `m` of an `alt` record)
+ * that is a character message naming a replaced id, or undefined when it needs
+ * no change. Only `role: 'char'` messages with an own string `saying` count.
+ */
+function followedSaying(message: unknown, remaps: ReadonlyMap<string, string>): string | undefined {
+    if (!isCharacterEntry(message) || message.role !== 'char' || !Object.hasOwn(message, 'saying') || typeof message.saying !== 'string') {
+        return undefined
+    }
+    return remaps.get(message.saying)
+}
+
+/**
  * Points every reference that names a replaced id at its new one: the
  * character order and its folders, group members, loadouts, and the `saying` of
- * a character message in any character's chats (groups included). The order and the loadouts are rebuilt as new lists. A
+ * a character message in any character's chats (groups included), in the chat's
+ * messages and in its alternatives. The order and the loadouts are rebuilt as new lists. A
  * character is changed through `own(index)`, which hands back the entry itself
- * when the tree belongs to the caller and a copy when it does not (export).
+ * when the tree belongs to the caller and a copy when it does not (export). A
+ * chat rebuilt in copy mode keeps every list that did not change as the same
+ * array. `skip(index)` leaves a slot unread and unwritten; slots that are not
+ * entries are skipped too.
  */
 function remapReferences(
     tree: { characterOrder?: unknown, loadouts?: unknown },
-    characters: Entry[],
+    characters: readonly unknown[],
     remaps: ReadonlyMap<string, string>,
     own: (index: number) => Entry,
     copying: boolean,
+    skip?: (index: number) => boolean,
 ): void {
     const order = tree.characterOrder
     if (Array.isArray(order)) {
@@ -133,40 +152,69 @@ function remapReferences(
         ))
     }
     for (let i = 0; i < characters.length; i++) {
-        const members = characters[i].characters
+        // The slot is tested before any property is read: a caller that passes slots through can hold null or a primitive.
+        const slot = characters[i]
+        if ((skip !== undefined && skip(i)) || !isCharacterEntry(slot)) {
+            continue
+        }
+        const members = slot.characters
         if (Array.isArray(members) && changesIds(members, remaps)) {
             own(i).characters = mapIds(members, remaps)
         }
-        const chats = characters[i].chats
+        const chats = slot.chats
         if (!Array.isArray(chats)) {
             continue
         }
         let chatsOut: unknown[] | null = null
         for (let c = 0; c < chats.length; c++) {
             const chat: unknown = chats[c]
-            if (!isCharacterEntry(chat) || !Array.isArray(chat.message)) {
+            if (!isCharacterEntry(chat)) {
                 continue
             }
             let messagesOut: unknown[] | null = null
-            for (let m = 0; m < chat.message.length; m++) {
-                const message: unknown = chat.message[m]
-                if (!isCharacterEntry(message) || message.role !== 'char' || !Object.hasOwn(message, 'saying') || typeof message.saying !== 'string') {
-                    continue
+            if (Array.isArray(chat.message)) {
+                for (let m = 0; m < chat.message.length; m++) {
+                    const saying = followedSaying(chat.message[m], remaps)
+                    if (saying === undefined) {
+                        continue
+                    }
+                    const message = chat.message[m] as Entry
+                    if (!copying) {
+                        message.saying = saying
+                        continue
+                    }
+                    messagesOut ??= chat.message.slice()
+                    messagesOut[m] = { ...message, saying }
                 }
-                const to = remaps.get(message.saying)
-                if (to === undefined) {
-                    continue
-                }
-                if (!copying) {
-                    message.saying = to
-                    continue
-                }
-                messagesOut ??= chat.message.slice()
-                messagesOut[m] = { ...message, saying: to }
             }
-            if (messagesOut !== null) {
+            let altOut: unknown[] | null = null
+            if (Array.isArray(chat.alt)) {
+                for (let k = 0; k < chat.alt.length; k++) {
+                    const record: unknown = chat.alt[k]
+                    if (!isCharacterEntry(record)) {
+                        continue
+                    }
+                    const saying = followedSaying(record.m, remaps)
+                    if (saying === undefined) {
+                        continue
+                    }
+                    const altMessage = record.m as Entry
+                    if (!copying) {
+                        altMessage.saying = saying
+                        continue
+                    }
+                    altOut ??= chat.alt.slice()
+                    altOut[k] = { ...record, m: { ...altMessage, saying } }
+                }
+            }
+            // A list that did not change is never written, and a key the chat lacks is never added.
+            if (messagesOut !== null || altOut !== null) {
                 chatsOut ??= chats.slice()
-                chatsOut[c] = { ...chat, message: messagesOut }
+                chatsOut[c] = {
+                    ...chat,
+                    ...(messagesOut !== null ? { message: messagesOut } : {}),
+                    ...(altOut !== null ? { alt: altOut } : {}),
+                }
             }
         }
         if (chatsOut !== null) {
@@ -295,7 +343,82 @@ export async function repairCharacterTree(tree: { characters?: unknown }, mode: 
     if (remaps.size > 0) {
         remapReferences(tree as { characterOrder?: unknown, loadouts?: unknown }, characters, remaps, own, copying)
     }
+    if (options.replacedIds !== undefined) {
+        for (const [old, replacement] of remaps) {
+            options.replacedIds.set(old, replacement)
+        }
+    }
     return result
+}
+
+/**
+ * Gives every character that still holds an unusable id a fresh one, then
+ * points every reference in the tree at the new ids: those of `carried` (a
+ * repair already run on the tree) and those of this call, in the chats'
+ * messages and alternatives, the group members, the order and the loadouts.
+ *
+ * The list belongs to the caller; the entries, chats, order and loadouts are
+ * copied before they change, so nothing reachable from another tree is written.
+ * Slots for which `passesThrough` holds, and slots that are not entries, are
+ * never read or written. Missing ids, usable duplicates and usable ids are left
+ * as they are. When two characters hold one unusable id, each gets its own new
+ * id and the references follow the first by position.
+ *
+ * Map keys are always unusable ids and values always usable ones, so following
+ * references the repair already followed changes nothing.
+ */
+export function followReplacedIds(
+    tree: { characters?: unknown, characterOrder?: unknown, loadouts?: unknown },
+    carried: ReadonlyMap<string, string>,
+    passesThrough: (slot: unknown) => boolean,
+): void {
+    if (!Array.isArray(tree.characters)) {
+        return
+    }
+    const list: unknown[] = tree.characters.slice()
+    tree.characters = list
+    const skip = (index: number): boolean => passesThrough(list[index]) || !isCharacterEntry(list[index])
+    const copied = new Set<number>()
+    const own = (index: number): Entry => {
+        if (!copied.has(index)) {
+            list[index] = { ...(list[index] as Entry) }
+            copied.add(index)
+        }
+        return list[index] as Entry
+    }
+    const inUse = new Set<string>()
+    for (let i = 0; i < list.length; i++) {
+        if (skip(i)) {
+            continue
+        }
+        const chaId = (list[i] as Entry).chaId
+        if (isUsableCharacterId(chaId)) {
+            inUse.add(String(chaId))
+        }
+    }
+    const remaps = new Map<string, string>(carried)
+    for (let i = 0; i < list.length; i++) {
+        if (skip(i)) {
+            continue
+        }
+        const old = (list[i] as Entry).chaId
+        if (characterIdProblem(old) !== 'unusable') {
+            continue
+        }
+        let id = uuidv4()
+        while (inUse.has(id)) {
+            id = uuidv4()
+        }
+        inUse.add(id)
+        own(i).chaId = id
+        // The first holder of an unusable id, by position, takes the references that name it.
+        if (typeof old === 'string' && old !== '' && !remaps.has(old)) {
+            remaps.set(old, id)
+        }
+    }
+    if (remaps.size > 0) {
+        remapReferences(tree, list, remaps, own, true, skip)
+    }
 }
 export interface PersonaRepair {
     /** Entries that were not objects and were left out. */

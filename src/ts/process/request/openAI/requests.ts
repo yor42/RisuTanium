@@ -22,6 +22,8 @@ import type { OpenAIChatExtra, OpenAIChatFull, ToolCall } from './types'
 
 import { getLocalNetworkRequestOptions, type LocalNetworkRequestOptions } from './shared'
 import { leaseRequestKey, limitedField, sendArgKey, sendKeyLine } from '../secretKey'
+import { parseOpenAIChatUsage } from '../../../usage/usageParse'
+import { wantsStreamUsage } from '../../../usage/streamUsageHosts'
 export { requestOpenAIResponseAPI, __testResponsesAPI } from './responses'
 function isOfficialOpenAIURL(url: string): boolean {
     try {
@@ -29,6 +31,16 @@ function isOfficialOpenAIURL(url: string): boolean {
     } catch {
         return false
     }
+}
+
+// One report per HTTP response that carries usage; a response without parsable usage reports nothing.
+function reportChatUsage(arg:RequestDataArgumentExtended, data:{usage?:unknown}|null|undefined):void{
+    try {
+        const usage = parseOpenAIChatUsage(data?.usage)
+        if(usage){
+            arg.usageMeter?.report(usage)
+        }
+    } catch (error) {}
 }
 
 function shouldUseOpenAIFlexProcessing(aiModel: string, url: string, provider: LLMProvider): boolean {
@@ -315,6 +327,7 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
 
         const dat = res.data as any
         if(res.ok){
+            reportChatUsage(arg, dat)
             try {
                 const msg:OpenAIChatFull = (dat.choices[0].message)
                 return {
@@ -578,6 +591,10 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
         body.n = db.genTime
     }
     
+    // Set before the additional parameters, so a user parameter overrides it.
+    if(arg.useStreaming && wantsStreamUsage(replacerURL)){
+        body.stream_options = { include_usage: true }
+    }
     body = applyAdditionalParameters(body, headers, getAdditionalParameters(aiModel))
 
     // Some aux flows are intentionally non-streaming (e.g. memory/translate).
@@ -736,6 +753,7 @@ export async function requestHTTPOpenAI(
     const dat = res.data as any
 
     if(res.ok){
+        reportChatUsage(arg, dat)
         try {
             // Collect all tool_calls from all choices
             let allToolCalls: ToolCall[] = []
@@ -1005,6 +1023,8 @@ export async function requestOpenAILegacyInstruct(arg:RequestDataArgumentExtende
 type OpenAIStreamState = {
     readed:{[key:string]:string}
     reasoning:string
+    // The last non-null usage object seen on a complete line; a later `usage: null` never erases it.
+    usage?:object
 }
 
 function getTranStream(arg:RequestDataArgumentExtended):TransformStream<Uint8Array, StreamResponseChunk> {
@@ -1082,7 +1102,12 @@ function getTranStream(arg:RequestDataArgumentExtended):TransformStream<Uint8Arr
                     return 'done'
                 }
                 const readed = state.readed
-                const choices = JSON.parse(rawChunk).choices
+                const parsedChunk = JSON.parse(rawChunk)
+                const choices = parsedChunk.choices
+                const chunkUsage:unknown = parsedChunk.usage
+                if(typeof chunkUsage === 'object' && chunkUsage !== null){
+                    state.usage = chunkUsage
+                }
                 for(const choice of choices){
                     const chunk = choice.delta.content ?? choice.text
                     if(chunk){
@@ -1199,6 +1224,10 @@ function getTranStream(arg:RequestDataArgumentExtended):TransformStream<Uint8Arr
             } catch (error) {
 
             }
+        },
+        flush() {
+            // Only complete lines are committed, so the tail copy never contributes usage.
+            reportChatUsage(arg, {usage: committed.usage})
         }
     })
 }

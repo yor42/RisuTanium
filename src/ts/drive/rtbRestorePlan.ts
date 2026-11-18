@@ -36,7 +36,8 @@ import { saveFirst, SAVE_FIRST_BOUND_MS } from './storeRestore'
  *
  * Order (A7): read-only page, busy, store2 mode, `checkStore2Import`, `saveFirst`, the lock, the unsaved-edits guard, the
  * classifying read of the commit key, the file's verification, then the prompts (newer data, scale, Node oversize,
- * uncreatable names). Every exit that is not `ready` releases the hold in one `finally`, a throw included.
+ * uncreatable names; the newer-data question is skipped for the Welcome restore).
+ * Every exit that is not `ready` releases the hold in one `finally`, a throw included.
  *
  * File-supplied text (the device label, asset and inlay names, row ids, `req` tokens, `refs` rows) only ever goes to
  * `alertConfirm` and `alertError`, which render it as text; it never goes to a markdown alert.
@@ -118,6 +119,12 @@ export interface RtbPrepareOptions {
     sideCheckCapBytes?: number
     /** Called once when the lock is granted. */
     onHoldGranted?: () => void
+    /**
+     * The Welcome restore: the newer-data question is not asked (maintainer decision); every other refusal and prompt is
+     * unchanged. A stale Welcome tab whose sibling tab already saved newer data is not told either, the same as the
+     * Welcome `.bin` restore.
+     */
+    firstRun?: boolean
     deps?: Partial<RtbPrepareDeps>
 }
 
@@ -315,7 +322,7 @@ export async function prepareRtbRestore(picked: PickedRtb, busy: BusyHandle, opt
         const origin = verified.manifest.source
         const backupAt = origin.unsavedExcluded ? origin.committedAt : verified.manifest.createdAt
         let newer: NewerCheck | null = null
-        if (base.at > backupAt) {
+        if (options.firstRun !== true && base.at > backupAt) {
             const exportedAt = origin.unsavedExcluded && verified.manifest.createdAt !== backupAt ? verified.manifest.createdAt : null
             const deviceLabel = cut(origin.device.label, DEVICE_LABEL_CHARS)
             const question = language.rtbRestoreTargetNewerConfirm(

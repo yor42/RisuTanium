@@ -54,7 +54,7 @@ vi.mock(import('src/ts/process/chatOrigin'), () => ({
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
 import { findChaIdHolders, loadedRecordOf, resetRetainedForTest, retainOnLoad } from 'src/ts/process/coldRetained'
 import { getPutBackCounters, resetPutBackForTest, startCharacterPutBack } from 'src/ts/process/memory/characterPutBack'
-import { beginBusy, beginChokePoint, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
+import { beginBusy, beginChokePoint, beginDialogWait, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 import { noteRestoredBytes, resetRestoredBytesForTest, restoredBytesOf, restoredBytesOutside } from 'src/ts/process/memory/restoredBytes'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import type { Residency } from 'src/ts/storage/store2/residency'
@@ -388,6 +388,11 @@ describe('what blocks a put-back', () => {
         ['a busy action', () => beginBusy('import').end],
         ['a backupSave busy entry (that the .bin export entry points hold one is pinned in drive/tests/backupSaveBusy)', () => beginBusy('backupSave').end],
         ['a write at a choke point', () => beginChokePoint('asset')],
+        ['a backupSave entry waiting on an Android save dialog (a marked entry still counts for a background reader)', () => {
+            const exporting = beginBusy('backupSave')
+            beginDialogWait(exporting)
+            return exporting.end
+        }],
     ])('acceptance: %s defers it and a later commit does it', (_label, startBlock) => {
         archiveAll([fullCharacter('A'), fullCharacter('B'), fullCharacter('C')])
         begin()

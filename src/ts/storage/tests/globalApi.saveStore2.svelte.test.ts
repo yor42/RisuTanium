@@ -9,7 +9,7 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
-import { makeDb, mainFileMutations, rootWrites } from 'src/ts/storage/tests/saveLoopSupport'
+import { makeDb } from 'src/ts/storage/tests/saveLoopSupport'
 import { createWorldKit, nextCommit, settled, sleepReal, until, type World } from 'src/ts/storage/tests/saveLoopWorld'
 import { startStore2, store2Boot, createPeerDouble, peerCommit, type Store2Kit, type Store2StartOptions } from 'src/ts/storage/tests/store2SaveKit'
 import { buildSmall } from 'src/ts/storage/tests/store2/codecFixtures'
@@ -134,18 +134,71 @@ async function commitAfter(page: Page, action: () => void): Promise<string[]> {
 
 const small = () => buildSmall(4)
 
-describe('guard: a profile without a store2 session runs the loop it always ran', () => {
-    test('no session is active in a world that boots a block profile, and a save commits into the block store', async () => {
-        h.db = makeDb('base', ['alpha', 'beta'])
-        const w = await worlds.startWorld()
-        const { getActiveStore2Save } = await import('src/ts/storage/store2/saveActive')
-        expect(getActiveStore2Save()).toBeNull()
-        await nextCommit(w, () => {
-            h.db!.mainPrompt = 'edited'
-            w.marks.markCharacterForSave('alpha')
+type PageMode = Parameters<World['pageMode']['setPageStorageMode']>[0]
+
+/** A store2 page whose loop is not started: the store is seeded, the session is active and the page mode is `store2`. */
+async function unstartedPage(): Promise<{ w: World, k: Store2Kit }> {
+    const db = small()
+    h.db = db as unknown as Entry
+    const k = await startStore2({ db })
+    const w = await worlds.startWorld({ kind: 'tauri', startLoop: false, boot: store2Boot(k) })
+    return { w, k }
+}
+
+describe('saveDb: read-only returns first, an active save runs, every other page refuses', () => {
+    /** A page whose store2 session was dropped again, with the page mode `mode`. */
+    async function pageWithoutActiveSave(mode: PageMode): Promise<{ w: World, k: Store2Kit }> {
+        const page = await unstartedPage()
+        const { resetStore2SaveForTest } = await import('src/ts/storage/store2/saveActive')
+        resetStore2SaveForTest()
+        page.w.pageMode.setPageStorageMode(mode)
+        return page
+    }
+
+    /** What `saveDb()` did within a moment: it rejected, it resolved, or it is still running. */
+    async function outcomeOfSaveDb(w: World): Promise<Error | 'resolved' | 'pending'> {
+        return Promise.race([
+            w.api.saveDb().then(() => 'resolved' as const, (error: unknown) => error instanceof Error ? error : new Error(String(error))),
+            sleepReal(1500).then(() => 'pending' as const),
+        ])
+    }
+
+    function expectNoWrite({ w, k }: { w: World, k: Store2Kit }): void {
+        expect(w.store.ops.filter(op => op.kind === 'write' || op.kind === 'delete')).toEqual([])
+        expect(k.counted.writeCalls()).toBe(0)
+    }
+
+    test('reproducer: an unset page with no active save rejects naming the mode, and writes nothing', async () => {
+        const page = await pageWithoutActiveSave({ kind: 'unset' })
+        const outcome = await outcomeOfSaveDb(page.w)
+        expect(outcome).toBeInstanceOf(Error)
+        expect((outcome as Error).message).toMatch(/unset/)
+        expectNoWrite(page)
+    })
+
+    test('reproducer: a store2 page after the active save was reset rejects naming the mode, and writes nothing', async () => {
+        const page = await pageWithoutActiveSave({ kind: 'store2' })
+        const outcome = await outcomeOfSaveDb(page.w)
+        expect(outcome).toBeInstanceOf(Error)
+        expect((outcome as Error).message).toMatch(/store2/)
+        expectNoWrite(page)
+    })
+
+    test('guard: a read-only page resolves at once and writes nothing, whatever the active save', async () => {
+        const page = await pageWithoutActiveSave({ kind: 'read-only', reason: 'opfs-transitional' })
+        expect(await outcomeOfSaveDb(page.w)).toBe('resolved')
+        expectNoWrite(page)
+    })
+
+    test('guard: an active save runs whatever the page mode says, so the dispatch tests no mode before it', async () => {
+        const page = await startPage(small(), {
+            beforeStart: ({ w }) => { w.pageMode.setPageStorageMode({ kind: 'unset' }) },
         })
-        expect(rootWrites(w.store).length).toBeGreaterThan(0)
-        expect(mainFileMutations(w.store)).toEqual([])
+        await commitAfter(page, () => {
+            characters(page.db)[2].personality = 'saved by an active save on an unset page'
+            page.w.marks.markCharacterForSave(characters(page.db)[2].chaId)
+        })
+        expect((await page.k.saved()).characters[2]).toMatchObject({ personality: 'saved by an active save on an unset page' })
     })
 })
 
@@ -234,6 +287,41 @@ describe('new behaviour: every mark path reaches the encoder (the edit is in the
         expect((await page.k.saved()).characters).toHaveLength(4)
     })
 
+    test.each([
+        ['an empty list', []],
+        ['null', null],
+    ])('6b. the live character check: %s pushed into the live list is dropped, the selection keeps its character and the person is told once', async (_label, junk) => {
+        const page = await startPage(small())
+        await settled(page.w)
+        const { alertToast } = await import('src/ts/alert')
+        page.stores.selectedCharID.set(2)
+        const told = vi.mocked(alertToast).mock.calls.length
+        ;(page.db.characters as unknown[]).splice(1, 0, junk)
+        page.flush()
+        await until(() => !(page.db.characters as unknown[]).includes(junk), 'the entry to be dropped', 6000)
+        await settled(page.w)
+        expect(characters(page.db).map(c => c.chaId)).toEqual(small().characters.map(c => c.chaId))
+        const { get } = await import('svelte/store')
+        // The selected character moved up by the one entry that was dropped before it.
+        expect(get(page.stores.selectedCharID)).toBe(1)
+        expect(vi.mocked(alertToast).mock.calls.length).toBe(told + 1)
+        expect((await page.k.saved()).characters).toHaveLength(4)
+    })
+
+    test('6c. the live character check: an unarchived character with no id is given a new id and the pass writes it', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        const added = JSON.parse(JSON.stringify(characters(page.db)[0])) as Entry
+        added.name = 'added without an id'
+        added.chaId = ''
+        ;(page.db.characters as unknown[]).push(added)
+        page.flush()
+        await until(() => typeof characters(page.db)[4].chaId === 'string' && characters(page.db)[4].chaId !== '', 'the character to get an id', 6000)
+        await settled(page.w)
+        expect(characters(page.db)[4].chaId).toMatch(/^[0-9a-f-]{36}$/)
+        expect((await page.k.saved()).characters).toHaveLength(5)
+    })
+
     test('7. save now: a request ends the debounce and the pass runs at once', async () => {
         const page = await startPage(small())
         await settled(page.w)
@@ -242,6 +330,164 @@ describe('new behaviour: every mark path reaches the encoder (the edit is in the
         page.w.api.requestSaveNow()
         // Well inside the 500 ms debounce.
         await until(async () => ((await page.k.saved()).characters[2] as unknown as Entry).personality === 'requested now', 'the immediate pass', 300)
+    })
+})
+
+describe('ported rows: save-clean, commit callbacks and the character order on a store2 page', () => {
+    const unflushedCommits = { on: false }
+    const commitHold: { gate: Promise<void> | null, held: number } = { gate: null, held: 0 }
+
+    beforeEach(() => {
+        unflushedCommits.on = false
+        commitHold.gate = null
+        commitHold.held = 0
+    })
+
+    test('guard: a callback registered for the next commit is not called by a failed pass, the page is not clean meanwhile, and the pass that commits calls it once', async () => {
+        const page = await startPage(small(), {
+            hooks: { flushed: (name) => name === 'commitOrdinary' && unflushedCommits.on ? false : undefined },
+        })
+        await settled(page.w)
+        const { saveFailureStore } = await import('src/ts/storage/store2/saveFailure')
+        const { get } = await import('svelte/store')
+        const callback = vi.fn()
+        unflushedCommits.on = true
+        page.w.api.afterNextSaveCommit(callback)
+        characters(page.db)[0].personality = 'unflushed edit'
+        page.w.marks.markCharacterForSave(characters(page.db)[0].chaId)
+        await until(() => get(saveFailureStore) !== null, 'the recorded failure', 20000)
+        expect(callback).not.toHaveBeenCalled()
+        expect(page.w.api.isSaveClean()).toBe(false)
+
+        unflushedCommits.on = false
+        await until(() => page.w.api.isSaveClean(), 'a clean page after the retry', 20000)
+        expect(callback).toHaveBeenCalledTimes(1)
+        expect((await page.k.saved()).characters[0]).toMatchObject({ personality: 'unflushed edit' })
+        characters(page.db)[0].personality = 'a later edit'
+        page.w.marks.markCharacterForSave(characters(page.db)[0].chaId)
+        await settled(page.w)
+        expect(callback).toHaveBeenCalledTimes(1)
+    })
+
+    // A commit that throws before it applies takes the failed-pass path, which folds the pass's snapshot back into the
+    // live marks; without the fold-back the retry has nothing to save and the edit never reaches the store.
+    test('guard: an edit whose commit throws before it applies is folded back into the marks and saved by the retry', async () => {
+        const failures = { left: 0 }
+        const page = await startPage(small(), {
+            hooks: {
+                before: (name) => {
+                    if (name === 'commitOrdinary' && failures.left > 0) {
+                        failures.left -= 1
+                        throw new Error('commit fault')
+                    }
+                },
+            },
+        })
+        await settled(page.w)
+        failures.left = 1
+        // The tracker keeps its first character mark after a snapshot, so the second one is what only the fold-back restores.
+        characters(page.db)[1].personality = 'first mark'
+        page.w.marks.markCharacterForSave(characters(page.db)[1].chaId)
+        characters(page.db)[2].personality = 'folded back edit'
+        page.w.marks.markCharacterForSave(characters(page.db)[2].chaId)
+        await until(async () => ((await page.k.saved()).characters[2] as unknown as Entry).personality === 'folded back edit', 'the retry that saves the edit', 20000)
+        expect(failures.left).toBe(0)
+    })
+
+    test('guard: an edit marked while a commit is in flight is not clean when that commit lands, only after the next pass commits it', async () => {
+        const page = await startPage(small(), {
+            hooks: {
+                before: async (name) => {
+                    if (name === 'commitOrdinary' && commitHold.gate !== null) {
+                        commitHold.held += 1
+                        await commitHold.gate
+                    }
+                },
+            },
+        })
+        await settled(page.w)
+        const commitCalls = () => page.k.counted.writes.filter(write => write.call === 'commitOrdinary').length
+        const before = commitCalls()
+        let release: () => void = () => {}
+        commitHold.gate = new Promise<void>((resolve) => { release = resolve })
+        characters(page.db)[2].personality = 'in flight'
+        page.w.marks.markCharacterForSave(characters(page.db)[2].chaId)
+        await until(() => commitHold.held === 1, 'the held commit', 6000)
+        expect(page.w.api.isSaveClean()).toBe(false)
+
+        characters(page.db)[2].personality = 'edited during the commit'
+        page.w.marks.markCharacterForSave(characters(page.db)[2].chaId)
+        commitHold.gate = null
+        release()
+        let cleanBeforeSecondCommit = false
+        const sampler = setInterval(() => {
+            if (page.w.api.isSaveClean() && commitCalls() < before + 2) {
+                cleanBeforeSecondCommit = true
+            }
+        }, 1)
+        try {
+            await until(() => page.w.api.isSaveClean() && commitCalls() >= before + 2, 'a clean page after the second commit', 20000)
+        } finally {
+            clearInterval(sampler)
+        }
+        expect(cleanBeforeSecondCommit).toBe(false)
+        expect(((await page.k.saved()).characters[2] as unknown as Entry).personality).toBe('edited during the commit')
+    })
+
+    test('guard: the page is not clean while a full encoder reload is requested', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        expect(page.w.api.isSaveClean()).toBe(true)
+        page.w.api.requiresFullEncoderReload.state = true
+        expect(page.w.api.isSaveClean()).toBe(false)
+        page.w.api.requiresFullEncoderReload.state = false
+        expect(page.w.api.isSaveClean()).toBe(true)
+    })
+
+    test('guard: requestSaveNow before the loop has installed its scheduler counts no mark and writes nothing', async () => {
+        const { w, k } = await unstartedPage()
+        const marks = w.api.getSaveMarkCount()
+        const writes = k.counted.writeCalls()
+        expect(() => w.api.requestSaveNow()).not.toThrow()
+        await sleepReal(50)
+        expect(w.api.getSaveMarkCount()).toBe(marks)
+        expect(k.counted.writeCalls()).toBe(writes)
+        worlds.parkAll()
+    })
+
+    test('guard: a Symbol id of a character is never appended to the order, and the order stays usable', async () => {
+        const page = await startPage(small())
+        const plain = small()
+        ;(plain.characters[1] as unknown as Entry).chaId = Symbol('id')
+        expect(() => page.w.api.checkCharOrder(plain)).not.toThrow()
+        expect(() => page.w.api.checkCharOrder(plain)).not.toThrow()
+        expect((plain.characterOrder as unknown[]).every((item) => typeof item === 'string')).toBe(true)
+        expect(plain.characterOrder).toHaveLength(3)
+    })
+
+    test('guard: entries of the order that are neither an id nor a folder with a list are skipped, not a crash', async () => {
+        const page = await startPage(small())
+        const plain = small()
+        const ids = plain.characters.map((entry) => entry.chaId)
+        plain.characterOrder = [{}, 5, { id: 'F', name: 'F', data: 'not a list' }, ids[0]] as unknown as Database['characterOrder']
+        expect(() => page.w.api.checkCharOrder(plain)).not.toThrow()
+        expect(plain.characterOrder).toEqual(ids)
+    })
+
+    test('guard: a well-formed list is not touched, and a mark saves exactly the marked character', async () => {
+        const page = await startPage(small())
+        await settled(page.w)
+        const list = page.db.characters
+        const before = [...characters(page.db)]
+        const mark = page.k.memory.snapshot()
+        await nextCommit(page.w, () => {
+            characters(page.db)[2].personality = 'marked edit'
+            page.w.marks.markCharacterForSave(characters(page.db)[2].chaId)
+            page.flush()
+        })
+        expect(page.db.characters).toBe(list)
+        expect(characters(page.db).every((entry, index) => entry === before[index])).toBe(true)
+        expect(page.k.writtenSince(mark)).toEqual(['characterCore', 'manifest', 'shard'])
     })
 })
 
@@ -363,9 +609,9 @@ describe('new behaviour: the page hide saves an unsaved edit with no chat in fli
     })
 
     test('guard: the unsaved state is false before the loop starts, true from a mark until the snapshot that took it, and false after', async () => {
-        h.db = makeDb('base', ['alpha', 'beta'])
-        const w = await worlds.startWorld({ startLoop: false })
-        expect(w.api.hasUnsavedSaveMarks()).toBe(false)
+        const unstarted = await unstartedPage()
+        expect(unstarted.w.api.hasUnsavedSaveMarks()).toBe(false)
+        expect(unstarted.w.api.isSaveClean()).toBe(false)
         worlds.parkAll()
 
         const page = await startPage(small())
@@ -385,27 +631,6 @@ describe('new behaviour: the page hide saves an unsaved edit with no chat in fli
         h.db!.mainPrompt = 'edited'
         w.marks.markCharacterForSave('alpha')
         expect(w.api.hasUnsavedSaveMarks()).toBe(false)
-    })
-
-    test('the block (legacy) loop saves a marked edit at hide, and a hide with nothing marked writes nothing', async () => {
-        h.db = makeDb('base', ['alpha', 'beta'])
-        const w = await worlds.startWorld()
-        await settled(w)
-        const { startSaveOnHide } = await import('src/ts/process/saveOnHide')
-        const stop = startSaveOnHide()
-        try {
-            const idle = rootWrites(w.store).length
-            window.dispatchEvent(new Event('pagehide'))
-            await sleepReal(200)
-            expect(rootWrites(w.store).length).toBe(idle)
-
-            h.db!.mainPrompt = 'legacy hidden edit'
-            w.marks.markCharacterForSave('alpha')
-            window.dispatchEvent(new Event('pagehide'))
-            await until(() => rootWrites(w.store).length > idle, 'the legacy pass at hide', 300)
-        } finally {
-            stop()
-        }
     })
 })
 
@@ -679,6 +904,56 @@ describe('new behaviour: a commit the storage could not confirm is reported in p
         expect(shown?.submsg).toContain('did not confirm')
     })
 })
+describe('new behaviour: a body the Node server refuses as too large stops this tab and tells the person', () => {
+    const REFUSED_BYTES = 3 * 1024 * 1024
+
+    /** A page whose backend refuses the first write once `gate.on` is set; the seed is written before that. */
+    async function pageThatRefuses(): Promise<{ page: Page, gate: { on: boolean } }> {
+        const gate = { on: false }
+        const page = await startPage(small(), {
+            kind: 'node',
+            // The committer of the kit belongs to this file's module graph and sorts a backend error with instanceof;
+            // the loop runs in the world's graph. The page gets a committer of its own graph, so both agree on the class.
+            beforeStart: async ({ k }) => {
+                const { createCommitter } = await import('src/ts/storage/store2/commit')
+                k.context.session = { ...k.context.session, committer: createCommitter(k.counted.backend, { owner: k.committer.owner, env: k.context.env }) }
+            },
+            hooks: {
+                before: async (name) => {
+                    if (!gate.on || (name !== 'commitOrdinary' && name !== 'putUnit')) {
+                        return
+                    }
+                    // The error class of the page's own module graph: the loop recognises the refusal with instanceof.
+                    const { Store2PayloadTooLargeError } = await import('src/ts/storage/store2/backend/errors')
+                    const { UNIT_TYPE } = await import('src/ts/storage/store2/format')
+                    throw new Store2PayloadTooLargeError('The Node server answered 413.', 'store2/example', REFUSED_BYTES, UNIT_TYPE.chatChunk)
+                },
+            },
+        })
+        await settled(page.w)
+        return { page, gate }
+    }
+
+    test('a refused body stops saving with the size message, and the page stays unsaved without another write', async () => {
+        const { page, gate } = await pageThatRefuses()
+        const { alertToast } = await import('src/ts/alert')
+        const { language } = await import('src/lang')
+        const { NODE_BODY_LIMIT_BYTES } = await import('src/ts/storage/nodeBodyLimit')
+        const { storeAssetLimitBytes } = await import('src/ts/storage/assetLimit')
+        const { get } = await import('svelte/store')
+        gate.on = true
+        characters(page.db)[0].personality = 'too large to send'
+        page.w.marks.markCharacterForSave(characters(page.db)[0].chaId)
+        await until(() => get(page.stores.savingStoppedReason) === 'too-large', 'the saving stop', 8000)
+        const label = language.saveUnitLabel('chatPart', REFUSED_BYTES)
+        expect(vi.mocked(alertToast)).toHaveBeenCalledWith(language.savingStoppedTooLargeBlockMessage(label, NODE_BODY_LIMIT_BYTES, storeAssetLimitBytes()))
+        expect(page.w.api.isSaveClean()).toBe(false)
+        const writes = page.k.counted.writeCalls()
+        await sleepReal(300)
+        expect(page.k.counted.writeCalls()).toBe(writes)
+    })
+})
+
 describe('new behaviour: the save-failure store records save-pass failures only', () => {
     async function storeValue(): Promise<unknown> {
         const { saveFailureStore } = await import('src/ts/storage/store2/saveFailure')

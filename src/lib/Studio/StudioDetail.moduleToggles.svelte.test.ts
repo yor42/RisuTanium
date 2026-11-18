@@ -53,7 +53,11 @@ vi.mock('src/lang', async () => {
     const base = helpers.studioLanguageMock()
     const call = (key: string) => (...args: (string | number)[]) => `${key}(${args.join(',')})`
     const named: Record<string, unknown> = { sidebarUi: { notAllowed: 'notAllowed', noAssets: 'noAssets' } }
-    for (const key of ['studioTgDeleted', 'studioTgMoved', 'studioTgOptionN', 'studioTgSummarySelect', 'studioTgSummaryGroup', 'studioTgUnreadableCount', 'studioTgLineN']) named[key] = call(key)
+    for (const key of [
+        'studioTgDeleted', 'studioTgMoved', 'studioTgOptionN', 'studioTgSummarySelect', 'studioTgSummaryGroup', 'studioTgUnreadableCount', 'studioTgLineN',
+        'studioTgCarryAskKey', 'studioTgCarryAskOptions', 'studioTgCarryAskKind', 'studioTgCarryAskDrop', 'studioTgCarryAskUnclear',
+        'studioTgCarryAskOptionsLate', 'studioTgCarryAskOptionsLateRenamed', 'studioTgCarryOverwrite', 'studioTgCarryShared', 'studioTgCarryOldStays',
+    ]) named[key] = call(key)
     return { language: new Proxy(named, { get: (target, key) => (typeof key === 'symbol' ? undefined : key in target ? target[key] : base[key]) }) }
 })
 
@@ -63,17 +67,19 @@ import { installDbWriteHook, uninstallDbWriteHook } from 'src/ts/storage/dbWrite
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import type { RisuModule } from 'src/ts/process/modules'
 import { openStudioModuleId, publishOpenModuleId, resetOpenModuleIdForTests } from 'src/ts/studio/assets/openModuleForm.svelte'
-import { createSaveAck, type SaveAck, type SaveAckDeps } from 'src/ts/studio/edit/saveAck.svelte'
+import { createSaveAck, type ModuleCommitVerdict, type SaveAck, type SaveAckDeps } from 'src/ts/studio/edit/saveAck.svelte'
 import { compositionStart, composeText } from '../../ts/ime/tests/imeEventSequence'
-import { makeCharacter, makeInput, makePreset, residentModule, studioDbOf, stubModule } from 'src/ts/studio/studioFixtures.test-helpers'
+import { makeChat, makeCharacter, makeInput, makePreset, residentModule, studioDbOf, stubModule } from 'src/ts/studio/studioFixtures.test-helpers'
 import { openStudio, resetStudioScreenForTests, setStudioSelection } from 'src/ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { createToastHost, resetToastHostForTests, type ToastClock, type ToastHost } from 'src/ts/toast/toastHost.svelte'
 import { createOwnerHistoryService, type OwnerHistoryService } from '../../ts/studio/history/ownerHistory.svelte'
 import { characterOwnerKey, moduleOwnerKey } from '../../ts/studio/history/ownerPhase'
-import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
+import { currentVisitAck, resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioModuleAckForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, drainMicrotasks, type FakeClock } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../ts/studio/history/tests/studioStoreDoubles'
+import { currentFavourites, syncFavourites, updateFavourites } from '../../ts/chatShell/toggleFavouritesStore.svelte'
+import { PENDING_PREFIX, readPending, resetToggleCarrySessionForTests } from '../../ts/studio/toggleCarryPending'
 import { setSessionAssetSizeJobForTests } from './assets/StudioAssetList.svelte'
 import type { AssetSizeJob, StoredSize } from '../../ts/studio/assets/assetSizes'
 import StudioScreen from './StudioScreen.svelte'
@@ -117,6 +123,50 @@ function makeAck(clock: FakeClock): SaveAck {
     return createSaveAck(deps)
 }
 
+// The module acks the accessor built, over deps the test drives: every accepted edit counts a mark, and a commit is
+// reported by `commit` with the verdict the loop would give the module.
+const moduleRig = {
+    clock: createFakeClock(),
+    built: [] as SaveAck[],
+    callbacks: new Set<() => void>(),
+    committed: 0,
+    verdict: 'saved' as ModuleCommitVerdict,
+}
+
+function makeModuleAck(clock: FakeClock): SaveAck {
+    const deps: SaveAckDeps = {
+        getMarkCount: () => 1,
+        getCommittedMarkCount: () => moduleRig.committed,
+        afterNextCommit: (callback) => { moduleRig.callbacks.add(callback) },
+        requestSaveNow: () => {},
+        getPeerSaveCount: () => 0,
+        onStopped: () => () => {},
+        isStopped: () => false,
+        subscribeFailure: () => () => {},
+        currentFailure: () => null,
+        frozenKeys: () => new Set<string>(),
+        isCharacterUnsavable: () => false,
+        onPassStart: () => () => {},
+        visible: () => true,
+        onVisibilityChange: () => () => {},
+        clock,
+    }
+    const ack = createSaveAck(deps, { kind: 'module', verdict: () => moduleRig.verdict })
+    vi.spyOn(ack, 'dispose')
+    moduleRig.built.push(ack)
+    return ack
+}
+
+function commit(verdict: ModuleCommitVerdict): void {
+    moduleRig.committed = 1
+    moduleRig.verdict = verdict
+    for (const callback of [...moduleRig.callbacks]) {
+        moduleRig.callbacks.delete(callback)
+        callback()
+    }
+    flushSync()
+}
+
 let rigCount = 0
 
 // The service as production builds it: it asks the detail which module is selected.
@@ -132,6 +182,8 @@ function makeRig(): OwnerHistoryService {
     })
     setStudioHistoryServiceForTests(service)
     setStudioVisitAckForTests(makeAck(clock))
+    moduleRig.clock = clock
+    setStudioModuleAckForTests(() => makeModuleAck(clock))
     return service
 }
 
@@ -204,6 +256,10 @@ function resetMarks(): void {
 }
 
 beforeEach(() => {
+    moduleRig.built.length = 0
+    moduleRig.callbacks.clear()
+    moduleRig.committed = 0
+    moduleRig.verdict = 'saved'
     tracker.character.length = 0
     tracker.modules = false
     resetCharacterSaveMarksForTest()
@@ -222,6 +278,10 @@ beforeEach(() => {
 afterEach(async () => {
     await unmountAll()
     uninstallDbWriteHook()
+    // The pending record lives in device storage and a page-lifetime map; the favourites list is a shared reactive copy.
+    localStorage.clear()
+    resetToggleCarrySessionForTests()
+    syncFavourites()
     setSessionAssetSizeJobForTests(undefined)
     resetStudioHistoryAccessorForTests()
     resetCharacterSaveMarksForTest()
@@ -234,11 +294,11 @@ afterEach(async () => {
 })
 
 describe('R-C2 the toggles of a resident module', () => {
-    test('mount the builder with no chip and no text dump, and an edit changes that module only, as one step', async () => {
+    test('mount the builder with its chip and no text dump, and an edit changes that module only, as one step', async () => {
         const service = await mountOn(moduleToggles('M1'))
         await service.whenReady(M1)
         expect(part('studio-toggle-builder')).not.toBeNull()
-        expect(part('studio-chip')).toBeNull()
+        expect(part('studio-chip')).not.toBeNull()
         expect(part('studio-detail-text')).toBeNull()
         expect(part('studio-toggle-module-shared')).toBeNull()
         expect(rowNames()).toEqual(['One'])
@@ -369,6 +429,136 @@ describe('R-SW a change of the selected owner rebuilds the builder over the new 
     })
 })
 
+// ---------------------------------------------------------------- the save chip of a module's toggles
+
+const chipState = () => part('studio-chip')?.getAttribute('data-state')
+
+describe('R3-M the chip of a resident module follows the module ack', () => {
+    test('an edit commits to saved; a blocked commit is unconfirmed with Retry', async () => {
+        const service = await mountOn(moduleToggles('M1'))
+        await service.whenReady(M1)
+        expect(chipState()).toBe('idle')
+        await showText()
+        typeInText('m1=One\nz=Z')
+        await settle()
+        commit('saved')
+        expect(chipState()).toBe('saved')
+        expect(part('studio-chip-retry')).toBeNull()
+        typeInText('m1=One\nz=Z\ny=Y')
+        await settle()
+        commit('blocked')
+        expect(chipState()).toBe('unconfirmed')
+        expect(part('studio-chip-retry')).not.toBeNull()
+    })
+
+    test('an unsavable commit is a permanent failed with no Retry', async () => {
+        const service = await mountOn(moduleToggles('M1'))
+        await service.whenReady(M1)
+        await showText()
+        typeInText('m1=One\nz=Z')
+        await settle()
+        commit('unsavable')
+        expect(chipState()).toBe('failed')
+        expect(part('studio-chip-retry')).toBeNull()
+    })
+})
+
+describe('R3-E4 the chip of a module never shows another owner\'s ack', () => {
+    test('a failed character visit ack stays out of the module chip, and a switch disposes the module ack', async () => {
+        const service = await mountOn(characterToggles)
+        await service.whenReady(CHARACTER)
+        currentVisitAck()?.noteEdit('A', 0)
+        flushSync()
+        expect(chipState()).toBe('failed')
+        expect(moduleRig.built).toHaveLength(0)
+
+        await select(M1)
+        await service.whenReady(M1)
+        expect(part('studio-toggle-builder')).not.toBeNull()
+        expect(moduleRig.built).toHaveLength(1)
+        expect(chipState()).toBe('idle')
+        const timersWithModuleAck = moduleRig.clock.pendingTimers()
+
+        await select(M2)
+        await service.whenReady(M2)
+        expect(moduleRig.built).toHaveLength(2)
+        expect(moduleRig.built[0].dispose).toHaveBeenCalledTimes(1)
+        expect(moduleRig.built[1].dispose).not.toHaveBeenCalled()
+        expect(chipState()).toBe('idle')
+        expect(moduleRig.clock.pendingTimers()).toBe(timersWithModuleAck)
+
+        await select(CHARACTER)
+        expect(moduleRig.built[1].dispose).toHaveBeenCalledTimes(1)
+        expect(moduleRig.clock.pendingTimers()).toBeLessThan(timersWithModuleAck)
+        expect(chipState()).toBe('failed')
+    })
+})
+
+describe('CG3 no module chip outside the module toggle builder', () => {
+    test('the module asset form builds no module ack and shows no chip', async () => {
+        await mountOn({ owner: { type: 'module', id: 'M1' }, kind: 'display', from: 'chat' })
+        expect(part('studio-module-asset-form')).not.toBeNull()
+        expect(part('studio-chip')).toBeNull()
+        expect(moduleRig.built).toHaveLength(0)
+    })
+
+    test('the toggles of a preset build no module ack and show no chip', async () => {
+        const input = makeInput({
+            character: makeCharacter({ chaId: 'A', customModuleToggle: 'ch=Char' } as Parameters<typeof makeCharacter>[0]),
+            presets: [makePreset('P0', { toggles: 'p=Preset' })],
+            activePreset: 0,
+            modules: [residentModule('M1', { customModuleToggle: 'm1=One' })],
+            enabledModules: ['M1'],
+        })
+        db.db = { ...studioDbOf(input), modules: [...input.modules] }
+        await mountOn({ owner: { type: 'preset', id: '0' }, kind: 'toggles', from: 'chat' })
+        expect(part('studio-detail-text')).not.toBeNull()
+        expect(part('studio-chip')).toBeNull()
+        expect(moduleRig.built).toHaveLength(0)
+    })
+
+    test('a stub module builds no module ack and shows no chip', async () => {
+        db.db.modules[0] = stubModule('M1')
+        await mountOn(moduleToggles('M1'))
+        expect(part('studio-toggle-builder')).toBeNull()
+        expect(part('studio-chip')).toBeNull()
+        expect(moduleRig.built).toHaveLength(0)
+    })
+
+    test('a duplicate module id builds no module ack and shows no chip', async () => {
+        db.db.modules[1] = residentModule('M1', { customModuleToggle: 'dup=Dup' })
+        await mountOn(moduleToggles('M1'))
+        expect(part('studio-toggle-module-shared')).not.toBeNull()
+        expect(part('studio-chip')).toBeNull()
+        expect(moduleRig.built).toHaveLength(0)
+    })
+
+    test('the character builder keeps its one chip and builds no module ack', async () => {
+        await mountOn(characterToggles)
+        expect(parts('studio-chip')).toHaveLength(1)
+        expect(moduleRig.built).toHaveLength(0)
+    })
+})
+
+describe('CG3-R a refused write leaves the module chip as it was', () => {
+    test('a not-selected refusal shows inline and the chip state does not change', async () => {
+        const service = await mountOn(moduleToggles('M1'))
+        await service.whenReady(M1)
+        await showText()
+        typeInText('m1=One\nz=Z')
+        await settle()
+        commit('saved')
+        expect(chipState()).toBe('saved')
+        publishOpenModuleId(null)
+        typeInText('m1=One\nz=Z\ny=Y')
+        await settle()
+        await moduleRig.clock.advance(1000)
+        flushSync()
+        expect(part('studio-toggle-text-error')?.textContent).toBe('studioRefusalModuleNotSelected')
+        expect(chipState()).toBe('saved')
+    })
+})
+
 // ---------------------------------------------------------------- refusals at component level
 
 function makeToastHost(): ToastHost {
@@ -438,6 +628,66 @@ describe('R-C13 refusals of a module builder, in module wording', () => {
         await settle()
         expect(toasts.visible.at(-1)?.text).toBe('studioRefusalModuleNotSelected')
         expect(slotText(0)).toBe(afterDelete)
+    })
+})
+
+describe('F-M1 a module owner carries a renamed key to every loaded character', () => {
+    const pinnedChat = (id: string) => ({ ...makeChat({ id }), GLGlobalVariables: { toggle_a: '1' } })
+
+    // Two loaded characters, each with one chat that pinned the value of `a`, and a global value for it.
+    function seedCarryFixture(): void {
+        const input = makeInput({
+            character: makeCharacter({
+                chaId: 'A',
+                customModuleToggle: 'ch=Char',
+                chats: [pinnedChat('chat-a')],
+            } as Parameters<typeof makeCharacter>[0]),
+            modules: [residentModule('M1', { customModuleToggle: 'a=Mode\n' }), residentModule('M2', { customModuleToggle: 'm2=Two' })],
+            enabledModules: ['M1', 'M2'],
+        })
+        const other = makeCharacter({
+            chaId: 'B',
+            chats: [pinnedChat('chat-b')],
+        } as Parameters<typeof makeCharacter>[0])
+        const seeded = {
+            ...studioDbOf(input),
+            modules: [...input.modules],
+            characters: [...studioDbOf(input).characters, { ...other, type: 'character' }],
+            globalChatVariables: { toggle_a: '1' },
+        }
+        db.db = seeded as unknown as ReturnType<typeof fixtureDb>
+    }
+
+    const chatVariables = (index: number) => ((db.db.characters[index] as unknown as { chats: { GLGlobalVariables: Record<string, string> }[] }).chats[0]).GLGlobalVariables
+    const globalVariables = () => (db.db as unknown as { globalChatVariables: Record<string, string> }).globalChatVariables
+
+    test('the banner names the loaded characters, the record is kept under the module, Carry writes the global value and every loaded chat, and the module star follows', async () => {
+        seedCarryFixture()
+        updateFavourites({ type: 'add', ref: { s: 'module:M1', k: 'a' } })
+        updateFavourites({ type: 'add', ref: { s: 'character:A', k: 'a' } })
+        await mountModuleBuilder(makeToastHost())
+        resetMarks()
+        parts('studio-toggle-row')[0].click()
+        flushSync()
+        const key = part('studio-toggle-key') as HTMLInputElement
+        key.value = 'c'
+        key.dispatchEvent(new Event('input', { bubbles: true }))
+        key.dispatchEvent(new FocusEvent('blur'))
+        flushSync()
+        expect(slotText(0)).toBe('c=Mode\n')
+        expect(part('studio-toggle-carry-line')?.textContent).toBe('studioTgCarryAskKey(a,c)')
+        expect(part('studio-toggle-carry-reach')?.textContent).toBe('studioTgCarryReachLoaded')
+        expect(readPending(M1).status).toBe('ok')
+        expect(localStorage.getItem(PENDING_PREFIX + M1)).not.toBeNull()
+
+        part('studio-toggle-carry-yes')?.click()
+        await settle()
+        expect(globalVariables()).toEqual({ toggle_a: '1', toggle_c: '1' })
+        expect(chatVariables(0)).toEqual({ toggle_a: '1', toggle_c: '1' })
+        expect(chatVariables(1)).toEqual({ toggle_a: '1', toggle_c: '1' })
+        expect(currentFavourites().items).toEqual([{ s: 'module:M1', k: 'c' }, { s: 'character:A', k: 'a' }])
+        expect(tracker.character).toEqual(expect.arrayContaining(['A', 'B']))
+        expect(readPending(M1).status).toBe('absent')
     })
 })
 

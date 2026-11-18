@@ -3,7 +3,7 @@
     import { language } from '../../lang'
     import { classicDestinationOf, openInClassicEditor } from '../../ts/studio/classicLinks.svelte'
     import { itemSectionsOf, type TextField } from '../../ts/studio/itemText'
-    import { currentVisitAck } from '../../ts/studio/history/studioHistoryService.svelte'
+    import { currentModuleAck, currentVisitAck } from '../../ts/studio/history/studioHistoryService.svelte'
     import { ownerSourceFor, readTextSources } from '../../ts/studio/ownerSource.svelte'
     import { applyStudioTarget, clearStudioSelection, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import { moduleListOf, moduleRefIdsOf } from '../../ts/process/moduleRefList'
@@ -219,6 +219,7 @@
                     <StudioToggleBuilder target={{ kind: 'character', chaId: studioScreen.chaId }} />
                 {/key}
             {:else if moduleToggleBuilderLive && moduleRawId !== null}
+                <StudioStatusChip ack={currentModuleAck()} />
                 {#key ownerKey}
                     <StudioToggleBuilder target={{ kind: 'module', moduleId: moduleRawId }} />
                 {/key}

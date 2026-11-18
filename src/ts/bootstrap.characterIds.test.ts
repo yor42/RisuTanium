@@ -312,16 +312,14 @@ async function composeBlockFile(options: { b?: 'remote' | 'inline', plugins?: Re
 /**
  * Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. The real dispatch is
  * registered, so the legacy main file is converted to a store2 profile as on a production page; the person agrees to
- * leave out the entries a lenient conversion names. A row passes `realDispatch: false` to boot with no dispatch registered.
+ * leave out the entries a lenient conversion names.
  */
-async function freshLoadData(options: { realDispatch: boolean } = { realDispatch: true }) {
+async function freshLoadData() {
     // The boot reads through the page's byte store; here it is the storage-object model above.
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     const { forageStorage } = await import('src/ts/globalApi.svelte')
     injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
-    const dispatch = options.realDispatch
-        ? await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: true, convertWithoutAnswer: 'convert' })
-        : null
+    const dispatch = await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: true, convertWithoutAnswer: 'convert' })
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
@@ -406,11 +404,11 @@ describe('loadData() installs a character list the save can hold (S10)', () => {
         await loadData()
 
         // The conversion names the two entries that are not characters and leaves them out once the person agrees.
-        expect(dispatch?.ui.skippedAsked.map((entries) => entries.map((entry) => entry.reason))).toEqual([['characters[1] is not an object.', 'characters[2] is not an object.']])
+        expect(dispatch.ui.skippedAsked.map((entries) => entries.map((entry) => entry.reason))).toEqual([['characters[1] is not an object.', 'characters[2] is not an object.']])
         expect(characterIds(installedTrees()[0])).toEqual(['a', 'b'])
     })
 
-    test('(R) a character whose id is a block name is installed with a new id and every list that named it follows', async () => {
+    test('(R) the conversion re-ids a character whose id is a block name and every list that named it follows, so the boot installs the new id', async () => {
         armLegacy(baseDb({
             characters: [
                 { chaId: 'a', name: 'A', type: 'character', chats: [] },
@@ -424,27 +422,29 @@ describe('loadData() installs a character list the save can hold (S10)', () => {
         await loadData()
 
         const tree = installedTrees()[0]
-        const [, replaced] = tree.characters as Array<{ chaId: string, chats: Array<{ message: Array<{ saying: string }> }> }>
+        // The saying that follows the re-id is stored by the conversion (the stored-chat assertions of legacyConvert.test.ts); the boot installs the character as a cold stub, so only the id and the lists are read here.
+        const [, replaced] = tree.characters as Array<{ chaId: string }>
         expect(replaced.chaId).not.toBe('preset')
+        expect(replaced.chaId).toMatch(/^[0-9a-f-]{36}$/)
         expect(tree.characterOrder).toEqual(['a', { id: 'F', name: 'F', data: [replaced.chaId] }])
         expect((tree.loadouts as Array<{ characterIds: string[] }>)[0].characterIds).toEqual([replaced.chaId])
-        expect(replaced.chats[0].message[0].saying).toBe(replaced.chaId)
-        expect(replaced.chats[0].message[1].saying).toBe('preset')
     })
 
-    test('(G) an archived character with an id that cannot be saved is installed as it is', async () => {
+    test('(R) a conversion gives an archived character whose id cannot be saved a new id, as it does for a loaded one', async () => {
         armLegacy(baseDb({
             characters: [
                 { chaId: 'a', name: 'A', type: 'character', chats: [] },
                 { chaId: 'config', name: 'Stub', type: 'character', coldstorage: 'unit-1', chats: [] },
             ],
         }))
-        // No dispatch is registered: a conversion replaces the id of a stub whose cold unit it cannot read.
-        const { loadData } = await freshLoadData({ realDispatch: false })
+        const { loadData } = await freshLoadData()
 
         await loadData()
 
-        expect(characterIds(installedTrees()[0])).toEqual(['a', 'config'])
+        const [first, second] = characterIds(installedTrees()[0])
+        expect(first).toBe('a')
+        expect(second).not.toBe('config')
+        expect(second).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
     })
 
     test('(G) a well-formed main file is installed unchanged and nothing is announced', async () => {
@@ -459,17 +459,6 @@ describe('loadData() installs a character list the save can hold (S10)', () => {
         expect(toast).not.toHaveBeenCalled()
     })
 
-    test('(R) the person is told once, after the install, that the list was repaired', async () => {
-        armLegacy(baseDb({ characters: [{ chaId: 'a', name: 'A', type: 'character', chats: [] }, 5] }))
-        // No dispatch is registered: a conversion leaves the entry out after asking, so the boot's own repair finds nothing to tell.
-        const { loadData } = await freshLoadData({ realDispatch: false })
-        const alerts = await import('src/ts/alert')
-        const toast = vi.spyOn(alerts, 'alertToast')
-
-        await loadData()
-
-        expect(toast).toHaveBeenCalledTimes(1)
-    })
 })
 
 describe('loadData() repairs the persona list before the boot pass reads it (S13)', () => {

@@ -18,6 +18,7 @@ import type { OobaChatCompletionRequestParams } from '../model/ooba';
 import { type HypaV3Settings, type HypaV3Preset, createHypaV3Preset, normalizeHypaV3Presets } from '../process/memory/hypaV3Presets'
 import { normalizeTranslatorPresetState, type TranslatorPreset } from '../translator/presets'
 import type { TaskPreset } from '../process/utility/taskPreset'
+import type { PriceOverride } from '../usage/usageTypes'
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { blankSecretRef } from '../secretRef'
 import { safeStructuredClone } from '../polyfill';
@@ -914,6 +915,8 @@ export interface Database{
     themePacks?:unknown[]
     /** The active theme pack's record id, or a built-in theme's `builtin:<slug>`. Absent until a pack is activated; fork-only, never in a `.bin`. */
     activeThemePack?:string
+    /** Per-model price overrides in USD per 1M tokens. Absent until one is set; fork-only, never in a `.bin`. */
+    usagePriceOverrides?:Record<string, PriceOverride>
     sdProvider: string
     webUiUrl:string
     sdSteps:number
@@ -1142,9 +1145,11 @@ export interface Database{
     jsonSchema:string
     strictJsonSchema:boolean
     extractJson:string
+    /** `messages` and `imports` are the old counters; every other key is a usage ledger key (`src/ts/usage/usageLedger.ts`). */
     statics: {
         messages: number
         imports: number
+        [key: string]: number
     }
     customQuotes:boolean
     customQuotesData?:[string, string, string, string]

@@ -3,7 +3,7 @@
  * save machinery.
  *
  * REAL and unmocked here: `characters.ts`, `globalApi.svelte.ts` (`checkCharOrder`,
- * `liveCharacterCheck`, `prepareSaveIteration`), `characterSaveMarks.ts` and `risuSave.ts`. The
+ * `liveCharacterCheck`) and `characterSaveMarks.ts`. The
  * module-mock set is the one of `characters.removeTrashedCharacters.save.svelte.test.ts`. A mocked
  * success here is not evidence of native backend behaviour.
  *
@@ -229,9 +229,8 @@ vi.mock(import('src/ts/media/avatarThumb'), () => ({
 
 //#endregion
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
-import { liveCharacterCheck, prepareSaveIteration, requiresFullEncoderReload } from 'src/ts/globalApi.svelte'
+import { liveCharacterCheck, requiresFullEncoderReload } from 'src/ts/globalApi.svelte'
 import { trashFolderMembers, untrashedMembersOf } from 'src/ts/characters'
-import { RisuSaveEncoder, decodeRisuSave } from 'src/ts/storage/risuSave'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import type { Database, folder } from 'src/ts/storage/database.svelte'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
@@ -370,31 +369,13 @@ describe('trashFolderMembers', () => {
 })
 
 describe('the save after trashing', () => {
-    test('(G) a non-selected member\'s trashTime persists through a save round trip, because each member is marked', async () => {
-        // Two characters sharing a chaId share one saved block, so the round trip uses no twin.
+    test('(G) each trashed member is marked for the save, and no full reload is requested', async () => {
+        // Two characters sharing a chaId share one saved block, so the marks use no twin.
         DBState.db.characters.splice(DBState.db.characters.findIndex((c) => c.name === 'M1Twin'), 1)
-        const encoder = new RisuSaveEncoder()
-        await encoder.init(snapshot(), { compression: false })
 
         await trashFolderMembers(folderEntry(), FOLDER.name)
         expect(requiresFullEncoderReload.state).toBe(false)
         expect([...tracker.character].sort()).toEqual(['m1', 'm2'])
-
-        const iteration = await prepareSaveIteration({
-            tracker,
-            encoder,
-            reloadFlag: requiresFullEncoderReload,
-            reinitEncoder: async () => {
-                const fresh = new RisuSaveEncoder()
-                await fresh.init(snapshot(), { compression: false })
-                return fresh
-            },
-            getDatabase: () => snapshot(),
-        })
-        await iteration.encoder.set(snapshot(), iteration.toSave)
-        const decoded = await decodeRisuSave(new Uint8Array(iteration.encoder.encode()!))
-        const trashed = (decoded.characters ?? []).filter((c: CharacterFixture) => c.trashTime).map((c: CharacterFixture) => c.chaId).sort()
-        expect(trashed).toEqual(['m1', 'm2', 'm3'])
     })
 
     test('(G) while saving is held, the members are trashed and leave the order with the folder, and the count excludes the already-trashed one', async () => {

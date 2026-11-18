@@ -35,7 +35,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     readImage: vi.fn(),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
 
-import { applyLoadout, loadoutPresetIndex, makeLoadout, type Loadout } from './loadout'
+import { applyLoadout, loadoutPresetIndex, makeLoadout, saveCurrentLoadout, type Loadout } from './loadout'
 import { DBState, selectedCharID } from './stores.svelte'
 import type { Database } from './storage/database.svelte'
 
@@ -64,6 +64,7 @@ beforeEach(() => {
         selectedPersona: 0,
         enabledModules: [],
         globalChatVariables: {},
+        loadouts: [],
     } as unknown as Database
 })
 
@@ -177,5 +178,39 @@ describe('makeLoadout', () => {
 
         expect(made.presetName).toBe('Beta Renamed')
         expect(made.presetId).toBe('id-b')
+    })
+})
+
+describe('applyLoadout keeps the saved loadout a snapshot', () => {
+    function saveAndDiverge(): Loadout {
+        selectedCharID.set(-1)
+        DBState.db.globalChatVariables = { toggle_a: '1' }
+        DBState.db.enabledModules = ['m1']
+        saveCurrentLoadout('Saved')
+        DBState.db.globalChatVariables = { toggle_a: '2' }
+        DBState.db.enabledModules = ['m9']
+        return DBState.db.loadouts[0]
+    }
+
+    test('R-L1 regression reproducer: later writes to the live globals and modules do not reach the saved loadout', () => {
+        const saved = saveAndDiverge()
+
+        applyLoadout(saved, ['modules', 'globalVariables'])
+        DBState.db.globalChatVariables.toggle_b = '1'
+        DBState.db.enabledModules.push('m2')
+
+        expect(DBState.db.loadouts[0].globalVariables).toEqual({ toggle_a: '1' })
+        expect(DBState.db.loadouts[0].modules).toEqual(['m1'])
+    })
+
+    test('CG-L2 compatibility guard: the live globals and modules equal the loadout\'s and the character is recorded (passes before and after)', () => {
+        const saved = saveAndDiverge()
+        selectedCharID.set(0)
+
+        applyLoadout(saved, ['modules', 'globalVariables'])
+
+        expect(DBState.db.globalChatVariables).toEqual({ toggle_a: '1' })
+        expect(DBState.db.enabledModules).toEqual(['m1'])
+        expect(saved.characterIds).toEqual(['a'])
     })
 })

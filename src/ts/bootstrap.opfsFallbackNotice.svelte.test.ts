@@ -304,18 +304,15 @@ function armDecode(db: Record<string, unknown>) {
 /**
  * Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. The real dispatch is
  * registered for `kind`, so the legacy main file is converted to a store2 profile as on a production page, and a page
- * on the transitional OPFS store is answered read-only by the dispatch itself. A row whose subject runs only in the
- * boot that registered no dispatch passes `kind: null`. `acknowledgeAlerts` dismisses the dispatch's own notices (a
- * backup conversion, a first seed) for a row that is not about them.
+ * on the transitional OPFS store is answered read-only by the dispatch itself. `acknowledgeAlerts` dismisses the
+ * dispatch's own notices (a backup conversion, a first seed) for a row that is not about them.
  */
-async function freshLoadData(options: { kind: AppStoreKind | null, acknowledgeAlerts?: boolean } = { kind: 'tauri' }) {
+async function freshLoadData(options: { kind: AppStoreKind, acknowledgeAlerts?: boolean } = { kind: 'tauri' }) {
     // The boot reads through the page's byte store; here it is the storage-object model above.
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     const { forageStorage } = await import('src/ts/globalApi.svelte')
     injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
-    if (options.kind !== null) {
-        await registerRealDispatch({ kind: options.kind, acknowledgeAlerts: options.acknowledgeAlerts })
-    }
+    await registerRealDispatch({ kind: options.kind, acknowledgeAlerts: options.acknowledgeAlerts })
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
@@ -489,43 +486,6 @@ describe('loadData(): the storage fallback notice is posted only after setDataba
             alertStore.set({ type: 'none', msg: '' })
             await loadPromise.catch(() => { })
         }
-    })
-})
-
-describe('loadData(): the OPFS leftovers clean-up is started only after the main file decoded (new-behaviour test)', () => {
-    test('a boot that decoded the main file starts the clean-up once, without waiting for it', async () => {
-        armDecode(baseDb())
-        let finishCleanUp: () => void = () => { }
-        cleanUpMock.mockImplementation(() => new Promise<void>((resolve) => { finishCleanUp = resolve }))
-        // No dispatch is registered: only the boot that reads the main file itself starts this clean-up.
-        const { loadData, loadedStore } = await freshLoadData({ kind: null })
-
-        await loadData()
-
-        expect(get(loadedStore)).toBe(true)
-        expect(cleanUpMock).toHaveBeenCalledTimes(1)
-        finishCleanUp()
-    })
-
-    test('a boot that fell back to a numbered backup because the main file would not decode does not start the clean-up', async () => {
-        forageState.items.set('database/database.bin', new Uint8Array([1, 2, 3]))
-        forageState.items.set('database/dbbackup-1.bin', encodeRisuSaveLegacy(baseDb()))
-        getDbBackupsMock.mockResolvedValue([1])
-        const { loadData, loadedStore } = await freshLoadData({ kind: 'tauri', acknowledgeAlerts: true })
-
-        await loadData()
-
-        expect(get(loadedStore)).toBe(true)
-        expect(cleanUpMock).not.toHaveBeenCalled()
-    })
-
-    test('new behaviour: a boot that found no main file and seeded an empty one does not start the clean-up', async () => {
-        const { loadData, loadedStore } = await freshLoadData({ kind: 'tauri', acknowledgeAlerts: true })
-
-        await loadData()
-
-        expect(get(loadedStore)).toBe(true)
-        expect(cleanUpMock).not.toHaveBeenCalled()
     })
 })
 

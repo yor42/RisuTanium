@@ -11,7 +11,7 @@ import { decodeRisuSave, encodeRisuSaveStreamed, isBlockFormatSave, salvageRisuS
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { assertNoModuleStubs } from "../storage/moduleStub";
 import { assertNoForeignModuleStubs, snapshotModuleList } from "./exportModules";
-import { BackupAssetChangedError, BackupAssetTooLargeError, confirmDuringExport, ensureGestureForWriter, runExport, type ExportSession } from "./exportShell";
+import { BackupAssetChangedError, BackupAssetTooLargeError, confirmDuringExport, ensureGestureForWriter, openOutsideBusy, runExport, type ExportSession } from "./exportShell";
 import type { RisuModule } from "../process/modules";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
@@ -69,6 +69,7 @@ import { chatLabelKey, forkOnlyChatLabels, forkOnlyConfirmKey, forkOnlyConfirmKe
 import { expandBranchChats, lateBranchLabels } from "./exportBranches";
 import { isPackAssetName } from "../themePack/packRefs";
 import { isForkOnlyHypaModel } from "../process/memory/embeddingModels";
+import { hasUsageData, hasUsageKeys, withoutUsageKeys } from "../usage/usageLedger";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -255,6 +256,12 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     // (the export confirm names the packs first); both keys are removed, not set to undefined.
     delete plain.themePacks
     delete plain.activeThemePack
+    // Usage statistics (the `statics` ledger keys) and price overrides are fork-only and have no place in a `.bin` (the export
+    // confirm names them first). A `statics` without usage keys keeps the page's own object; the page's values are never changed.
+    if (hasUsageKeys(db.statics)) {
+        plain.statics = withoutUsageKeys(db.statics)
+    }
+    delete plain.usagePriceOverrides
     // Upstream resolves a loadout's preset by name only. A loadout whose preset id resolves carries that preset's current
     // name in the copy, so both builds select the same preset; the page's loadouts are never changed.
     if (Array.isArray(db.loadouts) && Array.isArray(db.botPresets)) {
@@ -776,6 +783,15 @@ async function confirmOmitThemePacks(session: ExportSession, labels: readonly st
     return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupThemePacksConfirm(labels.length, shownPromptNames(labels))))
 }
 
+/**
+ * Asks, before the writer opens, whether to create the backup without the usage statistics and the model prices the
+ * person entered (a `.bin` has no place for them). `true` when the profile holds none or the person confirms; declining
+ * writes nothing.
+ */
+async function confirmOmitUsageStats(session: ExportSession, present: boolean): Promise<boolean> {
+    return await confirmDuringExport(session, present, async () => !present || await alertConfirm(language.backupUsageStatsConfirm))
+}
+
 /** A person's name for an asset of a backup, as the skip report gives it. */
 function describeBackupAsset(assetMap: ReadonlyMap<string, { charName: string, assetName: string }>, key: string): string {
     const assetInfo = assetMap.get(key)
@@ -795,7 +811,7 @@ function describeLateColdStorageKeys(late: ColdStorageBackupCollection): string 
 }
 
 export function SaveLocalBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
-    return withBusy('backupSave', () => runExport((session) => writeLocalBackup(session, options)))
+    return withBusy('backupSave', (busy) => runExport((session) => writeLocalBackup(session, options), busy))
 }
 
 async function writeLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
@@ -930,6 +946,10 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     if (!await confirmOmitThemePacks(session, themePackLabels(db))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
+    // Usage statistics and entered model prices are fork-only; a `.bin` has no place for them.
+    if (!await confirmOmitUsageStats(session, hasUsageData(db))) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
 
     session.cancel.throwIfCancelled()
     // Read once per export, after the last prompt: the gesture step and the writer open both follow this answer.
@@ -938,7 +958,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     await ensureGestureForWriter(session, !serverExport && webWriterNeedsGesture())
     const writer = new LocalWriter()
     session.writer = writer
-    const r = await writer.init(undefined, undefined, localBackupFileName(new Date()), session.cancel, serverExport ? serverExportOpener(session) : undefined)
+    const r = await openOutsideBusy(session.busy, () => writer.init(undefined, undefined, localBackupFileName(new Date()), session.cancel, serverExport ? serverExportOpener(session) : undefined))
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
@@ -1151,7 +1171,7 @@ export async function SavePartialLocalBackup(options: BackupExportOptions = {}):
         return { status: 'declined', cause: 'partial-explanation-declined' }
     }
 
-    return withBusy('backupSave', () => runExport((session) => writePartialLocalBackup(session, options)))
+    return withBusy('backupSave', (busy) => runExport((session) => writePartialLocalBackup(session, options), busy))
 }
 
 /**
@@ -1161,7 +1181,7 @@ export async function SavePartialLocalBackup(options: BackupExportOptions = {}):
  * unit that is gone surfaces through the incomplete-data prompt, and declining it returns `declined`.
  */
 export function exportThisTabBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
-    return withBusy('backupSave', () => runExport((session) => writePartialLocalBackup(session, options)))
+    return withBusy('backupSave', (busy) => runExport((session) => writePartialLocalBackup(session, options), busy))
 }
 
 async function writePartialLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
@@ -1275,6 +1295,9 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     if (!await confirmOmitThemePacks(session, themePackLabels(db))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
+    if (!await confirmOmitUsageStats(session, hasUsageData(db))) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
 
     session.cancel.throwIfCancelled()
     // Read once per export, after the last prompt: the gesture step and the writer open both follow this answer.
@@ -1285,7 +1308,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     session.writer = writer
     // Computed once: the name reported in the outcome is the one the writer was asked for, also across midnight.
     const suggestedName = localBackupFileName(new Date(), true)
-    const r = await writer.init(undefined, undefined, suggestedName, session.cancel, serverExport ? serverExportOpener(session) : undefined)
+    const r = await openOutsideBusy(session.busy, () => writer.init(undefined, undefined, suggestedName, session.cancel, serverExport ? serverExportOpener(session) : undefined))
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
