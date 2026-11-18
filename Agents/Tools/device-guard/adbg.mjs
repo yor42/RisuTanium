@@ -87,8 +87,15 @@
 //     and their Korean forms) are named in the refusal. My Files must be the front package (oom_score_adj 0), else exit 93;
 //     for the share-sheet target it may also be merely visible (adj 100) behind the sheet. A locate read with --myfiles can only
 //     be used by tap/hold --myfiles, which repeat the foreground check; a locate read without it cannot be used with --myfiles.
-//     Not enforced: raw `input tap X Y` and `input keyevent` stay allowed on both playground phones as in r11 (a raw tap cannot
-//     be told apart from any other), the folder a c128-* name sits in, and which row Share acts on.
+//     Enforced only for the --myfiles forms and for any `am` line that names the My Files package. Nothing else about My Files is
+//     enforced, and phone 2 is NOT protected on these paths (all pre-existing, unchanged by r17; the run brief needs a STOP rule):
+//       - raw `input tap X Y` and `input keyevent` (any KEYCODE_*) stay allowed on both playground phones as in r11;
+//       - a plain `pick --name <text>` (any [A-Za-z0-9._-]{3,80} text, so Delete, Rename, Move, Copy, Details too) and a plain
+//         `tap` on it work in My Files on both playground phones, with no foreground check against My Files;
+//       - `hold` and `swipe` accept an agent-chosen --own-package, including com.sec.android.app.myfiles, on both phones;
+//       - an implicit `am start` without -n (for example -a android.intent.action.MAIN -c android.intent.category.APP_FILES, or
+//         GET_CONTENT) passes on both playground phones and, for am, on the emulator, so a file app can be opened on phone 2.
+//     Also not enforced: the folder a c128-* name sits in, and which row Share acts on. Tightening these is a separate decision.
 //
 //   node adbg.mjs pick <common> --state <run>/guard-state.json --name <exact-name>
 //     MC-1438 picker helper. One device-side command dumps the UI to a device file, greps for the exact
@@ -476,7 +483,7 @@ const MYFILES_PACKAGE = 'com.sec.android.app.myfiles'
 const MYFILES_START = `am start -n ${MYFILES_PACKAGE}/.external.ui.MainActivity`
 const MYFILES_FILE = /^c128-[A-Za-z0-9._-]{1,72}$/
 const MYFILES_SHARE_TARGET = 'RisuTanium'
-// Download, Internal storage, Share and their Korean forms (written as escapes: the file stays ASCII).
+// Download, Internal storage, Share and their Korean forms (literal UTF-8 in this file; Node reads .mjs as UTF-8).
 const MYFILES_TEXTS = new Set(['Download', '다운로드', 'Internal storage', '내장 메모리', 'Share', '공유', MYFILES_SHARE_TARGET])
 const MYFILES_DESTRUCTIVE_EN = /\b(rename|delete|move|copy|compress|extract|trash|details|empty|create)\b/i
 // Rename, Delete, Move, Copy, Compress, Details in Korean.

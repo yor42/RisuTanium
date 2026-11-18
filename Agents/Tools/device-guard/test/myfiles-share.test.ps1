@@ -88,6 +88,7 @@ $frontMf = @{ $mf = 7171 }
 $adjFront = @{ '7171' = 0 }
 $adjBehind = @{ '7171' = 100 }
 $adjCached = @{ '7171' = 900 }
+$adjPerceptible = @{ '7171' = 200 }
 $frontOwn = @{ $pkg = 4242; $mf = 7171 }
 $adjOwn = @{ '4242' = 0; '7171' = 900 }
 function Invoke-Node([string[]]$nodeArgs, [hashtable]$pids, [hashtable]$adjs, [switch]$Keep) {
@@ -209,6 +210,16 @@ Test-Result 'MF-7 tap --myfiles refuses when My Files left the front, locate sta
 $null = Invoke-Node (Get-PickArgs $phone1 'RisuTanium') $frontMf $adjFront
 $r = Invoke-Node (Get-TapArgs $phone1) $frontMf $adjBehind -Keep
 Test-Result 'MF-7 tap --myfiles on the share target with My Files behind the sheet' ($r.rc -eq '0' -and ((Get-Calls) -join ' ').Contains('"input","tap"')) ('-> ' + $r.rc)
+# A file row needs My Files in front: merely visible behind a sheet (adj 100) is refused, and the locate stays usable.
+$null = Invoke-Node (Get-PickArgs $phone1 'c128-card.png') $frontMf $adjFront
+$r = Invoke-Node (Get-TapArgs $phone1) $frontMf $adjBehind -Keep
+Test-Result 'MF-7 tap --myfiles on a file row refuses with My Files only visible (adj 100)' ($r.rc -eq '93' -and -not ((Get-Calls) -join ' ').Contains('"input"') -and -not (Get-State).locates[0].used) ('-> ' + $r.rc)
+# The share target accepts adj 0 and 100 only: a perceptible process (adj 200) is refused at pick and at tap.
+$r = Invoke-Node (Get-PickArgs $phone1 'RisuTanium') $frontMf $adjPerceptible
+Test-Result 'MF-7 pick --myfiles RisuTanium refuses with My Files perceptible (adj 200)' ($r.rc -eq '93' -and -not ((Get-Calls) -join ' ').Contains('uiautomator') -and -not (Test-Locked)) ('-> ' + $r.rc)
+$null = Invoke-Node (Get-PickArgs $phone1 'RisuTanium') $frontMf $adjFront
+$r = Invoke-Node (Get-TapArgs $phone1) $frontMf $adjPerceptible -Keep
+Test-Result 'MF-7 tap --myfiles on the share target refuses with My Files perceptible (adj 200)' ($r.rc -eq '93' -and -not ((Get-Calls) -join ' ').Contains('"input"') -and -not (Get-State).locates[0].used) ('-> ' + $r.rc)
 $null = Invoke-Node (Get-PickArgs $phone1 'c128-card.png') $frontMf $adjFront
 $r = Invoke-Node @('tap', '--serial', $phone1, '--log', $log, '--state', $st, '--max-age', '10') $frontMf $adjFront -Keep
 Test-Result 'MF-7 a --myfiles locate cannot be used by a plain tap' ($r.rc -eq '99' -and -not ((Get-Calls) -join ' ').Contains('"input"')) ('-> ' + $r.rc)
@@ -238,6 +249,9 @@ Test-Result 'MF-8 hold --myfiles presses the centre' ($r.rc -eq '0' -and $got.Co
 $null = Invoke-Node (Get-PickArgs $phone1 'c128-card.png') $frontMf $adjFront
 $r = Invoke-Node (Get-HoldArgs $phone1) $frontOwn $adjOwn -Keep
 Test-Result 'MF-8 hold --myfiles refuses when My Files is not in front' ($r.rc -eq '93' -and -not ((Get-Calls) -join ' ').Contains('"input"') -and -not (Get-State).locates[0].used) ('-> ' + $r.rc)
+$null = Invoke-Node (Get-PickArgs $phone1 'c128-card.png') $frontMf $adjFront
+$r = Invoke-Node (Get-HoldArgs $phone1) $frontMf $adjBehind -Keep
+Test-Result 'MF-8 hold --myfiles on a file row refuses with My Files only visible (adj 100)' ($r.rc -eq '93' -and -not ((Get-Calls) -join ' ').Contains('"input"') -and -not (Get-State).locates[0].used) ('-> ' + $r.rc)
 # swipe, tap-home, adb and the other verbs do not take --myfiles; malformed pick --myfiles forms exit 2.
 $null = Invoke-Node (Get-PickArgs $phone1 'c128-card.png') $frontMf $adjFront
 $r = Invoke-Node @('swipe', '--serial', $phone1, '--log', $log, '--state', $st, '--myfiles', '--duration-ms', '300', '--dx', '100', '--dy', '0') $frontMf $adjFront -Keep
