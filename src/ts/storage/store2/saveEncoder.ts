@@ -2,7 +2,7 @@ import type { JsonObject, JsonValue } from '../blockFrame'
 import type { Database, character, groupChat } from '../database.svelte'
 import type { CommitRequest } from './commit'
 import {
-    acknowledgedBytesOf, builtCommitOf, characterMatchesAcknowledged, characterMatchesAcknowledgedPlain, CodecInputError, IDENTITY, isColdStub,
+    acknowledgedBytesOf, builtCommitOf, characterContentMatches, characterMatchesAcknowledged, characterMatchesAcknowledgedPlain, CodecInputError, IDENTITY, isColdStub,
     movable, overlayLeavesEntry, overlayStub, planScopedEncode, plainObject, previousEntriesOf, previousFrom, sameJsonValue, verdictBaseOf,
     type AcknowledgedVerdict, type EncodedTree, type OverlaidFields, type EncodeScope, type ListDerivation, type PreviousEncoding, type ReusableUnit,
     type ScopedPlan, type SkippedCharacter, type VerdictBase,
@@ -166,6 +166,21 @@ export interface SaveEncoder {
      */
     verdictOf(slot: character | groupChat): AcknowledgedVerdict
     /**
+     * `verdictOf` for the content of a resident character: the entry's `chatPage` and the `lastInteraction` entry field
+     * are view state and are left out, so a character that differs only in them is `clean`. Every other difference,
+     * `firstMsgIndex` and `trashTime` included, is `dirty`. `unknown` while an attempt is pending, and for any fault of
+     * the read (logged). It reads the live character afresh and keeps no state.
+     */
+    contentVerdictOf(slot: character | groupChat): AcknowledgedVerdict
+    /**
+     * Whether the database's front (everything a pass writes outside the resident characters and the modules: the
+     * settings, presets, plugins, plugin storage, loadouts, statics, the character list's order and membership, and the
+     * manifest) is what the acknowledged encoding holds. It runs the fixed-group comparison every marked pass makes
+     * with every resident carried and no module encoded: `clean` iff that plan would write nothing and skipped no item.
+     * `unknown` while an attempt is pending, and for any fault of the read (logged). It holds and changes no encoder state.
+     */
+    frontVerdictOf(db: Database): Promise<AcknowledgedVerdict>
+    /**
      * Drops the shadow of every character not in `residents`. The idle net calls it with the resident ids it computed
      * for the slot, before any early return, so a character that was put back stops being held.
      */
@@ -247,13 +262,16 @@ function unheldChaIds(db: Database, previous: PreviousEncoding): string[] {
 }
 
 const MOVED_ENTRY_FIELDS = ['lastInteraction', 'trashTime'] as const
+/** The moved entry fields the content verdict compares: `lastInteraction` is view state and is left out. */
+const CONTENT_MOVED_ENTRY_FIELDS = ['trashTime'] as const
 
 /**
- * Whether the live `lastInteraction` and `trashTime` are what the entry holds. A pass writes a field to the entry only
- * when the codec would move it (`movable`), so an unmovable or removed value expects the entry without the field.
+ * Whether the live moved entry fields (`lastInteraction` and `trashTime`, or the names given) are what the entry
+ * holds. A pass writes a field to the entry only when the codec would move it (`movable`), so an unmovable or removed
+ * value expects the entry without the field.
  */
-function movedFieldsMatch(slot: character | groupChat, entry: ShardEntry): boolean {
-    for (const name of MOVED_ENTRY_FIELDS) {
+function movedFieldsMatch(slot: character | groupChat, entry: ShardEntry, names: readonly (typeof MOVED_ENTRY_FIELDS)[number][] = MOVED_ENTRY_FIELDS): boolean {
+    for (const name of names) {
         const live = slot[name]
         const expected = live !== undefined && movable(name, live)
         if (expected !== Object.hasOwn(entry, name) || (expected && !Object.is(live, entry[name]))) {
@@ -664,6 +682,41 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
             } catch (error) {
                 dropShadow(shadowKeyOf(slot))
                 console.error('The verdict of a resident character could not be read; a full pass will decide.', error)
+                return 'unknown'
+            }
+        },
+        contentVerdictOf(slot) {
+            if (pending !== null) {
+                return 'unknown'
+            }
+            try {
+                const base = verdictBaseOf(slot, previous)
+                if (base === null) {
+                    return 'unknown'
+                }
+                const body = characterContentMatches(slot, { env, lists: options.lists, previous })
+                if (body !== 'clean') {
+                    return body
+                }
+                return movedFieldsMatch(slot, base.acknowledged, CONTENT_MOVED_ENTRY_FIELDS) ? 'clean' : 'dirty'
+            } catch (error) {
+                console.error('The content verdict of a resident character could not be read; a full pass will decide.', error)
+                return 'unknown'
+            }
+        },
+        async frontVerdictOf(db) {
+            if (pending !== null) {
+                return 'unknown'
+            }
+            try {
+                const scoped = await planScopedEncode(
+                    db,
+                    { env, lists: options.lists, seq: 0, createdAt: now(), previous, chunkMemo },
+                    { modules: false, characters: new Set<string>(), skipUnsavableCharacters: true, skipUnsavableItems: true },
+                )
+                return scoped.unchanged && scoped.skipped.length === 0 && scoped.skippedItems.length === 0 ? 'clean' : 'dirty'
+            } catch (error) {
+                console.error('The front of the database could not be read; a full pass will decide.', error)
                 return 'unknown'
             }
         },

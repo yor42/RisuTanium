@@ -1577,10 +1577,11 @@ export function loadBackupAtBoot(target: BootImportTarget): Promise<BootImportEn
 export type OpenedRestoreEnd = 'pageLive' | 'pageEnding';
 
 /**
- * Restores a `.bin` another Android app opened, after one confirmation that names the file. Never rejects.
- * Nothing is opened or written until the person has confirmed: a busy app, a read-only page and a decline each end it
- * first. The restore takes its own busy entry (`LoadLocalBackup`), so none is held here, where it would refuse that very
- * restore. The source is closed however this ends.
+ * Restores a backup (`.bin` or `.rtb`, chosen by content) another Android app opened, after one confirmation that names
+ * the file. Never rejects. Nothing is opened or written until the person has confirmed: a busy app, a read-only page and
+ * a decline each end it first. The restore takes its own busy entry, so none is held here, where it would refuse that very
+ * restore; the probe reads after the open, inside the run, with no busy entry. The source is closed however this ends,
+ * after the restore returned.
  */
 export async function restoreOpenedBackup(entry: { name: string, path: string }): Promise<OpenedRestoreEnd> {
     let source: ImportSource | null = null;
@@ -1627,7 +1628,8 @@ export async function restoreOpenedBackup(entry: { name: string, path: string })
             console.error(error);
         }
         runOutcome = 'failed';
-        const end = await LoadLocalBackup(undefined, { source, name: entry.name, lastModified });
+        const { routeOpenedBackup } = await import('./backupRouter');
+        const end = await routeOpenedBackup({ source, name: entry.name, lastModified });
         runOutcome = end.outcome;
         switch (end.outcome) {
             case 'committed':

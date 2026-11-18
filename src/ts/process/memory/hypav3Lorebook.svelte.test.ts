@@ -171,6 +171,13 @@ describe('planSummaryExport', () => {
 })
 
 describe('planLoreImport', () => {
+    // compatibility guard: passes before and after (an imported summary has no creation time)
+    test('imported summaries carry no creation time', () => {
+        const result = planLoreImport([entry('The harbor.', { key: 'harbor' }), entry('Second', { key: 'x' })], [])
+        expect(result.summaries).toHaveLength(2)
+        for (const s of result.summaries) expect('createdAt' in s).toBe(false)
+    })
+
     test('I1 an entry becomes a summary with verbatim text, no memos, not important, tags from its keys, no category', () => {
         const result = planLoreImport([entry('The harbor.', { key: 'harbor, Mina' }), entry('Second', { key: 'x' })], [])
         expect(result.skipped).toBe(0)

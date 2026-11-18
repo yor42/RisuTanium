@@ -18,7 +18,7 @@ import { createMemoryByteStore, type MemoryByteStore, type MemoryByteStoreOption
 import { getInlayDraftPreview, getInlayRender, setInlayAsset, type InlayAsset } from './inlays'
 import { cachedInlayRender, dropInlayRender } from './inlayRenderCache'
 import { withInlayLock, writeAppInlay } from './inlayStore'
-import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES } from 'src/ts/storage/assetUrlGate'
+import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES, wholeReadBytesOfUrl } from 'src/ts/storage/assetUrlGate'
 
 //#region module mocks
 
@@ -551,5 +551,41 @@ describe('a Blob video above the whole-read limit on Android', () => {
 
         expect(bodyKeys(store.reads).length).toBe(1)
         expect(cachedInlayRender(id)).toBeNull()
+    })
+})
+
+describe('the whole-read size of an inlay image URL', () => {
+    test('reproducer: on Android the store URL of a Blob image is registered with the body length', async () => {
+        const id = freshId()
+        renderedIds.push(id)
+        await setInlayAsset(id, asset(blobOfSize(3, 0, 'image/png'), 'image'))
+
+        const render = (await getInlayRender(id))!
+
+        expect(render.source).toBe('store-url')
+        expect(wholeReadBytesOfUrl(render.url)).toBe(3 * MIB)
+    })
+
+    test('guard: off Android the store URL of a Blob image is not registered', async () => {
+        h.android = false
+        const id = freshId()
+        renderedIds.push(id)
+        await setInlayAsset(id, asset(blobOfSize(3, 0, 'image/png'), 'image'))
+
+        const render = (await getInlayRender(id))!
+
+        expect(render.source).toBe('store-url')
+        expect(wholeReadBytesOfUrl(render.url)).toBeUndefined()
+    })
+
+    test('guard: on Android the store URL of a Blob video, a media read, is not registered', async () => {
+        const id = freshId()
+        renderedIds.push(id)
+        await setInlayAsset(id, asset(blobOfSize(3, 0, 'video/mp4'), 'video'))
+
+        const render = (await getInlayRender(id))!
+
+        expect(render.source).toBe('store-url')
+        expect(wholeReadBytesOfUrl(render.url)).toBeUndefined()
     })
 })

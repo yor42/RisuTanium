@@ -27,7 +27,7 @@ import {
 const layout = vi.hoisted(() => ({ MODULE_INDEX_LAYOUT: 1 }))
 vi.mock('src/ts/storage/store2/codec/moduleIndexParams', () => ({ MODULE_INDEX_PARAMS: layout }))
 
-vi.mock('src/ts/platform', () => ({ isTauri: false, isNodeServer: false, isWeb: true, isIOS: () => false }))
+vi.mock('src/ts/platform', () => ({ isTauri: false, isNodeServer: false, isIOS: () => false }))
 vi.mock('src/ts/globalApi.svelte', () => {
     class TauriWriter {
         touchedFile = true
