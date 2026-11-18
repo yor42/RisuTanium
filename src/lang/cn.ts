@@ -3280,6 +3280,8 @@ export const languageChinese = {
     "themePackSize": (size: string) => `大小：${size}`,
     "themePackLicense": (license: string) => `许可证：${license}`,
     "themePackAttribution": (attribution: string) => `署名：${attribution}`,
+    "themePackDetails": "详细信息",
+    "themePackDetailsFor": (name: string) => `详细信息：${name}`,
     "themePackFonts": "字体许可证",
     "themePackFontLicense": (file: string, license: string) => `${file}：${license}`,
     "themePackUnreadableName": "无法读取的主题包",

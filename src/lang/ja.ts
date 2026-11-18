@@ -3421,6 +3421,8 @@ export const languageJapanese = {
     themePackSize: (size: string) => `サイズ: ${size}`,
     themePackLicense: (license: string) => `ライセンス: ${license}`,
     themePackAttribution: (attribution: string) => `表示（クレジット）: ${attribution}`,
+    themePackDetails: "詳細",
+    themePackDetailsFor: (name: string) => `詳細: ${name}`,
     themePackFonts: "フォントのライセンス",
     themePackFontLicense: (file: string, license: string) => `${file}: ${license}`,
     themePackUnreadableName: "読み取れないテーマパック",

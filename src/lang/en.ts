@@ -3420,6 +3420,8 @@ export const languageEnglish = {
     themePackSize: (size: string) => `Size: ${size}`,
     themePackLicense: (license: string) => `License: ${license}`,
     themePackAttribution: (attribution: string) => `Attribution: ${attribution}`,
+    themePackDetails: 'Details',
+    themePackDetailsFor: (name: string) => `Details: ${name}`,
     themePackFonts: 'Font licenses',
     themePackFontLicense: (file: string, license: string) => `${file}: ${license}`,
     themePackUnreadableName: 'Unreadable theme pack',
