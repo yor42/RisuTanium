@@ -3931,7 +3931,21 @@ export const languageChinese = {
         "sidebarItemRemoved": "已移除“{name}”",
         "sidebarItemRestored": "“{name}”已恢复",
         "sidebarItemUndoRefused": "无法撤销：“{name}”已在列表中。",
-        "sidebarItemUndoFailed": "无法撤销移除。"
+        "sidebarItemUndoFailed": "无法撤销移除。",
+        "libraryUndoTrashed": (count: number) => count === 1 ? '已将 1 个角色移至垃圾桶' : `已将 ${count} 个角色移至垃圾桶`,
+        "libraryUndoTrashedEndNote": "撤销时，所在文件夹已不存在的角色会放到列表末尾。",
+        "libraryUndoRestored": (count: number) => count === 1 ? '1 个角色已从垃圾桶还原' : `${count} 个角色已从垃圾桶还原`,
+        "libraryUndoTrashRefused": "无法撤销：这些角色已不是因该操作而在垃圾桶中。",
+        "libraryUndoTrashFailed": "无法撤销移至垃圾桶的操作。",
+        "libraryUndoGrouped": "已归入新文件夹",
+        "libraryUndoMerged": "已创建新文件夹",
+        "libraryUndoMovedIntoFolder": (count: number) => count === 1 ? '已将 1 项移入文件夹' : `已将 ${count} 项移入文件夹`,
+        "libraryUndoFolderRemoved": "已移动；一个文件夹已被移除",
+        "libraryUndoUngrouped": "已取消文件夹分组",
+        "libraryUndoFolderDeleted": "文件夹已删除；其中的角色仍保留在列表中",
+        "libraryUndoOrderRestored": "已恢复顺序",
+        "libraryUndoOrderRefused": "无法撤销：此后库的顺序已发生变化。",
+        "libraryUndoOrderFailed": "无法撤销该更改。"
     },
     "uiCommon": {
         "delete": "删除",

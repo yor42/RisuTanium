@@ -2,6 +2,7 @@ import { DBState } from 'src/ts/stores.svelte'
 import { language } from '../../lang'
 import { folderEntryAt, folderMemberIds, editFolder, ungroupFolder, type FolderRef } from './sidebarOrder'
 import { trashFolderMembers, untrashedMembersOf, visibleCharacterIds } from '../../ts/characters'
+import { copyOrder, postOrderUndo, postTrashUndo } from '../../ts/libraryUndo'
 import { getCharacterIndexObject, selectSingleFileObject } from 'src/ts/util'
 import { pickedAssetLimitBytes, saveAssetFromBlob } from 'src/ts/globalApi.svelte'
 import { reportRefusedAssets } from 'src/ts/storage/pickedAssetLimit'
@@ -59,8 +60,11 @@ const folderExists = (id: string) => editFolder(DBState.db.characterOrder, id, (
 
 // The folder's own entry goes and its members take its place. Resolved against the live
 // order by the menu's ref at the moment of the choice; a folder that is gone changes nothing.
-const ungroup = (host: FolderMenuHost, ref: FolderRef) => {
+// Both hosts apply the change synchronously, so the copies taken around the call are the order before and the
+// order the write left; the Undo toast of `kind` is posted only for a write that happened.
+const ungroup = (host: FolderMenuHost, ref: FolderRef, kind: 'ungrouped' | 'folderDeleted') => {
     let changed = false
+    const orderBefore = copyOrder(DBState.db.characterOrder)
     host.applyOrderChange((order) => {
         const next = ungroupFolder(order, ref)
         changed = next !== null
@@ -68,6 +72,7 @@ const ungroup = (host: FolderMenuHost, ref: FolderRef) => {
     })
     if(changed){
         host.closeFolder(ref.id)
+        postOrderUndo(kind, orderBefore, copyOrder(DBState.db.characterOrder))
     }
 }
 
@@ -87,14 +92,14 @@ async function deleteFolderMenu(host: FolderMenuHost, ref: FolderRef, folderName
         : [language.deleteFolderKeep, language.cancel]
     const sel = parseInt(await alertSelect(labels, undefined, { cancel: String(labels.length - 1) }))
     if(sel === 0){
-        ungroup(host, ref)
+        ungroup(host, ref, 'folderDeleted')
     }
     else if(sel === 1 && count > 0){
         // The folder as it is now: it may have changed while the choice was open. The order's own
         // object is passed, so the trash finds the same entry again and not a same-id twin.
         const entry = folderEntryAt(DBState.db.characterOrder, ref)
         if(entry !== null){
-            await trashFolderMembers(entry, folderName)
+            await trashFolderMembers(entry, folderName, { onTrashed: postTrashUndo })
         }
     }
 }
@@ -108,7 +113,7 @@ export async function runFolderMenu(target: FolderMenuTarget, host: FolderMenuHo
     const { ref, id: folderId, name: folderName } = target
     const sel = parseInt(await alertSelect([language.renameFolder,language.changeFolderColor,language.changeFolderImage,language.ungroupFolder,language.deleteFolder,language.cancel], undefined, { cancel: '5' }))
     if(sel === 3){
-        ungroup(host, ref)
+        ungroup(host, ref, 'ungrouped')
     }
     else if(sel === 4){
         await deleteFolderMenu(host, ref, folderName)

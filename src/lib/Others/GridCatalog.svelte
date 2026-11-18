@@ -3,6 +3,7 @@
     import { afterFlush } from "../../ts/afterFlush";
     import { v4 } from "uuid";
     import { archivedMemberIds, changeChar, getCharImage, removeChar, supersedeChangeChar, trashCharacters, type ChangeCharOutcome } from "../../ts/characters";
+    import { copyOrder, foldersLost, postOrderUndo, postTrashUndo, type OrderCopy, type OrderUndoKind } from "../../ts/libraryUndo";
     import { useCharImageLookups } from "../../ts/media/charImageLookups";
     import { isAndroidTransport } from "../../ts/storage/tauriByteTransport";
     import { checkCharOrder } from "src/ts/globalApi.svelte";
@@ -589,7 +590,7 @@
         }
         trashing = true
         try {
-            if (await trashCharacters(acting) > 0) {
+            if (await trashCharacters(acting, { onTrashed: postTrashUndo }) > 0) {
                 picks.clear()
             }
         } finally {
@@ -625,9 +626,11 @@
         groupGeneration++
         const spec = { id: v4(), name: language.sidebarUi.defaultFolderName }
         const idsBefore = folderIdsInOrder()
+        const orderBefore = copyOrder(DBState.db.characterOrder)
         if (!applyGridOrderChange((order) => groupIntoFolder(order, plan.sources, spec))) {
             return
         }
+        const orderAfter = copyOrder(DBState.db.characterOrder)
         const idsAfter = folderIdsInOrder()
         for (const id of idsBefore) {
             const at = openFolders.indexOf(id)
@@ -635,6 +638,7 @@
                 openFolders.splice(at, 1)
             }
         }
+        postOrderUndo('grouped', orderBefore, orderAfter)
         picks.clear()
         void scrollToNewFolder(spec.id, groupGeneration)
     }
@@ -1011,6 +1015,9 @@
     interface DropPlan {
         plan: MovePlan
         merge: boolean
+        // What the slot was: a drop onto a character (`merge`), onto a folder tile (`append`), or a gap, which
+        // includes the `end` slot and a gap inside an open folder.
+        kind: 'merge' | 'append' | 'gap'
         dissolved: DissolvedFolder[]
         // The tile the slot is on or beside and the object it stands for; the folder object a folder gap is in.
         anchorKey: string | null
@@ -1035,6 +1042,7 @@
             return {
                 plan,
                 merge: true,
+                kind: 'merge',
                 dissolved: foldersDissolvedBy(order, plan.sources, { in: 'merge', target }),
                 anchorKey: tile.key,
                 anchorPicked: resolvePicked(tile, DBState.db.characters, order),
@@ -1068,6 +1076,7 @@
         return {
             plan,
             merge: false,
+            kind: slot.kind === 'append' ? 'append' : 'gap',
             dissolved: foldersDissolvedBy(order, plan.sources, toGap),
             anchorKey,
             anchorPicked: anchor ? resolvePicked(anchor, DBState.db.characters, order) : null,
@@ -1128,9 +1137,11 @@
     function commitDrop(drop: DropPlan): boolean {
         const keptFolders = drop.merge ? [] : keptPickedFolders(drop.dissolved)
         const idsBefore = folderIdsInOrder()
+        const orderBefore = copyOrder(DBState.db.characterOrder)
         if (!applyGridOrderChange(drop.apply)) {
             return false
         }
+        const orderAfter = copyOrder(DBState.db.characterOrder)
         const idsAfter = folderIdsInOrder()
         for (const id of idsBefore) {
             const at = openFolders.indexOf(id)
@@ -1142,8 +1153,25 @@
             picks.clear()
         }
         repickKeptFolders(keptFolders)
+        const undoKind = dropUndoKind(drop, orderBefore, orderAfter)
+        if (undoKind !== null) {
+            postOrderUndo(undoKind, orderBefore, orderAfter, drop.plan.count)
+        }
         void announce(language.othersUi.editMoved(drop.plan.count))
         return true
+    }
+
+    // Which drops offer an Undo: a new folder (merge), a write that removed a folder (a dragged folder dissolved
+    // or a source folder emptied; counted by occurrences, so a lost same-id twin counts), and a drop onto a folder
+    // tile. A plain gap move, inside an open folder too, offers none.
+    function dropUndoKind(drop: DropPlan, before: OrderCopy, after: OrderCopy): OrderUndoKind | null {
+        if (drop.kind === 'merge') {
+            return 'merged'
+        }
+        if (foldersLost(before, after)) {
+            return 'folderRemoved'
+        }
+        return drop.kind === 'append' ? 'movedIntoFolder' : null
     }
 
     // Asks first when the drop would remove a dragged folder, then builds the plan again from the live
@@ -1575,7 +1603,7 @@
                     {/if}
                     <button class="hover:text-textcolor text-textcolor2" onclick={(event) => {
                         event.stopPropagation()
-                        removeChar(char, char.name)
+                        removeChar(char, char.name, 'normal', { onTrashed: postTrashUndo })
                     }}>
                         <TrashIcon />
                     </button>

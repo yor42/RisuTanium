@@ -168,6 +168,7 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 import { DBState } from '../../ts/stores.svelte'
 import { resetBackHandlersForTests } from '../../ts/backHandlers'
 import { language } from '../../lang'
+import { resetToastHostForTests, toastHost } from '../../ts/toast/toastHost.svelte'
 import { setLiveKeysBlockedReader } from '../../ts/keyEventBlocked'
 import { OPEN_FOLDERS_KEY } from '../SideBars/railMemory'
 import { listRows } from '../SideBars/sidebarOrder'
@@ -364,6 +365,7 @@ beforeEach(() => {
     removeCharSpy.mockClear()
     checkCharOrderSpy.mockClear()
     endGridSpy.mockClear()
+    resetToastHostForTests()
     trashCharactersSpy.mockReset()
     trashCharactersSpy.mockImplementation(async () => 0)
     menus = []
@@ -1407,6 +1409,38 @@ describe('Grid group: scrolling to the new folder', () => {
             await settle()
             expect(DBState.db.characterOrder.some((entry) => typeof entry === 'object' && entry.name === NEW_FOLDER)).toBe(true)
             expect(stub.writes.every((value) => value === 0)).toBe(true)
+        })
+    })
+})
+
+describe('Grid group: the Undo toast', () => {
+    const undoToasts = () => toastHost.visible.filter((toast) => toast.kind === 'undo')
+
+    test('(R) O5 Group posts "Grouped into a new folder", and Undo puts the exact previous order back', async () => {
+        fixture()
+        const start = JSON.parse(dbJson()).characterOrder
+        await withMounted(async (target) => {
+            await enter(target)
+            await tap(target, 'Char A')
+            await tap(target, 'Char U')
+            groupButton(target)!.click()
+            await settle()
+            expect(shape()).toEqual([`${NEW_FOLDER}[A,U]`, 'F1[B,C]'])
+            expect(undoToasts()).toHaveLength(1)
+            expect(undoToasts()[0].text).toBe(language.othersUi.libraryUndoGrouped)
+            await toastHost.activate(undoToasts()[0].id)
+            expect(JSON.parse(dbJson()).characterOrder).toEqual(start)
+        })
+    })
+
+    test('(G) a Group that writes nothing posts nothing', async () => {
+        fixture()
+        await withMounted(async (target) => {
+            await enter(target)
+            await tap(target, 'Char A')
+            await hold(target, 'Char U', 3, 2)
+            await answer('2')
+            expect(undoToasts()).toHaveLength(0)
         })
     })
 })
