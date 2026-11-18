@@ -12,6 +12,20 @@
 
     let submenu = $state(0)
 
+    // An upstream card export writes `loreExt` as the card extensions, so the stored copy follows the option.
+    function syncLoreExtFlag(name: 'risu_fullWordAsciiBoundary' | 'risu_cjkWordStart', on: boolean) {
+        const char = DBState.db.characters[$selectedCharID]
+        if(char.type === 'group'){
+            return
+        }
+        if(on){
+            char.loreExt = { ...char.loreExt, [name]: true }
+        }
+        else if(char.loreExt){
+            delete char.loreExt[name]
+        }
+    }
+
     function isAllCharacterLoreAlwaysActive() {
         const globalLore = DBState.db.characters[$selectedCharID].globalLore;
         return globalLore && globalLore.every((book) => book.alwaysActive);
@@ -84,18 +98,13 @@
         </div>
         <div class="flex items-center mt-4">
             <Check bind:check={DBState.db.characters[$selectedCharID].loreSettings.fullWordAsciiBoundary} onChange={(on) => {
-                // An upstream card export writes `loreExt` as the card extensions, so the stored copy follows the option.
-                const char = DBState.db.characters[$selectedCharID]
-                if(char.type === 'group'){
-                    return
-                }
-                if(on){
-                    char.loreExt = { ...char.loreExt, risu_fullWordAsciiBoundary: true }
-                }
-                else if(char.loreExt){
-                    delete char.loreExt.risu_fullWordAsciiBoundary
-                }
+                syncLoreExtFlag('risu_fullWordAsciiBoundary', on)
             }} name={language.fullWordAsciiBoundary}><Help key="fullWordAsciiBoundary"/></Check>
+        </div>
+        <div class="flex items-center mt-4">
+            <Check bind:check={DBState.db.characters[$selectedCharID].loreSettings.cjkWordStart} onChange={(on) => {
+                syncLoreExtFlag('risu_cjkWordStart', on)
+            }} name={language.cjkWordStart}><Help key="cjkWordStart"/></Check>
         </div>
         <span class="text-textcolor mt-4 mb-2">{language.loreBookDepth}</span>
         <NumberInput size="sm" min={0} max={20} bind:value={DBState.db.characters[$selectedCharID].loreSettings.scanDepth} />

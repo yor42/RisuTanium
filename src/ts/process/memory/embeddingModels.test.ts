@@ -6,9 +6,12 @@
 import { describe, expect, test } from 'vitest'
 import {
     DEFAULT_HYPA_MODEL,
+    EMBEDDING_RECIPES,
     FORK_ONLY_HYPA_MODELS,
     UPSTREAM_HYPA_MODELS,
     isForkOnlyHypaModel,
+    recipeCacheTag,
+    recipePrefix,
     type ForkOnlyHypaModel,
     type HypaModel,
     type UpstreamHypaModel,
@@ -68,5 +71,59 @@ describe('embedding model key lists', () => {
         for (const value of ['futureUpstreamModel', '', null, undefined, 0, {}, ['multiE5Small']]) {
             expect(isForkOnlyHypaModel(value)).toBe(false)
         }
+    })
+})
+
+describe('embedding recipe table', () => {
+    const allModels: HypaModel[] = [...UPSTREAM_HYPA_MODELS, ...FORK_ONLY_HYPA_MODELS]
+    const REMOTE_MODELS: HypaModel[] = ['custom', 'ada', 'openai3small', 'openai3large', 'voyageContext3']
+    const GPU_PAIRS: [HypaModel, HypaModel][] = [
+        ['MiniLMGPU', 'MiniLM'], ['nomicGPU', 'nomic'], ['bgeSmallEnGPU', 'bgeSmallEn'], ['bgem3GPU', 'bgem3'],
+        ['multiMiniLMGPU', 'multiMiniLM'], ['bgeM3KoGPU', 'bgeM3Ko'],
+    ]
+
+    // new-rule test (the table does not exist before): every model has a row
+    test('every model key has a recipe row', () => {
+        expect(Object.keys(EMBEDDING_RECIPES).sort()).toEqual([...allModels].sort())
+    })
+
+    test('remote models have no pooling, no prefix and no cache tag', () => {
+        for (const model of REMOTE_MODELS) {
+            expect(EMBEDDING_RECIPES[model], model).toEqual({ pooling: null, queryPrefix: '', documentPrefix: '', cacheTag: '' })
+        }
+    })
+
+    test('every other model is local and has a pooling', () => {
+        for (const model of allModels.filter((key) => !REMOTE_MODELS.includes(key))) {
+            expect(['mean', 'cls'], model).toContain(EMBEDDING_RECIPES[model].pooling)
+        }
+    })
+
+    test('a GPU row equals its wasm row', () => {
+        for (const [gpu, wasm] of GPU_PAIRS) {
+            expect(EMBEDDING_RECIPES[gpu], gpu).toEqual(EMBEDDING_RECIPES[wasm])
+        }
+    })
+
+    test('a model with a prefix or CLS pooling has a cache tag, and an unchanged model has none', () => {
+        for (const model of allModels) {
+            const recipe = EMBEDDING_RECIPES[model]
+            const changed = recipe.pooling === 'cls' || recipe.queryPrefix !== '' || recipe.documentPrefix !== ''
+            expect(recipe.cacheTag !== '', model).toBe(changed)
+        }
+    })
+
+    test('the helpers give the prefix per role and a role marker only when the prefixes differ', () => {
+        expect(recipePrefix('nomic', 'document')).toBe('search_document: ')
+        expect(recipePrefix('nomic', 'query')).toBe('search_query: ')
+        expect(recipePrefix('multiE5Small', 'document')).toBe('passage: ')
+        expect(recipePrefix('multiE5Small', 'query')).toBe('query: ')
+        expect(recipePrefix('MiniLM', 'query')).toBe('')
+        expect(recipeCacheTag('nomic', 'document')).toBe('|r1:d')
+        expect(recipeCacheTag('nomic', 'query')).toBe('|r1:q')
+        expect(recipeCacheTag('bgem3', 'document')).toBe('|r1')
+        expect(recipeCacheTag('bgem3', 'query')).toBe('|r1')
+        expect(recipeCacheTag('MiniLM', 'document')).toBe('')
+        expect(recipeCacheTag('voyageContext3', 'query')).toBe('')
     })
 })

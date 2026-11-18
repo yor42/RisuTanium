@@ -622,22 +622,21 @@ export async function hypaMemoryV2(
     const processor = new HypaProcesser(db.hypaModel);
     processor.oaikey = db.supaMemoryKey;
 
-    const searchDocumentPrefix = "search_document: ";
-    const prefixLength = searchDocumentPrefix.length;
-
-    // Add chunks to processor for similarity search
+    // Add chunks to processor for similarity search; the processor adds the model's own document prefix.
     await processor.addText(
         data.chunks
             .filter((v) => v.text.trim().length > 0)
-            .map((v) => searchDocumentPrefix + v.text.trim()) // sometimes this should not be used at all. Risuai does not support embedding model that this is meaningful, isn't it?
+            .map((v) => v.text.trim())
     );
 
     let scoredResults: { [key: string]: number } = {};
     for (let i = 0; i < 3; i++) { // Should parameterize this, fixed length 3 is a magic number without explanation
         const pop = chats[chats.length - i - 1];
         if (!pop) break;
+        // A message without text (for example image-only) has nothing to match, and remote embedding APIs reject an empty input.
+        if (!pop.content?.trim()) continue;
         const searched = await processor.similaritySearchScored(
-            `search_query: ${pop.content}`
+            pop.content
         );
         for (const result of searched) {
             const score = result[1] / (i + 1);
@@ -654,8 +653,7 @@ export async function hypaMemoryV2(
         allocatedTokens - mainPromptTokens - chunkResultTokens > 0 &&
         scoredArray.length > 0
         ) {
-        const [text] = scoredArray.shift();
-        const content = text.substring(prefixLength);
+        const [content] = scoredArray.shift();
         const tokenized = await tokenizer.tokenizeChat({
             role: "system",
             content: content,
