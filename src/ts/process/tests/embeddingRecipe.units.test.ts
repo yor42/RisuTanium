@@ -8,7 +8,9 @@
  * Models are string literals on purpose: the file does not statically import the recipe table (only the new-rule table
  * case loads it dynamically), so each other case also runs against a base that has none. The comment above each case marks it: a regression reproducer fails against the base that mean-pools
  * every model, sends raw text and keys every local vector as `text|model`; a compatibility guard passes before and after;
- * a new-rule test checks a rule that has no base counterpart.
+ * a new-rule test checks a rule that has no base counterpart. The `voyageContext3 V2 role keys` section runs the remote
+ * contextual provider over a fake `globalFetch` that answers per `input_type`, so it proves key separation only, not
+ * what Voyage returns.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EmbeddingPooling, HypaModel } from '../memory/embeddingModels'
@@ -34,7 +36,7 @@ const fetchBox = vi.hoisted(() => ({
 }))
 
 vi.mock('src/ts/storage/database.svelte', () => ({
-    getDatabase: () => ({ hypaModel: undefined, hypaCustomSettings: { model: dbBox.customModel }, supaMemoryKey: '' }),
+    getDatabase: () => ({ hypaModel: undefined, hypaCustomSettings: { model: dbBox.customModel }, supaMemoryKey: '', voyageApiKey: 'voyage-test-key' }),
 }))
 vi.mock('src/ts/globalApi.svelte', () => ({
     globalFetch: (...args: unknown[]) => fetchBox.globalFetch(...args),
@@ -318,5 +320,122 @@ describe('cache keys follow the recipe', () => {
         await new HypaProcesser('bgem3').addText(['X'])
         await new HypaProcesser('bgem3').addText(['X'])
         expect(pipelineBox.extractor).toHaveBeenCalledTimes(1)
+    })
+})
+
+describe('voyageContext3 V2 role keys', () => {
+    const OLD_KEY = 'X|voyageContext3|voyageContext3'
+    type Summary = { title: string }
+
+    interface VoyageBody { input_type: 'document' | 'query', inputs: string[][] }
+    const voyageBodies = () => fetchBox.globalFetch.mock.calls.map((call) => (call[1] as { body: VoyageBody }).body)
+    /** The `input_type` of every Voyage request, in order. */
+    const voyageTypes = () => voyageBodies().map((body) => body.input_type)
+
+    // The fake answers like the real endpoint's shape: a document request returns one vector list per group, a query
+    // request one single-vector group per query. The two roles return different vectors, as Voyage does.
+    beforeEach(() => {
+        fetchBox.globalFetch.mockReset().mockImplementation(async (_url: string, request: { body: VoyageBody }) => {
+            const { input_type, inputs } = request.body
+            if (input_type === 'document') {
+                return { ok: true, data: { data: inputs.map((group) => ({ data: group.map(() => ({ embedding: [1, 0] })) })) } }
+            }
+            return { ok: true, data: { data: inputs.map(() => ({ data: [{ embedding: [0, 1] }] })) } }
+        })
+    })
+
+    // regression reproducer: R1 (the base serves the document vector for the query of the same text)
+    it('a search after a single-text document is embedded as a query and scored with the query vector', async () => {
+        const { HypaProcessorV2 } = await load()
+        const processor = new HypaProcessorV2<undefined>({ model: 'voyageContext3' })
+        await processor.addTexts([{ id: 'a', content: 'X' }])
+        const scored = await processor.similaritySearchScored('X')
+        expect(voyageTypes()).toEqual(['document', 'query'])
+        expect(voyageBodies()[1].inputs).toEqual([['X']])
+        expect(scored[0][1]).toBe(0)
+    })
+
+    // regression reproducer: R1 with the metadata hypav3 passes for every chunk
+    it('a summary chunk with metadata gets the document role key', async () => {
+        const { HypaProcessorV2 } = await load()
+        const processor = new HypaProcessorV2<Summary>({ model: 'voyageContext3' })
+        await processor.addTexts([{ id: '0-0', content: 'X', metadata: { title: 's' } }])
+        expect(store.setKeys).toEqual([OLD_KEY + '|r1:d'])
+    })
+
+    // regression reproducer: R2 (the base serves the query vector for the document of the same text)
+    it('a single-text document after a search is embedded as a document', async () => {
+        const { HypaProcessorV2 } = await load()
+        const processor = new HypaProcessorV2<undefined>({ model: 'voyageContext3' })
+        await processor.similaritySearchScored('X')
+        await processor.addTexts([{ id: 'a', content: 'X' }])
+        expect(voyageTypes()).toEqual(['query', 'document'])
+        expect(processor.vectors.get('a')?.embedding).toEqual([1, 0])
+    })
+
+    // regression reproducer: R3a (the base reads the old ambiguous key as a query hit)
+    it('a query never reads the old ambiguous key and writes the query key', async () => {
+        store.items.set(OLD_KEY, seed())
+        const { HypaProcessorV2 } = await load()
+        await new HypaProcessorV2<undefined>({ model: 'voyageContext3' }).similaritySearchScored('X')
+        expect(voyageTypes()).toEqual(['query'])
+        expect(store.setKeys).toEqual([OLD_KEY + '|r1:q'])
+        expect(store.items.get(OLD_KEY)).toEqual(seed())
+    })
+
+    // regression reproducer: R3b (the base reads the old ambiguous key as a document hit)
+    it('a single-text document never reads the old ambiguous key and writes the document key', async () => {
+        store.items.set(OLD_KEY, seed())
+        const { HypaProcessorV2 } = await load()
+        await new HypaProcessorV2<undefined>({ model: 'voyageContext3' }).addTexts([{ id: 'a', content: 'X' }])
+        expect(voyageTypes()).toEqual(['document'])
+        expect(store.setKeys).toEqual([OLD_KEY + '|r1:d'])
+        expect(store.items.get(OLD_KEY)).toEqual(seed())
+    })
+
+    // compatibility guard: G1, passes before and after (a context group is document-only and keeps its key)
+    it('guard: multi-text group keys keep their bytes and still hit', async () => {
+        const { HypaProcessorV2, contextHash } = await load()
+        const metadata: Summary = { title: 's' }
+        const items = [{ id: 'a', content: 'X', metadata }, { id: 'b', content: 'Y', metadata }]
+        await new HypaProcessorV2<Summary>({ model: 'voyageContext3' }).addTexts(items)
+        const hash = contextHash(['X', 'Y'])
+        expect(store.setKeys.sort()).toEqual([
+            `X|voyageContext3|voyageContext3|ctx:${hash}`,
+            `Y|voyageContext3|voyageContext3|ctx:${hash}`,
+        ])
+        await new HypaProcessorV2<Summary>({ model: 'voyageContext3' }).addTexts(items)
+        expect(voyageTypes()).toEqual(['document'])
+    })
+
+    // compatibility guard: G2, passes before and after
+    it('guard: V1 voyage keys are unchanged and a V1 search writes nothing', async () => {
+        const { HypaProcesser } = await load()
+        const first = new HypaProcesser('voyageContext3')
+        await first.addText(['X'])
+        expect(store.setKeys).toEqual(['X|voyageContext3'])
+        await new HypaProcesser('voyageContext3').addText(['X'])
+        expect(voyageTypes()).toEqual(['document'])
+        await first.similaritySearch('X')
+        expect(voyageTypes()).toEqual(['document', 'query'])
+        expect(store.setKeys).toEqual(['X|voyageContext3'])
+    })
+
+    // compatibility guard: G3, passes before (by hitting the old key) and after
+    it('guard: a repeated query is served from the cache', async () => {
+        const { HypaProcessorV2 } = await load()
+        await new HypaProcessorV2<undefined>({ model: 'voyageContext3' }).similaritySearchScored('X')
+        await new HypaProcessorV2<undefined>({ model: 'voyageContext3' }).similaritySearchScored('X')
+        expect(voyageTypes()).toEqual(['query'])
+    })
+
+    // compatibility guard: G4, passes before and after (the hypav3 chunk family builds its key from this suffix)
+    it('guard: the provider suffix does not carry the role', async () => {
+        const { contextHash } = await load()
+        const { getContextProvider } = await import('../memory/contextualEmbedding')
+        const provider = getContextProvider('voyageContext3')
+        expect(provider?.getCacheKeySuffix()).toBe('|voyageContext3')
+        expect(provider?.getCacheKeySuffix(['X'])).toBe('|voyageContext3')
+        expect(provider?.getCacheKeySuffix(['X', 'Y'])).toBe(`|voyageContext3|ctx:${contextHash(['X', 'Y'])}`)
     })
 })
