@@ -9,14 +9,15 @@ import type { JsonObject } from '../../blockFrame'
 /**
  * The name of a copy: the original name without a trailing "(Copy)" or "(Copy 2)" marker, then "(Copy)", or the first
  * "(Copy N)" no chat of the owner already has. The pure form of `createChatCopyName`, which reads the selected character.
+ * `type` 'Branch' names the chat upstream's Branch button would create: "(Branch)", then the first "(Branch N)" free.
  */
-export function copyNameFor(originalName: string, ownerChatNames: ReadonlySet<string>): string {
+export function copyNameFor(originalName: string, ownerChatNames: ReadonlySet<string>, type: 'Copy' | 'Branch' = 'Copy'): string {
     const base = originalName.replaceAll(/\(((Copy|Branch)( \d+)?)\)$/g, '').trim()
     let index = 1
-    let name = `${base} (Copy)`
+    let name = `${base} (${type})`
     while (ownerChatNames.has(name)) {
         index++
-        name = `${base} (Copy ${index})`
+        name = `${base} (${type} ${index})`
     }
     return name
 }
