@@ -142,7 +142,7 @@ foreach ($c in $badStarts) { Test-AdbRefused ('MF-2 phone 1 refuses ' + $c) $pho
 Test-AdbRefused 'MF-2 phone 1 refuses the start split into arguments' $phone1 (@('shell') + $startString.Split(' ')) '97'
 Test-AdbRefused 'MF-2 phone 1 refuses the start with own-package My Files and a flag' $phone1 @('shell', ($startString + ' --es k v')) '97' @('--own-package', $mf)
 # The device shell expands braces, globs and quotes after the guard's text check: any `am` line with a character outside the safe set
-# refuses (97) on every serial, so no form can rebuild the refused My Files name. Each form also carries an own-package that names it.
+# refuses (97) on every serial, so no form can rebuild the refused My Files name. The -n forms also carry an own-package that names them.
 $mfBrace = 'com.sec.android.app.my{f,f}iles'
 $mfGlob = 'com.sec.android.app.myf?les'
 $mfGlobStar = 'com.sec.android.app.my*'
@@ -163,7 +163,8 @@ $spoofForms = @(
     @('double-quoted concatenation', ('am start ' + $mfDoubleQuoted + '/.external.ui.MainActivity'), $null),
     @('backslash', ('am start ' + $mfBackslash + '/.external.ui.MainActivity'), $null),
     @('dollar', ('am start ' + $mfDollar + '/.external.ui.MainActivity'), $null),
-    @('backtick', ('am start ' + $mfBacktick + '/.external.ui.MainActivity'), $null))
+    @('backtick', ('am start ' + $mfBacktick + '/.external.ui.MainActivity'), $null),
+    @('leading blanks brace', ('   am start ' + $mfBrace + '/.external.ui.MainActivity'), $null))
 foreach ($f in $spoofForms) {
     foreach ($s in @($phone1, $phone2, $emu)) {
         $extra = @(); if ($null -ne $f[2]) { $extra = @('--own-package', $f[2]) }

@@ -9,7 +9,7 @@
 //   node adbg.mjs <common> -- <adb args...>          plain call, allowed only if it matches the allowlist:
 //     shell <one command string>, where the command is one of
 //       getprop [key] | date [+fmt] | pidof <pkg> | wm size|density [<n>] | settings get|put|delete <ns> <key> [v]
-//       am start ... (no -d/--data or scheme://; -n only for --own-package) | am force-stop|kill <own package>
+//       am start ... (no -d/--data or scheme://; -n only for --own-package; r17 also narrows every am line to a closed character set) | am force-stop|kill <own package>
 //       pm clear <own package> | pm path <pkg> | input keyevent <navigation keys> | input text ... (typing chain, below) | svc wifi|data enable|disable expand-notifications|collapse | cat /proc/<pid>/oom_score_adj|cgroup|stat
 //       ps -A [-o cols] | grep <literal>   (a device-side filter is required; never a full list)
 //       screenrecord [--time-limit 1-30] [--size WxH] [--bit-rate n] <exact .mp4 path below>
