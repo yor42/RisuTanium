@@ -14,7 +14,7 @@
     'persona.default': '주노',
 
     'rp.eyebrow': '롤플레이', 'rp.welcomeBack': '다시 오셨네요, {name}님', 'rp.welcome': '환영해요, {name}님',
-    'continue.h': '이야기 이어가기', 'story.noMemory': '기억 없음',
+    'continue.h': '이야기 이어가기', 'story.noMemory': '기억 없음', 'jump.label': '바로 가기', 'jump.chars': '캐릭터', 'jump.realm': 'RisuRealm',
     'lib.h': '캐릭터', 'lib.count': '{shown}/{total}', 'lib.countTrash': '{shown}/{total}', 'lib.views': '라이브러리 보기',
     'lib.tab.chars': '캐릭터', 'lib.tab.trash': '최근 삭제', 'lib.search': '캐릭터 검색', 'lib.sort': '정렬', 'lib.sort.order': '내 순서', 'lib.sort.recent': '최근', 'lib.sort.name': '이름', 'lib.new': '새로 만들기', 'lib.manage': '라이브러리 관리',
     'lib.folders': '폴더', 'folder.fantasy': '판타지', 'folder.scifi': 'SF', 'folder.drafts': '초안',
@@ -102,7 +102,7 @@
     'persona.default': 'Juno',
 
     'rp.eyebrow': 'Roleplay', 'rp.welcomeBack': 'Welcome back, {name}', 'rp.welcome': 'Welcome, {name}',
-    'continue.h': 'Continue your story', 'story.noMemory': 'No memory',
+    'continue.h': 'Continue your story', 'story.noMemory': 'No memory', 'jump.label': 'Jump to', 'jump.chars': 'Characters', 'jump.realm': 'RisuRealm',
     'lib.h': 'Characters', 'lib.count': '{shown} of {total}', 'lib.countTrash': '{shown} of {total} in Recently deleted', 'lib.views': 'Library view',
     'lib.tab.chars': 'Characters', 'lib.tab.trash': 'Recently deleted', 'lib.search': 'Search characters', 'lib.sort': 'Sort', 'lib.sort.order': 'My order', 'lib.sort.recent': 'Recent', 'lib.sort.name': 'Name', 'lib.new': 'New', 'lib.manage': 'Manage library',
     'lib.folders': 'Folders', 'folder.fantasy': 'Fantasy', 'folder.scifi': 'Sci-fi', 'folder.drafts': 'Drafts',

@@ -97,6 +97,45 @@ describe('change rules', () => {
     })
 })
 
+describe('G-A1 rename (a new change kind: no earlier producer sends it)', () => {
+    const base = [ref('prompt', 'a'), ref('module:m', 'a'), ref('prompt', 'c')]
+
+    test('a star is re-keyed in place and the same key under another source is left alone', () => {
+        const input = [...base]
+        const result = applyFavouriteChange(input, { type: 'rename', ref: ref('prompt', 'a'), to: 'b' })
+        expect(result).toEqual([ref('prompt', 'b'), ref('module:m', 'a'), ref('prompt', 'c')])
+        expect(input).toEqual(base)
+    })
+
+    test('when the target star already exists the renamed star is dropped and the existing one keeps its place', () => {
+        const result = applyFavouriteChange(base, { type: 'rename', ref: ref('prompt', 'a'), to: 'c' })
+        expect(result).toEqual([ref('module:m', 'a'), ref('prompt', 'c')])
+        const reversed = applyFavouriteChange([ref('prompt', 'c'), ref('prompt', 'a')], { type: 'rename', ref: ref('prompt', 'a'), to: 'c' })
+        expect(reversed).toEqual([ref('prompt', 'c')])
+    })
+
+    test('an absent star, and a rename onto its own key, leave the list as it is', () => {
+        expect(applyFavouriteChange(base, { type: 'rename', ref: ref('prompt', 'nope'), to: 'x' })).toEqual(base)
+        expect(applyFavouriteChange(base, { type: 'rename', ref: ref('prompt', 'a'), to: 'a' })).toEqual(base)
+    })
+
+    test('a rename is written through device storage in the stored format', () => {
+        localStorage.setItem(FAVOURITES_KEY, serializeFavourites(base))
+        const view = changeFavourites({ type: 'rename', ref: ref('prompt', 'a'), to: 'b' }, base)
+        expect(view.unreadable).toBe(false)
+        expect(written()).toEqual([ref('prompt', 'b'), ref('module:m', 'a'), ref('prompt', 'c')])
+    })
+
+    test('CG-A2 compatibility guard: unreadable bytes are copied aside once before a rename writes', () => {
+        const raw = JSON.stringify({ v: 2, items: [{ s: 'prompt', k: 'a' }] })
+        localStorage.setItem(FAVOURITES_KEY, raw)
+        const view = changeFavourites({ type: 'rename', ref: ref('prompt', 'a'), to: 'b' }, [ref('prompt', 'a')])
+        expect(localStorage.getItem(UNREADABLE_KEY)).toBe(raw)
+        expect(view.items).toEqual([ref('prompt', 'b')])
+        expect(written()).toEqual([ref('prompt', 'b')])
+    })
+})
+
 describe('changeFavourites against device storage', () => {
     test('a change is applied to what storage holds now, so another tab\'s star is kept', () => {
         localStorage.setItem(FAVOURITES_KEY, stored([ref('prompt', 'a')]))
