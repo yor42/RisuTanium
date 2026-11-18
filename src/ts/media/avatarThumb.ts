@@ -10,7 +10,8 @@ import { ANDROID_DEFERRED_WHOLE_READ_MIN_BYTES, ANDROID_WHOLE_READ_URL_LIMIT_BYT
 import { isAndroidTransport, readRangedPieces } from '../storage/tauriByteTransport'
 import { assetOrInlayBodyKeyViolation } from '../storage/store/keyRules'
 import { readTauriHeader, readTauriPrefix, readUrlHeader, readUrlPrefix, type ImageHeader } from './avatarThumbHeader'
-import { EMBEDDED_THUMB_SCAN_BYTES, MAX_EMBEDDED_THUMB_LONG_SIDE, extractEmbeddedJpegThumb, orientationTransform, orientedSize, type EmbeddedCrop, type ExifOrientation } from './embeddedJpegThumb'
+import { EMBEDDED_THUMB_SCAN_BYTES, MAX_EMBEDDED_THUMB_LONG_SIDE, extractEmbeddedJpegThumb, orientationTransform, orientedSize, readJpegOrientation, type EmbeddedCrop, type ExifOrientation } from './embeddedJpegThumb'
+import { MAX_PREVIEW_SIDE, requestNativePreview } from './avatarPreviewNative'
 
 /**
  * Small cached thumbnails for the 56px list avatars (grid, mobile list,
@@ -22,8 +23,11 @@ import { EMBEDDED_THUMB_SCAN_BYTES, MAX_EMBEDDED_THUMB_LONG_SIDE, extractEmbedde
 
 export const THUMB_SHORT_SIDE = 168
 /** Bump whenever the size, format or scaling policy changes; older records
- *  then count as absent instead of being served stale. */
-export const THUMB_VERSION = 2
+ *  then count as absent instead of being served stale. Version 3: the native
+ *  preview changes what an over-limit PNG, or a JPEG without a usable embedded
+ *  thumbnail, can produce on Tauri, so the persisted skips of version 2 for
+ *  those files are evaluated again. */
+export const THUMB_VERSION = 3
 
 /**
  * Above this stored size an avatar is never read whole into JS or decoded from
@@ -68,6 +72,16 @@ interface GenContext {
     /** Starts the task's timer again with a fresh `timeoutMs`, whether it was
      *  paused or still running. A no-op once the task has settled. */
     restartTimeout(): void
+    /** Frees the task's general concurrency slot and stops its timer, for a
+     *  generator that goes on to wait on a lane bounded elsewhere (the native
+     *  preview lane), so it never holds a slot other thumbnails need. From
+     *  then on the generator bounds its own work. Idempotent; a no-op once the
+     *  task has settled. */
+    releaseSlot(): void
+    /** False once every caller waiting on this task has left. Read by a
+     *  waiting generator to skip work nobody wants. A caller without an abort
+     *  signal never leaves, so such a task stays wanted. */
+    stillWanted(): boolean
 }
 
 type FullGenerator = (loc: string, ctx: GenContext) => Promise<GenResult>
@@ -439,16 +453,22 @@ async function runTask(task: QueueTask) {
     let settled = false
     let cancelled = false
     let cleanupFn: (() => void) | null = null
+    // True from the start until `releaseSlot` or the settle gives the slot back.
+    let slotHeld = true
 
     // Frees the slot and resolves exactly once, whichever of "timeout" or
     // "generator settled" happens first. The other path becomes a no-op via
-    // `settled`, so the concurrency slot can never be double-freed.
+    // `settled`, and a slot already given back by `releaseSlot` is not given
+    // back again, so the concurrency slot can never be double-freed.
     const finishAndFree = (value: string | null) => {
         if (settled) {
             return
         }
         settled = true
-        running--
+        if (slotHeld) {
+            slotHeld = false
+            running--
+        }
         task.resolve(value)
         pump()
     }
@@ -488,10 +508,22 @@ async function runTask(task: QueueTask) {
             }
         },
         restartTimeout() {
-            if (!settled) {
+            if (!settled && slotHeld) {
                 clearTimeout(timer)
                 timer = setTimeout(onTimeout, timeoutMs)
             }
+        },
+        releaseSlot() {
+            if (settled || !slotHeld) {
+                return
+            }
+            slotHeld = false
+            clearTimeout(timer)
+            running--
+            pump()
+        },
+        stillWanted() {
+            return task.waiters.size > 0
         }
     }
 
@@ -1061,7 +1093,7 @@ async function readHeader(loc: string, scope: TaskScope): Promise<{ header: Imag
  *  decodes it from a `Blob`. `decoded` is true when the decode step ran to a
  *  result. Bytes above the bounded limit are never decoded in full: the load
  *  could not be avoided, so the bounded rules apply to them instead. */
-async function generateFromBytes(loc: string, scope: TaskScope, preloaded: Uint8Array | null = null): Promise<{ result: GenResult, decoded: boolean }> {
+async function generateFromBytes(loc: string, scope: TaskScope, ctx: GenContext, preloaded: Uint8Array | null = null): Promise<{ result: GenResult, decoded: boolean }> {
     const bytes = preloaded ?? await currentReadImage(loc)
     if (scope.isCancelled()) {
         // The queue's timeout already resolved the caller with null while
@@ -1074,7 +1106,7 @@ async function generateFromBytes(loc: string, scope: TaskScope, preloaded: Uint8
     }
     if (bytes.length > boundedAboveBytes) {
         const loaded: BoundedSource = { platform: isAndroidTransport() ? 'android' : 'web', url: null, blob: null, loaded: bytes }
-        return { result: await generateBounded(loc, loaded, scope), decoded: false }
+        return { result: await generateBounded(loc, loaded, scope, ctx), decoded: false }
     }
     const cls = classifyImage(bytes, true)
     if (cls.kind === 'animated' || cls.kind === 'unknown') {
@@ -1300,14 +1332,53 @@ async function decodeBoundedOnce(loc: string, source: BoundedSource, scope: Task
 }
 
 /**
- * The thumbnail of an avatar above the limit, from a bounded read of its first
- * 256 KiB. A JPEG with a usable Exif thumbnail gets that thumbnail (on Android
- * a failed render is `null`, never a stored skip: the file is the same next
- * time but the render may not be). Animated and unknown formats are a skip
- * everywhere. Without an embedded thumbnail Android stores a skip, and the
- * other platforms decode once per page load (`decodeBoundedOnce`).
+ * The preview of an over-limit avatar on Tauri, decoded and downscaled in Rust
+ * by its key: no URL, grant or JS read is made, so the file never reaches the
+ * page whole. The task gives its general slot back before it waits on the
+ * native lane, which holds one job at a time and bounds its own wait.
+ *
+ * Mapping: pixels render to a thumbnail (a JPEG's Exif orientation applies,
+ * since the native pixels are in stored order like the full image's); a
+ * native refusal is a persisted skip (the same content refuses identically);
+ * anything transient (cancel, busy, I/O, hidden page, abandoned caller,
+ * timeout, malformed reply) is `null`, so nothing is stored or memoized and the
+ * next request asks again. A pixel render that fails is `retryNextSession`,
+ * because redoing it costs another native decode.
  */
-async function generateBounded(loc: string, source: BoundedSource, scope: TaskScope): Promise<GenResult> {
+async function generateNative(loc: string, prefix: Uint8Array, cls: ImageClass, scope: TaskScope, ctx: GenContext): Promise<GenResult> {
+    ctx.releaseSlot()
+    const outcome = await currentNativePreview(loc, { shortSide: THUMB_SHORT_SIDE, stillWanted: () => ctx.stillWanted() })
+    if (scope.isCancelled() || outcome.kind === 'transient') {
+        return null
+    }
+    if (outcome.kind === 'refused') {
+        return { skip: true }
+    }
+    const orientation: ExifOrientation = cls.kind === 'still' && cls.mime === 'image/jpeg' ? readJpegOrientation(prefix) : 1
+    let rendered: GenResult = null
+    try {
+        rendered = await currentRenderThumb({ kind: 'pixels', width: outcome.width, height: outcome.height, rgba: outcome.rgba, orientation }, scope)
+    } catch {
+        // the pixels did not render this time
+    }
+    if (scope.isCancelled()) {
+        return null
+    }
+    if (rendered !== null && 'src' in rendered) {
+        return rendered
+    }
+    return RETRY_NEXT_SESSION
+}
+
+/**
+ * The thumbnail of an avatar above the limit, from a bounded read of its first
+ * 256 KiB. A JPEG with a usable Exif thumbnail gets that thumbnail, and the
+ * native preview is never asked. Animated and unknown formats are a skip
+ * everywhere. Otherwise (no usable embedded thumbnail, or its render failed)
+ * Tauri asks the native preview (`generateNative`), and the other platforms
+ * decode once per page load (`decodeBoundedOnce`).
+ */
+async function generateBounded(loc: string, source: BoundedSource, scope: TaskScope, ctx: GenContext): Promise<GenResult> {
     const prefix = await readBoundedPrefix(loc, source, scope)
     if (scope.isCancelled() || prefix === null) {
         return null
@@ -1328,9 +1399,6 @@ async function generateBounded(loc: string, source: BoundedSource, scope: TaskSc
             if (rendered !== null && 'src' in rendered) {
                 return rendered
             }
-            if (source.platform === 'android') {
-                return null
-            }
         }
     }
     if (cls.kind === 'animated' || cls.kind === 'unknown') {
@@ -1339,8 +1407,8 @@ async function generateBounded(loc: string, source: BoundedSource, scope: TaskSc
     if (cls.kind === 'null') {
         return null
     }
-    if (source.platform === 'android') {
-        return { skip: true }
+    if (source.platform === 'android' || source.platform === 'desktop') {
+        return await generateNative(loc, prefix, cls, scope, ctx)
     }
     return await decodeBoundedOnce(loc, source, scope, cls.kind === 'still' ? cls.mime : '')
 }
@@ -1367,7 +1435,7 @@ async function realGenerate(loc: string, ctx: GenContext): Promise<GenResult> {
             return null
         }
         if (sizeVerdict === 'over') {
-            return await generateBounded(loc, { platform: 'android', url: null, blob: null, loaded: null }, scope)
+            return await generateBounded(loc, { platform: 'android', url: null, blob: null, loaded: null }, scope, ctx)
         }
         if (sizeVerdict === 'unknown') {
             return null
@@ -1383,7 +1451,7 @@ async function realGenerate(loc: string, ctx: GenContext): Promise<GenResult> {
             }
             if (resolved.kind === 'sized') {
                 if (resolved.size > boundedAboveBytes) {
-                    return await generateBounded(loc, resolved.source, scope)
+                    return await generateBounded(loc, resolved.source, scope, ctx)
                 }
                 sized = resolved
             }
@@ -1422,7 +1490,7 @@ async function realGenerate(loc: string, ctx: GenContext): Promise<GenResult> {
                 }
             }
         }
-        const outcome = await generateFromBytes(loc, scope, sized?.source.loaded ?? null)
+        const outcome = await generateFromBytes(loc, scope, ctx, sized?.source.loaded ?? null)
         if (urlFailed && outcome.decoded) {
             urlDecodeOff = true
         }
@@ -1440,6 +1508,7 @@ type RenderSource =
     | { kind: 'url', url: string }
     | { kind: 'bytes', bytes: Uint8Array, mime: string }
     | { kind: 'embedded', bytes: Uint8Array, orientation: ExifOrientation, crop: EmbeddedCrop | null }
+    | { kind: 'pixels', width: number, height: number, rgba: Uint8ClampedArray<ArrayBuffer>, orientation: ExifOrientation }
 type RenderThumbFn = (source: RenderSource, scope: TaskScope) => Promise<GenResult>
 
 /** The source rectangle, the drawn size (before orientation) and the whole decision of one draw. */
@@ -1490,11 +1559,76 @@ export function planEmbeddedDraw(naturalWidth: number, naturalHeight: number, cr
     return { sx, sy, sw, sh, dw, dh }
 }
 
+/** Pure. Native pixels are already thumbnail-sized, so they draw 1:1; `null`
+ *  for an empty frame or a side above what the native side may return. */
+export function planPixelsDraw(width: number, height: number): DrawPlan | null {
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > MAX_PREVIEW_SIDE || height > MAX_PREVIEW_SIDE) {
+        return null
+    }
+    return { sx: 0, sy: 0, sw: width, sh: height, dw: width, dh: height }
+}
+
+function encodeCanvas(canvas: HTMLCanvasElement): string {
+    let dataUrl = canvas.toDataURL('image/webp', 0.85)
+    if (!dataUrl.startsWith('data:image/webp')) {
+        // WebKit historically has no WebP encoder; PNG keeps alpha too.
+        dataUrl = canvas.toDataURL('image/png')
+    }
+    return dataUrl
+}
+
+/** Draws natively decoded RGBA at 1:1 under its orientation and exports it. Rejects like `renderThumb`; `null` when the pixels or the canvas are unusable. */
+async function renderPixels(source: Extract<RenderSource, { kind: 'pixels' }>, scope: TaskScope): Promise<GenResult> {
+    const plan = planPixelsDraw(source.width, source.height)
+    if (plan === null || scope.isCancelled() || source.rgba.length !== source.width * source.height * 4) {
+        return null
+    }
+    let scratch: HTMLCanvasElement | null = null
+    let canvas: HTMLCanvasElement | null = null
+    try {
+        scratch = document.createElement('canvas')
+        scratch.width = plan.dw
+        scratch.height = plan.dh
+        const scratchContext = scratch.getContext('2d')
+        if (!scratchContext) {
+            return null
+        }
+        scratchContext.putImageData(new ImageData(source.rgba, plan.dw, plan.dh), 0, 0)
+        const canvasSize = orientedSize(plan.dw, plan.dh, source.orientation)
+        canvas = document.createElement('canvas')
+        canvas.width = canvasSize.w
+        canvas.height = canvasSize.h
+        const c2d = canvas.getContext('2d')
+        if (!c2d) {
+            return null
+        }
+        if (source.orientation !== 1) {
+            c2d.setTransform(...orientationTransform(source.orientation, plan.dw, plan.dh))
+        }
+        c2d.drawImage(scratch, 0, 0)
+        return { src: encodeCanvas(canvas) }
+    }
+    finally {
+        // Zeroing releases the backing pixel buffers even when a call throws.
+        if (scratch) {
+            scratch.width = 0
+            scratch.height = 0
+        }
+        if (canvas) {
+            canvas.width = 0
+            canvas.height = 0
+        }
+    }
+}
+
 /** Load, draw and export: decodes the source, scales it to the thumbnail size
  *  and encodes it. Rejects when the image fails to load, decode or export, so
  *  the caller can try another path. Split from `realGenerate` so tests can
  *  drive the classification and the reads without a canvas. */
 async function renderThumb(source: RenderSource, scope: TaskScope): Promise<GenResult> {
+    if (source.kind === 'pixels') {
+        return renderPixels(source, scope)
+    }
     const img = new Image()
     let objectUrl: string | null = null
     if (source.kind === 'bytes' || source.kind === 'embedded') {
@@ -1568,6 +1702,7 @@ async function renderThumb(source: RenderSource, scope: TaskScope): Promise<GenR
 }
 
 let currentRenderThumb: RenderThumbFn = renderThumb
+let currentNativePreview: typeof requestNativePreview = requestNativePreview
 let currentGenerator: FullGenerator = realGenerate
 
 // ---------------------------------------------------------------------------
@@ -1653,6 +1788,9 @@ export const __avatarThumbTestHooks = {
     setRenderThumb(fn: RenderThumbFn) {
         currentRenderThumb = fn
     },
+    setNativePreview(fn: typeof requestNativePreview) {
+        currentNativePreview = fn
+    },
     setReadbackCheck(fn: () => boolean) {
         readbackCheckFn = fn
         readbackChecked = false
@@ -1709,6 +1847,7 @@ export const __avatarThumbTestHooks = {
         currentGenerator = realGenerate
         currentReadImage = readImage
         currentRenderThumb = renderThumb
+        currentNativePreview = requestNativePreview
         urlDecodeOff = false
         boundedDecodeAttempted.clear()
         boundedAboveBytes = BOUNDED_THUMB_ABOVE_BYTES

@@ -6,6 +6,7 @@ use tauri_plugin_fs::FsExt;
 
 mod app_fs;
 mod asset_batch;
+pub mod avatar_preview;
 mod chunked_io;
 mod durable_write;
 mod env_secret;
@@ -128,6 +129,28 @@ async fn read_range(app: AppHandle, key: String, offset: u64, len: u64) -> Resul
         .await
         .map_err(|e| format!("the read task failed: {}", e))??;
     Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// A thumbnail-sized RGBA preview of an over-limit avatar, decoded natively by key. The page
+/// never passes a path: the key must be under `assets/` and resolves under the app data
+/// directory. The reply is `status u8 | w u32 LE | h u32 LE | rgba` (see
+/// `avatar_preview::encode_outcome`); a transient failure is an `Err` with a stable prefix
+/// (`cancelled`, `busy`, `io:`, `refused key:`). `ticket` names the call for
+/// `avatar_preview_cancel`. The decode cannot be aborted from outside, so cancel and the
+/// deadline are checked inside the reader stack.
+#[tauri::command]
+async fn avatar_preview(app: AppHandle, key: String, short_side: u32, ticket: u64) -> Result<tauri::ipc::Response, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let bytes = tauri::async_runtime::spawn_blocking(move || avatar_preview::preview_key(&base, &key, short_side, ticket))
+        .await
+        .map_err(|e| format!("the preview task failed: {}", e))??;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Asks the native preview of `ticket` to stop; a cancel that arrives first is remembered.
+#[tauri::command]
+fn avatar_preview_cancel(ticket: u64) {
+    avatar_preview::slot::global_tickets().cancel(ticket);
 }
 
 /// `read_range` with the response as one base64 string of at most `chunked_io::TEXT_RANGE_MAX_BYTES` of
@@ -533,6 +556,8 @@ pub fn run() {
             abort_chunked,
             read_range,
             read_range_text,
+            avatar_preview,
+            avatar_preview_cancel,
             export_append::export_append_b64,
             streamed_fetch,
             cancel_streamed_fetch,
