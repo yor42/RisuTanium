@@ -13,6 +13,9 @@ import { alertStore } from './stores.svelte'
  * alert) and the prompts queued behind it in the order they were asked.
  * Nothing here touches `alertStore` at import: it is read or watched only when
  * a prompt is asked for or a caller asks about, or subscribes to, prompt state.
+ *
+ * The module also keeps the boot notices (`queueNotice`): informational alerts
+ * shown one at a time, each staying current until the person closes it.
  */
 
 /** How long an answer is discarded after a prompt appears on screen, however it got there: asked fresh, back from under a cover, or its turn arrived. */
@@ -44,11 +47,19 @@ let queue: WaitingPrompt[] = []
 let previous: alertData | null = null
 let watching = false
 let stopWatching: (() => void) | undefined
+/** Boot notices not yet shown, in the order they were queued. */
+let notices: string[] = []
+/** The object last written to the store for the notice that is current; a notice is always written as a fresh object. */
+let noticeCurrent: alertData | null = null
+/** The text of the current notice (shown, or covered by another alert); null when none is current. */
+let noticeText: string | null = null
+let drainWaiters: Array<() => void> = []
 
 const idleStore = writable(true)
 
 /**
- * True while the store is `none` and no prompt is waiting. It is updated after
+ * True while the store is `none`, no prompt is waiting and no boot notice is
+ * current or queued. It is updated after
  * this module has processed each store value, so it never reports the
  * momentary `none` between a cover's close and its prompt's return, and a
  * reader of it does not depend on the order in which readers subscribed to the
@@ -62,7 +73,25 @@ export const alertIdle: Readable<boolean> = {
 }
 
 function publishIdle(): void {
-    idleStore.set(previous?.type === 'none' && current === null && queue.length === 0)
+    idleStore.set(previous?.type === 'none' && current === null && queue.length === 0 && noticeText === null && notices.length === 0)
+}
+
+/** Puts the notice on screen as a fresh object, so that every show restarts the answer pause that keys check. */
+function showNotice(text: string): void {
+    noticeText = text
+    noticeCurrent = { type: 'normal', msg: text }
+    alertStore.set(noticeCurrent)
+}
+
+function settleDrainWaiters(): void {
+    if (noticeText !== null || notices.length > 0) {
+        return
+    }
+    const waiters = drainWaiters
+    drainWaiters = []
+    for (const resolve of waiters) {
+        resolve()
+    }
 }
 
 /** A cover the user has no way to close: a progress bar, or a wait notice without a Cancel. */
@@ -106,6 +135,20 @@ function onValue(value: alertData): void {
         } else {
             show(current)
         }
+        // Only the person's close can write this `none` for the current notice: the code paths
+        // refuse to close a notice that is on screen.
+        if (noticeText !== null && before === noticeCurrent) {
+            noticeText = null
+            noticeCurrent = null
+        }
+        // The raw store is read because the prompt branch above may have put a prompt back.
+        if (current === null && queue.length === 0 && get(alertStore).type === 'none') {
+            const next = noticeText ?? notices.shift()
+            if (next !== undefined) {
+                showNotice(next)
+            }
+        }
+        settleDrainWaiters()
     }
     publishIdle()
 }
@@ -143,6 +186,40 @@ export function askPrompt(data: alertData): Promise<string> {
         }
         publishIdle()
     })
+}
+
+/**
+ * Queues a boot notice: a `normal` alert that nothing waits for. Notices are shown one at a time in
+ * the order queued, each until the person closes it. A notice is never overwritten by another
+ * notice or dropped: when another alert covers it, it is shown again as a fresh object once the
+ * cover closes, and while a prompt is waiting the notices wait behind it. It is shown at once over
+ * nothing, or over a cover the person cannot close.
+ */
+export function queueNotice(msg: string): void {
+    ensureWatching()
+    const shown = get(alertStore)
+    if (noticeText === null && notices.length === 0 && current === null && queue.length === 0
+        && (shown.type === 'none' || isCloseless(shown))) {
+        showNotice(msg)
+    } else {
+        notices.push(msg)
+    }
+    publishIdle()
+}
+
+/** Resolves once no notice is current or queued: the person has closed every one queued so far. */
+export function noticesSettled(): Promise<void> {
+    if (noticeText === null && notices.length === 0) {
+        return Promise.resolve()
+    }
+    return new Promise<void>((resolve) => {
+        drainWaiters.push(resolve)
+    })
+}
+
+/** Whether a queued notice is the value on screen right now. */
+export function noticeShowing(): boolean {
+    return noticeCurrent !== null && get(alertStore) === noticeCurrent
 }
 
 /**
@@ -193,5 +270,9 @@ export function resetAlertPromptsForTests(): void {
     current = null
     queue = []
     previous = null
+    notices = []
+    noticeCurrent = null
+    noticeText = null
+    drainWaiters = []
     idleStore.set(true)
 }
