@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as chat from '../../../chat/checks/th/packlint.mjs';
+import { parseConcrete, parseTriple } from '../../../chat/checks/th/failclosed.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const rd = (f) => { try { return fs.readFileSync(path.join(here, f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ''); } catch { return ''; } };
 // Studio's token defaults: the first :root block of st4.css (the ladder and the role tokens); later blocks (html[data-layout], html[data-input]) are the same names under a root attribute, which a pack may also set (DD-159)
@@ -99,13 +100,8 @@ export const STUDIO_REGISTRY = { fixedWidth: ['studio-sheet-root'], chains: STUD
    --nexus-text; the explanations in --nexus-text-secondary. Each must keep 4.5:1 on THAT tinted surface in the worst case the pack allows, and --nexus-danger-rgb (the tint's channel) must be the colour of --nexus-danger. */
 const tokfile = (f) => { try { return fs.readFileSync(path.join(here, f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, ''); } catch { return ''; } };
 const APP_T = readTokens(tokfile('../../../theme/nexus-tokens.css'), new Map());
-const hexRgb = (s) => { const m = /^#([0-9a-f]{3,8})$/i.exec(s.trim()); if (!m) return null; let h = m[1]; if (h.length <= 4) h = [...h].map((c) => c + c).join(''); return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)).concat([h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1]); };
-const parseCol = (s) => {
-  s = String(s).trim().toLowerCase(); const h = hexRgb(s); if (h) return h;
-  const m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)\s*(?:[\/,]\s*([\d.]+%?))?\s*\)$/.exec(s); if (m) return [+m[1], +m[2], +m[3], m[4] === undefined ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4])];
-  const t3 = /^([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)$/.exec(s); if (t3) return [+t3[1], +t3[2], +t3[3], 1];   // a channel triple (--nexus-danger-rgb)
-  return null;
-};
+// the shared concrete reader, plus a bare channel triple (--nexus-danger-rgb)
+const parseCol = (s) => parseConcrete(s) ?? parseTriple(s);
 const lum = (c) => { const f = c.slice(0, 3).map((x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }); return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2]; };
 const over = (f, b) => [0, 1, 2].map((i) => f[i] * f[3] + b[i] * (1 - f[3])).concat([1]);
 const cr = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };

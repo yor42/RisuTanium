@@ -729,7 +729,8 @@ describe('Rule P: painting over a control', () => {
             ['R3h --pack- variant', 'chat', `:root{--pack-h:0 0 1px #111111}html[data-input="hover"]{--pack-h:0 0 6px #111111}${halo('var(--pack-h)')}`],
             ['R3i calc negation blur', 'chat', halo('0 0 calc(-6px * -1) #111111')],
             ['R3j Studio', 'studio', `${SIDE_TAB}{${WHITE_ON_BLACK_TEXT};text-shadow:0 0 4px #333333}`],
-            ['R3k unreadable colour', 'chat', halo('0 0 6px color-mix(in srgb, #111111 90%, #ffff00)')],
+            ['R3k color-mix halo', 'chat', halo('0 0 6px color-mix(in srgb, #111111 90%, #ffff00)')],
+            ['R3k2 unreadable colour', 'chat', halo('0 0 6px color-mix(in oklch, #111111 90%, #ffff00)')],
             ['R3l 2.53:1', 'chat', halo('0 0 6px #555555')],
             ['R3m translucent halo over a translucent inset', 'chat', `${SEND}{background:#ffff00;color:#111111;box-shadow:inset 0 0 0 64px rgb(17 17 17 / 0.5);text-shadow:0 0 6px rgb(17 17 17 / 0.6)}`],
             ['R3n translucent halo over an opaque inset', 'chat', `${SEND}{background:#ffff00;color:#111111;box-shadow:inset 0 0 0 64px #8a8a8a;text-shadow:0 0 6px rgb(17 17 17 / 0.5)}`],
@@ -973,5 +974,45 @@ describe('Rule P: painting over a control', () => {
                 expect(layerStacks(asLayers(colours), count - 1)).toBeNull()
             }
         })
+    })
+})
+
+// The three word scanners (engine colourWords, VALUES coloursIn in the port and in packlint.mjs, cascade coloursIn) split a value into words, so a color-mix() in a
+// declaration is refused by the VALUES scanner on a reach-tier part (properties color, background, background-color, background-image). Once the shared reader
+// resolves a color-mix in tokens, that scanner is its only refusal there: these rows pin it.
+interface RefLint { ok: boolean, errors: { prop: string, why: string }[] }
+const refLib = await import(/* @vite-ignore */ pathToFileURL(path.join(DESIGN, 'theme/checks/lib.mjs')).href) as { LINT: Record<ThemeArea, (css: string, name: string) => RefLint> }
+
+describe('color-mix in a declaration stays refused (GUARD, S2a)', () => {
+    // #808080, the colour the mix resolves to
+    const MIX = 'color-mix(in srgb, #ffffff 50%, #000000)'
+    const OWN_PROPS = new Set(['color', 'background', 'background-color'])
+    const refusedOnOwnProp = (result: { ok: boolean, errors: { prop: string }[] }): boolean => !result.ok && result.errors.some((e) => OWN_PROPS.has(e.prop))
+    const forms = (part: string): [string, string][] => [
+        ['text colour is the mix', `${part}{background:#767676;color:${MIX}}`],
+        ['text colour is the mix through a private variable', `:root{--pack-x:${MIX}}${part}{background:#767676;color:var(--pack-x)}`],
+        ['background is the mix', `${part}{background:${MIX};color:#767676}`],
+        ['background-color is the mix', `${part}{background-color:${MIX};color:#767676}`],
+    ]
+    const PARTS: [ThemeArea, string][] = [['chat', '[data-part="chat-header"]'], ['studio', '[data-part="studio-item-apply"]']]
+
+    for (const [area, part] of PARTS) {
+        for (const [name, css] of forms(part)) {
+            it(`${area}: ${name} is refused on its own property, by the port and by the reference`, () => {
+                expect(refusedOnOwnProp(lintAreaPack(area, css, 'probe')), JSON.stringify(reasons(area, css))).toBe(true)
+                expect(refusedOnOwnProp(refLib.LINT[area](css, 'probe')), `reference: ${JSON.stringify(refLib.LINT[area](css, 'probe').errors)}`).toBe(true)
+            })
+        }
+    }
+    it.each([['settings', '[data-part="settings-index-item"]'], ['home', '[data-part="home-pill"]']] as const)('%s: the text colour as the mix is refused on a reach part, by the port and by the reference', (area, part) => {
+        const css = forms(part)[0][1]
+        expect(refusedOnOwnProp(lintAreaPack(area, css, 'probe')), JSON.stringify(reasons(area, css))).toBe(true)
+        expect(refusedOnOwnProp(refLib.LINT[area](css, 'probe')), JSON.stringify(refLib.LINT[area](css, 'probe').errors)).toBe(true)
+    })
+    it.each(PARTS)('%s: controls, white text on #767676 is accepted and the same pair written #808080 is refused by the port (Rule S has no reference twin)', (area, part) => {
+        expect(lintAreaPack(area, `${part}{background:#767676;color:#ffffff}`, 'probe').ok).toBe(true)
+        const grey = lintAreaPack(area, `${part}{background:#767676;color:#808080}`, 'probe')
+        expect(grey.ok).toBe(false)
+        expect(grey.errors.some((e) => RULE_S.test(e.why))).toBe(true)
     })
 })
