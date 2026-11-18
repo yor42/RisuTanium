@@ -3968,7 +3968,7 @@ export const languageGerman = {
         "libraryUndoGrouped": "In einem neuen Ordner gruppiert",
         "libraryUndoMerged": "Neuen Ordner erstellt",
         "libraryUndoMovedIntoFolder": (count: number) => count === 1 ? '1 Element in den Ordner verschoben' : `${count} Elemente in den Ordner verschoben`,
-        "libraryUndoFolderRemoved": "Verschoben; ein Ordner wurde entfernt",
+        "libraryUndoFolderRemoved": "Verschoben; ein Ordner wurde entfernt, die Charaktere bleiben erhalten",
         "libraryUndoUngrouped": "Ordnergruppierung aufgehoben",
         "libraryUndoFolderDeleted": "Ordner gelöscht; die Charaktere bleiben in der Liste",
         "libraryUndoOrderRestored": "Reihenfolge wiederhergestellt",

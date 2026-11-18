@@ -3947,11 +3947,11 @@ export const languageChinese = {
         "libraryUndoGrouped": "已归入新文件夹",
         "libraryUndoMerged": "已创建新文件夹",
         "libraryUndoMovedIntoFolder": (count: number) => count === 1 ? '已将 1 项移入文件夹' : `已将 ${count} 项移入文件夹`,
-        "libraryUndoFolderRemoved": "已移动；一个文件夹已被移除",
+        "libraryUndoFolderRemoved": "已移动；一个文件夹已被移除，其中的角色已保留",
         "libraryUndoUngrouped": "已取消文件夹分组",
         "libraryUndoFolderDeleted": "文件夹已删除；其中的角色仍保留在列表中",
         "libraryUndoOrderRestored": "已恢复顺序",
-        "libraryUndoOrderRefused": "无法撤销：此后库的顺序已发生变化。",
+        "libraryUndoOrderRefused": "无法撤销：此后角色列表的顺序已发生变化。",
         "libraryUndoOrderFailed": "无法撤销该更改。"
     },
     "uiCommon": {
