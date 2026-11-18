@@ -12,6 +12,8 @@ import type { SerializableHypaV2Data } from './hypav2'
 import { toPlainJson } from 'src/ts/storage/store2/codec/normalize'
 
 const summarizer = vi.hoisted(() => ({ calls: 0, failOn: new Set<number>(), inputs: [] as string[] }))
+/** What the stubbed similarity processor received. With `echo` set, a search returns every added text with score 1. */
+const processorBox = vi.hoisted(() => ({ added: [] as string[], queries: [] as string[], echo: false }))
 
 vi.mock('src/ts/storage/database.svelte', () => ({
     getDatabase: () => ({
@@ -33,8 +35,11 @@ vi.mock('src/ts/secretRef', () => ({
 vi.mock('src/ts/process/memory/hypamemory', () => ({
     HypaProcesser: class {
         oaikey = ''
-        async addText() {}
-        async similaritySearchScored() { return [] }
+        async addText(texts: string[]) { processorBox.added.push(...texts) }
+        async similaritySearchScored(query: string): Promise<[string, number][]> {
+            processorBox.queries.push(query)
+            return processorBox.echo ? processorBox.added.map((text): [string, number] => [text, 1]) : []
+        }
     },
 }))
 vi.mock('src/ts/process/transformers', () => ({
@@ -95,7 +100,52 @@ beforeEach(() => {
     summarizer.calls = 0
     summarizer.failOn = new Set()
     summarizer.inputs = []
+    processorBox.added = []
+    processorBox.queries = []
+    processorBox.echo = false
     room = {}
+})
+
+describe('hypaMemoryV2 embedding texts', () => {
+    const chunkTexts = (memory: SerializableHypaV2Data | undefined) => (memory?.chunks ?? []).map((chunk) => chunk.text.trim())
+    const detailSegments = (content: string) =>
+        (content.match(/<Past Events Details>([\s\S]*?)<\/Past Events Details>/)?.[1] ?? '').split('\n\n').filter((part) => part.length > 0)
+
+    // regression reproducer: the processor owns the model prefix, so hypaMemoryV2 adds none (the base adds the nomic prefix)
+    it('adds the trimmed chunk texts to the processor without a prefix', async () => {
+        const result = await callV2([newChatMarker, ...story(20)], 200)
+        expect(result.error).toBeUndefined()
+        expect(chunkTexts(result.memory).length).toBeGreaterThan(0)
+        expect(processorBox.added).toEqual(chunkTexts(result.memory))
+    })
+
+    // compatibility guard: a retrieved text is inserted whole (the base cuts the prefix length off the echoed prefixed text)
+    it('guard: inserts each retrieved chunk text verbatim in the details section', async () => {
+        processorBox.echo = true
+        const result = await callV2([newChatMarker, ...story(20)], 200)
+        expect(result.error).toBeUndefined()
+        const chunks = chunkTexts(result.memory)
+        const segments = detailSegments(result.chats[0].content)
+        expect(segments.length).toBeGreaterThan(0)
+        for (const segment of segments) expect(chunks).toContain(segment)
+    })
+
+    // regression reproducer: the queries are the raw last messages (the base adds the nomic query prefix)
+    it('queries with the raw content of the latest messages', async () => {
+        const chats = [newChatMarker, ...story(20)]
+        const expected = [chats[20].content, chats[19].content, chats[18].content]
+        await callV2(chats, 200)
+        expect(processorBox.queries).toEqual(expected)
+    })
+
+    // regression reproducer: a latest message without text sends no empty query (the base sent the non-empty query prefix)
+    it('skips messages with empty or whitespace-only content when querying', async () => {
+        const chats = [newChatMarker, ...story(20)]
+        chats[20] = { ...chats[20], content: '' }
+        chats[19] = { ...chats[19], content: '  \n' }
+        await callV2(chats, 200)
+        expect(processorBox.queries).toEqual([chats[18].content])
+    })
 })
 
 describe('hypaMemoryV2 summarisation coverage', () => {

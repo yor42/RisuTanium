@@ -35,3 +35,73 @@ export const DEFAULT_HYPA_MODEL: HypaModel = 'multiE5Small'
 export function isForkOnlyHypaModel(value: unknown): value is ForkOnlyHypaModel {
     return typeof value === 'string' && (FORK_ONLY_HYPA_MODELS as readonly string[]).includes(value)
 }
+
+export type EmbeddingPooling = 'mean' | 'cls'
+
+/** A `null` pooling marks a remote model: the provider decides the vector, so no pooling or prefix applies. */
+export interface EmbeddingRecipe {
+    pooling: EmbeddingPooling | null
+    queryPrefix: string
+    documentPrefix: string
+    cacheTag: string
+}
+
+const UNCHANGED: EmbeddingRecipe = { pooling: 'mean', queryPrefix: '', documentPrefix: '', cacheTag: '' }
+const NOMIC: EmbeddingRecipe = { pooling: 'mean', queryPrefix: 'search_query: ', documentPrefix: 'search_document: ', cacheTag: 'r1' }
+const CLS: EmbeddingRecipe = { pooling: 'cls', queryPrefix: '', documentPrefix: '', cacheTag: 'r1' }
+const E5: EmbeddingRecipe = { pooling: 'mean', queryPrefix: 'query: ', documentPrefix: 'passage: ', cacheTag: 'r1' }
+const REMOTE: EmbeddingRecipe = { pooling: null, queryPrefix: '', documentPrefix: '', cacheTag: '' }
+
+/**
+ * How each model embeds: its pooling and the prefix of a query and of a document.
+ *
+ * Invariants:
+ * - For a local transformers.js model (non-null pooling), a cached vector's key identifies the recipe in this table:
+ *   the pooling and the prefix, plus the role when the two prefixes differ.
+ * - Changing such a model's recipe requires a new `cacheTag` (`r2`, ...). A tag is never reused.
+ * - An empty tag is allowed only for a recipe identical to the one that ran before tags existed.
+ * - A remote model (null pooling) carries no tag and is outside this invariant, because the provider decides its
+ *   vectors. Known consequence: in V2 a voyageContext3 query and a document from a single-text group share a key when
+ *   their text is the same.
+ *
+ * `Record` makes the compiler require a row for every future model key. A GPU key has the recipe of its wasm key.
+ */
+export const EMBEDDING_RECIPES: Record<HypaModel, EmbeddingRecipe> = {
+    MiniLM: UNCHANGED,
+    MiniLMGPU: UNCHANGED,
+    multiMiniLM: UNCHANGED,
+    multiMiniLMGPU: UNCHANGED,
+    bgeSmallEn: UNCHANGED,
+    bgeSmallEnGPU: UNCHANGED,
+    nomic: NOMIC,
+    nomicGPU: NOMIC,
+    bgem3: CLS,
+    bgem3GPU: CLS,
+    bgeM3Ko: CLS,
+    bgeM3KoGPU: CLS,
+    multiE5Small: E5,
+    custom: REMOTE,
+    ada: REMOTE,
+    openai3small: REMOTE,
+    openai3large: REMOTE,
+    voyageContext3: REMOTE,
+}
+
+/** The text a processor puts before an input of this role for this model. */
+export function recipePrefix(model: HypaModel, role: 'query' | 'document'): string {
+    const recipe = EMBEDDING_RECIPES[model]
+    return role === 'query' ? recipe.queryPrefix : recipe.documentPrefix
+}
+
+/**
+ * The cache-key tail of this model's recipe: empty for an unchanged recipe, `|<tag>` otherwise, plus a role marker
+ * (`:q` or `:d`) only when the query and document prefixes differ.
+ */
+export function recipeCacheTag(model: HypaModel, role: 'query' | 'document'): string {
+    const recipe = EMBEDDING_RECIPES[model]
+    if (!recipe.cacheTag) {
+        return ''
+    }
+    const roleMarker = recipe.queryPrefix === recipe.documentPrefix ? '' : role === 'query' ? ':q' : ':d'
+    return `|${recipe.cacheTag}${roleMarker}`
+}
