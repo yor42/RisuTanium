@@ -30,13 +30,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 // prompt" -- are what actually distinguish the two behaviours.
 //
 // `preLoadCheck` in `src/preload.ts` registers the `beforeunload` listener
-// from `isTauri` and `import.meta.env.DEV` alone -- `isWeb` has no bearing on
-// that decision. Every test still states `isNodeServer` and `isWeb`
-// explicitly (via `mockPlatform` below) because together they describe which
-// real build target the test stands in for -- the node server, a static
-// self-host, or risuai.xyz -- and because `isWeb` still gates preload's
-// separate `mainpage` localStorage branch, which every `preLoadCheck()` call
-// in this file also runs through. Vitest's own default for
+// from `isTauri` and `import.meta.env.DEV` alone; the hostname and
+// `isNodeServer` have no bearing on that decision. Tests still state
+// `isNodeServer` where they stand in for the node server, and the default
+// mock stands in for a hosted or static self-host web build. Vitest's own default for
 // `import.meta.env.DEV` is `true`, so a test that never touches it would
 // otherwise run as if built for the Vite dev server rather than for a
 // production web, self-host, or node build; `beforeEach` below stubs `DEV`
@@ -45,12 +42,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 type PlatformOverrides = {
     isTauri?: boolean
     isNodeServer?: boolean
-    isWeb?: boolean
 }
 
 // Registers `./ts/platform` for this test's own dynamic imports, defaulting
-// to the web-on-risuai.xyz combination (`isTauri: false`, `isNodeServer:
-// false`, `isWeb: true`). Vitest only reliably applies a `vi.doMock`
+// to the plain web combination (`isTauri: false`, `isNodeServer: false`).
+// Vitest only reliably applies a `vi.doMock`
 // registration for a given specifier the first time it is called after
 // `vi.resetModules()`; calling it a second time in the same test (e.g. once
 // from a shared default and again to override it) does not reliably take
@@ -61,7 +57,6 @@ function mockPlatform(overrides: PlatformOverrides = {}): void {
     vi.doMock(import('./ts/platform'), () => ({
         isTauri: false,
         isNodeServer: false,
-        isWeb: true,
         ...overrides,
     }))
 }
@@ -306,31 +301,14 @@ describe('an app-initiated reload bypasses the prompt', () => {
     })
 })
 
-// Against a preload that registers the guard only when `isWeb` is true (the
-// previous behaviour): of the 7 tests below, 3 fail and 4 pass.
-// - "prompts for a plain beforeunload on the node server", "prompts for a
-//   plain beforeunload on a static self-host whose hostname is not
-//   risuai.xyz", and "lets a mailto: handoff through unprompted, and still
-//   prompts for a later genuine leave" fail against that baseline, since it
-//   never registers a listener for either build target (`isWeb` is false on
-//   both).
-// - "prompts for a plain beforeunload on risuai.xyz" and "registers no guard
-//   on Tauri, so a beforeunload is never prevented" pass as guards: `isWeb`
-//   alone already reaches the same outcome for those two build targets.
-// - "lets an app-initiated reload through unprompted" also passes against
-//   that baseline, but only because no listener is registered at all for
-//   that build target, so any dispatch goes unprevented regardless of the
-//   exemption it means to exercise.
-// - "registers no guard in dev, even on a build target that would otherwise
-//   get one" passes against that baseline too, but not because it checks
-//   dev: its self-host mock has `isWeb: false`, which already skips
-//   registration regardless of `DEV`, so against THIS baseline the test does
-//   not discriminate a dev build from a non-dev one. It does discriminate a
-//   different regression: it is the one test in this file that distinguishes
-//   a guard gated on `!isTauri` alone from one that also excludes dev.
+// The guard is registered for every non-Tauri, non-dev build, whatever the
+// hostname: the node server, a static self-host and the hosted web build all
+// prompt, Tauri never does, and a dev build never does. The dev test is the
+// one that distinguishes a guard gated on `!isTauri` alone from one that also
+// excludes dev.
 describe('preLoadCheck registers the beforeunload guard based on build target', () => {
     test('prompts for a plain beforeunload on the node server', async () => {
-        mockPlatform({ isNodeServer: true, isWeb: false })
+        mockPlatform({ isNodeServer: true })
         const { preLoadCheck } = await import('./preload')
         preLoadCheck()
 
@@ -340,7 +318,7 @@ describe('preLoadCheck registers the beforeunload guard based on build target', 
     })
 
     test('prompts for a plain beforeunload on a static self-host whose hostname is not risuai.xyz', async () => {
-        mockPlatform({ isWeb: false })
+        mockPlatform()
         const { preLoadCheck } = await import('./preload')
         preLoadCheck()
 
@@ -360,7 +338,7 @@ describe('preLoadCheck registers the beforeunload guard based on build target', 
     })
 
     test('registers no guard on Tauri, so a beforeunload is never prevented', async () => {
-        mockPlatform({ isTauri: true, isWeb: false })
+        mockPlatform({ isTauri: true })
         const { preLoadCheck } = await import('./preload')
         preLoadCheck()
 
@@ -371,7 +349,7 @@ describe('preLoadCheck registers the beforeunload guard based on build target', 
 
     test('registers no guard in dev, even on a build target that would otherwise get one', async () => {
         vi.stubEnv('DEV', true)
-        mockPlatform({ isWeb: false })
+        mockPlatform()
         const { preLoadCheck } = await import('./preload')
         preLoadCheck()
 
@@ -383,7 +361,7 @@ describe('preLoadCheck registers the beforeunload guard based on build target', 
 
 describe('the guard exemptions apply on a node-server build too', () => {
     test('lets an app-initiated reload through unprompted', async () => {
-        mockPlatform({ isNodeServer: true, isWeb: false })
+        mockPlatform({ isNodeServer: true })
         const { preLoadCheck } = await import('./preload')
         const { markAppInitiatedReload } = await import('./ts/reloadGuard')
 
@@ -396,7 +374,7 @@ describe('the guard exemptions apply on a node-server build too', () => {
     })
 
     test('lets a mailto: handoff through unprompted, and still prompts for a later genuine leave', async () => {
-        mockPlatform({ isNodeServer: true, isWeb: false })
+        mockPlatform({ isNodeServer: true })
         const { preLoadCheck } = await import('./preload')
         const { openUrlOnWeb } = await import('./ts/openUrlWeb')
 
