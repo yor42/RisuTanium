@@ -41,6 +41,7 @@ const stores = new Proxy({} as ReturnType<typeof holder.make>, {
 })
 
 const pickMock = vi.hoisted(() => vi.fn())
+const maintenanceMock = vi.hoisted(() => vi.fn())
 
 vi.mock('localforage', () => ({
     default: {
@@ -175,25 +176,19 @@ vi.mock(import('src/ts/storage/bootArchivePass'), () => ({
     checkCommittedBlocks: vi.fn(async () => ({ ok: true })),
 }) as unknown as typeof import('src/ts/storage/bootArchivePass'))
 
+vi.mock(import('src/ts/storage/store2/maintenance'), async (importOriginal) => ({
+    ...await importOriginal(),
+    startStore2Maintenance: maintenanceMock,
+}))
+
 vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
     verifyAssetCacheEntry: vi.fn(async () => ({ status: 'ok' as const, expectedHash: '', actualHash: '' })),
 }) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
-vi.mock(import('src/ts/storage/remoteSaveCleanup'), () => ({
-    getRemoteSaveCleanupAction: vi.fn(() => 'create-meta'),
-    getRemoteSavePayloadName: vi.fn(() => null),
-}) as unknown as typeof import('src/ts/storage/remoteSaveCleanup'))
 
 vi.mock(import('src/ts/storage/loadTimeListing'), () => ({
     recordLoadTimeListing: vi.fn(async () => { }),
     resetLoadTimeListingForTests: vi.fn(),
 }) as unknown as typeof import('src/ts/storage/loadTimeListing'))
-
-vi.mock(import('src/ts/storage/assetSweep'), () => ({
-    sweepTauriAssets: vi.fn(async () => { }),
-    sweepForageAssetKey: vi.fn(async () => { }),
-    ASSET_SWEEP_BATCH_SIZE: 100,
-}) as unknown as typeof import('src/ts/storage/assetSweep'))
 
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
@@ -335,6 +330,7 @@ beforeEach(() => {
     world.readOnly = false
     world.realmDrain = () => { }
     pickMock.mockReset()
+    maintenanceMock.mockReset()
     selectingPick()
     vi.stubGlobal('open', vi.fn())
     vi.resetModules()
@@ -438,6 +434,19 @@ describe('loadData(): restoring the last character', () => {
         expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'backend-unavailable' })
         expect(pickMock).not.toHaveBeenCalled()
         expect(localStorage.getItem(LAST_CHARACTER_KEY)).toBe(REMEMBERED_C2)
+    })
+
+    test.each([
+        ['store2', false, { kind: 'store2' }],
+        ['legacy-readonly', true, { kind: 'read-only', reason: 'backend-unavailable' }],
+    ] as const)('T1-N1 guard: store2 maintenance is started exactly once after a %s boot', async (_name, readOnly, mode) => {
+        world.readOnly = readOnly
+
+        await bootOnce()
+
+        const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
+        expect(getPageStorageMode()).toEqual(mode)
+        expect(maintenanceMock).toHaveBeenCalledTimes(1)
     })
 
     const startingConditions: Array<[string, () => Promise<void>]> = [

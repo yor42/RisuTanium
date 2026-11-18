@@ -23,16 +23,14 @@ import { getPageBlockOwner } from "./storage/pageBlockOwner";
 import {
     finishBlockBoot,
     loadBlockProfile,
-    olderMainFileCopyExists,
     seedEmptyBlockProfile,
     type BootBackupSource,
     type BootLoadContext,
     type BootNotice,
 } from "./storage/bootBlockLoad";
 import { bootLoadUi } from "./storage/bootLoadUi";
-import { getPageStorageMode, isAssetSweepHeld, recordsLoadTimeListing, setPageStorageMode, startsLegacyStartupCleanup } from "./storage/pageStorageMode";
+import { getPageStorageMode, setPageStorageMode } from "./storage/pageStorageMode";
 import { fingerprintMainFile } from "./storage/mainFileFingerprint";
-import { dropRisuSaveCache } from "./storage/risuSaveCacheDrop";
 import { updateAnimationSpeed } from "./gui/animation";
 import { updateColorScheme, updateTextThemeAndCSS } from "./gui/colorscheme";
 import { language } from "src/lang";
@@ -46,11 +44,7 @@ import { noteBootArchiveSession, noteBootPassCommitted } from "./process/memory/
 import { moduleUpdate } from "./process/modules";
 import { repairDatabaseIds } from "./process/chatIds";
 import { repairCharacterTree, repairPersonas } from "./storage/characterTreeRepair";
-import { verifyAssetCacheEntry } from "./storage/assetIntegrity";
 import { cleanRouteServedCacheOnce } from "./storage/routeCacheCleanup";
-import { getRemoteSaveCleanupAction, getRemoteSavePayloadName } from "./storage/remoteSaveCleanup";
-import { sweepTauriAssets, sweepForageAssetKey, ASSET_SWEEP_BATCH_SIZE } from "./storage/assetSweep";
-import { recordLoadTimeListing } from "./storage/loadTimeListing";
 import { noteMainFileBytes } from "./storage/mainFileRecord";
 import { sweepAllWriteTemps } from "./storage/tauriAtomicWrite";
 import { startInlayCopy } from "./process/files/inlayCopy";
@@ -66,19 +60,12 @@ import { LEGACY_MAIN_FILE_KEY } from "./storage/blockKeys";
 import { listBackupTimes } from "./drive/backupList";
 import { clearArchiveMemo, rememberPausedTold, rememberSkipped, rememberTooLarge } from "./storage/bootArchiveMemo";
 import { applyCharacterDefaults } from "./storage/characterDefaults";
-import { recordStartupCleanup } from "./storage/startupCleanupState";
 import { isTrashPurgeDue } from "./storage/trashPurge";
 import { startAvatarThumbSweep } from "./media/avatarThumb";
 import {
     forageStorage,
     saveDb,
     getDbBackups,
-    buildAssetKeepSet,
-    getUncleanablesSync,
-    getBasename,
-    wasAssetWrittenThisPage,
-    listAssetsWrittenThisPage,
-    releaseAssetObjectUrl,
     setUsingSw,
     checkCharOrder
 } from "./globalApi.svelte";
@@ -522,12 +509,6 @@ export async function loadData() {
             // `storeName` makes it delete just that object store, leaving an
             // empty "risuaiAccountCached" database behind.
             localStorage.removeItem('risu_lastsaved')
-            // The legacy block cache has no reader once the profile is a block
-            // profile. Dropped here, with the other leftovers, and so never
-            // while a stale-profile notice holds the boot.
-            if (blockProfileInstalled) {
-                dropRisuSaveCache()
-            }
             if (localStorage.getItem('backup') === 'save' || localStorage.getItem('backup') === 'load') {
                 localStorage.removeItem('backup')
             }
@@ -537,16 +518,7 @@ export async function loadData() {
             // Never awaited: the copy of the old inlay database must not delay the app.
             startInlayCopy()
 
-            // Taken before any plugin runs: a plugin can write cold-storage
-            // units from its first line, and a unit written after this point
-            // must never be deletable by the manual clean-up. Awaited so the
-            // listing has settled before that can happen.
             LoadingStatusState.text = "Listing Stored Files..."
-            try {
-                if (recordsLoadTimeListing()) {
-                    await recordLoadTimeListing()
-                }
-            } catch (error) { }
 
             LoadingStatusState.text = "Loading Plugins..."
             try {
@@ -607,19 +579,9 @@ export async function loadData() {
             // Recording attaches handlers to the promise, which marks a failure
             // as handled so it never reaches the `unhandledrejection` handler;
             // it is reported here the same way. The call stays un-awaited.
-            // The legacy clean-up reads and deletes block-era keys; only a legacy or block page owns them, and a store2 page's collection is not this.
-            if (startsLegacyStartupCleanup()) {
-                const startupCleanup = cleanChunks()
-                recordStartupCleanup(startupCleanup)
-                startupCleanup.catch((error) => {
-                    console.error(error)
-                    alertError(error)
-                })
-            } else {
-                // A store2 page that found its profile ready deletes the old-format files after its first quiet moment; the runner
-                // starts nothing on any other page, keeps its own try/catch and is never awaited.
-                startStore2Maintenance({ store: getAppStore, listBackupTimes })
-            }
+            // A store2 page that found its profile ready deletes the old-format files after its first quiet moment; the runner
+            // starts nothing on any other page, keeps its own try/catch and is never awaited.
+            startStore2Maintenance({ store: getAppStore, listBackupTimes })
             // Detached: its own store, its own try/catch, never awaited so a
             // slow or failing sweep can't hold up boot.
             void startAvatarThumbSweep()
@@ -1196,242 +1158,6 @@ async function checkNewFormat(): Promise<void> {
     checkCharOrder();
     queueInlayCleanupForCharacters(purged);
 }
-
-const ASSET_KEY_PREFIX = 'assets/'
-
-/**
- * Purges chunks of data that are not needed.
- */
-async function cleanChunks(options:{
-    cleanColdStorage?: boolean
-} = {}) {
-    const cleanColdStorage = options.cleanColdStorage ?? false
-    const db = getDatabase()
-
-    // Cheap, sampled integrity spot-check: verify a handful of currently
-    // in-use assets against their own content-addressed filename on every
-    // boot, rather than every cached asset (which would mean re-hashing the
-    // whole library, exactly the cost a "lightweight" signal is meant to
-    // avoid). Runs before the cold-storage early return below and reads only
-    // the in-memory database (getUncleanablesSync, no cold-storage reads),
-    // so it still samples something even on a boot that skips the rest of
-    // this function for having cold storage on. Only runs when
-    // db.checkCorruption is on (the Backup & Files tab's Asset Cache
-    // Integrity panel): that toggle gates the only user-visible effect (the
-    // toast), so a save that never enabled it never pays the sampling cost.
-    // Read-only either way — doesn't attempt to repair anything; that's the
-    // explicit "verify assets" action in the same settings section.
-    if (!isTauri && db.checkCorruption) {
-        const sampleTargets = getUncleanablesSync(db)
-            .sort(() => Math.random() - 0.5)
-            .slice(0, 3)
-        for (const target of sampleTargets) {
-            try {
-                const result = await verifyAssetCacheEntry('assets/' + target)
-                if (result.status === 'mismatch') {
-                    console.error(`Asset cache integrity check failed for assets/${target}: expected content hash ${result.expectedHash}, cached copy hashes to ${result.actualHash}`)
-                    alertToast(language.possibleAssetCorruptionToast(target))
-                }
-            } catch (error) {
-                console.error('Asset cache integrity check errored for', target, error)
-            }
-        }
-    }
-
-    if(db.coldstorage && !cleanColdStorage){
-        return
-    }
-
-    // A read-only page performs no store writes or deletes: no asset sweep, no
-    // `.meta` write and no `remotes/` delete.
-    if (getPageStorageMode().kind === 'read-only') {
-        return
-    }
-
-    // A profile with any cold-storage stub never sweeps assets at startup;
-    // the manual clean-up is the only thing that deletes assets for it, after
-    // reading every blob a save can point at. Nor does a profile that keeps a
-    // damaged or older save generation on disk (see `isAssetSweepHeld`), nor
-    // while an older copy of the main file exists next to the block profile (a
-    // `database.pre-blocks*` copy, or the legacy `database.bin` left in
-    // place): the generation or the copy may reference assets no live
-    // character does. The sweep resumes once the copy is deleted. This gate
-    // covers the asset sweep only: the remote-block cleanup below runs for
-    // every profile that gets past the flag check above.
-    const sweepAssets = !(db.characters ?? []).some((cha) => cha?.coldstorage)
-        && !isAssetSweepHeld()
-        && !(await olderMainFileCopyExists(await getAppStore()))
-
-    // `keepSet.complete` is false when any cold-stored character's blob
-    // failed to read, was missing, or mismatched chaId -- see
-    // globalApi.svelte.ts's `resolveUncleanableChars`. Both sweeps below
-    // (never the remote-block cleanup that follows them) skip deleting
-    // anything in that case, via the spread below.
-    const keepSet = sweepAssets ? await buildAssetKeepSet(db) : null
-    // The keep-set is older than the listing and than any save made while the
-    // sweep runs, so a key this page load wrote, and a key the live database
-    // refers to now, are kept as well (see assetSweep.ts).
-    const assetGuards = () => ({
-        writtenThisPage: wasAssetWrittenThisPage,
-        liveUncleanable: () => new Set(getUncleanablesSync(getDatabase())),
-    })
-    if (isTauri) {
-        // The store's listing leaves out the temp file of an atomic write in
-        // flight, and lists a directory that does not exist yet as empty.
-        const store = await getAppStore()
-        if (keepSet) {
-            await sweepTauriAssets({
-                ...keepSet,
-                ...assetGuards(),
-                writtenKeysThisPage: listAssetsWrittenThisPage,
-                listAssets: async () => (await store.list(ASSET_KEY_PREFIX)).map((key) => ({ name: key.slice(ASSET_KEY_PREFIX.length) })),
-                removeAsset: async (key) => {
-                    await store.delete(key, 'unconditional')
-                    releaseAssetObjectUrl([key])
-                },
-                getBasename
-            })
-        }
-
-        const remoteKeys = await store.list('remotes/')
-
-        const remoteUncleanables = new Set<string>(
-            db.characters.map((v) => v.chaId)
-        )
-        for (const remoteKey of remoteKeys) {
-            try {
-                const remoteFileName = getBasename(remoteKey)
-                const remotePayloadName = getRemoteSavePayloadName(remoteFileName)
-                if(!remotePayloadName){
-                    continue
-                }
-                const fexists = remoteUncleanables.has(remotePayloadName)
-                if(!fexists){
-
-                    const metaPath = remoteKey + '.meta'
-                    // A `.meta` that cannot be read leaves the block for a later
-                    // boot; one that does not parse is a `.meta` with no
-                    // timestamp, which keeps the block. Absence is asked of the
-                    // store's own existence check, which does not depend on how
-                    // the plugin words a missing file.
-                    let meta: Uint8Array | null = null
-                    try {
-                        if (await store.has(metaPath)) {
-                            meta = (await store.read(metaPath)).bytes
-                        }
-                    } catch (error) {
-                        continue
-                    }
-                    let metaLastUsed:unknown
-                    if (meta !== null) {
-                        try {
-                            metaLastUsed = JSON.parse(new TextDecoder().decode(meta)).lastUsed
-                        } catch (error) {}
-                    }
-
-                    const cleanupAction = getRemoteSaveCleanupAction({
-                        fileName: remoteFileName,
-                        activeCharacterIds: remoteUncleanables,
-                        hasMeta: meta !== null,
-                        metaLastUsed
-                    })
-                    if(cleanupAction === 'create-meta'){
-                        const metaJson = {
-                            lastUsed: Date.now()
-                        }
-                        await store.write(metaPath, new TextEncoder().encode(JSON.stringify(metaJson)), 'unconditional')
-                    }
-                    else if(cleanupAction === 'delete'){
-                        await store.delete(remoteKey, 'unconditional')
-                        await store.delete(metaPath, 'unconditional')
-                    }
-                }
-            } catch (error) {
-                console.log('error', remoteKey)
-            }
-        }
-    }
-    else {
-        // Both listings are taken before anything is removed, so a listing that
-        // fails rejects the clean-up with nothing deleted.
-        const store = await getAppStore()
-        const assetKeys = await store.list(ASSET_KEY_PREFIX)
-        const remoteKeys = await store.list('remotes/')
-        const characterIds = new Set<string>(
-            db.characters.map((v) => v.chaId)
-        )
-        if (keepSet?.complete === false) {
-            console.log('cleanChunks: asset keep-set was incomplete (a cold-storage read failed or a module stub is present), skipping the forage asset sweep this run')
-        }
-        if (keepSet && keepSet.complete !== false) {
-            const guards = assetGuards()
-            // Only keys the keep-set does not protect are candidates, so the
-            // live references are walked once per batch of candidates and
-            // never for a listing the keep-set already covers.
-            const candidates = assetKeys.filter((key) => !keepSet.uncleanable.has(getBasename(key)))
-            for (let start = 0; start < candidates.length; start += ASSET_SWEEP_BATCH_SIZE) {
-                // One answer for the whole batch of deletes.
-                const live = guards.liveUncleanable()
-                for (const asset of candidates.slice(start, start + ASSET_SWEEP_BATCH_SIZE)) {
-                    await sweepForageAssetKey(asset, {
-                        ...keepSet,
-                        writtenThisPage: guards.writtenThisPage,
-                        liveUncleanable: () => live,
-                        removeAsset: async (key) => {
-                            await store.delete(key, 'unconditional')
-                            releaseAssetObjectUrl([key])
-                        },
-                        getBasename
-                    })
-                }
-            }
-        }
-        for (const asset of remoteKeys) {
-            if (asset.endsWith('.meta')){
-                continue
-            }
-            // getRemoteSavePayloadName() only recognizes the legacy
-            // `.local.bin` suffix — a content-addressed (`v:2`,
-            // `<chaId>.<hash>.bin`) file returns null here and is
-            // correctly left untouched, matching the Tauri branch above.
-            // A hash-named file must never be reduced to a bogus
-            // "character id" via a fixed-length suffix strip: that id
-            // would never match anything real, making a live block look
-            // orphaned and deletable after the grace period. See
-            // Agents/Reports/08-remote-block-gc-transactional-safety.md.
-            const name = getRemoteSavePayloadName(getBasename(asset))
-            if(!name){
-                continue
-            }
-            const exists = characterIds.has(name)
-            if(!exists){
-                let okayToDelete = false
-                try {
-                    const metaPath = asset + '.meta'
-                    const metaData = (await store.read(metaPath)).bytes
-                    if (metaData !== null) {
-                        const metaJson = JSON.parse(new TextDecoder().decode(metaData))
-                        const lastUsed = metaJson.lastUsed as number
-                        if(Date.now() - lastUsed > 1000 * 60 * 60 * 24 * 7) { //not used for 7 days
-                            okayToDelete = true
-                        }
-                    }
-                    else{
-                        //write meta for next time
-                        const metaJson = {
-                            lastUsed: Date.now()
-                        }
-                        await store.write(metaPath, new TextEncoder().encode(JSON.stringify(metaJson)), 'unconditional')
-                    }
-                } catch (error) {}
-                if (okayToDelete) {
-                    await store.delete(asset, 'unconditional')
-                }
-            }
-        }
-    }
-}
-
 
 /**
  * Repairs `DBState.db.characters`' ids in place, as boot does: a missing

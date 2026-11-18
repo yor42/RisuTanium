@@ -53,8 +53,7 @@ vi.mock(import('src/ts/storage/dbChangeEffects.svelte'), () => ({
 
 import { buildAssetKeepSet, getUncleanablesSync } from 'src/ts/globalApi.svelte'
 import {
-    pageRunsLegacyDeleters, recordsLoadTimeListing, resetPageStorageModeForTests, setPageStorageMode,
-    startsLegacyStartupCleanup,
+    pageRunsLegacyDeleters, resetPageStorageModeForTests, setPageStorageMode,
 } from 'src/ts/storage/pageStorageMode'
 
 afterEach(() => {
@@ -128,7 +127,5 @@ describe('legacy deleters on the page that holds stubs', () => {
         expect(pageRunsLegacyDeleters()).toBe(true)
         setPageStorageMode({ kind: 'store2' } as Parameters<typeof setPageStorageMode>[0])
         expect(pageRunsLegacyDeleters()).toBe(false)
-        expect(startsLegacyStartupCleanup()).toBe(false)
-        expect(recordsLoadTimeListing()).toBe(false)
     })
 })
