@@ -1494,7 +1494,7 @@ function listOversizedAssets(entries: readonly BackupIndexEntry[], names: Readon
     return found;
 }
 
-function shownSkippedNames(names: readonly string[]): string[] {
+export function shownSkippedNames(names: readonly string[]): string[] {
     return names.slice(0, SKIPPED_ASSET_NAMES_SHOWN).map((name) => name.length > SKIPPED_ASSET_NAME_CHARS_SHOWN ? name.slice(0, SKIPPED_ASSET_NAME_CHARS_SHOWN) + '...' : name);
 }
 
@@ -1517,7 +1517,7 @@ interface Store2BinImport {
  * The notices for the inlays left out as too large, one per distinct limit that applied (an Android video has a
  * smaller bound than other inlays), each printing the limit that was used.
  */
-function tooLargeInlayNotices(skippedInlays: readonly InlaySkipped[]): string[] {
+export function tooLargeInlayNotices(skippedInlays: readonly InlaySkipped[]): string[] {
     const byLimit = new Map<number, string[]>();
     for (const skipped of skippedInlays) {
         if (skipped.reason !== 'tooLarge') {
@@ -1530,7 +1530,7 @@ function tooLargeInlayNotices(skippedInlays: readonly InlaySkipped[]): string[] 
 }
 
 /** The notices of what a store2 import left out, in the order the block-era restore shows them; each is awaited before the reload takes the page away. */
-function skippedNoticesOf(skippedAssets: readonly SkippedAsset[], skippedInlays: readonly InlaySkipped[], assetLimit: number | null): string[] {
+export function skippedNoticesOf(skippedAssets: readonly SkippedAsset[], skippedInlays: readonly InlaySkipped[], assetLimit: number | null): string[] {
     const notices: string[] = [];
     const invalidNames = skippedAssets.filter((skipped) => skipped.reason === 'invalidName').map((skipped) => skipped.name);
     const tooLargeNames = skippedAssets.filter((skipped) => skipped.reason === 'tooLarge').map((skipped) => skipped.name);
