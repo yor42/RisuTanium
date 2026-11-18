@@ -198,6 +198,11 @@ export function studioLanguageMock(): Record<string, unknown> {
     for (const key of [
         'studioOwnerOtherModules', 'studioOwnerOtherPresets', 'studioMergedPartial', 'studioPluginRetired', 'studioItemCount',
         'studioShowMore', 'studioTruncated', 'studioDeepKindFallback', 'studioDeepItemMissing', 'studioSearchMore', 'studioSearchUnloaded',
+        'studioLoreTestScope', 'studioLoreTestScopeNoMessage', 'studioLoreTestModulesSkipped', 'studioLoreTestBudget',
+        'studioLoreTestInactiveGroup', 'studioLoreTestOrder', 'studioLoreTestTokens', 'studioLoreTestChance',
+        'studioLoreTestMatchedMessage', 'studioLoreTestMatchedTyped', 'studioLoreTestMatchedEntry', 'studioLoreTestForced',
+        'studioLoreTestExcluded', 'studioLoreTestExcludedNoHit', 'studioLoreTestDecorator', 'studioLoreTestInvalidRegex',
+        'studioLoreTestMerged',
     ]) table[key] = withArgument(key)
     return new Proxy(table, {
         get: (target, key) => typeof key === 'symbol' ? undefined : key in target ? target[key] : key,

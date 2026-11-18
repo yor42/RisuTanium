@@ -75,6 +75,7 @@ vi.mock('src/ts/process/modules', () => ({ refreshModules: vi.fn(() => { h.modul
 vi.mock('src/ts/process/moduleGuiBump', () => ({ bumpModuleGui: vi.fn(() => { h.moduleCalls.push('bumpModuleGui') }) }))
 vi.mock('src/ts/studio/edit/saveAck.svelte', () => ({
     productionSaveAckDeps: vi.fn(() => ({})),
+    productionModuleAckSubject: vi.fn(() => ({ kind: 'module' })),
     createSaveAck: vi.fn(() => {
         const ack = { noteEdit: vi.fn(), dispose: vi.fn(), display: 'idle', canRetry: () => false, retry: () => false }
         h.acks.push(ack)
@@ -495,6 +496,94 @@ describe('the visit ack', () => {
         } finally {
             vi.unstubAllGlobals()
         }
+    })
+})
+
+describe('the module ack of the open toggle builder', () => {
+    test('nothing happens while the service is not built', async () => {
+        const m = await fresh()
+        expect(m.accessor.beginModuleAck('M1')).toBeNull()
+        expect(m.accessor.currentModuleAck()).toBeNull()
+    })
+
+    test('the first use of a module creates one ack, registers it for that module and reuses it; the visit ack is not touched', async () => {
+        const m = await fresh()
+        const real = await m.accessor.loadStudioHistoryService()
+        const spySet = vi.spyOn(real, 'setModuleAck')
+        const first = m.accessor.beginModuleAck('M1')
+        expect(first).not.toBeNull()
+        expect(h.acks).toHaveLength(1)
+        expect(m.accessor.currentModuleAck()).toBe(first)
+        expect(m.accessor.currentVisitAck()).toBeNull()
+        expect(spySet).toHaveBeenCalledWith('M1', first)
+        expect(m.accessor.beginModuleAck('M1')).toBe(first)
+        expect(h.acks).toHaveLength(1)
+        expect(spySet).toHaveBeenCalledTimes(1)
+    })
+
+    test('another module disposes and unregisters the old ack before the new one is registered', async () => {
+        const m = await fresh()
+        const real = await m.accessor.loadStudioHistoryService()
+        const spySet = vi.spyOn(real, 'setModuleAck')
+        const first = m.accessor.beginModuleAck('M1')
+        const second = m.accessor.beginModuleAck('M2')
+        expect(second).not.toBe(first)
+        expect(h.acks[0].dispose).toHaveBeenCalledTimes(1)
+        expect(h.acks[1].dispose).not.toHaveBeenCalled()
+        expect(spySet.mock.calls).toEqual([['M1', first], ['M1', null], ['M2', second]])
+        expect(m.accessor.currentModuleAck()).toBe(second)
+    })
+
+    test('a new visit replaces the ack of the same module', async () => {
+        const m = await fresh()
+        const real = await m.accessor.loadStudioHistoryService()
+        const spySet = vi.spyOn(real, 'setModuleAck')
+        const first = m.accessor.beginModuleAck('M1')
+        m.screen.studioScreen.visitId = 'v2'
+        const second = m.accessor.beginModuleAck('M1')
+        expect(second).not.toBe(first)
+        expect(h.acks[0].dispose).toHaveBeenCalledTimes(1)
+        expect(spySet).toHaveBeenCalledWith('M1', null)
+        expect(m.accessor.currentModuleAck()).toBe(second)
+    })
+
+    test('closing Studio ends the module ack', async () => {
+        const m = await fresh()
+        const real = await m.accessor.loadStudioHistoryService()
+        const spySet = vi.spyOn(real, 'setModuleAck')
+        m.accessor.beginModuleAck('M1')
+        m.open.set(false)
+        expect(m.accessor.currentModuleAck()).toBeNull()
+        expect(h.acks[0].dispose).toHaveBeenCalledTimes(1)
+        expect(spySet).toHaveBeenLastCalledWith('M1', null)
+    })
+
+    test('endModuleAck of another module leaves the held ack; of its own module or with no id it ends it once', async () => {
+        const m = await fresh()
+        await m.accessor.loadStudioHistoryService()
+        const held = m.accessor.beginModuleAck('M1')
+        m.accessor.endModuleAck('M2')
+        expect(m.accessor.currentModuleAck()).toBe(held)
+        expect(h.acks[0].dispose).not.toHaveBeenCalled()
+        m.accessor.endModuleAck('M1')
+        m.accessor.endModuleAck()
+        expect(m.accessor.currentModuleAck()).toBeNull()
+        expect(h.acks[0].dispose).toHaveBeenCalledTimes(1)
+    })
+
+    test('the reset ends the module ack and the test factory; an ack of the factory is disposed by the accessor', async () => {
+        const m = await fresh()
+        await m.accessor.loadStudioHistoryService()
+        const made = { dispose: vi.fn(), display: 'idle', canRetry: () => false, retry: () => false } as unknown as SaveAck
+        m.accessor.setStudioModuleAckForTests(() => made)
+        expect(m.accessor.beginModuleAck('M1')).toBe(made)
+        expect(h.acks).toHaveLength(0)
+        m.accessor.resetStudioHistoryAccessorForTests()
+        expect(m.accessor.currentModuleAck()).toBeNull()
+        expect(made.dispose).toHaveBeenCalledTimes(1)
+        await m.accessor.loadStudioHistoryService()
+        m.accessor.beginModuleAck('M1')
+        expect(h.acks).toHaveLength(1)
     })
 })
 

@@ -2301,6 +2301,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
         rememberToolUsage: DBState.db.rememberToolUsage,
         subject,
         mainSend: true,
+        usageInputEstimate: inputTokens,
     }, 'model', abortSignal)
     if (MEASURE) {
         // A measurement build notes the reply's first turn after the response; nothing reads it back.

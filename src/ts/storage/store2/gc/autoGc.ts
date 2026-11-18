@@ -1,11 +1,11 @@
 import { MEASURE } from '../../../process/memory/measureFlag'
 import { getPageStorageMode } from '../../pageStorageMode'
-import { STORAGE_TAB_LOCK_NAME, tabLockSnapshotShowsOthers } from '../../storageTabLocks'
+import { liveLockQuery, soleTabAnswer } from '../../soleTab'
 import { batchPaceOf } from '../oldData/delete'
 import type { Store2Session } from '../session'
 import type { GcPageFacts } from './gcMeasure'
 import { meterGcBackend, noteMeasuredGcResult, type GcMeter } from './gcMeter'
-import { gcPass, type GcDeps, type GcPeerAnswer, type GcPeers, type GcResult } from './pass'
+import { gcPass, type GcDeps, type GcPeers, type GcResult } from './pass'
 
 /**
  * The automatic clean-up of store2 leftovers: one collector pass per page load, from the maintenance step after the
@@ -55,48 +55,7 @@ export type AutoGcFacts = Pick<GcPageFacts, 'isBusy' | 'saveLoopParked'> & {
     ownBase(): string | null
 }
 
-/** What the sole-tab proof reads: the lock query (absent without Web Locks) and this tab's own presence claim. */
-export interface SoleTabInput {
-    query: (() => Promise<LockManagerSnapshot>) | undefined
-    holdsOwnPresence: () => boolean
-}
-
-/**
- * The web sole-tab proof, in the order that keeps a missing API apart from a busy page: no query is `'unsupported'`; a
- * false own claim, a failed query, a snapshot that shows others, a holder count other than one, or an own claim that went
- * false during the query is `'others'`; otherwise `'alone'`.
- */
-export async function soleTabAnswer(input: SoleTabInput): Promise<GcPeerAnswer> {
-    if (typeof input.query !== 'function') {
-        return 'unsupported'
-    }
-    if (!input.holdsOwnPresence()) {
-        return 'others'
-    }
-    let snapshot: LockManagerSnapshot
-    try {
-        snapshot = await input.query()
-    } catch {
-        return 'others'
-    }
-    if (tabLockSnapshotShowsOthers(snapshot)) {
-        return 'others'
-    }
-    const holders = (snapshot.held ?? []).filter(lock => lock.name === STORAGE_TAB_LOCK_NAME).length
-    if (holders !== 1) {
-        return 'others'
-    }
-    return input.holdsOwnPresence() ? 'alone' : 'others'
-}
-
-/**
- * The lock query as the page has it at call time: `navigator.locks` is absent on plain HTTP and null under some test
- * hosts, so the decision rests on the query function itself and never on a cached support flag.
- */
-function liveLockQuery(): (() => Promise<LockManagerSnapshot>) | undefined {
-    const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
-    return typeof locks?.query === 'function' ? () => locks.query() : undefined
-}
+export { soleTabAnswer, type SoleTabInput } from '../../soleTab'
 
 /** The page's own modules, loaded when the pass first needs them so that installing the step costs nothing. */
 async function loadLiveFacts(): Promise<AutoGcFacts> {

@@ -33,7 +33,7 @@ import { readSweepRecord, writeSweepRecord } from './record'
  * never an asset name.
  */
 
-/** What a web page learns about other tabs of the app (the answer of `queryOtherTabs`). */
+/** What a web page learns about other tabs of the app (the answer of the sole-tab proof, `soleTabAnswer`). */
 export type SweepPeers = 'alone' | 'others' | 'unsupported'
 
 /** The pieces of the session the pass reads live: a copy would freeze `idleReason`. */
@@ -50,7 +50,7 @@ export interface AssetSweepEnv {
     writtenCount(): number
     /** The keys counted by `writtenCount`, in insertion order. */
     writtenThisPage(): Iterable<string>
-    /** Whether another tab is open; a failed query answers `others`. Asked before every delete on the web. */
+    /** Whether this page is the sole tab; it needs this page's own presence claim, and a failed query answers `others`. Asked before every delete on the web. */
     peers(): Promise<SweepPeers>
     /** A data action, a parked save loop, unsaved changes or a restore: the pass ends before its next delete. */
     shouldStop(): boolean

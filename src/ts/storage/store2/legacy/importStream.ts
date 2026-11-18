@@ -55,7 +55,7 @@ export interface StreamSource {
     onPrepared?(verdict: 'whole' | 'stream' | 'stop'): void
 }
 
-export interface StreamPrepareRequest extends Pick<ImportRequest, 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'themePacks' | 'activeThemePack'> {
+export interface StreamPrepareRequest extends Pick<ImportRequest, 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides'> {
     stream: StreamSource
     /** Awaited after every chunk and every character of both passes. */
     yieldToMain: () => Promise<void>
