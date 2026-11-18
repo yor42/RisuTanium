@@ -15,6 +15,10 @@
   import { beginBusy } from "src/ts/process/memory/busyActions";
   import { ensureCurrentModulesOrAlert } from "src/ts/process/moduleEnsure";
   import { hasModuleStubs } from "src/ts/process/moduleRefList";
+  import {
+    exportSummariesToChatLore,
+    importChatLoreAsSummaries,
+  } from "src/ts/process/memory/hypav3Lorebook";
   import { alertConfirmTwice } from "./HypaV3Modal/utils";
   import ModalHeader from "./HypaV3Modal/modal-header.svelte";
   import ModalSummaryItem from "./HypaV3Modal/modal-summary-item.svelte";
@@ -431,6 +435,25 @@
     }
   }
 
+  async function handleExportToLorebook() {
+    const char = DBState.db.characters[$selectedCharID];
+
+    await exportSummariesToChatLore(char, char?.chats?.[char.chatPage]);
+  }
+
+  async function handleImportFromLorebook() {
+    const char = DBState.db.characters[$selectedCharID];
+    const added = await importChatLoreAsSummaries(
+      char,
+      char?.chats?.[char.chatPage]
+    );
+
+    // Selection is index-based and the import prepends, so every held index would name another summary.
+    if (added > 0) {
+      bulkEditState.selectedSummaries = new Set();
+    }
+  }
+
   function handleSummariesRemoved() {
     supersedeBulkRun();
     bulkResummaryState = null;
@@ -769,6 +792,8 @@
           onResetData={handleResetData}
           onToggleBulkEditMode={handleToggleBulkEditMode}
           onOpenCategoryManager={handleOpenCategoryManager}
+          onExportToLorebook={handleExportToLorebook}
+          onImportFromLorebook={handleImportFromLorebook}
         />
 
         <!-- Scrollable Container -->
