@@ -85,3 +85,7 @@ Neo UI face; field border 34 percent; controls 44 (touch) or 40 (hover) high; di
 ## DD-262 (2026-10-28)
 
 `home-bg-badge`, `home-run-status` and the Tasks `home-badge` moved from safe to reach tier. They are the only signal that a reply or run is active, so a pack may restyle them but not hide, shrink or move them. Fixtures H17a-H17f in `checks/lint-home.mjs` show hiding is rejected.
+
+## Visual overhaul (2026-11-18)
+
+Every Home colour now derives from the nine colour-scheme names (`--risu-theme-*`); `home-tokens.css` redefines the shared `--nexus-*` colours from them (exception to DD-145; see [../MAIN_MENU.md](../MAIN_MENU.md) "Visual overhaul"). Two parts added, both reach tier: `home-jump` and `home-jump-link` (the phone jump row). The switcher radii use a new 24 px rung (`--home-radius-8`) because the registry caps `--home-mode-radius` at 32 px. Open: the shared validator cannot resolve `color-mix()`, so a scheme-only pack is refused; Origin Navy keeps its literal values.

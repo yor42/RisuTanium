@@ -31,6 +31,7 @@ tauri-plugin-os = "2.4.0"
 tauri-plugin-dialog = "2.8.1"
 tauri-plugin-process = "2.4.0"
 tauri-plugin-shell = "2.4.0"
+tauri-plugin-opener = "2.7.3"
 tauri-plugin-http = "2.8.0"
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-deep-link = "2.6.1"
