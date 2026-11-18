@@ -14,6 +14,7 @@ import type { FallbackNotice } from 'src/ts/storage/opfsCopyBack'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
+import { registerRealDispatch } from 'src/ts/tests/realDispatchBoot.test-helpers'
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -256,6 +257,8 @@ function baseDb(): Record<string, unknown> {
         hotkeys: [],
         botPresets: [],
         coldstorage: false,
+        // Archiving stated, so the conversion raises no archive-enabled notice and the fallback notice is the only one a boot posts.
+        archiveCharacters: false,
         checkCorruption: false,
         botSettingAtStart: false,
         betaMobileGUI: false,
@@ -265,10 +268,15 @@ function baseDb(): Record<string, unknown> {
 }
 dbState.baseline = baseDb
 
+/** How many times the registered dispatch was entered in this test. */
+const dispatchEntered = { count: 0 }
+
 async function freshLoadData() {
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     const { forageStorage } = await import('src/ts/globalApi.svelte')
     injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
+    // The legacy main file is converted to a store2 profile by the real dispatch. The test answers the boot's notices itself.
+    await registerRealDispatch({ kind: 'tauri', onEnter: () => { dispatchEntered.count += 1 } })
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
@@ -309,6 +317,7 @@ beforeEach(() => {
     getDatabaseMock.mockClear()
     getDatabaseMock.mockImplementation(() => dbState.current)
     swInitStatus = 200
+    dispatchEntered.count = 0
     Object.defineProperty(navigator, 'serviceWorker', { value: { register: registerMock }, configurable: true })
     vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(null, { status: url === '/sw/init' ? swInitStatus : 404 })))
     vi.stubGlobal('open', vi.fn())
@@ -346,7 +355,8 @@ describe('loadData(): the page life that reloads for the service worker', () => 
         expect(seenTypes.filter((t) => t !== 'none')).toEqual([])
         // The one-shot notice is still there for the page life that stays.
         expect(forageState.fallbackNotice).toEqual({ reason: 'space' })
-        // No profile was read or installed by the life that leaves.
+        // No profile was read or installed by the life that leaves, and the store2 boot was never entered.
+        expect(dispatchEntered.count).toBe(0)
         expect(setDatabaseMock).not.toHaveBeenCalled()
         expect(get(loadedStore)).toBe(false)
     })
@@ -367,6 +377,7 @@ describe('loadData(): the page life that reloads for the service worker', () => 
         expect(reloadSpy).not.toHaveBeenCalled()
         expect(markAppInitiatedReloadMock).not.toHaveBeenCalled()
         expect(setUsingSwMock).toHaveBeenCalledWith(true)
+        expect(dispatchEntered.count).toBe(1)
         expect(get(loadedStore)).toBe(true)
     })
 

@@ -58,6 +58,7 @@ import { STALE_ACCOUNT_NOTICE_ACK } from './alert'
 import type { AssetVerifyResult } from './storage/assetIntegrity'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { registerRealDispatch, stopAcknowledgingAlerts } from 'src/ts/tests/realDispatchBoot.test-helpers'
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -172,6 +173,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
     alertStore: writable({ type: 'none', msg: 'n' }),
     // The real parser.svelte module-level effect reads this binding when the unmocked graph loads.
     selIdState: { selId: -1 },
+    SafeModeStore: writable(false),
 }) as unknown as typeof import('src/ts/stores.svelte'))
 
 vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
@@ -425,12 +427,20 @@ async function corruptDbBytes(): Promise<Uint8Array> {
     return encoded
 }
 
-/** Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. */
-async function freshLoadData() {
+/**
+ * Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. The real dispatch is
+ * registered, so the legacy main file is converted to a store2 profile as on a production page, and its notices are
+ * dismissed (the stale-account notice has its own type and stays). The rows whose subject is the legacy startup clean-up
+ * pass `realDispatch: false`: a dispatch page never starts that clean-up.
+ */
+async function freshLoadData(options: { realDispatch: boolean } = { realDispatch: true }) {
     // The boot reads through the page's byte store; here it is the storage-object model above.
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     const { forageStorage } = await import('src/ts/globalApi.svelte')
     injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
+    if (options.realDispatch) {
+        await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: true })
+    }
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
@@ -452,7 +462,7 @@ async function freshLoadData() {
 // under load. The transform cache survives vi.resetModules(), so one warm import here moves the cost into a hook
 // with its own timeout.
 beforeAll(async () => {
-    await freshLoadData()
+    await freshLoadData({ realDispatch: false })
     vi.resetModules()
 }, COLD_TRANSFORM_HOOK_MS)
 
@@ -494,6 +504,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    stopAcknowledgingAlerts()
     // Settle any notice this test posted but never acknowledged: its
     // subscription is still live on the shared, mock-persisted `alertStore`
     // (see the header) and would otherwise react to a later test's writes.
@@ -501,18 +512,14 @@ afterEach(() => {
 })
 
 /**
- * The only forage writes a boot makes before the stale-account notice is
- * acknowledged: none, or, on the branch that finds no save at all, the keys
- * of the empty profile it creates in the block store (never the main file).
+ * The only forage write a boot makes before the stale-account notice is
+ * acknowledged is the page's own store2 owner id: the store2 profile is written
+ * to the store2 backend, and neither the main file, a numbered backup nor a
+ * block key is written, whichever install branch the boot took.
  */
-function expectOnlyTheSeed(branch: 'decode' | 'nullish' | 'backup-fallback') {
+function expectOnlyTheOwnerIdWritten() {
     const written = sharedForageStorage.setItem.mock.calls.map((call) => String(call[0]))
-    if (branch === 'nullish') {
-        expect(written.length, 'keys of the empty profile').toBeGreaterThan(0)
-        expect(written.every((key) => key.startsWith('blocks/'))).toBe(true)
-    } else {
-        expect(written).toEqual([])
-    }
+    expect(written.filter((key) => key !== 'store2-owner')).toEqual([])
 }
 
 /** Configures `forageState` so `loadData()`'s non-Tauri database read reaches the named install branch, with `db` as the eventually-installed database. */
@@ -565,7 +572,7 @@ describe('loadData(): a stale account-sync profile does not boot silently (I6)',
             // own pre-install empty-profile seed aside) no forage write
             // either.
             expect(sharedForageStorage.removeItem).not.toHaveBeenCalled()
-            expectOnlyTheSeed(branch)
+            expectOnlyTheOwnerIdWritten()
             assertLocalforageUntouched()
         })
     }
@@ -650,7 +657,7 @@ describe('loadData(): a stale account-sync profile does not boot silently (I6)',
             // The "never touched" half of the invariant holds through to
             // acknowledgement too, not just while the notice was pending.
             expect(sharedForageStorage.removeItem).not.toHaveBeenCalled()
-            expectOnlyTheSeed(branch)
+            expectOnlyTheOwnerIdWritten()
             assertLocalforageUntouched()
         })
     }
@@ -953,7 +960,7 @@ describe('cleanChunks(): the checkCorruption integrity sample runs even when col
             return { status: 'ok' }
         })
 
-        const { loadData, alertStore } = await freshLoadData()
+        const { loadData, alertStore } = await freshLoadData({ realDispatch: false })
 
         await loadData()
         // cleanChunks() runs unawaited after loadedStore.set(true); flush its
@@ -983,7 +990,7 @@ describe('cleanChunks(): the checkCorruption integrity sample runs even when col
             getUncleanablesSyncMock.mockReturnValue(['corrupt-asset.png'])
             verifyAssetCacheEntryMock.mockResolvedValue({ status: 'mismatch', expectedHash: 'expected-hash', actualHash: 'actual-hash' })
 
-            const { loadData } = await freshLoadData()
+            const { loadData } = await freshLoadData({ realDispatch: false })
 
             await loadData()
             // cleanChunks() runs unawaited; give its own microtask chain a
@@ -1016,7 +1023,7 @@ describe('loadData(): the load-time listing is recorded before plugins start', (
                 order.push('loadPlugins')
             })
 
-            const { loadData } = await freshLoadData()
+            const { loadData } = await freshLoadData({ realDispatch: false })
 
             await loadData()
 
@@ -1055,7 +1062,7 @@ describe('cleanChunks(): the startup asset sweep does not run once a cold-storag
         sharedKeys.keys.mockResolvedValue([ORPHAN_ASSET_KEY, ORPHAN_REMOTE_KEY])
         getRemoteSavePayloadNameMock.mockReturnValue('orphan-char')
 
-        const { loadData } = await freshLoadData()
+        const { loadData } = await freshLoadData({ realDispatch: false })
         await loadData()
 
         if (profile.coldstorage) {
@@ -1104,7 +1111,7 @@ describe('loadData(): a load-time listing that rejects does not stop boot', () =
         await armInstallBranch('decode', baseDb())
         recordLoadTimeListingMock.mockRejectedValue(new Error('listing failed'))
 
-        const { loadData, loadedStore } = await freshLoadData()
+        const { loadData, loadedStore } = await freshLoadData({ realDispatch: false })
 
         await loadData()
 

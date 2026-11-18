@@ -513,7 +513,7 @@ export function store2Boot(kit: Store2Kit): (world: World) => Promise<void> {
         // The residency is registered before the save context is activated.
         registerResidency(kit.residency)
         activateStore2Save(kit.context)
-        world.pageMode.setPageStorageMode({ kind: 'block' })
+        world.pageMode.setPageStorageMode({ kind: 'store2' })
     }
 }
 
