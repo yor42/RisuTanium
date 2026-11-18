@@ -2741,6 +2741,9 @@ export const languageJapanese = {
     select: "選択",
     lowLevelAccessConfirm:
         "このコンテンツは低レベルアクセスを使用しています。これは、このコンテンツがAIモデルやストレージに直接アクセスできることを意味します。このコンテンツを本当にインポートしますか？",
+    importLinkConfirm: "このリンクは {host} からファイルをインポートしようとしています。信頼できる場合のみ続行してください。インポートしますか？",
+    importModuleLinkConfirm: "このリンクにはモジュールが含まれています。インポートしますか？",
+    importPresetLinkConfirm: "このリンクにはプリセットが含まれています。インポートしますか？",
     triggerLowLevelOnly: "このトリガーは低レベルアクセスでのみ動作します。このトリガーを有効にするには、キャラクターまたはモジュールの詳細設定で低レベルアクセスを有効にしてください。",
     truthy: "真値",
     extractRegex: "正規表現でテキストを抽出",
@@ -3742,6 +3745,16 @@ export const languageJapanese = {
     rtbRestoreUncreatableConfirm: (count: number, names: string[]) =>
         `このバックアップ内のアセットファイル ${count} 件は、このアプリのストレージで作成できない名前のため、ここでは復元できません。そのいずれかを使用するキャラクターでは、見つからない項目として表示されます。これらを除いて続行しますか？\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
     rtbRestoreChecking: (percent: number) => `バックアップを確認しています… (${percent}%)`,
+    rtbRestoreCopying: (percent: number) => `バックアップを復元しています… (${percent}%)`,
+    rtbRestoreInstalling: "バックアップを読み込んでいます…",
+    rtbRestoreCopiedKept: "バックアップ内の画像やチャットメディアの一部は、すでに追加または置き換えられている可能性があります。それらはこの端末に残り、同じバックアップをもう一度復元すると、すでにあるものはスキップされます。",
+    rtbRestoreLeftOut: (lines: string[]) => `バックアップを復元しました。ただし、次のものは除きます。\n\n${lines.join('\n')}`,
+    rtbRestoreLineNewerParts: (names: string[]) => `- 新しいバージョンのRisuTaniumで作成された部分。復元されず、バックアップファイルにのみ残ります：${names.join(', ')}`,
+    rtbRestoreLineOmittedUnits: (count: number) => `- バックアップの作成時に除外された破損項目 ${count} 件（タスクプリセットまたはチャットの代替）`,
+    rtbRestoreLineOmittedEntries: (names: string[]) => `- バックアップの作成時に含まれなかったデータ：${names.join(', ')}`,
+    rtbRestoreLineSideNotRestored: (names: string[]) => `- この端末に保持され、復元されなかったデータ：${names.join(', ')}`,
+    rtbRestoreLineSideFailed: (names: string[]) => `- この端末に保持され、完全には書き込めなかったデータ：${names.join(', ')}`,
+    rtbRestoreSideNames: { iris: "Irisの会話", googleSearch: "Google検索キー", hypaVector: "メモリ検索データ", pluginSafe: "プラグインデータ", pluginSafeLs: "プラグイン設定", pluginPermissions: "プラグイン権限", mcpToolCalls: "MCPツール呼び出し", uiPrefs: "インターフェース設定" },
     coldStorageCleanupDateUnknown: "日付不明",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `破損した保存データをバックアップから置き換えた際、古いデータの保存コピーは削除されずに退避されました（作成日時：${dates}）。それらのみが使用している画像やアーカイブデータは保護されたままとなるため、それらが存在する間はクリーンアップを実行できません。\n\nこれらの古いコピーを削除してクリーンアップを実行しますか？これらは復元できません。保持する場合は「キャンセル」を選択してください。その場合、クリーンアップは実行されません。`,

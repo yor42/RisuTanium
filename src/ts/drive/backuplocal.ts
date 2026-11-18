@@ -2,6 +2,7 @@ import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertM
 import { takeExportWriteStats, webWriterNeedsGesture, type ExportByteWriter, type ExportWriteCall } from "../exportWriters";
 import type { ExportCancelToken } from "../exportCancel";
 import { localBackupFileName } from "./backupFileName";
+import { assetDeletionSettled } from "../storage/assetDeleteHold";
 import { LocalWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isNodeServer, isTauri } from "src/ts/platform"
@@ -422,7 +423,7 @@ function copyMeasureLimits(): Partial<AssetBatchLimits> {
 }
 
 /** The restore's asset writer on the desktop and on Android, or `null` where every asset goes through the store one call at a time. */
-async function createRestoreAssetPipeline(): Promise<RestoreAssetPipeline | null> {
+export async function createRestoreAssetPipeline(): Promise<RestoreAssetPipeline | null> {
     // The raw mode is `isAssetBatchAvailable()` (the desktop's raw-body write); the base64 mode is Android's alone. The
     // export's reads use `isAssetBatchReadAvailable()`, which both apps satisfy.
     const mode: AssetBatchWriteMode = isAssetBatchAvailable() ? 'raw' : assetBatchWriteMode() === 'b64' ? 'b64' : 'none'
@@ -1984,6 +1985,8 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
                 // written and nothing returns while an asset is still being
                 // written. After a batch fails no further entry is read.
                 // The pass and the inlay restore below write assets, inlays and (on a block-era page) cold-storage items.
+                // A sweep's delete in flight settles before the first asset of this restore is written.
+                await assetDeletionSettled();
                 writeMayHaveBegun = true;
                 // Assets handed to the store; the written count is this less the names the pipeline refused, once it has drained.
                 let assetsSubmitted = 0;

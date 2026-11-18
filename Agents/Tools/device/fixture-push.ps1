@@ -2,7 +2,9 @@
 # The transfer is skipped when the device already holds a file of that name with the same SHA-256 (the device hash is read with
 # sha256sum); a pushed copy is hashed on the device again and removed when it differs. The data ceiling is declared by this
 # check (-CeilingBytes); a fixture above it is refused before any adb call unless -AllowLarge and -AllowLargeReason are given.
-# -Remove deletes the named fixture from the device instead of pushing. Fixtures live below /sdcard only.
+# -Remove deletes the named fixture from the device instead of pushing. Fixtures go to /sdcard/Download only.
+# Every adb call runs through device-guard/adbg.mjs (allowlist plus an intent/exit log at <OutDir>\adb\adb-commands.log), and
+# the script never starts adb itself. The guard refuses a serial it does not know as a spare test device (exit 95).
 param(
     [string]$CheckId = 'fixture-push',
     [Parameter(Mandatory)][string]$OutDir,
@@ -17,15 +19,14 @@ param(
     [string]$Serial,
     [string[]]$AllowedSerials,
     [string]$Package,
-    [string]$RepoRoot,
-    [string]$AdbExe
+    [string]$RepoRoot
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib.ps1')
 Disable-StdHandleInherit
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path }
-if (-not $Serial) { $Serial = $script:DefaultSerial }
-if (-not $AllowedSerials) { $AllowedSerials = @($script:DefaultSerial) }
+Assert-DeviceSerial $Serial
+if (-not $AllowedSerials) { $AllowedSerials = @($Serial) }
 if (-not $Package) { $Package = $script:DefaultPackage }
 if (-not $RemoteName) { $RemoteName = Split-Path -Leaf $FixturePath }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
@@ -47,7 +48,8 @@ try {
     if ($Serial -notin $AllowedSerials) { Finish 'fail' ('serial ' + $Serial + ' is not in the allowed list') }
     if ($Package -notin $script:AllowedPackages) { Finish 'fail' ('package ' + $Package + ' is not in the allowed list') }
     if (-not (Test-RemoteFixtureName $RemoteName)) { Finish 'fail' ('bad fixture name: ' + $RemoteName) }
-    if (-not (Test-RemoteFixtureDir $RemoteDir)) { Finish 'fail' ('bad fixture directory: ' + $RemoteDir) }
+    # The guard allows a push only into /sdcard/Download, so no other directory is accepted here.
+    if ($RemoteDir -cne '/sdcard/Download') { Finish 'fail' ('bad fixture directory: ' + $RemoteDir) }
     $remotePath = $RemoteDir + '/' + $RemoteName
     if (-not (Test-Path -LiteralPath $FixturePath -PathType Leaf)) { Finish 'fail' ('fixture not found: ' + $FixturePath) }
     $bytes = (Get-Item -LiteralPath $FixturePath).Length
@@ -56,7 +58,9 @@ try {
     if (-not $gate.Ok) { Finish 'fail' $gate.Reason }
     if ($gate.Warning) { $r.warnings += $gate.Warning; Write-Output $gate.Warning }
 
-    if (-not (Initialize-Adb -Dir (Join-Path $OutDir 'adb') -AdbExe $AdbExe)) { Finish 'fail' 'adb start-server failed' }
+    $guardLog = Join-Path (Join-Path $OutDir 'adb') 'adb-commands.log'
+    $r.evidence.log = $guardLog
+    if (-not (Initialize-AdbGuard -Dir (Join-Path $OutDir 'adb') -Serial $Serial -Log $guardLog)) { Finish 'fail' ('adb start-server failed (adbg refusals are logged in ' + $guardLog + ')') }
     if ((Get-DeviceState $Serial) -ne 'device') { Finish 'fail' 'device-offline' }
     $r.device = Get-DeviceInfo $Serial
 

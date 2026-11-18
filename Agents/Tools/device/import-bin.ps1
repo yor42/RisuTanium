@@ -64,8 +64,8 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'lib.ps1')
 Disable-StdHandleInherit
 if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path }
-if (-not $Serial) { $Serial = $script:DefaultSerial }
-if (-not $AllowedSerials) { $AllowedSerials = @($script:DefaultSerial) }
+Assert-DeviceSerial $Serial
+if (-not $AllowedSerials) { $AllowedSerials = @($Serial) }
 if (-not $Package) { $Package = $script:DefaultPackage }
 if (-not $SnapshotRoot) { $SnapshotRoot = Join-Path $script:ScratchRoot 'device-snapshots' }
 $runId = [guid]::NewGuid().ToString('N').Substring(0, 8)

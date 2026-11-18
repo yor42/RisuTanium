@@ -1054,6 +1054,32 @@ function parseShareIndex(value:{files?: Partial<ShareIndexEntry>[]}|null, id:str
     return entries
 }
 
+const CHUB_DOWNLOAD_URL = 'https://api.chub.ai/api/characters/download'
+
+/**
+ * The address a `#import=` link may fetch: an absolute https URL without userinfo, or null. A relative target, which
+ * would resolve against this app's own origin, is refused too. The parsed form is both shown and fetched, so the host
+ * the person confirms is the host the request starts at.
+ */
+function importLinkTarget(raw:string):URL|null {
+    let target:URL
+    try {
+        target = new URL(raw)
+    } catch (error) {
+        return null
+    }
+    if(target.protocol !== 'https:' || target.username || target.password){
+        return null
+    }
+    return target
+}
+
+/**
+ * Link imports are the one place untrusted input starts a download or a write at boot. The four link kinds (Chub,
+ * #import=, #import_module=, #import_preset=) each clear their link from the address first, refuse malformed input
+ * without asking, and ask before anything is fetched, marked busy or saved; a low-level module is then also asked about
+ * its access. A decline ends only that link's branch, never the start-up work after it.
+ */
 export async function characterURLImport() {
     const realmPath = (new URLSearchParams(location.search)).get('realm')
     try {
@@ -1061,17 +1087,20 @@ export async function characterURLImport() {
            getRealmInfo(realmPath)
         }
     } catch (error) {
-        
+
     }
 
-    const charPath = (new URLSearchParams(location.search)).get('charahub')
+    const charParams = new URLSearchParams(location.search)
+    const charPath = charParams.get('charahub')
     try {
-        if(charPath){
-            alertWait(language.alerts.loadingFromChub)
+        if(charParams.has('charahub')){
             const url = new URL(location.href);
             url.searchParams.delete('charahub');
-            window.history.pushState(null, '', url.toString());
-            const chara = await fetch("https://api.chub.ai/api/characters/download", {
+            window.history.replaceState(null, '', url.toString());
+        }
+        if(charPath && await alertConfirm(fillLang(language.importLinkConfirm, {host: new URL(CHUB_DOWNLOAD_URL).host}))){
+            alertWait(language.alerts.loadingFromChub)
+            const chara = await fetch(CHUB_DOWNLOAD_URL, {
                 method: "POST",
                 body: JSON.stringify({
                     "format": "tavern",
@@ -1107,26 +1136,36 @@ export async function characterURLImport() {
 
     const hash = location.hash
     if(hash.startsWith('#import=')){
-        location.hash = ''
-        const url = hash.replace('#import=', '')
-        const busy = beginBusy('import')
-        try {
-            const res = await directFetch(url, {
-                method: 'GET',
-            })
-            if(!res.ok){
-                alertError(language.errors.noData)
+        window.history.replaceState(null, '', location.pathname + location.search)
+        const target = importLinkTarget(hash.replace('#import=', ''))
+        if(!target){
+            alertError(language.errors.invalidUrl)
+        }
+        else if(await alertConfirm(fillLang(language.importLinkConfirm, {host: target.host}))){
+            const busy = beginBusy('import')
+            try {
+                const res = await directFetch(target.href, {
+                    method: 'GET',
+                })
+                //Redirects are followed, so the final address is checked before the body is read. An empty `url` belongs
+                //to a response that did not redirect, so the request URL stands in for it.
+                if(new URL(res.url || target.href).protocol !== 'https:'){
+                    alertError(language.errors.invalidUrl)
+                }
+                else if(!res.ok){
+                    alertError(language.errors.noData)
+                }
+                else{
+                    const fileName = getFileName(res)
+                    //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
+                    const blob = await res.blob()
+                    await importFiles([classifiedImport(fileName, fileName, '', async () => new File([blob], fileName, {type: blob.type}), newImportArchiveRun())])
+                }
+            } catch (error) {
+                alertError(error instanceof AndroidHttpBlockedError ? error.message : language.errors.noData)
+            } finally {
+                busy.end()
             }
-            else{
-                const fileName = getFileName(res)
-                //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
-                const blob = await res.blob()
-                await importFiles([classifiedImport(fileName, fileName, '', async () => new File([blob], fileName, {type: blob.type}), newImportArchiveRun())])
-            }
-        } catch (error) {
-            alertError(error instanceof AndroidHttpBlockedError ? error.message : language.errors.noData)
-        } finally {
-            busy.end()
         }
     }
     //No outcome of the Chub, #import=, #import_module= or #import_preset= links ends the start-up work below.
@@ -1145,7 +1184,8 @@ export async function characterURLImport() {
             //A link never supplies the retained paths: they name this device's files.
             Reflect.deleteProperty(importData, ASSET_RETAINED_KEY)
 
-            if(!importData.lowLevelAccess || await alertConfirm(language.lowLevelAccessConfirm)){
+            //The link prompt comes first; a low-level module is then asked about its access as well.
+            if(await alertConfirm(language.importModuleLinkConfirm) && (!importData.lowLevelAccess || await alertConfirm(language.lowLevelAccessConfirm))){
                 markBootWrite()
                 DBState.db.modules.push(importData)
                 alertNormal(language.successImport)
@@ -1157,21 +1197,25 @@ export async function characterURLImport() {
         }
     }
     else if(hash.startsWith('#import_preset=')){
-        const busy = beginBusy('import')
         try {
             const data = hash.replace('#import_preset=', '')
             const importData =Buffer.from(decodeURIComponent(data), 'base64')
-            markBootWrite()
-            await importPreset({
-                name: 'imported.risupreset',
-                data: importData
-            })
-            SettingsMenuIndex.set(1)
-            settingsOpen.set(true)
+            if(await alertConfirm(language.importPresetLinkConfirm)){
+                const busy = beginBusy('import')
+                try {
+                    markBootWrite()
+                    await importPreset({
+                        name: 'imported.risupreset',
+                        data: importData
+                    })
+                } finally {
+                    busy.end()
+                }
+                SettingsMenuIndex.set(1)
+                settingsOpen.set(true)
+            }
         } catch (error) {
             alertError(error)
-        } finally {
-            busy.end()
         }
     }
     //A failure while receiving a share never stops the rest of the start-up work below.

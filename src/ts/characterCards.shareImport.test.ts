@@ -39,8 +39,14 @@ const h = vi.hoisted(() => ({
     last: 'none',
     /** the answer of the low-level-access prompt */
     confirm: true,
-    /** the text of every low-level-access prompt shown */
+    /** the text of every confirmation prompt shown, link prompts and low-level-access prompts alike */
     prompts: [] as string[],
+    /** the answer of the link prompts (`#import=`, `?charahub=`, `#import_module=`, `#import_preset=`) */
+    linkConfirm: true,
+    /** what was true at the moment each prompt was shown: fetches so far, the alert slot and the busy entries */
+    asks: [] as Array<{ msg: string, fetchCount: number, last: string, busy: string[] }>,
+    /** answers a prompt by its content and records the state it was shown in; assigned in beforeEach */
+    ask: (_msg: string): boolean => true,
     /** makes importPreset throw this message */
     presetFails: null as string | null,
     isTauri: false,
@@ -90,7 +96,7 @@ vi.mock(import('src/ts/alert'), () => {
     const text = (msg: string | Error) => msg instanceof Error ? msg.message : String(msg)
     return {
         alertCardExport: vi.fn(),
-        alertConfirm: vi.fn(async (msg?: string) => { h.prompts.push(String(msg)); h.last = 'ask'; const answer = h.confirm; h.last = 'none'; return answer }),
+        alertConfirm: vi.fn(async (msg?: string) => { h.prompts.push(String(msg)); const answer = h.ask(String(msg)); h.last = 'none'; return answer }),
         alertError: vi.fn((msg: string | Error) => { h.errors.push(text(msg)); h.errorKinds.push(typeof msg); h.events.push('error:' + text(msg)); h.last = 'error:' + text(msg) }),
         alertInput: vi.fn(async () => ''),
         alertMd: vi.fn(),
@@ -232,6 +238,7 @@ import { fflateZipArchive, type ZipEntry } from 'src/ts/process/tests/zipFixture
 import { PngChunk } from 'src/ts/pngChunk'
 import { ModuleRefusal } from 'src/ts/process/moduleRefusal'
 import { language } from 'src/lang'
+import { fillLang } from 'src/lang/fill'
 import { MODULE_STUB_KEY } from 'src/ts/storage/moduleStub'
 import { busyKinds, isBusy } from 'src/ts/process/memory/busyActions'
 
@@ -391,6 +398,13 @@ beforeEach(() => {
     h.last = 'none'
     h.confirm = true
     h.prompts = []
+    h.linkConfirm = true
+    h.asks = []
+    h.ask = (msg) => {
+        h.asks.push({ msg, fetchCount: fetchCalls.length, last: h.last, busy: busyKinds() })
+        // The low-level-access prompts keep answering through `h.confirm`; every other prompt is a link prompt.
+        return msg.includes(language.lowLevelAccessConfirm) ? h.confirm : h.linkConfirm
+    }
     h.presetFails = null
     h.isTauri = false
     h.tauriFiles = {}
@@ -487,33 +501,12 @@ describe('#import= links', () => {
         expect(h.characters).toEqual([])
     })
 
-    test('R7 a refused fetch of an http link on Android shows the cause instead of noData', async () => {
-        osBox.os = 'android'
-        routes.set('http://files.test/dl', () => { throw new TypeError('Failed to fetch') })
-        setUrl('/#import=http://files.test/dl')
-        await characterURLImport()
-        expect(h.errors).toHaveLength(1)
-        expect(h.errors).not.toContain(language.errors.noData)
-        expect(h.errors).toEqual([language.errors.androidHttpBlocked])
-        expect(h.characters).toEqual([])
-    })
-
-    test('G6 the same refusal without Android keeps noData', async () => {
-        routes.set('http://files.test/dl', () => { throw new TypeError('Failed to fetch') })
-        setUrl('/#import=http://files.test/dl')
-        await characterURLImport()
-        expect(h.errors).toEqual([language.errors.noData])
-    })
-
-    test('guard: on Android a refused https link and an http link that answers with an error status keep noData', async () => {
+    test('guard: on Android a refused https link keeps noData', async () => {
         osBox.os = 'android'
         routes.set('https://files.test/dl', () => { throw new TypeError('Failed to fetch') })
         setUrl('/#import=https://files.test/dl')
         await characterURLImport()
-        routes.set('http://files.test/gone', () => new Response('gone', { status: 404 }))
-        setUrl('/#import=http://files.test/gone')
-        await characterURLImport()
-        expect(h.errors).toEqual([language.errors.noData, language.errors.noData])
+        expect(h.errors).toEqual([language.errors.noData])
     })
 
     test('a .json card link imports as a card and a .preset link reaches the preset importer', async () => {
@@ -990,13 +983,301 @@ describe('#import_module= and #import_preset= links', () => {
         expect(h.events).not.toContain('normal:' + language.successImport)
     })
 
-    test('a module without the stub marker still imports after the low-level prompt (compatibility guard)', async () => {
+    test('R13 a low-level module link asks twice, the link prompt first and the low-level-access prompt second, and imports when both are accepted', async () => {
         h.confirm = true
         setUrl(moduleLink(JSON.stringify({ name: 'm', lowLevelAccess: true })))
         await characterURLImport()
-        expect(h.prompts).toEqual([language.lowLevelAccessConfirm])
+        expect(h.prompts).toHaveLength(2)
+        expect(h.prompts[0]).not.toContain(language.lowLevelAccessConfirm)
+        expect(h.prompts[1]).toBe(language.lowLevelAccessConfirm)
+        expect(h.prompts[0]).toBe(language.importModuleLinkConfirm)
         expect(h.modules).toHaveLength(1)
         expect(h.events).toContain('normal:' + language.successImport)
+    })
+})
+
+// ---------------------------------------------------------------------------------------------
+// Link confirmation: every link kind asks before anything is fetched, saved or marked busy
+// ---------------------------------------------------------------------------------------------
+
+describe('link confirmation', () => {
+    const linkAsks = () => h.asks.filter((a) => !a.msg.includes(language.lowLevelAccessConfirm))
+    const importPrompt = (host: string) => fillLang(language.importLinkConfirm, { host })
+    const moduleLink = (body: string) => '/#import_module=' + encodeURIComponent(Buffer.from(body).toString('base64'))
+    const presetLink = (body: string) => '/#import_preset=' + encodeURIComponent(Buffer.from(body).toString('base64'))
+    const cardRoute = (url: string) => routes.set(url, () => new Response(v3Card('Linked'), { headers: { 'content-disposition': 'attachment; filename="c.json"' } }))
+    const CHUB = 'https://api.chub.ai/api/characters/download'
+    const chubRoute = () => routes.set(CHUB, () => new Response(new U8(pngCard('FromChub')), { headers: { 'content-type': 'image/png' } }))
+    /** A followed redirect as a browser reports it: the final address in `url` and `redirected` set. */
+    const redirected = (finalUrl: string, bytes: Uint8Array) => {
+        const res = new Response(new U8(bytes), { headers: { 'content-disposition': 'attachment; filename="cool.charx"' } })
+        Object.defineProperty(res, 'url', { configurable: true, value: finalUrl })
+        Object.defineProperty(res, 'redirected', { configurable: true, value: true })
+        return res
+    }
+
+    describe('#import=', () => {
+        test('R1 a declined link fetches nothing, imports nothing, shows nothing, leaves nothing busy and is cleared without a new history entry', async () => {
+            h.linkConfirm = false
+            const bytes = await charxBytes('Declined')
+            routes.set('https://files.test/dl', () => new Response(new U8(bytes), { headers: { 'content-disposition': 'attachment; filename="cool.charx"' } }))
+            setUrl('/#import=https://files.test/dl')
+            const history = window.history.length
+            await characterURLImport()
+            expect(fetchCalls).toEqual([])
+            expect(h.characters).toEqual([])
+            expect(window.history.length).toBe(history)
+            expect(window.location.hash).toBe('')
+            expect(h.errors).toEqual([])
+            expect(h.last).toBe('none')
+            expect(isBusy()).toBe(false)
+            expect(linkAsks()).toHaveLength(1)
+        })
+
+        test('R1 a second run after a decline asks nothing', async () => {
+            h.linkConfirm = false
+            cardRoute('https://files.test/dl')
+            setUrl('/#import=https://files.test/dl')
+            await characterURLImport()
+            const asked = h.asks.length
+            await characterURLImport()
+            expect(h.asks).toHaveLength(asked)
+            expect(fetchCalls).toEqual([])
+        })
+
+        test('R2 an accepted link is asked once, before the entry is busy and before any fetch, and names the host', async () => {
+            cardRoute('https://files.test/dl')
+            setUrl('/#import=https://files.test/dl')
+            await characterURLImport()
+            expect(linkAsks()).toHaveLength(1)
+            expect(linkAsks()[0].fetchCount).toBe(0)
+            expect(linkAsks()[0].busy).toEqual([])
+            expect(linkAsks()[0].msg).toContain('files.test')
+            expect(charName(0)).toBe('Linked')
+            expect(linkAsks()[0].msg).toBe(importPrompt('files.test'))
+        })
+
+        test('R3 an http link is refused with invalidUrl, with no prompt and no fetch', async () => {
+            cardRoute('http://files.test/dl')
+            setUrl('/#import=http://files.test/dl')
+            await characterURLImport()
+            expect(fetchCalls).toEqual([])
+            expect(h.asks).toEqual([])
+            expect(h.errors).toEqual([language.errors.invalidUrl])
+            expect(window.location.hash).toBe('')
+        })
+
+        test.each([
+            ['javascript:alert(1)'],
+            ['data:text/plain,hi'],
+            ['ftp://files.test/x'],
+            ['/rel'],
+            ['not a url'],
+            ['https://'],
+        ])('R4 the target %s is refused with invalidUrl, with no prompt and no fetch', async (target) => {
+            setUrl('/#import=' + target)
+            await characterURLImport()
+            expect(fetchCalls).toEqual([])
+            expect(h.asks).toEqual([])
+            expect(h.errors).toEqual([language.errors.invalidUrl])
+            expect(window.location.hash).toBe('')
+        })
+
+        test.each([
+            ['R5a', 'https://trusted.com@files.test/dl'],
+            ['R5b', 'https://:pw@files.test/dl'],
+        ])('%s a target with userinfo is refused with invalidUrl, with no prompt and no fetch', async (_id, target) => {
+            setUrl('/#import=' + target)
+            await characterURLImport()
+            expect(fetchCalls).toEqual([])
+            expect(h.asks).toEqual([])
+            expect(h.errors).toEqual([language.errors.invalidUrl])
+            expect(window.location.hash).toBe('')
+        })
+
+        test('R6 an IDN host is shown in its punycode form and the parsed address is fetched', async () => {
+            const raw = 'https://%D0%B0pple.com/c.json'
+            const parsed = new URL(raw)
+            cardRoute(parsed.href)
+            setUrl('/#import=' + raw)
+            await characterURLImport()
+            expect(linkAsks()).toHaveLength(1)
+            expect(linkAsks()[0].msg).toContain(parsed.host)
+            expect(fetchCalls.map((c) => c.url)).toEqual([parsed.href])
+            expect(charName(0)).toBe('Linked')
+            expect(linkAsks()[0].msg).toBe(importPrompt(parsed.host))
+        })
+
+        test('R7 a port is part of the host that is shown', async () => {
+            cardRoute('https://files.test:8443/dl')
+            setUrl('/#import=https://files.test:8443/dl')
+            await characterURLImport()
+            expect(linkAsks()).toHaveLength(1)
+            expect(linkAsks()[0].msg).toContain('files.test:8443')
+            expect(linkAsks()[0].msg).toBe(importPrompt('files.test:8443'))
+        })
+
+        test('R8 an upper-case scheme and host are fetched in their parsed lower-case form', async () => {
+            cardRoute('https://files.test/dl')
+            setUrl('/#import=HTTPS://Files.Test/dl')
+            await characterURLImport()
+            expect(linkAsks()).toHaveLength(1)
+            expect(fetchCalls.map((c) => c.url)).toEqual(['https://files.test/dl'])
+            expect(charName(0)).toBe('Linked')
+        })
+
+        test.each([
+            ['http://other.test/dl'],
+            ['http://files.test/dl'],
+        ])('R16 a redirect that ends on %s is refused with invalidUrl and its body is never read', async (finalUrl) => {
+            const res = redirected(finalUrl, await charxBytes('Redirected'))
+            const reads = watched(res)
+            routes.set('https://files.test/dl', () => res)
+            setUrl('/#import=https://files.test/dl')
+            await characterURLImport()
+            expect(reads).toEqual({ arrayBuffer: 0, blob: 0, other: 0 })
+            expect(h.characters).toEqual([])
+            expect(h.errors).toEqual([language.errors.invalidUrl])
+            expect(isBusy()).toBe(false)
+        })
+
+        test('G9 a redirect to another https host is followed and imports (compatibility guard: passes before and after)', async () => {
+            const res = redirected('https://cdn.test/dl', await charxBytes('Cdn'))
+            routes.set('https://files.test/dl', () => res)
+            setUrl('/#import=https://files.test/dl')
+            await characterURLImport()
+            expect(h.errors).toEqual([])
+            expect(charName(0)).toBe('Cdn')
+        })
+    })
+
+    describe('?charahub=', () => {
+        test('R9 a declined link posts nothing, shows no wait notice and imports nothing', async () => {
+            h.linkConfirm = false
+            chubRoute()
+            setUrl('/?charahub=someone/card')
+            await characterURLImport()
+            expect(fetchCalls).toEqual([])
+            expect(h.characters).toEqual([])
+            expect(h.last).toBe('none')
+            expect(isBusy()).toBe(false)
+            expect(window.location.search).toBe('')
+        })
+
+        test('R10 an accepted link names api.chub.ai, asks before the wait notice and before any busy entry, then imports', async () => {
+            chubRoute()
+            setUrl('/?charahub=someone/card')
+            await characterURLImport()
+            expect(linkAsks()).toHaveLength(1)
+            expect(linkAsks()[0].fetchCount).toBe(0)
+            expect(linkAsks()[0].busy).toEqual([])
+            expect(linkAsks()[0].last.startsWith('wait:')).toBe(false)
+            expect(linkAsks()[0].msg).toContain('api.chub.ai')
+            expect(charName(0)).toBe('FromChub')
+            expect(linkAsks()[0].msg).toBe(importPrompt('api.chub.ai'))
+        })
+
+        test('R11 a declined link clears only its own query key and adds no history entry', async () => {
+            h.linkConfirm = false
+            chubRoute()
+            setUrl('/?mainpage=1&charahub=a/b')
+            const history = window.history.length
+            await characterURLImport()
+            expect(fetchCalls).toEqual([])
+            expect(window.history.length).toBe(history)
+            expect(window.location.search).toBe('?mainpage=1')
+        })
+    })
+
+    describe('#import_module=', () => {
+        test('R12 a declined link adds no module and shows no success text', async () => {
+            h.linkConfirm = false
+            setUrl(moduleLink(JSON.stringify({ name: 'm' })))
+            await characterURLImport()
+            expect(h.modules).toEqual([])
+            expect(h.events).not.toContain('normal:' + language.successImport)
+            expect(h.last).toBe('none')
+            expect(window.location.hash).toBe('')
+        })
+
+        test('R12 an accepted link is asked once with the module wording and imports', async () => {
+            setUrl(moduleLink(JSON.stringify({ name: 'm' })))
+            await characterURLImport()
+            expect(linkAsks()).toHaveLength(1)
+            expect(h.modules).toHaveLength(1)
+            expect(linkAsks()[0].msg).toBe(language.importModuleLinkConfirm)
+        })
+
+        test('R13 a declined link prompt of a low-level module asks nothing further and adds no module', async () => {
+            h.linkConfirm = false
+            setUrl(moduleLink(JSON.stringify({ name: 'm', lowLevelAccess: true })))
+            await characterURLImport()
+            expect(h.prompts).toHaveLength(1)
+            expect(h.modules).toEqual([])
+        })
+
+        test('G2 malformed module data is refused with no prompt', async () => {
+            setUrl(moduleLink('not json'))
+            await characterURLImport()
+            expect(h.asks).toEqual([])
+            expect(h.errors).toHaveLength(1)
+        })
+    })
+
+    describe('#import_preset=', () => {
+        test('R14 a declined link imports nothing and leaves nothing busy', async () => {
+            h.linkConfirm = false
+            setUrl(presetLink('{"name":"p"}'))
+            await characterURLImport()
+            expect(h.presets).toEqual([])
+            expect(linkAsks()).toHaveLength(1)
+            expect(linkAsks()[0].busy).toEqual([])
+            expect(isBusy()).toBe(false)
+            expect(h.last).toBe('none')
+            expect(window.location.hash).toBe('')
+        })
+
+        test('R14 an accepted link is asked once, before the entry is busy, with the preset wording, and imports', async () => {
+            setUrl(presetLink('{"name":"p"}'))
+            await characterURLImport()
+            expect(linkAsks()).toHaveLength(1)
+            expect(linkAsks()[0].busy).toEqual([])
+            expect(h.presets.map((p) => p.name)).toEqual(['imported.risupreset'])
+            expect(linkAsks()[0].msg).toBe(language.importPresetLinkConfirm)
+        })
+
+        test('G10 undecodable preset data shows its error with no prompt and the consumer is still registered (compatibility guard: passes before and after)', async () => {
+            const setConsumer = vi.fn()
+            ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer }
+            setUrl('/#import_preset=%E0%A4%A')
+            await characterURLImport()
+            expect(h.asks).toEqual([])
+            expect(h.errors).toHaveLength(1)
+            expect(setConsumer).toHaveBeenCalledTimes(1)
+        })
+    })
+
+    describe('start-up work after a declined link', () => {
+        test.each([
+            ['#import=', () => { cardRoute('https://files.test/dl'); return '/#import=https://files.test/dl' }],
+            ['?charahub=', () => { chubRoute(); return '/?charahub=someone/card' }],
+            ['#import_module=', () => moduleLink(JSON.stringify({ name: 'm' }))],
+            ['#import_preset=', () => presetLink('{"name":"p"}')],
+        ] as Array<[string, () => string]>)('G4 a declined %s link still registers the file-handler consumer (compatibility guard: passes before and after)', async (_kind, link) => {
+            h.linkConfirm = false
+            const setConsumer = vi.fn()
+            ;(window as unknown as { launchQueue: unknown }).launchQueue = { setConsumer }
+            setUrl(link())
+            await characterURLImport()
+            expect(setConsumer).toHaveBeenCalledTimes(1)
+        })
+
+        test('G5 a #share= link records no prompt (compatibility guard: passes before and after)', async () => {
+            setUrl('/#share=' + seedShare([{ name: 'a.charx', type: 'application/octet-stream', bytes: await charxBytes('Shared') }]))
+            await characterURLImport()
+            expect(h.asks).toEqual([])
+            expect(charName(0)).toBe('Shared')
+        })
     })
 })
 
