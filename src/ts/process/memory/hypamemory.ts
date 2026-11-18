@@ -7,8 +7,11 @@ import { getDatabase } from "src/ts/storage/database.svelte";
 import { resolveSecret } from "src/ts/secretRef";
 import { isContextModel, getContextProvider } from "./contextualEmbedding";
 import { withInFlight } from "../inFlightWork";
+import { isMobile } from "src/ts/platform";
+import { yieldByMessage } from "src/ts/storage/saveYield";
+import { embeddingBatchSize, type EmbeddingRuntime } from "./embeddingBatch";
 
-import { DEFAULT_HYPA_MODEL, type HypaModel } from "./embeddingModels";
+import { DEFAULT_HYPA_MODEL, EMBEDDING_RECIPES, recipeCacheTag, recipePrefix, type HypaModel } from "./embeddingModels";
 
 export type { HypaModel } from "./embeddingModels";
 
@@ -62,19 +65,28 @@ export class HypaProcesser{
     }
 
     async embedDocuments(texts: string[]): Promise<VectorArray[]> {
-        const subPrompts = chunkArray(texts,50);
-    
-        const embeddings: VectorArray[] = [];
-    
-        for (let i = 0; i < subPrompts.length; i += 1) {
-          const input = subPrompts[i];
-    
-          const data = await this.getEmbeds(input, 'document')
-    
-          embeddings.push(...data);
-        }
-    
-        return embeddings;
+        const runtime: EmbeddingRuntime = !Object.keys(localModels.models).includes(this.model)
+            ? 'remote'
+            : localModels.gpuModels.includes(this.model) ? 'webgpu' : 'wasm';
+        const subPrompts = chunkArray(texts, embeddingBatchSize(runtime, isMobile));
+
+        // One token spans the whole loop, so a task yield between local calls never leaves the embedding unregistered.
+        return withInFlight('embed', async () => {
+            const embeddings: VectorArray[] = [];
+
+            for (let i = 0; i < subPrompts.length; i += 1) {
+              if (i > 0 && runtime !== 'remote') {
+                await yieldByMessage();
+              }
+              const input = subPrompts[i];
+
+              const data = await this.getEmbeds(input, 'document')
+
+              embeddings.push(...data);
+            }
+
+            return embeddings;
+        })
     }
     
     
@@ -94,8 +106,9 @@ export class HypaProcesser{
             return results.map(group => group[0])
         }
         if(Object.keys(localModels.models).includes(this.model)){
-            const inputs:string[] = Array.isArray(input) ? input : [input]
-            let results:Float32Array[] = await runEmbedding(inputs, localModels.models[this.model], localModels.gpuModels.includes(this.model) ? 'webgpu' : 'wasm')
+            const prefix = recipePrefix(this.model, inputType)
+            const inputs:string[] = (Array.isArray(input) ? input : [input]).map((text) => prefix + text)
+            let results:Float32Array[] = await runEmbedding(inputs, localModels.models[this.model], localModels.gpuModels.includes(this.model) ? 'webgpu' : 'wasm', EMBEDDING_RECIPES[this.model].pooling)
             return results
         }
         let gf = null;
@@ -170,9 +183,11 @@ export class HypaProcesser{
     async addText(texts:string[]) {
         const db = getDatabase()
         const suffix = (this.model === 'custom' && db.hypaCustomSettings?.model?.trim()) ? `-${db.hypaCustomSettings.model.trim()}` : ""
+        // One key for the lookup and the write: a vector is cached under the recipe that produced it.
+        const cacheKey = (text:string) => text + '|' + this.model + suffix + recipeCacheTag(this.model, 'document')
 
         for(let i=0;i<texts.length;i++){
-            const itm:memoryVector = await this.forage.getItem(texts[i] + '|' + this.model + suffix)
+            const itm:memoryVector = await this.forage.getItem(cacheKey(texts[i]))
             if(itm){
                 itm.alreadySaved = true
                 this.vectors.push(itm)
@@ -201,7 +216,7 @@ export class HypaProcesser{
         for(let i=0;i<memoryVectors.length;i++){
             const vec = memoryVectors[i]
             if(!vec.alreadySaved){
-                await this.forage.setItem(texts[i] + '|' + this.model + suffix, vec)
+                await this.forage.setItem(cacheKey(texts[i]), vec)
             }
         }
 

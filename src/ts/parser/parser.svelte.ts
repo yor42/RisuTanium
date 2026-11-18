@@ -999,7 +999,7 @@ const trimPurifyConfig = {
 
 /**
  * Sanitizes `data`. With `deferLargeAssetImages` (Android chat bodies that scan for the result) an `<img>` whose `src` is
- * a whole-read asset URL of 8 MiB or more keeps that URL in `data-risu-deferred-src` and shows a placeholder source,
+ * a whole-read asset URL (or an Android Blob inlay image URL registered with its size) of 8 MiB or more keeps that URL in `data-risu-deferred-src` and shows a placeholder source,
  * and an author's own `data-risu-deferred-src` is dropped. Without it the output is the same for every caller.
  */
 export function trimMarkdown(data:string, opts?: { deferLargeAssetImages?: boolean }){

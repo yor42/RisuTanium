@@ -12,6 +12,8 @@
     XIcon,
     SquarePenIcon,
     TagIcon,
+    BookUpIcon,
+    BookDownIcon,
   } from "@lucide/svelte";
   import { language } from "src/lang";
   import {
@@ -34,6 +36,8 @@
     onResetData?: () => Promise<void>;
     onToggleBulkEditMode?: () => void;
     onOpenCategoryManager?: () => void;
+    onExportToLorebook?: () => Promise<void>;
+    onImportFromLorebook?: () => Promise<void>;
   }
 
   let {
@@ -49,6 +53,8 @@
     onResetData,
     onToggleBulkEditMode,
     onOpenCategoryManager,
+    onExportToLorebook,
+    onImportFromLorebook,
   }: Props = $props();
 
 
@@ -211,6 +217,32 @@
             >
               <BarChartIcon class="w-6 h-6" />
             </button>
+
+            <!-- Export Summaries To Chat Lorebook Button -->
+            {#if onExportToLorebook}
+              <button
+                class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+                tabindex="-1"
+                title={language.hypaV3Modal.exportToLorebookLabel}
+                aria-label={language.hypaV3Modal.exportToLorebookLabel}
+                onclick={async () => await onExportToLorebook()}
+              >
+                <BookUpIcon class="w-6 h-6" />
+              </button>
+            {/if}
+
+            <!-- Import Chat Lorebook Entries As Summaries Button -->
+            {#if onImportFromLorebook}
+              <button
+                class="p-2 transition-colors text-zinc-400 hover:text-zinc-200"
+                tabindex="-1"
+                title={language.hypaV3Modal.importFromLorebookLabel}
+                aria-label={language.hypaV3Modal.importFromLorebookLabel}
+                onclick={async () => await onImportFromLorebook()}
+              >
+                <BookDownIcon class="w-6 h-6" />
+              </button>
+            {/if}
 
             <!-- Reset Data Button -->
             <button

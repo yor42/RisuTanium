@@ -22,7 +22,8 @@ vi.mock('../../stores.svelte', async () => {
     return { alertStore: writable({ type: 'none', msg: '' }) }
 })
 vi.mock('../../process/chatOrigin', () => ({ isWorkInProgress: () => false }))
-vi.mock('../backuplocal', () => ({ LoadLocalBackup: localLoaderMock }))
+vi.mock('../backupRouter', () => ({ loadBackupFromPicker: localLoaderMock }))
+vi.mock('../backuplocal', () => ({ LoadLocalBackup: vi.fn() }))
 vi.mock('../internalBackup', () => ({ loadInternalBackup: internalLoaderMock }))
 
 import { beginBusy } from '../../process/memory/busyActions'

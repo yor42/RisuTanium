@@ -1494,7 +1494,7 @@ function listOversizedAssets(entries: readonly BackupIndexEntry[], names: Readon
     return found;
 }
 
-function shownSkippedNames(names: readonly string[]): string[] {
+export function shownSkippedNames(names: readonly string[]): string[] {
     return names.slice(0, SKIPPED_ASSET_NAMES_SHOWN).map((name) => name.length > SKIPPED_ASSET_NAME_CHARS_SHOWN ? name.slice(0, SKIPPED_ASSET_NAME_CHARS_SHOWN) + '...' : name);
 }
 
@@ -1517,7 +1517,7 @@ interface Store2BinImport {
  * The notices for the inlays left out as too large, one per distinct limit that applied (an Android video has a
  * smaller bound than other inlays), each printing the limit that was used.
  */
-function tooLargeInlayNotices(skippedInlays: readonly InlaySkipped[]): string[] {
+export function tooLargeInlayNotices(skippedInlays: readonly InlaySkipped[]): string[] {
     const byLimit = new Map<number, string[]>();
     for (const skipped of skippedInlays) {
         if (skipped.reason !== 'tooLarge') {
@@ -1530,7 +1530,7 @@ function tooLargeInlayNotices(skippedInlays: readonly InlaySkipped[]): string[] 
 }
 
 /** The notices of what a store2 import left out, in the order the block-era restore shows them; each is awaited before the reload takes the page away. */
-function skippedNoticesOf(skippedAssets: readonly SkippedAsset[], skippedInlays: readonly InlaySkipped[], assetLimit: number | null): string[] {
+export function skippedNoticesOf(skippedAssets: readonly SkippedAsset[], skippedInlays: readonly InlaySkipped[], assetLimit: number | null): string[] {
     const notices: string[] = [];
     const invalidNames = skippedAssets.filter((skipped) => skipped.reason === 'invalidName').map((skipped) => skipped.name);
     const tooLargeNames = skippedAssets.filter((skipped) => skipped.reason === 'tooLarge').map((skipped) => skipped.name);
@@ -1577,10 +1577,11 @@ export function loadBackupAtBoot(target: BootImportTarget): Promise<BootImportEn
 export type OpenedRestoreEnd = 'pageLive' | 'pageEnding';
 
 /**
- * Restores a `.bin` another Android app opened, after one confirmation that names the file. Never rejects.
- * Nothing is opened or written until the person has confirmed: a busy app, a read-only page and a decline each end it
- * first. The restore takes its own busy entry (`LoadLocalBackup`), so none is held here, where it would refuse that very
- * restore. The source is closed however this ends.
+ * Restores a backup (`.bin` or `.rtb`, chosen by content) another Android app opened, after one confirmation that names
+ * the file. Never rejects. Nothing is opened or written until the person has confirmed: a busy app, a read-only page and
+ * a decline each end it first. The restore takes its own busy entry, so none is held here, where it would refuse that very
+ * restore; the probe reads after the open, inside the run, with no busy entry. The source is closed however this ends,
+ * after the restore returned.
  */
 export async function restoreOpenedBackup(entry: { name: string, path: string }): Promise<OpenedRestoreEnd> {
     let source: ImportSource | null = null;
@@ -1627,7 +1628,8 @@ export async function restoreOpenedBackup(entry: { name: string, path: string })
             console.error(error);
         }
         runOutcome = 'failed';
-        const end = await LoadLocalBackup(undefined, { source, name: entry.name, lastModified });
+        const { routeOpenedBackup } = await import('./backupRouter');
+        const end = await routeOpenedBackup({ source, name: entry.name, lastModified });
         runOutcome = end.outcome;
         switch (end.outcome) {
             case 'committed':
@@ -1697,6 +1699,18 @@ export function LoadLocalBackup(boot: undefined, opened: undefined, restore: Fir
 // Last, so `Parameters<typeof LoadLocalBackup>` stays the boot and opened pair every other caller uses.
 export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin): Promise<LocalBackupEnd>;
 export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?: FirstRunRestore): Promise<LocalBackupEnd> {
+    return loadLocalBackupWith(boot, opened, restore, undefined);
+}
+
+/**
+ * The `.bin` restore over a file the backup router already picked and recognised, with no picker of its own. It runs the
+ * same restore as the picker's own file, so the first-run option and every refusal behave as they do there.
+ */
+export function LoadPickedLocalBackup(file: File, restore?: FirstRunRestore): Promise<LocalBackupEnd> {
+    return loadLocalBackupWith(undefined, undefined, restore, file);
+}
+
+function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | undefined, restore: FirstRunRestore | undefined, picked: File | undefined): Promise<LocalBackupEnd> {
     // The option applies to the picker restore only: a boot or opened-file restore always keeps the file's own value.
     const completeFirstSetup = restore?.completeFirstSetup === true && boot === undefined && opened === undefined;
     const operation: OperationName = boot === undefined ? 'import' : 'boot-import';
@@ -1717,7 +1731,7 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
         return pending;
     }
     try {
-        const input = opened === undefined ? document.createElement('input') : null;
+        const input = opened === undefined && picked === undefined ? document.createElement('input') : null;
         if (input !== null) {
             input.type = 'file';
             input.accept = '.bin';
@@ -1743,15 +1757,16 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
                 target = opened.name;
                 facts.source = { kind: 'file', name: opened.name, size: opened.source.size, lastModified: opened.lastModified };
             } else {
-                if (input === null || !input.files || input.files.length === 0) {
+                // A file the router already picked takes the place of the picker's own file.
+                const chosen = picked ?? input?.files?.[0];
+                if (chosen === undefined) {
                     input?.remove();
                     return ended('canceled');
                 }
-                const picked = input.files[0];
-                input.remove();
-                file = picked;
-                target = picked.name;
-                facts.source = { kind: 'file', name: picked.name, size: picked.size, lastModified: picked.lastModified };
+                input?.remove();
+                file = chosen;
+                target = chosen.name;
+                facts.source = { kind: 'file', name: chosen.name, size: chosen.size, lastModified: chosen.lastModified };
             }
             // A picked file reports a change by failing its reads; an opened one is asked.
             const openedFileChanged = async (): Promise<boolean> => openedFile !== null && await openedFile.changed();
@@ -2658,7 +2673,7 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
             }
         };
         if (input === null) {
-            // A file another app opened: no picker. The busy entry is taken after the check above and ended however the restore leaves.
+            // A file another app opened, or one the router picked: no picker. The busy entry is taken after the check above and ended however the restore leaves.
             const busy = beginBusy('backupLoad');
             void (async () => {
                 let end: LocalBackupEnd = unfinished('failed');

@@ -1,17 +1,7 @@
-import { isTauri, isWeb } from "./ts/platform";
+import { isTauri } from "./ts/platform";
 import { isAppInitiatedReload, consumeExternalHandoffAllowance } from "./ts/reloadGuard";
 
 export function preLoadCheck(){
-    const searchParams = new URLSearchParams(location.search);
-
-    // Check if the user has visited the main page
-    if(!isWeb) {
-        localStorage.setItem('mainpage', 'visited');
-    }
-    else if(searchParams.has('mainpage')) {
-        localStorage.setItem('mainpage', searchParams.get('mainpage'));
-    }
-
     if(!isTauri && !import.meta.env.DEV) {
         // Every non-Tauri build (risuai.xyz, a static self-host, the node
         // server) prompts before an accidental close or reload, since a lost

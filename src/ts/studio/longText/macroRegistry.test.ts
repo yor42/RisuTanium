@@ -13,7 +13,7 @@ const all = collectMacroEntries()
 const index = createMacroIndex(all)
 
 describe('real registry', () => {
-    test('A3a-r1: the duplicated names are exactly [time] (pinned; update if the registry changes)', () => {
+    test('A3a-r1: no name is registered twice (pinned; update if the registry changes)', () => {
         const seen = new Map<string, number>()
         for (const e of all) {
             for (const raw of new Set([e.name, ...e.aliases])) {
@@ -21,17 +21,17 @@ describe('real registry', () => {
             }
         }
         const duplicated = [...seen].filter(([, n]) => n > 1).map(([name]) => name)
-        expect(duplicated).toEqual(['time'])
+        expect(duplicated).toEqual([])
     })
 
-    test('A3a-r1: lookup(time) is the second time entry, and entries keeps both', () => {
+    test('A3a-r1: time is one entry, the formatting one, and lookup reaches it', () => {
         const times = index.entries.filter((e) => e.name === 'time')
-        expect(times).toHaveLength(2)
-        expect(times[0].usage).toBe('{{time}}')
-        const second = times[1]
-        expect(second.summary.startsWith('Formats date/time using custom format string.')).toBe(true)
+        expect(times).toHaveLength(1)
+        const only = times[0]
+        expect(only.summary.startsWith('Formats date/time using custom format string.')).toBe(true)
+        expect(only.usage?.startsWith('{{time}}')).toBe(true)
         for (const typed of ['time', 'TIME', 'time::HH:mm']) {
-            expect(index.lookup(typed)).toBe(second)
+            expect(index.lookup(typed)).toBe(only)
         }
     })
 
@@ -55,10 +55,10 @@ describe('real registry', () => {
 
     test('A3a-r1: usage is non-null wherever the description carries Usage::', () => {
         const withUsage = all.filter((e) => e.usage !== null)
-        // Pinned (update if the registry changes): 176 entries, 175 with a usage. The marker
+        // Pinned (update if the registry changes): 175 entries, 174 with a usage. The marker
         // is split off, so no summary keeps it and no entry is left with an empty usage.
-        expect(all).toHaveLength(176)
-        expect(withUsage).toHaveLength(175)
+        expect(all).toHaveLength(175)
+        expect(withUsage).toHaveLength(174)
         expect(all.filter((e) => e.summary.includes('Usage::'))).toHaveLength(0)
         for (const e of withUsage) {
             expect(e.usage, e.name).not.toBe('')

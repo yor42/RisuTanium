@@ -10,6 +10,7 @@
 import { language } from 'src/lang'
 import { alertConfirm } from '../alert'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
+import { loadBackupFromPicker } from './backupRouter'
 import { LoadLocalBackup } from './backuplocal'
 import { loadInternalBackup } from './internalBackup'
 import type { OperationOutcome } from './operationEnd'
@@ -40,9 +41,12 @@ async function restoreFlow(loader: () => Promise<{ outcome: OperationOutcome }>)
     }
 }
 
-/** Settings: restore from a `.bin` file the person picks. */
+/**
+ * Settings: restore from a backup file the person picks, an upstream or fork `.bin` or a RisuTanium `.rtb`. The backup
+ * router reads the file's content to choose the restore, whatever the file is named.
+ */
 export function restoreFromBinFile(): Promise<void> {
-    return restoreFlow(() => LoadLocalBackup())
+    return restoreFlow(() => loadBackupFromPicker())
 }
 
 /**

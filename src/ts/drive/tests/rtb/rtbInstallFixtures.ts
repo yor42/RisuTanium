@@ -10,7 +10,9 @@ import { planAssets, type AssetPlanDeps, type CreatableRule, type SizedListing }
 import { verifyRtb } from 'src/ts/drive/rtb/rtbVerify'
 import type { RangeSource } from 'src/ts/drive/rtb/rangeSource'
 import type { SideBackends } from 'src/ts/drive/rtb/sideStores'
+import type { ForageStoreConfig } from 'src/ts/drive/rtb/sideStoreConfig'
 import type { RtbCopyPlan } from 'src/ts/drive/rtbRestoreCopy'
+import type { RtbFinishPlan } from 'src/ts/drive/rtbRestoreFinish'
 import type { Committer } from 'src/ts/storage/store2/commit'
 import type { ByteStore, PieceWriter, ReadResult, StoreCondition, WriteResult } from 'src/ts/storage/store/contract'
 import { rangeSourceOfBytes } from './sparseSource'
@@ -164,4 +166,111 @@ export async function planOfBytes(bytes: Uint8Array, options: PlanOptions = {}):
     }
     const { assets, inlays } = await planAssets(verdict.verified.index, verdict.verified.inlays, deps)
     return { source, index: verdict.verified.index, assets, inlays }
+}
+
+/** The part of the plan the finish stage reads: the side items and notice items of S11's own verification over the file. */
+export async function finishPlanOf(bytes: Uint8Array, options: PlanOptions = {}): Promise<RtbFinishPlan> {
+    const copy = await planOfBytes(bytes, options)
+    const verdict = await verifyRtb(copy.source)
+    if (verdict.kind !== 'ok') {
+        throw new Error(`the fixture file is ${verdict.kind}`)
+    }
+    const { verified } = verdict
+    return {
+        source: copy.source,
+        index: copy.index,
+        assets: copy.assets,
+        side: verified.side,
+        notice: {
+            unknownOptionalRows: verified.notice.unknownOptionalRows,
+            outsideEntryCount: verified.notice.outsideEntryCount,
+            omittedUnits: verified.store2.omitted.map((unit) => unit.tail),
+            omittedEntries: verified.manifest.omitted.filter((entry) => entry.kind !== 'unit'),
+            unreadableLists: verified.store2.unreadableLists.length,
+        },
+    }
+}
+
+/** A localforage store over a map: the calls the side restore makes, with chosen failures. */
+export class FakeForage {
+    data = new Map<string, unknown>()
+    clears = 0
+    failSet = false
+
+    async ready(): Promise<void> { }
+
+    async keys(): Promise<string[]> {
+        return [...this.data.keys()]
+    }
+
+    async getItem(key: string): Promise<unknown> {
+        return this.data.has(key) ? this.data.get(key) : null
+    }
+
+    async setItem(key: string, value: unknown): Promise<unknown> {
+        if (this.failSet) {
+            throw new Error('set failed')
+        }
+        this.data.set(key, value)
+        return value
+    }
+
+    async clear(): Promise<void> {
+        this.clears++
+        this.data.clear()
+    }
+}
+
+/** A `Storage` over a map. */
+export class FakeStorage {
+    data = new Map<string, string>()
+
+    get length(): number {
+        return this.data.size
+    }
+
+    key(index: number): string | null {
+        return [...this.data.keys()][index] ?? null
+    }
+
+    getItem(key: string): string | null {
+        return this.data.get(key) ?? null
+    }
+
+    setItem(key: string, value: string): void {
+        this.data.set(key, value)
+    }
+
+    removeItem(key: string): void {
+        this.data.delete(key)
+    }
+}
+
+export interface SideFakes {
+    backends: SideBackends
+    storage: FakeStorage
+    forage(config: ForageStoreConfig): FakeForage
+}
+
+/** The eight side stores in memory, so a restore can be read back. */
+export function sideFakes(): SideFakes {
+    const forages = new Map<string, FakeForage>()
+    const storage = new FakeStorage()
+    const forage = (config: ForageStoreConfig): FakeForage => {
+        const name = `${config.name}/${config.storeName ?? 'keyvaluepairs'}`
+        let found = forages.get(name)
+        if (found === undefined) {
+            found = new FakeForage()
+            forages.set(name, found)
+        }
+        return found
+    }
+    return {
+        storage,
+        forage,
+        backends: {
+            forage: (config) => forage(config) as unknown as ReturnType<SideBackends['forage']>,
+            local: () => storage as unknown as Storage,
+        },
+    }
 }

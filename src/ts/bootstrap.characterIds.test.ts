@@ -22,6 +22,7 @@ import { BLOCK, composeSave, corruptBlockPayload } from 'src/ts/storage/tests/ma
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
+import { registerRealDispatch } from 'src/ts/tests/realDispatchBoot.test-helpers'
 
 const MAIN_KEY = 'database/database.bin'
 
@@ -318,11 +319,19 @@ async function composeBlockFile(options: { b?: 'remote' | 'inline', plugins?: Re
     ])
 }
 
-async function freshLoadData() {
+/**
+ * Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. The real dispatch is
+ * registered, so the legacy main file is converted to a store2 profile as on a production page; the person agrees to
+ * leave out the entries a lenient conversion names. A row passes `realDispatch: false` to boot with no dispatch registered.
+ */
+async function freshLoadData(options: { realDispatch: boolean } = { realDispatch: true }) {
     // The boot reads through the page's byte store; here it is the storage-object model above.
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     const { forageStorage } = await import('src/ts/globalApi.svelte')
     injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
+    const dispatch = options.realDispatch
+        ? await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: true, convertWithoutAnswer: 'convert' })
+        : null
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
@@ -330,7 +339,7 @@ async function freshLoadData() {
     }
     loadedStore.set(false)
     alertStore.set({ type: 'none', msg: 'n' })
-    return { loadData, alertStore, loadedStore }
+    return { loadData, alertStore, loadedStore, dispatch }
 }
 
 /** Records every non-`none` alert, in order, and notes it in the shared event list. */
@@ -402,10 +411,12 @@ function lastInstalled(): Record<string, unknown> {
 describe('loadData() installs a character list the save can hold (S10)', () => {
     test('(R) an upstream main file with a number in characters boots without it', async () => {
         armLegacy(baseDb({ characters: [{ chaId: 'a', name: 'A', type: 'character', chats: [] }, 5, null, { chaId: 'b', name: 'B', type: 'character', chats: [] }] }))
-        const { loadData } = await freshLoadData()
+        const { loadData, dispatch } = await freshLoadData()
 
         await loadData()
 
+        // The conversion names the two entries that are not characters and leaves them out once the person agrees.
+        expect(dispatch?.ui.skippedAsked.map((entries) => entries.map((entry) => entry.reason))).toEqual([['characters[1] is not an object.', 'characters[2] is not an object.']])
         expect(characterIds(installedTrees()[0])).toEqual(['a', 'b'])
     })
 
@@ -438,7 +449,8 @@ describe('loadData() installs a character list the save can hold (S10)', () => {
                 { chaId: 'config', name: 'Stub', type: 'character', coldstorage: 'unit-1', chats: [] },
             ],
         }))
-        const { loadData } = await freshLoadData()
+        // No dispatch is registered: a conversion replaces the id of a stub whose cold unit it cannot read.
+        const { loadData } = await freshLoadData({ realDispatch: false })
 
         await loadData()
 
@@ -459,7 +471,8 @@ describe('loadData() installs a character list the save can hold (S10)', () => {
 
     test('(R) the person is told once, after the install, that the list was repaired', async () => {
         armLegacy(baseDb({ characters: [{ chaId: 'a', name: 'A', type: 'character', chats: [] }, 5] }))
-        const { loadData } = await freshLoadData()
+        // No dispatch is registered: a conversion leaves the entry out after asking, so the boot's own repair finds nothing to tell.
+        const { loadData } = await freshLoadData({ realDispatch: false })
         const alerts = await import('src/ts/alert')
         const toast = vi.spyOn(alerts, 'alertToast')
 
@@ -681,6 +694,25 @@ describe('loadData() and preset ids', () => {
 
         expect(presets.map((p) => p.id)).toEqual(['x', 'y'])
         expect(markBootWriteMock).not.toHaveBeenCalled()
+    })
+
+    test('a stored profile whose preset id is past the end of the list boots with the working settings appended as a new preset the id points at, and no stored preset is changed', async () => {
+        await bootWithRealMint(baseDb({ botPresets: [{ name: 'Stored one', mainPrompt: 'stored prompt' }], botPresetsId: 4 }))
+
+        const booted = lastInstalled() as { botPresets: Array<{ name: string, mainPrompt?: string }>, botPresetsId: number }
+        // What the appended preset carries is covered by `storage/tests/botPresetRepair.svelte.test.ts`; this file mocks the working-settings source.
+        expect(booted.botPresets).toHaveLength(2)
+        expect(booted.botPresets[0]).toMatchObject({ name: 'Stored one', mainPrompt: 'stored prompt' })
+        expect(booted.botPresets[1]).toMatchObject({ name: 'New Preset' })
+        expect(booted.botPresetsId).toBe(1)
+    })
+
+    test('guard: a stored profile whose preset id is -1 boots with the presets and the id as they were', async () => {
+        await bootWithRealMint(baseDb({ botPresets: [{ name: 'Stored one' }], botPresetsId: -1 }))
+
+        const booted = lastInstalled() as { botPresets: unknown[], botPresetsId: number }
+        expect(booted.botPresets).toHaveLength(1)
+        expect(booted.botPresetsId).toBe(-1)
     })
 
     test('A16 the preset the repair appends gets an id from the final setDatabase, and the boot write is marked after it', async () => {

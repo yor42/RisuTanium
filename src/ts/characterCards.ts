@@ -1828,12 +1828,12 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
  * option exports the same bytes as before, and a stale `true` kept from an import is not re-exported after the option is
  * turned off. An absent key reads as off on import.
  */
-function writeAsciiBoundaryExt(loreExt:Record<string, unknown>, on:boolean|undefined){
+function writeLoreExtFlag(loreExt:Record<string, unknown>, name:'risu_fullWordAsciiBoundary'|'risu_cjkWordStart', on:boolean|undefined){
     if(on){
-        loreExt.risu_fullWordAsciiBoundary = true
+        loreExt[name] = true
     }
     else{
-        delete loreExt.risu_fullWordAsciiBoundary
+        delete loreExt[name]
     }
 }
 
@@ -1853,6 +1853,8 @@ export function convertCharbook(arg:{
             recursiveScanning: charbook.recursive_scanning,
             fullWordMatching: charbook?.extensions?.risu_fullWordMatching ?? false,
             fullWordAsciiBoundary: charbook?.extensions?.risu_fullWordAsciiBoundary ?? false,
+            //strict, so a non-boolean extension value cannot switch the option on
+            cjkWordStart: charbook?.extensions?.risu_cjkWordStart === true,
         }
     }
 
@@ -1993,7 +1995,8 @@ function createBaseV2(char:character) {
     char.loreExt ??= {}
 
     char.loreExt.risu_fullWordMatching = char.loreSettings?.fullWordMatching ?? false
-    writeAsciiBoundaryExt(char.loreExt, char.loreSettings?.fullWordAsciiBoundary)
+    writeLoreExtFlag(char.loreExt, 'risu_fullWordAsciiBoundary', char.loreSettings?.fullWordAsciiBoundary)
+    writeLoreExtFlag(char.loreExt, 'risu_cjkWordStart', char.loreSettings?.cjkWordStart)
 
     const card:CharacterCardV2Risu = {
         spec: "chara_card_v2",
@@ -2597,7 +2600,8 @@ export function createBaseV3(char:character){
     char.loreExt ??= {}
 
     char.loreExt.risu_fullWordMatching = char.loreSettings?.fullWordMatching ?? false
-    writeAsciiBoundaryExt(char.loreExt, char.loreSettings?.fullWordAsciiBoundary)
+    writeLoreExtFlag(char.loreExt, 'risu_fullWordAsciiBoundary', char.loreSettings?.fullWordAsciiBoundary)
+    writeLoreExtFlag(char.loreExt, 'risu_cjkWordStart', char.loreSettings?.cjkWordStart)
 
     const card:CharacterCardV3 = {
         spec: "chara_card_v3",
