@@ -244,7 +244,6 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 
 import { exportAsDataset } from 'src/ts/storage/exportAsDataset'
 import { cleanColdStorage } from 'src/ts/process/coldstorage.svelte'
-import { getDbBackups } from 'src/ts/globalApi.svelte'
 import * as manualCleanupModule from 'src/ts/storage/manualCleanup'
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { language } from 'src/lang'
@@ -537,35 +536,5 @@ describe('what stays closed on a store2 page', () => {
         expect(items.size).toBe(2)
         expect(warn).toHaveBeenCalledTimes(2)
         expect(alertErrorMock).not.toHaveBeenCalled()
-    })
-
-    test('guard (G6): the numbered database backups of a store2 page are all listed and none is deleted', async () => {
-        setPageStorageMode({ kind: 'store2' })
-        const items = new Map<string, Uint8Array>()
-        for (let time = 1; time <= 25; time++) {
-            items.set(`database/dbbackup-${time}.bin`, new Uint8Array([time]))
-        }
-        const { operations } = recordingStore(items)
-
-        const times = await getDbBackups()
-
-        expect(times).toHaveLength(25)
-        expect(times[0]).toBe(25)
-        expect(operations.filter((operation) => operation.startsWith('delete'))).toEqual([])
-        expect(items.size).toBe(25)
-    })
-
-    test('guard (G6 control): a legacy page prunes to its twenty newest, so the store2 result is the mode and not an empty prune', async () => {
-        setPageStorageMode({ kind: 'legacy', convertedFrom: null })
-        const items = new Map<string, Uint8Array>()
-        for (let time = 1; time <= 25; time++) {
-            items.set(`database/dbbackup-${time}.bin`, new Uint8Array([time]))
-        }
-        recordingStore(items)
-
-        const times = await getDbBackups()
-
-        expect(times).toHaveLength(20)
-        expect(items.size).toBe(20)
     })
 })

@@ -165,7 +165,6 @@ import { RisuSaveEncoder, decodeRisuSave, encodeRisuSaveLegacy } from '../../sto
 import { getPageBlockOwner } from '../../storage/pageBlockOwner'
 import { getPageStorageMode, setPageStorageMode } from '../../storage/pageStorageMode'
 import { fingerprintMainFile } from '../../storage/mainFileFingerprint'
-import { performSaveStep } from '../../storage/saveStep'
 import { treeToBlockSet } from '../../storage/treeToBlockSet'
 import { encodeHead, parseHead } from '../../storage/headSwap'
 import { characterBlockKey, isGenerationId } from '../../storage/blockKeys'
