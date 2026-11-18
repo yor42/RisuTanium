@@ -430,8 +430,8 @@ async function clearOnly(id: SideSectionId, ops: StoreOps): Promise<SideRestoreR
 }
 
 /**
- * Applies one decided action. `body` reads the section's data entry; it is `null` for a
- * present, empty section, which clears the store and writes nothing.
+ * Applies one decided action. `body` reads the section's data entry; it is `null` only
+ * where the section is cleared without being read (the plugin grants).
  */
 export async function applySideAction(action: SideAction, body: SideBodyReader | null, backends: SideBackends = defaultSideBackends): Promise<SideRestoreResult> {
     const { id } = action

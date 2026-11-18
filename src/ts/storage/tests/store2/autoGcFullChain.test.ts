@@ -267,6 +267,11 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
                 startTrigger: run => { fire = run; return { arm: () => { }, stop: () => { } } },
                 deletion: async () => ({ status: 'completed', deleted: 0, abandoned: 0, flushed: undefined }),
                 gcPageFacts: { isBusy: () => false, saveLoopParked: () => false, isSaveClean: () => true },
+                // The asset sweep follows the clean-up; this case is about the clean-up, so the sweep's page yields at once.
+                sweepFacts: {
+                    residentRefs: () => [], writtenCount: () => 0, writtenThisPage: () => [], peers: async () => 'alone',
+                    shouldStop: () => true, release: () => { }, hold: remove => remove(),
+                },
             },
         )
         expect(started).not.toBeNull()
@@ -274,8 +279,10 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
         await getStartupCleanup()
         w.pageMode.setPageStorageMode({ kind: 'block' })
 
-        expect(info.mock.calls.map(call => String(call[0]))).toHaveLength(1)
-        expect(String(info.mock.calls[0][0])).toContain(`status=done deleted=${deadKeys.size}`)
+        // A yielding sweep still logs its own result line; only the clean-up pass's line is this case's subject.
+        const lines = info.mock.calls.map(call => String(call[0])).filter(line => !line.startsWith('store2 asset sweep'))
+        expect(lines).toHaveLength(1)
+        expect(lines[0]).toContain(`status=done deleted=${deadKeys.size}`)
         const after = new Set(await k.memory.listStore2())
         expect([...deadKeys].filter(unit => after.has(unit)), 'orphans and the units of dropped and evicted trees are gone').toEqual([])
         expect([...namedKeys].filter(unit => !after.has(unit)), 'every unit of the current, retained and pinned trees is present').toEqual([])

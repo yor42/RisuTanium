@@ -46,6 +46,23 @@ export class OpfsStorage{
             throw error
         }
     }
+    /** The file of `key` without reading its content; `null` when there is none. */
+    async getFile(key:string):Promise<File|null> {
+        try {
+            await this.Init()
+            const handle = await this.opfs.getFileHandle(Buffer.from(key, 'utf-8').toString('hex'), {
+                create: false
+            })
+            return await handle.getFile()
+        } catch (error) {
+            if(error instanceof DOMException){
+                if(error.name === "NotFoundError"){
+                    return null
+                }
+            }
+            throw error
+        }
+    }
     async keys():Promise<string[]>{
         await this.Init()
         let entries:string[] = []

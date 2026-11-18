@@ -1,12 +1,15 @@
 /**
- * The avatar image work of "Copy as card": the only place that fetches, decodes
- * and draws an image for the card. It runs in a live browser (fetch, image
+ * The image work of "Copy as card": it encodes the avatar and the message's
+ * local images for the card, and is the only place that fetches, decodes and
+ * draws an image for it. It runs in a live browser (fetch, image
  * decoding and a canvas) and is replaced by a stub wherever the card is tested.
  *
  * Callers pass only an address that is already known to be local to the app
  * (`data:`, `blob:`, an app image path or a Tauri asset address); this module
  * never decides what is local.
  */
+
+import { CARD_IMAGE_MAX_SOURCE_BYTES } from './chatCardReadGate'
 
 export interface EncodeAvatarOptions {
     /** Longest side of the result, in pixels. A smaller image is not enlarged. */
@@ -17,13 +20,13 @@ export interface EncodeAvatarOptions {
     signal: AbortSignal
 }
 
-const MAX_SOURCE_BYTES = 15 * 1024 * 1024
+const MAX_SOURCE_BYTES = CARD_IMAGE_MAX_SOURCE_BYTES
 const MAX_PIXELS = 40_000_000
 const JPEG_QUALITY = 0.85
 const JPEG_PREFIX = 'data:image/jpeg;base64,'
 const FALLBACK_BACKGROUND = '#ffffff'
 
-interface Decoded {
+export interface Decoded {
     source: CanvasImageSource
     width: number
     height: number
@@ -67,8 +70,10 @@ function untilAborted<T>(promise: Promise<T>, signal: AbortSignal, discard: (lat
     })
 }
 
-async function decodeWithBitmap(blob: Blob, signal: AbortSignal): Promise<Decoded | null> {
-    const bitmap = await untilAborted(createImageBitmap(blob), signal, (late) => late.close())
+async function decodeWithBitmap(blob: Blob, signal: AbortSignal, bitmapOptions?: ImageBitmapOptions): Promise<Decoded | null> {
+    // Options are forwarded only when given, so a caller without them keeps the one-argument call.
+    const pending = bitmapOptions === undefined ? createImageBitmap(blob) : createImageBitmap(blob, bitmapOptions)
+    const bitmap = await untilAborted(pending, signal, (late) => late.close())
     if (bitmap === null) return null
     return { source: bitmap, width: bitmap.width, height: bitmap.height, release: () => bitmap.close() }
 }
@@ -100,10 +105,10 @@ async function decodeWithImage(blob: Blob, signal: AbortSignal): Promise<Decoded
     }
 }
 
-async function decode(blob: Blob, signal: AbortSignal): Promise<Decoded | null> {
+export async function decode(blob: Blob, signal: AbortSignal, bitmapOptions?: ImageBitmapOptions): Promise<Decoded | null> {
     if (typeof createImageBitmap === 'function') {
         try {
-            return await decodeWithBitmap(blob, signal)
+            return await decodeWithBitmap(blob, signal, bitmapOptions)
         } catch {
             if (signal.aborted) return null
         }

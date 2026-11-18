@@ -4,6 +4,7 @@
     import { busyRefusalLine } from "../../ts/process/memory/busyActions";
     import { alertIdle, ANSWER_GUARD_MS, isConsentType, isPromptType } from "../../ts/alertPrompts";
     import { coversPage } from "../../ts/alertEscape";
+    import { cancelHasOwnButton, offeredCancel } from "../../ts/alertBack";
     import { UPSTREAM_AGREEMENT_ACCEPT, UPSTREAM_AGREEMENT_DECLINE } from "../../ts/upstreamAgreement";
     
     import { DBState } from 'src/ts/stores.svelte';
@@ -17,6 +18,7 @@
     import TextInput from '../UI/GUI/TextInput.svelte';
     import { aiLawApplies, openURL, getFetchLogs } from 'src/ts/globalApi.svelte';
     import Button from '../UI/GUI/Button.svelte';
+    import PeerConflicts from './PeerConflicts.svelte';
     import { XIcon, ChevronDownIcon, ChevronUpIcon, CopyIcon, CheckIcon } from "@lucide/svelte";
     import hljs from 'highlight.js/lib/core';
     import json from 'highlight.js/lib/languages/json';
@@ -317,6 +319,10 @@
                     {/if}
                     <p class="confirm-message">{confirmMessage}</p>
                 </div>
+            {:else if a.type === 'peerConflicts'}
+                <PeerConflicts rows={a.peerConflicts ?? []} title={a.msg} onanswer={(message) => {
+                    alertStore.set({ type: 'none', msg: message })
+                }} />
             {:else if a.type !== 'select' && a.type !== 'requestdata' && a.type !== 'addchar' && a.type !== 'hypaV2' && a.type !== 'chatOptions'}
                 <span class="text-gray-300 whitespace-pre-wrap">{displayAlertText(a, $busyRefusalLine)}</span>
                 {#if a.submsg && a.type !== 'progress'}
@@ -352,6 +358,16 @@
                         {/if}
                     </div>
                 {/if}
+            {/if}
+            {#if a.type === 'error' && a.link}
+                <Button styled="outlined" className="mt-4" onclick={() => {
+                    const open = a.link?.open
+                    alertStore.set({
+                        type: 'none',
+                        msg: ''
+                    })
+                    open?.()
+                }}>{a.link.label}</Button>
             {/if}
             {#if a.type === 'wait' && a.onCancel}
                 <div class="flex w-full">
@@ -408,6 +424,7 @@
                 </div>
             {:else if a.type === 'select'}
                 {@const hasDisplay = a.msg.startsWith('__DISPLAY__')}
+                {@const cancel = offeredCancel(a)}
                 {#if hasDisplay}
                     {@const parts = a.msg.substring(11).split('||')}
                     <div class="mb-4 text-textcolor">{parts[0]}</div>
@@ -429,6 +446,16 @@
                             })
                         }}>{n}</Button>
                     {/each}
+                {/if}
+                {#if cancel !== undefined && !cancelHasOwnButton(a)}
+                    <div class="flex w-full">
+                        <Button styled="outlined" className="mt-4 grow" onclick={() => {
+                            alertStore.set({
+                                type: 'none',
+                                msg: cancel
+                            })
+                        }}>{language.cancel}</Button>
+                    </div>
                 {/if}
             {:else if a.type === 'error' || a.type === 'normal' || a.type === 'markdown'}
                <Button className="mt-4" onclick={() => {
@@ -456,6 +483,17 @@
                         msg: document.querySelector('#alert-input')?.value
                     })
                 }}>{language.alertComp.ok}</Button>
+                {@const cancel = offeredCancel(a)}
+                {#if cancel !== undefined}
+                    <div class="flex w-full">
+                        <Button styled="outlined" className="mt-4 grow" onclick={() => {
+                            alertStore.set({
+                                type: 'none',
+                                msg: cancel
+                            })
+                        }}>{language.cancel}</Button>
+                    </div>
+                {/if}
                 {#if a.datalist}
                     <datalist id="alert-input-list">
                         {#each a.datalist as item}

@@ -738,26 +738,78 @@ async function parseAdditionalAssets(data:string, char:simpleCharacterArgument|c
     return data
 }
 
-function getClosestMatch(char: simpleCharacterArgument|character, name:string, _assetPaths:AssetPaths){   
+// Which asset is closest to a name depends only on the names. The result is remembered per assets array and
+// re-validated against the live names on every call; path, extension and the distance limit are always read live.
+type ClosestMatchSnapshot = {
+    names: string[]
+    hits: Map<string, {index:number, dist:number}>
+}
+const CLOSEST_MATCH_HITS_MAX = 512
+const closestMatchSnapshots = new WeakMap<string[][], ClosestMatchSnapshot>()
+let closestMatchScans = 0
+
+export function closestMatchScanCountForTests(){
+    return closestMatchScans
+}
+
+function getClosestMatchSnapshot(assets:string[][]):ClosestMatchSnapshot{
+    let snapshot = closestMatchSnapshots.get(assets)
+    if(snapshot){
+        const names = snapshot.names
+        let same = names.length === assets.length
+        for(let i=0;same && i<names.length;i++){
+            if(names[i] !== assets[i][0]){
+                same = false
+            }
+        }
+        if(same){
+            return snapshot
+        }
+    }
+    snapshot = { names: assets.map((asset) => asset[0]), hits: new Map() }
+    closestMatchSnapshots.set(assets, snapshot)
+    return snapshot
+}
+
+function getClosestMatch(char: simpleCharacterArgument|character, name:string, _assetPaths:AssetPaths){
     if(!char.additionalAssets) return null
 
-    let closest = ''
+    const assets = char.additionalAssets
+    const snapshot = getClosestMatchSnapshot(assets)
+    const hit = snapshot.hits.get(name)
+
     let closestDist = 999999
     let targetPath = ''
     let targetExt = ''
 
-    const trimmedName = trimmer(name)
-    for(const asset of char.additionalAssets) {
-        const key = asset[0].toLocaleLowerCase()
-        const dist = getDistance(trimmedName, trimmer(key))
-        if(dist < closestDist){
-            closest = key
-            closestDist = dist
-            targetPath = asset[1]
-            targetExt = asset[2]
+    if(hit){
+        closestDist = hit.dist
+        targetPath = assets[hit.index][1]
+        targetExt = assets[hit.index][2]
+    }
+    else{
+        closestMatchScans++
+        let closestIndex = -1
+        const trimmedName = trimmer(name)
+        for(let i=0;i<assets.length;i++) {
+            const asset = assets[i]
+            const key = asset[0].toLocaleLowerCase()
+            const dist = getDistance(trimmedName, trimmer(key))
+            if(dist < closestDist){
+                closestIndex = i
+                closestDist = dist
+                targetPath = asset[1]
+                targetExt = asset[2]
+            }
+        }
+        if(closestIndex >= 0){
+            if(snapshot.hits.size >= CLOSEST_MATCH_HITS_MAX){
+                snapshot.hits.clear()
+            }
+            snapshot.hits.set(name, {index: closestIndex, dist: closestDist})
         }
     }
-    
+
     if(closestDist > DBState.db.assetMaxDifference){
         return null
     }
@@ -947,7 +999,7 @@ const trimPurifyConfig = {
 
 /**
  * Sanitizes `data`. With `deferLargeAssetImages` (Android chat bodies that scan for the result) an `<img>` whose `src` is
- * a whole-read asset URL of 8 MiB or more keeps that URL in `data-risu-deferred-src` and shows a placeholder source,
+ * a whole-read asset URL (or an Android Blob inlay image URL registered with its size) of 8 MiB or more keeps that URL in `data-risu-deferred-src` and shows a placeholder source,
  * and an author's own `data-risu-deferred-src` is dropped. Without it the output is the same for every caller.
  */
 export function trimMarkdown(data:string, opts?: { deferLargeAssetImages?: boolean }){
@@ -1127,6 +1179,15 @@ function encodeStyle(txt:string){
     })
 }
 
+// The processor keeps no state between runs, so one instance serves every selector.
+const styleSelectorProcessor = cssSelectorParser((root) => {
+    root.walkClasses((classes) => {
+        if(classes.type === 'class' && !classes.value.startsWith('x-risu-')){
+            classes.value = 'x-risu-' + classes.value
+        }
+    })
+})
+
 function decodeStyleRule(rule:CssAtRuleAST){
     if(rule.type === 'rule'){
         if(rule.selectors){
@@ -1134,15 +1195,7 @@ function decodeStyleRule(rule:CssAtRuleAST){
                 let slt:string = rule.selectors[i]
                 if(slt){
 
-                    const parser = cssSelectorParser((root) => {
-                        root.walkClasses((classes) => {
-                            if(classes.type === 'class' && !classes.value.startsWith('x-risu-')){
-                                classes.value = 'x-risu-' + classes.value
-                            }
-                        })
-                    })
-
-                    slt = parser.processSync(slt)
+                    slt = styleSelectorProcessor.processSync(slt)
 
                     rule.selectors[i] = ".chattext " + slt
                 }
@@ -1162,6 +1215,12 @@ function decodeStyleRule(rule:CssAtRuleAST){
     return rule
 }
 
+export const STYLE_MEMO_MAX = 32
+export const STYLE_MEMO_MAX_KEY = 32768
+// Post-CBS style text to its scoped CSS. Only successful decodes are stored, so a parse failure is retried and
+// `returnCSSError` is read on every failure.
+const styleDecodeMemo = new Map<string, string>()
+
 /**
  * Decodes one <risu-style> body into scoped CSS. Returns the CSS on its own so
  * the caller can put it into a real <style> element instead of a markup string.
@@ -1171,7 +1230,12 @@ function decodeStyleRule(rule:CssAtRuleAST){
 function decodeStyleContent(hexText:string):{css?:string, fallback?:string}{
     try {
         let text = Buffer.from(hexText, 'hex').toString('utf-8')
+        // CBS runs on every decode; the memo is keyed by its output, so a changed variable yields a new key.
         text = risuChatParser(text)
+        const memoized = styleDecodeMemo.get(text)
+        if(memoized !== undefined){
+            return { css: memoized }
+        }
         const ast = css.parse(text)
         const rules = ast?.stylesheet?.rules
         if(rules){
@@ -1180,12 +1244,20 @@ function decodeStyleContent(hexText:string):{css?:string, fallback?:string}{
             }
             ast.stylesheet.rules = rules
         }
-        return {
-            css: css.stringify(ast, {
-                indent: '',
-                compress: true,
-            })
+        const decoded = css.stringify(ast, {
+            indent: '',
+            compress: true,
+        })
+        if(text.length <= STYLE_MEMO_MAX_KEY){
+            if(styleDecodeMemo.size >= STYLE_MEMO_MAX){
+                const oldest = styleDecodeMemo.keys().next()
+                if(!oldest.done){
+                    styleDecodeMemo.delete(oldest.value)
+                }
+            }
+            styleDecodeMemo.set(text, decoded)
         }
+        return { css: decoded }
     } catch (error) {
         if(DBState.db.returnCSSError){
             return { fallback: `CSS ERROR: ${error}` }

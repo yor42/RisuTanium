@@ -52,7 +52,7 @@ $allowedShell = @(
     'input tap 100 200', 'input swipe 10 20 30 40', 'input swipe 10 20 10 20 800',
     'input keyevent KEYCODE_ENTER', 'input keyevent KEYCODE_A', 'input keyevent KEYCODE_SPACE', 'input keyevent 29', 'input keyevent --longpress KEYCODE_A', 'input keyevent KEYCODE_DEL KEYCODE_DEL',
     'input text hello', 'input text hello%sworld',
-    'dumpsys', 'dumpsys activity activities', ('dumpsys meminfo ' + $pkg), 'dumpsys battery', ('dumpsys gfxinfo ' + $pkg + ' reset'),
+    'dumpsys activity activities', ('dumpsys meminfo ' + $pkg), 'dumpsys battery', ('dumpsys gfxinfo ' + $pkg + ' reset'),
     'uiautomator dump', 'uiautomator dump /dev/tty', 'uiautomator dump /sdcard/w.xml', 'uiautomator dump --compressed /sdcard/Download/w.xml', 'uiautomator dump /data/local/tmp/w.xml',
     'ls /sdcard', 'ls -la /sdcard/Download', 'ls /sdcard/Download/', 'cat /sdcard/Download/a.txt', 'cat /sdcard/notes.txt',
     ('pm clear ' + $pkg)

@@ -38,7 +38,9 @@ vi.mock(import('../platform'), () => ({
 vi.mock('../characterCards', () => ({
     importOpenedSources: importOpenedSourcesMock,
     // Stand-in for the shared allow-list; the real list is pinned in characterCards.picker.test.ts.
-    isOpenedSourceImportable: (name: string) => /\.(charx|risum|risup|risupreset|preset)$/i.test(name),
+    isOpenedSourceImportable: (name: string, type = '') => /\.(charx|byaf|png|jpe?g|json|ya?ml|risupreset|risup|preset|risum)$/i.test(name)
+        ? /\.(charx|risum|risup|risupreset|preset|png|jpe?g|json)$/i.test(name)
+        : /^(image\/png|image\/jpeg|application\/json)$/i.test(type.split(';')[0].trim()),
 }))
 vi.mock('../drive/backuplocal', () => ({
     restoreOpenedBackup: restoreOpenedBackupMock,

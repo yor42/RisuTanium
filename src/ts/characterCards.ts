@@ -126,9 +126,13 @@ async function importFiles(items:ImportItem[], added:(character|groupChat)[] = [
     return added
 }
 
-//One entry of a multi-file import whose kind is decided by its name: a name that is not a card, preset or module, or a read that yields no data, is refused with a reason of its own; a read that throws is a failure.
+//The largest JSON card an opened or shared source may be; a larger one is refused before any of it is read.
+export const OPENED_JSON_LIMIT_BYTES = 64 * 1024 * 1024
+
+//One entry of a multi-file import whose kind is decided by its name, then by its type: a name and type that are not a card, preset or module, or a read that yields no data, is refused with a reason of its own; a read that throws is a failure.
+//With `jsonLimitBytes` set, a JSON card larger than that is refused as not a card file as soon as the read has handed over its source, before any content is read.
 //A source the read hands over is closed on every exit of the item, whichever way the import ends.
-function classifiedImport(label:string, name:string, type:string, read:(kind:ClassifiedImport) => Promise<File|ImportSource|null>, run:ImportArchiveRun|null):ImportItem {
+function classifiedImport(label:string, name:string, type:string, read:(kind:ClassifiedImport) => Promise<File|ImportSource|null>, run:ImportArchiveRun|null, opts?:{jsonLimitBytes?:number}):ImportItem {
     return {
         name: label,
         run: async () => {
@@ -141,6 +145,10 @@ function classifiedImport(label:string, name:string, type:string, read:(kind:Cla
                 return {kind: 'refused', reason: language.importFileNotReceived, summaryOnly: true}
             }
             try {
+                const limit = opts?.jsonLimitBytes
+                if(limit !== undefined && kind.kind === 'card' && kind.name.toLowerCase().endsWith('.json') && data.size > limit){
+                    return {kind: 'refused', reason: language.importNotCardFile}
+                }
                 return await importClassified(kind, data, run)
             } finally {
                 if(isImportSource(data)){
@@ -155,29 +163,33 @@ function classifiedImport(label:string, name:string, type:string, read:(kind:Cla
 export async function importOpenedFiles(paths:string[]):Promise<void> {
     try {
         const run = newImportArchiveRun()
-        await importFiles(paths.map((path) => classifiedImport(path.split(/[\\/]/).pop() || path, path, '', () => openDesktopImportSource(path), run)))
+        await importFiles(paths.map((path) => classifiedImport(path.split(/[\\/]/).pop() || path, path, '', () => openDesktopImportSource(path), run, {jsonLimitBytes: OPENED_JSON_LIMIT_BYTES})))
     } catch (error) {
         alertError(error)
     }
 }
 
-//Only these kinds are opened from another Android app; every other name, whatever the classifier would make of it, is refused.
-const openedSourceSuffixes = ['.charx', '.risum', '.risup', '.risupreset', '.preset']
+//Only these kinds are opened from another Android app; every other name, whatever the classifier would make of it, is refused. A photo or a JSON file that is no card is refused by the card reader, not here.
+const openedSourceSuffixes = ['.charx', '.risum', '.risup', '.risupreset', '.preset', '.png', '.jpg', '.jpeg', '.json']
 
-//Whether `importOpenedSources` would import a file of this display name. The drain routing asks the same question, so the list lives once.
-export function isOpenedSourceImportable(name:string):boolean {
-    const lower = name.toLowerCase()
+//Whether `importOpenedSources` would import an entry of this display name and reported type. The name decides first, then the type, through the same classification as every other route (`importTypeSuffixes` is the only list of types); the drain routing asks the same question, so the list lives once.
+export function isOpenedSourceImportable(name:string, type:string = ''):boolean {
+    const kind = classifyImportFile(name, type)
+    if(!kind){
+        return false
+    }
+    const lower = kind.name.toLowerCase()
     return openedSourceSuffixes.some((suffix) => lower.endsWith(suffix))
 }
 
-//Files another Android app opened or shared: each entry is a content URI with the display name its provider gave. The name decides: a name outside the allow-list is refused with the unsupported-file reason and its URI is never opened. Allowed kinds go through the same classification, open-in-pieces import and close as `importOpenedFiles`. Never rejects.
-export async function importOpenedSources(entries:{name:string, path:string}[]):Promise<void> {
+//Files another Android app opened or shared: each entry is a content URI with the display name and type its provider gave. The name decides, then the type: an entry outside the allow-list is refused with the unsupported-file reason and its URI is never opened. Allowed kinds go through the same classification, open-in-pieces import and close as `importOpenedFiles`; a JSON over `OPENED_JSON_LIMIT_BYTES` is refused unread. Never rejects.
+export async function importOpenedSources(entries:{name:string, path:string, type?:string}[]):Promise<void> {
     try {
         const run = newImportArchiveRun()
         await importFiles(entries.map((entry) => {
-            const allowed = isOpenedSourceImportable(entry.name)
-            //An empty classification name never matches a suffix, so the shared refusal applies and the read is not called.
-            return classifiedImport(entry.name, allowed ? entry.name : '', '', () => openDesktopImportSource(entry.path), run)
+            const allowed = isOpenedSourceImportable(entry.name, entry.type ?? '')
+            //An empty classification name and type never match, so the shared refusal applies and the read is not called.
+            return classifiedImport(entry.name, allowed ? entry.name : '', allowed ? entry.type ?? '' : '', () => openDesktopImportSource(entry.path), run, {jsonLimitBytes: OPENED_JSON_LIMIT_BYTES})
         }))
     } catch (error) {
         alertError(error)
@@ -303,7 +315,13 @@ async function readCharacterFile(f:{
             return refusedOutcome(language.errors.noData)
         }
         const data = f.data instanceof Uint8Array ? f.data : isImportSource(f.data) ? await f.data.read(0, f.data.size) : new Uint8Array(await f.data.arrayBuffer())
-        const da = JSON.parse(Buffer.from(data).toString('utf-8'))
+        //Text that is not JSON is not a card file, the same as JSON with no card in it.
+        let da
+        try {
+            da = JSON.parse(Buffer.from(data).toString('utf-8'))
+        } catch {
+            return refusedOutcome(language.importNotCardFile)
+        }
         const spec = await importCharacterCardSpec(da, undefined, 'normal', undefined, undefined, undefined, undefined, undefined, run)
         //A v2 or v3 card that was refused is not an old card: its top-level fields are not the card.
         if(spec === null && (da?.spec === 'chara_card_v2' || da?.spec === 'chara_card_v3')){
@@ -314,6 +332,10 @@ async function readCharacterFile(f:{
         }
         if(spec === false){
             return {kind: 'declined'}
+        }
+        //A value that is no old card at all is not a card file; an old card whose character book cannot be converted keeps its own refusal.
+        if(readOldCard(da) === null){
+            return refusedOutcome(language.importNotCardFile)
         }
         const oldCard = planOldCard(da)
         if(oldCard === null){
@@ -328,7 +350,7 @@ async function readCharacterFile(f:{
             return refusedOutcome(language.errors.noData)
         }
         const data = f.data instanceof Uint8Array ? f.data : isImportSource(f.data) ? await f.data.read(0, f.data.size) : new Uint8Array(await f.data.arrayBuffer())
-        //The parser is fetched only when a YAML card is imported. A parse error is not caught here: it ends the import as a failure, like malformed JSON.
+        //The parser is fetched only when a YAML card is imported. A parse error is not caught here: it ends the import as a failure, unlike malformed JSON, which is refused as not a card file.
         const { parse } = await import('yaml')
         const parsed: unknown = parse(Buffer.from(data).toString('utf-8'))
         const oldCard = planOldCard(yamlCardValue(parsed))
@@ -362,9 +384,9 @@ async function readCharacterFile(f:{
             const charxData:File|Uint8Array|ImportSource = f.data instanceof ReadableStream
                 ? new File([await new Response(f.data).blob()], f.name, {type: 'application/zip'})
                 : f.data
-            //An archive without its end record was cut short. A jpg or jpeg without one is treated as a plain image (a jpg-charx cut short cannot be told apart by its tail).
+            //An archive without its end record was cut short. A jpg or jpeg without one is a plain image, which is not a card file (a jpg-charx cut short cannot be told apart by its tail).
             if(!(await hasZipEndRecord(charxData))){
-                return refusedOutcome(lower.endsWith('charx') ? language.cardFileIncomplete : language.errors.noData)
+                return refusedOutcome(lower.endsWith('charx') ? language.cardFileIncomplete : language.importNotCardFile)
             }
             await importer.parse(charxData)
         } catch (error) {
@@ -731,7 +753,7 @@ async function planRccCard(value:string, assetKeys:Set<string>):Promise<PngCardP
         return refusedOutcome(language.errors.noData)
     }
     if(metaData.usePassword){
-        const password = await alertInput(language.inputCardPassword)
+        const password = await alertInput(language.inputCardPassword, undefined, undefined, { cancel: '' })
         if(!password){
             return {kind: 'declined'}
         }
@@ -817,6 +839,14 @@ async function planPngCard(source:ImportSource, chunks:PngLayoutChunk[], assetKe
     }
 }
 
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
+
+//False only when the bytes the source has differ from the PNG signature; a file cut inside the signature still goes to the scan, which reports it as cut.
+async function hasPngSignature(source:ImportSource):Promise<boolean> {
+    const head = await source.read(0, PNG_SIGNATURE.length)
+    return head.every((byte, i) => byte === PNG_SIGNATURE[i])
+}
+
 /**
  * Imports a PNG card in two passes over the file, which is never held as a whole. The first pass walks the chunk
  * headers and decides, before anything is saved, whether the card is imported (see planPngCard); the second reads the
@@ -831,12 +861,17 @@ async function importPngCard(name:string, data:File|Uint8Array|ImportSource, run
             throw new PngCardSourceChanged('the card file changed')
         }
         //Counts the assets and checks that no chunk body (nor the CRC of a chunk other than tEXt) is cut short before anything is saved, so such a card saves nothing.
+        //The scan walks chunk lengths and never checks the signature, so another kind of image would be read as garbage chunks.
+        if(!(await hasPngSignature(source))){
+            return refusedOutcome(language.importNotCardFile)
+        }
         const scan = await PngChunk.scanCard(data, {layout: true})
         if(scan.cut || (!scan.hasCardData && !scan.iendReached)){
             return refusedOutcome(language.cardFileIncomplete)
         }
+        //A whole image whose end was reached with no card chunk in it is a picture, not a card.
         if(!scan.hasCardData){
-            return refusedOutcome(language.errors.noData)
+            return refusedOutcome(language.importNotCardFile)
         }
         const chunks = scan.chunks ?? []
         const imageBytes = scan.imageBytes ?? 0
@@ -1019,6 +1054,32 @@ function parseShareIndex(value:{files?: Partial<ShareIndexEntry>[]}|null, id:str
     return entries
 }
 
+const CHUB_DOWNLOAD_URL = 'https://api.chub.ai/api/characters/download'
+
+/**
+ * The address a `#import=` link may fetch: an absolute https URL without userinfo, or null. A relative target, which
+ * would resolve against this app's own origin, is refused too. The parsed form is both shown and fetched, so the host
+ * the person confirms is the host the request starts at.
+ */
+function importLinkTarget(raw:string):URL|null {
+    let target:URL
+    try {
+        target = new URL(raw)
+    } catch (error) {
+        return null
+    }
+    if(target.protocol !== 'https:' || target.username || target.password){
+        return null
+    }
+    return target
+}
+
+/**
+ * Link imports are the one place untrusted input starts a download or a write at boot. The four link kinds (Chub,
+ * #import=, #import_module=, #import_preset=) each clear their link from the address first, refuse malformed input
+ * without asking, and ask before anything is fetched, marked busy or saved; a low-level module is then also asked about
+ * its access. A decline ends only that link's branch, never the start-up work after it.
+ */
 export async function characterURLImport() {
     const realmPath = (new URLSearchParams(location.search)).get('realm')
     try {
@@ -1026,17 +1087,20 @@ export async function characterURLImport() {
            getRealmInfo(realmPath)
         }
     } catch (error) {
-        
+
     }
 
-    const charPath = (new URLSearchParams(location.search)).get('charahub')
+    const charParams = new URLSearchParams(location.search)
+    const charPath = charParams.get('charahub')
     try {
-        if(charPath){
-            alertWait(language.alerts.loadingFromChub)
+        if(charParams.has('charahub')){
             const url = new URL(location.href);
             url.searchParams.delete('charahub');
-            window.history.pushState(null, '', url.toString());
-            const chara = await fetch("https://api.chub.ai/api/characters/download", {
+            window.history.replaceState(null, '', url.toString());
+        }
+        if(charPath && await alertConfirm(fillLang(language.importLinkConfirm, {host: new URL(CHUB_DOWNLOAD_URL).host}))){
+            alertWait(language.alerts.loadingFromChub)
+            const chara = await fetch(CHUB_DOWNLOAD_URL, {
                 method: "POST",
                 body: JSON.stringify({
                     "format": "tavern",
@@ -1072,26 +1136,36 @@ export async function characterURLImport() {
 
     const hash = location.hash
     if(hash.startsWith('#import=')){
-        location.hash = ''
-        const url = hash.replace('#import=', '')
-        const busy = beginBusy('import')
-        try {
-            const res = await directFetch(url, {
-                method: 'GET',
-            })
-            if(!res.ok){
-                alertError(language.errors.noData)
+        window.history.replaceState(null, '', location.pathname + location.search)
+        const target = importLinkTarget(hash.replace('#import=', ''))
+        if(!target){
+            alertError(language.errors.invalidUrl)
+        }
+        else if(await alertConfirm(fillLang(language.importLinkConfirm, {host: target.host}))){
+            const busy = beginBusy('import')
+            try {
+                const res = await directFetch(target.href, {
+                    method: 'GET',
+                })
+                //Redirects are followed, so the final address is checked before the body is read. An empty `url` belongs
+                //to a response that did not redirect, so the request URL stands in for it.
+                if(new URL(res.url || target.href).protocol !== 'https:'){
+                    alertError(language.errors.invalidUrl)
+                }
+                else if(!res.ok){
+                    alertError(language.errors.noData)
+                }
+                else{
+                    const fileName = getFileName(res)
+                    //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
+                    const blob = await res.blob()
+                    await importFiles([classifiedImport(fileName, fileName, '', async () => new File([blob], fileName, {type: blob.type}), newImportArchiveRun())])
+                }
+            } catch (error) {
+                alertError(error instanceof AndroidHttpBlockedError ? error.message : language.errors.noData)
+            } finally {
+                busy.end()
             }
-            else{
-                const fileName = getFileName(res)
-                //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
-                const blob = await res.blob()
-                await importFiles([classifiedImport(fileName, fileName, '', async () => new File([blob], fileName, {type: blob.type}), newImportArchiveRun())])
-            }
-        } catch (error) {
-            alertError(error instanceof AndroidHttpBlockedError ? error.message : language.errors.noData)
-        } finally {
-            busy.end()
         }
     }
     //No outcome of the Chub, #import=, #import_module= or #import_preset= links ends the start-up work below.
@@ -1110,7 +1184,8 @@ export async function characterURLImport() {
             //A link never supplies the retained paths: they name this device's files.
             Reflect.deleteProperty(importData, ASSET_RETAINED_KEY)
 
-            if(!importData.lowLevelAccess || await alertConfirm(language.lowLevelAccessConfirm)){
+            //The link prompt comes first; a low-level module is then asked about its access as well.
+            if(await alertConfirm(language.importModuleLinkConfirm) && (!importData.lowLevelAccess || await alertConfirm(language.lowLevelAccessConfirm))){
                 markBootWrite()
                 DBState.db.modules.push(importData)
                 alertNormal(language.successImport)
@@ -1122,21 +1197,25 @@ export async function characterURLImport() {
         }
     }
     else if(hash.startsWith('#import_preset=')){
-        const busy = beginBusy('import')
         try {
             const data = hash.replace('#import_preset=', '')
             const importData =Buffer.from(decodeURIComponent(data), 'base64')
-            markBootWrite()
-            await importPreset({
-                name: 'imported.risupreset',
-                data: importData
-            })
-            SettingsMenuIndex.set(1)
-            settingsOpen.set(true)
+            if(await alertConfirm(language.importPresetLinkConfirm)){
+                const busy = beginBusy('import')
+                try {
+                    markBootWrite()
+                    await importPreset({
+                        name: 'imported.risupreset',
+                        data: importData
+                    })
+                } finally {
+                    busy.end()
+                }
+                SettingsMenuIndex.set(1)
+                settingsOpen.set(true)
+            }
         } catch (error) {
             alertError(error)
-        } finally {
-            busy.end()
         }
     }
     //A failure while receiving a share never stops the rest of the start-up work below.
@@ -1153,7 +1232,7 @@ export async function characterURLImport() {
         const handleFiles = (files:FileSystemFileHandle[]) => {
             const run = newImportArchiveRun()
             return importFiles(
-                files.map((f) => classifiedImport(f.name, f.name, '', () => f.getFile(), run))
+                files.map((f) => classifiedImport(f.name, f.name, '', () => f.getFile(), run, {jsonLimitBytes: OPENED_JSON_LIMIT_BYTES}))
             ).catch((error) => alertError(error))
         }
         //@ts-expect-error launchQueue is File Handling API for PWA, not yet in TypeScript's Window interface
@@ -1212,7 +1291,7 @@ export async function characterURLImport() {
                 }
                 //A Blob-backed File has a known size and is read from the blob store, not held as one JS array.
                 return new File([await res.blob()], kind.name, {type: entry.type})
-            }, run)))
+            }, run, {jsonLimitBytes: OPENED_JSON_LIMIT_BYTES})))
         } finally {
             try {
                 await fetch(base, {method: 'DELETE'})
@@ -1749,12 +1828,12 @@ async function importCharacterCardSpec<T extends boolean = false>(card:Character
  * option exports the same bytes as before, and a stale `true` kept from an import is not re-exported after the option is
  * turned off. An absent key reads as off on import.
  */
-function writeAsciiBoundaryExt(loreExt:Record<string, unknown>, on:boolean|undefined){
+function writeLoreExtFlag(loreExt:Record<string, unknown>, name:'risu_fullWordAsciiBoundary'|'risu_cjkWordStart', on:boolean|undefined){
     if(on){
-        loreExt.risu_fullWordAsciiBoundary = true
+        loreExt[name] = true
     }
     else{
-        delete loreExt.risu_fullWordAsciiBoundary
+        delete loreExt[name]
     }
 }
 
@@ -1774,6 +1853,8 @@ export function convertCharbook(arg:{
             recursiveScanning: charbook.recursive_scanning,
             fullWordMatching: charbook?.extensions?.risu_fullWordMatching ?? false,
             fullWordAsciiBoundary: charbook?.extensions?.risu_fullWordAsciiBoundary ?? false,
+            //strict, so a non-boolean extension value cannot switch the option on
+            cjkWordStart: charbook?.extensions?.risu_cjkWordStart === true,
         }
     }
 
@@ -1914,7 +1995,8 @@ function createBaseV2(char:character) {
     char.loreExt ??= {}
 
     char.loreExt.risu_fullWordMatching = char.loreSettings?.fullWordMatching ?? false
-    writeAsciiBoundaryExt(char.loreExt, char.loreSettings?.fullWordAsciiBoundary)
+    writeLoreExtFlag(char.loreExt, 'risu_fullWordAsciiBoundary', char.loreSettings?.fullWordAsciiBoundary)
+    writeLoreExtFlag(char.loreExt, 'risu_cjkWordStart', char.loreSettings?.cjkWordStart)
 
     const card:CharacterCardV2Risu = {
         spec: "chara_card_v2",
@@ -2518,7 +2600,8 @@ export function createBaseV3(char:character){
     char.loreExt ??= {}
 
     char.loreExt.risu_fullWordMatching = char.loreSettings?.fullWordMatching ?? false
-    writeAsciiBoundaryExt(char.loreExt, char.loreSettings?.fullWordAsciiBoundary)
+    writeLoreExtFlag(char.loreExt, 'risu_fullWordAsciiBoundary', char.loreSettings?.fullWordAsciiBoundary)
+    writeLoreExtFlag(char.loreExt, 'risu_cjkWordStart', char.loreSettings?.cjkWordStart)
 
     const card:CharacterCardV3 = {
         spec: "chara_card_v3",

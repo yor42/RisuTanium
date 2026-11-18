@@ -926,6 +926,7 @@
                         streamingOptimizationMode={chat?.activeStreamingDisplayOptimizationMode ?? DBState.db.streamingDisplayOptimizationMode ?? 'off'}
                         rawStreamingText={row.message.data} isOptimizedStreamingMessage={chat?.isStreaming === true && row.idx === messages.length - 1 && row.message.role === 'char'}
                         streaming={chat?.isStreaming === true && row.idx === messages.length - 1 && row.message.role === 'char' && isActiveStreamReply(row.message.chatId)}
+                        renderWhenComplete={character.risutanium_render_when_complete === true}
                         interrupted={row.message.interrupted === true && !isActiveStreamReply(row.message.chatId)}
                         deferAutoTranslate={chat?.isStreaming === true && row.idx === messages.length - 1 && isActiveStreamReply(row.message.chatId) && DBState.db.autoTranslate === true}
                         guiRevision={guiPointer + (rowPointers[row.idx] ?? 0)} stepRow={runStep} {onBranch} {getTreeView} {getBusy} {onReroll} {unReroll} {onOpenActions} {onCloseActions} {onOpenCustomize} onOverlay={(open) => setOverlay(row.key, open)} />

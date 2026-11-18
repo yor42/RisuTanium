@@ -7,6 +7,7 @@
     import TextAreaInput from "src/lib/UI/GUI/TextAreaInput.svelte";
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
     import { alertConfirm, alertSelect } from "src/ts/alert";
+    import { ALERT_SELECT_CANCEL } from "src/ts/alertCancel";
     import { useCharImageLookups } from "src/ts/media/charImageLookups";
     import { changeUserPersona, exportUserPersona, importUserPersona, saveUserPersona, selectUserImg } from "src/ts/persona";
     import Sortable from 'sortablejs/modular/sortable.core.esm.js';
@@ -93,7 +94,7 @@
     <div class="flex justify-center items-center ml-2 mr-2">
         <BaseRoundedButton
             onClick={async () => {
-                const sel = parseInt(await alertSelect([language.createfromScratch, language.importCharacter]))
+                const sel = parseInt(await alertSelect([language.createfromScratch, language.importCharacter], undefined, { cancel: ALERT_SELECT_CANCEL }))
                 if(sel === 0){
                     DBState.db.personas.push({
                         name: 'New Persona',

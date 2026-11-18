@@ -69,6 +69,7 @@ interface LiveChat extends ChatSource {
 interface Live {
     desc: string
     hideChatIcon?: boolean
+    risutanium_render_when_complete?: boolean
     license?: string
     type?: string
     alternateGreetings: string[]
@@ -355,6 +356,18 @@ describe('F: focus lands on the first message an Undo, Redo or Restore put back 
         expect(document.activeElement).toBe(box)
     })
 
+    test('F17b an Undo that changed only the render-when-complete box focuses that box', async () => {
+        const rig = await screenWithPanel()
+        expect(rig.service.editField(A, 'risutanium_render_when_complete', true).ok).toBe(true)
+        rig.service.closeOpenStep(A)
+        flushSync()
+        await press('studio-history-undo')
+        expect('risutanium_render_when_complete' in live()).toBe(false)
+        const box = document.querySelector<HTMLElement>('[data-part="studio-character-form"] [data-part="studio-form-render-when-complete"]')
+        expect(box).not.toBeNull()
+        expect(document.activeElement).toBe(box)
+    })
+
     test('F8 a refused Undo leaves focus on Undo and says why (guard)', async () => {
         const rig = await screenWithPanel()
         edit(rig, 'e1')
@@ -363,7 +376,7 @@ describe('F: focus lands on the first message an Undo, Redo or Restore put back 
         live().chats[0].fmIndex = 5
         flushSync()
         const undo = await press('studio-history-undo')
-        expect(part('studio-history-message')?.textContent).toBe('studioRefusalPrecondition')
+        expect(part('studio-history-message')?.textContent).toBe('studioRefusalPrecondition studioHistoryListChangedElsewhere')
         expect(document.activeElement).toBe(undo)
     })
 

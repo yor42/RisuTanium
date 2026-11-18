@@ -27,34 +27,10 @@ import { hypaV3ProgressStore } from "src/ts/stores.svelte";
 import { type ChatTokenizer } from "src/ts/tokenizer";
 import { inlayTokenRegex } from "src/ts/util/inlayTokens";
 
-export interface HypaV3Preset {
-    name: string;
-    settings: HypaV3Settings;
-}
+import { type HypaV3Preset, type HypaV3Settings, createHypaV3Preset } from "./hypaV3Presets";
+import { rankByRecency, recencyLookup, weightedShuffle } from "./hypaRecency";
 
-export interface HypaV3Settings {
-    summarizationModel: string;
-    summarizationPrompt: string;
-    reSummarizationPrompt: string;
-    memoryTokensRatio: number;
-    extraSummarizationRatio: number;
-    maxChatsPerSummary: number;
-    recentMemoryRatio: number;
-    similarMemoryRatio: number;
-    enableSimilarityCorrection: boolean;
-    preserveOrphanedMemory: boolean;
-    processRegexScript: boolean;
-    doNotSummarizeUserMessage: boolean;
-    summaryChunkSeparator: string;
-    // Experimental
-    useExperimentalImpl: boolean;
-    summarizationRequestsPerMinute: number;
-    summarizationMaxConcurrent: number;
-    embeddingRequestsPerMinute: number;
-    embeddingMaxConcurrent: number;
-    alwaysToggleOn: boolean;
-    queryChatCount: number;
-}
+export { type HypaV3Preset, type HypaV3Settings, createHypaV3Preset };
 
 interface HypaV3Data {
     summaries: Summary[];
@@ -86,6 +62,12 @@ interface Summary {
     isImportant: boolean;
     categoryId?: string;
     tags?: string[];
+    /**
+     * Creation time in ms since the Unix epoch (`Date.now()`). A bulk re-summary keeps the earliest
+     * time of the summaries it replaced. Absent on summaries made before the field existed,
+     * converted from HypaV2, imported from a lorebook, or merged from an untimed one.
+     */
+    createdAt?: number;
 }
 
 export interface SerializableSummary extends Omit<Summary, "chatMemos"> {
@@ -478,6 +460,7 @@ async function hypaMemoryV3MainExp(
                 isImportant: false,
                 categoryId: undefined,
                 tags: [],
+                createdAt: Date.now(),
             });
         }
     }
@@ -519,6 +502,13 @@ async function hypaMemoryV3MainExp(
     const randomMemoryRatio =
         1 - settings.recentMemoryRatio - settings.similarMemoryRatio;
     const selectedImportantSummaries: Summary[] = [];
+
+    // Recency weighting 2^-(age / half-life) applies to the similar and random buckets only; with
+    // the setting off nothing is computed and both buckets run exactly as before.
+    const halfLivesOf =
+        settings.enableRecencyWeighting === true
+            ? recencyLookup(data.summaries, Date.now(), settings.recencyHalfLifeDays)
+            : null;
 
     // Select important summaries
     {
@@ -760,10 +750,18 @@ async function hypaMemoryV3MainExp(
                     (listIndex) => queries[listIndex].weight
                 );
 
-                const rankedSummaries = childToParentRRF<
-                    EmbeddingResult<Summary>,
-                    Summary
-                >(rankedChunks, (chunk) => chunk.metadata);
+                const rankedSummaries = halfLivesOf
+                    ? rankByRecency(
+                        childToParentRRFScored<EmbeddingResult<Summary>, Summary>(
+                            rankedChunks,
+                            (chunk) => chunk.metadata
+                        ),
+                        halfLivesOf
+                    )
+                    : childToParentRRF<EmbeddingResult<Summary>, Summary>(
+                        rankedChunks,
+                        (chunk) => chunk.metadata
+                    );
 
                 while (rankedSummaries.length > 0) {
                     const summary = rankedSummaries.shift();
@@ -847,9 +845,12 @@ async function hypaMemoryV3MainExp(
         );
 
         // Target only summaries that haven't been selected yet
-        const unusedSummaries = shuffle(
-            data.summaries.filter((e) => !selectedSummaries.includes(e))
+        const unselectedSummaries = data.summaries.filter(
+            (e) => !selectedSummaries.includes(e)
         );
+        const unusedSummaries = halfLivesOf
+            ? weightedShuffle(unselectedSummaries, halfLivesOf)
+            : shuffle(unselectedSummaries);
 
         for (const summary of unusedSummaries) {
             const summaryTokens = await tokenizer.tokenizeChat({
@@ -1179,6 +1180,7 @@ async function hypaMemoryV3Main(
                     isImportant: false,
                     categoryId: undefined,
                     tags: [],
+                    createdAt: Date.now(),
                 });
             } catch (error) {
                 console.log(logPrefix, "Summarization failed:", `\n${error}`);
@@ -1243,6 +1245,13 @@ async function hypaMemoryV3Main(
     const randomMemoryRatio =
         1 - settings.recentMemoryRatio - settings.similarMemoryRatio;
     const selectedImportantSummaries: Summary[] = [];
+
+    // Recency weighting 2^-(age / half-life) applies to the similar and random buckets only; with
+    // the setting off nothing is computed and both buckets run exactly as before.
+    const halfLivesOf =
+        settings.enableRecencyWeighting === true
+            ? recencyLookup(data.summaries, Date.now(), settings.recencyHalfLifeDays)
+            : null;
 
     // Select important summaries
     {
@@ -1436,10 +1445,18 @@ async function hypaMemoryV3Main(
                     }
                 );
 
-                const rankedSummaries = childToParentRRF<SummaryChunk, Summary>(
-                    rankedChunks,
-                    (chunk) => chunk.summary
-                );
+                const rankedSummaries = halfLivesOf
+                    ? rankByRecency(
+                        childToParentRRFScored<SummaryChunk, Summary>(
+                            rankedChunks,
+                            (chunk) => chunk.summary
+                        ),
+                        halfLivesOf
+                    )
+                    : childToParentRRF<SummaryChunk, Summary>(
+                        rankedChunks,
+                        (chunk) => chunk.summary
+                    );
 
                 while (rankedSummaries.length > 0) {
                     const summary = rankedSummaries.shift();
@@ -1516,9 +1533,12 @@ async function hypaMemoryV3Main(
         );
 
         // Target only summaries that haven't been selected yet
-        const unusedSummaries = shuffle(
-            data.summaries.filter((e) => !selectedSummaries.includes(e))
+        const unselectedSummaries = data.summaries.filter(
+            (e) => !selectedSummaries.includes(e)
         );
+        const unusedSummaries = halfLivesOf
+            ? weightedShuffle(unselectedSummaries, halfLivesOf)
+            : shuffle(unselectedSummaries);
 
         for (const summary of unusedSummaries) {
             const summaryTokens = await tokenizer.tokenizeChat({
@@ -1830,52 +1850,6 @@ export function getCurrentHypaV3Preset(): HypaV3Preset {
     return preset;
 }
 
-export function createHypaV3Preset(
-    name = "New Preset",
-    existingSettings = {}
-): HypaV3Preset {
-    const settings: HypaV3Settings = {
-        summarizationModel: "subModel",
-        summarizationPrompt: "",
-        reSummarizationPrompt: "",
-        memoryTokensRatio: 0.2,
-        extraSummarizationRatio: 0,
-        maxChatsPerSummary: 6,
-        recentMemoryRatio: 0.4,
-        similarMemoryRatio: 0.4,
-        enableSimilarityCorrection: false,
-        preserveOrphanedMemory: false,
-        processRegexScript: false,
-        doNotSummarizeUserMessage: false,
-        summaryChunkSeparator: "\\n\\n",
-        // Experimental
-        useExperimentalImpl: false,
-        summarizationRequestsPerMinute: 20,
-        summarizationMaxConcurrent: 1,
-        embeddingRequestsPerMinute: 100,
-        embeddingMaxConcurrent: 1,
-        alwaysToggleOn: false,
-        queryChatCount: 3,
-    };
-
-    if (
-        existingSettings &&
-        typeof existingSettings === "object" &&
-        !Array.isArray(existingSettings)
-    ) {
-        for (const [key, value] of Object.entries(existingSettings)) {
-            if (key in settings && typeof value === typeof settings[key]) {
-                settings[key] = value;
-            }
-        }
-    }
-
-    return {
-        name,
-        settings,
-    };
-}
-
 function simpleCC<T>(
     scoredLists: [T, number][][],
     weightFunc?: (listIndex: number, totalLists: number) => number
@@ -1923,6 +1897,17 @@ function childToParentRRF<C, P>(
     parentFunc: (child: C) => P,
     k: number = 60
 ): P[] {
+    return childToParentRRFScored(rankedChildren, parentFunc, k).map(
+        ([parent]) => parent
+    );
+}
+
+/** Parents with their summed RRF score, best first. */
+function childToParentRRFScored<C, P>(
+    rankedChildren: C[],
+    parentFunc: (child: C) => P,
+    k: number = 60
+): [P, number][] {
     const scores = new Map<P, number>();
 
     for (let childIndex = 0; childIndex < rankedChildren.length; childIndex++) {
@@ -1934,9 +1919,7 @@ function childToParentRRF<C, P>(
         scores.set(parent, (scores.get(parent) || 0) + rrfTerm);
     }
 
-    return Array.from(scores.entries())
-        .sort((a, b) => b[1] - a[1])
-        .map(([parent]) => parent);
+    return Array.from(scores.entries()).sort((a, b) => b[1] - a[1]);
 }
 
 function normalizeScores<T>(scoredList: [T, number][]): [T, number][] {

@@ -11,6 +11,7 @@ export type FocusTarget =
     | { kind: 'greetingAdd' }
     | { kind: 'desc' }
     | { kind: 'hideChatIcon' }
+    | { kind: 'risutanium_render_when_complete' }
     | { kind: 'note' }
 
 export function changedFieldTarget(before: OwnerFields, after: OwnerFields): FocusTarget | null {
@@ -27,6 +28,7 @@ export function changedFieldTarget(before: OwnerFields, after: OwnerFields): Foc
     }
     if (before.desc !== after.desc) return { kind: 'desc' }
     if (before.hideChatIcon !== after.hideChatIcon) return { kind: 'hideChatIcon' }
+    if (before.renderWhenComplete !== after.renderWhenComplete) return { kind: 'risutanium_render_when_complete' }
     if (before.note !== after.note) return { kind: 'note' }
     return null
 }
@@ -41,6 +43,8 @@ function elementFor(scope: ParentNode, target: FocusTarget): HTMLElement | null 
             return scope.querySelector<HTMLElement>('[data-part="studio-character-form"] [data-part="studio-form-desc"]')
         case 'hideChatIcon':
             return scope.querySelector<HTMLElement>('[data-part="studio-character-form"] [data-part="studio-form-hide-icon"]')
+        case 'risutanium_render_when_complete':
+            return scope.querySelector<HTMLElement>('[data-part="studio-character-form"] [data-part="studio-form-render-when-complete"]')
         case 'note':
             return scope.querySelector<HTMLElement>('[data-part="studio-chat-note-form"] [data-part="studio-form-note"]')
     }

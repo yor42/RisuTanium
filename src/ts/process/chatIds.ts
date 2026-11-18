@@ -150,37 +150,79 @@ export function repairDatabaseIds(target: { characters?: unknown[] } | null | un
     }
     const assignedIds = new Set<string>()
     for (const cha of target.characters) {
+        repairCharacterIds(cha, assignedIds)
+    }
+}
+
+/**
+ * The per-character step of `repairDatabaseIds`, which calls it for every entry in array order. `assignedIds` is the
+ * one id set of the whole target (chaIds and chat ids of every character already repaired); the step reads and extends
+ * it, so a caller that repairs one character at a time must hand every call the same set. An entry that is not an
+ * object is left alone.
+ */
+export function repairCharacterIds(cha: unknown, assignedIds: Set<string>): void {
+    if (!isCharacterLike(cha)) {
+        return
+    }
+    if (!cha.chaId) {
+        cha.chaId = uuidv4()
+    }
+    if (assignedIds.has(cha.chaId)) {
+        console.warn(`Duplicate chaId found: ${cha.chaId}. Assigning new ID.`)
+        cha.chaId = uuidv4()
+    }
+    assignedIds.add(cha.chaId)
+    if (cha.chats === undefined || cha.chats === null) {
+        cha.chats = []
+    }
+    if (!Array.isArray(cha.chats)) {
+        return
+    }
+    for (const chat of cha.chats) {
+        if (!isChatLike(chat)) {
+            continue
+        }
+        if (!chat.id) {
+            chat.id = uuidv4()
+        }
+        if (assignedIds.has(chat.id)) {
+            console.warn(`Duplicate chat ID found: ${chat.id}. Assigning new ID.`)
+            chat.id = uuidv4()
+        }
+        assignedIds.add(chat.id)
+    }
+}
+
+/**
+ * Whether `repairDatabaseIds` over `characters` would change any `chaId`: one is falsy, or equals an id already held
+ * by an earlier character or chat (chat ids of earlier characters count; a chat id repaired to a fresh one adds
+ * nothing that can collide). Reads only, so the whole list can be checked without repairing it. The id set and its
+ * SameValueZero comparison on raw values are the repair's own, so a number never equals its string form. A list that
+ * is not an array, and an entry that is not an object, change nothing.
+ */
+export function chaIdRepairNeeded(characters: unknown): boolean {
+    if (!Array.isArray(characters)) {
+        return false
+    }
+    const seen = new Set<unknown>()
+    for (const cha of characters) {
         if (!isCharacterLike(cha)) {
             continue
         }
-        if (!cha.chaId) {
-            cha.chaId = uuidv4()
+        if (!cha.chaId || seen.has(cha.chaId)) {
+            return true
         }
-        if (assignedIds.has(cha.chaId)) {
-            console.warn(`Duplicate chaId found: ${cha.chaId}. Assigning new ID.`)
-            cha.chaId = uuidv4()
-        }
-        assignedIds.add(cha.chaId)
-        if (cha.chats === undefined || cha.chats === null) {
-            cha.chats = []
-        }
+        seen.add(cha.chaId)
         if (!Array.isArray(cha.chats)) {
             continue
         }
         for (const chat of cha.chats) {
-            if (!isChatLike(chat)) {
-                continue
+            if (isChatLike(chat) && chat.id && !seen.has(chat.id)) {
+                seen.add(chat.id)
             }
-            if (!chat.id) {
-                chat.id = uuidv4()
-            }
-            if (assignedIds.has(chat.id)) {
-                console.warn(`Duplicate chat ID found: ${chat.id}. Assigning new ID.`)
-                chat.id = uuidv4()
-            }
-            assignedIds.add(chat.id)
         }
     }
+    return false
 }
 
 /**

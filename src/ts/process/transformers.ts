@@ -6,6 +6,8 @@ import { v4 } from 'uuid';
 import { beginClip, currentTTSSignal, releaseClip, startClip } from './ttsPlayback';
 import { beginBusy } from './memory/busyActions';
 import { beginInFlight, withInFlight } from './inFlightWork';
+import { useBundledOnnxRuntime } from './onnxRuntimeSource';
+import type { EmbeddingPooling } from './memory/embeddingModels';
 const VITS_DECODE_MAX_AGE_MS = 30_000
 let tfCache: Cache = null
 let tfLoaded = false
@@ -15,12 +17,16 @@ async function initTransformers() {
         return
     }
     const { env } = await import('@huggingface/transformers');
+    useBundledOnnxRuntime(env)
     tfCache = await caches.open('tfCache')
+    // Cache-key namespace only: tfCache entries written while this host answered, and imported-model tfMap keys, are keyed under this path, and
+    // it is never fetched because local models are disabled below.
     env.localModelPath = "https://sv.risuai.xyz/transformers/"
     env.useBrowserCache = false
     env.useFSCache = false
     env.useCustomCache = true
-    env.allowLocalModels = true
+    // Only env.remoteHost (huggingface.co) is fetched for a file that no cache holds.
+    env.allowLocalModels = false
     env.customCache = {
         put: async (url: URL | string, response: Response) => {
             await tfCache.put(url, response)
@@ -63,11 +69,15 @@ const runSummarizerUntracked = async (text: string) => {
 
 let extractor: FeatureExtractionPipeline = null
 let lastEmbeddingModelQuery: string = ''
-type EmbeddingModel = 'Xenova/all-MiniLM-L6-v2' | 'nomic-ai/nomic-embed-text-v1.5'
-export const runEmbedding = (texts: string[], model: EmbeddingModel = 'Xenova/all-MiniLM-L6-v2', device: 'webgpu' | 'wasm'): Promise<Float32Array[]> =>
-    withInFlight('embed', () => runEmbeddingUntracked(texts, model, device))
+type EmbeddingModel = 'Xenova/all-MiniLM-L6-v2' | 'nomic-ai/nomic-embed-text-v1.5' | 'Xenova/multilingual-e5-small'
+export const runEmbedding = (texts: string[], model: EmbeddingModel = 'Xenova/all-MiniLM-L6-v2', device: 'webgpu' | 'wasm', pooling: EmbeddingPooling): Promise<Float32Array[]> =>
+    withInFlight('embed', () => runEmbeddingUntracked(texts, model, device, pooling))
 
-const runEmbeddingUntracked = async (texts: string[], model: EmbeddingModel, device: 'webgpu' | 'wasm'): Promise<Float32Array[]> => {
+const runEmbeddingUntracked = async (texts: string[], model: EmbeddingModel, device: 'webgpu' | 'wasm', pooling: EmbeddingPooling): Promise<Float32Array[]> => {
+    // The library treats a missing pooling as 'none' and returns unpooled token vectors, so a bad value fails here instead.
+    if (pooling !== 'mean' && pooling !== 'cls') {
+        throw new Error(`Unsupported embedding pooling: ${String(pooling)}`)
+    }
     await initTransformers()
     console.log('running embedding')
     let embeddingModelQuery = model + device
@@ -88,7 +98,7 @@ const runEmbeddingUntracked = async (texts: string[], model: EmbeddingModel, dev
         lastEmbeddingModelQuery = embeddingModelQuery
         console.log('extractor loaded')
     }
-    let result = await extractor(texts, { pooling: 'mean', normalize: true });
+    let result = await extractor(texts, { pooling, normalize: true });
     console.log(texts, result)
     const data = result.data as Float32Array
     console.log(data)

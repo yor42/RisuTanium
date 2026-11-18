@@ -332,7 +332,9 @@ describe('the Settings .bin import ends', () => {
 
     test('new behaviour: a refused commit is nothing-replaced and names its cause; the existing message is unchanged', async () => {
         const page = await openPage()
-        page.useCommitter({ ...page.k.committer, commit: async () => ({ status: 'refused', reason: 'too-new', detail: 'newer' }) as CommitResult })
+        // A .bin of 60 or more units commits through commitStreamed, so the double covers both entry points.
+        const refuse = async (): Promise<CommitResult> => ({ status: 'refused', reason: 'too-new', detail: 'newer' })
+        page.useCommitter({ ...page.k.committer, commit: refuse, commitStreamed: refuse })
 
         const end = await loadBin(golden('upstream-full.bin'))
 
@@ -343,7 +345,9 @@ describe('the Settings .bin import ends', () => {
 
     test('new behaviour: an unconfirmed commit is unknown', async () => {
         const page = await openPage()
-        page.useCommitter({ ...page.k.committer, commit: async () => ({ status: 'unknown', cause: new page.errors.Store2UnknownOutcomeError('lost') }) as CommitResult })
+        // A .bin of 60 or more units commits through commitStreamed, so the double covers both entry points.
+        const unconfirmed = async (): Promise<CommitResult> => ({ status: 'unknown', cause: new page.errors.Store2UnknownOutcomeError('lost') })
+        page.useCommitter({ ...page.k.committer, commit: unconfirmed, commitStreamed: unconfirmed })
 
         const end = await loadBin(golden('upstream-full.bin'))
 

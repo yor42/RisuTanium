@@ -96,6 +96,8 @@ const UPSTREAM_NAMING_KEYS = [
     'upstreamAgreementPromptBefore',
     'upstreamConsentPlaceholder',
     'encryptedBackupRefused',
+    'rtbExportConfirm',
+    'backupFileNotRecognized',
 ]
 
 const MENTION_ALLOW_LIST = [...UPSTREAM_NAMING_KEYS, ...UPSTREAM_WORDING_KEYS].sort()

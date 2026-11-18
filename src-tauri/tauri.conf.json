@@ -19,8 +19,23 @@
     "fileAssociations": [
       {
         "ext": [
-          "risum", "risup", "charx"
+          "risum", "risup", "charx", "byaf"
         ]
+      },
+      {
+        "ext": ["png"],
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": ["jpg", "jpeg"],
+        "role": "Viewer",
+        "rank": "Alternate"
+      },
+      {
+        "ext": ["json"],
+        "role": "Viewer",
+        "rank": "Alternate"
       }
     ]
   },

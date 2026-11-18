@@ -2,9 +2,8 @@
  * hanuraiMemory retrieval over the REAL HypaProcesser similarity path with a
  * fake embedding (every text embeds to the same vector, so every embedded
  * message is a candidate). Messages the prompt still holds must not be
- * inserted again, inserted text is the stored message without the
- * `search_document: ` prefix residue, and retrieval is bounded by the Chunk
- * Size setting (`hanuraiTokens`).
+ * inserted again, inserted text is the stored message, and retrieval is
+ * bounded by the Chunk Size setting (`hanuraiTokens`).
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatTokenizer } from 'src/ts/tokenizer'
@@ -24,23 +23,28 @@ vi.mock('src/ts/globalApi.svelte', () => ({ globalFetch: vi.fn() }))
 vi.mock('src/ts/secretRef', () => ({ resolveSecret: async (secret: string) => secret }))
 // hypamemory imports ts/util, whose import graph cycles back into the memory modules.
 vi.mock('src/ts/util', () => ({ appendLastPath: (a: string, b: string) => `${a}/${b}` }))
+const embedBox = vi.hoisted(() => ({
+    inputs: [] as string[],
+    store: new Map<string, unknown>(),
+}))
+
 vi.mock('src/ts/process/transformers', () => ({
-    runEmbedding: async (inputs: string[]) => inputs.map(() => [1, 0]),
+    runEmbedding: async (inputs: string[]) => {
+        embedBox.inputs.push(...inputs)
+        return inputs.map(() => [1, 0])
+    },
 }))
 vi.mock('src/ts/process/inFlightWork', () => ({
     withInFlight: <T>(_key: string, work: () => Promise<T>) => work(),
 }))
-vi.mock('localforage', () => {
-    const store = new Map<string, unknown>()
-    return {
-        default: {
-            createInstance: () => ({
-                getItem: async (key: string) => store.get(key) ?? null,
-                setItem: async (key: string, value: unknown) => { store.set(key, value) },
-            }),
-        },
-    }
-})
+vi.mock('localforage', () => ({
+    default: {
+        createInstance: () => ({
+            getItem: async (key: string) => embedBox.store.get(key) ?? null,
+            setItem: async (key: string, value: unknown) => { embedBox.store.set(key, value) },
+        }),
+    },
+}))
 
 import { hanuraiMemory } from './hanuraiMemory'
 
@@ -66,6 +70,9 @@ async function run(chats: OpenAIChat[], currentTokens: number, maxContextTokens:
 beforeEach(() => {
     dbState.hanuraiSplit = false
     dbState.hanuraiTokens = 100
+    dbState.hypaModel = 'MiniLM'
+    embedBox.inputs.length = 0
+    embedBox.store.clear()
 })
 
 describe('hanuraiMemory retrieval', () => {
@@ -90,7 +97,7 @@ describe('hanuraiMemory retrieval', () => {
     })
 
     // regression reproducer: CHORE-10 HAN-1, MC-713 4
-    it('inserted text carries no leading space from the document prefix', async () => {
+    it('inserted text starts with the stored message (no prefix residue)', async () => {
         dbState.hanuraiTokens = 30
         const { block } = await trimmedRun()
         expect(block.length).toBeGreaterThan(0)
@@ -104,6 +111,37 @@ describe('hanuraiMemory retrieval', () => {
         const { block } = await trimmedRun()
         expect(block.length).toBeGreaterThan(0)
         expect(await tokenizer.tokenizeChat({ role: 'system', memo: 'supaMemory', content: block })).toBeLessThanOrEqual(30)
+    })
+})
+
+describe('hanuraiMemory embedding inputs', () => {
+    const prefixes = ['search_document: ', 'search_query: ']
+    const occurrences = (text: string, part: string) => text.split(part).length - 1
+
+    // regression reproducer: the caller no longer adds the nomic prefixes (the base sends them to every model)
+    it('sends the stored messages and the queries to a MiniLM model without any prefix', async () => {
+        await run(story(8), 800, 500)
+        expect(embedBox.inputs.length).toBeGreaterThan(0)
+        for (const input of embedBox.inputs) {
+            for (const prefix of prefixes) expect(input).not.toContain(prefix)
+        }
+        expect(embedBox.inputs).toContain('message number 7')
+    })
+
+    // compatibility guard: with nomic the processor adds each prefix exactly once, passes before and after
+    it('guard: a nomic model gets each prefix once on the documents and the queries, and the block holds raw messages', async () => {
+        dbState.hypaModel = 'nomic'
+        const { block } = await run(story(8), 800, 500)
+        const documents = embedBox.inputs.filter((input) => input.startsWith('search_document: '))
+        const queries = embedBox.inputs.filter((input) => input.startsWith('search_query: '))
+        expect(documents.length).toBeGreaterThan(0)
+        expect(queries.length).toBeGreaterThan(0)
+        expect(documents.length + queries.length).toBe(embedBox.inputs.length)
+        for (const input of embedBox.inputs) {
+            expect(occurrences(input, 'search_document: ') + occurrences(input, 'search_query: ')).toBe(1)
+        }
+        expect(block).toMatch(/message number [0-3]/)
+        for (const prefix of prefixes) expect(block).not.toContain(prefix)
     })
 })
 

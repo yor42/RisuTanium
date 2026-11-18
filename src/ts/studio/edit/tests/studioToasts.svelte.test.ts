@@ -13,7 +13,7 @@ import { createOwnerHistoryService, REPLAY_BUDGET_MS, type OwnerHistoryService, 
 import { characterOwnerKey, moduleOwnerKey, SAVE_DEBOUNCE_MS } from '../../history/ownerPhase'
 import { createFakeClock, drainMicrotasks } from '../../history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../history/tests/studioStoreDoubles'
-import { createStudioToasts, refusalText, refusalTextOf, resetStudioToastsForTests, retireAssetToasts, runDismissingConsumed, type StudioToasts } from '../studioToasts'
+import { createStudioToasts, listReasonText, refusalText, refusalTextOf, resetStudioToastsForTests, retireAssetToasts, runDismissingConsumed, withListReason, type StudioToasts } from '../studioToasts'
 
 const h = vi.hoisted(() => ({ marks: 0 }))
 
@@ -644,5 +644,23 @@ describe('T-RT refusalTextOf names a module only for a module owner', () => {
         expect(refusalText('not-selected')).toBe('studioRefusalNotSelected')
         expect(refusalText('gone')).toBe('studioRefusalGone')
         expect(refusalText('duplicate-module-id')).toBe('studioAssetModuleSharedId')
+    })
+})
+
+describe('the list reason joins a precondition refusal only', () => {
+    test('the reason sentences follow the outcome sentence, joined with a space', () => {
+        expect(listReasonText('neither')).toBe('studioHistoryListChangedElsewhere')
+        expect(listReasonText('other')).toBe('studioHistoryListSaveUnfinished')
+        expect(listReasonText(undefined)).toBeNull()
+        expect(withListReason('note', 'neither')).toBe('note studioHistoryListChangedElsewhere')
+        expect(withListReason('note', 'other')).toBe('note studioHistoryListSaveUnfinished')
+        expect(withListReason('note')).toBe('note')
+    })
+
+    test('a precondition refusal carries the reason, any other refusal ignores it', () => {
+        expect(refusalTextOf({ reason: 'precondition', listReason: 'other' })).toBe('studioRefusalPrecondition studioHistoryListSaveUnfinished')
+        expect(refusalTextOf({ reason: 'precondition', listReason: 'neither' })).toBe('studioRefusalPrecondition studioHistoryListChangedElsewhere')
+        expect(refusalTextOf({ reason: 'precondition' })).toBe('studioRefusalPrecondition')
+        expect(refusalTextOf({ reason: 'pairSplit', listReason: 'neither' })).toBe(refusalText('pairSplit'))
     })
 })

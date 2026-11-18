@@ -1,0 +1,29 @@
+{
+  "bundle": {
+    "fileAssociations": [
+      {
+        "ext": [
+          "risum", "risup", "charx", "byaf"
+        ]
+      },
+      {
+        "ext": ["png"],
+        "role": "Viewer",
+        "rank": "Alternate",
+        "mimeType": "image/png"
+      },
+      {
+        "ext": ["jpg", "jpeg"],
+        "role": "Viewer",
+        "rank": "Alternate",
+        "mimeType": "image/jpeg"
+      },
+      {
+        "ext": ["json"],
+        "role": "Viewer",
+        "rank": "Alternate",
+        "mimeType": "application/json"
+      }
+    ]
+  }
+}

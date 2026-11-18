@@ -15,6 +15,7 @@ import { AnthropicModels } from './providers/anthropic'
 import { GoogleModels } from './providers/google'
 import { fetchNative } from "../globalApi.svelte"
 import { resolveSecret } from "../secretRef"
+import { currentKey } from "../process/request/secretKey"
 import { DBState } from "../stores.svelte"
 import { customProviderStore, pluginV2 } from "../plugins/plugins.svelte"
 import { get } from "svelte/store"
@@ -647,11 +648,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function listKeyOf(family: AddedFamily): string {
     switch(family){
         case 'google':
-            return DBState.db.google.accessToken
+            return currentKey('google.accessToken', DBState.db)
         case 'anthropic':
-            return DBState.db.claudeAPIKey
+            return currentKey('claudeAPIKey', DBState.db)
         case 'openai':
-            return DBState.db.openAIKey
+            return currentKey('openAIKey', DBState.db)
     }
 }
 

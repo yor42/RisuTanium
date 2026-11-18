@@ -2,6 +2,7 @@ import { parseChatML } from "src/ts/parser/chatML";
 import {
     getDatabase,
     type Chat,
+    type Message,
     type character,
     type groupChat,
 } from "src/ts/storage/database.svelte";
@@ -14,6 +15,7 @@ import { HypaProcesser } from "./hypamemory";
 import { globalFetch } from "src/ts/globalApi.svelte";
 import { runSummarizer } from "../transformers";
 import { resolveSecret, SecretRefError } from "src/ts/secretRef";
+import { language } from "src/lang";
 
 export interface HypaV2Data {
     lastMainChunkID: number; // can be removed, but exists to more readability of the code.
@@ -42,8 +44,20 @@ export interface SerializableHypaV2Data extends Omit<HypaV2Data, 'mainChunks'> {
 async function summary(
     stringlizedChat: string,
     subject: RunSubject | undefined
-): Promise<{ success: boolean; data: string; retryable?: boolean }> {
+): Promise<{ success: boolean; data: string; retryable?: boolean; missingModel?: boolean }> {
     const db = getDatabase();
+
+    // With no summary model nothing may be requested: the default branch below
+    // would send the text to a retired model.
+    if (db.supaModelType === "none") {
+        return {
+            success: false,
+            data: language.errors.hypaV2NoSummaryModel,
+            retryable: false,
+            missingModel: true,
+        };
+    }
+
     console.log("Summarizing");
 
     if (db.supaModelType === "distilbart") {
@@ -201,7 +215,7 @@ function isOldHypaV2Data(obj:any): obj is OldHypaV2Data {
 }
 // Helper function end
 
-function convertOldToNewHypaV2Data(oldData: OldHypaV2Data, chats: OpenAIChat[]): HypaV2Data {
+function convertOldToNewHypaV2Data(oldData: OldHypaV2Data, chats: OpenAIChat[], messages: Message[]): HypaV2Data {
     const oldMainChunks = oldData.mainChunks.slice().reverse(); // Inversed order, old mainchunk is done by unshift instead of push
     const oldChunks = oldData.chunks.slice();
     const newData: HypaV2Data = {
@@ -228,6 +242,34 @@ function convertOldToNewHypaV2Data(oldData: OldHypaV2Data, chats: OpenAIChat[]):
         }
     }
 
+    // Old summaries name chat ids, and the old producers sent every message. Hidden and
+    // pre-reset messages are still chat messages, so a target missing from `chats` is
+    // looked up in the whole message list, after the prompt's leading non-message entries.
+    // A summary whose ids are all in `chats` keeps the exact `chats` range, so its stored
+    // memos stay valid for a cleanup that knows only `chats`. A recovered range stores only
+    // `chats` memos and its own endpoints.
+    const messageIds: string[] = [];
+    for (const message of messages) {
+        if (message.chatId) {
+            messageIds.push(message.chatId);
+        }
+    }
+    const messageIdSet = new Set(messageIds);
+    const firstMessageChat = chats.findIndex(c => c.memo !== undefined && messageIdSet.has(c.memo));
+    const prefixEnd = firstMessageChat === -1 ? chats.length : firstMessageChat;
+    const timeline: string[] = [...chats.slice(0, prefixEnd).map(c => c.memo), ...messageIds];
+    const chatsMemos = new Set<string>(chats.map(c => c.memo));
+    const recoverRange = (from: number, to: number, endpoints: string[]): Set<string> => {
+        const memos = new Set<string>();
+        for (let j = from; j <= to; j++) {
+            const memo = timeline[j];
+            if (chatsMemos.has(memo) || endpoints.includes(memo)) {
+                memos.add(memo);
+            }
+        }
+        return memos;
+    };
+
     for (let i = 0; i < oldMainChunks.length; i++) {
         const oldMainChunk = oldMainChunks[i];
         const targetId = oldMainChunk.targetId;
@@ -250,8 +292,18 @@ function convertOldToNewHypaV2Data(oldData: OldHypaV2Data, chats: OpenAIChat[]):
                     chatMemos.add(chats[j].memo);
                 }
             } else {
-                // Can't identify the chats correctly, so discard this main chunk at all
-                continue; // Technically, if this is the case Previous HypaV2Data is bugged. Discussion opened for changing it to break;
+                const timelineStart = timeline.indexOf(previousMainChunkTarget);
+                const timelineEnd = timeline.indexOf(targetId);
+                if (timelineStart !== -1 && timelineEnd !== -1) {
+                    chatMemos = recoverRange(
+                        Math.min(timelineStart, timelineEnd),
+                        Math.max(timelineStart, timelineEnd),
+                        [targetId, previousMainChunkTarget],
+                    );
+                } else {
+                    // Can't identify the chats correctly, so discard this main chunk at all
+                    continue; // Technically, if this is the case Previous HypaV2Data is bugged. Discussion opened for changing it to break;
+                }
             }
         } else {
             // No previous chunk, so we gather all chats from index 0 up to the targetId's index
@@ -263,7 +315,11 @@ function convertOldToNewHypaV2Data(oldData: OldHypaV2Data, chats: OpenAIChat[]):
                         chatMemos.add(chats[j].memo);
                     }
                 } else {
-                    continue; // Invalid MainChunk.
+                    const timelineTarget = timeline.indexOf(targetId);
+                    if (timelineTarget === -1) {
+                        continue; // Invalid MainChunk.
+                    }
+                    chatMemos = recoverRange(0, timelineTarget, [targetId]);
                 }
             }
         }
@@ -367,6 +423,8 @@ export async function hypaMemoryV2(
     currentTokens: number;
     chats: OpenAIChat[];
     error?: string;
+    /** Names the setting that fixes `error`, when the error is a missing setting. */
+    errorSetting?: "summaryModel";
     memory?: SerializableHypaV2Data;
 }> {
     const db = getDatabase();
@@ -379,7 +437,7 @@ export async function hypaMemoryV2(
     if (room.hypaV2Data) {
         if (isOldHypaV2Data(room.hypaV2Data)) {
         console.log("Old HypaV2 data detected. Converting to new format...");
-        data = convertOldToNewHypaV2Data(room.hypaV2Data, chats);
+        data = convertOldToNewHypaV2Data(room.hypaV2Data, chats, room.message);
         } else {
             data = toHypaV2Data(room.hypaV2Data);
         }
@@ -513,11 +571,12 @@ export async function hypaMemoryV2(
         if (!summaryData.success) {
             console.log("Summarization failed:", summaryData.data);
             if (summaryData.retryable === false) {
-                // A key that cannot be resolved fails identically on every retry.
+                // Retrying cannot help: an unresolvable key and a missing summary model fail identically every time.
                 return {
                     currentTokens: currentTokens,
                     chats: chats,
                     error: summaryData.data,
+                    ...(summaryData.missingModel ? { errorSetting: "summaryModel" as const } : {}),
                 };
             }
             summarizationFailures++;
@@ -606,22 +665,21 @@ export async function hypaMemoryV2(
     const processor = new HypaProcesser(db.hypaModel);
     processor.oaikey = db.supaMemoryKey;
 
-    const searchDocumentPrefix = "search_document: ";
-    const prefixLength = searchDocumentPrefix.length;
-
-    // Add chunks to processor for similarity search
+    // Add chunks to processor for similarity search; the processor adds the model's own document prefix.
     await processor.addText(
         data.chunks
             .filter((v) => v.text.trim().length > 0)
-            .map((v) => searchDocumentPrefix + v.text.trim()) // sometimes this should not be used at all. Risuai does not support embedding model that this is meaningful, isn't it?
+            .map((v) => v.text.trim())
     );
 
     let scoredResults: { [key: string]: number } = {};
     for (let i = 0; i < 3; i++) { // Should parameterize this, fixed length 3 is a magic number without explanation
         const pop = chats[chats.length - i - 1];
         if (!pop) break;
+        // A message without text (for example image-only) has nothing to match, and remote embedding APIs reject an empty input.
+        if (!pop.content?.trim()) continue;
         const searched = await processor.similaritySearchScored(
-            `search_query: ${pop.content}`
+            pop.content
         );
         for (const result of searched) {
             const score = result[1] / (i + 1);
@@ -638,8 +696,7 @@ export async function hypaMemoryV2(
         allocatedTokens - mainPromptTokens - chunkResultTokens > 0 &&
         scoredArray.length > 0
         ) {
-        const [text] = scoredArray.shift();
-        const content = text.substring(prefixLength);
+        const [content] = scoredArray.shift();
         const tokenized = await tokenizer.tokenizeChat({
             role: "system",
             content: content,

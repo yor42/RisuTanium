@@ -36,6 +36,10 @@ vi.hoisted(() => {
 const h = vi.hoisted(() => ({
     platform: { isTauri: false, isNodeServer: true },
     keyPair: null as CryptoKeyPair | null,
+    /** The server a server-sink run exports through; null for the page's own download sink. */
+    sinkServer: null as { baseUrl: string, authHeader(): Promise<string> } | null,
+    /** The download the server-sink run triggered: it ends when the whole body has reached the sink. */
+    download: null as Promise<void> | null,
     permissive: (): Record<string, unknown> => new Proxy({} as Record<string, unknown>, {
         get: (_target, key) => (key === 'then' ? undefined : vi.fn()),
         has: () => true,
@@ -145,6 +149,44 @@ vi.mock('src/ts/vendor/streamSaver', () => ({
                 }),
             },
         }),
+    },
+}))
+
+// The capability probe and the auth header come from the page's own storage object, which has no server to sign in to
+// here; a server-sink run points them at the sink server, and every other run sees a page whose probe fails.
+vi.mock(import('src/ts/storage/nodeStorage'), async (importOriginal) => {
+    const original = await importOriginal<typeof import('src/ts/storage/nodeStorage')>()
+    return {
+        ...original,
+        nodeServerAuthHeader: () => h.sinkServer!.authHeader(),
+        serverExportAvailable: async () => h.sinkServer !== null && await original.serverExportAvailable({
+            fetch: (url, init) => fetch(`${h.sinkServer!.baseUrl}${url}`, init),
+            authHeader: () => h.sinkServer!.authHeader(),
+            sleep: async () => { },
+        }),
+    }
+})
+// The browser's form post is replaced by the same POST made here, its body collected into the download sink.
+vi.mock(import('src/ts/drive/serverExportWriter'), async (importOriginal) => ({
+    ...await importOriginal<typeof import('src/ts/drive/serverExportWriter')>(),
+    submitDownloadForm: (ticket: string) => {
+        h.download = (async () => {
+            const response = await fetch(`${h.sinkServer!.baseUrl}/api/export/download`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ ticket }).toString(),
+            })
+            const reader = response.body!.getReader()
+            for (;;) {
+                const { done, value } = await reader.read()
+                if (done) {
+                    break
+                }
+                sink.writes.push(value.slice())
+            }
+            sink.closed = true
+        })()
+        return () => { }
     },
 }))
 
@@ -323,6 +365,34 @@ function chunkOf(name: string, data: Uint8Array): Uint8Array {
 
 const lostReply = () => new TypeError('fetch failed: the connection was lost')
 
+/**
+ * Runs the same export a second time with the file produced by the server's streamed export, and requires the file and
+ * the outcome to equal those of the page's own sink, which the test has just exercised (its bytes are in `sink`).
+ * The page's store keeps reading the server it already uses; asset bodies are pinned by `sinkServer`, which must hold
+ * the same assets, and none of them may be read through the page.
+ */
+async function expectServerSinkEquals(world: World, first: { status: string }, run: () => Promise<{ status: string }>): Promise<void> {
+    const ownBytes = Buffer.concat(sink.writes)
+    sink.writes.length = 0
+    sink.closed = false
+    world.requests.length = 0
+    h.sinkServer = normal
+    const realFetch = globalThis.fetch
+    vi.stubGlobal('fetch', (url: string | URL, init?: RequestInit) => realFetch(typeof url === 'string' && url.startsWith('/') ? `${normal.baseUrl}${url}` : url, init))
+    try {
+        const served = await run()
+        await h.download
+        expect(served.status).toBe(first.status)
+        expect(sink.closed).toBe(true)
+        expect(Buffer.concat(sink.writes).equals(ownBytes)).toBe(true)
+        expect(world.requests.filter((request) => request.route === '/api/read-range' && request.key?.startsWith('assets/'))).toEqual([])
+    } finally {
+        h.sinkServer = null
+        h.download = null
+        vi.stubGlobal('fetch', realFetch)
+    }
+}
+
 //#endregion
 
 beforeEach(() => {
@@ -361,6 +431,9 @@ describe('export of a large asset on a Node store with pieces', () => {
         expect(world.routesFor('assets/big.png').filter((route) => route === '/api/read-range')).toHaveLength(5)
         expect(sameBytes(writtenEntries().find((entry) => entry.name === 'big.png')?.data, bytes)).toBe(true)
         expect(sink.closed).toBe(true)
+
+        await plant(normal, 'assets/big.png', bytes)
+        await expectServerSinkEquals(world, outcome, () => SaveLocalBackup())
     })
 
     test('reproducer: a first range that fails twice with a network error fails the export and no file is completed', async () => {
@@ -403,6 +476,9 @@ describe('export of a large asset on a Node store with pieces', () => {
         expect(outcome.status).toBe('saved')
         expect(world.routesFor('assets/big.png').filter((route) => route === '/api/read-range').length).toBeGreaterThanOrEqual(6)
         expect(sameBytes(writtenEntries().find((entry) => entry.name === 'big.png')?.data, bytes)).toBe(true)
+
+        await plant(normal, 'assets/big.png', bytes)
+        await expectServerSinkEquals(world, outcome, () => SaveLocalBackup())
     })
 
     test('data safety: an asset that changes after its header is written ends the export as failed, never as a shorter entry', async () => {
@@ -430,7 +506,7 @@ describe('export of a large asset on a Node store with pieces', () => {
     })
 
     test('guard: an asset the server reports absent (x-risu-exists: 0) is missing and the export completes without it', async () => {
-        await makeWorld(small, {
+        const world = await makeWorld(small, {
             pieceBytes: SMALL_CHUNK,
             script: async (call) => (call.route === '/api/read-range' && call.key === 'assets/gone.png'
                 ? new Response(new Uint8Array(0), { status: 200, headers: { 'x-risu-revision': '1', 'x-risu-size': '0', 'x-risu-exists': '0' } })
@@ -447,6 +523,10 @@ describe('export of a large asset on a Node store with pieces', () => {
         }
         expect(writtenEntries().map((entry) => entry.name)).toContain('kept.png')
         expect(writtenEntries().map((entry) => entry.name)).not.toContain('gone.png')
+
+        // The sink server holds the listed key's file absent, as the scripted answer says it is.
+        await plant(normal, 'assets/kept.png', patterned(450, 5))
+        await expectServerSinkEquals(world, outcome, () => SaveLocalBackup())
     })
 
     test('new behaviour: a page whose store never probed asks once and still reads in ranges', async () => {
@@ -458,6 +538,9 @@ describe('export of a large asset on a Node store with pieces', () => {
         expect(outcome.status).toBe('saved')
         expect(world.routesFor('assets/big.png')).not.toContain('/api/read')
         expect(world.requests.filter((request) => request.route === '/api/caps')).toHaveLength(1)
+
+        await plant(normal, 'assets/big.png', patterned(450, 6))
+        await expectServerSinkEquals(world, outcome, () => SaveLocalBackup())
     })
 
     test('guard: a server without pieces keeps the whole read and the entry is byte-equal', async () => {
@@ -477,6 +560,9 @@ describe('export of a large asset on a Node store with pieces', () => {
         expect(world.routesFor('assets/big.png')).toContain('/api/read')
         expect(world.routesFor('assets/big.png')).not.toContain('/api/read-range')
         expect(sameBytes(writtenEntries().find((entry) => entry.name === 'big.png')?.data, bytes)).toBe(true)
+
+        await plant(normal, 'assets/big.png', bytes)
+        await expectServerSinkEquals(world, outcome, () => SaveLocalBackup())
     })
 
     test('reproducer: the partial export reads a referenced asset in ranges and never assembles it by store.read', async () => {
@@ -493,6 +579,9 @@ describe('export of a large asset on a Node store with pieces', () => {
         expect(outcome.status).toBe('saved')
         expect(world.routesFor('assets/big.png')).not.toContain('/api/read')
         expect(sameBytes(writtenEntries().find((entry) => entry.name === 'big.png')?.data, bytes)).toBe(true)
+
+        await plant(normal, 'assets/big.png', bytes)
+        await expectServerSinkEquals(world, outcome, () => SavePartialLocalBackup())
     })
 
     test('reproducer: the partial export fails when the first range of a referenced asset is lost twice, and the stream is aborted, not closed', async () => {
@@ -538,6 +627,8 @@ describe('export of a large asset on a Node store with pieces', () => {
         }
         expect(world.requests.filter((request) => request.route.startsWith('/api/read'))).toEqual([])
         expect(sink.closed).toBe(true)
+
+        await expectServerSinkEquals(world, outcome, () => SavePartialLocalBackup())
     })
 })
 
@@ -564,6 +655,8 @@ describe('export of an inlay body on a Node store with pieces', () => {
         // The existence check is a HEAD of the same route; only a GET reads the whole body.
         expect(world.requests.filter((request) => request.key === body && request.route === '/api/read' && request.method === 'GET')).toEqual([])
         expect(world.routesFor(body)).toContain('/api/read-range')
+
+        await expectServerSinkEquals(world, outcome, () => SaveLocalBackup())
     })
 
     test('reproducer: a body whose first range fails twice with a network error fails the export', async () => {

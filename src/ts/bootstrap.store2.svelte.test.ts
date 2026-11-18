@@ -16,6 +16,7 @@ import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/b
 import type { GuardedOperations } from 'src/ts/storage/store/contract'
 import { StoreNotBinaryError } from 'src/ts/storage/store/errors'
 import type { AppStoreKind } from 'src/ts/storage/store/appStore'
+import type { PageStorageMode } from 'src/ts/storage/pageStorageMode'
 import type { Store2BootUi } from 'src/ts/storage/store2/bootDispatch'
 import type { Store2BootEnv, Store2BootNotice } from 'src/ts/storage/store2/bootActive'
 import { checkUnit, unitMapSource, type ListDerivation } from 'src/ts/storage/store2/codec'
@@ -448,15 +449,17 @@ async function boot(options: BootOptions): Promise<Boot> {
     if (options.unregistered !== true) {
         const { registerStore2Boot } = await import('src/ts/storage/store2/bootActive')
         const { dispatchStore2Boot } = await import('src/ts/storage/store2/bootDispatch')
-        registerStore2Boot((env) => {
+        registerStore2Boot(async (env) => {
             bootText.log.push('dispatch')
-            return dispatchStore2Boot(env, {
+            const result = await dispatchStore2Boot(env, {
                 ui,
                 kind: options.kind,
                 backend: options.injectBackend === true ? async () => backend : undefined,
                 keyEnv: testEnv(createClock(), 9001),
                 lists: options.lists ?? fakeLists,
             })
+            bootText.log.push('dispatched')
+            return result
         })
     }
     const { loadData } = await import('src/ts/bootstrap')
@@ -557,6 +560,35 @@ afterEach(() => {
     vi.unstubAllGlobals()
 })
 
+/**
+ * Records the page mode at every read of the legacy main file that follows the dispatch's answer (the `dispatched`
+ * marker of `boot`). Reads the dispatch made itself are counted apart and excluded. Call it after `boot()`, so the page
+ * mode it consults is the one of the boot's own module graph.
+ */
+async function recordMainFileReads(store: MemoryByteStore): Promise<{ afterAnswer: PageStorageMode[], duringDispatch: number }> {
+    const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
+    const recorded = { afterAnswer: [] as PageStorageMode[], duringDispatch: 0 }
+    const read = store.read.bind(store)
+    store.read = async (key) => {
+        if (key === 'database/database.bin') {
+            if (bootText.log.includes('dispatched')) {
+                recorded.afterAnswer.push(getPageStorageMode())
+            } else if (bootText.log.includes('dispatch')) {
+                recorded.duringDispatch += 1
+            }
+        }
+        return read(key)
+    }
+    return recorded
+}
+
+/** The page reads the legacy main file only after the dispatch answered, and only as a read-only page: no read happens while the mode is anything else. */
+function expectMainFileReadAsReadOnlyPage(recorded: { afterAnswer: PageStorageMode[], duringDispatch: number }): void {
+    expect(recorded.duringDispatch, 'the dispatch decides from the main file\'s existence and reads none of its bytes').toBe(0)
+    expect(recorded.afterAnswer.length, 'the main file is read after the dispatch answered').toBeGreaterThan(0)
+    expect(recorded.afterAnswer.filter((mode) => mode.kind !== 'read-only')).toEqual([])
+}
+
 /** Everything the boot wrote or deleted in the page store, the Tauri owner id excepted. */
 function storeEffects(store: MemoryByteStore): { writes: string[], deletes: string[] } {
     return { writes: store.writes.filter(key => key !== 'store2-owner'), deletes: [...store.deletes] }
@@ -569,6 +601,7 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         const store = notBinary(legacyStore())
         store.guarded = guardedOps(false)
         const { loadData, alertStore, loadedStore, ui } = await boot({ kind: 'node', store })
+        const reads = await recordMainFileReads(store)
         const { language } = await import('src/lang')
         const installedWhenPosted: number[] = []
         alertStore.subscribe((value) => {
@@ -580,6 +613,7 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
 
         await loadData()
 
+        expectMainFileReadAsReadOnlyPage(reads)
         expect(get(loadedStore)).toBe(true)
         expect(setDatabaseMock).toHaveBeenCalled()
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
@@ -606,11 +640,13 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
     test('a Node page with no guarded operations at all: the same, with the other named notice', async () => {
         const store = legacyStore()
         const { loadData, alertStore, loadedStore, ui } = await boot({ kind: 'node', store })
+        const reads = await recordMainFileReads(store)
         const { language } = await import('src/lang')
         const shown = acknowledgeNotices(alertStore)
 
         await loadData()
 
+        expectMainFileReadAsReadOnlyPage(reads)
         expect(get(loadedStore)).toBe(true)
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(archive.opened).toBe(0)
@@ -638,10 +674,12 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         const store = legacyStore()
         pruningBackups(store)
         const { loadData, loadedStore, ui } = await boot({ kind: 'tauri', store, tauri: true })
+        const reads = await recordMainFileReads(store)
 
         await loadData()
         await settle()
 
+        expectMainFileReadAsReadOnlyPage(reads)
         expect(get(loadedStore)).toBe(true)
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(store.writes).toContain('store2-owner')
@@ -677,11 +715,13 @@ describe('loadData(): the transitional OPFS page is read-only legacy (guard on t
     test('it loads the legacy profile, posts the OPFS notice and the dispatch says nothing, and writes nothing', async () => {
         const store = legacyStore()
         const { loadData, alertStore, loadedStore, ui } = await boot({ kind: 'opfs-transitional', store })
+        const reads = await recordMainFileReads(store)
         const { language } = await import('src/lang')
         const shown = acknowledgeNotices(alertStore)
 
         await loadData()
 
+        expectMainFileReadAsReadOnlyPage(reads)
         expect(get(loadedStore)).toBe(true)
         expect(shown).toEqual([language.opfsReadOnlyNotice])
         expect(ui.notices).toEqual([])

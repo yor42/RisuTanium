@@ -10,7 +10,8 @@
 // against the pointer event's own `timeStamp`, which is earlier than the listener when the main thread was busy).
 //
 // Who taps. This tool never injects input: CDP touch injection arrives late (about 300 ms against 16 ms for `adb input tap`), so
-// the caller taps with `adb input tap` while this tool waits. Order: start `measure`, wait for the line "ARMED" on stderr, tap,
+// the caller taps through the adb guard (`device-guard/adbg.mjs`: `tap` on a fresh locate, or `shell input tap X Y` on a playground
+// serial) while this tool waits. Order: start `measure`, wait for the line "ARMED" on stderr, tap,
 // read the JSON line on stdout. One run is one tap.
 //
 // Selectors are parameters. `--row` names a preset (row and minimum count only) whose selector is still TODO(evidence): lane B

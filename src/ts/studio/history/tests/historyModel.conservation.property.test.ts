@@ -53,13 +53,19 @@ interface World extends Owned {
     readable: boolean
 }
 
+// Every text of the world is one asset reference, because a merge's `textEdit` applies only to a whole scanned
+// reference name: the generated merge edits rename the name inside it.
+const shaped = (name: string): string => `{{image::${name}}}`
+const SHAPED_OPEN = '{{image::'.length
+const SHAPED_CLOSE = '}}'.length
+
 function startWorld(): World {
     return {
-        greetings: ['base0', 'base1', 'base2'],
+        greetings: [shaped('base0'), shaped('base1'), shaped('base2')],
         fm: 1,
-        desc: 'd0',
+        desc: shaped('d0'),
         rows: [['r0', 'p0'], ['r1', 'p1']],
-        lore: 'lore0',
+        lore: shaped('lore0'),
         folder: undefined,
         readable: true,
     }
@@ -534,7 +540,7 @@ function runActions(input: Input, tally: Tally): string | null {
         switch (act.k) {
             case 'add':
                 if (readable) {
-                    const value = `t${++fresh}`
+                    const value = shaped(`t${++fresh}`)
                     const index = w.greetings.length
                     const ops: Op[] = [{ op: 'listInsert', index, value }]
                     const greetings = [...w.greetings]
@@ -586,7 +592,7 @@ function runActions(input: Input, tally: Tally): string | null {
             case 'edit':
                 if (readable && w.greetings.length > 0) {
                     const index = act.at % w.greetings.length
-                    const ops: Op[] = [{ op: 'listSet', index, before: w.greetings[index], after: `t${++fresh}` }]
+                    const ops: Op[] = [{ op: 'listSet', index, before: w.greetings[index], after: shaped(`t${++fresh}`) }]
                     const greetings = [...w.greetings]
                     applyWrites(w, forwardWrites(ops))
                     commit({ kind: 'greetingEdit' }, ops, deriveRestoreWrites(ops, greetings), true)
@@ -594,7 +600,7 @@ function runActions(input: Input, tally: Tally): string | null {
                 }
                 break
             case 'desc': {
-                const ops: Op[] = [{ op: 'set', path: 'desc', before: { had: true, value: w.desc }, after: { had: true, value: `D${++fresh}` } }]
+                const ops: Op[] = [{ op: 'set', path: 'desc', before: { had: true, value: w.desc }, after: { had: true, value: shaped(`D${++fresh}`) } }]
                 const greetings = [...w.greetings]
                 applyWrites(w, forwardWrites(ops))
                 commit({ kind: 'field', field: 'desc' }, ops, deriveRestoreWrites(ops, greetings), true)
@@ -639,7 +645,13 @@ function runActions(input: Input, tally: Tally): string | null {
             }
             case 'merge': {
                 const ops: Op[] = []
-                const edit = (target: string, current: string): Op => ({ op: 'textEdit', target, offset: 0, from: current, to: `m${++fresh}` })
+                const edit = (target: string, current: string): Op => ({
+                    op: 'textEdit',
+                    target,
+                    offset: SHAPED_OPEN,
+                    from: current.slice(SHAPED_OPEN, current.length - SHAPED_CLOSE),
+                    to: `m${++fresh}`,
+                })
                 if (act.parts & 1) {
                     ops.push(edit(LORE_TARGET, w.lore))
                 }
@@ -693,11 +705,11 @@ function runActions(input: Input, tally: Tally): string | null {
                 }
                 break
             case 'outInsert':
-                w.greetings.splice(act.at % (w.greetings.length + 1), 0, `o${++fresh}`)
+                w.greetings.splice(act.at % (w.greetings.length + 1), 0, shaped(`o${++fresh}`))
                 break
             case 'outRewrite':
                 if (w.greetings.length > 0) {
-                    w.greetings[act.at % w.greetings.length] = `o${++fresh}`
+                    w.greetings[act.at % w.greetings.length] = shaped(`o${++fresh}`)
                 }
                 break
             case 'outChat':

@@ -123,6 +123,16 @@
         service.closeOpenStep(owner)
     }
 
+    function onRenderWhenCompleteChange(event: Event & { currentTarget: HTMLInputElement }): void {
+        const field = event.currentTarget
+        if (!service || !editable || !noted(service.editField(owner, 'risutanium_render_when_complete', field.checked))) {
+            field.checked = live?.risutanium_render_when_complete === true
+            return
+        }
+        // A toggle is one discrete action: it never joins the next one's step.
+        service.closeOpenStep(owner)
+    }
+
     function greetingInputs(): HTMLElement[] {
         return root ? Array.from(root.querySelectorAll<HTMLElement>('[data-part="studio-greeting-input"]')) : []
     }
@@ -181,6 +191,19 @@
             />
             <span>{language.hideChatIcon}</span>
         </label>
+        <label class="flex min-h-11 items-center gap-2">
+            <input
+                type="checkbox"
+                data-part="studio-form-render-when-complete"
+                disabled={!editable}
+                aria-busy={editable ? undefined : 'true'}
+                aria-describedby="studio-form-render-when-complete-hint"
+                checked={live.risutanium_render_when_complete === true}
+                onchange={onRenderWhenCompleteChange}
+            />
+            <span>{language.studioFormRenderWhenComplete}</span>
+        </label>
+        <p id="studio-form-render-when-complete-hint" data-part="studio-form-render-when-complete-hint" class="text-sm text-textcolor2">{language.studioFormRenderWhenCompleteHint}</p>
         <div class="flex flex-col gap-2" data-part="studio-form-greetings">
             <div class="flex items-center justify-between gap-2">
                 <span class="font-bold">{language.altGreet}</span>

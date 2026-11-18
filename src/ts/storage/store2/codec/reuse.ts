@@ -63,12 +63,27 @@ export class UnitNotReusedError extends CodecError {
     }
 }
 
+/** What `UnitSink.drain` keeps of a unit it handed out. */
+export interface DrainedUnit {
+    identity: string
+    key: string
+    type: UnitType
+    ref: Ref
+    digest: string
+}
+
 export interface UnitSinkOptions {
     /**
      * The sink only checks reuse: it copies no key of the previous encoding (its cost would grow with every unit of the
      * profile) and throws `UnitNotReusedError` at the first unit that is not reused. It never hands out a key.
      */
     reuseOnly?: boolean
+    /**
+     * The sink answers what an encode would produce without stopping at the first unit that is not reused: such a unit
+     * gets a fresh key (never copied from the previous encoding, so no key set is built) and its identity is listed in
+     * `diverged`. Nothing it hands out is ever written.
+     */
+    collect?: boolean
     /** Measurement builds only: counts each put and the time its framing and digest take. */
     split?: SplitRecorder
     /**
@@ -88,10 +103,18 @@ export interface UnitSinkOptions {
  */
 export class UnitSink {
     readonly units: EncodedUnit[] = []
+    /**
+     * What `drain` kept of the units it handed out: the identity, key, type, Ref and digest, never the frame. Every
+     * unit of the encode is in `drained` or in `units`, in the order it was put.
+     */
+    readonly drained: DrainedUnit[] = []
     private readonly identities = new Set<string>()
     private readonly keys = new Set<string>()
     private readonly claimedKeys = new Set<string>()
     private readonly reuseOnly: boolean
+    private readonly collect: boolean
+    /** The identities of the units a collecting sink met that are not the previous encoding's units. */
+    readonly diverged = new Set<string>()
     private declare readonly split: SplitRecorder | undefined
     private readonly chunkMemo: ChunkMemo | undefined
 
@@ -102,11 +125,12 @@ export class UnitSink {
         options: UnitSinkOptions = {},
     ) {
         this.reuseOnly = options.reuseOnly === true
+        this.collect = options.collect === true
         this.chunkMemo = options.chunkMemo
         if (MEASURE && options.split !== undefined) {
             this.split = options.split
         }
-        if (previous !== null && !this.reuseOnly) {
+        if (previous !== null && !this.reuseOnly && !this.collect) {
             for (const unit of previous.units.values()) {
                 this.keys.add(unit.key)
             }
@@ -141,7 +165,15 @@ export class UnitSink {
         if (this.reuseOnly) {
             throw new UnitNotReusedError(identity)
         }
+        this.noteDiverged(identity)
         return this.record(identity, type, this.freshKey(kind), bytes, digest, false)
+    }
+
+    /** A collecting sink lists the identity of a unit it is about to give a fresh key. */
+    private noteDiverged(identity: string): void {
+        if (this.collect) {
+            this.diverged.add(identity)
+        }
     }
 
     /**
@@ -192,7 +224,24 @@ export class UnitSink {
         if (this.reuseOnly) {
             throw new UnitNotReusedError(identity)
         }
+        this.noteDiverged(identity)
         return this.record(identity, type, this.freshKey('unit'), bytes, digest, false)
+    }
+
+    /**
+     * Hands out the units put since the last drain that need writing (their frames included) and empties `units`, so a
+     * long encode need not hold every frame until its end. The identity and key sets stay, so a drained identity or key
+     * is still refused as a duplicate. What is kept of a drained unit is in `drained`.
+     */
+    drain(): WrittenUnit[] {
+        const written: WrittenUnit[] = []
+        for (const unit of this.units.splice(0)) {
+            this.drained.push({ identity: unit.identity, key: unit.key, type: unit.type, ref: unit.ref, digest: unit.digest })
+            if (isWrittenUnit(unit)) {
+                written.push(unit)
+            }
+        }
+        return written
     }
 
     /** A write-once unit (the manifest): always a fresh key. */

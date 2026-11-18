@@ -5,6 +5,7 @@ import { getModuleMcpEntries, getModuleMcps } from "../modules";
 import { parseMcpUrl } from "./stdioSpec";
 import { admitStdio, type StdioOwner } from "./stdioApproval";
 import { alertError, alertInput, alertNormal } from "src/ts/alert";
+import { ALERT_INPUT_CANCEL } from "src/ts/alertCancel";
 import { language } from "src/lang";
 import { fillLang } from "src/lang/fill";
 import { v4 } from "uuid";
@@ -475,7 +476,11 @@ export async function importMCPModule(){
         ['https://rag-mcp-2.whatsmcp.workers.dev/sse', 'OneContext MCP (https://rag-mcp-2.whatsmcp.workers.dev/sse)'],
         ['https://browser.mcp.cloudflare.com/sse', 'Cloudflare Browser MCP (https://browser.mcp.cloudflare.com/sse)'],
         ['https://mcp.deepwiki.com/mcp', 'DeepWiki MCP (https://mcp.deepwiki.com/mcp)'],
-    ])
+    ], undefined, { cancel: ALERT_INPUT_CANCEL })
+
+    if(x === ALERT_INPUT_CANCEL){
+        return
+    }
 
     if(
         !x.startsWith('http://localhost') &&
@@ -490,8 +495,20 @@ export async function importMCPModule(){
     }
     try {
         const id = v4()
+        // A client that declined the sign-in stays quiet for automatic activity; this explicit import asks again.
+        const existing = MCPs[x]
+        if(existing instanceof MCPClient && existing.oauthDeclined){
+            existing.clearOAuthDecline()
+            await existing.checkHandshake()
+        }
         const metas = (await getMCPMeta([x], undefined, new Map([[x, [{ moduleId: id, moduleName: x }]]])))
         console.log(metas)
+        // A declined client may carry stale metadata, so this check precedes the missing-metadata one. The
+        // cancel was the user's answer: no module and no error.
+        const client = MCPs[x]
+        if(client instanceof MCPClient && client.oauthDeclined){
+            return
+        }
         const meta = metas[x];
         if(!meta) {
             alertError(language.errors.mcpModuleNotFound);

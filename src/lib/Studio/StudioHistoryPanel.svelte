@@ -5,7 +5,7 @@
     import { alertError } from '../../ts/alert'
     import { language } from '../../lang'
     import { uniqueChatById } from '../../ts/studio/edit/studioSetters'
-    import { createStudioToasts, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
+    import { createStudioToasts, listReasonText, refusalTextOf, runDismissingConsumed } from '../../ts/studio/edit/studioToasts'
     import type { StepLabel } from '../../ts/studio/history/historyModel'
     import type { OwnerHistoryService, ReplayDesc, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
     import { parseOwnerKey, type OwnerKey } from '../../ts/studio/history/ownerPhase'
@@ -13,7 +13,7 @@
     import { closeStudioHistory } from '../../ts/studio/studioBack.svelte'
     import { focusLost, placeFocusAfterHistory } from '../../ts/studio/historyFocus'
     import { readOwnerFields, type OwnerFields } from '../../ts/studio/ownerFields'
-    import { selectedHistoryOwner, setStudioRestoreSheetOpen, studioScreen } from '../../ts/studio/studioScreen.svelte'
+    import { selectedHistoryOwner, setStudioNotRestoredNotice, setStudioRestoreSheetOpen, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import { DBState } from '../../ts/stores.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
 
@@ -138,20 +138,28 @@
         if (destroyed) return
         // The panel may have moved to another owner meanwhile: its message belongs to this one.
         if (historyOwner !== key) return
-        showOutcome(key, result, read.before)
+        showOutcome(key, result, read.before, desc.kind === 'undo')
     }
 
-    function showOutcome(key: OwnerKey, result: StudioResult, before: OwnerFields | null): void {
+    // `undone` is true for an Undo only: the places a merge undo left as they were go to the Studio notice, whose Show lists
+    // them; a redo or a revert of a merge says nothing of its own about them.
+    function showOutcome(key: OwnerKey, result: StudioResult, before: OwnerFields | null, undone = false): void {
         if (result.ok === false) {
             message = refusalTextOf(result)
             return
         }
+        const goneFile = result.goneRows !== undefined && result.goneRows.length > 0
+        if (undone && !goneFile && result.notRestored !== undefined && result.notRestored.length > 0) {
+            setStudioNotRestoredNotice(key, language.studioAssetNotRestored(result.notRestored.length), result.notRestored)
+        }
         const notes: string[] = []
-        if (result.goneRows !== undefined && result.goneRows.length > 0) notes.push(language.studioAssetFileGone(result.goneName ?? result.goneRows[0]))
+        if (goneFile && result.goneRows !== undefined) notes.push(language.studioAssetFileGone(result.goneName ?? result.goneRows[0]))
         if (result.already === 'undo') notes.push(language.studioHistoryAlreadyUndone)
         else if (result.already === 'redo') notes.push(language.studioHistoryAlreadyRedone)
         else if (result.dropped) notes.push(language.studioHistoryStepDropped)
         if (result.listSkipped !== undefined && result.listSkipped > 0) notes.push(language.studioHistoryRevertListSkipped)
+        const reason = listReasonText(result.listReason)
+        if (reason !== null) notes.push(reason)
         if (result.pairSkipped !== undefined && result.pairSkipped > 0) notes.push(language.studioHistoryRevertPairSkipped)
         if (result.fmNotRestored) notes.push(language.studioToastRestoredFmNotice)
         message = notes.length > 0 ? notes.join(' ') : null
@@ -167,6 +175,7 @@
                     case 'exampleMessage': return language.exampleMessage
                     case 'customModuleToggle': return language.customPromptTemplateToggle
                     case 'hideChatIcon': return language.hideChatIcon
+                    case 'risutanium_render_when_complete': return language.studioFormRenderWhenComplete
                     case 'note': return language.note
                 }
             case 'greetingAdd': return language.studioStepGreetingAdd

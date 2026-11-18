@@ -57,6 +57,7 @@
             case 'exampleMessage': return language.exampleMessage
             case 'customModuleToggle': return language.customPromptTemplateToggle
             case 'hideChatIcon': return language.hideChatIcon
+            case 'risutanium_render_when_complete': return language.studioFormRenderWhenComplete
             case 'note': return language.note
             case 'alternateGreetings': return language.altGreet
         }

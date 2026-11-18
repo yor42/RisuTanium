@@ -514,6 +514,20 @@ describe('openPluginSettingsMenu', () => {
         await openPluginSettingsMenu('P', imp.deps)
         expect(imp.list[0].realArg.key).toBe('new')
     })
+
+    test('the menu offers its Cancel row as the cancel: answering it exports and imports nothing', async () => {
+        const select = vi.fn(async (_items: string[], options: { cancel: string }) => options?.cancel ?? Promise.reject(new Error('no cancel offered')))
+        const h = harness([plugin('P')], { select, pickFile: vi.fn(async () => null) })
+
+        await openPluginSettingsMenu('P', h.deps)
+
+        expect(select).toHaveBeenCalledTimes(1)
+        expect(select.mock.calls[0][1]).toEqual({ cancel: '2' })
+        expect(select.mock.calls[0][0]).toHaveLength(3)
+        expect(h.download).not.toHaveBeenCalled()
+        expect(h.confirm).not.toHaveBeenCalled()
+        expect(h.deps.pickFile).not.toHaveBeenCalled()
+    })
 })
 
 describe('an import that offers an undo', () => {
