@@ -465,6 +465,65 @@ describe('the start-up .bin import never writes a cold-storage unit (Gate 1 C1)'
     })
 })
 
+function binOf(...entries: Uint8Array[]): Uint8Array {
+    const out = new Uint8Array(entries.reduce((total, entry) => total + entry.length, 0))
+    let offset = 0
+    for (const entry of entries) {
+        out.set(entry, offset)
+        offset += entry.length
+    }
+    return out
+}
+
+const AVATAR = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])
+
+describe('T4-P4b: an encrypted .bin at boot is refused before any write (MC-477)', () => {
+    // The walk stops at the marker and keeps no entry, so the flow that skipped the encrypted refusal would end at the
+    // no-database refusal with another message: only the exact alert list tells the two apart.
+    test.each(GOLDEN_WINDOWS)('guard: a marker first, or between an asset and the database, ends cancelled with exactly the encrypted-backup message and the installer never called (windows: %s)', async (windowBytes) => {
+        const boot = await openBoot()
+        const { language } = await import('src/lang')
+        const { BACKUP_ENCRYPTION_MARKER_NAME } = await import('src/ts/drive/backupContainer')
+        await useGoldenWindows(windowBytes)
+        const files = [
+            binOf(binEntry(BACKUP_ENCRYPTION_MARKER_NAME, new Uint8Array([1])), golden('upstream-full.bin')),
+            binOf(binEntry('enc-asset.png', AVATAR), binEntry(BACKUP_ENCRYPTION_MARKER_NAME, new Uint8Array([1])), golden('upstream-full.bin')),
+        ]
+        for (const bytes of files) {
+            vi.mocked(boot.alert.alertError).mockClear()
+            boot.w.store.ops.length = 0
+            const install = vi.fn(async () => ({ status: 'declined' as const }))
+            const target: BootImportTarget = { readColdStorageItem: async () => ({ status: 'missing' }), install }
+
+            const end = await pickAtBoot(target, bytes)
+
+            expect(end).toEqual({ kind: 'cancelled' })
+            expect(install).not.toHaveBeenCalled()
+            expect(vi.mocked(boot.alert.alertError).mock.calls.map((call) => call[0])).toEqual([language.encryptedBackupRefused])
+            expect(boot.w.store.mutating()).toEqual([])
+            expect(setColdStorageItemMock).not.toHaveBeenCalled()
+        }
+    })
+})
+
+describe('T4-P6 (boot half): the keys a boot import writes', () => {
+    test.each(GOLDEN_WINDOWS)('guard: a boot import of upstream-full.bin writes its asset and no main file, numbered backup, block, database asset or cold-entry asset (windows: %s)', async (windowBytes) => {
+        const boot = await openBoot()
+        await useGoldenWindows(windowBytes)
+        boot.w.store.ops.length = 0
+        const seen: Seen = { reads: new Map(), sourceHadTree: false }
+
+        const end = await pickAtBoot(recordingTarget(seen, { status: 'blocked', reason: 'install-failed', detail: 'recorded' }), golden('upstream-full.bin'))
+
+        expect(end.kind).toBe('finished')
+        expect(seen.sourceHadTree).toBe(true)
+        const keys = boot.w.store.mutating().map((op) => op.key)
+        expect(keys, 'the import wrote its asset').toContain('assets/golden-avatar.png')
+        expect(keys.filter((key) => key === 'database/database.bin' || key.startsWith('database/dbbackup-') || key.startsWith('blocks/')
+            || key === 'assets/database.risudat' || key.startsWith('assets/coldstorage_') || key.startsWith('coldstorage/'))).toEqual([])
+    })
+})
+
 describe('a .bin whose database has no archive key, imported by the start-up flow, is told in the same boot and once', () => {
     // Compatibility guard (passes with or without the boot notice queue): the boot import writes no `archiveCharacters`,
     // so the boot that installed it finds the key absent, raises `archive-enabled` once and sets the key in memory; the

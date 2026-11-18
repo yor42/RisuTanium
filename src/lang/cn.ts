@@ -3215,8 +3215,6 @@ export const languageChinese = {
         `有 ${items.length} 个项目达到或超过 4 GiB，超出了备份文件单个条目所能容纳的大小，因此它们的内容不在备份中（角色只保留一个占位符）：\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `此备份中有 ${count} 个项目大于 100 MiB。上游 RisuAI Node 服务器无法恢复如此大的项目，因此在那里恢复此备份时会跳过它们；本应用和其他平台则可以恢复。是否创建包含这些项目的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
-    "backupAlternativesConfirm": (count: number, names: string[]) =>
-        `有 ${count} 个聊天含有备选回复，而备份文件中没有存放它们的位置，因此它们将不会包含在此备份中（聊天及其消息会被保存）。备选回复仍保留在本应用中，只是备份里没有。是否创建不含它们的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `有 ${count} 个任务预设仅保存在此设备上，而备份文件中没有存放它们的位置，因此它们将不会包含在此备份中。它们仍保留在本应用中，只是备份里没有。是否创建不含它们的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
@@ -3339,6 +3337,20 @@ export const languageChinese = {
     "themePackLintLine": (selector: string, prop: string, why: string) => `${selector} ${prop}：${why}`,
     "backupAlternativesLeftOut": (count: number, names: string[]) =>
         `备份运行期间发现有 ${count} 个聊天含有备选回复，而备份文件中没有存放它们的位置，因此它们不在备份中（聊天及其消息已保存）：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
+    "backupBranchesConfirm": (count: number, lines: string[]) =>
+        `有 ${count} 个聊天含有备选回复，而备份文件中没有存放它们的位置。对话曾从某个备选回复继续下去（其后包含您的后续消息）的，会作为额外的聊天写在该角色聊天列表的末尾，名称形如“Chat (Branch)”，因此备份会增大约所示的大小；其余备选回复将不会包含在备份中。聊天及其消息会被保存，本应用中不会有任何改变。是否按此方式创建备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${lines.join('\n')}${count > lines.length ? `\n...另有 ${count - lines.length} 个` : ''}`,
+    "backupBranchesLine": (chat: string, branchChats: number, bytes: number | null, leftOut: number) => {
+        const parts: string[] = []
+        if (branchChats > 0) {
+            const size = bytes === null ? '大小未知' : bytes < 0.1 * 1024 * 1024 ? '小于 0.1 MiB' : `约 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+            parts.push(`${branchChats} 个分支聊天，${size}`)
+        }
+        if (leftOut > 0) {
+            parts.push(`${leftOut} 条回复未包含`)
+        }
+        return parts.length > 0 ? `${chat} (${parts.join('; ')})` : chat
+    },
+    "backupBranchesLeftOutLine": (chat: string) => `${chat} (备选回复未包含)`,
     "backupForkChatDataConfirm": (count: number, names: string[]) =>
         `有 ${count} 个聊天含有仅本应用使用的数据（类型见括号内），而备份文件中没有存放它们的位置，因此它们将不会包含在此备份中（聊天及其消息会被保存）。这些数据仍保留在本应用中，只是备份里没有。是否创建不含它们的备份？如果拒绝，将不会创建备份文件。目前尚未写入任何内容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "backupForkChatDataLeftOut": (count: number, names: string[]) =>

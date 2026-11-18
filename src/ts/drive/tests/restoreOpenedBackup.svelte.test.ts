@@ -266,13 +266,24 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
     } as unknown as typeof import('src/ts/process/coldstorage.svelte')
 })
 
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
+// The real `globalApi.svelte` (the write lock stays real) with one answer fixed: a clean page, so the restore's
+// save-first step returns at its clean check and the unsaved-edits question is not asked.
+vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
+    ...await importOriginal(),
+    isSaveClean: () => true,
+}))
+
 //#endregion
 
+import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
 import { restoreOpenedBackup } from 'src/ts/drive/backuplocal'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { language } from 'src/lang'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
-import { injectRestoreStore } from './restoreSupport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBatch'
@@ -371,6 +382,7 @@ const entry = { name: 'My Backup.bin', path: 'content://provider/document/primar
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 function expectNothingInstalled(): void {
+    expect(shell.commits).toEqual([])
     expect(setDatabaseMock).not.toHaveBeenCalled()
     expect(harness.made.fs.files.has('blocks/head')).toBe(false)
     expect([...harness.made.fs.files.keys()].some((key) => key.startsWith('assets/'))).toBe(false)
@@ -399,12 +411,15 @@ beforeEach(() => {
     readOnlyBox.readOnly = false
     reloadMark.marked = false
     vi.spyOn(console, 'error').mockImplementation(() => { })
-    injectRestoreStore(createTauriFilesStore({ platform: 'posix' }))
+    resetStore2ShellBox(shell)
+    useStore2RestorePage(createTauriFilesStore({ platform: 'posix' }))
     getDatabaseMock.mockImplementation(() => ({ characters: [], personas: [], characterOrder: [], botPresets: [] }) as unknown as Database)
     dbWriteLockSpy = vi.spyOn(dbWriteLock, 'acquire').mockResolvedValue(() => { })
 })
 
 afterEach(() => {
+    // The restore's save-first step returned at its clean check; it never waited out its bound.
+    expect(alertWaitMock).not.toHaveBeenCalledWith(language.store2RestoreSaving)
     resetBusyActionsForTest()
     resetRestoreInProgressForTests()
     resetStartupCleanupForTests()
@@ -454,7 +469,7 @@ describe('restoreOpenedBackup and a file dropped meanwhile', () => {
 describe('restoreOpenedBackup', () => {
     // Reproducer: red against the mutant that takes a busy entry before calling LoadLocalBackup, which then
     // refuses its own caller with the busy message.
-    test('with nothing busy the restore reaches the walk and the install, and is not refused as busy', async () => {
+    test('with nothing busy the restore reaches the walk and the commit, and is not refused as busy', async () => {
         const probe = probeSource(smallBin())
         openSourceMock.mockResolvedValue(probe.source)
 
@@ -463,7 +478,7 @@ describe('restoreOpenedBackup', () => {
         expect(alertErrorMock).not.toHaveBeenCalledWith(language.backupLoadWorkInProgress)
         expect(alertErrorMock).not.toHaveBeenCalled()
         expect(probe.reads()).toBeGreaterThan(0)
-        expect(setDatabaseMock).toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(1)
         expect(reloadMark.marked).toBe(true)
         expect(probe.closed()).toBe(1)
     })
@@ -487,7 +502,7 @@ describe('restoreOpenedBackup', () => {
         await restoreOpenedBackup(entry)
 
         expect(alertErrorMock).not.toHaveBeenCalled()
-        expect(setDatabaseMock).toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(1)
         expect(probe.closed()).toBe(1)
     })
 
@@ -541,7 +556,7 @@ describe('restoreOpenedBackup', () => {
         finish()
         await running
         expect(openSourceMock).toHaveBeenCalledTimes(1)
-        expect(setDatabaseMock).toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(1)
         // Once the clean-up settles the restore can no longer be cancelled, so the wait is replaced by one without Cancel
         // before the source is opened. Red against the mutants that drop that wait, move it after the open, or keep Cancel.
         const cleanupWait = alertWaitMock.mock.calls.findIndex((call) => call[0] === language.internalBackupWaitingForCleanup)
@@ -590,16 +605,18 @@ describe('restoreOpenedBackup', () => {
         openSourceMock.mockResolvedValue(failing)
 
         await expect(restoreOpenedBackup(entry)).resolves.toBe('pageEnding')
-        expect(setDatabaseMock).toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(1)
     })
 
     // Reproducers for the page-ending mapping: red against a mapping that reports 'pageLive' for a committed restore, and
     // against one that reports 'pageEnding' for a decline of the opened-file question, a refusal or a cancelled wait. The
     // outcomes `LoadLocalBackup` itself ends with before anything is installed (`canceled`, `failed`) have their own tests below.
-    test('a committed restore reports that the page is ending', async () => {
+    test('a committed restore reports that the page is ending, through the import announcement', async () => {
         openSourceMock.mockResolvedValue(probeSource(smallBin()).source)
 
         await expect(restoreOpenedBackup(entry)).resolves.toBe('pageEnding')
+        expect(shell.commits).toHaveLength(1)
+        expect(alertWaitMock).toHaveBeenCalledWith(language.store2ImportDone)
         expect(reloadMark.marked).toBe(true)
     })
 
@@ -685,6 +702,7 @@ describe('restoreOpenedBackup routes the opened file by its content', () => {
 
         expect(runRtbMock).toHaveBeenCalledTimes(1)
         expect(restorePhase()).toBe(phase)
+        expect(shell.commits).toEqual([])
         expect(setDatabaseMock).not.toHaveBeenCalled()
         expect(probe.closed()).toBe(1)
     })
@@ -748,7 +766,7 @@ describe('restoreOpenedBackup routes the opened file by its content', () => {
 
         expect(phase).toBe('asking')
         expect(busy).toBe(false)
-        expect(setDatabaseMock).toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(1)
     })
 
     test('T-O6: a first read that rejects shows backupFileUnreadable, installs nothing and calls no restore', async () => {
@@ -792,7 +810,7 @@ describe('restoreOpenedBackup routes the opened file by its content', () => {
 
         expect(await restoreOpenedBackup({ ...entry, name: 'My Backup.rtb' })).toBe('pageEnding')
 
-        expect(setDatabaseMock).toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(1)
         expect(runRtbMock).not.toHaveBeenCalled()
     })
 

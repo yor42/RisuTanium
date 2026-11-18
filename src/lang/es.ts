@@ -3217,8 +3217,6 @@ export const languageSpanish = {
         `${items.length} elemento(s) ocupan 4 GiB o más, que es más de lo que cabe en una sola entrada de un archivo de copia de seguridad, por lo que su contenido no está en la copia de seguridad (un personaje conserva solo un marcador de posición):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `${count} elemento(s) de esta copia de seguridad superan los 100 MiB. Un servidor Node de RisuAI upstream no puede restaurar un elemento tan grande, por lo que los omitiría al restaurar esta copia allí; esta aplicación y las demás plataformas sí los restauran. ¿Crear la copia de seguridad con ellos incluidos? Si lo rechazas, no se crea ningún archivo de copia de seguridad. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
-    "backupAlternativesConfirm": (count: number, names: string[]) =>
-        `${count} chat(s) tienen respuestas alternativas, y un archivo de copia de seguridad no tiene lugar para ellas, así que se omitirían de esta copia (los chats y sus mensajes se guardan). Las alternativas permanecen en esta aplicación; solo la copia no las incluye. ¿Crear la copia de seguridad sin ellas? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `${count} preset(s) de tarea se guardan solo en este dispositivo, y un archivo de copia de seguridad no tiene lugar para ellos, así que se omitirían de esta copia. Permanecen en esta aplicación; solo la copia no los incluye. ¿Crear la copia de seguridad sin ellos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
@@ -3341,6 +3339,20 @@ export const languageSpanish = {
     "themePackLintLine": (selector: string, prop: string, why: string) => `${selector} ${prop}: ${why}`,
     "backupAlternativesLeftOut": (count: number, names: string[]) =>
         `${count} chat(s) tenían respuestas alternativas que se encontraron mientras se ejecutaba la copia de seguridad, y un archivo de copia de seguridad no tiene lugar para ellas, así que no están en la copia (los chats y sus mensajes se guardan):\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
+    "backupBranchesConfirm": (count: number, lines: string[]) =>
+        `${count} chat(s) tienen respuestas alternativas, y un archivo de copia de seguridad no tiene lugar para ellas. Una alternativa desde la que continuó la conversación (contiene un mensaje posterior tuyo) se escribe como un chat adicional al final de la lista de chats de ese personaje, con un nombre como "Chat (Branch)", así que la copia crece aproximadamente el tamaño indicado; las demás respuestas alternativas se omiten. Los chats y sus mensajes se guardan, y no cambia nada en esta aplicación. ¿Crear la copia de seguridad de esta manera? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${lines.join('\n')}${count > lines.length ? `\n...y ${count - lines.length} más` : ''}`,
+    "backupBranchesLine": (chat: string, branchChats: number, bytes: number | null, leftOut: number) => {
+        const parts: string[] = []
+        if (branchChats > 0) {
+            const size = bytes === null ? 'tamaño desconocido' : bytes < 0.1 * 1024 * 1024 ? 'menos de 0.1 MiB' : `unos ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+            parts.push(`${branchChats} chat(s) de rama, ${size}`)
+        }
+        if (leftOut > 0) {
+            parts.push(`${leftOut} respuesta(s) omitida(s)`)
+        }
+        return parts.length > 0 ? `${chat} (${parts.join('; ')})` : chat
+    },
+    "backupBranchesLeftOutLine": (chat: string) => `${chat} (respuestas alternativas omitidas)`,
     "backupForkChatDataConfirm": (count: number, names: string[]) =>
         `${count} chat(s) contienen datos que solo usa esta aplicación (los tipos van entre paréntesis), y un archivo de copia de seguridad no tiene lugar para ellos, así que se omitirían de esta copia (los chats y sus mensajes se guardan). Los datos permanecen en esta aplicación; solo la copia no los incluye. ¿Crear la copia de seguridad sin ellos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "backupForkChatDataLeftOut": (count: number, names: string[]) =>
