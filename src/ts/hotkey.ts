@@ -1,3 +1,4 @@
+import { tick } from "svelte"
 import { get } from "svelte/store"
 import { alertSelect, alertToast, doingAlert, alertRequestLogs, type alertData } from "./alert"
 import { escapeActionFor } from "./alertEscape"
@@ -201,9 +202,8 @@ export function initHotkey(){
                 case 'edit':{
                     chatAct('edit', () => {
                         clickQuery('.button-icon-edit')
-                        setTimeout(() => {
-                            focusQuery('.message-edit-area')
-                        }, 100)
+                        // The editor mounts in Svelte's flush after the click, which tick() waits for.
+                        tick().then(() => focusQuery('.message-edit-area'))
                     })
                     break
                 }

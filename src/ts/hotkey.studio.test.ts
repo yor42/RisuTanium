@@ -132,8 +132,8 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
-    // The edit shortcut focuses the edit field from a timer. It must not outlive the test: after teardown it would
-    // touch a document that is gone.
+    // The edit shortcut focuses the edit field after Svelte's tick(), which waits on a timer or an animation frame. That
+    // work must not outlive the test: after teardown it would touch a document that is gone.
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     DBState.db = { botPresets: [], characters: [] } as unknown as Database
 })
