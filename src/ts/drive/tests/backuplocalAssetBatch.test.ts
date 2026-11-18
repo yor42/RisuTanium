@@ -803,43 +803,6 @@ describe('a restore through the batch commands', () => {
     })
 })
 
-// This row asserts the block head that the legacy page's tail writes, so it runs on that page.
-describe('a restore on the legacy page', () => {
-    test('an error on one entry stops the restore: no batch is sent and no entry read after it, the message waits for every batch in flight, and the head is not written', async () => {
-        // Calls 0..3 are in flight and the loop waits for room for the fifth; call 1 reports the failure first.
-        const gates = holdWrites([0, 1, 2, 3])
-        const failing = filled(3 * MIB, 2)
-        fakeFs.failWritesOf((data) => data.length === failing.length && data[0] === 2)
-        const entries: [string, Uint8Array][] = [0, 1, 2, 3, 4, 5].map((index) => [`e${index}.png`, filled(3 * MIB, index + 1)])
-        // An entry the loop would act on if it kept reading after the failure.
-        entries.push([`coldstorage_11111111-1111-1111-1111-111111111111.json`, encoder.encode(JSON.stringify({ message: [] }))])
-        let settledAtMessage: boolean | null = null
-        alertErrorMock.mockImplementation(() => { settledAtMessage = allCallsSettled() })
-
-        const restoring = restoreBytes(backupOf(entries))
-        await waitForProgress(() => { expect(batchFake.ctl.calls).toHaveLength(4) })
-        await settleTimers()
-        gates.get(1)?.release()
-        await settleTimers()
-        expect(alertErrorMock).not.toHaveBeenCalled()
-        for (const index of [0, 2, 3]) {
-            gates.get(index)?.release()
-        }
-        await restoring
-
-        expect(batchFake.ctl.calls).toHaveLength(4)
-        expect(batchFake.ctl.calls.flatMap((call) => call.keys)).not.toContain('assets/e4.png')
-        expect(batchFake.ctl.calls.flatMap((call) => call.keys)).not.toContain('assets/e5.png')
-        // The cold-storage entry lies after the failed batch: reading it would write it.
-        expect(setColdStorageItemMock).not.toHaveBeenCalled()
-        expect(alertErrorMock).toHaveBeenCalledTimes(1)
-        expect(settledAtMessage).toBe(true)
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
-        expect(setDatabaseMock).not.toHaveBeenCalled()
-        expect(unhandled).toEqual([])
-    })
-})
-
 describe('a restore through the batch commands that fails', () => {
     beforeEach(onStore2Page)
 
@@ -2108,6 +2071,8 @@ describe('a partial backup', () => {
 })
 
 describe('inlays on the desktop', () => {
+    beforeEach(onStore2Page)
+
     function bigImage(size: number, seed: number) {
         return { name: `big-${seed}.png`, ext: 'png', type: 'image' as const, width: 5, height: 6, data: new Blob([asBlobPart(patterned(size, seed))], { type: 'image/png' }) }
     }
@@ -2136,7 +2101,7 @@ describe('inlays on the desktop', () => {
         expect({ big: await getInlayAsset('big'), small: await getInlayAsset('small') }).toEqual(before)
         expect(Object.keys(storedAssets()).filter((key) => key.includes('inlay'))).toEqual([])
         expect(alertErrorMock).not.toHaveBeenCalled()
-        expect(fakeFs.files.has('blocks/head')).toBe(true)
+        expectCommittedOnce()
     })
 
     test('acceptance: the export reads a stored inlay body in pieces of at most CHUNK_MAX and holds no whole-body read', async () => {

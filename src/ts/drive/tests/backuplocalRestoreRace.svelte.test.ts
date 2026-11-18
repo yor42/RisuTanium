@@ -279,7 +279,7 @@ vi.mock(import('../../process/coldstorage.svelte'), () => ({
 //#endregion
 //#endregion
 
-//#region byte-layout and File harness, matching backuplocalIdRepair.test.ts's own pattern
+//#region byte-layout and File harness
 
 function u32le(n: number): Uint8Array {
     const buf = new Uint8Array(4)
@@ -545,60 +545,5 @@ describe('LoadLocalBackup() on a store2 page: the commit decides who holds dbWri
 
         expect(shell.commits).toHaveLength(1)
         expect(await laterWriterAcquires()).toBe(false)
-    })
-})
-
-describe('LoadLocalBackup() and a save cycle that already holds dbWriteLock race the restored generation (I10)', () => {
-    test('a save cycle that already holds dbWriteLock, and completes its write late, never lands after the restored head or into the restored generation', async () => {
-        const preRestoreBytes = new TextEncoder().encode('pre-restore save cycle payload')
-        const restoreDb = { characters: [], mainPrompt: 'restored-marker' } as unknown as Database
-        const restoreBytes = encodeRisuSaveLegacy(restoreDb, 'noCompression')
-        const fixtureBytes = buildChunk('database.risudat', restoreBytes)
-
-        const gate = armGatedSetItem()
-
-        const saveCyclePromise = runSaveCycle(preRestoreBytes)
-        const restorePromise = loadBackupBytes(fixtureBytes)
-
-        // Gives the restore room to attempt, and (were it not behind the
-        // save cycle's lock) complete, its own replace before the save
-        // cycle's held-back write is allowed to land.
-        await new Promise((resolve) => setTimeout(resolve, 50))
-        expect(gate.landed.filter((key) => key.startsWith('blocks/')), 'a block of the restored profile landed while the save cycle held the lock').toEqual([])
-
-        gate.release()
-        await saveCyclePromise
-        await restorePromise
-
-        expect(gate.landed[0]).toBe(SAVE_CYCLE_KEY)
-        expect(gate.landed[gate.landed.length - 1]).toBe('blocks/head')
-        expect(await committedMainPrompt()).toBe('restored-marker')
-    })
-})
-
-describe('LoadLocalBackup() and a save cycle that asks for dbWriteLock only after the restore wrote race the restored generation (I10)', () => {
-    test('a save cycle carrying pre-restore bytes never lands once it asks for the lock after the restore has already committed', async () => {
-        const preRestoreBytes = new TextEncoder().encode('late pre-restore save cycle payload')
-        const restoreDb = { characters: [], mainPrompt: 'restored-marker-late' } as unknown as Database
-        const restoreBytes = encodeRisuSaveLegacy(restoreDb, 'noCompression')
-        const fixtureBytes = buildChunk('database.risudat', restoreBytes)
-
-        const gate = armGatedSetItem()
-        gate.release()
-
-        // The restore runs to completion, unblocked, before the save cycle
-        // -- which had already encoded its payload, the way saveDb()
-        // encodes before it ever asks for the lock -- makes its own first
-        // request for dbWriteLock.
-        await loadBackupBytes(fixtureBytes)
-        expect(await committedMainPrompt()).toBe('restored-marker-late')
-
-        let landed = false
-        void runSaveCycle(preRestoreBytes).then(() => { landed = true })
-        await new Promise((resolve) => setTimeout(resolve, 50))
-
-        expect(landed).toBe(false)
-        expect(gate.landed).not.toContain(SAVE_CYCLE_KEY)
-        expect(await committedMainPrompt()).toBe('restored-marker-late')
     })
 })

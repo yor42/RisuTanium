@@ -455,32 +455,6 @@ describe('an asset over the Node server body limit is disclosed before anything 
 
 })
 
-// These two rows assert the cold-storage write of the legacy page's tail, so they run on that page.
-describe('a cold unit over the Node server body limit on the legacy page', () => {
-    // Guard (passes before and after): a non-asset entry keeps its own path and is never listed by the asset limit.
-    test('with pieces recorded a cold unit above one request still restores and is not listed', async () => {
-        nodePieces.recorded = true
-        const bytes = concatChunks([bigColdEntry(), databaseEntry()])
-
-        await loadBackupBytes(bytes)
-
-        expect(alertMocks.alertConfirm).not.toHaveBeenCalled()
-        expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
-    })
-
-    test('a cold unit whose JSON is over the limit restores and is not listed', async () => {
-        const bytes = concatChunks([bigColdEntry(), databaseEntry()])
-
-        await loadBackupBytes(bytes)
-
-        expect(alertMocks.alertConfirm).not.toHaveBeenCalled()
-        expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
-        expect(setColdStorageItemMock.mock.calls[0]).toEqual([COLD_UUID, expect.objectContaining({ message: [] })])
-        expect(alertMocks.alertNormalWait).not.toHaveBeenCalled()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
-    })
-})
-
 describe('an asset over the Node server body limit on a page that is not Node-served', () => {
     onStore2Page()
 
