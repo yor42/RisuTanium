@@ -20,7 +20,7 @@
  *   are compared as keys, never as times, so a clock moved back cannot make an
  *   old backup look new. Only a backup write prunes them, so this takes about
  *   twenty further backups. The filter is deliberate: the backups are written
- *   only under the digit names (`getDbBackups` ignores any other name), so a
+ *   only under the digit names (the numbered-backup listing ignores any other name), so a
  *   name without digits is not one this app wrote.
  * - No older copy of the profile exists: a pre-blocks copy, the legacy main
  *   file, a kept or leftover block generation (MC-308 2).

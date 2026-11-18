@@ -3,7 +3,6 @@ import { describe, expect, test } from 'vitest'
 import { ASSET_REF_V } from '../../store2/format'
 import { createListDerivation } from '../../store2/lists'
 import { buildClosureAssetKeepSet } from '../../store2/sweep'
-import { sweepTauriAssets } from '../../assetSweep'
 import { assetListOf, commitKeyOf, Tree } from '../../tests/store2/sweepFixtures'
 import { ASSET_RETAINED_KEY } from '../../../studio/assets/assetOwnerKeys'
 
@@ -13,8 +12,8 @@ import { ASSET_RETAINED_KEY } from '../../../studio/assets/assetOwnerKeys'
  * re-derived from the owner's core, which includes the field.
  */
 
-describe('guard: a list above the known version makes the keep-set incomplete and the sweep deletes nothing', () => {
-    test('the closure walk reports list-newer, and a sweep told the set is incomplete removes nothing', async () => {
+describe('guard: a list above the known version makes the keep-set incomplete', () => {
+    test('the closure walk reports list-newer', async () => {
         const tree = new Tree()
         const current = tree.addManifest({
             characters: [{ u: 'c1', assetList: { ...assetListOf(['assets/K.png']), v: ASSET_REF_V + 1 } }],
@@ -24,16 +23,6 @@ describe('guard: a list above the known version makes the keep-set incomplete an
 
         expect(result.status).toBe('incomplete')
         expect(result.status === 'incomplete' ? result.reasons.map((reason) => reason.code) : []).toContain('list-newer')
-        const removed: string[] = []
-        await sweepTauriAssets({
-            uncleanable: new Set<string>(),
-            complete: false,
-            listAssets: async () => [{ name: 'K.png' }, { name: 'orphan.png' }],
-            removeAsset: async (path) => { removed.push(path) },
-            getBasename: (name) => name,
-            log: () => {},
-        })
-        expect(removed).toEqual([])
     })
 })
 

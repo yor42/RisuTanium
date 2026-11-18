@@ -9,8 +9,7 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
-import { makeDb } from 'src/ts/storage/tests/saveLoopSupport'
-import { createWorldKit, nextCommit, settled, sleepReal, until, type World } from 'src/ts/storage/tests/saveLoopWorld'
+import { createWorldKit, settled, sleepReal, until, type World } from 'src/ts/storage/tests/saveLoopWorld'
 import { createPeerDouble, peerCommit, startStore2, store2Boot, type Store2Kit, type Store2StartOptions } from 'src/ts/storage/tests/store2SaveKit'
 import { buildSmall } from 'src/ts/storage/tests/store2/codecFixtures'
 import { moduleStubOf } from 'src/ts/storage/store2/moduleStubMatch'
@@ -793,66 +792,17 @@ describe('T-A4: store2, a failed save pass', () => {
 
 describe('T-A5: marks that are not installed fail the edit at once (C3)', () => {
     test('the edit lands in the database and the chip is failed', async () => {
-        h.db = makeDb('base', ['alpha', 'beta'])
-        const w = await worlds.startWorld({ startLoop: false })
+        const db = small()
+        h.db = db as unknown as Entry
+        const k = await startStore2({ db })
+        const w = await worlds.startWorld({ kind: 'tauri', startLoop: false, boot: store2Boot(k) })
         const ack = await worldAck(createFakeClock())
         w.marks.uninstallCharacterSaveMarks()
         const before = w.api.getSaveMarkCount()
-        ;(h.db.characters as Entry[])[0].name = 'edited'
-        w.marks.markCharacterForSave('alpha')
-        ack.noteEdit('alpha', before)
-        expect(ack.state).toBe('failed')
-    })
-})
-
-describe('T-A6: the legacy loop', () => {
-    test('saved after the covering commit, and isCharacterUnsavable is false throughout', async () => {
-        h.db = makeDb('base', ['alpha', 'beta'])
-        const w = await worlds.startWorld()
-        await settled(w)
-        const ack = await worldAck(createFakeClock())
-        const before = w.api.getSaveMarkCount()
-        await nextCommit(w, () => {
-            ;(h.db!.characters as Entry[])[0].name = 'edited'
-            w.marks.markCharacterForSave('alpha')
-            ack.noteEdit('alpha', before)
-        })
-        expect(ack.state).toBe('saved')
-        expect(w.api.isCharacterUnsavable('alpha')).toBe(false)
-    })
-
-    test('with no commit the bound ends the edit in unconfirmed', async () => {
-        h.db = makeDb('base', ['alpha', 'beta'])
-        const w = await worlds.startWorld()
-        await settled(w)
-        const clock = createFakeClock()
-        const ack = await worldAck(clock)
-        // A closed tab: the loop is parked and its store hangs, so nothing ever commits.
-        worlds.closeWorld(w)
-        const before = w.api.getSaveMarkCount()
-        ;(h.db!.characters as Entry[])[0].name = 'edited'
-        w.marks.markCharacterForSave('alpha')
-        ack.noteEdit('alpha', before)
-        await sleepReal(300)
-        await clock.advance(ACK_BOUND_MS)
-        expect(ack.state).toBe('unconfirmed')
-    })
-})
-
-describe('T-A6b: the legacy loop, a frozen chaId', () => {
-    test('the covering commit of a mark whose chaId is held twice is failed, not saved', async () => {
-        h.db = makeDb('base', ['alpha', 'beta'])
-        const w = await worlds.startWorld()
-        await settled(w)
-        const ack = await worldAck(createFakeClock())
-        const before = w.api.getSaveMarkCount()
-        const list = h.db!.characters as Entry[]
-        list[0].name = 'edited'
-        // An import adds a second character with the same chaId.
-        list.push({ ...(JSON.parse(JSON.stringify(list[0])) as Entry), name: 'the copy' })
-        w.marks.markCharacterForSave('alpha')
-        ack.noteEdit('alpha', before)
-        await until(() => ack.state !== 'pending', 'the covering commit', 10000)
+        const chaId = String(characters(h.db)[0].chaId)
+        characters(h.db)[0].name = 'edited'
+        w.marks.markCharacterForSave(chaId)
+        ack.noteEdit(chaId, before)
         expect(ack.state).toBe('failed')
     })
 })
