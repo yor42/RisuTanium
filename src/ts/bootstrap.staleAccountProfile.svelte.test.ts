@@ -416,16 +416,17 @@ async function corruptDbBytes(): Promise<Uint8Array> {
  * Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. The real dispatch is
  * registered, so the legacy main file is converted to a store2 profile as on a production page, and its notices are
  * dismissed (the stale-account notice has its own type and stays). `realDispatch: false` leaves the page with no
- * registered dispatch, which the warm-up import needs.
+ * registered dispatch, which the warm-up import needs. `acknowledge: false` leaves the notices on screen for the test
+ * to close by hand, as the person would; `dispatch` is the registered dispatch's handle (null without one).
  */
-async function freshLoadData(options: { realDispatch: boolean } = { realDispatch: true }) {
+async function freshLoadData(options: { realDispatch: boolean, acknowledge?: boolean } = { realDispatch: true }) {
     // The boot reads through the page's byte store; here it is the storage-object model above.
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     const { forageStorage } = await import('src/ts/globalApi.svelte')
     injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
-    if (options.realDispatch) {
-        await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: true })
-    }
+    const dispatch = options.realDispatch
+        ? await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: options.acknowledge ?? true })
+        : null
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
@@ -440,7 +441,7 @@ async function freshLoadData(options: { realDispatch: boolean } = { realDispatch
     // failure. Explicit here rather than relying on the reset alone.
     loadedStore.set(false)
     alertStore.set({ type: 'none', msg: 'n' })
-    return { loadData, alertStore, loadedStore }
+    return { loadData, alertStore, loadedStore, dispatch }
 }
 
 // The first import of the real bootstrap graph transforms it; paying that inside a test's default timeout flakes
@@ -643,6 +644,49 @@ describe('loadData(): a stale account-sync profile does not boot silently (I6)',
             assertLocalforageUntouched()
         })
     }
+})
+
+describe('loadData(): the queued boot notices are drained before the stale-account consent (R2)', () => {
+    test('the dispatch notices are shown and closed by hand first, then the consent comes up, and loadedStore stays false', async () => {
+        localStorage.setItem('accountst', 'able')
+        localStorage.setItem('dosync', 'sync')
+        forageState.staleAccountProfile = true
+        await armInstallBranch('decode', baseDb())
+        vi.mocked(window.location.reload).mockClear()
+
+        const { loadData, alertStore, loadedStore, dispatch } = await freshLoadData({ realDispatch: true, acknowledge: false })
+        const { resetAlertPromptsForTests } = await import('src/ts/alertPrompts')
+        onTestFinished(() => resetAlertPromptsForTests())
+        const seenAlertTypes: string[] = []
+        const unsubscribe = alertStore.subscribe((v) => seenAlertTypes.push(v.type))
+        onTestFinished(() => unsubscribe())
+
+        const loading = loadData()
+        await vi.waitFor(() => {
+            expect(get(alertStore).type).toBe('normal')
+        })
+        // The notice is on screen because the dispatch raised one; the consent has not been posted behind it.
+        expect(dispatch?.ui.notices.length).toBeGreaterThan(0)
+        expect(seenAlertTypes).not.toContain('staleAccountNotice')
+        expect(get(loadedStore)).toBe(false)
+
+        // The person presses OK on each notice in turn; a code close never would.
+        while (get(alertStore).type === 'normal') {
+            expect(seenAlertTypes).not.toContain('staleAccountNotice')
+            alertStore.set({ type: 'none', msg: '' })
+        }
+        await vi.waitFor(() => {
+            expect(get(alertStore).type).toBe('staleAccountNotice')
+        })
+        await loading
+        expect(get(loadedStore)).toBe(false)
+        expect(window.location.reload).not.toHaveBeenCalled()
+
+        alertStore.set({ type: 'none', msg: STALE_ACCOUNT_NOTICE_ACK })
+        await vi.waitFor(() => {
+            expect(window.location.reload).toHaveBeenCalled()
+        })
+    })
 })
 
 describe('loadData(): dosync/fallbackRisuToken without accountst are removed silently, with no notice', () => {

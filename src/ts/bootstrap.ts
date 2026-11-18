@@ -12,6 +12,7 @@ import { checkRisuUpdate } from "./update";
 import { botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState, alertStore } from "./stores.svelte";
 import { loadPlugins } from "./plugins/plugins.svelte";
 import { alertError, alertMd, alertStaleAccountNotice, alertNormal, waitAlert, alertInput, alertToast } from "./alert";
+import { queueNotice, noticesSettled } from "./alertPrompts";
 import { handleWindowError } from "./windowErrorGuard";
 import { characterURLImport, handlePendingRealmLink } from "./characterCards";
 import { desktopLaunchImport } from "./desktopLaunch";
@@ -64,7 +65,7 @@ const appWindow = isTauriDesktop ? getCurrentWebviewWindow() : null
 
 /**
  * Resolves the next time the alert store returns to `type: 'none'`, the way
- * a blocking notice below is acknowledged -- reacts to the store write
+ * the storage-fallback notice below is acknowledged -- reacts to the store write
  * directly instead of polling on a timer, so it settles on the very write
  * that clears the alert regardless of how that write is scheduled.
  */
@@ -187,8 +188,10 @@ export async function loadData() {
                     }
                 }
                 assertPageMayGoLive()
-                await postStore2Notices(store2Notices)
-                await postOpfsReadOnlyNotice(opfsReadOnlyNotice)
+                // Informational notices are queued, not awaited: the boot goes on while the person reads them, and the
+                // notice queue shows them one at a time. An update question asked below takes the screen over a notice.
+                postStore2Notices(store2Notices)
+                postOpfsReadOnlyNotice(opfsReadOnlyNotice)
                 LoadingStatusState.text = "Checking Update..."
                 await checkRisuUpdate()
                 await changeFullscreen()
@@ -324,10 +327,9 @@ export async function loadData() {
                 // IndexedDB could not run records its reason in the page's
                 // store selection, which runs before setDatabase() above has
                 // picked the boot language. Shown once, after decode, so the
-                // notice is translated. Both this notice and the stale-account
-                // notice below are posted before loadedStore is set; they never
-                // collide because this one is awaited to clear before the
-                // stale-account check runs.
+                // notice is translated. This notice holds the boot until its OK:
+                // it is awaited to clear before the queued notices and the
+                // stale-account check below, so none of them collides with it.
                 const fallbackNotice = takeStorageFallbackNotice()
                 if (fallbackNotice) {
                     const message = fallbackNotice.reason === 'space' ? language.opfsFallbackNoticeSpace
@@ -338,22 +340,25 @@ export async function loadData() {
                     await waitForAlertCleared()
                 }
 
-                // The dispatch's notices and then the OPFS read-only notice follow the
-                // notice above (each is awaited, so none overwrites another in the
-                // single alert slot) and come before anything else that can post
-                // an alert.
-                await postStore2Notices(store2Notices)
-                await postOpfsReadOnlyNotice(opfsReadOnlyNotice)
+                // The dispatch's notices and then the OPFS read-only notice are
+                // queued after the notice above, in that order. The notice queue
+                // shows them one at a time in FIFO order, never overwrites one
+                // with another, and ends each only by the person's own close.
+                // They are not awaited here: the boot goes on behind them.
+                postStore2Notices(store2Notices)
+                postOpfsReadOnlyNotice(opfsReadOnlyNotice)
 
                 // I6: a returning RisuAccount-sync profile (AutoStorage.Init()
                 // detected `accountst === 'able'`) never boots past this point
-                // silently. The notice is blocking and re-posts itself against
-                // any other alertStore write; only its own OK acknowledges it.
-                // Acknowledging removes the three account-sync keys and reloads
-                // -- this page life never reaches characterURLImport,
-                // plugins, loadedStore or saveDb below, and it never
-                // registered the service worker above.
+                // silently. The queued notices are drained first, so the consent
+                // is never shown over one; the consent is blocking and re-posts
+                // itself against any other alertStore write, and only its own OK
+                // acknowledges it. Acknowledging removes the three account-sync
+                // keys and reloads -- this page life never reaches
+                // characterURLImport, plugins, loadedStore or saveDb below, and
+                // it never registered the service worker above.
                 if (forageStorage.staleAccountProfile) {
+                    await noticesSettled()
                     void alertStaleAccountNotice().then(() => {
                         localStorage.removeItem('accountst')
                         localStorage.removeItem('dosync')
@@ -574,13 +579,12 @@ async function readBackupBytes(backup: number): Promise<Uint8Array> {
     return bytes
 }
 
-/** Posts the read-only notice of a page that runs from OPFS, awaiting its acknowledgement. */
-async function postOpfsReadOnlyNotice(shown: boolean) {
+/** Queues the read-only notice of a page that runs from OPFS; it does not wait for the person to close it. */
+function postOpfsReadOnlyNotice(shown: boolean): void {
     if (!shown) {
         return
     }
-    alertNormal(language.opfsReadOnlyNotice)
-    await waitForAlertCleared()
+    queueNotice(language.opfsReadOnlyNotice)
 }
 
 /**
@@ -597,10 +601,11 @@ function assertPageMayGoLive(): void {
 }
 
 /**
- * Posts each notice the store2 boot raised once, in order, awaiting its acknowledgement before the next. It runs after
- * the database is installed, so the text is in the database's language; a notice that ended the boot has no text here.
+ * Queues each notice the store2 boot raised once, in order, on the notice queue, which shows them one at a time and ends
+ * each only by the person's own close. It does not wait for them. It runs after the database is installed, so the text is
+ * in the database's language; a notice that ended the boot has no text here.
  */
-async function postStore2Notices(notices: readonly Store2BootNotice[]) {
+function postStore2Notices(notices: readonly Store2BootNotice[]): void {
     const posted = new Set<Store2BootNotice['name']>()
     for (const notice of notices) {
         const text = noticeText(notice)
@@ -608,8 +613,7 @@ async function postStore2Notices(notices: readonly Store2BootNotice[]) {
             continue
         }
         posted.add(notice.name)
-        alertNormal(text)
-        await waitForAlertCleared()
+        queueNotice(text)
     }
 }
 

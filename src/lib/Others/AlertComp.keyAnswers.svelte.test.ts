@@ -166,7 +166,7 @@ vi.mock(import('../../ts/process/index.svelte'), () => ({
 
 import { alertStore, DBState } from '../../ts/stores.svelte'
 import { initHotkey } from '../../ts/hotkey'
-import { resetAlertPromptsForTests } from '../../ts/alertPrompts'
+import { noticeShowing, queueNotice, resetAlertPromptsForTests } from '../../ts/alertPrompts'
 import { alertConfirm, alertNormal, type alertData } from '../../ts/alert'
 import AlertComp from './AlertComp.svelte'
 
@@ -317,5 +317,27 @@ describe('AlertComp.svelte with the hotkey listener: Enter while a button of the
 
         expect.soft(target.textContent, 'the notice after Enter').not.toContain('A notice')
         expect.soft(yesWrites(written), 'the yes values written to the store').toEqual([])
+    })
+
+    test('new rule: clicking OK on a queued notice shows the second one, and clicking OK again leaves nothing', async () => {
+        vi.useFakeTimers()
+        DBState.db = { characters: [] } as unknown as Database
+        const target = mountAlertComp()
+        await settle()
+        queueNotice('First queued')
+        queueNotice('Second queued')
+        await settle()
+        expect.soft(target.textContent, 'the first notice').toContain('First queued')
+        expect.soft(target.textContent, 'the second notice is not drawn yet').not.toContain('Second queued')
+
+        buttonNamed(target, 'OK').click()
+        await settle()
+        expect.soft(target.textContent, 'the first notice after OK').not.toContain('First queued')
+        expect.soft(target.textContent, 'the second notice after OK').toContain('Second queued')
+
+        buttonNamed(target, 'OK').click()
+        await settle()
+        expect.soft(target.textContent, 'the second notice after OK').not.toContain('Second queued')
+        expect.soft(noticeShowing(), 'a notice still on screen').toBe(false)
     })
 })
