@@ -498,6 +498,7 @@
     if (a === 'home') { closeDrawer(false); if (S.hubOpen || L.view === 'trash') Nav.back('ui'); window.scrollTo(0, 0); var hh = $('#main h1'); if (hh) { hh.setAttribute('tabindex', '-1'); hh.focus(); } return; }
     if (a === 'hub') { H.openHub(); return; }
     if (a === 'hub-back') { Nav.back('ui'); return; }
+    if (a === 'jump') { var jt = document.getElementById(el.dataset.target); if (jt) { jt.setAttribute('tabindex', '-1'); jt.scrollIntoView({ block: 'start', behavior: root.getAttribute('data-motion') === 'reduced' ? 'auto' : 'smooth' }); jt.focus({ preventScroll: true }); } return; }
     if (el.dataset.realmAction === 'ask') { H.askAgreement(el.closest('[data-part="home-realm-gate"]') ? function () { H.openHub(); } : null); return; }
     if (el.dataset.realmAction === 'load') { loadRealm(); return; }
     if (el.dataset.folder) { S.folder = S.folder === el.dataset.folder ? '' : el.dataset.folder; H.updateFolders(); return; }
@@ -584,7 +585,7 @@
       sel('ctl-lang', t('mock.lang'), [['ko', '한국어'], ['en', 'English']], H.lang) +
       sel('ctl-only', t('mock.hideUnused'), [['', t('mock.hideNo')], ['rp', t('mock.rpOnly')], ['utility', t('mock.utOnly')]], S.only) +
       sel('ctl-realm', t('mock.realm'), ['populated', 'pending', 'failed', 'empty', 'offline', 'consent', 'hidden'].map(function (x) { return [x, x]; }), S.realm) +
-      sel('ctl-occasion', t('mock.seasonal'), [['auto', t('mock.seasonalAuto')], ['none', t('mock.seasonalNone')]].concat(RisuSeasonal.KEYS.map(function (k) { return [k, k]; })), seasonalOccasion) +
+      sel('ctl-occasion', t('mock.seasonal'), [['auto', t('mock.seasonalAuto')], ['none', t('mock.seasonalNone')]].concat((window.RisuSeasonal ? window.RisuSeasonal.KEYS : []).map(function (k) { return [k, k]; })), seasonalOccasion) +
       sel('ctl-outcome', t('mock.outcome'), [['ok', t('mock.ok')], ['fail', t('mock.fail')], ['offline', t('mock.offline')]], S.outcome) +
       sel('ctl-fixture', t('mock.fixture'), H.FIXTURES.map(function (x) { return [x, x]; }), H.fixture) +
       '<button type="button" class="btn" data-variant="raised" id="ctl-runs">' + esc(t(S.mockRuns ? 'mock.runsOn' : 'mock.runs')) + '</button>' +
@@ -606,13 +607,16 @@
   }
 
   // ---------- seasonal wordmark (separate from the status mark, which never celebrates) ----------
-  var occasionKeys = ['auto', 'none'].concat(RisuSeasonal.KEYS);
+  // The seasonal package (../seasonal/) is not part of this repository's design import: without it the brand keeps the plain wordmark and the occasion control lists only auto/none.
+  var Seasonal = window.RisuSeasonal || null;
+  var occasionKeys = ['auto', 'none'].concat(Seasonal ? Seasonal.KEYS : []);
   var seasonalOccasion = occasionKeys.indexOf(P.get('occasion')) >= 0 ? P.get('occasion') : 'auto';
   var seasonalDate = /^\d{4}-\d{2}-\d{2}$/.test(P.get('date') || '') ? new Date(P.get('date') + 'T12:00:00') : undefined;
   var seasonal;
   function mountSeasonal() {
     $('#brand-mark').innerHTML = NM.markSvg('brand', 'idle', { size: H.tokPx('--home-brand-mark-size', 32) });
-    seasonal = RisuSeasonal.mount($('#seasonal-wordmark'), {
+    if (!Seasonal) return;
+    seasonal = Seasonal.mount($('#seasonal-wordmark'), {
       markEl: $('#brand-mark'), anniversaryUrl: 'https://github.com/yor42/RisuTanium', firstViewToday: P.get('first') !== '0',
       occasion: seasonalOccasion === 'none' ? '' : seasonalOccasion, date: seasonalDate, language: H.lang,
       variant: /^(samiljeol|gwangbokjeol)$/.test(P.get('variant') || '') ? P.get('variant') : undefined, simulateFontFailure: P.get('cdnfont') === 'fail',
@@ -645,6 +649,7 @@
     Nav.init();
     if (L.view === 'trash') Nav.push('trash');
     render();
+    if (window.homeTheme.syncNetwork) window.homeTheme.syncNetwork();
     startField();
     $$('input[name="mode"]').forEach(function (i) { i.checked = i.value === S.mode; });
     if (snap && snap.scrollY) { var go = function () { window.scrollTo(0, snap.scrollY); }; go(); if (document.fonts && document.fonts.ready) document.fonts.ready.then(go); requestAnimationFrame(go); }

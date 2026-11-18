@@ -54,7 +54,9 @@ export const HOME_REACH_DD243 = ['home-menu-button', 'home-rail', 'home-rail-ite
   // DD-240 (Home fix round): the text of these two is the accessible name of a nav item and of Send, so they cannot be hidden
   'home-rail-label', 'home-send-label',
   // DD-262: the only on-screen signal that a reply or a run is going (the reply badge, the run state line) and the Tasks count: restyle, never hide
-  'home-bg-badge', 'home-run-status', 'home-badge'];
+  'home-bg-badge', 'home-run-status', 'home-badge',
+  // 2026-11-18 visual overhaul (MAIN_MENU.md "Visual overhaul"): the phone jump row under the greeting is the one-tap way to the library and RisuRealm on a phone (UI-S7 audit S7-08): navigation, so restyle, never hide
+  'home-jump', 'home-jump-link'];
 export const HOME_REACH = ['home-shell', 'home-main', 'home-library', 'home-library-tools', 'home-empty-hero', 'home-realm', 'home-trash-row', 'home-tasks-panel', 'home-run-card', 'home-run-actions',
   'home-dialog', 'home-dialog-actions', 'home-dialog-action', ...HOME_REACH_DD243];
 
