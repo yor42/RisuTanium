@@ -88,10 +88,12 @@ export function applyLoadout(loadout: Loadout, apply:LoadoutApplyOption[] = [
         }
     }
     if(apply.includes('modules')) {
-        DBState.db.enabledModules = loadout.modules
+        // Copies: the live containers must never be the saved loadout's, or a later toggle, module switch or carry
+        // would rewrite the snapshot in place and the next save would persist it.
+        DBState.db.enabledModules = [...loadout.modules]
     }
     if(apply.includes('globalVariables')) {
-        DBState.db.globalChatVariables = loadout.globalVariables
+        DBState.db.globalChatVariables = { ...loadout.globalVariables }
     }
     DBState.db.lastLoadedLoadoutName = loadout.name
 }
