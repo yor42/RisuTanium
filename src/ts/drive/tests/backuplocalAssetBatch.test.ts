@@ -325,8 +325,18 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
     } as unknown as typeof import('src/ts/process/coldstorage.svelte')
 })
 
+// A clean page: the restore's save-first step returns at its clean check instead of waiting out its bound.
+vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
+    ...await importOriginal<typeof import('src/ts/globalApi.svelte')>(),
+    isSaveClean: () => true,
+}))
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
 //#endregion
 
+import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
 import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup } from 'src/ts/drive/backuplocal'
 import { overrideBackupWindowBytes } from 'src/ts/drive/backupContainer'
 import { LocalWriter, dbWriteLock, listAssetsWrittenThisPage } from 'src/ts/globalApi.svelte'
@@ -460,6 +470,29 @@ async function settleTimers(): Promise<void> {
 
 function allCallsSettled(): boolean {
     return batchFake.ctl.calls.every((call) => call.settled)
+}
+
+/** Makes the page a store2 page over a fresh store, where the restore ends at the stubbed commit. */
+function onStore2Page(): void {
+    useStore2RestorePage(createTauriFilesStore({ platform: 'posix' }))
+}
+
+/** The restore waited for no save first: `saveFirst` returned at its clean check. */
+function expectNoSaveFirstWait(): void {
+    expect(vi.mocked(alertWait).mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)
+}
+
+/** The restore reached its commit once, after every batch had settled, and ended without an error. */
+function expectCommittedOnce(): void {
+    expect(shell.commits).toHaveLength(1)
+    expect(shell.commits[0].batchesSettled).toBe(true)
+    expectNoSaveFirstWait()
+}
+
+/** The restore stopped before its commit. */
+function expectNotCommitted(): void {
+    expect(shell.commits).toHaveLength(0)
+    expectNoSaveFirstWait()
 }
 
 let capturedInput: HTMLInputElement | null = null
@@ -637,6 +670,8 @@ beforeEach(() => {
     alertNormalMock.mockClear()
     alertNormalWaitMock.mockReset().mockImplementation(async () => { })
     reloadMark.marked = false
+    resetStore2ShellBox(shell)
+    shell.batchesSettled = allCallsSettled
     unhandled.length = 0
     process.on('unhandledRejection', recordUnhandled)
     vi.spyOn(console, 'error').mockImplementation(() => { })
@@ -687,10 +722,10 @@ afterEach(async () => {
 })
 
 describe('a restore through the batch commands', () => {
-    test('writes every asset with its own bytes, and installs the database only after every batch has settled', async () => {
+    beforeEach(onStore2Page)
+
+    test('writes every asset with its own bytes, and calls the commit only after every batch has settled', async () => {
         const names = ['a.png', 'b.mp3', 'c.webp', 'd.jpg', 'e.mp4', 'F.PNG']
-        let settledWhenInstalled: boolean | null = null
-        setDatabaseMock.mockImplementation(() => { settledWhenInstalled = allCallsSettled() })
 
         await restoreBytes(backupOf(names.map((name, index): [string, Uint8Array] => [name, filled(100 + index, index + 1)])))
 
@@ -698,9 +733,7 @@ describe('a restore through the batch commands', () => {
         for (const [index, name] of names.entries()) {
             expect(Array.from(storedBytes(name) ?? [])).toEqual(Array.from(filled(100 + index, index + 1)))
         }
-        expect(fakeFs.files.has('blocks/head')).toBe(true)
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
-        expect(settledWhenInstalled).toBe(true)
+        expectCommittedOnce()
         expect(alertErrorMock).not.toHaveBeenCalled()
     })
 
@@ -765,10 +798,13 @@ describe('a restore through the batch commands', () => {
         expect(alertNormalWaitMock).toHaveBeenCalledTimes(1)
         expect(alertNormalWaitMock).toHaveBeenCalledWith(language.restoreAssetsSkipped(2, ['.badA', '.badB']))
         expect(storedBytes('good.png')?.length).toBe(3 * MIB)
-        expect(fakeFs.files.has('blocks/head')).toBe(true)
+        expectCommittedOnce()
         expect(alertErrorMock).not.toHaveBeenCalled()
     })
+})
 
+// This row asserts the block head that the legacy page's tail writes, so it runs on that page.
+describe('a restore on the legacy page', () => {
     test('an error on one entry stops the restore: no batch is sent and no entry read after it, the message waits for every batch in flight, and the head is not written', async () => {
         // Calls 0..3 are in flight and the loop waits for room for the fifth; call 1 reports the failure first.
         const gates = holdWrites([0, 1, 2, 3])
@@ -802,6 +838,10 @@ describe('a restore through the batch commands', () => {
         expect(setDatabaseMock).not.toHaveBeenCalled()
         expect(unhandled).toEqual([])
     })
+})
+
+describe('a restore through the batch commands that fails', () => {
+    beforeEach(onStore2Page)
 
     test('an exception inside the pass while a batch is in flight is reported only after that batch has settled', async () => {
         const gates = holdWrites([0])
@@ -831,7 +871,7 @@ describe('a restore through the batch commands', () => {
 
         expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
         expect(settledAtMessage).toBe(true)
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expectNotCommitted()
         expect(unhandled).toEqual([])
     })
 
@@ -860,12 +900,14 @@ describe('a restore through the batch commands', () => {
         expect(alertErrorMock).toHaveBeenCalledTimes(1)
         expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
         expect(settledAtMessage).toBe(true)
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expectNotCommitted()
         expect(unhandled).toEqual([])
     })
 })
 
 describe('a restore that stops early while a batch is being written', () => {
+    beforeEach(onStore2Page)
+
     const MARKER = encoder.encode(JSON.stringify({ type: 'account', time: 1 }))
 
     function walkView(): Uint8Array {
@@ -888,8 +930,7 @@ describe('a restore that stops early while a batch is being written', () => {
         expect(alertErrorMock).toHaveBeenCalledWith(language.encryptedBackupImportStopped)
         expect(settledAtMessage).toBe(true)
         expect(Object.keys(storedAssets())).toEqual(['assets/first.png'])
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expectNotCommitted()
     })
 
     test('a file that changed under the pass shows the changed-file message only after the batch settled', async () => {
@@ -908,7 +949,7 @@ describe('a restore that stops early while a batch is being written', () => {
         expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
         expect(settledAtMessage).toBe(true)
         expect(Object.keys(storedAssets())).toEqual(['assets/first.png'])
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expectNotCommitted()
     })
 
     test('an unreadable slice shows the changed-file message only after the batch settled', async () => {
@@ -929,11 +970,13 @@ describe('a restore that stops early while a batch is being written', () => {
         expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
         expect(settledAtMessage).toBe(true)
         expect(Object.keys(storedAssets())).toEqual(['assets/first.png'])
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expectNotCommitted()
     })
 })
 
 describe('two entries with the same key in one backup', () => {
+    beforeEach(onStore2Page)
+
     test('the last one in the file is what ends up on disk when they are adjacent, and the second is not sent until the first has settled', async () => {
         const gates = holdWrites([0])
 
@@ -947,6 +990,7 @@ describe('two entries with the same key in one backup', () => {
         expect(batchFake.ctl.calls.map((call) => call.keys)).toEqual([['assets/dup.png'], ['assets/dup.png']])
         expect(batchFake.ctl.calls[1].inFlightAtStart).toBe(0)
         expect(Array.from(storedBytes('dup.png') ?? [])).toEqual(Array.from(filled(8, 2)))
+        expectCommittedOnce()
     })
 
     test('the last one in the file wins when other entries lie between them and the first is in an earlier batch', async () => {
@@ -968,6 +1012,7 @@ describe('two entries with the same key in one backup', () => {
 
         expect(batchFake.ctl.calls.filter((call) => call.keys.includes('assets/dup.png'))).toHaveLength(2)
         expect(storedBytes('dup.png')?.[0]).toBe(2)
+        expectCommittedOnce()
     })
 
     test('a key that differs only in case or Unicode composition is not written until the earlier one has settled, and the later one is what the file holds last', async () => {
@@ -997,10 +1042,13 @@ describe('two entries with the same key in one backup', () => {
             [`assets/${cafeDecomposed}`],
         ])
         expect(batchFake.ctl.calls.map((call) => call.inFlightAtStart)).toEqual([0, 0, 0])
+        expectCommittedOnce()
     })
 })
 
 describe('a restore of an asset above CHUNK_MAX', () => {
+    beforeEach(onStore2Page)
+
     function tempFiles(): string[] {
         return [...fakeFs.files.keys()].filter((path) => path.includes('risu-write'))
     }
@@ -1033,7 +1081,7 @@ describe('a restore of an asset above CHUNK_MAX', () => {
         expect(Math.max(...desktop.payloads)).toBeLessThanOrEqual(CHUNK_MAX)
         expect(tempFiles()).toEqual([])
         expect(listAssetsWrittenThisPage()).toContain('assets/huge.bin')
-        expect(fakeFs.files.has('blocks/head')).toBe(true)
+        expectCommittedOnce()
         expect(alertErrorMock).not.toHaveBeenCalled()
     })
 
@@ -1047,7 +1095,15 @@ describe('a restore of an asset above CHUNK_MAX', () => {
         expect(Math.max(...recorded.sizes)).toBeLessThanOrEqual(CHUNK_MAX)
         expect(recorded.sizes.filter((size) => size === CHUNK_MAX)).toHaveLength(2)
         expect(storedBytes('huge.bin')?.length).toBe(9 * MIB)
+        expectCommittedOnce()
     })
+
+})
+
+// On a store2 page the import reads the database entry's header and prefix before the copy pass, so the recorded slice
+// sizes begin with those two reads.
+describe('a restore of an asset above CHUNK_MAX with a changed header', () => {
+    beforeEach(onStore2Page)
 
     test('an entry whose header changed since the walk has its data left unread', async () => {
         const walkView = concat([buildChunk('first.png', filled(16, 1)), buildChunk('second.png', filled(16, 2)), databaseChunk()])
@@ -1070,10 +1126,21 @@ describe('a restore of an asset above CHUNK_MAX', () => {
 
         await startRestore(file)
 
-        // One slice walks the whole file; then the first entry's header (29 bytes, the marker-visible pad) and data (16), and only the second entry's header.
-        expect(recorded.sizes).toEqual([walkView.length, 29, 16, 29])
+        // One slice walks the whole file; the database entry's header (24) and prefix (64) are read before the copy pass;
+        // then the first entry's header (29 bytes, the marker-visible pad) and data (16), and only the second entry's header.
+        expect(recorded.sizes).toEqual([walkView.length, 24, 64, 29, 16, 29])
         expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
+        expect(shell.commits).toHaveLength(0)
+        expectNoSaveFirstWait()
     })
+})
+
+describe('a restore of an asset above CHUNK_MAX, continued', () => {
+    beforeEach(onStore2Page)
+
+    function tempFiles(): string[] {
+        return [...fakeFs.files.keys()].filter((path) => path.includes('risu-write'))
+    }
 
     test('the last entry of a key is what the store holds whether it was streamed or batched, and a streamed entry waits for the batch in flight that holds its key', async () => {
         const gates = holdWrites([0])
@@ -1093,6 +1160,7 @@ describe('a restore of an asset above CHUNK_MAX', () => {
 
         expect(desktop.rawCalls).toHaveLength(4)
         expect(same(storedBytes('dup.png'), lastBig)).toBe(true)
+        expectCommittedOnce()
     })
 
     test.each(['bad:name.png', 'bad.'])('an entry named %s that the store refuses is skipped before any call and reported, and the restore goes on', async (badName) => {
@@ -1105,7 +1173,7 @@ describe('a restore of an asset above CHUNK_MAX', () => {
         expect(desktop.rawCalls.every((call) => call.key === 'assets/good.png')).toBe(true)
         expect(same(storedBytes('good.png'), good)).toBe(true)
         expect(storedBytes(badName)).toBeUndefined()
-        expect(fakeFs.files.has('blocks/head')).toBe(true)
+        expectCommittedOnce()
         expect(alertErrorMock).not.toHaveBeenCalled()
     })
 
@@ -1119,7 +1187,7 @@ describe('a restore of an asset above CHUNK_MAX', () => {
         expect(desktop.chunk.callsOf('write_chunk').every((call) => call.args.key !== 'assets/bad:name.png')).toBe(true)
         expect(same(storedBytes('good.png'), good)).toBe(true)
         expect(storedBytes('first.png')?.length).toBe(5 * MIB)
-        expect(fakeFs.files.has('blocks/head')).toBe(true)
+        expectCommittedOnce()
         expect(alertErrorMock).not.toHaveBeenCalled()
     })
 
@@ -1133,6 +1201,7 @@ describe('a restore of an asset above CHUNK_MAX', () => {
         expect(desktop.rawCalls).toEqual([])
         expect(same(storedBytes('huge.bin'), big)).toBe(true)
         expect(alertErrorMock).not.toHaveBeenCalled()
+        expectCommittedOnce()
     })
 
     test('with the batch commands off for the page a large asset is still streamed, and the small ones are written one at a time', async () => {
@@ -1145,7 +1214,7 @@ describe('a restore of an asset above CHUNK_MAX', () => {
         expect(desktop.rawCalls.map((call) => call.size)).toEqual([CHUNK_MAX, CHUNK_MAX, MIB])
         expect(same(storedBytes('huge.bin'), big)).toBe(true)
         expect(storedBytes('small.png')?.length).toBe(8)
-        expect(fakeFs.files.has('blocks/head')).toBe(true)
+        expectCommittedOnce()
     })
 
     test('a slice of the backup that cannot be read stops the restore with the changed-file message, the write is aborted before that message, and no later entry is written', async () => {
@@ -1164,8 +1233,7 @@ describe('a restore of an asset above CHUNK_MAX', () => {
         expect(tempFiles()).toEqual([])
         expect(storedBytes('huge.bin')).toBeUndefined()
         expect(storedBytes('after.png')).toBeUndefined()
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expectNotCommitted()
     })
 
     test('the message of a stopped restore waits for the abort of the write to finish', async () => {
@@ -1183,6 +1251,7 @@ describe('a restore of an asset above CHUNK_MAX', () => {
 
         expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
         expect(tempFiles()).toEqual([])
+        expectNotCommitted()
     })
 
     test.each([
@@ -1201,8 +1270,7 @@ describe('a restore of an asset above CHUNK_MAX', () => {
         expect(tempFiles()).toEqual([])
         expect(storedBytes('after.png')).toBeUndefined()
         expect(batchFake.ctl.calls.flatMap((call) => call.keys)).not.toContain('assets/after.png')
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expectNotCommitted()
         expect(unhandled).toEqual([])
     })
 
@@ -1214,10 +1282,13 @@ describe('a restore of an asset above CHUNK_MAX', () => {
         expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
         expect(storedBytes('huge.bin')).toBeUndefined()
         expect(tempFiles()).toEqual([])
+        expectNotCommitted()
     })
 })
 
 describe('a restore with several large-entry streams at once', () => {
+    beforeEach(onStore2Page)
+
     const KNOB = 'risu-measure-copy'
     const LARGE_NAMES = ['l1.bin', 'l2.bin', 'l3.bin', 'l4.bin', 'l5.bin']
     const SMALL_NAMES = ['s1.png', 's2.png', 's3.png', 's4.png']
@@ -1257,7 +1328,7 @@ describe('a restore with several large-entry streams at once', () => {
         batchFake.ctl.sizeOf = null
         alertErrorMock.mockClear()
         alertNormalMock.mockClear()
-        setDatabaseMock.mockClear()
+        shell.commits.length = 0
         return bin
     }
 
@@ -1296,7 +1367,7 @@ describe('a restore with several large-entry streams at once', () => {
         })
     }
 
-    test('five large entries restore byte-exact with three streams at once and never more, and the database is installed after them', async () => {
+    test('five large entries restore byte-exact with three streams at once and never more, and the commit is called after them', async () => {
         const bin = await exportedBackup(LARGE_NAMES)
         localStorage.setItem(KNOB, '3,2')
         const release = gate()
@@ -1310,7 +1381,7 @@ describe('a restore with several large-entry streams at once', () => {
         // The fourth entry waits for a free slot; the three that run have each sent their first chunk and wait there.
         expect(streamTrack.held.size).toBe(3)
         expect(streamTrack.open.size).toBe(3)
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(0)
         release.release()
         await restoring
 
@@ -1318,37 +1389,32 @@ describe('a restore with several large-entry streams at once', () => {
         expectEveryAssetRestored(LARGE_NAMES)
         expect(tempFiles()).toEqual([])
         expect(alertErrorMock).not.toHaveBeenCalled()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
         expect(unhandled).toEqual([])
     })
 
-    test('the database is not installed while a stream is still writing, and every asset is complete when it is', async () => {
+    test('the commit is not called while a stream is still writing, and every asset is complete when it is', async () => {
         const largeNames = LARGE_NAMES.slice(0, 3)
         const bin = await exportedBackup(largeNames)
         localStorage.setItem(KNOB, '3,2')
         const release = gate()
         streamTrack.hold = release.promise
         streamTrack.release = release.release
-        let completeAtInstall: boolean | null = null
-        setDatabaseMock.mockImplementation(() => {
-            completeAtInstall = largeNames.every((name) => same(storedBytes(name), largeBody(name)))
-                && SMALL_NAMES.every((name) => same(storedBytes(name), smallBody(name)))
-        })
+        // The probe the stubbed commit asks at its call: every asset of the backup is complete by then.
+        shell.batchesSettled = () => largeNames.every((name) => same(storedBytes(name), largeBody(name)))
+            && SMALL_NAMES.every((name) => same(storedBytes(name), smallBody(name)))
 
         const restoring = restoreBytes(bin)
         await waitForProgress(() => { expect(streamTrack.held.size).toBe(3) })
         await settleTimers()
 
         // Every entry has been read; the restore waits for the streams before it looks at the database.
-        expect(setDatabaseMock).not.toHaveBeenCalled()
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expect(shell.commits).toHaveLength(0)
         expect(largeNames.some((name) => storedBytes(name) !== undefined)).toBe(false)
         release.release()
         await restoring
 
-        expect(completeAtInstall).toBe(true)
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
-        expect(fakeFs.files.has('blocks/head')).toBe(true)
+        expectCommittedOnce()
     })
 
     // Guard: the default is one stream at a time, so this passes before and after.
@@ -1361,10 +1427,10 @@ describe('a restore with several large-entry streams at once', () => {
         expectEveryAssetRestored(LARGE_NAMES)
         expect(tempFiles()).toEqual([])
         expect(alertErrorMock).not.toHaveBeenCalled()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 
-    test('a stream whose source cannot be read stops the others at their next chunk: the changed-file message after every stream settled, nothing finished, nothing installed', async () => {
+    test('a stream whose source cannot be read stops the others at their next chunk: the changed-file message after every stream settled, nothing finished, nothing committed', async () => {
         const largeNames = LARGE_NAMES.slice(0, 3)
         const bin = await exportedBackup(largeNames)
         localStorage.setItem(KNOB, '3,2')
@@ -1388,12 +1454,11 @@ describe('a restore with several large-entry streams at once', () => {
         expect(desktop.rawCalls.some((call) => call.last)).toBe(false)
         expect(largeNames.some((name) => storedBytes(name) !== undefined)).toBe(false)
         expect(tempFiles()).toEqual([])
-        expect(setDatabaseMock).not.toHaveBeenCalled()
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expectNotCommitted()
         expect(unhandled).toEqual([])
     })
 
-    test('guard: a write that fails in one stream is the failure of the restore, and nothing is installed', async () => {
+    test('guard: a write that fails in one stream is the failure of the restore, and nothing is committed', async () => {
         const largeNames = LARGE_NAMES.slice(0, 3)
         const bin = await exportedBackup(largeNames)
         localStorage.setItem(KNOB, '3,2')
@@ -1405,8 +1470,7 @@ describe('a restore with several large-entry streams at once', () => {
         expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
         expect(storedBytes('l2.bin')).toBeUndefined()
         expect(tempFiles()).toEqual([])
-        expect(setDatabaseMock).not.toHaveBeenCalled()
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expectNotCommitted()
         expect(unhandled).toEqual([])
     })
 
@@ -1436,7 +1500,7 @@ describe('a restore with several large-entry streams at once', () => {
         expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
         // The small entries' reads are the slices of a few bytes; the walk and the huge entry read larger ones.
         expect(sizes.filter((size) => size < 1000).length).toBeLessThan(60)
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expectNotCommitted()
     })
 
     test('a marker met while a stream is reading aborts that stream, which never finishes, before the message is shown', async () => {
@@ -1478,7 +1542,7 @@ describe('a restore with several large-entry streams at once', () => {
         expect(desktop.rawCalls).toEqual([])
         expect(storedBytes('huge.bin')).toBeUndefined()
         expect(tempFiles()).toEqual([])
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expectNotCommitted()
     })
 
     test('guard: a knob value that is not valid leaves one stream', async () => {
@@ -1488,12 +1552,14 @@ describe('a restore with several large-entry streams at once', () => {
         await restoreBytes(bin)
 
         expect(streamTrack.maxOpen).toBe(1)
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 })
 
 describe('a command that refuses a body that is not raw', () => {
-    test('moves the rest of the restore to the per-entry path and ends with every asset written and the head installed', async () => {
+    beforeEach(onStore2Page)
+
+    test('moves the rest of the restore to the per-entry path and ends with every asset written and the commit called', async () => {
         batchFake.ctl.beforeWrite = () => {
             batchFake.ctl.available = false
             throw new Error('not-raw: the body arrived as text')
@@ -1506,7 +1572,7 @@ describe('a command that refuses a body that is not raw', () => {
         for (const index of [0, 1, 2, 3]) {
             expect(storedBytes(`n${index}.png`)?.[0]).toBe(index + 1)
         }
-        expect(fakeFs.files.has('blocks/head')).toBe(true)
+        expectCommittedOnce()
         expect(alertErrorMock).not.toHaveBeenCalled()
         expect(unhandled).toEqual([])
     })

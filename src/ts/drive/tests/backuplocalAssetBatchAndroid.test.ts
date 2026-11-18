@@ -364,14 +364,24 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
     } as unknown as typeof import('src/ts/process/coldstorage.svelte')
 })
 
+// A clean page: the restore's save-first step returns at its clean check instead of waiting out its bound.
+vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
+    ...await importOriginal<typeof import('src/ts/globalApi.svelte')>(),
+    isSaveClean: () => true,
+}))
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
 //#endregion
 
+import { injectRestoreStore } from './restoreSupport'
+import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
 import { LoadLocalBackup } from 'src/ts/drive/backuplocal'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { language } from 'src/lang'
 import { alertWait } from 'src/ts/alert'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
-import { injectRestoreStore } from './restoreSupport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { CHUNK_MAX, resetByteTransportForTests, WRITE_CHUNK_BYTES } from 'src/ts/storage/tauriByteTransport'
 import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBatch'
@@ -451,6 +461,24 @@ function restoreBytes(bytes: Uint8Array): Promise<void> {
     return restoreFile(new File([bytes as unknown as Uint8Array<ArrayBuffer>], 'backup.bin'))
 }
 
+/** The restore waited for no save first: `saveFirst` returned at its clean check. */
+function expectNoSaveFirstWait(): void {
+    expect(vi.mocked(alertWait).mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)
+}
+
+/** The restore reached its commit once, after every batch had settled. */
+function expectCommittedOnce(): void {
+    expect(shell.commits).toHaveLength(1)
+    expect(shell.commits[0].batchesSettled).toBe(true)
+    expectNoSaveFirstWait()
+}
+
+/** The restore stopped before its commit. */
+function expectNotCommitted(): void {
+    expect(shell.commits).toHaveLength(0)
+    expectNoSaveFirstWait()
+}
+
 function patterned(size: number, seed: number): Uint8Array {
     const out = new Uint8Array(size)
     for (let i = 0; i < size; i++) {
@@ -522,12 +550,13 @@ beforeEach(() => {
     resetAssetBatchAvailabilityForTests()
     fakeFs.reset()
     fakeFs.directories.add('assets')
+    resetStore2ShellBox(shell)
     setDatabaseMock.mockReset()
     alertErrorMock.mockReset()
     alertNormalWaitMock.mockReset().mockImplementation(async () => { })
     reloadMark.marked = false
     vi.spyOn(console, 'error').mockImplementation(() => { })
-    injectRestoreStore(createTauriFilesStore({ platform: 'posix' }))
+    useStore2RestorePage(createTauriFilesStore({ platform: 'posix' }))
     getDatabaseMock.mockImplementation(() => ({ characters: [], personas: [], characterOrder: [], botPresets: [] }) as unknown as Database)
     dbWriteLockSpy = vi.spyOn(dbWriteLock, 'acquire').mockResolvedValue(() => { })
 
@@ -589,7 +618,7 @@ describe('a restore on an Android page', () => {
         for (const [index, name] of names.entries()) {
             expect(sameBytes(storedBytes(name), filled(1000 + index, index + 1))).toBe(true)
         }
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 
     test('hands the command exactly the pipeline batch size, and no call carries more entry bytes than that', async () => {
@@ -628,7 +657,7 @@ describe('a restore on an Android page', () => {
         for (const [index, [name, size]] of sizes.entries()) {
             expect(sameBytes(storedBytes(name), filled(size, index + 10))).toBe(true)
         }
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 
     test('a frame answered error stops the restore with the existing message, commits nothing and leaves the assets that landed', async () => {
@@ -639,8 +668,7 @@ describe('a restore on an Android page', () => {
 
         expect(alertErrorMock).toHaveBeenCalledTimes(1)
         expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
-        expect(setDatabaseMock).not.toHaveBeenCalled()
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expectNotCommitted()
         // The frames of the failing batch around the failed one landed; the failed one did not.
         expect(storedBytes('e0.png')).toBeDefined()
         expect(storedBytes('e2.png')).toBeDefined()
@@ -659,8 +687,7 @@ describe('a restore on an Android page', () => {
 
         expect(alertErrorMock).toHaveBeenCalledTimes(1)
         expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
-        expect(setDatabaseMock).not.toHaveBeenCalled()
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expectNotCommitted()
         await settleTimers()
         expect(wire.failureSeen).not.toBeNull()
         expect(wire.batches.length).toBe(wire.failureSeen)
@@ -672,7 +699,7 @@ describe('a restore on an Android page', () => {
         expect(alertErrorMock).not.toHaveBeenCalled()
         expect(alertNormalWaitMock).toHaveBeenCalledWith(language.restoreAssetsSkipped(2, ['.badA', '.badB']))
         expect(sameBytes(storedBytes('good.png'), filled(20, 2))).toBe(true)
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 
     // Regression reproducer: a streamed asset (above batchBytes) skips the batch path, and the Android chunked
@@ -684,7 +711,7 @@ describe('a restore on an Android page', () => {
         expect(alertNormalWaitMock).toHaveBeenCalledWith(language.restoreAssetsSkipped(1, ['.bigbad']))
         expect(storedBytes('.bigbad')).toBeUndefined()
         expect(sameBytes(storedBytes('good.png'), filled(20, 2))).toBe(true)
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 
     test('a batch hands the sender distinct frames in file order with the key rules of the page store', async () => {
@@ -769,7 +796,7 @@ describe('a restore on an Android page with several large-entry streams at once'
 
         expect(streamTrack.held.size).toBe(3)
         expect(streamTrack.open.size).toBe(3)
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expectNotCommitted()
         release.release()
         await restoring
 
@@ -778,33 +805,29 @@ describe('a restore on an Android page with several large-entry streams at once'
         expect(Math.max(...desktop.chunk.chunkSizes)).toBeLessThanOrEqual(WRITE_CHUNK_BYTES)
         expect(tempFiles()).toEqual([])
         expect(alertErrorMock).not.toHaveBeenCalled()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 
-    test('the database is not installed while a stream is still writing, and every asset is complete when it is', async () => {
+    test('the commit is not called while a stream is still writing, and every asset is complete when it is', async () => {
         const largeNames = LARGE_NAMES.slice(0, 3)
         localStorage.setItem(KNOB, '3,2')
         const release = gate()
         streamTrack.hold = release.promise
         streamTrack.release = release.release
-        let completeAtInstall: boolean | null = null
-        setDatabaseMock.mockImplementation(() => {
-            completeAtInstall = largeNames.every((name) => sameBytes(storedBytes(name), largeBody(name)))
-                && SMALL_NAMES.every((name) => sameBytes(storedBytes(name), smallBody(name)))
-        })
+        // The probe the stubbed commit asks at its call: every asset of the backup is complete by then.
+        shell.batchesSettled = () => largeNames.every((name) => sameBytes(storedBytes(name), largeBody(name)))
+            && SMALL_NAMES.every((name) => sameBytes(storedBytes(name), smallBody(name)))
 
         const restoring = restoreBytes(backupFor(largeNames))
         await waitForProgress(() => { expect(streamTrack.held.size).toBe(3) })
         await settleTimers()
 
-        expect(setDatabaseMock).not.toHaveBeenCalled()
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expectNotCommitted()
         expect(largeNames.some((name) => storedBytes(name) !== undefined)).toBe(false)
         release.release()
         await restoring
 
-        expect(completeAtInstall).toBe(true)
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 
     // Guard: passes before and after. Natural timing may run one stream or two, never more than the Android cap of two;
@@ -816,7 +839,7 @@ describe('a restore on an Android page with several large-entry streams at once'
         expectEveryAssetRestored(LARGE_NAMES)
         expect(tempFiles()).toEqual([])
         expect(alertErrorMock).not.toHaveBeenCalled()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 
     // Regression of the default (red on the base, where the Android default is one stream; not a defect reproducer).
@@ -838,7 +861,7 @@ describe('a restore on an Android page with several large-entry streams at once'
         expectEveryAssetRestored(LARGE_NAMES)
         expect(tempFiles()).toEqual([])
         expect(alertErrorMock).not.toHaveBeenCalled()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 
     // Regression of the default (red on the base, where two batch calls are the most in flight; not a defect reproducer).
@@ -861,7 +884,7 @@ describe('a restore on an Android page with several large-entry streams at once'
             expect(sameBytes(storedBytes(name), filled(300 * 1024, index + 1))).toBe(true)
         }
         expect(alertErrorMock).not.toHaveBeenCalled()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 
     function seededRandom(seed: number): () => number {
@@ -903,7 +926,7 @@ describe('a restore on an Android page with several large-entry streams at once'
         { knob: '2,4', streams: 2 },
         { knob: '4,4', streams: 4 },
         { knob: null, streams: 2 },
-    ])('a phone-like mix restores byte-exact with $streams streams at once (knob $knob), complete when the database is installed', async ({ knob, streams }) => {
+    ])('a phone-like mix restores byte-exact with $streams streams at once (knob $knob), complete when the commit is called', async ({ knob, streams }) => {
         if (knob !== null) {
             localStorage.setItem(KNOB, knob)
         }
@@ -913,10 +936,8 @@ describe('a restore on an Android page with several large-entry streams at once'
         const release = gate()
         streamTrack.hold = release.promise
         streamTrack.release = release.release
-        let completeAtInstall: boolean | null = null
-        setDatabaseMock.mockImplementation(() => {
-            completeAtInstall = mix.entries.every(([name, body]) => sameBytes(storedBytes(name), body))
-        })
+        // The probe the stubbed commit asks at its call: every asset of the backup is complete by then.
+        shell.batchesSettled = () => mix.entries.every(([name, body]) => sameBytes(storedBytes(name), body))
 
         const restoring = restoreBytes(backupOf(mix.entries))
         await waitForProgress(() => { expect(streamTrack.held.size).toBe(streams) })
@@ -933,7 +954,7 @@ describe('a restore on an Android page with several large-entry streams at once'
         release.release()
         await waitForProgress(() => { expect(streamTrack.held.has(lastKey)).toBe(true) })
         await settleTimers()
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expectNotCommitted()
         releaseLast.release()
         await restoring
 
@@ -941,12 +962,11 @@ describe('a restore on an Android page with several large-entry streams at once'
         for (const [name, body] of mix.entries) {
             expect(sameBytes(storedBytes(name), body)).toBe(true)
         }
-        expect(completeAtInstall).toBe(true)
         expect(tempFiles()).toEqual([])
         expect(wire.rangeErrors).toEqual([])
         expect(alertErrorMock).not.toHaveBeenCalled()
         expect(alertNormalWaitMock).not.toHaveBeenCalled()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 
     // Guard on the base, where the serial path records the refused name as well. At the default the beside path runs it, and the
@@ -963,13 +983,13 @@ describe('a restore on an Android page with several large-entry streams at once'
         expect(sameBytes(storedBytes('l1.bin'), first)).toBe(true)
         expect(sameBytes(storedBytes('l2.bin'), second)).toBe(true)
         expect(sameBytes(storedBytes('s1.png'), filled(40, 3))).toBe(true)
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 
     // Regression of the default: a throw in the loop while a large stream is active stops that stream at its next chunk.
     // Red on the base because the base runs one stream, which finishes before the throw; not a defect reproducer. The mutant
     // that skips `stopStreams` on a thrown pass turns it red at the default.
-    test('a throw in the loop while a large stream is active shows the failure, installs nothing and leaves no bytes or temp file of that stream', async () => {
+    test('a throw in the loop while a large stream is active shows the failure, commits nothing and leaves no bytes or temp file of that stream', async () => {
         const release = gate()
         streamTrack.hold = release.promise
         streamTrack.release = release.release
@@ -1000,10 +1020,10 @@ describe('a restore on an Android page with several large-entry streams at once'
         expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
         expect(storedBytes('l1.bin')).toBeUndefined()
         expect(tempFiles()).toEqual([])
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expectNotCommitted()
     })
 
-    test('a stream whose source cannot be read stops the others at their next chunk: the changed-file message after every stream settled, nothing finished, nothing installed', async () => {
+    test('a stream whose source cannot be read stops the others at their next chunk: the changed-file message after every stream settled, nothing finished, nothing committed', async () => {
         const largeNames = LARGE_NAMES.slice(0, 3)
         localStorage.setItem(KNOB, '3,2')
         const release = gate()
@@ -1024,8 +1044,7 @@ describe('a restore on an Android page with several large-entry streams at once'
         expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
         expect(largeNames.some((name) => storedBytes(name) !== undefined)).toBe(false)
         expect(tempFiles()).toEqual([])
-        expect(setDatabaseMock).not.toHaveBeenCalled()
-        expect(fakeFs.files.has('blocks/head')).toBe(false)
+        expectNotCommitted()
     })
 })
 
@@ -1053,34 +1072,41 @@ describe('the message while the copies finish on an Android page', () => {
         return -1
     }
 
-    // Regression: the base keeps the last percentage until the commit and never shows the message, so the wait times out.
-    test.each([
-        { label: 'small entries and large entries', entries: [['s1.png', filled(40, 1)], ['l1.bin', patterned(LARGE_SIZE, 1)], ['l2.bin', patterned(LARGE_SIZE, 2)]] as [string, Uint8Array][] },
-        { label: 'large entries only, so only a stream is outstanding', entries: [['l1.bin', patterned(LARGE_SIZE, 1)], ['l2.bin', patterned(LARGE_SIZE, 2)]] as [string, Uint8Array][] },
-    ])('shows the finishing message once every entry is read, while $label are still being copied, and ends it when the copies end', async ({ entries }) => {
-        const release = gate()
-        streamTrack.hold = release.promise
-        streamTrack.release = release.release
+    // On a store2 page the last wait text of a landed restore is the import's own ending text, shown after the commit.
+    describe('on the store2 page', () => {
+        beforeEach(() => {
+            useStore2RestorePage(createTauriFilesStore({ platform: 'posix' }))
+        })
 
-        const restoring = restoreBytes(backupOf(entries))
-        await waitForProgress(() => { expect(waitTexts()).toContain(FINISHING) })
-        await settleTimers()
+        // Regression: the base keeps the last percentage until the commit and never shows the message, so the wait times out.
+        test.each([
+            { label: 'small entries and large entries', entries: [['s1.png', filled(40, 1)], ['l1.bin', patterned(LARGE_SIZE, 1)], ['l2.bin', patterned(LARGE_SIZE, 2)]] as [string, Uint8Array][] },
+            { label: 'large entries only, so only a stream is outstanding', entries: [['l1.bin', patterned(LARGE_SIZE, 1)], ['l2.bin', patterned(LARGE_SIZE, 2)]] as [string, Uint8Array][] },
+        ])('shows the finishing message once every entry is read, while $label are still being copied, and ends it when the copies end', async ({ entries }) => {
+            const release = gate()
+            streamTrack.hold = release.promise
+            streamTrack.release = release.release
 
-        const held = waitTexts()
-        expect(held[held.length - 1]).toBe(FINISHING)
-        expect(held.filter((text) => text === FINISHING)).toHaveLength(1)
-        // After the last entry was shown, not inside the loop.
-        expect(held.indexOf(FINISHING)).toBeGreaterThan(lastIndexWhere(held, (text) => text.startsWith(PROGRESS)))
-        expect(setDatabaseMock).not.toHaveBeenCalled()
-        release.release()
-        await restoring
+            const restoring = restoreBytes(backupOf(entries))
+            await waitForProgress(() => { expect(waitTexts()).toContain(FINISHING) })
+            await settleTimers()
 
-        const all = waitTexts()
-        expect(all.filter((text) => text === FINISHING)).toHaveLength(1)
-        expect(all[all.length - 1]).toBe('Loading backup...')
-        expect(all.indexOf(FINISHING)).toBeLessThan(all.lastIndexOf('Loading backup...'))
-        expect(alertErrorMock).not.toHaveBeenCalled()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+            const held = waitTexts()
+            expect(held[held.length - 1]).toBe(FINISHING)
+            expect(held.filter((text) => text === FINISHING)).toHaveLength(1)
+            // After the last entry was shown, not inside the loop.
+            expect(held.indexOf(FINISHING)).toBeGreaterThan(lastIndexWhere(held, (text) => text.startsWith(PROGRESS)))
+            expect(shell.commits).toHaveLength(0)
+            release.release()
+            await restoring
+
+            const all = waitTexts()
+            expect(all.filter((text) => text === FINISHING)).toHaveLength(1)
+            expect(all.indexOf(FINISHING)).toBeLessThan(all.lastIndexOf('Loading backup...'))
+            expect(all[all.length - 1]).toBe(language.store2ImportDone)
+            expect(alertErrorMock).not.toHaveBeenCalled()
+            expectCommittedOnce()
+        })
     })
 
     // Guard on the base: nothing is outstanding, so the base shows no message either. The replacement text is asserted above.
@@ -1089,7 +1115,7 @@ describe('the message while the copies finish on an Android page', () => {
 
         expect(waitTexts()).not.toContain(FINISHING)
         expect(alertErrorMock).not.toHaveBeenCalled()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 
     // Guard on the base, which never shows the message; the mutant that drops the failure term turns it red.
@@ -1102,7 +1128,7 @@ describe('the message while the copies finish on an Android page', () => {
         expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
         expect(waitTexts()).not.toContain(FINISHING)
         expect(lastProgressPercent()).toBeLessThan(100)
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expectNotCommitted()
     })
 
     // Guard on the base, which never shows the message. A stream's source failure is seen at the top of the loop, which sets the
@@ -1132,7 +1158,7 @@ describe('the message while the copies finish on an Android page', () => {
         expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileChangedWhileReading)
         expect(waitTexts()).not.toContain(FINISHING)
         expect(lastProgressPercent()).toBeLessThan(100)
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expectNotCommitted()
     })
 })
 
@@ -1159,6 +1185,6 @@ describe('a restore on a desktop page', () => {
 
         expect(alertErrorMock).not.toHaveBeenCalled()
         expect(alertNormalWaitMock).toHaveBeenCalledWith(language.restoreAssetsSkipped(1, ['.bigbad']))
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommittedOnce()
     })
 })
