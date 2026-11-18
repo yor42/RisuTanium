@@ -68,3 +68,18 @@ describe('loreSettings.fullWordAsciiBoundary through the save codec', () => {
         expect(decoded.characters[0].loreSettings.fullWordAsciiBoundary).toBeUndefined()
     })
 })
+
+describe('loreSettings.cjkWordStart through the save codec', () => {
+    test('guard: the flag round-trips as true and as false', async () => {
+        for (const flag of [true, false]) {
+            const original = tree({ tokenBudget: 100, scanDepth: 3, recursiveScanning: false, fullWordMatching: false, cjkWordStart: flag })
+            expect(await decodeRisuSave(await encodeRisuSaveCompressionStream(original))).toEqual(original)
+        }
+    })
+
+    test('guard: a character saved without the flag reads back without it', async () => {
+        const original = tree({ tokenBudget: 100, scanDepth: 3, recursiveScanning: false, fullWordMatching: false })
+        const decoded = await decodeRisuSave(await encodeRisuSaveCompressionStream(original)) as ReturnType<typeof tree>
+        expect(decoded.characters[0].loreSettings.cjkWordStart).toBeUndefined()
+    })
+})
