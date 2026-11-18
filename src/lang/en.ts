@@ -3744,6 +3744,16 @@ export const languageEnglish = {
     rtbRestoreUncreatableConfirm: (count: number, names: string[]) =>
         `${count} asset file(s) in this backup have names this app's storage cannot create, so they cannot be restored here. A character that uses one of them will show it as missing. Continue without them?\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     rtbRestoreChecking: (percent: number) => `Checking the backup... (${percent}%)`,
+    rtbRestoreCopying: (percent: number) => `Restoring the backup... (${percent}%)`,
+    rtbRestoreInstalling: "Loading backup...",
+    rtbRestoreCopiedKept: "Some images or chat media from the backup may already have been added or replaced. They stay on this device, and restoring the same backup again skips the ones already there.",
+    rtbRestoreLeftOut: (lines: string[]) => `The backup was restored, except for the following:\n\n${lines.join('\n')}`,
+    rtbRestoreLineNewerParts: (names: string[]) => `- Parts made by a newer version of RisuTanium. They were not restored and stay only in the backup file: ${names.join(', ')}`,
+    rtbRestoreLineOmittedUnits: (count: number) => `- ${count} damaged item(s) (task presets or chat alternatives) that the backup was made without`,
+    rtbRestoreLineOmittedEntries: (names: string[]) => `- Data the backup was made without: ${names.join(', ')}`,
+    rtbRestoreLineSideNotRestored: (names: string[]) => `- Data kept on this device that was not restored: ${names.join(', ')}`,
+    rtbRestoreLineSideFailed: (names: string[]) => `- Data kept on this device that could not be written completely: ${names.join(', ')}`,
+    rtbRestoreSideNames: { iris: "Iris conversations", googleSearch: "Google search key", hypaVector: "memory search data", pluginSafe: "plugin data", pluginSafeLs: "plugin settings", pluginPermissions: "plugin permissions", mcpToolCalls: "MCP tool calls", uiPrefs: "interface preferences" },
     coldStorageCleanupDateUnknown: "date unknown",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `When a damaged save was replaced from a backup, the older saved copies of your data were set aside instead of being deleted (created ${dates}). Images and archived data that only they use are still protected, so the cleanup cannot run while they exist.\n\nDelete these older copies and then clean up? They cannot be recovered. Choose Cancel to keep them; the cleanup then does not run.`,

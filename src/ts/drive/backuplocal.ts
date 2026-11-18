@@ -423,7 +423,7 @@ function copyMeasureLimits(): Partial<AssetBatchLimits> {
 }
 
 /** The restore's asset writer on the desktop and on Android, or `null` where every asset goes through the store one call at a time. */
-async function createRestoreAssetPipeline(): Promise<RestoreAssetPipeline | null> {
+export async function createRestoreAssetPipeline(): Promise<RestoreAssetPipeline | null> {
     // The raw mode is `isAssetBatchAvailable()` (the desktop's raw-body write); the base64 mode is Android's alone. The
     // export's reads use `isAssetBatchReadAvailable()`, which both apps satisfy.
     const mode: AssetBatchWriteMode = isAssetBatchAvailable() ? 'raw' : assetBatchWriteMode() === 'b64' ? 'b64' : 'none'

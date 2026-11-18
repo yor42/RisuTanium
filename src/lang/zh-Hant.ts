@@ -3646,6 +3646,16 @@ export const languageChineseTraditional = {
     "rtbRestoreUncreatableConfirm": (count: number, names: string[]) =>
         `此備份中有 ${count} 個資源檔案的名稱無法在此應用程式的儲存空間中建立，因此無法在此還原。使用其中任何一個的角色會將其顯示為缺失。是否不還原它們而繼續？\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
     "rtbRestoreChecking": (percent: number) => `正在檢查備份... (${percent}%)`,
+    "rtbRestoreCopying": (percent: number) => `正在還原備份... (${percent}%)`,
+    "rtbRestoreInstalling": "正在載入備份...",
+    "rtbRestoreCopiedKept": "備份中的部分圖片或聊天媒體可能已被新增或取代。它們會保留在此裝置上，再次還原同一份備份時會略過已存在的內容。",
+    "rtbRestoreLeftOut": (lines: string[]) => `備份已還原，但以下內容除外：\n\n${lines.join('\n')}`,
+    "rtbRestoreLineNewerParts": (names: string[]) => `- 由較新版本的 RisuTanium 建立的部分。這些部分未被還原，僅保留在備份檔案中：${names.join(', ')}`,
+    "rtbRestoreLineOmittedUnits": (count: number) => `- ${count} 個已損毀的項目（任務預設集或對話備選），建立備份時已將其排除`,
+    "rtbRestoreLineOmittedEntries": (names: string[]) => `- 建立備份時未包含的資料：${names.join(', ')}`,
+    "rtbRestoreLineSideNotRestored": (names: string[]) => `- 保留在此裝置上、未被還原的資料：${names.join(', ')}`,
+    "rtbRestoreLineSideFailed": (names: string[]) => `- 保留在此裝置上、未能完整寫入的資料：${names.join(', ')}`,
+    "rtbRestoreSideNames": { iris: "Iris 對話", googleSearch: "Google 搜尋金鑰", hypaVector: "記憶搜尋資料", pluginSafe: "外掛資料", pluginSafeLs: "外掛設定", pluginPermissions: "外掛權限", mcpToolCalls: "MCP 工具呼叫", uiPrefs: "介面偏好設定" },
     "coldStorageCleanupDateUnknown": "日期未知",
     "coldStorageCleanupKeptConfirm": (dates: string) =>
         `在用備份取代已損毀的已儲存資料時，資料的較舊已儲存副本被保留下來，而沒有被刪除（建立於 ${dates}）。僅被它們使用的圖片和封存資料仍受保護，因此只要這些副本存在，就無法執行清理。\n\n是否刪除這些較舊的副本，然後進行清理？刪除後無法復原。選擇「取消」則保留它們，此時不會執行清理。`,
