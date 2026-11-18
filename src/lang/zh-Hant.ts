@@ -3323,6 +3323,8 @@ export const languageChineseTraditional = {
     "themePackSize": (size: string) => `大小：${size}`,
     "themePackLicense": (license: string) => `授權：${license}`,
     "themePackAttribution": (attribution: string) => `署名：${attribution}`,
+    "themePackDetails": '詳細資訊',
+    "themePackDetailsFor": (name: string) => `詳細資訊：${name}`,
     "themePackFonts": '字型授權',
     "themePackFontLicense": (file: string, license: string) => `${file}：${license}`,
     "themePackUnreadableName": '無法讀取的主題包',

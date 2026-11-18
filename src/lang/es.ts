@@ -3281,6 +3281,8 @@ export const languageSpanish = {
     "themePackSize": (size: string) => `Tamaño: ${size}`,
     "themePackLicense": (license: string) => `Licencia: ${license}`,
     "themePackAttribution": (attribution: string) => `Atribución: ${attribution}`,
+    "themePackDetails": "Detalles",
+    "themePackDetailsFor": (name: string) => `Detalles: ${name}`,
     "themePackFonts": "Licencias de fuentes",
     "themePackFontLicense": (file: string, license: string) => `${file}: ${license}`,
     "themePackUnreadableName": "Paquete de tema ilegible",

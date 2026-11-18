@@ -3281,6 +3281,8 @@ export const languageGerman = {
     "themePackSize": (size: string) => `Größe: ${size}`,
     "themePackLicense": (license: string) => `Lizenz: ${license}`,
     "themePackAttribution": (attribution: string) => `Urheberhinweis: ${attribution}`,
+    "themePackDetails": "Details",
+    "themePackDetailsFor": (name: string) => `Details: ${name}`,
     "themePackFonts": "Schriftlizenzen",
     "themePackFontLicense": (file: string, license: string) => `${file}: ${license}`,
     "themePackUnreadableName": "Nicht lesbares Design-Paket",
