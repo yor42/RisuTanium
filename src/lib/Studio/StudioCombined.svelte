@@ -38,6 +38,16 @@
     const rows = $derived(group ? group.rows() : [])
     const pageKey = $derived(`c:${kind}`)
     const shown = $derived(Math.min(rows.length, TREE_PAGE_SIZE * ((studioScreen.pages[pageKey] ?? 0) + 1)))
+
+    // The toggles view reads the owners' texts and the app's other owners, which the other kinds do not need: it is
+    // loaded when the toggles kind is first shown.
+    let togglesView = $state.raw<typeof import('./StudioToggleCombined.svelte').default | null>(null)
+    $effect(() => {
+        if (kind !== 'toggles' || togglesView !== null) return
+        let live = true
+        void import('./StudioToggleCombined.svelte').then((loaded) => { if (live) togglesView = loaded.default }).catch(console.error)
+        return () => { live = false }
+    })
 </script>
 
 {#if group}
@@ -47,28 +57,35 @@
         {#if group.unshownSegments > 0}
             <p data-part="studio-combined-partial" class="text-sm text-textcolor2">{language.studioMergedPartial(group.unshownSegments)}</p>
         {/if}
-        <ul class="flex flex-col">
-            {#each rows.slice(0, shown) as row (row.item.id)}
-                <li>
-                    <button
-                        type="button"
-                        data-part="studio-combined-row"
-                        data-item-id={row.item.id}
-                        data-numbered={row.ordinal !== null}
-                        class="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded px-2 text-start hover:bg-selected"
-                        onclick={() => selectStudioNode(row.ownerKey, kind, row.item.id)}
-                    >
-                        <span data-part="studio-combined-ordinal" class="w-10 shrink-0 text-end text-xs text-textcolor2">{row.ordinal ?? row.position}</span>
-                        <span class="min-w-0 flex-1 truncate">{itemLabelOf(row.item)}</span>
-                        <span class="shrink-0 text-xs text-textcolor2">{model.ownerByKey(row.ownerKey)?.name ?? ''}</span>
-                    </button>
-                </li>
-            {/each}
-        </ul>
-        {#if shown < rows.length}
-            <button type="button" data-part="studio-combined-more" class="min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer" onclick={() => showMoreStudioRows(pageKey)}>
-                {language.studioShowMore(Math.min(TREE_PAGE_SIZE, rows.length - shown))}
-            </button>
+        {#if kind === 'toggles'}
+            {#if togglesView}
+                {@const View = togglesView}
+                <View {model} />
+            {/if}
+        {:else}
+            <ul class="flex flex-col">
+                {#each rows.slice(0, shown) as row (row.item.id)}
+                    <li>
+                        <button
+                            type="button"
+                            data-part="studio-combined-row"
+                            data-item-id={row.item.id}
+                            data-numbered={row.ordinal !== null}
+                            class="flex min-h-11 w-full cursor-pointer items-center gap-2 rounded px-2 text-start hover:bg-selected"
+                            onclick={() => selectStudioNode(row.ownerKey, kind, row.item.id)}
+                        >
+                            <span data-part="studio-combined-ordinal" class="w-10 shrink-0 text-end text-xs text-textcolor2">{row.ordinal ?? row.position}</span>
+                            <span class="min-w-0 flex-1 truncate">{itemLabelOf(row.item)}</span>
+                            <span class="shrink-0 text-xs text-textcolor2">{model.ownerByKey(row.ownerKey)?.name ?? ''}</span>
+                        </button>
+                    </li>
+                {/each}
+            </ul>
+            {#if shown < rows.length}
+                <button type="button" data-part="studio-combined-more" class="min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer" onclick={() => showMoreStudioRows(pageKey)}>
+                    {language.studioShowMore(Math.min(TREE_PAGE_SIZE, rows.length - shown))}
+                </button>
+            {/if}
         {/if}
         {#if kind === 'lore'}
             <StudioLoreTester {model} />
