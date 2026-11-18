@@ -11,6 +11,7 @@ import type { OperationOutcome } from '../operationEnd'
 
 const confirmMock = vi.hoisted(() => vi.fn(async (_message: string): Promise<boolean> => true))
 const localLoaderMock = vi.hoisted(() => vi.fn())
+const routerLoaderMock = vi.hoisted(() => vi.fn())
 
 const alertErrorMock = vi.hoisted(() => vi.fn())
 
@@ -29,6 +30,7 @@ const workInProgressMock = vi.hoisted(() => vi.fn((): boolean => false))
 const runEndFault = vi.hoisted(() => ({ throws: false }))
 vi.mock('../../process/chatOrigin', () => ({ isWorkInProgress: workInProgressMock }))
 vi.mock('../backuplocal', () => ({ LoadLocalBackup: localLoaderMock }))
+vi.mock('../backupRouter', () => ({ loadBackupFromPicker: routerLoaderMock }))
 vi.mock('../internalBackup', () => ({ loadInternalBackup: vi.fn() }))
 // The real run is kept; a case can make its `end` throw after the real end ran, as a failing end bookkeeping would.
 vi.mock('../restoreInProgress', async (importOriginal) => {
@@ -64,6 +66,7 @@ beforeEach(() => {
     confirmMock.mockReset().mockResolvedValue(true)
     alertErrorMock.mockReset()
     localLoaderMock.mockReset().mockResolvedValue(endOf('canceled'))
+    routerLoaderMock.mockReset().mockResolvedValue(endOf('canceled'))
     workInProgressMock.mockReset().mockReturnValue(false)
     runEndFault.throws = false
     vi.spyOn(console, 'error').mockImplementation(() => { })
@@ -86,9 +89,9 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 /** Makes the loader return a promise the case settles itself (a picker that has not answered yet). */
-function holdLoader(): (outcome: OperationOutcome) => void {
+function holdLoader(loader: typeof localLoaderMock = localLoaderMock): (outcome: OperationOutcome) => void {
     let release: (outcome: OperationOutcome) => void = () => { }
-    localLoaderMock.mockReturnValue(new Promise((resolve) => {
+    loader.mockReturnValue(new Promise((resolve) => {
         release = (outcome) => resolve(endOf(outcome))
     }))
     heldLoaders.push(release)
@@ -187,8 +190,8 @@ describe('the Welcome restore entry', () => {
     test('guard: the Settings entry still calls the loader with no arguments', async () => {
         await restoreFromBinFile()
 
-        expect(localLoaderMock).toHaveBeenCalledTimes(1)
-        expect(localLoaderMock.mock.calls[0]).toEqual([])
+        expect(routerLoaderMock).toHaveBeenCalledTimes(1)
+        expect(routerLoaderMock.mock.calls[0]).toEqual([])
     })
 })
 
@@ -314,7 +317,7 @@ describe('the Welcome restore entry when the picker is dismissed without an even
 
     test('guard: the Settings entry has no fallback and keeps waiting through a window return', async () => {
         vi.useFakeTimers()
-        holdLoader()
+        holdLoader(routerLoaderMock)
         let settled = false
         void restoreFromBinFile().then(() => {
             settled = true
@@ -324,7 +327,7 @@ describe('the Welcome restore entry when the picker is dismissed without an even
         window.dispatchEvent(new Event('focus'))
         await vi.advanceTimersByTimeAsync(3000)
 
-        expect(localLoaderMock).toHaveBeenCalledTimes(1)
+        expect(routerLoaderMock).toHaveBeenCalledTimes(1)
         expect(settled).toBe(false)
     })
 })

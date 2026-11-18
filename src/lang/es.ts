@@ -3614,6 +3614,7 @@ export const languageSpanish = {
     rtbRestoreLineSideNotRestored: (names: string[]) => `- Datos guardados en este dispositivo que no se restauraron: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- Datos guardados en este dispositivo que no se pudieron escribir por completo: ${names.join(', ')}`,
     rtbRestoreSideNames: { iris: "conversaciones de Iris", googleSearch: "clave de búsqueda de Google", hypaVector: "datos de búsqueda de memoria", pluginSafe: "datos de plugins", pluginSafeLs: "ajustes de plugins", pluginPermissions: "permisos de plugins", mcpToolCalls: "llamadas a herramientas MCP", uiPrefs: "preferencias de la interfaz" },
+    backupFileNotRecognized: "Este archivo no es un respaldo que esta aplicación pueda restaurar (un .bin de RisuAI upstream o un respaldo .rtb de RisuTanium), o está cortado. No se restauró nada. Tus datos actuales no se cambiaron.",
     coldStorageCleanupDateUnknown: "fecha desconocida",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `Cuando se reemplazó un guardado dañado desde un respaldo, las copias guardadas más antiguas de tus datos se apartaron en lugar de eliminarse (creadas: ${dates}). Las imágenes y los datos archivados que solo ellas usan siguen protegidos, por lo que la limpieza no se puede ejecutar mientras existan.\n\n¿Eliminar estas copias antiguas y luego limpiar? No se pueden recuperar. Elige Cancelar para conservarlas; la limpieza entonces no se ejecuta.`,
