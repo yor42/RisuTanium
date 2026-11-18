@@ -18,6 +18,7 @@ import { holdsOwnTabPresence } from "./ts/globalApi.svelte";
 import { createProductionBootUi } from "./ts/storage/store2/ui/productionBootUi";
 import { installMotionPrefs } from "./ts/chatShell/motionPrefs.svelte";
 import { installCardAnimationVisibilityHold } from "./ts/gui/cardAnimationHold";
+import { installTauriLinkRouter } from "./ts/tauriLinkRouter";
 
 window.addEventListener('vite:preloadError', (event) => {
     console.error("Chunk load error detected:", event);
@@ -27,6 +28,8 @@ window.addEventListener('vite:preloadError', (event) => {
 installMotionPrefs()
 // Card animations are held while the page is hidden.
 installCardAnimationVisibilityHold()
+// On Tauri, external links open through the app's scoped opener; the shell plugin's own click listener is neutralised.
+installTauriLinkRouter()
 
 preLoadCheck()
 let app = mount(App, {

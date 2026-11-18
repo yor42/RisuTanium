@@ -11,7 +11,6 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core"
 import { v4 as uuidv4, v4 } from 'uuid';
 import { get } from "svelte/store";
 import { flushSync } from "svelte";
-import { open } from '@tauri-apps/plugin-shell'
 import { TauriWriter, openWebExportWriter, writeBackupEntry, encodeBackupEntryHeader, isSplicingWriter, type ExportByteWriter } from "./exportWriters";
 import { ExportCancelledError, type ExportCancelToken } from "./exportCancel";
 import { type Database, defaultSdDataFunc, getDatabase, appVer, getCurrentCharacter, type character, type groupChat, type Chat, appSubVer } from "./storage/database.svelte";
@@ -4148,8 +4147,9 @@ export function getFetchLogs() {
 }
 
 /**
- * Opens a URL in the appropriate environment: on Tauri, the shell plugin's
- * own scheme allowlist decides what `open` will actually launch; on the web,
+ * Opens a URL in the appropriate environment: on Tauri, the opener plugin's
+ * `open_url` command opens it and the capability's URL scope (http, https,
+ * mailto, tel) decides what is actually launched; on the web,
  * `openUrlOnWeb` opens http(s) in a new, opener-less tab, hands mailto:/tel:
  * to the OS from the current tab, and refuses every other scheme.
  *
@@ -4157,9 +4157,10 @@ export function getFetchLogs() {
  */
 export function openURL(url: string) {
     if (isTauri) {
-        // The warning never includes the URL: OAuth URLs carry state and PKCE values.
+        // The warning never includes the URL: OAuth URLs carry state and PKCE values,
+        // and the plugin's refusal message repeats the URL.
         try {
-            open(url).catch(() => {
+            invoke('plugin:opener|open_url', { url }).catch(() => {
                 console.warn('openURL: the system could not open the link')
             })
         }

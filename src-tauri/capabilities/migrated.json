@@ -30,7 +30,23 @@
     },
     "core:window:allow-maximize",
     "core:window:allow-set-fullscreen",
-    "shell:allow-open",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "http://*"
+        },
+        {
+          "url": "https://*"
+        },
+        {
+          "url": "mailto:*"
+        },
+        {
+          "url": "tel:*"
+        }
+      ]
+    },
     "dialog:allow-open",
     "dialog:allow-save",
     "dialog:allow-message",
@@ -67,7 +83,6 @@
     "os:allow-locale",
     "process:allow-restart",
     "fs:default",
-    "os:default",
-    "shell:default"
+    "os:default"
   ]
 }
