@@ -27,9 +27,11 @@
             error: string
             actions: { carry(): void, answer(): void, undo(): void }
         }
+        // False while the row was opened from the preview sheet: focus then stays where the author is. Read once at mount.
+        focusOnOpen?: boolean
     }
 
-    let { builder, editable, id, actions, carry }: Props = $props()
+    let { builder, editable, id, actions, carry, focusOnOpen = true }: Props = $props()
 
     const FIELD_CLASS = 'min-h-11 w-full rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor'
     const leafKinds = ['check', 'select', 'text', 'textarea', 'divider', 'caption'] as const
@@ -85,7 +87,7 @@
     onMount(() => {
         const stop = registerStudioField(() => flushAll())
         // Opening a row, or naming a new one, puts the caret at the end of its first text field.
-        const first = root?.querySelector<HTMLInputElement>('[data-part="studio-toggle-pending-name"], [data-part="studio-toggle-label"], [data-part="studio-toggle-text"], [data-part="studio-toggle-raw"]')
+        const first = focusOnOpen ? root?.querySelector<HTMLInputElement>('[data-part="studio-toggle-pending-name"], [data-part="studio-toggle-label"], [data-part="studio-toggle-text"], [data-part="studio-toggle-raw"]') : null
         if (first && !first.disabled) {
             first.focus()
             first.setSelectionRange(first.value.length, first.value.length)
