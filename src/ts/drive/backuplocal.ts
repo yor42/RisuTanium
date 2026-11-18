@@ -1697,6 +1697,18 @@ export function LoadLocalBackup(boot: undefined, opened: undefined, restore: Fir
 // Last, so `Parameters<typeof LoadLocalBackup>` stays the boot and opened pair every other caller uses.
 export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin): Promise<LocalBackupEnd>;
 export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?: FirstRunRestore): Promise<LocalBackupEnd> {
+    return loadLocalBackupWith(boot, opened, restore, undefined);
+}
+
+/**
+ * The `.bin` restore over a file the backup router already picked and recognised, with no picker of its own. It runs the
+ * same restore as the picker's own file, so the first-run option and every refusal behave as they do there.
+ */
+export function LoadPickedLocalBackup(file: File, restore?: FirstRunRestore): Promise<LocalBackupEnd> {
+    return loadLocalBackupWith(undefined, undefined, restore, file);
+}
+
+function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | undefined, restore: FirstRunRestore | undefined, picked: File | undefined): Promise<LocalBackupEnd> {
     // The option applies to the picker restore only: a boot or opened-file restore always keeps the file's own value.
     const completeFirstSetup = restore?.completeFirstSetup === true && boot === undefined && opened === undefined;
     const operation: OperationName = boot === undefined ? 'import' : 'boot-import';
@@ -1717,7 +1729,7 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
         return pending;
     }
     try {
-        const input = opened === undefined ? document.createElement('input') : null;
+        const input = opened === undefined && picked === undefined ? document.createElement('input') : null;
         if (input !== null) {
             input.type = 'file';
             input.accept = '.bin';
@@ -1743,15 +1755,16 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
                 target = opened.name;
                 facts.source = { kind: 'file', name: opened.name, size: opened.source.size, lastModified: opened.lastModified };
             } else {
-                if (input === null || !input.files || input.files.length === 0) {
+                // A file the router already picked takes the place of the picker's own file.
+                const chosen = picked ?? input?.files?.[0];
+                if (chosen === undefined) {
                     input?.remove();
                     return ended('canceled');
                 }
-                const picked = input.files[0];
-                input.remove();
-                file = picked;
-                target = picked.name;
-                facts.source = { kind: 'file', name: picked.name, size: picked.size, lastModified: picked.lastModified };
+                input?.remove();
+                file = chosen;
+                target = chosen.name;
+                facts.source = { kind: 'file', name: chosen.name, size: chosen.size, lastModified: chosen.lastModified };
             }
             // A picked file reports a change by failing its reads; an opened one is asked.
             const openedFileChanged = async (): Promise<boolean> => openedFile !== null && await openedFile.changed();
@@ -2658,7 +2671,7 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
             }
         };
         if (input === null) {
-            // A file another app opened: no picker. The busy entry is taken after the check above and ended however the restore leaves.
+            // A file another app opened, or one the router picked: no picker. The busy entry is taken after the check above and ended however the restore leaves.
             const busy = beginBusy('backupLoad');
             void (async () => {
                 let end: LocalBackupEnd = unfinished('failed');

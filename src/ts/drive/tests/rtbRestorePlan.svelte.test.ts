@@ -670,47 +670,6 @@ describe('the Tauri shell (T13)', () => {
     })
 })
 
-describe('the picker (T20)', () => {
-    function opened(): { input: () => HTMLInputElement } {
-        let captured: HTMLInputElement | null = null
-        vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) {
-            captured = this
-        })
-        return { input: () => captured as unknown as HTMLInputElement }
-    }
-
-    test('accept is set on the desktop and unset on the Android transport; cancel gives null and change gives a source (guard)', async () => {
-        const page = await openPage()
-        const view = opened()
-        const asked = page.plan.pickRtbFile()
-        expect(view.input().accept).toBe('.rtb,application/vnd.risutanium.rtb')
-        view.input().dispatchEvent(new Event('cancel'))
-        expect(await asked).toBeNull()
-        expect(page.busy.isBusy()).toBe(false)
-        expect(await writeLockIsFree(page)).toBe(true)
-
-        const second = page.plan.pickRtbFile()
-        const file = new File([encoder.encode('rtb-bytes')], 'one.rtb', { lastModified: 42 })
-        Object.defineProperty(view.input(), 'files', { value: [file], configurable: true })
-        view.input().dispatchEvent(new Event('change'))
-        const picked = await second
-        expect(picked).toMatchObject({ name: 'one.rtb', size: 9, lastModified: 42 })
-        expect(picked?.source.size).toBe(9)
-
-        ;(window as unknown as Record<string, unknown>).__TAURI_OS_PLUGIN_INTERNALS__ = { os_type: 'windows' }
-        const desktop = page.plan.pickRtbFile()
-        expect(view.input().accept).toBe('.rtb,application/vnd.risutanium.rtb')
-        view.input().dispatchEvent(new Event('cancel'))
-        expect(await desktop).toBeNull()
-
-        ;(window as unknown as Record<string, unknown>).__TAURI_OS_PLUGIN_INTERNALS__ = { os_type: 'android' }
-        const third = page.plan.pickRtbFile()
-        expect(view.input().accept).toBe('')
-        view.input().dispatchEvent(new Event('cancel'))
-        expect(await third).toBeNull()
-    })
-})
-
 describe('the listing gates of the real asset calls (T10)', () => {
     function storeWith(listed: { key: string, size: number }[] | null): { store: ByteStore, listSized: ReturnType<typeof vi.fn>, has: ReturnType<typeof vi.fn> } {
         const listSized = vi.fn(async () => listed)

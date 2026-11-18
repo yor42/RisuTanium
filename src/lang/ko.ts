@@ -3612,6 +3612,7 @@ export const languageKorean = {
     rtbRestoreLineSideNotRestored: (names: string[]) => `- 이 기기에 보관 중이며 복원되지 않은 데이터: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- 이 기기에 보관 중이며 완전히 기록하지 못한 데이터: ${names.join(', ')}`,
     rtbRestoreSideNames: { iris: "Iris 대화", googleSearch: "Google 검색 키", hypaVector: "기억 검색 데이터", pluginSafe: "플러그인 데이터", pluginSafeLs: "플러그인 설정", pluginPermissions: "플러그인 권한", mcpToolCalls: "MCP 도구 호출", uiPrefs: "인터페이스 설정" },
+    backupFileNotRecognized: "이 파일은 이 앱에서 복원할 수 있는 백업(업스트림 RisuAI .bin 또는 RisuTanium .rtb 백업)이 아니거나, 끝부분이 잘려 있습니다. 아무것도 복원되지 않았습니다. 현재 데이터는 변경되지 않았습니다.",
     coldStorageCleanupDateUnknown: "날짜 알 수 없음",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `손상된 저장 데이터를 백업으로 교체할 때, 이전에 저장된 데이터 사본이 삭제되지 않고 따로 보관되었습니다(생성: ${dates}). 이 사본만 사용하는 이미지와 보관된 데이터는 계속 보호되므로, 사본이 남아 있는 동안에는 정리를 실행할 수 없습니다.\n\n이 이전 사본을 삭제한 뒤 정리하시겠습니까? 삭제한 사본은 복구할 수 없습니다. 취소를 선택하면 사본을 유지하며, 이 경우 정리는 실행되지 않습니다.`,
