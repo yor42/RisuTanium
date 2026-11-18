@@ -1,6 +1,6 @@
 import localforage from 'localforage'
 import { readImage } from '../globalApi.svelte'
-import { classifyImage } from './imageClass'
+import { classifyImage, type ImageClass } from './imageClass'
 import { DBState } from '../stores.svelte'
 import type { Database, folder } from '../storage/database.svelte'
 import { asBuffer } from '../util'

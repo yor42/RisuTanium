@@ -606,7 +606,7 @@ describe('a still that is not queued', () => {
     })
 
     test('reproducer: a still over the whole-read limit takes no grant from the full queue and is answered by the native preview, by key', async () => {
-        const native = vi.fn(async () => ({ kind: 'refused' as const, status: 2 }))
+        const native = vi.fn(async () => ({ kind: 'refused' as const, status: 2 as const }))
         // Optional: on the code before the native preview the hook does not exist, and a reproducer must fail on its assertions, not on setup.
         __avatarThumbTestHooks.setNativePreview?.(native)
         seedStill('assets/over.png', 65)
