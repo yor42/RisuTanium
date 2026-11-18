@@ -29,7 +29,8 @@ import {
     type CommitKey, type KeyEnv, type UnitType,
 } from 'src/ts/storage/store2/format'
 import { COMMIT_KEY } from 'src/ts/storage/store2/format/keys'
-import { gcPass, type GcResult } from 'src/ts/storage/store2/gc/pass'
+import { gcPass, type GcDeps, type GcResult } from 'src/ts/storage/store2/gc/pass'
+import { buildNodeGcAge } from 'src/ts/storage/store2/gc/unitAge'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
 import { createReplyDropper, hexOfKey, type NodeServerFixture, type ReplyDropper } from './nodeServerFixture'
 import { seedStore, treeRequest } from './store2/commitFixtures'
@@ -147,6 +148,8 @@ export interface ObserverViolation {
 }
 
 export interface LiveSnapshot {
+    /** When the second read of the commit key confirmed the state: the commit key named `wanted` at that moment. */
+    observedAt: number
     revision: number
     commit: CommitKey
     /** Every key of the trees the commit key names. */
@@ -172,6 +175,76 @@ export interface Observer {
     readonly unavailableAt: readonly number[]
 }
 
+/**
+ * What an aged run keeps to judge the age rule from outside every client: when each unit was first seen in a listing, when
+ * a stable observed commit-key state first and last named it, and when each retire of it was sent. An observed naming is a
+ * lower bound of the real ones, so the judgement can miss a violation but never invent one.
+ */
+export class RetireLedger {
+    private readonly firstListed = new Map<string, number>()
+    private readonly firstNamed = new Map<string, number>()
+    private readonly lastNamed = new Map<string, number>()
+    private readonly retiredAt = new Map<string, number>()
+
+    listed(keys: Iterable<string>, at: number): void {
+        for (const key of keys) {
+            if (!this.firstListed.has(key)) {
+                this.firstListed.set(key, at)
+            }
+        }
+    }
+
+    named(keys: Iterable<string>, at: number): void {
+        for (const key of keys) {
+            if (!this.firstNamed.has(key)) {
+                this.firstNamed.set(key, at)
+            }
+            this.lastNamed.set(key, at)
+        }
+    }
+
+    retired(keys: readonly string[], sentAt: number): void {
+        for (const key of keys) {
+            if (!this.retiredAt.has(key)) {
+                this.retiredAt.set(key, sentAt)
+            }
+        }
+    }
+
+    /**
+     * A retired unit is a violation when a stable observed state named it less than `minAgeMs` before its retire was sent,
+     * unless its flight from the first listing to the first naming was longer than `minAgeMs` (the accepted flight limit:
+     * counted as exempt, not judged).
+     */
+    judge(minAgeMs: number): AgedWindowReport {
+        const violations: string[] = []
+        let exempt = 0
+        for (const [key, sentAt] of this.retiredAt) {
+            const last = this.lastNamed.get(key)
+            if (last === undefined) {
+                continue
+            }
+            const flight = (this.firstNamed.get(key) ?? last) - (this.firstListed.get(key) ?? last)
+            if (flight > minAgeMs) {
+                exempt++
+                continue
+            }
+            if (sentAt - last < minAgeMs) {
+                violations.push(`${key}: named ${sentAt - last} ms before its retire`)
+            }
+        }
+        return { retired: this.retiredAt.size, exempt, violations }
+    }
+}
+
+export interface AgedWindowReport {
+    /** Units whose retire was sent and applied. */
+    retired: number
+    /** Retired units that were named, whose flight exceeded the minimum age: not judged, counted. */
+    exempt: number
+    violations: string[]
+}
+
 class Unavailable extends Error {}
 
 const SNAPSHOT_ATTEMPTS = 5
@@ -184,7 +257,7 @@ function manifestsNamed(key: CommitKey): string[] {
     ]
 }
 
-export function createObserver(store: ByteStore, window: RetireWindow, tally: Tally): Observer {
+export function createObserver(store: ByteStore, window: RetireWindow, tally: Tally, ledger?: RetireLedger): Observer {
     const violations: ObserverViolation[] = []
     const unavailableAt: number[] = []
     const trees = new Map<string, string[]>()
@@ -277,12 +350,13 @@ export function createObserver(store: ByteStore, window: RetireWindow, tally: Ta
             }
         }
         const second = await read(COMMIT_KEY)
+        const observedAt = Date.now()
         if (second.version !== first.version) {
             return { status: 'moved' }
         }
         return {
             status: 'stable',
-            snapshot: { revision: first.version, commit: parsed.value, wanted, listing, missing: [...missing].sort(), damaged: [...damaged].sort() },
+            snapshot: { observedAt, revision: first.version, commit: parsed.value, wanted, listing, missing: [...missing].sort(), damaged: [...damaged].sort() },
         }
     }
 
@@ -301,6 +375,8 @@ export function createObserver(store: ByteStore, window: RetireWindow, tally: Ta
             case 'stable': {
                 sawCommit = true
                 const { snapshot: found } = outcome
+                ledger?.listed(found.listing, found.observedAt)
+                ledger?.named(found.wanted, found.observedAt)
                 if (found.missing.length > 0) {
                     violations.push({ label, kind: 'missing', revision: found.revision, detail: found.missing })
                 } else if (found.damaged.length > 0) {
@@ -402,6 +478,12 @@ export interface LiveOptions {
     restartAt: number
     /** Diagnostic: each live removal is preceded by a starver commit, which makes the collector's token stale, so most removals lose to a conflict while the writers run. A starver commit whose read throws is swallowed, leaving that removal unpreceded. */
     starveCollector?: boolean
+    /**
+     * The collector runs the aged pass with this minimum age between sightings (injected, never reachable from a page) and
+     * the real clocks. The retire phase, which relies on a single-phase pass, is skipped, and the quiet fallback waits by
+     * time instead of by passes, because an aged pass needs three sightings a minimum age apart.
+     */
+    aged?: { minAgeMs: number }
 }
 
 export interface EndState {
@@ -441,6 +523,8 @@ export interface LiveReport {
     unexpected: string[]
     partialRetireRounds: number
     endState: EndState
+    /** The judgement of an aged run's retires against the observed namings; `null` for a single-phase run. */
+    agedWindow: AgedWindowReport | null
 }
 
 /** The main run is extended by at most this many times its length when the collector has applied no batch yet. */
@@ -452,6 +536,8 @@ const EXTENSION_SLICE_MS = 5000
  * collector that works applies one within a few passes; the bound is passes, not time, so a slow machine does not exhaust it.
  */
 const QUIET_GC_MAX_PASSES = 30
+/** The writer-free phase of an aged run lasts at most this many minimum ages. */
+const AGED_QUIET_AGES = 12
 const PARTIAL_RETIRE_TARGET = 3
 const PARTIAL_RETIRE_MAX_ROUNDS = 60
 /** How long after the server answers again a check that began during the restart may still report an unreachable server. */
@@ -476,12 +562,20 @@ function tallyGc(tally: Tally, result: GcResult, suffix = ''): void {
     tally.add(`gc:batches-applied${suffix}`, result.batches)
 }
 
-function gcDepsOf(client: LiveClient, backend: Store2Backend) {
+function gcDepsOf(client: LiveClient, backend: Store2Backend, aged?: { minAgeMs: number }): GcDeps {
     const guarded = client.store.guarded
     if (guarded === undefined) {
         throw new Error('The Node store offers no guarded operations.')
     }
-    return { backend, kind: 'node' as const, idleReason: () => null, probe: () => guarded.probe() }
+    const deps: GcDeps = { backend, kind: 'node', idleReason: () => null, probe: () => guarded.probe() }
+    if (aged !== undefined) {
+        const age = buildNodeGcAge(client.store)
+        if (age === null) {
+            throw new Error('The Node store offers no server clock.')
+        }
+        deps.age = { ...age, minAgeMs: aged.minAgeMs }
+    }
+    return deps
 }
 
 async function serverKeysOf(fixture: NodeServerFixture): Promise<string[]> {
@@ -505,8 +599,9 @@ export async function runLiveWorkload(fixture: NodeServerFixture, options: LiveO
     const tally = new Tally()
     const unexpected: string[] = []
     const window = new RetireWindow()
+    const ledger = options.aged === undefined ? null : new RetireLedger()
     const observerStore = createNodeHttpStore({ baseUrl: fixture.baseUrl, authHeader: () => fixture.authHeader() })
-    const observer = createObserver(observerStore, window, tally)
+    const observer = createObserver(observerStore, window, tally, ledger ?? undefined)
 
     const seeder = openLiveClient(fixture, 'seed', env)
     await seedStore(seeder.backend, env)
@@ -518,7 +613,16 @@ export async function runLiveWorkload(fixture: NodeServerFixture, options: LiveO
     }))
     const restorer = openLiveClient(fixture, 'restorer', env, { 'commit-write': (nth) => nth % 5 === 0 })
     const collector = openLiveClient(fixture, 'collector', env, { 'remove-checked': (nth) => nth % 4 === 0 })
-    const instrumentedCollector = instrumentRetires(collector.backend, window, observerStore, tally)
+    const windowedCollector = instrumentRetires(collector.backend, window, observerStore, tally)
+    const instrumentedCollector: Store2Backend = ledger === null ? windowedCollector : {
+        ...windowedCollector,
+        async removeBatch(keys, expectedCommit, expectedFence) {
+            const sentAt = Date.now()
+            const applied = await windowedCollector.removeBatch(keys, expectedCommit, expectedFence)
+            ledger.retired(keys, sentAt)
+            return applied
+        },
+    }
     const starver = options.starveCollector === true ? openLiveClient(fixture, 'starver', env) : null
     const clients = starver === null ? [...committers, restorer, collector] : [...committers, restorer, collector, starver]
 
@@ -646,7 +750,7 @@ export async function runLiveWorkload(fixture: NodeServerFixture, options: LiveO
         for (let n = 1; running; n++) {
             const startedQuiet = quiet
             await guarded('gc', async () => {
-                const result = await gcPass(gcDepsOf(collector, collectorBackend))
+                const result = await gcPass(gcDepsOf(collector, collectorBackend, options.aged))
                 tallyGc(tally, result, quiet ? '-quiet' : '')
             })
             if (startedQuiet) {
@@ -695,7 +799,10 @@ export async function runLiveWorkload(fixture: NodeServerFixture, options: LiveO
             await pause(20)
         }
         quiet = true
-        while (tally.get('gc:batches-applied-quiet') === 0 && quietPasses < QUIET_GC_MAX_PASSES) {
+        // An aged collector needs three sightings a minimum age apart, so its writer-free phase is bounded by time.
+        const quietUntil = Date.now() + (options.aged === undefined ? 0 : AGED_QUIET_AGES * options.aged.minAgeMs)
+        const quietExhausted = (): boolean => options.aged === undefined ? quietPasses >= QUIET_GC_MAX_PASSES : Date.now() >= quietUntil
+        while (tally.get('gc:batches-applied-quiet') === 0 && !quietExhausted()) {
             await pause(20)
         }
         tally.add('gc:quiet-passes', quietPasses)
@@ -712,7 +819,7 @@ export async function runLiveWorkload(fixture: NodeServerFixture, options: LiveO
     const phaseTally = new Tally()
     const phaseBackend = instrumentRetires(phase.backend, window, observerStore, phaseTally)
     let rounds = 0
-    while (rounds < PARTIAL_RETIRE_MAX_ROUNDS && (mainCounts['retire:partial-seen'] ?? 0) + phaseTally.get('retire:partial-seen') < PARTIAL_RETIRE_TARGET) {
+    while (options.aged === undefined && rounds < PARTIAL_RETIRE_MAX_ROUNDS && (mainCounts['retire:partial-seen'] ?? 0) + phaseTally.get('retire:partial-seen') < PARTIAL_RETIRE_TARGET) {
         rounds++
         for (let i = 0; i < 25; i++) {
             await phase.backend.putUnit(newUnitKey(env), encodeUnit(UNIT_TYPE.preset, { v: 1, tag: 'orphan', rounds, i }))
@@ -753,7 +860,7 @@ export async function runLiveWorkload(fixture: NodeServerFixture, options: LiveO
     }
     let lastGc: GcResult | null = null
     for (let pass = 0; pass < FINAL_GC_PASSES; pass++) {
-        lastGc = await gcPass(gcDepsOf(phase, phase.backend))
+        lastGc = await gcPass(gcDepsOf(phase, phase.backend, options.aged))
         if (lastGc.status === 'done' && lastGc.deleted === 0 && lastGc.stopped === undefined) {
             break
         }
@@ -806,6 +913,7 @@ export async function runLiveWorkload(fixture: NodeServerFixture, options: LiveO
         unexpected,
         partialRetireRounds: rounds,
         endState,
+        agedWindow: ledger === null || options.aged === undefined ? null : ledger.judge(options.aged.minAgeMs),
     }
 }
 

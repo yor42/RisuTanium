@@ -2,12 +2,16 @@ import type { AppStoreKind } from '../../store/appStore'
 import type { GuardedCapabilities } from '../../store/contract'
 import {
     REMOVE_BATCH_MAX, Store2BackendError, Store2CommitConflictError, Store2FenceConflictError, Store2UnitConflictError,
-    Store2UnknownOutcomeError, type CompareToken, type Store2Backend, type Store2Read,
+    Store2UnknownOutcomeError, revisionTokenOf, type CompareToken, type Store2Backend, type Store2Read,
 } from '../backend'
 import { evaluateDeleterGate, type GateRefusal } from '../boot'
 import { classifyCommitRead } from '../commitKey'
 import { readFenceVerdict } from '../fence'
+import type { SweepRecord } from '../format'
+import { decideAge, ageOf, type AgePhase, type RecordRead } from '../sweep/ageRecord'
+import { SWEEP_FUTURE_SKEW_MS, SWEEP_MIN_AGE_MS } from '../sweep/params'
 import { markLiveKeys } from './mark'
+import { UNIT_RECORD_CAP, unitKeepOf, type GcAgeDeps, type UnitRecordRead } from './unitAge'
 
 /**
  * One garbage-collection pass: deletes the store2 units that no manifest the
@@ -20,10 +24,25 @@ import { markLiveKeys } from './mark'
  * that never saw it. The fence is read after the mark and before the listing, so
  * a fence that appears later is caught by the batch's fence token and one already
  * standing protects its keys.
+ *
+ * With `age` (a Node server) the pass is aged: it retires a unit only on its third sighting, each at least the minimum
+ * age after the previous record in the earlier of the server's and the page's clock, and it writes the record that
+ * names the next sighting. The order of a round is: peers, one clock sample and the record (a young record ends the
+ * round before any store2 read), the listing, the commit read R, the own-base check, the refusal of a standing
+ * marker, the mark, the fence and the gate, a second clock sample and the decision, the retire batches, and the record
+ * write. The listing precedes R, so a unit uploaded after R is never in the record; every retire and the record write
+ * carry the commit key and the fence at the gate's revisions, so a commit that lands after R conflicts them. A round that
+ * stops early, for any reason, writes no record.
  */
 
 export type GcRefusal =
     | GateRefusal | 'capability-missing' | 'mark-refused' | 'list-failed'
+    /** Aged mode: the server's clock could not be read, and the page's clock alone never decides. */
+    | 'no-server-time'
+    /** Aged mode: the age record was written by a newer build and is kept as it is. */
+    | 'record-too-new'
+    /** Aged mode: the age record could not be read, so no clock may be started or trusted. */
+    | 'record-io-failed'
     /** Another tab may be alive (or this tab's own presence is not proven), so nothing is deleted. */
     | 'other-tab'
     /** The host cannot prove that this tab is alone. */
@@ -51,6 +70,17 @@ export type GcStopReason =
     /** The rebuild round after earlier deletions was refused; the done result's refusal says why. */
     | 'refused'
 
+/** What an aged round did with the age record. `record` is `none` when nothing was written, whatever the reason. */
+export interface GcAgeReport {
+    phase: AgePhase
+    candidates: number
+    recordedItems: number
+    record: 'written' | 'conflict' | 'unknown' | 'none'
+    conflictOn?: 'record' | 'commit' | 'fence'
+    /** The later clock minus the earlier one of the deciding sample. */
+    clockGapMs: number
+}
+
 export type GcResult =
     | { status: 'refused', reason: GcRefusal, detail: string }
     | {
@@ -63,6 +93,8 @@ export type GcResult =
         commitMoved?: boolean
         /** With stopped: 'refused': the refusal of the rebuild round. */
         refusal?: { reason: GcRefusal, detail: string }
+        /** Aged rounds only. */
+        age?: GcAgeReport
     }
 
 export interface GcDeps {
@@ -92,12 +124,17 @@ export interface GcDeps {
      * took a peer's tree) deletes nothing: the mark would not contain what the page can still read.
      */
     ownBase?: () => string | null
+    /**
+     * Present only on Node: the pass is aged (see the header). An aged pass proceeds on `'unsupported'`, because the
+     * minimum age bounds a reader that no tab proof covers, and still refuses or stops on `'others'`.
+     */
+    age?: GcAgeDeps
 }
 
 type Attempt =
     | { status: 'refused', reason: GcRefusal, detail: string }
     | { status: 'rebuild', deleted: number, batches: number }
-    | { status: 'done', deleted: number, batches: number, stopped?: GcStopReason, commitMoved?: boolean }
+    | { status: 'done', deleted: number, batches: number, stopped?: GcStopReason, commitMoved?: boolean, age?: GcAgeReport }
 
 async function probeNode(deps: GcDeps): Promise<{ reason: string } | null> {
     if (deps.probe === undefined) {
@@ -115,8 +152,8 @@ async function probeNode(deps: GcDeps): Promise<{ reason: string } | null> {
 }
 
 /** What a failed sole-tab proof ends the round with: a refusal in the first round, a stop once something was deleted. */
-function peerEnd(answer: GcPeerAnswer, round: number): Attempt | null {
-    if (answer === 'alone') {
+function peerEnd(answer: GcPeerAnswer, round: number, aged: boolean): Attempt | null {
+    if (answer === 'alone' || (aged && answer === 'unsupported')) {
         return null
     }
     if (round > 0) {
@@ -127,14 +164,65 @@ function peerEnd(answer: GcPeerAnswer, round: number): Attempt | null {
         : { status: 'refused', reason: 'other-tab', detail: 'Another tab may be open, or this tab\'s own presence is not held.' }
 }
 
+/** The clock sample of an aged round, or `null` when the server's time could not be had. */
+async function sampleOf(age: GcAgeDeps): Promise<{ early: number, late: number } | null> {
+    try {
+        return await age.sampleClock()
+    } catch {
+        return null
+    }
+}
+
+const NO_SERVER_TIME: Attempt = { status: 'refused', reason: 'no-server-time', detail: 'The Node server\'s clock could not be read.' }
+
+function recordReadOf(read: Extract<UnitRecordRead, { status: 'ok' | 'absent' | 'unreadable' }>): RecordRead {
+    return read.status === 'ok' ? { status: 'ok', value: read.value } : { status: read.status }
+}
+
 async function attemptPass(deps: GcDeps, round: number): Promise<Attempt> {
-    const { backend } = deps
+    const { backend, age } = deps
+    const aged = age !== undefined
     if (deps.peers !== undefined) {
-        const ended = peerEnd(await deps.peers(), round)
+        const ended = peerEnd(await deps.peers(), round, aged)
         if (ended !== null) {
             return ended
         }
     }
+
+    let stored: Extract<UnitRecordRead, { status: 'ok' | 'absent' | 'unreadable' }> | null = null
+    let listedEarly: string[] | null = null
+    if (age !== undefined) {
+        // A young record ends the round before any store2 read: nothing is listed, marked, deleted or written.
+        const first = await sampleOf(age)
+        if (first === null) {
+            return NO_SERVER_TIME
+        }
+        const read = await age.readRecord()
+        if (read.status === 'too-new') {
+            return { status: 'refused', reason: 'record-too-new', detail: 'The age record was written by a newer build.' }
+        }
+        if (read.status === 'io-failed') {
+            return { status: 'refused', reason: 'record-io-failed', detail: 'The age record could not be read.' }
+        }
+        stored = read
+        const verdict = ageOf(read.status === 'ok' ? read.value : null, first, age.minAgeMs ?? SWEEP_MIN_AGE_MS, age.futureSkewMs ?? SWEEP_FUTURE_SKEW_MS)
+        if (verdict === 'young') {
+            return {
+                status: 'done', deleted: 0, batches: 0,
+                age: { phase: 'young', candidates: 0, recordedItems: 0, record: 'none', clockGapMs: first.late - first.early },
+            }
+        }
+        // The listing comes before the commit read: a unit uploaded after R is then never in the record.
+        try {
+            listedEarly = await backend.listStore2()
+        } catch (error) {
+            if (error instanceof Store2BackendError) {
+                return { status: 'refused', reason: 'list-failed', detail: error.message }
+            }
+            throw error
+        }
+    }
+
     let commitRead: Store2Read
     try {
         commitRead = await backend.readCommit()
@@ -152,6 +240,14 @@ async function attemptPass(deps: GcDeps, round: number): Promise<Attempt> {
             return { status: 'refused', reason: 'stale-base', detail: 'The commit key names a manifest this page has not acknowledged.' }
         }
     }
+    if (aged) {
+        // No retire and no record write applies against a standing marker of any owner: a bulk writer under it stores
+        // units that no manifest names yet.
+        const classified = classifyCommitRead(commitRead)
+        if (classified.status === 'parsed' && classified.value.staging !== null) {
+            return { status: 'refused', reason: 'staging', detail: `A ${classified.value.staging.label} marker stands.` }
+        }
+    }
 
     const mark = await markLiveKeys(backend, commitRead)
     if (mark.status === 'refused') {
@@ -166,32 +262,69 @@ async function attemptPass(deps: GcDeps, round: number): Promise<Attempt> {
     }
 
     let listed: string[]
-    try {
-        listed = await backend.listStore2()
-    } catch (error) {
-        if (error instanceof Store2BackendError) {
-            return { status: 'refused', reason: 'list-failed', detail: error.message }
+    if (listedEarly !== null) {
+        listed = listedEarly
+    } else {
+        try {
+            listed = await backend.listStore2()
+        } catch (error) {
+            if (error instanceof Store2BackendError) {
+                return { status: 'refused', reason: 'list-failed', detail: error.message }
+            }
+            throw error
         }
-        throw error
     }
     const standing = gate.commit.staging === null ? null : gate.commit.staging.prefix
     const candidates = listed.filter(key =>
         !mark.live.has(key) && !gate.liveKeys.has(key) && (standing === null || !key.startsWith(standing)))
 
+    let targets = candidates
+    let report: GcAgeReport | undefined
+    let next: SweepRecord | null = null
+    if (age !== undefined && stored !== null) {
+        // The deciding sample is taken after R and the mark, so the earlier clock never predates what the mark saw.
+        const second = await sampleOf(age)
+        if (second === null) {
+            return NO_SERVER_TIME
+        }
+        const decision = decideAge({
+            subject: 'unit',
+            backend: 'node',
+            record: recordReadOf(stored),
+            candidates: candidates.map(name => ({ name, rev: null })),
+            now: second.early,
+            late: second.late,
+            keep: unitKeepOf(mark, gate),
+            nodeRecordCap: age.recordCap ?? UNIT_RECORD_CAP,
+            minAgeMs: age.minAgeMs,
+            futureSkewMs: age.futureSkewMs,
+        })
+        report = {
+            phase: decision.phase, candidates: candidates.length, recordedItems: decision.nextRecord?.items.length ?? 0,
+            record: 'none', clockGapMs: second.late - second.early,
+        }
+        if (decision.phase === 'young') {
+            // Only a clock that went back between the two samples gets here: nothing is deleted or written.
+            return { status: 'done', deleted: 0, batches: 0, age: report }
+        }
+        targets = decision.delete.map(deletion => deletion.name)
+        next = decision.nextRecord
+    }
+
     let deleted = 0
     let batches = 0
-    for (let at = 0; at < candidates.length; at += REMOVE_BATCH_MAX) {
+    for (let at = 0; at < targets.length; at += REMOVE_BATCH_MAX) {
         if (batches > 0 && deps.pace !== undefined) {
             await deps.pace()
         }
-        if (deps.peers !== undefined && await deps.peers() !== 'alone') {
-            return { status: 'done', deleted, batches, stopped: 'other-tab' }
+        if (deps.peers !== undefined && peerEnd(await deps.peers(), 1, aged) !== null) {
+            return { status: 'done', deleted, batches, stopped: 'other-tab', age: report }
         }
         // No await sits between this check and `removeBatch`, so the proof and the stop rule both hold at the delete.
         if (deps.shouldStop?.() === true) {
-            return { status: 'done', deleted, batches, stopped: 'yielded' }
+            return { status: 'done', deleted, batches, stopped: 'yielded', age: report }
         }
-        const batch = candidates.slice(at, at + REMOVE_BATCH_MAX)
+        const batch = targets.slice(at, at + REMOVE_BATCH_MAX)
         try {
             await backend.removeBatch(batch, gate.commitToken, gate.fenceToken)
         } catch (error) {
@@ -199,10 +332,10 @@ async function attemptPass(deps: GcDeps, round: number): Promise<Attempt> {
                 return { status: 'rebuild', deleted, batches }
             }
             if (error instanceof Store2FenceConflictError) {
-                return { status: 'done', deleted, batches, stopped: 'fence-conflict' }
+                return { status: 'done', deleted, batches, stopped: 'fence-conflict', age: report }
             }
             if (error instanceof Store2UnitConflictError) {
-                return { status: 'done', deleted, batches, stopped: 'unit-conflict' }
+                return { status: 'done', deleted, batches, stopped: 'unit-conflict', age: report }
             }
             if (error instanceof Store2UnknownOutcomeError) {
                 // Read the commit key back before reporting; the pass never retries the batch.
@@ -215,17 +348,39 @@ async function attemptPass(deps: GcDeps, round: number): Promise<Attempt> {
                         throw readError
                     }
                 }
-                return { status: 'done', deleted, batches, stopped: 'unknown-outcome', commitMoved }
+                return { status: 'done', deleted, batches, stopped: 'unknown-outcome', commitMoved, age: report }
             }
             if (error instanceof Store2BackendError) {
-                return { status: 'done', deleted, batches, stopped: 'backend-failure' }
+                return { status: 'done', deleted, batches, stopped: 'backend-failure', age: report }
             }
             throw error
         }
         deleted += batch.length
         batches++
     }
-    return { status: 'done', deleted, batches }
+    if (age === undefined || stored === null || report === undefined || next === null) {
+        return { status: 'done', deleted, batches }
+    }
+
+    // The record names only keys that no commit-key state from R to this write named: the write carries the commit key
+    // and the fence at the gate's revisions. A stop writes nothing, and nothing is awaited between the stop check and the send.
+    if (deps.peers !== undefined && peerEnd(await deps.peers(), 1, aged) !== null) {
+        return { status: 'done', deleted, batches, stopped: 'other-tab', age: report }
+    }
+    if (deps.shouldStop?.() === true) {
+        return { status: 'done', deleted, batches, stopped: 'yielded', age: report }
+    }
+    const written = await age.writeRecord(
+        next, stored.version, revisionTokenOf(gate.commitToken).revision, revisionTokenOf(gate.fenceToken).revision,
+    )
+    if (written === 'written') {
+        report = { ...report, record: 'written' }
+    } else if (written === 'unknown') {
+        report = { ...report, record: 'unknown' }
+    } else {
+        report = { ...report, record: 'conflict', conflictOn: written.conflict }
+    }
+    return { status: 'done', deleted, batches, age: report }
 }
 
 function sameToken(a: CompareToken, b: CompareToken): boolean {

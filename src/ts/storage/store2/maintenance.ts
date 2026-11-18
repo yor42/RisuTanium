@@ -15,9 +15,11 @@ import { runAssetSweep, type AssetSweepEnv, type AssetSweepResult } from './swee
 
 /**
  * The deleters a store2 page runs on its own, one at a time, after the page has been quiet. Today that is the cutover
- * deletion of old-format files (`oldData/delete.ts`), followed on the app and on the web (`tauri` and `indexeddb` sessions) by
- * one collector pass over the store2 leftovers (`gc/autoGc.ts`; on the web it runs only when the sole-tab proof and the
- * own-base rule hold, and otherwise logs one refusal line and deletes nothing), followed on the app and on the web
+ * deletion of old-format files (`oldData/delete.ts`), followed on the app, on the web and on a Node server (`tauri`,
+ * `indexeddb` and `node` sessions) by one collector pass over the store2 leftovers (`gc/autoGc.ts`; on the web it runs only
+ * when the sole-tab proof and the own-base rule hold, and otherwise logs one refusal line and deletes nothing; on Node the
+ * pass is aged: a unit is retired only on its third sighting a day apart, and it needs the server's guarded routes and
+ * clock), followed on the app and on the web
  * (`tauri` and `indexeddb` sessions; a Node server and the transitional OPFS page never list `assets/`) by one asset
  * sweep (`sweep/run.ts`; on the web its tab check is the same sole-tab proof as the collector's) that deletes stored assets nothing refers to once a record at least a day old has named them. All three run inside the one registered step and each logs and swallows its
  * own failure, so a failed deleter never keeps the next one from running.
@@ -128,7 +130,7 @@ async function runStep(env: MaintenanceEnv, session: Store2Session, deletion: ty
             }
             // After the deletion settled, even a refused or failed one, and on its own: a thrown pass is logged and swallowed.
             try {
-                await runAutoGc(session, gcPageFacts)
+                await runAutoGc(session, gcPageFacts, await env.store())
             } catch (error) {
                 console.error(error)
             }
