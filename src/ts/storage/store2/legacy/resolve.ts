@@ -5,6 +5,7 @@ import {
     formatColdStorageLoadError, isRestorableColdStorageKey, mergeRetriedColdChatSideFields, type RetryLegacyColdChatSideFields,
 } from '../../../process/coldstorageData'
 import { convertPluginStorageIndex, pluginIndexPointer } from '../../../process/pluginStorageIndex'
+import { followReplacedIds } from '../../characterTreeRepair'
 import { DERIVED_COLD_FIELDS } from '../codec/bodies'
 import { StubRefusedError } from '../codec/types'
 import { findCharacterFaults, isObjectLike } from './faults'
@@ -87,10 +88,12 @@ export interface ResolveOptions {
      * caller sees what the codec sees. Absent: units are used as they are, as the `.bin` import has always done.
      */
     faultyUnitsUnusable?: true
+    /** Old id to new id of a repair already run on `db` (the import's); references in the units the resolve inlines follow it. */
+    replacedIds?: ReadonlyMap<string, string>
 }
 
 /** The options a resolve reads once they are filled in. */
-type ResolveSettings = Required<Omit<ResolveOptions, 'faultyUnitsUnusable'>>
+type ResolveSettings = Required<Omit<ResolveOptions, 'faultyUnitsUnusable' | 'replacedIds'>>
 
 export interface ResolvedLegacyTree {
     database: Database
@@ -384,6 +387,9 @@ function withoutColdFields(character: Fields): Fields {
  * - With `faultyUnitsUnusable`, a stub's unit whose character holds a chat fault is a `shape` failure (a placeholder),
  *   a chat unit with a message that is not an object is an `invalid` failure (the load-error text stays), and a
  *   character slot the codec does not read as an object is passed through as it is.
+ * - No character the resolve produces keeps an unusable id: it gets a fresh one, and every reference that names a
+ *   replaced id (`replacedIds` and these) names the new one, in the units the resolve inlined as well. Nothing
+ *   reachable from `db` is written.
  */
 export async function resolveLegacyTree(db: Database, reader: LegacyEntryReader, options: ResolveOptions = {}): Promise<ResolvedLegacyTree> {
     const incomplete: IncompleteItem[] = []
@@ -393,8 +399,17 @@ export async function resolveLegacyTree(db: Database, reader: LegacyEntryReader,
         characters.push(await resolveLegacyCharacter(source[index], index, reader, incomplete, options))
     }
     const database = await resolveLegacyRoot(db, characters, reader, incomplete, options)
+    followReplacedIds(database, options.replacedIds ?? new Map(), slot => passesThrough(slot, options.faultyUnitsUnusable === true))
     assertResolved(database)
     return { database, incomplete }
+}
+
+/**
+ * A slot the resolve returns as it is: one the codec does not read as an object (a Date, say) is not rewritten into an
+ * empty character under the opt-in, and one that is not a plain object is not a character at all.
+ */
+function passesThrough(slot: unknown, faultyUnusable: boolean): boolean {
+    return !isFields(slot) || (faultyUnusable && !isObjectLike(slot))
 }
 
 function settingsOf(options: ResolveOptions): ResolveSettings {
@@ -404,7 +419,9 @@ function settingsOf(options: ResolveOptions): ResolveSettings {
 /**
  * The resolve of one character slot, the step `resolveLegacyTree` runs for every entry of `db.characters` in array
  * order (`index` is its position, which the legacy pointer reads and the incomplete items name). Returns the slot as
- * `resolveLegacyTree` places it in the resolved list; the slot itself is not modified. What could not be brought in is
+ * `resolveLegacyTree` places it in the resolved list, before the id follow that `resolveLegacyTree` runs last (the
+ * streamed prepare never needs that follow: it takes the whole path for any file with an id problem); the slot itself
+ * is not modified. What could not be brought in is
  * appended to `incomplete`, so a caller that resolves characters one at a time and then the root passes the same
  * array to every call and reads it in character-then-plugin order. A failed read rejects (`LegacyReadError`).
  */
@@ -413,8 +430,8 @@ export async function resolveLegacyCharacter(
 ): Promise<unknown> {
     const resolved = settingsOf(options)
     const faultyUnusable = options.faultyUnitsUnusable === true
-    // A slot the codec does not read as an object (a Date, say) is not rewritten into an empty character under the opt-in.
-    if (!isFields(slot) || (faultyUnusable && !isObjectLike(slot))) {
+    // `!isFields` repeats the predicate only so that `slot` is narrowed below.
+    if (passesThrough(slot, faultyUnusable) || !isFields(slot)) {
         return slot
     }
     // Any truthy `coldstorage` is a stub, as in the codec; one that is not a unit id has no unit to read.
@@ -437,7 +454,8 @@ export async function resolveLegacyCharacter(
  * a stand-in list when the caller holds the characters elsewhere); the result is `db` with them and the resolved plugin
  * storage, without a `taskPresets` key. `db` is not modified. Its plugin items follow the character items already in
  * `incomplete`. A failed read rejects (`LegacyReadError`). The stub and pointer assertion over the characters is
- * `resolveLegacyTree`'s own, since only it holds the whole list.
+ * `resolveLegacyTree`'s own, since only it holds the whole list, and so is the id follow it runs last: the two halves
+ * compose into `resolveLegacyTree` except for that follow.
  */
 export async function resolveLegacyRoot(
     db: Database, characters: unknown[], reader: LegacyEntryReader, incomplete: IncompleteItem[], options: ResolveOptions = {},
