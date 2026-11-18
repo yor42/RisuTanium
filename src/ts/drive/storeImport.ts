@@ -2,7 +2,7 @@ import { alertConfirm, alertError, alertNormalWait, alertStore, alertWait, waitA
 import { getSaveMarkCount, isSaveClean } from '../globalApi.svelte'
 import { language } from 'src/lang'
 import { getDatabase, type Database } from '../storage/database.svelte'
-import { describeOmitted } from '../storage/bootBlockLoad'
+import { describeOmitted } from './describeOmitted'
 import { decodeRisuSave, isBlockFormatSave, salvageRisuSave, type SalvageOmittedBlock } from '../storage/risuSave'
 import { Store2StalePageError } from '../storage/store2/backend/errors'
 import type { Store2Backend, Store2Read } from '../storage/store2/backend/types'

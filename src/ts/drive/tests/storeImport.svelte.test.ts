@@ -697,7 +697,7 @@ armed('the database is decoded and confirmed before the copy', () => {
         const source = makeDb('backup', ['alpha', 'beta', 'gamma'])
         const damaged = breakDataChecksum(await blockFileBytes(page, source), 'alpha')
         const salvaged = await page.w.risuSave.salvageRisuSave(damaged)
-        const { describeOmitted } = await import('src/ts/storage/bootBlockLoad')
+        const { describeOmitted } = await import('src/ts/drive/describeOmitted')
         const lines = describeOmitted(salvaged.omitted)
         expect(lines.length, 'the fixture must leave something out').toBeGreaterThan(0)
         return { bytes: binOf(binEntry('golden-avatar.png', AVATAR), binEntry('database.risudat', damaged)), lines }
