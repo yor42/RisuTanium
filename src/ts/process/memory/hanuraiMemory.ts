@@ -6,7 +6,6 @@ import type { ChatTokenizer } from "src/ts/tokenizer";
 import { getDatabase } from "src/ts/storage/database.svelte";
 
 const maxRecentChatQuery = 4;
-const documentPrefix = 'search_document: '
 
 export async function hanuraiMemory(chats:OpenAIChat[],arg:{
     currentTokens:number,
@@ -32,11 +31,11 @@ export async function hanuraiMemory(chats:OpenAIChat[],arg:{
                 if(!split.trim()){
                     continue
                 }
-                addTexts.push(`${documentPrefix}${split.trim()}`)
+                addTexts.push(split.trim())
             }
         }
         else{
-            addTexts.push(`${documentPrefix}${chat.content?.trim()}`)
+            addTexts.push(chat.content?.trim())
         }
     })
     await processer.addText(addTexts)
@@ -47,7 +46,7 @@ export async function hanuraiMemory(chats:OpenAIChat[],arg:{
         if(!chat?.content){
             continue
         }
-        const scoredArray = (await processer.similaritySearchScored('search_query: ' + chat.content)).map((result) => {
+        const scoredArray = (await processer.similaritySearchScored(chat.content)).map((result) => {
             return [result[0],result[1]/i] as [string,number]
         })
         for(const scored of scoredArray){
@@ -92,7 +91,7 @@ export async function hanuraiMemory(chats:OpenAIChat[],arg:{
     let resultTexts:string[] = []
     let blockTokens = 0
     for(const vector of vectorResult){
-        const resultText = vector[0].substring(documentPrefix.length)
+        const resultText = vector[0]
         if(promptTexts.has(resultText)){
             continue
         }

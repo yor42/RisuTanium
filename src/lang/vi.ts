@@ -3613,6 +3613,7 @@ export const languageVietnamese = {
     rtbRestoreLineSideNotRestored: (names: string[]) => `- Dữ liệu được giữ trên thiết bị này nhưng chưa được khôi phục: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- Dữ liệu được giữ trên thiết bị này nhưng không thể ghi đầy đủ: ${names.join(', ')}`,
     rtbRestoreSideNames: { iris: "cuộc trò chuyện Iris", googleSearch: "khóa tìm kiếm Google", hypaVector: "dữ liệu tìm kiếm bộ nhớ", pluginSafe: "dữ liệu plugin", pluginSafeLs: "cài đặt plugin", pluginPermissions: "quyền của plugin", mcpToolCalls: "lệnh gọi công cụ MCP", uiPrefs: "tùy chọn giao diện" },
+    backupFileNotRecognized: "Tệp này không phải là bản sao lưu mà ứng dụng này có thể khôi phục (.bin của RisuAI thượng nguồn hoặc bản sao lưu .rtb của RisuTanium), hoặc bị cắt cụt. Không có gì được khôi phục. Dữ liệu hiện tại của bạn không bị thay đổi.",
     coldStorageCleanupDateUnknown: "không rõ ngày",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `Khi một bản lưu bị hỏng được thay thế từ bản sao lưu, các bản sao dữ liệu đã lưu cũ hơn được để riêng ra thay vì bị xóa (được tạo ${dates}). Hình ảnh và dữ liệu lưu trữ chỉ chúng sử dụng vẫn được bảo vệ, nên việc dọn dẹp không thể chạy khi chúng còn tồn tại.\n\nXóa các bản sao cũ này rồi dọn dẹp? Không thể khôi phục chúng. Chọn Hủy để giữ lại; khi đó việc dọn dẹp sẽ không chạy.`,
