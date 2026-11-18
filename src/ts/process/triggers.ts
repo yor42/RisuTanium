@@ -16,6 +16,7 @@ import { requestChatData } from "./request/request";
 import { generateAIImage } from "./stableDiff";
 import { writeInlayImage } from "./files/inlays";
 import { runScripted } from "./scriptings";
+import { countLuaScripts } from "./luaScriptCount";
 import { calcString } from "./infunctions";
 import { createRunSubject, type Origin } from "./chatOrigin";
 import { LOW_LEVEL_NESTED_TRIGGER_LIMIT, NORMAL_NESTED_TRIGGER_LIMIT } from "./triggerLimits";
@@ -1133,6 +1134,8 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
     const triggers = char.triggerscript.map((v): triggerscript => {
         return { ...v, lowLevelAccess: CharacterlowLevelAccess }
     }).concat(getModuleTriggers(subject))
+    // Every script this pass can run keeps its engine in its mode.
+    const liveLuaScripts = countLuaScripts(triggers)
     const db = getDatabase()
     const defaultVariables = parseKeyValue(char.defaultVariables).concat(parseKeyValue(db.templateDefaultVariables))
     let chat: Chat = arg.chat ?? char.chats[char.chatPage]
@@ -1727,6 +1730,7 @@ export async function runTrigger(char:character,mode:triggerMode, arg: RunTrigge
                         char: char,
                         chat: chat,
                         origin: arg.origin,
+                        liveScripts: liveLuaScripts,
                     })
 
                     if(triggerCodeResult.stopSending){

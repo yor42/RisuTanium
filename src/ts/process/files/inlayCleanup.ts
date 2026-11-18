@@ -582,15 +582,16 @@ function coldRootsOf(db: Pick<Database, 'characters' | 'pluginCustomStorage'>): 
 
 //#region the checks that gate a deletion
 
-type TabState = 'alone' | 'others' | 'unsupported'
+export type TabState = 'alone' | 'others' | 'unsupported'
 
 /**
  * Whether another tab of this page's origin is open or an exclusive storage
  * operation has been requested, read from the Web Locks the tabs hold for
  * their lifetime. Where Web Locks are missing there is no way to tell, and
- * a lock query that fails counts as "another tab".
+ * a lock query that fails counts as "another tab". Shared by every deleter
+ * that must not run beside another tab.
  */
-async function tabState(): Promise<TabState> {
+export async function queryOtherTabs(): Promise<TabState> {
     let manager: LockManager | undefined
     try {
         manager = locksSupported === false || typeof navigator === 'undefined' ? undefined : navigator.locks
@@ -718,10 +719,14 @@ async function runBatch(batch: QueuedCleanup[], stats:InlayCleanupOutcome, pacer
         stats.skipped = reason
         return disposition
     }
+    // Refused first: a page that never deletes must neither wait for a clean save loop nor query the tab locks.
+    if (!inlayDeletionAllowed()) {
+        return skip('inlay deletion is off on this page', 'done')
+    }
     if (!isSaveClean() || isBusy()) {
         return 'wait'
     }
-    const tabs = await pacer.io(tabState())
+    const tabs = await pacer.io(queryOtherTabs())
     if (tabs === 'unsupported') {
         return skip('Web Locks are not available, so another open tab cannot be ruled out', 'done')
     }
@@ -756,7 +761,7 @@ async function runBatch(batch: QueuedCleanup[], stats:InlayCleanupOutcome, pacer
     }
     const { removeInlayAsset } = await pacer.io(import("./inlays"))
     for (const id of keep.unreferenced) {
-        const state = await pacer.io(tabState())
+        const state = await pacer.io(queryOtherTabs())
         if (state !== 'alone' || !stillCurrent(startMarks, database)) {
             return skip('the profile changed while deleting', 'retry')
         }

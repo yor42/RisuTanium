@@ -16,6 +16,11 @@ export {
     type AssetKeepSetInput, type KeepSetInput,
 } from './keepSet'
 export { decideAutoSweep, type AssetCount, type AutoSweepDecision } from './limit'
+export { readSweepRecord, writeSweepRecord, type SweepRecordRead } from './record'
+export {
+    runAssetSweep,
+    type AssetSweepEnv, type AssetSweepResult, type AssetSweepSession, type SweepPeers, type SweepRefusalReason, type SweepStopReason,
+} from './run'
 export {
     planNodeRemoval,
     type NodeRemoveInput, type NodeRemoveResult, type RemoveBatch, type RemoveOutcome,

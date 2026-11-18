@@ -66,6 +66,7 @@ const W = 'aaaaaaaa-0000-4000-8000-0000000000a2'
 
 let logs: Array<Record<string, unknown>> = []
 let warnSpy: ReturnType<typeof vi.spyOn>
+let locksQuery: ReturnType<typeof vi.fn>
 
 function removedCharacter(id: string): never {
     return { chats: [{ message: [{ data: `{{inlayed::${id}}}` }] }] } as never
@@ -100,9 +101,10 @@ beforeEach(() => {
     })
     vi.spyOn(console, 'error').mockImplementation(() => { })
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
+    locksQuery = vi.fn(async () => ({ held: [{ name: STORAGE_TAB_LOCK_NAME, mode: 'shared', clientId: 'this' }], pending: [] }))
     Object.defineProperty(navigator, 'locks', {
         configurable: true,
-        value: { query: async () => ({ held: [{ name: STORAGE_TAB_LOCK_NAME, mode: 'shared', clientId: 'this' }], pending: [] }) },
+        value: { query: locksQuery },
     })
 })
 
@@ -112,13 +114,14 @@ afterEach(() => {
 })
 
 describe('a page that is not a legacy or block page deletes no inlay', () => {
-    test('reproducer: a store2 page (page mode and residency) deletes nothing for an inlay no profile data shows', async () => {
+    test('reproducer: a store2 page (page mode and residency) deletes nothing for an inlay no profile data shows, and does no walk or tab query', async () => {
         setPageStorageMode({ kind: 'store2' })
         registerResidency({} as unknown as Residency)
 
         const log = await runCleanup(X)
 
-        expect(log.candidates).toBe(1)
+        expect(log.candidates).toBe(0)
+        expect(locksQuery).not.toHaveBeenCalled()
         expect(deleted()).toEqual([])
         expect(log).toMatchObject({ deleted: 0, skipped: 'inlay deletion is off on this page' })
     })

@@ -3,6 +3,7 @@ import {
     mkdir
 } from "@tauri-apps/plugin-fs"
 import { readUserFile } from "./storage/tauriUserFile"
+import { assetDeletionSettled } from "./storage/assetDeleteHold"
 import { changeFullscreen, checkNullish, sleep, sleepForever } from "./util"
 import { markAppInitiatedReload } from "./reloadGuard"
 import { openUrlOnWeb } from "./openUrlWeb"
@@ -337,9 +338,29 @@ let checkedPaths: string[] = []
  */
 const assetsWrittenThisPage = new Set<string>()
 
-/** Records `key` as written in this page load. Call it before the write starts. */
+/**
+ * Records `key` as written in this page load. Call it before the write starts. A writer of an `assets/` key uses
+ * `noteAndSettleAssetWrite`, or awaits `assetDeletionSettled()` before its first asset write as the `.bin` restore does.
+ */
 export function noteAssetWrittenThisPage(key: string): void {
     assetsWrittenThisPage.add(key)
+}
+
+/**
+ * Notes `key` as written this page and returns the promise of the asset deletion
+ * pending at that moment. Contract: note, then await the result, before any
+ * `has`, write or finish of an `assets/` key. Both happen in one synchronous run,
+ * so a sweep either saw the note and skipped the key, or the caller waits for the
+ * delete in flight and writes afterwards.
+ */
+export function noteAndSettleAssetWrite(key: string): Promise<void> {
+    noteAssetWrittenThisPage(key)
+    return assetDeletionSettled()
+}
+
+/** How many keys `listAssetsWrittenThisPage` holds; the set only grows, so a changed count means new entries. */
+export function assetsWrittenThisPageCount(): number {
+    return assetsWrittenThisPage.size
 }
 
 /** Every key `saveAsset` or a restore wrote, or tried to write, in this page load. */
@@ -723,7 +744,7 @@ async function saveAssetBytes(bytes: Uint8Array, customId: string, fileName: str
         const key = `assets/${id}.${fileExtension}`
         // Before any I/O, so a sweep that runs while this save is in flight, or
         // after it failed, still leaves the key alone.
-        noteAssetWrittenThisPage(key)
+        await noteAndSettleAssetWrite(key)
         const store = await getAppStore()
         // A name is a content hash, so an existing file holds these bytes already.
         // Replacing it would rename over a file the web view may hold open, and
@@ -920,7 +941,7 @@ export async function saveAssetFromPieces(pieces: AsyncIterable<Uint8Array>, opt
         const key = `assets/${hash.digestHex()}.${assetExtensionOf(fileName)}`
         // After the digest is known and before the call that decides between the
         // rename and the discard, so a sweep never takes the key from under it.
-        noteAssetWrittenThisPage(key)
+        await noteAndSettleAssetWrite(key)
         await runBeforeFinish()
         await writer.finish(key)
         return key
@@ -1065,8 +1086,8 @@ export async function saveAssetFromBlob(blob: Blob, fileName: string = '', optio
  * File's snapshot ends the save as `AssetSourceChangedError`, with nothing stored.
  *
  * Limits. Storage of up to twice the file is held for the duration of the save. A crash or a closed tab during the save
- * leaves the temporary key; on a page that runs the store2 storage nothing deletes it yet, a full backup exports it, and
- * an orphan of 100 MiB or more can appear by its raw key in the upstream-size prompt. After the final write, a value of
+ * leaves the temporary key; on a `tauri` or `indexeddb` store2 page the asset sweep deletes it once two passes at least a
+ * day apart found it, and until then a full backup exports it (a Node server keeps it; CHORE-836). An orphan of 100 MiB or more can appear by its raw key in the upstream-size prompt. After the final write, a value of
  * the right size, Blob or bytes, completes the save, so a concurrent same-content `saveAsset` that replaced the Blob with
  * bytes or a Blob leaves both saves with a valid key. Only a Blob of the wrong size is deleted; an absent key, or bytes of another
  * size, end the save with an error and nothing is deleted.
@@ -1093,7 +1114,7 @@ async function saveAssetBlobKept(writeBlob: NonNullable<ByteStore['writeBlob']>,
             throw new AssetSourceChangedError(`The source of the asset changed while it was stored: ${stored.size} of ${blob.size} bytes.`)
         }
         const finalKey = `assets/${await hashBlobBySlices(stored, pieceBytes)}.${assetExtensionOf(fileName)}`
-        noteAssetWrittenThisPage(finalKey)
+        await noteAndSettleAssetWrite(finalKey)
         if (!await store.has(finalKey)) {
             // The second write must not fall back to a whole read: the browser has shown it keeps Blobs, so its failure is the answer.
             await writeBlob(finalKey, stored, 'unconditional')

@@ -28,6 +28,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi 
 import { writable } from 'svelte/store'
 import { makeDb } from 'src/ts/storage/tests/saveLoopSupport'
 import { createWorldKit, settled, until, type World } from 'src/ts/storage/tests/saveLoopWorld'
+import { language } from 'src/lang'
 
 vi.setConfig({ testTimeout: 40_000 })
 
@@ -756,13 +757,52 @@ describe('a boot with no unsaved work stays reloadable by a peer\'s save', () =>
         await bootInWindow(AFTER_FIRST_CHARACTER)
         const cards = await import('src/ts/characterCards')
         const { alertConfirm } = await import('src/ts/alert')
-        vi.mocked(alertConfirm).mockResolvedValueOnce(false)
-        importModuleLink({ name: 'needs access', lowLevelAccess: true })
-        await cards.characterURLImport()
-        expect(liveModules()).toHaveLength(0)
-        broadcastFromPeer()
-        finishInit()
-        expect(await peerSaveOutcome()).toBe('reloaded')
+        // The link prompt is accepted; only the low-level-access prompt is declined.
+        vi.mocked(alertConfirm).mockImplementation(async (msg: string) => !msg.includes(language.lowLevelAccessConfirm))
+        try {
+            importModuleLink({ name: 'needs access', lowLevelAccess: true })
+            await cards.characterURLImport()
+            expect(liveModules()).toHaveLength(0)
+            broadcastFromPeer()
+            finishInit()
+            expect(await peerSaveOutcome()).toBe('reloaded')
+        } finally {
+            vi.mocked(alertConfirm).mockReset()
+        }
+    })
+
+    test('S16 (R): a #import_module= link whose link prompt is declined writes nothing and leaves the tab reloadable', async () => {
+        await bootInWindow(AFTER_FIRST_CHARACTER)
+        const cards = await import('src/ts/characterCards')
+        const { alertConfirm } = await import('src/ts/alert')
+        vi.mocked(alertConfirm).mockImplementation(async () => false)
+        try {
+            importModuleLink({ name: 'declined' })
+            await cards.characterURLImport()
+            expect(liveModules()).toHaveLength(0)
+            broadcastFromPeer()
+            finishInit()
+            expect(await peerSaveOutcome()).toBe('reloaded')
+        } finally {
+            vi.mocked(alertConfirm).mockReset()
+        }
+    })
+
+    test('S16 (R): a #import_preset= link whose link prompt is declined writes nothing and leaves the tab reloadable', async () => {
+        await bootInWindow(AFTER_FIRST_CHARACTER)
+        const cards = await import('src/ts/characterCards')
+        const { alertConfirm } = await import('src/ts/alert')
+        vi.mocked(alertConfirm).mockImplementation(async () => false)
+        try {
+            location.hash = `#import_preset=${encodeURIComponent(Buffer.from('{}').toString('base64'))}`
+            await cards.characterURLImport()
+            expect((h.db!.botPresets as unknown[]).length).toBe(1)
+            broadcastFromPeer()
+            finishInit()
+            expect(await peerSaveOutcome()).toBe('reloaded')
+        } finally {
+            vi.mocked(alertConfirm).mockReset()
+        }
     })
 
     test('S16 (G): a #import= link whose download fails writes nothing and leaves the tab reloadable', async () => {
