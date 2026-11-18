@@ -2830,7 +2830,17 @@ export const languageKorean = {
         "convertErrorNoMainChunks": "메인 청크를 찾을 수 없습니다.",
         "convertErrorChunkNotArray": "청크 {index}의 chatMemos가 배열이 아닙니다.",
         "convertErrorChunkEmpty": "청크 {index}의 chatMemos가 비어 있습니다.",
-        "convertErrorUnexpected": "오류가 발생했습니다: {message}"
+        "convertErrorUnexpected": "오류가 발생했습니다: {message}",
+        "exportToLorebookLabel": "요약본을 이 채팅의 로어북으로 내보내기",
+        "importFromLorebookLabel": "이 채팅의 로어북 항목을 요약본으로 가져오기",
+        "exportToLorebookConfirm": "요약본 {count}개를 이 채팅의 로어북에 새 항목으로 추가하시겠습니까? 기존 항목은 변경되지 않습니다. 요약본의 태그와 카테고리가 항목의 키워드가 되므로, 일치하는 항목이 HypaV3가 이미 보내는 내용을 반복할 수 있습니다.",
+        "importFromLorebookConfirm": "이 채팅의 로어북 항목 {count}개를 기존 요약본 앞에 새 요약본으로 추가하시겠습니까? 기존 요약본은 변경되지 않습니다.",
+        "lorebookTransferSkippedNote": "이미 있는 {skipped}개는 건너뜁니다.",
+        "exportToLorebookDone": "이 채팅의 로어북에 항목 {count}개를 추가했습니다.",
+        "importFromLorebookDone": "요약본 {count}개를 추가했습니다.",
+        "exportToLorebookNothing": "내보낼 새 항목이 없습니다. 요약본이 없거나, 모든 요약본이 이미 이 채팅의 로어북에 있습니다.",
+        "importFromLorebookNothing": "가져올 새 항목이 없습니다. 이 채팅의 로어북에 이미 요약본이 된 항목을 제외하고 텍스트가 있는 항목이 없습니다.",
+        "lorebookEntryComment": "HypaV3 요약본 #{index}"
     },
     "bulkEnabling": "한번에 로어북 활성화 버튼",
     "showTranslationLoading": "번역 로딩 보이기",
