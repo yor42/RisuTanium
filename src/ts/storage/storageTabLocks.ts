@@ -48,6 +48,20 @@
  * against another such page; see `acquireExclusiveStorageMigrationLock()`'s
  * own doc comment for the full gating and exactly which holds a mismatch
  * keeps and which it releases.
+ *
+ * A page restored from the back/forward cache is a document whose presence
+ * claim nobody verified: the browser may have released its Web Locks while it
+ * was cached, and its base predates the cache. On a persisted `pageshow` the
+ * instance therefore voids its own presence claim for the rest of the
+ * document's life, requests the write lock and never releases it, and calls
+ * the same app-initiated reload the epoch checks use. It never releases the
+ * shared hold itself: if the browser kept the hold, another tab's exclusive
+ * attempt still sees this document until it unloads; if the browser dropped
+ * it, other tabs cannot see this document, and only the void claim and the
+ * closed write lock protect them. A save that already holds the write lock, or
+ * is queued for it ahead of this request, still runs; store2 commits are
+ * compare-and-write and atomic in IndexedDB, so only a legacy or block-mode
+ * page is exposed.
  */
 
 import { markAppInitiatedReload } from "../reloadGuard"
@@ -81,6 +95,11 @@ export interface StorageEpochStore {
     setItem(key: string, value: string): void
 }
 
+/** The minimal shape `createStorageTabLocks()` needs to hear `pageshow`; both `Window` and a test `EventTarget` satisfy it. */
+export interface StorageTabPageEvents {
+    addEventListener(type: 'pageshow', listener: (event: Event) => void): void
+}
+
 /** Options accepted by `createStorageTabLocks()`, each independently injectable for tests; every option defaults to the real browser primitive it wraps. */
 export interface StorageTabLocksOptions {
     /** Backing store for this tab's recorded storage epoch (see `recordStorageEpoch()`). Defaults to `localStorage`. */
@@ -95,6 +114,12 @@ export interface StorageTabLocksOptions {
      * reload was requested without this page actually navigating.
      */
     reload?: () => void
+    /**
+     * Where `pageshow` is heard for the back/forward-cache rule. Defaults to
+     * `window` when one exists and to none otherwise; `null` installs no
+     * listener.
+     */
+    win?: StorageTabPageEvents | null
 }
 
 /** One per-tab instance of the storage tab locks: the acquired shared-presence promise and the exclusive-acquire function. */
@@ -115,8 +140,9 @@ export interface StorageTabLocks {
     locksSupported: boolean
     /**
      * Whether this tab holds its own shared presence lock right now. False without Web Locks, after the presence
-     * request was rejected, and while an exclusive attempt has released the hold. A tab that does not hold it cannot
-     * read a lock snapshot as proof about other tabs.
+     * request was rejected, and while an exclusive attempt has released the hold, and for good once this page was
+     * restored from the back/forward cache, even after an exclusive attempt that was in flight re-acquires the shared
+     * hold. A tab that does not hold it cannot read a lock snapshot as proof about other tabs.
      */
     holdsOwnPresence(): boolean
     /**
@@ -271,6 +297,11 @@ export function createStorageTabLocks(locks: LockManager | undefined, writeLock:
     // acquireExclusiveStorageMigrationLock below).
     let releaseOwnSharedPresenceLock: (() => void) | null = null
 
+    // Set for good by a back/forward-cache restore. It is separate from the
+    // hold above because an exclusive attempt already in flight at the
+    // restore re-acquires the shared hold on every one of its exits.
+    let presenceVoid = false
+
     function acquireOwnSharedPresenceLock(): Promise<void> {
         if (!locks) {
             return Promise.resolve()
@@ -295,6 +326,21 @@ export function createStorageTabLocks(locks: LockManager | undefined, writeLock:
 
     /** Resolves once this tab's own shared presence lock has actually been granted. */
     const tabPresenceLockAcquired: Promise<void> = acquireOwnSharedPresenceLock()
+
+    const pageEvents: StorageTabPageEvents | null = options.win === undefined
+        ? (typeof window === 'undefined' ? null : window)
+        : options.win
+    pageEvents?.addEventListener('pageshow', (event) => {
+        if (!('persisted' in event && event.persisted === true)) {
+            return
+        }
+        // Void the claim, close the write lock to every later save and reload,
+        // all in this one synchronous run. Saves queued ahead of this request
+        // still run. The shared hold is deliberately kept.
+        presenceVoid = true
+        void writeLock.acquire()
+        reloadPage()
+    })
 
     async function acquireExclusiveStorageMigrationLock(timeoutMs = 5000): Promise<((keepWriteLock?: boolean) => Promise<void>) | null> {
         if (!locks) {
@@ -451,7 +497,7 @@ export function createStorageTabLocks(locks: LockManager | undefined, writeLock:
     return {
         tabPresenceLockAcquired,
         locksSupported: locks !== undefined,
-        holdsOwnPresence: () => releaseOwnSharedPresenceLock !== null,
+        holdsOwnPresence: () => releaseOwnSharedPresenceLock !== null && !presenceVoid,
         acquireExclusiveStorageMigrationLock,
         recordStorageEpoch() {
             try {
