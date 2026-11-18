@@ -61,8 +61,8 @@ const REMOTE: EmbeddingRecipe = { pooling: null, queryPrefix: '', documentPrefix
  * - Changing such a model's recipe requires a new `cacheTag` (`r2`, ...). A tag is never reused.
  * - An empty tag is allowed only for a recipe identical to the one that ran before tags existed.
  * - A remote model (null pooling) carries no tag and is outside this invariant, because the provider decides its
- *   vectors. Known consequence: in V2 a voyageContext3 query and a document from a single-text group share a key when
- *   their text is the same.
+ *   vectors. voyageContext3 is remote and has no table tag; V2 keys its role (see `HypaProcessorV2.getCacheKey`),
+ *   and V1 caches only documents.
  *
  * `Record` makes the compiler require a row for every future model key. A GPU key has the recipe of its wasm key.
  */

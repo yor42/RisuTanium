@@ -2829,7 +2829,17 @@ export const languageChinese = {
         "convertErrorNoMainChunks": "未找到主分块。",
         "convertErrorChunkNotArray": "分块 {index} 的 chatMemos 不是数组。",
         "convertErrorChunkEmpty": "分块 {index} 的 chatMemos 为空。",
-        "convertErrorUnexpected": "发生错误：{message}"
+        "convertErrorUnexpected": "发生错误：{message}",
+        "exportToLorebookLabel": "将总结导出到此聊天的世界书",
+        "importFromLorebookLabel": "将此聊天的世界书条目导入为总结",
+        "exportToLorebookConfirm": "要将 {count} 条总结作为新条目添加到此聊天的世界书吗？现有条目不会被更改。总结的标签和类别会成为条目的关键词，因此匹配的条目可能会重复 HypaV3 已经发送的内容。",
+        "importFromLorebookConfirm": "要将此聊天世界书中的 {count} 个条目作为新总结添加到现有总结之前吗？现有总结不会被更改。",
+        "lorebookTransferSkippedNote": "已存在的 {skipped} 项将被跳过。",
+        "exportToLorebookDone": "已向此聊天的世界书添加 {count} 个条目。",
+        "importFromLorebookDone": "已添加 {count} 条总结。",
+        "exportToLorebookNothing": "没有可导出的新内容：没有总结，或每条总结都已在此聊天的世界书中。",
+        "importFromLorebookNothing": "没有可导入的新内容：此聊天的世界书中没有包含文本且尚未成为总结的条目。",
+        "lorebookEntryComment": "HypaV3 总结 #{index}"
     },
     "bulkEnabling": "批量启用世界书",
     "showTranslationLoading": "显示翻译加载中",
