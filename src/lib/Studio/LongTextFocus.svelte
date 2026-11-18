@@ -115,7 +115,7 @@
 
     registerStudioBackLayer({ isOpen: () => open, close })
 
-    const focusTextarea = (): HTMLTextAreaElement | null => layer?.querySelector<HTMLTextAreaElement>('[data-part="lt-focus-input"]') ?? null
+    const focusTextarea = (): HTMLTextAreaElement | null => layer?.querySelector<HTMLTextAreaElement>('[data-part="studio-lt-focus-input"]') ?? null
 
     /** Every sibling along the path from `node` up to the Studio root (or the body): the page behind the layer. */
     function backgroundOf(node: HTMLElement): HTMLElement[] {
@@ -185,7 +185,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
     bind:this={layer}
-    data-part="lt-focus"
+    data-part="studio-lt-focus-layer"
     role="dialog"
     aria-modal="true"
     aria-labelledby={titleId}
@@ -193,47 +193,47 @@
     class="fixed inset-0 z-40 flex flex-col bg-bgcolor text-textcolor outline-none"
     {onkeydown}
 >
-    <div data-part="lt-focus-header" class="flex shrink-0 items-center gap-2 border-b border-darkborderc px-2">
-        <button type="button" data-part="lt-focus-close" class={iconButton} aria-label={language.ltFocusClose} onclick={close}>
+    <div data-part="studio-lt-focus-header" class="flex shrink-0 items-center gap-2 border-b border-darkborderc px-2">
+        <button type="button" data-part="studio-lt-focus-close" class={iconButton} aria-label={language.ltFocusClose} onclick={close}>
             <ArrowLeftIcon size={20} />
         </button>
-        <h2 id={titleId} data-part="lt-focus-title" class="min-w-0 truncate font-bold">{title}</h2>
+        <h2 id={titleId} data-part="studio-lt-focus-title" class="min-w-0 truncate font-bold">{title}</h2>
         {#if ownerLabel}
-            <span data-part="lt-focus-owner" class="hidden min-w-0 truncate text-sm text-textcolor2 min-[600px]:inline">{ownerLabel}</span>
+            <span data-part="studio-lt-focus-owner" class="hidden min-w-0 truncate text-sm text-textcolor2 min-[600px]:inline">{ownerLabel}</span>
         {/if}
         <span class="ms-auto flex shrink-0 items-center gap-1">
             <StudioStatusChip ack={currentVisitAck()} />
-            <button type="button" data-part="lt-focus-find" class={iconButton} aria-label={language.ltFind} aria-expanded={findOpen} onclick={() => { if (findOpen) closeFind(); else openFind(false) }}>
+            <button type="button" data-part="studio-lt-focus-find" class={iconButton} aria-label={language.ltFind} aria-expanded={findOpen} onclick={() => { if (findOpen) closeFind(); else openFind(false) }}>
                 <SearchIcon size={18} />
             </button>
             {#if previewable}
-                <button type="button" data-part="lt-focus-preview" class={iconButton} aria-label={language.ltPreview} aria-pressed={previewOn} onclick={togglePreview}>
+                <button type="button" data-part="studio-lt-focus-preview" class={iconButton} aria-label={language.ltPreview} aria-pressed={previewOn} onclick={togglePreview}>
                     <EyeIcon size={18} />
                 </button>
             {/if}
-            <button type="button" data-part="lt-focus-revert" class={iconButton} aria-label={language.ltRevert} disabled={!editable || opened === null || text === opened} onclick={revert}>
+            <button type="button" data-part="studio-lt-focus-revert" class={iconButton} aria-label={language.ltRevert} disabled={!editable || opened === null || text === opened} onclick={revert}>
                 <RotateCcwIcon size={18} />
             </button>
             {#if history}
-                <button type="button" data-part="lt-focus-undo" class={iconButton} aria-label={language.studioHistoryUndo} disabled={!history.can('undo')} onclick={() => history.step('undo', focusTextarea())}>
+                <button type="button" data-part="studio-lt-focus-undo" class={iconButton} aria-label={language.studioHistoryUndo} disabled={!history.can('undo')} onclick={() => history.step('undo', focusTextarea())}>
                     <Undo2Icon size={18} />
                 </button>
-                <button type="button" data-part="lt-focus-redo" class={iconButton} aria-label={language.studioHistoryRedo} disabled={!history.can('redo')} onclick={() => history.step('redo', focusTextarea())}>
+                <button type="button" data-part="studio-lt-focus-redo" class={iconButton} aria-label={language.studioHistoryRedo} disabled={!history.can('redo')} onclick={() => history.step('redo', focusTextarea())}>
                     <Redo2Icon size={18} />
                 </button>
             {/if}
         </span>
     </div>
-    <div data-part="lt-focus-notice" class="shrink-0">
+    <div data-part="studio-lt-focus-notice" class="shrink-0">
         <StudioNotice message={studioScreen.notice} places={studioScreen.noticePlaces?.places} ownerKind={studioScreen.noticePlaces?.ownerKind} ondismiss={() => setStudioNotice(null)} />
     </div>
     {#if findOpen}
         <LongTextFind bind:this={findBar} {field} {text} {editable} replace={replaceOpen} onclose={closeFind} />
     {/if}
     {#if previewOn && previewable && !wide}
-        <div role="tablist" data-part="lt-focus-tabs" class="flex shrink-0 gap-1 border-b border-darkborderc px-3 pt-2">
-            <button type="button" role="tab" data-part="lt-focus-tab-edit" class={tabButton} aria-selected={tab === 'edit'} onclick={() => { tab = 'edit' }}>{language.ltTabEdit}</button>
-            <button type="button" role="tab" data-part="lt-focus-tab-preview" class={tabButton} aria-selected={tab === 'preview'} onclick={() => { tab = 'preview' }}>{language.ltPreview}</button>
+        <div role="tablist" data-part="studio-lt-focus-tabs" class="flex shrink-0 gap-1 border-b border-darkborderc px-3 pt-2">
+            <button type="button" role="tab" data-part="studio-lt-focus-tab-edit" class={tabButton} aria-selected={tab === 'edit'} onclick={() => { tab = 'edit' }}>{language.ltTabEdit}</button>
+            <button type="button" role="tab" data-part="studio-lt-focus-tab-preview" class={tabButton} aria-selected={tab === 'preview'} onclick={() => { tab = 'preview' }}>{language.ltPreview}</button>
         </div>
     {/if}
     <div class="flex min-h-0 flex-1 gap-3 p-3">
@@ -243,7 +243,7 @@
                 {onvalue}
                 oncomposing={(now) => { composing = now }}
                 {port}
-                part="lt-focus-input"
+                part="studio-lt-focus-input"
                 labelId={titleId}
                 {kind}
                 {mode}

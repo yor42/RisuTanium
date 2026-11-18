@@ -2130,7 +2130,7 @@ describe('S3e-E2b the chip counts filled text and the Preview button', () => {
         ;(host.querySelector('[data-part="studio-lt-preview"]') as HTMLButtonElement).click()
         flushSync()
         await settleTokens()
-        const input = host.querySelector('[data-part="lt-preview-row"][data-key="hp"] input') as HTMLInputElement
+        const input = host.querySelector('[data-part="studio-lt-preview-row"][data-key="hp"] input') as HTMLInputElement
         input.value = '9'
         input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
         flushSync()
@@ -2165,14 +2165,14 @@ describe('S3e-E2b the chip counts filled text and the Preview button', () => {
         const eye = host.querySelector('[data-part="studio-lt-preview"]') as HTMLButtonElement
         eye.click()
         flushSync()
-        const dialog = host.querySelector('[data-part="lt-preview-sheet"]') as HTMLElement
+        const dialog = host.querySelector('[data-part="studio-lt-preview-sheet"]') as HTMLElement
         expect(dialog.getAttribute('role')).toBe('dialog')
         expect(dialog.getAttribute('aria-modal')).toBe('true')
         expect(document.getElementById(dialog.getAttribute('aria-labelledby') as string)?.textContent).toBe('ltPreview')
         expect(eye.getAttribute('aria-expanded')).toBe('true')
         const esc = keyOn(dialog, 'Escape')
         expect(esc.defaultPrevented).toBe(true)
-        expect(host.querySelector('[data-part="lt-preview-sheet"]')).toBeNull()
+        expect(host.querySelector('[data-part="studio-lt-preview-sheet"]')).toBeNull()
         expect(area.isConnected).toBe(true)
         expect(eye.getAttribute('aria-expanded')).toBe('false')
     })
@@ -2183,13 +2183,13 @@ describe('S3e-E2b the chip counts filled text and the Preview button', () => {
         area.focus()
         ;(host.querySelector('[data-part="studio-lt-preview"]') as HTMLButtonElement).click()
         flushSync()
-        expect(host.querySelector('[data-part="lt-preview-sheet"]')).not.toBeNull()
+        expect(host.querySelector('[data-part="studio-lt-preview-sheet"]')).not.toBeNull()
         area.blur()
         const layer = back.layers.at(-1)
         expect(layer?.isOpen()).toBe(true)
         layer?.close()
         flushSync()
-        expect(host.querySelector('[data-part="lt-preview-sheet"]')).toBeNull()
+        expect(host.querySelector('[data-part="studio-lt-preview-sheet"]')).toBeNull()
         expect(document.activeElement).not.toBe(area)
     })
 
@@ -2200,7 +2200,7 @@ describe('S3e-E2b the chip counts filled text and the Preview button', () => {
         ;(host.querySelector('[data-part="studio-lt-preview"]') as HTMLButtonElement).click()
         flushSync()
         expect(pickerOf(host)).toBeNull()
-        expect(host.querySelector('[data-part="lt-preview-sheet"]')).not.toBeNull()
+        expect(host.querySelector('[data-part="studio-lt-preview-sheet"]')).not.toBeNull()
     })
 
     test('E2-C5 while the field is composing the sheet shows its old output; it updates 400 ms after the composition ends', async () => {
@@ -2210,7 +2210,7 @@ describe('S3e-E2b the chip counts filled text and the Preview button', () => {
         await settleTokens()
         await settleTokens()
         await advanceTokens(450)
-        const output = (): string => (host.querySelector('[data-part="lt-preview-output"]')?.textContent ?? '').trim()
+        const output = (): string => (host.querySelector('[data-part="studio-lt-preview-output"]')?.textContent ?? '').trim()
         expect(output()).toBe('hi')
         compositionStartOn(area)
         typeInto(area, 'hix', true)

@@ -789,7 +789,7 @@ describe('F3 a character without an example text', () => {
 // ---------------------------------------------------------------- the focus layer on a card
 
 describe('F3c the focus layer on an example card', () => {
-    const nested = () => part('lt-focus-input') as HTMLTextAreaElement
+    const nested = () => part('studio-lt-focus-input') as HTMLTextAreaElement
     const announced = () => part('studio-example-announce')?.textContent ?? ''
 
     async function openLayer(index = 0): Promise<void> {
@@ -836,7 +836,7 @@ describe('F3c the focus layer on an example card', () => {
         const steps = stepsOf(rig.service).length
         keyOn(nested(), 'Escape')
         await settle()
-        expect(part('lt-focus')).toBeNull()
+        expect(part('studio-lt-focus-layer')).toBeNull()
         expect(values()).toEqual(['A', 'Hello'])
         expect(live().exampleMessage).toBe('<START>\nA\n<START>\nHello')
         expect(document.activeElement).toBe(cards()[1])
@@ -858,7 +858,7 @@ describe('F3c the focus layer on an example card', () => {
         expect(dispatchBack()).toBe(true)
         flushSync()
         await settle()
-        expect(part('lt-focus')).toBeNull()
+        expect(part('studio-lt-focus-layer')).toBeNull()
         expect(live().exampleMessage).toBe('<START>\nA\n<START>\nHello안')
         expect(h.marks).toBe(marks + 1)
         expect(values()).toEqual(['A', 'Hello안'])
@@ -872,12 +872,12 @@ describe('F3c the focus layer on an example card', () => {
         await settle()
         compositionStart(nested())
         composeInto(nested(), 'A\n<START>\nHello안')
-        const back = part('lt-focus-close') as HTMLButtonElement
+        const back = part('studio-lt-focus-close') as HTMLButtonElement
         back.focus()
         back.click()
         flushSync()
         await settle()
-        expect(part('lt-focus')).toBeNull()
+        expect(part('studio-lt-focus-layer')).toBeNull()
         expect(live().exampleMessage).toBe('<START>\nA\n<START>\nHello안')
         expect(values()).toEqual(['A', 'Hello안'])
     })
@@ -1010,7 +1010,7 @@ describe('F3c the focus layer on an example card', () => {
         live().exampleMessage = '<START>\nA'
         flushSync()
         await settle()
-        expect(part('lt-focus')).toBeNull()
+        expect(part('studio-lt-focus-layer')).toBeNull()
         const only = cards()[0]
         only.focus()
         typeIn(only, 'A\n<START>')

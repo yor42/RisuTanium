@@ -150,29 +150,29 @@
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-<div data-part="lt-find" role="search" class="flex shrink-0 flex-col gap-2 border-b border-darkborderc px-3 py-2" {onkeydown}>
+<div data-part="studio-lt-find-bar" role="search" class="flex shrink-0 flex-col gap-2 border-b border-darkborderc px-3 py-2" {onkeydown}>
     <div class="flex flex-wrap items-center gap-2">
         <input
             bind:this={queryEl}
             bind:value={query}
-            data-part="lt-find-query"
+            data-part="studio-lt-find-query"
             type="text"
             class="{inputClass} min-w-[8rem]"
             aria-label={language.ltFind}
             oninput={() => { announcement = ''; shown = null }}
         />
-        <span data-part="lt-find-count" class="shrink-0 text-sm text-textcolor2">{countText}</span>
-        <button type="button" data-part="lt-find-prev" class={button} aria-label={language.ltFindPrev} disabled={total === 0} onclick={() => step(-1)}>
+        <span data-part="studio-lt-find-count" class="shrink-0 text-sm text-textcolor2">{countText}</span>
+        <button type="button" data-part="studio-lt-find-prev" class={button} aria-label={language.ltFindPrev} disabled={total === 0} onclick={() => step(-1)}>
             <ChevronUpIcon size={18} />
         </button>
-        <button type="button" data-part="lt-find-next" class={button} aria-label={language.ltFindNext} disabled={total === 0} onclick={() => step(1)}>
+        <button type="button" data-part="studio-lt-find-next" class={button} aria-label={language.ltFindNext} disabled={total === 0} onclick={() => step(1)}>
             <ChevronDownIcon size={18} />
         </button>
         <label class="flex shrink-0 items-center gap-1 text-sm">
-            <input data-part="lt-find-case" type="checkbox" bind:checked={caseSensitive} onchange={() => { announcement = ''; shown = null }} />
+            <input data-part="studio-lt-find-case" type="checkbox" bind:checked={caseSensitive} onchange={() => { announcement = ''; shown = null }} />
             {language.ltMatchCase}
         </label>
-        <button type="button" data-part="lt-find-close" class={button} aria-label={language.ltFocusClose} onclick={onclose}>
+        <button type="button" data-part="studio-lt-find-close" class={button} aria-label={language.ltFocusClose} onclick={onclose}>
             <XIcon size={18} />
         </button>
     </div>
@@ -180,16 +180,16 @@
         <div class="flex flex-wrap items-center gap-2">
             <input
                 bind:value={replacement}
-                data-part="lt-find-replacement"
+                data-part="studio-lt-find-replacement"
                 type="text"
                 class="{inputClass} min-w-[8rem]"
                 aria-label={language.ltReplaceWith}
                 disabled={!editable}
                 oninput={() => { announcement = '' }}
             />
-            <button type="button" data-part="lt-find-replace" class={wordButton} disabled={!editable || query === ''} onclick={replaceOne}>{language.ltReplace}</button>
-            <button type="button" data-part="lt-find-replace-all" class={wordButton} disabled={!editable || query === ''} onclick={replaceAll}>{language.ltReplaceAll}</button>
+            <button type="button" data-part="studio-lt-find-replace" class={wordButton} disabled={!editable || query === ''} onclick={replaceOne}>{language.ltReplace}</button>
+            <button type="button" data-part="studio-lt-find-replace-all" class={wordButton} disabled={!editable || query === ''} onclick={replaceAll}>{language.ltReplaceAll}</button>
         </div>
     {/if}
-    <div data-part="lt-find-live" role="status" aria-live="polite" class="sr-only">{announcement}</div>
+    <div data-part="studio-lt-find-live" role="status" aria-live="polite" class="sr-only">{announcement}</div>
 </div>

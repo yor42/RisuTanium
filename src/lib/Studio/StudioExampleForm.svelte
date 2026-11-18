@@ -262,7 +262,7 @@
     // The raw offset of the caret of the layer's nested field in the stored text, read before the layer is torn down;
     // null when the card or the nested field is gone.
     function layerCaret(id: number): number | null {
-        const area = root?.querySelector<HTMLTextAreaElement>('[data-part="lt-focus-input"]')
+        const area = root?.querySelector<HTMLTextAreaElement>('[data-part="studio-lt-focus-input"]')
         const index = indexOf(id)
         if (!area || index < 0) return null
         const raw = text.slice(spans[index].start, spans[index].end)

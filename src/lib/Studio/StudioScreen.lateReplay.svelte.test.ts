@@ -341,21 +341,21 @@ describe('a focus-layer Undo or Redo button replays like the key', () => {
         open!.click()
         flushSync()
         await settle()
-        expect(part('lt-focus')).not.toBeNull()
+        expect(part('studio-lt-focus-layer')).not.toBeNull()
     }
 
     const click = (name: string): void => {
         part(name)!.click()
         flushSync()
     }
-    const layerNotice = (): string | null => document.querySelector('[data-part="lt-focus-notice"] [data-part="studio-notice-text"]')?.textContent ?? null
+    const layerNotice = (): string | null => document.querySelector('[data-part="studio-lt-focus-notice"] [data-part="studio-notice-text"]')?.textContent ?? null
 
     test('(a) one replay, no undo or redo, and a refusal shows inside the layer with focus placed once', async () => {
         await openWithLayer()
         const undo = vi.spyOn(held().service, 'undo')
         const redo = vi.spyOn(held().service, 'redo')
         const replay = vi.spyOn(held().service, 'replay')
-        click('lt-focus-undo')
+        click('studio-lt-focus-undo')
         await settle()
         expect(replay).toHaveBeenCalledTimes(1)
         expect(undo).not.toHaveBeenCalled()
@@ -370,7 +370,7 @@ describe('a focus-layer Undo or Redo button replays like the key', () => {
 
     test('(b) a replay that rejects after another owner was selected shows the error once and no notice', async () => {
         await openWithLayer()
-        click('lt-focus-undo')
+        click('studio-lt-focus-undo')
         await settle()
         studioScreen.selectedOwnerKey = null
         const failure = new Error('replay failed')
@@ -384,7 +384,7 @@ describe('a focus-layer Undo or Redo button replays like the key', () => {
 
     test('(c) a replay that settles after everything is unmounted sets no notice and places no focus', async () => {
         await openWithLayer()
-        click('lt-focus-undo')
+        click('studio-lt-focus-undo')
         await settle()
         await unmountAll()
 
@@ -397,7 +397,7 @@ describe('a focus-layer Undo or Redo button replays like the key', () => {
 
     test('(d) a replay that settles in a later visit sets no notice', async () => {
         await openWithLayer()
-        click('lt-focus-undo')
+        click('studio-lt-focus-undo')
         await settle()
         openStudio(basicTarget, null)
         flushSync()
@@ -413,12 +413,12 @@ describe('a focus-layer Undo or Redo button replays like the key', () => {
     test('(e) the button does not apply the browser-undo gate: it replays although the nested field differs from its focus value', async () => {
         await openWithLayer()
         const replay = vi.spyOn(held().service, 'replay')
-        const input = document.querySelector<HTMLTextAreaElement>('[data-part="lt-focus-input"]')!
+        const input = document.querySelector<HTMLTextAreaElement>('[data-part="studio-lt-focus-input"]')!
         input.focus()
         input.value = `${input.value}x`
         input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
         expect(input.value).not.toBe(input.dataset.studioFocusValue)
-        click('lt-focus-undo')
+        click('studio-lt-focus-undo')
         await settle()
         expect(replay).toHaveBeenCalledTimes(1)
     })

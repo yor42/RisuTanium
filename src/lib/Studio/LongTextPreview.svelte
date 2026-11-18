@@ -211,7 +211,7 @@
     }
 
     $effect(() => {
-        if (variant === 'sheet') untrack(() => dialog?.querySelector<HTMLElement>('[data-part="lt-preview-close"]')?.focus())
+        if (variant === 'sheet') untrack(() => dialog?.querySelector<HTMLElement>('[data-part="studio-lt-preview-close"]')?.focus())
     })
 
     const inputClass = 'min-w-0 flex-1 rounded-md border border-darkborderc bg-darkbg p-1 text-textcolor'
@@ -219,7 +219,7 @@
 </script>
 
 {#snippet valueRow(group: 'chat' | 'toggles', key: string, label: string)}
-    <label class="flex items-center gap-2 text-sm" data-part="lt-preview-row" data-key={key}>
+    <label class="flex items-center gap-2 text-sm" data-part="studio-lt-preview-row" data-key={key}>
         <span class="w-40 shrink-0 truncate">{label}</span>
         <input
             type="text"
@@ -232,18 +232,18 @@
 {/snippet}
 
 {#snippet content()}
-    <div data-part="lt-preview-body" class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+    <div data-part="studio-lt-preview-body" class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
         {#if loadFailed || (shown !== null && !shown.ok)}
-            <p data-part="lt-preview-error" role="alert" class="text-sm text-draculared">{language.sbError}</p>
+            <p data-part="studio-lt-preview-error" role="alert" class="text-sm text-draculared">{language.sbError}</p>
         {/if}
         {#if engine}
-            <fieldset data-part="lt-preview-values" class="flex flex-col gap-1">
+            <fieldset data-part="studio-lt-preview-values" class="flex flex-col gap-1">
                 <legend class="text-xs font-bold text-textcolor2">{language.sbValues}</legend>
-                <label class="flex items-center gap-2 text-sm" data-part="lt-preview-row" data-key="char">
+                <label class="flex items-center gap-2 text-sm" data-part="studio-lt-preview-row" data-key="char">
                     <span class="w-40 shrink-0 truncate">{language.sbCharName}</span>
                     <input
                         type="text"
-                        data-part="lt-preview-char"
+                        data-part="studio-lt-preview-char"
                         class={inputClass}
                         value={values.char}
                         placeholder={ownerName}
@@ -257,48 +257,48 @@
                     {@render valueRow('toggles', key, `${language.sbGlobal} · ${key}`)}
                 {/each}
                 {#if userName !== null}
-                    <p data-part="lt-preview-user" class="text-sm"><span class="font-bold">{userName}</span> <span class="text-textcolor2">{language.sbUserFrom}</span></p>
+                    <p data-part="studio-lt-preview-user" class="text-sm"><span class="font-bold">{userName}</span> <span class="text-textcolor2">{language.sbUserFrom}</span></p>
                 {/if}
                 <div class="flex flex-wrap items-center gap-2">
-                    <button type="button" data-part="lt-preview-copy" class={wordButton} disabled={!hasChat} onclick={copyChat}>{language.sbCopyChat}</button>
+                    <button type="button" data-part="studio-lt-preview-copy" class={wordButton} disabled={!hasChat} onclick={copyChat}>{language.sbCopyChat}</button>
                     {#if !hasChat}
-                        <span data-part="lt-preview-copy-reason" class="text-xs text-textcolor2">{language.sbCopyNoChat}</span>
+                        <span data-part="studio-lt-preview-copy-reason" class="text-xs text-textcolor2">{language.sbCopyNoChat}</span>
                     {/if}
                     {#if lowPower}
-                        <button type="button" data-part="lt-preview-refresh" class={wordButton} onclick={execute}>{language.sbRefresh}</button>
+                        <button type="button" data-part="studio-lt-preview-refresh" class={wordButton} onclick={execute}>{language.sbRefresh}</button>
                     {/if}
                 </div>
             </fieldset>
         {/if}
         {#if shown !== null && shown.ok}
             {#if shown.writes.length > 0}
-                <div data-part="lt-preview-writes" class="text-sm">
+                <div data-part="studio-lt-preview-writes" class="text-sm">
                     <p>{language.sbWrites(shown.writes.length)}</p>
                     <ul class="text-textcolor2">
                         {#each shown.writes as write (write.key)}
-                            <li data-part="lt-preview-write">{write.key}: {write.before ?? language.sbUnset} → {write.after}</li>
+                            <li data-part="studio-lt-preview-write">{write.key}: {write.before ?? language.sbUnset} → {write.after}</li>
                         {/each}
                     </ul>
                 </div>
             {/if}
             {#if shown.varies}
-                <p data-part="lt-preview-varies" class="text-xs text-textcolor2">{language.sbVaries}</p>
+                <p data-part="studio-lt-preview-varies" class="text-xs text-textcolor2">{language.sbVaries}</p>
             {/if}
             {#if shown.mediaRemoved > 0}
-                <p data-part="lt-preview-media" class="text-xs text-textcolor2">{language.sbMediaHidden(shown.mediaRemoved)}</p>
+                <p data-part="studio-lt-preview-media" class="text-xs text-textcolor2">{language.sbMediaHidden(shown.mediaRemoved)}</p>
             {/if}
-            <button type="button" data-part="lt-preview-raw-toggle" class="{wordButton} self-start" aria-pressed={rawView} onclick={() => { rawView = !rawView }}>{language.sbRaw}</button>
+            <button type="button" data-part="studio-lt-preview-raw-toggle" class="{wordButton} self-start" aria-pressed={rawView} onclick={() => { rawView = !rawView }}>{language.sbRaw}</button>
             {#if rawView}
-                <pre data-part="lt-preview-raw" class="whitespace-pre-wrap break-words rounded-md bg-darkbg p-2 text-sm">{shown.text}</pre>
+                <pre data-part="studio-lt-preview-raw" class="whitespace-pre-wrap break-words rounded-md bg-darkbg p-2 text-sm">{shown.text}</pre>
             {:else}
-                <div data-part="lt-preview-output" class="overflow-auto break-words rounded-md bg-darkbg p-2 [contain:paint]">{@html shown.html}</div>
+                <div data-part="studio-lt-preview-output" class="overflow-auto break-words rounded-md bg-darkbg p-2 [contain:paint]">{@html shown.html}</div>
             {/if}
         {/if}
     </div>
 {/snippet}
 
 {#if variant === 'sheet'}
-    <div class="fixed inset-0 z-50 flex items-end justify-center bg-bgcolor/60 sm:items-center" data-part="lt-preview-backdrop">
+    <div class="fixed inset-0 z-50 flex items-end justify-center bg-bgcolor/60 sm:items-center" data-part="studio-lt-preview-backdrop">
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
             bind:this={dialog}
@@ -306,13 +306,13 @@
             aria-modal="true"
             aria-labelledby={titleId}
             tabindex="-1"
-            data-part="lt-preview-sheet"
+            data-part="studio-lt-preview-sheet"
             class="flex max-h-[85vh] w-full max-w-xl flex-col gap-2 rounded-t border border-darkborderc bg-bgcolor p-3 sm:rounded"
             onkeydown={onKeydown}
         >
             <div class="flex items-center justify-between gap-2">
                 <h2 id={titleId} class="font-bold">{language.ltPreview}</h2>
-                <button type="button" data-part="lt-preview-close" class="flex h-9 w-9 items-center justify-center rounded-md hover:bg-selected cursor-pointer" aria-label={language.sbClose} onclick={() => close(true)}>
+                <button type="button" data-part="studio-lt-preview-close" class="flex h-9 w-9 items-center justify-center rounded-md hover:bg-selected cursor-pointer" aria-label={language.sbClose} onclick={() => close(true)}>
                     <XIcon size={18} />
                 </button>
             </div>
@@ -320,7 +320,7 @@
         </div>
     </div>
 {:else}
-    <section data-part="lt-preview-pane" aria-label={language.ltPreview} class="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+    <section data-part="studio-lt-preview-pane" aria-label={language.ltPreview} class="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
         {@render content()}
     </section>
 {/if}

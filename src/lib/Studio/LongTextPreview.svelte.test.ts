@@ -244,9 +244,9 @@ async function firstRun(): Promise<void> {
 }
 
 const part = (host: HTMLElement, name: string): HTMLElement | null => host.querySelector<HTMLElement>(`[data-part="${name}"]`)
-const outputOf = (host: HTMLElement): HTMLElement => part(host, 'lt-preview-output') as HTMLElement
+const outputOf = (host: HTMLElement): HTMLElement => part(host, 'studio-lt-preview-output') as HTMLElement
 const outText = (host: HTMLElement): string => (outputOf(host).textContent ?? '').trim()
-const rowInput = (host: HTMLElement, key: string): HTMLInputElement => host.querySelector(`[data-part="lt-preview-row"][data-key="${key}"] input`) as HTMLInputElement
+const rowInput = (host: HTMLElement, key: string): HTMLInputElement => host.querySelector(`[data-part="studio-lt-preview-row"][data-key="${key}"] input`) as HTMLInputElement
 const snapshot = (): unknown => structuredClone(state.db)
 
 function setInput(input: HTMLInputElement, value: string): void {
@@ -289,18 +289,18 @@ describe('E2-C2 the output is the sanitised preview HTML only', () => {
         await firstRun()
         assertSanitised(host)
         expect(outputOf(host).textContent).toContain('Alice')
-        expect(part(host, 'lt-preview-media')?.textContent).toBe('sbMediaHidden(1)')
+        expect(part(host, 'studio-lt-preview-media')?.textContent).toBe('sbMediaHidden(1)')
     })
 
     test('the raw view shows the parsed text with the tag as text', async () => {
         const { host } = mountPreview({ text: MIXED, values: { char: 'Alice', chat: {}, toggles: {} } })
         await firstRun()
-        ;(part(host, 'lt-preview-raw-toggle') as HTMLButtonElement).click()
+        ;(part(host, 'studio-lt-preview-raw-toggle') as HTMLButtonElement).click()
         flushSync()
-        const raw = part(host, 'lt-preview-raw') as HTMLElement
+        const raw = part(host, 'studio-lt-preview-raw') as HTMLElement
         expect(raw.tagName).toBe('PRE')
         expect(raw.textContent).toContain('<img')
-        expect(part(host, 'lt-preview-output')).toBeNull()
+        expect(part(host, 'studio-lt-preview-output')).toBeNull()
     })
 
     test('MC-239 an identity sanitiser makes the same assertions fail', async () => {
@@ -317,8 +317,8 @@ describe('E2-C3 a preview writes nothing outside itself', () => {
         const before = snapshot()
         const { host } = mountPreview({ text: '{{setvar::hp::5}}{{getvar::hp}}' })
         await firstRun()
-        expect(part(host, 'lt-preview-writes')?.textContent).toContain('sbWrites(1)')
-        const item = part(host, 'lt-preview-write') as HTMLElement
+        expect(part(host, 'studio-lt-preview-writes')?.textContent).toContain('sbWrites(1)')
+        const item = part(host, 'studio-lt-preview-write') as HTMLElement
         expect(item.textContent).toContain('hp')
         expect(item.textContent).toContain('5')
         expect(snapshot()).toEqual(before)
@@ -334,7 +334,7 @@ describe('E2-C4 the values rows, Copy and the user line', () => {
         const { host, props } = mountPreview({ text: TEXT })
         await firstRun()
         expect(outText(host)).toBe('Live null null')
-        expect(part(host, 'lt-preview-char')).not.toBeNull()
+        expect(part(host, 'studio-lt-preview-char')).not.toBeNull()
         expect(rowInput(host, 'hp')).not.toBeNull()
         expect(rowInput(host, 'toggle_a')).not.toBeNull()
         setInput(rowInput(host, 'hp'), '9')
@@ -344,7 +344,7 @@ describe('E2-C4 the values rows, Copy and the user line', () => {
         expect(outText(host)).toBe('Live 9 null')
         setInput(rowInput(host, 'hp'), '')
         expect(props.values.chat).toEqual({})
-        setInput(part(host, 'lt-preview-char') as HTMLInputElement, 'Zed')
+        setInput(part(host, 'studio-lt-preview-char') as HTMLInputElement, 'Zed')
         await advance(400)
         expect(outputOf(host).textContent).toContain('Zed')
     })
@@ -354,7 +354,7 @@ describe('E2-C4 the values rows, Copy and the user line', () => {
         const before = snapshot()
         const { host } = mountPreview({ text: TEXT, previewSource: sourceOf(chat, { toggle_a: '1' }) })
         await firstRun()
-        ;(part(host, 'lt-preview-copy') as HTMLButtonElement).click()
+        ;(part(host, 'studio-lt-preview-copy') as HTMLButtonElement).click()
         flushSync()
         expect(rowInput(host, 'hp').value).toBe('1')
         expect(rowInput(host, 'toggle_a').value).toBe('1')
@@ -368,7 +368,7 @@ describe('E2-C4 the values rows, Copy and the user line', () => {
         const chat = chatOf({ scriptstate: { $hp: '1' }, GLGlobalVariables: {} })
         const { host, props } = mountPreview({ text: TEXT, previewSource: sourceOf(chat), values: { char: '', chat: { typed: 'T' }, toggles: {} } })
         await firstRun()
-        ;(part(host, 'lt-preview-copy') as HTMLButtonElement).click()
+        ;(part(host, 'studio-lt-preview-copy') as HTMLButtonElement).click()
         flushSync()
         expect(props.values.chat).toEqual({ typed: 'T', hp: '1' })
     })
@@ -376,8 +376,8 @@ describe('E2-C4 the values rows, Copy and the user line', () => {
     test('with no chat Copy is disabled and says why', async () => {
         const { host } = mountPreview({ text: TEXT })
         await firstRun()
-        expect((part(host, 'lt-preview-copy') as HTMLButtonElement).disabled).toBe(true)
-        expect(part(host, 'lt-preview-copy-reason')?.textContent).toBe('sbCopyNoChat')
+        expect((part(host, 'studio-lt-preview-copy') as HTMLButtonElement).disabled).toBe(true)
+        expect(part(host, 'studio-lt-preview-copy-reason')?.textContent).toBe('sbCopyNoChat')
     })
 
     test('the user line shows the source chat\'s bound persona, with the note that it is not changed here', async () => {
@@ -390,7 +390,7 @@ describe('E2-C4 the values rows, Copy and the user line', () => {
         })
         const { host } = mountPreview({ text: '{{user}}', previewSource: sourceOf(chatOf({ bindedPersona: 'p1' })) })
         await firstRun()
-        const line = part(host, 'lt-preview-user') as HTMLElement
+        const line = part(host, 'studio-lt-preview-user') as HTMLElement
         expect(line.textContent).toContain('Pat')
         expect(line.textContent).toContain('sbUserFrom')
         expect(outText(host)).toBe('Pat')
@@ -441,10 +441,10 @@ describe('E2-C5 the cadence', () => {
         flushSync()
         await advance(3000)
         expect(spy.calls()).toBe(0)
-        ;(part(host, 'lt-preview-refresh') as HTMLButtonElement).click()
+        ;(part(host, 'studio-lt-preview-refresh') as HTMLButtonElement).click()
         await microtasks()
         expect(spy.calls()).toBe(1)
-        ;(part(host, 'lt-preview-refresh') as HTMLButtonElement).click()
+        ;(part(host, 'studio-lt-preview-refresh') as HTMLButtonElement).click()
         await microtasks()
         expect(spy.calls()).toBe(2)
     })
@@ -470,22 +470,22 @@ describe('E2-C5 the cadence', () => {
         await microtasks()
         await advance(3000)
         expect(loader).not.toHaveBeenCalled()
-        expect(part(host, 'lt-preview-values')).toBeNull()
+        expect(part(host, 'studio-lt-preview-values')).toBeNull()
         props.active = true
         flushSync()
         await microtasks()
         expect(loader).toHaveBeenCalledTimes(1)
-        expect(part(host, 'lt-preview-values')).not.toBeNull()
+        expect(part(host, 'studio-lt-preview-values')).not.toBeNull()
     })
 
     test('the Refresh button exists in low power only', async () => {
         const normal = mountPreview({ text: 'a', lowPower: false })
         await firstRun()
-        expect(part(normal.host, 'lt-preview-values')).not.toBeNull()
-        expect(part(normal.host, 'lt-preview-refresh')).toBeNull()
+        expect(part(normal.host, 'studio-lt-preview-values')).not.toBeNull()
+        expect(part(normal.host, 'studio-lt-preview-refresh')).toBeNull()
         const low = mountPreview({ text: 'a', lowPower: true })
         await microtasks()
-        expect(part(low.host, 'lt-preview-refresh')).not.toBeNull()
+        expect(part(low.host, 'studio-lt-preview-refresh')).not.toBeNull()
     })
 })
 
@@ -493,24 +493,24 @@ describe('the notes and the failure states', () => {
     test('a varying text shows the varies note; a text with none does not', async () => {
         const varying = mountPreview({ text: '{{random::a::b}}' })
         await firstRun()
-        expect(part(varying.host, 'lt-preview-varies')?.textContent).toBe('sbVaries')
+        expect(part(varying.host, 'studio-lt-preview-varies')?.textContent).toBe('sbVaries')
         const steady = mountPreview({ text: 'plain' })
         await firstRun()
-        expect(part(steady.host, 'lt-preview-varies')).toBeNull()
+        expect(part(steady.host, 'studio-lt-preview-varies')).toBeNull()
     })
 
     test('a run that fails shows the error and no output', async () => {
         const { host } = mountPreview({ text: 'a', run: () => ({ ok: false }) })
         await firstRun()
-        expect(part(host, 'lt-preview-error')?.textContent).toBe('sbError')
-        expect(part(host, 'lt-preview-output')).toBeNull()
+        expect(part(host, 'studio-lt-preview-error')?.textContent).toBe('sbError')
+        expect(part(host, 'studio-lt-preview-output')).toBeNull()
     })
 
     test('an owner that is gone shows the error and no output', async () => {
         const { host } = mountPreview({ text: 'a', previewSource: () => ({ owner: null, chat: null, globals: {} }) })
         await firstRun()
-        expect(part(host, 'lt-preview-error')?.textContent).toBe('sbError')
-        expect(part(host, 'lt-preview-output')).toBeNull()
+        expect(part(host, 'studio-lt-preview-error')?.textContent).toBe('sbError')
+        expect(part(host, 'studio-lt-preview-output')).toBeNull()
     })
 
     test('E2-C7 a rejected engine load shows the error, renders no output and no user value', async () => {
@@ -518,9 +518,9 @@ describe('the notes and the failure states', () => {
         const { host } = mountPreview({ text: '{{user}} <b>x</b>' })
         await firstRun()
         await advance(3000)
-        expect(part(host, 'lt-preview-error')?.textContent).toBe('sbError')
-        expect(part(host, 'lt-preview-output')).toBeNull()
-        expect(part(host, 'lt-preview-user')).toBeNull()
+        expect(part(host, 'studio-lt-preview-error')?.textContent).toBe('sbError')
+        expect(part(host, 'studio-lt-preview-output')).toBeNull()
+        expect(part(host, 'studio-lt-preview-user')).toBeNull()
         expect(host.innerHTML).not.toContain('<b>x</b>')
     })
 })
@@ -530,11 +530,11 @@ describe('E2-C1 the sheet', () => {
         const closed: boolean[] = []
         const { host } = mountPreview({ variant: 'sheet', text: 'hi', onclose: (refocus) => { closed.push(refocus) } })
         await firstRun()
-        const dialog = part(host, 'lt-preview-sheet') as HTMLElement
+        const dialog = part(host, 'studio-lt-preview-sheet') as HTMLElement
         expect(dialog.getAttribute('role')).toBe('dialog')
         expect(dialog.getAttribute('aria-modal')).toBe('true')
         expect(document.getElementById(dialog.getAttribute('aria-labelledby') as string)?.textContent).toBe('ltPreview')
-        expect(part(host, 'lt-preview-close')?.getAttribute('aria-label')).toBe('sbClose')
+        expect(part(host, 'studio-lt-preview-close')?.getAttribute('aria-label')).toBe('sbClose')
         expect(h.layers).toHaveLength(1)
         expect(h.layers[0].isOpen()).toBe(true)
         const esc = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })

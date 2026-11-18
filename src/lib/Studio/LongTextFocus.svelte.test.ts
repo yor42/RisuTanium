@@ -181,8 +181,8 @@ afterEach(async () => {
 
 const part = (name: string) => document.querySelector<HTMLElement>(`[data-part="${name}"]`)
 const parts = (name: string) => Array.from(document.querySelectorAll<HTMLElement>(`[data-part="${name}"]`))
-const layer = () => part('lt-focus')
-const focusInput = () => part('lt-focus-input') as HTMLTextAreaElement
+const layer = () => part('studio-lt-focus-layer')
+const focusInput = () => part('studio-lt-focus-input') as HTMLTextAreaElement
 const inlineDesc = () => part('studio-form-desc') as HTMLTextAreaElement
 const live = () => db.db.characters[0]
 
@@ -225,7 +225,7 @@ describe('D-C1 opening and closing', () => {
         const dialog = layer() as HTMLElement
         expect(dialog.getAttribute('role')).toBe('dialog')
         expect(dialog.getAttribute('aria-modal')).toBe('true')
-        const title = part('lt-focus-title') as HTMLElement
+        const title = part('studio-lt-focus-title') as HTMLElement
         expect(dialog.getAttribute('aria-labelledby')).toBe(title.id)
         expect(title.textContent).toBe('description')
         expect(focusInput().getAttribute('aria-labelledby')).toBe(title.id)
@@ -253,14 +253,14 @@ describe('D-C1 opening and closing', () => {
         expect(layer()).not.toBeNull()
         keyOn(focusInput(), 'e', { ctrlKey: true })
         expect(modalLayerCount()).toBe(1)
-        expect(parts('lt-focus')).toHaveLength(1)
+        expect(parts('studio-lt-focus-layer')).toHaveLength(1)
     })
 
     test('the header names the owner in a breadcrumb and the Back button closes the layer', async () => {
         await screen()
         openLayer()
-        expect((part('lt-focus-owner') as HTMLElement).textContent).toBe('Alice')
-        ;(part('lt-focus-close') as HTMLElement).click()
+        expect((part('studio-lt-focus-owner') as HTMLElement).textContent).toBe('Alice')
+        ;(part('studio-lt-focus-close') as HTMLElement).click()
         flushSync()
         expect(layer()).toBeNull()
         expect(document.activeElement).toBe(inlineDesc())
@@ -386,8 +386,8 @@ describe('D-C12 Undo and Redo in the header', () => {
     test('both are disabled with nothing to step; Undo restores, Redo reapplies', async () => {
         const service = await screen()
         openLayer()
-        const undo = part('lt-focus-undo') as HTMLButtonElement
-        const redo = part('lt-focus-redo') as HTMLButtonElement
+        const undo = part('studio-lt-focus-undo') as HTMLButtonElement
+        const redo = part('studio-lt-focus-redo') as HTMLButtonElement
         expect(undo.disabled).toBe(true)
         expect(redo.disabled).toBe(true)
         typeInto(focusInput(), 'd0x')
@@ -414,16 +414,16 @@ describe('D-C12 Undo and Redo in the header', () => {
         ;(part('studio-lt-focus') as HTMLElement).click()
         flushSync()
         expect(layer()).not.toBeNull()
-        expect(part('lt-focus-undo')).toBeNull()
-        expect(part('lt-focus-redo')).toBeNull()
+        expect(part('studio-lt-focus-undo')).toBeNull()
+        expect(part('studio-lt-focus-redo')).toBeNull()
     })
 })
 
 const findPart = (name: string) => part(name) as HTMLElement
-const queryInput = () => part('lt-find-query') as HTMLInputElement
-const replaceInput = () => part('lt-find-replacement') as HTMLInputElement
-const countText = () => part('lt-find-count')?.textContent ?? ''
-const liveText = () => part('lt-find-live')?.textContent ?? ''
+const queryInput = () => part('studio-lt-find-query') as HTMLInputElement
+const replaceInput = () => part('studio-lt-find-replacement') as HTMLInputElement
+const countText = () => part('studio-lt-find-count')?.textContent ?? ''
+const liveText = () => part('studio-lt-find-live')?.textContent ?? ''
 const stepsOf = (service: OwnerHistoryService) => service.view(A).done.length
 
 function typeInfo(input: HTMLInputElement, value: string): void {
@@ -433,7 +433,7 @@ function typeInfo(input: HTMLInputElement, value: string): void {
 }
 
 function setCase(on: boolean): void {
-    const box = part('lt-find-case') as HTMLInputElement
+    const box = part('studio-lt-find-case') as HTMLInputElement
     box.checked = on
     box.dispatchEvent(new Event('change', { bubbles: true }))
     flushSync()
@@ -447,18 +447,18 @@ describe('D-C16 find keys', () => {
     test('Ctrl+F opens find with focus in its field and no replace row; Ctrl+H adds the replace row; both are swallowed', async () => {
         await screen()
         openLayer()
-        expect(part('lt-find')).toBeNull()
+        expect(part('studio-lt-find-bar')).toBeNull()
         const f = openFind()
         expect(f.defaultPrevented).toBe(true)
-        expect(part('lt-find')).not.toBeNull()
+        expect(part('studio-lt-find-bar')).not.toBeNull()
         expect(document.activeElement).toBe(queryInput())
-        expect(part('lt-find-replace-all')).toBeNull()
+        expect(part('studio-lt-find-replace-all')).toBeNull()
         focusInput().focus()
         const h2 = openFind(true)
         expect(h2.defaultPrevented).toBe(true)
-        expect(part('lt-find-replace-all')).not.toBeNull()
+        expect(part('studio-lt-find-replace-all')).not.toBeNull()
         expect(document.activeElement).toBe(queryInput())
-        expect(parts('lt-find')).toHaveLength(1)
+        expect(parts('studio-lt-find-bar')).toHaveLength(1)
     })
 
     test('Ctrl+F while an IME is composing does nothing', async () => {
@@ -467,7 +467,7 @@ describe('D-C16 find keys', () => {
         focusInput().dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
         const event = keyOn(focusInput(), 'f', { ctrlKey: true, isComposing: true })
         expect(event.defaultPrevented).toBe(false)
-        expect(part('lt-find')).toBeNull()
+        expect(part('studio-lt-find-bar')).toBeNull()
     })
 
     test('Esc inside find closes only find and puts focus back in the text; the next Esc closes the layer', async () => {
@@ -476,7 +476,7 @@ describe('D-C16 find keys', () => {
         openFind()
         const esc = keyOn(queryInput(), 'Escape')
         expect(esc.defaultPrevented).toBe(true)
-        expect(part('lt-find')).toBeNull()
+        expect(part('studio-lt-find-bar')).toBeNull()
         expect(layer()).not.toBeNull()
         expect(document.activeElement).toBe(focusInput())
         keyOn(focusInput(), 'Escape')
@@ -488,7 +488,7 @@ describe('D-C16 find keys', () => {
         openLayer()
         openFind()
         keyOn(queryInput(), 'Escape', { keyCode: 229 })
-        expect(part('lt-find')).not.toBeNull()
+        expect(part('studio-lt-find-bar')).not.toBeNull()
         expect(layer()).not.toBeNull()
     })
 
@@ -504,18 +504,18 @@ describe('D-C16 find keys', () => {
     test('the header Find button toggles the bar, and the inline Find button opens the layer with find already open', async () => {
         await screen()
         openLayer()
-        ;(part('lt-focus-find') as HTMLElement).click()
+        ;(part('studio-lt-focus-find') as HTMLElement).click()
         flushSync()
-        expect(part('lt-find')).not.toBeNull()
-        ;(part('lt-focus-find') as HTMLElement).click()
+        expect(part('studio-lt-find-bar')).not.toBeNull()
+        ;(part('studio-lt-focus-find') as HTMLElement).click()
         flushSync()
-        expect(part('lt-find')).toBeNull()
+        expect(part('studio-lt-find-bar')).toBeNull()
         keyOn(focusInput(), 'Escape')
         expect(layer()).toBeNull()
         ;(parts('studio-lt-find')[0]).click()
         flushSync()
         expect(layer()).not.toBeNull()
-        expect(part('lt-find')).not.toBeNull()
+        expect(part('studio-lt-find-bar')).not.toBeNull()
         expect(document.activeElement).toBe(queryInput())
     })
 })
@@ -529,19 +529,19 @@ describe('D-C7 find and replace one', () => {
         typeInfo(replaceInput(), 'Y')
         expect(countText()).toBe('ltFindCount(1,3)')
         const steps = stepsOf(service)
-        ;(part('lt-find-next') as HTMLElement).click()
+        ;(part('studio-lt-find-next') as HTMLElement).click()
         flushSync()
         expect([focusInput().selectionStart, focusInput().selectionEnd]).toEqual([2, 3])
         expect(document.activeElement).toBe(queryInput())
-        ;(part('lt-find-next') as HTMLElement).click()
+        ;(part('studio-lt-find-next') as HTMLElement).click()
         flushSync()
         expect([focusInput().selectionStart, focusInput().selectionEnd]).toEqual([6, 7])
-        ;(part('lt-find-prev') as HTMLElement).click()
+        ;(part('studio-lt-find-prev') as HTMLElement).click()
         flushSync()
         expect([focusInput().selectionStart, focusInput().selectionEnd]).toEqual([2, 3])
         expect(stepsOf(service)).toBe(steps)
 
-        ;(part('lt-find-replace') as HTMLElement).click()
+        ;(part('studio-lt-find-replace') as HTMLElement).click()
         await settle()
         expect(live().desc).toBe('a Y b X c X')
         expect(stepsOf(service)).toBe(steps + 1)
@@ -560,15 +560,15 @@ describe('D-C7 find and replace one', () => {
         openFind(true)
         typeInfo(queryInput(), 'X')
         typeInfo(replaceInput(), 'Y')
-        ;(part('lt-find-next') as HTMLElement).click()
+        ;(part('studio-lt-find-next') as HTMLElement).click()
         flushSync()
-        ;(part('lt-find-next') as HTMLElement).click()
+        ;(part('studio-lt-find-next') as HTMLElement).click()
         flushSync()
         typeInto(focusInput(), `zz${focusInput().value}`)
         flushSync()
         const steps = stepsOf(service)
         const marks = h.marks
-        ;(part('lt-find-replace') as HTMLElement).click()
+        ;(part('studio-lt-find-replace') as HTMLElement).click()
         await settle()
         expect(live().desc).toBe('zza X b X c X')
         expect(stepsOf(service)).toBe(steps)
@@ -605,7 +605,7 @@ describe('D-C5 D-C6 replace all', () => {
         openFind(true)
         typeInfo(queryInput(), 'X')
         typeInfo(replaceInput(), 'Y')
-        ;(part('lt-find-replace-all') as HTMLElement).click()
+        ;(part('studio-lt-find-replace-all') as HTMLElement).click()
         await settle()
         expect(live().desc).toBe('a Y b Y c Y!')
         expect(stepsOf(service)).toBe(steps + 1)
@@ -624,7 +624,7 @@ describe('D-C5 D-C6 replace all', () => {
         openFind(true)
         typeInfo(queryInput(), 'X')
         typeInfo(replaceInput(), 'Y')
-        ;(part('lt-find-replace-all') as HTMLElement).click()
+        ;(part('studio-lt-find-replace-all') as HTMLElement).click()
         await settle()
         expect(live().desc).toBe('Y\r\nY')
     })
@@ -635,7 +635,7 @@ describe('D-C5 D-C6 replace all', () => {
         openFind(true)
         typeInfo(queryInput(), 'X')
         typeInfo(replaceInput(), 'Y')
-        ;(part('lt-find-replace-all') as HTMLElement).click()
+        ;(part('studio-lt-find-replace-all') as HTMLElement).click()
         await settle()
         expect(live().alternateGreetings).toEqual(['g0', 'Y\r\nY'])
         const ops = service.view(A).done.at(-1)?.ops ?? []
@@ -649,7 +649,7 @@ describe('D-C5 D-C6 replace all', () => {
         typeInfo(queryInput(), 'zzz')
         typeInfo(replaceInput(), 'Y')
         const steps = stepsOf(service)
-        ;(part('lt-find-replace-all') as HTMLElement).click()
+        ;(part('studio-lt-find-replace-all') as HTMLElement).click()
         await settle()
         expect(live().desc).toBe('abc')
         expect(stepsOf(service)).toBe(steps)
@@ -664,7 +664,7 @@ describe('D-C5 D-C6 replace all', () => {
         typeInfo(replaceInput(), 'X')
         const steps = stepsOf(service)
         const marks = h.marks
-        ;(part('lt-find-replace-all') as HTMLElement).click()
+        ;(part('studio-lt-find-replace-all') as HTMLElement).click()
         await settle()
         expect(live().desc).toBe('a X b')
         expect(stepsOf(service)).toBe(steps)
@@ -678,7 +678,7 @@ describe('D-C5 D-C6 replace all', () => {
         openFind(true)
         typeInfo(queryInput(), 'X')
         typeInfo(replaceInput(), '$&$$')
-        ;(part('lt-find-replace-all') as HTMLElement).click()
+        ;(part('studio-lt-find-replace-all') as HTMLElement).click()
         await settle()
         expect(live().desc).toBe('a $&$$')
     })
@@ -688,7 +688,7 @@ describe('D-C8 revert to when opened', () => {
     test('it is disabled before any typing, undoes the typing as one undoable step, and is fresh at each opening', async () => {
         const service = await screen('abc')
         openLayer()
-        const revert = () => part('lt-focus-revert') as HTMLButtonElement
+        const revert = () => part('studio-lt-focus-revert') as HTMLButtonElement
         expect(revert().disabled).toBe(true)
         typeInto(focusInput(), 'abcd')
         flushSync()
@@ -721,7 +721,7 @@ describe('D-C8 revert to when opened', () => {
         openLayer()
         typeInto(focusInput(), 'a\nbX')
         flushSync()
-        ;(part('lt-focus-revert') as HTMLElement).click()
+        ;(part('studio-lt-focus-revert') as HTMLElement).click()
         await settle()
         expect(live().desc).toBe('a\r\nb')
     })
@@ -735,15 +735,15 @@ describe('D-C9 read-only and composing', () => {
         ;(part('studio-lt-find') as HTMLButtonElement).click()
         flushSync()
         expect(layer()).not.toBeNull()
-        expect(part('lt-find')).not.toBeNull()
+        expect(part('studio-lt-find-bar')).not.toBeNull()
         typeInfo(queryInput(), 'X')
         expect(countText()).toBe('ltFindCount(1,1)')
-        expect((part('lt-find-next') as HTMLButtonElement).disabled).toBe(false)
+        expect((part('studio-lt-find-next') as HTMLButtonElement).disabled).toBe(false)
         keyOn(queryInput(), 'h', { ctrlKey: true })
-        expect((part('lt-find-replace') as HTMLButtonElement).disabled).toBe(true)
-        expect((part('lt-find-replace-all') as HTMLButtonElement).disabled).toBe(true)
-        expect((part('lt-focus-revert') as HTMLButtonElement).disabled).toBe(true)
-        ;(part('lt-find-replace-all') as HTMLButtonElement).click()
+        expect((part('studio-lt-find-replace') as HTMLButtonElement).disabled).toBe(true)
+        expect((part('studio-lt-find-replace-all') as HTMLButtonElement).disabled).toBe(true)
+        expect((part('studio-lt-focus-revert') as HTMLButtonElement).disabled).toBe(true)
+        ;(part('studio-lt-find-replace-all') as HTMLButtonElement).click()
         flushSync()
         expect(owner.value).toBe('a X b')
     })
@@ -757,14 +757,14 @@ describe('D-C9 read-only and composing', () => {
         focusInput().dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
         const steps = stepsOf(service)
         const marks = h.marks
-        ;(part('lt-find-replace-all') as HTMLElement).click()
+        ;(part('studio-lt-find-replace-all') as HTMLElement).click()
         await settle()
         expect(live().desc).toBe('a X b')
         expect(stepsOf(service)).toBe(steps)
         expect(h.marks).toBe(marks)
         expect(liveText()).not.toContain('ltReplacedCount')
         focusInput().dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
-        ;(part('lt-find-replace-all') as HTMLElement).click()
+        ;(part('studio-lt-find-replace-all') as HTMLElement).click()
         await settle()
         expect(live().desc).toBe('a Y b')
         expect(liveText()).toBe('ltReplacedCount(1)')
@@ -777,7 +777,7 @@ describe('D-C9 read-only and composing', () => {
         flushSync()
         focusInput().dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
         const marks = h.marks
-        ;(part('lt-focus-revert') as HTMLElement).click()
+        ;(part('studio-lt-focus-revert') as HTMLElement).click()
         await settle()
         expect(live().desc).toBe('abcd')
         expect(h.marks).toBe(marks)
@@ -805,7 +805,7 @@ describe('D-C13 the notice line inside the layer', () => {
     test('a notice shows inside the layer, dismissing there clears the shared notice, and a not-restored list opens inside it', async () => {
         await screen()
         openLayer()
-        const box = () => part('lt-focus-notice') as HTMLElement
+        const box = () => part('studio-lt-focus-notice') as HTMLElement
         setStudioNotice('Something happened')
         flushSync()
         expect(box().querySelector('[data-part="studio-notice-text"]')?.textContent).toBe('Something happened')
@@ -856,7 +856,7 @@ describe('S3e-E2b the preview on the screen', () => {
         await settle()
     }
 
-    const outputText = (): string | null => part('lt-preview-output')?.textContent ?? null
+    const outputText = (): string | null => part('studio-lt-preview-output')?.textContent ?? null
 
     test('E2-C1 the eye opens the sheet; Esc closes only the sheet and History stays; Back does the same', async () => {
         await screen()
@@ -864,17 +864,17 @@ describe('S3e-E2b the preview on the screen', () => {
         flushSync()
         ;(part('studio-lt-preview') as HTMLElement).click()
         flushSync()
-        expect(part('lt-preview-sheet')).not.toBeNull()
+        expect(part('studio-lt-preview-sheet')).not.toBeNull()
         await shown()
         expect(outputText()).toBe('d0')
-        keyOn(part('lt-preview-sheet') as HTMLElement, 'Escape')
-        expect(part('lt-preview-sheet')).toBeNull()
+        keyOn(part('studio-lt-preview-sheet') as HTMLElement, 'Escape')
+        expect(part('studio-lt-preview-sheet')).toBeNull()
         expect(studioScreen.historyOpen).toBe(true)
         ;(part('studio-lt-preview') as HTMLElement).click()
         flushSync()
         expect(dispatchBack()).toBe(true)
         flushSync()
-        expect(part('lt-preview-sheet')).toBeNull()
+        expect(part('studio-lt-preview-sheet')).toBeNull()
         expect(studioScreen.historyOpen).toBe(true)
         expect(dispatchBack()).toBe(true)
         flushSync()
@@ -884,9 +884,9 @@ describe('S3e-E2b the preview on the screen', () => {
     test('E2-C6 on a wide screen the layer shows a side pane next to the field, and no tabs', async () => {
         await screen()
         openLayer()
-        expect(part('lt-focus-preview')).not.toBeNull()
-        expect(part('lt-preview-pane')).toBeNull()
-        ;(part('lt-focus-preview') as HTMLElement).click()
+        expect(part('studio-lt-focus-preview')).not.toBeNull()
+        expect(part('studio-lt-preview-pane')).toBeNull()
+        ;(part('studio-lt-focus-preview') as HTMLElement).click()
         flushSync()
         await shown()
         expect(outputText()).toBe('d0')
@@ -903,12 +903,12 @@ describe('S3e-E2b the preview on the screen', () => {
         setStudioLayout('stack')
         flushSync()
         openLayer()
-        ;(part('lt-focus-preview') as HTMLElement).click()
+        ;(part('studio-lt-focus-preview') as HTMLElement).click()
         flushSync()
         const tablist = layer()?.querySelector('[role="tablist"]') as HTMLElement
         expect(tablist).not.toBeNull()
-        const edit = part('lt-focus-tab-edit') as HTMLElement
-        const preview = part('lt-focus-tab-preview') as HTMLElement
+        const edit = part('studio-lt-focus-tab-edit') as HTMLElement
+        const preview = part('studio-lt-focus-tab-preview') as HTMLElement
         expect(edit.getAttribute('aria-selected')).toBe('false')
         expect(preview.getAttribute('aria-selected')).toBe('true')
         await shown()
@@ -916,7 +916,7 @@ describe('S3e-E2b the preview on the screen', () => {
         edit.click()
         flushSync()
         expect(edit.getAttribute('aria-selected')).toBe('true')
-        expect(part('lt-preview-output')).toBeNull()
+        expect(part('studio-lt-preview-output')).toBeNull()
         expect(focusInput().isConnected).toBe(true)
         preview.click()
         flushSync()
@@ -960,11 +960,11 @@ describe('S3e-E2b the preview on the screen', () => {
         makeRig()
         mountInto(LongTextFocus, layerProps('plain'))
         await settle()
-        expect(part('lt-focus-preview')).toBeNull()
+        expect(part('studio-lt-focus-preview')).toBeNull()
         await unmountAll()
         mountInto(LongTextFocus, layerProps('cbs'))
         await settle()
-        expect(part('lt-focus-preview')).not.toBeNull()
+        expect(part('studio-lt-focus-preview')).not.toBeNull()
     })
 
     test('E2-C6 a layout change to wide with the Edit tab selected shows the pane next to the field at once', async () => {
@@ -972,23 +972,23 @@ describe('S3e-E2b the preview on the screen', () => {
         setStudioLayout('stack')
         mountInto(LongTextFocus, layerProps('cbs'))
         await settle()
-        ;(part('lt-focus-preview') as HTMLElement).click()
+        ;(part('studio-lt-focus-preview') as HTMLElement).click()
         flushSync()
-        ;(part('lt-focus-tab-edit') as HTMLElement).click()
+        ;(part('studio-lt-focus-tab-edit') as HTMLElement).click()
         flushSync()
-        expect(part('lt-preview-pane') ?? part('lt-preview-char')).toBeNull()
+        expect(part('studio-lt-preview-pane') ?? part('studio-lt-preview-char')).toBeNull()
         setStudioLayout('wide')
         flushSync()
         await shown()
         expect(layer()?.querySelector('[role="tablist"]') ?? null).toBeNull()
-        expect(part('lt-preview-char')).not.toBeNull()
+        expect(part('studio-lt-preview-char')).not.toBeNull()
         expect(outputText()).toBe('x')
     })
 
     test('E2-C6 the toggle reports its state: aria-pressed false, true after a click, false after a second', async () => {
         await screen()
         openLayer()
-        const toggle = part('lt-focus-preview') as HTMLElement
+        const toggle = part('studio-lt-focus-preview') as HTMLElement
         expect(toggle.getAttribute('aria-pressed')).toBe('false')
         toggle.click()
         flushSync()
@@ -996,7 +996,7 @@ describe('S3e-E2b the preview on the screen', () => {
         toggle.click()
         flushSync()
         expect(toggle.getAttribute('aria-pressed')).toBe('false')
-        expect(part('lt-preview-pane')).toBeNull()
+        expect(part('studio-lt-preview-pane')).toBeNull()
     })
 
     test('E2-C6 on a stack screen the field is hidden on the Preview tab and stays in the document; the Edit tab shows it again', async () => {
@@ -1004,11 +1004,11 @@ describe('S3e-E2b the preview on the screen', () => {
         setStudioLayout('stack')
         flushSync()
         openLayer()
-        ;(part('lt-focus-preview') as HTMLElement).click()
+        ;(part('studio-lt-focus-preview') as HTMLElement).click()
         flushSync()
         expect(focusInput().isConnected).toBe(true)
         expect(focusInput().closest('.hidden')).not.toBeNull()
-        ;(part('lt-focus-tab-edit') as HTMLElement).click()
+        ;(part('studio-lt-focus-tab-edit') as HTMLElement).click()
         flushSync()
         expect(focusInput().closest('.hidden')).toBeNull()
     })
@@ -1021,10 +1021,10 @@ describe('S3e-E2b the preview on the screen', () => {
         expect(layerChip()).toBe('ltTokens(7,M)')
         expect(layerChipNote()).toContain('ltTokNote')
         expect(layerChipNote()).not.toContain('ltTokNoteRaw')
-        ;(part('lt-focus-preview') as HTMLElement).click()
+        ;(part('studio-lt-focus-preview') as HTMLElement).click()
         flushSync()
         await shown()
-        const name = part('lt-preview-char') as HTMLInputElement
+        const name = part('studio-lt-preview-char') as HTMLInputElement
         name.value = 'Zed'
         name.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
         flushSync()
@@ -1038,10 +1038,10 @@ describe('S3e-E2b the preview on the screen', () => {
         setPreviewEngineForTests(valuesEngine())
         await screen('x{{getvar::hp}}')
         openLayer()
-        ;(part('lt-focus-preview') as HTMLElement).click()
+        ;(part('studio-lt-focus-preview') as HTMLElement).click()
         flushSync()
         await shown()
-        const row = (): HTMLInputElement => document.querySelector('[data-part="lt-preview-row"][data-key="hp"] input') as HTMLInputElement
+        const row = (): HTMLInputElement => document.querySelector('[data-part="studio-lt-preview-row"][data-key="hp"] input') as HTMLInputElement
         row().value = '5'
         row().dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
         flushSync()
@@ -1053,7 +1053,7 @@ describe('S3e-E2b the preview on the screen', () => {
         ;(part('studio-lt-preview') as HTMLElement).click()
         flushSync()
         await shown()
-        expect(part('lt-preview-sheet')).not.toBeNull()
+        expect(part('studio-lt-preview-sheet')).not.toBeNull()
         expect(row().value).toBe('5')
         expect(outputText()).toBe('x5')
     })
@@ -1061,7 +1061,7 @@ describe('S3e-E2b the preview on the screen', () => {
     test('E2-C5 in the layer a composition holds the pane: the output waits for compositionend and then 400 ms', async () => {
         await screen()
         openLayer()
-        ;(part('lt-focus-preview') as HTMLElement).click()
+        ;(part('studio-lt-focus-preview') as HTMLElement).click()
         flushSync()
         await shown()
         expect(outputText()).toBe('d0')
@@ -1119,7 +1119,7 @@ describe('F3c onfocuslayer reports the layer opening and closing once each', () 
         const solo = mountSolo()
         for (const close of [
             () => { keyOn(focusInput(), 'Escape') },
-            () => { ;(part('lt-focus-close') as HTMLElement).click(); flushSync() },
+            () => { ;(part('studio-lt-focus-close') as HTMLElement).click(); flushSync() },
             () => { expect(dispatchBack()).toBe(true); flushSync() },
         ]) {
             ;(part('studio-lt-focus') as HTMLElement).click()
