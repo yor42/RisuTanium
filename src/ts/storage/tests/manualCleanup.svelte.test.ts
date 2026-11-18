@@ -2009,6 +2009,48 @@ describe('busy: the run refuses while anything else is working', () => {
         expect(left).toBeLessThan(250)
     })
 
+    test('an export waiting on a save dialog does not refuse the run', async () => {
+        await setup()
+        for (let i = 0; i < 250; i++) {
+            seedUnit(`unit-${i}`)
+        }
+        setLive(makeDb([]))
+        await prime()
+        const exporting = ctx.busy.beginBusy('export')
+        ctx.busy.beginDialogWait(exporting)
+
+        await run()
+
+        expect(await units()).toEqual([])
+        exporting.end()
+    })
+
+    test('stops partway when the save dialog answers after the first deletions and the export counts again', async () => {
+        await setup()
+        for (let i = 0; i < 250; i++) {
+            seedUnit(`unit-${i}`)
+        }
+        setLive(makeDb([]))
+        await prime()
+        const exporting = ctx.busy.beginBusy('export')
+        const unmark = ctx.busy.beginDialogWait(exporting)
+        let removed = 0
+        h.forageHooks.afterRemove = () => {
+            removed++
+            if (removed === 100) {
+                unmark()
+            }
+        }
+
+        await run()
+
+        const left = (await units()).length
+        expect(left).toBeGreaterThan(0)
+        expect(left).toBeLessThan(250)
+        expect(errorMessages().some((message) => message.includes(language.errors.coldStorageCleanupStoppedBusy))).toBe(true)
+        exporting.end()
+    })
+
     test('deletes nothing when work starts after the run began but before the first deletion', async () => {
         await setup()
         seedUnit('unreferenced-unit')

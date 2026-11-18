@@ -3938,7 +3938,21 @@ export const languageKorean = {
         sidebarItemRemoved: "\"{name}\" 항목을 제거했습니다",
         sidebarItemRestored: "\"{name}\" 항목을 되돌렸습니다",
         sidebarItemUndoRefused: "실행 취소할 수 없습니다. \"{name}\" 항목이 이미 목록에 있습니다.",
-        sidebarItemUndoFailed: "제거를 실행 취소하지 못했습니다."
+        sidebarItemUndoFailed: "제거를 실행 취소하지 못했습니다.",
+        libraryUndoTrashed: (count: number) => count === 1 ? '캐릭터 1개를 휴지통으로 이동했습니다' : `캐릭터 ${count}개를 휴지통으로 이동했습니다`,
+        libraryUndoTrashedEndNote: "실행 취소하면 폴더가 사라진 캐릭터는 목록 맨 끝에 놓입니다.",
+        libraryUndoRestored: (count: number) => count === 1 ? '캐릭터 1개가 휴지통에서 돌아왔습니다' : `캐릭터 ${count}개가 휴지통에서 돌아왔습니다`,
+        libraryUndoTrashRefused: "실행 취소할 수 없습니다. 이 캐릭터들은 이 작업으로 휴지통에 있는 상태가 아닙니다.",
+        libraryUndoTrashFailed: "휴지통으로 이동한 작업을 실행 취소하지 못했습니다.",
+        libraryUndoGrouped: "새 폴더로 묶었습니다",
+        libraryUndoMerged: "새 폴더를 만들었습니다",
+        libraryUndoMovedIntoFolder: (count: number) => count === 1 ? '항목 1개를 폴더로 이동했습니다' : `항목 ${count}개를 폴더로 이동했습니다`,
+        libraryUndoFolderRemoved: "이동했습니다. 폴더가 삭제되었습니다",
+        libraryUndoUngrouped: "폴더 묶음을 해제했습니다",
+        libraryUndoFolderDeleted: "폴더를 삭제했습니다. 폴더 안의 캐릭터는 목록에 남아 있습니다",
+        libraryUndoOrderRestored: "순서를 되돌렸습니다",
+        libraryUndoOrderRefused: "실행 취소할 수 없습니다. 그 사이 라이브러리 순서가 바뀌었습니다.",
+        libraryUndoOrderFailed: "변경을 실행 취소하지 못했습니다."
     },
     uiCommon: {
         delete: "삭제",

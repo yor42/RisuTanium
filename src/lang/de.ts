@@ -3959,7 +3959,21 @@ export const languageGerman = {
         "sidebarItemRemoved": "„{name}“ entfernt",
         "sidebarItemRestored": "„{name}“ ist wieder da",
         "sidebarItemUndoRefused": "Rückgängig nicht möglich: „{name}“ ist bereits in der Liste.",
-        "sidebarItemUndoFailed": "Das Entfernen konnte nicht rückgängig gemacht werden."
+        "sidebarItemUndoFailed": "Das Entfernen konnte nicht rückgängig gemacht werden.",
+        "libraryUndoTrashed": (count: number) => count === 1 ? '1 Charakter in den Papierkorb verschoben' : `${count} Charaktere in den Papierkorb verschoben`,
+        "libraryUndoTrashedEndNote": "Beim Rückgängigmachen kommen Charaktere, deren Ordner nicht mehr existiert, ans Ende der Liste.",
+        "libraryUndoRestored": (count: number) => count === 1 ? '1 Charakter ist aus dem Papierkorb zurück' : `${count} Charaktere sind aus dem Papierkorb zurück`,
+        "libraryUndoTrashRefused": "Rückgängig nicht möglich: Diese Charaktere befinden sich nicht mehr durch diese Aktion im Papierkorb.",
+        "libraryUndoTrashFailed": "Das Verschieben in den Papierkorb konnte nicht rückgängig gemacht werden.",
+        "libraryUndoGrouped": "In einem neuen Ordner gruppiert",
+        "libraryUndoMerged": "Neuen Ordner erstellt",
+        "libraryUndoMovedIntoFolder": (count: number) => count === 1 ? '1 Element in den Ordner verschoben' : `${count} Elemente in den Ordner verschoben`,
+        "libraryUndoFolderRemoved": "Verschoben; ein Ordner wurde entfernt",
+        "libraryUndoUngrouped": "Ordnergruppierung aufgehoben",
+        "libraryUndoFolderDeleted": "Ordner gelöscht; die Charaktere bleiben in der Liste",
+        "libraryUndoOrderRestored": "Reihenfolge wiederhergestellt",
+        "libraryUndoOrderRefused": "Rückgängig nicht möglich: Die Reihenfolge der Bibliothek hat sich seitdem geändert.",
+        "libraryUndoOrderFailed": "Die Änderung konnte nicht rückgängig gemacht werden."
     },
     "uiCommon": {
         "delete": "Löschen",

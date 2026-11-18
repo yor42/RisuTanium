@@ -3944,7 +3944,21 @@ export const languageSpanish = {
         sidebarItemRemoved: "Se quitó «{name}»",
         sidebarItemRestored: "«{name}» ha vuelto",
         sidebarItemUndoRefused: "No se puede deshacer: «{name}» ya está en la lista.",
-        sidebarItemUndoFailed: "No se pudo deshacer la eliminación."
+        sidebarItemUndoFailed: "No se pudo deshacer la eliminación.",
+        libraryUndoTrashed: (count: number) => count === 1 ? 'Se movió 1 personaje a la papelera' : `Se movieron ${count} personajes a la papelera`,
+        libraryUndoTrashedEndNote: "Al deshacer, los personajes cuya carpeta ya no existe se colocan al final de la lista.",
+        libraryUndoRestored: (count: number) => count === 1 ? '1 personaje ha vuelto de la papelera' : `${count} personajes han vuelto de la papelera`,
+        libraryUndoTrashRefused: "No se puede deshacer: estos personajes ya no están en la papelera por esta acción.",
+        libraryUndoTrashFailed: "No se pudo deshacer el movimiento a la papelera.",
+        libraryUndoGrouped: "Agrupado en una carpeta nueva",
+        libraryUndoMerged: "Se creó una carpeta nueva",
+        libraryUndoMovedIntoFolder: (count: number) => count === 1 ? 'Se movió 1 elemento a la carpeta' : `Se movieron ${count} elementos a la carpeta`,
+        libraryUndoFolderRemoved: "Movido; se eliminó una carpeta",
+        libraryUndoUngrouped: "Carpeta desagrupada",
+        libraryUndoFolderDeleted: "Carpeta eliminada; sus personajes siguen en la lista",
+        libraryUndoOrderRestored: "Orden restaurado",
+        libraryUndoOrderRefused: "No se puede deshacer: el orden de la biblioteca ha cambiado desde entonces.",
+        libraryUndoOrderFailed: "No se pudo deshacer el cambio."
     },
     uiCommon: {
         delete: "Eliminar",

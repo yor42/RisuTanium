@@ -508,6 +508,32 @@ describe('a file opened during an opened-file restore', () => {
         expect(takes.filter((take) => take.markedThen), 'no take after the reload request').toEqual([])
     })
 
+    test.each([
+        { label: 'only an export waiting on a save dialog is registered: no refusal line is set', marked: true, line: null },
+        { label: 'an export that is not waiting is registered: the refusal line is set', marked: false, line: 'set' },
+    ])('refusal line over the restore question when $label', async ({ marked, line }) => {
+        const { busyRefusalLine, beginBusy, beginDialogWait } = await import('src/ts/process/memory/busyActions')
+        const question = gateOf()
+        planConfirms([{ screen: 'ask', gate: question.gate, answer: false }])
+        native = [openedFile('bin2.bin')]
+        const { androidOpenedFilesImport } = await loadOpenedFiles()
+        androidOpenedFilesImport()
+        await waitForCondition(() => confirmsAsked.length >= 1)
+        const exporting = beginBusy('export')
+        if (marked) {
+            beginDialogWait(exporting)
+        }
+        native.push(openedFile('bin1.bin'))
+        window.__risuTaniumOpenedFiles?.()
+        await settleFew()
+
+        expect(refusalsSeen(), 'the file is refused either way').toBe(1)
+        expect(get(busyRefusalLine)).toBe(line === null ? null : language.backupLoadRefusedLine)
+        question.open()
+        await settleFew()
+        exporting.end()
+    })
+
     test('empty take: a hook over the restore question that finds the queue empty shows nothing', async () => {
         const question = gateOf()
         planConfirms([{ screen: 'ask', gate: question.gate, answer: false }])

@@ -204,7 +204,8 @@ export function takeStorageFallbackNotice(): FallbackNotice | null {
 
 /**
  * Deletes the OPFS files a completed copy back left behind, in a page that
- * loaded its main file from IndexedDB. Does nothing in the page load that did
+ * booted from IndexedDB (a store2 boot, or a read-only page that decoded its
+ * main file). Does nothing in the page load that did
  * the copy, on a page on any other store, or while no copy back is pending.
  * Never rejects.
  */

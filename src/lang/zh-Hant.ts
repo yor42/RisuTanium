@@ -3982,7 +3982,21 @@ export const languageChineseTraditional = {
         "sidebarItemRemoved": "已移除「{name}」",
         "sidebarItemRestored": "「{name}」已還原",
         "sidebarItemUndoRefused": "無法復原：「{name}」已在清單中。",
-        "sidebarItemUndoFailed": "無法復原移除。"
+        "sidebarItemUndoFailed": "無法復原移除。",
+        "libraryUndoTrashed": (count: number) => count === 1 ? '已將 1 個角色移至垃圾桶' : `已將 ${count} 個角色移至垃圾桶`,
+        "libraryUndoTrashedEndNote": "復原時，所在資料夾已不存在的角色會放到清單末端。",
+        "libraryUndoRestored": (count: number) => count === 1 ? '1 個角色已從垃圾桶還原' : `${count} 個角色已從垃圾桶還原`,
+        "libraryUndoTrashRefused": "無法復原：這些角色已不是因該操作而在垃圾桶中。",
+        "libraryUndoTrashFailed": "無法復原移至垃圾桶的操作。",
+        "libraryUndoGrouped": "已歸入新資料夾",
+        "libraryUndoMerged": "已建立新資料夾",
+        "libraryUndoMovedIntoFolder": (count: number) => count === 1 ? '已將 1 個項目移入資料夾' : `已將 ${count} 個項目移入資料夾`,
+        "libraryUndoFolderRemoved": "已移動；一個資料夾已被移除",
+        "libraryUndoUngrouped": "已取消資料夾群組",
+        "libraryUndoFolderDeleted": "資料夾已刪除；其中的角色仍保留在清單中",
+        "libraryUndoOrderRestored": "已恢復順序",
+        "libraryUndoOrderRefused": "無法復原：此後資料庫的順序已有變動。",
+        "libraryUndoOrderFailed": "無法復原該變更。"
     },
     "uiCommon": {
         "delete": "刪除",

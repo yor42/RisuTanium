@@ -41,7 +41,7 @@ export function beginRestoreRun(): RestoreRun {
                 // A refusal line nothing else will clear: with no busy entry left, its end already ran.
                 if (refusalLineSet) {
                     refusalLineSet = false
-                    if (!isBusy()) {
+                    if (!isBusy({ ignoreDialogWaits: true })) {
                         busyRefusalLine.set(null)
                     }
                 }
