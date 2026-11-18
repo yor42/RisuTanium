@@ -196,7 +196,7 @@ async function readStubCharacter(reader: LegacyEntryReader, stub: Record<string,
 }
 
 export type TreeRepairResult =
-    | { status: 'repaired', summary: RepairSummary }
+    | { status: 'repaired', summary: RepairSummary, replacedIds: ReadonlyMap<string, string> }
     | { status: 'refused', refusals: readonly RepairRefusal[] }
 
 /**
@@ -206,13 +206,14 @@ export type TreeRepairResult =
  * it. A read failure of the reader rejects (`LegacyReadError`).
  */
 export async function repairImportTree(tree: Database, reader: LegacyEntryReader): Promise<TreeRepairResult> {
-    const repaired = await repairCharacterTree(tree, 'restore', { readUnitCharacter: stub => readStubCharacter(reader, stub) })
+    const replacedIds = new Map<string, string>()
+    const repaired = await repairCharacterTree(tree, 'restore', { readUnitCharacter: stub => readStubCharacter(reader, stub), replacedIds })
     if (repaired.refusals.length > 0) {
         return { status: 'refused', refusals: repaired.refusals }
     }
     repairDatabaseIds(tree)
     repairImportRoot(tree)
-    return { status: 'repaired', summary: summarizeRepair(repaired.notices) }
+    return { status: 'repaired', summary: summarizeRepair(repaired.notices), replacedIds }
 }
 
 /**
@@ -342,6 +343,8 @@ export type PrepareStop = Extract<ImportOutcome, { status: 'declined' | 'read-fa
  * `resolveLegacyCharacter`, `repairImportRoot`, `resolveLegacyRoot`, `applyImportOverlay`, `confirmImportIncomplete`)
  * that both prepares call. A step added to this prepare must be added to the streamed prepare through a shared
  * function, or the streamed prepare must return 'whole' for the files it affects, so the two never drift.
+ * `replacedIds` needs no streamed counterpart: the streamed prepare returns 'whole' for every file holding an id the
+ * repair would replace.
  */
 export async function prepareImport(
     request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides'>, hooks: ImportHooks,
@@ -360,7 +363,7 @@ export async function prepareImport(
         }
         repair = repaired.summary
         notePhase(hooks, 'import repaired')
-        const resolved = await resolveLegacyTree(tree, request.reader, request.resolve)
+        const resolved = await resolveLegacyTree(tree, request.reader, { ...request.resolve, replacedIds: repaired.replacedIds })
         notePhase(hooks, 'import resolved')
         applyImportOverlay(resolved.database, request)
         incomplete = resolved.incomplete
