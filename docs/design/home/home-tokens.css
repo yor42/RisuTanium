@@ -92,7 +92,7 @@
   --home-ink: var(--risu-theme-textcolor);
   --home-ink-2: color-mix(in oklab, var(--risu-theme-textcolor2) 26%, var(--risu-theme-textcolor));   /* secondary text: >= 4.5:1 on bgcolor and darkbg in the presets (checks/contrast note in MAIN_MENU.md) */
   --home-ink-3: color-mix(in oklab, var(--risu-theme-textcolor2) 42%, var(--risu-theme-textcolor));   /* tertiary text (times, counts) */
-  --home-accent-solid: color-mix(in oklab, var(--risu-theme-borderc) 58%, var(--risu-theme-textcolor));   /* links, icons, the selection bar, the primary fill: borderc lifted toward the text so it clears 4.5:1 */
+  --home-accent-solid: #9ea9c6;   /* links, icons, the selection bar, the primary fill, the focus ring: borderc lifted toward the text so it clears 4.5:1. A literal, because the theme-pack checker must resolve the ring and the primary fill to judge them: the value is color-mix(in oklab, borderc 58%, textcolor) of the default scheme, and theme.js re-derives it from the scheme for ?scheme= */
   --home-danger-solid: color-mix(in oklab, var(--risu-theme-draculared) 78%, var(--risu-theme-textcolor));
 
   /* the shared names Home's parts read, now from the scheme (the exception to DD-145 above) */

@@ -197,7 +197,7 @@ Test-Result 'ID-13 zero-area bounds' ($r.rc -eq '4' -and (Get-PickErrors) -eq 1 
 $longName = 'a' + ('b' * 80)
 $bad = [ordered]@{
     'other package google'     = @('--id', 'com.google.android.documentsui:id/action_menu_select')
-    'other package android'    = @('--id', 'android:id/button1')
+    'other package android'    = @('--id', 'android:id/button2')
     'other package app'        = @('--id', 'io.github.yor42.risutanium:id/action_menu_select')
     'other package suffix'     = @('--id', 'com.android.documentsuix:id/action_menu_select')
     'other package prefix'     = @('--id', 'xcom.android.documentsui:id/action_menu_select')
