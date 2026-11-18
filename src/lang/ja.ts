@@ -3755,6 +3755,7 @@ export const languageJapanese = {
     rtbRestoreLineSideNotRestored: (names: string[]) => `- この端末に保持され、復元されなかったデータ：${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- この端末に保持され、完全には書き込めなかったデータ：${names.join(', ')}`,
     rtbRestoreSideNames: { iris: "Irisの会話", googleSearch: "Google検索キー", hypaVector: "メモリ検索データ", pluginSafe: "プラグインデータ", pluginSafeLs: "プラグイン設定", pluginPermissions: "プラグイン権限", mcpToolCalls: "MCPツール呼び出し", uiPrefs: "インターフェース設定" },
+    backupFileNotRecognized: "このファイルは、このアプリで復元できるバックアップ（アップストリームのRisuAIの.binまたはRisuTaniumの.rtbバックアップ）ではないか、途中で切れています。何も復元されませんでした。現在のデータは変更されていません。",
     coldStorageCleanupDateUnknown: "日付不明",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `破損した保存データをバックアップから置き換えた際、古いデータの保存コピーは削除されずに退避されました（作成日時：${dates}）。それらのみが使用している画像やアーカイブデータは保護されたままとなるため、それらが存在する間はクリーンアップを実行できません。\n\nこれらの古いコピーを削除してクリーンアップを実行しますか？これらは復元できません。保持する場合は「キャンセル」を選択してください。その場合、クリーンアップは実行されません。`,

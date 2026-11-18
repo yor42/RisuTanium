@@ -3754,6 +3754,7 @@ export const languageEnglish = {
     rtbRestoreLineSideNotRestored: (names: string[]) => `- Data kept on this device that was not restored: ${names.join(', ')}`,
     rtbRestoreLineSideFailed: (names: string[]) => `- Data kept on this device that could not be written completely: ${names.join(', ')}`,
     rtbRestoreSideNames: { iris: "Iris conversations", googleSearch: "Google search key", hypaVector: "memory search data", pluginSafe: "plugin data", pluginSafeLs: "plugin settings", pluginPermissions: "plugin permissions", mcpToolCalls: "MCP tool calls", uiPrefs: "interface preferences" },
+    backupFileNotRecognized: "This file is not a backup this app can restore (an upstream RisuAI .bin or a RisuTanium .rtb backup), or it is cut short. Nothing was restored. Your current data was not changed.",
     coldStorageCleanupDateUnknown: "date unknown",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `When a damaged save was replaced from a backup, the older saved copies of your data were set aside instead of being deleted (created ${dates}). Images and archived data that only they use are still protected, so the cleanup cannot run while they exist.\n\nDelete these older copies and then clean up? They cannot be recovered. Choose Cancel to keep them; the cleanup then does not run.`,

@@ -3656,6 +3656,7 @@ export const languageChineseTraditional = {
     "rtbRestoreLineSideNotRestored": (names: string[]) => `- 保留在此裝置上、未被還原的資料：${names.join(', ')}`,
     "rtbRestoreLineSideFailed": (names: string[]) => `- 保留在此裝置上、未能完整寫入的資料：${names.join(', ')}`,
     "rtbRestoreSideNames": { iris: "Iris 對話", googleSearch: "Google 搜尋金鑰", hypaVector: "記憶搜尋資料", pluginSafe: "外掛資料", pluginSafeLs: "外掛設定", pluginPermissions: "外掛權限", mcpToolCalls: "MCP 工具呼叫", uiPrefs: "介面偏好設定" },
+    "backupFileNotRecognized": "此檔案不是此應用程式可還原的備份（上游 RisuAI 的 .bin 或 RisuTanium 的 .rtb 備份），或者檔案不完整。未還原任何內容。您目前的資料沒有變更。",
     "coldStorageCleanupDateUnknown": "日期未知",
     "coldStorageCleanupKeptConfirm": (dates: string) =>
         `在用備份取代已損毀的已儲存資料時，資料的較舊已儲存副本被保留下來，而沒有被刪除（建立於 ${dates}）。僅被它們使用的圖片和封存資料仍受保護，因此只要這些副本存在，就無法執行清理。\n\n是否刪除這些較舊的副本，然後進行清理？刪除後無法復原。選擇「取消」則保留它們，此時不會執行清理。`,
