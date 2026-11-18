@@ -12,7 +12,8 @@ import { holdAssetDeletion, resetAssetDeleteHoldForTests } from 'src/ts/storage/
 import { isBusy, type BusyHandle } from 'src/ts/process/memory/busyActions'
 import type { RtbInstallEnd } from 'src/ts/drive/rtbRestoreInstall'
 import type { RestoreHold } from 'src/ts/drive/rtbRestoreHold'
-import { pickedRtbOf, runRtbRestore, type RtbRestoreDeps } from 'src/ts/drive/rtbRestoreEntry'
+import { pickedRtbOf, pickedRtbOfSource, runRtbRestore, type RtbRestoreDeps } from 'src/ts/drive/rtbRestoreEntry'
+import { importSourceOfBytes } from 'src/ts/importSource'
 import type { PickedRtb, RestorePlan, RtbPrepareEnd } from 'src/ts/drive/rtbRestorePlan'
 
 vi.mock('src/ts/stores.svelte', async () => {
@@ -170,5 +171,14 @@ describe('pickedRtbOf', () => {
         const described = pickedRtbOf(file)
         expect(described).toMatchObject({ name: 'backup.bin', size: 7, lastModified: 1234 })
         expect(described.source).toBeDefined()
+    })
+})
+
+describe('pickedRtbOfSource', () => {
+    test('T-P1: describes an opened file by its display name, its source size and its time, and hands the very same source over (guard; MS12)', () => {
+        const source = importSourceOfBytes('uri-tail.bin', new Uint8Array(11))
+        const described = pickedRtbOfSource({ source, name: 'My Backup.bin', lastModified: 1234 })
+        expect(described).toEqual({ name: 'My Backup.bin', size: 11, lastModified: 1234, source })
+        expect(described.source).toBe(source)
     })
 })
