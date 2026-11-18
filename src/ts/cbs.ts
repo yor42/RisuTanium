@@ -607,16 +607,6 @@ export function registerCBS(arg:CBSRegisterArg) {
     });
 
     registerFunction({
-        name: 'time',
-        callback: (str, matcherArg, args, vars) => {
-            const now = new Date()
-            return `${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`
-        },
-        alias: [],
-        description: 'Returns the current local time in HH:MM:SS format. Updates in real-time when the function is called.\n\nUsage:: {{time}}',
-    });
-
-    registerFunction({
         name: 'isotime',
         callback: (str, matcherArg, args, vars) => {
             const now = new Date()
@@ -1703,7 +1693,7 @@ export function registerCBS(arg:CBSRegisterArg) {
             return dateTimeFormat(args[0], t)
         },
         alias: [],
-        description: 'Formats date/time using custom format string. No arguments returns h:m:s. First argument is format string, optional second argument is unix timestamp.\n\nUsage:: {{date::YYYY-MM-DD}} or {{date::HH:mm:ss::1640995200000}}',
+        description: 'Formats date/time using custom format string. No arguments returns the current local time as h:m:s. First argument is format string, optional second argument is unix timestamp.\n\nUsage:: {{time}} or {{time::HH:mm:ss::1640995200000}}',
     });
 
     registerFunction({
