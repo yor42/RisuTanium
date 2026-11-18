@@ -34,6 +34,13 @@ const alertWaitMock = vi.hoisted(() => vi.fn())
 const openSourceMock = vi.hoisted(() => vi.fn())
 const readOnlyBox = vi.hoisted(() => ({ readOnly: false }))
 const reloadMark = vi.hoisted(() => ({ marked: false }))
+const runRtbMock = vi.hoisted(() => vi.fn<(picked: import('src/ts/drive/rtbRestorePlan').PickedRtb) => Promise<{ outcome: import('src/ts/drive/operationEnd').OperationOutcome, cause: null }>>())
+
+// The `.rtb` restore itself is replaced; the helper that builds its argument stays real.
+vi.mock('src/ts/drive/rtbRestoreEntry', async (importOriginal) => {
+    const original = await importOriginal<typeof import('src/ts/drive/rtbRestoreEntry')>()
+    return { ...original, runRtbRestore: runRtbMock }
+})
 
 vi.mock(import('src/ts/reloadGuard'), () => ({
     markAppInitiatedReload: () => { reloadMark.marked = true },
@@ -269,7 +276,8 @@ import { injectRestoreStore } from './restoreSupport'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { resetAssetBatchAvailabilityForTests } from 'src/ts/storage/tauriAssetBatch'
-import { beginBusy, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
+import { beginBusy, isBusy, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
+import type { OperationOutcome } from 'src/ts/drive/operationEnd'
 import { importSourceOfBytes, type ImportSource } from 'src/ts/importSource'
 import { recordStartupCleanup, resetStartupCleanupForTests } from 'src/ts/storage/startupCleanupState'
 import { refuseImportWhileRestoring } from 'src/ts/drive/backupWorkGuard'
@@ -317,7 +325,16 @@ interface Probe {
     reads: () => number
 }
 
-function probeSource(bytes: Uint8Array, options: { statThrows?: boolean, modified?: number | null } = {}): Probe {
+interface ProbeOptions {
+    statThrows?: boolean
+    modified?: number | null
+    /** What the very first read does: reject, or return 10 bytes however many were asked; later reads are normal. */
+    firstRead?: 'reject' | 'short'
+    /** Called at the first read, before it is served. */
+    onFirstRead?: () => void
+}
+
+function probeSource(bytes: Uint8Array, options: ProbeOptions = {}): Probe {
     const inner = importSourceOfBytes('backup.bin', bytes)
     let closes = 0
     let reads = 0
@@ -326,6 +343,15 @@ function probeSource(bytes: Uint8Array, options: { statThrows?: boolean, modifie
         ...inner,
         read: async (start, end) => {
             reads++
+            if (reads === 1) {
+                options.onFirstRead?.()
+                if (options.firstRead === 'reject') {
+                    throw new Error('scratch: first read failed')
+                }
+                if (options.firstRead === 'short') {
+                    return await inner.read(start, start + 10)
+                }
+            }
             return await inner.read(start, end)
         },
         stat: async () => {
@@ -369,6 +395,7 @@ beforeEach(() => {
     alertWaitMock.mockReset()
     alertConfirmMock.mockReset().mockResolvedValue(true)
     openSourceMock.mockReset()
+    runRtbMock.mockReset()
     readOnlyBox.readOnly = false
     reloadMark.marked = false
     vi.spyOn(console, 'error').mockImplementation(() => { })
@@ -630,3 +657,162 @@ describe('restoreOpenedBackup', () => {
         expectNothingInstalled()
     })
 })
+
+//#region the opened file is routed by its content (CHORE-128 S13a)
+
+/** A sealed `.rtb` header (`RTBX`, its line-ending guard bytes and a version): classified `rtb` whatever the file is named. */
+function sealedRtb(): Uint8Array {
+    return new Uint8Array([0x52, 0x54, 0x42, 0x58, 0x0D, 0x0A, 0x1A, 0x0A, 1, 0, 9, 9, 9, 9, 9, 9])
+}
+
+const rtbEnded = (outcome: OperationOutcome) => ({ outcome, cause: null })
+
+describe('restoreOpenedBackup routes the opened file by its content', () => {
+    // Reproducers (T-O1 to T-O5, T-O8): red where the opened file always goes to the `.bin` restore.
+    // One test per outcome: a committed or unknown end makes the page phase `pageEnding` until the afterEach reset.
+    test.each([
+        ['committed', 'pageEnding', 'pageEnding'],
+        ['unknown', 'pageEnding', 'pageEnding'],
+        ['canceled', 'pageLive', 'none'],
+        ['nothing-replaced', 'pageLive', 'none'],
+        ['failed', 'pageLive', 'none'],
+    ] as const)('T-O1: a .rtb named My Backup.bin goes to the .rtb restore, whose %s end gives %s', async (outcome, returned, phase) => {
+        runRtbMock.mockResolvedValue(rtbEnded(outcome))
+        const probe = probeSource(sealedRtb())
+        openSourceMock.mockResolvedValue(probe.source)
+
+        expect(await restoreOpenedBackup(entry)).toBe(returned)
+
+        expect(runRtbMock).toHaveBeenCalledTimes(1)
+        expect(restorePhase()).toBe(phase)
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(probe.closed()).toBe(1)
+    })
+
+    test('T-O2: a rejection of the .rtb restore shows the generic failure, ends the run live and closes the source once', async () => {
+        runRtbMock.mockRejectedValue(new Error('scratch: preparation failed'))
+        const probe = probeSource(sealedRtb())
+        openSourceMock.mockResolvedValue(probe.source)
+
+        expect(await restoreOpenedBackup(entry)).toBe('pageLive')
+
+        expect(alertErrorMock).toHaveBeenCalledWith('Failed, Is file corrupted?')
+        expect(restorePhase()).toBe('none')
+        expect(probe.closed()).toBe(1)
+    })
+
+    test('T-O3: the .rtb restore is given the display name, the source size and time, and the opened source itself', async () => {
+        runRtbMock.mockResolvedValue(rtbEnded('canceled'))
+        const bytes = sealedRtb()
+        const probe = probeSource(bytes)
+        openSourceMock.mockResolvedValue(probe.source)
+
+        await restoreOpenedBackup(entry)
+
+        const given = runRtbMock.mock.calls[0][0]
+        expect(given.name).toBe('My Backup.bin')
+        expect(given.size).toBe(bytes.length)
+        expect(given.lastModified).toBe(1700000000000)
+        expect(given.source).toBe(probe.source)
+    })
+
+    test('T-O4: the source stays open while the .rtb restore runs and is closed once after it returns', async () => {
+        let release: (end: ReturnType<typeof rtbEnded>) => void = () => { }
+        runRtbMock.mockImplementation(() => new Promise((resolve) => { release = resolve }))
+        const probe = probeSource(sealedRtb())
+        openSourceMock.mockResolvedValue(probe.source)
+        let returned = false
+
+        const running = restoreOpenedBackup(entry).then((end) => { returned = true; return end })
+        // The route holds two dynamic imports before the call; poll with a bound instead of waiting for one tick.
+        for (let tick = 0; tick < 100 && runRtbMock.mock.calls.length === 0; tick++) {
+            await settle()
+        }
+        expect(runRtbMock).toHaveBeenCalledTimes(1)
+        await settle()
+        expect(probe.closed()).toBe(0)
+        expect(returned).toBe(false)
+
+        release(rtbEnded('canceled'))
+        await running
+        expect(probe.closed()).toBe(1)
+    })
+
+    test('T-O5: the probe reads in the asking phase with no busy entry, and the .bin restore still installs', async () => {
+        let phase: string | null = null
+        let busy: boolean | null = null
+        const probe = probeSource(smallBin(), { onFirstRead: () => { phase = restorePhase(); busy = isBusy() } })
+        openSourceMock.mockResolvedValue(probe.source)
+
+        await restoreOpenedBackup(entry)
+
+        expect(phase).toBe('asking')
+        expect(busy).toBe(false)
+        expect(setDatabaseMock).toHaveBeenCalled()
+    })
+
+    test('T-O6: a first read that rejects shows backupFileUnreadable, installs nothing and calls no restore', async () => {
+        const probe = probeSource(smallBin(), { firstRead: 'reject' })
+        openSourceMock.mockResolvedValue(probe.source)
+
+        expect(await restoreOpenedBackup(entry)).toBe('pageLive')
+
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileUnreadable)
+        expectNothingInstalled()
+        expect(runRtbMock).not.toHaveBeenCalled()
+        expect(probe.closed()).toBe(1)
+    })
+
+    test('T-O7: a first read that returns 10 bytes shows backupFileUnreadable and installs nothing', async () => {
+        const probe = probeSource(smallBin(), { firstRead: 'short' })
+        openSourceMock.mockResolvedValue(probe.source)
+
+        expect(await restoreOpenedBackup(entry)).toBe('pageLive')
+
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupFileUnreadable)
+        expectNothingInstalled()
+        expect(runRtbMock).not.toHaveBeenCalled()
+    })
+
+    test('T-O8: 64 bytes of 7 are refused with exactly backupFileNotRecognized, nothing installed, the source closed once', async () => {
+        const probe = probeSource(new Uint8Array(64).fill(7))
+        openSourceMock.mockResolvedValue(probe.source)
+
+        expect(await restoreOpenedBackup(entry)).toBe('pageLive')
+
+        expect(alertErrorMock.mock.calls).toEqual([[language.backupFileNotRecognized]])
+        expectNothingInstalled()
+        expect(runRtbMock).not.toHaveBeenCalled()
+        expect(probe.closed()).toBe(1)
+    })
+
+    // Guard (passes before and after): the content decides, so a .bin named .rtb is restored by the .bin restore.
+    test('T-O9: a .bin named My Backup.rtb goes to the .bin restore', async () => {
+        openSourceMock.mockResolvedValue(probeSource(smallBin()).source)
+
+        expect(await restoreOpenedBackup({ ...entry, name: 'My Backup.rtb' })).toBe('pageEnding')
+
+        expect(setDatabaseMock).toHaveBeenCalled()
+        expect(runRtbMock).not.toHaveBeenCalled()
+    })
+
+    // Guard (passes before and after): a .rtb name changes none of the refusals that come before the open.
+    test('T-O10: a decline, a busy app and a read-only page open nothing for a .rtb name', async () => {
+        const rtbEntry = { ...entry, name: 'My Backup.rtb' }
+        alertConfirmMock.mockResolvedValueOnce(false)
+        await expect(restoreOpenedBackup(rtbEntry)).resolves.toBe('pageLive')
+
+        const busy = beginBusy('backupSave')
+        await expect(restoreOpenedBackup(rtbEntry)).resolves.toBe('pageLive')
+        busy.end()
+
+        readOnlyBox.readOnly = true
+        await expect(restoreOpenedBackup(rtbEntry)).resolves.toBe('pageLive')
+
+        expect(openSourceMock).not.toHaveBeenCalled()
+        expect(runRtbMock).not.toHaveBeenCalled()
+        expectNothingInstalled()
+    })
+})
+
+//#endregion

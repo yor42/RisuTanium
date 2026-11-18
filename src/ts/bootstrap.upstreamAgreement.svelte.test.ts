@@ -27,6 +27,7 @@ import { UPSTREAM_AGREEMENT_ACCEPT, UPSTREAM_AGREEMENT_DECLINE } from 'src/ts/up
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
+import { registerRealDispatch, stopAcknowledgingAlerts } from 'src/ts/tests/realDispatchBoot.test-helpers'
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -123,6 +124,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
     SettingsMenuIndex: writable(0),
     ShowRealmFrameStore: writable(''),
     settingsOpen: writable(false),
+    SafeModeStore: writable(false),
 }) as unknown as typeof import('src/ts/stores.svelte'))
 
 vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
@@ -337,6 +339,9 @@ async function freshLoadData() {
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     const { forageStorage } = await import('src/ts/globalApi.svelte')
     injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
+    // The legacy main file is converted to a store2 profile by the real dispatch; its own notices are dismissed so only
+    // the agreement and stale-account prompts remain for the rows to answer.
+    await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: true })
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
@@ -391,6 +396,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    stopAcknowledgingAlerts()
     // Settles any notice or prompt this test posted but never answered: its subscription is
     // still live on the shared, mock-persisted `alertStore` and would otherwise react to a later
     // test's own writes.

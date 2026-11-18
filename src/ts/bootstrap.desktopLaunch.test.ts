@@ -11,6 +11,7 @@ import { describe, test, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { writable } from 'svelte/store'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
+import { registerRealDispatch } from 'src/ts/tests/realDispatchBoot.test-helpers'
 
 const desktopLaunchImportMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
 const androidOpenedFilesImportMock = vi.hoisted(() => vi.fn((): void => { }))
@@ -196,7 +197,13 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
         fsStore.set(bare(to), found)
         fsStore.delete(bare(from))
     }),
-    readDir: vi.fn(async () => []),
+    // A held file is not a directory: the store's `has` lists the path to tell the two apart, so a file must refuse the listing.
+    readDir: vi.fn(async (path: string) => {
+        if ((fsStore.get(bare(path))?.length ?? 0) > 0) {
+            throw new Error(`Not a directory (mock): ${path} (os error 20)`)
+        }
+        return []
+    }),
     remove: vi.fn(async (path: string) => { fsStore.delete(bare(path)) }),
 }))
 
@@ -247,6 +254,8 @@ function armTauriBoot(didFirstSetup: boolean) {
 }
 
 async function bootOnce() {
+    // The legacy main file the test armed is converted to a store2 profile by the real dispatch, as on a production page.
+    await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: true })
     const { loadData } = await import('src/ts/bootstrap')
     await loadData()
 }

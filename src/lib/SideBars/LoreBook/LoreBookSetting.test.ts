@@ -3,7 +3,8 @@
 /**
  * The lorebook settings tab shows the "SillyTavern-style Word Boundaries" check beside "Full Word
  * Matching" while the character has its own lore settings, and toggling it writes
- * `loreSettings.fullWordAsciiBoundary`. With the global settings in use neither check is shown.
+ * `loreSettings.fullWordAsciiBoundary`. The "Word-start Matching" check sits beside them and writes
+ * `loreSettings.cjkWordStart`. With the global settings in use no such check is shown.
  * Titles beginning "regression reproducer:" fail when the check is missing; "guard:" pass before and after.
  *
  * Mounts the REAL `LoreBookSetting` with the real `CheckInput` and English strings. MOCKED:
@@ -33,9 +34,9 @@ import LoreBookSetting from './LoreBookSetting.svelte'
 
 const mounted: Array<ReturnType<typeof mount>> = []
 
-function render(loreSettings?: Database['characters'][number]['loreSettings']) {
+function render(loreSettings?: Database['characters'][number]['loreSettings'], type: 'character' | 'group' = 'character') {
     DBState.db = {
-        characters: [{ type: 'character', chatPage: 0, chats: [{ localLore: [] }], globalLore: [], loreSettings }],
+        characters: [{ type, chatPage: 0, chats: [{ localLore: [] }], globalLore: [], loreSettings }],
         loreBookToken: 100,
         loreBookDepth: 3,
     } as unknown as Database
@@ -59,6 +60,70 @@ afterEach(() => {
         unmount(component)
     }
     document.body.innerHTML = ''
+})
+
+describe('LoreBookSetting word-start matching check', () => {
+    // A fresh object per test: the component writes through to the settings it is given.
+    const own = () => ({ tokenBudget: 100, scanDepth: 3, recursiveScanning: false, fullWordMatching: false })
+
+    test('regression reproducer: toggling the check sets the character option', () => {
+        const target = render(own())
+        const check = checkNamed(target, language.cjkWordStart)
+        expect(check).not.toBeNull()
+        check!.click()
+        flushSync()
+        expect(DBState.db.characters[0].loreSettings?.cjkWordStart).toBe(true)
+        check!.click()
+        flushSync()
+        expect(DBState.db.characters[0].loreSettings?.cjkWordStart).toBe(false)
+    })
+
+    test('regression reproducer: toggling the check keeps the stored card extensions in step and leaves the other flag alone', () => {
+        const target = render(own())
+        extensionsOf(DBState.db.characters[0]).loreExt = { other: 1, risu_fullWordAsciiBoundary: true }
+        const check = checkNamed(target, language.cjkWordStart)
+        expect(check).not.toBeNull()
+        check!.click()
+        flushSync()
+        expect(extensionsOf(DBState.db.characters[0]).loreExt).toEqual({ other: 1, risu_fullWordAsciiBoundary: true, risu_cjkWordStart: true })
+        check!.click()
+        flushSync()
+        expect(extensionsOf(DBState.db.characters[0]).loreExt).toEqual({ other: 1, risu_fullWordAsciiBoundary: true })
+    })
+
+    test('regression reproducer: turning the check on creates the card extensions when absent', () => {
+        const target = render(own())
+        const check = checkNamed(target, language.cjkWordStart)
+        expect(check).not.toBeNull()
+        check!.click()
+        flushSync()
+        expect(extensionsOf(DBState.db.characters[0]).loreExt).toEqual({ risu_cjkWordStart: true })
+    })
+
+    test('regression reproducer: a character with the option on shows the check ticked', () => {
+        const target = render({ ...own(), cjkWordStart: true })
+        expect(checkNamed(target, language.cjkWordStart)?.checked).toBe(true)
+    })
+
+    test('regression reproducer: the check is shown while Full Word Matching is off', () => {
+        const target = render(own())
+        expect(checkNamed(target, language.fullWordMatching)?.checked).toBe(false)
+        expect(checkNamed(target, language.cjkWordStart)).not.toBeNull()
+    })
+
+    test('regression reproducer: a group character toggles the option without creating card extensions', () => {
+        const target = render(own(), 'group')
+        const check = checkNamed(target, language.cjkWordStart)
+        expect(check).not.toBeNull()
+        check!.click()
+        flushSync()
+        expect(DBState.db.characters[0].loreSettings?.cjkWordStart).toBe(true)
+        expect(extensionsOf(DBState.db.characters[0]).loreExt).toBeUndefined()
+    })
+
+    test('guard: the global-settings branch shows no word-start check', () => {
+        expect(checkNamed(render(undefined), language.cjkWordStart)).toBeNull()
+    })
 })
 
 describe('LoreBookSetting SillyTavern-style word boundaries check', () => {

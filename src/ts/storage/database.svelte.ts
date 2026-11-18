@@ -1589,6 +1589,8 @@ export interface loreSettings{
     fullWordMatching?: boolean
     /** Fork-only. With full-word matching, only `[A-Za-z0-9_]` make up a word, as in SillyTavern. Absent reads as off. */
     fullWordAsciiBoundary?: boolean
+    /** Fork-only. Outside full-word matching, a key whose first letter is Korean, Japanese or Chinese must start at a word start. Absent reads as off. */
+    cjkWordStart?: boolean
 }
 
 

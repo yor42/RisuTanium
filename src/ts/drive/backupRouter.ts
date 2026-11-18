@@ -2,7 +2,8 @@ import { alertError } from '../alert'
 import { language } from 'src/lang'
 import { transportKind } from '../storage/tauriByteTransport'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
-import { LoadPickedLocalBackup } from './backuplocal'
+import { LoadLocalBackup, LoadPickedLocalBackup, type OpenedBin } from './backuplocal'
+import type { ImportSource } from '../importSource'
 import type { OperationOutcome } from './operationEnd'
 import { classifyPrefix } from './rtb/sniff'
 
@@ -12,6 +13,7 @@ import { classifyPrefix } from './rtb/sniff'
  * - a RisuTanium `.rtb` (a plain or sealed `RTBX` file) goes to the `.rtb` restore;
  * - a file whose first entry header is a well-formed `.bin` entry goes to the `.bin` restore;
  * - anything else is turned away with a notice, and nothing is read further or written.
+ * A file another app opened is routed the same way from its open source, after the caller's own confirmation.
  *
  * Invariants:
  * - The `.bin` restore is reached only when `backupKindOf` says `bin`. A failed read, a short read, a rejection or an
@@ -112,6 +114,66 @@ export async function routePickedBackup(file: File, deps: Partial<RouterDeps> = 
     } catch (error) {
         // Only a rejection that cannot follow a restore write reaches here: the `.bin` restore never rejects and the
         // `.rtb` restore rejects only before it replaces anything.
+        console.error(error)
+        alertError('Failed, Is file corrupted?')
+        return { outcome: 'failed' }
+    }
+}
+
+/** Reads the probe prefix of an opened source and classifies it; a failed, short or thrown read is `could-not-read`. Never rejects. */
+export async function readBackupKindOfSource(source: Pick<ImportSource, 'size' | 'read'>): Promise<BackupKind | 'could-not-read'> {
+    try {
+        const wanted = Math.min(source.size, BACKUP_PROBE_BYTES)
+        const prefix = await source.read(0, wanted)
+        if (prefix.length !== wanted) {
+            return 'could-not-read'
+        }
+        return backupKindOf(prefix, source.size)
+    } catch (error) {
+        console.error(error)
+        return 'could-not-read'
+    }
+}
+
+/** The restores an opened file is routed to; tests replace them to observe what is routed where. */
+export interface OpenedRouterDeps {
+    loadBin(opened: OpenedBin): Promise<{ outcome: OperationOutcome }>
+    loadRtb(opened: OpenedBin): Promise<{ outcome: OperationOutcome }>
+}
+
+function realOpenedRouterDeps(): OpenedRouterDeps {
+    return {
+        loadBin: (opened) => LoadLocalBackup(undefined, opened),
+        loadRtb: async (opened) => {
+            const { runRtbRestore, pickedRtbOfSource } = await import('./rtbRestoreEntry')
+            return runRtbRestore(pickedRtbOfSource(opened))
+        },
+    }
+}
+
+/**
+ * Reads the kind of a file another app opened and runs its restore over the caller's open source. It opens no busy entry
+ * (each restore opens its own, and a held one would refuse it), never closes the source, and never rejects: the caller
+ * closes the source after the restore returned.
+ */
+export async function routeOpenedBackup(opened: OpenedBin, deps: Partial<OpenedRouterDeps> = {}): Promise<{ outcome: OperationOutcome }> {
+    const calls: OpenedRouterDeps = { ...realOpenedRouterDeps(), ...deps }
+    const kind = await readBackupKindOfSource(opened.source)
+    try {
+        switch (kind) {
+            case 'bin':
+                return await calls.loadBin(opened)
+            case 'rtb':
+                return await calls.loadRtb(opened)
+            case 'not-a-backup':
+                alertError(language.backupFileNotRecognized)
+                return { outcome: 'nothing-replaced' }
+            case 'could-not-read':
+                alertError(language.backupFileUnreadable)
+                return { outcome: 'nothing-replaced' }
+        }
+    } catch (error) {
+        // As for a picked file: only a rejection that cannot follow a restore write reaches here.
         console.error(error)
         alertError('Failed, Is file corrupted?')
         return { outcome: 'failed' }

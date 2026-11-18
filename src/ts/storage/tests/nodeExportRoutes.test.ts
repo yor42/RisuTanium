@@ -16,7 +16,7 @@ import { hexOfKey, startNodeServer, type NodeServerFixture } from './nodeServerF
 // exportWriters is imported only for its pure header encoder; its page-side
 // dependencies are replaced.
 vi.mock('src/ts/alert', () => ({}))
-vi.mock('src/ts/platform', () => ({ isTauri: false, isNodeServer: true, isWeb: false }))
+vi.mock('src/ts/platform', () => ({ isTauri: false, isNodeServer: true }))
 vi.mock('src/lang', () => ({ language: {} }))
 vi.mock('src/ts/vendor/streamSaver', () => ({ default: {} }))
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
