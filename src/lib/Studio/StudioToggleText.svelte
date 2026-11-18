@@ -17,8 +17,6 @@
         type LineMark,
         type NewKind,
     } from '../../ts/studio/toggleBuilderModel'
-    import { detachingItems, planCarry } from '../../ts/studio/toggleCarry'
-    import { textOf } from '../../ts/studio/toggleDef'
     import { canonicalLine, replaceText, type RowDraft } from '../../ts/studio/toggleDefEdit'
 
     // The definition as one text field with a line-number gutter. Every input is written through the text port as a
@@ -73,23 +71,10 @@
     function write(value: string): void {
         if (readOnly) return
         const before = builder.def
-        const next = replaceText(before, withKeptCr(before, value))
-        if (!builder.keyEditsLive && detachingItems(planCarry(before, next), builder.visitKeys).length > 0) {
-            failure = { ok: false, kind: 'held' }
+        const refused = builder.writeText(replaceText(before, withKeptCr(before, value)))
+        if (refused !== null) {
+            failure = refused
             return
-        }
-        const text = textOf(next)
-        if (text !== textOf(before)) {
-            const result = port.write(text, 'typing')
-            if (result === null) {
-                failure = { ok: false, kind: 'unavailable' }
-                return
-            }
-            if (result.ok === false) {
-                failure = { ok: false, kind: 'refused', reason: result.reason }
-                return
-            }
-            builder.resync(text)
         }
         typed = null
         failure = null
@@ -110,6 +95,7 @@
         typed = null
         failure = null
         port.closeOpenStep()
+        builder.checkpoint()
     }
 
     /** The index of the line under the caret, or null while the author has not moved it or the field holds unsaved text. */

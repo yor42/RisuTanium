@@ -22,6 +22,8 @@ export type FavouriteChange =
     | { type: 'remove', ref: FavouriteRef }
     // Swaps with the nearest neighbour in the direction that `visible` accepts; hidden stars between keep their place.
     | { type: 'move', ref: FavouriteRef, by: -1 | 1, visible: (ref: FavouriteRef) => boolean }
+    // Re-keys a star in place; when the target star already exists the renamed one is dropped and the existing keeps its place.
+    | { type: 'rename', ref: FavouriteRef, to: string }
 
 export type ParsedFavourites = { status: 'ok', items: FavouriteRef[] } | { status: 'unreadable' }
 
@@ -72,6 +74,16 @@ export function applyFavouriteChange(items: readonly FavouriteRef[], change: Fav
     if (at === -1) return list
     if (change.type === 'remove') {
         list.splice(at, 1)
+        return list
+    }
+    if (change.type === 'rename') {
+        const renamed: FavouriteRef = { s: change.ref.s, k: change.to }
+        if (sameRef(renamed, change.ref)) return list
+        if (list.some((known) => sameRef(known, renamed))) {
+            list.splice(at, 1)
+        } else {
+            list[at] = renamed
+        }
         return list
     }
     let other = at + change.by
