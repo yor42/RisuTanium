@@ -126,7 +126,7 @@ afterEach(async () => {
 //#endregion
 
 describe('applying a single summary re-roll', () => {
-    function installRerollDb(): void {
+    function installRerollDb(createdAt?: number): void {
         DBState.db = {
             characters: [{
                 chaId: 'c0', name: 'c0', type: 'character', chatPage: 0, firstMessage: '',
@@ -134,7 +134,7 @@ describe('applying a single summary re-roll', () => {
                     id: 'chat-0', name: '', note: '', localLore: [],
                     message: [{ chatId: 'memo-s0', role: 'char', data: 'a message to summarize' }],
                     hypaV3Data: {
-                        summaries: [{ text: 'original', chatMemos: ['memo-s0'], isImportant: false }],
+                        summaries: [{ text: 'original', chatMemos: ['memo-s0'], isImportant: false, ...(createdAt === undefined ? {} : { createdAt }) }],
                         categories: [{ id: '', name: 'none' }],
                         lastSelectedSummaries: [],
                     },
@@ -303,6 +303,24 @@ describe('applying a single summary re-roll', () => {
         expect(summaryText()).toBe('rerolled text')
     })
 
+    // compatibility guard: passes before and after (the apply mutates the text only)
+    test('guard: Apply after a successful re-roll keeps the summary creation time', async () => {
+        const T0 = 1_760_000_000_000
+        const clock = vi.spyOn(Date, 'now').mockReturnValue(1_763_424_000_000)
+        try {
+            installRerollDb(T0)
+            const target = mountModal()
+            await startReroll(target)
+            await finishReroll('rerolled text')
+            await clickApply(target)
+
+            expect(summaryText()).toBe('rerolled text')
+            expect(DBState.db.characters[0].chats[0].hypaV3Data.summaries[0].createdAt).toBe(T0)
+        } finally {
+            clock.mockRestore()
+        }
+    })
+
     test('guard: a successful re-roll after a failed one can be applied', async () => {
         installRerollDb()
         const target = mountModal()
@@ -407,6 +425,15 @@ describe('HypaV2 to V3 conversion', () => {
         await clickConvert(mountModal())
         expect(lastNotice()).toBe('Successfully converted HypaV2 data to V3')
         expect(convertedTexts()).toEqual(['first', 'second'])
+    })
+
+    // compatibility guard: passes before and after (a converted summary has no creation time)
+    test('guard: converted summaries carry no creation time', async () => {
+        installConvertDb({ mainChunks: [{ text: 'first', chatMemos: ['m1'] }, { text: 'second', chatMemos: ['m2', 'm3'] }] })
+        await clickConvert(mountModal())
+        const converted = DBState.db.characters[0].chats[0].hypaV3Data.summaries
+        expect(converted).toHaveLength(2)
+        for (const s of converted) expect(s).not.toHaveProperty('createdAt')
     })
 
     test('guard: Korean shows the Korean button and the Korean failure message', async () => {
