@@ -12,6 +12,7 @@ import { get } from 'svelte/store'
 import type { ChangeCharOutcome } from 'src/ts/characters'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
+import { registerRealDispatch } from 'src/ts/tests/realDispatchBoot.test-helpers'
 
 const world = vi.hoisted(() => ({
     events: [] as string[],
@@ -165,6 +166,12 @@ vi.mock(import('src/ts/storage/bootArchivePass'), () => ({
         run: vi.fn(async (input: { tree: unknown }) => ({ kind: 'install', tree: input.tree, noteBytes: null, notices: [] })),
         release: vi.fn(async () => { }),
     })),
+    // The read-only page's session: it archives nothing and installs what was decoded.
+    disabledBootArchiveSession: vi.fn(() => ({
+        canArchive: false,
+        run: async (input: { tree: unknown }) => ({ kind: 'install', tree: input.tree, noteBytes: null, notices: [] }),
+        release: vi.fn(async () => { }),
+    })),
     checkCommittedBlocks: vi.fn(async () => ({ ok: true })),
 }) as unknown as typeof import('src/ts/storage/bootArchivePass'))
 
@@ -235,18 +242,15 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
         fsStore.set(bare(to), found)
         fsStore.delete(bare(from))
     }),
-    readDir: vi.fn(async () => []),
+    // A held file is not a directory: the store's `has` lists the path to tell the two apart, so a file must refuse the listing.
+    readDir: vi.fn(async (path: string) => {
+        if ((fsStore.get(bare(path))?.length ?? 0) > 0) {
+            throw new Error(`Not a directory (mock): ${path} (os error 20)`)
+        }
+        return []
+    }),
     remove: vi.fn(async (path: string) => { fsStore.delete(bare(path)) }),
 }))
-
-// Forces the page mode the restore reads; every other reader of the page mode keeps the real module.
-vi.mock(import('src/ts/storage/pageStorageMode'), async (importOriginal) => {
-    const actual = await importOriginal()
-    return {
-        ...actual,
-        getPageStorageMode: () => world.readOnly ? { kind: 'read-only', reason: 'opfs-transitional' } as const : actual.getPageStorageMode(),
-    }
-})
 
 vi.mock(import('src/ts/globalApi.svelte'), () => ({
     forageStorage: {
@@ -304,6 +308,9 @@ function armTauriBoot(extra: Record<string, unknown> = {}) {
 
 async function bootOnce(extra: Record<string, unknown> = {}): Promise<void> {
     armTauriBoot(extra)
+    // The legacy main file is converted to a store2 profile by the real dispatch. A read-only page is reached the way
+    // production reaches it: the Tauri store2 backend is not available, so the dispatch answers legacy-readonly itself.
+    await registerRealDispatch({ kind: 'tauri', injectBackend: !world.readOnly, acknowledgeAlerts: true })
     const { loadData } = await import('src/ts/bootstrap')
     await loadData()
 }
@@ -427,6 +434,8 @@ describe('loadData(): restoring the last character', () => {
         stores.selectedCharID.set(0)
         stores.selectedCharID.set(-1)
 
+        const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
+        expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'backend-unavailable' })
         expect(pickMock).not.toHaveBeenCalled()
         expect(localStorage.getItem(LAST_CHARACTER_KEY)).toBe(REMEMBERED_C2)
     })
