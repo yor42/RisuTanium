@@ -3937,7 +3937,21 @@ export const languageVietnamese = {
         sidebarItemRemoved: "Đã xóa \"{name}\"",
         sidebarItemRestored: "Đã khôi phục \"{name}\"",
         sidebarItemUndoRefused: "Không thể hoàn tác: \"{name}\" đã có trong danh sách.",
-        sidebarItemUndoFailed: "Không thể hoàn tác việc xóa."
+        sidebarItemUndoFailed: "Không thể hoàn tác việc xóa.",
+        libraryUndoTrashed: (count: number) => count === 1 ? 'Đã chuyển 1 nhân vật vào thùng rác' : `Đã chuyển ${count} nhân vật vào thùng rác`,
+        libraryUndoTrashedEndNote: "Hoàn tác sẽ đặt các nhân vật có thư mục đã mất vào cuối danh sách.",
+        libraryUndoRestored: (count: number) => count === 1 ? '1 nhân vật đã được khôi phục từ thùng rác' : `${count} nhân vật đã được khôi phục từ thùng rác`,
+        libraryUndoTrashRefused: "Không thể hoàn tác: các nhân vật này không còn nằm trong thùng rác do thao tác này.",
+        libraryUndoTrashFailed: "Không thể hoàn tác việc chuyển vào thùng rác.",
+        libraryUndoGrouped: "Đã gom vào một thư mục mới",
+        libraryUndoMerged: "Đã tạo một thư mục mới",
+        libraryUndoMovedIntoFolder: (count: number) => count === 1 ? 'Đã chuyển 1 mục vào thư mục' : `Đã chuyển ${count} mục vào thư mục`,
+        libraryUndoFolderRemoved: "Đã di chuyển; một thư mục đã bị xóa",
+        libraryUndoUngrouped: "Đã bỏ nhóm thư mục",
+        libraryUndoFolderDeleted: "Đã xóa thư mục; các nhân vật trong đó vẫn ở trong danh sách",
+        libraryUndoOrderRestored: "Đã khôi phục thứ tự",
+        libraryUndoOrderRefused: "Không thể hoàn tác: thứ tự thư viện đã thay đổi kể từ đó.",
+        libraryUndoOrderFailed: "Không thể hoàn tác thay đổi."
     },
     uiCommon: {
         delete: "Xóa",

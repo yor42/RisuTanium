@@ -162,6 +162,8 @@ import type { alertData } from '../../ts/alert'
 import { dispatchBack, resetBackHandlersForTests } from '../../ts/backHandlers'
 import { promptWaiting, resetAlertPromptsForTests } from '../../ts/alertPrompts'
 import { language } from '../../lang'
+import { resetToastHostForTests, toastHost } from '../../ts/toast/toastHost.svelte'
+import type { TrashedBatch } from '../../ts/characters'
 import { setLiveKeysBlockedReader } from '../../ts/keyEventBlocked'
 import { GRID_SORT_KEY } from './gridMemory'
 import GridCatalog from './GridCatalog.svelte'
@@ -323,6 +325,7 @@ beforeEach(() => {
     endGridSpy.mockClear()
     trashCharactersSpy.mockReset()
     trashCharactersSpy.mockImplementation(async () => 0)
+    resetToastHostForTests()
     containerWidth = FOUR_COLUMNS
     clientWidthDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
     Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => containerWidth })
@@ -790,6 +793,33 @@ describe('Grid edit mode: the bulk move to the trash', () => {
             expect(handed.characters[1]).toBe(DBState.db.characters[3])
             expect(handed.folders).toHaveLength(1)
             expect(handed.folders[0]).toBe(DBState.db.characterOrder[1])
+        })
+    })
+
+    test('(R) the trash is asked to report its batch, and the report posts one Undo toast; a spy that reports nothing posts none', async () => {
+        fixture()
+        await withMounted(async (target) => {
+            await enter(target)
+            await tap(target, 'Char A')
+            trashCharactersSpy.mockImplementation(async (_picked: unknown, report?: { onTrashed?(batch: TrashedBatch): void }) => {
+                report?.onTrashed?.({ at: 1234, chaIds: ['A'] })
+                return 1
+            })
+            trashButton(target)!.click()
+            await settle()
+            expect(toastHost.visible).toHaveLength(1)
+            expect(toastHost.visible[0].kind).toBe('undo')
+            expect(toastHost.visible[0].text).toBe(language.othersUi.libraryUndoTrashed(1))
+        })
+        resetToastHostForTests()
+        fixture()
+        await withMounted(async (target) => {
+            await enter(target)
+            await tap(target, 'Char A')
+            trashCharactersSpy.mockImplementation(async () => 1)
+            trashButton(target)!.click()
+            await settle()
+            expect(toastHost.visible).toHaveLength(0)
         })
     })
 

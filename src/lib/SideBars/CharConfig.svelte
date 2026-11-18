@@ -11,6 +11,7 @@
     import Check from "../UI/GUI/CheckInput.svelte";
     import { useCharImageLookups } from "../../ts/media/charImageLookups";
     import { addCharEmotion, addingEmotion, getCharImage, rmCharEmotion, selectCharImg, makeGroupImage, removeChar, changeCharImage } from "../../ts/characters";
+    import { postTrashUndo } from "../../ts/libraryUndo";
     import LoreBook from "./LoreBook/LoreBookSetting.svelte";
     import { alertConfirm, alertError, alertNormal, showHypaV2Alert } from "../../ts/alert";
     import { SecretRefError } from "src/ts/secretRef";
@@ -863,7 +864,7 @@
 
     <Button onclick={async () => {
         const selected = DBState.db.characters[$selectedCharID]
-        removeChar(selected, selected.name)
+        removeChar(selected, selected.name, 'normal', { onTrashed: postTrashUndo })
     }} className="mt-2" size="sm">{ DBState.db.characters[$selectedCharID].type === 'group' ? language.removeGroup : language.removeCharacter}</Button>
     
 {:else if $CharConfigSubMenu === 5}
