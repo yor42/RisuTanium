@@ -84,6 +84,15 @@
 //     and locks the state; any later pick in a run whose log or state holds the lock is refused (exit 98).
 //     A transport or dump error exits 4 and does not lock (at most 2 errors per run, then refused).
 //
+//   node adbg.mjs pick <common> --state <run>/guard-state.json --id com.android.documentsui:id/<name>
+//     MC-2303, MC-2306. Playground serials only (emulator-5580 exits 97, restricted serials 95). The id must match
+//     ^com\.android\.documentsui:id/[a-z][a-z0-9_]{0,79}$ exactly (ASCII, works in any UI language) and the options
+//     are strict: only --serial --log --state --id --own-package --own-ports, each once, each with a value, no `--`
+//     section, never together with --name (all exit 2, no adb call). It shares the dump/grep/rm device command, the
+//     PICK-LOCK and the two-error cap with --name, and matches ` resource-id="<id>"` exactly. Before the dump a
+//     system file picker (com.android.documentsui or com.google.android.documentsui, oom_score_adj 0) must be in
+//     front, else exit 93 with no dump and no PICK-LOCK; that refusal counts toward the two-error cap of both forms.
+//
 //   node adbg.mjs offset --state <state> --log <log> --x <px> --y <px>
 //     Records the WebView's top-left on screen in device pixels.
 //
@@ -134,7 +143,7 @@
 //   commands (screencap, locate, reads) stay allowed. A restricted-serial refusal of the verb itself (exit 95)
 //   attempted no locate and sets no lock. A locate that fails without a valid --serial
 //   never reached a device and sets no lock; the lock is strictly per serial. This closes the 2026-11-12 cloud UI run breach (guard log line 409): a failed locate followed by
-//   KEYCODE_BACK before any fresh locate. Exit codes added: 92 input lock, 93 own package not in front.
+//   KEYCODE_BACK before any fresh locate. Exit codes added: 92 input lock, 93 own package not in front (pick --id: no system file picker in front).
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
@@ -456,6 +465,21 @@ function playgroundPinned(a) {
   return true
 }
 const logPlayground =(cls, args) => logLine(`PLAYGROUND serial=${serial} allow=${cls} adb ${JSON.stringify(args)}`)
+// Read-only foreground check through allowlisted commands: a package is in front when one of its processes has the top
+// oom_score_adj (0). Declared before the pick block, which runs at module top level.
+const frontOf = (pkg) => {
+  const ps = runAdb(['shell', `pidof ${pkg}`], true)
+  const pids = ps.code === 0 ? ps.out.trim().split(/\s+/).filter((p) => /^\d{1,7}$/.test(p)) : []
+  return pids.some((p) => { const adj = runAdb(['shell', `cat /proc/${p}/oom_score_adj`], true); return adj.code === 0 && adj.out.trim() === '0' })
+}
+// pick --id (MC-2303, MC-2306): exactly this grammar, matched on the raw argument; no flags. The class holds no quote,
+// blank, glob, shell or BRE metacharacter, so after the escaped prefix nothing in an id is special to grep or to sh.
+const RID = /^com\.android\.documentsui:id\/[a-z][a-z0-9_]{0,79}$/
+const PICK_ID_KEYS = ['--serial', '--log', '--state', '--id', '--own-package', '--own-ports']
+// Shared device command of both pick forms: dump, grep for the needle, print only bounds, delete the dump by name.
+const pickScript = (dump, needle) => `uiautomator dump ${dump} >/dev/null 2>&1; d=$?; `
+  + `if [ $d -eq 0 ]; then grep -o '${needle}[^>]*bounds="\\[[0-9]*,[0-9]*\\]\\[[0-9]*,[0-9]*\\]"' ${dump} 2>/dev/null | head -n 2 | grep -o 'bounds="[^"]*"'; fi; `
+  + `rm -f ${dump}; [ -e ${dump} ] && echo ADBG-RM-FAILED; echo ADBG-DUMP=$d`
 
 // ---- restricted serials ----
 // Every serial not listed here is a personal device and runs in restricted mode (fail-closed).
@@ -587,18 +611,42 @@ if (sub === 'adb') {
 
 if (sub === 'pick') {
   needSerial(); needState()
-  const name = opt('--name')
-  if (!name || !/^[A-Za-z0-9._-]{3,80}$/.test(name)) die(2, 'pick --name must be an exact unique name of 3-80 chars [A-Za-z0-9._-]')
+  const idForm = opts.includes('--id')
+  let name = null, rid = null
+  if (idForm) {
+    // Playground serials only; the strict option walk leaves no stray token, duplicate key or second form.
+    if (!playground) die(97, 'pick --id is allowed only on the playground serials')
+    const seenKeys = new Set()
+    if (sep >= 0) die(2, 'pick --id takes no adb arguments after --')
+    for (let i = 0; i < opts.length; i += 2) {
+      const k = opts[i], v = opts[i + 1]
+      if (!PICK_ID_KEYS.includes(k) || seenKeys.has(k) || v === undefined || v.startsWith('--')) die(2, 'pick --id: unexpected, duplicate or valueless option')
+      seenKeys.add(k)
+    }
+    rid = opt('--id')
+    if (!RID.test(rid)) die(2, 'pick --id must be an exact com.android.documentsui:id/<name> resource id (a-z, 0-9, _; name 1-80 chars)')
+  } else {
+    name = opt('--name')
+    if (!name || !/^[A-Za-z0-9._-]{3,80}$/.test(name)) die(2, 'pick --name must be an exact unique name of 3-80 chars [A-Za-z0-9._-]')
+  }
+  const what = idForm ? `id=${JSON.stringify(rid)}` : JSON.stringify(name)
   const s = loadState()
   const logText = existsSync(log) ? readFileSync(log, 'utf8') : ''
   if (s.pickLocked || /^\S+ PICK-LOCK pick /m.test(logText)) die(98, 'an earlier pick in this run had no match; stop and report')
   if ((s.pickErrors ?? 0) >= 2) die(98, 'two pick errors already in this run; stop and report')
+  if (idForm) {
+    // A refusal here ran no dump: it is no no-match and sets no lock, but it counts toward the two-error cap.
+    const pickerPkg = PG_FRONT_PICKERS.find(frontOf)
+    if (!pickerPkg) {
+      s.pickErrors = (s.pickErrors ?? 0) + 1; saveState(s)
+      die(93, 'pick --id refused: no system file picker is the foreground package')
+    }
+    logLine(`PLAYGROUND serial=${serial} front=${pickerPkg} (system file picker, pick --id, MC-2303)`)
+  }
   const dump = `/sdcard/adbg-pick-${process.pid}-${Date.now()}.xml`
-  const esc = name.replace(/\./g, '\\.')
-  const script = `uiautomator dump ${dump} >/dev/null 2>&1; d=$?; `
-    + `if [ $d -eq 0 ]; then grep -o 'text="${esc}"[^>]*bounds="\\[[0-9]*,[0-9]*\\]\\[[0-9]*,[0-9]*\\]"' ${dump} 2>/dev/null | head -n 2 | grep -o 'bounds="[^"]*"'; fi; `
-    + `rm -f ${dump}; [ -e ${dump} ] && echo ADBG-RM-FAILED; echo ADBG-DUMP=$d`
-  logLine(`intent: pick ${JSON.stringify(name)} via one device command (dump, grep, rm ${dump})`)
+  const esc = (idForm ? rid : name).replace(/\./g, '\\.')
+  const script = pickScript(dump, idForm ? ` resource-id="${esc}"` : `text="${esc}"`)
+  logLine(`intent: pick ${what} via one device command (dump, grep, rm ${dump})`)
   const r = spawnAdb(['-s', serial, 'shell', script], { encoding: 'utf8', windowsHide: true, timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] })
   const out = r.stdout ?? ''
   const dumpOk = /ADBG-DUMP=0/.test(out)
@@ -614,8 +662,8 @@ if (sub === 'pick') {
   }
   const hits = out.split(/\r?\n/).filter((l) => /^bounds="\[\d+,\d+\]\[\d+,\d+\]"$/.test(l.trim()))
   if (hits.length !== 1) {
-    s.pickLocked = true; s.picks.push({ time: now(), name, result: 'no-match' }); saveState(s)
-    logLine(`PICK-LOCK pick ${JSON.stringify(name)}: no-match`)
+    s.pickLocked = true; s.picks.push(idForm ? { time: now(), resourceId: rid, result: 'no-match' } : { time: now(), name, result: 'no-match' }); saveState(s)
+    logLine(`PICK-LOCK pick ${what}: no-match`)
     console.log('no-match')
     process.exit(3)
   }
@@ -623,13 +671,13 @@ if (sub === 'pick') {
   const bounds = { l: +m[1], t: +m[2], r: +m[3], b: +m[4] }
   if (bounds.r <= bounds.l || bounds.b <= bounds.t) {
     s.pickErrors = (s.pickErrors ?? 0) + 1; saveState(s)
-    die(4, `pick ${JSON.stringify(name)}: zero-area bounds; not a tap target`)
+    die(4, `pick ${what}: zero-area bounds; not a tap target`)
   }
   const id = s.locates.length + 1
-  s.picks.push({ time: now(), name, result: 'match', bounds })
-  s.locates.push({ id, time: Date.now(), label: `pick:${name}`, bounds, used: false, serial })
+  s.picks.push(idForm ? { time: now(), resourceId: rid, result: 'match', bounds } : { time: now(), name, result: 'match', bounds })
+  s.locates.push({ id, time: Date.now(), label: idForm ? `pick-id:${rid}` : `pick:${name}`, bounds, used: false, serial })
   saveState(s)
-  logLine(`locate ${id} pick ${JSON.stringify(name)}: match bounds=[${bounds.l},${bounds.t}][${bounds.r},${bounds.b}]`)
+  logLine(`locate ${id} pick ${what}: match bounds=[${bounds.l},${bounds.t}][${bounds.r},${bounds.b}]`)
   console.log(`match bounds=[${bounds.l},${bounds.t}][${bounds.r},${bounds.b}]`)
   process.exit(0)
 }
@@ -825,13 +873,8 @@ if (sub === 'tap' || sub === 'tap-home' || sub === 'swipe' || sub === 'hold') {
       x2 = Number(opt('--to-x')); y2 = Number(opt('--to-y'))
       if (x2 < 0 || y2 < 0 || x2 > sw || y2 > sh) die(2, `swipe end ${x2},${y2} is outside the screen (${sw}x${sh})`)
     }
-    // Read-only foreground check through allowlisted commands: our package must hold the top oom_score_adj (0).
+    // Foreground check (frontOf): our package must hold the top oom_score_adj (0).
     // It runs before the locate is consumed, so a refusal leaves the locate usable until it ages out.
-    const frontOf = (pkg) => {
-      const ps = runAdb(['shell', `pidof ${pkg}`], true)
-      const pids = ps.code === 0 ? ps.out.trim().split(/\s+/).filter((p) => /^\d{1,7}$/.test(p)) : []
-      return pids.some((p) => { const adj = runAdb(['shell', `cat /proc/${p}/oom_score_adj`], true); return adj.code === 0 && adj.out.trim() === '0' })
-    }
     // The own package is checked first with today's calls; a system file picker counts only on playground serials.
     const frontPkg = frontOf(ownPackage) ? ownPackage : ((playground && PG_FRONT_PICKERS.find(frontOf)) || null)
     if (!frontPkg) die(93, `${sub} refused: ${ownPackage} is not the foreground package`)
