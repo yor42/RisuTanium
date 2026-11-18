@@ -41,9 +41,8 @@ const CONTENT_HASH_BASENAME = /^[0-9a-f]{64}$/i
  * from the cache, so on a Node-hosted page such a key reports 'not-cached'
  * without the cache being read: a leftover copy there is not what a page shows.
  *
- * Read-only: reports a mismatch, does not attempt to repair one. Used both
- * by a small sampled boot-time check (see bootstrap.ts's cleanChunks()) and
- * by the explicit "verify assets" UI action (storageMaintenance.ts's
+ * Read-only: reports a mismatch, does not attempt to repair one. Used by the
+ * explicit "verify assets" UI action (storageMaintenance.ts's
  * verifyAssetIntegrity()).
  */
 export async function verifyAssetCacheEntry(loc: string): Promise<AssetVerifyResult> {

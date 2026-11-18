@@ -33,7 +33,8 @@ import { ModuleRefusal, importErrorMessage } from "./process/moduleRefusal"
 import { hasModuleStubKey } from "./storage/moduleStub"
 import { ModuleImportStopped, confirmRisumLowLevel } from "./process/moduleImportStop"
 import { importSourceOfBytes, importSourceOfFile, isImportSource, openDesktopImportSource, type ImportSource, type ImportSourceStat } from "./importSource"
-import { beginBusy, withBusy } from "./process/memory/busyActions"
+import { beginBusy, withBusy, type BusyHandle } from "./process/memory/busyActions"
+import { openOutsideBusy } from "./drive/exportDialogBusy"
 import { refuseImportWhileRestoring } from "./drive/backupWorkGuard"
 import { outcomeOfError, runImportBatch, showOutcome, type ImportItem, type ImportOutcome } from "./importBatch"
 import { markBootWrite } from "./bootWindow"
@@ -2142,7 +2143,7 @@ export function exportCharacterCard(char:character, type:'png'|'json'|'charx'|'c
     spec?:'v2'|'v3'
     checked?:PreflightOk
 } = {}):Promise<boolean> {
-    return withBusy('export', () => writeCharacterCard(char, type, arg))
+    return withBusy('export', (busy) => writeCharacterCard(char, type, arg, busy))
 }
 
 async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'charxJpeg', arg:{
@@ -2150,7 +2151,7 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
     writer?:LocalWriter|VirtualWriter,
     spec?:'v2'|'v3'
     checked?:PreflightOk
-}):Promise<boolean> {
+}, busy:BusyHandle):Promise<boolean> {
     const spec:'v2'|'v3' = arg.spec ?? 'v2' //backward compatibility
     let img = await readCardExportImage(char.image)
     // Created once the preflight has passed (see `exportOffersCancel`); the progress dialogs read them when called.
@@ -2204,7 +2205,8 @@ async function writeCharacterCard(char:character, type:'png'|'json'|'charx'|'cha
         if(!arg.writer){
             const ext = cardExportKinds[type]
             // Every type opened here suggests `<stem>_export.<ext>`; a writer supplied by the caller keeps its own name.
-            if(!(await (localWriter as LocalWriter).init(ext[0], [ext[1]], cardExportFileName(char.name, type), cancel ?? undefined))){
+            const dialogWriter = localWriter as LocalWriter
+            if(!(await openOutsideBusy(busy, () => dialogWriter.init(ext[0], [ext[1]], cardExportFileName(char.name, type), cancel ?? undefined)))){
                 //the person dismissed the save dialog: nothing was exported, so nothing is said
                 gate?.clear()
                 return false

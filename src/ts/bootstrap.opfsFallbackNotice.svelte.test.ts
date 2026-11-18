@@ -26,6 +26,8 @@
 import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import type { FallbackNotice } from 'src/ts/storage/opfsCopyBack'
+import type { AppStoreKind } from 'src/ts/storage/store/appStore'
+import { registerRealDispatch } from 'src/ts/tests/realDispatchBoot.test-helpers'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
@@ -119,6 +121,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
     selectedCharID: writable(-1),
     loadedStore: writable(false),
     alertStore: writable({ type: 'none', msg: 'n' }),
+    SafeModeStore: writable(false),
 }) as unknown as typeof import('src/ts/stores.svelte'))
 
 vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
@@ -166,22 +169,18 @@ vi.mock(import('src/ts/storage/bootArchivePass'), () => ({
         run: vi.fn(async (input: { tree: unknown }) => ({ kind: 'install', tree: input.tree, noteBytes: null, notices: [] })),
         release: vi.fn(async () => { }),
     })),
+    // The read-only page's session: it archives nothing and installs what was decoded.
+    disabledBootArchiveSession: vi.fn(() => ({
+        canArchive: false,
+        run: async (input: { tree: unknown }) => ({ kind: 'install', tree: input.tree, noteBytes: null, notices: [] }),
+        release: vi.fn(async () => { }),
+    })),
     checkCommittedBlocks: vi.fn(async () => ({ ok: true })),
 }) as unknown as typeof import('src/ts/storage/bootArchivePass'))
 
 vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
     verifyAssetCacheEntry: verifyAssetCacheEntryMock,
 }) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
-vi.mock(import('src/ts/storage/remoteSaveCleanup'), () => ({
-    getRemoteSaveCleanupAction: vi.fn(() => 'create-meta'),
-    getRemoteSavePayloadName: vi.fn(() => null),
-}) as unknown as typeof import('src/ts/storage/remoteSaveCleanup'))
-
-vi.mock(import('src/ts/storage/assetSweep'), () => ({
-    sweepTauriAssets: vi.fn(async () => { }),
-    sweepForageAssetKey: vi.fn(async () => { }),
-}) as unknown as typeof import('src/ts/storage/assetSweep'))
 
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
@@ -286,6 +285,8 @@ function baseDb(): Record<string, unknown> {
         hotkeys: [],
         botPresets: [],
         coldstorage: false,
+        // Archiving stated, so the conversion raises no archive-enabled notice and the fallback notice is the only one a boot posts.
+        archiveCharacters: false,
         checkCorruption: false,
         botSettingAtStart: false,
         betaMobileGUI: false,
@@ -300,12 +301,18 @@ function armDecode(db: Record<string, unknown>) {
     forageState.items.set('database/database.bin', encodeRisuSaveLegacy(db))
 }
 
-/** Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. */
-async function freshLoadData() {
+/**
+ * Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. The real dispatch is
+ * registered for `kind`, so the legacy main file is converted to a store2 profile as on a production page, and a page
+ * on the transitional OPFS store is answered read-only by the dispatch itself. `acknowledgeAlerts` dismisses the
+ * dispatch's own notices (a backup conversion, a first seed) for a row that is not about them.
+ */
+async function freshLoadData(options: { kind: AppStoreKind, acknowledgeAlerts?: boolean } = { kind: 'tauri' }) {
     // The boot reads through the page's byte store; here it is the storage-object model above.
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     const { forageStorage } = await import('src/ts/globalApi.svelte')
     injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
+    await registerRealDispatch({ kind: options.kind, acknowledgeAlerts: options.acknowledgeAlerts })
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
@@ -482,42 +489,6 @@ describe('loadData(): the storage fallback notice is posted only after setDataba
     })
 })
 
-describe('loadData(): the OPFS leftovers clean-up is started only after the main file decoded (new-behaviour test)', () => {
-    test('a boot that decoded the main file starts the clean-up once, without waiting for it', async () => {
-        armDecode(baseDb())
-        let finishCleanUp: () => void = () => { }
-        cleanUpMock.mockImplementation(() => new Promise<void>((resolve) => { finishCleanUp = resolve }))
-        const { loadData, loadedStore } = await freshLoadData()
-
-        await loadData()
-
-        expect(get(loadedStore)).toBe(true)
-        expect(cleanUpMock).toHaveBeenCalledTimes(1)
-        finishCleanUp()
-    })
-
-    test('a boot that fell back to a numbered backup because the main file would not decode does not start the clean-up', async () => {
-        forageState.items.set('database/database.bin', new Uint8Array([1, 2, 3]))
-        forageState.items.set('database/dbbackup-1.bin', encodeRisuSaveLegacy(baseDb()))
-        getDbBackupsMock.mockResolvedValue([1])
-        const { loadData, loadedStore } = await freshLoadData()
-
-        await loadData()
-
-        expect(get(loadedStore)).toBe(true)
-        expect(cleanUpMock).not.toHaveBeenCalled()
-    })
-
-    test('new behaviour: a boot that found no main file and seeded an empty one does not start the clean-up', async () => {
-        const { loadData, loadedStore } = await freshLoadData()
-
-        await loadData()
-
-        expect(get(loadedStore)).toBe(true)
-        expect(cleanUpMock).not.toHaveBeenCalled()
-    })
-})
-
 describe('loadData(): a page that runs from OPFS this time is read-only (new-behaviour test)', () => {
     /** The page's store becomes the transitional OPFS store, whatever it was injected as. */
     async function asOpfsPage(): Promise<{ writes: ReturnType<typeof vi.fn> }> {
@@ -543,7 +514,7 @@ describe('loadData(): a page that runs from OPFS this time is read-only (new-beh
         const { language } = await import('src/lang')
         armDecode(baseDb())
         forageState.fallbackNotice = { reason: 'tab' }
-        const { loadData, alertStore, loadedStore } = await freshLoadData()
+        const { loadData, alertStore, loadedStore } = await freshLoadData({ kind: 'opfs-transitional' })
         const { writes } = await asOpfsPage()
         const seen = acknowledgeNotices(alertStore)
         writes.mockClear()
@@ -557,7 +528,7 @@ describe('loadData(): a page that runs from OPFS this time is read-only (new-beh
 
     test('a missing main file installs an empty profile without writing it', async () => {
         forageState.fallbackNotice = { reason: 'tab' }
-        const { loadData, alertStore, loadedStore } = await freshLoadData()
+        const { loadData, alertStore, loadedStore } = await freshLoadData({ kind: 'opfs-transitional' })
         const { writes } = await asOpfsPage()
         acknowledgeNotices(alertStore)
         writes.mockClear()
@@ -578,7 +549,7 @@ describe('loadData(): a page that runs from OPFS this time is read-only (new-beh
         forageState.items.set('assets/orphan.png', new Uint8Array([1]))
         forageState.items.set('remotes/gone.local.bin', new Uint8Array([1]))
         forageState.fallbackNotice = { reason: 'tab' }
-        const { loadData, alertStore, loadedStore } = await freshLoadData()
+        const { loadData, alertStore, loadedStore } = await freshLoadData({ kind: 'opfs-transitional' })
         await asOpfsPage()
         acknowledgeNotices(alertStore)
         const removes = forageStorage.removeItem as unknown as ReturnType<typeof vi.fn>
@@ -602,7 +573,7 @@ describe('loadData(): a page that runs from OPFS this time is read-only (new-beh
     test('the boot never builds a block-store owner for the page', async () => {
         armDecode(baseDb())
         forageState.fallbackNotice = { reason: 'space' }
-        const { loadData, alertStore } = await freshLoadData()
+        const { loadData, alertStore } = await freshLoadData({ kind: 'opfs-transitional' })
         await asOpfsPage()
         acknowledgeNotices(alertStore)
 

@@ -5,6 +5,7 @@ import {
     Store2UnknownOutcomeError, type CompareToken, type Store2Backend, type Store2Read,
 } from '../backend'
 import { evaluateDeleterGate, type GateRefusal } from '../boot'
+import { classifyCommitRead } from '../commitKey'
 import { readFenceVerdict } from '../fence'
 import { markLiveKeys } from './mark'
 
@@ -21,7 +22,20 @@ import { markLiveKeys } from './mark'
  * standing protects its keys.
  */
 
-export type GcRefusal = GateRefusal | 'capability-missing' | 'mark-refused' | 'list-failed'
+export type GcRefusal =
+    | GateRefusal | 'capability-missing' | 'mark-refused' | 'list-failed'
+    /** Another tab may be alive (or this tab's own presence is not proven), so nothing is deleted. */
+    | 'other-tab'
+    /** The host cannot prove that this tab is alone. */
+    | 'no-web-locks'
+    /** The commit key's current is not the manifest this page last acknowledged, so its base may predate the mark. */
+    | 'stale-base'
+
+/** The answer of the sole-tab proof: this page alone, another tab or an unproven own presence, or no way to ask. */
+export type GcPeerAnswer = 'alone' | 'others' | 'unsupported'
+
+/** The sole-tab proof, asked fresh each time and never cached. */
+export type GcPeers = () => Promise<GcPeerAnswer>
 
 export type GcStopReason =
     | 'commit-conflict'
@@ -32,6 +46,8 @@ export type GcStopReason =
     | 'unknown-outcome'
     /** The caller's `shouldStop` turned true; every batch applied so far is whole. */
     | 'yielded'
+    /** The sole-tab proof failed after earlier deletions (a rebuild round or between batches); every applied batch is whole. */
+    | 'other-tab'
     /** The rebuild round after earlier deletions was refused; the done result's refusal says why. */
     | 'refused'
 
@@ -63,6 +79,19 @@ export interface GcDeps {
      * `stopped: 'yielded'` and the counts so far. Nothing is retried: every applied batch is whole.
      */
     shouldStop?: () => boolean
+    /**
+     * The web sole-tab proof; absent where the host needs none (the app runs one page). Asked at the start of each round
+     * before any store2 read, and before every batch, after the pace and immediately before `shouldStop`: `removeBatch`
+     * runs only on an `'alone'` answer given after the previous batch (or the mark). `'unsupported'` refuses in the first
+     * round, `'others'` refuses there too, and either one ends a later round or a batch loop as `stopped: 'other-tab'`.
+     */
+    peers?: GcPeers
+    /**
+     * The manifest key this page last acknowledged, or `null` when none is settled; present only where `peers` is. In
+     * every round the commit key's current must equal it, so a page whose base predates a peer's commit (or whose encoder
+     * took a peer's tree) deletes nothing: the mark would not contain what the page can still read.
+     */
+    ownBase?: () => string | null
 }
 
 type Attempt =
@@ -85,8 +114,27 @@ async function probeNode(deps: GcDeps): Promise<{ reason: string } | null> {
     return null
 }
 
-async function attemptPass(deps: GcDeps): Promise<Attempt> {
+/** What a failed sole-tab proof ends the round with: a refusal in the first round, a stop once something was deleted. */
+function peerEnd(answer: GcPeerAnswer, round: number): Attempt | null {
+    if (answer === 'alone') {
+        return null
+    }
+    if (round > 0) {
+        return { status: 'done', deleted: 0, batches: 0, stopped: 'other-tab' }
+    }
+    return answer === 'unsupported'
+        ? { status: 'refused', reason: 'no-web-locks', detail: 'This host cannot prove that no other tab is open.' }
+        : { status: 'refused', reason: 'other-tab', detail: 'Another tab may be open, or this tab\'s own presence is not held.' }
+}
+
+async function attemptPass(deps: GcDeps, round: number): Promise<Attempt> {
     const { backend } = deps
+    if (deps.peers !== undefined) {
+        const ended = peerEnd(await deps.peers(), round)
+        if (ended !== null) {
+            return ended
+        }
+    }
     let commitRead: Store2Read
     try {
         commitRead = await backend.readCommit()
@@ -95,6 +143,14 @@ async function attemptPass(deps: GcDeps): Promise<Attempt> {
             return { status: 'refused', reason: 'commit-unreadable', detail: error.message }
         }
         throw error
+    }
+
+    if (deps.ownBase !== undefined) {
+        const classified = classifyCommitRead(commitRead)
+        // An unparsed key or a key with no current falls through to the gate, which refuses it.
+        if (classified.status === 'parsed' && classified.value.current !== null && classified.value.current.key !== deps.ownBase()) {
+            return { status: 'refused', reason: 'stale-base', detail: 'The commit key names a manifest this page has not acknowledged.' }
+        }
     }
 
     const mark = await markLiveKeys(backend, commitRead)
@@ -128,6 +184,10 @@ async function attemptPass(deps: GcDeps): Promise<Attempt> {
         if (batches > 0 && deps.pace !== undefined) {
             await deps.pace()
         }
+        if (deps.peers !== undefined && await deps.peers() !== 'alone') {
+            return { status: 'done', deleted, batches, stopped: 'other-tab' }
+        }
+        // No await sits between this check and `removeBatch`, so the proof and the stop rule both hold at the delete.
         if (deps.shouldStop?.() === true) {
             return { status: 'done', deleted, batches, stopped: 'yielded' }
         }
@@ -196,7 +256,7 @@ export async function gcPass(deps: GcDeps): Promise<GcResult> {
         if (deps.shouldStop?.() === true) {
             return { status: 'done', deleted, batches, stopped: 'yielded' }
         }
-        const result = await attemptPass(deps)
+        const result = await attemptPass(deps, round)
         if (result.status === 'refused') {
             return deleted === 0 && batches === 0
                 ? result

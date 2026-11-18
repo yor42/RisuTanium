@@ -178,7 +178,7 @@ import { queueInlayCleanupForCharacters, getInlayCleanupState, resetInlayCleanup
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { disablePageBlockOwner, resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { replaceWithRestoredSet } from 'src/ts/drive/restoreReplace'
-import { recordsLoadTimeListing, resetPageStorageModeForTests, setPageStorageMode, startsLegacyStartupCleanup, type PageStorageMode } from 'src/ts/storage/pageStorageMode'
+import { resetPageStorageModeForTests, setPageStorageMode, type PageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { registerResidency, resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import { getLoadTimeListing, recordLoadTimeListing, resetLoadTimeListingForTests } from 'src/ts/storage/loadTimeListing'
 import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
@@ -342,11 +342,9 @@ describe('on a store2 page no legacy deleter deletes', () => {
         expect(store.files.has('database/database.bin')).toBe(true)
     })
 
-    test('guard: the startup clean-up does not start and the load-time listing is not recorded', async () => {
+    test('guard: no load-time listing is recorded', async () => {
         enterStore2Page()
 
-        expect(startsLegacyStartupCleanup()).toBe(false)
-        expect(recordsLoadTimeListing()).toBe(false)
         expect(getLoadTimeListing()).toBeNull()
         expect(store.lists).toEqual([])
     })
@@ -390,11 +388,9 @@ describe('control: on a block page the same entries delete or reach past the ref
         expect(store.deletes).toEqual([`coldstorage/${UNIT}`])
     })
 
-    test('guard: the startup clean-up starts and the load-time listing reads the store', async () => {
+    test('guard: the load-time listing reads the store', async () => {
         enterPage({ kind: 'block' })
 
-        expect(startsLegacyStartupCleanup()).toBe(true)
-        expect(recordsLoadTimeListing()).toBe(true)
         await recordLoadTimeListing()
         expect(getLoadTimeListing()?.assets.has('assets/a.png')).toBe(true)
     })

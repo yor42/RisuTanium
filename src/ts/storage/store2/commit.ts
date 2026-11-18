@@ -146,10 +146,12 @@ export type Carry = { from: string, units: number }
  * keep unit the garbage collector deleted while the marker stood. That needs a garbage collection pass, a peer commit
  * landing over the base during the marker, and a writer that releases the keep: a null-setting commit, `Committer.restore`
  * (it installs a manifest whole) or a recovery exit, each when the installed manifest does not name the keep. No current
- * host combines them: Tauri runs one page, and Node and web run no garbage collection outside measurement builds, whose
- * `gcPass` can be run by hand. If it happens, live data still loads and tree reads and export are unaffected, but restore
- * of a manifest that names the keep is refused `tree-incomplete`, so are recovery picks of such manifests, and asset sweeps
- * stop on an incomplete keep-set, until something releases the keep. Re-check when garbage collection reaches Node or web.
+ * host combines them: Tauri runs one page; the web collector runs only on a sole tab, whose own-base rule makes it refuse
+ * while the commit key's current is not the manifest this page acknowledged (and after this page fast-forwarded), and
+ * Node runs no garbage collection outside measurement builds, whose `gcPass` can be run by hand. If it happens, live data
+ * still loads and tree reads and export are unaffected, but restore of a manifest that names the keep is refused
+ * `tree-incomplete`, so are recovery picks of such manifests, and asset sweeps stop on an incomplete keep-set, until
+ * something releases the keep. Re-check when garbage collection reaches Node.
  */
 export const IMPORT_REPLACES_BASE: unique symbol = Symbol.for('risu.store2.IMPORT_REPLACES_BASE')
 

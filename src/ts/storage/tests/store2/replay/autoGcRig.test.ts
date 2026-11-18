@@ -19,7 +19,14 @@ import { gcPass, type GcResult } from 'src/ts/storage/store2/gc/pass'
 import { createClock, testEnv } from '../commitFixtures'
 import { createTauriRig, spawnPage, type TauriRig } from './tauriRig'
 
-const CLEAN: AutoGcFacts = { isBusy: () => false, saveLoopParked: () => false, isSaveClean: () => true }
+const CLEAN: AutoGcFacts = {
+    isBusy: () => false,
+    saveLoopParked: () => false,
+    isSaveClean: () => true,
+    restoreInProgress: () => false,
+    peers: async () => 'alone',
+    ownBase: () => null,
+}
 const ORPHANS = 30
 const SEEDS = [51, 52, 53, 54]
 

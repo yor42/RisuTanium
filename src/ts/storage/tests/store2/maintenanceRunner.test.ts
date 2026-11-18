@@ -28,7 +28,7 @@ import { getStartupCleanup, resetStartupCleanupForTests } from 'src/ts/storage/s
 import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/backend'
 import { unitDigest } from 'src/ts/storage/store2/codec'
 import { ADMISSION_INTERVAL_MS } from 'src/ts/storage/store2/commit'
-import { firstCommitKey, RETAINED_MAX } from 'src/ts/storage/store2/commitKey'
+import { classifyCommitRead, firstCommitKey, RETAINED_MAX } from 'src/ts/storage/store2/commitKey'
 import {
     encodeUnit, newUnitKey, UNIT_TYPE, type DeletionSnapshot, type SnapshotPointer,
 } from 'src/ts/storage/store2/format'
@@ -98,7 +98,20 @@ function deferred<T>() {
 const COMPLETED: OldDataDeletionResult = { status: 'completed', deleted: 0, abandoned: 0, flushed: undefined }
 
 /** A quiet page: the clean-up pass sees no data action, a running save loop and a committed save. */
-const CLEAN: AutoGcFacts = { isBusy: () => false, saveLoopParked: () => false, isSaveClean: () => true }
+const CLEAN: AutoGcFacts = {
+    isBusy: () => false,
+    saveLoopParked: () => false,
+    isSaveClean: () => true,
+    restoreInProgress: () => false,
+    peers: async () => 'alone',
+    ownBase: () => null,
+}
+
+/**
+ * The default clean-up facts of the wrapper below: another tab is open, so a web page's pass refuses before any store2
+ * read and no case reaches the live facts (and with them `globalApi.svelte`). An app page ignores both web facts.
+ */
+const REFUSING_GC: AutoGcFacts = { ...CLEAN, restoreInProgress: () => false, peers: async () => 'others', ownBase: () => null }
 
 /**
  * The page's facts for the asset sweep, injected so that no case loads the application's `globalApi.svelte` through the
@@ -118,7 +131,7 @@ const QUIET_SWEEP: SweepPageFacts = {
 const ACTIVE_SWEEP: SweepPageFacts = { ...QUIET_SWEEP, shouldStop: () => false, hold: remove => holdAssetDeletion(remove) }
 
 function startStore2Maintenance(env: MaintenanceEnv, seams: MaintenanceSeams = {}): ReturnType<typeof startLiveMaintenance> {
-    return startLiveMaintenance(env, { sweepFacts: QUIET_SWEEP, ...seams })
+    return startLiveMaintenance(env, { sweepFacts: QUIET_SWEEP, gcPageFacts: REFUSING_GC, ...seams })
 }
 
 beforeEach(() => {
@@ -558,18 +571,46 @@ describe('the clean-up pass after the old-data deletion', () => {
         expect(await orphansLeft(page)).toBe(30)
     })
 
-    test.each<Store2Session['kind']>(['indexeddb', 'node'])('guard K: a %s session runs nothing: no listing, no result line, the orphan stays', async kind => {
+    test('guard K: a node session runs nothing: no listing, no result line, the orphan stays', async () => {
         const { session, backend } = await openSession('ready')
         const orphan = newUnitKey(env)
         await backend.putUnit(orphan, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan }))
         const listing = vi.spyOn(backend, 'listStore2')
         const info = vi.spyOn(console, 'info').mockImplementation(() => {})
-        const asKind = Object.create(session, { kind: { value: kind } }) as Store2Session
+        const asKind = Object.create(session, { kind: { value: 'node' } }) as Store2Session
 
         await fireOnce({ session: asKind })
 
         expect(listing).not.toHaveBeenCalled()
         expect(infoLines(info)).toEqual([])
+        expect((await backend.readUnits([orphan])).get(orphan)).not.toBeNull()
+    })
+
+    test('reproducer K-web (a): an indexeddb session alone on its own base deletes the orphan and logs one result line', async () => {
+        const { session, backend } = await openSession('ready')
+        const orphan = newUnitKey(env)
+        await backend.putUnit(orphan, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan }))
+        const parsed = classifyCommitRead(await backend.readCommit())
+        const base = parsed.status === 'parsed' && parsed.value.current !== null ? parsed.value.current.key : null
+        const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        await fireOnce({ session }, { gcPageFacts: { ...CLEAN, ownBase: () => base } })
+
+        expect(infoLines(info)).toEqual([expect.stringMatching(/^store2 clean-up: status=done deleted=1 batches=1/)])
+        expect((await backend.readUnits([orphan])).get(orphan)).toBeNull()
+    })
+
+    test('reproducer K-web (b): an indexeddb session with another tab open lists nothing, logs the refusal and keeps the orphan', async () => {
+        const { session, backend } = await openSession('ready')
+        const orphan = newUnitKey(env)
+        await backend.putUnit(orphan, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan }))
+        const listing = vi.spyOn(backend, 'listStore2')
+        const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        await fireOnce({ session }, { gcPageFacts: REFUSING_GC })
+
+        expect(listing).not.toHaveBeenCalled()
+        expect(infoLines(info)).toEqual([expect.stringMatching(/^store2 clean-up: status=refused reason=other-tab/)])
         expect((await backend.readUnits([orphan])).get(orphan)).not.toBeNull()
     })
 

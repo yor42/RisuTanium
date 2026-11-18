@@ -31,6 +31,7 @@ import { keepChatPageOf, openChatOf } from "./chatShell/chatOpen";
 import { chatRecency } from "./chatShell/chatListModel";
 import { isHiddenSystemCharacter } from "./hiddenCharacters";
 import { findOrigin, placeRestored, recordTrashOrigins, releaseTrashOrigin } from "./trashOrigin";
+import { recordCaughtError } from "./caughtErrors";
 import { chatNameFromFile, detectJsonChatFormat, readAgnaiChat, readCaiTurnsChat, readDumperChats, readKoboldChat, readMorseChats, readOobaChat, readTavernJsonl, tavernMessageName, type CaiChatsResult, type ChatImportResult } from "./chatImport";
 
 export function createNewCharacter() {
@@ -1188,7 +1189,60 @@ function dataURLtoBuffer(string:string){
     return Buffer.from(data, 'base64');
 }
 
-export async function removeChar(identifier:string|number|character|groupChat,name:string, type:'normal'|'permanent'|'permanentForce' = 'normal'){
+/** One trashing by one action: the shared `trashTime` and each trashed slot's chaId, in order position. */
+export interface TrashedBatch {
+    readonly at: number
+    readonly chaIds: readonly string[]
+}
+
+/** Lets a caller learn what a trash function trashed, so it can offer an Undo. It adds no write. */
+export interface TrashReport {
+    onTrashed?(batch: TrashedBatch): void
+}
+
+/**
+ * Reports a batch as the last statement of a trash function's synchronous stretch, after the order repair, every
+ * save mark and the selection change. A throwing callback is recorded and swallowed: the trash is complete by then
+ * and must neither skip a write nor reject the caller.
+ */
+function reportTrashed(report: TrashReport | undefined, batch: TrashedBatch): void {
+    try {
+        report?.onTrashed?.(batch)
+    } catch (error) {
+        recordCaughtError('characters.onTrashed', error)
+    }
+}
+
+/**
+ * The chaIds of `trashed` sorted by where the order lists them (top-level ids, and folder members in place), read
+ * from the order as it is before the caller edits it. One entry per slot, so twins appear twice. A slot the order
+ * does not name keeps its relative position after the ranked ones. This is the sequence in which restores must run
+ * to rebuild the original member order: `trashFolderMembers` and a picked folder's members arrive in character-list
+ * order, and a picked character in pick order.
+ */
+function chaIdsInOrderPosition(trashed: readonly (character | groupChat)[], order: readonly (string | folder)[] | undefined): string[] {
+    const rank = new Map<string, number>()
+    for(const entry of Array.isArray(order) ? order : []){
+        if(typeof entry === 'string'){
+            if(!rank.has(entry)){
+                rank.set(entry, rank.size)
+            }
+        }
+        else if(typeof entry === 'object' && entry !== null && Array.isArray(entry.data)){
+            for(const member of entry.data){
+                if(typeof member === 'string' && !rank.has(member)){
+                    rank.set(member, rank.size)
+                }
+            }
+        }
+    }
+    return trashed
+        .map((c, position) => ({ chaId: c.chaId, position, rank: rank.get(c.chaId) ?? Infinity }))
+        .sort((a, b) => (a.rank === b.rank ? a.position - b.position : a.rank - b.rank))
+        .map((c) => c.chaId)
+}
+
+export async function removeChar(identifier:string|number|character|groupChat,name:string, type:'normal'|'permanent'|'permanentForce' = 'normal', report?: TrashReport){
     const db = getDatabase()
     let askedWhileTrashed = false
     if(type !== 'permanentForce'){
@@ -1240,8 +1294,14 @@ export async function removeChar(identifier:string|number|character|groupChat,na
         stopWorkIn({ chaId: removedChaId })
     }
     let removed: (character | groupChat)[] = []
+    // Reported only for a character that was not in the trash before: undoing a re-trash would bring back one
+    // that was already there. A chaId that is not a non-empty text cannot be matched again, so it gets no report.
+    let reported: TrashedBatch | undefined
     if(type === 'normal'){
         const trashedAt = Date.now()
+        if(!chars[index].trashTime && typeof removedChaId === 'string' && removedChaId !== ''){
+            reported = { at: trashedAt, chaIds: [removedChaId] }
+        }
         chars[index].trashTime = trashedAt
         // Before `checkCharOrder` strips the id: the place it leaves is what a restore needs.
         recordTrashOrigins(db, [chars[index]], trashedAt)
@@ -1259,6 +1319,9 @@ export async function removeChar(identifier:string|number|character|groupChat,na
     markCharacterForSave(removedChaId)
     queueInlayCleanupForCharacters(removed)
     selectedCharID.set(-1)
+    if(reported){
+        reportTrashed(report, reported)
+    }
 }
 
 /**
@@ -1376,9 +1439,10 @@ export function visibleCharacterIds(): Set<string> {
  * (a non-selected character's in-place field write reaches the save only through that mark). A
  * folder that was replaced or removed during the dialog is not edited. The replacement does
  * not depend on `checkCharOrder`, which skips its cleanup while saving is held. Returns the
- * number trashed.
+ * number trashed. No trash origin is recorded (the folder is gone), so every member restores at the
+ * top-level end in the order of `report`'s batch, which lists the members in the folder's own member order.
  */
-export async function trashFolderMembers(entry: folder, folderName: string): Promise<number> {
+export async function trashFolderMembers(entry: folder, folderName: string, report?: TrashReport): Promise<number> {
     const visibleBefore = visibleCharacterIds()
     const asked = untrashedMembersOf(entry.data.filter((id) => visibleBefore.has(id)))
     if(asked.length === 0){
@@ -1406,6 +1470,8 @@ export async function trashFolderMembers(entry: folder, folderName: string): Pro
         c.trashTime = now
     }
     const order = DBState.db.characterOrder
+    // Before the splice below: the folder still lists its members in their own order.
+    const batch: TrashedBatch = { at: now, chaIds: chaIdsInOrderPosition(doomed, order) }
     const at = order.findIndex((item) => item === entry)
     if(at !== -1){
         const trashedIds = new Set(doomed.map((c) => c.chaId))
@@ -1418,6 +1484,7 @@ export async function trashFolderMembers(entry: folder, folderName: string): Pro
     if(selectedRef && doomed.includes(selectedRef)){
         selectedCharID.set(-1)
     }
+    reportTrashed(report, batch)
     return doomed.length
 }
 
@@ -1437,8 +1504,9 @@ export async function trashFolderMembers(entry: folder, folderName: string): Pro
  * removed during the dialog is not edited. Like `trashFolderMembers` this is a move to the
  * trash, not a removal: the encoder reload flag is untouched and each trashed character is
  * marked for saving. Returns the number trashed; 0 when nothing was asked or the user declined.
+ * `report` is told the batch (nothing is reported for a count of 0).
  */
-export async function trashCharacters(picked: { characters: readonly (character | groupChat)[], folders: readonly folder[] }): Promise<number> {
+export async function trashCharacters(picked: { characters: readonly (character | groupChat)[], folders: readonly folder[] }, report?: TrashReport): Promise<number> {
     const visibleBefore = visibleCharacterIds()
     const listed = new Set(DBState.db.characters)
     const asked = new Set<character | groupChat>()
@@ -1478,6 +1546,7 @@ export async function trashCharacters(picked: { characters: readonly (character 
     }
     // Before the folder splices: a picked folder is dissolved below, so nothing is recorded against it.
     recordTrashOrigins(DBState.db, doomed, now, picked.folders)
+    const batch: TrashedBatch = { at: now, chaIds: chaIdsInOrderPosition(doomed, DBState.db.characterOrder) }
     const trashedIds = new Set(doomed.map((c) => c.chaId))
     const order = DBState.db.characterOrder
     if(order){
@@ -1495,6 +1564,7 @@ export async function trashCharacters(picked: { characters: readonly (character 
     if(selectedRef && doomed.includes(selectedRef)){
         selectedCharID.set(-1)
     }
+    reportTrashed(report, batch)
     return doomed.length
 }
 

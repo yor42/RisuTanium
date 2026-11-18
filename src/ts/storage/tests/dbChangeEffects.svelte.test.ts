@@ -2837,3 +2837,80 @@ describe('registerDbChangeEffects — net-signal counters', () => {
 })
 
 //#endregion
+
+// Which callback reports a dirty change: the module effects use `markContentChanged` when the page supplies it (a module
+// edit is not visible to the prompt's value verdicts), and every other effect keeps `markChanged`.
+describe('registerDbChangeEffects — the module effects report through markContentChanged', () => {
+    function registerBoth() {
+        const tracker = makeTracker()
+        const markChanged = vi.fn()
+        const markContentChanged = vi.fn()
+        cleanup = $effect.root(() => {
+            registerDbChangeEffects({ tracker, markChanged, markContentChanged })
+        })
+        flushSync()
+        markChanged.mockClear()
+        markContentChanged.mockClear()
+        return { markChanged, markContentChanged }
+    }
+
+    test('EF4 guard: a bot preset edit reports through markChanged and never through markContentChanged', () => {
+        installDb()
+        const { markChanged, markContentChanged } = registerBoth()
+
+        DBState.db.botPresets[1].name = 'renamed'
+        flushSync()
+
+        expect(markChanged).toHaveBeenCalledWith(true)
+        expect(markContentChanged).not.toHaveBeenCalled()
+    })
+
+    test('EF6a guard: a characterOrder change reports through markChanged and never through markContentChanged', () => {
+        installDb()
+        ;(DBState.db as unknown as Record<string, unknown>).characterOrder = ['a', 'b']
+        const { markChanged, markContentChanged } = registerBoth()
+
+        ;(DBState.db as unknown as Record<string, unknown>).characterOrder = ['b', 'a']
+        flushSync()
+
+        expect(markChanged).toHaveBeenCalledWith(true)
+        expect(markContentChanged).not.toHaveBeenCalled()
+    })
+
+    test('EFm1 a module element edit reports through markContentChanged and never through markChanged(true)', () => {
+        installDbWithModules([makeModule('a'), makeModule('b')])
+        const { markChanged, markContentChanged } = registerBoth()
+
+        DBState.db.modules[1].name = 'renamed'
+        flushSync()
+
+        expect(markContentChanged).toHaveBeenCalledWith(true)
+        expect(markChanged).not.toHaveBeenCalledWith(true)
+    })
+
+    test('EFm2 a module push reports through markContentChanged and never through markChanged(true)', () => {
+        installDbWithModules([makeModule('a')])
+        const { markChanged, markContentChanged } = registerBoth()
+
+        DBState.db.modules.push(makeModule('b'))
+        flushSync()
+
+        expect(markContentChanged).toHaveBeenCalledWith(true)
+        expect(markChanged).not.toHaveBeenCalledWith(true)
+    })
+
+    test('EF6 guard: without markContentChanged the module effects report through markChanged, as every other effect does', () => {
+        installDbWithModules([makeModule('a'), makeModule('b')])
+        const markChanged = vi.fn()
+        cleanup = $effect.root(() => {
+            registerDbChangeEffects({ tracker: makeTracker(), markChanged })
+        })
+        flushSync()
+        markChanged.mockClear()
+
+        DBState.db.modules[1].name = 'renamed'
+        flushSync()
+
+        expect(markChanged).toHaveBeenCalledWith(true)
+    })
+})

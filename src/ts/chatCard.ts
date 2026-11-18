@@ -8,12 +8,15 @@
  *    set of elements and attributes is written, never the message's own styles,
  *    classes or ids, and content that is hidden or collapsed is left out;
  *  - an image from an outside host keeps its address and is never fetched; the
- *    avatar, a local image, is embedded as a small JPEG;
+ *    avatar and the message's local images are read one at a time, each through
+ *    an admission check, and embedded as small JPEGs; an image that cannot be
+ *    embedded is left out;
  *  - the whole result settles within a deadline, falling back to a simpler card.
  */
 
 import { copyPlainText, type CopyOutcome } from './chatCopy'
 import { encodeAvatar as liveEncodeAvatar } from './chatCardImage'
+import { admitCardImageRead, type AdmitImageRead, type ImageReadPermit } from './chatCardReadGate'
 import { isTauri } from './platform'
 
 //#region types and limits
@@ -61,6 +64,12 @@ export interface CardEnv {
     avatarBudgetMs: number
     marginMs: number
     limitBytes: number
+    /** Asked before every image read; a null permit leaves the image out. */
+    admitImageRead: AdmitImageRead
+    /** How many distinct body images are read at most. */
+    bodyImageLimit: number
+    /** How many bytes of embedded `src` attributes the body images may add together. */
+    bodyImageBytes: number
 }
 
 export const CARD_DEADLINE_MS = 3000
@@ -68,6 +77,8 @@ export const CARD_AVATAR_BUDGET_MS = 2000
 export const CARD_PENDING_MARGIN_MS = 2000
 export const CARD_LIMIT_BYTES = 900 * 1024
 export const CARD_AVATAR_MAX_SIDE = 160
+export const CARD_BODY_IMAGE_LIMIT = 8
+export const CARD_BODY_IMAGE_BYTES = 512 * 1024
 
 export function liveCardEnv(): CardEnv {
     return {
@@ -78,6 +89,9 @@ export function liveCardEnv(): CardEnv {
         avatarBudgetMs: CARD_AVATAR_BUDGET_MS,
         marginMs: CARD_PENDING_MARGIN_MS,
         limitBytes: CARD_LIMIT_BYTES,
+        admitImageRead: admitCardImageRead,
+        bodyImageLimit: CARD_BODY_IMAGE_LIMIT,
+        bodyImageBytes: CARD_BODY_IMAGE_BYTES,
     }
 }
 
@@ -196,6 +210,18 @@ export function classifyImageSrc(src: string, env: Pick<CardEnv, 'origin' | 'isT
     }
 }
 
+/**
+ * The address the encoder fetches for a local `src` (one `classifyImageSrc`
+ * answered 'local' for): an http(s) address as the URL parser resolves it, so a
+ * relative app path becomes absolute and an address the size registry holds
+ * matches; any other local form as written, trimmed.
+ */
+function localFetchAddress(src: string, env: Pick<CardEnv, 'origin'>): string {
+    const trimmed = src.trim()
+    const url = trimmed.startsWith('//') ? parseUrl('https:' + trimmed, env.origin) : parseUrl(trimmed, env.origin)
+    return url !== null && (url.protocol === 'http:' || url.protocol === 'https:') ? url.href : trimmed
+}
+
 //#endregion
 
 //#region inert document and body rebuild
@@ -228,10 +254,18 @@ const QUOTE_MARKS = new Set(['quote1', 'quote2', 'blockquote1', 'blockquote2'])
 const TEX_ANNOTATION = 'annotation[encoding="application/x-tex"]'
 const POSITIVE_INTEGER = /^[1-9]\d{0,8}$/
 
+/** A local body image: the src-less placeholder in the rebuilt body and the address to fetch for it. */
+export interface BodyImageSlot {
+    element: HTMLElement
+    src: string
+}
+
 interface WalkContext {
     doc: Document
     theme: CardTheme
     env: Pick<CardEnv, 'origin' | 'isTauri'>
+    /** Receives each local image; null leaves local images out. */
+    images: BodyImageSlot[] | null
     inEm: boolean
     inStrong: boolean
 }
@@ -307,13 +341,20 @@ function copyAttributes(source: Element, target: HTMLElement, name: string, cont
         }
         case 'img': {
             const classified = classifyImageSrc(source.getAttribute('src') ?? '', context.env)
-            if(classified.kind !== 'outside'){
+            const { images } = context
+            if(classified.kind === 'drop' || (classified.kind === 'local' && images === null)){
                 return false
             }
-            target.setAttribute('src', classified.src)
+            if(classified.kind === 'outside'){
+                target.setAttribute('src', classified.src)
+            }
             const alt = source.getAttribute('alt')
             if(alt !== null){
                 target.setAttribute('alt', alt)
+            }
+            // A local image stays without an address; the build fills it once the image is embedded.
+            if(classified.kind === 'local' && images !== null){
+                images.push({ element: target, src: localFetchAddress(classified.src, context.env) })
             }
             return true
         }
@@ -395,19 +436,22 @@ function rebuildChildren(source: Node, target: Node, context: WalkContext): void
 /**
  * Rebuilds the rendered message `html` as a new tree of `doc`'s own nodes. The
  * source is parsed in its own inert document and only read; nothing of it is
- * moved or serialised into the result.
+ * moved or serialised into the result. With `images`, each local image is kept
+ * as an element without an address and appended there; without it, local images
+ * are left out.
  */
 export function rebuildBody(
     html: string,
     theme: CardTheme,
     doc: Document,
     env: Pick<CardEnv, 'origin' | 'isTauri'>,
+    images: BodyImageSlot[] | null = null,
 ): HTMLElement {
     const source = new DOMParser().parseFromString(html, 'text/html')
     const container = doc.createElement('div')
     container.style.setProperty('border-top', `1px solid ${theme.border}`)
     container.style.setProperty('padding-top', '1rem')
-    rebuildChildren(source.body ?? source.documentElement, container, { doc, theme, env, inEm: false, inStrong: false })
+    rebuildChildren(source.body ?? source.documentElement, container, { doc, theme, env, images, inEm: false, inStrong: false })
     return container
 }
 
@@ -557,6 +601,8 @@ interface CardResult {
     kind: 'full' | 'minimal'
     /** An avatar was expected but is not in the card. */
     avatarMissing: boolean
+    /** A local body image of the message is not in the card. */
+    imagesMissing: boolean
 }
 
 type HtmlState = 'pending' | 'resolved' | 'rejected'
@@ -591,13 +637,24 @@ function usableAvatar(value: string | null): string | null {
     return comma > 0 && value.length > comma + 1 ? value : null
 }
 
+const BODY_IMAGE_RESULT = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/
+
+/** A body image result is usable only as the encoder's own JPEG data URL, so it can be written into an attribute as it is. */
+function usableBodyImage(value: string | null | undefined): string | null {
+    return typeof value === 'string' && BODY_IMAGE_RESULT.test(value) ? value : null
+}
+
 /**
- * Starts the card's html. Body and avatar run in parallel; the result settles
- * once, within `env.deadlineMs`:
- *  - body and avatar ready: the full card;
- *  - the avatar not ready at its own budget or at the deadline: the full card
+ * Starts the card's html. The body is parsed while the images are read; the
+ * result settles once, within `env.deadlineMs`:
+ *  - body ready and the image phase over: the full card;
+ *  - an image not embedded at the image budget or at the deadline: the full card
  *    without it;
  *  - the body not ready at the deadline, or a failure: `minimalHtml`.
+ * The image phase is one serial queue under one abort signal: the avatar first,
+ * then the message's first distinct local images in document order. Every read
+ * asks `env.admitImageRead` first and no read starts once the signal aborted;
+ * the signal aborts at the image budget and whenever the card settles.
  * A full card over the size limit is replaced by `minimalHtml`. Before resolving
  * it waits for `earlier` (earlier card writes) but never past the deadline, and
  * a card that was superseded rejects instead of resolving.
@@ -617,8 +674,12 @@ function startBuild(
     let bodyFailed = false
     let avatarState: 'pending' | 'none' | 'failed' | 'ready' = input.avatarPath === '' ? 'none' : 'pending'
     let avatarSrc: string | null = null
+    // The image phase (avatar, then body images) is over: finished, or cut off at the budget.
+    let imagePhaseClosed = false
+    const bodySlots: BodyImageSlot[] = []
+    const bodyResults = new Map<string, string | null>()
     const timers: ReturnType<typeof setTimeout>[] = []
-    const avatarAbort = new AbortController()
+    const imageAbort = new AbortController()
     const doc = createInertDocument()
 
     let resolveHtml!: (html: string) => void
@@ -632,6 +693,10 @@ function startBuild(
     const deadlineReached = new Promise<void>((resolve) => {
         resolveDeadline = resolve
     })
+    let resolveBodySettled!: () => void
+    const bodySettled = new Promise<void>((resolve) => {
+        resolveBodySettled = resolve
+    })
 
     const settle = (action: () => void) => {
         if(settled){
@@ -639,7 +704,8 @@ function startBuild(
         }
         settled = true
         timers.forEach(clearTimeout)
-        avatarAbort.abort()
+        imageAbort.abort()
+        resolveBodySettled()
         action()
     }
     const reject = (error: unknown) => settle(() => {
@@ -648,19 +714,59 @@ function startBuild(
     })
     card.abort = () => reject(new CardSupersededError())
 
+    /**
+     * Fills the body's image placeholders in document order, after the avatar:
+     * a placeholder gets its image when the images so far stay within
+     * `env.bodyImageBytes` and the card within the size limit, measured with every
+     * placeholder still src-less (each embedded `src` adds exactly its own bytes).
+     * The others are removed. Returns the filled placeholders and whether any was removed.
+     */
+    const fillBodyImages = (measure: () => number): { kept: BodyImageSlot[], removed: boolean } => {
+        const base = measure()
+        const kept: BodyImageSlot[] = []
+        let used = 0
+        let removed = false
+        for(const slot of bodySlots){
+            const value = usableBodyImage(bodyResults.get(slot.src))
+            const cost = value === null ? 0 : utf8Bytes(` src="${value}"`)
+            if(value !== null && used + cost <= env.bodyImageBytes && plainBytes + base + used + cost <= env.limitBytes){
+                slot.element.setAttribute('src', value)
+                used += cost
+                kept.push(slot)
+            }
+            else {
+                slot.element.remove()
+                removed = true
+            }
+        }
+        return { kept, removed }
+    }
+
     const choose = (): { html: string, result: CardResult } => {
         if(bodyElement !== null && !bodyFailed){
             try {
+                const element = bodyElement
                 const avatar = avatarState === 'ready' ? avatarSrc : null
-                const full = buildCardElement(doc, input, bodyElement, avatar).outerHTML
+                const avatarMissing = input.avatarPath !== '' && avatar === null
+                const frame = () => buildCardElement(doc, input, element, avatar).outerHTML
+                const filled = fillBodyImages(() => utf8Bytes(frame()))
+                let imagesMissing = filled.removed
+                let full = frame()
+                if(plainBytes + utf8Bytes(full) > env.limitBytes && filled.kept.length > 0){
+                    for(const slot of filled.kept){
+                        slot.element.remove()
+                    }
+                    imagesMissing = true
+                    full = frame()
+                }
                 if(plainBytes + utf8Bytes(full) <= env.limitBytes){
-                    return { html: full, result: { kind: 'full', avatarMissing: input.avatarPath !== '' && avatar === null } }
+                    return { html: full, result: { kind: 'full', avatarMissing, imagesMissing } }
                 }
             } catch {
                 // fall through to the minimal card
             }
         }
-        return { html: minimalHtml, result: { kind: 'minimal', avatarMissing: false } }
+        return { html: minimalHtml, result: { kind: 'minimal', avatarMissing: false, imagesMissing: false } }
     }
 
     const proceed = (chosen: { html: string, result: CardResult }) => settle(() => {
@@ -679,7 +785,7 @@ function startBuild(
             return
         }
         const bodyReady = bodyElement !== null
-        if(!bodyFailed && !(bodyReady && avatarState !== 'pending') && !deadlineHit){
+        if(!bodyFailed && !(bodyReady && avatarState !== 'pending' && imagePhaseClosed) && !deadlineHit){
             return
         }
         finishing = true
@@ -698,40 +804,73 @@ function startBuild(
         tryFinish()
     }, env.deadlineMs))
 
-    if(avatarState === 'pending'){
-        timers.push(setTimeout(() => {
-            if(avatarState === 'pending'){
-                avatarState = 'failed'
-                avatarAbort.abort()
-                tryFinish()
+    // The one place an image is read. Admission comes first, and the abort check
+    // right before the encode is the only guard that stops a read: every way the
+    // build stops (the budget, a settle) aborts the signal before it acts.
+    const readImage = async (src: string): Promise<string | null> => {
+        const { signal } = imageAbort
+        let permit: ImageReadPermit | null = null
+        try {
+            permit = await env.admitImageRead(src, signal)
+            if(permit === null || signal.aborted){
+                return null
             }
-        }, env.avatarBudgetMs))
-        void (async () => {
+            return await env.encodeAvatar(src, {
+                maxSide: CARD_AVATAR_MAX_SIDE,
+                background: input.theme.background,
+                signal,
+            })
+        } catch {
+            return null
+        } finally {
+            permit?.release()
+        }
+    }
+
+    timers.push(setTimeout(() => {
+        if(avatarState === 'pending'){
+            avatarState = 'failed'
+        }
+        imagePhaseClosed = true
+        imageAbort.abort()
+        tryFinish()
+    }, env.avatarBudgetMs))
+
+    void (async () => {
+        if(avatarState === 'pending'){
             let result: string | null = null
             try {
                 const resolved = await input.resolveAvatarSrc(input.avatarPath)
-                if(avatarAbort.signal.aborted){
-                    return
-                }
-                const classified = classifyImageSrc(resolved ?? '', env)
-                if(classified.kind === 'local'){
-                    result = usableAvatar(await env.encodeAvatar(classified.src, {
-                        maxSide: CARD_AVATAR_MAX_SIDE,
-                        background: input.theme.background,
-                        signal: avatarAbort.signal,
-                    }))
+                if(!imageAbort.signal.aborted){
+                    const classified = classifyImageSrc(resolved ?? '', env)
+                    if(classified.kind === 'local'){
+                        result = usableAvatar(await readImage(classified.src))
+                    }
                 }
             } catch {
                 result = null
             }
-            if(avatarState !== 'pending' || settled){
-                return
+            if(avatarState === 'pending' && !settled){
+                avatarState = result === null ? 'failed' : 'ready'
+                avatarSrc = result
+                tryFinish()
             }
-            avatarState = result === null ? 'failed' : 'ready'
-            avatarSrc = result
-            tryFinish()
-        })()
-    }
+        }
+        await bodySettled
+        if(bodyElement !== null && !bodyFailed){
+            const distinct = new Set<string>()
+            for(const slot of bodySlots){
+                if(distinct.size < env.bodyImageLimit){
+                    distinct.add(slot.src)
+                }
+            }
+            for(const src of distinct){
+                bodyResults.set(src, await readImage(src))
+            }
+        }
+        imagePhaseClosed = true
+        tryFinish()
+    })()
 
     void (async () => {
         try {
@@ -739,10 +878,14 @@ function startBuild(
             if(settled){
                 return
             }
-            bodyElement = rebuildBody(raw, input.theme, doc, env)
+            bodyElement = rebuildBody(raw, input.theme, doc, env, bodySlots)
+            if(bodySlots.length === 0){
+                imagePhaseClosed = true
+            }
         } catch {
             bodyFailed = true
         }
+        resolveBodySettled()
         tryFinish()
     })()
 
@@ -905,7 +1048,7 @@ export function createCardCopyController(getEnv: () => CardEnv): CardCopyControl
                     return
                 }
                 const result = card.result
-                report(result !== null && (result.kind === 'minimal' || result.avatarMissing) ? { kind: 'simple' } : { kind: 'copied' })
+                report(result !== null && (result.kind === 'minimal' || result.avatarMissing || result.imagesMissing) ? { kind: 'simple' } : { kind: 'copied' })
             },
             (error: unknown) => {
                 release()
