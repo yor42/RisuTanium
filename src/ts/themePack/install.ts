@@ -16,7 +16,13 @@ import { DBState } from '../stores.svelte'
 import { PACK_ARCHIVE_KEY } from './packRefs'
 import { listThemePacks, type PackManifestFields, type ThemePackRecordV1 } from './packRecord'
 
-export type PackVerifyOutcome<R> = { ok: true, manifest: PackManifestFields } | { ok: false, refusal: R }
+/** The tile colours of a verified pack (lower-case `#rrggbb`), each present only when known. */
+export interface PackTileColours {
+    main?: string
+    secondary?: string
+}
+
+export type PackVerifyOutcome<R> = { ok: true, manifest: PackManifestFields, tile?: PackTileColours } | { ok: false, refusal: R }
 
 export interface InstallRequest<R> {
     bytes: Uint8Array
@@ -92,7 +98,7 @@ function findReplaceTarget(manifest: PackManifestFields): ThemePackRecordV1 | nu
 }
 
 /** The write phase, run under the busy entry: archive, read-back check, record, active id. */
-async function writePack<R>(request: InstallRequest<R>, manifest: PackManifestFields, existing: ThemePackRecordV1 | null): Promise<InstallOutcome<R>> {
+async function writePack<R>(request: InstallRequest<R>, manifest: PackManifestFields, tile: PackTileColours | undefined, existing: ThemePackRecordV1 | null): Promise<InstallOutcome<R>> {
     const bytes = request.bytes
     let hash: string
     let key: string
@@ -133,6 +139,12 @@ async function writePack<R>(request: InstallRequest<R>, manifest: PackManifestFi
     // Never an own `undefined` key: the optional id is set only when the manifest has one.
     if (typeof manifest.packId === 'string') {
         record.packId = manifest.packId
+    }
+    if (typeof tile?.main === 'string') {
+        record.mainColor = tile.main
+    }
+    if (typeof tile?.secondary === 'string') {
+        record.secondaryColor = tile.secondary
     }
     const live = DBState.db.themePacks
     let replaced = false
@@ -182,7 +194,7 @@ export async function installThemePack<R>(request: InstallRequest<R>): Promise<I
     if (again !== null) {
         return { ok: false, kind: again }
     }
-    const outcome = await withBusy('themePack', () => writePack(request, verdict.manifest, existing))
+    const outcome = await withBusy('themePack', () => writePack(request, verdict.manifest, verdict.tile, existing))
     if (outcome.ok) {
         requestSaveNow()
     }

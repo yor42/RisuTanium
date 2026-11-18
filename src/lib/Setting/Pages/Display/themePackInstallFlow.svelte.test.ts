@@ -602,6 +602,53 @@ describe('T4-2h select', () => {
     })
 })
 
+describe('T2b the tile colours of an installed pack', () => {
+    const DECLARED = ':root{--nexus-canvas:#21222c;--nexus-accent:#8be9fd}'
+    const packWith = (overrides: Readonly<Record<string, unknown>>, sheet: string): Uint8Array => zipPack(validPackFiles({ 'chat.css': sheet, 'manifest.json': manifestText(overrides) }))
+    const storedRecord = (): Record<string, unknown> => $state.snapshot(storedPacks()[0]) as Record<string, unknown>
+
+    test('T2b-3: colours the sheet declares are derived at install and stored on the record', async () => {
+        attach()
+        await runThemePackInstall(runOf(packWith({}, DECLARED)).deps)
+        expect(storedRecord()).toMatchObject({ mainColor: '#8be9fd', secondaryColor: '#21222c' })
+    })
+
+    test('T2b-3: a manifest colour wins over the sheet and is stored lower-case; the other field is still derived', async () => {
+        attach()
+        await runThemePackInstall(runOf(packWith({ colors: { main: '#FFAA00' } }, DECLARED)).deps)
+        expect(storedRecord()).toMatchObject({ mainColor: '#ffaa00', secondaryColor: '#21222c' })
+    })
+
+    test('T2b-3: a sheet that declares neither token stores no colour keys at all', async () => {
+        attach()
+        await runThemePackInstall(runOf(packWith({}, PLAIN_CHAT_SHEET)).deps)
+        const record = storedRecord()
+        expect(Object.hasOwn(record, 'mainColor')).toBe(false)
+        expect(Object.hasOwn(record, 'secondaryColor')).toBe(false)
+    })
+
+    test.each([
+        ['an invalid main colour', { colors: { main: 'rgb(1,2,3)' } }, 'colors.main'],
+        ['an invalid secondary colour', { colors: { secondary: '#12' } }, 'colors.secondary'],
+        ['a colors value that is not an object', { colors: '#fff' }, 'colors'],
+        ['an invalid icon', { icon: '' }, 'icon'],
+    ])('T2b-4: %s is refused naming its field, before the large-pack question, and nothing is written', async (_label, overrides, field) => {
+        attach()
+        const large: InstallFlowDeps['intake'] = async (verified) => {
+            const real = await intakePackBytes(verified, realJudge)
+            return real.ok ? { ok: true, pack: { ...real.pack, totalBytes: 21 * MIB, size: { warn: true, limitBytes: PACK_SIZE_WARN_BYTES } } } : real
+        }
+        const { deps, confirm } = runOf(packWith(overrides, DECLARED), [true, true], { intake: large })
+
+        await runThemePackInstall(deps)
+
+        expect(confirm).not.toHaveBeenCalled()
+        expect(outcomeLines()).toEqual([language.themePackRefusedHeader, language.themePackRefuseManifestField(field)])
+        expect(world.log).toEqual([])
+        expect(storedPacks()).toEqual([])
+    })
+})
+
 describe('formatPackSize', () => {
     test('KiB below one MiB, MiB from there on, one decimal', () => {
         expect(formatPackSize(512)).toBe('0.5 KiB')

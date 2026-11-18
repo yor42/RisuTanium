@@ -12,16 +12,19 @@ export interface BuiltinPack {
     attribution: string
     modes: readonly ('light' | 'dark')[]
     chatCss: string
+    /** The tile colours, equal to what the install derives from `chatCss` (pinned by the built-ins test for both shipped packs); optional so a test double needs none. */
+    mainColor?: string
+    secondaryColor?: string
 }
 
 export const BUILTIN_PACKS: readonly BuiltinPack[] = [
     {
         id: 'builtin:origin-navy', slug: 'origin-navy', name: 'Origin Navy', version: '1.0.0', license: 'GPL-3.0',
-        attribution: 'RisuTanium contributors', modes: ['dark'], chatCss: originNavyChat,
+        attribution: 'RisuTanium contributors', modes: ['dark'], chatCss: originNavyChat, mainColor: '#8be9fd', secondaryColor: '#21222c',
     },
     {
         id: 'builtin:banana-cocoa', slug: 'banana-cocoa', name: 'Banana Cocoa', version: '1.0.0', license: 'GPL-3.0',
-        attribution: 'RisuTanium contributors', modes: ['light'], chatCss: bananaCocoaChat,
+        attribution: 'RisuTanium contributors', modes: ['light'], chatCss: bananaCocoaChat, mainColor: '#6b3f18', secondaryColor: '#b2c7da',
     },
 ]
 

@@ -73,6 +73,26 @@ describe('readPackRecord of a good record', () => {
         }
     })
 
+    test('T2b-5: valid tile colours are kept', () => {
+        const result = readPackRecord(record({ mainColor: '#3366ff', secondaryColor: '#101820' }))
+
+        expect(result.ok).toBe(true)
+        expect(result.ok && result.record.mainColor).toBe('#3366ff')
+        expect(result.ok && result.record.secondaryColor).toBe('#101820')
+    })
+
+    test.each([
+        ['upper case', '#3366FF'], ['three digits', '#36f'], ['with alpha', '#3366ff80'], ['a name', 'red'], ['a number', 7], ['null', null], ['an own undefined', undefined],
+    ])('T2b-5: a tile colour that is %s reads as absent, the record stays readable and no own key is made', (_label, bad) => {
+        const result = readPackRecord(record({ mainColor: bad, secondaryColor: bad }))
+
+        expect(result.ok).toBe(true)
+        if (result.ok) {
+            expect(Object.hasOwn(result.record, 'mainColor')).toBe(false)
+            expect(Object.hasOwn(result.record, 'secondaryColor')).toBe(false)
+        }
+    })
+
     test('a record without a packId reads ok and has no packId key', () => {
         const result = readPackRecord(without('packId'))
 

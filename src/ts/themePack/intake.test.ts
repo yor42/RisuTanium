@@ -87,6 +87,21 @@ describe('accepted packs', () => {
     })
 })
 
+describe('T2b-2 malformed tile fields are not an intake refusal', () => {
+    // Intake keeps accepting a manifest whose `colors` or
+    // `icon` is malformed, because apply re-runs intake over stored archives; only the install flow refuses them.
+    it.each([
+        ['an invalid colors.main', { colors: { main: 'not-a-colour' } }, 'main', 'colors.main'],
+        ['a non-object colors', { colors: 'red' }, 'main', 'colors'],
+        ['an empty icon', { icon: '' }, 'icon', 'icon'],
+    ] as const)('%s is accepted and its manifest.tile keeps the invalid field', async (_label, over, key, name) => {
+        const bytes = zipPack(validPackFiles({ 'manifest.json': manifestText(over) }))
+        for (const result of [(await run(bytes)).result, await intakePackBytes(bytes, realJudge)]) {
+            expect(packOf(result).manifest.tile[key]).toEqual({ kind: 'invalid', field: name })
+        }
+    })
+})
+
 describe('T1-1 zip slip', () => {
     it.each(['../x.css', 'a/../../x.css', 'fonts/./a.woff2', '__MACOSX/../x'])('%s is an unsafe name and nothing but the tail and directory is read', async (name) => {
         const { result, reads, layout } = await runRaw(hostileBase([entry(name, 'x')]))

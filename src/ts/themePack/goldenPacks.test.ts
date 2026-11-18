@@ -48,6 +48,7 @@ describe('T1-31 golden v1 packs', () => {
                 attribution: 'RisuTanium contributors',
                 modes: [...golden.modes],
                 fonts: [],
+                tile: { main: { kind: 'absent' }, secondary: { kind: 'absent' }, icon: { kind: 'absent' } },
             })
             expect(pack.sheets.chat.result.ok).toBe(true)
             expect(pack.skippedAreas).toEqual(['home', 'settings', 'studio'])

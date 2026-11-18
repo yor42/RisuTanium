@@ -25,6 +25,7 @@ function record(id: string, archive = ARCHIVE): Obj {
     return {
         v: 1, id, packId: 'origin-navy', name: 'Origin Navy', version: '1.0.0', license: 'MIT', attribution: 'A. Author',
         modes: ['light', 'dark'], fonts: [{ file: 'fonts/a.woff2', license: 'OFL-1.1' }], archive, bytes: 4096, installedAt: 1_700_000_000_000,
+        mainColor: '#8be9fd', secondaryColor: '#21222c',
     }
 }
 

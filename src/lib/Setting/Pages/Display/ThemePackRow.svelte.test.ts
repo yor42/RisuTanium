@@ -319,6 +319,27 @@ describe('T4-3 the list', () => {
         expect(unreadable.querySelector('[data-part="theme-pack-remove"]')).not.toBeNull()
     })
 
+    test('T2b-10 an installed pack draws its record colours on the tile, a pack without colours a neutral one, and no pack colour leaves the svg', () => {
+        setPacks([recordOf('a', { mainColor: '#3366ff', secondaryColor: '#101820' }), recordOf('b')])
+        const target = show()
+        const ground = (id: string): Element => entryOf(target, id).querySelector('[data-part="tile-ground"]')!
+        expect(ground('a').getAttribute('fill')).toBe('#101820')
+        expect(ground('b').getAttribute('fill')).toBeNull()
+        expect(ground('b').getAttribute('class')).toBe('fill-darkbg')
+        // The built-ins draw the colours their literals carry.
+        for (const pack of BUILTIN_PACKS) {
+            expect(ground(pack.id).getAttribute('fill')).toBe(pack.secondaryColor)
+        }
+        for (const element of target.querySelectorAll<HTMLElement>('*')) {
+            if (element.closest('svg') === null) {
+                expect(element.getAttribute('style') ?? '', element.outerHTML.slice(0, 80)).not.toMatch(/#[0-9a-f]{3,6}/i)
+                expect(element.className.toString()).not.toMatch(/#[0-9a-f]{6}/i)
+            }
+        }
+        const name = entryOf(target, 'a').querySelector('label span[id]')!
+        expect(name.getAttribute('style')).toBeNull()
+    })
+
     test('T1-3 all radios share one name, and a busy select puts the radio back', async () => {
         setPacks([recordOf('a'), recordOf('b')], 'a')
         const target = show()

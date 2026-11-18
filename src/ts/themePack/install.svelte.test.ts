@@ -143,7 +143,7 @@ vi.mock(import('../plugins/apiV3/transpiler'), () => ({ pluginCodeTranspiler: vi
 //#endregion
 
 import { DBState } from '../stores.svelte'
-import { installThemePack, removeThemePackAt, setActiveThemePack, type InstallOutcome, type InstallRequest, type PackVerifyOutcome } from './install'
+import { installThemePack, removeThemePackAt, setActiveThemePack, type InstallOutcome, type InstallRequest, type PackTileColours, type PackVerifyOutcome } from './install'
 import { listThemePacks, readPackRecord, type PackManifestFields, type ThemePackRecordV1 } from './packRecord'
 import { allowedDbKeys, getV2PluginAPIs } from '../plugins/plugins.svelte'
 
@@ -181,6 +181,7 @@ interface Calls {
 
 function requestOf(options: {
     manifest?: PackManifestFields
+    tile?: PackTileColours
     refusal?: string
     replaceAnswer?: boolean
     newId?: string
@@ -188,7 +189,7 @@ function requestOf(options: {
     onConfirm?: () => void
 } = {}): { request: InstallRequest<string>, calls: Calls } {
     const verify = vi.fn(async (): Promise<PackVerifyOutcome<string>> =>
-        options.refusal === undefined ? { ok: true, manifest: options.manifest ?? manifestOf() } : { ok: false, refusal: options.refusal })
+        options.refusal === undefined ? { ok: true, manifest: options.manifest ?? manifestOf(), ...(options.tile === undefined ? {} : { tile: options.tile }) } :{ ok: false, refusal: options.refusal })
     const confirmReplace = vi.fn(async (): Promise<boolean> => {
         options.onConfirm?.()
         return options.replaceAnswer ?? true
@@ -307,6 +308,31 @@ describe('the order of the install and the record it writes', () => {
         const read = readPackRecord(livePacks()[0])
         expect(read.ok).toBe(true)
         expect(read.ok && read.record).toStrictEqual(fixture)
+    })
+
+    test.each([
+        ['both colours', { main: '#3366ff', secondary: '#101820' }, { mainColor: '#3366ff', secondaryColor: '#101820' }],
+        ['only the main colour', { main: '#3366ff' }, { mainColor: '#3366ff' }],
+        ['only the secondary colour', { secondary: '#101820' }, { secondaryColor: '#101820' }],
+        ['an empty tile', {}, {}],
+    ])('T2b-8: %s reach the record as exactly the extended keys, with no own undefined', async (_label, tile, extra) => {
+        const { request } = requestOf({ tile })
+
+        const outcome = okOf(await installThemePack(request))
+
+        expect(outcome.record).toStrictEqual(recordFixture(extra))
+        expect(Object.keys(snapshotOf(livePacks()[0]) as Slot).sort()).toEqual(Object.keys(recordFixture(extra)).sort())
+        const read = readPackRecord(livePacks()[0])
+        expect(read.ok && read.record).toStrictEqual(recordFixture(extra))
+    })
+
+    test('T2b-8: a Replace install writes the new colours whole and a verdict without a tile writes none', async () => {
+        okOf(await installThemePack(requestOf({ tile: { main: '#3366ff', secondary: '#101820' } }).request))
+        okOf(await installThemePack(requestOf({ newId: 'pack-2', tile: { main: '#112233' } }).request))
+
+        const stored = snapshotOf(livePacks()) as Slot[]
+        expect(stored).toHaveLength(1)
+        expect(stored[0]).toStrictEqual(recordFixture({ id: 'pack-2', mainColor: '#112233' }))
     })
 
     test('T2-9: the manifest\'s arrays are copied, so a later change of the manifest never reaches the record', async () => {

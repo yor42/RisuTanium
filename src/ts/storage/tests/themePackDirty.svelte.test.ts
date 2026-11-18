@@ -43,6 +43,7 @@ function record(id: string): Record<string, unknown> {
     return {
         v: 1, id, packId: 'origin-navy', name: 'Origin Navy', version: '1.0.0', license: 'MIT', attribution: 'A. Author',
         modes: ['light', 'dark'], fonts: [], archive: `assets/tp-${'ab'.repeat(32)}.risutheme`, bytes: 4096, installedAt: 1_700_000_000_000,
+        mainColor: '#8be9fd', secondaryColor: '#21222c',
     }
 }
 
@@ -80,6 +81,17 @@ describe('the generic top-level change effect alone (no write hook)', () => {
         markChanged.mockClear()
 
         ;(dbFields().themePacks as unknown[]).push(record('two'))
+        flushSync()
+        expect(markChanged).toHaveBeenCalledWith(true)
+    })
+
+    test('T2b-7: replacing a record by index with new tile colours marks the page dirty', () => {
+        const markChanged = startEffects()
+        dbFields().themePacks = [record('one')]
+        flushSync()
+        markChanged.mockClear()
+
+        ;(dbFields().themePacks as unknown[])[0] = { ...record('one'), mainColor: '#112233', secondaryColor: '#445566' }
         flushSync()
         expect(markChanged).toHaveBeenCalledWith(true)
     })
@@ -125,6 +137,15 @@ describe('the explicit write hook alone', () => {
         marks.length = 0
 
         ;(state.db.themePacks as unknown[]).push(record('two'))
+        expect(marks).toContainEqual({ kind: 'setting', key: 'themePacks' })
+    })
+
+    test('T2b-7: replacing one record by index (a Replace install with new tile colours) reaches the sink as a themePacks mark', async () => {
+        const { state, marks } = await hookedState()
+        state.db.themePacks = [record('one')]
+        marks.length = 0
+
+        ;(state.db.themePacks as unknown[])[0] = { ...record('one'), mainColor: '#112233', secondaryColor: '#445566' }
         expect(marks).toContainEqual({ kind: 'setting', key: 'themePacks' })
     })
 
