@@ -213,6 +213,18 @@ describe('chats in the encoded tree', () => {
         expect('id' in assembled.characters[0].chats[1]).toBe(false)
     })
 
+    // compatibility guard (passes before and after): hypaV3Data is an opaque chat core field, so a summary time travels
+    test('a summary time inside hypaV3Data survives the encode and assemble round trip', () => {
+        const hypaV3Data = {
+            summaries: [
+                { text: 'legacy', chatMemos: ['m0'], isImportant: false, tags: [] },
+                { text: 'dated', chatMemos: ['m1'], isImportant: false, tags: [], createdAt: 1_763_424_000_000 },
+            ],
+        }
+        const { assembled } = roundTrip(dbWithCharacters([holder([{ message: [], name: 'c', id: 'one', hypaV3Data }])]))
+        expect(assembled.characters[0].chats[0].hypaV3Data).toEqual(hypaV3Data)
+    })
+
     test('chunk tuples are oldest to newest and carry the unit Ref and the message count', () => {
         const messages = Array.from({ length: 30 }, (_, i) => sized(CHUNK_CAP_BYTES / 8 + i))
         const tree = encodeWith(dbWithCharacters([holder([{ message: messages, name: 'long', id: 'long' }])]))

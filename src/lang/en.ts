@@ -1298,6 +1298,10 @@ export const languageEnglish = {
             "The fraction of memory tokens allocated to similar memory. Automatically filled with summaries that have the highest similarity scores to recent chats until the allocated tokens are full.",
         hypaV3RandomMemoryRatio:
             "Randomly filled from summaries not already selected by other categories.",
+        hypaV3RecencyWeighting:
+            "If enabled, older summaries are less likely to be chosen for similar memory and random memory. Each summary records when it was created; a re-summarized summary keeps the oldest time of the summaries it replaced. Summaries without a recorded time (made before this option existed, converted from HypaMemory V2, imported from a lorebook, or re-summarized together with one of those) count as older than every dated summary, earliest first. Important and recent memory are not affected.",
+        hypaV3RecencyHalfLifeDays:
+            "After this many days a summary counts half as much: it ranks lower in similar memory and is picked half as often in random memory. Each further period halves it again.",
         hypaV3PreserveOrphanedMemory:
             "If enabled, summaries that reference deleted chat messages will be preserved. If disabled, summaries whose source messages no longer exist are automatically removed.",
         hypaV3ProcessRegexScript:
@@ -2895,6 +2899,8 @@ export const languageEnglish = {
         recentMemoryRatioLabel: "Recent Memory Ratio",
         similarMemoryRatioLabel: "Similar Memory Ratio",
         randomMemoryRatioLabel: "Random Memory Ratio",
+        recencyWeightingLabel: "Favor Recent Summaries",
+        recencyHalfLifeDaysLabel: "Recency Half-Life (Days)",
         enableSimilarityCorrectionLabel: "Enable Similarity Correction",
         preserveOrphanedMemoryLabel: "Preserve Orphaned Memory",
         applyRegexScriptWhenRerollingLabel: "Apply Regex Script When Rerolling",
