@@ -62,7 +62,6 @@ const setDatabaseMock = vi.hoisted(() => vi.fn((_data: Record<string, unknown>):
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as Record<string, unknown>))
 const sleepForeverMock = vi.hoisted(() => vi.fn(async () => { }))
 const putBackMock = vi.hoisted(() => vi.fn())
-const recordCleanupMock = vi.hoisted(() => vi.fn())
 const readColdStorageItemMock = vi.hoisted(() => vi.fn(async (_key: string): Promise<{ status: 'missing' }> => ({ status: 'missing' })))
 
 //#endregion
@@ -181,11 +180,6 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     readColdStorageItem: readColdStorageItemMock,
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
-vi.mock(import('src/ts/storage/startupCleanupState'), async (importOriginal) => ({
-    ...await importOriginal(),
-    recordStartupCleanup: recordCleanupMock,
-}))
-
 vi.mock(import('src/ts/storage/bootArchivePass'), () => {
     const install = async (input: { tree: unknown }) => {
         archive.ran += 1
@@ -213,16 +207,6 @@ vi.mock(import('src/ts/storage/bootArchivePass'), () => {
 vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
     verifyAssetCacheEntry: verifyAssetCacheEntryMock,
 }) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
-vi.mock(import('src/ts/storage/remoteSaveCleanup'), () => ({
-    getRemoteSaveCleanupAction: vi.fn(() => 'create-meta'),
-    getRemoteSavePayloadName: vi.fn(() => null),
-}) as unknown as typeof import('src/ts/storage/remoteSaveCleanup'))
-
-vi.mock(import('src/ts/storage/assetSweep'), () => ({
-    sweepTauriAssets: vi.fn(async () => { }),
-    sweepForageAssetKey: vi.fn(async () => { }),
-}) as unknown as typeof import('src/ts/storage/assetSweep'))
 
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
@@ -538,7 +522,6 @@ beforeEach(() => {
     setUsingSwMock.mockReset()
     sleepForeverMock.mockReset().mockResolvedValue(undefined)
     putBackMock.mockReset()
-    recordCleanupMock.mockReset()
     readColdStorageItemMock.mockClear()
     dbState.current = baseDb()
     setDatabaseMock.mockClear()
@@ -766,7 +749,6 @@ describe('loadData(): a normal store2 profile', () => {
         expect(canBootArchive()).toBe(false)
         // The profile has stubs, so the put-back that unloads a loaded character runs on this page.
         expect(putBackMock, 'the store2 put-back starts').toHaveBeenCalledTimes(1)
-        expect(recordCleanupMock, 'no legacy clean-up').not.toHaveBeenCalled()
         expect(getDbBackupsMock, 'no backup pruning').not.toHaveBeenCalled()
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(backupTimesOf(store)).toHaveLength(21)
@@ -1187,7 +1169,6 @@ describe('loadData(): a page that registered no dispatch boots the legacy profil
         expect(setDatabaseMock).toHaveBeenCalled()
         expect(sleepForeverMock).not.toHaveBeenCalled()
         expect(putBackMock).toHaveBeenCalled()
-        expect(recordCleanupMock).toHaveBeenCalled()
     })
 
     test('no residency is registered, no save context is active and the installed profile holds no store2 stub', async () => {
