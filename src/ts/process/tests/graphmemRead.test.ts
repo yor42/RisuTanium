@@ -24,7 +24,7 @@ vi.mock('localforage', () => {
     }) } }
 })
 vi.mock('src/ts/globalApi.svelte', () => ({ globalFetch: vi.fn() }))
-vi.mock('src/ts/storage/database.svelte', () => ({ getDatabase: vi.fn(() => ({})) }))
+vi.mock('src/ts/storage/database.svelte', () => ({ getDatabase: vi.fn(() => ({ hypaModel: 'MiniLM' })) }))
 vi.mock('src/ts/util', () => ({ appendLastPath: vi.fn((base: string, path: string) => `${base}/${path}`) }))
 vi.mock('src/ts/secretRef', () => ({ resolveSecret: vi.fn(async (s: string) => s) }))
 vi.mock('src/ts/parser/chatVar.svelte', () => ({

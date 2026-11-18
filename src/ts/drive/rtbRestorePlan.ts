@@ -18,7 +18,7 @@ import { rangeSourceFrom, type RangeSource } from './rtb/rangeSource'
 import type { ZipIndex } from './rtb/zip64Reader'
 import { planAssets, type AssetPlanDeps, type AssetsPlan, type CreatableRule, type InlaysPlan, type SizedListing } from './rtb/rtbAssetPlan'
 import { verifyRtb, type NewerItem, type RtbVerdict, type SidePlanItem, type Store2Plan, type VerifyOptions } from './rtb/rtbVerify'
-import { importSourceOfFile, type ImportSource } from '../importSource'
+import type { ImportSource } from '../importSource'
 import { nodePieceStore } from './assetPieces'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
 import { acquireRestoreHold, baseOfRead, type BaseRead, type HoldAcquire, type HoldOptions, type RestoreHold } from './rtbRestoreHold'
@@ -26,7 +26,7 @@ import { checkStore2Import, confirmImportScale, type Store2ImportCheck, type Sto
 import { saveFirst, SAVE_FIRST_BOUND_MS } from './storeRestore'
 
 /**
- * The page-target front half of a `.rtb` restore (CHORE-128 S11): the picker, the refusals before anything is written,
+ * The page-target front half of a `.rtb` restore (CHORE-128 S11): the refusals before anything is written,
  * the verification of the file, and the prompts. It returns a `RestorePlan` and the `RestoreHold` that S12's commit step
  * consumes. It writes nothing: the only writes before it returns are `saveFirst`'s commit, `checkStore2Import`'s clear of a
  * proven-dead foreign marker, and the web lock's storage-epoch token.
@@ -119,34 +119,6 @@ export interface RtbPrepareOptions {
     /** Called once when the lock is granted. */
     onHoldGranted?: () => void
     deps?: Partial<RtbPrepareDeps>
-}
-
-// ---- the picker ----
-
-const RTB_ACCEPT = '.rtb,application/vnd.risutanium.rtb'
-
-/**
- * Opens the file picker. On Android the picker may grey out an unknown extension, so no `accept` is set there and the
- * sniff refuses a file that is not an `.rtb`; every other platform keeps the filter. Resolves null when the person cancels.
- */
-export function pickRtbFile(): Promise<PickedRtb | null> {
-    return new Promise<PickedRtb | null>((resolve) => {
-        const input = document.createElement('input')
-        input.type = 'file'
-        if (transportKind() !== 'android') {
-            input.accept = RTB_ACCEPT
-        }
-        input.addEventListener('change', () => {
-            const file = input.files !== null && input.files.length > 0 ? input.files[0] : null
-            input.remove()
-            resolve(file === null ? null : { name: file.name, size: file.size, lastModified: file.lastModified, source: importSourceOfFile(file) })
-        })
-        input.addEventListener('cancel', () => {
-            input.remove()
-            resolve(null)
-        })
-        input.click()
-    })
 }
 
 // ---- file text for the prompts ----
