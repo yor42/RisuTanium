@@ -2,12 +2,13 @@
     import { onDestroy, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
-    import { characterTogglePort } from '../../ts/studio/edit/toggleTextPort'
+    import { moduleSlotsWithId } from '../../ts/studio/edit/assetSetters'
+import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/toggleTextPort'
     import { createStudioToasts, refusalTextOf } from '../../ts/studio/edit/studioToasts'
     import { ensureStudioHistory, getStudioHistoryService, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
     import { registerStudioBackLayer } from '../../ts/studio/studioBack.svelte'
     import { studioScreen } from '../../ts/studio/studioScreen.svelte'
-    import { appToggleKeys, createToggleBuilder, restoreLines, TOGGLE_KEY_EDITS_LIVE, type EditOutcome } from '../../ts/studio/toggleBuilder.svelte'
+    import { appToggleKeys, createToggleBuilder, restoreLines, TOGGLE_KEY_EDITS_LIVE, type EditOutcome, type ToggleTarget } from '../../ts/studio/toggleBuilder.svelte'
     import { caretOffsetOf, rowAtLine, rowViewOf, type MoveDirection, type NewKind } from '../../ts/studio/toggleBuilderModel'
     import { lineById, type LineId } from '../../ts/studio/toggleDef'
     import { ownerStem } from '../../ts/studio/toggleKeys'
@@ -17,27 +18,37 @@
     import StudioToggleList from './StudioToggleList.svelte'
     import StudioToggleText from './StudioToggleText.svelte'
 
-    // The list builder of one character's toggle definition. Every edit goes through the history service as a whole
+    // The list builder of one character's or resident module's toggle definition. Every edit goes through the history service as a whole
     // string write; the page's own copy of the definition is parsed from the live text and re-read whenever that text
     // changes outside it (an undo, a restore, another editor).
     interface Props {
-        chaId: string
+        // Read once: the owner is fixed for the life of the builder, and a change of owner builds a new one.
+        target: ToggleTarget
         // The toast host of the delete toast; the app's own host when absent (tests pass one on a fake clock).
         host?: ToastHost
     }
 
-    let { chaId, host }: Props = $props()
+    let { target, host }: Props = $props()
 
     // A side-by-side layout needs a list and a 560 px editor column.
     const WIDE_AT = 1000
 
-    const port = characterTogglePort(untrack(() => chaId))
+    const fixed = untrack(() => target)
+    const port = fixed.kind === 'character' ? characterTogglePort(fixed.chaId) : moduleTogglePort(fixed.moduleId)
     const toasts = createStudioToasts({ service: getStudioHistoryService, host: untrack(() => host) })
-    const character = untrack(() => DBState.db.characters?.find((candidate) => candidate?.chaId === chaId))
+    function stemOf(): string {
+        if (fixed.kind === 'module') {
+            const [slot] = moduleSlotsWithId(DBState.db.modules, fixed.moduleId)
+            const name = slot ? (slot.module as { name?: unknown }).name : ''
+            return ownerStem(typeof name === 'string' ? name : '', fixed.moduleId)
+        }
+        const character = DBState.db.characters?.find((candidate) => candidate?.chaId === fixed.chaId)
+        return ownerStem(character && character.type !== 'group' ? character.name ?? '' : '', fixed.chaId)
+    }
     const builder = createToggleBuilder(port, {
         keyEditsLive: TOGGLE_KEY_EDITS_LIVE,
-        stem: ownerStem(character && character.type !== 'group' ? character.name ?? '' : '', untrack(() => chaId)),
-        appKeys: appToggleKeys(untrack(() => chaId)),
+        stem: stemOf(),
+        appKeys: appToggleKeys(fixed),
     })
 
     const service = $derived(getStudioHistoryService())
@@ -131,8 +142,8 @@
 
     function failureText(outcome: EditOutcome): string {
         if (outcome.ok !== false) return ''
-        return outcome.kind === 'refused' ? refusalTextOf({ reason: outcome.reason })
-            : outcome.kind === 'unavailable' ? refusalTextOf({ reason: 'loading' })
+        return outcome.kind === 'refused' ? refusalTextOf({ reason: outcome.reason }, port.owner)
+            : outcome.kind === 'unavailable' ? refusalTextOf({ reason: 'loading' }, port.owner)
             : language.studioTgNotWritten
     }
 
@@ -225,7 +236,7 @@
             </div>
         {/if}
         {#if errorShown && builder.error}
-            <p role="alert" data-part="studio-toggle-error" class="text-sm text-draculared">{builder.error.kind === 'refused' ? refusalTextOf({ reason: builder.error.reason }) : builder.error.kind === 'unavailable' ? refusalTextOf({ reason: 'loading' }) : builder.error.kind === 'held' ? language.studioTgTextHeld : builder.error.kind === 'field' ? language.studioTgNotWritten : language.studioTgCantMove}</p>
+            <p role="alert" data-part="studio-toggle-error" class="text-sm text-draculared">{builder.error.kind === 'refused' ? refusalTextOf({ reason: builder.error.reason }, port.owner) : builder.error.kind === 'unavailable' ? refusalTextOf({ reason: 'loading' }, port.owner) : builder.error.kind === 'held' ? language.studioTgTextHeld : builder.error.kind === 'field' ? language.studioTgNotWritten : language.studioTgCantMove}</p>
         {/if}
         <p role="status" data-part="studio-toggle-announce" class="sr-only">{announcement}</p>
     </section>
