@@ -235,7 +235,7 @@ export function beginOwnerVisit(owner: OwnerKey): SaveAck | null {
         return null
     }
     if (parsed.kind === 'module') {
-        // A module owner has no character visit ack: it is used, and its writes mark through the asset write.
+        // A module owner has no character visit ack: it is used, and its writes mark through the module slot write.
         void primeModuleSlotPort()
         service.useOwner(owner)
         return null

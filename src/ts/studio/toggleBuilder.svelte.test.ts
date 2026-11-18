@@ -422,6 +422,17 @@ describe('appToggleKeys', () => {
             botPresetsId: 1,
             customPromptTemplateToggle: 'working=W',
         }
-        expect([...appToggleKeys('A')].sort()).toEqual(['mod', 'other', 'stored', 'working'])
+        expect([...appToggleKeys({ kind: 'character', chaId: 'A' })].sort()).toEqual(['mod', 'other', 'stored', 'working'])
     })
-})
+
+    test('K-M for a module it holds the other modules and the characters, and none of the module\'s own keys', () => {
+        store.db = {
+            characters: [{ chaId: 'A', type: 'character', customModuleToggle: 'ch=Char' }],
+            modules: [residentModule('M1', { customModuleToggle: 'own=Own' }), residentModule('M2', { customModuleToggle: 'other=Other' }), stubModule('s')],
+            botPresets: [],
+            botPresetsId: -1,
+            customPromptTemplateToggle: '',
+        }
+        expect([...appToggleKeys({ kind: 'module', moduleId: 'M1' })].sort()).toEqual(['ch', 'other'])
+        expect([...appToggleKeys({ kind: 'character', chaId: 'A' })].sort()).toEqual(['other', 'own'])
+    })})

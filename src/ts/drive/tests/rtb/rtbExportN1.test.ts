@@ -62,7 +62,14 @@ vi.mock('src/ts/storage/store/appStore', () => ({
 }))
 
 // The page's own stop rule reads the real busy registry; the other two facts are quiet.
-const FACTS: AutoGcFacts = { isBusy: () => isBusy(), saveLoopParked: () => false, isSaveClean: () => true }
+const FACTS: AutoGcFacts = {
+    isBusy: () => isBusy(),
+    saveLoopParked: () => false,
+    isSaveClean: () => true,
+    restoreInProgress: () => false,
+    peers: async () => 'alone',
+    ownBase: () => null,
+}
 
 let world: RtbWorld
 let second: RtbWorld
