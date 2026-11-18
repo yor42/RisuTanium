@@ -272,9 +272,13 @@ async function readStored(key: string): Promise<unknown> {
 /** How many times the registered dispatch was entered in this test. */
 const dispatchEntered = { count: 0 }
 
-async function freshLoadData() {
+async function freshLoadData(options: { unregistered?: boolean } = {}) {
     // The real dispatch over a memory store2 backend: the page's own store stays the LocalForage/IndexedDB store.
     const dispatch = await registerRealDispatch({ kind: 'indexeddb', acknowledgeAlerts: true, onEnter: () => { dispatchEntered.count += 1 } })
+    if (options.unregistered === true) {
+        const { registerStore2Boot } = await import('src/ts/storage/store2/bootActive')
+        registerStore2Boot(null)
+    }
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
@@ -330,6 +334,25 @@ describe('loadData() on LocalForage without a usable IndexedDB', () => {
         expect(get(loadedStore)).toBe(false)
         expect(get(alertStore).type).toBe('error')
         expect(get(alertStore).msg).toBe(language.browserStorageUnavailable)
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+    })
+
+    test('T2-N2 reproducer: an unregistered page with unusable IndexedDB reports the registration error, not the browser-storage message, and touches no store', async () => {
+        world.indexedDbUsable = false
+        const { loadData, loadedStore, alertStore } = await freshLoadData({ unregistered: true })
+        const seen: { type: string, msg: string }[] = []
+        alertStore.subscribe((value) => { seen.push({ type: value.type, msg: value.msg }) })
+
+        await loadData()
+
+        const errors = seen.filter((alert) => alert.type === 'error')
+        expect(errors).toHaveLength(1)
+        expect(errors[0].msg).toContain('No store2 boot dispatch is registered')
+        expect(errors[0].msg).not.toBe(language.browserStorageUnavailable)
+        expect(world.fallbackWrites).toEqual([])
+        expect(world.indexedDbWrites).toEqual([])
+        expect(dispatchEntered.count).toBe(0)
+        expect(get(loadedStore)).toBe(false)
         expect(setDatabaseMock).not.toHaveBeenCalled()
     })
 
