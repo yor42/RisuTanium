@@ -14,6 +14,7 @@
     import PromptSettings from '../Setting/Pages/PromptSettings.svelte'
     import ModuleSettings from '../Setting/Pages/Module/ModuleSettings.svelte'
     import HotkeySettings from '../Setting/Pages/HotkeySettings.svelte'
+    import UsageStatisticsPage from '../Setting/Pages/UsageStatisticsPage.svelte'
     import AdvancedShellPage from './AdvancedShellPage.svelte'
     import DisplayShellPage from './DisplayShellPage.svelte'
     import InputShellPage from './InputShellPage.svelte'
@@ -151,6 +152,8 @@
                     <ModuleSettings />
                 {:else if current === 15}
                     <HotkeySettings />
+                {:else if current === 17}
+                    <UsageStatisticsPage />
                 {/if}
             </div>
         {/key}
