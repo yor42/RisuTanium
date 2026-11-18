@@ -117,6 +117,16 @@
 //     PICK-LOCK and the two-error cap with --name, and matches ` resource-id="<id>"` exactly. Before the dump a
 //     system file picker (com.android.documentsui or com.google.android.documentsui, oom_score_adj 0) must be in
 //     front, else exit 93 with no dump and no PICK-LOCK; that refusal counts toward the two-error cap of both forms.
+//     r18 (2026-11-18, CHORE-227 D1 save rows): --id also accepts exactly one other id, android:id/button1 (the Save button of the
+//     Samsung save picker, CREATE_DOCUMENT; KEYCODE_ENTER does not press it while the filename field is unfocused). Exact match only:
+//     android:id/button10, android:id/button2, android:id/title and every other android:id/* are refused (exit 2, no adb call). All
+//     other checks are unchanged (playground serials only, 95 and 97, the front system picker exit 93, PICK-LOCK, two-error cap).
+//     Save-screen proof, fail-closed: the same single dump must also hold a node whose resource-id is android:id/title and whose
+//     class is android.widget.EditText (the filename field). On a replace or overwrite confirmation dialog button1 means "replace",
+//     and that dialog has no such field. Without the node the device command prints ADBG-NO-SAVE-FIELD instead of bounds (the dump
+//     is still removed), nothing is located or tapped, and the guard exits 4 with `button1 refused: no save-screen filename field in
+//     the dump`: a pick error (counts toward the two-error cap, sets no lock), not a no-match. The log names `pick --id
+//     android:id/button1 (save confirm, r18)`.
 //
 //   node adbg.mjs offset --state <state> --log <log> --x <px> --y <px>
 //     Records the WebView's top-left on screen in device pixels.
@@ -531,11 +541,22 @@ const myFilesForeground = (target) => target === MYFILES_SHARE_TARGET ? visibleO
 // pick --id (MC-2303, MC-2306): exactly this grammar, matched on the raw argument; no flags. The class holds no quote,
 // blank, glob, shell or BRE metacharacter, so after the escaped prefix nothing in an id is special to grep or to sh.
 const RID = /^com\.android\.documentsui:id\/[a-z][a-z0-9_]{0,79}$/
+// r18: the one non-documentsui id pick --id accepts, the Save button of the system save picker (CREATE_DOCUMENT). It is exact
+// (no other android:id/* id) and is tapped only when the same dump also holds the save screen's filename field, because on an
+// overwrite or replace confirmation dialog the same id means "replace".
+const SAVE_BUTTON_ID = 'android:id/button1'
+const SAVE_PROOF_PATTERN = ' resource-id="android:id/title"[^>]*class="android\\.widget\\.EditText"'
+const SAVE_PROOF_MISSING = 'ADBG-NO-SAVE-FIELD'
 const PICK_ID_KEYS = ['--serial', '--log', '--state', '--id', '--own-package', '--own-ports']
 // Shared device command of both pick forms: dump, grep for the needle, print only bounds, delete the dump by name.
-const pickScript = (dump, needle) => `uiautomator dump ${dump} >/dev/null 2>&1; d=$?; `
-  + `if [ $d -eq 0 ]; then grep -o '${needle}[^>]*bounds="\\[[0-9]*,[0-9]*\\]\\[[0-9]*,[0-9]*\\]"' ${dump} 2>/dev/null | head -n 2 | grep -o 'bounds="[^"]*"'; fi; `
-  + `rm -f ${dump}; [ -e ${dump} ] && echo ADBG-RM-FAILED; echo ADBG-DUMP=$d`
+// With saveProof the bounds are printed only if the same dump file also holds the proof node; else it prints a marker instead.
+const pickScript = (dump, needle, saveProof = false) => {
+  const boundsGrep = `grep -o '${needle}[^>]*bounds="\\[[0-9]*,[0-9]*\\]\\[[0-9]*,[0-9]*\\]"' ${dump} 2>/dev/null | head -n 2 | grep -o 'bounds="[^"]*"'`
+  const body = saveProof ? `if grep -q '${SAVE_PROOF_PATTERN}' ${dump} 2>/dev/null; then ${boundsGrep}; else echo ${SAVE_PROOF_MISSING}; fi` : boundsGrep
+  return `uiautomator dump ${dump} >/dev/null 2>&1; d=$?; `
+    + `if [ $d -eq 0 ]; then ${body}; fi; `
+    + `rm -f ${dump}; [ -e ${dump} ] && echo ADBG-RM-FAILED; echo ADBG-DUMP=$d`
+}
 
 // ---- restricted serials ----
 // Every serial not listed here is a personal device and runs in restricted mode (fail-closed).
@@ -685,6 +706,7 @@ if (sub === 'pick') {
   needSerial(); needState()
   const idForm = opts.includes('--id')
   let name = null, rid = null
+  let saveForm = false
   if (myFiles && idForm) die(2, 'pick --myfiles takes --name only')
   if (idForm) {
     // Playground serials only; the strict option walk leaves no stray token, duplicate key or second form.
@@ -697,7 +719,8 @@ if (sub === 'pick') {
       seenKeys.add(k)
     }
     rid = opt('--id')
-    if (!RID.test(rid)) die(2, 'pick --id must be an exact com.android.documentsui:id/<name> resource id (a-z, 0-9, _; name 1-80 chars)')
+    if (!RID.test(rid) && rid !== SAVE_BUTTON_ID) die(2, 'pick --id must be an exact com.android.documentsui:id/<name> resource id (a-z, 0-9, _; name 1-80 chars) or, r18, exactly android:id/button1')
+    saveForm = rid === SAVE_BUTTON_ID
   } else if (myFiles) {
     // Strict walk without the one bare flag: known keys, each once with a value, no `--` section.
     const kv = opts.filter((x) => x !== '--myfiles')
@@ -729,6 +752,7 @@ if (sub === 'pick') {
       die(93, 'pick --id refused: no system file picker is the foreground package')
     }
     logLine(`PLAYGROUND serial=${serial} front=${pickerPkg} (system file picker, pick --id, MC-2303)`)
+    if (saveForm) logLine(`pick --id ${SAVE_BUTTON_ID} (save confirm, r18)`)
   }
   if (myFiles) {
     // A refusal here ran no dump: no lock, but it counts toward the two-error cap.
@@ -740,7 +764,7 @@ if (sub === 'pick') {
   }
   const dump = `/sdcard/adbg-pick-${process.pid}-${Date.now()}.xml`
   const esc = (idForm ? rid : name).replace(/\./g, '\\.')
-  const script = pickScript(dump, idForm ? ` resource-id="${esc}"` : myFiles ? ` text="${esc}"` : `text="${esc}"`)
+  const script = pickScript(dump, idForm ? ` resource-id="${esc}"` : myFiles ? ` text="${esc}"` : `text="${esc}"`, saveForm)
   logLine(`intent: pick ${what} via one device command (dump, grep, rm ${dump})`)
   const r = spawnAdb(['-s', serial, 'shell', script], { encoding: 'utf8', windowsHide: true, timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'] })
   const out = r.stdout ?? ''
@@ -754,6 +778,12 @@ if (sub === 'pick') {
   if (r.status !== 0 || !dumpOk || rmFailed) {
     s.pickErrors = (s.pickErrors ?? 0) + 1; saveState(s)
     die(4, `pick error (adb exit ${exitText}, dump ${dumpOk ? 'ok' : 'failed'}, rm ${rmText}); not a no-match`)
+  }
+  if (saveForm && out.includes(SAVE_PROOF_MISSING)) {
+    // The dump ran and was removed, but it held no save-screen filename field: a replace dialog or another screen. No tap target
+    // is reported; it is a pick error (no lock, counts toward the two-error cap), not a no-match.
+    s.pickErrors = (s.pickErrors ?? 0) + 1; saveState(s)
+    die(4, 'pick --id android:id/button1 refused: no save-screen filename field in the dump')
   }
   const hits = out.split(/\r?\n/).filter((l) => /^bounds="\[\d+,\d+\]\[\d+,\d+\]"$/.test(l.trim()))
   if (hits.length !== 1) {
