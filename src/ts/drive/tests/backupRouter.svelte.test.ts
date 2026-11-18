@@ -98,6 +98,7 @@ afterEach(() => {
     vi.doUnmock('src/ts/drive/rtbRestoreCopy')
     vi.doUnmock('src/ts/drive/rtbRestoreHold')
     vi.doUnmock('src/ts/storage/store/appStore')
+    vi.doUnmock('src/ts/importSource')
     vi.restoreAllMocks()
     if (originalLocks) {
         Object.defineProperty(window.navigator, 'locks', originalLocks)
@@ -115,6 +116,7 @@ interface Page {
     run: typeof import('src/ts/drive/restoreInProgress')
     router: typeof import('src/ts/drive/backupRouter')
     settings: typeof import('src/ts/drive/settingsRestore')
+    local: typeof import('src/ts/drive/backuplocal')
 }
 
 // The page's modules are loaded after the world starts: the world resets the module registry.
@@ -137,6 +139,7 @@ async function openPage(): Promise<Page> {
         run: await import('src/ts/drive/restoreInProgress'),
         router: await import('src/ts/drive/backupRouter'),
         settings: await import('src/ts/drive/settingsRestore'),
+        local: await import('src/ts/drive/backuplocal'),
     }
     bootActive.setStore2BootSession({ kind: 'tauri', backend: k.counted.backend, committer: k.committer } as unknown as Store2Session)
     w.pageMode.setPageStorageMode({ kind: 'store2' })
@@ -335,5 +338,98 @@ describe('B6b: a throw after the commit ends unknown, never the generic failure'
         expect(waitsOf(page).at(-1)).toBe(language.store2ImportUnconfirmed)
         expect(errorsOf(page)).not.toContain(GENERIC_FAILURE)
         expect(endedLive).not.toHaveBeenCalled()
+    })
+})
+
+describe('S13a: a file another app opened is routed to the .rtb restore by its content', () => {
+    interface OpenedFile {
+        bytes: Uint8Array
+        closes: number
+        /** Runs when the restore closes the opened source. */
+        onClose: () => void
+    }
+
+    // The opened source is read as the desktop and Android source reads it; the bytes are set once the page's own `.rtb` exists.
+    function mockOpenedFile(file: OpenedFile): void {
+        vi.doMock('src/ts/importSource', async (importOriginal) => {
+            const original = await importOriginal<typeof import('src/ts/importSource')>()
+            return {
+                ...original,
+                openDesktopImportSource: async () => ({
+                    ...original.importSourceOfBytes('uri-tail', file.bytes),
+                    close: async () => { file.closes++; file.onClose() },
+                }),
+            }
+        })
+    }
+
+    // The committer answers `committed` without writing, as the B6b case above does; the page's real store has no piece writer.
+    function stubCommit(commitRan: { value: boolean }): void {
+        vi.doMock('src/ts/storage/store/appStore', async (importOriginal) => {
+            const original = await importOriginal<typeof import('src/ts/storage/store/appStore')>()
+            const { MemoryByteStore } = await import('./rtb/rtbInstallFixtures')
+            const memory = new MemoryByteStore()
+            return { ...original, getAppStore: async () => memory }
+        })
+        vi.doMock('src/ts/drive/rtbRestoreHold', async (importOriginal) => {
+            const original = await importOriginal<typeof import('src/ts/drive/rtbRestoreHold')>()
+            return {
+                ...original,
+                rtbGuardedCommitter: (committer: Committer): Committer => ({
+                    ...committer,
+                    commit: async (): Promise<CommitResult> => {
+                        commitRan.value = true
+                        return { status: 'committed', value: await committer.readCommit() as never, bytes: new Uint8Array(), flushed: true, manifestKey: 'm', mode: 'ordinary' } as unknown as CommitResult
+                    },
+                }),
+            }
+        })
+    }
+
+    test('T-E1: a producer .rtb opened as My Backup.bin is restored by the .rtb restore: one named confirm, the page ends, and the source closes after the commit with no backupLoad entry (reproducer)', async () => {
+        const commitRan = { value: false }
+        const file: OpenedFile = { bytes: new Uint8Array(0), closes: 0, onClose: () => { } }
+        stubCommit(commitRan)
+        mockOpenedFile(file)
+        const page = await openPage()
+        file.bytes = await rtbOfPage(page)
+        const atClose: { kinds: string[] | null, committed: boolean } = { kinds: null, committed: false }
+        file.onClose = () => { atClose.kinds = page.busy.busyKinds(); atClose.committed = commitRan.value }
+
+        const end = await page.local.restoreOpenedBackup({ name: 'My Backup.bin', path: 'content://provider/document/uri-tail' })
+
+        expect(vi.mocked(page.alert.alertConfirm)).toHaveBeenCalledTimes(1)
+        expect(vi.mocked(page.alert.alertConfirm).mock.calls[0][0]).toBe(language.restoreOpenedBackupConfirm('My Backup.bin'))
+        expect(end).toBe('pageEnding')
+        expect(page.run.restorePhase()).toBe('pageEnding')
+        expect(commitRan.value).toBe(true)
+        expect(file.closes).toBe(1)
+        expect(atClose.committed).toBe(true)
+        expect(atClose.kinds).not.toContain('backupLoad')
+        expect(errorsOf(page)).not.toContain(language.backupFileNotRecognized)
+        expect(errorsOf(page)).not.toContain(GENERIC_FAILURE)
+    })
+
+    test('T-E2: work that starts after the confirm is refused by the .rtb restore and nothing is replaced (guard)', async () => {
+        const commitRan = { value: false }
+        const file: OpenedFile = { bytes: new Uint8Array(0), closes: 0, onClose: () => { } }
+        stubCommit(commitRan)
+        mockOpenedFile(file)
+        const page = await openPage()
+        file.bytes = await rtbOfPage(page)
+        const started: { busy: ReturnType<typeof page.busy.beginBusy> | null } = { busy: null }
+        vi.mocked(page.alert.alertConfirm).mockImplementationOnce(async () => {
+            started.busy = page.busy.beginBusy('backupSave')
+            return true
+        })
+
+        const end = await page.local.restoreOpenedBackup({ name: 'My Backup.bin', path: 'content://provider/document/uri-tail' })
+        started.busy?.end()
+
+        expect(errorsOf(page)).toContain(language.backupLoadWorkInProgress)
+        expect(end).toBe('pageLive')
+        expect(commitRan.value).toBe(false)
+        expect(file.closes).toBe(1)
+        expect(page.busy.isBusy()).toBe(false)
     })
 })
