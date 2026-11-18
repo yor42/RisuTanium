@@ -51,6 +51,63 @@ export function snapshotSubject(ctx: OriginContext | null): RunSubject {
     }
 }
 
+/** Where a key was found: an index into the scanned messages, or the lore entry (a `fullLore` index) whose text was recursed into. */
+export type LoreHitAt = { message: number } | { entry: number }
+
+export interface LoreQueryRecord {
+    kind: 'key' | 'secondkey' | 'additional' | 'exclude' | 'excludeAll'
+    result: boolean
+    /** The first key of this query that is not a valid regular expression; the whole query then fails. */
+    invalidRegex?: string
+    hits: { key: string, at: LoreHitAt }[]
+}
+
+export type LoreForcedBy = 'activate' | 'dont_activate' | 'keep_activate_after_match' | 'dont_activate_after_match'
+
+/** What the scan found out about one `fullLore` entry in its latest evaluation. */
+export interface LoreEntryRecord {
+    index: number
+    skipped?: 'noKey'
+    child: 'linked' | 'originalActive' | 'noOriginal' | null
+    alwaysActive: boolean
+    /** Names of the decorators that switched the entry off before any key was searched. */
+    blockedBy: string[]
+    forcedBy: LoreForcedBy | null
+    probability: number[]
+    queries: LoreQueryRecord[]
+    activated: boolean
+    tokens?: number
+}
+
+export interface LoreScanBegin {
+    total: number
+    characterCount: number
+    chatCount: number
+    budget: number
+    scanDepth: number
+}
+
+/** Every number is a `fullLore` index; `kept` is in the order of the returned `actives`. */
+export interface LoreScanFinal {
+    kept: number[]
+    cut: number[]
+    deadInjectors: number[]
+    merged: { index: number, into: number }[]
+}
+
+/**
+ * Passed to `loadLoreBookV3Prompt` to make a scan a dry run that reports what it
+ * decided. A probe never changes a decision except through `roll`, which stands
+ * in for `Math.random` in `@@probability`, and it makes the scan's flag writes
+ * skip the save mark. It needs a subject, so the scan never reads the selection.
+ */
+export interface LoreScanProbe {
+    roll(): number
+    begin(info: LoreScanBegin): void
+    entry(record: LoreEntryRecord): void
+    final(info: LoreScanFinal): void
+}
+
 export function addLorebook(type:number) {
     const selectedID = get(selectedCharID)
     if(type === 0){
@@ -116,7 +173,10 @@ export function addLorebookFolder(type:number) {
  * measured on its text parsed as part of the prompt. The decorators that count
  * turns keep counting the whole chat.
  */
-export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: PromptView){
+export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: PromptView, probe?: LoreScanProbe){
+    if(probe && !subject){
+        throw new Error('A lorebook scan probe needs a subject: the scan would otherwise run against the live selection.')
+    }
     // Resolved once, here, for the whole call -- every read below, the flag
     // writes further down, and this call's own CBS parses all share this one
     // snapshot, never a fresh resolution after one of this loop's own
@@ -132,7 +192,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
         const ctx = subject.resolve()
         char = ctx?.owner
         chat = ctx?.chat
-        flagSubject = snapshotSubject(ctx)
+        flagSubject = probe ? { ...snapshotSubject(ctx), mark: () => {} } : snapshotSubject(ctx)
     }
     else{
         const selectedID = get(selectedCharID)
@@ -143,6 +203,8 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
     const chatLore = chat?.localLore ?? []
     const moduleLorebook = getModuleLorebooks(subject)
     const fullLore = safeStructuredClone(characterLore.concat(chatLore).concat(moduleLorebook))
+    // Only the probe reads these: entry records and the final classification, never returned.
+    const probeIndexOf = probe ? new Map<object, number>() : null
     const currentChat = chat?.message ?? []
     let scannedMessages: Message[] | undefined
     const messagesToScan = (): Message[] => {
@@ -154,6 +216,13 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
     }
     const loreDepth = char?.loreSettings?.scanDepth ?? DBState.db.loreBookDepth
     const loreToken = char?.loreSettings?.tokenBudget ?? DBState.db.loreBookToken
+    probe?.begin({
+        total: fullLore.length,
+        characterCount: characterLore.length,
+        chatCount: chatLore.length,
+        budget: loreToken,
+        scanDepth: loreDepth,
+    })
     const fullWordMatchingSetting = char?.loreSettings?.fullWordMatching ?? false
     //module and chat entries follow the character's option; no per-entry or per-module field exists
     const fullWordWordChar = char?.loreSettings?.fullWordAsciiBoundary ? ASCII_WORD : UNICODE_WORD
@@ -161,10 +230,12 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
     const wordStartIncludes = char?.loreSettings?.cjkWordStart === true ? createWordStartIncludes(defaultWordBoundaries) : null
     const chatLength = currentChat.length + 1 //includes first message
     const recursiveScanning = char?.loreSettings?.recursiveScanning ?? true
+    // `index` is the `fullLore` index the text came from; it is read only to name a hit's entry and is never copied into the scanned texts.
     let recursivePrompt:{
         prompt: string,
         source: string,
-        data: string
+        data: string,
+        index: number
     }[] = []
     let matchLog:{
         prompt: string,
@@ -180,7 +251,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
         fullWordMatching:boolean
         all?:boolean
         dontSearchWhenRecursive: boolean
-    }) => {
+    }, capture?: { hits: LoreQueryRecord['hits'], invalidRegex?: string }) => {
         //a depth beyond the message count must scan every message, not wrap around from the end
         const sliced = messages.slice(Math.max(0, messages.length - arg.searchDepth),messages.length)
         const newKeys = []
@@ -231,6 +302,10 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
             }
         })
         const plainKey = (key:string) => arg.caseSensitive ? key : key.toLocaleLowerCase()
+        // Only a probe's capture calls this. `k` indexes `mList`: the sliced messages first, then the recursed entries.
+        const hitAt = (k:number): LoreHitAt => k < sliced.length
+            ? { message: Math.max(0, messages.length - arg.searchDepth) + k }
+            : { entry: recursivePrompt[k - sliced.length].index }
 
         if(arg.regex){
             const regexKeys: { key: string, regex: RegExp|null }[] = []
@@ -245,6 +320,9 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                 try {
                     regexKeys.push({ key, regex: new RegExp(pattern, flags) })
                 } catch (error) {
+                    if(capture){
+                        capture.invalidRegex = key
+                    }
                     return false
                 }
             }
@@ -261,6 +339,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                                 source: mText.source,
                                 activated: key
                             })
+                            capture?.hits.push({ key, at: hitAt(i) })
                             return true
                         }
                     }
@@ -270,6 +349,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                             source: mText.source,
                             activated: key
                         })
+                        capture?.hits.push({ key, at: hitAt(i) })
                         return true
                     }
                 }
@@ -282,7 +362,9 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
         let allMode = arg.all ?? false
         let allModeMatched = true
 
+        let mIndex = -1
         for(const m of mList){
+            mIndex++
             let mText = m.data
             if(arg.fullWordMatching){
                 for(const key of arg.keys){
@@ -292,6 +374,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                             source: m.source,
                             activated: key
                         })
+                        capture?.hits.push({ key, at: hitAt(mIndex) })
                         if(!allMode){
                             return true
                         }
@@ -311,6 +394,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                             source: m.source,
                             activated: key
                         })
+                        capture?.hits.push({ key, at: hitAt(mIndex) })
                         if(!allMode){
                             return true
                         }
@@ -355,8 +439,29 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                 continue
             }
             if(!fullLore[i].alwaysActive && !fullLore[i].key){
+                probe?.entry({
+                    index: i,
+                    skipped: 'noKey',
+                    child: null,
+                    alwaysActive: false,
+                    blockedBy: [],
+                    forcedBy: null,
+                    probability: [],
+                    queries: [],
+                    activated: false,
+                })
                 continue
             }
+            const record: LoreEntryRecord | null = probe ? {
+                index: i,
+                child: null,
+                alwaysActive: false,
+                blockedBy: [],
+                forcedBy: null,
+                probability: [],
+                queries: [],
+                activated: false,
+            } : null
             let activated = true
             let pos = ''
             let inject:{
@@ -375,6 +480,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                 keys:string[],
                 negative:boolean,
                 all?:boolean
+                kind:LoreQueryRecord['kind']
             }[] = []
             let fullWordMatching = fullWordMatchingSetting
             let dontSearchWhenRecursive = false
@@ -383,6 +489,9 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
             
             if(fullLore[i].mode === 'child'){
                 activated = false
+                if(record){
+                    record.child = 'noOriginal'
+                }
                 for(let j=0;j<i;j++){
                     if(fullLore[j].id === fullLore[i].id){
                         if(!activatedIndexes.includes(j)){
@@ -390,10 +499,19 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                             fullLore[i].content = fullLore[j].content
                             fullLore[i].alwaysActive = true
                             activated = true
+                            if(record){
+                                record.child = 'linked'
+                            }
+                        }
+                        else if(record){
+                            record.child = 'originalActive'
                         }
                         break
                     }
                 }
+            }
+            if(record){
+                record.alwaysActive = fullLore[i].alwaysActive === true
             }
             let itemRecursive:'global'|true|false = 'global'
             const content = CCardLib.decorator.parse(fullLore[i].content, (name, arg) => {
@@ -410,6 +528,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                         }
                         if(chatLength < int){
                             activated = false
+                            record?.blockedBy.push(name)
                         }
                         return
                     }
@@ -420,6 +539,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                         }
                         if(chatLength % int !== 0){
                             activated = false
+                            record?.blockedBy.push(name)
                         }
                         return
                     }
@@ -427,6 +547,9 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                         const vara = getChatVar('__internal_ka_' + (fullLore[i].id ?? pickHashRand(5555,fullLore[i].content).toString()), flagSubject)
                         if(vara === 'true'){
                             forceState = 'activate'
+                            if(record){
+                                record.forcedBy = 'keep_activate_after_match'
+                            }
                         }
                         else{
                             keepActivateAfterMatch = true
@@ -437,6 +560,9 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                         const vara = getChatVar('__internal_da_' + (fullLore[i].id ?? pickHashRand(5555,fullLore[i].content).toString()), flagSubject)
                         if(vara === 'true'){
                             forceState = 'deactivate'
+                            if(record){
+                                record.forcedBy = 'dont_activate_after_match'
+                            }
                         }
                         else{
                             dontActivateAfterMatch = true
@@ -481,6 +607,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                         }
                         if((chat ? firstMessageIndexOf(char, chat) : -1) + 1 !== int){
                             activated = false
+                            record?.blockedBy.push(name)
                         }
                         return
                     }
@@ -542,14 +669,16 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                     case 'additional_keys':{
                         searchQueries.push({
                             keys: arg,
-                            negative: false
+                            negative: false,
+                            kind: 'additional'
                         })
                         return
                     }
                     case 'exclude_keys':{
                         searchQueries.push({
                             keys: arg,
-                            negative: true
+                            negative: true,
+                            kind: 'exclude'
                         })
                         return
                     }
@@ -557,7 +686,8 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                         searchQueries.push({
                             keys: arg,
                             negative: true,
-                            all: true
+                            all: true,
+                            kind: 'excludeAll'
                         })
                         return
                     }
@@ -575,10 +705,16 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                     }
                     case 'activate':{
                         forceState = 'activate'
+                        if(record){
+                            record.forcedBy = 'activate'
+                        }
                         return
                     }
                     case 'dont_activate':{
                         forceState = 'deactivate'
+                        if(record){
+                            record.forcedBy = 'dont_activate'
+                        }
                         return
                     }
                     case 'disable_ui_prompt':{
@@ -589,8 +725,10 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                         return false
                     }
                     case 'probability':{
-                        if(Math.random() * 100 > parseInt(arg[0])){
+                        record?.probability.push(parseInt(arg[0]))
+                        if((probe ? probe.roll() : Math.random()) * 100 > parseInt(arg[0])){
                             activated = false
+                            record?.blockedBy.push(name)
                         }
                         return
                     }
@@ -624,17 +762,20 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
             else{
                 searchQueries.push({
                     keys: splitLoreKeys(fullLore[i].key, fullLore[i].useRegex),
-                    negative: false
+                    negative: false,
+                    kind: 'key'
                 })
 
                 if(fullLore[i].secondkey && fullLore[i].selective){
                     searchQueries.push({
                         keys: splitLoreKeys(fullLore[i].secondkey, fullLore[i].useRegex),
-                        negative: false
+                        negative: false,
+                        kind: 'secondkey'
                     })
                 }
-    
+
                 for(const query of searchQueries){
+                    const capture: { hits: LoreQueryRecord['hits'], invalidRegex?: string } | undefined = record ? { hits: [] } : undefined
                     const result = searchMatch(messagesToScan(), {
                         keys: query.keys,
                         searchDepth: scanDepth,
@@ -643,7 +784,14 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                         fullWordMatching: fullWordMatching,
                         all: query.all,
                         dontSearchWhenRecursive: dontSearchWhenRecursive
-                    })
+                    }, capture)
+                    if(record && capture){
+                        const queryRecord: LoreQueryRecord = { kind: query.kind, result, hits: capture.hits }
+                        if(capture.invalidRegex !== undefined){
+                            queryRecord.invalidRegex = capture.invalidRegex
+                        }
+                        record.queries.push(queryRecord)
+                    }
                     if(query.negative){
                         if(result){
                             activated = false
@@ -667,7 +815,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
             }
 
             if(activated){
-                actives.push({
+                const active = {
                     depth: depth,
                     pos: pos,
                     prompt: content,
@@ -681,7 +829,9 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                     priority: priority,
                     source: fullLore[i].comment || `lorebook ${i}`,
                     inject: inject ?? null
-                })
+                }
+                actives.push(active)
+                probeIndexOf?.set(active, i)
                 activatedIndexes.push(i)
 
                 if(keepActivateAfterMatch){
@@ -703,8 +853,17 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                         prompt: content,
                         data: content,
                         source: fullLore[i].comment || `lorebook ${i}`,
+                        index: i,
                     })
                 }
+            }
+
+            if(record){
+                record.activated = activated
+                if(activated){
+                    record.tokens = actives[actives.length - 1].tokens
+                }
+                probe?.entry(record)
             }
         }
     }
@@ -766,6 +925,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
 
     //I know this will make token count wrong, but performance is more important here
 
+    const probeMerged: LoreScanFinal['merged'] = []
     console.log('loreinjectionLores', loreinjectionLores)
     for(const lore of loreinjectionLores){
         const foundLoreIndex = activesResorted.findIndex((l) => {
@@ -773,6 +933,9 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
         })
         if(foundLoreIndex !== -1){
             const foundLore = activesResorted[foundLoreIndex]
+            if(probeIndexOf){
+                probeMerged.push({ index: probeIndexOf.get(lore), into: probeIndexOf.get(foundLore) })
+            }
             switch(lore.inject.operation){
                 case 'append':{
                     foundLore.prompt += ' ' + lore.prompt
@@ -790,10 +953,20 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
         }
     }
 
-    return {
+    const result = {
         actives: activesResorted.reverse(),
         matchLog: matchLog,
     }
+    if(probe && probeIndexOf){
+        const survivors = new Set<typeof actives[number]>(activesFiltered)
+        probe.final({
+            kept: result.actives.map((act) => probeIndexOf.get(act)),
+            cut: activesSorted.filter((act) => !survivors.has(act) && !deadInjectors.has(act)).map((act) => probeIndexOf.get(act)),
+            deadInjectors: [...deadInjectors].map((act) => probeIndexOf.get(act)),
+            merged: probeMerged,
+        })
+    }
+    return result
 
 }
 

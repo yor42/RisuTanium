@@ -4,17 +4,12 @@
  * basename the sweeps compare. A value of any shape is read through `retainedNamesOf`, and an upstream field of the bare
  * name `assetRetained` is never read as ours. Every test is a feature guard: the field did not exist before.
  *
- * What runs for real: `getUncleanablesSync`, `buildAssetKeepSet`, `buildColdStub` and `coldUnitCharacter` (the cold unit
- * a stub points at), `sweepTauriAssets` and `sweepForageAssetKey`. What is replaced: the page's database, cold-storage
- * reads and every service `globalApi.svelte` imports.
+ * What runs for real: `getUncleanablesSync`, `buildColdStub` and `coldUnitCharacter` (the cold unit a stub points at)
+ * and the store2 closure keep-set. What is replaced: the page's database and every service `globalApi.svelte` imports.
  */
-import { afterEach, beforeEach, describe, test, expect, vi } from 'vitest'
+import { afterEach, describe, test, expect, vi } from 'vitest'
 import { writable } from 'svelte/store'
 import type { Database } from 'src/ts/storage/database.svelte'
-
-const h = vi.hoisted(() => ({
-    cold: new Map<string, unknown>(),
-}))
 
 vi.mock('localforage', () => ({
     default: { createInstance: () => ({ getItem: vi.fn(async () => null), setItem: vi.fn(), removeItem: vi.fn() }) },
@@ -58,13 +53,7 @@ vi.mock(import('src/ts/storage/dbChangeEffects.svelte'), () => ({
     registerDbChangeEffects: vi.fn(),
 }) as unknown as typeof import('src/ts/storage/dbChangeEffects.svelte'))
 
-vi.mock(import('src/ts/process/coldstorage.svelte'), async (importOriginal) => ({
-    ...await importOriginal(),
-    getColdStorageItem: vi.fn(async (key: string) => h.cold.get(key) ?? null),
-}))
-
-import { buildAssetKeepSet, getBasename, getUncleanablesSync } from 'src/ts/globalApi.svelte'
-import { sweepForageAssetKey, sweepTauriAssets } from 'src/ts/storage/assetSweep'
+import { getBasename, getUncleanablesSync } from 'src/ts/globalApi.svelte'
 import { buildClosureAssetKeepSet } from 'src/ts/storage/store2/sweep'
 import { commitKeyOf, Tree } from 'src/ts/storage/tests/store2/sweepFixtures'
 import { buildColdStub, coldUnitCharacter } from 'src/ts/process/coldCharacter'
@@ -75,10 +64,6 @@ import { ASSET_RETAINED_KEY } from 'src/ts/studio/assets/assetOwnerKeys'
 
 afterEach(() => {
     resetPageStorageModeForTests()
-})
-
-beforeEach(() => {
-    h.cold.clear()
 })
 
 type Slot = Record<string, unknown>
@@ -124,27 +109,22 @@ describe('getUncleanablesSync reads the retained paths', () => {
         expect(getUncleanablesSync(db).sort()).toEqual(['E.png', 'M.png'])
     })
 
-    test('a module stub keeps the set incomplete and its retained field is never asked for', async () => {
+    test('a module stub holds no retained field and its retained field is never asked for', () => {
         const reads: string[] = []
         const stub = watchBodyKeys(stubModule('s1'), reads)
         const db = dbOf({ modules: [stub as unknown as Slot, { id: 'm1', name: 'M', [ASSET_RETAINED_KEY]: retained('assets/M.png') }] })
-        const keep = await buildAssetKeepSet(db)
-        expect(keep.complete).toBe(false)
-        expect(Array.from(keep.uncleanable)).toEqual(['M.png'])
+        expect(getUncleanablesSync(db)).toEqual(['M.png'])
         expect(reads).toEqual([])
     })
 
-    test('a group slot and an archived character resolved through the cold read keep their retained paths', async () => {
+    test('a group slot and an archived character resolved through its cold unit keep their retained paths', () => {
         const archived = character('cold-1', { [ASSET_RETAINED_KEY]: retained('assets/A.png'), chats: [{ id: 'c', message: [] }] })
-        h.cold.set('unit-1', { character: coldUnitCharacter(archived as never) })
         const stub = buildColdStub(archived as never, 'unit-1', [])
         expect(Object.hasOwn(stub, ASSET_RETAINED_KEY)).toBe(false)
         const db = dbOf({ characters: [group('g1', { [ASSET_RETAINED_KEY]: retained('assets/G.png') }), stub as unknown as Slot] })
+        const resolved = [db.characters[0], coldUnitCharacter(archived as never)] as unknown as NonNullable<Parameters<typeof getUncleanablesSync>[1]>['chars']
 
-        const keep = await buildAssetKeepSet(db)
-
-        expect(keep.complete).toBe(true)
-        expect(Array.from(keep.uncleanable).sort()).toEqual(['A.png', 'G.png'])
+        expect(getUncleanablesSync(db, { chars: resolved }).sort()).toEqual(['A.png', 'G.png'])
     })
 
     test('an upstream field of the bare name is never read as ours, by the keep-set or by the list derivation', () => {
@@ -159,27 +139,7 @@ describe('getUncleanablesSync reads the retained paths', () => {
     })
 })
 
-describe('the sweeps keep a path that only memory holds', () => {
-    const listing = [{ name: 'K.png' }, { name: 'orphan.png' }]
-
-    test('the Tauri sweep keeps the retained file in the per-batch live set although the keep-set built earlier lacks it', async () => {
-        const db = dbOf({ characters: [character('a', { [ASSET_RETAINED_KEY]: retained('assets/K.png') })] })
-        const removed: string[] = []
-        const live = vi.fn(() => new Set(getUncleanablesSync(db)))
-
-        await sweepTauriAssets({
-            uncleanable: new Set<string>(),
-            listAssets: async () => listing,
-            removeAsset: async (path) => { removed.push(path) },
-            getBasename,
-            liveUncleanable: live,
-            log: () => {},
-        })
-
-        expect(live).toHaveBeenCalledTimes(1)
-        expect(removed).toEqual(['assets/orphan.png'])
-    })
-
+describe('the store2 keep-set keeps a path that only memory holds', () => {
     test('the store2 keep-set keeps a retained file whose stored lists no longer name it, through the resident references', async () => {
         const tree = new Tree()
         const current = tree.addManifest({ characters: [{ u: 'c1', assets: ['assets/other.png'] }] }, 1)
@@ -193,24 +153,5 @@ describe('the sweeps keep a path that only memory holds', () => {
         expect(result.status === 'complete' && result.keep.holds('assets/K.png')).toBe(true)
         expect(result.status === 'complete' && result.keep.holds('assets/other.png')).toBe(true)
         expect(result.status === 'complete' && result.keep.holds('assets/orphan.png')).toBe(false)
-    })
-
-    test('the web and Node sweep keeps the retained file per key, and removes it once the memory no longer holds it', async () => {
-        const holder = character('a', { [ASSET_RETAINED_KEY]: retained('assets/K.png') })
-        const db = dbOf({ characters: [holder] })
-        const removed: string[] = []
-        const deps = {
-            uncleanable: new Set<string>(),
-            getBasename,
-            removeAsset: async (key: string) => { removed.push(key) },
-            liveUncleanable: () => new Set(getUncleanablesSync(db)),
-        }
-
-        await sweepForageAssetKey('assets/K.png', deps)
-        expect(removed).toEqual([])
-
-        delete holder[ASSET_RETAINED_KEY]
-        await sweepForageAssetKey('assets/K.png', deps)
-        expect(removed).toEqual(['assets/K.png'])
     })
 })

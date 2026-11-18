@@ -329,7 +329,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
 
 import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup } from 'src/ts/drive/backuplocal'
 import { overrideBackupWindowBytes } from 'src/ts/drive/backupContainer'
-import { LocalWriter, dbWriteLock, wasAssetWrittenThisPage } from 'src/ts/globalApi.svelte'
+import { LocalWriter, dbWriteLock, listAssetsWrittenThisPage } from 'src/ts/globalApi.svelte'
 import { BlobDownloadWriter, type ExportByteWriter, type TauriWriter } from 'src/ts/exportWriters'
 import { language } from 'src/lang'
 import { RestoreAssetPipeline } from 'src/ts/drive/assetBatchPipeline'
@@ -740,7 +740,7 @@ describe('a restore through the batch commands', () => {
     test('records every key for the startup sweep before the batch that carries it is sent', async () => {
         const noted: boolean[] = []
         batchFake.ctl.beforeWrite = (call) => {
-            noted.push(...call.keys.map((key) => wasAssetWrittenThisPage(key)))
+            noted.push(...call.keys.map((key) => listAssetsWrittenThisPage().includes(key)))
         }
 
         await restoreBytes(backupOf([['noted1.png', filled(8, 1)], ['noted2.png', filled(8, 2)]]))
@@ -1032,7 +1032,7 @@ describe('a restore of an asset above CHUNK_MAX', () => {
         expect(same(storedBytes('huge.bin'), big)).toBe(true)
         expect(Math.max(...desktop.payloads)).toBeLessThanOrEqual(CHUNK_MAX)
         expect(tempFiles()).toEqual([])
-        expect(wasAssetWrittenThisPage('assets/huge.bin')).toBe(true)
+        expect(listAssetsWrittenThisPage()).toContain('assets/huge.bin')
         expect(fakeFs.files.has('blocks/head')).toBe(true)
         expect(alertErrorMock).not.toHaveBeenCalled()
     })

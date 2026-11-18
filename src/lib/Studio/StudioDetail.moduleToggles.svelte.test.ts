@@ -53,7 +53,11 @@ vi.mock('src/lang', async () => {
     const base = helpers.studioLanguageMock()
     const call = (key: string) => (...args: (string | number)[]) => `${key}(${args.join(',')})`
     const named: Record<string, unknown> = { sidebarUi: { notAllowed: 'notAllowed', noAssets: 'noAssets' } }
-    for (const key of ['studioTgDeleted', 'studioTgMoved', 'studioTgOptionN', 'studioTgSummarySelect', 'studioTgSummaryGroup', 'studioTgUnreadableCount', 'studioTgLineN']) named[key] = call(key)
+    for (const key of [
+        'studioTgDeleted', 'studioTgMoved', 'studioTgOptionN', 'studioTgSummarySelect', 'studioTgSummaryGroup', 'studioTgUnreadableCount', 'studioTgLineN',
+        'studioTgCarryAskKey', 'studioTgCarryAskOptions', 'studioTgCarryAskKind', 'studioTgCarryAskDrop', 'studioTgCarryAskUnclear',
+        'studioTgCarryAskOptionsLate', 'studioTgCarryAskOptionsLateRenamed', 'studioTgCarryOverwrite', 'studioTgCarryShared', 'studioTgCarryOldStays',
+    ]) named[key] = call(key)
     return { language: new Proxy(named, { get: (target, key) => (typeof key === 'symbol' ? undefined : key in target ? target[key] : base[key]) }) }
 })
 
@@ -65,7 +69,7 @@ import type { RisuModule } from 'src/ts/process/modules'
 import { openStudioModuleId, publishOpenModuleId, resetOpenModuleIdForTests } from 'src/ts/studio/assets/openModuleForm.svelte'
 import { createSaveAck, type ModuleCommitVerdict, type SaveAck, type SaveAckDeps } from 'src/ts/studio/edit/saveAck.svelte'
 import { compositionStart, composeText } from '../../ts/ime/tests/imeEventSequence'
-import { makeCharacter, makeInput, makePreset, residentModule, studioDbOf, stubModule } from 'src/ts/studio/studioFixtures.test-helpers'
+import { makeChat, makeCharacter, makeInput, makePreset, residentModule, studioDbOf, stubModule } from 'src/ts/studio/studioFixtures.test-helpers'
 import { openStudio, resetStudioScreenForTests, setStudioSelection } from 'src/ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from 'src/ts/studio/studioSwitch.svelte'
 import { createToastHost, resetToastHostForTests, type ToastClock, type ToastHost } from 'src/ts/toast/toastHost.svelte'
@@ -74,6 +78,8 @@ import { characterOwnerKey, moduleOwnerKey } from '../../ts/studio/history/owner
 import { currentVisitAck, resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioModuleAckForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, drainMicrotasks, type FakeClock } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../ts/studio/history/tests/studioStoreDoubles'
+import { currentFavourites, syncFavourites, updateFavourites } from '../../ts/chatShell/toggleFavouritesStore.svelte'
+import { PENDING_PREFIX, readPending, resetToggleCarrySessionForTests } from '../../ts/studio/toggleCarryPending'
 import { setSessionAssetSizeJobForTests } from './assets/StudioAssetList.svelte'
 import type { AssetSizeJob, StoredSize } from '../../ts/studio/assets/assetSizes'
 import StudioScreen from './StudioScreen.svelte'
@@ -272,6 +278,10 @@ beforeEach(() => {
 afterEach(async () => {
     await unmountAll()
     uninstallDbWriteHook()
+    // The pending record lives in device storage and a page-lifetime map; the favourites list is a shared reactive copy.
+    localStorage.clear()
+    resetToggleCarrySessionForTests()
+    syncFavourites()
     setSessionAssetSizeJobForTests(undefined)
     resetStudioHistoryAccessorForTests()
     resetCharacterSaveMarksForTest()
@@ -618,6 +628,66 @@ describe('R-C13 refusals of a module builder, in module wording', () => {
         await settle()
         expect(toasts.visible.at(-1)?.text).toBe('studioRefusalModuleNotSelected')
         expect(slotText(0)).toBe(afterDelete)
+    })
+})
+
+describe('F-M1 a module owner carries a renamed key to every loaded character', () => {
+    const pinnedChat = (id: string) => ({ ...makeChat({ id }), GLGlobalVariables: { toggle_a: '1' } })
+
+    // Two loaded characters, each with one chat that pinned the value of `a`, and a global value for it.
+    function seedCarryFixture(): void {
+        const input = makeInput({
+            character: makeCharacter({
+                chaId: 'A',
+                customModuleToggle: 'ch=Char',
+                chats: [pinnedChat('chat-a')],
+            } as Parameters<typeof makeCharacter>[0]),
+            modules: [residentModule('M1', { customModuleToggle: 'a=Mode\n' }), residentModule('M2', { customModuleToggle: 'm2=Two' })],
+            enabledModules: ['M1', 'M2'],
+        })
+        const other = makeCharacter({
+            chaId: 'B',
+            chats: [pinnedChat('chat-b')],
+        } as Parameters<typeof makeCharacter>[0])
+        const seeded = {
+            ...studioDbOf(input),
+            modules: [...input.modules],
+            characters: [...studioDbOf(input).characters, { ...other, type: 'character' }],
+            globalChatVariables: { toggle_a: '1' },
+        }
+        db.db = seeded as unknown as ReturnType<typeof fixtureDb>
+    }
+
+    const chatVariables = (index: number) => ((db.db.characters[index] as unknown as { chats: { GLGlobalVariables: Record<string, string> }[] }).chats[0]).GLGlobalVariables
+    const globalVariables = () => (db.db as unknown as { globalChatVariables: Record<string, string> }).globalChatVariables
+
+    test('the banner names the loaded characters, the record is kept under the module, Carry writes the global value and every loaded chat, and the module star follows', async () => {
+        seedCarryFixture()
+        updateFavourites({ type: 'add', ref: { s: 'module:M1', k: 'a' } })
+        updateFavourites({ type: 'add', ref: { s: 'character:A', k: 'a' } })
+        await mountModuleBuilder(makeToastHost())
+        resetMarks()
+        parts('studio-toggle-row')[0].click()
+        flushSync()
+        const key = part('studio-toggle-key') as HTMLInputElement
+        key.value = 'c'
+        key.dispatchEvent(new Event('input', { bubbles: true }))
+        key.dispatchEvent(new FocusEvent('blur'))
+        flushSync()
+        expect(slotText(0)).toBe('c=Mode\n')
+        expect(part('studio-toggle-carry-line')?.textContent).toBe('studioTgCarryAskKey(a,c)')
+        expect(part('studio-toggle-carry-reach')?.textContent).toBe('studioTgCarryReachLoaded')
+        expect(readPending(M1).status).toBe('ok')
+        expect(localStorage.getItem(PENDING_PREFIX + M1)).not.toBeNull()
+
+        part('studio-toggle-carry-yes')?.click()
+        await settle()
+        expect(globalVariables()).toEqual({ toggle_a: '1', toggle_c: '1' })
+        expect(chatVariables(0)).toEqual({ toggle_a: '1', toggle_c: '1' })
+        expect(chatVariables(1)).toEqual({ toggle_a: '1', toggle_c: '1' })
+        expect(currentFavourites().items).toEqual([{ s: 'module:M1', k: 'c' }, { s: 'character:A', k: 'a' }])
+        expect(tracker.character).toEqual(expect.arrayContaining(['A', 'B']))
+        expect(readPending(M1).status).toBe('absent')
     })
 })
 

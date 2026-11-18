@@ -545,7 +545,7 @@ export class RisuSaveEncoder {
     // call actually encoded (by identity, not a copy). Consumed by saveDb()
     // to seed the identity tracker's WeakSet (dbChangeEffects.svelte.ts) so a
     // replacement that happens WHILE init() is still running isn't treated as
-    // "already seen" once that effect starts, and by prepareSaveIteration()'s
+    // "already seen" once that effect starts, and by a save pass's
     // post-reload filter, so a full reload doesn't double-encode an
     // already-marked character the same save iteration. Purely additional
     // bookkeeping; does not change what init() encodes or how. Released via
@@ -889,7 +889,7 @@ export class RisuSaveEncoder {
             // this holder's own `String(chaId)` key. `toSave.character`
             // itself is never rewritten to hold `String(chaId)` in place: a
             // failed write folds it back into the live tracker via
-            // `mergeUnsavedChanges`, and `prepareSaveIteration`'s no-reload
+            // `mergeUnsavedChanges`, and a save pass's no-reload
             // filter compares it against raw chaIds -- either one would drop
             // a numeric chaId's mark turned into `"5"` here.
             const markIndex = toSave.character.findIndex((m) => String(m) === key);

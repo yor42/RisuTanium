@@ -349,7 +349,7 @@ describe('saveAsset on Tauri', () => {
         const seenWhileWriting: boolean[] = []
         const realWrite = fakeFs.module.writeFile
         fakeFs.module.writeFile = async (path, data, options) => {
-            seenWhileWriting.push(api.wasAssetWrittenThisPage(PNG_KEY))
+            seenWhileWriting.push(api.listAssetsWrittenThisPage().includes(PNG_KEY))
             return await realWrite(path, data, options)
         }
 
@@ -360,8 +360,8 @@ describe('saveAsset on Tauri', () => {
         }
 
         expect(seenWhileWriting).toEqual([true])
-        expect(api.wasAssetWrittenThisPage(PNG_KEY)).toBe(true)
-        expect(api.wasAssetWrittenThisPage(`assets/${sha256Hex(OTHER)}.png`)).toBe(false)
+        expect(api.listAssetsWrittenThisPage()).toContain(PNG_KEY)
+        expect(api.listAssetsWrittenThisPage()).not.toContain(`assets/${sha256Hex(OTHER)}.png`)
     })
 
     test('new behaviour: the key of a save that was skipped because the file exists is recorded too', async () => {
@@ -371,7 +371,7 @@ describe('saveAsset on Tauri', () => {
 
         await api.saveAsset(PNG)
 
-        expect(api.wasAssetWrittenThisPage(PNG_KEY)).toBe(true)
+        expect(api.listAssetsWrittenThisPage()).toContain(PNG_KEY)
     })
 })
 
@@ -468,7 +468,7 @@ describe('saveAsset input', () => {
         const handle = await mapStore()
         const seen: boolean[] = []
         handle.write.mockImplementation(async (key: string) => {
-            seen.push(api.wasAssetWrittenThisPage(key))
+            seen.push(api.listAssetsWrittenThisPage().includes(key))
             return { version: null }
         })
         appStore.injectAppStore(handle.store)

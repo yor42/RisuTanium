@@ -1,6 +1,7 @@
 /**
  * The shipped capability files grant nothing to remote origins, keep the process tools on desktop targets only,
- * let the http scope reach http and https on any port and nothing else, and the tracked schema mirrors them.
+ * let the http scope reach http and https on any port and nothing else, open external links only through the
+ * opener's open_url scoped to http, https, mailto and tel (no shell open grant), and the tracked schema mirrors them.
  *
  * Reads the real capability files and the schema the build writes. Tests titled `guard:` pass with or without
  * the split and pin behaviour that must be preserved.
@@ -67,10 +68,43 @@ describe('capability files', () => {
         expect(spawn.allow!.map((entry) => (entry as { name?: unknown }).name)).toEqual(SPAWN_NAMES)
     })
 
-    test('guard: what applies to Android keeps shell open and the data folder scope', () => {
+    test('what applies to Android grants the opener open_url', () => {
         const android = capabilities.filter(appliesToAndroid)
         const ids = android.flatMap((capability) => capability.permissions.map(idOf))
-        expect(ids).toContain('shell:allow-open')
+        expect(ids).toContain('opener:allow-open-url')
+    })
+
+    test('the opener grant is exactly open_url scoped to http, https, mailto and tel', () => {
+        const opener = capabilities.flatMap((capability) => capability.permissions.map((permission) => ({ capability, permission })))
+            .filter(({ permission }) => idOf(permission).startsWith('opener:'))
+        expect(opener).toHaveLength(1)
+        const { capability, permission } = opener[0]
+        expect(typeof permission).toBe('object')
+        const entry = permission as Exclude<Permission, string>
+        expect(Object.keys(entry).sort()).toEqual(['allow', 'identifier'])
+        expect(entry.identifier).toBe('opener:allow-open-url')
+        const allow = entry.allow as { url?: unknown }[]
+        for (const item of allow) {
+            expect(Object.keys(item)).toEqual(['url'])
+        }
+        expect(allow.map((item) => item.url).sort()).toEqual(['http://*', 'https://*', 'mailto:*', 'tel:*'])
+        const platforms = capability.platforms
+        expect(!platforms || ['android', 'windows', 'macOS', 'linux'].every((platform) => platforms.includes(platform))).toBe(true)
+    })
+
+    test('the only shell permissions are the desktop process tools', () => {
+        // No opener permission can grant a command named `open`, and the shell's `open` is handled
+        // in Rust, so neither Kotlin `open` is reachable from JS; this test keeps any shell open grant out.
+        const shellIds = capabilities.flatMap((capability) => capability.permissions.map(idOf))
+            .filter((id) => id.startsWith('shell:'))
+        expect(shellIds.length).toBeGreaterThan(0)
+        for (const id of shellIds) {
+            expect(PROCESS_TOOLS, id).toContain(id)
+        }
+    })
+
+    test('guard: what applies to Android keeps the data folder scope', () => {
+        const android = capabilities.filter(appliesToAndroid)
         const scopes = android.flatMap((capability) => capability.permissions)
             .filter((permission): permission is Exclude<Permission, string> => typeof permission !== 'string' && permission.identifier === 'fs:scope')
         const allowed = scopes.flatMap((scope) => (scope.allow ?? []).filter((entry): entry is string => typeof entry === 'string'))

@@ -18,6 +18,8 @@ import { limitedField, sendArgKey, sendKeyLine } from "./secretKey"
 import { beginToolRound, endStreamForGate, gateResult, toolBlockGate } from "./toolLoop"
 import { isAndroidTransport } from "src/ts/storage/tauriByteTransport"
 import { parseJsonBody, readBodyText } from "src/ts/network/frozenBody"
+import { parseGoogleUsage } from "../../usage/usageParse"
+import type { UsageMeter } from "../../usage/usageTypes"
 
 /** Vertex access token minted from a referenced service-account key. Memory only; never stored. */
 let vertexMemoryToken: { reference: string, email: string, token: string, expires: number } | null = null
@@ -717,8 +719,9 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
 
         const transtream = getTranStream({
             modelInfo: arg.modelInfo,
-            saveSignature: arg.saveSignatures ?? false
-        }) 
+            saveSignature: arg.saveSignatures ?? false,
+            usage: arg.usageMeter
+        })
 
         f.body.pipeTo(transtream.writable).catch(() => {})
 
@@ -853,6 +856,16 @@ async function requestGoogle(url:string, body:any, headers:{[key:string]:string}
         parts = parts.concat(p)
     }
     parts = parts.filter((p) => p)
+
+    // The last `usageMetadata` of the response is the cumulative one.
+    try {
+        const items:{usageMetadata?:unknown}[] = Array.isArray(resData) ? resData : [resData]
+        const lastWithUsage = items.filter((item) => item?.usageMetadata).pop()
+        const usage = parseGoogleUsage(lastWithUsage?.usageMetadata)
+        if(usage){
+            arg.usageMeter?.report(usage)
+        }
+    } catch (error) {}
 
     const calls: GeminiFunctionCall[] = []
     for (const p of parts) {
@@ -1137,6 +1150,7 @@ function applyGeminiLine(
 function getTranStream(args:{
     modelInfo:LLMModel,
     saveSignature:boolean
+    usage?:UsageMeter
 }):TransformStream<Uint8Array, StreamResponseChunk> {
     // Only the incomplete last line is kept between reads: each complete line is folded into `committed`
     // once, and the tail is applied to a copy so it never changes what later reads see.
@@ -1179,6 +1193,16 @@ function getTranStream(args:{
         },
         flush() {
             carry += decoder.decode();
+            // The cumulative usage of the committed lines only, parsed once.
+            const rawUsage = committed['__usageMetadata']
+            if(rawUsage){
+                try {
+                    const usage = parseGoogleUsage(JSON.parse(rawUsage))
+                    if(usage){
+                        args.usage?.report(usage)
+                    }
+                } catch (error) {}
+            }
         }
     });
 }
@@ -1391,7 +1415,8 @@ function wrapToolStream(
 
                         const transtream = getTranStream({
                             modelInfo: arg.modelInfo,
-                            saveSignature: arg.saveSignatures ?? false
+                            saveSignature: arg.saveSignatures ?? false,
+                            usage: arg.usageMeter
                         })
                         resRec.body.pipeTo(transtream.writable).catch(() => {})
 

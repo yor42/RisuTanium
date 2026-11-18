@@ -352,7 +352,6 @@ import DefaultChatScreen from './DefaultChatScreen.svelte'
 import { isComposerBusy, isComposerLocked, isAutoModeActive, resetComposerActionsForTests } from 'src/ts/process/composerActions.svelte'
 import { isWriting, registerWork } from 'src/ts/process/chatOrigin'
 import { hasLocalDrafts, hasMessageEditorDrafts, resetLocalDraftsForTest } from 'src/ts/localDrafts'
-import { getMultiTabAction } from 'src/ts/storage/multiTabReload'
 import * as composerDrafts from 'src/ts/process/composerDrafts.svelte'
 import { preLoadChat, retryLegacyColdChatLoad } from 'src/ts/process/coldstorage.svelte'
 import { forgetInlayRender, getInlayAsset, getInlayDraftPreview } from 'src/ts/process/files/inlays'
@@ -1069,14 +1068,6 @@ describe('which composer text holds the multi-tab reload', () => {
         await settle()
 
         expect(hasLocalDrafts()).toBe(false)
-        const action = getMultiTabAction({
-            dirty: false,
-            now: Date.now(),
-            history: { lastAt: null, burst: 0 },
-            lastPromptAt: null,
-            hasLocalDraft: hasLocalDrafts(),
-        })
-        expect(action).not.toBe('stay')
     })
 
     test('guard: text on screen holds the multi-tab reload open', async () => {

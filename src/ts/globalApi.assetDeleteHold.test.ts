@@ -60,7 +60,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async (importOriginal) => (
     getColdStorageItem: vi.fn(async () => null),
 }))
 
-import { saveAsset, saveAssetFromBlob, saveAssetFromPieces, wasAssetWrittenThisPage } from 'src/ts/globalApi.svelte'
+import { saveAsset, saveAssetFromBlob, saveAssetFromPieces, listAssetsWrittenThisPage } from 'src/ts/globalApi.svelte'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { holdAssetDeletion, resetAssetDeleteHoldForTests } from 'src/ts/storage/assetDeleteHold'
 
@@ -186,7 +186,7 @@ describe('same-page asset saves wait for a pending asset deletion', () => {
         expect(key).toMatch(FINAL_KEY)
         expect(path.finalCalls(calls).length).toBeGreaterThan(0)
         // The key was noted before the wait, so a sweep that ran meanwhile would have left it alone.
-        expect(wasAssetWrittenThisPage(key)).toBe(true)
+        expect(listAssetsWrittenThisPage()).toContain(key)
     })
 
     test.each(PATHS)('guard: $name does not wait when no delete is pending', async (path) => {

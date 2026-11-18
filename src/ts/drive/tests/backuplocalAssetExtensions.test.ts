@@ -307,7 +307,7 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
 //#endregion
 
 import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup } from 'src/ts/drive/backuplocal'
-import { LocalWriter, dbWriteLock, wasAssetWrittenThisPage } from 'src/ts/globalApi.svelte'
+import { LocalWriter, dbWriteLock, listAssetsWrittenThisPage } from 'src/ts/globalApi.svelte'
 import { alertStore } from 'src/ts/alert'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { injectRestoreStore } from './restoreSupport'
@@ -1049,9 +1049,9 @@ describe.each(ASSET_PATHS)('compatibility guard, $label: restoring a backup onto
     test('new behaviour: every key the restore wrote or tried to write is recorded for the startup sweep, before the database is written', async () => {
         await loadBackupBytes(backupOf(entriesOf([KEPT[0], '.DS_Store'])))
 
-        expect(wasAssetWrittenThisPage(`assets/${KEPT[0]}`)).toBe(true)
-        expect(wasAssetWrittenThisPage('assets/.DS_Store')).toBe(true)
-        expect(wasAssetWrittenThisPage('assets/never-seen.png')).toBe(false)
+        expect(listAssetsWrittenThisPage()).toContain(`assets/${KEPT[0]}`)
+        expect(listAssetsWrittenThisPage()).toContain('assets/.DS_Store')
+        expect(listAssetsWrittenThisPage()).not.toContain('assets/never-seen.png')
     })
 })
 
