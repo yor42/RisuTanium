@@ -68,6 +68,7 @@ import { announceStore2Import, binChangeText, checkStore2Import, commitBootImpor
 import { forkOnlyChatLabels, forkOnlyConfirmKeys, lateForkOnlyChats, withoutForkOnlyChatData, type ForkOnlyChatLabel, type ForkOnlyKind } from "./exportAlternatives";
 import { isPackAssetName } from "../themePack/packRefs";
 import { isForkOnlyHypaModel } from "../process/memory/embeddingModels";
+import { hasUsageData, hasUsageKeys, withoutUsageKeys } from "../usage/usageLedger";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -254,6 +255,12 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     // (the export confirm names the packs first); both keys are removed, not set to undefined.
     delete plain.themePacks
     delete plain.activeThemePack
+    // Usage statistics (the `statics` ledger keys) and price overrides are fork-only and have no place in a `.bin` (the export
+    // confirm names them first). A `statics` without usage keys keeps the page's own object; the page's values are never changed.
+    if (hasUsageKeys(db.statics)) {
+        plain.statics = withoutUsageKeys(db.statics)
+    }
+    delete plain.usagePriceOverrides
     // Upstream resolves a loadout's preset by name only. A loadout whose preset id resolves carries that preset's current
     // name in the copy, so both builds select the same preset; the page's loadouts are never changed.
     if (Array.isArray(db.loadouts) && Array.isArray(db.botPresets)) {
@@ -762,6 +769,15 @@ async function confirmOmitThemePacks(session: ExportSession, labels: readonly st
     return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupThemePacksConfirm(labels.length, shownPromptNames(labels))))
 }
 
+/**
+ * Asks, before the writer opens, whether to create the backup without the usage statistics and the model prices the
+ * person entered (a `.bin` has no place for them). `true` when the profile holds none or the person confirms; declining
+ * writes nothing.
+ */
+async function confirmOmitUsageStats(session: ExportSession, present: boolean): Promise<boolean> {
+    return await confirmDuringExport(session, present, async () => !present || await alertConfirm(language.backupUsageStatsConfirm))
+}
+
 /** A person's name for an asset of a backup, as the skip report gives it. */
 function describeBackupAsset(assetMap: ReadonlyMap<string, { charName: string, assetName: string }>, key: string): string {
     const assetInfo = assetMap.get(key)
@@ -913,6 +929,10 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     }
     // Installed theme packs are fork-only and device-local, and neither they nor their files are in a `.bin`.
     if (!await confirmOmitThemePacks(session, themePackLabels(db))) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
+    // Usage statistics and entered model prices are fork-only; a `.bin` has no place for them.
+    if (!await confirmOmitUsageStats(session, hasUsageData(db))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
@@ -1257,6 +1277,9 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
     if (!await confirmOmitThemePacks(session, themePackLabels(db))) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
+    if (!await confirmOmitUsageStats(session, hasUsageData(db))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
 
