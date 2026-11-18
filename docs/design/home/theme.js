@@ -66,7 +66,8 @@
   var schemeName = P.get('scheme');
   if (schemeName && Object.prototype.hasOwnProperty.call(SCHEMES, schemeName)) {
     var sc = SCHEMES[schemeName];
-    schemeCss = 'html:root{' + KEYS.map(function (k, i) { return '--risu-theme-' + k + ':' + sc[i]; }).join(';') + '}';
+    // home-tokens.css holds the accent as the default scheme's literal (the pack checker must resolve it), so a preset re-derives it here with the same mix.
+    schemeCss = 'html:root{' + KEYS.map(function (k, i) { return '--risu-theme-' + k + ':' + sc[i]; }).join(';') + ';--home-accent-solid:color-mix(in oklab, var(--risu-theme-borderc) 58%, var(--risu-theme-textcolor))}';
     flush();
     put('data-scheme', schemeName); put('data-scheme-type', sc[9]);
   }
