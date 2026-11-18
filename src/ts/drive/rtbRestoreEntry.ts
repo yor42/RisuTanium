@@ -1,6 +1,6 @@
 import { alertWait } from '../alert'
 import { language } from 'src/lang'
-import { importSourceOfFile } from '../importSource'
+import { importSourceOfFile, type ImportSource } from '../importSource'
 import { beginBusy, type BusyHandle } from '../process/memory/busyActions'
 import { assetDeletionSettled } from '../storage/assetDeleteHold'
 import type { OperationOutcome } from './operationEnd'
@@ -10,7 +10,7 @@ import { prepareRtbRestore, type PickedRtb, type RtbPrepareCause, type RtbPrepar
 
 /**
  * The shell of a `.rtb` restore (CHORE-128 S12b): the busy entry, the wait for a pending asset deletion, the preparation,
- * the install and the finish. It is a library with no caller of its own; the backup router routes a picked file here.
+ * the install and the finish. It is a library with no caller of its own; the backup router routes a picked or an opened file here.
  *
  * Invariants:
  * - The `backupLoad` busy entry is taken before anything else and ended on every exit.
@@ -26,6 +26,11 @@ export type RtbRestoreCause = RtbPrepareCause | RtbInstallCause
 /** The file as the restore reads it, whatever its name or extension. */
 export function pickedRtbOf(file: File): PickedRtb {
     return { name: file.name, size: file.size, lastModified: file.lastModified, source: importSourceOfFile(file) }
+}
+
+/** A file another app opened, as the restore reads it: the caller's open source, its display name and modification time (0 when unknown). */
+export function pickedRtbOfSource(opened: { source: ImportSource, name: string, lastModified: number }): PickedRtb {
+    return { name: opened.name, size: opened.source.size, lastModified: opened.lastModified, source: opened.source }
 }
 
 /** The calls the shell makes; tests replace them to observe order and to keep the page out of it. */

@@ -20,7 +20,7 @@ import { beginBusy } from "./memory/busyActions";
 import { splitLoreKeys } from "./loreKeys";
 import { externalEntryDecorators, placeDisabledMarker } from "./lorebookImportDecorators";
 import { firstMessageIndexOf } from "./firstMessage";
-import { ASCII_WORD, fullWordIncludes, UNICODE_WORD } from "./lorebookWordMatch";
+import { ASCII_WORD, createWordStartIncludes, defaultWordBoundaries, fullWordIncludes, UNICODE_WORD } from "./lorebookWordMatch";
 
 /**
  * A fixed stand-in for `RunSubject` that always resolves to `ctx`, captured
@@ -156,6 +156,8 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
     const fullWordMatchingSetting = char?.loreSettings?.fullWordMatching ?? false
     //module and chat entries follow the character's option; no per-entry or per-module field exists
     const fullWordWordChar = char?.loreSettings?.fullWordAsciiBoundary ? ASCII_WORD : UNICODE_WORD
+    //partial-word matching only; module and chat entries follow the character's option, and the matcher's text cache lives for this call
+    const wordStartIncludes = char?.loreSettings?.cjkWordStart === true ? createWordStartIncludes(defaultWordBoundaries) : null
     const chatLength = currentChat.length + 1 //includes first message
     const recursiveScanning = char?.loreSettings?.recursiveScanning ?? true
     let recursivePrompt:{
@@ -261,7 +263,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                             return true
                         }
                     }
-                    else if(plainText.includes(plainKey(key).replace(/ /g,''))){
+                    else if(wordStartIncludes ? wordStartIncludes(plainMList[i].data, plainKey(key)) : plainText.includes(plainKey(key).replace(/ /g,''))){
                         matchLog.push({
                             prompt: plainMList[i].prompt,
                             source: mText.source,
@@ -302,7 +304,7 @@ export async function loadLoreBookV3Prompt(subject?: RunSubject, promptView?: Pr
                 mText = mText.replace(/ /g,'')
                 for(const key of arg.keys){
                     const realKey = plainKey(key).replace(/ /g,'')
-                    if(mText.includes(realKey)){
+                    if(wordStartIncludes ? wordStartIncludes(m.data, plainKey(key)) : mText.includes(realKey)){
                         matchLog.push({
                             prompt: m.prompt,
                             source: m.source,

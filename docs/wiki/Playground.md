@@ -68,7 +68,7 @@ This tool is a searchable reference of every CBS tag, with its aliases and descr
 
 Pick an embedding model and type a **Query**. Add one or more **Data** texts with **+**. The tool ranks the data texts by their similarity to the query. The [[Long Term Memory]] systems use the same search.
 
-The list of models is the same as for long-term memory. See [[Embedding models|Long Term Memory#embedding-models]]. The tool lists GPU models only when your browser supports WebGPU. The OpenAI models show an OpenAI key field. **Custom** shows the fields for URL, key, and model. These are the same settings that long-term memory uses. So a change here also changes them for memory.
+The list of models is the same as for long-term memory. See [[Embedding models|Long Term Memory#embedding-models]]. The tool lists GPU models only when your browser supports WebGPU. The OpenAI models show an OpenAI key field. **Custom** shows the fields for URL, key, and model. The key and model are the same settings that long-term memory uses, so a change to them here also changes them for memory. The URL starts with the memory setting, but a change to it here stays on this page.
 
 <!-- src/lib/Playground/PlaygroundEmbedding.svelte -->
 
