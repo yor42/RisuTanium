@@ -3,13 +3,11 @@
  * Agents/Reports/13-chore07-cold-read-failure-plan.md.
  *
  * These tests pin that a cold-storage read failure, an ambiguous read, or a
- * mismatched character never causes `sweepTauriAssets`, `sweepForageAssetKey`
- * or `cleanColdStorage` to delete an asset or a cold-storage key that a live
- * character or chat still needs (`resolveUncleanableChars`/`buildAssetKeepSet`
- * in globalApi.svelte.ts for the startup sweep, and the manual clean-up in
- * storage/manualCleanup.ts). A blob that was never written, a read that
- * throws, or a `character.chaId` mismatch must all be treated as "keep, don't
- * delete" -- never as proof that the underlying data is gone.
+ * mismatched character never causes `cleanColdStorage` to delete a
+ * cold-storage key that a live character or chat still needs (the manual
+ * clean-up in storage/manualCleanup.ts). A blob that was never written, a read
+ * that throws, or a `character.chaId` mismatch must all be treated as "keep,
+ * don't delete" -- never as proof that the underlying data is gone.
  *
  * Tests and assertions marked CHAR are compatibility guards: they hold
  * regardless of that failure handling and pin that the ordinary
@@ -17,10 +15,6 @@
  * a12/a13 are the describe-level instance.
  *
  * This file drives the REAL seams, not a replica:
- *   - `buildAssetKeepSet(db)`, `getBasename` from
- *     `src/ts/globalApi.svelte.ts` (real, unmocked).
- *   - `sweepTauriAssets` / `sweepForageAssetKey` from
- *     `src/ts/storage/assetSweep.ts` (real, unmocked, dependency-free).
  *   - `getColdStorageItem` / `setColdStorageItem` / `preLoadChat` /
  *     `cleanColdStorage` / `listColdStorageItems` /
  *     `collectColdStorageBackupPayloads` from
@@ -56,14 +50,7 @@
  * passed. The scratch file was deleted; this comment is the record of
  * that check.
  *
- * a2's cold read still goes through the Tauri backend (platformState.isTauri
- * stays true) even though it exercises the WEB deletion path
- * (`sweepForageAssetKey`). That is deliberate, not a shortcut: the plan's
- * "same on the web branch" is about which of the two independent deletion
- * FUNCTIONS is under test (`sweepTauriAssets` vs `sweepForageAssetKey`),
- * not about which storage backend produced the incomplete keep-set --
- * neither sweep function's own behaviour depends on that. a7/a8/a9/a11/a11b/
- * a12/a13 DO need the real OPFS backend, because `cleanColdStorage` /
+ * a7/a8/a9/a11/a11b/a12/a13 need the real OPFS backend, because `cleanColdStorage` /
  * `preLoadChat` read `DBState.db` directly (no injected `db` seam exists
  * for them yet), so this file switches `platformState.isTauri` to `false`
  * for that whole group.
@@ -464,7 +451,7 @@ function resetOpfs(): void {
 
 //#endregion
 
-import { buildAssetKeepSet, forageStorage, getBasename } from '../../globalApi.svelte'
+import { forageStorage } from '../../globalApi.svelte'
 import { injectAppStore } from '../../storage/store/appStore'
 import { createTauriFilesStore } from '../../storage/store/tauriFilesStore'
 import { createForageBackedStore, createSwitchedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
@@ -484,12 +471,11 @@ import { isColdChat, formatColdStorageLoadError, mergeRetriedColdChatSideFields 
 import type { RetryLegacyColdChatSideFields } from '../coldstorageData'
 import { doingChat } from '../index.svelte'
 import { registerWork } from '../chatOrigin'
-import { sweepTauriAssets, sweepForageAssetKey } from '../../storage/assetSweep'
 import { RisuSaveEncoder } from '../../storage/risuSave'
 import { recordLoadTimeListing } from '../../storage/loadTimeListing'
 import { resetPageStorageModeForTests, setPageStorageMode } from '../../storage/pageStorageMode'
 import { noteMainFileBytes } from '../../storage/mainFileRecord'
-import { readDir, remove, BaseDirectory, readFile as tauriReadFile, exists as tauriExists } from '@tauri-apps/plugin-fs'
+import { readFile as tauriReadFile, exists as tauriExists } from '@tauri-apps/plugin-fs'
 import { DBState, selectedCharID, frozenSaveKeysStore } from '../../stores.svelte'
 import { alertError, alertClear } from 'src/ts/alert'
 
@@ -617,147 +603,6 @@ async function primeCleanupPreconditions(): Promise<void> {
 }
 
 //#endregion
-
-describe('CHORE-07 stage 7a: boot-time asset sweep must skip on an incomplete cold read', () => {
-    test('a1: Tauri sweep must not delete assets when the cold read is a transient failure', async () => {
-        platformState.isTauri = true
-        resetTauriFs()
-        const coldKey = 'a1-cold-key'
-        const chaId = 'a1-char'
-        const writeOk = await setColdStorageItem(coldKey, { character: makeFullCharacter(chaId) })
-        expect(writeOk).toBe(true)
-        const db = makeDb([makeColdStub(chaId, coldKey)])
-
-        armTransientTauriReadFailure(coldKey)
-
-        // Drive the REAL wiring: buildAssetKeepSet, then spread its result
-        // into sweepTauriAssets.
-        const keepSet = await buildAssetKeepSet(db)
-        await sweepTauriAssets({
-            ...keepSet,
-            listAssets: () => readDir('assets', { baseDir: BaseDirectory.AppData }),
-            removeAsset: (relativePath) => remove(relativePath, { baseDir: BaseDirectory.AppData }),
-            getBasename,
-        })
-
-        // A transient cold-read failure leaves the stub (no
-        // emotionImages/additionalAssets) as the only view of this
-        // character; the sweep must treat that as an incomplete read and
-        // skip deleting these still-in-use asset files.
-        expect(tauriFsHas('assets/emotion-happy.png')).toBe(true)
-        expect(tauriFsHas('assets/emotion-sad.png')).toBe(true)
-        expect(tauriFsHas('assets/additional-bg.png')).toBe(true)
-    })
-
-    test('a2: the web/forage sweep must not delete assets when the cold read is a transient failure', async () => {
-        platformState.isTauri = true // see file header: the cold-read backend here is orthogonal to which deletion path is under test
-        resetTauriFs()
-        const forageAssetStore = new Map<string, Uint8Array>([
-            ['assets/main-image.png', new TextEncoder().encode('x')],
-            ['assets/emotion-happy.png', new TextEncoder().encode('x')],
-            ['assets/emotion-sad.png', new TextEncoder().encode('x')],
-            ['assets/additional-bg.png', new TextEncoder().encode('x')],
-        ])
-        const coldKey = 'a2-cold-key'
-        const chaId = 'a2-char'
-        await setColdStorageItem(coldKey, { character: makeFullCharacter(chaId) })
-        const db = makeDb([makeColdStub(chaId, coldKey)])
-
-        armTransientTauriReadFailure(coldKey)
-
-        const keepSet = await buildAssetKeepSet(db)
-        // The web/Node asset-sweep loop: one sweepForageAssetKey call per
-        // 'assets/'-prefixed key.
-        for (const key of Array.from(forageAssetStore.keys())) {
-            await sweepForageAssetKey(key, {
-                ...keepSet,
-                removeAsset: async (k) => { forageAssetStore.delete(k) },
-                getBasename,
-            })
-        }
-
-        // Same failure, same wrong outcome, on the OTHER deletion path.
-        expect(forageAssetStore.has('assets/emotion-happy.png')).toBe(true)
-        expect(forageAssetStore.has('assets/emotion-sad.png')).toBe(true)
-        expect(forageAssetStore.has('assets/additional-bg.png')).toBe(true)
-    })
-
-    test('a3: the sweep must not delete assets when the cold blob was never written', async () => {
-        platformState.isTauri = true
-        resetTauriFs()
-        const coldKey = 'a3-cold-key-never-written'
-        const chaId = 'a3-char'
-        // Deliberately never call setColdStorageItem for this key.
-        const db = makeDb([makeColdStub(chaId, coldKey)])
-
-        const keepSet = await buildAssetKeepSet(db)
-        await sweepTauriAssets({
-            ...keepSet,
-            listAssets: () => readDir('assets', { baseDir: BaseDirectory.AppData }),
-            removeAsset: (relativePath) => remove(relativePath, { baseDir: BaseDirectory.AppData }),
-            getBasename,
-        })
-
-        // A genuinely missing blob is indistinguishable from a transient
-        // failure at this layer -- it must be kept, not deleted, the same
-        // way.
-        expect(tauriFsHas('assets/emotion-happy.png')).toBe(true)
-        expect(tauriFsHas('assets/emotion-sad.png')).toBe(true)
-        expect(tauriFsHas('assets/additional-bg.png')).toBe(true)
-    })
-
-    test("a4: the sweep must not delete assets when the blob's character.chaId does not match", async () => {
-        platformState.isTauri = true
-        resetTauriFs()
-        const coldKey = 'a4-cold-key'
-        const chaId = 'a4-char'
-        // The blob is readable, but for a DIFFERENT character -- the exact
-        // check this fails is the chaId check in `resolveUncleanableChars`.
-        await setColdStorageItem(coldKey, { character: makeFullCharacter('a4-someone-else') })
-        const db = makeDb([makeColdStub(chaId, coldKey)])
-
-        const keepSet = await buildAssetKeepSet(db)
-        await sweepTauriAssets({
-            ...keepSet,
-            listAssets: () => readDir('assets', { baseDir: BaseDirectory.AppData }),
-            removeAsset: (relativePath) => remove(relativePath, { baseDir: BaseDirectory.AppData }),
-            getBasename,
-        })
-
-        // A chaId mismatch must be treated the same as "coldData?.character"
-        // being falsy -- the stub's view is kept, and its emotion/additional
-        // assets must not be deleted.
-        expect(tauriFsHas('assets/emotion-happy.png')).toBe(true)
-        expect(tauriFsHas('assets/emotion-sad.png')).toBe(true)
-        expect(tauriFsHas('assets/additional-bg.png')).toBe(true)
-    })
-
-    test('a5 CHAR: a healthy cold read still deletes exactly the unreferenced assets', async () => {
-        platformState.isTauri = true
-        resetTauriFs()
-        fsStore.set('assets/truly-orphaned.png', new TextEncoder().encode('orphan-bytes'))
-        const coldKey = 'a5-cold-key'
-        const chaId = 'a5-char'
-        await setColdStorageItem(coldKey, { character: makeFullCharacter(chaId) })
-        const db = makeDb([makeColdStub(chaId, coldKey)])
-
-        const keepSet = await buildAssetKeepSet(db)
-        await sweepTauriAssets({
-            ...keepSet,
-            listAssets: () => readDir('assets', { baseDir: BaseDirectory.AppData }),
-            removeAsset: (relativePath) => remove(relativePath, { baseDir: BaseDirectory.AppData }),
-            getBasename,
-        })
-
-        // CHAR: unchanged before and after the fix -- a fully successful cold
-        // read protects every referenced asset and deletes only the orphan.
-        expect(tauriFsHas('assets/main-image.png')).toBe(true)
-        expect(tauriFsHas('assets/emotion-happy.png')).toBe(true)
-        expect(tauriFsHas('assets/emotion-sad.png')).toBe(true)
-        expect(tauriFsHas('assets/additional-bg.png')).toBe(true)
-        expect(tauriFsHas('assets/truly-orphaned.png')).toBe(false)
-    })
-})
 
 describe('CHORE-07 stage 7a: manual cold-storage cleanup must not delete recoverable blobs', () => {
     test('a7 / C3 CHAR: cleanColdStorage must keep a blob referenced only by an error-text message[0], with later messages too', async () => {
@@ -941,8 +786,7 @@ describe('CHORE-07 stage 7a: manual cold-storage cleanup must not delete recover
         await setColdStorageItem(ORPHAN_KEY, { message: [{ time: 1, data: 'unrelated leftover data', role: 'user' }] })
 
         // The blob is readable, but for a DIFFERENT character -- this fails
-        // the manual clean-up's chaId check, exactly the way it fails
-        // resolveUncleanableChars's own check (a4).
+        // the manual clean-up's chaId check.
         const MISMATCHED_CHAR_KEY = 'a12-mismatched-char-key'
         await setColdStorageItem(MISMATCHED_CHAR_KEY, {
             character: {

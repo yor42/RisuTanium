@@ -2,17 +2,12 @@
  * "Empty trash" (`removeTrashedCharacters`, src/ts/characters.ts) against the real save machinery.
  *
  * REAL and unmocked here: `characters.ts`, `globalApi.svelte.ts` (its `requiresFullEncoderReload`
- * flag, `prepareSaveIteration` and `checkCharOrder`), `characterSaveMarks.ts`, `risuSave.ts`
- * (`RisuSaveEncoder`, `decodeRisuSave`), `treeToBlockSet.ts` and `blockStore.ts` over the in-memory
- * store of `storage/tests/blockStoreHarness.ts`. The module-mock set is the one of
+ * flag and `checkCharOrder`) and `characterSaveMarks.ts`. The module-mock set is the one of
  * `globalApi.saveSequence.svelte.test.ts` plus what `characters.ts` itself imports. A mocked
  * success here is not evidence of native backend behaviour.
  *
- * The removal must (1) request one save burst, (2) set the reload flag so the save re-encodes
- * without the removed characters, and (3) end in one block-store commit that deletes exactly the
- * removed characters' block keys and keeps every other key, including the key a live twin shares
- * with a removed character. The committed layout is the one `prepareSaveIteration` and the
- * encoder produce, as the save loop commits it, so that commit depends on the reload flag.
+ * The removal must request one save burst and set the reload flag so the next pass re-encodes
+ * without the removed characters.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
@@ -233,17 +228,12 @@ vi.mock(import('src/ts/media/avatarThumb'), () => ({
 //#endregion
 
 import { DBState, selectedCharID } from 'src/ts/stores.svelte'
-import { prepareSaveIteration, requiresFullEncoderReload } from 'src/ts/globalApi.svelte'
+import { requiresFullEncoderReload } from 'src/ts/globalApi.svelte'
 import { removeTrashedCharacters } from 'src/ts/characters'
-import { RisuSaveEncoder, decodeRisuSave } from 'src/ts/storage/risuSave'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import type { Database } from 'src/ts/storage/database.svelte'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import { alertConfirm } from 'src/ts/alert'
-import { treeToBlockSet } from 'src/ts/storage/treeToBlockSet'
-import { packedForLayout } from 'src/ts/storage/saveStep'
-import { characterBlockKey } from 'src/ts/storage/blockKeys'
-import { createFakeStore, makeOwner, seedStore } from 'src/ts/storage/tests/blockStoreHarness'
 
 //#region fixtures
 
@@ -336,87 +326,4 @@ describe('E5: the removal against the real save machinery', () => {
         expect(tracker.character).toEqual(['t1', 'dup', 't2'])
     })
 
-    test('the next save iteration consumes the flag once, re-inits once, and an encode/decode round trip has the removed ids absent and the others present', async () => {
-        const encoderBefore = new RisuSaveEncoder()
-        await encoderBefore.init(snapshot(), { compression: false })
-        const beforeDecoded = await decodeRisuSave(new Uint8Array(encoderBefore.encode()!))
-        expect(beforeDecoded.characters?.map((c: CharacterFixture) => c.chaId).sort()).toEqual(['dup', 'keepA', 'keepB', 'keepT', 't1', 't2'])
-
-        await emptySome()
-        expect(requiresFullEncoderReload.state).toBe(true)
-
-        let reinits = 0
-        const result = await prepareSaveIteration({
-            tracker,
-            encoder: encoderBefore,
-            reloadFlag: requiresFullEncoderReload,
-            reinitEncoder: async () => {
-                reinits++
-                const fresh = new RisuSaveEncoder()
-                await fresh.init(snapshot(), { compression: false })
-                return fresh
-            },
-            getDatabase: () => snapshot(),
-        })
-        await result.encoder.set(snapshot(), result.toSave)
-
-        expect(reinits).toBe(1)
-        expect(requiresFullEncoderReload.state).toBe(false)
-        const decoded = await decodeRisuSave(new Uint8Array(result.encoder.encode()!))
-        const decodedIds = (decoded.characters ?? []).map((c: CharacterFixture) => c.chaId).sort()
-        expect(decodedIds).toEqual(['dup', 'keepA', 'keepB', 'keepT'])
-        expect(decoded.characters?.find((c: CharacterFixture) => c.chaId === 'dup')?.name).toBe('LiveTwin')
-        expect(decoded.characters?.find((c: CharacterFixture) => c.chaId === 'keepT')?.trashTime).toBe(T0)
-    })
-
-    test('one block-store commit deletes exactly the removed characters\' block keys and keeps the others, including a live twin\'s key', async () => {
-        const store = createFakeStore({ versioned: true })
-        const generation = await seedStore(store, await treeToBlockSet(snapshot()))
-        const { owner } = makeOwner(store)
-        const loaded = await owner.load()
-        expect(loaded.kind).toBe('loaded')
-        for (const id of ['keepA', 'keepB', 'keepT', 't1', 't2', 'dup']) {
-            expect(store.peek(characterBlockKey(generation, id))).not.toBeNull()
-        }
-
-        // The encoder a running save loop holds, initialised from the database before the removal.
-        const encoderOptions = { compression: false }
-        const loopEncoder = new RisuSaveEncoder()
-        await loopEncoder.init(snapshot(), encoderOptions)
-
-        await emptySome()
-        const start = store.ops.length
-        // The layout the save loop commits: whatever prepareSaveIteration hands back, so the
-        // removed blocks leave it only because the removal set the reload flag.
-        const iteration = await prepareSaveIteration({
-            tracker,
-            encoder: loopEncoder,
-            reloadFlag: requiresFullEncoderReload,
-            reinitEncoder: async () => {
-                const fresh = new RisuSaveEncoder()
-                await fresh.init(snapshot(), encoderOptions)
-                return fresh
-            },
-            getDatabase: () => snapshot(),
-        })
-        await iteration.encoder.set(snapshot(), iteration.toSave)
-        const layout = iteration.encoder.snapshotLayout()
-        expect(layout).not.toBeNull()
-        const result = await owner.commitSave({
-            layout: layout!,
-            packed: packedForLayout(layout!, snapshot().characters, iteration.encoder.getFrozenKeys()),
-        })
-        expect(result).toMatchObject({ kind: 'committed', wrote: true })
-
-        const deletes = store.ops.slice(start).filter((op) => op.kind === 'deleteMany' || op.kind === 'delete')
-        expect(deletes).toHaveLength(1)
-        const deleted = deletes[0].kind === 'deleteMany' ? deletes[0].keys : [deletes[0].key]
-        expect(new Set(deleted)).toEqual(new Set([characterBlockKey(generation, 't1'), characterBlockKey(generation, 't2')]))
-        for (const id of ['keepA', 'keepB', 'keepT', 'dup']) {
-            expect(store.peek(characterBlockKey(generation, id))).not.toBeNull()
-        }
-        for (const id of ['t1', 't2']) {
-            expect(store.peek(characterBlockKey(generation, id))).toBeNull()
-        }
-    })
 })

@@ -12,7 +12,6 @@
   "permissions": [
     "updater:default",
     "process:allow-restart",
-    "shell:default",
     {
       "identifier": "shell:allow-spawn",
       "allow": [

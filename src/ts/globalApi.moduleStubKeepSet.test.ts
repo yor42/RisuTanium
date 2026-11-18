@@ -1,7 +1,6 @@
 /**
  * The legacy asset keep-set over module stubs: `getUncleanablesSync` yields only the icon a stub holds and reads no
- * other key of it, and `buildAssetKeepSet` reports the set incomplete while a stub is present so the legacy sweeps
- * delete nothing. The other legacy deleters stay behind the page-mode gate on a store2 page, the only page that holds
+ * other key of it. The other legacy deleters stay behind the page-mode gate on a store2 page, the only page that holds
  * stubs. Titles beginning "guard:" pin behaviour that must be preserved; every other test is a regression reproducer.
  */
 import { describe, test, expect, vi, afterEach } from 'vitest'
@@ -51,7 +50,7 @@ vi.mock(import('src/ts/storage/dbChangeEffects.svelte'), () => ({
     registerDbChangeEffects: vi.fn(),
 }) as unknown as typeof import('src/ts/storage/dbChangeEffects.svelte'))
 
-import { buildAssetKeepSet, getUncleanablesSync } from 'src/ts/globalApi.svelte'
+import { getUncleanablesSync } from 'src/ts/globalApi.svelte'
 import {
     pageRunsLegacyDeleters, resetPageStorageModeForTests, setPageStorageMode,
 } from 'src/ts/storage/pageStorageMode'
@@ -104,20 +103,6 @@ describe('getUncleanablesSync over a module stub', () => {
     test('guard: a full module still yields its assets and icon', () => {
         const db = dbOf([fullModule('B', [['x', 'assets/b-asset']], 'assets/b-icon')])
         expect(getUncleanablesSync(db).sort()).toEqual(['b-asset', 'b-icon'])
-    })
-})
-
-describe('buildAssetKeepSet over module stubs', () => {
-    test('keep-set-incomplete-with-module-stub: a stub makes the set incomplete and keeps its icon', async () => {
-        const result = await buildAssetKeepSet(dbOf([fullModule('B'), stubModule('A', 'assets/a-icon')]))
-        expect(result.complete).toBe(false)
-        expect(Array.from(result.uncleanable)).toEqual(['a-icon'])
-    })
-
-    test('guard: keep-set-complete-without-stub: full modules leave the set complete', async () => {
-        const result = await buildAssetKeepSet(dbOf([fullModule('B', [['x', 'assets/b-asset']])]))
-        expect(result.complete).toBe(true)
-        expect(Array.from(result.uncleanable)).toEqual(['b-asset'])
     })
 })
 

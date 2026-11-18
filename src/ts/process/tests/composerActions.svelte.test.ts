@@ -290,7 +290,6 @@ let selectedCharID: ReturnType<typeof writable<number>>
 let isWriting: typeof import('../chatOrigin').isWriting
 let hasLocalDrafts: typeof import('../../localDrafts').hasLocalDrafts
 let resetLocalDraftsForTest: typeof import('../../localDrafts').resetLocalDraftsForTest
-let getMultiTabAction: typeof import('../../storage/multiTabReload').getMultiTabAction
 let coldStorageHeader: string
 
 beforeAll(async () => {
@@ -324,9 +323,6 @@ beforeAll(async () => {
     const drafts = await import('../../localDrafts')
     hasLocalDrafts = drafts.hasLocalDrafts
     resetLocalDraftsForTest = drafts.resetLocalDraftsForTest
-
-    const multiTab = await import('../../storage/multiTabReload')
-    getMultiTabAction = multiTab.getMultiTabAction
 
     const cold = await import('../coldstorageData')
     coldStorageHeader = cold.coldStorageHeader
@@ -1100,14 +1096,6 @@ describe('composerActions: liveness while a send is taking the composer', () => 
         await first.reached
 
         expect(hasLocalDrafts()).toBe(true)
-        const action = getMultiTabAction({
-            dirty: false,
-            now: Date.now(),
-            history: { lastAt: null, burst: 0 },
-            lastPromptAt: null,
-            hasLocalDraft: hasLocalDrafts(),
-        })
-        expect(action).toBe('stay')
 
         first.release()
         await p

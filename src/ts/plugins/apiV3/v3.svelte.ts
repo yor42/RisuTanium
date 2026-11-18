@@ -1913,6 +1913,7 @@ export const makeRisuaiAPIV3 = (iframe:HTMLIFrameElement,plugin:RisuPlugin) => {
                 // explicitly with `allowPlugins: true`, accepting responsibility
                 // for avoiding provider-to-provider call loops.
                 blockPlugins: !options.allowPlugins,
+                usagePurpose: 'plugin',
             }, options.mode)
         },
         sendChat: async (message: string) => {
