@@ -91,7 +91,14 @@ vi.mock(import('../../globalApi.svelte'), () => ({
     acquireExclusiveStorageMigrationLock: acquireExclusiveStorageMigrationLockMock,
     locksSupported: true,
     tabPresenceLockAcquired: Promise.resolve(),
+    // A clean page: the restore's save-first step returns at its clean check instead of waiting out its bound.
+    isSaveClean: () => true,
+    afterNextSaveCommit: vi.fn(),
+    requestSaveNow: vi.fn(),
 }) as unknown as typeof import('../../globalApi.svelte'))
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+vi.mock(import('../storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
 
 const alertMocks = vi.hoisted(() => ({
     alertGenerationInfoStore: { set: vi.fn(), subscribe: vi.fn(), update: vi.fn() },
@@ -145,6 +152,8 @@ vi.mock(import('../../stores.svelte'), () => ({
 
 //#endregion
 
+import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
+import { language } from 'src/lang'
 import { LoadLocalBackup } from '../backuplocal'
 import { overrideBackupWindowBytes } from '../backupContainer'
 import { encodeRisuSaveLegacy } from '../../storage/risuSave'
@@ -218,6 +227,7 @@ let restoreStore: ByteStore
 
 beforeEach(async () => {
     setDatabaseMock.mockClear()
+    resetStore2ShellBox(shell)
     forageFiles.clear()
     forageSetItemMock.mockClear()
     setColdStorageItemMock.mockClear()
@@ -297,10 +307,23 @@ function writtenAssetKeys(): string[] {
     return writtenKeys().filter((key) => key.startsWith('assets/'))
 }
 
-/** Whether the restored database was committed as a block generation, and never as a `database.bin`. */
-function expectBlockGenerationCommitted(): void {
-    expect(writtenKeys()).toContain('blocks/head')
+/** Whether the restore reached its commit once, and never wrote a `database.bin`. */
+function expectCommitted(): void {
+    expect(shell.commits).toHaveLength(1)
     expect(writtenKeys()).not.toContain('database/database.bin')
+}
+
+/**
+ * Makes the page a store2 page over the page's store of kind `indexeddb`, where the restore ends at the stubbed commit,
+ * and has each row of the describe assert the restore waited for no save first: `saveFirst` returned at its clean check.
+ */
+function onStore2Page(): void {
+    beforeEach(() => {
+        useStore2RestorePage(restoreStore, 'indexeddb')
+    })
+    afterEach(() => {
+        expect(alertMocks.alertWait.mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)
+    })
 }
 
 function shownErrors(): string[] {
@@ -317,6 +340,7 @@ async function blobBytes(blob: Blob): Promise<Uint8Array> {
 }
 
 describe('a web restore of an asset entry the browser keeps as a Blob', () => {
+    onStore2Page()
     // Windows smaller than an entry, so the walk and the copy never read an entry's data into a window of their own.
     beforeEach(() => overrideBackupWindowBytes({ walk: 64, copy: 64 }))
     afterEach(() => overrideBackupWindowBytes(null))
@@ -335,9 +359,17 @@ describe('a web restore of an asset entry the browser keeps as a Blob', () => {
         // The reads above are the test's own; the restore read none of an entry's data.
         const restoreReadSizes = reads.mock.contexts.slice(0, reads.mock.contexts.length - 2).map((context) => (context as Blob).size)
         expect(Math.max(...restoreReadSizes)).toBeLessThan(PIECE_MIN)
-        expectBlockGenerationCommitted()
+        expectCommitted()
         expect(alertMocks.alertNormalWait).not.toHaveBeenCalled()
     })
+
+})
+
+// This row asserts the cold-storage write of the legacy page's tail, so it runs on that page.
+describe('a web restore of a cold unit on the legacy page', () => {
+    // Windows smaller than an entry, so the walk and the copy never read an entry's data into a window of their own.
+    beforeEach(() => overrideBackupWindowBytes({ walk: 64, copy: 64 }))
+    afterEach(() => overrideBackupWindowBytes(null))
 
     test('guard: a cold-storage unit above the threshold is decoded whole and never stored as an asset Blob', async () => {
         const bytes = concatChunks([bigColdEntry(), databaseEntry()])
@@ -347,8 +379,16 @@ describe('a web restore of an asset entry the browser keeps as a Blob', () => {
         expect(blobWrites.keys).toEqual([])
         expect(writtenAssetKeys()).toEqual([])
         expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
-        expectBlockGenerationCommitted()
+        expect(writtenKeys()).toContain('blocks/head')
+        expect(writtenKeys()).not.toContain('database/database.bin')
     })
+})
+
+describe('a web restore of an asset entry the browser keeps as a Blob, continued', () => {
+    onStore2Page()
+    // Windows smaller than an entry, so the walk and the copy never read an entry's data into a window of their own.
+    beforeEach(() => overrideBackupWindowBytes({ walk: 64, copy: 64 }))
+    afterEach(() => overrideBackupWindowBytes(null))
 
     test('guard: a name the store refuses is skipped and the restore goes on', async () => {
         blobWrites.failure = new StoreInvalidKeyError('assets/large.png', 'refused by the store')
@@ -357,8 +397,7 @@ describe('a web restore of an asset entry the browser keeps as a Blob', () => {
         await loadBackupBytes(bytes)
 
         expect(writtenAssetKeys()).toEqual(['assets/small.png'])
-        expectBlockGenerationCommitted()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommitted()
     })
 
     test('guard: a failure of the Blob write that is not a missing Blob capability stops the restore with no whole-entry fallback', async () => {
@@ -369,11 +408,12 @@ describe('a web restore of an asset entry the browser keeps as a Blob', () => {
 
         expect(writtenAssetKeys()).toEqual([])
         expect(keptBlobs.size).toBe(0)
-        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(0)
     })
 })
 
 describe('a web restore in a browser that cannot keep a Blob', () => {
+    onStore2Page()
     beforeEach(() => {
         blobWrites.failure = new StoreBlobUnsupportedError('assets/x', new DOMException('no blobs', 'DataCloneError'))
     })
@@ -387,7 +427,7 @@ describe('a web restore in a browser that cannot keep a Blob', () => {
         expect(writtenAssetKeys()).toEqual(['assets/before.png', 'assets/large.png', 'assets/after.png'])
         const stored = forageSetItemMock.mock.calls.find((call) => call[0] === 'assets/large.png')?.[1]
         expect(stored).toEqual(new Uint8Array(3000).fill(9))
-        expectBlockGenerationCommitted()
+        expectCommitted()
         expect(alertMocks.alertNormalWait).not.toHaveBeenCalled()
     })
 
@@ -400,8 +440,7 @@ describe('a web restore in a browser that cannot keep a Blob', () => {
         const stored = forageSetItemMock.mock.calls.find((call) => call[0] === 'assets/huge.png')?.[1]
         expect(stored).toEqual(new Uint8Array(BROWSER_BOUND + 10).fill(9))
         expect(ended.detail.assets).toEqual({ written: 3, skipped: [] })
-        expectBlockGenerationCommitted()
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expectCommitted()
         expect(alertMocks.alertNormalWait).not.toHaveBeenCalled()
         expect(shownErrors()).toEqual([])
     })

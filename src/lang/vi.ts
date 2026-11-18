@@ -3277,6 +3277,8 @@ export const languageVietnamese = {
     "themePackSize": (size: string) => `Kích thước: ${size}`,
     "themePackLicense": (license: string) => `Giấy phép: ${license}`,
     "themePackAttribution": (attribution: string) => `Ghi công: ${attribution}`,
+    "themePackDetails": "Chi tiết",
+    "themePackDetailsFor": (name: string) => `Chi tiết: ${name}`,
     "themePackFonts": "Giấy phép phông chữ",
     "themePackFontLicense": (file: string, license: string) => `${file}: ${license}`,
     "themePackUnreadableName": "Gói chủ đề không đọc được",

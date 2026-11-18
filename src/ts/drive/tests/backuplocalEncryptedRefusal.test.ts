@@ -105,7 +105,14 @@ vi.mock(import('../../globalApi.svelte'), () => ({
     // by name, and a module mock must provide every export its importers read.
     locksSupported: true,
     tabPresenceLockAcquired: Promise.resolve(),
+    // A clean page: the restore's save-first step returns at its clean check instead of waiting out its bound.
+    isSaveClean: () => true,
+    afterNextSaveCommit: vi.fn(),
+    requestSaveNow: vi.fn(),
 }) as unknown as typeof import('../../globalApi.svelte'))
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+vi.mock(import('../storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
 
 const alertMocks = vi.hoisted(() => ({
     alertGenerationInfoStore: { set: vi.fn(), subscribe: vi.fn(), update: vi.fn() },
@@ -180,6 +187,7 @@ vi.mock(import('../../stores.svelte'), () => ({
 
 //#endregion
 
+import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
 import { LoadLocalBackup } from '../backuplocal'
 import { overrideBackupWindowBytes } from '../backupContainer'
 import { encodeRisuSaveLegacy } from '../../storage/risuSave'
@@ -187,6 +195,7 @@ import { isAppInitiatedReload } from '../../reloadGuard'
 import { forageStorage } from '../../globalApi.svelte'
 import { injectRestoreStore } from './restoreSupport'
 import { StoreInvalidKeyError } from '../../storage/store/errors'
+import type { ByteStore } from '../../storage/store/contract'
 import { createForageBackedStore, type ForageLike } from '../../storage/tests/forageBackedStore'
 import { sleep } from '../../util'
 
@@ -512,9 +521,11 @@ let capturedInput: HTMLInputElement | null = null
 let createElementSpy: ReturnType<typeof vi.spyOn>
 let localStorageSetItemSpy: ReturnType<typeof vi.spyOn>
 const fetchMock = vi.hoisted(() => vi.fn())
+let pageStore: ByteStore
 
 beforeEach(() => {
     setDatabaseMock.mockClear()
+    resetStore2ShellBox(shell)
     forageSetItemMock.mockClear()
     forageFiles.clear()
     decodeCapture.inputs.length = 0
@@ -524,7 +535,7 @@ beforeEach(() => {
     // The restore writes a block generation through the page's byte store; here it is the storage-object model above, on a desktop-kind page.
     // Like the real stores, it refuses an asset key with a leading dot.
     const forageBackedStore = createForageBackedStore(forageStorage as unknown as ForageLike)
-    injectRestoreStore({
+    pageStore = {
         ...forageBackedStore,
         write: async (key, bytes, condition) => {
             if (key.startsWith('assets/.')) {
@@ -532,7 +543,8 @@ beforeEach(() => {
             }
             return forageBackedStore.write(key, bytes, condition)
         },
-    })
+    }
+    injectRestoreStore(pageStore)
     tauriWriteFileMock.mockClear()
     tauriRenameMock.mockClear()
     tauriRemoveMock.mockClear()
@@ -615,12 +627,26 @@ function collectAlertMessages(): string[] {
     return messages
 }
 
+/**
+ * Makes the page a store2 page over the page's store, where the restore ends at the stubbed commit, and has each row of
+ * the describe assert the restore waited for no save first: `saveFirst` returned at its clean check.
+ */
+function onStore2Page(): void {
+    beforeEach(() => {
+        useStore2RestorePage(pageStore)
+    })
+    afterEach(() => {
+        expect(alertMocks.alertWait.mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)
+    })
+}
+
 function expectNoWritesNoInstallNoNetwork(): void {
     expect(forageSetItemMock).not.toHaveBeenCalled()
     expect(tauriWriteFileMock).not.toHaveBeenCalled()
     expect(tauriRenameMock).not.toHaveBeenCalled()
     expect(setColdStorageItemMock).not.toHaveBeenCalled()
     expect(setDatabaseMock).not.toHaveBeenCalled()
+    expect(shell.commits).toHaveLength(0)
     expect(localStorageSetItemSpy).not.toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
 }
@@ -658,6 +684,8 @@ function expectRefusalNotShown(): void {
 //#endregion
 
 describe('the refusal fires before any write, wherever the marker sits and whatever its content (I1)', () => {
+    onStore2Page()
+
     test('refuses a backup whose marker sits between an existing asset/cold entry and the database, writing nothing', async () => {
         await loadBackupBytes(upstreamOrderFixture())
 
@@ -759,6 +787,9 @@ describe('the refusal fires before any write, wherever the marker sits and whate
         vi.resetModules()
 
         try {
+            // The reset registry holds a fresh page mode; the restore under test runs on a store2 page.
+            const { setPageStorageMode } = await import('../../storage/pageStorageMode')
+            setPageStorageMode({ kind: 'store2' })
             const { LoadLocalBackup: loadUnderTauri } = await import('../backuplocal')
             await loadBackupWithFile(new File([asBlobPart(upstreamOrderFixture())], 'backup.bin'), loadUnderTauri)
 
@@ -780,11 +811,14 @@ function expectWritesStoppedAfter(writtenKeys: string[]): void {
     expect(tauriWriteFileMock).not.toHaveBeenCalled()
     expect(setColdStorageItemMock).not.toHaveBeenCalled()
     expect(setDatabaseMock).not.toHaveBeenCalled()
+    expect(shell.commits).toHaveLength(0)
     expect(localStorageSetItemSpy).not.toHaveBeenCalled()
     expect(fetchMock).not.toHaveBeenCalled()
 }
 
 describe('the restore pass guards independently of a walk that missed the marker (I3, defense in depth, slice view that changes between the passes)', () => {
+    onStore2Page()
+
     test('stops when the marker appears at an indexed offset right after one asset, writing nothing after it', async () => {
         const { file, reads } = fileWithTimeDivergentSlice(
             walkViewBytes(),
@@ -840,6 +874,8 @@ describe('the restore pass guards independently of a walk that missed the marker
 })
 
 describe('the restore pass stops when the file differs from what the walk indexed (changed file)', () => {
+    onStore2Page()
+
     function expectChangedFileStop(): void {
         expectMessageShown(language.backupFileChangedWhileReading)
         expectMessageNotShown(language.encryptedBackupImportStopped)
@@ -900,6 +936,8 @@ describe('the restore pass stops when the file differs from what the walk indexe
 })
 
 describe('an unreadable header region aborts with the walk-error message, never the refusal (I1)', () => {
+    onStore2Page()
+
     test('aborts without writing anything when a header region is unreadable and no marker is present', async () => {
         // A 4 KiB walk window cannot reach past the 1 MiB body, so the header after it is a second read, which rejects.
         overrideBackupWindowBytes({ walk: 4096 })
@@ -925,7 +963,9 @@ describe('an unreadable header region aborts with the walk-error message, never 
 })
 
 describe('a backup with no encryption.risudat entry anywhere restores every entry, in file order (I2)', () => {
-    test('guard: writes three assets, a cold entry, an entry the store cannot hold and the database exactly once each, in file order, with the bytes of each entry', async () => {
+    onStore2Page()
+
+    test('guard: writes three assets and an entry the store cannot hold in file order once each, leaves the cold entry and the database to the commit, and calls the commit once', async () => {
         const asset1 = assetEntry(16, 'asset1.png')
         const asset2 = assetEntry(20, 'asset2.png')
         const rejectedName = assetEntry(8, '.hidden.png')
@@ -936,25 +976,25 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
 
         await loadBackupBytes(bytes)
 
-        // The assets are written in file order, then the database as a block generation whose head is the last key written.
+        // The pass writes the assets in file order, once each; the cold entry and the database are not written by it: the
+        // cold unit and the database reach the store through the commit.
         const writtenKeys = forageSetItemMock.mock.calls.map((call) => call[0])
-        expect(writtenKeys.slice(0, 3)).toEqual([
+        expect(writtenKeys).toEqual([
             'assets/asset1.png',
             'assets/asset2.png',
             'assets/asset3.png',
         ])
-        expect(writtenKeys.slice(3).every((key) => key.startsWith('blocks/'))).toBe(true)
-        expect(writtenKeys[writtenKeys.length - 1]).toBe('blocks/head')
+        expect(writtenKeys.some((key) => key.startsWith('assets/coldstorage_'))).toBe(false)
+        expect(writtenKeys).not.toContain('assets/database.risudat')
         expect(writtenKeys).not.toContain('database/database.bin')
         const expectedAssetBytes = (size: number): Uint8Array => Uint8Array.from({ length: size }, (_, i) => i % 256)
         expect(Array.from(forageSetItemMock.mock.calls[0][1])).toEqual(Array.from(expectedAssetBytes(16)))
         expect(Array.from(forageSetItemMock.mock.calls[1][1])).toEqual(Array.from(expectedAssetBytes(20)))
         expect(Array.from(forageSetItemMock.mock.calls[2][1])).toEqual(Array.from(expectedAssetBytes(7)))
-        expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
-        expect(setColdStorageItemMock).toHaveBeenCalledWith(COLD_UUID, { message: [] })
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
-        const installed = setDatabaseMock.mock.calls[0][0] as Database
-        expect(installed.characters).toEqual([])
+        expect(setColdStorageItemMock).not.toHaveBeenCalled()
+        expect(shell.commits).toHaveLength(1)
+        const committed = shell.commits[0].decoded as Database
+        expect(committed.characters).toEqual([])
         expect(fetchMock).not.toHaveBeenCalled()
         // The one name the store cannot hold is reported after the database is written.
         expect(alertMocks.alertNormalWait).toHaveBeenCalledTimes(1)
@@ -1005,9 +1045,12 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
         expect(decoded.byteOffset).toBe(0)
         expect(decoded.byteLength).toBe(entries[3].length - databaseHeaderLength)
         expect(decoded.byteLength).toBe(decoded.buffer.byteLength)
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expect(shell.commits).toHaveLength(1)
     })
+})
 
+// This row asserts the decoder input and the database install of the legacy page's tail, so it runs on that page.
+describe('a database inside a window on the legacy page', () => {
     test('a database that sits inside a window reaches the decoder as a whole buffer of its own, with its own bytes', async () => {
         // Both passes read the whole file in one window here, so the database
         // body is a view of that window until the loop takes its own copy.
@@ -1022,6 +1065,10 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
         expect(Array.from(decoded)).toEqual(Array.from(database.slice(databaseHeaderLength)))
         expect(setDatabaseMock).toHaveBeenCalledTimes(1)
     })
+})
+
+describe('the restore yields and sleeps by the store\'s speed (I2)', () => {
+    onStore2Page()
 
     test('never sleeps per entry, and yields to the event loop at least once per interval of a slow store', async () => {
         const entryCount = 10
@@ -1053,19 +1100,45 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
         }
     })
 
-    test('does not yield when the store answers instantly', async () => {
-        const bytes = concatChunks([assetEntry(16, 'fast1.png'), assetEntry(16, 'fast2.png'), databaseEntry()])
+})
+
+// The import's own database scan yields before the copy pass whatever the file holds; the subject is that the asset
+// copy pass adds no yield on an instant store, so the count at the commit is compared with a control file that has the
+// same database entry and no asset entries.
+describe('the restore does not yield on an instant store', () => {
+    onStore2Page()
+
+    /** How many times the event loop had been yielded to when the restore of `bytes` called the commit. */
+    async function yieldsAtCommit(bytes: Uint8Array): Promise<number> {
+        yieldToEventLoopMock.mockClear()
+        shell.commits.length = 0
+        let count = -1
+        shell.onCommit = () => { count = yieldToEventLoopMock.mock.calls.length }
+        await loadBackupBytes(bytes)
+        expect(shell.commits).toHaveLength(1)
+        return count
+    }
+
+    test('the copy pass adds no yield per entry on an instant store: the count at the commit equals a database-only file\'s',async () => {
         const nowSpy = vi.spyOn(performance, 'now').mockImplementation(() => 0)
+        let withAssets: number
+        let control: number
 
         try {
-            await loadBackupBytes(bytes)
+            withAssets = await yieldsAtCommit(concatChunks([assetEntry(16, 'fast1.png'), assetEntry(16, 'fast2.png'), databaseEntry()]))
+            control = await yieldsAtCommit(concatChunks([databaseEntry()]))
         } finally {
             nowSpy.mockRestore()
         }
 
-        expect(yieldToEventLoopMock).not.toHaveBeenCalled()
+        expect(withAssets).toBe(control)
         expect(sleep).not.toHaveBeenCalled()
     })
+
+})
+
+describe('the restore shows its progress text (I2)', () => {
+    onStore2Page()
 
     test('updates the progress text only when the shown percentage changes', async () => {
         // The three small entries in front of the large one each end below
@@ -1098,10 +1171,11 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
         expect(expectedTexts).toEqual(['Loading local Backup... (0.00%)', 'Loading local Backup... (100.00%)'])
         expect(loadingTexts).toEqual(expectedTexts)
     })
-
 })
 
 describe('a backup that ends inside an entry, or lacks a database, is refused before any write', () => {
+    onStore2Page()
+
     test('write reproducer: a backup cut inside its final database entry is refused before any write', async () => {
         await loadBackupBytes(truncatedDatabaseFixture())
 
@@ -1167,6 +1241,8 @@ describe('a backup that ends inside an entry, or lacks a database, is refused be
 })
 
 describe('regression: the restore reads the file in a number of slices that follows its size', () => {
+    onStore2Page()
+
     // Red on the per-entry reader this replaced, which took a walk slice, a header slice and a body slice for every entry.
     test('300 small assets are restored in a handful of slices, not in slices per entry', async () => {
         overrideBackupWindowBytes({ walk: 4096, copy: 4096 })
@@ -1176,7 +1252,7 @@ describe('regression: the restore reads the file in a number of slices that foll
         await loadBackupWithFile(file)
 
         expect(forageSetItemMock.mock.calls.filter((call) => call[0].startsWith('assets/'))).toHaveLength(300)
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expect(shell.commits).toHaveLength(1)
         // Each pass takes one slice per window; the walk refills early by the 1032 bytes of its header probe.
         expect(reads.ranges.length).toBeLessThanOrEqual(2 * Math.ceil(bytes.length / (4096 - 1032)) + 4)
     })

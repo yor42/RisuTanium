@@ -15,6 +15,7 @@
 //     bounded spacing, safe widths. Everything else (display, visibility, opacity, transform, clip, filter, position, flex and grid layout, overflow, order, heights, ...) is rejected.
 //  5. For every subject: position fixed / sticky, z-index, animation, transition, filter, backdrop-filter, mix-blend-mode, transform, content, contain, direction, all,
 //     and oversized shadows, outlines and borders (more than 64 px) are rejected, because they can cover or disable a protected surface from anywhere.
+import { cr, lum, over } from './colour'
 import { decls } from './csslit'
 import { failClosedPass, settableTest, parseConcrete, inlinePrivate } from './failclosed'
 import type { ContrastPair, LintError, NameMatch, Rgba, SameChannel, SurfaceCheck, TokenMap } from './failclosed'
@@ -219,18 +220,6 @@ function parseColor(s: string): Rgba | null {
         return [+m[1], +m[2], +m[3], a]
     }
     return null
-}
-const lum = (c: readonly number[]): number => {
-    const f = c.slice(0, 3).map((x) => {
-        x /= 255
-        return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4)
-    })
-    return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2]
-}
-const over = (f: Rgba, b: Rgba): Rgba => [f[0] * f[3] + b[0] * (1 - f[3]), f[1] * f[3] + b[1] * (1 - f[3]), f[2] * f[3] + b[2] * (1 - f[3]), 1]
-const cr = (a: readonly number[], b: readonly number[]): number => {
-    const x = lum(a), y = lum(b)
-    return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
 }
 const col = (T: TokenMap, name: string, onto?: Rgba | null): Rgba | null => {
     const c = parseColor(resolve(T.get(name) || '', T))

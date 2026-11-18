@@ -111,7 +111,14 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     acquireExclusiveStorageMigrationLock: acquireExclusiveStorageMigrationLockMock,
     locksSupported: true,
     tabPresenceLockAcquired: Promise.resolve(),
+    // A clean page: the restore's save-first step returns at its clean check instead of waiting out its bound.
+    isSaveClean: () => true,
+    afterNextSaveCommit: vi.fn(),
+    requestSaveNow: vi.fn(),
 }) as unknown as typeof import('src/ts/globalApi.svelte'))
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
 
 const alertMocks = vi.hoisted(() => ({
     alertGenerationInfoStore: { set: vi.fn(), subscribe: vi.fn(), update: vi.fn() },
@@ -181,13 +188,12 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
 
 //#endregion
 
+import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
 import { LoadLocalBackup } from 'src/ts/drive/backuplocal'
 import { overrideBackupWindowBytes } from 'src/ts/drive/backupContainer'
 import { encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { forageStorage } from 'src/ts/globalApi.svelte'
-import { injectRestoreStore } from './restoreSupport'
-import { injectAppStore, getAppStore } from 'src/ts/storage/store/appStore'
-import { getPageBlockOwner } from 'src/ts/storage/pageBlockOwner'
+import { getAppStore } from 'src/ts/storage/store/appStore'
 import { createTauriFilesStore } from 'src/ts/storage/store/tauriFilesStore'
 import { resetByteTransportForTests } from 'src/ts/storage/tauriByteTransport'
 import { resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
@@ -265,6 +271,7 @@ beforeEach(() => {
     forageSetItemMock.mockClear()
     noteWrittenMock.mockClear()
     setDatabaseMock.mockClear()
+    resetStore2ShellBox(shell)
     setColdStorageItemMock.mockClear()
     acquireExclusiveStorageMigrationLockMock.mockClear()
     keptBlobs.clear()
@@ -289,6 +296,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    // The restore waited for no save first: `saveFirst` returned at its clean check.
+    expect(alertMocks.alertWait.mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)
     resetBusyActionsForTest()
     overrideBackupWindowBytes(null)
     createElementSpy.mockRestore()
@@ -299,7 +308,7 @@ afterEach(() => {
 function desktopPage(options: { pipeline: boolean }): void {
     platformBox.isTauri = true
     batchFake.ctl.available = options.pipeline
-    injectRestoreStore(createTauriFilesStore({ platform: 'posix' }))
+    useStore2RestorePage(createTauriFilesStore({ platform: 'posix' }))
     fakeFs.plant(PACK_KEY, PAGE_BYTES)
 }
 
@@ -336,10 +345,8 @@ async function webPage(options: { blobs?: boolean, node?: boolean, piecesRecorde
             }
             : {}),
     } as ByteStore
-    // The block owner is built as a mutex-head store while the kind is 'tauri'; the page's own kind follows for the limits.
-    injectRestoreStore(restoreStore, 'tauri')
-    await getPageBlockOwner()
-    injectAppStore(restoreStore, options.node === true ? 'node' : 'indexeddb')
+    // The page's own kind follows the store for the size limits.
+    useStore2RestorePage(restoreStore, options.node === true ? 'node' : 'indexeddb')
     forageFiles.set(PACK_KEY, PAGE_BYTES)
 }
 
@@ -479,7 +486,7 @@ describe('a Node restore leaves a pack-named entry out of the oversize question'
         expect(same(forageFiles.get(PACK_KEY), PAGE_BYTES)).toBe(true)
         expect(alertMocks.alertNormalWait).toHaveBeenCalledWith(language.restoreAssetsSkippedTooLarge(1, ['huge.png'], LIMIT))
         expect(shownTexts()).not.toContain('tp-')
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expect(shell.commits).toHaveLength(1)
     })
 
     test('T2-16d reproducer: an oversized pack-named entry alone raises no question and no notice, and the restore completes', async () => {
@@ -492,7 +499,7 @@ describe('a Node restore leaves a pack-named entry out of the oversize question'
         expect(writtenAssetKeys()).toEqual(['assets/small.png'])
         expect(same(forageFiles.get(PACK_KEY), PAGE_BYTES)).toBe(true)
         expect(shownTexts()).not.toContain('tp-')
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expect(shell.commits).toHaveLength(1)
     })
 
     test('T2-16e guard: an oversized entry whose name is longer than the walk\'s bound and whose first 1024 bytes end in a pack name is still asked about and never written', async () => {
@@ -507,6 +514,6 @@ describe('a Node restore leaves a pack-named entry out of the oversize question'
         expect(alertMocks.alertConfirm).toHaveBeenCalledTimes(1)
         expect(writtenAssetKeys()).toEqual(['assets/small.png'])
         expect(forageFiles.has(`assets/${longName}`)).toBe(false)
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
+        expect(shell.commits).toHaveLength(1)
     })
 })

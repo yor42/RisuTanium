@@ -3277,6 +3277,8 @@ export const languageKorean = {
     "themePackSize": (size: string) => `크기: ${size}`,
     "themePackLicense": (license: string) => `라이선스: ${license}`,
     "themePackAttribution": (attribution: string) => `출처 표기: ${attribution}`,
+    "themePackDetails": "상세 정보",
+    "themePackDetailsFor": (name: string) => `상세 정보: ${name}`,
     "themePackFonts": "폰트 라이선스",
     "themePackFontLicense": (file: string, license: string) => `${file}: ${license}`,
     "themePackUnreadableName": "읽을 수 없는 테마 팩",
