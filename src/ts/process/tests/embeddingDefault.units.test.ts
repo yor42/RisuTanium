@@ -88,29 +88,29 @@ const pipelineCall = () => pipelineBox.pipeline.mock.calls[0] as [string, string
 
 describe('the default embedding model', () => {
     // regression reproducer: T3a
-    it('HypaProcesser with no stored model embeds with multilingual E5 on wasm, texts verbatim', async () => {
+    it('HypaProcesser with no stored model embeds with multilingual E5 on wasm, with the E5 query prefix', async () => {
         const { HypaProcesser } = await load()
         await new HypaProcesser().getEmbeds(['first text', 'second text'])
         const [task, model, options] = pipelineCall()
         expect(task).toBe('feature-extraction')
         expect(model).toBe('Xenova/multilingual-e5-small')
         expect(options).toMatchObject({ dtype: 'q8', device: 'wasm' })
-        expect(pipelineBox.extractor).toHaveBeenCalledWith(['first text', 'second text'], { pooling: 'mean', normalize: true })
+        expect(pipelineBox.extractor).toHaveBeenCalledWith(['query: first text', 'query: second text'], { pooling: 'mean', normalize: true })
     })
 
     // regression reproducer: T3b
-    it('HypaProcessorV2 with no stored model embeds with multilingual E5 on wasm, texts verbatim', async () => {
+    it('HypaProcessorV2 with no stored model embeds with multilingual E5 on wasm, with the E5 passage prefix', async () => {
         const { HypaProcessorV2 } = await load()
         await new HypaProcessorV2().addTexts([{ id: 'a', content: 'first text' }])
         const [task, model, options] = pipelineCall()
         expect(task).toBe('feature-extraction')
         expect(model).toBe('Xenova/multilingual-e5-small')
         expect(options).toMatchObject({ dtype: 'q8', device: 'wasm' })
-        expect(pipelineBox.extractor).toHaveBeenCalledWith(['first text'], { pooling: 'mean', normalize: true })
+        expect(pipelineBox.extractor).toHaveBeenCalledWith(['passage: first text'], { pooling: 'mean', normalize: true })
     })
 
     // regression reproducer: T4 (V1 rejects with a TypeError and V2 with "Unsupported model" on the base)
-    it('an explicit multiE5Small loads multilingual E5 on wasm without a prefix, in V1 and V2', async () => {
+    it('an explicit multiE5Small loads multilingual E5 on wasm with the query prefix in V1 and the passage prefix in V2', async () => {
         const { HypaProcesser, HypaProcessorV2 } = await load()
         await new HypaProcesser('multiE5Small').getEmbeds(['plain'])
         await new HypaProcessorV2({ model: 'multiE5Small' }).addTexts([{ id: 'a', content: 'plain v2' }])
@@ -118,7 +118,7 @@ describe('the default embedding model', () => {
         const [, model, options] = pipelineCall()
         expect(model).toBe('Xenova/multilingual-e5-small')
         expect(options).toMatchObject({ dtype: 'q8', device: 'wasm' })
-        expect(pipelineBox.extractor.mock.calls.map((call) => call[0])).toEqual([['plain'], ['plain v2']])
+        expect(pipelineBox.extractor.mock.calls.map((call) => call[0])).toEqual([['query: plain'], ['passage: plain v2']])
     })
 
     // compatibility guard: T5, passes before and after
@@ -139,7 +139,7 @@ describe('the default embedding model', () => {
         const processer = new HypaProcesser('multiE5Small')
         await processer.addText(['shared text'])
         expect(pipelineBox.extractor).toHaveBeenCalledTimes(1)
-        expect(store.setKeys).toEqual(['shared text|multiE5Small'])
+        expect(store.setKeys).toEqual(['shared text|multiE5Small|r1:d'])
         expect(store.items.get('shared text|MiniLM')).toEqual({ content: 'shared text', embedding: [9, 9, 9] })
     })
 
@@ -150,7 +150,7 @@ describe('the default embedding model', () => {
         await new HypaProcessorV2({ model: 'multiE5Small' }).addTexts([{ id: 'a', content: 'shared text' }])
         expect(pipelineBox.extractor).toHaveBeenCalledTimes(1)
         expect(store.setKeys).toHaveLength(1)
-        expect(store.setKeys[0].endsWith('|multiE5Small')).toBe(true)
+        expect(store.setKeys[0].endsWith('|multiE5Small|r1:d')).toBe(true)
         expect(store.items.get('shared text|MiniLM')).toEqual({ content: 'shared text', embedding: [9, 9, 9] })
     })
 

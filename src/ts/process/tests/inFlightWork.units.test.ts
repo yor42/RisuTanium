@@ -205,7 +205,7 @@ describe('local transformers work', () => {
       return { data: new Float32Array(4) }
     }
 
-    await runEmbedding(['a', 'b'], 'Xenova/all-MiniLM-L6-v2', 'wasm')
+    await runEmbedding(['a', 'b'], 'Xenova/all-MiniLM-L6-v2', 'wasm', 'mean')
 
     expect(during).toEqual(['embed'])
     expect(inFlightKinds()).toEqual([])
@@ -214,7 +214,7 @@ describe('local transformers work', () => {
   it('runEmbedding ends the token when the model fails to load', async () => {
     pipelineBox.create = async () => { throw new Error('download stalled') }
 
-    await expect(runEmbedding(['a'], 'nomic-ai/nomic-embed-text-v1.5', 'wasm')).rejects.toThrow('download stalled')
+    await expect(runEmbedding(['a'], 'nomic-ai/nomic-embed-text-v1.5', 'wasm', 'mean')).rejects.toThrow('download stalled')
 
     expect(inFlightKinds()).toEqual([])
   })

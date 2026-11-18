@@ -1,7 +1,7 @@
 import localforage from "localforage";
 import { HYPA_VECTOR_STORE } from "src/ts/drive/rtb/sideStoreConfig";
 import { type HypaModel, localModels } from "./hypamemory";
-import { DEFAULT_HYPA_MODEL } from "./embeddingModels";
+import { DEFAULT_HYPA_MODEL, EMBEDDING_RECIPES, recipeCacheTag, recipePrefix } from "./embeddingModels";
 import { isContextModel, getContextProvider } from "./contextualEmbedding";
 import { TaskRateLimiter, TaskCanceledError } from "./taskRateLimiter";
 import { runEmbedding } from "../transformers";
@@ -32,6 +32,8 @@ export interface EmbeddingResult<TMetadata> extends EmbeddingText<TMetadata> {
 }
 
 export type EmbeddingVector = number[] | Float32Array;
+
+type EmbeddingRole = "query" | "document";
 
 export class HypaProcessorV2<TMetadata> {
   private static readonly LOG_PREFIX = "[HypaProcessorV2]";
@@ -121,6 +123,8 @@ export class HypaProcessorV2<TMetadata> {
       return [];
     }
 
+    // addTexts stores documents; a search embeds queries. The role picks the model's prefix and its cache key.
+    const role: EmbeddingRole = saveToMemory ? "document" : "query";
     const resultMap: Map<string, EmbeddingResult<TMetadata>> = new Map();
     const toEmbed: EmbeddingText<TMetadata>[] = [];
 
@@ -153,7 +157,7 @@ export class HypaProcessorV2<TMetadata> {
 
       try {
         const cached = await this.forage.getItem<EmbeddingResult<TMetadata>>(
-          this.getCacheKey(content, ctxGroups.get(id))
+          this.getCacheKey(content, role, ctxGroups.get(id))
         );
 
         if (cached) {
@@ -247,7 +251,7 @@ export class HypaProcessorV2<TMetadata> {
             id, content, embedding, metadata
           };
 
-          await this.forage.setItem(this.getCacheKey(content, ctxGroups.get(id)), {
+          await this.forage.setItem(this.getCacheKey(content, role, ctxGroups.get(id)), {
             content, embedding
           });
 
@@ -269,7 +273,8 @@ export class HypaProcessorV2<TMetadata> {
 
         const chunk = chunks[i];
         const embeddings = await this.getLocalEmbeds(
-          chunk.map((item) => item.content)
+          chunk.map((item) => item.content),
+          role
         );
 
         const savePromises = embeddings.map(async (embedding, j) => {
@@ -283,7 +288,7 @@ export class HypaProcessorV2<TMetadata> {
           };
 
           // Save to DB
-          await this.forage.setItem(this.getCacheKey(content), {
+          await this.forage.setItem(this.getCacheKey(content, role), {
             content,
             embedding,
           });
@@ -337,7 +342,7 @@ export class HypaProcessorV2<TMetadata> {
           };
 
           // Save to DB
-          await this.forage.setItem(this.getCacheKey(content), {
+          await this.forage.setItem(this.getCacheKey(content, role), {
             content,
             embedding,
           });
@@ -382,7 +387,7 @@ export class HypaProcessorV2<TMetadata> {
     return dot / (Math.sqrt(magA) * Math.sqrt(magB));
   }
 
-  private getCacheKey(content: string, contextTexts?: string[]): string {
+  private getCacheKey(content: string, role: EmbeddingRole, contextTexts?: string[]): string {
     const db = getDatabase();
     const suffix =
       this.options.model === "custom" && db.hypaCustomSettings?.model?.trim()
@@ -394,7 +399,7 @@ export class HypaProcessorV2<TMetadata> {
       ? ctxProvider.getCacheKeySuffix(contextTexts)
       : "";
 
-    return `${content}|${this.options.model}${suffix}${ctxSuffix}`;
+    return `${content}|${this.options.model}${suffix}${ctxSuffix}${recipeCacheTag(this.options.model, role)}`;
   }
 
   private getOptimalChunkSize(): number {
@@ -420,11 +425,13 @@ export class HypaProcessorV2<TMetadata> {
     return chunks;
   }
 
-  private async getLocalEmbeds(contents: string[]): Promise<EmbeddingVector[]> {
+  private async getLocalEmbeds(contents: string[], role: EmbeddingRole): Promise<EmbeddingVector[]> {
+    const prefix = recipePrefix(this.options.model, role);
     const results: Float32Array[] = await runEmbedding(
-      contents,
+      contents.map((content) => prefix + content),
       localModels.models[this.options.model],
-      localModels.gpuModels.includes(this.options.model) ? "webgpu" : "wasm"
+      localModels.gpuModels.includes(this.options.model) ? "webgpu" : "wasm",
+      EMBEDDING_RECIPES[this.options.model].pooling
     );
 
     return results;
