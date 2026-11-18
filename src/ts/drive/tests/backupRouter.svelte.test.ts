@@ -159,8 +159,38 @@ async function worldOfPage(page: Page): Promise<WorldLike> {
 }
 
 /** The page's own profile as a real `.rtb` file. */
-async function rtbOfPage(page: Page): Promise<Uint8Array> {
-    return (await writeRtbFile({ world: await worldOfPage(page) })).bytes
+async function rtbOfPage(page: Page, createdAt?: number): Promise<Uint8Array> {
+    return (await writeRtbFile({ world: await worldOfPage(page), createdAt })).bytes
+}
+
+/** The page's own profile as a real `.rtb` made 5 seconds before the page's last commit: the newer-data question applies to it. */
+async function olderRtbOfPage(page: Page): Promise<Uint8Array> {
+    const at = (await page.k.commitKey()).current?.at as number
+    return await rtbOfPage(page, at - 5000)
+}
+
+// The committer answers `committed` without writing; the page's real store has no piece writer. The `.rtb` restore copies into
+// a store that has one (nothing is copied: the file holds no assets).
+function stubCommit(commitRan: { value: boolean }): void {
+    vi.doMock('src/ts/storage/store/appStore', async (importOriginal) => {
+        const original = await importOriginal<typeof import('src/ts/storage/store/appStore')>()
+        const { MemoryByteStore } = await import('./rtb/rtbInstallFixtures')
+        const memory = new MemoryByteStore()
+        return { ...original, getAppStore: async () => memory }
+    })
+    vi.doMock('src/ts/drive/rtbRestoreHold', async (importOriginal) => {
+        const original = await importOriginal<typeof import('src/ts/drive/rtbRestoreHold')>()
+        return {
+            ...original,
+            rtbGuardedCommitter: (committer: Committer): Committer => ({
+                ...committer,
+                commit: async (): Promise<CommitResult> => {
+                    commitRan.value = true
+                    return { status: 'committed', value: await committer.readCommit() as never, bytes: new Uint8Array(), flushed: true, manifestKey: 'm', mode: 'ordinary' } as unknown as CommitResult
+                },
+            }),
+        }
+    })
 }
 
 interface Opened {
@@ -341,6 +371,122 @@ describe('B6b: a throw after the commit ends unknown, never the generic failure'
     })
 })
 
+/** Picks `file` through the Welcome button and waits for the whole flow. */
+async function welcomeVia(page: Page, file: File): Promise<void> {
+    const view = capturePicker()
+    const flow = page.settings.restoreFromBinFileAtFirstRun()
+    await until(() => view.clicks() === 1, 'the Welcome picker to open')
+    await choose(view.input(), file)
+    await flow
+}
+
+/** The newer-data question (it names the file's device) is declined; every other confirmation is accepted. */
+function declineNewerQuestion(page: Page): void {
+    vi.mocked(page.alert.alertConfirm).mockImplementation(async (text) => !(typeof text === 'string' && text.includes('Test device')))
+}
+
+const newerQuestionsOf = (page: Page): unknown[] => vi.mocked(page.alert.alertConfirm).mock.calls.map((call) => call[0]).filter((text) => typeof text === 'string' && text.includes('Test device'))
+
+describe('S14a: the Welcome restore routes a .rtb by its content and skips the newer-data question', () => {
+    test('T-W1: a producer .rtb older than the page is restored at Welcome with no newer-data question, and the page ends (reproducer; M1, M5, M7, M9)', async () => {
+        const commitRan = { value: false }
+        stubCommit(commitRan)
+        const page = await openPage()
+        const file = new File([await olderRtbOfPage(page) as unknown as Uint8Array<ArrayBuffer>], 'backup.rtb')
+        declineNewerQuestion(page)
+
+        await welcomeVia(page, file)
+
+        expect(commitRan.value).toBe(true)
+        expect(newerQuestionsOf(page)).toEqual([])
+        expect(page.run.restorePhase()).toBe('pageEnding')
+        expect(errorsOf(page)).toEqual([])
+    })
+
+    test('T-S1: the same file through Settings is asked the newer-data question, and declining it replaces nothing (guard; M2, M8)', async () => {
+        const commitRan = { value: false }
+        stubCommit(commitRan)
+        const page = await openPage()
+        const file = new File([await olderRtbOfPage(page) as unknown as Uint8Array<ArrayBuffer>], 'backup.rtb')
+        declineNewerQuestion(page)
+
+        await restoreVia(page, file)
+
+        expect(newerQuestionsOf(page)).toHaveLength(1)
+        expect(commitRan.value).toBe(false)
+        expect(page.run.restorePhase()).toBe('none')
+    })
+
+    test('T-W2: a file that is no backup is turned away at Welcome with the router notice, replaces nothing and unlocks Welcome (reproducer; M9)', async () => {
+        const commitRan = { value: false }
+        stubCommit(commitRan)
+        const page = await openPage()
+
+        await welcomeVia(page, new File([encoder.encode('just some text, not a backup at all')], 'notes.txt'))
+
+        expect(errorsOf(page)).toEqual([language.backupFileNotRecognized])
+        expect(commitRan.value).toBe(false)
+        expect(page.run.restorePhase()).toBe('none')
+        expect(page.busy.isBusy()).toBe(false)
+    })
+})
+
+describe('S14a: the picker tells the caller when a file was picked (T-R9)', () => {
+    /** A file whose first-bytes read is held until the test releases it. */
+    function slowFile(): { file: File, release: () => void } {
+        const bytes = framedBin()
+        const file = new File([bytes], 'slow.bin')
+        const gate = held<void>()
+        Object.defineProperty(file, 'slice', {
+            value: (from: number, to: number) => ({ arrayBuffer: async () => { await gate.promise; return bytes.slice(from, to).buffer } }),
+            configurable: true,
+        })
+        return { file, release: () => gate.resolve() }
+    }
+
+    test('onPicked runs once, before the file is read and with no busy entry open; the restore starts after the read (guard; M10)', async () => {
+        const page = await openPage()
+        const view = capturePicker()
+        const onPicked = vi.fn()
+        const loadBin = vi.fn(async () => ({ outcome: 'committed' as OperationOutcome }))
+        const slow = slowFile()
+        const opened = page.router.loadBackupFromPicker({ loadBin, loadRtb: vi.fn() }, { onPicked })
+        const change = choose(view.input(), slow.file)
+        await sleepReal(20)
+        expect(onPicked).toHaveBeenCalledTimes(1)
+        expect(loadBin).not.toHaveBeenCalled()
+        expect(page.busy.isBusy()).toBe(false)
+        slow.release()
+        await change
+        expect(loadBin).toHaveBeenCalledTimes(1)
+        expect(await opened).toEqual({ outcome: 'committed' })
+        expect(onPicked).toHaveBeenCalledTimes(1)
+    })
+
+    test('an empty pick and a cancel never call onPicked (guard; M11)', async () => {
+        const page = await openPage()
+        const view = capturePicker()
+        const onPicked = vi.fn()
+        const empty = page.router.loadBackupFromPicker({ loadBin: vi.fn(), loadRtb: vi.fn() }, { onPicked })
+        await choose(view.input(), null)
+        expect(await empty).toEqual({ outcome: 'canceled' })
+        const canceled = page.router.loadBackupFromPicker({ loadBin: vi.fn(), loadRtb: vi.fn() }, { onPicked })
+        view.input().dispatchEvent(new Event('cancel'))
+        expect(await canceled).toEqual({ outcome: 'canceled' })
+        expect(onPicked).not.toHaveBeenCalled()
+    })
+
+    test('an onPicked that throws is logged and the file is still routed (guard; M12)', async () => {
+        const page = await openPage()
+        const view = capturePicker()
+        const loadBin = vi.fn(async () => ({ outcome: 'committed' as OperationOutcome }))
+        const opened = page.router.loadBackupFromPicker({ loadBin, loadRtb: vi.fn() }, { onPicked: () => { throw new Error('callback broke') } })
+        await choose(view.input(), new File([framedBin()], 'x.bin'))
+        expect(loadBin).toHaveBeenCalledTimes(1)
+        expect(await opened).toEqual({ outcome: 'committed' })
+    })
+})
+
 describe('S13a: a file another app opened is routed to the .rtb restore by its content', () => {
     interface OpenedFile {
         bytes: Uint8Array
@@ -358,29 +504,6 @@ describe('S13a: a file another app opened is routed to the .rtb restore by its c
                 openDesktopImportSource: async () => ({
                     ...original.importSourceOfBytes('uri-tail', file.bytes),
                     close: async () => { file.closes++; file.onClose() },
-                }),
-            }
-        })
-    }
-
-    // The committer answers `committed` without writing, as the B6b case above does; the page's real store has no piece writer.
-    function stubCommit(commitRan: { value: boolean }): void {
-        vi.doMock('src/ts/storage/store/appStore', async (importOriginal) => {
-            const original = await importOriginal<typeof import('src/ts/storage/store/appStore')>()
-            const { MemoryByteStore } = await import('./rtb/rtbInstallFixtures')
-            const memory = new MemoryByteStore()
-            return { ...original, getAppStore: async () => memory }
-        })
-        vi.doMock('src/ts/drive/rtbRestoreHold', async (importOriginal) => {
-            const original = await importOriginal<typeof import('src/ts/drive/rtbRestoreHold')>()
-            return {
-                ...original,
-                rtbGuardedCommitter: (committer: Committer): Committer => ({
-                    ...committer,
-                    commit: async (): Promise<CommitResult> => {
-                        commitRan.value = true
-                        return { status: 'committed', value: await committer.readCommit() as never, bytes: new Uint8Array(), flushed: true, manifestKey: 'm', mode: 'ordinary' } as unknown as CommitResult
-                    },
                 }),
             }
         })
