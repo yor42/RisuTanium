@@ -11,6 +11,8 @@ import { appendLastPath } from "src/ts/util";
 import { isMobile } from "src/ts/platform";
 import { resolveSecret } from "src/ts/secretRef";
 import { withInFlight } from "../inFlightWork";
+import { yieldByMessage } from "src/ts/storage/saveYield";
+import { embeddingBatchSize } from "./embeddingBatch";
 
 export interface HypaProcessorV2Options {
   model?: HypaModel;
@@ -259,6 +261,9 @@ export class HypaProcessorV2<TMetadata> {
     } else if (this.isLocalModel()) {
       // Local model: Sequential processing
       for (let i = 0; i < chunks.length; i++) {
+        // One local call blocks the main thread; give other tasks a turn between calls.
+        if (i > 0) await yieldByMessage();
+
         // Progress callback
         this.progressCallback?.(chunks.length - i - 1);
 
@@ -393,21 +398,12 @@ export class HypaProcessorV2<TMetadata> {
   }
 
   private getOptimalChunkSize(): number {
-    // API
     if (!this.isLocalModel()) {
-      return 50;
+      return embeddingBatchSize("remote", isMobile);
     }
 
-    // WebGPU
-    if ("gpu" in navigator) {
-      return isMobile ? 5 : 10;
-    }
-
-    // WASM
-    const cpuCores = (navigator as Navigator).hardwareConcurrency || 4;
-    const baseChunkSize = isMobile ? Math.floor(cpuCores / 2) : cpuCores;
-
-    return Math.min(baseChunkSize, 10);
+    const runtime = localModels.gpuModels.includes(this.options.model) ? "webgpu" : "wasm";
+    return embeddingBatchSize(runtime, isMobile);
   }
 
   private isLocalModel(): boolean {
