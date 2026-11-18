@@ -19,6 +19,7 @@
     import { afterAppend, foldLoadMorePages, jumpOnlyGrows, jumpWindow,mountCap, newestWindow, normalizeBottom, shellInitialPages, shellPages, shellWindow, slideNewer, slideOlder, trimHeld } from '../../ts/chatShell/mountWindow'
     import { chatSurface,isChatSurfaceInstalled, onSurfaceHiding } from '../ChatScreens/chatSurface.svelte'
     import { offscreenRowCounts } from '../../ts/chatShell/offscreenRows'
+    import { claimRowKey } from '../../ts/chatShell/messageRowKey'
     import { asShellFocus } from '../../ts/chatShell/shellFocus'
     import { alignDelta, appendedReplies, createTravel, distanceFromEnd, isAtBottom, isFar, jumpReach, matchAlignDelta, parseInset, travelPlan, travelReach, type JumpAlign, type JumpOptions, type JumpOrigin, type JumpResult, type JumpStatus } from '../../ts/chatShell/jumpTarget'
     import { settleBand, type SettleReach } from '../../ts/chatShell/settleBand'
@@ -210,9 +211,10 @@
 
     let visibleRows = $derived.by(() => {
         const result: { idx: number, message: Message, key: string }[] = []
+        const taken = new Set<string>()
         for (let i = win.start; i >= win.end; i--) {
             const message = messages[i]
-            if (message) result.push({ idx: i, message, key: message.chatId ?? `${chat?.id ?? character.chaId}:${i}` })
+            if (message) result.push({ idx: i, message, key: claimRowKey(taken, message.chatId, chat?.id ?? character.chaId, i) })
         }
         return result
     })
