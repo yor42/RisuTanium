@@ -81,12 +81,37 @@ let bestMatchCache = new Map<string, string>()
 /**
  * The send's prompt pass (calls carrying a `promptView`) caches in its own map,
  * so display and streaming traffic cannot evict it. Every other call shares the
- * second, smaller map. Both evict the oldest entry first and neither grows with
- * the chat.
+ * second, smaller map, which evicts the oldest entry first at 200 entries.
+ *
+ * The prompt-pass map is bounded by bytes, not by count. A key is a 128-bit
+ * digest of the cache key text, so it never holds the chat text; an entry whose
+ * result equals the pass input holds `null` and returns the caller's own text.
+ * Each entry is charged a fixed 256 bytes (the entry object, its key and its
+ * group pointer; this also bounds the count at 32,768, and once changed results
+ * fill the budget it refuses unchanged entries too: a maintainer decision), plus
+ * two bytes per character of a changed result. At 8 MiB the entries of any other
+ * chat or script set (a different fingerprint) are evicted first; if the new
+ * entry still does not fit it is not admitted, and no entry of the current
+ * fingerprint is ever evicted.
  */
-const PROMPT_PASS_CACHE_CAP = 1000
+const PROMPT_PASS_BUDGET_BYTES = 8 * 1024 * 1024
+const PROMPT_PASS_ENTRY_BYTES = 256
 const SCRIPT_CACHE_CAP = 200
-let promptPassCache = new Map<string, string>()
+
+/** Shared by every entry stored under one fingerprint; entries point at it rather than each holding the string. */
+interface FingerprintGroup {
+    readonly fingerprint: string
+}
+
+interface PromptPassEntry {
+    /** `null`: the result equals the pass input. */
+    readonly result: string | null
+    readonly group: FingerprintGroup
+}
+
+let promptPassCache = new Map<string, PromptPassEntry>()
+let promptPassBytes = 0
+let promptPassGroups = new Map<string, FingerprintGroup>()
 let scriptCache = new Map<string, string>()
 
 const scriptPassCounters = { cacheHits: 0, scans: 0, earlyRejects: 0 }
@@ -222,22 +247,123 @@ function isKeyDeterminedPass(scripts: customscript[], mode: ScriptMode, data: st
     return true
 }
 
-function cacheScript(hash:string, result:string, promptPass:boolean){
-    const cache = promptPass ? promptPassCache : scriptCache
-    cache.set(hash, result)
+/**
+ * A 128-bit digest (the public-domain cyrb128 mix) of a prompt-pass cache key
+ * text, as 32 lower-case hex characters. It needs no async crypto, which a
+ * plain-HTTP page lacks. It is not cryptographic: a collision would serve
+ * another key's entry, a risk the maintainer accepted for the saving of holding
+ * the chat text in every key.
+ */
+function promptPassDigest(text: string): string {
+    let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762
+    for(let i = 0; i < text.length; i++){
+        const k = text.charCodeAt(i)
+        h1 = h2 ^ Math.imul(h1 ^ k, 597399067)
+        h2 = h3 ^ Math.imul(h2 ^ k, 2869860233)
+        h3 = h4 ^ Math.imul(h3 ^ k, 951274213)
+        h4 = h1 ^ Math.imul(h4 ^ k, 2716044179)
+    }
+    h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067)
+    h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233)
+    h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213)
+    h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179)
+    h1 ^= h2 ^ h3 ^ h4
+    h2 ^= h1
+    h3 ^= h1
+    h4 ^= h1
+    return [h1, h2, h3, h4].map((h) => (h >>> 0).toString(16).padStart(8, '0')).join('')
+}
 
-    if(cache.size > (promptPass ? PROMPT_PASS_CACHE_CAP : SCRIPT_CACHE_CAP)){
-        cache.delete(cache.keys().next().value)
+/**
+ * Test-only: the digest a prompt-pass key is built from.
+ */
+export function promptPassDigestForTests(text: string): string {
+    return promptPassDigest(text)
+}
+
+/**
+ * Names the chat and the same-mode script set a prompt pass ran under, for
+ * eviction only: it steers which entries go first when the budget is full and
+ * never decides what a hit serves. The message index (`chatID`) is not part of
+ * it, because every message of one chat is the same chat; the key already
+ * carries it per script.
+ */
+function promptPassFingerprint(scripts: customscript[], mode: ScriptMode, subject: RunSubject | undefined): string {
+    let text = (subject ? subject.origin.chaId + '\u0000' + subject.origin.chatId : '') + '\u0001' + mode
+    for(const script of scripts){
+        if(script.type !== mode){
+            continue
+        }
+        text += `\u0001${String(script.in)}\u0000${script.out}\u0000${script.flag ?? ''}\u0000${script.ableFlag ? 1 : 0}`
+    }
+    return promptPassDigest(text)
+}
+
+function promptPassEntryCost(result: string | null): number {
+    return PROMPT_PASS_ENTRY_BYTES + (result === null ? 0 : 2 * result.length)
+}
+
+/**
+ * Stores a prompt-pass result unless the budget forbids it. Never evicts an
+ * entry of `fingerprint`; a sweep removes every entry of another one.
+ */
+function admitPromptPass(key: string, result: string | null, fingerprint: string){
+    if(promptPassCache.has(key)){
+        return
+    }
+    const cost = promptPassEntryCost(result)
+    if(cost > PROMPT_PASS_BUDGET_BYTES){
+        return
+    }
+    if(promptPassBytes + cost > PROMPT_PASS_BUDGET_BYTES && promptPassGroups.size > (promptPassGroups.has(fingerprint) ? 1 : 0)){
+        for(const [entryKey, entry] of promptPassCache){
+            if(entry.group.fingerprint !== fingerprint){
+                promptPassBytes -= promptPassEntryCost(entry.result)
+                promptPassCache.delete(entryKey)
+            }
+        }
+        const current = promptPassGroups.get(fingerprint)
+        promptPassGroups = new Map()
+        if(current){
+            promptPassGroups.set(fingerprint, current)
+        }
+    }
+    if(promptPassBytes + cost > PROMPT_PASS_BUDGET_BYTES){
+        return
+    }
+    let group = promptPassGroups.get(fingerprint)
+    if(!group){
+        group = { fingerprint }
+        promptPassGroups.set(fingerprint, group)
+    }
+    promptPassCache.set(key, { result, group })
+    promptPassBytes += cost
+}
+
+/**
+ * Test-only: what the prompt-pass map holds and the bytes charged for it.
+ */
+export function promptPassCacheStatsForTests(): { entries: number, bytes: number, keys: string[] } {
+    return { entries: promptPassCache.size, bytes: promptPassBytes, keys: [...promptPassCache.keys()] }
+}
+
+function cacheScript(hash:string, result:string){
+    scriptCache.set(hash, result)
+
+    if(scriptCache.size > SCRIPT_CACHE_CAP){
+        scriptCache.delete(scriptCache.keys().next().value)
     }
 
 }
 
-function getScriptCache(hash:string, promptPass:boolean){
-    return (promptPass ? promptPassCache : scriptCache).get(hash)
+function getScriptCache(hash:string){
+    return scriptCache.get(hash)
 }
 
 export function resetScriptCache(){
     promptPassCache = new Map()
+    promptPassBytes = 0
+    promptPassGroups = new Map()
     scriptCache = new Map()
 }
 
@@ -263,8 +389,8 @@ export function resetScriptCache(){
  * `promptView` marks a call that builds the prompt. Its parses and
  * `@@repeat_back` then skip the messages the prompt does not send, and the
  * prompt-pass cache serves and stores it only when `isKeyDeterminedPass`
- * holds. Without one the call reads and stores in the shared cache of every
- * other call, which is smaller and never serves or evicts a prompt-pass entry.
+ * holds, and not at all when no script of the mode can act on it. Without
+ * one the call reads and stores in the shared cache of every other call, which is smaller and never serves or evicts a prompt-pass entry.
  *
  * `cache` is `'bypass'` for a call whose text is never looked up again, such as
  * a streamed partial reply: it neither reads nor stores in either cache.
@@ -338,28 +464,60 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
     }
 
     data = risuChatParser(data, { chatID: chatID, cbsConditions, subject, promptView })
+    const passInput = data
     const moduleRegexScripts = moduleScripts ? (moduleScripts.list ??= getModuleRegexScripts(subject)) : getModuleRegexScripts(subject)
     const scripts = (db.presetRegex ?? []).concat(char.customscript).concat(moduleRegexScripts)
     const promptPass = promptView !== undefined
-    const useCache = cache === 'use' && (!promptPass || isKeyDeterminedPass(scripts, mode, data))
     const dynamicAssetBlockCanRun = !!db.dynamicAssets && (char.type === 'simple' || char.type === 'character') && !!char.additionalAssets && char.additionalAssets.length > 0
         && mode !== 'editinput' && mode !== 'editprocess' && (db.dynamicAssetsEditDisplay || mode !== 'editdisplay')
+    // A prompt pass with no script of its mode and no dynamic-asset rewrite returns its input as it is, so it builds no key and stores nothing.
+    if(promptPass && !dynamicAssetBlockCanRun && !scripts.some((s) => s.type === mode)){
+        if(MEASURE && probe){
+            probe.cache = scripts.length === 0 ? 'empty' : 'uncached'
+        }
+        return {data, emoChanged}
+    }
+    const useCache = cache === 'use' && (!promptPass || isKeyDeterminedPass(scripts, mode, data))
     const charAssetNames = dynamicAssetBlockCanRun ? (char as character | simpleCharacterArgument).additionalAssets!.map((v) => v[0]) : []
     const moduleAssetNames = dynamicAssetBlockCanRun ? getModuleAssets(subject).map((v) => v[0]) : []
     const assetSignature = dynamicAssetBlockCanRun ? assetNamesSignature(charAssetNames, moduleAssetNames) : ''
-    const hash = useCache ? generateScriptCacheKey(scripts, data, mode, chatID, cbsConditions, subject, promptView, assetSignature) : ''
-    const cached = useCache ? getScriptCache(hash, promptPass) : undefined
+    const keyText = useCache ? generateScriptCacheKey(scripts, data, mode, chatID, cbsConditions, subject, promptView, assetSignature) : ''
+    const hash = useCache && promptPass ? promptPassDigest(keyText) : keyText
+    let hit: string | undefined
+    if(useCache){
+        if(promptPass){
+            const entry = promptPassCache.get(hash)
+            if(entry){
+                hit = entry.result === null ? passInput : entry.result
+            }
+        }
+        else{
+            // Truthiness, not presence: an empty result of the shared map is a miss.
+            const cached = getScriptCache(hash)
+            if(cached){
+                hit = cached
+            }
+        }
+    }
     if(MEASURE && probe){
-        probe.cache = cached ? 'hit' : scripts.length === 0 ? 'empty' : useCache ? 'miss' : 'uncached'
+        probe.cache = hit !== undefined ? 'hit' : scripts.length === 0 ? 'empty' : useCache ? 'miss' : 'uncached'
     }
-    if(cached){
+    if(hit !== undefined){
         scriptPassCounters.cacheHits++
-        return {data: cached, emoChanged: false}
+        return {data: hit, emoChanged: false}
     }
-    
+    const storePass = (result: string) => {
+        if(promptPass){
+            admitPromptPass(hash, result === passInput ? null : result, promptPassFingerprint(scripts, mode, subject))
+        }
+        else{
+            cacheScript(hash, result)
+        }
+    }
+
     if(scripts.length === 0){
         if(useCache){
-            cacheScript(hash, data, promptPass)
+            storePass(data)
         }
         return {data, emoChanged}
     }
@@ -633,14 +791,22 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
         if((!db.dynamicAssetsEditDisplay && mode === 'editdisplay')
             || mode === 'editinput' || mode === 'editprocess'){
             if(useCache){
-                cacheScript(hash, data, promptPass)
+                storePass(data)
             }
             return {data, emoChanged}
         }
         const assetNames = charAssetNames.concat(moduleAssetNames)
 
-        const processer = new HypaProcesser()
-        await processer.addText(assetNames)
+        // Built on the first fuzzy lookup of the pass only: cache hits, exact names and passes without asset tags never need it.
+        let processerPromise: Promise<HypaProcesser> | null = null
+        const getProcesser = () => {
+            processerPromise ??= (async () => {
+                const built = new HypaProcesser()
+                await built.addText(assetNames)
+                return built
+            })()
+            return processerPromise
+        }
         const matches = data.matchAll(assetRegex)
 
         for(const match of matches){
@@ -652,7 +818,7 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
                     data = data.replaceAll(match[0], `{{${type}::${bestMatchCache.get(cacheKey)}}}`)
                 }
                 else if(!assetNames.includes(assetName)){
-                    const searched = await processer.similaritySearch(assetName)
+                    const searched = await (await getProcesser()).similaritySearch(assetName)
                     const bestMatch = searched[0]
                     if(bestMatch){
                         data = data.replaceAll(match[0], `{{${type}::${bestMatch}}}`)
@@ -664,7 +830,7 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
     }
 
     if(useCache){
-        cacheScript(hash, data, promptPass)
+        storePass(data)
     }
 
     return {data, emoChanged}

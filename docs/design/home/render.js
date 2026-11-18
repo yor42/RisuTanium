@@ -136,7 +136,11 @@
     var greeting = t(lib ? 'rp.welcomeBack' : 'rp.welcome', { name: nm });
     var head = '<div class="rp-head" data-part="home-greeting"><div><p class="eyebrow" data-part="home-eyebrow">' + esc(t('rp.eyebrow')) + '</p><h1 class="h1">' + esc(greeting) + '</h1><p class="muted small persona-caption">' + esc(t('persona.caption')) + '</p></div></div>';
     var shelf = shelfStories();
-    return head + '<div class="rp-body"><div class="stage">' +
+    // Phone only (CSS): the library and RisuRealm sit below the stories on a phone, so they get a one-tap entry under the greeting (UI-S7 audit S7-08).
+    var jump = '<nav class="jump" data-part="home-jump" aria-label="' + esc(t('jump.label')) + '">' +
+      '<button type="button" class="chip-btn" data-part="home-jump-link" data-action="jump" data-target="library-h" data-key="jump-lib">' + icon('user') + esc(t('jump.chars')) + '<span class="count" data-part="home-count">' + store.order.length + '</span></button>' +
+      (S.realm !== 'hidden' ? '<button type="button" class="chip-btn" data-part="home-jump-link" data-action="jump" data-target="realm-h" data-key="jump-realm">' + icon('globe') + esc(t('jump.realm')) + '</button>' : '') + '</nav>';
+    return head + jump + '<div class="rp-body"><div class="stage">' +
       (shelf.length ? '<section id="continue-section" aria-labelledby="continue-h" data-part="home-shelf-section"><div class="section-head"><h2 id="continue-h">' + esc(t('continue.h')) + '</h2></div><div class="shelf" data-part="home-shelf">' + shelf.map(storyCard).join('') + '</div></section>' : '') +
       '<section class="card glass library" data-part="home-library" data-manage="' + S.lib.manage + '" data-library-view="' + S.lib.view + '" aria-labelledby="library-h"><div class="section-head"><h2 id="library-h">' + esc(t('lib.h')) + '</h2><span class="muted small" id="lib-count" role="status"></span></div><div id="lib-msg" role="status"></div><div id="lib-body">' + R.libBody() + '</div></section>' +
       '</div><aside class="side" aria-label="' + esc(t('community.aside')) + '">' + (S.realm !== 'hidden' ? realmCard() : '') + communityCard() + '</aside></div>';

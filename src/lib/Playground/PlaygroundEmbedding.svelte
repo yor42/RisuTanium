@@ -5,11 +5,13 @@
     import SelectInput from "../UI/GUI/SelectInput.svelte";
     import Button from "../UI/GUI/Button.svelte";
     import { HypaProcesser } from "src/ts/process/memory/hypamemory";
+    import { DEFAULT_HYPA_MODEL } from "src/ts/process/memory/embeddingModels";
     import { DBState } from "src/ts/stores.svelte"
     import { alertError } from "src/ts/alert";
 
     let query = $state("");
-    let model = $state("MiniLM");
+    // Starts on the user's own embedding model; the default only fills an unset or empty one.
+    let model = $state<string>(DBState.db.hypaModel || DEFAULT_HYPA_MODEL);
     // The OpenAI key and custom URL are this page's own copies, seeded once from the
     // memory settings; editing them never writes the settings.
     let openAIKey = $state(DBState.db.supaMemoryKey ?? "");
@@ -69,6 +71,7 @@
     <OptionInput value="bgeSmallEn">BGE Small English (CPU)</OptionInput>
     <OptionInput value="bgem3">BGE Medium 3 (CPU)</OptionInput>
     <OptionInput value="multiMiniLM">Multilingual MiniLM L12 v2 (CPU)</OptionInput>
+    <OptionInput value="multiE5Small">Multilingual E5 Small (CPU)</OptionInput>
     <OptionInput value="bgeM3Ko">BGE Medium 3 Korean (CPU)</OptionInput>
     <OptionInput value="openai3small">OpenAI text-embedding-3-small</OptionInput>
     <OptionInput value="openai3large">OpenAI text-embedding-3-large</OptionInput>

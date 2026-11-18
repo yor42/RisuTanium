@@ -21,7 +21,7 @@ vi.mock(import('./platform'), () => ({
 }) as unknown as typeof import('./platform'))
 
 import { alertInput, alertSelect } from './alert'
-import { ALERT_BACK_ACTIONS } from './alertBack'
+import { ALERT_BACK_ACTIONS, offeredCancel } from './alertBack'
 import { ALERT_COVERS_PAGE, escapeActionFor } from './alertEscape'
 import { ANSWER_GUARD_MS, isPromptType, pageCovered, resetAlertPromptsForTests } from './alertPrompts'
 import { dispatchBack, resetBackHandlersForTests } from './backHandlers'
@@ -171,6 +171,7 @@ describe('Back and page covering', () => {
         dispatchBack()
         await settle()
         expect(shown()).toBe(data)
+        expect(offeredCancel(data)).toBeUndefined()
         alertStore.set({ type: 'none', msg: '0' })
         await select
 
@@ -180,10 +181,11 @@ describe('Back and page covering', () => {
         dispatchBack()
         await settle()
         expect(shown()).toBe(inputData)
+        expect(offeredCancel(inputData)).toBeUndefined()
         alertStore.set({ type: 'none', msg: 'x' })
         await input
-        expect(ALERT_BACK_ACTIONS.select).toEqual({ kind: 'hold' })
-        expect(ALERT_BACK_ACTIONS.input).toEqual({ kind: 'hold' })
+        expect(ALERT_BACK_ACTIONS.select).toEqual({ kind: 'cancelIfOffered' })
+        expect(ALERT_BACK_ACTIONS.input).toEqual({ kind: 'cancelIfOffered' })
     })
 
     test('both new types are prompts that Escape ignores and that cover the page', () => {

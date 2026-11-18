@@ -253,6 +253,59 @@ describe('characterCards.ts -- lorebook keys in exported cards', () => {
         expect(v2.data.character_book.extensions).not.toHaveProperty('risu_fullWordAsciiBoundary')
     })
 
+    test('regression reproducer: the word-start option rides the CCv2 and CCv3 exports and re-imports', async () => {
+        const char = await charWith(regexBook('dragon'))
+        char.loreSettings = { tokenBudget: 100, scanDepth: 3, recursiveScanning: false, fullWordMatching: false, cjkWordStart: true }
+        expect(createBaseV3(char).data.character_book.extensions.risu_cjkWordStart).toBe(true)
+        exported.chunks.length = 0
+        char.image = 'portrait'
+        expect(await exportCharacterCard(char, 'json', { spec: 'v2' })).toBe(true)
+        const v2 = exportedJson()
+        expect(v2.data.character_book.extensions.risu_cjkWordStart).toBe(true)
+        const v3Back = await importCard(JSON.parse(JSON.stringify(createBaseV3(char))))
+        expect(v3Back.loreSettings?.cjkWordStart).toBe(true)
+        const v2Back = await importCard(v2)
+        expect(v2Back.loreSettings?.cjkWordStart).toBe(true)
+    })
+
+    test('regression reproducer: turning the word-start option off removes a stale key from both exports', async () => {
+        const char = await charWith(regexBook('dragon'))
+        char.loreSettings = { tokenBudget: 100, scanDepth: 3, recursiveScanning: false, fullWordMatching: true, cjkWordStart: false }
+        char.loreExt = { risu_cjkWordStart: true }
+        expect(createBaseV3(char).data.character_book.extensions).not.toHaveProperty('risu_cjkWordStart')
+        char.loreExt = { risu_cjkWordStart: true }
+        exported.chunks.length = 0
+        char.image = 'portrait'
+        expect(await exportCharacterCard(char, 'json', { spec: 'v2' })).toBe(true)
+        expect(exportedJson().data.character_book.extensions).not.toHaveProperty('risu_cjkWordStart')
+    })
+
+    test('guard: the two lorebook flags are written independently', async () => {
+        const char = await charWith(regexBook('dragon'))
+        char.loreSettings = { tokenBudget: 100, scanDepth: 3, recursiveScanning: false, fullWordMatching: true, fullWordAsciiBoundary: true, cjkWordStart: false }
+        const extensions = createBaseV3(char).data.character_book.extensions
+        expect(extensions.risu_fullWordAsciiBoundary).toBe(true)
+        expect(extensions).not.toHaveProperty('risu_cjkWordStart')
+    })
+
+    test('guard: a character that never used the word-start option exports no key', async () => {
+        const char = await charWith(regexBook('dragon'))
+        expect(createBaseV3(char).data.character_book.extensions).not.toHaveProperty('risu_cjkWordStart')
+    })
+
+    test('guard: a card without the word-start key imports with the option off', async () => {
+        const card = cardWith('chara_card_v3', [{ keys: ['seed'] }])
+        Object.assign(card.data.character_book, { scan_depth: 3, token_budget: 100, recursive_scanning: false })
+        expect((await importCard(card)).loreSettings?.cjkWordStart).toBeFalsy()
+    })
+
+    test.each(['true', 'false', 1])('guard: a non-boolean word-start extension %j does not switch the option on', async (value) => {
+        const card = cardWith('chara_card_v3', [{ keys: ['seed'] }])
+        Object.assign(card.data.character_book, { scan_depth: 3, token_budget: 100, recursive_scanning: false })
+        Object.assign(card.data.character_book.extensions, { risu_cjkWordStart: value })
+        expect((await importCard(card)).loreSettings?.cjkWordStart).toBeFalsy()
+    })
+
     test('guard: a character that never used the option exports no key', async () => {
         const char = await charWith(regexBook('dragon'))
         expect(createBaseV3(char).data.character_book.extensions).not.toHaveProperty('risu_fullWordAsciiBoundary')

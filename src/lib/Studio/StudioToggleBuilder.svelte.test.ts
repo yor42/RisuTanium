@@ -20,7 +20,7 @@ interface LiveCharacter {
     chatPage: number
 }
 
-const db = $state({ db: { characters: [] as LiveCharacter[] } })
+const db = $state({ db: { characters: [] as LiveCharacter[], globalChatVariables: undefined as Record<string, string> | undefined } })
 const selection = $state({ selId: 0 })
 
 vi.mock('src/ts/stores.svelte', async () => {
@@ -39,7 +39,11 @@ vi.mock('src/lang', async () => {
     const base = helpers.studioLanguageMock()
     const withArguments = (key: string) => (...args: (string | number)[]) => `${key}(${args.join(',')})`
     const own: Record<string, unknown> = {}
-    for (const key of ['studioTgDeleted', 'studioTgMoved', 'studioTgOptionN', 'studioTgSummarySelect', 'studioTgSummaryGroup', 'studioTgUnreadableCount', 'studioTgLineN']) own[key] = withArguments(key)
+    for (const key of [
+        'studioTgDeleted', 'studioTgMoved', 'studioTgOptionN', 'studioTgSummarySelect', 'studioTgSummaryGroup', 'studioTgUnreadableCount', 'studioTgLineN',
+        'studioTgCarryAskKey', 'studioTgCarryAskOptions', 'studioTgCarryAskKind', 'studioTgCarryAskDrop', 'studioTgCarryAskUnclear',
+        'studioTgCarryAskOptionsLate', 'studioTgCarryAskOptionsLateRenamed', 'studioTgCarryOverwrite', 'studioTgCarryShared', 'studioTgCarryOldStays',
+    ]) own[key] = withArguments(key)
     return { language: new Proxy(base, { get: (target, key) => typeof key === 'string' && key in own ? own[key] : Reflect.get(target, key) }) }
 })
 // The number of times a row's view is computed, by line id: an edit of one row must not compute another's.
@@ -61,6 +65,7 @@ import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
 import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, drainMicrotasks, type FakeClock } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../ts/studio/history/tests/studioStoreDoubles'
+import { readPending, resetToggleCarrySessionForTests } from '../../ts/studio/toggleCarryPending'
 import StudioToggleBuilder from './StudioToggleBuilder.svelte'
 
 const A = characterOwnerKey('A')
@@ -117,7 +122,7 @@ let mounted: { app: ReturnType<typeof mount>, host: HTMLElement }[] = []
 function mountBuilder(props: { host?: ToastHost } = {}): void {
     const host = document.createElement('div')
     document.body.appendChild(host)
-    mounted.push({ app: mount(StudioToggleBuilder, { target: host, props: { chaId: 'A', ...props } }), host })
+    mounted.push({ app: mount(StudioToggleBuilder, { target: host, props: { target: { kind: 'character', chaId: 'A' }, ...props } }), host })
     flushSync()
 }
 
@@ -186,6 +191,8 @@ afterEach(async () => {
     vi.unstubAllGlobals()
     delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth
     await unmountAll()
+    localStorage.clear()
+    resetToggleCarrySessionForTests()
     resetStudioHistoryAccessorForTests()
     resetCharacterSaveMarksForTest()
     resetStudioScreenForTests()
@@ -412,19 +419,20 @@ describe('R-C5 an unreadable line', () => {
 })
 
 describe('R-C7 the key lock', () => {
-    test('a row of the first visit keeps its key, kind and option controls disabled with the explanation', async () => {
+    test('R-F4 a row of the first visit has its key, kind and option controls enabled, shows no lock note, and a key write lands', async () => {
         setText('a=A\np=Pick=select=x,y\n')
         makeRig()
         mountBuilder()
         await settle()
         rowsOf()[1].click()
         flushSync()
-        expect(field('studio-toggle-key').disabled).toBe(true)
-        expect((part('studio-toggle-kind') as HTMLSelectElement).disabled).toBe(true)
-        expect(parts('studio-toggle-option-remove').every((button) => (button as HTMLButtonElement).disabled)).toBe(true)
-        expect(parts('studio-toggle-option-up').every((button) => (button as HTMLButtonElement).disabled)).toBe(true)
-        expect((part('studio-toggle-option-add') as HTMLButtonElement).disabled).toBe(false)
-        expect(part('studio-toggle-locked')?.textContent).toBe('studioTgKeyLocked')
+        expect(field('studio-toggle-key').disabled).toBe(false)
+        expect((part('studio-toggle-kind') as HTMLSelectElement).disabled).toBe(false)
+        expect(parts('studio-toggle-option-remove').every((button) => !(button as HTMLButtonElement).disabled)).toBe(true)
+        expect((parts('studio-toggle-option-up')[1] as HTMLButtonElement).disabled).toBe(false)
+        expect(part('studio-toggle-locked')).toBeNull()
+        type(field('studio-toggle-key'), 'pick')
+        expect(text()).toBe('a=A\npick=Pick=select=x,y\n')
     })
 
     test('a row added in this visit is not locked, and its key can be edited', async () => {
@@ -536,6 +544,76 @@ describe('R-C10 deleting a group', () => {
         expect(text()).toBe('a=A\ng=G=group\nb=B\ng_end=G=groupEnd\nz=ZZ\n')
         expect(toast.host.visible.at(-1)?.text).toBe('studioTgRestored')
         expect(rig.service.view(A).done.length).toBe(3)
+    })
+})
+
+describe('F-C the saved-values banner in the builder', () => {
+    test('a key rename shows one banner (inside the editor page, then under the header); Carry posts an Undo toast that ends with the builder', async () => {
+        setText('a=Mode\nb=B\n')
+        makeRig()
+        const toast = makeToastHost()
+        mountBuilder({ host: toast.host })
+        await settle()
+        rowsOf()[0].click()
+        flushSync()
+        type(field('studio-toggle-key'), 'c')
+        field('studio-toggle-key').dispatchEvent(new FocusEvent('blur'))
+        flushSync()
+        expect(text()).toBe('c=Mode\nb=B\n')
+        expect(parts('studio-toggle-carry').length).toBe(1)
+        expect(part('studio-toggle-editor')?.querySelector('[data-part="studio-toggle-carry"]')).not.toBeNull()
+        part('studio-toggle-back')?.click()
+        flushSync()
+        expect(parts('studio-toggle-carry').length).toBe(1)
+        expect(part('studio-toggle-editor')).toBeNull()
+        part('studio-toggle-carry-yes')?.click()
+        await settle()
+        expect(part('studio-toggle-carry')).toBeNull()
+        expect(part('studio-toggle-carry-undo')).not.toBeNull()
+        expect(toast.host.visible.at(-1)?.text).toBe('studioTgCarried')
+        await unmountAll()
+        expect(toast.host.visible.length).toBe(0)
+    })
+})
+
+describe('F-C the builder ends with its carry wiring', () => {
+    test('a label-only edit leaves an empty-plan record that the unmount clears', async () => {
+        setText('a=A\nb=B\n')
+        makeRig()
+        mountBuilder()
+        await settle()
+        rowsOf()[0].click()
+        flushSync()
+        type(field('studio-toggle-label'), 'A2')
+        expect(readPending(A).status).toBe('ok')
+        expect(part('studio-toggle-carry')).toBeNull()
+        await unmountAll()
+        expect(readPending(A).status).toBe('absent')
+    })
+
+    test('a carry whose write fails says so with the unknown refusal text and keeps the question', async () => {
+        setText('a=Mode\nb=B\n')
+        const unwritable: Record<string, string> = { toggle_a: '1' }
+        Object.defineProperty(unwritable, 'toggle_c', { configurable: true, get: () => undefined, set: () => { throw new Error('storage failed') } })
+        db.db.globalChatVariables = unwritable
+        try {
+            makeRig()
+            mountBuilder()
+            await settle()
+            rowsOf()[0].click()
+            flushSync()
+            type(field('studio-toggle-key'), 'c')
+            field('studio-toggle-key').dispatchEvent(new FocusEvent('blur'))
+            flushSync()
+            expect(part('studio-toggle-carry-yes')).not.toBeNull()
+            part('studio-toggle-carry-yes')?.click()
+            await settle()
+            expect(part('studio-toggle-carry-error')?.textContent).toBe('studioRefusalUnknown')
+            expect(part('studio-toggle-carry')).not.toBeNull()
+            expect(db.db.globalChatVariables).toEqual({ toggle_a: '1' })
+        } finally {
+            db.db.globalChatVariables = undefined
+        }
     })
 })
 

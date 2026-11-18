@@ -149,11 +149,15 @@ export function askPrompt(data: alertData): Promise<string> {
  * Answers the prompt that is on screen right now with `message`, ignoring the answer guard for
  * this one write. Does nothing and returns false unless the raw store holds exactly the current
  * prompt's data object, so a prompt hidden under a cover, a consent alert and a notice are never
- * answered through it. The guard is restored when the write did not answer the prompt.
+ * answered through it. The guard is restored when the write did not answer the prompt. With
+ * `honourGuard` the answer is also discarded, and false returned, while the prompt is inside its guard.
  */
-export function answerShownPrompt(message: string): boolean {
+export function answerShownPrompt(message: string, honourGuard = false): boolean {
     const prompt = current
     if (prompt === null || get(alertStore) !== prompt.data) {
+        return false
+    }
+    if (honourGuard && performance.now() < prompt.guardUntil) {
         return false
     }
     const guardUntil = prompt.guardUntil

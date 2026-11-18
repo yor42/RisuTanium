@@ -4,15 +4,19 @@
  * JavaScript APIs run over the in-memory IPC boundary of
  * `storage/tests/tauriWireFake.ts` (no module mock of `@tauri-apps/plugin-fs`,
  * `@tauri-apps/api/path` or `@tauri-apps/api/core`); the assertions are on the
- * recorded commands. A pass proves which commands the covered boots send, not
- * that the native shell no longer hangs.
+ * recorded commands. The store2 boot dispatch is the real one, over a memory
+ * store2 backend (the wire does not model the store2 page registration), so the
+ * Tauri order is pinned on the production path: the native write-temp sweep is
+ * sent once, before the dispatch is entered and before any write-class command,
+ * and the legacy main file and backups are only read. A pass proves which
+ * commands the covered boots send, not that the native shell no longer hangs.
  */
 import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
-import { baseTree, fullCharacter } from 'src/ts/storage/tests/bootArchivePassHarness'
-import { installTauriWire, WAITING_PLUGIN_COMMANDS, type TauriWire } from 'src/ts/storage/tests/tauriWireFake'
+import { installTauriWire, WAITING_PLUGIN_COMMANDS, type TauriWire, type WireCall } from 'src/ts/storage/tests/tauriWireFake'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
+import { registerRealDispatch } from 'src/ts/tests/realDispatchBoot.test-helpers'
 
 const dbState = vi.hoisted(() => ({
     current: {} as Record<string, unknown>,
@@ -76,6 +80,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
     selectedCharID: writable(-1),
     loadedStore: writable(false),
     alertStore: writable({ type: 'none', msg: 'n' }),
+    SafeModeStore: writable(false),
 }) as unknown as typeof import('src/ts/stores.svelte'))
 
 vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
@@ -112,16 +117,6 @@ vi.mock(import('src/ts/process/modules'), () => ({ moduleUpdate: vi.fn(async () 
 vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
     verifyAssetCacheEntry: vi.fn(async () => ({ status: 'ok' as const })),
 }) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
-vi.mock(import('src/ts/storage/remoteSaveCleanup'), () => ({
-    getRemoteSaveCleanupAction: vi.fn(() => 'create-meta'),
-    getRemoteSavePayloadName: vi.fn(() => null),
-}) as unknown as typeof import('src/ts/storage/remoteSaveCleanup'))
-
-vi.mock(import('src/ts/storage/assetSweep'), () => ({
-    sweepTauriAssets: vi.fn(async () => { }),
-    sweepForageAssetKey: vi.fn(async () => { }),
-}) as unknown as typeof import('src/ts/storage/assetSweep'))
 
 vi.mock(import('src/ts/storage/mainFileRecord'), () => ({
     noteMainFileBytes: vi.fn(),
@@ -179,7 +174,12 @@ vi.mock(import('src/ts/storage/bootArchivePass'), () => ({
 
 const { encodeRisuSaveLegacy } = await import('src/ts/storage/risuSave')
 
+const MAIN_KEY = 'database/database.bin'
+
 let wire: TauriWire
+
+/** How many wire commands had been sent when the registered dispatch was entered; null while it has not been. */
+let dispatchEntryIndex: number | null = null
 
 function baseDb(extra: Record<string, unknown> = {}): Record<string, unknown> {
     return {
@@ -204,6 +204,14 @@ function baseDb(extra: Record<string, unknown> = {}): Record<string, unknown> {
 dbState.baseline = () => baseDb({ characters: [] })
 
 async function freshLoadData() {
+    // The real dispatch over a memory store2 backend (the wire does not model the store2 page registration); the page's
+    // own store stays the real Tauri store over the wire, so the sweep, the reads and any write are real wire commands.
+    dispatchEntryIndex = null
+    const dispatch = await registerRealDispatch({
+        kind: 'tauri',
+        acknowledgeAlerts: true,
+        onEnter: () => { dispatchEntryIndex = wire.calls.length },
+    })
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
@@ -211,7 +219,7 @@ async function freshLoadData() {
     }
     loadedStore.set(false)
     alertStore.set({ type: 'none', msg: 'n' })
-    return { loadData, loadedStore }
+    return { loadData, loadedStore, dispatch }
 }
 
 beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
@@ -254,16 +262,47 @@ const WRITE_CLASS_COMMANDS = [
 function expectBootOrderAndNoWaiting(): void {
     const used = wire.plugin()
     expect(used.filter((cmd) => WAITING_PLUGIN_COMMANDS.includes(cmd))).toEqual([])
-    const fsCommands = pluginFsCommands()
     expect(wire.callsOf('app_fs_sweep_write_temps').length, 'the boot sends the native write-temp sweep exactly once').toBe(1)
     const commands = wire.calls.map((call) => call.cmd)
     const sweepAt = commands.indexOf('app_fs_sweep_write_temps')
-    const firstStoreRead = commands.findIndex((cmd) => cmd === 'read_range' || cmd === 'plugin:fs|read_dir')
-    expect(firstStoreRead, 'the boot reads the store').toBeGreaterThan(-1)
-    expect(sweepAt, 'the native sweep runs before the first store read').toBeLessThan(firstStoreRead)
+    expect(dispatchEntryIndex, 'the registered dispatch was entered').not.toBeNull()
+    expect(sweepAt, 'the native sweep is sent before the dispatch is entered').toBeLessThan(dispatchEntryIndex as number)
+    const firstRead = commands.indexOf('read_range')
+    if (firstRead >= 0) {
+        expect(sweepAt, 'the native sweep runs before the first store read').toBeLessThan(firstRead)
+    }
     expect(commands.slice(0, sweepAt).filter((cmd) => WRITE_CLASS_COMMANDS.includes(cmd)), 'no write-class command is sent before the native sweep').toEqual([])
-    expect(fsCommands.length, 'the boot lists the store through the file plugin').toBeGreaterThan(0)
-    expect(new Set(fsCommands)).toEqual(new Set(['plugin:fs|read_dir']))
+    expect(pluginFsCommands().filter((cmd) => cmd !== 'plugin:fs|read_dir'), 'the only file-plugin command is the listing').toEqual([])
+}
+
+/** The strings a wire command names as its target: a store key or a file path. */
+function targetsOf(call: WireCall): string[] {
+    const args = call.args as Record<string, unknown> | undefined
+    if (args === undefined || args === null || typeof args !== 'object') {
+        return []
+    }
+    return ['key', 'path', 'oldPath', 'newPath'].map((name) => args[name]).filter((value): value is string => typeof value === 'string')
+}
+
+/** The wire commands that write, rename or remove something under `database/`. */
+function writesNamingDatabaseDirectory(): WireCall[] {
+    return wire.calls.filter((call) => WRITE_CLASS_COMMANDS.includes(call.cmd) && targetsOf(call).some((target) => target.includes('database/')))
+}
+
+/** The `read_range` commands that name `key`. */
+function readsOf(key: string): WireCall[] {
+    return wire.callsOf('read_range').filter((call) => targetsOf(call).includes(key))
+}
+
+function bytesOf(key: string): string | undefined {
+    const held = wire.fs.files.get(key)
+    return held === undefined ? undefined : Buffer.from(held).toString('hex')
+}
+
+/** No stubbed `fetch` call named a `database/` URL: the main file and the backups reach the decoder through the app command. */
+function expectNoAssetProtocolUrl(): void {
+    const urls = vi.mocked(fetch).mock.calls.map(([input]) => String(input))
+    expect(urls.filter((url) => url.includes('database/'))).toEqual([])
 }
 
 describe('loadData() on Android sends no waiting plugin command', () => {
@@ -279,37 +318,10 @@ describe('loadData() on Android sends no waiting plugin command', () => {
         expect(wire.fs.directories.has('assets')).toBe(true)
     })
 
-    test('an existing block profile boots as the tree it holds', async () => {
-        wire.fs.directories.add('database')
+    test('a stored legacy main file is converted and boots as the tree it holds, and the file is not touched', async () => {
         wire.fs.directories.add('assets')
-        // A real block-store save of two characters over the wire, as an earlier page left it.
-        const { getPageBlockOwner, resetPageBlockOwnerForTests } = await import('src/ts/storage/pageBlockOwner')
-        const { treeToBlockSet } = await import('src/ts/storage/treeToBlockSet')
-        const owner = await getPageBlockOwner()
-        const saved = await owner?.replaceWholeState(
-            await treeToBlockSet(baseTree([fullCharacter('x', 'Xavier'), fullCharacter('y', 'Yara')])),
-            { requireAbsentHead: true },
-        )
-        expect(saved?.kind).toBe('won')
-        resetPageBlockOwnerForTests()
-        wire.clearCalls()
-        setDatabaseMock.mockClear()
-        vi.resetModules()
-        const { loadData, loadedStore } = await freshLoadData()
-
-        await loadData()
-
-        expectBootOrderAndNoWaiting()
-        expect(get(loadedStore)).toBe(true)
-        const installed = setDatabaseMock.mock.calls.at(-1)?.[0] as { characters: Array<{ chaId: string, name: string, desc: string }> }
-        expect(installed.characters.map((c) => [c.chaId, c.name, c.desc])).toEqual([
-            ['x', 'Xavier', 'Xavier description'],
-            ['y', 'Yara', 'Yara description'],
-        ])
-    })
-    test('a stored legacy main file boots as the tree it holds', async () => {
-        wire.fs.directories.add('assets')
-        wire.fs.plant('database/database.bin', encodeRisuSaveLegacy(baseDb({ characters: [{ chaId: 'stored', name: 'S', type: 'character', chats: [] }] })))
+        wire.fs.plant(MAIN_KEY, encodeRisuSaveLegacy(baseDb({ characters: [{ chaId: 'stored', name: 'S', type: 'character', chats: [] }] })))
+        const before = bytesOf(MAIN_KEY)
         const { loadData, loadedStore } = await freshLoadData()
 
         await loadData()
@@ -317,5 +329,31 @@ describe('loadData() on Android sends no waiting plugin command', () => {
         expectBootOrderAndNoWaiting()
         expect(get(loadedStore)).toBe(true)
         expect((setDatabaseMock.mock.calls[0][0].characters as { chaId: string }[]).map((c) => c.chaId)).toEqual(['stored'])
+        expect(bytesOf(MAIN_KEY)).toBe(before)
+        expect(wire.callsOf('plugin:fs|rename')).toEqual([])
+        expect(writesNamingDatabaseDirectory()).toEqual([])
+        expect(readsOf(MAIN_KEY).length, 'the main file reached the decoder through the app command').toBeGreaterThan(0)
+        expectNoAssetProtocolUrl()
+    })
+
+    test('an undecodable main file is never written over: the profile is converted from the numbered backup, read through the app command', async () => {
+        wire.fs.directories.add('assets')
+        wire.fs.plant(MAIN_KEY, new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]))
+        wire.fs.plant('database/dbbackup-1.bin', encodeRisuSaveLegacy(baseDb({ characters: [{ chaId: 'old', name: 'O', type: 'character', chats: [] }] })))
+        const before = bytesOf(MAIN_KEY)
+        const { loadData, loadedStore, dispatch } = await freshLoadData()
+
+        await loadData()
+
+        expectBootOrderAndNoWaiting()
+        expect(get(loadedStore)).toBe(true)
+        // The route the real dispatch takes: the page converts from the numbered backup after the person agrees.
+        expect(dispatch.ui.fromBackupAsked).toBe(1)
+        expect((setDatabaseMock.mock.calls[0][0].characters as { chaId: string }[]).map((c) => c.chaId)).toEqual(['old'])
+        expect(bytesOf(MAIN_KEY)).toBe(before)
+        expect(wire.callsOf('plugin:fs|rename')).toEqual([])
+        expect(writesNamingDatabaseDirectory()).toEqual([])
+        expect(readsOf('database/dbbackup-1.bin').length, 'the backup reached the decoder through the app command').toBeGreaterThan(0)
+        expectNoAssetProtocolUrl()
     })
 })

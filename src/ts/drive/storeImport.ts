@@ -1,4 +1,4 @@
-import { alertConfirm, alertError, alertNormalWait, alertStore, alertWait } from '../alert'
+import { alertConfirm, alertError, alertNormalWait, alertStore, alertWait, waitAlert } from '../alert'
 import { getSaveMarkCount, isSaveClean } from '../globalApi.svelte'
 import { language } from 'src/lang'
 import { getDatabase, type Database } from '../storage/database.svelte'
@@ -7,22 +7,25 @@ import { decodeRisuSave, isBlockFormatSave, salvageRisuSave, type SalvageOmitted
 import { Store2StalePageError } from '../storage/store2/backend/errors'
 import type { Store2Backend, Store2Read } from '../storage/store2/backend/types'
 import { getStore2BootSession } from '../storage/store2/bootActive'
-import { Store2BulkAbortError, type Committer } from '../storage/store2/commit'
+import { Store2BulkAbortError, type Committer, type StreamContext, type StreamedCommitRequest } from '../storage/store2/commit'
 import { clearAbandonedMarker } from '../storage/store2/abandonedMarker'
 import { classifyCommitRead } from '../storage/store2/commitKey'
 import { createListDerivation } from '../storage/store2/lists'
-import { importLegacyTree, type ImportOutcome, type ImportSource, type RepairSummary } from '../storage/store2/legacy/importTree'
-import type { IncompleteItem, LegacyEntryReader } from '../storage/store2/legacy/resolve'
+import { importLegacyTree, type ImportHooks, type ImportOutcome, type ImportSource, type PrepareStop, type RepairSummary } from '../storage/store2/legacy/importTree'
+import type { StreamPrepared, StreamSource } from '../storage/store2/legacy/importStream'
+import { LegacyReadError, type IncompleteItem, type LegacyEntryReader } from '../storage/store2/legacy/resolve'
 import { BinFileChangedError, ColdEntryIndex, createBinEntryReader } from '../storage/store2/legacy/binReader'
 import { createLegacyStoreReader, type ColdUnitRead } from '../storage/store2/legacy/storeReader'
-import type { BootImportEnd, BootImportTarget } from '../storage/store2/legacy/bootImport'
+import type { BootImportEnd, BootImportResult, BootImportTarget } from '../storage/store2/legacy/bootImport'
 import { getActiveStore2Save } from '../storage/store2/saveActive'
 import { incompleteList } from '../storage/store2/ui/bootText'
 import { readColdStorageItem } from '../process/coldstorage.svelte'
 import { importableTaskPresets } from '../process/utility/taskPreset'
 import { toPlainJson } from '../storage/store2/codec/normalize'
-import type { JsonValue } from '../storage/blockFrame'
+import type { JsonObject, JsonValue } from '../storage/blockFrame'
+import { usageCarryOf } from '../usage/usageLedger'
 import { noteMeasurePhase } from './importPhaseRing'
+import { yieldToEventLoop } from '../storage/saveYield'
 import { estimateImportSeconds, IMPORT_TIME_WARNING_BYTES, importAssetBytes, importFreeGigabytesText, importFreeSpaceBytes, importGigabytesText, importSpaceVerdict, roundImportMinutes } from './importEstimate'
 import { transportKind } from '../storage/tauriByteTransport'
 import { readAppDataFreeBytes } from '../storage/appFreeSpace'
@@ -347,12 +350,27 @@ export async function readBinDatabaseTree(file: BinFile, entry: BackupIndexEntry
 }
 
 /**
- * What the database entry read from the file leaves out, and nothing else: the bytes are a local of this call and not of
- * the long async function that asks, so neither they nor the tree stay reachable across its later awaits. Throws
- * `BinFileChangedError`.
+ * What the database entry read from the file leaves out, and nothing else. The entry is streamed in bounded chunks and
+ * each character is dropped as it decodes, so neither the whole entry nor the tree is ever held; an entry the stream
+ * declines (`streamBinDatabase`) is read and decoded whole, as it always was. `yieldToMain` defaults to the event-loop
+ * yield, awaited per chunk and per character. Throws `BinFileChangedError`.
  */
-export async function readBinDatabaseOmitted(file: BinFile, entry: BackupIndexEntry): Promise<ReadonlyMap<string, SalvageOmittedBlock>> {
-    return await decodeBinDatabaseOmitted(await readBinDatabase(file, entry))
+export async function readBinDatabaseOmitted(
+    file: BinFile, entry: BackupIndexEntry, options: { yieldToMain?: () => Promise<void> } = {},
+): Promise<ReadonlyMap<string, SalvageOmittedBlock>> {
+    const { streamBinDatabase } = await import('./binDatabaseStream')
+    const seen: { omitted: ReadonlyMap<string, SalvageOmittedBlock> | null } = { omitted: null }
+    const done = await streamBinDatabase(file, entry, {
+        character() { },
+        root() { },
+        omitted(omitted) {
+            seen.omitted = omitted
+        },
+    }, { yieldToMain: options.yieldToMain ?? yieldToEventLoop })
+    if ('status' in done || seen.omitted === null) {
+        return await decodeBinDatabaseOmitted(await readBinDatabase(file, entry))
+    }
+    return seen.omitted
 }
 
 /**
@@ -454,6 +472,14 @@ export interface Store2ImportRequest {
      */
     decode(): Promise<Database>
     reader: LegacyEntryReader
+    /**
+     * Where the database entry sits in the file. With it, a file that plans more units than one ordinary commit takes is
+     * read in bounded chunks and uploaded as it is read (importStream.ts); every other file is imported through `decode`
+     * as it always was, so `decode` stays required.
+     */
+    stream?: StreamSource
+    /** Awaited per chunk and per character of a streamed import; defaults to the event-loop yield. Tests inject it. */
+    yieldToMain?: () => Promise<void>
 }
 
 /** The busy check at the flip refused: nothing was written. */
@@ -473,6 +499,7 @@ function isBusyAbort(error: unknown): boolean {
  * before the first unit upload (after the marker of a bulk commit, which a refusal clears).
  */
 function guardedAtFlip(committer: Committer, busy: BusyHandle): Committer {
+    const streamed = committer.commitStreamed
     return {
         ...committer,
         commit: (read, request) => committer.commit(read, {
@@ -483,6 +510,17 @@ function guardedAtFlip(committer: Committer, busy: BusyHandle): Committer {
                 }
                 return request.build(context)
             },
+        }),
+        ...(streamed === undefined ? {} : {
+            commitStreamed: (read: Store2Read, request: StreamedCommitRequest) => streamed.call(committer, read, {
+                ...request,
+                build: (context: StreamContext) => {
+                    if (refuseBackupLoadWhileBusy(busy)) {
+                        throw new ImportBusyError()
+                    }
+                    return request.build(context)
+                },
+            }),
         }),
     }
 }
@@ -506,6 +544,25 @@ async function clearOwnMarker(committer: Committer): Promise<boolean> {
         console.error(error)
         return false
     }
+}
+
+/**
+ * How a build that threw ends the page import. A streamed build that read a file which is no longer what the first pass
+ * read (`BinFileChangedError`, or a `LegacyReadError` caused by one) aborted under the marker; when that marker is
+ * cleared (or was never left) nothing changed and the person is told the file changed, or that a unit could not be read.
+ * Every other throw, and a marker that could not be cleared, leaves the outcome unknown.
+ */
+function endOfAbortedBuild(error: unknown): Store2ImportEnd {
+    if (error instanceof Store2BulkAbortError && (error.cleared?.status === 'cleared' || error.cleared?.status === 'nothing')) {
+        const original = error.original
+        if (original instanceof BinFileChangedError) {
+            return refused('read-failed', binChangeText(original))
+        }
+        if (original instanceof LegacyReadError) {
+            return refused('read-failed', original.cause instanceof BinFileChangedError ? binChangeText(original.cause) : language.store2ImportReadFailed)
+        }
+    }
+    return unconfirmed()
 }
 
 function unconfirmed(): Store2ImportEnd {
@@ -537,10 +594,24 @@ function pageThemePacks(db: Database): { themePacks: readonly JsonValue[] | unde
 }
 
 /**
- * Imports the decoded tree `request.decode()` yields: resolve, plan and one forced commit over a fresh read of the
- * commit key (`importLegacyTree`). Run under `dbWriteLock`. A conflict, or a bulk marker this page load left, is
- * answered once by a rebuild from a fresh decode and a fresh read; a second one is unconfirmed. Any throw after the
- * library started is unconfirmed too, except the busy refusal at the flip, which wrote nothing.
+ * The page's usage ledger keys and price overrides as the import keeps them: plain values read through the reactive proxy
+ * (a copy that does not follow later edits). Each is present only when the page holds some.
+ */
+function pageUsage(db: Database): { usageStatics?: JsonObject, usagePriceOverrides?: JsonObject } {
+    return usageCarryOf(toPlainJson(db.statics), toPlainJson(db.usagePriceOverrides))
+}
+
+/**
+ * Imports the file `request` describes, over one of two paths. A file under the unit threshold takes the whole decode:
+ * the tree `request.decode()` yields is resolved, planned and committed once, forced, over a fresh read of the commit
+ * key (`importLegacyTree`). A file over the threshold takes the streamed prepare and commit (`prepareImportStream`,
+ * `commitImportStreamed`), which reads the units from the file instead of holding a decoded tree. Run under
+ * `dbWriteLock`. A conflict, or a bulk marker this page load left, is answered once by a rebuild from a fresh decode
+ * and a fresh read; a second one is unconfirmed. A build that aborted under the bulk marker ends through
+ * `endOfAbortedBuild`: when the marker was cleared (or never left) and the cause is a changed file or an unreadable
+ * unit, nothing changed and the import is refused 'read-failed'. Any other throw after the library started is
+ * unconfirmed too, as is an abort whose marker could not be cleared; the busy refusal at the flip wrote nothing and is
+ * a refusal.
  */
 export async function commitStore2Import(request: Store2ImportRequest): Promise<Store2ImportEnd> {
     const answered = new Set<string>()
@@ -553,11 +624,43 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
     // The same for the installed theme packs and the active pack id: neither is in a `.bin`, so the profile keeps the
     // page's own, by value (a copy that is structured-cloneable and does not follow later edits).
     const { themePacks, activeThemePack } = pageThemePacks(getDatabase())
+    // And the usage statistics and price overrides: a `.bin` carries neither, so the profile keeps the page's own, by value.
+    const { usageStatics, usagePriceOverrides } = pageUsage(getDatabase())
+    // A committer without `commitStreamed` takes every file the whole way.
+    const stream = committer.commitStreamed === undefined ? undefined : request.stream
     for (let attempt = 1; ; attempt++) {
+        const lists = getActiveStore2Save()?.lists ?? createListDerivation()
+        const hooks: ImportHooks = {
+            onPhase: (phase) => noteImportPhase(`${phase}, attempt ${attempt}`),
+            async confirmIncomplete(items) {
+                const signature = JSON.stringify(items)
+                if (answered.has(signature)) {
+                    return true
+                }
+                if (!await alertConfirm(language.store2ImportIncompleteConfirm(incompleteLines(items)))) {
+                    return false
+                }
+                answered.add(signature)
+                accepted = items
+                return true
+            },
+        }
+        const streamRequest = stream === undefined
+            ? null
+            : { stream, reader: request.reader, lists, taskPresets, themePacks, activeThemePack, usageStatics, usagePriceOverrides, yieldToMain: request.yieldToMain ?? yieldToEventLoop }
         // The library releases the tree it is handed once the tree is resolved; nothing here may keep another reference.
-        let source: ImportSource
+        let source: ImportSource | null = null
+        // What the streamed prepare decided when it did not hand the file back to the whole path.
+        let streamed: StreamPrepared | PrepareStop | null = null
         try {
-            source = { tree: await request.decode() }
+            if (streamRequest !== null) {
+                const { prepareImportStream } = await import('../storage/store2/legacy/importStream')
+                const verdict = await prepareImportStream(streamRequest, hooks)
+                streamed = verdict === 'whole' ? null : verdict
+            }
+            if (streamed === null) {
+                source = { tree: await request.decode() }
+            }
         } catch (error) {
             console.error(error)
             if (error instanceof BinFileChangedError) {
@@ -568,30 +671,31 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
         let outcome: ImportOutcome
         noteImportPhase(`decoded, attempt ${attempt}`)
         try {
-            outcome = await importLegacyTree(
-                { source, reader: request.reader, committer, backend: request.target.backend, lists: getActiveStore2Save()?.lists ?? createListDerivation(), taskPresets, themePacks, activeThemePack },
-                {
-                    onPhase: (phase) => noteImportPhase(`${phase}, attempt ${attempt}`),
-                    async confirmIncomplete(items) {
-                        const signature = JSON.stringify(items)
-                        if (answered.has(signature)) {
-                            return true
-                        }
-                        if (!await alertConfirm(language.store2ImportIncompleteConfirm(incompleteLines(items)))) {
-                            return false
-                        }
-                        answered.add(signature)
-                        accepted = items
-                        return true
-                    },
-                },
-            )
+            if (streamed !== null) {
+                if (streamRequest === null) {
+                    throw new TypeError('A streamed prepare ran without a stream request.')
+                }
+                if ('status' in streamed) {
+                    outcome = streamed
+                } else {
+                    const { commitImportStreamed } = await import('../storage/store2/legacy/importStream')
+                    outcome = await commitImportStreamed({ ...streamRequest, committer, backend: request.target.backend }, streamed, hooks)
+                }
+            } else {
+                if (source === null) {
+                    throw new TypeError('The decoded tree is missing.')
+                }
+                outcome = await importLegacyTree(
+                    { source, reader: request.reader, committer, backend: request.target.backend, lists, taskPresets, themePacks, activeThemePack, usageStatics, usagePriceOverrides },
+                    hooks,
+                )
+            }
         } catch (error) {
             if (isBusyAbort(error)) {
                 return refused('busy', null)
             }
             console.error(error)
-            return unconfirmed()
+            return endOfAbortedBuild(error)
         }
         noteImportPhase(`import ${outcome.status}, attempt ${attempt}`)
         switch (outcome.status) {
@@ -656,9 +760,14 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
 /**
  * The boot-time commit of a decoded `.bin`: the boot's installer (`target.install`) over a decode of the database
  * entry (each call of `request.decode` reads the entry from the file again and may throw `BinFileChangedError`), with the
- * same incomplete-items question as the page import. A decline or a refusal shows its message and ends
- * `cancelled` (nothing was written); everything the installer decided past the questions is passed to the dispatch.
- * No page, write lock or reload is involved: the dispatch opens the installed profile itself.
+ * same incomplete-items question as the page import. When the file is over the unit threshold (`stream` with a target
+ * that offers `prepareStream` and `installStream`), the streamed prepare decides first and either hands the file back
+ * to the whole decode or installs unit by unit. A decline or a refusal before anything was written shows its message
+ * and ends `cancelled`; everything the installer decided past the questions is passed to the dispatch. A streamed
+ * install that aborted because the file changed or a unit could not be read has already begun writing: it shows the
+ * error, waits for it to be dismissed and finishes with `reclassify`, with the bulk marker and the staged units left
+ * standing so the next start classifies the marked import and offers the recovery screen. No page, write lock or
+ * reload is involved: the dispatch opens the installed profile itself.
  */
 export async function commitBootImport(request: {
     target: BootImportTarget
@@ -666,17 +775,12 @@ export async function commitBootImport(request: {
     reader: LegacyEntryReader
     /** Told the items the person accepted being left incomplete, when the question was asked and answered yes. */
     onAccepted?(items: readonly IncompleteItem[]): void
+    /** Where the database entry sits in the file; as `Store2ImportRequest.stream`. `decode` stays the whole path. */
+    stream?: StreamSource
+    /** Awaited per chunk and per character of a streamed import; defaults to the event-loop yield. */
+    yieldToMain?: () => Promise<void>
 }): Promise<BootImportEnd> {
-    let source: ImportSource
-    try {
-        source = { tree: await request.decode() }
-    } catch (error) {
-        console.error(error)
-        alertError(error instanceof BinFileChangedError ? binChangeText(error) : language.internalBackupUnreadable)
-        return { kind: 'cancelled' }
-    }
-    noteImportPhase('decoded, boot')
-    const result = await request.target.install(source, request.reader, {
+    const hooks: ImportHooks = {
         onPhase: noteImportPhase,
         async confirmIncomplete(items) {
             if (!await alertConfirm(language.store2ImportIncompleteConfirm(incompleteLines(items)))) {
@@ -685,7 +789,60 @@ export async function commitBootImport(request: {
             request.onAccepted?.(items)
             return true
         },
-    })
+    }
+    const { target, stream } = request
+    const yieldToMain = request.yieldToMain ?? yieldToEventLoop
+    let source: ImportSource | null = null
+    // What the streamed prepare decided when it did not hand the file back to the whole path.
+    let streamed: StreamPrepared | PrepareStop | null = null
+    try {
+        if (stream !== undefined && target.prepareStream !== undefined && target.installStream !== undefined) {
+            const verdict = await target.prepareStream({ stream, yieldToMain }, request.reader, hooks)
+            streamed = verdict === 'whole' ? null : verdict
+        }
+        if (streamed === null) {
+            source = { tree: await request.decode() }
+        }
+    } catch (error) {
+        console.error(error)
+        alertError(error instanceof BinFileChangedError ? binChangeText(error) : language.internalBackupUnreadable)
+        return { kind: 'cancelled' }
+    }
+    noteImportPhase('decoded, boot')
+    let result: BootImportResult
+    if (streamed === null) {
+        if (source === null) {
+            throw new TypeError('The decoded tree is missing.')
+        }
+        result = await target.install(source, request.reader, hooks)
+    } else if ('status' in streamed) {
+        result = streamed
+    } else if (stream === undefined || target.installStream === undefined) {
+        throw new TypeError('A streamed prepare ran without a stream request.')
+    } else {
+        try {
+            result = await target.installStream({ stream, yieldToMain }, streamed, request.reader, hooks)
+        } catch (error) {
+            const { Store2InstallAbortError } = await import('../storage/store2/firstLife')
+            if (!(error instanceof Store2InstallAbortError)) {
+                throw error
+            }
+            const original = error.original
+            let text: string
+            if (original instanceof BinFileChangedError) {
+                text = binChangeText(original)
+            } else if (original instanceof LegacyReadError) {
+                text = original.cause instanceof BinFileChangedError ? binChangeText(original.cause) : language.store2ImportReadFailed
+            } else {
+                throw original
+            }
+            // The marker and the staged units stand: the next start classifies a marked import and offers the recovery screen.
+            console.error(error)
+            alertError(text)
+            await waitAlert()
+            return { kind: 'finished', result: { status: 'reclassify' } }
+        }
+    }
     noteImportPhase(`boot import ${result.status}`)
     switch (result.status) {
         case 'declined':

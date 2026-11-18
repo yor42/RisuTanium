@@ -2,7 +2,8 @@ import { LEGACY_MAIN_FILE_KEY } from '../../blockKeys'
 import type { Store2Backend, Store2Read } from '../backend/types'
 import type { BlockedReason } from '../bootActive'
 import type { ListDerivation } from '../codec/types'
-import { firstLifeInstall, installBuilt, type BuiltInstall, type FirstLifeGrant, type FirstLifeResult } from '../firstLife'
+import type { BuildContext, BuiltCommit } from '../commit'
+import { firstLifeInstall, firstLifeInstallStreamed, installBuilt, installStreamed, type BuiltInstall, type FirstLifeGrant, type FirstLifeResult } from '../firstLife'
 import { defaultKeyEnv, type CommitKey, type KeyEnv, type LegacyList } from '../format'
 import { LegacyListBuilder } from '../lists/legacyList'
 import { planOldDataSnapshot, withSnapshot, type OldDataSource } from '../oldData/plan'
@@ -10,6 +11,7 @@ import type { ForeignClearHook } from '../owner'
 import { runExit, type ExitResult } from '../recovery'
 import { withLegacyKeep } from './convert'
 import type { ImportHooks, ImportSource, PrepareStop, RepairSummary } from './importTree'
+import type { StreamPrepared, StreamSource } from './importStream'
 import type { LegacyEntryReader, ResolveOptions } from './resolve'
 import type { ColdUnitRead } from './storeReader'
 
@@ -29,6 +31,10 @@ import type { ColdUnitRead } from './storeReader'
  *    `fixed.legacyKeep`, so a keep set fails safe and the stage 5 asset sweep removes no asset until the old data is
  *    discarded. The deletion snapshot (type 24) is planned from what the store holds, as the conversion plans it.
  *  - The cold-storage units of the old upstream profile are read through the injected reader and never written.
+ *  - `installBuiltTree` installs a tree built elsewhere through the same entries, keep list, snapshot and `import` label. Its
+ *    `beforeFirstWrite` runs after the keep listing and the snapshot plan, immediately before the installer call. On the
+ *    `exit` entry `runExit` can still end with no profile write after it; the fence may have been written.
+ *  - The start-up `.rtb` restore (`drive/rtbBootRestore.ts`) is its caller.
  */
 
 export type BootImportEntry =
@@ -76,8 +82,46 @@ export type BootImportEnd =
  */
 export interface BootImportTarget {
     install(source: ImportSource, reader: LegacyEntryReader, hooks: ImportHooks): Promise<BootImportResult>
+    /**
+     * The streamed counterpart of `install`, in two steps. `prepareStream` is the dry pass over the file (nothing is
+     * written): 'whole' for a file the whole path must take, a stop before any write, or what `installStream` must
+     * reproduce. `installStream` is the install over a second read of the file, the units uploaded as they are encoded.
+     * A target without them takes every file through `install`.
+     */
+    prepareStream?(input: BootStreamInput, reader: LegacyEntryReader, hooks: ImportHooks): Promise<'whole' | PrepareStop | StreamPrepared>
+    installStream?(input: BootStreamInput, prepared: StreamPrepared, reader: LegacyEntryReader, hooks: ImportHooks): Promise<BootImportResult>
     /** Answers an id the file holds no accepted entry for: the old upstream unit the store still holds. */
     readColdStorageItem: (key: string) => Promise<ColdUnitRead>
+    /**
+     * Installs a tree built elsewhere over the same entry, keep list, snapshot and `import` label; optional so `.bin` test
+     * doubles need not provide it. Its result `reclassify` also comes from a first-life marker that ended `conflict`,
+     * `abandoned`, `unknown` or was refused with `store-not-empty`, and from an install that ended `abandoned`, not only
+     * from a throw: a caller must not treat `reclassify` as proof of a throw.
+     */
+    installBuiltTree?(request: BootBuiltRequest): Promise<BootBuiltResult>
+}
+
+/** A tree built outside this module for the boot installer, and the check that runs immediately before the installer call. */
+export interface BootBuiltRequest {
+    newUnits: number
+    build(context: BuildContext): BuiltCommit | Promise<BuiltCommit>
+    /**
+     * Asked once, after the keep listing and the snapshot plan and immediately before the entry's installer call. `false`:
+     * nothing is written. After `true` on the `exit` entry the installer (`runExit`) can still end with no profile write; the
+     * fence may have been written.
+     */
+    beforeFirstWrite(): Promise<boolean>
+}
+
+export type BootBuiltOutcome = BootImportFinish | { status: 'not-started' }
+
+/** `entry` tells the caller a first-life end from an exit end. */
+export interface BootBuiltResult { entry: BootImportEntry['kind'], outcome: BootBuiltOutcome }
+
+/** The file of a streamed boot import and how it yields. */
+export interface BootStreamInput {
+    stream: StreamSource
+    yieldToMain: () => Promise<void>
 }
 
 function backupKey(time: number): string {
@@ -118,7 +162,7 @@ export async function listOldFilesUnreadable(
 }
 
 /** A marker that did not land: a peer moved first or the write may have landed (classify again), or the write failed. */
-function resultOfMarker(marker: Extract<FirstLifeResult, { status: 'not-marked' }>['marker']): BootImportResult {
+function resultOfMarker(marker: Extract<FirstLifeResult, { status: 'not-marked' }>['marker']): BootImportFinish {
     switch (marker.status) {
         case 'conflict':
         case 'abandoned':
@@ -133,7 +177,7 @@ function resultOfMarker(marker: Extract<FirstLifeResult, { status: 'not-marked' 
     }
 }
 
-function resultOfInstall(result: FirstLifeResult, repair: RepairSummary): BootImportResult {
+function resultOfInstall(result: FirstLifeResult, repair: RepairSummary): BootImportFinish {
     switch (result.status) {
         case 'installed':
             return { status: 'installed', manifestKey: result.manifestKey, value: result.value, flushed: result.flushed, repair }
@@ -158,6 +202,13 @@ export function createBootImportTarget(
     return {
         readColdStorageItem,
         install: (source, reader, hooks) => bootImportLegacyTree({ ...base, source, reader }, hooks),
+        async prepareStream(input, reader, hooks) {
+            // Loaded on first use, like `importTree`: a boot that never imports a file does not need the stream.
+            const { prepareImportStream } = await import('./importStream')
+            return prepareImportStream({ ...input, reader, lists: base.lists, env: base.env, resolve: base.resolve }, hooks)
+        },
+        installStream: (input, prepared, reader, hooks) => bootImportStreamed({ ...base, ...input, reader, prepared }, hooks),
+        installBuiltTree: (built) => installBuiltTreeOn(base, built),
     }
 }
 
@@ -180,23 +231,96 @@ export async function bootImportLegacyTree(request: BootImportRequest, hooks: Im
     if ('status' in prepared) {
         return prepared
     }
+    // Both vehicles take this one `build` object: the page commit builds the same tree with `keep.base`.
+    const built = buildImport(prepared.plan)
+    return installOnEntry(request, { ...built, convertedFrom: 'import' }, prepared.repair, { onCommitStart: () => notePhase(hooks, 'import commit start') })
+}
+
+/** What the shared tail needs of a boot import request: the store, the entry and the old files to keep. */
+type TailRequest = Pick<BootImportRequest, 'backend' | 'entry' | 'owner' | 'env' | 'oldData' | 'upstreamMainFile'>
+
+interface TailOptions {
+    /** Asked once, after the keep listing and the snapshot plan and immediately before the installer call; `false` writes nothing. */
+    beforeFirstWrite?: () => Promise<boolean>
+    /** Called immediately before the installer call, never when the keep listing is blocked or the gate refused. */
+    onCommitStart?: () => void
+}
+
+/**
+ * The tail every boot install shares: the keep list of the old files, the deletion snapshot, then the entry's installer
+ * (`firstLifeInstall`, or `runExit` and `installBuilt`). With `beforeFirstWrite` the outcome can also be `not-started`.
+ * A throw from the gate or from the installer propagates to the caller.
+ */
+async function installOnEntry(request: TailRequest, install: BuiltInstall, repair: RepairSummary, options: { onCommitStart?: () => void }): Promise<BootImportFinish>
+async function installOnEntry(request: TailRequest, install: BuiltInstall, repair: RepairSummary, options: TailOptions & { beforeFirstWrite: () => Promise<boolean> }): Promise<BootBuiltOutcome>
+async function installOnEntry(request: TailRequest, install: BuiltInstall, repair: RepairSummary, options: TailOptions): Promise<BootBuiltOutcome> {
     const keep = await listOldFilesUnreadable(request)
     if (keep.status === 'blocked') {
         return keep
     }
-    // Both vehicles take this one `build` object: the page commit builds the same tree with `keep.base`.
-    const built = buildImport(prepared.plan)
-    const base: BuiltInstall = { ...built, convertedFrom: 'import' }
     const snapshot = await planOldDataSnapshot(request.oldData, null)
-    const install = withSnapshot(keep.status === 'none' ? base : withLegacyKeep(base, keep.list), snapshot)
+    const wrapped = withSnapshot(keep.status === 'none' ? install : withLegacyKeep(install, keep.list), snapshot)
+    if (options.beforeFirstWrite !== undefined && !(await options.beforeFirstWrite())) {
+        return { status: 'not-started' }
+    }
+    options.onCommitStart?.()
     const env: KeyEnv = { ...defaultKeyEnv, ...request.env }
-    notePhase(hooks, 'import commit start')
     if (request.entry.kind === 'first-life') {
-        return resultOfInstall(await firstLifeInstall(request.backend, request.entry.grant, install, { owner: request.owner, env }), prepared.repair)
+        return resultOfInstall(await firstLifeInstall(request.backend, request.entry.grant, wrapped, { owner: request.owner, env }), repair)
     }
     const exit = await runExit(request.backend, request.entry.commitRead, { kind: 'import' }, { owner: request.owner, env, foreignClear: request.entry.foreignClear })
     if (exit.status !== 'marked') {
         return { status: 'exit', exit }
     }
-    return resultOfInstall(await installBuilt({ backend: request.backend, env, marked: exit }, install), prepared.repair)
+    return resultOfInstall(await installBuilt({ backend: request.backend, env, marked: exit }, wrapped), repair)
+}
+
+/** The summary of a tree that no repair touched: the shape of `summarizeRepair([])`. */
+const NO_REPAIR: RepairSummary = { dropped: 0, changed: 0, recovered: 0 }
+
+async function installBuiltTreeOn(request: Omit<BootImportRequest, 'source' | 'reader'>, built: BootBuiltRequest): Promise<BootBuiltResult> {
+    if (request.entry.kind === 'first-life' && request.entry.grant.label !== 'import') {
+        throw new TypeError('A boot install of a built tree runs under a grant labelled import.')
+    }
+    const outcome = await installOnEntry(request, { newUnits: built.newUnits, build: built.build, convertedFrom: 'import' }, NO_REPAIR, { beforeFirstWrite: built.beforeFirstWrite })
+    return { entry: request.entry.kind, outcome }
+}
+
+export interface BootStreamRequest extends Omit<BootImportRequest, 'source'>, BootStreamInput {
+    /** What the dry pass of `prepareImportStream` learned; the install reads the file again and must reproduce it. */
+    prepared: StreamPrepared
+}
+
+/**
+ * `bootImportLegacyTree` for a file the dry pass (`prepareImportStream`) accepted: the same steps after the prepare (the
+ * keep list of the old files, the page import's own build, the snapshot, `convertedFrom: 'import'`, the same installer
+ * entries), with the characters uploaded as the file is read. A failed upload is the result `blocked` as in the whole
+ * path; any other throw of the build (the file changed, a unit could not be read) leaves the marker standing and
+ * surfaces as `Store2InstallAbortError`.
+ */
+export async function bootImportStreamed(request: BootStreamRequest, hooks: ImportHooks): Promise<BootImportResult> {
+    if (request.entry.kind === 'first-life' && request.entry.grant.label !== 'import') {
+        throw new TypeError('A boot import installs under a grant labelled import.')
+    }
+    const { buildImport } = await import('./importTree')
+    const { streamedImportUnits } = await import('./importStream')
+    const keep = await listOldFilesUnreadable(request)
+    if (keep.status === 'blocked') {
+        return keep
+    }
+    const units = streamedImportUnits(request.prepared, {
+        stream: request.stream, yieldToMain: request.yieldToMain, reader: request.reader, lists: request.lists, env: request.env, resolve: request.resolve,
+    }, hooks)
+    const base: BuiltInstall = { ...buildImport(units), convertedFrom: 'import' }
+    const snapshot = await planOldDataSnapshot(request.oldData, null)
+    const install = withSnapshot(keep.status === 'none' ? base : withLegacyKeep(base, keep.list), snapshot)
+    const env: KeyEnv = { ...defaultKeyEnv, ...request.env }
+    if (request.entry.kind === 'first-life') {
+        return resultOfInstall(await firstLifeInstallStreamed(request.backend, request.entry.grant, install, { owner: request.owner, env }), request.prepared.repair)
+    }
+    const exit = await runExit(request.backend, request.entry.commitRead, { kind: 'import' }, { owner: request.owner, env, foreignClear: request.entry.foreignClear })
+    if (exit.status !== 'marked') {
+        return { status: 'exit', exit }
+    }
+    return resultOfInstall(await installStreamed({ backend: request.backend, env, marked: exit }, install), request.prepared.repair)
 }

@@ -12,7 +12,7 @@ import type { Chat, character, groupChat } from '../../storage/database.svelte'
 import { ASSET_FOLDER_KEY, ASSET_RETAINED_KEY } from '../assets/assetOwnerKeys'
 import { parseTargetPath, rewritableTextAt } from '../assets/referenceTargets'
 import { selectedStudioCharacterId, studioScreen } from '../studioScreen.svelte'
-import { TEXT_FIELD_PATHS, fmAfterRemove, type FieldValue, type FmValue, type LiveReader, type Op, type RestoreContext, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
+import { TEXT_FIELD_PATHS, fmAfterRemove, isBooleanSetPath, type FieldValue, type FmValue, type LiveReader, type Op, type RestoreContext, type SetPath, type StepLabel, type WriteOp } from '../history/historyModel'
 import { parseOwnerKey, type OwnerKey } from '../history/ownerPhase'
 import { moduleSlotsWithId, orderAssetWrites, type RetainedResult } from './assetSetters'
 
@@ -154,6 +154,9 @@ export function createLiveReader(target: LiveTarget): LiveReader {
             if (path === 'customModuleToggle') {
                 return typeof live.customModuleToggle === 'string' ? { had: true, value: live.customModuleToggle } : { had: false }
             }
+            if (path === 'risutanium_render_when_complete') {
+                return typeof live.risutanium_render_when_complete === 'boolean' ? { had: true, value: live.risutanium_render_when_complete } : { had: false }
+            }
             return typeof live.hideChatIcon === 'boolean' ? { had: true, value: live.hideChatIcon } : { had: false }
         },
         greetings() {
@@ -220,7 +223,7 @@ export type EditBuildResult = EditBuild | { ok: false; reason: 'precondition' | 
 
 // `coalesce: false` gives a step that never joins, and is never joined by, a neighbouring typing step.
 export function buildFieldEdit(path: SetPath, value: string | boolean, live: LiveReader, coalesce = true): EditBuildResult {
-    if (typeof value !== (path === 'hideChatIcon' ? 'boolean' : 'string')) {
+    if (typeof value !== (isBooleanSetPath(path) ? 'boolean' : 'string')) {
         return { ok: false, reason: 'precondition' }
     }
     const before = live.field(path)
@@ -381,6 +384,12 @@ function setCharacterField(live: character, path: SetPath, value: FieldValue): v
             delete live.hideChatIcon
         } else if (typeof value.value === 'boolean') {
             live.hideChatIcon = value.value
+        }
+    } else if (path === 'risutanium_render_when_complete') {
+        if (!value.had) {
+            delete live.risutanium_render_when_complete
+        } else if (typeof value.value === 'boolean') {
+            live.risutanium_render_when_complete = value.value
         }
     }
 }

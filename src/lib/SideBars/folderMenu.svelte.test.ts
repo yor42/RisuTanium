@@ -17,14 +17,18 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 import type { Database, folder } from 'src/ts/storage/database.svelte'
 import { DBState } from 'src/ts/stores.svelte'
 import { language } from 'src/lang'
-import { alertError } from 'src/ts/alert'
+import { alertError, alertInput } from 'src/ts/alert'
+import { resetToastHostForTests, toastHost } from 'src/ts/toast/toastHost.svelte'
+import type { TrashedBatch } from 'src/ts/characters'
 import { runFolderMenu, type FolderMenuHost, type FolderMenuTarget } from './folderMenu'
 
 type TestCharacter = { chaId: string, name: string, trashTime?: number, hidden?: boolean }
 type OrderEntry = string | folder
 type OrderChange = Parameters<FolderMenuHost['applyOrderChange']>[0]
 
-const { world, checkCharOrderSpy, saveAssetSpy, selectSingleFileSpy, trashSpy, busyHandles, answers, offers, inputs, onOffer } = vi.hoisted(() => ({
+const { world, checkCharOrderSpy, saveAssetSpy, selectSingleFileSpy, trashSpy, busyHandles, answers, offers, inputs, onOffer, cancelAt } = vi.hoisted(() => ({
+    /** The prompt that answers with the cancel its caller offered: the select at this offer index, or the next input. Rejects when none was offered. */
+    cancelAt: { select: -1, input: false },
     world: { characters: [] as TestCharacter[] },
     checkCharOrderSpy: vi.fn(),
     saveAssetSpy: vi.fn(),
@@ -72,12 +76,20 @@ vi.mock(import('../../ts/characters'), () => ({
 }) as unknown as typeof import('../../ts/characters'))
 
 vi.mock(import('src/ts/alert'), () => ({
-    alertSelect: vi.fn(async (offered: string[]) => {
+    alertSelect: vi.fn(async (offered: string[], _display?: string, options?: { cancel?: string }) => {
         offers.push([...offered])
         onOffer.current?.(offered)
+        if (offers.length - 1 === cancelAt.select) {
+            return options?.cancel ?? Promise.reject(new Error('no cancel offered'))
+        }
         return answers.shift() ?? '99'
     }),
-    alertInput: vi.fn(async () => inputs.shift() ?? ''),
+    alertInput: vi.fn(async (_msg: string, _list?: unknown, _value?: string, options?: { cancel?: string }) => {
+        if (cancelAt.input) {
+            return options?.cancel ?? Promise.reject(new Error('no cancel offered'))
+        }
+        return inputs.shift() ?? ''
+    }),
     alertError: vi.fn(),
 }) as unknown as typeof import('src/ts/alert'))
 
@@ -141,8 +153,11 @@ beforeEach(() => {
     answers.length = 0
     offers.length = 0
     inputs.length = 0
+    cancelAt.select = -1
+    cancelAt.input = false
     onOffer.current = null
     busyHandles.length = 0
+    resetToastHostForTests()
     for (const spy of [checkCharOrderSpy, saveAssetSpy, selectSingleFileSpy, trashSpy]) {
         spy.mockReset()
     }
@@ -171,6 +186,75 @@ describe('1. the offered lists', () => {
         await runFolderMenu(targetOf('f'), makeHost().host)
         expect(offers[3]).toHaveLength(8)
         expect(offers[3][0]).toBe(language.sidebarUi.folderColorRed)
+    })
+})
+
+describe('1b. every prompt of the menu offers a cancel that changes nothing', () => {
+    function expectUntouched(state: ReturnType<typeof setupDb>, host: ReturnType<typeof makeHost>) {
+        expect(state.writes).toHaveLength(0)
+        expect(host.applyOrderChange).not.toHaveBeenCalled()
+        expect(host.closeFolder).not.toHaveBeenCalled()
+        expect(trashSpy).not.toHaveBeenCalled()
+        expect(selectSingleFileSpy).not.toHaveBeenCalled()
+        expect(saveAssetSpy).not.toHaveBeenCalled()
+    }
+
+    test('the top list: its cancel is its Cancel row', async () => {
+        const state = setupDb([fold('f', ['a'])], characters())
+        const host = makeHost()
+        cancelAt.select = 0
+        vi.mocked(alertInput).mockClear()
+        await runFolderMenu(targetOf('f'), host.host)
+        expectUntouched(state, host)
+        expect(offers).toHaveLength(1)
+        expect(alertInput).not.toHaveBeenCalled()
+    })
+
+    test('the delete list with members: its cancel is the last row, so nothing is trashed or ungrouped', async () => {
+        const state = setupDb([fold('f', ['a'])], characters())
+        const host = makeHost()
+        answers.push(TOP.del)
+        cancelAt.select = 1
+        await runFolderMenu(targetOf('f'), host.host)
+        expectUntouched(state, host)
+        expect(offers[1]).toHaveLength(3)
+    })
+
+    test('the delete list of an empty folder: its cancel is its second row', async () => {
+        const state = setupDb([fold('f', [])], characters())
+        const host = makeHost()
+        answers.push(TOP.del)
+        cancelAt.select = 1
+        await runFolderMenu(targetOf('f'), host.host)
+        expectUntouched(state, host)
+        expect(offers[1]).toHaveLength(2)
+    })
+
+    test('the rename input: its cancel keeps the name', async () => {
+        const state = setupDb([fold('f', ['a'])], characters())
+        const host = makeHost()
+        answers.push(TOP.rename)
+        cancelAt.input = true
+        await runFolderMenu(targetOf('f'), host.host)
+        expectUntouched(state, host)
+    })
+
+    test('the colour list: its cancel names no colour', async () => {
+        const state = setupDb([fold('f', ['a'])], characters())
+        const host = makeHost()
+        answers.push(TOP.colour)
+        cancelAt.select = 1
+        await runFolderMenu(targetOf('f'), host.host)
+        expectUntouched(state, host)
+    })
+
+    test('the picture list: its cancel resets nothing and opens no file picker', async () => {
+        const state = setupDb([fold('f', ['a'])], characters())
+        const host = makeHost()
+        answers.push(TOP.picture)
+        cancelAt.select = 1
+        await runFolderMenu(targetOf('f'), host.host)
+        expectUntouched(state, host)
     })
 })
 
@@ -218,6 +302,60 @@ describe('3. Ungroup', () => {
         expect(db.writes).toHaveLength(0)
         expect(checkCharOrderSpy).not.toHaveBeenCalled()
         expect(closeFolder).not.toHaveBeenCalled()
+    })
+})
+
+describe('3b. the Undo toast of an order change', () => {
+    const undoToasts = () => toastHost.visible.filter((toast) => toast.kind === 'undo')
+    const snapshot = (order: OrderEntry[]) => JSON.parse(JSON.stringify(order)) as OrderEntry[]
+
+    test('Ungroup posts "Folder ungrouped", and Undo brings the folder back with its fields', async () => {
+        const db = setupDb(['x', fold('f', ['a', 'b'], { imgFile: 'pic' }), 'y'], characters())
+        const start = snapshot(db.order())
+        answers.push(TOP.ungroup)
+        await runFolderMenu(targetOf('f'), makeHost().host)
+        expect(undoToasts()).toHaveLength(1)
+        expect(undoToasts()[0].text).toBe(language.othersUi.libraryUndoUngrouped)
+        await toastHost.activate(undoToasts()[0].id)
+        expect(snapshot(db.order())).toEqual(start)
+        expect(checkCharOrderSpy).toHaveBeenCalledTimes(2)
+    })
+
+    test('Delete, keep members posts "Folder deleted; its characters stay in the list", and Undo restores', async () => {
+        const db = setupDb(['x', fold('f', ['a', 'b']), 'y'], characters())
+        const start = snapshot(db.order())
+        answers.push(TOP.del, '0')
+        await runFolderMenu(targetOf('f'), makeHost().host)
+        expect(db.order()).toEqual(['x', 'a', 'b', 'y'])
+        expect(undoToasts()).toHaveLength(1)
+        expect(undoToasts()[0].text).toBe(language.othersUi.libraryUndoFolderDeleted)
+        await toastHost.activate(undoToasts()[0].id)
+        expect(snapshot(db.order())).toEqual(start)
+    })
+
+    test('Undo refuses once the order has changed since', async () => {
+        const db = setupDb(['x', fold('f', ['a', 'b']), 'y'], characters())
+        answers.push(TOP.ungroup)
+        await runFolderMenu(targetOf('f'), makeHost().host)
+        db.order().reverse()
+        const changed = snapshot(db.order())
+        expect(undoToasts()).toHaveLength(1)
+        await toastHost.activate(undoToasts()[0].id)
+        expect(snapshot(db.order())).toEqual(changed)
+    })
+
+    test('a folder that is gone, a field edit and a cancel post nothing', async () => {
+        setupDb(['x', fold('f', ['a'])], characters())
+        answers.push(TOP.ungroup)
+        await runFolderMenu(targetOf('f', 3), makeHost().host)
+        answers.push(TOP.rename)
+        inputs.push('New name')
+        await runFolderMenu(targetOf('f'), makeHost().host)
+        answers.push(TOP.colour, '2')
+        await runFolderMenu(targetOf('f'), makeHost().host)
+        answers.push(TOP.del, '2')
+        await runFolderMenu(targetOf('f'), makeHost().host)
+        expect(toastHost.visible).toHaveLength(0)
     })
 })
 
@@ -362,6 +500,23 @@ describe('6. Delete', () => {
         expect(db.writes).toHaveLength(0)
         expect(applyOrderChange).not.toHaveBeenCalled()
         expect(closeFolder).not.toHaveBeenCalled()
+    })
+
+    test('reproducer: Trash hands the trash a report whose onTrashed posts the Undo toast', async () => {
+        setupDb([fold('f', ['a', 'd'])], members())
+        resetToastHostForTests()
+        const { host } = makeHost()
+        answers.push(TOP.del, '1')
+        await runFolderMenu(targetOf('f', 0, 'Shown name'), host)
+        const report = trashSpy.mock.calls[0][2] as { onTrashed?(batch: TrashedBatch): void } | undefined
+        expect(report?.onTrashed).toBeTypeOf('function')
+        expect(toastHost.visible).toHaveLength(0)
+
+        report!.onTrashed!({ at: 5, chaIds: ['a', 'd'] })
+
+        expect(toastHost.visible).toHaveLength(1)
+        expect(toastHost.visible[0].kind).toBe('undo')
+        expect(toastHost.visible[0].text).toBe(language.othersUi.libraryUndoTrashed(2))
     })
 
     test('Cancel and a vanished folder do nothing', async () => {

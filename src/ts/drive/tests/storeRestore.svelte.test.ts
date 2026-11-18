@@ -285,6 +285,29 @@ describe('the picker', () => {
         expect((await page.k.commitKey()).current?.key).toBe(key.current?.key)
     })
 
+    test('the picker offers its Cancel row as the cancel: answering it restores nothing', async () => {
+        const page = await openPage()
+        await commitEdit(page, 'second')
+        const key = await page.k.commitKey()
+        const answered: string[] = []
+        vi.mocked(page.alert.alertSelect).mockImplementation(async (options: string[], _display?: string, offered?: { cancel?: string }) => {
+            page.shown.push(options)
+            if (offered?.cancel === undefined) {
+                throw new Error('no cancel offered')
+            }
+            answered.push(offered.cancel)
+            return offered.cancel
+        })
+
+        const { reload } = await runRestore(page)
+
+        expect(answered).toEqual(['0'])
+        expect(page.shown[0][0]).toBe('Cancel')
+        expect(reload).not.toHaveBeenCalled()
+        expect(await writeLockIsFree(page)).toBe(true)
+        expect((await page.k.commitKey()).current?.key).toBe(key.current?.key)
+    })
+
     test('an empty list says why and asks nothing', async () => {
         const page = await openPage()
 

@@ -14,7 +14,7 @@ import { flushSync } from 'svelte'
 import { writable } from 'svelte/store'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Database } from '../storage/database.svelte'
-import { busyKinds, beginBusy, isBusy, resetBusyActionsForTest } from '../process/memory/busyActions'
+import { busyKinds, beginBusy, beginDialogWait, isBusy, resetBusyActionsForTest } from '../process/memory/busyActions'
 import { beginRestoreRun, resetRestoreInProgressForTests } from '../drive/restoreInProgress'
 import { resetPageStorageModeForTests, setPageStorageMode } from '../storage/pageStorageMode'
 import { language } from 'src/lang'
@@ -442,6 +442,27 @@ describe('the refusals that write nothing', () => {
         expect(outcome).toEqual({ ok: false, kind: 'busy' })
         expect(calls.verify).not.toHaveBeenCalled()
         expectNothingWritten()
+    })
+
+    test('an install proceeds while an export waits on an Android save dialog', async () => {
+        beginDialogWait(beginBusy('export'))
+        const { request, calls } = requestOf()
+
+        okOf(await installThemePack(request))
+
+        expect(calls.verify).toHaveBeenCalled()
+    })
+
+    test('an install is refused as busy when the save dialog answers while its Replace? dialog is open', async () => {
+        installDb({ themePacks: [recordFixture({ id: 'old-1' })] })
+        const unmark = beginDialogWait(beginBusy('export'))
+        const { request } = requestOf({ onConfirm: () => { unmark() } })
+
+        const outcome = await installThemePack(request)
+
+        expect(outcome).toEqual({ ok: false, kind: 'busy' })
+        expectNothingWritten()
+        expect((snapshotOf(fields().themePacks) as Slot[]).map((pack) => pack.id)).toEqual(['old-1'])
     })
 
     test('T2-18: an install is refused while a restore is asking, before the intake runs', async () => {

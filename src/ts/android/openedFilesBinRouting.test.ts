@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 
 /**
- * Where a `.bin` opened from another Android app goes. A drain is one `take()`. A backup is restored only when it is the
- * one backup of its batch and the drain imports nothing else (a restore would replace what the imports just added); an
- * unsupported name such as a PNG does not count as an import. Every other `.bin` is refused, all refusals of a kind in one
+ * Where a backup (`.bin` or `.rtb`) opened from another Android app goes. A drain is one `take()`. A backup is restored only when it is the
+ * one backup of its batch and the drain imports nothing else (a restore would replace what the imports just added); a
+ * name or type the import refuses as unsupported, such as a text file, does not count as an import, while a PNG, JPEG or
+ * JSON does, and a backup never counts as an import itself. Every other backup is refused, all refusals of a kind in one
  * awaited notice: the notice that a backup was not opened alone comes after every import of the drain, and the notice that
  * only one backup restores at a time is closed before the restore asks its confirmation.
  *
@@ -26,7 +27,9 @@ vi.mock(import('../stores.svelte'), () => ({
 vi.mock('../characterCards', () => ({
     importOpenedSources: importOpenedSourcesMock,
     // Stand-in for the shared allow-list; the real list is pinned against the import in characterCards.picker.test.ts.
-    isOpenedSourceImportable: (name: string) => /\.(charx|risum|risup|risupreset|preset)$/i.test(name),
+    isOpenedSourceImportable: (name: string, type = '') => /\.(charx|byaf|png|jpe?g|json|ya?ml|risupreset|risup|preset|risum)$/i.test(name)
+        ? /\.(charx|risum|risup|risupreset|preset|png|jpe?g|json)$/i.test(name)
+        : /^(image\/png|image\/jpeg|application\/json)$/i.test(type.split(';')[0].trim()),
 }))
 vi.mock('../alert', () => ({
     alertNormalWait: alertNormalWaitMock,
@@ -44,6 +47,7 @@ const { androidOpenedFilesImport, resetOpenedFilesForTests } = await import('./o
 interface HostEntry {
     uri: string
     name: string
+    type?: string
 }
 
 let queued: HostEntry[][] = []
@@ -55,6 +59,7 @@ const takeMock = vi.fn((): string => {
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 const entry = (name: string): HostEntry => ({ uri: `content://provider/${name}`, name })
+const typed = (name: string, type: string): HostEntry => ({ uri: `content://provider/${name}`, name, type })
 
 /** A promise the test settles by hand, to hold a step open and see what runs meanwhile. */
 function deferred(): { promise: Promise<void>, release: () => void } {
@@ -138,13 +143,46 @@ describe('a .bin opened from another app', () => {
         expect(restoreOpenedBackupMock).not.toHaveBeenCalled()
     })
 
-    test('a .png beside a lone .bin does not block the restore, and the .png goes to the import to be refused as today', async () => {
+    test('a .png beside a lone .bin blocks the restore: the .png goes to the import and the .bin is refused as not alone', async () => {
         queued = [[entry('notes.png')], [entry('backup.bin')]]
         androidOpenedFilesImport()
         await settle()
-        expect(restoreOpenedBackupMock).toHaveBeenCalledTimes(1)
-        expect(restoreOpenedBackupMock).toHaveBeenCalledWith({ name: 'backup.bin', path: 'content://provider/backup.bin' })
+        expect(restoreOpenedBackupMock).not.toHaveBeenCalled()
         expect(importOpenedSourcesMock).toHaveBeenCalledWith([{ name: 'notes.png', path: 'content://provider/notes.png' }])
+        expect(alertNormalWaitMock).toHaveBeenCalledWith(language.openedBackupNotAlone(['backup.bin']))
+    })
+
+    test.each(['photo.JPG', 'data.json'])('%s beside a lone .bin blocks the restore too', async (name) => {
+        queued = [[entry(name)], [entry('backup.bin')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(restoreOpenedBackupMock).not.toHaveBeenCalled()
+        expect(alertNormalWaitMock).toHaveBeenCalledWith(language.openedBackupNotAlone(['backup.bin']))
+    })
+
+    test('an entry with no suffix whose type is an image or JSON blocks the restore, and its type reaches the import', async () => {
+        queued = [[entry('backup.bin')], [typed('download', 'image/png')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(restoreOpenedBackupMock).not.toHaveBeenCalled()
+        expect(importOpenedSourcesMock).toHaveBeenCalledWith([{ name: 'download', path: 'content://provider/download', type: 'image/png' }])
+        expect(alertNormalWaitMock).toHaveBeenCalledWith(language.openedBackupNotAlone(['backup.bin']))
+    })
+
+    // Guard: passes before and after; a name or type the import refuses as unsupported never counted.
+    test.each(['notes.txt', 'notes.webp'])('%s beside a lone .bin does not block the restore', async (name) => {
+        queued = [[entry(name)], [entry('backup.bin')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(restoreOpenedBackupMock).toHaveBeenCalledTimes(1)
+        expect(alertNormalWaitMock).not.toHaveBeenCalled()
+    })
+
+    test('a .bin the provider types as JSON does not count itself as something to import', async () => {
+        queued = [[typed('backup.bin', 'application/json')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(restoreOpenedBackupMock).toHaveBeenCalledTimes(1)
         expect(alertNormalWaitMock).not.toHaveBeenCalled()
     })
 
@@ -166,15 +204,13 @@ describe('a .bin opened from another app', () => {
         expect(alertNormalWaitMock).toHaveBeenCalledWith(language.openedBackupNotAlone(['backup.bin']))
     })
 
-    test('reproducer: a .png shared in the same batch as one .bin does not block the restore, and the .png goes to the import to be refused', async () => {
+    test('a .png shared in the same batch as one .bin blocks the restore, and the .png goes to the import', async () => {
         queued = [[entry('backup.bin'), entry('notes.png')]]
         androidOpenedFilesImport()
         await settle()
-        expect(restoreOpenedBackupMock).toHaveBeenCalledTimes(1)
-        expect(restoreOpenedBackupMock).toHaveBeenCalledWith({ name: 'backup.bin', path: 'content://provider/backup.bin' })
+        expect(restoreOpenedBackupMock).not.toHaveBeenCalled()
         expect(importOpenedSourcesMock).toHaveBeenCalledWith([{ name: 'notes.png', path: 'content://provider/notes.png' }])
-        expect(order).toEqual(['import:notes.png', 'restore:backup.bin'])
-        expect(alertNormalWaitMock).not.toHaveBeenCalled()
+        expect(alertNormalWaitMock).toHaveBeenCalledWith(language.openedBackupNotAlone(['backup.bin']))
     })
 
     test('a .bin shared with an unsupported file and a card in one batch is refused while the card imports', async () => {
@@ -187,7 +223,7 @@ describe('a .bin opened from another app', () => {
     })
 
     test('two .bin in one batch beside an unsupported file are both refused and nothing is restored', async () => {
-        queued = [[entry('one.bin'), entry('two.bin'), entry('notes.png')]]
+        queued = [[entry('one.bin'), entry('two.bin'), entry('notes.txt')]]
         androidOpenedFilesImport()
         await settle()
         expect(restoreOpenedBackupMock).not.toHaveBeenCalled()
@@ -259,6 +295,114 @@ describe('a .bin opened from another app', () => {
     test('after a restore that ended the page, a later hook with a card takes nothing and imports nothing', async () => {
         restoreOpenedBackupMock.mockResolvedValueOnce('pageEnding')
         queued = [[entry('backup.bin')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(takeMock).toHaveBeenCalledTimes(1)
+        queued = [[entry('card.charx')]]
+        window.__risuTaniumOpenedFiles?.()
+        await settle()
+        expect(takeMock).toHaveBeenCalledTimes(1)
+        expect(importOpenedSourcesMock).not.toHaveBeenCalled()
+        expect(queued).toHaveLength(1)
+    })
+})
+
+describe('a .rtb opened from another app', () => {
+    // Reproducers (T-D1 to T-D7, T-D9 second half, T-D10): red where `isBackupEntry` accepts `.bin` only.
+    test('T-D1/T-D2: a lone .rtb, in any case, goes to the restore with its display name and is never imported', async () => {
+        for (const name of ['backup.rtb', 'backup.RTB']) {
+            restoreOpenedBackupMock.mockClear()
+            importOpenedSourcesMock.mockClear()
+            queued = [[entry(name)]]
+            androidOpenedFilesImport()
+            await settle()
+            expect(restoreOpenedBackupMock).toHaveBeenCalledTimes(1)
+            expect(restoreOpenedBackupMock).toHaveBeenCalledWith({ name, path: `content://provider/${name}` })
+            expect(importOpenedSourcesMock).not.toHaveBeenCalled()
+            resetOpenedFilesForTests()
+        }
+    })
+
+    test('a card a provider types as application/zip or application/octet-stream is imported, never restored: backup candidacy is by name only (guard)', async () => {
+        queued = [[typed('card.charx', 'application/zip')], [typed('module.risum', 'application/octet-stream')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(restoreOpenedBackupMock).not.toHaveBeenCalled()
+        expect(importOpenedSourcesMock.mock.calls.flatMap((call) => call[0].map((item: { name: string }) => item.name))).toEqual(['card.charx', 'module.risum'])
+    })
+
+    test('T-D3: a .bin and a .rtb in one batch are two backups and both are refused', async () => {
+        queued = [[entry('backup.bin'), entry('backup.rtb')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(restoreOpenedBackupMock).not.toHaveBeenCalled()
+        expect(alertNormalWaitMock).toHaveBeenCalledTimes(1)
+        expect(alertNormalWaitMock).toHaveBeenCalledWith(language.openedBackupNotAlone(['backup.bin', 'backup.rtb']))
+    })
+
+    test('T-D4: two lone backups in separate batches: the first restores and the second gets the one-at-a-time notice first', async () => {
+        queued = [[entry('first.rtb')], [entry('second.bin')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(order).toEqual(['notice:' + language.openedBackupOneAtATime(['second.bin']), 'restore:first.rtb'])
+    })
+
+    test.each([
+        ['in a later batch', () => [[entry('card.charx')], [entry('backup.rtb')]]],
+        ['in the same batch', () => [[entry('card.charx'), entry('backup.rtb')]]],
+    ])('T-D5: a card %s imports and the .rtb is refused as not alone after the import', async (_label, make) => {
+        queued = make()
+        androidOpenedFilesImport()
+        await settle()
+        expect(restoreOpenedBackupMock).not.toHaveBeenCalled()
+        expect(importOpenedSourcesMock).toHaveBeenCalledTimes(1)
+        expect(importOpenedSourcesMock.mock.calls[0][0].map((item: { name: string }) => item.name)).toEqual(['card.charx'])
+        expect(order).toEqual(['import:card.charx', 'notice:' + language.openedBackupNotAlone(['backup.rtb'])])
+    })
+
+    test('T-D6: a .rtb the provider types as JSON does not count itself as something to import', async () => {
+        queued = [[typed('backup.rtb', 'application/json')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(restoreOpenedBackupMock).toHaveBeenCalledTimes(1)
+        expect(importOpenedSourcesMock).not.toHaveBeenCalled()
+    })
+
+    test('T-D7: an unsupported file beside a lone .rtb does not block the restore', async () => {
+        queued = [[entry('notes.txt')], [entry('backup.rtb')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(restoreOpenedBackupMock).toHaveBeenCalledTimes(1)
+        expect(alertNormalWaitMock).not.toHaveBeenCalled()
+    })
+
+    // Guard (passes before and after): a name that only contains the suffix is not a backup.
+    test.each(['notes.rtb.txt', 'myrtb', 'backup.rtbx'])('T-D8: %s alone is imported, never restored', async (name) => {
+        queued = [[entry(name)]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(importOpenedSourcesMock).toHaveBeenCalledTimes(1)
+        expect(restoreOpenedBackupMock).not.toHaveBeenCalled()
+    })
+
+    // Guard for the hold (first half passes on the base), reproducer for the restore after setup.
+    test('T-D9: before first setup a .rtb stays with the host; after setup it is restored', async () => {
+        h.didFirstSetup = false
+        queued = [[entry('backup.rtb')]]
+        androidOpenedFilesImport()
+        await settle()
+        expect(takeMock).not.toHaveBeenCalled()
+        expect(queued).toHaveLength(1)
+
+        h.didFirstSetup = true
+        window.__risuTaniumOpenedFiles?.()
+        await settle()
+        expect(restoreOpenedBackupMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('T-D10: after a .rtb restore that ended the page, a later hook with a card takes nothing and imports nothing', async () => {
+        restoreOpenedBackupMock.mockResolvedValueOnce('pageEnding')
+        queued = [[entry('backup.rtb')]]
         androidOpenedFilesImport()
         await settle()
         expect(takeMock).toHaveBeenCalledTimes(1)

@@ -28,11 +28,16 @@ import { getStartupCleanup, resetStartupCleanupForTests } from 'src/ts/storage/s
 import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/backend'
 import { unitDigest } from 'src/ts/storage/store2/codec'
 import { ADMISSION_INTERVAL_MS } from 'src/ts/storage/store2/commit'
-import { firstCommitKey, RETAINED_MAX } from 'src/ts/storage/store2/commitKey'
+import { classifyCommitRead, firstCommitKey, RETAINED_MAX } from 'src/ts/storage/store2/commitKey'
 import {
     encodeUnit, newUnitKey, UNIT_TYPE, type DeletionSnapshot, type SnapshotPointer,
 } from 'src/ts/storage/store2/format'
-import { bootDidNotInstall, resetMaintenanceForTests, startStore2Maintenance, type MaintenanceEnv } from 'src/ts/storage/store2/maintenance'
+import {
+    bootDidNotInstall, resetMaintenanceForTests, startStore2Maintenance as startLiveMaintenance,
+    type MaintenanceEnv, type MaintenanceSeams, type SweepPageFacts,
+} from 'src/ts/storage/store2/maintenance'
+import { holdAssetDeletion, resetAssetDeleteHoldForTests } from 'src/ts/storage/assetDeleteHold'
+import { writeSweepRecord } from 'src/ts/storage/store2/sweep'
 import { NODE_BATCH_PACE_MS, type OldDataDeletionResult } from 'src/ts/storage/store2/oldData/delete'
 import { listRestorePoints, restorePoint } from 'src/ts/storage/store2/restorePoints'
 import { Store2Session } from 'src/ts/storage/store2/session'
@@ -93,12 +98,47 @@ function deferred<T>() {
 const COMPLETED: OldDataDeletionResult = { status: 'completed', deleted: 0, abandoned: 0, flushed: undefined }
 
 /** A quiet page: the clean-up pass sees no data action, a running save loop and a committed save. */
-const CLEAN: AutoGcFacts = { isBusy: () => false, saveLoopParked: () => false, isSaveClean: () => true }
+const CLEAN: AutoGcFacts = {
+    isBusy: () => false,
+    saveLoopParked: () => false,
+    isSaveClean: () => true,
+    restoreInProgress: () => false,
+    peers: async () => 'alone',
+    ownBase: () => null,
+}
+
+/**
+ * The default clean-up facts of the wrapper below: another tab is open, so a web page's pass refuses before any store2
+ * read and no case reaches the live facts (and with them `globalApi.svelte`). An app page ignores both web facts.
+ */
+const REFUSING_GC: AutoGcFacts = { ...CLEAN, restoreInProgress: () => false, peers: async () => 'others', ownBase: () => null }
+
+/**
+ * The page's facts for the asset sweep, injected so that no case loads the application's `globalApi.svelte` through the
+ * live path. The default stops the pass before it reads anything (a data action is "registered"), so the cases that are
+ * about the old-data deletion and the clean-up pass keep their own call logs; the asset-sweep cases pass `ACTIVE_SWEEP`.
+ */
+const QUIET_SWEEP: SweepPageFacts = {
+    residentRefs: () => [],
+    writtenCount: () => 0,
+    writtenThisPage: () => [],
+    peers: async () => 'alone',
+    shouldStop: () => true,
+    release: () => { },
+    hold: remove => remove(),
+}
+
+const ACTIVE_SWEEP: SweepPageFacts = { ...QUIET_SWEEP, shouldStop: () => false, hold: remove => holdAssetDeletion(remove) }
+
+function startStore2Maintenance(env: MaintenanceEnv, seams: MaintenanceSeams = {}): ReturnType<typeof startLiveMaintenance> {
+    return startLiveMaintenance(env, { sweepFacts: QUIET_SWEEP, gcPageFacts: REFUSING_GC, ...seams })
+}
 
 beforeEach(() => {
     resetPageStorageModeForTests()
     resetStartupCleanupForTests()
     resetMaintenanceForTests()
+    resetAssetDeleteHoldForTests()
     setPageStorageMode({ kind: 'store2' })
 })
 
@@ -250,7 +290,8 @@ describe('the step', () => {
         startStore2Maintenance({ store: async () => { throw new Error('No store.') }, listBackupTimes: async () => [] }, { session: () => session, startTrigger: trigger.start, deletion })
 
         trigger.fire()
-        await vi.waitFor(() => expect(error).toHaveBeenCalledTimes(1))
+        // The old-data deletion and the asset sweep each open the store: each failure is logged on its own.
+        await vi.waitFor(() => expect(error).toHaveBeenCalledTimes(2))
         await getStartupCleanup()
 
         expect(deletion).not.toHaveBeenCalled()
@@ -350,8 +391,13 @@ async function orphansLeft(page: { memory: MemoryBackend, orphans: string[] }): 
     return page.orphans.filter(key => read.get(key) !== null).length
 }
 
+/** The clean-up pass's result lines; the asset sweep's own line is read by its own cases. */
 function infoLines(info: { mock: { calls: unknown[][] } }): string[] {
-    return info.mock.calls.map(call => String(call[0]))
+    return info.mock.calls.map(call => String(call[0])).filter(line => !line.startsWith('store2 asset sweep'))
+}
+
+function sweepLines(info: { mock: { calls: unknown[][] } }): string[] {
+    return info.mock.calls.map(call => String(call[0])).filter(line => line.startsWith('store2 asset sweep'))
 }
 
 /** Fires the quiet trigger once and waits for the step to end. */
@@ -393,7 +439,11 @@ describe('the clean-up pass after the old-data deletion', () => {
         const page = await openTauri(30)
         const treeBefore = (await page.memory.listStore2()).filter(key => !page.orphans.includes(key))
         const order: string[] = []
-        const info = vi.spyOn(console, 'info').mockImplementation(() => { order.push('pass') })
+        const info = vi.spyOn(console, 'info').mockImplementation(line => {
+            if (!String(line).startsWith('store2 asset sweep')) {
+                order.push('pass')
+            }
+        })
         const deletion = vi.fn(async () => { order.push('deletion'); return COMPLETED })
 
         await fireOnce(page, { deletion })
@@ -521,18 +571,46 @@ describe('the clean-up pass after the old-data deletion', () => {
         expect(await orphansLeft(page)).toBe(30)
     })
 
-    test.each<Store2Session['kind']>(['indexeddb', 'node'])('guard K: a %s session runs nothing: no listing, no result line, the orphan stays', async kind => {
+    test('guard K: a node session runs nothing: no listing, no result line, the orphan stays', async () => {
         const { session, backend } = await openSession('ready')
         const orphan = newUnitKey(env)
         await backend.putUnit(orphan, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan }))
         const listing = vi.spyOn(backend, 'listStore2')
         const info = vi.spyOn(console, 'info').mockImplementation(() => {})
-        const asKind = Object.create(session, { kind: { value: kind } }) as Store2Session
+        const asKind = Object.create(session, { kind: { value: 'node' } }) as Store2Session
 
         await fireOnce({ session: asKind })
 
         expect(listing).not.toHaveBeenCalled()
         expect(infoLines(info)).toEqual([])
+        expect((await backend.readUnits([orphan])).get(orphan)).not.toBeNull()
+    })
+
+    test('reproducer K-web (a): an indexeddb session alone on its own base deletes the orphan and logs one result line', async () => {
+        const { session, backend } = await openSession('ready')
+        const orphan = newUnitKey(env)
+        await backend.putUnit(orphan, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan }))
+        const parsed = classifyCommitRead(await backend.readCommit())
+        const base = parsed.status === 'parsed' && parsed.value.current !== null ? parsed.value.current.key : null
+        const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        await fireOnce({ session }, { gcPageFacts: { ...CLEAN, ownBase: () => base } })
+
+        expect(infoLines(info)).toEqual([expect.stringMatching(/^store2 clean-up: status=done deleted=1 batches=1/)])
+        expect((await backend.readUnits([orphan])).get(orphan)).toBeNull()
+    })
+
+    test('reproducer K-web (b): an indexeddb session with another tab open lists nothing, logs the refusal and keeps the orphan', async () => {
+        const { session, backend } = await openSession('ready')
+        const orphan = newUnitKey(env)
+        await backend.putUnit(orphan, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan }))
+        const listing = vi.spyOn(backend, 'listStore2')
+        const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        await fireOnce({ session }, { gcPageFacts: REFUSING_GC })
+
+        expect(listing).not.toHaveBeenCalled()
+        expect(infoLines(info)).toEqual([expect.stringMatching(/^store2 clean-up: status=refused reason=other-tab/)])
         expect((await backend.readUnits([orphan])).get(orphan)).not.toBeNull()
     })
 
@@ -627,5 +705,153 @@ describe('restore points under the wired pass', () => {
         expect(outcome.status).toBe('not-named')
         expect((await memory.readCommit()).bytes).toEqual(before.bytes)
         await expectInvariant(memory)
+    })
+})
+
+describe('the asset sweep after the clean-up pass', () => {
+    const HOUR = 60 * 60 * 1000
+    const ORPHAN = 'orphan-d1.png'
+    const YOUNG = 'young-d1.png'
+
+    /** A page store holding an orphan that a record 25 hours old names, and one asset no record names. */
+    async function plantedStore(): Promise<MemoryByteStore> {
+        const store = createMemoryByteStore()
+        store.files.set(`assets/${ORPHAN}`, new Uint8Array([1]))
+        store.files.set(`assets/${YOUNG}`, new Uint8Array([2]))
+        await writeSweepRecord(store, { v: 1, at: Date.now() - 25 * HOUR, items: [[ORPHAN, null]] })
+        return store
+    }
+
+    /** A `tauri` session over the seeded store that confirms its flushes, with a few orphan units for the clean-up pass. */
+    async function openTauriPage(): Promise<{ session: Store2Session }> {
+        const memory = createMemoryBackend()
+        await seedStore(memory, env)
+        for (let i = 0; i < 3; i++) {
+            const key = newUnitKey(env)
+            await memory.putUnit(key, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan: key }))
+        }
+        const session = await Store2Session.open(createMemoryByteStore(), { kind: 'tauri', backend: flushConfirming(memory).backend, upstreamMainFile: async () => false })
+        expect(session.idleReason).toBeNull()
+        return { session }
+    }
+
+    async function fireSweep(page: { session: Store2Session }, store: MemoryByteStore, seams: MaintenanceSeams = {}): Promise<void> {
+        const trigger = fakeTrigger()
+        startStore2Maintenance(
+            { store: async () => store, listBackupTimes: async () => [] },
+            { session: () => page.session, startTrigger: trigger.start, deletion: vi.fn(async () => COMPLETED), gcPageFacts: CLEAN, sweepFacts: ACTIVE_SWEEP, ...seams },
+        )
+        trigger.fire()
+        await vi.waitFor(() => expect(getStartupCleanup()).not.toBeNull())
+        await getStartupCleanup()
+    }
+
+    test('reproducer D1: on an indexeddb session the step deletes the orphan a day-old record names and keeps the asset no record names', async () => {
+        const page = await openSession('ready')
+        const store = await plantedStore()
+        const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        await fireSweep(page, store)
+
+        expect(store.files.has(`assets/${ORPHAN}`)).toBe(false)
+        expect(store.files.has(`assets/${YOUNG}`)).toBe(true)
+        const lines = sweepLines(info)
+        expect(lines).toHaveLength(1)
+        expect(lines[0]).toContain('status=done phase=swept')
+        expect(lines[0]).toContain('deleted=1')
+        expect(lines[0], 'counts only').not.toContain(ORPHAN)
+    })
+
+    test('reproducer D1: on a tauri session the step deletes the orphan after the clean-up pass', async () => {
+        const page = await openTauriPage()
+        const store = await plantedStore()
+        const order: string[] = []
+        vi.spyOn(console, 'info').mockImplementation(line => { order.push(String(line).startsWith('store2 asset sweep') ? 'sweep' : 'clean-up') })
+
+        await fireSweep(page, store)
+
+        expect(store.files.has(`assets/${ORPHAN}`)).toBe(false)
+        expect(store.files.has(`assets/${YOUNG}`)).toBe(true)
+        expect(order, 'the sweep is the last deleter of the step').toEqual(['clean-up', 'sweep'])
+    })
+
+    test('guard D2: a node session lists nothing under assets and logs no sweep line', async () => {
+        const { session } = await openSession('ready')
+        const store = await plantedStore()
+        store.lists.length = 0
+        const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+        const asNode = Object.create(session, { kind: { value: 'node' } }) as Store2Session
+
+        await fireSweep({ session: asNode }, store)
+
+        expect(store.lists).toEqual([])
+        expect(sweepLines(info)).toEqual([])
+        expect(store.files.has(`assets/${ORPHAN}`)).toBe(true)
+    })
+
+    test('guard D3: the registered startup clean-up covers the sweep until its asset listing resolves', async () => {
+        const page = await openSession('ready')
+        const store = await plantedStore()
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+        const listed = deferred<void>()
+        const list = store.list.bind(store)
+        let asked = false
+        vi.spyOn(store, 'list').mockImplementation(async prefix => {
+            if (prefix === 'assets/') {
+                asked = true
+                await listed.promise
+            }
+            return list(prefix)
+        })
+        const trigger = fakeTrigger()
+        startStore2Maintenance(
+            { store: async () => store, listBackupTimes: async () => [] },
+            { session: () => page.session, startTrigger: trigger.start, deletion: vi.fn(async () => COMPLETED), gcPageFacts: CLEAN, sweepFacts: ACTIVE_SWEEP },
+        )
+
+        trigger.fire()
+        await vi.waitFor(() => expect(asked).toBe(true))
+        const registered = getStartupCleanup()
+        expect(registered).not.toBeNull()
+        let settled = false
+        void registered?.then(() => { settled = true })
+        await new Promise(resolve => setTimeout(resolve, 10))
+        expect(settled).toBe(false)
+
+        listed.resolve()
+        await registered
+        expect(settled).toBe(true)
+        expect(store.files.has(`assets/${ORPHAN}`)).toBe(false)
+    })
+
+    test('guard: a sweep that throws is logged and swallowed, and the registered promise settles', async () => {
+        const page = await openSession('ready')
+        const store = await plantedStore()
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+        const failure = new Error('The record write failed.')
+        store.failWrite = key => (key.startsWith('store2-sweep') ? failure : null)
+
+        await fireSweep(page, store)
+
+        expect(error).toHaveBeenCalledWith(failure)
+        expect(getStartupCleanup()).toBeNull()
+    })
+
+    test('guard: a page that left store2 mode before the trigger fired never lists assets', async () => {
+        const page = await openSession('ready')
+        const store = await plantedStore()
+        store.lists.length = 0
+        const trigger = fakeTrigger()
+        startStore2Maintenance(
+            { store: async () => store, listBackupTimes: async () => [] },
+            { session: () => page.session, startTrigger: trigger.start, deletion: vi.fn(async () => COMPLETED), gcPageFacts: CLEAN, sweepFacts: ACTIVE_SWEEP },
+        )
+        setPageStorageMode({ kind: 'block' })
+
+        trigger.fire()
+        await getStartupCleanup()
+
+        expect(store.lists).toEqual([])
     })
 })

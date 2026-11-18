@@ -6,6 +6,7 @@ import {
     type KeyEnv, type Manifest, type Ref, type Shard, type ShardEntry, type UnitType,
 } from '../format'
 import type { BuildContext, BuiltCommit, KeyMint } from '../commit'
+import { ENTRY_MOVED_FIELDS } from './bodies'
 import { manifestStateEquals } from './manifest'
 import { defineOwn } from './normalize'
 import { isUnchanged, unitDigest, UnitNotReusedError, UnitSink, type UnitKeyKind } from './reuse'
@@ -731,6 +732,102 @@ export async function planScopedEncode(db: Database, options: EncodeOptions, sco
     }
 }
 
+// ---- streamed encode ----
+
+/** What `StreamedEncode.finish` returns: the tail commit (front, modules, finish units and the manifest) and the count of every unit the stream produced. */
+export interface StreamedFinish {
+    /** The units `character` did not already hand out, and the manifest. */
+    built: BuiltCommit
+    /** Every unit the whole stream wrote, the manifest included: the `newUnits` a `ScopedPlan` of the same tree reports. */
+    count: number
+}
+
+/**
+ * An encode of a resolved tree that arrives characters first and root last, with no earlier encoding (nothing is
+ * reused, as in an import). It holds each character's shard entry and the identity, key, type, Ref and digest of each
+ * unit it produced, never a unit's frame after the caller has it.
+ */
+export interface StreamedEncode {
+    /**
+     * Encodes the character `slot` at position `index` and returns its units, frames included, once; the encode keeps
+     * none. A `CodecError` is held, not thrown: the call and every later one return no units, and `finish` reports the
+     * error where `encodeScoped` would. Any other error is thrown. A slot must be resolved: a stub is refused.
+     */
+    character(slot: unknown, index: number): Promise<BuiltCommit['units']>
+    /**
+     * Encodes the rest of the tree from `root` (the database with its characters left out: `root.characters` must be
+     * a list, and is not read) and ends the stream. It throws the `CodecError` `encodeScoped` would throw for the same tree, in
+     * `encodeScoped`'s order: the inputs check, the front, the modules, the first character error, then the finish.
+     */
+    finish(root: Database): Promise<StreamedFinish>
+}
+
+/**
+ * The streamed counterpart of `encodeScoped(db, options, { modules: true, characters: 'all' })` without a previous
+ * encoding. Under the same tree it produces the same units, up to the keys, the order they are put in and the Refs that
+ * follow from the keys. `context` supplies the attempt's mint, `seq` and clock, and the manifest's `legacyKeep`
+ * override, exactly as `rekey` applies them; absent, the encode runs under placeholder keys, which name nothing real
+ * (a dry pass that learns the count and the first error). `yieldFn` is awaited after each character and each module.
+ * The one `CodecError` precedence of the stream lives here, so no caller restates it.
+ */
+export function createStreamedEncode(
+    env: KeyEnv, lists: ListDerivation, yieldFn?: () => Promise<void>, context?: BuildContext,
+): StreamedEncode {
+    const encoder = new Encoder({
+        env, lists, seq: context?.seq ?? 0, createdAt: context?.now ?? env.now(), previous: null, keys: context?.mint ?? placeholderMint(),
+    }, null)
+    const entries: ShardEntry[] = []
+    let held: CodecError | null = null
+    let written = 0
+    return {
+        async character(slot, index) {
+            if (held !== null) {
+                return []
+            }
+            try {
+                if (typeof slot !== 'object' || slot === null) {
+                    throw new CodecInputError(`characters[${index}] is not an object.`)
+                }
+                const chaId = String((slot as { chaId?: unknown }).chaId ?? '')
+                if (isColdStub(slot as Slot)) {
+                    throw new StubRefusedError('character', chaId, null)
+                }
+                entries.push(encodeCharacter(slot as Slot, index, encoder))
+            } catch (error) {
+                if (!(error instanceof CodecError)) {
+                    throw error
+                }
+                held = error
+                encoder.sink.drain()
+                return []
+            }
+            const units = builtUnitsOf(encoder.sink.drain())
+            written += units.length
+            await yieldFn?.()
+            return units
+        },
+        async finish(root) {
+            checkDatabase(root, encoder.options)
+            const front = encodeFront(root, encoder)
+            const moduleSet = await encodeModuleSetYielding(root, encoder, yieldFn)
+            if (held !== null) {
+                throw held
+            }
+            const tree = finishTree(root, encoder, front, moduleSet, entries, new Map())
+            const built = builtCommitOf(tree)
+            if (context?.legacyKeep !== undefined) {
+                // The keep of the base this attempt replaces, not the one the build planned with.
+                built.manifest.body = { ...built.manifest.body, fixed: { ...built.manifest.body.fixed, legacyKeep: context.legacyKeep } }
+            }
+            return { built, count: written + built.units.length + 1 }
+        },
+    }
+}
+
+function builtUnitsOf(units: readonly WrittenUnit[]): BuiltCommit['units'] {
+    return units.map(unit => ({ key: unit.key, bytes: unit.bytes }))
+}
+
 // ---- acknowledged-state verdict ----
 
 /**
@@ -770,6 +867,86 @@ class ReuseOnlyEncoder extends Encoder {
     }
 }
 
+/**
+ * An encoder that collects what a fresh encode of one character would produce over a previous encoding: a unit that is
+ * the previous encoding's keeps its key, every other unit gets a fresh key, and nothing stops at the first difference.
+ */
+class CollectingEncoder extends Encoder {
+    private readonly collecting: UnitSink
+    /** Whether the character core body names an absent field or holds a moved field in `f`: the entry cannot describe it alone. */
+    splitCore = false
+
+    constructor(options: EncodeOptions, previous: PreviousEncoding) {
+        super(options, { units: new Map<string, ReusableUnit>(), entities: previous.entities, objects: previous.objects })
+        this.collecting = new UnitSink(options.env, previous, undefined, { collect: true })
+    }
+
+    get units(): readonly EncodedUnit[] {
+        return this.collecting.units
+    }
+
+    get diverged(): ReadonlySet<string> {
+        return this.collecting.diverged
+    }
+
+    override put(identity: string, type: UnitType, body: object, kind: UnitKeyKind = 'unit'): EncodedUnit {
+        if (type === UNIT_TYPE.characterCore) {
+            const core = body as { f?: object, a?: readonly unknown[] }
+            this.splitCore = (core.a?.length ?? 0) > 0 || Object.keys(core.f ?? {}).some(name => (ENTRY_MOVED_FIELDS as readonly string[]).includes(name))
+        }
+        return this.collecting.put(identity, type, body, kind)
+    }
+
+    override putReusing(identity: string, type: UnitType, body: object, family: string, prewritten?: ReadonlyMap<object, string>): EncodedUnit {
+        return this.collecting.putReusing(identity, type, body, family, prewritten)
+    }
+}
+
+/** What a fresh encode of a live character gives: its entry and the digest of every unit it names. */
+export interface FreshEntry {
+    entry: ShardEntry
+    /** The digest of each unit the encode produced, by store key. A reused unit's key is the previous encoding's. */
+    digests: ReadonlyMap<string, string>
+    /** The identities of the units that are not the previous encoding's. */
+    diverged: ReadonlySet<string>
+    /** The core unit holds an absent list or a moved field, so the character is one record. */
+    splitCore: boolean
+}
+
+/**
+ * The entry a pass would write for a live character, judged against `options.previous` (the acknowledged encoding or the
+ * peer's), with every differing unit collected instead of stopping at the first. `unknown` exactly where
+ * `verdictBaseOf` is null (a stub, a shared id, a missing entry or a unit with no digest) and where the character
+ * cannot be read or encoded; it never writes into the character.
+ */
+export function freshEntry(slot: Slot, options: VerdictOptions): FreshEntry | 'unknown' {
+    const { previous } = options
+    if (verdictBaseOf(slot, previous) === null) {
+        return 'unknown'
+    }
+    let normalized: NormalizedCharacter
+    try {
+        normalized = normalizeCharacter(slot, 0)
+    } catch {
+        return 'unknown'
+    }
+    const encodeOptions: EncodeOptions = { env: options.env, lists: options.lists, seq: 0, createdAt: 0, previous }
+    const encoder = new CollectingEncoder(encodeOptions, previous)
+    try {
+        const entry = emitCharacter(normalized, encoder)
+        const digests = new Map<string, string>()
+        for (const unit of encoder.units) {
+            digests.set(unit.key, unit.digest)
+        }
+        return { entry, digests, diverged: encoder.diverged, splitCore: encoder.splitCore }
+    } catch (error) {
+        if (error instanceof CodecError) {
+            return 'unknown'
+        }
+        throw error
+    }
+}
+
 export function previousEntryOf(previous: PreviousEncoding, u: string): ShardEntry | undefined {
     for (const shard of previous.objects?.shards ?? []) {
         const entry = shard.entries.find(candidate => candidate.u === u)
@@ -800,6 +977,12 @@ function identitiesOf(entry: ShardEntry): string[] {
     return identities
 }
 
+/**
+ * Which moved entry fields `sameKnownFields` leaves out: `all` compares them, `body` leaves out `chatPage` and
+ * `firstMsgIndex`, and `content` leaves out `chatPage` only (the view state of the open chat).
+ */
+type KnownFieldsMode = 'all' | 'body' | 'content'
+
 /** Whether two Refs agree on their first `known` fields; a field past them is one this build does not know. */
 function sameRefFields(a: readonly unknown[] | null, b: readonly unknown[] | null, known: number): boolean {
     if (a === null || b === null) {
@@ -820,9 +1003,10 @@ function sameRefFields(a: readonly unknown[] | null, b: readonly unknown[] | nul
  * carries and a pass rewrites from the live object; `dsp`, which every pass writes as `true`; and every field this
  * build does not know, which the shard carry copies forward and so never differs in what the next pass writes.
  */
-function sameKnownFields(fresh: ShardEntry, acknowledged: ShardEntry, ignoreMoved = false): boolean {
+function sameKnownFields(fresh: ShardEntry, acknowledged: ShardEntry, mode: KnownFieldsMode = 'all'): boolean {
     if (fresh.u !== acknowledged.u || fresh.type !== acknowledged.type || fresh.chaId !== acknowledged.chaId
-        || (!ignoreMoved && (fresh.chatPage !== acknowledged.chatPage || fresh.firstMsgIndex !== acknowledged.firstMsgIndex))
+        || (mode === 'all' && (fresh.chatPage !== acknowledged.chatPage || fresh.firstMsgIndex !== acknowledged.firstMsgIndex))
+        || (mode === 'content' && fresh.firstMsgIndex !== acknowledged.firstMsgIndex)
         || !sameRefFields(fresh.core, acknowledged.core, 3) || !sameRefFields(fresh.lore, acknowledged.lore, 3)
         || !sameRefFields(fresh.scripts, acknowledged.scripts, 3) || !sameRefFields(fresh.al, acknowledged.al, 4)
         || !sameRefFields(fresh.il, acknowledged.il, 4) || fresh.chats.length !== acknowledged.chats.length) {
@@ -881,7 +1065,27 @@ export function characterBodyMatches(slot: Slot, options: VerdictOptions): Ackno
     } catch {
         return 'unknown'
     }
-    return verdictOfNormalized(normalized, base, options, true)
+    return verdictOfNormalized(normalized, base, options, 'body')
+}
+
+/**
+ * `characterMatchesAcknowledged` with the entry's `chatPage` left out of the comparison: whether the character's
+ * content (every unit, `firstMsgIndex` and the other known entry fields) is what the acknowledged encoding holds,
+ * whatever chat page the person has open. `lastInteraction` is left to the caller, as for the other verdicts, and
+ * `trashTime` is not compared here either. Where `chatPage` is equal it answers as `characterMatchesAcknowledged` does.
+ */
+export function characterContentMatches(slot: Slot, options: VerdictOptions): AcknowledgedVerdict {
+    const base = verdictBaseOf(slot, options.previous)
+    if (base === null) {
+        return 'unknown'
+    }
+    let normalized: NormalizedCharacter
+    try {
+        normalized = normalizeCharacter(slot, 0)
+    } catch {
+        return 'unknown'
+    }
+    return verdictOfNormalized(normalized, base, options, 'content')
 }
 
 /** What the verdict's prologue found: the character's `chaId` and the acknowledged entry it is judged against. */
@@ -942,12 +1146,12 @@ export function characterMatchesAcknowledgedPlain(slot: Slot, plain: JsonObject,
     return verdictOfNormalized(normalized, base, options)
 }
 
-function verdictOfNormalized(normalized: NormalizedCharacter, base: VerdictBase, options: VerdictOptions, ignoreMoved = false): AcknowledgedVerdict {
+function verdictOfNormalized(normalized: NormalizedCharacter, base: VerdictBase, options: VerdictOptions, mode: KnownFieldsMode = 'all'): AcknowledgedVerdict {
     const { previous } = options
     const encodeOptions: EncodeOptions = { env: options.env, lists: options.lists, seq: 0, createdAt: 0, previous }
     try {
         const fresh = emitCharacter(normalized, new ReuseOnlyEncoder(encodeOptions, previous))
-        return sameKnownFields(fresh, base.acknowledged, ignoreMoved) ? 'clean' : 'dirty'
+        return sameKnownFields(fresh, base.acknowledged, mode) ? 'clean' : 'dirty'
     } catch (error) {
         if (error instanceof UnitNotReusedError) {
             return 'dirty'

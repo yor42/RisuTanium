@@ -188,6 +188,8 @@
   async function toggleReroll(): Promise<void> {
     if (isRerolling) return;
     if (isOrphan()) return;
+    // A summary with no connected messages (an imported lorebook entry) has nothing to summarize again.
+    if (summary.chatMemos.length === 0) return;
 
     const rerolledBeforeClick = rerolled;
     const rerollFailedBeforeClick = rerollFailed;

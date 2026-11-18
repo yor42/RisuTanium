@@ -16,6 +16,7 @@
     import { isTauri } from "src/ts/platform"
     import NumberInput from "src/lib/UI/GUI/NumberInput.svelte";
     import TextInput from "src/lib/UI/GUI/TextInput.svelte";
+    import KeyListInput from "src/lib/UI/GUI/KeyListInput.svelte";
     import SelectInput from "src/lib/UI/GUI/SelectInput.svelte";
     import OptionInput from "src/lib/UI/GUI/OptionInput.svelte";
     import SliderInput from "src/lib/UI/GUI/SliderInput.svelte";
@@ -698,7 +699,7 @@
         
         {#if DBState.db.sdProvider === 'dalle'}
             <span class="text-textcolor">{fillLang(language.settingsPage.nameApiKey, { name: 'OpenAI' })}</span>
-            <TextInput size="sm" marginBottom placeholder="sk-..." bind:value={DBState.db.openAIKey}/>
+            <KeyListInput size="sm" marginBottom placeholder="sk-..." bind:value={DBState.db.openAIKey}/>
 
             <span class="text-textcolor mt-4">{fillLang(language.settingsPage.nameQuality, { name: 'Dall-E' })}</span>
             <SelectInput className="mt-2 mb-4" bind:value={DBState.db.dallEQuality}>
@@ -808,7 +809,7 @@
 
         {#if DBState.db.sdProvider === 'Imagen'}
             <span class="text-textcolor mt-2">{fillLang(language.settingsPage.nameApiKey, { name: 'GoogleAI' })}</span>
-            <TextInput marginBottom={true} size={"sm"} placeholder="..." hideText={DBState.db.hideApiKey} bind:value={DBState.db.google.accessToken}/>
+            <KeyListInput marginBottom={true} size={"sm"} placeholder="..." hideText={DBState.db.hideApiKey} bind:value={DBState.db.google.accessToken}/>
 
             <span class="text-textcolor">{language.model}</span>
             <SelectInput className="mb-4" bind:value={DBState.db.ImagenModel}>
@@ -1021,7 +1022,7 @@
     <TextInput size="sm" marginBottom bind:value={DBState.db.voicevoxUrl}/>
 
     <span class="text-textcolor">{fillLang(language.settingsPage.nameKey, { name: 'OpenAI' })}</span>
-    <TextInput size="sm" marginBottom bind:value={DBState.db.openAIKey}/>
+    <KeyListInput size="sm" marginBottom bind:value={DBState.db.openAIKey}/>
 
     <span class="text-textcolor mt-2">{fillLang(language.settingsPage.nameApiKeyLower, { name: 'NovelAI' })}</span>
     <TextInput size="sm" marginBottom placeholder="pst-..." bind:value={DBState.db.NAIApiKey}/>
@@ -1100,7 +1101,7 @@
 
             <div class="flex items-center mb-8">
                 <button class="mr-2 text-textcolor2 hover:text-green-500 cursor-pointer" onclick={async () => {
-                    const newName = await alertInput(language.hypaV3Settings.newPresetNamePrompt, [], '')
+                    const newName = await alertInput(language.hypaV3Settings.newPresetNamePrompt, [], '', { cancel: '' })
 
                     if (!newName) return
 
@@ -1124,7 +1125,7 @@
                     if (!preset) return
 
                     const id = preset.id
-                    const newName = await alertInput(fillLang(language.alerts.enterNewName, { name: preset.name }), [], preset.name)
+                    const newName = await alertInput(fillLang(language.alerts.enterNewName, { name: preset.name }), [], preset.name, { cancel: '' })
 
                     if (!newName || newName.trim().length === 0) return
 
@@ -1194,7 +1195,8 @@
                     const newName = await alertInput(
                         language.hypaV3Settings.newPresetNamePrompt,
                         [],
-                        fillLang(language.hypaV3Settings.duplicatePresetDefaultName, { name: preset.name })
+                        fillLang(language.hypaV3Settings.duplicatePresetDefaultName, { name: preset.name }),
+                        { cancel: '' }
                     )
 
                     if (!newName) return
@@ -1249,6 +1251,14 @@
                 <SliderInput marginBottom min={0} max={1} step={0.01} fixed={2} bind:value={settings.similarMemoryRatio} />
                 <span class="text-textcolor">{language.hypaV3Settings.randomMemoryRatioLabel} <Help key="hypaV3RandomMemoryRatio"/></span>
                 <NumberInput marginBottom disabled size="sm" value={parseFloat((1 - settings.recentMemoryRatio - settings.similarMemoryRatio).toFixed(2))} />
+                <div class="mb-2 flex items-center">
+                    <Check name={language.hypaV3Settings.recencyWeightingLabel} bind:check={settings.enableRecencyWeighting} />
+                    <Help key="hypaV3RecencyWeighting"/>
+                </div>
+                {#if settings.enableRecencyWeighting}
+                    <span class="text-textcolor">{language.hypaV3Settings.recencyHalfLifeDaysLabel} <Help key="hypaV3RecencyHalfLifeDays"/></span>
+                    <NumberInput marginBottom size="sm" min={1} bind:value={settings.recencyHalfLifeDays} />
+                {/if}
                 <div class="mb-2 flex items-center">
                     <Check name={language.hypaV3Settings.preserveOrphanedMemoryLabel} bind:check={settings.preserveOrphanedMemory} />
                     <Help key="hypaV3PreserveOrphanedMemory"/>
@@ -1327,6 +1337,7 @@
             <OptionInput value="bgeSmallEn">BGE Small English (CPU)</OptionInput>
             <OptionInput value="bgem3">BGE Medium 3 (CPU)</OptionInput>
             <OptionInput value="multiMiniLM">Multilingual MiniLM L12 v2 (CPU)</OptionInput>
+            <OptionInput value="multiE5Small">Multilingual E5 Small (CPU)</OptionInput>
             <OptionInput value="bgeM3Ko">BGE Medium 3 Korean (CPU)</OptionInput>
             <OptionInput value="openai3small">OpenAI text-embedding-3-small</OptionInput>
             <OptionInput value="openai3large">OpenAI text-embedding-3-large</OptionInput>

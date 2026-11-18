@@ -1,7 +1,8 @@
 import { get } from "svelte/store"
 import { alertSelect, alertToast, alertClear, doingAlert, alertRequestLogs, type alertData } from "./alert"
 import { escapeActionFor } from "./alertEscape"
-import { ANSWER_GUARD_MS, pageCovered } from "./alertPrompts"
+import { offeredCancel } from "./alertBack"
+import { ANSWER_GUARD_MS, answerShownPrompt, pageCovered } from "./alertPrompts"
 import { recordKeyEventBlocked, setLiveKeysBlockedReader } from "./keyEventBlocked"
 import { changeToPreset as changeToPreset2, getDatabase, type Database } from "./storage/database.svelte"
 import { alertStore, DBState, loadoutModalStore, openPersonaList, openPresetList, OpenRealmStore, PlaygroundStore, QuickSettings, SafeModeStore, selectedCharID, settingsOpen } from "./stores.svelte"
@@ -16,6 +17,7 @@ import { changeCharOrAlert } from "./characterPick"
 import { isHiddenSystemCharacter } from "./hiddenCharacters"
 import { settingsShellEscape } from "./settingsShell/settingsNavigation"
 import { hotkeyIsApple } from "./hotkeyChord"
+import { presetIndexForSlot, presetSlotOf } from "./storage/presetMeta"
 
 // Shortcuts that act on the chat screen. Settings keeps the chat mounted but hidden, so
 // these must not reach its buttons while Settings is open.
@@ -107,11 +109,23 @@ export function initHotkey(){
     window.addEventListener('keydown', captureKeydown, true)
     document.addEventListener('keydown', async (ev) => {
         // Escape cancels a wait notice that offers a Cancel button, whatever
-        // has focus, and is consumed so that nothing else acts on it.
+        // has focus, and is consumed so that nothing else acts on it. A select or
+        // input whose caller offered a cancel is answered with that cancel the same
+        // way, but only past its answer guard and never by a repeated key or one the
+        // IME is composing with; a composing key falls through to the IME.
         if(ev.key === 'Escape'){
             const shown = get(alertStore)
             if(shown.type === 'wait' && shown.onCancel){
                 shown.onCancel()
+                ev.preventDefault()
+                ev.stopPropagation()
+                return
+            }
+            const cancel = offeredCancel(shown)
+            if(cancel !== undefined && !ev.isComposing && ev.keyCode !== 229){
+                if(!ev.repeat){
+                    answerShownPrompt(cancel, true)
+                }
                 ev.preventDefault()
                 ev.stopPropagation()
                 return
@@ -317,7 +331,13 @@ export function initHotkey(){
                     break
                 }
                 default:{
-                    hotKeyRanThisTime = false
+                    const slot = presetSlotOf(hotkey.action)
+                    // A key that commits an IME composition is not a shortcut.
+                    if(slot === null || ev.isComposing || ev.keyCode === 229){
+                        hotKeyRanThisTime = false
+                        break
+                    }
+                    act(() => selectPresetSlot(slot))
                 }
             }
 
@@ -334,66 +354,9 @@ export function initHotkey(){
         }
 
 
-        if(ev.ctrlKey){
-            switch (ev.key){
-                case "1":{
-                    changeToPreset(0)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "2":{
-                    changeToPreset(1)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "3":{
-                    changeToPreset(2)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "4":{
-                    changeToPreset(3)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "5":{
-                    changeToPreset(4)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "6":{
-                    changeToPreset(5)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "7":{
-                    changeToPreset(6)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "8":{
-                    changeToPreset(7)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "9":{
-                    changeToPreset(8)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-            }
-        }
         if(ev.key === 'Escape'){
-            // A prompt waiting for an answer is never answered by Escape, and
+            // A prompt waiting for an answer is answered by Escape only when its caller
+            // offered a cancel, which the first Escape block above handles; otherwise
             // nothing behind it reacts to the key either.
             const escapeAction = escapeActionFor(get(alertStore).type)
             if(escapeAction === 'ignore'){
@@ -475,7 +438,7 @@ async function quickMenu(){
         language.persona,
         language.hotkeyDesc.loadout,
         language.cancel
-    ])
+    ], undefined, { cancel: '3' })
     const sel = parseInt(selStr)
     if(sel === 0){
         openPresetList.set(!get(openPresetList))
@@ -540,13 +503,15 @@ function focusQuery(query:string){
     }
 }
 
-function changeToPreset(num:number){
-    if(!keysBlocked()){
-        let db = getDatabase()
-        let pres = db.botPresets
-        if(pres.length > num){
-            alertToast(fillLang(language.alerts.changedToPreset, { name: pres[num].name }))
-            changeToPreset2(num)
-        }
+// Ctrl+n resolves through the slot a preset holds, never through list position. An empty slot says so and the key
+// is still consumed by the caller.
+function selectPresetSlot(slot:number){
+    const pres = getDatabase().botPresets
+    const index = presetIndexForSlot(pres, slot)
+    if(index === -1){
+        alertToast(fillLang(language.alerts.emptyPresetSlot, { slot: String(slot) }))
+        return
     }
+    alertToast(fillLang(language.alerts.changedToPreset, { name: pres[index].name }))
+    changeToPreset2(index)
 }

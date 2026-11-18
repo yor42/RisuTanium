@@ -182,7 +182,6 @@ import { RisuSaveEncoder, encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { getPageBlockOwner } from 'src/ts/storage/pageBlockOwner'
 import { getPageStorageMode, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { fingerprintMainFile } from 'src/ts/storage/mainFileFingerprint'
-import { performSaveStep } from 'src/ts/storage/saveStep'
 import { treeToBlockSet } from 'src/ts/storage/treeToBlockSet'
 import { createBootPassSeams } from 'src/ts/storage/bootPassSeams'
 import { runManualCleanup } from 'src/ts/storage/manualCleanup'
@@ -315,14 +314,14 @@ describe('R57 invariant 1: a block-store page never writes database/database.bin
 
         // The save loop's step.
         const edited = tree([character('old-a', 'Old A')], { mainPrompt: 'edited' })
-        expect(await performSaveStep({ owner, store }, { input: await treeToBlockSet(edited) })).toMatchObject({ kind: 'saved', wrote: true })
+        expect(await owner.commitSave(await treeToBlockSet(edited))).toMatchObject({ kind: 'committed', wrote: true })
 
         // The pass commits again on a block page (a later archive run).
         await seams.commit(await treeToBlockSet(tree([character('old-a', 'Old A')], { mainPrompt: 'after the pass' })))
 
         // A character import changes the tree and reaches storage only through the save loop's step.
         const imported = tree([character('old-a', 'Old A'), character('imported-b', 'Imported B')], { mainPrompt: 'after the pass' })
-        expect(await performSaveStep({ owner, store }, { input: await treeToBlockSet(imported) })).toMatchObject({ kind: 'saved', wrote: true })
+        expect(await owner.commitSave(await treeToBlockSet(imported))).toMatchObject({ kind: 'committed', wrote: true })
 
         // The manual clean-up: the pre-conversion copy is offered and kept.
         await recordLoadTimeListing()
@@ -354,7 +353,7 @@ describe('R57 invariant 1: a block-store page never writes database/database.bin
         store.plant(MAIN, stale)
         store.ops.length = 0
 
-        expect(await performSaveStep({ owner, store }, { input: await treeToBlockSet(tree([character('a', 'A')], { mainPrompt: 'edited' })) })).toMatchObject({ kind: 'saved', wrote: true })
+        expect(await owner.commitSave(await treeToBlockSet(tree([character('a', 'A')], { mainPrompt: 'edited' })))).toMatchObject({ kind: 'committed', wrote: true })
         await recordLoadTimeListing()
         box.confirmAnswers.push(false)
         await runManualCleanup()
@@ -377,9 +376,9 @@ describe('1c-1: one owner per page across sites', () => {
 
         await seams.commit(await treeToBlockSet(next))
         store.ops.length = 0
-        const step = await performSaveStep({ owner, store }, { input: await treeToBlockSet(next) })
+        const step = await owner.commitSave(await treeToBlockSet(next))
 
-        expect(step).toMatchObject({ kind: 'saved', wrote: false })
+        expect(step).toMatchObject({ kind: 'committed', wrote: false })
         expect(store.mutating(), 'writes of the first save iteration').toEqual([])
     })
 
@@ -419,9 +418,9 @@ describe('1c-1: one owner per page across sites', () => {
         store.ops.length = 0
 
         const edited = tree([character('from-backup', 'From backup edited')])
-        const step = await performSaveStep({ owner: loader, store }, { input: await treeToBlockSet(edited) })
+        const step = await loader.commitSave(await treeToBlockSet(edited))
 
-        expect(step).toMatchObject({ kind: 'saved', wrote: true })
+        expect(step).toMatchObject({ kind: 'committed', wrote: true })
         expect(loader.committedState()?.generation, 'the edit committed into the backup\'s generation').toBe(live.generation)
         expect(store.mutating().filter((op) => op.kind === 'write').every((op) => op.key.startsWith(`blocks/${live.generation}/`)), 'every write of the edit is inside that generation').toBe(true)
         expect(store.peek(HEAD), 'a commit never writes the head').not.toBeNull()

@@ -37,15 +37,16 @@ vi.mock('src/ts/process/coldUnitLocation', () => ({
 
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { createMemoryBackend, type MemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
-import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
+import { classifyCommitRead, firstCommitKey } from 'src/ts/storage/store2/commitKey'
 import { firstLifeGrant } from 'src/ts/storage/store2/firstLife'
 import { COMMIT_KEY, keyOfRef, readUnit, UNIT_TYPE, type DeletionSnapshot, type Manifest } from 'src/ts/storage/store2/format'
-import { bootImportLegacyTree, type BootImportRequest } from 'src/ts/storage/store2/legacy/bootImport'
+import { bootImportLegacyTree, createBootImportTarget, type BootBuiltRequest, type BootImportRequest } from 'src/ts/storage/store2/legacy/bootImport'
+import { buildImport, prepareImport } from 'src/ts/storage/store2/legacy/importTree'
 import { freshOwnerId } from 'src/ts/storage/store2/owner'
 import { readTreeBytes } from 'src/ts/storage/store2/treeBytes'
 import { createClock as storeClock, testEnv as storeEnv } from '../store2SaveKit'
 import { fakeLists } from './codecFixtures'
-import { parsedCommit } from './commitFixtures'
+import { parsedCommit, plantKey } from './commitFixtures'
 import { loadGolden, readerOver } from './legacyFixtures'
 
 const OPTIONS = { newId: () => 'placeholder-chat-id', now: () => 1_700_000_000_001 }
@@ -59,6 +60,8 @@ interface Rig {
     store: MemoryByteStore
     /** The commit key's staging label at each put, in order; null while no marker stands. */
     labelsAtPut: (string | null)[]
+    /** Every backend write in order: `put:<key>`, `casCommit`, `casFence`. */
+    writes: string[]
     backend: Store2Backend
     request(golden: Awaited<ReturnType<typeof loadGolden>>, entry?: BootImportRequest['entry']): Promise<BootImportRequest>
 }
@@ -78,16 +81,26 @@ async function rig(options: { mainFile?: boolean, backups?: number[], fork?: boo
         }
     }
     const labelsAtPut: (string | null)[] = []
+    const writes: string[] = []
     const backend: Store2Backend = {
         ...memory,
         async putUnit(key, bytes) {
             const parsed = classifyCommitRead(await memory.readCommit())
             labelsAtPut.push(parsed.status === 'parsed' && parsed.value.staging !== null ? parsed.value.staging.label : null)
+            writes.push(`put:${key}`)
             return memory.putUnit(key, bytes)
+        },
+        async casCommit(expected, next) {
+            writes.push('casCommit')
+            return memory.casCommit(expected, next)
+        },
+        async casFence(expected, next) {
+            writes.push('casFence')
+            return memory.casFence(expected, next)
         },
     }
     return {
-        memory, store, labelsAtPut, backend,
+        memory, store, labelsAtPut, writes, backend,
         async request(golden, entry) {
             const granted = firstLifeGrant({ decision: { row: 1, mode: 'first-life', action: 'seed' }, commitRead: await memory.readCommit(), startupClear: null }, { label: 'import' })
             if (granted.status !== 'granted') {
@@ -234,5 +247,195 @@ describe('new behaviour: a first-life or exit import writes the deletion snapsho
         const w = await rig({ mainFile: true })
         expect((await bootImportLegacyTree(await w.request(await loadGolden('upstream-full.bin')), accept)).status).toBe('installed')
         expect((await parsedCommit(w.memory)).snapshot).toBeUndefined()
+    })
+})
+
+const PEER = 'b'.repeat(26)
+
+/** The tree of a golden as the built-tree request a caller outside this module hands the installer: the page import's own `build`. */
+async function builtRequest(request: BootImportRequest, beforeFirstWrite: () => Promise<boolean>): Promise<BootBuiltRequest> {
+    const prepared = await prepareImport(request, accept)
+    if ('status' in prepared) {
+        throw new Error(`The golden did not prepare: ${prepared.status}.`)
+    }
+    return { ...buildImport(prepared.plan), beforeFirstWrite }
+}
+
+function targetOf(request: BootImportRequest) {
+    const { source: _source, reader: _reader, ...base } = request
+    return createBootImportTarget(base, async () => ({ status: 'missing' }))
+}
+
+async function installBuilt(w: Rig, entry: BootImportRequest['entry'] | undefined, beforeFirstWrite: () => Promise<boolean>, change: (request: BootImportRequest) => BootImportRequest = request => request) {
+    const request = change(await w.request(await loadGolden('upstream-full.bin'), entry))
+    const install = targetOf(request).installBuiltTree
+    if (install === undefined) {
+        throw new Error('The target has no installBuiltTree.')
+    }
+    return install(await builtRequest(request, beforeFirstWrite))
+}
+
+describe('new behaviour: installBuiltTree installs a tree built elsewhere over the boot entries', () => {
+    test('first life: the old files are kept unreadable, the snapshot is written before the manifest, the marker is labelled import and no fence is written', async () => {
+        const w = await rig({ mainFile: true, backups: [100, 200], fork: true })
+        const result = await installBuilt(w, undefined, async () => true)
+        expect(result.entry).toBe('first-life')
+        expect(result.outcome.status).toBe('installed')
+        expect(new Set(w.labelsAtPut)).toEqual(new Set(['import']))
+        expect((await w.memory.readFence()).bytes).toBeNull()
+        const key = await parsedCommit(w.memory)
+        expect(key.convertedFrom).toBe('import')
+        expect(key.staging).toBeNull()
+        const manifest = await currentManifest(w.memory)
+        expect(Object.fromEntries((manifest.fixed.legacyKeep?.files ?? []).map(file => [file.key, file.status]))).toEqual({
+            [MAIN]: 'unreadable', [backupKey(100)]: 'unreadable', [backupKey(200)]: 'unreadable',
+        })
+        expect(key.snapshot, 'the commit key names a snapshot').toBeDefined()
+        const written = w.writes.filter(write => write.startsWith('put:')).map(write => write.slice('put:'.length))
+        expect(written.indexOf(key.snapshot!.key)).toBeGreaterThanOrEqual(0)
+        expect(written.indexOf(key.snapshot!.key)).toBeLessThan(written.indexOf(key.current!.key))
+        expect(w.store.writes).toEqual([])
+        expect(w.store.deletes).toEqual([])
+    })
+
+    test('the exit entry writes the fence first, then the marker labelled import, then installs', async () => {
+        const w = await rig()
+        const result = await installBuilt(w, { kind: 'exit', commitRead: await w.memory.readCommit() }, async () => true)
+        expect(result.entry).toBe('exit')
+        expect(result.outcome.status).toBe('installed')
+        expect(w.writes.slice(0, 2)).toEqual(['casFence', 'casCommit'])
+        expect(new Set(w.labelsAtPut)).toEqual(new Set(['import']))
+        expect((await parsedCommit(w.memory)).current).not.toBeNull()
+    })
+
+    test('a first-life grant that is not labelled import throws before any backend write', async () => {
+        const w = await rig()
+        const wrong = firstLifeGrant({ decision: { row: 1, mode: 'first-life', action: 'seed' }, commitRead: await w.memory.readCommit(), startupClear: null })
+        if (wrong.status !== 'granted') {
+            throw new Error('No first-life grant.')
+        }
+        const gate = vi.fn(async () => true)
+        await expect(installBuilt(w, { kind: 'first-life', grant: wrong.grant }, gate)).rejects.toThrow(TypeError)
+        expect(gate).not.toHaveBeenCalled()
+        expect(w.writes).toEqual([])
+        expect((await w.memory.readCommit()).bytes).toBeNull()
+    })
+
+    test('a gate that returns false ends not-started with nothing written, on both entries', async () => {
+        for (const exit of [false, true]) {
+            const w = await rig({ mainFile: true, fork: true })
+            const gate = vi.fn(async () => false)
+            const result = await installBuilt(w, exit ? { kind: 'exit', commitRead: await w.memory.readCommit() } : undefined, gate)
+            expect(result.outcome).toEqual({ status: 'not-started' })
+            expect(gate).toHaveBeenCalledTimes(1)
+            expect(w.writes).toEqual([])
+            expect((await w.memory.readCommit()).bytes).toBeNull()
+            expect((await w.memory.readFence()).bytes).toBeNull()
+        }
+    })
+
+    test('the gate is asked once, after both keep reads and the snapshot plan, and before the first backend write', async () => {
+        const w = await rig({ mainFile: true, backups: [100] })
+        const log: string[] = []
+        const result = await installBuilt(w, undefined, async () => { log.push('gate'); return true }, request => ({
+            ...request,
+            upstreamMainFile: async () => { log.push('main-file'); return request.upstreamMainFile() },
+            oldData: {
+                ...request.oldData,
+                listBackupTimes: async () => { log.push('backup-times'); return request.oldData.listBackupTimes() },
+                // The snapshot plan observes the store by listing it; the keep reads above do not.
+                store: new Proxy(request.oldData.store, {
+                    get: (target, prop) => prop === 'list'
+                        ? async (prefix: string) => { log.push('snapshot'); return target.list(prefix) }
+                        : Reflect.get(target, prop),
+                }),
+            },
+            backend: {
+                ...request.backend,
+                putUnit: async (key, bytes) => { log.push('write'); return request.backend.putUnit(key, bytes) },
+                casCommit: async (expected, next) => { log.push('write'); return request.backend.casCommit(expected, next) },
+            },
+        }))
+        expect(result.outcome.status).toBe('installed')
+        expect(log.filter(entry => entry === 'gate')).toEqual(['gate'])
+        expect(log.filter(entry => entry === 'main-file'), 'the keep listing is read once').toHaveLength(1)
+        expect(log.indexOf('gate')).toBeGreaterThan(log.indexOf('main-file'))
+        expect(log.indexOf('gate')).toBeGreaterThan(log.indexOf('backup-times'))
+        expect(log.indexOf('snapshot'), 'the snapshot plan lists the store').toBeGreaterThanOrEqual(0)
+        expect(log.indexOf('gate')).toBeGreaterThan(log.lastIndexOf('snapshot'))
+        expect(log.indexOf('gate')).toBeLessThan(log.indexOf('write'))
+        expect(log.indexOf('write')).toBeGreaterThan(0)
+    })
+
+    test('a blocked keep listing ends blocked, never asks the gate and writes nothing', async () => {
+        const w = await rig({ mainFile: true })
+        const gate = vi.fn(async () => true)
+        const result = await installBuilt(w, undefined, gate, request => ({ ...request, upstreamMainFile: async () => { throw new Error('listing failed') } }))
+        expect(result.outcome).toMatchObject({ status: 'blocked', reason: 'main-file-unknown' })
+        expect(gate).not.toHaveBeenCalled()
+        expect(w.writes).toEqual([])
+        expect((await w.memory.readCommit()).bytes).toBeNull()
+    })
+
+    test('a store with no old file installs with no keep list', async () => {
+        const w = await rig()
+        const result = await installBuilt(w, undefined, async () => true)
+        expect(result.outcome.status).toBe('installed')
+        expect((await currentManifest(w.memory)).fixed.legacyKeep).toBeNull()
+    })
+
+    test('exit entry, a foreign marker the person leaves: the gate answered true before the question, and nothing is written after it', async () => {
+        const w = await rig()
+        const base = await w.request(await loadGolden('upstream-full.bin'))
+        await plantKey(w.memory, firstCommitKey({
+            current: null,
+            staging: { owner: PEER, prefix: `store2/g-${'1'.repeat(16)}-`, startedAt: 5, label: 'recovery' },
+        }, storeEnv(storeClock(), 90)))
+        const log: string[] = []
+        const commitRead = await w.memory.readCommit()
+        const request: BootImportRequest = { ...base, entry: { kind: 'exit', commitRead, foreignClear: async () => { log.push('question'); return false } } }
+        const writesBefore = w.writes.length
+        const result = await targetOf(request).installBuiltTree!(await builtRequest(request, async () => { log.push('gate'); return true }))
+        expect(result.entry).toBe('exit')
+        expect(result.outcome.status).toBe('exit')
+        expect(log).toEqual(['gate', 'question'])
+        expect(w.writes.slice(writesBefore)).toEqual([])
+        expect((await w.memory.readFence()).bytes).toBeNull()
+        expect((await parsedCommit(w.memory)).staging?.owner).toBe(PEER)
+    })
+})
+
+describe('guard: the commit-start phase of a boot import sits after the keep listing and immediately before the first write', () => {
+    test('a successful import logs import commit start once, after both keep reads and before the first backend write', async () => {
+        const w = await rig({ mainFile: true, backups: [100] })
+        const log: string[] = []
+        const request = await w.request(await loadGolden('upstream-full.bin'))
+        const result = await bootImportLegacyTree({
+            ...request,
+            upstreamMainFile: async () => { log.push('main-file'); return request.upstreamMainFile() },
+            oldData: { ...request.oldData, listBackupTimes: async () => { log.push('backup-times'); return request.oldData.listBackupTimes() } },
+            backend: {
+                ...request.backend,
+                putUnit: async (key, bytes) => { log.push('write'); return request.backend.putUnit(key, bytes) },
+                casCommit: async (expected, next) => { log.push('write'); return request.backend.casCommit(expected, next) },
+            },
+        }, { ...accept, onPhase: phase => { log.push(phase) } })
+        expect(result.status).toBe('installed')
+        expect(log.filter(entry => entry === 'import commit start')).toHaveLength(1)
+        expect(log.filter(entry => entry === 'main-file'), 'the keep listing is read once').toHaveLength(1)
+        const start = log.indexOf('import commit start')
+        expect(start).toBeGreaterThan(log.indexOf('main-file'))
+        expect(start).toBeGreaterThan(log.indexOf('backup-times'))
+        expect(log.indexOf('write')).toBe(start + 1)
+    })
+
+    test('a blocked keep listing never logs import commit start', async () => {
+        const w = await rig({ mainFile: true })
+        const phases: string[] = []
+        const request = await w.request(await loadGolden('upstream-full.bin'))
+        const result = await bootImportLegacyTree({ ...request, upstreamMainFile: async () => { throw new Error('listing failed') } }, { ...accept, onPhase: phase => { phases.push(phase) } })
+        expect(result).toMatchObject({ status: 'blocked', reason: 'main-file-unknown' })
+        expect(phases).not.toContain('import commit start')
+        expect(w.writes).toEqual([])
     })
 })

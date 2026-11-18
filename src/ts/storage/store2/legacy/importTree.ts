@@ -11,10 +11,11 @@ import { IMPORT_REPLACES_BASE, type BuildContext, type BuiltCommit, type Committ
 import { classifyCommitRead } from '../commitKey'
 import { builtCommitOf, planScopedEncode, type ScopedPlan } from '../codec/scoped'
 import { carryManifest } from '../codec/manifest'
-import { CodecError, type ListDerivation } from '../codec/types'
+import { CodecError, type EncodedTree, type ListDerivation } from '../codec/types'
 import {
     defaultKeyEnv, readUnit, UNIT_TYPE, type KeyEnv, type LegacyList, type Manifest,
 } from '../format'
+import { withPageUsage } from '../../../usage/usageLedger'
 import { withLegacyKeep } from './convert'
 import {
     LegacyReadError, readLegacyUnit, resolveLegacyTree, type IncompleteItem, type LegacyEntryReader, type ResolvedLegacyTree,
@@ -84,6 +85,17 @@ export interface ImportRequest {
      * whether or not the page holds any record. Absent: the imported profile has none; the tree's own key is removed either way.
      */
     activeThemePack?: string
+    /**
+     * The page's own usage ledger keys (`u1|...`, values as they are), kept by value: a `.bin` carries none, so they are set
+     * beside the imported file's own non-usage `statics` keys. Absent: the imported profile has none. The file's own usage
+     * keys, of any version, are removed either way.
+     */
+    usageStatics?: JsonObject
+    /**
+     * The page's own per-model price overrides, kept by value: a `.bin` carries none. Absent: the imported profile has none.
+     * The tree's own `usagePriceOverrides` key is removed either way.
+     */
+    usagePriceOverrides?: JsonObject
 }
 
 export interface ImportHooks {
@@ -134,18 +146,35 @@ export interface ImportBuild {
 }
 
 /**
+ * What `buildImport` builds from: the number of units the commit writes (the manifest included) and the step that
+ * produces them under the attempt's context. A `ScopedPlan` satisfies it (`finalize` returns the planned tree); a
+ * streamed import returns the built commit itself, after uploading its other units through the context. Either way
+ * `finalize` is called once per attempt, and `newUnits` is known before any key exists.
+ */
+export interface ImportUnits {
+    newUnits: number
+    finalize(context: BuildContext): EncodedTree | BuiltCommit | Promise<BuiltCommit>
+}
+
+/**
  * The commit build of an import: the plan's tree under the attempt's mint, its manifest carrying `keep.base`
  * (`carryManifest`), and, with `keep.list`, the list as one more unit that the manifest's `legacyKeep` names (the
  * shape the conversion gives its own keep list). The same object serves the commit of a page and the installer of a
  * boot, which add their own `convertedFrom` or label.
  */
-export function buildImport(plan: ScopedPlan, keep: ImportKeep = {}): ImportBuild {
+export function buildImport(plan: ImportUnits, keep: ImportKeep = {}): ImportBuild {
+    const carry = (built: BuiltCommit): BuiltCommit => {
+        built.manifest.body = carryManifest(keep.base, built.manifest.body)
+        return built
+    }
     const carried: ImportBuild = {
         newUnits: plan.newUnits,
         build(context) {
-            const built = builtCommitOf(plan.finalize(context))
-            built.manifest.body = carryManifest(keep.base, built.manifest.body)
-            return built
+            const made = plan.finalize(context)
+            if (made instanceof Promise) {
+                return made.then(carry)
+            }
+            return carry('manifestKey' in made ? builtCommitOf(made) : made)
         },
     }
     // An explicit list replaces the carried keep set (it is written after the carry), through the conversion's own wrapper.
@@ -167,7 +196,7 @@ async function readStubCharacter(reader: LegacyEntryReader, stub: Record<string,
 }
 
 export type TreeRepairResult =
-    | { status: 'repaired', summary: RepairSummary }
+    | { status: 'repaired', summary: RepairSummary, replacedIds: ReadonlyMap<string, string> }
     | { status: 'refused', refusals: readonly RepairRefusal[] }
 
 /**
@@ -177,14 +206,66 @@ export type TreeRepairResult =
  * it. A read failure of the reader rejects (`LegacyReadError`).
  */
 export async function repairImportTree(tree: Database, reader: LegacyEntryReader): Promise<TreeRepairResult> {
-    const repaired = await repairCharacterTree(tree, 'restore', { readUnitCharacter: stub => readStubCharacter(reader, stub) })
+    const replacedIds = new Map<string, string>()
+    const repaired = await repairCharacterTree(tree, 'restore', { readUnitCharacter: stub => readStubCharacter(reader, stub), replacedIds })
     if (repaired.refusals.length > 0) {
         return { status: 'refused', refusals: repaired.refusals }
     }
     repairDatabaseIds(tree)
+    repairImportRoot(tree)
+    return { status: 'repaired', summary: summarizeRepair(repaired.notices), replacedIds }
+}
+
+/**
+ * The repairs of everything outside the character list, run after the character and id repairs: the containers the
+ * encoder reads (`completeRestoredTree`), then a preset id that names no preset (`repairBotPresetsId`), in that order.
+ * Shared by the whole and the streamed prepare, so neither can run one without the other. The tree is changed in place.
+ */
+export function repairImportRoot(tree: Database): void {
     completeRestoredTree(tree)
     repairBotPresetsId(tree)
-    return { status: 'repaired', summary: summarizeRepair(repaired.notices) }
+}
+
+/**
+ * Sets the page's own task presets, installed theme packs, active theme pack, usage keys and price overrides on a
+ * resolved database, which holds a copy of the file's root: a `.bin` carries none of them (its export leaves them out), so
+ * a key of that name in the file is dropped (for `statics`, its usage keys only), and only what `request` passes is set.
+ * `resolveLegacyTree` has already removed `taskPresets`. Shared by the whole and the streamed prepare.
+ */
+export function applyImportOverlay(
+    database: Database, request: Pick<ImportRequest, 'taskPresets' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides'>,
+): void {
+    if (request.taskPresets !== undefined && request.taskPresets.length > 0) {
+        // The objects stay open: the type names the fields this build reads, the stored object keeps every key.
+        database.taskPresets = request.taskPresets.map(preset => structuredClone(preset) as unknown as TaskPreset)
+    }
+    delete database.themePacks
+    delete database.activeThemePack
+    if (request.activeThemePack !== undefined) {
+        database.activeThemePack = request.activeThemePack
+    }
+    if (request.themePacks !== undefined && request.themePacks.length > 0) {
+        database.themePacks = request.themePacks.map(pack => structuredClone(pack))
+    }
+    const statics = withPageUsage(database.statics as JsonValue | undefined, request.usageStatics)
+    if (statics !== (database.statics as JsonValue | undefined)) {
+        // The file's statics is JSON read from a file, so it is not checked against the field's type; a value that is not an
+        // object is replaced by the defaults whenever the page has usage, and is otherwise returned as it was.
+        database.statics = statics as Database['statics']
+    }
+    delete database.usagePriceOverrides
+    if (request.usagePriceOverrides !== undefined) {
+        // Stored overrides are plain JSON whose shape this build reads leniently, as the task presets above.
+        database.usagePriceOverrides = structuredClone(request.usagePriceOverrides) as unknown as Database['usagePriceOverrides']
+    }
+}
+
+/**
+ * The incomplete-data question of an import. True when nothing is incomplete or the caller confirmed; false is the
+ * decline, after which nothing is written. Shared by the whole and the streamed prepare, which ask it at most once.
+ */
+export async function confirmImportIncomplete(incomplete: readonly IncompleteItem[], hooks: Pick<ImportHooks, 'confirmIncomplete'>): Promise<boolean> {
+    return incomplete.length === 0 || await hooks.confirmIncomplete(incomplete)
 }
 
 async function planResolved(
@@ -209,7 +290,7 @@ async function planResolved(
     }
 }
 
-type BaseManifest =
+export type BaseManifest =
     | { status: 'none' }
     | { status: 'ok', manifest: Manifest }
     | { status: 'unreadable', detail: string }
@@ -219,7 +300,7 @@ type BaseManifest =
  * The manifest `current` of `read` names. `none` when `read` is not a parsed key naming a current: the commit itself
  * refuses such a read, and nothing is built.
  */
-async function baseManifestOf(backend: Store2Backend, read: Store2Read): Promise<BaseManifest> {
+export async function baseManifestOf(backend: Store2Backend, read: Store2Read): Promise<BaseManifest> {
     const classified = classifyCommitRead(read)
     if (classified.status !== 'parsed' || classified.value.current === null) {
         return { status: 'none' }
@@ -256,9 +337,17 @@ export type PrepareStop = Extract<ImportOutcome, { status: 'declined' | 'read-fa
 /**
  * Steps 1 to 3 of the import, shared by the page commit and the boot installer: repairs, resolve, the incomplete-data
  * question, the plan. Nothing is written. The decoded tree is released once resolved.
+ *
+ * Invariant: a streamed prepare (`prepareImportStream`) runs the same steps over a file it reads in pieces. Every
+ * step here that is not tied to the whole tree being resident is one shared function (`repairCharacterIds`,
+ * `resolveLegacyCharacter`, `repairImportRoot`, `resolveLegacyRoot`, `applyImportOverlay`, `confirmImportIncomplete`)
+ * that both prepares call. A step added to this prepare must be added to the streamed prepare through a shared
+ * function, or the streamed prepare must return 'whole' for the files it affects, so the two never drift.
+ * `replacedIds` needs no streamed counterpart: the streamed prepare returns 'whole' for every file holding an id the
+ * repair would replace.
  */
 export async function prepareImport(
-    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'themePacks' | 'activeThemePack'>, hooks: ImportHooks,
+    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides'>, hooks: ImportHooks,
 ): Promise<PreparedImport | PrepareStop> {
     let tree = request.source.tree
     if (tree === null) {
@@ -274,23 +363,9 @@ export async function prepareImport(
         }
         repair = repaired.summary
         notePhase(hooks, 'import repaired')
-        const resolved = await resolveLegacyTree(tree, request.reader, request.resolve)
+        const resolved = await resolveLegacyTree(tree, request.reader, { ...request.resolve, replacedIds: repaired.replacedIds })
         notePhase(hooks, 'import resolved')
-        // `resolveLegacyTree` has removed the tree's own `taskPresets`; only a list the caller passed is set, on the copy.
-        if (request.taskPresets !== undefined && request.taskPresets.length > 0) {
-            // The objects stay open: the type names the fields this build reads, the stored object keeps every key.
-            resolved.database.taskPresets = request.taskPresets.map(preset => structuredClone(preset) as unknown as TaskPreset)
-        }
-        // The same for the installed theme packs and the active pack id: a `.bin` carries neither (its export leaves them
-        // out), so a key of that name in the file is dropped, and only what the caller passed is set, on the copy.
-        delete resolved.database.themePacks
-        delete resolved.database.activeThemePack
-        if (request.activeThemePack !== undefined) {
-            resolved.database.activeThemePack = request.activeThemePack
-        }
-        if (request.themePacks !== undefined && request.themePacks.length > 0) {
-            resolved.database.themePacks = request.themePacks.map(pack => structuredClone(pack))
-        }
+        applyImportOverlay(resolved.database, request)
         incomplete = resolved.incomplete
         hold.resolved = resolved
     } catch (error) {
@@ -302,7 +377,7 @@ export async function prepareImport(
     tree = null
     request.source.tree = null
 
-    if (incomplete.length > 0 && !(await hooks.confirmIncomplete(incomplete))) {
+    if (!(await confirmImportIncomplete(incomplete, hooks))) {
         return { status: 'declined' }
     }
     const env: KeyEnv = request.env ?? defaultKeyEnv

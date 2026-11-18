@@ -51,14 +51,14 @@ import { resetPageStorageModeForTests, setPageStorageMode, type PageStorageMode 
 import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
 
 /**
- * The inlay clean-up deletes nothing on a page that is not a legacy or block page: a store2 page (its keep set knows
- * only the legacy data), a read-only page and a page whose mode boot has not decided. A legacy or block page deletes as
- * before. A character removed whole, whose inlay nothing in the profile shows, is the candidate in every case.
+ * The inlay clean-up deletes nothing on any page, whatever its storage mode: store2, read-only, unset, and a stale
+ * legacy or block mode. A character removed whole, whose inlay nothing in the profile shows, is the candidate in every
+ * case; each page announces the refusal once.
  *
- * Labels: the store2, read-only and unset cases are regression reproducers (the base commit deletes the inlay on
- * each); the legacy and block cases are compatibility guards (they pass before and after); the announcement case is a
- * guard for the once-per-page warning, which the base does not have. Memory doubles only: nothing here says what a real
- * inlay store does.
+ * Labels: the legacy and block rows are this stage's regression reproducers (the base commit deletes the inlay on a
+ * legacy or block page); the store2, read-only and unset rows are guards carried from an earlier change, and the
+ * announcement case is a guard for the once-per-page warning. Memory doubles only: nothing here
+ * says what a real inlay store does.
  */
 
 const X = 'aaaaaaaa-0000-4000-8000-0000000000a1'
@@ -66,6 +66,7 @@ const W = 'aaaaaaaa-0000-4000-8000-0000000000a2'
 
 let logs: Array<Record<string, unknown>> = []
 let warnSpy: ReturnType<typeof vi.spyOn>
+let locksQuery: ReturnType<typeof vi.fn>
 
 function removedCharacter(id: string): never {
     return { chats: [{ message: [{ data: `{{inlayed::${id}}}` }] }] } as never
@@ -100,9 +101,10 @@ beforeEach(() => {
     })
     vi.spyOn(console, 'error').mockImplementation(() => { })
     warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { })
+    locksQuery = vi.fn(async () => ({ held: [{ name: STORAGE_TAB_LOCK_NAME, mode: 'shared', clientId: 'this' }], pending: [] }))
     Object.defineProperty(navigator, 'locks', {
         configurable: true,
-        value: { query: async () => ({ held: [{ name: STORAGE_TAB_LOCK_NAME, mode: 'shared', clientId: 'this' }], pending: [] }) },
+        value: { query: locksQuery },
     })
 })
 
@@ -111,14 +113,15 @@ afterEach(() => {
     vi.restoreAllMocks()
 })
 
-describe('a page that is not a legacy or block page deletes no inlay', () => {
-    test('reproducer: a store2 page (page mode and residency) deletes nothing for an inlay no profile data shows', async () => {
+describe('no page mode deletes an inlay', () => {
+    test('reproducer: a store2 page (page mode and residency) deletes nothing for an inlay no profile data shows, and does no walk or tab query', async () => {
         setPageStorageMode({ kind: 'store2' })
         registerResidency({} as unknown as Residency)
 
         const log = await runCleanup(X)
 
-        expect(log.candidates).toBe(1)
+        expect(log.candidates).toBe(0)
+        expect(locksQuery).not.toHaveBeenCalled()
         expect(deleted()).toEqual([])
         expect(log).toMatchObject({ deleted: 0, skipped: 'inlay deletion is off on this page' })
     })
@@ -150,13 +153,16 @@ describe('a page that is not a legacy or block page deletes no inlay', () => {
     test.each<[string, PageStorageMode]>([
         ['legacy', { kind: 'legacy', convertedFrom: null }],
         ['block', { kind: 'block' }],
-    ])('guard: a %s page still deletes the unreferenced inlay', async (_label, mode) => {
+    ])('reproducer: a %s page with no residency deletes nothing and says so', async (_label, mode) => {
         setPageStorageMode(mode)
 
         const log = await runCleanup(X)
+        await runCleanup(W)
 
-        expect(deleted()).toEqual([X])
-        expect(log).toMatchObject({ deleted: 1, skipped: null })
+        expect(deleted()).toEqual([])
+        expect(log).toMatchObject({ deleted: 0, skipped: 'inlay deletion is off on this page' })
+        const announcements = warnSpy.mock.calls.filter(call => call[0] === 'Inlay clean-up deletes nothing on this page.')
+        expect(announcements).toHaveLength(1)
     })
 
     test('guard: the refusal is announced once per page, not once per batch', async () => {

@@ -124,7 +124,7 @@ let specialDay = $state('')
     <h1>
         <!-- svelte-ignore a11y_click_events_have_key_events -->
         <span class="text-2xl font-extralight italic text-amber-400 hover:text-amber-600 cursor-pointer transition" role="button" tabindex="-1" onclick={() => {
-            openURL('https://risuai.net')
+            openURL('https://github.com/yor42/RisuTanium')
         }}>Happy {
             new Date().getFullYear() - 2023
         }{getNumberPostfix(new Date().getFullYear() - 2023)} Anniversary!</span>

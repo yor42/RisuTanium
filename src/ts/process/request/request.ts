@@ -25,8 +25,11 @@ import { requestGoogleCloudVertex } from './google';
 import { wholeCharacterStream } from './wholeCharacterStream';
 import { requestOpenAI, requestOpenAILegacyInstruct, requestOpenAIResponseAPI } from "./openAI/requests";
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters, type ModelModeExtended } from './shared';
-import { resolveRequestKey } from './secretKey';
+import { leaseArgKey, limitedField, readKeyField, sendArgKey, sendKeyLine, type KeyFieldId } from './secretKey';
+import { afterLimit, clearLease, newKeyRotation, splitKeys, type KeyRotation } from './keyRing';
 import { SecretRefError } from '../../secretRef';
+import { beginUsageCapture, settleUsage, settleUsageFailure } from '../../usage/usageCapture';
+import type { UsageMeterState, UsagePurpose } from '../../usage/usageTypes';
 
 export type ToolCall = {
     name: string;
@@ -70,6 +73,18 @@ interface requestDataArgument{
     // One per user turn: shared by every tool round, retry, fallback and nested internal:aiaccess call of the turn.
     // Never cloned and never handed to a plugin: the plugin provider builds its own argument.
     toolLoop?: ToolLoopState
+    // One per attempt of one fallback model: which key lines were found limited. Rotates a multi-line key field.
+    // Never cloned and never handed to a plugin: the plugin provider builds its own argument.
+    keyRotation?: KeyRotation
+    // The usage statistics label of this call; a Utility run or a plugin call sets it, otherwise the mode decides.
+    // Never cloned and never handed to a plugin: the plugin provider builds its own argument.
+    usagePurpose?: UsagePurpose
+    // Set only by the main chat send: the input token count it already computed, so no second count is made.
+    // Never cloned and never handed to a plugin: the plugin provider builds its own argument.
+    usageInputEstimate?: number
+    // Set by `requestChatDataMain` on every attempt: the provider call sites report each response's usage to it.
+    // Never cloned and never handed to a plugin: the plugin provider builds its own argument.
+    usageMeter?: UsageMeterState
 }
 
 export interface RequestDataArgumentExtended extends requestDataArgument{
@@ -80,6 +95,9 @@ export interface RequestDataArgumentExtended extends requestDataArgument{
     customURL?:string
     mode?:ModelModeExtended
     key?:string
+    // The field `key` was leased from, and the field the request put on the wire: only the sent one rotates.
+    keyField?:KeyFieldId
+    sentKeyField?:KeyFieldId
     additionalOutput?:string
     saveSignatures?:boolean
 }
@@ -91,6 +109,8 @@ export type requestDataResponse = {
     failByServerError?: boolean
     // The turn is over (its tool budget is spent, or it was stopped): no retry and no fallback model follows.
     endsTurn?: boolean
+    // The provider answered 429 or 402 before streaming: the leased line of the field the request sent is limited, not the request.
+    keyLimited?: KeyFieldId
     model?: string
 }|{
     type: "streaming",
@@ -251,6 +271,8 @@ export async function requestChatData(arg:requestDataArgument, model:ModelModeEx
 
     for(let fallbackIndex=0;fallbackIndex<fallBackModels.length;fallbackIndex++){
         let trys = 0
+        // Each fallback model gets its own pass over the key lines.
+        const keyRotation = newKeyRotation()
         arg.formated = safeStructuredClone(originalFormated)
 
         if(fallbackIndex !== 0 && !fallBackModels[fallbackIndex]){
@@ -318,10 +340,12 @@ export async function requestChatData(arg:requestDataArgument, model:ModelModeEx
             
     
             try{
+                clearLease(keyRotation)
                 da = await requestChatDataMain({
                     ...arg,
                     staticModel: fallBackModels[fallbackIndex],
                     tools: tools,
+                    keyRotation,
                 }, model, abortSignal)
             }
             catch(e){
@@ -345,6 +369,25 @@ export async function requestChatData(arg:requestDataArgument, model:ModelModeEx
 
             if(da.type === 'fail' && da.endsTurn){
                 return da
+            }
+
+            if(da.type === 'fail' && da.keyLimited){
+                const readField = (field: Parameters<typeof readKeyField>[1]) => readKeyField(db, field)
+                const lineCount = splitKeys(readField(da.keyLimited)).length
+                const next = afterLimit(keyRotation, da.keyLimited, readField)
+                if(next === 'next'){
+                    // The limited line is marked tried: the same request goes out again at once on the next line.
+                    continue
+                }
+                if(next === 'exhausted'){
+                    if(fallbackIndex === fallBackModels.length-1){
+                        return {
+                            ...da,
+                            result: language.errors.allKeysLimited(lineCount) + '\n' + (typeof da.result === 'string' ? da.result : (JSON.stringify(da.result) ?? String(da.result)))
+                        }
+                    }
+                    break
+                }
             }
 
             if(da.type === 'success' && arg.escape){
@@ -512,10 +555,14 @@ export function reformater(formated:OpenAIChat[],modelInfo:LLMModel|LLMFlags[]){
  * model, which may use another credential, is still tried.
  */
 export async function requestChatDataMain(arg:requestDataArgument, model:ModelModeExtended, abortSignal:AbortSignal=null):Promise<requestDataResponse> {
+    // Each call is one attempt with its own meter, whatever meter a reused argument object still carries.
+    beginUsageCapture(arg)
+    let result:requestDataResponse
     try{
-        return await requestChatDataByFormat(arg, model, abortSignal)
+        result = await requestChatDataByFormat(arg, model, abortSignal)
     }
     catch(error){
+        settleUsageFailure(arg, model)
         if(error instanceof SecretRefError){
             return {
                 type: 'fail',
@@ -525,6 +572,7 @@ export async function requestChatDataMain(arg:requestDataArgument, model:ModelMo
         }
         throw error
     }
+    return settleUsage(arg, model, result)
 }
 
 async function requestChatDataByFormat(arg:requestDataArgument, model:ModelModeExtended, abortSignal:AbortSignal=null):Promise<requestDataResponse> {
@@ -565,12 +613,12 @@ async function requestChatDataByFormat(arg:requestDataArgument, model:ModelModeE
         targ.modelInfo.internalID = db.customProxyRequestModel
         targ.modelInfo.format = db.customAPIFormat
         targ.customURL = db.forceReplaceUrl
-        targ.key = await resolveRequestKey(arg, db.proxyKey)
+        await leaseArgKey(targ, 'proxyKey')
     }
     if(targ.aiModel.startsWith('xcustom:::')){
         const found = db.customModels.find(m => m.id === targ.aiModel)
         targ.customURL = found?.url
-        targ.key = await resolveRequestKey(arg, found?.key)
+        await leaseArgKey(targ, `customModels:${targ.aiModel}`)
     }
 
     const format = targ.modelInfo.format
@@ -719,7 +767,7 @@ async function requestNovelAI(arg:RequestDataArgumentExtended):Promise<requestDa
     }
 
     let headers = {
-        "Authorization": "Bearer " + await resolveRequestKey(arg, arg.key ?? db.novelai.token)
+        "Authorization": "Bearer " + (arg.key != null ? await sendArgKey(arg) : await sendKeyLine(arg, 'novelai.token'))
     }
 
     body = applyAdditionalParameters(body, headers, getAdditionalParameters(aiModel))
@@ -735,7 +783,8 @@ async function requestNovelAI(arg:RequestDataArgumentExtended):Promise<requestDa
     if((!da.ok )|| (!da.data.output)){
         return {
             type: 'fail',
-            result: (language.errors.httpError + `${JSON.stringify(da.data)}`)
+            result: (language.errors.httpError + `${JSON.stringify(da.data)}`),
+            keyLimited: limitedField(arg, da.status)
         }
     }
     return {
@@ -788,7 +837,7 @@ async function requestOobaLegacy(arg:RequestDataArgumentExtended):Promise<reques
     }
 
     let headers: Record<string, string> = (aiModel === 'textgen_webui') ? {} : {
-        'X-API-KEY': await resolveRequestKey(arg, db.mancerHeader)
+        'X-API-KEY': await sendKeyLine(arg, 'mancerHeader')
     }
 
     bodyTemplate = applyAdditionalParameters(bodyTemplate, headers, getAdditionalParameters(aiModel))
@@ -879,7 +928,8 @@ async function requestOobaLegacy(arg:RequestDataArgumentExtended):Promise<reques
     else{
         return {
             type: 'fail',
-            result: (language.errors.httpError + `${JSON.stringify(res.data)}`)
+            result: (language.errors.httpError + `${JSON.stringify(res.data)}`),
+            keyLimited: limitedField(arg, res.status)
         }
     }
 }
@@ -1140,7 +1190,7 @@ async function requestNovelList(arg:RequestDataArgumentExtended):Promise<request
     const biasString = arg.biasString
     const charName = getRequestCharName(arg.subject)
     const aiModel = arg.aiModel
-    const auth_key = await resolveRequestKey(arg, db.novellistAPI);
+    const auth_key = await sendKeyLine(arg, 'novellistAPI');
     const api_server_url = 'https://api.tringpt.com/';
     const logit_bias:string[] = []
     const logit_bias_values:string[] = []
@@ -1197,7 +1247,8 @@ async function requestNovelList(arg:RequestDataArgumentExtended):Promise<request
     if(!response.ok){
         return {
             type: 'fail',
-            result: response.data
+            result: response.data,
+            keyLimited: limitedField(arg, response.status)
         }
     }
 
@@ -1216,6 +1267,26 @@ async function requestNovelList(arg:RequestDataArgumentExtended):Promise<request
     }
 }
 
+/**
+ * The Ollama client throws a `ResponseError` carrying `status_code` and does not export the class,
+ * so it is recognised by name. Only a leased multi-line key turns a key limit into a rotating failure;
+ * anything else is rethrown by the caller.
+ */
+function ollamaKeyLimitFailure(error: unknown, arg: RequestDataArgumentExtended): requestDataResponse | null {
+    if(!(error instanceof Error) || error.name !== 'ResponseError'){
+        return null
+    }
+    const field = limitedField(arg, (error as Error & { status_code?: number }).status_code)
+    if(!field){
+        return null
+    }
+    return {
+        type: 'fail',
+        result: error.message,
+        keyLimited: field
+    }
+}
+
 async function requestOllama(arg:RequestDataArgumentExtended):Promise<requestDataResponse> {
     const formated = arg.formated
     const db = getDatabase()
@@ -1226,21 +1297,21 @@ async function requestOllama(arg:RequestDataArgumentExtended):Promise<requestDat
 
     if(isCloud && requestFormat === LLMFormat.OpenAICompatible){
         arg.customURL = 'https://ollama.com/v1/chat/completions'
-        arg.key = await resolveRequestKey(arg, db.ollamaApiKey)
+        await leaseArgKey(arg, 'ollamaApiKey')
         arg.modelInfo.internalID = ollamaModel
         return requestOpenAI(arg)
     }
 
     if(isCloud && requestFormat === LLMFormat.OpenAIResponseAPI){
         arg.customURL = 'https://ollama.com/v1/responses'
-        arg.key = await resolveRequestKey(arg, db.ollamaApiKey)
+        await leaseArgKey(arg, 'ollamaApiKey')
         arg.modelInfo.internalID = ollamaModel
         return requestOpenAIResponseAPI(arg)
     }
 
     if(isCloud && requestFormat === LLMFormat.Anthropic){
         arg.customURL = 'https://ollama.com/v1/messages'
-        arg.key = await resolveRequestKey(arg, db.ollamaApiKey)
+        await leaseArgKey(arg, 'ollamaApiKey')
         arg.modelInfo = {
             ...arg.modelInfo,
             internalID: ollamaModel,
@@ -1259,7 +1330,7 @@ async function requestOllama(arg:RequestDataArgumentExtended):Promise<requestDat
         }
     }
 
-    let customHeaders: Record<string, string> = isCloud && db.ollamaApiKey ? { Authorization: 'Bearer ' + await resolveRequestKey(arg, db.ollamaApiKey) } : {}
+    let customHeaders: Record<string, string> = isCloud && db.ollamaApiKey ? { Authorization: 'Bearer ' + await sendKeyLine(arg, 'ollamaApiKey') } : {}
 
     let requestBody: any = {
         model: ollamaModel,
@@ -1293,7 +1364,17 @@ async function requestOllama(arg:RequestDataArgumentExtended):Promise<requestDat
 
     if(!arg.useStreaming){
         requestBody.stream = false
-        const response: any = await ollama.chat(requestBody)
+        let response: any
+        try{
+            response = await ollama.chat(requestBody)
+        }
+        catch(e){
+            const limited = ollamaKeyLimitFailure(e, arg)
+            if(limited){
+                return limited
+            }
+            throw e
+        }
 
         const result = formatThinkingOutput(response.message?.thinking ?? '', response.message?.content ?? '')
         return {
@@ -1304,7 +1385,17 @@ async function requestOllama(arg:RequestDataArgumentExtended):Promise<requestDat
     }
 
     requestBody.stream = true
-    const response: any = await ollama.chat(requestBody)
+    let response: any
+    try{
+        response = await ollama.chat(requestBody)
+    }
+    catch(e){
+        const limited = ollamaKeyLimitFailure(e, arg)
+        if(limited){
+            return limited
+        }
+        throw e
+    }
 
     const readableStream = new ReadableStream<StreamResponseChunk>({
         async start(controller){
@@ -1407,7 +1498,7 @@ async function requestCohere(arg:RequestDataArgumentExtended):Promise<requestDat
     }
 
     let headers: Record<string, string> = {
-        "Authorization": "Bearer " + await resolveRequestKey(arg, arg.key ?? db.cohereAPIKey),
+        "Authorization": "Bearer " + (arg.key != null ? await sendArgKey(arg) : await sendKeyLine(arg, 'cohereAPIKey')),
         "Content-Type": "application/json"
     }
 
@@ -1436,7 +1527,8 @@ async function requestCohere(arg:RequestDataArgumentExtended):Promise<requestDat
     if(!res.ok){
         return {
             type: 'fail',
-            result: JSON.stringify(res.data)
+            result: JSON.stringify(res.data),
+            keyLimited: limitedField(arg, res.status)
         }
     }
 
@@ -1500,7 +1592,7 @@ async function requestHorde(arg:RequestDataArgumentExtended):Promise<requestData
 
     let apiKey = '0000000000'
     if(db.hordeConfig.apiKey.length > 2){
-        apiKey = await resolveRequestKey(arg, db.hordeConfig.apiKey)
+        apiKey = await sendKeyLine(arg, 'hordeConfig.apiKey')
     }
 
     let headers: Record<string, string> = {
@@ -1520,7 +1612,8 @@ async function requestHorde(arg:RequestDataArgumentExtended):Promise<requestData
     if(da.status !== 202){
         return {
             type: "fail",
-            result: await da.text()
+            result: await da.text(),
+            keyLimited: limitedField(arg, da.status)
         }
     }
 

@@ -1,8 +1,9 @@
 /**
- * The Welcome restore entry (`restoreFromBinFileAtFirstRun`) next to the Settings entry (`restoreFromBinFile`): the
- * first-run entry passes the first-run option to the loader after both confirmations, and the Settings entry passes
- * nothing. Real: `settingsRestore.ts`, `restoreInProgress.ts`, `backupWorkGuard.ts`. Faked: the loaders and the
- * confirmation dialog, so this proves the call shape and the confirmation order, not a picker or a native write.
+ * The Welcome restore entry (`restoreFromBinFileAtFirstRun`) next to the Settings entry (`restoreFromBinFile`): both call
+ * the backup router's picker after both confirmations; the first-run entry passes the first-run route and a picked-file
+ * callback, and the Settings entry passes nothing. Real: `settingsRestore.ts`, `restoreInProgress.ts`,
+ * `backupWorkGuard.ts`. Faked: the router and the confirmation dialog, so this proves the call shape and the confirmation
+ * order, not a picker or a native write.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { language } from 'src/lang'
@@ -10,7 +11,9 @@ import { COLD_TRANSFORM_HOOK_MS } from '../../tests/coldTransform.test-helpers'
 import type { OperationOutcome } from '../operationEnd'
 
 const confirmMock = vi.hoisted(() => vi.fn(async (_message: string): Promise<boolean> => true))
-const localLoaderMock = vi.hoisted(() => vi.fn())
+const routerLoaderMock = vi.hoisted(() => vi.fn())
+// The direct `.bin` loader: the Welcome entry must reach the restore only through the router.
+const directLoaderMock = vi.hoisted(() => vi.fn(async () => ({ outcome: 'canceled' })))
 
 const alertErrorMock = vi.hoisted(() => vi.fn())
 
@@ -28,7 +31,8 @@ vi.mock('../../stores.svelte', async () => {
 const workInProgressMock = vi.hoisted(() => vi.fn((): boolean => false))
 const runEndFault = vi.hoisted(() => ({ throws: false }))
 vi.mock('../../process/chatOrigin', () => ({ isWorkInProgress: workInProgressMock }))
-vi.mock('../backuplocal', () => ({ LoadLocalBackup: localLoaderMock }))
+vi.mock('../backuplocal', () => ({ LoadLocalBackup: directLoaderMock }))
+vi.mock('../backupRouter', () => ({ loadBackupFromPicker: routerLoaderMock }))
 vi.mock('../internalBackup', () => ({ loadInternalBackup: vi.fn() }))
 // The real run is kept; a case can make its `end` throw after the real end ran, as a failing end bookkeeping would.
 vi.mock('../restoreInProgress', async (importOriginal) => {
@@ -63,7 +67,8 @@ beforeEach(() => {
     resetBusyActionsForTest()
     confirmMock.mockReset().mockResolvedValue(true)
     alertErrorMock.mockReset()
-    localLoaderMock.mockReset().mockResolvedValue(endOf('canceled'))
+    directLoaderMock.mockClear()
+    routerLoaderMock.mockReset().mockResolvedValue(endOf('canceled'))
     workInProgressMock.mockReset().mockReturnValue(false)
     runEndFault.throws = false
     vi.spyOn(console, 'error').mockImplementation(() => { })
@@ -86,9 +91,9 @@ async function flushMicrotasks(): Promise<void> {
 }
 
 /** Makes the loader return a promise the case settles itself (a picker that has not answered yet). */
-function holdLoader(): (outcome: OperationOutcome) => void {
+function holdLoader(loader: typeof routerLoaderMock = routerLoaderMock): (outcome: OperationOutcome) => void {
     let release: (outcome: OperationOutcome) => void = () => { }
-    localLoaderMock.mockReturnValue(new Promise((resolve) => {
+    loader.mockReturnValue(new Promise((resolve) => {
         release = (outcome) => resolve(endOf(outcome))
     }))
     heldLoaders.push(release)
@@ -120,12 +125,13 @@ function startWelcomeEntry(): { settled: () => boolean, rejection: () => unknown
 }
 
 describe('the Welcome restore entry', () => {
-    test('asks both confirmations, then calls the loader with the first-run option', async () => {
+    test('asks both confirmations, then calls the router picker with the first-run route', async () => {
         await restoreFromBinFileAtFirstRun()
 
         expect(confirmMock.mock.calls.map((call) => call[0])).toEqual([language.backupLoadConfirm, language.backupLoadConfirm2])
-        expect(localLoaderMock).toHaveBeenCalledTimes(1)
-        expect(localLoaderMock).toHaveBeenCalledWith(undefined, undefined, { completeFirstSetup: true })
+        expect(routerLoaderMock).toHaveBeenCalledTimes(1)
+        expect(routerLoaderMock.mock.calls[0]).toEqual([{}, { firstRun: true, onPicked: expect.any(Function) }])
+        expect(directLoaderMock).not.toHaveBeenCalled()
         expect(restorePhase()).toBe('none')
     })
 
@@ -134,12 +140,12 @@ describe('the Welcome restore entry', () => {
 
         await restoreFromBinFileAtFirstRun()
 
-        expect(localLoaderMock).not.toHaveBeenCalled()
+        expect(routerLoaderMock).not.toHaveBeenCalled()
         expect(restorePhase()).toBe('none')
     })
 
     test('a loader that rejects leaves the page usable', async () => {
-        localLoaderMock.mockRejectedValue(new Error('picker threw'))
+        routerLoaderMock.mockRejectedValue(new Error('picker threw'))
 
         await expect(restoreFromBinFileAtFirstRun()).resolves.toBeUndefined()
 
@@ -159,7 +165,7 @@ describe('the Welcome restore entry', () => {
         expect(entry.settled()).toBe(true)
         expect(entry.rejection()).toBe(failure)
         expect(listeners.live()).toBe(0)
-        expect(localLoaderMock).not.toHaveBeenCalled()
+        expect(routerLoaderMock).not.toHaveBeenCalled()
     })
 
     test('a run end that throws after the loader armed the watcher rejects the entry with that error, removes the listeners and stops the watcher', async () => {
@@ -178,17 +184,17 @@ describe('the Welcome restore entry', () => {
         expect(entry.rejection()).toEqual(new Error('run end failed'))
         expect(listeners.live()).toBe(0)
         // A stopped watcher never reacts to a later window return.
-        const loaderCalls = localLoaderMock.mock.calls.length
+        const loaderCalls = routerLoaderMock.mock.calls.length
         window.dispatchEvent(new Event('focus'))
         await vi.advanceTimersByTimeAsync(3000)
-        expect(localLoaderMock).toHaveBeenCalledTimes(loaderCalls)
+        expect(routerLoaderMock).toHaveBeenCalledTimes(loaderCalls)
     })
 
     test('guard: the Settings entry still calls the loader with no arguments', async () => {
         await restoreFromBinFile()
 
-        expect(localLoaderMock).toHaveBeenCalledTimes(1)
-        expect(localLoaderMock.mock.calls[0]).toEqual([])
+        expect(routerLoaderMock).toHaveBeenCalledTimes(1)
+        expect(routerLoaderMock.mock.calls[0]).toEqual([])
     })
 })
 
@@ -198,7 +204,7 @@ describe('the Welcome restore entry when the picker is dismissed without an even
         holdLoader()
         const entry = startWelcomeEntry()
         await flushMicrotasks()
-        expect(localLoaderMock).toHaveBeenCalledTimes(1)
+        expect(routerLoaderMock).toHaveBeenCalledTimes(1)
 
         window.dispatchEvent(new Event('focus'))
         await vi.advanceTimersByTimeAsync(500)
@@ -209,7 +215,7 @@ describe('the Welcome restore entry when the picker is dismissed without an even
         // Pins a pre-existing limitation, not intended behaviour: the fallback only stops the Welcome entry waiting, so the
         // run stays open until the loader settles. A fix that ends the run on dismissal updates this assertion deliberately.
         expect(restorePhase()).toBe('asking')
-        expect(localLoaderMock).toHaveBeenCalledTimes(1)
+        expect(routerLoaderMock).toHaveBeenCalledTimes(1)
     })
 
     test('a visibility return to visible ends the wait; a change to hidden does not', async () => {
@@ -244,7 +250,7 @@ describe('the Welcome restore entry when the picker is dismissed without an even
         const release = holdLoader()
         const entry = startWelcomeEntry()
         await flushMicrotasks()
-        // The picker's change handler opens the busy entry before anything else.
+        // The routed restore has taken its busy entry.
         const busy = beginBusy('backupLoad')
 
         window.dispatchEvent(new Event('focus'))
@@ -270,7 +276,7 @@ describe('the Welcome restore entry when the picker is dismissed without an even
         window.dispatchEvent(new Event('focus'))
         await vi.advanceTimersByTimeAsync(3000)
         expect(early.settled()).toBe(false)
-        expect(localLoaderMock).not.toHaveBeenCalled()
+        expect(routerLoaderMock).not.toHaveBeenCalled()
         answerFirst(false)
         await flushMicrotasks()
         expect(early.settled()).toBe(true)
@@ -306,15 +312,37 @@ describe('the Welcome restore entry when the picker is dismissed without an even
         heldLoaders.splice(0).forEach((held) => held('nothing-replaced'))
         await flushMicrotasks()
 
-        const loaderCalls = localLoaderMock.mock.calls.length
+        const loaderCalls = routerLoaderMock.mock.calls.length
         window.dispatchEvent(new Event('focus'))
         await vi.advanceTimersByTimeAsync(3000)
-        expect(localLoaderMock).toHaveBeenCalledTimes(loaderCalls)
+        expect(routerLoaderMock).toHaveBeenCalledTimes(loaderCalls)
+    })
+
+    test('a picked file stops the return watch: a window return after it never ends the wait, and no listener is left', async () => {
+        vi.useFakeTimers()
+        const listeners = watchReturnListeners()
+        const release = holdLoader()
+        const entry = startWelcomeEntry()
+        await flushMicrotasks()
+        const route = routerLoaderMock.mock.calls[0][1] as { onPicked: () => void }
+
+        window.dispatchEvent(new Event('focus'))
+        await vi.advanceTimersByTimeAsync(1500)
+        route.onPicked()
+        await vi.advanceTimersByTimeAsync(3000)
+        expect(entry.settled()).toBe(false)
+        expect(restorePhase()).toBe('asking')
+        expect(listeners.live()).toBe(0)
+
+        release('nothing-replaced')
+        await flushMicrotasks()
+        expect(entry.settled()).toBe(true)
+        expect(listeners.live()).toBe(0)
     })
 
     test('guard: the Settings entry has no fallback and keeps waiting through a window return', async () => {
         vi.useFakeTimers()
-        holdLoader()
+        holdLoader(routerLoaderMock)
         let settled = false
         void restoreFromBinFile().then(() => {
             settled = true
@@ -324,7 +352,7 @@ describe('the Welcome restore entry when the picker is dismissed without an even
         window.dispatchEvent(new Event('focus'))
         await vi.advanceTimersByTimeAsync(3000)
 
-        expect(localLoaderMock).toHaveBeenCalledTimes(1)
+        expect(routerLoaderMock).toHaveBeenCalledTimes(1)
         expect(settled).toBe(false)
     })
 })

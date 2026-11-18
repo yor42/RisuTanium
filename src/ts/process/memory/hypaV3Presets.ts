@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import type { Database } from '../../storage/database.svelte'
+import { DEFAULT_RECENCY_HALF_LIFE_DAYS } from './hypaRecency'
 
 export interface HypaV3Preset {
     id: string;
@@ -21,6 +22,8 @@ export interface HypaV3Settings {
     processRegexScript: boolean;
     doNotSummarizeUserMessage: boolean;
     summaryChunkSeparator: string;
+    enableRecencyWeighting: boolean;
+    recencyHalfLifeDays: number;
     // Experimental
     useExperimentalImpl: boolean;
     summarizationRequestsPerMinute: number;
@@ -58,6 +61,8 @@ export function createHypaV3Preset(
         processRegexScript: false,
         doNotSummarizeUserMessage: false,
         summaryChunkSeparator: "\\n\\n",
+        enableRecencyWeighting: false,
+        recencyHalfLifeDays: DEFAULT_RECENCY_HALF_LIFE_DAYS,
         // Experimental
         useExperimentalImpl: false,
         summarizationRequestsPerMinute: 20,

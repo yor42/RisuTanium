@@ -16,8 +16,9 @@ import type { RPCToolCallContent } from "../mcp/mcplib"
 import type { RequestDataArgumentExtended, requestDataResponse, StreamResponseChunk } from './request'
 import { abortedResult, beginToolRound, gateResult, refusedToolContent, runAborted, toolBlockGate } from './toolLoop'
 import { applyAdditionalParameters, applyParameters, getAdditionalParameters } from './shared'
-import { resolveRequestKey } from './secretKey'
+import { limitedField, sendArgKey, sendKeyLine } from './secretKey'
 import { isSecretRef } from 'src/ts/secretRef'
+import { mergeAnthropicStreamUsage, parseAnthropicUsage } from '../../usage/usageParse'
 
 interface Claude3TextBlock {
     type: 'text',
@@ -81,8 +82,10 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
     const useStreaming = arg.useStreaming
     const ollamaCloudAnthropic = aiModel === 'ollama-cloud'
     let replacerURL = arg.customURL ?? ('https://api.anthropic.com/v1/messages')
-    // Resolved once, whole: a Bedrock key is the AKID:SECRET:region triple and is split after resolution.
-    let apiKey = await resolveRequestKey(arg, arg.key || ((aiModel === 'reverse_proxy') ? db.proxyKey : db.claudeAPIKey))
+    // One line of the field, resolved whole: a Bedrock key line is the AKID:SECRET:region triple and is split after resolution.
+    let apiKey = arg.key
+        ? await sendArgKey(arg)
+        : await sendKeyLine(arg, (aiModel === 'reverse_proxy') ? 'proxyKey' : 'claudeAPIKey')
     const maxTokens = arg.maxTokens
     if(aiModel === 'reverse_proxy' && db.autofillRequestUrl){
         if(replacerURL.endsWith('v1')){
@@ -512,9 +515,11 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
         if(!res.ok){
             return {
                 type: 'fail',
-                result: JSON.stringify(res.data)
+                result: JSON.stringify(res.data),
+                keyLimited: limitedField(arg, res.status)
             }
         }
+        reportMessageUsage(arg, res.data?.usage)
         if(res.data.error){
             return {
                 type: 'fail',
@@ -666,7 +671,8 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
             })
             return {
                 type: 'fail',
-                result: responseText
+                result: responseText,
+                keyLimited: limitedField(arg, resp.status)
             }
         }
 
@@ -915,6 +921,16 @@ export async function requestClaude(arg:RequestDataArgumentExtended):Promise<req
     return requestClaudeHTTP(replacerURL, headers, body, arg)
 }
 
+// One report per non-stream HTTP response that carries usage.
+function reportMessageUsage(arg:RequestDataArgumentExtended, rawUsage:unknown):void{
+    try {
+        const usage = parseAnthropicUsage(rawUsage)
+        if(usage){
+            arg.usageMeter?.report(usage)
+        }
+    } catch (error) {}
+}
+
 async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:string}, body:any, arg:RequestDataArgumentExtended):Promise<requestDataResponse> {
     const db = getDatabase()
     
@@ -932,7 +948,8 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
         if(res.status !== 200){
             return {
                 type: 'fail',
-                result: await textifyReadableStream(res.body)
+                result: await textifyReadableStream(res.body),
+                keyLimited: limitedField(arg, res.status)
             }
         }
         let breakError = ''
@@ -946,9 +963,31 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                 let tail = ''
                 let retries = 0
                 let decoder = new TextDecoder()
+                // Usage of the response being read: `message_start` gives the start, the last `message_delta` the cumulative update.
+                let startUsage:unknown = null
+                let deltaUsage:unknown = null
+                // Reported only once a `message_delta` usage was seen, so a stopped or failed stream falls back to the estimate.
+                const reportStreamUsage = () => {
+                    try {
+                        if(deltaUsage === null){
+                            return
+                        }
+                        const usage = mergeAnthropicStreamUsage(startUsage, deltaUsage)
+                        if(usage){
+                            arg.usageMeter?.report(usage)
+                        }
+                    } catch (error) {}
+                }
                 const parseEvent = ((e:string) => {
-                    try {               
+                    try {
                         const parsedData = JSON.parse(e)
+
+                        if(parsedData?.type === 'message_start'){
+                            startUsage = parsedData?.message?.usage ?? null
+                        }
+                        if(parsedData?.type === 'message_delta' && parsedData?.usage){
+                            deltaUsage = parsedData.usage
+                        }
 
                         if(parsedData?.type === 'content_block_delta'){
                             if(parsedData?.delta?.type === 'text' || parsedData.delta?.type === 'text_delta'){
@@ -986,6 +1025,8 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
 
                                 return 'overload'
                             }
+                            // An in-band error ends the attempt as a failure: with no reported usage it is not counted.
+                            arg.usageMeter?.markFailed()
                             text += "Error:" + parsedData?.error?.message
 
                         }
@@ -1026,6 +1067,8 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                             thinking = false
                             text = ''
                             tail = ''
+                            startUsage = null
+                            deltaUsage = null
                             decoder = new TextDecoder()
                             reader.cancel().catch(() => {})
                             await sleep(1000)
@@ -1043,6 +1086,7 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                                 interceptor: 'anthropic_streaming_retry'
                             })
                             if(retryRes.status !== 200){
+                                arg.usageMeter?.markFailed()
                                 controller.enqueue({
                                     "0": await textifyReadableStream(retryRes.body)
                                 })
@@ -1063,6 +1107,7 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                     } catch (error) {
                         if(!arg?.abortSignal?.aborted){
                             // A source that errored rejects every later read, so retrying would never end.
+                            reportStreamUsage()
                             controller.error(error)
                             return
                         }
@@ -1075,6 +1120,7 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
                         "0": text
                     })
                 }
+                reportStreamUsage()
                 controller.close()
             },
             cancel(){
@@ -1101,12 +1147,16 @@ async function requestClaudeHTTP(replacerURL:string, headers:{[key:string]:strin
     if(runAborted(arg)){
         return abortedResult()
     }
+    if(res.ok){
+        reportMessageUsage(arg, res.data?.usage)
+    }
     if(!res.ok){
         const stringlified = JSON.stringify(res.data)
         return {
             type: 'fail',
             result: stringlified,
-            failByServerError: stringlified?.toLocaleLowerCase()?.includes('overload')
+            failByServerError: stringlified?.toLocaleLowerCase()?.includes('overload'),
+            keyLimited: limitedField(arg, res.status)
         }
     }
     if(res.data.error){

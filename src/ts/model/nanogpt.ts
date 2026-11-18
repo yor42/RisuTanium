@@ -1,5 +1,6 @@
 import { getDatabase } from "../storage/database.svelte"
 import { resolveSecret } from "../secretRef"
+import { currentKey } from "../process/request/secretKey"
 import {
     NANOGPT_PERSONALIZED_MODELS_ENDPOINT,
     NANOGPT_MODELS_ENDPOINT,
@@ -163,7 +164,7 @@ export async function getNanoGPTSubscriptionModels(key: string): Promise<NanoGPT
 export async function getNanoGPTModels(): Promise<NanoGPTModelInfo[]> {
     try {
         const db = getDatabase()
-        const key = db.nanogptKey
+        const key = currentKey('nanogptKey', db)
 
         const endpoint = (key ? NANOGPT_PERSONALIZED_MODELS_ENDPOINT : NANOGPT_MODELS_ENDPOINT) + '?detailed=true'
         const headers: Record<string, string> = { "Content-Type": "application/json" }

@@ -5,7 +5,8 @@
  * the bounds. Entries are framed by the real `encodeBackupEntryHeader`; assets go
  * through the real write route (large ones straight into the save directory).
  */
-import { request, type IncomingHttpHeaders, type IncomingMessage } from 'node:http'
+import { createServer, request, type IncomingHttpHeaders, type IncomingMessage } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { link, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
@@ -15,7 +16,7 @@ import { hexOfKey, startNodeServer, type NodeServerFixture } from './nodeServerF
 // exportWriters is imported only for its pure header encoder; its page-side
 // dependencies are replaced.
 vi.mock('src/ts/alert', () => ({}))
-vi.mock('src/ts/platform', () => ({ isTauri: false, isNodeServer: true, isWeb: false }))
+vi.mock('src/ts/platform', () => ({ isTauri: false, isNodeServer: true }))
 vi.mock('src/lang', () => ({ language: {} }))
 vi.mock('src/ts/vendor/streamSaver', () => ({ default: {} }))
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }))
@@ -48,8 +49,29 @@ async function json(response: Response): Promise<Json> {
     return (await response.json()) as Json
 }
 
+// Per-step bound: far below the 60 s test timeout, generous for a loaded CI runner.
+const STEP_MS = 15_000
+
+/** Rejects with the step label and the server's output when `work` has not settled within `ms`. */
+async function within<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const expired = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} did not settle within ${ms} ms\n${fixture.output()}`)), ms)
+    })
+    try {
+        return await Promise.race([work, expired])
+    } finally {
+        clearTimeout(timer)
+    }
+}
+
+// The request's own signal is only a backstop that frees the socket after the labelled bound has fired.
+function stepFetch(label: string, url: string, init: RequestInit = {}): Promise<Response> {
+    return within(fetch(url, { ...init, signal: AbortSignal.timeout(STEP_MS * 2) }), STEP_MS, label)
+}
+
 async function beginExport(filename = 'out.bin'): Promise<string> {
-    const response = await fetch(`${fixture.baseUrl}/api/export/begin`, {
+    const response = await stepFetch('begin export', `${fixture.baseUrl}/api/export/begin`, {
         method: 'POST',
         headers: await authed({ 'content-type': 'application/json' }),
         body: JSON.stringify({ filename, format: 'bin', v: 1 }),
@@ -65,23 +87,23 @@ function appendChunk(id: string, seq: number, body: Uint8Array, extra: { spliceA
         'export-seq': String(seq),
         ...(extra.spliceAt === undefined ? {} : { 'splice-at': String(extra.spliceAt) }),
         ...(extra.pinKey === undefined ? {} : { 'pin-key': extra.pinKey }),
-    }).then((headers) => fetch(`${fixture.baseUrl}/api/export/append`, { method: 'POST', headers, body: new Uint8Array(body) }))
+    }).then((headers) => stepFetch('append chunk', `${fixture.baseUrl}/api/export/append`, { method: 'POST', headers, body: new Uint8Array(body) }))
 }
 
 async function finalizeExport(id: string): Promise<{ ticket: string, total: number }> {
-    const response = await fetch(`${fixture.baseUrl}/api/export/finalize`, { method: 'POST', headers: await authed({ 'export-id': id }) })
+    const response = await stepFetch('finalize export', `${fixture.baseUrl}/api/export/finalize`, { method: 'POST', headers: await authed({ 'export-id': id }) })
     expect(response.status).toBe(200)
     const answer = await json(response)
     return { ticket: String(answer.ticket), total: Number(answer.total) }
 }
 
 async function exportStatus(id: string): Promise<{ status: number, body: Json }> {
-    const response = await fetch(`${fixture.baseUrl}/api/export/status`, { headers: await authed({ 'export-id': id }) })
+    const response = await stepFetch('export status', `${fixture.baseUrl}/api/export/status`, { headers: await authed({ 'export-id': id }) })
     return { status: response.status, body: await json(response) }
 }
 
 async function abortExport(id: string): Promise<Response> {
-    return await fetch(`${fixture.baseUrl}/api/export/abort`, { method: 'POST', headers: await authed({ 'export-id': id }) })
+    return await stepFetch('abort export', `${fixture.baseUrl}/api/export/abort`, { method: 'POST', headers: await authed({ 'export-id': id }) })
 }
 
 interface OpenDownload {
@@ -109,9 +131,15 @@ function openDownload(ticket: string | null, search = ''): Promise<OpenDownload>
 function readAll(res: IncomingMessage): Promise<{ bytes: Buffer, complete: boolean }> {
     return new Promise((resolve) => {
         const chunks: Buffer[] = []
+        const settle = () => resolve({ bytes: Buffer.concat(chunks), complete: res.complete })
+        // A response that closed before this call never emits 'close' again.
+        if (res.closed) {
+            settle()
+            return
+        }
         res.on('data', (chunk: Buffer) => chunks.push(chunk))
         res.on('error', () => {})
-        res.once('close', () => resolve({ bytes: Buffer.concat(chunks), complete: res.complete }))
+        res.once('close', settle)
         res.resume()
     })
 }
@@ -436,6 +464,33 @@ describe('T-S7 staged cap', () => {
     })
 })
 
+describe('test helpers', () => {
+    test('readAll settles for a response that closed before the call', async () => {
+        const server = createServer((_, res) => res.end('done'))
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+        try {
+            const { port } = server.address() as AddressInfo
+            const res = await new Promise<IncomingMessage>((resolve, reject) => {
+                const req = request({ host: '127.0.0.1', port }, resolve)
+                req.once('error', reject)
+                req.end()
+            })
+            res.resume()
+            await within(new Promise<void>((resolve) => res.once('close', resolve)), 5000, 'response close')
+            expect(res.closed).toBe(true)
+            const got = await within(readAll(res), 2000, 'readAll after close')
+            expect(got.complete).toBe(true)
+        } finally {
+            server.close()
+        }
+    })
+
+    test('within rejects a step that never settles with its label and the server output', async () => {
+        await expect(within(new Promise<never>(() => {}), 50, 'stuck step'))
+            .rejects.toThrow(`stuck step did not settle within 50 ms\n${fixture.output()}`)
+    })
+})
+
 describe('T-S8 and T-S15 streaming ends', () => {
     async function pausedBigDownload(key: string): Promise<{ id: string, opened: OpenDownload }> {
         const asset = pattern(96 * MIB, 31)
@@ -443,7 +498,7 @@ describe('T-S8 and T-S15 streaming ends', () => {
         const id = await beginExport()
         await stageEntry(id, 0, key, asset.length, Buffer.from('h'), Buffer.from('t'))
         const { ticket } = await finalizeExport(id)
-        const opened = await openDownload(ticket)
+        const opened = await within(openDownload(ticket), STEP_MS, 'open download')
         expect(opened.status).toBe(200)
         opened.res.pause()
         return { id, opened }
@@ -454,7 +509,7 @@ describe('T-S8 and T-S15 streaming ends', () => {
         const key = 'assets/abort-big.bin'
         const { id, opened } = await pausedBigDownload(key)
         expect((await abortExport(id)).status).toBe(200)
-        const got = await readAll(opened.res)
+        const got = await within(readAll(opened.res), STEP_MS, 'read aborted download')
         expect(got.complete).toBe(false)
         expect(await until(async () => !(await exportDirs()).includes(id))).toBe(true)
         expect((await exportStatus(id)).body.state).toBe('aborted')

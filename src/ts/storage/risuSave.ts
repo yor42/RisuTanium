@@ -137,10 +137,10 @@ function removeAllOccurrences(list: string[], value: string): void {
  * the root block, whose __directory field is what makes every other
  * directory-cached block loadable at all).
  */
-class CriticalBlockError extends Error {}
+export class CriticalBlockError extends Error {}
 
 
-async function checkCompressionStreams(){
+export async function checkCompressionStreams(){
     if(typeof CompressionStream === 'undefined'){
         const {makeCompressionStream} = await import('compression-streams-polyfill/ponyfill');
         //@ts-expect-error polyfill CompressionStream type is incompatible with globalThis.CompressionStream
@@ -422,7 +422,7 @@ export enum RisuSaveType {
 }
 
 /** Upstream names each SaveKV namespace block `kv:<namespace>`. */
-const KV_BLOCK_PREFIX = 'kv:'
+export const KV_BLOCK_PREFIX = 'kv:'
 const KV_FIELD = 'upstreamKvBlocks'
 
 type EncodeBlockArg = {
@@ -545,7 +545,7 @@ export class RisuSaveEncoder {
     // call actually encoded (by identity, not a copy). Consumed by saveDb()
     // to seed the identity tracker's WeakSet (dbChangeEffects.svelte.ts) so a
     // replacement that happens WHILE init() is still running isn't treated as
-    // "already seen" once that effect starts, and by prepareSaveIteration()'s
+    // "already seen" once that effect starts, and by a save pass's
     // post-reload filter, so a full reload doesn't double-encode an
     // already-marked character the same save iteration. Purely additional
     // bookkeeping; does not change what init() encodes or how. Released via
@@ -889,7 +889,7 @@ export class RisuSaveEncoder {
             // this holder's own `String(chaId)` key. `toSave.character`
             // itself is never rewritten to hold `String(chaId)` in place: a
             // failed write folds it back into the live tracker via
-            // `mergeUnsavedChanges`, and `prepareSaveIteration`'s no-reload
+            // `mergeUnsavedChanges`, and a save pass's no-reload
             // filter compares it against raw chaIds -- either one would drop
             // a numeric chaId's mark turned into `"5"` here.
             const markIndex = toSave.character.findIndex((m) => String(m) === key);
@@ -1101,7 +1101,7 @@ export class RisuSaveEncoder {
 }
 
 /** One block's framing fields, as `parseBlockHeader` reads them. */
-interface BlockHeader {
+export interface BlockHeader {
     type: RisuSaveType;
     compression: boolean;
     name: string;
@@ -1119,7 +1119,7 @@ interface BlockHeader {
  * aborts decoding with a `CriticalBlockError` rather than being skipped. Does
  * not check that the payload fits in `data`, and does not look at the payload.
  */
-function parseBlockHeader(data: Uint8Array, blockStart: number, hasChecksums: boolean): BlockHeader {
+export function parseBlockHeader(data: Uint8Array,blockStart: number, hasChecksums: boolean): BlockHeader {
     let offset = blockStart;
     const type = data[offset];
     const compression = data[offset + 1] === 1;
@@ -1215,7 +1215,7 @@ export interface SalvageOmittedBlock {
     reason: string
 }
 
-function salvageKindOfType(type: RisuSaveType): SalvageOmittedKind {
+export function salvageKindOfType(type: RisuSaveType): SalvageOmittedKind {
     switch (type) {
         case RisuSaveType.CHARACTER_WITH_CHAT:
         case RisuSaveType.CHARACTER_WITHOUT_CHAT:
@@ -1268,13 +1268,21 @@ export class RisuSaveReadError extends Error {
     }
 }
 
+/**
+ * One block as the first half of a decode leaves it: framed, checked and decompressed, its payload as text.
+ * `delivered` marks a character block a streaming reader already parsed and handed to its consumer; `failure` is the
+ * parse error such a block must raise when the assembly reaches it, and the block's `content` is no longer used.
+ */
+export interface DecodedBlock {
+    name: string;
+    type: RisuSaveType;
+    compression: boolean;
+    content: string;
+    delivered?: { failure?: unknown };
+}
+
 export class RisuSaveDecoder {
-    private blocks: {
-        name: string;
-        type: RisuSaveType;
-        compression: boolean;
-        content: string;
-    }[] = []
+    private blocks: DecodedBlock[] = []
     // Whether every block in `data` carries a trailing 4-byte CRC32 (format
     // version 2 — see the magicRisuSaveHeaderV2 comment above). Set by
     // decodeRisuSave() from the file's own header byte before construction,
@@ -1292,7 +1300,8 @@ export class RisuSaveDecoder {
     readonly omitted = new Map<string, SalvageOmittedBlock>();
     constructor(private hasChecksums: boolean = false, private strict: boolean = false, private salvage: boolean = false) {}
 
-    private recordOmitted(name: string, kind: SalvageOmittedKind, error: unknown) {
+    /** Records the first reason a block of this name could not be used; later reasons for the same name are dropped. */
+    recordOmitted(name: string, kind: SalvageOmittedKind, error: unknown) {
         if (!this.omitted.has(name)) {
             this.omitted.set(name, { kind, reason: error instanceof Error ? error.message : String(error) });
         }
@@ -1313,15 +1322,12 @@ export class RisuSaveDecoder {
     async decode(data: Uint8Array): Promise<Database> {
         console.log('Decoding RisuSave data');
         let offset = magicRisuSaveHeaderV2.length;
-        //@ts-expect-error Database has required fields, but we initialize empty and populate incrementally during decode
-        let db:Database = {}
         const loadedBlocks = new Set<string>();
         // The `upstreamKvBlocks` rule, independent of block order: when the file has any `kv:` block (decoded,
         // damaged or unreadable, or merely named by the directory), the namespaces decoded from those blocks are the
         // whole field, and the value root holds is discarded, so a block that failed never leaves a stale copy
         // behind. Only a file with no `kv:` block keeps root's value. A namespace in two blocks takes the last.
         let kvBlockSeen = false;
-        let rootKv: unknown = undefined;
         while (offset < data.length) {
             const blockStart = offset;
             let framed: { name: string, type: RisuSaveType } | null = null;
@@ -1386,6 +1392,21 @@ export class RisuSaveDecoder {
                 continue
             }
         }
+        return await this.assembleBlocks(this.blocks, loadedBlocks, kvBlockSeen);
+    }
+
+    /**
+     * The second half of a decode: assembles the database from the blocks the first half framed, checked and
+     * decompressed, in block order. `loadedBlocks` names every block that was read, and `kvBlockSeen` says whether any
+     * `kv:` block was framed, readable or not. A block with `delivered` set is a character that was already parsed and
+     * handed out; it adds its `characters` slot but no character, and rethrows its parse failure at its place.
+     */
+    async assembleBlocks(blocks: DecodedBlock[], loadedBlocks: Set<string>, kvBlockSeenInBlocks: boolean): Promise<Database> {
+        this.blocks = blocks;
+        let kvBlockSeen = kvBlockSeenInBlocks;
+        //@ts-expect-error Database has required fields, but we initialize empty and populate incrementally during decode
+        let db:Database = {}
+        let rootKv: unknown = undefined;
         let directory: string[] = []
         // Tracked instead of trusting "some block claimed type ROOT and
         // reached this switch case" alone — a bit-flip in a block's type
@@ -1454,8 +1475,14 @@ export class RisuSaveDecoder {
                     case RisuSaveType.CHARACTER_WITH_CHAT:
                     case RisuSaveType.CHARACTER_WITHOUT_CHAT:{
                         db.characters ??= [];
-                        const character = JSON.parse(this.blocks[key].content);
-                        db.characters.push(character);
+                        const delivered = this.blocks[key].delivered;
+                        if(delivered === undefined){
+                            const character = JSON.parse(this.blocks[key].content);
+                            db.characters.push(character);
+                        }
+                        else if(delivered.failure !== undefined){
+                            throw delivered.failure;
+                        }
                         break
                     }
                     case RisuSaveType.BOTPRESET:{
@@ -1625,7 +1652,7 @@ export class RisuSaveDecoder {
         }
         //to fix botpreset bugs
         if(!Array.isArray(db.botPresets) || db.botPresets.length === 0){
-            db.botPresets = [presetTemplate]
+            db.botPresets = [structuredClone(presetTemplate)]
             db.botPresetsId = 0
         }
         return db;
@@ -1672,6 +1699,36 @@ export async function salvageRisuSave(data: Uint8Array): Promise<{ db: Database,
  * through the default `decode` replaces that view; it holds no state a later read depends on.
  */
 const msgpackNil = Uint8Array.of(0xc0)
+
+/** The byte length of the header every legacy msgpack format starts with: raw, compressed and stream share it. */
+export const MSGPACK_SAVE_HEADER_BYTES = magicHeader.length
+
+/**
+ * One msgpack value read the way `decodeRisuSave` reads the body of a 'compressed' save (the default decoder). The
+ * caller's bytes are the value's own copy: binary values of the result may be views of them. The decoder's source is
+ * released before returning, as `decodeRisuSave` releases it.
+ */
+export function decodeMsgpackDefault(bytes: Uint8Array): unknown {
+    try {
+        return decode(bytes)
+    }
+    finally {
+        decode(msgpackNil)
+    }
+}
+
+/**
+ * One msgpack value read the way `decodeRisuSave` reads the body of a 'raw' or 'stream' save (`int64AsType: 'number'`,
+ * no records). Same ownership and release rules as `decodeMsgpackDefault`.
+ */
+export function decodeMsgpackInt64Number(bytes: Uint8Array): unknown {
+    try {
+        return unpackr.decode(bytes)
+    }
+    finally {
+        unpackr.decode(msgpackNil)
+    }
+}
 
 /** Every legacy msgpack read of a save, whichever branch or fallback produced it, ends by releasing msgpackr's source. */
 export async function decodeRisuSave(data:Uint8Array, options?: { strict?: boolean }){
@@ -1756,7 +1813,7 @@ async function decodeRisuSaveBranches(data:Uint8Array, options?: { strict?: bool
     }
 }
 
-function checkHeader(data: Uint8Array) {
+export function checkHeader(data: Uint8Array) {
 
     let header:'none'|'compressed'|'raw'|'stream'|'risusave' = 'raw'
 

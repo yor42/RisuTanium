@@ -1,21 +1,24 @@
 import type { JsonObject } from '../../blockFrame'
 import type { Database, botPreset } from '../../database.svelte'
 import { get } from 'svelte/store'
-import { plainObject, type ListDerivation } from '../codec'
+import { plainObject, type ListDerivation, type PreviousEncoding } from '../codec'
 import type { Store2Backend } from '../backend/types'
 import type { Store2Read } from '../backend/types'
 import type { CommitKey, KeyEnv } from '../format'
 import type { Store2SaveContext } from '../saveActive'
 import type { SaveEncoder } from '../saveEncoder'
 import type { Store2Snapshot } from '../saveLoop'
+import { freshEntry } from '../codec'
 import { advancePrevious } from './advancePrevious'
-import { realApply, type ApplyResult } from './apply'
+import { applyVerified, runAfter, type AppliedJournal, type ApplyResult } from './apply'
 import { D1_STATUS_AFTER_MS, D2_BUSY_MAX_MS, settledWhen } from './defer'
 import { createGuardB, type GuardB } from './guard'
-import { prepareFastForward, type FastForwardHost, type Step } from './prepare'
-import { readPeerTree } from './read'
+import { prepareFastForward, type FastForwardHost, type Prepared, type Step, type WaitOn } from './prepare'
+import { readEntityUnits, readPeerTree } from './read'
 import type { StoredTree } from '../previousOfTree'
+import type { ConflictAnswers, ConflictRecord } from './records'
 
+export type { ConflictAnswer, ConflictAnswers, ConflictChoice, ConflictLabel, ConflictRecord } from './records'
 export { GUARD_B_MS, type GuardB, type GuardBHit, type GuardEntry } from './guard'
 export type { FastForwardHost } from './prepare'
 
@@ -45,10 +48,17 @@ export interface FastForwardFrame {
     encoder: SaveEncoder
     port: FastForwardPort
     snapshot: Store2Snapshot | null
+    /** The page can ask about records both sides changed: they come back as a `conflict` outcome instead of a park. */
+    collect?: boolean
+    /** The answers of the person's last resolution; each applies only while the records still match its fingerprints. */
+    answers?: ConflictAnswers
 }
 
 export type FastForwardOutcome =
-    | { kind: 'applied' }
+    /** `restorePoint`: an answer kept both versions of a record that is not a chat, so the commit that follows keeps the peer's tree as a restore point. */
+    | { kind: 'applied', restorePoint?: true }
+    /** Records both sides changed that no answer covers: nothing was written; `epoch` is the commit key's epoch the conflicts were found over. */
+    | { kind: 'conflict', conflicts: ConflictRecord[], epoch: string }
     /** The page commits nothing and keeps its marks until `settled` resolves, which never rejects. */
     | { kind: 'deferred', settled: Promise<void> }
     /** Nothing was written: the loop parks with today's prompt. */
@@ -68,9 +78,17 @@ export interface FastForwardOptions {
     kind: Store2SaveContext['session']['kind']
     lists: ListDerivation
     env: KeyEnv
-    /** Tests only: replaces the writes' journal and check A. */
-    apply?: (steps: readonly Step[]) => ApplyResult
+    /**
+     * Tests only: replaces the writes' journal and check A. An answer that carries a journal (`AppliedJournal`) is
+     * also checked by the oracle and undone when it trips; a bare result is trusted as it always was.
+     */
+    apply?: (steps: readonly Step[]) => ApplyResult | AppliedJournal
+    /** Tests only: replaces the fresh encode of a live character, which the detection and the oracle use. */
+    freshEntry?: typeof freshEntry
 }
+
+/** How many times one run fetches the units its decisions need after the first reading of the tree. */
+const ENTITY_READS_MAX = 2
 
 let hostOverride: FastForwardHost | null = null
 
@@ -92,7 +110,7 @@ let realHost: Promise<FastForwardHost> | null = null
 
 function loadRealHost(): Promise<FastForwardHost> {
     realHost ??= (async (): Promise<FastForwardHost> => {
-        const [putBack, retained, restored, hook, origin, busy, proc, database] = await Promise.all([
+        const [putBack, retained, restored, hook, origin, busy, proc, database, marks, stores, effects] = await Promise.all([
             import('../../../process/memory/characterPutBack'),
             import('../../../process/coldRetained'),
             import('../../../process/memory/restoredBytes'),
@@ -101,10 +119,17 @@ function loadRealHost(): Promise<FastForwardHost> {
             import('../../../process/memory/busyActions'),
             import('../../../process/index.svelte'),
             import('../../database.svelte'),
+            import('../../characterSaveMarks'),
+            import('../../../stores.svelte'),
+            import('../../dbChangeEffects.svelte'),
         ])
         return {
             inUse: () => putBack.putBackKeepSet(),
             writing: chaId => origin.isWriting({ chaId }),
+            writingTargets: () => origin.writingTargets(),
+            mark: chaId => marks.markCharacterForSave(chaId),
+            selection: () => get(stores.selectedCharID),
+            select: index => stores.selectedCharID.set(index),
             busy: () => busy.isBusy() || busy.anyChokePointInFlight(),
             sending: () => get(proc.doingChat),
             installQuietly: fn => hook.withQuietCharacterInstall(fn),
@@ -115,14 +140,20 @@ function loadRealHost(): Promise<FastForwardHost> {
                 }
                 restored.clearRestoredBytes(String(Reflect.get(slot, 'chaId') ?? ''))
             },
+            installed: slot => effects.markIdentitySeen(slot),
             presetOps: () => ({
                 saveInto(working, slot) {
                     const copy = structuredClone(working)
                     if (!isWorkingDatabase(copy)) {
                         throw new Error('The working settings are not an object.')
                     }
-                    const image = typeof slot.image === 'string' ? slot.image : ''
-                    return plainObject(database.presetFromWorkingSettings(copy, String(slot.name ?? ''), image), 'preset')
+                    const held = structuredClone(slot)
+                    if (!isBotPreset(held)) {
+                        throw new Error('The preset record is not an object.')
+                    }
+                    held.name = String(held.name ?? '')
+                    held.image = typeof held.image === 'string' ? held.image : ''
+                    return plainObject(database.savedPresetFor(copy, held), 'preset')
                 },
                 apply(working, slot) {
                     const copy = structuredClone(working)
@@ -139,12 +170,19 @@ function loadRealHost(): Promise<FastForwardHost> {
     return realHost
 }
 
+/** Whether a send still writes a record the peer changed: a character it writes into (or a reply owner) or a chat it writes. */
+function waitBlocked(waits: WaitOn, host: FastForwardHost, port: FastForwardPort): boolean {
+    const writing = host.writingTargets()
+    const owners = port.replyOwners?.() ?? new Set<string>()
+    return waits.chars.some(chaId => writing.chars.has(chaId) || owners.has(chaId))
+        || waits.chats.some(([chaId, chatId]) => writing.chats.get(chaId)?.has(chatId) === true)
+}
+
 function hostOf(): Promise<FastForwardHost> {
     return hostOverride !== null ? Promise.resolve(hostOverride) : loadRealHost()
 }
 
 export function createFastForward(options: FastForwardOptions): FastForward {
-    const apply = options.apply ?? realApply
     const guard = createGuardB(() => Date.now())
     let cached: { key: string, tree: StoredTree } | null = null
     /** When a deferral of each class began, so the status line and the stuck-busy cap count from the first one. */
@@ -223,24 +261,80 @@ export function createFastForward(options: FastForwardOptions): FastForward {
             forget(port)
             return { kind: 'park', reason: 'base-moved' }
         }
-        const old = encoder.acknowledged()
-        const db = port.getDatabase()
-        const replyOwners = port.replyOwners?.() ?? new Set<string>()
-        let next
-        let prepared
-        try {
-            next = advancePrevious(old, tree)
-            prepared = prepareFastForward({ db, old, target: tree, next, host, replyOwners, env: options.env, lists: options.lists })
-        } catch (error) {
-            console.error(error)
-            forget(port)
-            return { kind: 'park', reason: 'prepare' }
+        // Detection reads the units of the characters it merges. A decision that needs units the source lacks names them,
+        // they are read, and everything is decided again over the same tree, so the decisions, the steps and the apply
+        // always run in one synchronous task after the last await.
+        let old = encoder.acknowledged()
+        let db = port.getDatabase()
+        let replyOwners = port.replyOwners?.() ?? new Set<string>()
+        let next: PreviousEncoding
+        let prepared: Prepared
+        for (let reads = 0; ; reads++) {
+            try {
+                next = advancePrevious(old, tree)
+                prepared = prepareFastForward({
+                    db, old, target: tree, next, host, replyOwners, env: options.env, lists: options.lists, fresh: options.freshEntry,
+                    collect: frame.collect === true, answers: frame.answers,
+                })
+            } catch (error) {
+                console.error(error)
+                forget(port)
+                return { kind: 'park', reason: 'prepare' }
+            }
+            if (prepared.kind !== 'need') {
+                break
+            }
+            if (reads >= ENTITY_READS_MAX) {
+                forget(port)
+                return { kind: 'park', reason: 'entity-late' }
+            }
+            const more = await readEntityUnits(options.backend, tree, prepared.units)
+            if (more.status === 'park') {
+                forget(port)
+                return { kind: 'park', reason: more.reason }
+            }
+            if (more.status === 'retry') {
+                return { kind: 'retry', reason: 'ff-unreadable', detail: more.detail }
+            }
+            tree = more.tree
+            cached = { key: targetKey, tree }
+            if (encoder.manifestKey !== frame.baseKey || encoder.pendingKey !== null) {
+                forget(port)
+                return { kind: 'park', reason: 'base-moved' }
+            }
+            old = encoder.acknowledged()
+            db = port.getDatabase()
+            replyOwners = port.replyOwners?.() ?? new Set<string>()
         }
         if (prepared.kind === 'park') {
             forget(port)
             return { kind: 'park', reason: prepared.reason }
         }
         const now = port.now()
+        const waits = prepared.waits
+        if (waits !== null) {
+            deferredSince.d1 ??= now
+            const since = deferredSince.d1
+            const epoch = deferralEpoch
+            return {
+                kind: 'deferred',
+                settled: settledWhen(() => !waitBlocked(waits, host, port), {
+                    now: () => port.now(),
+                    slowAfterMs: Math.max(0, D1_STATUS_AFTER_MS - (now - since)),
+                    onSlow: () => {
+                        if (epoch !== deferralEpoch) {
+                            return
+                        }
+                        statusSet = true
+                        port.setPeerWaiting?.(true)
+                    },
+                }),
+            }
+        }
+        if (prepared.kind === 'conflict') {
+            forget(port)
+            return { kind: 'conflict', conflicts: prepared.conflicts, epoch: frame.key.epoch }
+        }
         const sending = (): boolean => host.sending() || replyOwners.size > 0
         if (prepared.defers.has('d1') && sending()) {
             deferredSince.d1 ??= now
@@ -274,16 +368,35 @@ export function createFastForward(options: FastForwardOptions): FastForward {
             const since = deferredSince.d2
             return { kind: 'deferred', settled: settledWhen(() => !host.busy() || port.now() - since > D2_BUSY_MAX_MS, { now: () => port.now() }) }
         }
-        const result = apply(prepared.steps)
+        const outcome = options.apply === undefined ? applyVerified(prepared.steps) : options.apply(prepared.steps)
+        const result = typeof outcome === 'string' ? outcome : outcome.result
         if (result !== 'applied') {
             forget(port)
             return { kind: 'park', reason: 'check-a' }
         }
+        if (typeof outcome !== 'string') {
+            // The oracle: what the apply wrote must be what the decision meant. A throw is a violation, never an escape.
+            let held = false
+            try {
+                held = prepared.oracle.every(check => check())
+            } catch (error) {
+                console.error(error)
+            }
+            if (!held) {
+                outcome.undo()
+                forget(port)
+                return { kind: 'park', reason: 'oracle' }
+            }
+        }
+        // The encoder moves before any `after` hook: a hook that throws cannot leave a verified apply at the old tree.
         encoder.fastForward(next)
         guard.arm(prepared.guard)
         cached = null
         forget(port)
-        return { kind: 'applied' }
+        if (options.apply === undefined) {
+            runAfter(prepared.steps)
+        }
+        return prepared.restorePoint ? { kind: 'applied', restorePoint: true } : { kind: 'applied' }
     }
 
     return { run, invalidate, guard }

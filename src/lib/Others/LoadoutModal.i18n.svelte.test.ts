@@ -29,6 +29,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
 vi.mock(import('src/ts/loadout'), () => ({
     applyLoadout: spies.applyLoadout,
     saveCurrentLoadout: vi.fn(),
+    loadoutPresetIndex: vi.fn(() => -1),
 }) as unknown as typeof import('src/ts/loadout'))
 
 vi.mock(import('src/ts/storage/database.svelte'), () => ({

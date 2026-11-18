@@ -165,6 +165,7 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 import { recordKeyEventBlocked } from '../../ts/keyEventBlocked'
 import { DBState } from '../../ts/stores.svelte'
 import { language } from '../../lang'
+import { resetToastHostForTests, toastHost } from '../../ts/toast/toastHost.svelte'
 import GridCatalog from './GridCatalog.svelte'
 
 //#region fixtures and helpers
@@ -464,6 +465,7 @@ beforeEach(() => {
     removeCharSpy.mockClear()
     checkCharOrderSpy.mockClear()
     endGridSpy.mockClear()
+    resetToastHostForTests()
     trashCharactersSpy.mockReset()
     trashCharactersSpy.mockImplementation(async () => 0)
     confirmOpen = []
@@ -546,6 +548,15 @@ describe('Grid keyboard: one place', () => {
             expect(isEditing(rig.target)).toBe(true)
             // The tile was in view: nothing scrolled.
             expect(rig.stub.writes).toEqual([])
+        })
+    })
+
+    test('(G) O7 an Alt+arrow move posts no Undo toast (passes before and after the order Undo exists)', async () => {
+        flat()
+        await withGrid({}, async (rig) => {
+            await moveTile(rig.target, 'Char B', 'ArrowRight')
+            expect(shape()).toEqual(['A', 'C', 'B', 'D', 'E', 'F', 'G', 'H'])
+            expect(toastHost.visible).toHaveLength(0)
         })
     })
 

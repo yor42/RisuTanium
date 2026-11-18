@@ -39,8 +39,6 @@ import { isRestorableColdStorageKey, listColdBackupRoots, listInnerColdStorageKe
 import { isBusy } from "../memory/busyActions";
 import { inlayTokenRegex } from "../../util/inlayTokens";
 import { tabLockSnapshotShowsOthers } from "../../storage/storageTabLocks";
-import { pageRunsLegacyDeleters } from "../../storage/pageStorageMode";
-import { getResidency } from "../../storage/store2/residencyActive";
 
 /** Longest stretch of walking, measured by the clock, before the walk gives the event loop a turn. */
 const SLICE_MS = 40
@@ -582,15 +580,16 @@ function coldRootsOf(db: Pick<Database, 'characters' | 'pluginCustomStorage'>): 
 
 //#region the checks that gate a deletion
 
-type TabState = 'alone' | 'others' | 'unsupported'
+export type TabState = 'alone' | 'others' | 'unsupported'
 
 /**
  * Whether another tab of this page's origin is open or an exclusive storage
  * operation has been requested, read from the Web Locks the tabs hold for
  * their lifetime. Where Web Locks are missing there is no way to tell, and
- * a lock query that fails counts as "another tab".
+ * a lock query that fails counts as "another tab". Shared by every deleter
+ * that must not run beside another tab.
  */
-async function tabState(): Promise<TabState> {
+export async function queryOtherTabs(): Promise<TabState> {
     let manager: LockManager | undefined
     try {
         manager = locksSupported === false || typeof navigator === 'undefined' ? undefined : navigator.locks
@@ -689,16 +688,12 @@ async function findUnreferenced(
 let inlayRefusalWarned = false
 
 /**
- * Whether this page may delete inlays. A page with a registered store2
- * residency never does, and neither does a page that is not a legacy or block
- * page (`read-only`, `unset`): the keep set here knows only the legacy data, so
- * an inlay a store2 profile still shows could be removed. The refusal is
- * announced once per page.
+ * Whether this page may delete inlays: never, on any page. No page mode deletes
+ * inlays through this path, because the keep set here knows only the legacy
+ * data, so an inlay a store2 profile still shows could be removed. The refusal
+ * is announced once per page.
  */
 function inlayDeletionAllowed(): boolean {
-    if (getResidency() === null && pageRunsLegacyDeleters()) {
-        return true
-    }
     if (!inlayRefusalWarned) {
         inlayRefusalWarned = true
         console.warn('Inlay clean-up deletes nothing on this page.')
@@ -718,10 +713,14 @@ async function runBatch(batch: QueuedCleanup[], stats:InlayCleanupOutcome, pacer
         stats.skipped = reason
         return disposition
     }
+    // Refused first: a page that never deletes must neither wait for a clean save loop nor query the tab locks.
+    if (!inlayDeletionAllowed()) {
+        return skip('inlay deletion is off on this page', 'done')
+    }
     if (!isSaveClean() || isBusy()) {
         return 'wait'
     }
-    const tabs = await pacer.io(tabState())
+    const tabs = await pacer.io(queryOtherTabs())
     if (tabs === 'unsupported') {
         return skip('Web Locks are not available, so another open tab cannot be ruled out', 'done')
     }
@@ -756,7 +755,7 @@ async function runBatch(batch: QueuedCleanup[], stats:InlayCleanupOutcome, pacer
     }
     const { removeInlayAsset } = await pacer.io(import("./inlays"))
     for (const id of keep.unreferenced) {
-        const state = await pacer.io(tabState())
+        const state = await pacer.io(queryOtherTabs())
         if (state !== 'alone' || !stillCurrent(startMarks, database)) {
             return skip('the profile changed while deleting', 'retry')
         }

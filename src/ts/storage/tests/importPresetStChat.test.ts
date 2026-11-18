@@ -100,6 +100,7 @@ vi.mock('src/ts/rpack/rpack_js.js', () => ({
 
 import { DBState } from 'src/ts/stores.svelte'
 import { importPreset, presetTemplate, type botPreset } from 'src/ts/storage/database.svelte'
+import { withoutPresetMeta } from 'src/ts/storage/presetMeta'
 import { detectPromptJSONType, promptConvertion } from 'src/ts/process/prompt'
 
 function fileOf(name: string, content: unknown) {
@@ -107,7 +108,7 @@ function fileOf(name: string, content: unknown) {
 }
 
 function pushedPresets(): botPreset[] {
-    return DBState.db.botPresets
+    return DBState.db.botPresets.map(withoutPresetMeta)
 }
 
 /** A chat-shaped file with a main prompt and the chat history, no `chat_completion_source`. */

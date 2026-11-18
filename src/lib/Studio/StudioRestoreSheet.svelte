@@ -1,7 +1,8 @@
 <script lang="ts">
     import { onMount, untrack } from 'svelte'
     import { language } from '../../lang'
-    import { createLiveReader, resolveLiveTarget } from '../../ts/studio/edit/studioSetters'
+    import { openStudioModuleId } from '../../ts/studio/assets/openModuleForm.svelte'
+    import { createLiveReader, createModuleLiveReader, isModuleTarget, resolveLiveTarget } from '../../ts/studio/edit/studioSetters'
     import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
     import { listChangedElsewhere, RESTORE_PATH_ORDER, type RestorePath } from '../../ts/studio/history/historyModel'
     import type { StudioRefusal } from '../../ts/studio/history/ownerHistory.svelte'
@@ -32,8 +33,12 @@
     // Paths whose live value was changed outside Studio's history since the visit.
     const changed = $derived.by((): RestorePath[] => {
         if (!restore || owner === null) return []
-        const resolved = resolveLiveTarget(owner)
-        return resolved.ok ? listChangedElsewhere(restore, createLiveReader(resolved.target)) : []
+        // A module owner resolves only through the published open-module id, as the service resolves it; the read of that
+        // id makes this derivation follow the publish.
+        const resolved = resolveLiveTarget(owner, openStudioModuleId)
+        if (!resolved.ok) return []
+        const { target } = resolved
+        return listChangedElsewhere(restore, isModuleTarget(target) ? createModuleLiveReader(target.module) : createLiveReader(target))
     })
     // A changed path is kept unless the user chooses to overwrite it.
     let overwritten = $state<RestorePath[]>([])
@@ -52,6 +57,7 @@
             case 'exampleMessage': return language.exampleMessage
             case 'customModuleToggle': return language.customPromptTemplateToggle
             case 'hideChatIcon': return language.hideChatIcon
+            case 'risutanium_render_when_complete': return language.studioFormRenderWhenComplete
             case 'note': return language.note
             case 'alternateGreetings': return language.altGreet
         }

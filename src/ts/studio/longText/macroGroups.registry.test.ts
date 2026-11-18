@@ -96,10 +96,10 @@ describe('the other macros', () => {
         expect(others.filter((item) => item.name.startsWith('#') || item.name.startsWith(':') || item.name === '//')).toEqual([])
     })
 
-    test('C2-U5 time is offered once, by its row, and the entry it runs is the later registration', () => {
+    test('C2-U5 time is offered once, by its row, and is registered once', () => {
         expect(items.filter((item) => item.name === 'time')).toHaveLength(1)
         expect(others.find((item) => item.name === 'time')).toBeUndefined()
-        expect(index.entries.filter((entry) => entry.name === 'time').length).toBeGreaterThan(1)
+        expect(index.entries.filter((entry) => entry.name === 'time')).toHaveLength(1)
     })
 
     test('C2-U5 no other item is reached by a row', () => {

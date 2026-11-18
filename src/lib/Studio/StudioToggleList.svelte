@@ -63,6 +63,12 @@
     const unreadable = $derived([...def.diagnostics.values()].filter((list) => list.some((diagnostic) => diagnostic.code === 'unreadable')).length)
     const groups = $derived(rows.filter((row) => row.expandable))
 
+    // A value row whose key the open saved-values question is about.
+    function carryFlagged(id: LineId): boolean {
+        const line = lineById(def, id)?.line
+        return line !== undefined && line.form.kind === 'value' && (builder.question?.flagged.has(line.parts[0]) ?? false)
+    }
+
     async function focusRow(id: string): Promise<void> {
         focusId = id
         await afterFlush()
@@ -188,6 +194,7 @@
                     selected={builder.editor?.id === row.id}
                     tabbable={String(row.id) === tabId}
                     flags={flagsOf(def, row.id)}
+                    carryFlag={carryFlagged(row.id)}
                     onactivate={() => activate(row.id)}
                     onfocus={() => { focusId = String(row.id) }}
                     ontoggle={() => toggle(row.id)}

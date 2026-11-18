@@ -388,8 +388,8 @@ async function copyBack(env: CopyBackEnvironment, indexedDb: IndexedDbHandle): P
 /**
  * Deletes the OPFS files a copy-back left behind. Runs only when the flag is
  * unset and the clean-up marker is pending, and the caller guarantees this page
- * loaded its main file from IndexedDB in this page load and did not do the copy
- * itself. A file is deleted only when it is a file, its name is the hex of a key,
+ * booted from IndexedDB in this page load (a store2 boot, or a read-only page
+ * that decoded its main file) and did not do the copy itself. A file is deleted only when it is a file, its name is the hex of a key,
  * and IndexedDB holds that key (for the main file, or the block store's head,
  * which replaces it once the profile is converted); every other entry is left, and
  * `coldstorage_<key>.json` unit files are never touched. The marker is removed

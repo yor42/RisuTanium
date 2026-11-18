@@ -102,13 +102,14 @@ import {
     presetTemplate,
     type botPreset,
 } from 'src/ts/storage/database.svelte'
+import { withoutPresetMeta } from 'src/ts/storage/presetMeta'
 
 function fileOf(name: string, content: unknown) {
     return { name, data: new TextEncoder().encode(JSON.stringify(content)) }
 }
 
 function pushedPresets(): botPreset[] {
-    return DBState.db.botPresets
+    return DBState.db.botPresets.map(withoutPresetMeta)
 }
 
 /**

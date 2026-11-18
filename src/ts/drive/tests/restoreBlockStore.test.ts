@@ -169,7 +169,6 @@ import { RisuSaveEncoder, decodeRisuSave, encodeRisuSaveLegacy } from '../../sto
 import { getPageBlockOwner } from '../../storage/pageBlockOwner'
 import { getPageStorageMode, setPageStorageMode } from '../../storage/pageStorageMode'
 import { fingerprintMainFile } from '../../storage/mainFileFingerprint'
-import { performSaveStep } from '../../storage/saveStep'
 import { treeToBlockSet } from '../../storage/treeToBlockSet'
 import { encodeHead, parseHead } from '../../storage/headSwap'
 import { characterBlockKey, isGenerationId } from '../../storage/blockKeys'
@@ -451,8 +450,8 @@ describe('a page with no block head converts by restoring', () => {
         expect(getPageStorageMode().kind, 'the page is a block page').toBe('block')
 
         const owner = (await getPageBlockOwner())!
-        const next = await performSaveStep({ owner, store }, { input: await treeToBlockSet(await committedTree() as unknown as Database) })
-        expect(next).toMatchObject({ kind: 'saved', converted: false })
+        const next = await owner.commitSave(await treeToBlockSet(await committedTree() as unknown as Database))
+        expect(next).toMatchObject({ kind: 'committed' })
     })
 })
 

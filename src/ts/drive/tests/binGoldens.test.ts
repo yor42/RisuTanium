@@ -267,7 +267,7 @@ import { readColdStorageItem } from 'src/ts/process/coldstorage.svelte'
 import { coldStorageHeader, formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
 import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
 import { injectRestoreStore } from './restoreSupport'
-import { normalizeHypaV3Presets } from 'src/ts/process/memory/hypaV3Presets'
+import { createHypaV3Preset, normalizeHypaV3Presets } from 'src/ts/process/memory/hypaV3Presets'
 
 //#region helpers
 
@@ -797,12 +797,58 @@ describe('HypaV3 presets through the upstream-shaped .bin round trip', () => {
     }
 
     const BUILT_PRESETS = [presetOf('Zeta', 0.4, 0.4), presetOf('Alpha', 0.4, 0.4), presetOf('Mid', 0.3, 0.5)]
+    /** What the fork holds for the same presets: it adds its two recency settings on every load. */
+    const RECENCY_DEFAULTS = { enableRecencyWeighting: false, recencyHalfLifeDays: 30 }
+    const BUILT_PRESETS_FORK = BUILT_PRESETS.map((p) => ({ name: p.name, settings: { ...p.settings, ...RECENCY_DEFAULTS } }))
+
+    /**
+     * The 20 default settings of upstream's `createHypaV3Preset` (upstream/main 7be37f64f, hypav3.ts). Refresh this
+     * model if upstream's defaults change.
+     */
+    const UPSTREAM_HYPAV3_DEFAULTS: Record<string, string | number | boolean> = {
+        summarizationModel: 'subModel',
+        summarizationPrompt: '',
+        reSummarizationPrompt: '',
+        memoryTokensRatio: 0.2,
+        extraSummarizationRatio: 0,
+        maxChatsPerSummary: 6,
+        recentMemoryRatio: 0.4,
+        similarMemoryRatio: 0.4,
+        enableSimilarityCorrection: false,
+        preserveOrphanedMemory: false,
+        processRegexScript: false,
+        doNotSummarizeUserMessage: false,
+        summaryChunkSeparator: '\\n\\n',
+        useExperimentalImpl: false,
+        summarizationRequestsPerMinute: 20,
+        summarizationMaxConcurrent: 1,
+        embeddingRequestsPerMinute: 100,
+        embeddingMaxConcurrent: 1,
+        alwaysToggleOn: false,
+        queryChatCount: 3,
+    }
+
+    /**
+     * Models upstream's load of every preset (`setDatabase` calling `createHypaV3Preset`): start from the defaults, copy a
+     * stored value only when its key is a default and the type matches, and keep `{name, settings}` with no id.
+     */
+    function upstreamLoad(presets: { name?: string, settings?: object }[]) {
+        return presets.map((p, i) => {
+            const settings = { ...UPSTREAM_HYPAV3_DEFAULTS }
+            for (const [key, value] of Object.entries(p.settings || {})) {
+                if (key in settings && typeof value === typeof settings[key]) {
+                    settings[key] = value
+                }
+            }
+            return { name: p.name || `Preset ${i + 1}`, settings }
+        })
+    }
     const BUILT_FIELDS = { hypav2: true, hanuraiEnable: false, hypaV3: false, supaModelType: 'subModel', memoryAlgorithmType: 'hypaMemoryV2' }
     const BUILT_ROOT = { ...BUILT_FIELDS, hypaV3Presets: BUILT_PRESETS, hypaV3PresetId: 2, characterOrder: [], personas: [] }
 
-    function upstreamContainer(): Uint8Array {
+    function upstreamContainer(chatExtras: object = {}): Uint8Array {
         const blocks = [
-            { type: TYPE.character, name: 'cha-inline', value: { type: 'character', chaId: 'cha-inline', name: 'Inline Alice', chatPage: 0, chats: [{ id: 'chat-1', message: [{ time: 1, data: 'hello', role: 'char' }], note: '', name: '', localLore: [] }] } },
+            { type: TYPE.character, name: 'cha-inline', value: { type: 'character', chaId: 'cha-inline', name: 'Inline Alice', chatPage: 0, chats: [{ id: 'chat-1', message: [{ time: 1, data: 'hello', role: 'char' }], note: '', name: '', localLore: [], ...chatExtras }] } },
             { type: TYPE.preset, name: 'preset', value: [{ name: 'Golden Preset', id: 'preset-golden', temperature: 80, maxContext: 4000, maxResponse: 300 }] },
             { type: TYPE.modules, name: 'modules', value: [] },
             { type: TYPE.loadouts, name: 'loadouts', value: [] },
@@ -844,7 +890,7 @@ describe('HypaV3 presets through the upstream-shaped .bin round trip', () => {
 
         // Leg 2: the function setDatabase calls on every load.
         normalizeHypaV3Presets(root as unknown as Parameters<typeof normalizeHypaV3Presets>[0])
-        expect(nameAndSettings(root)).toEqual(BUILT_PRESETS)
+        expect(nameAndSettings(root)).toEqual(BUILT_PRESETS_FORK)
         expect(root.hypaV3PresetId).toBe(2)
         const ids = root.hypaV3Presets.map((p) => p.id)
         expect(new Set(ids).size).toBe(3)
@@ -861,7 +907,7 @@ describe('HypaV3 presets through the upstream-shaped .bin round trip', () => {
         const decoded = await decodeRisuSave(databaseEntryOf(concatBytes(backupSink.writes)), { strict: true }) as unknown as PresetRoot
         expect(fieldsOf(decoded)).toEqual(BUILT_FIELDS)
         expect(decoded.hypaV3Presets.map((p) => Object.keys(p).sort())).toEqual([['id', 'name', 'settings'], ['id', 'name', 'settings'], ['id', 'name', 'settings']])
-        expect(nameAndSettings(decoded)).toEqual(BUILT_PRESETS)
+        expect(nameAndSettings(decoded)).toEqual(BUILT_PRESETS_FORK)
         expect(decoded.hypaV3Presets.map((p) => p.id)).toEqual(ids)
         expect(decoded.hypaV3PresetId).toBe(2)
 
@@ -869,16 +915,95 @@ describe('HypaV3 presets through the upstream-shaped .bin round trip', () => {
         normalizeHypaV3Presets(decoded as unknown as Parameters<typeof normalizeHypaV3Presets>[0])
         expect(decoded.hypaV3Presets.map((p) => p.id)).toEqual(ids)
 
-        // Modelled leg: upstream rebuilds each preset as {name, settings} and drops the id.
-        const upstreamLoaded = {
-            hypaV3Presets: decoded.hypaV3Presets.map((p) => ({ name: p.name, settings: p.settings })),
+        // Modelled upstream leg: upstream's load turns the exported presets back into exactly the upstream-shaped ones.
+        expect(Object.keys(UPSTREAM_HYPAV3_DEFAULTS).sort()).toEqual(Object.keys(presetOf('x', 0.4, 0.4).settings).sort())
+        const upstreamLoaded = upstreamLoad(decoded.hypaV3Presets)
+        expect(upstreamLoaded).toEqual(BUILT_PRESETS)
+        expect(decoded.hypaV3PresetId).toBe(2)
+
+        // Fork return: the fork mints the ids again and reads the two recency settings as off/30.
+        const forkReturn = {
+            hypaV3Presets: upstreamLoaded,
             hypaV3PresetId: decoded.hypaV3PresetId,
             hypaV3Settings: {},
             supaMemoryPrompt: '',
         }
-        normalizeHypaV3Presets(upstreamLoaded as unknown as Parameters<typeof normalizeHypaV3Presets>[0])
-        expect(upstreamLoaded.hypaV3Presets.map((p) => ({ name: p.name, settings: p.settings }))).toEqual(BUILT_PRESETS)
-        expect(upstreamLoaded.hypaV3PresetId).toBe(2)
-        expect(new Set((upstreamLoaded.hypaV3Presets as unknown as { id: string }[]).map((p) => p.id)).size).toBe(3)
+        normalizeHypaV3Presets(forkReturn as unknown as Parameters<typeof normalizeHypaV3Presets>[0])
+        const returned = forkReturn.hypaV3Presets as unknown as { id: string, name: string, settings: object }[]
+        expect(returned.map((p) => ({ name: p.name, settings: p.settings }))).toEqual(BUILT_PRESETS_FORK)
+        expect(forkReturn.hypaV3PresetId).toBe(2)
+        expect(new Set(returned.map((p) => p.id)).size).toBe(3)
+        for (const p of returned) {
+            expect(typeof p.id).toBe('string')
+            expect(p.id).not.toBe('')
+        }
+    })
+
+    // compatibility guard: the summary time is opaque chat data, so it passes before and after
+    test('B2: a summary time on a chat survives restore, export and decode', async () => {
+        const T = 1_763_424_000_000
+        const summaries = [
+            { text: 'legacy', chatMemos: ['m0'], isImportant: false, tags: [] },
+            { text: 'dated', chatMemos: ['m1'], isImportant: false, tags: [], createdAt: T },
+        ]
+        const root = await restoreBytes(upstreamContainer({ hypaV3Data: { summaries } }))
+        getDatabaseMock.mockImplementation(() => root as unknown as Database)
+        backupSink.writes.length = 0
+        await SaveLocalBackup()
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        const decoded = await decodeRisuSave(databaseEntryOf(concatBytes(backupSink.writes)), { strict: true })
+        const chat = decoded.characters[0].chats[0] as unknown as { hypaV3Data: { summaries: object[] } }
+        expect(chat.hypaV3Data.summaries).toEqual(summaries)
+    })
+
+    // regression reproducer: base normalize drops the two recency keys, so the option resets to off on load
+    test('B3: a fork .bin keeps the recency settings through restore, normalize, export and decode; upstream drops them', async () => {
+        const forkPreset = {
+            id: 'preset-fork',
+            name: 'Fork',
+            settings: { ...presetOf('Fork', 0.4, 0.4).settings, enableRecencyWeighting: true, recencyHalfLifeDays: 14 },
+        }
+
+        // B3-0: the fork .bin is written by the real exporter.
+        const first = await restoreBytes(upstreamContainer()) as PresetRoot
+        first.hypaV3Presets = [forkPreset]
+        first.hypaV3PresetId = 0
+        getDatabaseMock.mockImplementation(() => first as unknown as Database)
+        backupSink.writes.length = 0
+        await SaveLocalBackup()
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        const forkBin = concatBytes(backupSink.writes)
+
+        // B3-1: raw restore of the fork .bin.
+        setDatabaseMock.mockClear()
+        const root = await restoreBytes(forkBin) as PresetRoot
+        expect(root.hypaV3Presets).toEqual([forkPreset])
+
+        // B3-2: the function setDatabase calls on every load.
+        normalizeHypaV3Presets(root as unknown as Parameters<typeof normalizeHypaV3Presets>[0])
+        const settingsOf = (db: PresetRoot) => db.hypaV3Presets[0].settings as { enableRecencyWeighting?: boolean, recencyHalfLifeDays?: number }
+        expect(settingsOf(root).enableRecencyWeighting).toBe(true)
+        expect(settingsOf(root).recencyHalfLifeDays).toBe(14)
+
+        // B3-3: export and decode keep both keys.
+        getDatabaseMock.mockImplementation(() => root as unknown as Database)
+        backupSink.writes.length = 0
+        await SaveLocalBackup()
+        const decoded = await decodeRisuSave(databaseEntryOf(concatBytes(backupSink.writes)), { strict: true }) as unknown as PresetRoot
+        expect(decoded.hypaV3Presets.map((p) => Object.keys(p).sort())).toEqual([['id', 'name', 'settings']])
+        expect(settingsOf(decoded)).toEqual(forkPreset.settings)
+
+        // B3-4: upstream's load drops the two keys and the id, and every other value is equal.
+        const upstreamLoaded = upstreamLoad(decoded.hypaV3Presets)
+        expect(upstreamLoaded).toEqual([{ name: 'Fork', settings: presetOf('Fork', 0.4, 0.4).settings }])
+
+        // B3-5: fork return: the option is off again (fork -> upstream -> fork resets it).
+        const forkReturn = { hypaV3Presets: upstreamLoaded, hypaV3PresetId: 0, hypaV3Settings: {}, supaMemoryPrompt: '' }
+        normalizeHypaV3Presets(forkReturn as unknown as Parameters<typeof normalizeHypaV3Presets>[0])
+        const returned = forkReturn.hypaV3Presets[0] as unknown as { settings: object }
+        expect(returned.settings).toEqual({ ...presetOf('Fork', 0.4, 0.4).settings, ...RECENCY_DEFAULTS })
+
+        // B3-6: the fixture equals what the fork's own preset constructor produces for the same input.
+        expect(createHypaV3Preset('Fork', forkPreset.settings).settings).toEqual(forkPreset.settings)
     })
 })

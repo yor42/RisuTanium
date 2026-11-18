@@ -987,7 +987,7 @@ describe('T11: sweepAvatarThumbs and buildThumbKeepSet', () => {
             'assets/kept2.png': { v: THUMB_VERSION - 1, src: 'y' },
             // Same basename as a kept asset, but a different full path: the
             // sweep matches on the full loc, not the basename, so this is
-            // deleted -- stricter than cleanChunks's basename-based keep-set.
+            // deleted -- stricter than the basename-based asset keep-set.
             'other/assets/kept2.png': { v: THUMB_VERSION, src: 'z' },
             // Not referenced anywhere in `keep`.
             'assets/orphan.png': { v: THUMB_VERSION, src: 'w' },

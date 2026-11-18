@@ -38,6 +38,10 @@ vi.mock('src/lang', async () => {
     for (const key of [
         'studioAssetEmotionsElsewhere', 'studioAssetRowMenu', 'studioAssetDeletedOne', 'studioAssetFileGone', 'studioAssetFileUnchecked',
         'studioAssetDupUnreadableCount', 'studioAssetCheckProgress', 'studioAssetRemovedExtras', 'studioAssetSurvivorFolder',
+        'studioAssetMergeTitle', 'studioAssetMergeAlreadyShows', 'studioAssetMergeModuleExact', 'studioAssetMergeChats', 'studioAssetMergeArchivedChats',
+        'studioAssetMergeCharacters', 'studioAssetMergeArchivedCharacters', 'studioAssetMergeFolder', 'studioAssetMergeAtLeast', 'studioAssetMergePartialName',
+        'studioAssetMergeConfirmHit', 'studioAssetMergeConfirmUnfinished', 'studioStepAssetMerge', 'studioAssetNotRestored',
+        'studioAssetPlaceNumbered', 'studioAssetPlaceAltFirstMessage', 'studioAssetPlaceTriggerEffect', 'studioAssetPlaceTriggerCondition',
     ]) table[key] = call(key)
     return { language: new Proxy(table, { get: (target, key) => (typeof key === 'symbol' ? undefined : key in target ? target[key] : base[key]) }) }
 })
@@ -306,21 +310,26 @@ describe('the groups', () => {
         expect(parts('studio-asset-remove-extras')).toHaveLength(0)
     })
 
-    test('different names over one stored path are a merge candidate, with a Merge button only when the merge stage gives one', async () => {
+    test('different names over one stored path are a merge candidate: Merge is offered and opens the preview', async () => {
         db.db.characters = [makeCharacter([assetRow('x', 'assets/a.png'), assetRow('y', 'assets/a.png')])]
         await show(makePort({ sizes: {}, bytes: {} }))
         await openPanel()
         expect(groupClasses()).toEqual(['sameFileDifferentNames'])
-        expect(parts('studio-asset-dup-merge')).toHaveLength(0)
-        for (const entry of mounted.splice(0)) {
-            await unmount(entry.app)
-            entry.host.remove()
-        }
-        const merged: string[] = []
-        await show(makePort({ sizes: {}, bytes: {} }), { onmerge: (group: { rows: { name: string }[] }) => merged.push(group.rows.map((row) => row.name).join('+')) })
-        await openPanel()
+        expect(parts('studio-asset-merge-preview')).toHaveLength(0)
         await click(part('studio-asset-dup-merge'))
-        expect(merged).toEqual(['x+y'])
+        expect(parts('studio-asset-merge-preview')).toHaveLength(1)
+        expect(part('studio-asset-merge-preview').querySelector('h3')?.textContent).toBe('studioAssetMergeTitle(y,x)')
+    })
+
+    test('an array that is only reported offers no Merge', async () => {
+        db.db.characters = [makeCharacter([assetRow('x', 'assets/a.png'), assetRow('y', 'assets/a.png')])]
+        db.db.characters[0].emotionImages = [['happy', 'e/1.png'], ['glad', 'e/1.png']]
+        await show(makePort({ sizes: {}, bytes: {} }))
+        await openPanel()
+        const arrays = parts('studio-asset-dup-array')
+        expect(arrays.map((array) => array.dataset.array)).toEqual(['additionalAssets', 'emotionImages'])
+        expect(arrays[0].querySelectorAll('[data-part="studio-asset-dup-merge"]')).toHaveLength(1)
+        expect(arrays[1].querySelectorAll('[data-part="studio-asset-dup-merge"]')).toHaveLength(0)
     })
 
     test('a file that cannot be read is marked, left out of the other groups and counted', async () => {
@@ -529,5 +538,114 @@ describe('the enabled modules', () => {
         await show(makePort({ sizes: {}, bytes: {} }))
         await openPanel()
         expect(parts('studio-asset-dup-modules')).toHaveLength(0)
+    })
+})
+
+describe('Merge from the panel', () => {
+    const SAME_BYTES = { 'assets/a.png': 'h1', 'assets/b.png': 'h1' }
+
+    // Different names over two paths whose bytes are equal: only the byte layer's hashes make them one file, so only the
+    // survivor deps the panel hands over let the setter find a surviving row for the removed one.
+    async function openHashEqualMerge(): Promise<void> {
+        db.db.characters = [makeCharacter([assetRow('x', 'assets/a.png'), assetRow('y', 'assets/b.png')])]
+        setSessionAssetSizeJobForTests(listJob({ 'assets/a.png': 10, 'assets/b.png': 10 }))
+        await show(makePort({ sizes: { 'assets/a.png': 10, 'assets/b.png': 10 }, bytes: SAME_BYTES }))
+        await openPanel()
+        await checkBytes()
+        expect(groupClasses()).toEqual(['sameFileDifferentNames'])
+        await click(part('studio-asset-dup-merge'))
+    }
+
+    test('T-HASH: a group that is one file only by hash lands, because the panel hands over its survivor deps', async () => {
+        await openHashEqualMerge()
+        expect(parts('studio-asset-merge-preview')).toHaveLength(1)
+        await click(part('studio-asset-merge-do'))
+        expect(rowNames()).toEqual(['x@assets/a.png'])
+        expect(parts('studio-asset-merge-refusal')).toHaveLength(0)
+        expect(parts('studio-asset-merge-preview')).toHaveLength(0)
+        expect(service.view(A).done).toHaveLength(1)
+        expect(toastHost.visible.map((toast) => toast.text)).toEqual(['studioStepAssetMerge(y,x)'])
+    })
+
+    test('two paths whose bytes were never checked are no merge candidate', async () => {
+        db.db.characters = [makeCharacter([assetRow('x', 'assets/a.png'), assetRow('y', 'assets/b.png')])]
+        await show(makePort({ sizes: {}, bytes: {} }))
+        await openPanel()
+        expect(groupClasses()).toEqual([])
+        expect(parts('studio-asset-dup-merge')).toHaveLength(0)
+    })
+
+    test('T-NR: the toast of a merge whose Undo leaves a place puts the list in the notice of the visit that is open', async () => {
+        db.db.characters = [{ ...makeCharacter([assetRow('x', 'assets/a.png'), assetRow('y', 'assets/a.png')]), desc: 'a {{image::y}} b {{image::x}}' }]
+        studioScreen.open = true
+        studioScreen.visitId = 'v1'
+        studioScreen.selectedOwnerKey = 'character:A'
+        await show(makePort({ sizes: {}, bytes: {} }))
+        await openPanel()
+        await click(part('studio-asset-dup-merge'))
+        await click(part('studio-asset-merge-do'))
+        expect(db.db.characters[0].desc).toBe('a {{image::x}} b {{image::x}}')
+        expect(toastHost.visible.map((toast) => toast.text)).toEqual(['studioStepAssetMerge(y,x)'])
+        db.db.characters[0].desc = 'changed outside'
+        await toastHost.activate(toastHost.visible[0].id)
+        expect(rowNames()).toEqual(['x@assets/a.png', 'y@assets/a.png'])
+        expect(toastHost.visible[0].text).toBe('studioAssetNotRestored(1)')
+        expect(studioScreen.notice).toBe('studioAssetNotRestored(1)')
+        expect(studioScreen.noticePlaces).toEqual({ ownerKind: 'character', places: ['desc'] })
+    })
+
+    test('E2-progress: the chat count the list hands the preview rises above "at least 0" before the job ends', async () => {
+        const mentioning = (id: string) => ({ id, note: '', message: [{ data: 'a {{image::y}} b' }], localLore: [] })
+        db.db.characters = [{ ...makeCharacter([assetRow('x', 'assets/a.png'), assetRow('y', 'assets/a.png')]), chats: [mentioning('c1'), mentioning('c2'), mentioning('c3')] }]
+        // Every checkpoint of the count job measures a spent slice, so it yields to the event loop after each unit of work.
+        let clock = 0
+        vi.spyOn(performance, 'now').mockImplementation(() => (clock += 9))
+        await show(makePort({ sizes: {}, bytes: {} }))
+        await openPanel()
+        await click(part('studio-asset-dup-merge'))
+
+        const seen: string[] = []
+        for (let turn = 0; turn < 80; turn++) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 0))
+            await settle()
+            const line = part('studio-asset-merge-chats')?.textContent ?? ''
+            if (seen[seen.length - 1] !== line) seen.push(line)
+            if (line === 'studioAssetMergeChats(3,y)') break
+        }
+
+        expect(seen[seen.length - 1]).toBe('studioAssetMergeChats(3,y)')
+        expect(seen.some((line) => line.includes('studioAssetMergeAtLeast(1)') || line.includes('studioAssetMergeAtLeast(2)'))).toBe(true)
+    })
+
+    test('Cancel closes the preview and changes nothing', async () => {
+        await openHashEqualMerge()
+        await click(part('studio-asset-merge-cancel'))
+        expect(parts('studio-asset-merge-preview')).toHaveLength(0)
+        expect(rowNames()).toEqual(['x@assets/a.png', 'y@assets/b.png'])
+        expect(service.view(A).done).toHaveLength(0)
+        expect(h.marks).toBe(0)
+    })
+
+    test('T57c: the preview closes when the list moves to another owner, and nothing is written', async () => {
+        db.db.characters = [
+            makeCharacter([assetRow('x', 'assets/a.png'), assetRow('y', 'assets/a.png')]),
+            { ...makeCharacter([]), chaId: 'B' },
+        ]
+        const rig = makePort({ sizes: {}, bytes: {} })
+        const props = $state({ chaId: 'A', host: toastHost, finderPort: async () => rig.port })
+        const host = document.createElement('div')
+        document.body.appendChild(host)
+        mounted.push({ app: mount(StudioAssetList, { target: host, props }), host })
+        flushSync()
+        await settle()
+        await openPanel()
+        await click(part('studio-asset-dup-merge'))
+        expect(parts('studio-asset-merge-preview')).toHaveLength(1)
+        props.chaId = 'B'
+        flushSync()
+        await settle()
+        expect(parts('studio-asset-merge-preview')).toHaveLength(0)
+        expect(rowNames()).toEqual(['x@assets/a.png', 'y@assets/a.png'])
+        expect(h.marks).toBe(0)
     })
 })

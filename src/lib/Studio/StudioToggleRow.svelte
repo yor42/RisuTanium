@@ -16,6 +16,8 @@
         tabbable: boolean
         // The line's diagnostic codes, space separated.
         flags: string
+        // The row's key is part of the open saved-values question.
+        carryFlag?: boolean
         onactivate: () => void
         onfocus: () => void
         ontoggle: () => void
@@ -23,12 +25,15 @@
         onaddin: () => void
     }
 
-    let { line, level, expandable, expanded, memberCount, selected, tabbable, flags, onactivate, onfocus, ontoggle, onmenu, onaddin }: Props = $props()
+    let { line, level, expandable, expanded, memberCount, selected, tabbable, flags, carryFlag = false, onactivate, onfocus, ontoggle, onmenu, onaddin }: Props = $props()
 
     const view = $derived(rowViewOf(line))
     const typeText = $derived(view.type === 'unreadable' || view.type === 'groupEnd' ? language.studioTgUnreadable : language[typeKeyOf(view.type)])
     const summary = $derived(view.type === 'select' ? language.studioTgSummarySelect(view.optionCount) : view.type === 'group' ? language.studioTgSummaryGroup(memberCount) : '')
-    const notes = $derived(flags === '' ? [] : flags.split(' ').map((code) => language[diagnosticKeyOf(code as DiagnosticCode)]))
+    const notes = $derived([
+        ...(flags === '' ? [] : flags.split(' ').map((code) => language[diagnosticKeyOf(code as DiagnosticCode)])),
+        ...(carryFlag ? [language.studioTgCarryTitle] : []),
+    ])
     const name = $derived(view.type === 'unreadable' || view.type === 'groupEnd' ? line.raw : view.label !== '' ? view.label : language.studioTgUnnamed)
 </script>
 
@@ -43,6 +48,7 @@
     data-row-id={line.id}
     data-type={view.type}
     data-flags={flags}
+    data-carry={carryFlag ? 'true' : undefined}
     class="flex min-h-11 items-center gap-2 rounded-md border px-2 cursor-pointer hover:bg-selected {selected ? 'border-borderc bg-selected' : 'border-darkborderc'}"
     style:padding-inline-start={`${(level - 1) * 1.5 + 0.5}rem`}
     onclick={onactivate}

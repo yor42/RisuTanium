@@ -266,7 +266,15 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
                 session: () => session,
                 startTrigger: run => { fire = run; return { arm: () => { }, stop: () => { } } },
                 deletion: async () => ({ status: 'completed', deleted: 0, abandoned: 0, flushed: undefined }),
-                gcPageFacts: { isBusy: () => false, saveLoopParked: () => false, isSaveClean: () => true },
+                gcPageFacts: {
+                    isBusy: () => false, saveLoopParked: () => false, isSaveClean: () => true,
+                    restoreInProgress: () => false, peers: async () => 'alone', ownBase: () => null,
+                },
+                // The asset sweep follows the clean-up; this case is about the clean-up, so the sweep's page yields at once.
+                sweepFacts: {
+                    residentRefs: () => [], writtenCount: () => 0, writtenThisPage: () => [], peers: async () => 'alone',
+                    shouldStop: () => true, release: () => { }, hold: remove => remove(),
+                },
             },
         )
         expect(started).not.toBeNull()
@@ -274,8 +282,10 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
         await getStartupCleanup()
         w.pageMode.setPageStorageMode({ kind: 'block' })
 
-        expect(info.mock.calls.map(call => String(call[0]))).toHaveLength(1)
-        expect(String(info.mock.calls[0][0])).toContain(`status=done deleted=${deadKeys.size}`)
+        // A yielding sweep still logs its own result line; only the clean-up pass's line is this case's subject.
+        const lines = info.mock.calls.map(call => String(call[0])).filter(line => !line.startsWith('store2 asset sweep'))
+        expect(lines).toHaveLength(1)
+        expect(lines[0]).toContain(`status=done deleted=${deadKeys.size}`)
         const after = new Set(await k.memory.listStore2())
         expect([...deadKeys].filter(unit => after.has(unit)), 'orphans and the units of dropped and evicted trees are gone').toEqual([])
         expect([...namedKeys].filter(unit => !after.has(unit)), 'every unit of the current, retained and pinned trees is present').toEqual([])
@@ -292,5 +302,113 @@ describe('the automatic clean-up over a store the real save loop filled', () => 
         flush()
         expect(outcome.status).toBe('restored')
         expect(((slot().chats as Entry[])[0].message as Entry[])[0].data).toHaveLength(50_000)
+    })
+
+    /**
+     * An `indexeddb` page over the same kind of store: the real loop filled it (three edits after an admission advance leave
+     * a dropped tree) and an orphan is planted. The pass runs through the maintenance step with the page facts of a web page.
+     */
+    async function runWebStep(facts: { alone: boolean, ownBase: 'current' | 'stale' }): Promise<{ k: Store2Kit, deleted: boolean, lines: string[], dead: string[], named: Set<string>, after: Set<string>, droppedBase: string, droppedUnits: string[] }> {
+        const { w, k, live, flush } = await startChain()
+        let edits = 0
+        const history: string[] = [k.seeded.manifestKey]
+        for (let i = 0; i < 3; i++) {
+            if (i === 0) {
+                k.clock.advance(ADMISSION_INTERVAL_MS + 1)
+            }
+            edits++
+            await nextCommit(w, () => {
+                live.mainPrompt = `web-${edits}`
+                flush()
+            })
+            history.push(((await k.commitKey()).current as { key: string }).key)
+        }
+        await settled(w)
+        const key = await k.commitKey()
+        const current = (key.current as { key: string }).key
+        const named = new Set<string>()
+        for (const manifest of [current, ...key.retained.map(entry => entry.key), ...key.pins.map(pin => pin.key)]) {
+            for (const unit of await treeKeys(k.memory, manifest)) {
+                named.add(unit)
+            }
+        }
+        const dead: string[] = []
+        for (const manifest of history.filter(candidate => ![current, ...key.retained.map(entry => entry.key)].includes(candidate))) {
+            for (const unit of await treeKeys(k.memory, manifest)) {
+                if (!named.has(unit)) {
+                    dead.push(unit)
+                }
+            }
+        }
+        const orphan = newUnitKey(k.context.env)
+        await k.memory.putUnit(orphan, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan }))
+        dead.push(orphan)
+        // Three edits after one admission advance: the first admits the seed, the later two commits' predecessors are dropped.
+        // The stale base is a dropped manifest, so no list of the commit key reaches the units only it reaches.
+        const droppedBase = history[2]
+        const droppedUnits = [...await treeKeys(k.memory, droppedBase)].filter(unit => !named.has(unit))
+
+        const { Store2Session } = await import('src/ts/storage/store2/session')
+        const { createMemoryByteStore } = await import('src/ts/process/files/tests/memoryByteStore')
+        const maintenance = await import('src/ts/storage/store2/maintenance')
+        const { getStartupCleanup } = await import('src/ts/storage/startupCleanupState')
+        const over = flushConfirming(k.memory)
+        const session = await Store2Session.open(createMemoryByteStore(), { kind: 'indexeddb', backend: over.backend, upstreamMainFile: async () => false })
+        expect(session.decision).toMatchObject({ row: 5, mode: 'normal' })
+        const info = vi.spyOn(console, 'info').mockImplementation(() => { })
+        w.pageMode.setPageStorageMode({ kind: 'store2' })
+        let fire: (() => void) | null = null
+        maintenance.startStore2Maintenance(
+            { store: async () => createMemoryByteStore(), listBackupTimes: async () => [] },
+            {
+                session: () => session,
+                startTrigger: run => { fire = run; return { arm: () => { }, stop: () => { } } },
+                deletion: async () => ({ status: 'completed', deleted: 0, abandoned: 0, flushed: undefined }),
+                gcPageFacts: {
+                    isBusy: () => false, saveLoopParked: () => false, isSaveClean: () => true, restoreInProgress: () => false,
+                    peers: async () => facts.alone ? 'alone' : 'others',
+                    ownBase: () => facts.ownBase === 'current' ? current : droppedBase,
+                },
+                sweepFacts: {
+                    residentRefs: () => [], writtenCount: () => 0, writtenThisPage: () => [], peers: async () => 'alone',
+                    shouldStop: () => true, release: () => { }, hold: remove => remove(),
+                },
+            },
+        )
+        ;(fire as (() => void) | null)?.()
+        await getStartupCleanup()
+        w.pageMode.setPageStorageMode({ kind: 'block' })
+        const lines = info.mock.calls.map(call => String(call[0])).filter(line => !line.startsWith('store2 asset sweep'))
+        const after = new Set(await k.memory.listStore2())
+        return { k, deleted: dead.every(unit => !after.has(unit)), lines, dead, named, after, droppedBase, droppedUnits }
+    }
+
+    test('A4a: an indexeddb page that is alone on its own base collects the dropped tree and the orphan, and keeps every named unit', async () => {
+        const result = await runWebStep({ alone: true, ownBase: 'current' })
+
+        expect(result.dead.length, 'precondition: dead units exist').toBeGreaterThan(1)
+        expect(result.lines).toHaveLength(1)
+        expect(result.lines[0]).toContain(`status=done deleted=${result.dead.length}`)
+        expect(result.deleted).toBe(true)
+        expect([...result.named].filter(unit => !result.after.has(unit))).toEqual([])
+    })
+
+    test('A4b: an indexeddb page with another tab open deletes nothing', async () => {
+        const others = await runWebStep({ alone: false, ownBase: 'current' })
+
+        expect(others.lines).toEqual([expect.stringContaining('status=refused reason=other-tab')])
+        expect(others.dead.every(unit => others.after.has(unit))).toBe(true)
+    })
+
+    test('A4c: an indexeddb page whose base is a dropped manifest deletes nothing, and every unit only that base reaches stays', async () => {
+        const stale = await runWebStep({ alone: true, ownBase: 'stale' })
+        const key = await stale.k.commitKey()
+
+        expect([(key.current as { key: string }).key, ...key.retained.map(entry => entry.key), ...key.pins.map(pin => pin.key)], 'precondition: the base is in no list of the commit key').not.toContain(stale.droppedBase)
+        expect(stale.droppedUnits.length, 'precondition: the dropped base reaches units no named tree reaches').toBeGreaterThan(0)
+        expect(stale.droppedUnits.every(unit => stale.dead.includes(unit)), 'precondition: those units are among the dead').toBe(true)
+        expect(stale.lines).toEqual([expect.stringContaining('status=refused reason=stale-base')])
+        expect(stale.droppedUnits.filter(unit => !stale.after.has(unit)), 'the dropped base\'s units are still stored').toEqual([])
+        expect(stale.dead.every(unit => stale.after.has(unit))).toBe(true)
     })
 })

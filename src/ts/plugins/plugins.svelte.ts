@@ -823,8 +823,8 @@ function keepPluginStorageInternals(current: {[key:string]:any} | undefined, inc
  * selected-character effect and the identity tracker; V3 installs fresh objects. Both setters share this, so the
  * mark does not depend on the API version.
  * Never deletes: a character this call's own `characters` array omits still keeps its block and comes back on
- * reload; the guarantee that a save iteration without a reload can never delete a block lives in
- * `prepareSaveIteration`'s no-reload filter (globalApi.svelte.ts), not here. Returns the number of marks raised.
+ * reload; the guarantee that a save pass without a reload can never delete a stored character lives in the
+ * save pass, not here. Returns the number of marks raised.
  */
 function markWrittenCharacters(db: ReturnType<typeof getDatabase>, written: { characters?: unknown }, keptSlots: ReadonlySet<number>): number {
     if (!Array.isArray(written.characters)) {

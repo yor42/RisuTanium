@@ -1,19 +1,26 @@
 name: CI
 
 # Type check, unit tests, production build, and smoke checks of the self-hosting servers.
-# Docs-only and agent-note-only changes skip the run.
+# Docs-only and agent-note-only changes skip the run, except docs/design: the theme-pack validator in src bundles its token
+# stylesheets and fixtures, so a change there can break the unit tests. An ordered paths list re-includes it: GitHub forbids
+# paths with paths-ignore on one event, and only paths takes '!' exclusions, where the last matching pattern decides.
+# Markdown stays skipped everywhere.
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'docs/**'
-      - 'Agents/**'
-      - '**/*.md'
+    paths:
+      - '**'
+      - '!docs/**'
+      - 'docs/design/**'
+      - '!Agents/**'
+      - '!**/*.md'
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - 'Agents/**'
-      - '**/*.md'
+    paths:
+      - '**'
+      - '!docs/**'
+      - 'docs/design/**'
+      - '!Agents/**'
+      - '!**/*.md'
   workflow_dispatch:
 
 # One run per branch or pull request. A newer push to a pull request cancels the superseded run;
@@ -24,6 +31,11 @@ concurrency:
 
 permissions:
   contents: read
+
+# onnxruntime-node's install script downloads its CUDA binaries on Linux x64 when nvcc is absent.
+# CI never uses the CUDA provider, and that download can fail, so the install skips it.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
 
 jobs:
   # The full unit test run takes about 25 minutes on one runner, so it is split into three shards.

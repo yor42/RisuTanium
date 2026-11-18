@@ -2,48 +2,83 @@
     import { onDestroy, untrack } from 'svelte'
     import { afterFlush } from '../../ts/afterFlush'
     import { language } from '../../lang'
-    import { characterTogglePort } from '../../ts/studio/edit/toggleTextPort'
+    import { moduleSlotsWithId } from '../../ts/studio/edit/assetSetters'
+import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/toggleTextPort'
     import { createStudioToasts, refusalTextOf } from '../../ts/studio/edit/studioToasts'
-    import { ensureStudioHistory, getStudioHistoryService, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
+    import { beginModuleAck, endModuleAck, ensureStudioHistory, getStudioHistoryService, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
     import { registerStudioBackLayer } from '../../ts/studio/studioBack.svelte'
     import { studioScreen } from '../../ts/studio/studioScreen.svelte'
-    import { appToggleKeys, createToggleBuilder, restoreLines, TOGGLE_KEY_EDITS_LIVE, type EditOutcome } from '../../ts/studio/toggleBuilder.svelte'
+    import { sameRef } from '../../ts/chatShell/toggleFavourites'
+    import { currentFavourites, updateFavourites } from '../../ts/chatShell/toggleFavouritesStore.svelte'
+    import { createCarryDbPort, readCarryReach } from '../../ts/studio/edit/toggleCarryDb'
+    import { appToggleKeys, createToggleBuilder, restoreLines, TOGGLE_KEY_EDITS_LIVE, type CarryDeps, type EditOutcome, type ToggleTarget } from '../../ts/studio/toggleBuilder.svelte'
     import { caretOffsetOf, rowAtLine, rowViewOf, type MoveDirection, type NewKind } from '../../ts/studio/toggleBuilderModel'
     import { lineById, type LineId } from '../../ts/studio/toggleDef'
     import { ownerStem } from '../../ts/studio/toggleKeys'
     import { DBState } from '../../ts/stores.svelte'
-    import type { ToastHost } from '../../ts/toast/toastHost.svelte'
+    import { toastHost, type ToastHost, type ToastId } from '../../ts/toast/toastHost.svelte'
+    import StudioToggleCarryBanner from './StudioToggleCarryBanner.svelte'
     import StudioToggleEditor from './StudioToggleEditor.svelte'
     import StudioToggleList from './StudioToggleList.svelte'
     import StudioToggleText from './StudioToggleText.svelte'
 
-    // The list builder of one character's toggle definition. Every edit goes through the history service as a whole
+    // The list builder of one character's or resident module's toggle definition. Every edit goes through the history service as a whole
     // string write; the page's own copy of the definition is parsed from the live text and re-read whenever that text
     // changes outside it (an undo, a restore, another editor).
     interface Props {
-        chaId: string
+        // Read once: the owner is fixed for the life of the builder, and a change of owner builds a new one.
+        target: ToggleTarget
         // The toast host of the delete toast; the app's own host when absent (tests pass one on a fake clock).
         host?: ToastHost
     }
 
-    let { chaId, host }: Props = $props()
+    let { target, host }: Props = $props()
 
     // A side-by-side layout needs a list and a 560 px editor column.
     const WIDE_AT = 1000
 
-    const port = characterTogglePort(untrack(() => chaId))
+    const fixed = untrack(() => target)
+    const port = fixed.kind === 'character' ? characterTogglePort(fixed.chaId) : moduleTogglePort(fixed.moduleId)
     const toasts = createStudioToasts({ service: getStudioHistoryService, host: untrack(() => host) })
-    const character = untrack(() => DBState.db.characters?.find((candidate) => candidate?.chaId === chaId))
+    function stemOf(): string {
+        if (fixed.kind === 'module') {
+            const [slot] = moduleSlotsWithId(DBState.db.modules, fixed.moduleId)
+            const name = slot ? (slot.module as { name?: unknown }).name : ''
+            return ownerStem(typeof name === 'string' ? name : '', fixed.moduleId)
+        }
+        const character = DBState.db.characters?.find((candidate) => candidate?.chaId === fixed.chaId)
+        return ownerStem(character && character.type !== 'group' ? character.name ?? '' : '', fixed.chaId)
+    }
+    // Where the saved-values question reads and writes: the database through one port, and the device-local favourites.
+    const carryDeps: CarryDeps = {
+        reach: () => readCarryReach(fixed),
+        values: createCarryDbPort(),
+        starSource: fixed.kind === 'character' ? `character:${fixed.chaId}` : `module:${fixed.moduleId}`,
+        stars: {
+            has: (ref) => currentFavourites().items.some((known) => sameRef(known, ref)),
+            rename: (ref, to) => updateFavourites({ type: 'rename', ref, to }),
+        },
+        reachKind: fixed.kind === 'character' ? 'own' : 'loaded',
+    }
     const builder = createToggleBuilder(port, {
         keyEditsLive: TOGGLE_KEY_EDITS_LIVE,
-        stem: ownerStem(character && character.type !== 'group' ? character.name ?? '' : '', untrack(() => chaId)),
-        appKeys: appToggleKeys(untrack(() => chaId)),
+        stem: stemOf(),
+        appKeys: appToggleKeys(fixed),
+        carry: carryDeps,
     })
+    const toastsHost = untrack(() => host) ?? toastHost
+    let carriedToast: ToastId | null = null
+    let carryError = $state('')
 
     const service = $derived(getStudioHistoryService())
     $effect(() => {
         if (service) {
-            untrack(() => port.begin())
+            untrack(() => {
+                port.begin()
+                if (fixed.kind === 'module') {
+                    beginModuleAck(fixed.moduleId)
+                }
+            })
         } else {
             ensureStudioHistory()
         }
@@ -99,6 +134,7 @@
             else builder.open(id)
         }
         mode = 'list'
+        builder.checkpoint()
     }
 
     // The editor as a page of its own sits over the list like the detail over the tree: Back closes it first.
@@ -131,8 +167,8 @@
 
     function failureText(outcome: EditOutcome): string {
         if (outcome.ok !== false) return ''
-        return outcome.kind === 'refused' ? refusalTextOf({ reason: outcome.reason })
-            : outcome.kind === 'unavailable' ? refusalTextOf({ reason: 'loading' })
+        return outcome.kind === 'refused' ? refusalTextOf({ reason: outcome.reason }, port.owner)
+            : outcome.kind === 'unavailable' ? refusalTextOf({ reason: 'loading' }, port.owner)
             : language.studioTgNotWritten
     }
 
@@ -181,14 +217,68 @@
         },
         closeStep(): void {
             port.closeOpenStep()
+            builder.checkpoint()
         },
     }
+
+    function undoRefusalText(reason: 'gone' | 'changed'): string {
+        return reason === 'gone' ? language.studioTgCarryUndoGone : language.studioTgCarryUndoRefused
+    }
+
+    // The banner's answers. A carry's toast Undo is bound to this builder instance and to that one carry.
+    const carryActions = {
+        carry(): void {
+            carryError = ''
+            const outcome = builder.carryValues()
+            if (outcome.ok === true) {
+                const token = outcome.token
+                carriedToast = toasts.postUndoAction(language.studioTgCarried, () => {
+                    const undone = builder.undoCarry(token)
+                    return undone.ok === false ? { ok: false, text: undoRefusalText(undone.reason) } : { ok: true, text: language.studioTgCarryUndone }
+                })
+            } else if (outcome.ok === false && outcome.reason === 'failed') {
+                carryError = refusalTextOf({ reason: 'unknown' }, port.owner)
+            }
+        },
+        answer(): void {
+            carryError = ''
+            builder.answerCarry()
+        },
+        undo(): void {
+            carryError = ''
+            const undone = builder.undoCarry()
+            if (undone.ok === true) {
+                if (carriedToast !== null) toastsHost.dismiss(carriedToast)
+                carriedToast = null
+            } else {
+                carryError = undoRefusalText(undone.reason)
+            }
+        },
+    }
+
+    // What the question announces: its first show, a recheck, a cancellation and an undo.
+    $effect(() => {
+        const event = builder.carryEvent
+        if (event === null) return
+        announcement = event.kind === 'shown' ? language.studioTgCarryTitle
+            : event.kind === 'recheck' ? language.studioTgCarryRecheck
+            : event.kind === 'cancelled' ? language.studioTgCarryCancelled
+            : language.studioTgCarryUndone
+    })
 
     function retry(): void {
         ensureStudioHistory()
     }
 
-    onDestroy(() => port.closeOpenStep())
+    onDestroy(() => {
+        port.closeOpenStep()
+        builder.dispose()
+        if (carriedToast !== null) toastsHost.dismiss(carriedToast)
+        // The module's ack ends with its builder: a switch of owner, a change of kind or a cleared selection destroys it.
+        if (fixed.kind === 'module') {
+            endModuleAck(fixed.moduleId)
+        }
+    })
 </script>
 
 {#if !view.restricted}
@@ -207,12 +297,16 @@
             <button type="button" data-part="studio-toggle-view-list" aria-pressed={mode === 'list'} class={`min-h-11 px-3 cursor-pointer hover:bg-selected ${mode === 'list' ? 'bg-selected' : ''}`} onclick={showList}>{language.studioTgViewList}</button>
             <button type="button" data-part="studio-toggle-view-text" aria-pressed={mode === 'text'} class={`min-h-11 px-3 cursor-pointer hover:bg-selected ${mode === 'text' ? 'bg-selected' : ''}`} onclick={showText}>{language.studioTgViewText}</button>
         </div>
+        <!-- The editor page, on a narrow layout, carries the banner inside itself, under its own header. -->
+        {#if !(mode === 'list' && !wide && editorOpen)}
+            <StudioToggleCarryBanner {builder} {editable} error={carryError} actions={carryActions} />
+        {/if}
         {#if mode === 'text'}
             <StudioToggleText bind:this={textView} {builder} {port} {editable} {caretAt} />
         {:else if !wide && editorOpen}
             <button type="button" data-part="studio-toggle-back" class="min-h-11 self-start rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer" onclick={closeEditor}>{language.studioTgBack}</button>
             {#key editorKey}
-                <StudioToggleEditor {builder} {editable} id={builder.pending !== null ? null : (builder.editor?.id ?? null)} {actions} />
+                <StudioToggleEditor {builder} {editable} id={builder.pending !== null ? null : (builder.editor?.id ?? null)} {actions} carry={{ error: carryError, actions: carryActions }} />
             {/key}
         {:else}
             <div class={wide ? 'grid grid-cols-[minmax(0,1fr)_minmax(560px,1.2fr)] items-start gap-3' : 'flex flex-col gap-3'}>
@@ -225,7 +319,7 @@
             </div>
         {/if}
         {#if errorShown && builder.error}
-            <p role="alert" data-part="studio-toggle-error" class="text-sm text-draculared">{builder.error.kind === 'refused' ? refusalTextOf({ reason: builder.error.reason }) : builder.error.kind === 'unavailable' ? refusalTextOf({ reason: 'loading' }) : builder.error.kind === 'held' ? language.studioTgTextHeld : builder.error.kind === 'field' ? language.studioTgNotWritten : language.studioTgCantMove}</p>
+            <p role="alert" data-part="studio-toggle-error" class="text-sm text-draculared">{builder.error.kind === 'refused' ? refusalTextOf({ reason: builder.error.reason }, port.owner) : builder.error.kind === 'unavailable' ? refusalTextOf({ reason: 'loading' }, port.owner) : builder.error.kind === 'held' ? language.studioTgTextHeld : builder.error.kind === 'field' ? language.studioTgNotWritten : language.studioTgCantMove}</p>
         {/if}
         <p role="status" data-part="studio-toggle-announce" class="sr-only">{announcement}</p>
     </section>

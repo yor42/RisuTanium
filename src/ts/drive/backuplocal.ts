@@ -2,6 +2,7 @@ import { alertError, alertNormal, alertNormalWait, alertStore, alertWait, alertM
 import { takeExportWriteStats, webWriterNeedsGesture, type ExportByteWriter, type ExportWriteCall } from "../exportWriters";
 import type { ExportCancelToken } from "../exportCancel";
 import { localBackupFileName } from "./backupFileName";
+import { assetDeletionSettled } from "../storage/assetDeleteHold";
 import { LocalWriter, requiresFullEncoderReload, dbWriteLock, tabPresenceLockAcquired, acquireExclusiveStorageMigrationLock, locksSupported, noteAssetWrittenThisPage, describeBlockForPerson } from "../globalApi.svelte";
 import { markAppInitiatedReload, isAppInitiatedReload } from "../reloadGuard";
 import { isNodeServer, isTauri } from "src/ts/platform"
@@ -10,7 +11,7 @@ import { decodeRisuSave, encodeRisuSaveStreamed, isBlockFormatSave, salvageRisuS
 import { writeRisuSaveV0 } from "../storage/risuSaveV0";
 import { assertNoModuleStubs } from "../storage/moduleStub";
 import { assertNoForeignModuleStubs, snapshotModuleList } from "./exportModules";
-import { BackupAssetChangedError, BackupAssetTooLargeError, confirmDuringExport, ensureGestureForWriter, runExport, type ExportSession } from "./exportShell";
+import { BackupAssetChangedError, BackupAssetTooLargeError, confirmDuringExport, ensureGestureForWriter, openOutsideBusy, runExport, type ExportSession } from "./exportShell";
 import type { RisuModule } from "../process/modules";
 import { getAppStore, getAppStoreKind } from "../storage/store/appStore";
 import type { ByteStore } from "../storage/store/contract";
@@ -37,7 +38,7 @@ import { repairDatabaseIds } from "../process/chatIds";
 import { reloadAfterRestore } from "./restoreReload";
 import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, isColdStorageBackupData, listColdDataKeys, readColdStorageItem, setColdStorageItem, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
-import { characterListNeedsRepair, kvBlockNamesOf, collectBackupColdStorage, inlinedCharacter, exportForkOnlyLabels, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, unpackStubEntry, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
+import { characterListNeedsRepair, kvBlockNamesOf, collectBackupColdStorage, inlinedCharacter, exportForkOnlyLabels, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, beginModuleSnapshotMark, endModuleSnapshotMark, clearModuleSnapshotMarks, unpackStubEntry, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
 import { isAcceptedColdStorageBackupEntry, listColdBackupRoots, listColdPluginStorageKeys } from "../process/coldstorageData";
 import { convertPluginStorageIndex, unavailableKeysOfMissing } from "../process/pluginStorageIndex";
 import { v4 } from "uuid";
@@ -66,6 +67,8 @@ import { announceStore2Import, binChangeText, checkStore2Import, commitBootImpor
 
 import { forkOnlyChatLabels, forkOnlyConfirmKeys, lateForkOnlyChats, withoutForkOnlyChatData, type ForkOnlyChatLabel, type ForkOnlyKind } from "./exportAlternatives";
 import { isPackAssetName } from "../themePack/packRefs";
+import { isForkOnlyHypaModel } from "../process/memory/embeddingModels";
+import { hasUsageData, hasUsageKeys, withoutUsageKeys } from "../usage/usageLedger";
 
 function getBasename(data:string){
     const baseNameRegex = /\\/g
@@ -167,14 +170,18 @@ async function writeDatabaseEntry(
     }
 }
 
-/** Measurement builds only: the stub read and `read_range` counts since the export began, as phase-note fields. */
+/**
+ * Measurement builds only: the stub read and `read_range` counts since the export began, as phase-note fields.
+ * `stubEncodeMs` leaves out the packing a worker did, so a difference between the worker arm and the main-thread arm
+ * (`risu-measure-export-pack` = `main`) is not a saving; `stubPackWaitMs`, `stubPackDrainMs` and `stubLoopMs` show where the wait went.
+ */
 function describeReadMeasure(): string {
     try {
         const stubs = takeStubReadStats()
         const ranges = takeRangeReadStats()
         const parts: string[] = []
         if (stubs) {
-            parts.push(`stubChars=${stubs.characters} stubReadMs=${Math.round(stubs.readMs)} stubEncodeMs=${Math.round(stubs.encodeMs)} stubEncodeMsMax=${Math.round(stubs.encodeMsMax)} stubRawBytes=${stubs.rawBytes} stubPackedBytes=${stubs.packedBytes} stubAhead=${stubs.ahead} stubHeldMax=${stubs.heldMax} stubRetries=${stubs.retries} stubFailed=${stubs.failed}`)
+            parts.push(`stubChars=${stubs.characters} stubReadMs=${Math.round(stubs.readMs)} stubEncodeMs=${Math.round(stubs.encodeMs)} stubEncodeMsMax=${Math.round(stubs.encodeMsMax)} stubRawBytes=${stubs.rawBytes} stubPackedBytes=${stubs.packedBytes} stubAhead=${stubs.ahead} stubHeldMax=${stubs.heldMax} stubRetries=${stubs.retries} stubFailed=${stubs.failed} stubColdRootsMs=${Math.round(stubs.coldRootsMs)} stubLoopMs=${Math.round(stubs.loopMs)} legacyCollectMs=${Math.round(stubs.legacyCollectMs)} moduleSnapshotMs=${Math.round(stubs.moduleSnapshotMs)} moduleSnapshotCount=${stubs.moduleSnapshotCount} stubPackWaitMs=${Math.round(stubs.packWaitMs)} stubPackDrainMs=${Math.round(stubs.packDrainMs)} stubPackFallbacks=${stubs.packFallbacks} stubPackHeldMax=${stubs.packHeldMax}`)
         }
         if (ranges) {
             parts.push(`rangeReads=${ranges.reads} rangeMs=${Math.round(ranges.ms)} rangeWallMs=${Math.round(ranges.wallMs)} store2Reads=${ranges.store2Reads} store2Ms=${Math.round(ranges.store2Ms)} rangeMaxInFlight=${ranges.maxInFlight}`)
@@ -248,6 +255,24 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
     // (the export confirm names the packs first); both keys are removed, not set to undefined.
     delete plain.themePacks
     delete plain.activeThemePack
+    // Usage statistics (the `statics` ledger keys) and price overrides are fork-only and have no place in a `.bin` (the export
+    // confirm names them first). A `statics` without usage keys keeps the page's own object; the page's values are never changed.
+    if (hasUsageKeys(db.statics)) {
+        plain.statics = withoutUsageKeys(db.statics)
+    }
+    delete plain.usagePriceOverrides
+    // Upstream resolves a loadout's preset by name only. A loadout whose preset id resolves carries that preset's current
+    // name in the copy, so both builds select the same preset; the page's loadouts are never changed.
+    if (Array.isArray(db.loadouts) && Array.isArray(db.botPresets)) {
+        plain.loadouts = db.loadouts.map((loadout) => {
+            const target = loadout.presetId ? db.botPresets.find((preset) => preset.id === loadout.presetId) : undefined
+            return target?.name !== undefined && target.name !== loadout.presetName ? { ...loadout, presetName: target.name } : loadout
+        })
+    }
+    // A fork-only embedding model key is unreadable upstream, so the copy omits it (silently); the page keeps its value.
+    if (isForkOnlyHypaModel(plain.hypaModel)) {
+        delete plain.hypaModel
+    }
     // Set before either return below, so every encoder gets the module list read before the export opened, never the live one.
     if (modules !== null) {
         plain.modules = modules
@@ -405,7 +430,7 @@ function copyMeasureLimits(): Partial<AssetBatchLimits> {
 }
 
 /** The restore's asset writer on the desktop and on Android, or `null` where every asset goes through the store one call at a time. */
-async function createRestoreAssetPipeline(): Promise<RestoreAssetPipeline | null> {
+export async function createRestoreAssetPipeline(): Promise<RestoreAssetPipeline | null> {
     // The raw mode is `isAssetBatchAvailable()` (the desktop's raw-body write); the base64 mode is Android's alone. The
     // export's reads use `isAssetBatchReadAvailable()`, which both apps satisfy.
     const mode: AssetBatchWriteMode = isAssetBatchAvailable() ? 'raw' : assetBatchWriteMode() === 'b64' ? 'b64' : 'none'
@@ -744,6 +769,15 @@ async function confirmOmitThemePacks(session: ExportSession, labels: readonly st
     return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupThemePacksConfirm(labels.length, shownPromptNames(labels))))
 }
 
+/**
+ * Asks, before the writer opens, whether to create the backup without the usage statistics and the model prices the
+ * person entered (a `.bin` has no place for them). `true` when the profile holds none or the person confirms; declining
+ * writes nothing.
+ */
+async function confirmOmitUsageStats(session: ExportSession, present: boolean): Promise<boolean> {
+    return await confirmDuringExport(session, present, async () => !present || await alertConfirm(language.backupUsageStatsConfirm))
+}
+
 /** A person's name for an asset of a backup, as the skip report gives it. */
 function describeBackupAsset(assetMap: ReadonlyMap<string, { charName: string, assetName: string }>, key: string): string {
     const assetInfo = assetMap.get(key)
@@ -763,7 +797,7 @@ function describeLateColdStorageKeys(late: ColdStorageBackupCollection): string 
 }
 
 export function SaveLocalBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
-    return withBusy('backupSave', () => runExport((session) => writeLocalBackup(session, options)))
+    return withBusy('backupSave', (busy) => runExport((session) => writeLocalBackup(session, options), busy))
 }
 
 async function writeLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
@@ -776,9 +810,14 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
         takeExportWriteStats()
         resetNetTickStats()
     }
+    clearModuleSnapshotMarks()
     const db = getDatabase()
     // Every module body is read before anything is opened; a module that cannot be read stops the export here.
+    const moduleSnapshotAt = beginModuleSnapshotMark()
     const moduleSnapshot = await snapshotModuleList(db)
+    if (MEASURE) {
+        endModuleSnapshotMark(moduleSnapshotAt, moduleSnapshot.modules?.length ?? 0)
+    }
     return await writeLocalBackupWithModules(session, options, db, moduleSnapshot.modules)
 }
 
@@ -892,6 +931,10 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     if (!await confirmOmitThemePacks(session, themePackLabels(db))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
+    // Usage statistics and entered model prices are fork-only; a `.bin` has no place for them.
+    if (!await confirmOmitUsageStats(session, hasUsageData(db))) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
 
     session.cancel.throwIfCancelled()
     // Read once per export, after the last prompt: the gesture step and the writer open both follow this answer.
@@ -900,7 +943,7 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     await ensureGestureForWriter(session, !serverExport && webWriterNeedsGesture())
     const writer = new LocalWriter()
     session.writer = writer
-    const r = await writer.init(undefined, undefined, localBackupFileName(new Date()), session.cancel, serverExport ? serverExportOpener(session) : undefined)
+    const r = await openOutsideBusy(session.busy, () => writer.init(undefined, undefined, localBackupFileName(new Date()), session.cancel, serverExport ? serverExportOpener(session) : undefined))
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
@@ -1113,7 +1156,7 @@ export async function SavePartialLocalBackup(options: BackupExportOptions = {}):
         return { status: 'declined', cause: 'partial-explanation-declined' }
     }
 
-    return withBusy('backupSave', () => runExport((session) => writePartialLocalBackup(session, options)))
+    return withBusy('backupSave', (busy) => runExport((session) => writePartialLocalBackup(session, options), busy))
 }
 
 /**
@@ -1123,11 +1166,12 @@ export async function SavePartialLocalBackup(options: BackupExportOptions = {}):
  * unit that is gone surfaces through the incomplete-data prompt, and declining it returns `declined`.
  */
 export function exportThisTabBackup(options: BackupExportOptions = {}): Promise<ExportOutcome>{
-    return withBusy('backupSave', () => runExport((session) => writePartialLocalBackup(session, options)))
+    return withBusy('backupSave', (busy) => runExport((session) => writePartialLocalBackup(session, options), busy))
 }
 
 async function writePartialLocalBackup(session: ExportSession, options: BackupExportOptions): Promise<ExportOutcome>{
     session.gate.wait("Saving partial local backup...")
+    clearModuleSnapshotMarks()
     const db = getDatabase()
     const moduleSnapshot = await snapshotModuleList(db)
     return await writePartialLocalBackupWithModules(session, options, db, moduleSnapshot.modules)
@@ -1235,6 +1279,9 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     if (!await confirmOmitThemePacks(session, themePackLabels(db))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
+    if (!await confirmOmitUsageStats(session, hasUsageData(db))) {
+        return { status: 'declined', cause: 'incomplete-data-declined' }
+    }
 
     session.cancel.throwIfCancelled()
     // Read once per export, after the last prompt: the gesture step and the writer open both follow this answer.
@@ -1245,7 +1292,7 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     session.writer = writer
     // Computed once: the name reported in the outcome is the one the writer was asked for, also across midnight.
     const suggestedName = localBackupFileName(new Date(), true)
-    const r = await writer.init(undefined, undefined, suggestedName, session.cancel, serverExport ? serverExportOpener(session) : undefined)
+    const r = await openOutsideBusy(session.busy, () => writer.init(undefined, undefined, suggestedName, session.cancel, serverExport ? serverExportOpener(session) : undefined))
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
@@ -1470,7 +1517,7 @@ function listOversizedAssets(entries: readonly BackupIndexEntry[], names: Readon
     return found;
 }
 
-function shownSkippedNames(names: readonly string[]): string[] {
+export function shownSkippedNames(names: readonly string[]): string[] {
     return names.slice(0, SKIPPED_ASSET_NAMES_SHOWN).map((name) => name.length > SKIPPED_ASSET_NAME_CHARS_SHOWN ? name.slice(0, SKIPPED_ASSET_NAME_CHARS_SHOWN) + '...' : name);
 }
 
@@ -1493,7 +1540,7 @@ interface Store2BinImport {
  * The notices for the inlays left out as too large, one per distinct limit that applied (an Android video has a
  * smaller bound than other inlays), each printing the limit that was used.
  */
-function tooLargeInlayNotices(skippedInlays: readonly InlaySkipped[]): string[] {
+export function tooLargeInlayNotices(skippedInlays: readonly InlaySkipped[]): string[] {
     const byLimit = new Map<number, string[]>();
     for (const skipped of skippedInlays) {
         if (skipped.reason !== 'tooLarge') {
@@ -1506,7 +1553,7 @@ function tooLargeInlayNotices(skippedInlays: readonly InlaySkipped[]): string[] 
 }
 
 /** The notices of what a store2 import left out, in the order the block-era restore shows them; each is awaited before the reload takes the page away. */
-function skippedNoticesOf(skippedAssets: readonly SkippedAsset[], skippedInlays: readonly InlaySkipped[], assetLimit: number | null): string[] {
+export function skippedNoticesOf(skippedAssets: readonly SkippedAsset[], skippedInlays: readonly InlaySkipped[], assetLimit: number | null): string[] {
     const notices: string[] = [];
     const invalidNames = skippedAssets.filter((skipped) => skipped.reason === 'invalidName').map((skipped) => skipped.name);
     const tooLargeNames = skippedAssets.filter((skipped) => skipped.reason === 'tooLarge').map((skipped) => skipped.name);
@@ -1535,13 +1582,64 @@ interface BootBinRun {
     done: (end: BootImportEnd) => void;
 }
 
+/** The accept rule of every backup picker: none on Android, whose picker may grey out `.rtb`; the content check makes any file safe. */
+export function backupPickerAccept(): string | null {
+    return transportKind() === 'android' ? null : '.bin,.rtb,application/vnd.risutanium.rtb';
+}
+
 /**
- * The start-up import of a `.bin`: the same file flow as the Settings restore, with the boot's installer as its target.
- * Resolves once the flow ends however it ends; `cancelled` means nothing was written and the boot may ask again.
+ * The start-up restore of a backup file (`.bin` or `.rtb`, chosen by content) over the boot's installer. Resolves once the
+ * flow ends, unless a first-life `.rtb` restore reloads the page. `cancelled` means the profile was not installed and the
+ * boot may ask again.
  */
 export function loadBackupAtBoot(target: BootImportTarget): Promise<BootImportEnd> {
     return new Promise<BootImportEnd>((resolve) => {
-        void LoadLocalBackup({ target, done: resolve });
+        const cancelled = (): void => resolve({ kind: 'cancelled' });
+        if (refuseBackupLoadWhileBusy()) {
+            cancelled();
+            return;
+        }
+        try {
+            const input = document.createElement('input');
+            input.type = 'file';
+            const accept = backupPickerAccept();
+            if (accept !== null) {
+                input.accept = accept;
+            }
+            input.onchange = async () => {
+                const file = input.files?.[0];
+                input.remove();
+                if (file === undefined) {
+                    cancelled();
+                    return;
+                }
+                try {
+                    const { routeBootPickedBackup } = await import('./backupRouter');
+                    resolve(await routeBootPickedBackup(file, target));
+                } catch (error) {
+                    // Only the router's own load can throw here; nothing was read or written.
+                    console.error(error);
+                    alertError('Failed, Is file corrupted?');
+                    cancelled();
+                }
+            };
+            input.addEventListener('cancel', () => {
+                input.remove();
+                cancelled();
+            });
+            input.click();
+        } catch (error) {
+            console.error(error);
+            alertError('Failed, Is file corrupted?');
+            cancelled();
+        }
+    });
+}
+
+/** Today's boot `.bin` flow over a file the router already picked and recognised. Never rejects. */
+export function loadPickedBackupAtBoot(file: File, target: BootImportTarget): Promise<BootImportEnd> {
+    return new Promise<BootImportEnd>((resolve) => {
+        void loadLocalBackupWith({ target, done: resolve }, undefined, undefined, file);
     });
 }
 
@@ -1553,10 +1651,11 @@ export function loadBackupAtBoot(target: BootImportTarget): Promise<BootImportEn
 export type OpenedRestoreEnd = 'pageLive' | 'pageEnding';
 
 /**
- * Restores a `.bin` another Android app opened, after one confirmation that names the file. Never rejects.
- * Nothing is opened or written until the person has confirmed: a busy app, a read-only page and a decline each end it
- * first. The restore takes its own busy entry (`LoadLocalBackup`), so none is held here, where it would refuse that very
- * restore. The source is closed however this ends.
+ * Restores a backup (`.bin` or `.rtb`, chosen by content) another Android app opened, after one confirmation that names
+ * the file. Never rejects. Nothing is opened or written until the person has confirmed: a busy app, a read-only page and
+ * a decline each end it first. The restore takes its own busy entry, so none is held here, where it would refuse that very
+ * restore; the probe reads after the open, inside the run, with no busy entry. The source is closed however this ends,
+ * after the restore returned.
  */
 export async function restoreOpenedBackup(entry: { name: string, path: string }): Promise<OpenedRestoreEnd> {
     let source: ImportSource | null = null;
@@ -1603,7 +1702,8 @@ export async function restoreOpenedBackup(entry: { name: string, path: string })
             console.error(error);
         }
         runOutcome = 'failed';
-        const end = await LoadLocalBackup(undefined, { source, name: entry.name, lastModified });
+        const { routeOpenedBackup } = await import('./backupRouter');
+        const end = await routeOpenedBackup({ source, name: entry.name, lastModified });
         runOutcome = end.outcome;
         switch (end.outcome) {
             case 'committed':
@@ -1668,11 +1768,24 @@ function withFirstSetupDone(tree: Database, on: boolean): Database {
  *
  * With `opened` (never together with `boot`) there is no picker: the same restore runs over the file the caller opened,
  * under a busy entry of its own, and the promise settles when the restore ends. The caller owns and closes the source.
+ * `boot` takes a picked file or the picker's own, never an opened one.
  */
 export function LoadLocalBackup(boot: undefined, opened: undefined, restore: FirstRunRestore): Promise<LocalBackupEnd>;
 // Last, so `Parameters<typeof LoadLocalBackup>` stays the boot and opened pair every other caller uses.
 export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin): Promise<LocalBackupEnd>;
 export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?: FirstRunRestore): Promise<LocalBackupEnd> {
+    return loadLocalBackupWith(boot, opened, restore, undefined);
+}
+
+/**
+ * The `.bin` restore over a file the backup router already picked and recognised, with no picker of its own. It runs the
+ * same restore as the picker's own file, so the first-run option and every refusal behave as they do there.
+ */
+export function LoadPickedLocalBackup(file: File, restore?: FirstRunRestore): Promise<LocalBackupEnd> {
+    return loadLocalBackupWith(undefined, undefined, restore, file);
+}
+
+function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | undefined, restore: FirstRunRestore | undefined, picked: File | undefined): Promise<LocalBackupEnd> {
     // The option applies to the picker restore only: a boot or opened-file restore always keeps the file's own value.
     const completeFirstSetup = restore?.completeFirstSetup === true && boot === undefined && opened === undefined;
     const operation: OperationName = boot === undefined ? 'import' : 'boot-import';
@@ -1693,7 +1806,7 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
         return pending;
     }
     try {
-        const input = opened === undefined ? document.createElement('input') : null;
+        const input = opened === undefined && picked === undefined ? document.createElement('input') : null;
         if (input !== null) {
             input.type = 'file';
             input.accept = '.bin';
@@ -1719,15 +1832,16 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
                 target = opened.name;
                 facts.source = { kind: 'file', name: opened.name, size: opened.source.size, lastModified: opened.lastModified };
             } else {
-                if (input === null || !input.files || input.files.length === 0) {
+                // A file the router already picked takes the place of the picker's own file.
+                const chosen = picked ?? input?.files?.[0];
+                if (chosen === undefined) {
                     input?.remove();
                     return ended('canceled');
                 }
-                const picked = input.files[0];
-                input.remove();
-                file = picked;
-                target = picked.name;
-                facts.source = { kind: 'file', name: picked.name, size: picked.size, lastModified: picked.lastModified };
+                input?.remove();
+                file = chosen;
+                target = chosen.name;
+                facts.source = { kind: 'file', name: chosen.name, size: chosen.size, lastModified: chosen.lastModified };
             }
             // A picked file reports a change by failing its reads; an opened one is asked.
             const openedFileChanged = async (): Promise<boolean> => openedFile !== null && await openedFile.changed();
@@ -1961,6 +2075,8 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
                 // written and nothing returns while an asset is still being
                 // written. After a batch fails no further entry is read.
                 // The pass and the inlay restore below write assets, inlays and (on a block-era page) cold-storage items.
+                // A sweep's delete in flight settles before the first asset of this restore is written.
+                await assetDeletionSettled();
                 writeMayHaveBegun = true;
                 // Assets handed to the store; the written count is this less the names the pipeline refused, once it has drained.
                 let assetsSubmitted = 0;
@@ -2323,6 +2439,7 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
                         bootEnd = await commitBootImport({
                             target: store2Import.boot,
                             decode: () => readBinDatabaseTree(file, databaseEntry, facts.omitted),
+                            stream: { file, entry: databaseEntry, omitted: facts.omitted },
                             reader: createBinImportReader(file, store2Import.index, store2Import.boot.readColdStorageItem),
                             onAccepted: (items) => { facts.incomplete = items; },
                         });
@@ -2362,6 +2479,7 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
                         target: store2Import.target,
                         busy,
                         decode: async () => withFirstSetupDone(await readBinDatabaseTree(file, databaseEntry, facts.omitted), completeFirstSetup),
+                        stream: { file, entry: databaseEntry, omitted: facts.omitted, adjustRoot: (root) => withFirstSetupDone(root, completeFirstSetup) },
                         reader: createBinImportReader(file, store2Import.index),
                     });
                     switch (end.kind) {
@@ -2630,7 +2748,7 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
             }
         };
         if (input === null) {
-            // A file another app opened: no picker. The busy entry is taken after the check above and ended however the restore leaves.
+            // A file another app opened, or one the router picked: no picker. The busy entry is taken after the check above and ended however the restore leaves.
             const busy = beginBusy('backupLoad');
             void (async () => {
                 let end: LocalBackupEnd = unfinished('failed');
@@ -2641,6 +2759,7 @@ export function LoadLocalBackup(boot?: BootBinRun, opened?: OpenedBin, restore?:
                     alertError('Failed, Is file corrupted?');
                 } finally {
                     busy.end();
+                    boot?.done(bootEnd);
                     settle(end);
                 }
             })();

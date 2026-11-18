@@ -4,7 +4,8 @@ import { alertNormal } from "../alert";
 import { language } from "src/lang";
 import { downloadNotice } from "src/ts/exportNotice";
 import { readColdCharacterCopy } from "../process/coldCharacterRestore";
-import { withBusy } from "../process/memory/busyActions";
+import { withBusy, type BusyHandle } from "../process/memory/busyActions";
+import { openOutsideBusy } from "../drive/exportDialogBusy";
 
 /**
  * Downloads one dataset row per chat of every character. An archived
@@ -19,7 +20,7 @@ export function exportAsDataset(){
     return withBusy('export', writeDataset)
 }
 
-async function writeDataset(){
+async function writeDataset(busy: BusyHandle){
     const db = getDatabase()
 
     let dataset = []
@@ -52,7 +53,7 @@ async function writeDataset(){
         }
     }
 
-    const saved = await downloadFile('dataset.json',Buffer.from(JSON.stringify(dataset, null,4), 'utf-8'))
+    const saved = await downloadFile('dataset.json',Buffer.from(JSON.stringify(dataset, null,4), 'utf-8'), { aroundPicker: (open) => openOutsideBusy(busy, open) })
     if(!saved){
         return
     }

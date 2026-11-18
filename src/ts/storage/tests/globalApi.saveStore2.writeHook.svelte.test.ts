@@ -426,8 +426,10 @@ describe('SC1: the install-time self-check records a write callback that nothing
             ...(await importOriginal<typeof import('src/ts/storage/svelteStatePatch')>()),
             setStateWriteHook: () => { },
         }))
-        h.db = makeDb('base', ['alpha'])
-        await worlds.startWorld({ startLoop: false })
+        const db = small()
+        h.db = db as unknown as Record<string, unknown>
+        const k = await startStore2({ db })
+        await worlds.startWorld({ kind: 'tauri', startLoop: false, boot: store2Boot(k) })
         expect(selfCheckRecords()).toHaveLength(1)
     })
 })

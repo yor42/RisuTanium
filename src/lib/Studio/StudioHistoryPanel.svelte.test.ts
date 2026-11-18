@@ -79,6 +79,7 @@ interface LiveChat extends ChatSource {
 interface Live {
     desc: string
     hideChatIcon?: boolean
+    risutanium_render_when_complete?: boolean
     license?: string
     type?: string
     alternateGreetings: string[]
@@ -657,6 +658,17 @@ describe('steps, undo, redo and revert', () => {
         expect(stepsText()).toEqual(['studioStepGreetingAdd', 'hideChatIcon', 'description'])
     })
 
+    test('a render-when-complete step is labelled with the setting name', async () => {
+        const rig = makeRig()
+        openPanelState()
+        mountInto(StudioHistoryPanel)
+        await settle()
+        expect(rig.service.editField(A, 'risutanium_render_when_complete', true).ok).toBe(true)
+        rig.service.closeOpenStep(A)
+        flushSync()
+        expect(stepsText()).toEqual(['studioFormRenderWhenComplete'])
+    })
+
     test('a first message step and an example message step are labelled with their own field names', async () => {
         // A real character always carries both texts; an edit of an absent one is refused.
         Object.assign(live(), { firstMessage: 'f0', exampleMessage: 'e0' })
@@ -797,7 +809,7 @@ describe('a revert that did not undo older first-message changes says so', () =>
         flushSync()
         await revertTo(rig, 0)
         expect(live().desc).toBe('a')
-        expect(part('studio-history-message')?.textContent).toBe('studioHistoryRevertListSkipped')
+        expect(part('studio-history-message')?.textContent).toBe('studioHistoryRevertListSkipped studioHistoryListChangedElsewhere')
         expect(live().alternateGreetings).toEqual(['g0', 'g1', 'z'])
         expect(live().chats[0].fmIndex).toBe(-1)
     })
@@ -830,7 +842,7 @@ describe('a revert that did not undo older first-message changes says so', () =>
         flushSync()
         const rowsBefore = stepsText()
         await revertTo(rig, 0)
-        expect(part('studio-history-message')?.textContent).toBe('studioHistoryRevertListSkipped')
+        expect(part('studio-history-message')?.textContent).toBe('studioHistoryRevertListSkipped studioHistoryListChangedElsewhere')
         expect(stepsText()).toEqual(rowsBefore)
         expect(live().desc).toBe('a')
         expect(live().alternateGreetings).toEqual(['g0', 'g1', 'z'])
@@ -838,6 +850,11 @@ describe('a revert that did not undo older first-message changes says so', () =>
 
     test('T89t the notice text is the one the maintainer chose', () => {
         expect(languageEnglish.studioHistoryRevertListSkipped).toBe('Some older changes to the first messages were not undone.')
+    })
+
+    test('T89r the two reason sentences are pinned', () => {
+        expect(languageEnglish.studioHistoryListChangedElsewhere).toBe('The first messages were changed elsewhere since then.')
+        expect(languageEnglish.studioHistoryListSaveUnfinished).toBe('An earlier save of the first messages may not have finished.')
     })
 })
 
@@ -1045,7 +1062,7 @@ describe('an Undo toast ends when its delete is undone another way (M56)', () =>
         flushSync()
         click('studio-history-undo')
         await settle()
-        expect(part('studio-history-message')?.textContent).toBe('studioRefusalPrecondition')
+        expect(part('studio-history-message')?.textContent).toBe('studioRefusalPrecondition studioHistoryListChangedElsewhere')
         expect(host.visible).toHaveLength(1)
         expect(rig.service.view(A).deleted).toHaveLength(1)
     })

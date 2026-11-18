@@ -1,6 +1,7 @@
 import { BlockSetInvalidError, type BlockSetInput } from './blockStore'
 import { presetTemplate, type botPreset, type Database } from './database.svelte'
 import { packedNamesOf } from './packedNames'
+import { freshPresetMeta } from './presetMeta'
 import { RisuSaveEncoder, type EncoderReport, type toSaveType } from './risuSave'
 
 /**
@@ -8,7 +9,7 @@ import { RisuSaveEncoder, type EncoderReport, type toSaveType } from './risuSave
  * completion and the legacy conversion share; each call returns a fresh clone.
  */
 export function makeDefaultPreset(): botPreset {
-    return { ...JSON.parse(JSON.stringify(presetTemplate)), name: 'Default' }
+    return freshPresetMeta({ ...JSON.parse(JSON.stringify(presetTemplate)), name: 'Default' }, { keepFolder: false })
 }
 
 /**

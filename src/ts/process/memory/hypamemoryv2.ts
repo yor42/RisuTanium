@@ -1,6 +1,7 @@
 import localforage from "localforage";
 import { HYPA_VECTOR_STORE } from "src/ts/drive/rtb/sideStoreConfig";
 import { type HypaModel, localModels } from "./hypamemory";
+import { DEFAULT_HYPA_MODEL, EMBEDDING_RECIPES, recipeCacheTag, recipePrefix } from "./embeddingModels";
 import { isContextModel, getContextProvider } from "./contextualEmbedding";
 import { TaskRateLimiter, TaskCanceledError } from "./taskRateLimiter";
 import { runEmbedding } from "../transformers";
@@ -10,6 +11,8 @@ import { appendLastPath } from "src/ts/util";
 import { isMobile } from "src/ts/platform";
 import { resolveSecret } from "src/ts/secretRef";
 import { withInFlight } from "../inFlightWork";
+import { yieldByMessage } from "src/ts/storage/saveYield";
+import { embeddingBatchSize } from "./embeddingBatch";
 
 export interface HypaProcessorV2Options {
   model?: HypaModel;
@@ -30,6 +33,10 @@ export interface EmbeddingResult<TMetadata> extends EmbeddingText<TMetadata> {
 
 export type EmbeddingVector = number[] | Float32Array;
 
+type EmbeddingRole = "query" | "document";
+
+const CONTEXT_ROLE_TAG = "r1";
+
 export class HypaProcessorV2<TMetadata> {
   private static readonly LOG_PREFIX = "[HypaProcessorV2]";
   public readonly options: HypaProcessorV2Options;
@@ -41,7 +48,7 @@ export class HypaProcessorV2<TMetadata> {
     const db = getDatabase();
 
     this.options = {
-      model: db.hypaModel || "MiniLM",
+      model: db.hypaModel || DEFAULT_HYPA_MODEL,
       customEmbeddingUrl: db.hypaCustomSettings?.url?.trim() || "",
       oaiKey: db.supaMemoryKey?.trim() || "",
       rateLimiter: new TaskRateLimiter(),
@@ -118,6 +125,8 @@ export class HypaProcessorV2<TMetadata> {
       return [];
     }
 
+    // addTexts stores documents; a search embeds queries. The role picks the model's prefix and its cache key.
+    const role: EmbeddingRole = saveToMemory ? "document" : "query";
     const resultMap: Map<string, EmbeddingResult<TMetadata>> = new Map();
     const toEmbed: EmbeddingText<TMetadata>[] = [];
 
@@ -150,7 +159,7 @@ export class HypaProcessorV2<TMetadata> {
 
       try {
         const cached = await this.forage.getItem<EmbeddingResult<TMetadata>>(
-          this.getCacheKey(content, ctxGroups.get(id))
+          this.getCacheKey(content, role, ctxGroups.get(id))
         );
 
         if (cached) {
@@ -244,7 +253,7 @@ export class HypaProcessorV2<TMetadata> {
             id, content, embedding, metadata
           };
 
-          await this.forage.setItem(this.getCacheKey(content, ctxGroups.get(id)), {
+          await this.forage.setItem(this.getCacheKey(content, role, ctxGroups.get(id)), {
             content, embedding
           });
 
@@ -258,12 +267,16 @@ export class HypaProcessorV2<TMetadata> {
     } else if (this.isLocalModel()) {
       // Local model: Sequential processing
       for (let i = 0; i < chunks.length; i++) {
+        // One local call blocks the main thread; give other tasks a turn between calls.
+        if (i > 0) await yieldByMessage();
+
         // Progress callback
         this.progressCallback?.(chunks.length - i - 1);
 
         const chunk = chunks[i];
         const embeddings = await this.getLocalEmbeds(
-          chunk.map((item) => item.content)
+          chunk.map((item) => item.content),
+          role
         );
 
         const savePromises = embeddings.map(async (embedding, j) => {
@@ -277,7 +290,7 @@ export class HypaProcessorV2<TMetadata> {
           };
 
           // Save to DB
-          await this.forage.setItem(this.getCacheKey(content), {
+          await this.forage.setItem(this.getCacheKey(content, role), {
             content,
             embedding,
           });
@@ -331,7 +344,7 @@ export class HypaProcessorV2<TMetadata> {
           };
 
           // Save to DB
-          await this.forage.setItem(this.getCacheKey(content), {
+          await this.forage.setItem(this.getCacheKey(content, role), {
             content,
             embedding,
           });
@@ -376,7 +389,11 @@ export class HypaProcessorV2<TMetadata> {
     return dot / (Math.sqrt(magA) * Math.sqrt(magB));
   }
 
-  private getCacheKey(content: string, contextTexts?: string[]): string {
+  // A context model's provider sends a role-specific input type, and V2 caches both roles, so an ungrouped key
+  // carries the role. A context group is passed only for documents (`ctxGroups` is built only when `saveToMemory`),
+  // so a grouped key identifies the document role by construction. Changing the context-model key requires a new
+  // tag (`r2`); a tag is never reused.
+  private getCacheKey(content: string, role: EmbeddingRole, contextTexts?: string[]): string {
     const db = getDatabase();
     const suffix =
       this.options.model === "custom" && db.hypaCustomSettings?.model?.trim()
@@ -384,29 +401,24 @@ export class HypaProcessorV2<TMetadata> {
         : "";
 
     const ctxProvider = isContextModel(this.options.model) ? getContextProvider(this.options.model) : null;
-    const ctxSuffix = ctxProvider
+    let ctxSuffix = ctxProvider
       ? ctxProvider.getCacheKeySuffix(contextTexts)
       : "";
+    // The provider owns the grouping rule: a key is grouped when its suffix differs from the ungrouped one.
+    if (ctxProvider && ctxSuffix === ctxProvider.getCacheKeySuffix()) {
+      ctxSuffix += `|${CONTEXT_ROLE_TAG}:${role === "query" ? "q" : "d"}`;
+    }
 
-    return `${content}|${this.options.model}${suffix}${ctxSuffix}`;
+    return `${content}|${this.options.model}${suffix}${ctxSuffix}${recipeCacheTag(this.options.model, role)}`;
   }
 
   private getOptimalChunkSize(): number {
-    // API
     if (!this.isLocalModel()) {
-      return 50;
+      return embeddingBatchSize("remote", isMobile);
     }
 
-    // WebGPU
-    if ("gpu" in navigator) {
-      return isMobile ? 5 : 10;
-    }
-
-    // WASM
-    const cpuCores = (navigator as Navigator).hardwareConcurrency || 4;
-    const baseChunkSize = isMobile ? Math.floor(cpuCores / 2) : cpuCores;
-
-    return Math.min(baseChunkSize, 10);
+    const runtime = localModels.gpuModels.includes(this.options.model) ? "webgpu" : "wasm";
+    return embeddingBatchSize(runtime, isMobile);
   }
 
   private isLocalModel(): boolean {
@@ -423,11 +435,13 @@ export class HypaProcessorV2<TMetadata> {
     return chunks;
   }
 
-  private async getLocalEmbeds(contents: string[]): Promise<EmbeddingVector[]> {
+  private async getLocalEmbeds(contents: string[], role: EmbeddingRole): Promise<EmbeddingVector[]> {
+    const prefix = recipePrefix(this.options.model, role);
     const results: Float32Array[] = await runEmbedding(
-      contents,
+      contents.map((content) => prefix + content),
       localModels.models[this.options.model],
-      localModels.gpuModels.includes(this.options.model) ? "webgpu" : "wasm"
+      localModels.gpuModels.includes(this.options.model) ? "webgpu" : "wasm",
+      EMBEDDING_RECIPES[this.options.model].pooling
     );
 
     return results;

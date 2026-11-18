@@ -21,7 +21,9 @@ import { buildUserContents } from './chatContents'
 import type { OpenAIChatExtra, OpenAIChatFull, ToolCall } from './types'
 
 import { getLocalNetworkRequestOptions, type LocalNetworkRequestOptions } from './shared'
-import { resolveRequestKey } from '../secretKey'
+import { leaseRequestKey, limitedField, sendArgKey, sendKeyLine } from '../secretKey'
+import { parseOpenAIChatUsage } from '../../../usage/usageParse'
+import { wantsStreamUsage } from '../../../usage/streamUsageHosts'
 export { requestOpenAIResponseAPI, __testResponsesAPI } from './responses'
 function isOfficialOpenAIURL(url: string): boolean {
     try {
@@ -29,6 +31,16 @@ function isOfficialOpenAIURL(url: string): boolean {
     } catch {
         return false
     }
+}
+
+// One report per HTTP response that carries usage; a response without parsable usage reports nothing.
+function reportChatUsage(arg:RequestDataArgumentExtended, data:{usage?:unknown}|null|undefined):void{
+    try {
+        const usage = parseOpenAIChatUsage(data?.usage)
+        if(usage){
+            arg.usageMeter?.report(usage)
+        }
+    } catch (error) {}
 }
 
 function shouldUseOpenAIFlexProcessing(aiModel: string, url: string, provider: LLMProvider): boolean {
@@ -210,7 +222,7 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
 
     if(aiModel === 'openrouter' && db.openrouterRequestModel === 'risu/free'){
         // The model list swallows its own failures; resolving here first reports an unusable reference as such.
-        await resolveRequestKey(arg, db.openrouterKey)
+        await leaseRequestKey(arg, 'openrouterKey')
         openrouterRequestModel = await getFreeOpenRouterModels()
     }
 
@@ -290,7 +302,7 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
                 modelId: arg.modelInfo.id
             } ),
             headers: {
-                "Authorization": "Bearer " + await resolveRequestKey(arg, arg.key ?? db.mistralKey),
+                "Authorization": "Bearer " + (arg.key != null ? await sendArgKey(arg) : await sendKeyLine(arg, 'mistralKey')),
             },
             abortSignal: arg.abortSignal,
             chatId: arg.chatId,
@@ -315,6 +327,7 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
 
         const dat = res.data as any
         if(res.ok){
+            reportChatUsage(arg, dat)
             try {
                 const msg:OpenAIChatFull = (dat.choices[0].message)
                 return {
@@ -332,13 +345,15 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
             if(dat.error && dat.error.message){                    
                 return {
                     type: 'fail',
-                    result: (language.errors.httpError + `${dat.error.message}`)
+                    result: (language.errors.httpError + `${dat.error.message}`),
+                    keyLimited: limitedField(arg, res.status)
                 }
             }
-            else{                    
+            else{
                 return {
                     type: 'fail',
-                    result: (language.errors.httpError + `${JSON.stringify(res.data)}`)
+                    result: (language.errors.httpError + `${JSON.stringify(res.data)}`),
+                    keyLimited: limitedField(arg, res.status)
                 }
             }
         }
@@ -547,10 +562,12 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
     // The field is chosen first and only the chosen one is resolved, so an unset reference in a
     // field this model does not use cannot fail the request.
     const chosenKey = arg.modelInfo?.keyIdentifier
-        ? db.OaiCompAPIKeys[arg.modelInfo.keyIdentifier]
-        : (arg.key ?? (aiModel === 'nanogpt' ? db.nanogptKey : aiModel === 'reverse_proxy' ?  db.proxyKey : (aiModel === 'openrouter' ? db.openrouterKey : db.openAIKey)))
+        ? await sendKeyLine(arg, `OaiCompAPIKeys:${arg.modelInfo.keyIdentifier}`)
+        : (arg.key != null
+            ? await sendArgKey(arg)
+            : await sendKeyLine(arg, aiModel === 'nanogpt' ? 'nanogptKey' : aiModel === 'reverse_proxy' ?  'proxyKey' : (aiModel === 'openrouter' ? 'openrouterKey' : 'openAIKey')))
     let headers = {
-        "Authorization": "Bearer " + await resolveRequestKey(arg, chosenKey),
+        "Authorization": "Bearer " + chosenKey,
         "Content-Type": "application/json"
     }
     if(aiModel === 'openrouter'){
@@ -574,6 +591,10 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
         body.n = db.genTime
     }
     
+    // Set before the additional parameters, so a user parameter overrides it.
+    if(arg.useStreaming && wantsStreamUsage(replacerURL)){
+        body.stream_options = { include_usage: true }
+    }
     body = applyAdditionalParameters(body, headers, getAdditionalParameters(aiModel))
 
     // Some aux flows are intentionally non-streaming (e.g. memory/translate).
@@ -621,7 +642,8 @@ export async function requestOpenAI(arg:RequestDataArgumentExtended):Promise<req
         if(da.status !== 200){
             return {
                 type: "fail",
-                result: await textifyReadableStream(da.body)
+                result: await textifyReadableStream(da.body),
+                keyLimited: limitedField(arg, da.status)
             }
         }
 
@@ -731,6 +753,7 @@ export async function requestHTTPOpenAI(
     const dat = res.data as any
 
     if(res.ok){
+        reportChatUsage(arg, dat)
         try {
             // Collect all tool_calls from all choices
             let allToolCalls: ToolCall[] = []
@@ -908,15 +931,17 @@ export async function requestHTTPOpenAI(
         }
     }
     
-    if(dat.error && dat.error.message){                    
+    if(dat.error && dat.error.message){
         return {
             type: 'fail',
-            result: (language.errors.httpError + `${dat.error.message}`)
+            result: (language.errors.httpError + `${dat.error.message}`),
+            keyLimited: limitedField(arg, res.status)
         }
     }
 
     return {
         type: 'fail',
+        keyLimited: limitedField(arg, res.status),
         result: (language.errors.httpError + `${JSON.stringify(res.data)}`)
     }
 }
@@ -967,7 +992,7 @@ export async function requestOpenAILegacyInstruct(arg:RequestDataArgumentExtende
 
     let headers:any = {
         "Content-Type": "application/json",
-        "Authorization": "Bearer " + await resolveRequestKey(arg, arg.key ?? db.openAIKey)
+        "Authorization": "Bearer " + (arg.key != null ? await sendArgKey(arg) : await sendKeyLine(arg, 'openAIKey'))
     }
 
     body = applyAdditionalParameters(body, headers, getAdditionalParameters(arg.aiModel))
@@ -983,7 +1008,8 @@ export async function requestOpenAILegacyInstruct(arg:RequestDataArgumentExtende
     if(!response.ok){
         return {
             type: 'fail',
-            result: (language.errors.httpError + `${JSON.stringify(response.data)}`)
+            result: (language.errors.httpError + `${JSON.stringify(response.data)}`),
+            keyLimited: limitedField(arg, response.status)
         }
     }
     const text:string = response.data.choices[0].text
@@ -997,6 +1023,8 @@ export async function requestOpenAILegacyInstruct(arg:RequestDataArgumentExtende
 type OpenAIStreamState = {
     readed:{[key:string]:string}
     reasoning:string
+    // The last non-null usage object seen on a complete line; a later `usage: null` never erases it.
+    usage?:object
 }
 
 function getTranStream(arg:RequestDataArgumentExtended):TransformStream<Uint8Array, StreamResponseChunk> {
@@ -1074,7 +1102,12 @@ function getTranStream(arg:RequestDataArgumentExtended):TransformStream<Uint8Arr
                     return 'done'
                 }
                 const readed = state.readed
-                const choices = JSON.parse(rawChunk).choices
+                const parsedChunk = JSON.parse(rawChunk)
+                const choices = parsedChunk.choices
+                const chunkUsage:unknown = parsedChunk.usage
+                if(typeof chunkUsage === 'object' && chunkUsage !== null){
+                    state.usage = chunkUsage
+                }
                 for(const choice of choices){
                     const chunk = choice.delta.content ?? choice.text
                     if(chunk){
@@ -1191,6 +1224,10 @@ function getTranStream(arg:RequestDataArgumentExtended):TransformStream<Uint8Arr
             } catch (error) {
 
             }
+        },
+        flush() {
+            // Only complete lines are committed, so the tail copy never contributes usage.
+            reportChatUsage(arg, {usage: committed.usage})
         }
     })
 }

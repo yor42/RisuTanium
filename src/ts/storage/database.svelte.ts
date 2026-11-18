@@ -18,6 +18,7 @@ import type { OobaChatCompletionRequestParams } from '../model/ooba';
 import { type HypaV3Settings, type HypaV3Preset, createHypaV3Preset, normalizeHypaV3Presets } from '../process/memory/hypaV3Presets'
 import { normalizeTranslatorPresetState, type TranslatorPreset } from '../translator/presets'
 import type { TaskPreset } from '../process/utility/taskPreset'
+import type { PriceOverride } from '../usage/usageTypes'
 import { isTauri, isNodeServer } from "src/ts/platform"
 import { blankSecretRef } from '../secretRef'
 import { safeStructuredClone } from '../polyfill';
@@ -28,6 +29,8 @@ import {
     normalizeChatLoadPages,
 } from '../chatLoadPages';
 import { normalizeHideUnusedModes, normalizeVisibleModes, type HomeMode } from './homeModes';
+import { assignPresetIds, carryPresetMeta, freshPresetMeta, migratePresetSlots, withoutPresetMeta } from './presetMeta';
+import { DEFAULT_HYPA_MODEL } from '../process/memory/embeddingModels';
 
 //APP_VERSION_POINT is to locate the app version in the database file for version bumping
 export let appVer = "0.1.0" //<APP_VERSION_POINT>
@@ -177,7 +180,7 @@ export function setDatabase(data:Database){
         data.proxyKey = ""
     }
     if(checkNullish(data.botPresets)){
-        let defaultPreset = presetTemplate
+        const defaultPreset = freshPresetMeta(safeStructuredClone(presetTemplate), {keepFolder: false})
         defaultPreset.name = "Default"
         data.botPresets = [defaultPreset]
     }
@@ -415,7 +418,7 @@ export function setDatabase(data:Database){
     data.colorSchemeName ??= 'default'
     data.customColorScheme ??= safeStructuredClone(data.colorSchemeName === 'custom' ? data.colorScheme : defaultColorScheme)
     data.NAIsettings.starter ??= ""
-    data.hypaModel ??= 'MiniLM'
+    data.hypaModel ??= DEFAULT_HYPA_MODEL
     data.mancerHeader ??= ''
     data.emotionProcesser ??= 'submodel'
     data.translatorType ??= 'google'
@@ -536,6 +539,8 @@ export function setDatabase(data:Database){
             }
         }
     }
+    data.presetFolders ??= []
+    assignPresetIds(data)
     data.openrouterProvider ??= {
         order: [],
         only: [],
@@ -646,6 +651,9 @@ export function setDatabase(data:Database){
     data.modelTools ??= []
     data.enableScrollToActiveChar ??= true
     
+    // Must run before the merge below: the merge appends the presetSlot rows, and the migration only runs while none exist.
+    migratePresetSlots(data)
+
     // Merge existing hotkeys with new default hotkeys
     if (!data.hotkeys) {
         data.hotkeys = safeStructuredClone(defaultHotkeys)
@@ -899,12 +907,16 @@ export interface Database{
     waifuWidth2:number
     botPresets:botPreset[]
     botPresetsId:number
+    /** Preset folders, one level. Absent until `setDatabase` makes the list; fork-only, carried untranslated by the `.bin`. */
+    presetFolders?:PresetFolder[]
     /** Desktop-only Utility task presets. Absent unless the user has made one; a fork-only field that no `.bin` or config carries. */
     taskPresets?:TaskPreset[]
     /** Installed theme packs, read only through `readPackRecord`. Absent until the first install; a fork-only field that no `.bin` carries. */
     themePacks?:unknown[]
     /** The active theme pack's record id, or a built-in theme's `builtin:<slug>`. Absent until a pack is activated; fork-only, never in a `.bin`. */
     activeThemePack?:string
+    /** Per-model price overrides in USD per 1M tokens. Absent until one is set; fork-only, never in a `.bin`. */
+    usagePriceOverrides?:Record<string, PriceOverride>
     sdProvider: string
     webUiUrl:string
     sdSteps:number
@@ -1133,9 +1145,11 @@ export interface Database{
     jsonSchema:string
     strictJsonSchema:boolean
     extractJson:string
+    /** `messages` and `imports` are the old counters; every other key is a usage ledger key (`src/ts/usage/usageLedger.ts`). */
     statics: {
         messages: number
         imports: number
+        [key: string]: number
     }
     customQuotes:boolean
     customQuotesData?:[string, string, string, string]
@@ -1565,6 +1579,11 @@ export interface character{
      * a card. Typed `unknown` because a stored value may have another shape; the readers narrow it.
      */
     risutanium_asset_retained?:unknown
+    /**
+     * Viewer preference, fork-only: carried by the store and `.bin`, never by a card; absent = off. While a reply
+     * streams, the new chat screen shows a character count instead of the text.
+     */
+    risutanium_render_when_complete?:boolean
 }
 
 
@@ -1575,6 +1594,8 @@ export interface loreSettings{
     fullWordMatching?: boolean
     /** Fork-only. With full-word matching, only `[A-Za-z0-9_]` make up a word, as in SillyTavern. Absent reads as off. */
     fullWordAsciiBoundary?: boolean
+    /** Fork-only. Outside full-word matching, a key whose first letter is Korean, Japanese or Chinese must start at a word start. Absent reads as off. */
+    cjkWordStart?: boolean
 }
 
 
@@ -1652,8 +1673,20 @@ export interface groupChat{
     coldChatCount?:number
 }
 
+/** A preset folder: a flat group, never nested. A preset names it through `botPreset.folderId`. */
+export interface PresetFolder{
+    id:string
+    name:string
+}
+
 export interface botPreset{
     name?:string
+    /** Stable id, minted on load when absent. Fork-only; a single-preset export omits it. */
+    id?:string
+    /** The folder this preset sits in; a value that names no folder reads as none. */
+    folderId?:string
+    /** Hotkey slot 1..9; a value outside that range is ignored on read and never rewritten. */
+    slot?:number
     apiType?: string
     openAIKey?: string
     localNetworkMode?: boolean
@@ -2292,9 +2325,18 @@ const APPENDED_PRESET_NAME = 'New Preset'
  */
 export function appendWorkingSettingsPreset(db:Database){
     const presets = Array.isArray(db.botPresets) ? db.botPresets : []
-    presets.push(presetFromWorkingSettings(db, APPENDED_PRESET_NAME, ''))
+    presets.push(freshPresetMeta(presetFromWorkingSettings(db, APPENDED_PRESET_NAME, ''), {keepFolder: false}))
     db.botPresets = presets
     db.botPresetsId = presets.length - 1
+}
+
+/**
+ * The preset that replaces `slot` when the working settings are saved into it: the rebuilt settings with the slot's
+ * id, folder and hotkey slot carried over. The page save and the fast-forward replay both use it, so a concurrent
+ * switch compares equal on both sides.
+ */
+export function savedPresetFor(db:Database, slot:botPreset):botPreset{
+    return carryPresetMeta(presetFromWorkingSettings(db, slot.name, slot.image ?? ''), slot)
 }
 
 export function saveCurrentPreset(){
@@ -2314,7 +2356,7 @@ export function saveCurrentPreset(){
         appendWorkingSettingsPreset(db)
         return
     }
-    pres[db.botPresetsId] = presetFromWorkingSettings(db, pres[db.botPresetsId].name, pres[db.botPresetsId].image ?? '')
+    pres[db.botPresetsId] = savedPresetFor(db, pres[db.botPresetsId])
     db.botPresets = pres
 }
 
@@ -2323,7 +2365,7 @@ export function copyPreset(id:number){
     saveCurrentPreset()
     let db = DBState.db
     let pres = db.botPresets
-    const newPres = safeStructuredClone(pres[id])
+    const newPres = freshPresetMeta(safeStructuredClone(pres[id]), {keepFolder: true})
     newPres.name += " Copy"
     db.botPresets.push(newPres)
 }
@@ -2476,7 +2518,7 @@ import type { Loadout } from '../loadout';
 export async function downloadPreset(id:number, type:'json'|'risupreset'|'return' = 'json'){
     saveCurrentPreset()
     let db = getDatabase()
-    let pres = safeStructuredClone(db.botPresets[id])
+    let pres = withoutPresetMeta(safeStructuredClone(db.botPresets[id]))
     console.log(pres)
     pres.openAIKey = ''
     pres.forceReplaceUrl = ''
@@ -2595,7 +2637,7 @@ export async function importPreset(f:{
         pr.NAISettings.mirostat_lr = pre.parameters.mirostat_lr
         pr.NAISettings.mirostat_tau = pre.parameters.mirostat_tau
         pr.name = pre.name ?? "Imported"
-        db.botPresets.push(pr)
+        db.botPresets.push(freshPresetMeta(pr, {keepFolder: false}))
         return
     }
 
@@ -2611,7 +2653,7 @@ export async function importPreset(f:{
         if(!Array.isArray(db.botPresets)){
             db.botPresets = []
         }
-        db.botPresets.push(converted.preset)
+        db.botPresets.push(freshPresetMeta(converted.preset, {keepFolder: false}))
         return
     }
     if(stKind !== null && stKind !== 'STCHAT'){
@@ -2626,7 +2668,7 @@ export async function importPreset(f:{
         if(!Array.isArray(db.botPresets)){
             db.botPresets = []
         }
-        db.botPresets.push(converted.preset)
+        db.botPresets.push(freshPresetMeta(converted.preset, {keepFolder: false}))
         if(converted.skipped.length > 0){
             await alertNormalWait(fillLang(language.alerts.stPartsSkipped, {sections: converted.skipped.join(', ')}))
         }
@@ -2646,9 +2688,10 @@ export async function importPreset(f:{
         pre[field] = ''
     }
     delete pre.koboldURL
+    //A key field holds one key per line, so the field is blanked when any of its lines is a whole reference.
     pre.openAIKey = typeof pre.openAIKey === 'string' ? blankSecretRef(pre.openAIKey) : ''
     pre.proxyKey = typeof pre.proxyKey === 'string' ? blankSecretRef(pre.proxyKey) : ''
-    db.botPresets.push(pre)
+    db.botPresets.push(freshPresetMeta(pre, {keepFolder: false}))
 }
 
 function normalizePromptRole(role: unknown): 'user'|'bot'|'system'|null {

@@ -24,6 +24,7 @@ const WRITER_INDEXES: Array<[number, string, string]> = [
     [13, 'models', 'prompt'],
     [14, 'extensions', 'modules'],
     [15, 'shortcuts', 'shortcuts'],
+    [17, 'statistics', 'statistics'],
 ]
 
 describe('Settings index to page mapping', () => {
@@ -47,15 +48,15 @@ describe('Settings index to page mapping', () => {
     test('every legacy index is hosted by exactly one view', () => {
         const indexes = orderedPages().flatMap((page) => page.views.map((view) => view.legacyIndex))
         expect(new Set(indexes).size).toBe(indexes.length)
-        expect([...indexes].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 6, 10, 11, 12, 13, 14, 15])
+        expect([...indexes].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 6, 10, 11, 12, 13, 14, 15, 17])
     })
 })
 
 describe('Settings index order', () => {
-    test('the ten entries follow the specification order', () => {
+    test('the eleven entries follow the specification order, Statistics before Advanced', () => {
         expect(orderedPages().map((page) => page.id)).toEqual([
             'models', 'features', 'display', 'input', 'language',
-            'personas', 'extensions', 'data', 'shortcuts', 'advanced',
+            'personas', 'extensions', 'data', 'shortcuts', 'statistics', 'advanced',
         ])
     })
 

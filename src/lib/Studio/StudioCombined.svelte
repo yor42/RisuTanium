@@ -24,6 +24,7 @@
     import type { OwnerModel } from '../../ts/studio/ownerModel'
     import { TREE_PAGE_SIZE, selectStudioNode, showMoreStudioRows, studioScreen } from '../../ts/studio/studioScreen.svelte'
     import { itemLabelOf, kindLabelOf } from './TreeRow.svelte'
+    import StudioLoreTester from './StudioLoreTester.svelte'
 
     interface Props {
         model: OwnerModel
@@ -68,6 +69,9 @@
             <button type="button" data-part="studio-combined-more" class="min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer" onclick={() => showMoreStudioRows(pageKey)}>
                 {language.studioShowMore(Math.min(TREE_PAGE_SIZE, rows.length - shown))}
             </button>
+        {/if}
+        {#if kind === 'lore'}
+            <StudioLoreTester {model} />
         {/if}
     </div>
 {/if}

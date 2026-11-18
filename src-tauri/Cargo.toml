@@ -31,6 +31,7 @@ tauri-plugin-os = "2.4.0"
 tauri-plugin-dialog = "2.8.1"
 tauri-plugin-process = "2.4.0"
 tauri-plugin-shell = "2.4.0"
+tauri-plugin-opener = "2.7.3"
 tauri-plugin-http = "2.8.0"
 # Native avatar preview (avatar_preview module). Direct crates are pinned; the
 # transitive inflate and rayon crates float until Cargo.lock is tracked.

@@ -14,8 +14,9 @@ import { applyAdditionalParameters, applyParameters, getAdditionalParameters, is
 
 import type { OpenAIChatExtra, ResponseFunctionCallItem, ResponseInputItem, ResponseItem, ResponseOutputItem } from './types'
 import { getLocalNetworkRequestOptions, type LocalNetworkRequestOptions } from './shared'
-import { resolveRequestKey } from '../secretKey'
+import { limitedField, sendArgKey, sendKeyLine } from '../secretKey'
 import { beginToolRound, endStreamForGate, gateResult, toolBlockGate } from '../toolLoop'
+import { parseResponsesUsage } from '../../../usage/usageParse'
 
 function responseTextContentToString(content:any):string{
     if(typeof content === 'string'){
@@ -234,10 +235,12 @@ async function buildResponsesHeaders(arg:RequestDataArgumentExtended, risuIdenti
     const aiModel = arg.aiModel
     // Only the chosen field is resolved, so an unset reference in a field this model does not use cannot fail it.
     const chosenKey = arg.modelInfo?.keyIdentifier
-        ? db.OaiCompAPIKeys[arg.modelInfo.keyIdentifier]
-        : (arg.key ?? (aiModel === 'nanogpt' ? db.nanogptKey : aiModel === 'reverse_proxy' ? db.proxyKey : db.openAIKey))
+        ? await sendKeyLine(arg, `OaiCompAPIKeys:${arg.modelInfo.keyIdentifier}`)
+        : (arg.key != null
+            ? await sendArgKey(arg)
+            : await sendKeyLine(arg, aiModel === 'nanogpt' ? 'nanogptKey' : aiModel === 'reverse_proxy' ? 'proxyKey' : 'openAIKey'))
     const headers = {
-        "Authorization": "Bearer " + await resolveRequestKey(arg, chosenKey),
+        "Authorization": "Bearer " + chosenKey,
         "Content-Type": "application/json"
     }
     if(risuIdentify){
@@ -524,6 +527,17 @@ async function appendResponsesToolOutputs(body:any, calls:ResponseFunctionCallIt
     return [assistantText && !db.simplifiedToolUse ? assistantText : '', callCodes.join('\n\n')].filter(Boolean).join('\n\n')
 }
 
+// One report per HTTP response that carries usage; an unparsable usage reports nothing.
+function reportResponsesUsage(arg:RequestDataArgumentExtended, rawUsage:unknown):void{
+    try{
+        const usage = parseResponsesUsage(rawUsage)
+        if(usage){
+            arg.usageMeter?.report(usage)
+        }
+    }
+    catch{}
+}
+
 async function requestHTTPResponsesAPI(requestURL:string, body:any, headers:Record<string,string>, arg:RequestDataArgumentExtended, networkOptions:LocalNetworkRequestOptions):Promise<requestDataResponse>{
     const db = getDatabase()
     const response = await globalFetch(requestURL, {
@@ -540,11 +554,13 @@ async function requestHTTPResponsesAPI(requestURL:string, body:any, headers:Reco
     if(!response.ok){
         return {
             type: 'fail',
-            result: (language.errors.httpError + `${JSON.stringify(response.data)}`)
+            result: (language.errors.httpError + `${JSON.stringify(response.data)}`),
+            keyLimited: limitedField(arg, response.status)
         }
     }
 
     const data = response.data as any
+    reportResponsesUsage(arg, data?.usage)
     if(data?.status === 'failed' || data?.error){
         return { type: 'fail', result: JSON.stringify(data.error ?? data) }
     }
@@ -607,6 +623,7 @@ function getResponsesTranStream(arg:RequestDataArgumentExtended):TransformStream
     let text = ''
     let reasoning = ''
     let error = ''
+    let completedUsage:unknown = null
     const calls:Record<string, ResponseFunctionCallItem> = {}
 
     const appendReasoning = (incoming?:string) => {
@@ -674,6 +691,7 @@ function getResponsesTranStream(arg:RequestDataArgumentExtended):TransformStream
             error = JSON.stringify(event.error ?? event)
         }
         else if(type === 'response.completed'){
+            completedUsage = event.response?.usage
             const finalText = extractResponsesText(event.response, arg)
             if(finalText){
                 text = finalText
@@ -724,7 +742,9 @@ function getResponsesTranStream(arg:RequestDataArgumentExtended):TransformStream
         },
         flush(controller) {
             buffer += decoder.decode()
-            if(!processBufferedEvents(controller, true)){
+            const emitted = processBufferedEvents(controller, true)
+            reportResponsesUsage(arg, completedUsage)
+            if(!emitted){
                 emit(controller)
             }
         }
@@ -880,7 +900,7 @@ export async function requestOpenAIResponseAPI(arg:RequestDataArgumentExtended):
         })
 
         if(response.status !== 200){
-            return { type: 'fail', result: await textifyReadableStream(response.body) }
+            return { type: 'fail', result: await textifyReadableStream(response.body), keyLimited: limitedField(arg, response.status) }
         }
         if(!response.headers.get('Content-Type')?.includes('text/event-stream')){
             return { type: 'fail', result: await textifyReadableStream(response.body) }

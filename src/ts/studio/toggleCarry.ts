@@ -152,15 +152,17 @@ function flowItems(source: string, target: string, baseRows: readonly Row[], cur
  * What a change of one definition does to the stored values of its toggles. A key kept in both texts continues as
  * itself; a removed key continues as an added key only when one removed and one added row share label and class and
  * both keys are read by a single row; every other unclear case is `ambiguous`, which carries nothing. Output is ordered
- * by the baseline position of each old key's first row.
+ * by the baseline position of each old key's first row. Keys in `added` were created by the list in this window: they are
+ * never a rename target and never an unmatched addition. An entry that is not an added key of `current` is inert, and an
+ * empty set gives the two-argument plan.
  */
-export function planCarry(baseline: Definition, current: Definition): readonly CarryItem[] {
+export function planCarry(baseline: Definition, current: Definition, added?: ReadonlySet<string>): readonly CarryItem[] {
     const baseRows = rowsOf(baseline)
     const currentRows = rowsOf(current)
     const baseByKey = groupByKey(baseRows)
     const currentByKey = groupByKey(currentRows)
     const removedKeys = new Set([...baseByKey.keys()].filter((key) => !currentByKey.has(key)))
-    const addedKeys = new Set([...currentByKey.keys()].filter((key) => !baseByKey.has(key)))
+    const addedKeys = new Set([...currentByKey.keys()].filter((key) => !baseByKey.has(key) && !(added?.has(key) ?? false)))
 
     const removedBySignature = new Map<string, Row[]>()
     for (const row of baseRows.filter((candidate) => removedKeys.has(candidate.key))) {
@@ -223,4 +225,44 @@ export function detachingItems(items: readonly CarryItem[], visitKeys: ReadonlyS
 /** The exact keys the engine reads (`toggle_` + key) from the value rows of one definition. */
 export function valueKeysOf(def: Definition): ReadonlySet<string> {
     return new Set(rowsOf(def).map((row) => row.key))
+}
+
+/** The keys the list created: a key is in the set only while every current row with that key has `new` origin. */
+export function addedFromRows(rows: readonly { readonly key: string, readonly origin: 'base' | 'new' }[]): ReadonlySet<string> {
+    const keys = new Set(rows.map((row) => row.key))
+    return new Set([...keys].filter((key) => rows.every((row) => row.key !== key || row.origin === 'new')))
+}
+
+/**
+ * The baseline keys whose readings (class, and the ordered options of a select) in the baseline differ, as a set, from
+ * those in `t0`, the text this builder instance started the window with. A key absent from `t0` has no readings, so it
+ * is dirty. Labels are not readings.
+ */
+export function windowDirty(baseline: Definition, t0: Definition): ReadonlySet<string> {
+    const baseByKey = groupByKey(rowsOf(baseline))
+    const t0ByKey = groupByKey(rowsOf(t0))
+    const dirty = new Set<string>()
+    for (const [key, rows] of baseByKey) {
+        const before = new Set(distinctReadings(rows).keys())
+        const after = new Set(distinctReadings(t0ByKey.get(key) ?? []).keys())
+        if (before.size !== after.size || [...before].some((reading) => !after.has(reading))) {
+            dirty.add(key)
+        }
+    }
+    return dirty
+}
+
+/**
+ * The old keys whose stored values cannot be renumbered safely: they have an option renumbering in the plan and part of
+ * their change since the baseline predates this window. Pure; nothing about lateness is stored.
+ */
+export function lateOldKeys(baseline: Definition, t0: Definition, current: Definition, added?: ReadonlySet<string>): ReadonlySet<string> {
+    const dirty = windowDirty(baseline, t0)
+    const late = new Set<string>()
+    for (const item of planCarry(baseline, current, added)) {
+        if (item.kind === 'optionRemap' && dirty.has(item.key)) {
+            late.add(item.key)
+        }
+    }
+    return late
 }

@@ -4,8 +4,11 @@
  * peer is built by `peerPage` from the committer and encoder APIs only. Mocked storage here says nothing about a native
  * backend.
  */
-import { expect, vi } from 'vitest'
+import { afterEach, beforeEach, expect, vi } from 'vitest'
 import type { Database } from 'src/ts/storage/database.svelte'
+import { markIdentitySeen } from 'src/ts/storage/dbChangeEffects.svelte'
+import { uninstallDbWriteHook, withQuietCharacterInstall } from 'src/ts/storage/dbWriteHook'
+import type { DbWriteMark } from 'src/ts/storage/characterSaveMarks'
 import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { createMemoryBackend, createNodeBackend, type MemoryBackend, type Store2Backend } from 'src/ts/storage/store2/backend'
@@ -13,7 +16,7 @@ import { resetStore2BootForTest, type Store2BootNotice } from 'src/ts/storage/st
 import type { Store2BootUi } from 'src/ts/storage/store2/bootDispatch'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { createNodeHttpStore } from 'src/ts/storage/store/nodeHttpStore'
-import { setFastForwardHostForTest, type FastForwardHost } from 'src/ts/storage/store2/fastForward'
+import { setFastForwardHostForTest, type ConflictChoice, type ConflictRecord, type FastForwardHost, type FastForwardOutcome } from 'src/ts/storage/store2/fastForward'
 import { PERSONA_OPS } from 'src/ts/storage/store2/fastForward/records'
 import { resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import { getActiveStore2Save, resetStore2SaveForTest, type Store2SaveContext } from 'src/ts/storage/store2/saveActive'
@@ -23,6 +26,7 @@ import { resetRetainedForTest } from 'src/ts/process/coldRetained'
 import { bootThroughDispatch, createClock, createPeerDouble, seedTree, testEnv, type DispatchedBoot, type PeerDouble } from '../store2SaveKit'
 import { fakeLists } from './codecFixtures'
 import type { Hooks } from './commitFixtures'
+import { proxiedDb, takeHookErrors } from './ffState'
 import type { OpenedBackend } from './fenceFixtures'
 import {
     chaIdOf, chars, lineSeededStore, parsedKey, peerPage, plantBytes, runLoopOver, seedProfile, stopAllLoops, until, type LoopHandle,
@@ -42,17 +46,45 @@ export interface HostState {
     writing: Set<string>
     busy: boolean
     sending: boolean
+    /** The chats written, by owner `chaId`; the owners also belong to `writing`. */
+    writingChats?: Map<string, Set<string>>
+    /** The selected character's index (-1 for none); the host's `select` sets it. */
+    selected?: number
+    /** Called by the host's mark, so a loop world can take the mark as a real page would. */
+    onMark?: (chaId: string) => void
+    /** What the host was asked to do, in order. */
+    calls?: { marked: string[], forgotten: unknown[], selects: number[], installed: unknown[] }
 }
 
-/** A host with nothing open, nothing busy and no send running; a test flips `state`. */
+
+let lastHostState: HostState | null = null
+
 export function testHost(state: HostState = { inUse: new Set(), writing: new Set(), busy: false, sending: false }): { host: FastForwardHost, state: HostState } {
+    const calls = state.calls ?? { marked: [], forgotten: [], selects: [], installed: [] }
+    state.calls = calls
+    state.selected ??= -1
+    lastHostState = state
     const host: FastForwardHost = {
         inUse: () => state.inUse,
         writing: chaId => state.writing.has(chaId),
+        writingTargets: () => ({ chars: state.writing, chats: state.writingChats ?? new Map<string, Set<string>>() }),
         busy: () => state.busy,
         sending: () => state.sending,
-        installQuietly: fn => fn(),
-        forgetLoaded: () => { },
+        installQuietly: fn => withQuietCharacterInstall(fn),
+        forgetLoaded: (slot) => { calls.forgotten.push(slot) },
+        installed: (slot) => {
+            calls.installed.push(slot)
+            markIdentitySeen(slot)
+        },
+        mark: (chaId) => {
+            calls.marked.push(chaId)
+            state.onMark?.(chaId)
+        },
+        selection: () => state.selected ?? -1,
+        select: (index) => {
+            state.selected = index
+            calls.selects.push(index)
+        },
         presetOps: () => PERSONA_OPS,
     }
     return { host, state }
@@ -98,7 +130,37 @@ async function bootNodeDispatch(backend: Store2Backend, store: ByteStore): Promi
 /** The byte store of the Node server a test opened with `openNamed('node')`; set by that call. */
 let nodeStore: ByteStore | null = null
 
-export async function bootB(memory: Store2Backend, kind: 'indexeddb' | 'node' = 'indexeddb'): Promise<PageB> {
+/**
+ * What `bootB` hands the page as its database: `'state'` is the raw boot database under Svelte's client state proxy, as
+ * `$state` compiles to, with the real write hook, so every character reads back as a state proxy as in the running page;
+ * `'plain'` is the raw object. In a `node` file the hook's self-check records `dbWriteHook.selfCheck` on the state host.
+ */
+export type FfHostMode = 'state' | 'plain'
+
+/** Both host modes, for the `describe.each` of the suites that run their world-level rows on each. */
+export const FF_HOSTS = ['state', 'plain'] as const satisfies readonly FfHostMode[]
+
+const defaultHostMode = (): FfHostMode => process.env.FF_TEST_HOST === 'plain' ? 'plain' : 'state'
+
+let hostMode: FfHostMode = defaultHostMode()
+
+/** Sets the host mode of the next boots; no argument restores the default (`FF_TEST_HOST=plain` selects the plain host). */
+export function setFfHost(mode?: FfHostMode): void {
+    hostMode = mode ?? defaultHostMode()
+}
+
+/** Runs the tests of the enclosing `describe` on `mode` and restores the default afterwards; call it inside the `describe`. */
+export function useFfHost(mode: FfHostMode): void {
+    beforeEach(() => { setFfHost(mode) })
+    afterEach(() => { setFfHost() })
+}
+
+export interface BootBOptions {
+    /** Where the write hook of the `'state'` host reports its marks; the default drops them. */
+    sink?: (mark: DbWriteMark) => void
+}
+
+export async function bootB(memory: Store2Backend, kind: 'indexeddb' | 'node' = 'indexeddb', options: BootBOptions = {}): Promise<PageB> {
     resetPage()
     if (kind === 'node' && nodeStore === null) {
         throw new Error('A node page needs the byte store of the Node server opened with openNamed.')
@@ -113,7 +175,8 @@ export async function bootB(memory: Store2Backend, kind: 'indexeddb' | 'node' = 
     if (context?.encoder === undefined) {
         throw new Error('No save context.')
     }
-    return { db: booted.result.database, context: context as PageB['context'], peer: booted.peer }
+    const db = hostMode === 'state' ? proxiedDb(booted.result.database, { sink: options.sink ?? (() => { }) }) : booted.result.database
+    return { db, context: context as PageB['context'], peer: booted.peer }
 }
 
 /** A line-seeded store, a host with nothing busy, and the cleanup of both; call `ffSetup()` in `beforeEach`. */
@@ -128,9 +191,14 @@ export function ffSetup(): { host: ReturnType<typeof testHost> } {
 export function ffTeardown(): void {
     stopAllLoops()
     stopAllWorlds()
+    uninstallDbWriteHook()
     resetPage()
     setFastForwardHostForTest(null)
     vi.restoreAllMocks()
+    const hookErrors = takeHookErrors()
+    if (hookErrors.length > 0) {
+        throw new Error(`The database write hook reported ${hookErrors.length} error(s) during the test`, { cause: hookErrors })
+    }
 }
 
 export async function ffWorld(options: { mintLine: boolean, count?: number } = { mintLine: true }) {
@@ -447,4 +515,92 @@ export async function scenarioR30(name: BackendName, backend: Store2Backend): Pr
     expect(personalityOf(final.db, 0)).toBe('b3')
     expect(personalityOf(final.db, 1)).toBe('a3')
     expect(loop.crashed).toEqual([])
+}
+
+/** The chats of the live or assembled character at `index`. */
+export function chatsAt(db: Database, index: number): Array<Record<string, unknown>> {
+    return chars(db)[index].chats as Array<Record<string, unknown>>
+}
+
+export interface MergeWorld {
+    memory: Store2Backend
+    /** The clock the store's peer pages run on; another peer page over `memory` takes it. */
+    clock: ReturnType<typeof createClock>
+    page: ReturnType<typeof peerPage>
+    b: PageB
+    world: LoopWorld
+    run: ReturnType<typeof runSpyOf>
+}
+
+/** A dispatch-booted page over a line-seeded store with its save loop, and a spy on the fast-forward's runs. */
+export async function mergeWorld(options: { count?: number, backend?: Store2Backend, kind?: 'indexeddb' | 'node', before?: (page: ReturnType<typeof peerPage>) => Promise<void>, sink?: BootBOptions['sink'] } = {}): Promise<MergeWorld> {
+    const memory = options.backend ?? createMemoryBackend()
+    const seeded = await ffWorldOver(memory, { mintLine: true, count: options.count })
+    await options.before?.(seeded.page)
+    const b = await bootB(memory, options.kind ?? 'indexeddb', { sink: options.sink })
+    const world = runLoopWorld(b.context, b.db)
+    if (lastHostState !== null) {
+        lastHostState.onMark = chaId => world.mark(chaId)
+    }
+    return { memory, clock: seeded.clock, page: seeded.page, b, world, run: runSpyOf(b) }
+}
+
+export interface BootedPage {
+    b: PageB
+    world: LoopWorld
+    run: ReturnType<typeof runSpyOf>
+}
+
+/**
+ * A page dispatch-booted over a store that already holds a tree, with its save loop and a spy on its fast-forward runs. It
+ * replaces the page-global state of an earlier booted page, so the earlier page's loop must be stopped first. The host's
+ * mark callback now feeds this page's loop.
+ */
+export async function bootPageOver(backend: Store2Backend, kind: 'indexeddb' | 'node' = 'indexeddb'): Promise<BootedPage> {
+    const b = await bootB(backend, kind)
+    const world = runLoopWorld(b.context, b.db)
+    if (lastHostState !== null) {
+        lastHostState.onMark = chaId => world.mark(chaId)
+    }
+    return { b, world, run: runSpyOf(b) }
+}
+
+export interface Resolver {
+    /** The records of each `resolve` call, in call order. */
+    calls: ConflictRecord[][]
+    /** Lets a held dialog answer. */
+    release(): void
+}
+
+/**
+ * Installs a `resolve` handler on the page's peer double, so the fast-forward asks instead of parking with today's
+ * prompt. `choose` gives the answer per record (a record it leaves out keeps its preselection); `held` keeps the dialog
+ * open until `release()`.
+ */
+export function resolver(w: MergeWorld, choose: (record: ConflictRecord) => ConflictChoice | undefined = () => undefined, options: { held?: boolean } = {}): Resolver {
+    const calls: ConflictRecord[][] = []
+    let release: () => void = () => { }
+    const gate = options.held === true ? new Promise<void>((resolve) => { release = resolve }) : Promise.resolve()
+    w.b.peer.resolve = async ({ conflicts }) => {
+        calls.push([...conflicts])
+        await gate
+        const answer: Record<string, ConflictChoice> = {}
+        for (const record of conflicts) {
+            const choice = choose(record)
+            if (choice !== undefined) {
+                answer[record.id] = choice
+            }
+        }
+        return answer
+    }
+    return { calls, release: () => release() }
+}
+
+/** The peer commits `edit`, this page hears it, and the next fast-forward run's outcome is returned. */
+export async function peerCommits(w: MergeWorld, edit: (db: Database) => void): Promise<FastForwardOutcome> {
+    const before = w.run.mock.calls.length
+    await w.page.commitEdit(edit)
+    signal(w.world)
+    await until(() => w.run.mock.calls.length > before, 'the fast-forward run', 8000)
+    return await w.run.mock.results[before].value
 }

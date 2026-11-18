@@ -13,10 +13,10 @@ import { namesManifest, type AbandonResult, type CommitResult, type Committer } 
 import { classifyCommitRead, lineIdOf, replacedStamp } from './commitKey'
 import { clearAbandonedMarker, type MarkerLiveness, type MarkerOwnerProbe } from './abandonedMarker'
 import type { Staging } from './owner'
-import type { GuardEntry } from './fastForward'
+import type { ConflictAnswers, ConflictChoice, ConflictRecord, GuardEntry } from './fastForward'
 import type { CommitKey } from './format'
 import type { Store2SaveContext } from './saveActive'
-import { createSaveEncoder, type SavePassRequest, type SavePlan } from './saveEncoder'
+import { createSaveEncoder, type NetScan, type SavePassRequest, type SavePlan } from './saveEncoder'
 import {
     beginSavePre, noteLiveCheck, noteNetSlotBegin, noteNetSlotEnd, noteNetSlotMs, noteNetSlotPart, noteNetSlotPassMs, noteSavePre, noteSignalAck,
     noteSignalAdopted, noteSignalKept, noteSignalPassStart, noteSignalResidents, noteSignalSkipped, noteSignalSlotClock, noteSignalUnchanged,
@@ -107,6 +107,13 @@ export interface Store2PeerHandler {
      * that took module scope has saved cleanly.
      */
     moduleNotSaved(info: { moduleId: string, moduleName: string }): void
+    /**
+     * Records that this tab and a peer both changed (a fast-forward found them): one question for all of them, no lock
+     * held, nothing changed while it is open. Resolves with a choice per record id; a missing or unknown choice reads
+     * as the record's preselection. The answers apply in the next pass, over the peer's newest tree. Absent (the kit),
+     * such a park asks `decide` as it did before.
+     */
+    resolve?(request: { conflicts: readonly ConflictRecord[] }): Promise<Readonly<Record<string, ConflictChoice>>>
     /** Parked with unsaved edits: resolves with one of `prompt.offers`; anything else is read as 'reload'. */
     decide(prompt: PeerParkPrompt): Promise<PeerOffer>
     /**
@@ -205,6 +212,8 @@ export class Store2CommitRefusedError extends Error {
 export interface Store2Snapshot {
     toSave: toSaveType
     whole: boolean
+    /** Whether the page's content flag stood when the snapshot was taken (an absent flag counts as set); `foldBack` restores it. */
+    content: boolean
 }
 
 /** A character the loop's passes cannot save: the pass went on without it. */
@@ -257,8 +266,17 @@ export interface Store2LoopPort {
     endIteration(): void
     /** The snapshot was taken: the page counts as clean until the next mark. */
     snapshotTaken(): void
-    /** Marks the page dirty and asks for another pass. */
-    requestPass(): void
+    /**
+     * Marks the page dirty and asks for another pass. `content` (default true) says whether the pass carries an edit that
+     * only the content flag can count; `foldBack` passes the flag of the snapshot it folds back.
+     */
+    requestPass(content?: boolean): void
+    /**
+     * The page's content flag and mark count. The flag is set by every mark no value verdict can judge (a module edit,
+     * a `markUnsaved`, a request for a pass) and cleared by `snapshotTaken`. Optional so that the many test ports of other
+     * behaviours need not declare it: without it, `isDirty()` stands in for the flag and the count is constant.
+     */
+    contentState?(): { unsaved: boolean, marks: number }
     /**
      * Marks the page dirty without making a pass due and without counting a mark: edits are held that no commit will
      * take until the cause is fixed. Optional so that the many test ports of other behaviours need not declare it; the
@@ -360,8 +378,10 @@ export interface Store2LoopPort {
 }
 
 /** Takes the marks of a pass and trims the live tracker to its sticky front, before any await. */
-export function takeStore2Snapshot(port: Pick<Store2LoopPort, 'tracker' | 'reloadFlag' | 'snapshotTaken'>): Store2Snapshot {
+export function takeStore2Snapshot(port: Pick<Store2LoopPort, 'tracker' | 'reloadFlag' | 'snapshotTaken' | 'contentState'>): Store2Snapshot {
     const { tracker, reloadFlag } = port
+    // Read before `snapshotTaken` clears the flag.
+    const content = port.contentState?.().unsaved ?? true
     const toSave: toSaveType = {
         character: [...tracker.character],
         chat: tracker.chat.map(([chaId, chatId]): [string, string] => [chaId, chatId]),
@@ -382,7 +402,7 @@ export function takeStore2Snapshot(port: Pick<Store2LoopPort, 'tracker' | 'reloa
     // Cleared before the awaits that follow: a request that arrives during the pass wins.
     const whole = reloadFlag.state
     reloadFlag.state = false
-    return { toSave, whole }
+    return { toSave, whole, content }
 }
 
 /** The chaIds of the resident, non-stub characters in list order. */
@@ -464,7 +484,9 @@ type Judged =
 
 /** A parked loop: what it is parked on, and what has been told or asked. */
 interface Park {
-    reason: 'peer-commit' | 'replaced' | 'tree-replaced' | 'ff-revert'
+    /** `same-record`: the fast-forward found records both sides changed; `conflicts` lists the ones no answer covers. */
+    reason: 'peer-commit' | 'replaced' | 'tree-replaced' | 'ff-revert' | 'same-record'
+    conflicts?: ConflictRecord[]
     /** The guard entries a plan was about to revert (`ff-revert` only): pinned while the park stands. */
     guard?: readonly GuardEntry[]
     /** Carried from the judged stop: false means the descent from this page's baseline is unproven. */
@@ -481,6 +503,13 @@ interface Park {
     autoExport: 'pending' | 'running' | 'done' | 'failed'
     /** Set when a Save mine was refused in this park: its presence, not its names, withholds Save mine from every later prompt. */
     blocked?: { names: readonly string[], count: number }
+    /**
+     * The mark serial at which the last Reload check answered `clean`; unset until one did. The next settle reads it, so a
+     * mark that landed after the answer shows the clean prompt again, and clears it.
+     */
+    reloadCleanAt?: number
+    /** The mark serial at which the marked judgement last answered `clean`; unset until one did. A moved serial is judged again. */
+    judgedAt?: number
 }
 
 type Outcome =
@@ -608,6 +637,19 @@ export function isSaveLoopStopped(): boolean {
     return readStopped !== null && readStopped()
 }
 
+/** Reads the running loop's own acknowledged base; `null` until a loop starts on this page. */
+let readOwnBase: (() => string | null) | null = null
+
+/**
+ * The manifest key this page's save encoder has acknowledged, for the automatic clean-up's own-base rule. A read only.
+ * It answers `null` (never a match) when no loop runs, when an attempt is pending (its write may have landed, so the
+ * acknowledged base is unsettled), and for the rest of the page load once the encoder has fast-forwarded to a peer's
+ * tree: from then on the page's base was not set by its own boot read, commits or adoptions.
+ */
+export function acknowledgedManifestKey(): string | null {
+    return readOwnBase === null ? null : readOwnBase()
+}
+
 export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPort): Promise<never> {
     const sessionCommitter = context.session.committer
     if (sessionCommitter === null) {
@@ -651,6 +693,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let moduleHold: ModuleHold = NO_MODULE_HOLD
     let park: Park | null = null
     readParked = () => park !== null
+    readOwnBase = () => encoder.pendingKey === null && !encoder.fastForwarded ? encoder.manifestKey : null
     /** Set once by a too-large refusal and never cleared: no pass, idle net or park handling runs again on this page load. */
     let stopped = false
     /** The stop followed a bulk commit whose own marker may still stand: the stopped loop keeps clearing it until it is gone. */
@@ -666,6 +709,17 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let deferral: Promise<void> | null = null
     /** A commit reported that it was not flushed: the next pass commits even when it changed nothing. */
     let forced = false
+    /**
+     * The person's answers to a `same-record` park, by record id. They are applied by the next fast-forward under the write
+     * lock, over the newest peer tree, and only where the record's fingerprints still match. Cleared by an applied
+     * fast-forward, a landed own commit and any park that is not `same-record`.
+     */
+    let resolution: ConflictAnswers | null = null
+    /**
+     * An applied resolution kept both versions of a record that is not a chat: the next own commit asks for the peer's tree
+     * to enter `retained` (once, whatever the number of records). Cleared when an own commit lands or the park is replaced.
+     */
+    let keepPreviousOwed = false
     let peerSignal = false
     /** A peer commit that provably descends from this page's baseline was seen outside a pass: one tick takes it (fast-forward pages only). */
     let peerTickOwed = false
@@ -855,71 +909,134 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         return reloadAsk.result
     }
 
+    /** Whether the page holds an edit that only a full pass can judge: the content flag. A port with no flag has `isDirty()`. */
+    function contentUnsaved(): boolean {
+        return port.contentState?.().unsaved ?? port.isDirty()
+    }
+
+    /** The count of marks the page has raised; a judgement that began at one serial is void when the serial moves. A port with no flag has a constant. */
+    function markSerial(): number {
+        return port.contentState?.().marks ?? 0
+    }
+
     /**
-     * The verdict over every resident character, run by `settlePark` for a Reload press. Undecided (a pending attempt
-     * that a base read does not settle, an unheld slot, a stub that needs a full pass, an unsavable character or item, a
-     * verdict that is not clean, an unfinished judgement) counts as dirty and marks the page, so the loop's unsaved
-     * question follows in the same step.
-     * No pass runs while the loop is here. The judgement itself changes no park state, so one that outlives its
-     * deadline cannot race the loop. A clean answer covers marked changes; the person's Reload reads the page again at
-     * the instant of reload.
+     * Whether a value judgement cannot decide: a pending attempt, an unheld slot, a stub that needs a full pass, or an
+     * unsavable character or item.
      */
-    async function checkBeforeReload(parked: Park): Promise<ParkCheck> {
-        if (encoder.pendingKey !== null) {
-            await recheckPark(parked)
+    function undecided(scan: NetScan): boolean {
+        return encoder.pendingKey !== null || scan.unheld || scan.stubsNeedFull || unsavable.size > 0 || unsavableItems.size > 0
+    }
+
+    /**
+     * The resident non-stub character slots a judgement covers: every one for `all`, and for `marked` those a tracker
+     * entry names. `unnameable` when an entry stands for no `chaId` (`trackedChaIdOf`), which no slot can answer for.
+     * An entry that names no resident slot is skipped: a removal or a rename is judged through the front verdict.
+     */
+    function judgedSlots(db: Database, scope: 'marked' | 'all'): Array<character | groupChat> | 'unnameable' {
+        const residents = (db.characters as Array<character | groupChat | null>).filter(
+            (candidate): candidate is character | groupChat => typeof candidate === 'object' && candidate !== null && !isColdStub(candidate))
+        if (scope === 'all') {
+            return residents
         }
-        if (!isParked()) {
-            return 'moved'
+        const named = new Set<string>()
+        for (const mark of port.tracker.character) {
+            const chaId = trackedChaIdOf(mark)
+            if (chaId === null) {
+                return 'unnameable'
+            }
+            named.add(chaId)
         }
-        if (port.isDirty()) {
-            return 'dirty'
-        }
+        return residents.filter(slot => named.has(String((slot as { chaId?: unknown }).chaId ?? '')))
+    }
+
+    /**
+     * The per-slot rule: a resident is unchanged when it equals the acknowledged encoding or differs only in view state.
+     * The cheaper shadowed verdict goes first.
+     */
+    function slotUnchanged(slot: character | groupChat): boolean {
+        return encoder.verdictOf(slot) === 'clean' || encoder.contentVerdictOf(slot) === 'clean'
+    }
+
+    /**
+     * The value judgement of a parked page: `clean` only when the front and every covered resident equal the
+     * acknowledged encoding apart from view state. Undecided (a pending attempt that a base read does not settle, an
+     * unheld slot, a stub that needs a full pass, an unsavable character or item, a front or resident that is not clean,
+     * a tracker entry no slot can answer for, an unfinished judgement or a fault) is `dirty`. `moved` when the loop is
+     * no longer parked.
+     * No pass runs while the loop is here. The judgement itself changes no park state, so one that outlives its
+     * deadline cannot race the loop. A clean answer is void when the content flag or the mark serial moved meanwhile.
+     */
+    async function judgePage(parked: Park, scope: 'marked' | 'all'): Promise<ParkCheck> {
         let cancelled = false
-        const judgeResidents = async (): Promise<ParkCheck> => {
-            if (encoder.pendingKey !== null) {
-                return 'dirty'
-            }
-            const db = port.getDatabase()
-            const scan = encoder.netScan(db)
-            if (scan.unheld || scan.stubsNeedFull || unsavable.size > 0 || unsavableItems.size > 0) {
-                return 'dirty'
-            }
-            const slots = (db.characters as Array<character | groupChat | null>).filter(
-                (candidate): candidate is character | groupChat => typeof candidate === 'object' && candidate !== null && !isColdStub(candidate))
-            for (const slot of slots) {
-                if (cancelled) {
-                    return 'dirty'
-                }
-                if (encoder.verdictOf(slot) !== 'clean') {
-                    return 'dirty'
-                }
-                if (port.yieldImmediately?.() !== true) {
-                    await (port.yieldNow !== undefined ? port.yieldNow() : yieldToEventLoop())
-                }
-                if (port.getDatabase() !== db) {
-                    return 'dirty'
-                }
-            }
-            return 'clean'
-        }
-        let result: ParkCheck
         try {
-            result = await Promise.race([judgeResidents(), port.sleep(PARK_CHECK_MAX_MS).then((): ParkCheck => 'dirty')])
+            if (encoder.pendingKey !== null) {
+                await recheckPark(parked)
+            }
+            if (!isParked()) {
+                return 'moved'
+            }
+            if (contentUnsaved()) {
+                return 'dirty'
+            }
+            const serial = markSerial()
+            const judge = async (): Promise<ParkCheck> => {
+                const db = port.getDatabase()
+                if (undecided(encoder.netScan(db))) {
+                    return 'dirty'
+                }
+                if (await encoder.frontVerdictOf(db) !== 'clean' || port.getDatabase() !== db) {
+                    return 'dirty'
+                }
+                const slots = judgedSlots(db, scope)
+                if (slots === 'unnameable') {
+                    return 'dirty'
+                }
+                for (const slot of slots) {
+                    if (cancelled) {
+                        return 'dirty'
+                    }
+                    if (!slotUnchanged(slot)) {
+                        return 'dirty'
+                    }
+                    if (port.yieldImmediately?.() !== true) {
+                        await (port.yieldNow !== undefined ? port.yieldNow() : yieldToEventLoop())
+                    }
+                    if (port.getDatabase() !== db) {
+                        return 'dirty'
+                    }
+                }
+                return 'clean'
+            }
+            const result = await Promise.race([judge(), port.sleep(PARK_CHECK_MAX_MS).then((): ParkCheck => 'dirty')])
+            // Defensive: only settlePark changes the park while it is here, so this does not fire today.
+            if (!isParked()) {
+                return 'moved'
+            }
+            // A mark that arrived while the page was judged outranks a clean verdict.
+            if (result === 'clean' && (contentUnsaved() || markSerial() !== serial)) {
+                return 'dirty'
+            }
+            return result
         } catch (error) {
             console.error(error)
-            result = 'dirty'
-        }
-        cancelled = true
-        // Defensive: only settlePark changes the park while it is here, so this does not fire today.
-        if (!isParked()) {
-            return 'moved'
-        }
-        // A mark that arrived while the residents were judged outranks a clean verdict.
-        if (result === 'clean' && port.isDirty()) {
             return 'dirty'
+        } finally {
+            cancelled = true
         }
+    }
+
+    /**
+     * The check run by `settlePark` for a Reload press: `judgePage` over every resident. A `dirty` answer marks the
+     * page, so the loop's unsaved question follows in the same step. A `clean` answer records the mark serial it was
+     * given at, which the loop reads to see a mark that lands after it. The person's Reload reads the page again at the
+     * instant of reload.
+     */
+    async function checkBeforeReload(parked: Park): Promise<ParkCheck> {
+        const result = await judgePage(parked, 'all')
         if (result === 'dirty') {
             port.markUnsaved?.()
+        } else if (result === 'clean') {
+            parked.reloadCleanAt = markSerial()
         }
         return result
     }
@@ -928,6 +1045,13 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         clearPeerWaiting()
         consent = null
         park = next
+        if (next.reason !== 'same-record') {
+            // Answers belong to a `same-record` park: a park of any other kind asks its own question.
+            resolution = null
+            if (next.reason === 'replaced' || next.reason === 'tree-replaced') {
+                keepPreviousOwed = false
+            }
+        }
         if (next.guard !== undefined) {
             context.fastForward?.guard.pin(next.guard)
         }
@@ -937,6 +1061,10 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     }
 
     function promptOf(parked: Park, unsaved: boolean): PeerParkPrompt {
+        // Records both sides changed are answered one by one in their own dialog: never Save mine, never an export.
+        if (parked.reason === 'same-record') {
+            return { reason: 'peer-commit', unsaved, offers: ['reload'], saveMineUnavailable: 'carries' }
+        }
         if (parked.reason === 'replaced') {
             return { reason: parked.reason, unsaved, offers: ['reload'], saveMineUnavailable: 'replaced' }
         }
@@ -989,7 +1117,12 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (parked.reason === 'ff-revert' && !(judged.kind === 'stop' && judged.reason !== 'peer-commit')) {
             return
         }
+        if (parked.reason === 'same-record' && judged.kind === 'stop' && judged.reason === 'peer-commit' && judged.descends === true) {
+            // A further peer commit that descends: the park stands and the next pass derives its records afresh, so no answer is left stale.
+            return
+        }
         if (judged.kind === 'ok') {
+            resolution = null
             unpark()
             return
         }
@@ -1011,6 +1144,41 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         setPark(next)
     }
 
+    /**
+     * Asks the person about the records of a `same-record` park, once per park. The question runs outside the loop's turn
+     * and under no lock: the park can be replaced while it is open (a restore, an import), and then its answer is dropped.
+     * An answer only sets the resolution and ends the park; the next pass applies it under the write lock, over the newest
+     * peer tree, so nothing in the database changes while the dialog is open.
+     */
+    function askConflicts(parked: Park): void {
+        const conflicts = parked.conflicts ?? []
+        const resolve = context.peer.resolve
+        if (parked.asked || resolve === undefined) {
+            return
+        }
+        parked.asked = true
+        void new Promise<Readonly<Record<string, ConflictChoice>>>((settle) => { settle(resolve.call(context.peer, { conflicts })) }).then(
+            (given) => {
+                if (park !== parked) {
+                    return
+                }
+                const answers = new Map(resolution ?? [])
+                for (const record of conflicts) {
+                    const choice = given[record.id]
+                    answers.set(record.id, { choice: choice !== undefined && record.choices.includes(choice) ? choice : record.preselect, fingerprint: record.fingerprint })
+                }
+                resolution = answers
+                unpark()
+                peerTickOwed = true
+                port.requestPass()
+            },
+            (error: unknown) => {
+                port.reportUncountedFailure(error, 1)
+                void port.sleep(1000).then(() => { parked.asked = false })
+            },
+        )
+    }
+
     async function settlePark(): Promise<void> {
         let parked = park
         if (parked === null) {
@@ -1024,6 +1192,13 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 return
             }
         }
+        // The settle after a clean Reload answer: a mark that landed since the answer (or a set content flag) shows the clean
+        // prompt again, so the page never stays parked with a prompt that no longer matches it.
+        let reshow = false
+        if (parked.reloadCleanAt !== undefined) {
+            reshow = markSerial() !== parked.reloadCleanAt || contentUnsaved()
+            parked.reloadCleanAt = undefined
+        }
         const asked = reloadAsk
         if (asked !== null) {
             reloadAsk = null
@@ -1033,19 +1208,48 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 return
             }
         }
-        if (!port.isDirty()) {
-            if (!parked.noticed) {
+        // Routed before the clean branch: a conflict whose mine side is an unmarked edit must still be asked.
+        if (parked.reason === 'same-record') {
+            askConflicts(parked)
+            return
+        }
+        // An asked park keeps its one question: nothing between here and the question can clear `asked`.
+        if (parked.asked) {
+            return
+        }
+        // The prompt is unsaved when the content flag stands, or when a value judgement over the marked residents and the
+        // front finds a difference. A judgement already clean at this mark serial is not repeated.
+        let unsaved = false
+        if (port.isDirty()) {
+            if (contentUnsaved()) {
+                unsaved = true
+            } else if (parked.judgedAt !== markSerial()) {
+                const serial = markSerial()
+                const verdict = await judgePage(parked, 'marked')
+                if (verdict === 'moved' || park !== parked) {
+                    return
+                }
+                if (verdict === 'clean') {
+                    parked.judgedAt = serial
+                } else {
+                    unsaved = true
+                }
+            }
+        }
+        if (!unsaved) {
+            if (!parked.noticed || reshow) {
+                if (reshow) {
+                    // A dialog built for the older question answers `moved` when its Reload is pressed.
+                    cleanPromptSerial += 1
+                }
                 parked.noticed = true
                 const serial = cleanPromptSerial
                 context.peer.parkedClean(promptOf(parked, false), () => ({
                     parked: park !== null,
-                    dirty: port.isDirty(),
+                    dirty: contentUnsaved() || park?.asked === true || (park?.reloadCleanAt !== undefined && markSerial() !== park.reloadCleanAt),
                     drafts: port.hasDrafts(),
                 }), () => serial === cleanPromptSerial ? requestReload().then((verdict): ParkCheck => serial === cleanPromptSerial ? verdict : 'moved') : Promise.resolve<ParkCheck>('moved'), () => encoder.manifestKey)
             }
-            return
-        }
-        if (parked.asked) {
             return
         }
         parked.asked = true
@@ -1110,13 +1314,22 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         await port.sleepForever()
     }
 
+    /**
+     * The block name a tracker entry stands for: a string as it is, a usable number in its text form, and null for
+     * anything else. `toSave.character` is declared string[] but holds raw chaIds, so this is the one place an entry
+     * becomes a `chaId`; `marksOf` and the judgement both read it through here.
+     */
+    function trackedChaIdOf(mark: unknown): string | null {
+        return typeof mark === 'string' ? mark : typeof mark === 'number' && isUsableCharacterId(mark) ? String(mark) : null
+    }
+
     function marksOf(snapshot: Store2Snapshot, db: Database): Set<string> {
         const startedAt = MEASURE ? performance.now() : 0
         const present = presentChaIds(db)
         const marked = new Set<string>()
         // toSave.character is declared string[] but holds raw chaIds: a mark names the block of its text form.
         for (const mark of snapshot.toSave.character) {
-            const chaId = typeof mark === 'string' ? mark : typeof mark === 'number' && isUsableCharacterId(mark) ? String(mark) : null
+            const chaId = trackedChaIdOf(mark)
             if (chaId !== null && present.has(chaId)) {
                 marked.add(chaId)
             }
@@ -1367,6 +1580,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                     noteSignalAck(plan.encoded)
                 }
                 consent = null
+                resolution = null
+                keepPreviousOwed = false
                 port.broadcast(result.value.epoch)
                 // The commit landed and is the acknowledged encoding; only its durability is unconfirmed.
                 if (result.flushed === false) {
@@ -1566,10 +1781,19 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (fastForward !== undefined && judged.kind === 'stop' && descendsStop(judged) && judged.key !== null) {
             // The peer's commit descends from this page's baseline: its changes are taken here, under the write lock.
             const stop = judged
-            const taken = await fastForward.run({ read, key: judged.key, baseKey: encoder.manifestKey, encoder, port, snapshot: run.snapshot })
+            const taken = await fastForward.run({
+                read, key: judged.key, baseKey: encoder.manifestKey, encoder, port, snapshot: run.snapshot,
+                collect: context.peer.resolve !== undefined, answers: resolution ?? undefined,
+            })
             switch (taken.kind) {
+                case 'conflict':
+                    return { kind: 'park', park: { ...parkOf(stop), reason: 'same-record', conflicts: taken.conflicts, epoch: taken.epoch } }
                 case 'applied':
                     // The acknowledged encoding is the peer's tree now, so the same read judges `ok` and replaces the baseline.
+                    resolution = null
+                    if (taken.restorePoint === true) {
+                        keepPreviousOwed = true
+                    }
                     cleanVerdictAt.clear()
                     clearPeerWaiting()
                     judged = judge(read)
@@ -1678,7 +1902,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 }
             }
         }
-        const planned = plan.commitRequest()
+        // An applied resolution that kept both versions of a record asks once for the peer's tree to enter `retained`.
+        const planned = keepPreviousOwed ? { ...plan.commitRequest(), keepPrevious: true } : plan.commitRequest()
         const request = MEASURE && activeGaps !== null ? activeGaps.wrapBuild(planned) : planned
         // A commit that did not land may have left this page load's own bulk marker standing; only the parked or stopped
         // release lowers the flag, because it reads the marker's ownership afresh.
@@ -1772,7 +1997,8 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
         if (snapshot.whole) {
             port.reloadFlag.state = true
         }
-        port.requestPass()
+        // The pass asks again with the flag it took: a pass of judged marks only never raises a content claim.
+        port.requestPass(snapshot.content)
     }
 
     /**

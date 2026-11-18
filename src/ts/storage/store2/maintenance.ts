@@ -2,6 +2,7 @@ import { MEASURE } from '../../process/memory/measureFlag'
 import { startQuietTrigger, type QuietTrigger } from '../../process/memory/putBackQuiet'
 import type { ByteStore } from '../store/contract'
 import { getPageStorageMode } from '../pageStorageMode'
+import { liveLockQuery, soleTabAnswer } from '../soleTab'
 import { recordStartupCleanup } from '../startupCleanupState'
 import { getStore2BootSession } from './bootActive'
 import { batchPaceOf, runOldDataDeletion } from './oldData/delete'
@@ -10,11 +11,16 @@ import { installImportBench } from '../../drive/importBench'
 import { runAutoGc, type AutoGcFacts } from './gc/autoGc'
 import { installGcMeasure } from './gc/gcMeasure'
 import { installSweepDryRunMeasure } from './sweep/dryRunMeasure'
+import { runAssetSweep, type AssetSweepEnv, type AssetSweepResult } from './sweep/run'
 
 /**
  * The deleters a store2 page runs on its own, one at a time, after the page has been quiet. Today that is the cutover
- * deletion of old-format files (`oldData/delete.ts`), followed on the app by one collector pass over the store2 leftovers
- * (`gc/autoGc.ts`).
+ * deletion of old-format files (`oldData/delete.ts`), followed on the app and on the web (`tauri` and `indexeddb` sessions) by
+ * one collector pass over the store2 leftovers (`gc/autoGc.ts`; on the web it runs only when the sole-tab proof and the
+ * own-base rule hold, and otherwise logs one refusal line and deletes nothing), followed on the app and on the web
+ * (`tauri` and `indexeddb` sessions; a Node server and the transitional OPFS page never list `assets/`) by one asset
+ * sweep (`sweep/run.ts`; on the web its tab check is the same sole-tab proof as the collector's) that deletes stored assets nothing refers to once a record at least a day old has named them. All three run inside the one registered step and each logs and swallows its
+ * own failure, so a failed deleter never keeps the next one from running.
  *
  * - It runs only on a page whose own boot found a normal store2 profile (the "commit key parses with a readable tree" row),
  *   so the converted tree has been opened cold once before anything irreversible is deleted. The runner starts only on a
@@ -24,7 +30,7 @@ import { installSweepDryRunMeasure } from './sweep/dryRunMeasure'
  * - It waits for the quiet trigger of the character put-back: hidden after a committed save, or 30 s without input.
  * - The step is registered as the startup clean-up when it starts, so a backup load that waits on the startup clean-up
  *   waits for this step to end and no longer; the registered promise always settles and never rejects.
- * - It shows nothing to the person.
+ * - It shows nothing to the person: the asset sweep logs one line of counts and never an asset name.
  *
  * A measurement build also installs the sweep dry run (`sweep/dryRunMeasure.ts`) on any store2 page; it deletes and writes nothing.
  * It installs the collector run (`gc/gcMeasure.ts`) too, which deletes only on an explicit `confirm: true` and refuses while this
@@ -44,6 +50,58 @@ export interface MaintenanceSeams {
     deletion?: typeof runOldDataDeletion
     /** Replaces the live page's facts for the clean-up pass; the default loads the page's own modules on first use. */
     gcPageFacts?: AutoGcFacts
+    /** Replaces the live page's facts for the asset sweep; the default loads the page's own modules on first use. */
+    sweepFacts?: SweepPageFacts
+}
+
+/** What the page contributes to the asset sweep: the rest of the pass's environment is the session, the store and the pace. */
+export type SweepPageFacts = Pick<AssetSweepEnv, 'residentRefs' | 'writtenCount' | 'writtenThisPage' | 'peers' | 'shouldStop' | 'release' | 'hold'>
+
+/** The page's own modules, loaded when the sweep first needs them so that installing the step costs nothing. */
+async function loadSweepFacts(): Promise<SweepPageFacts> {
+    const [api, database, busy, loop, restore, hold] = await Promise.all([
+        import('../../globalApi.svelte'),
+        import('../database.svelte'),
+        import('../../process/memory/busyActions'),
+        import('./saveLoop'),
+        import('../../drive/restoreInProgress'),
+        import('../assetDeleteHold'),
+    ])
+    return {
+        residentRefs: () => api.getUncleanablesSync(database.getDatabase()),
+        writtenCount: () => api.assetsWrittenThisPageCount(),
+        writtenThisPage: () => api.listAssetsWrittenThisPage(),
+        peers: () => soleTabAnswer({ query: liveLockQuery(), holdsOwnPresence: api.holdsOwnTabPresence }),
+        shouldStop: () => busy.isBusy() || loop.isSaveLoopParked() || !api.isSaveClean() || restore.restoreInProgress(),
+        release: keys => api.releaseAssetObjectUrl(keys),
+        hold: remove => hold.holdAssetDeletion(remove),
+    }
+}
+
+/** The plain result line: the status, the counts and why the pass ended, never an asset name. */
+export function formatSweepResult(result: AssetSweepResult): string {
+    if (result.status === 'skipped') {
+        return 'store2 asset sweep: status=skipped'
+    }
+    if (result.status === 'refused') {
+        const earlier = result.deleted === undefined ? '' : ` deleted=${result.deleted} failed=${result.failed ?? 0}`
+        return `store2 asset sweep: status=refused reason=${result.reason}${earlier}`
+    }
+    const stopped = result.stopped === undefined ? '' : ` stopped=${result.stopped}`
+    return `store2 asset sweep: status=done phase=${result.phase ?? 'none'} candidates=${result.candidates} deleted=${result.deleted} failed=${result.failed} kept-live=${result.keptLive} batches=${result.batches} recorded=${result.recorded}${stopped}`
+}
+
+/**
+ * Runs the asset sweep, or does nothing: only a `tauri` or `indexeddb` session with a backend on a store2 page, and nothing
+ * is loaded or read before that is known. Throws what the pass throws; the caller logs and swallows it.
+ */
+async function runStore2AssetSweep(env: MaintenanceEnv, session: Store2Session, facts?: SweepPageFacts): Promise<void> {
+    if ((session.kind !== 'tauri' && session.kind !== 'indexeddb') || session.backend === null || getPageStorageMode().kind !== 'store2') {
+        return
+    }
+    const live = facts ?? await loadSweepFacts()
+    const result = await runAssetSweep({ session, store: await env.store(), pace: batchPaceOf(session.kind), ...live })
+    console.info(formatSweepResult(result))
 }
 
 let stepActive = false
@@ -54,7 +112,7 @@ export function bootDidNotInstall(session: Store2Session): boolean {
     return decision.row === 5 && decision.mode === 'normal'
 }
 
-async function runStep(env: MaintenanceEnv, session: Store2Session, deletion: typeof runOldDataDeletion, gcPageFacts?: AutoGcFacts): Promise<void> {
+async function runStep(env: MaintenanceEnv, session: Store2Session, deletion: typeof runOldDataDeletion, gcPageFacts?: AutoGcFacts, sweepFacts?: SweepPageFacts): Promise<void> {
     if (stepActive) {
         return
     }
@@ -71,6 +129,12 @@ async function runStep(env: MaintenanceEnv, session: Store2Session, deletion: ty
             // After the deletion settled, even a refused or failed one, and on its own: a thrown pass is logged and swallowed.
             try {
                 await runAutoGc(session, gcPageFacts)
+            } catch (error) {
+                console.error(error)
+            }
+            // Last, on its own: a thrown sweep (a hold overlap included) is logged and swallowed, and the step still ends.
+            try {
+                await runStore2AssetSweep(env, session, sweepFacts)
             } catch (error) {
                 console.error(error)
             }
@@ -105,7 +169,7 @@ export function startStore2Maintenance(env: MaintenanceEnv, seams: MaintenanceSe
         const deletion = seams.deletion ?? runOldDataDeletion
         const trigger = (seams.startTrigger ?? startQuietTrigger)(() => {
             trigger.stop()
-            void runStep(env, session, deletion, seams.gcPageFacts)
+            void runStep(env, session, deletion, seams.gcPageFacts, seams.sweepFacts)
         })
         trigger.arm()
         return trigger

@@ -28,6 +28,7 @@ import { refuseBackupLoadWhileBusy, refuseImportWhileRestoring } from '../backup
 import {
     beginBusy,
     beginChokePoint,
+    beginDialogWait,
     busyKinds,
     busyRefusalLine,
     isBusy,
@@ -200,5 +201,39 @@ describe('refuseImportWhileRestoring', () => {
         refuseImportWhileRestoring()
         run.end('committed')
         expect(get(busyRefusalLine)).toBe(language.backupLoadRefusedLine)
+    })
+})
+
+describe('an entry marked as waiting on a save dialog', () => {
+    test('a marked entry alone does not refuse a load, shows nothing and leaves the line as it was', () => {
+        const exporting = beginBusy('export')
+        beginDialogWait(exporting)
+        busyRefusalLine.set('earlier line')
+
+        expect(refuseBackupLoadWhileBusy()).toBe(false)
+
+        expect(alertErrorMock).not.toHaveBeenCalled()
+        expect(get(busyRefusalLine)).toBe('earlier line')
+        expect(isBusy()).toBe(true)
+    })
+
+    test('a marked entry beside an unmarked one refuses and sets the line', () => {
+        beginDialogWait(beginBusy('export'))
+        beginBusy('import')
+
+        expect(refuseBackupLoadWhileBusy()).toBe(true)
+
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupLoadWorkInProgress)
+        expect(get(busyRefusalLine)).toBe(language.backupLoadRefusedLine)
+    })
+
+    test('with a marked entry only, chat work refuses but sets no line', () => {
+        beginDialogWait(beginBusy('export'))
+        chatWork.running = true
+
+        expect(refuseBackupLoadWhileBusy()).toBe(true)
+
+        expect(alertErrorMock).toHaveBeenCalledWith(language.backupLoadWorkInProgress)
+        expect(get(busyRefusalLine)).toBeNull()
     })
 })

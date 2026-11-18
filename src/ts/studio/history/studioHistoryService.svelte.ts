@@ -26,6 +26,8 @@ const pageClock: HistoryClock = {
 export interface Loaded {
     service: OwnerHistoryService
     createAck: () => SaveAck
+    // Builds the ack of one module's toggle edits; absent in a loader that serves character acks only.
+    createModuleAck?: () => SaveAck
 }
 
 export type StudioHistoryLoader = () => Promise<Loaded>
@@ -123,6 +125,7 @@ async function build(): Promise<Loaded> {
             onLanded: retireAssetToasts,
         }),
         createAck: () => ack.createSaveAck(ack.productionSaveAckDeps(pageClock)),
+        createModuleAck: () => ack.createSaveAck(ack.productionSaveAckDeps(pageClock), ack.productionModuleAckSubject()),
     }
 }
 
@@ -235,7 +238,7 @@ export function beginOwnerVisit(owner: OwnerKey): SaveAck | null {
         return null
     }
     if (parsed.kind === 'module') {
-        // A module owner has no character visit ack: it is used, and its writes mark through the asset write.
+        // A module owner has no character visit ack: it is used, and its writes mark through the module slot write.
         void primeModuleSlotPort()
         service.useOwner(owner)
         return null
@@ -274,6 +277,74 @@ export function beginOwnerVisit(owner: OwnerKey): SaveAck | null {
     return held.ack
 }
 
+// ---------------------------------------------------------------- the save ack of a module's toggles
+
+interface ModuleAck {
+    visitId: string
+    moduleId: string
+    ack: SaveAck
+    stop: () => void
+}
+
+// One module ack at a time: the chip of one module never shows another owner's state.
+let heldModule: ModuleAck | null = null
+let heldModuleAck = $state.raw<SaveAck | null>(null)
+let moduleAckFactory: (() => SaveAck) | null = null
+
+// The ack of the module whose toggle builder is open, or null when none is. Reactive.
+export function currentModuleAck(): SaveAck | null {
+    return heldModuleAck
+}
+
+// Ends the held module ack, when `moduleId` is given only if it is that module's: it is unregistered and disposed, so
+// it leaves no timer.
+export function endModuleAck(moduleId?: string): void {
+    const held = heldModule
+    if (!held || (moduleId !== undefined && held.moduleId !== moduleId)) {
+        return
+    }
+    heldModule = null
+    heldModuleAck = null
+    held.stop()
+    getStudioHistoryService()?.setModuleAck(held.moduleId, null)
+    held.ack.dispose()
+}
+
+// The module toggle builder's first use of its module, once the service is built: creates the module's ack and hands it
+// to the service. Calling again for the same module in the same visit keeps the ack; another module or a new visit
+// replaces it, and Studio closing ends it. Returns null while the service is not built.
+export function beginModuleAck(moduleId: string): SaveAck | null {
+    const service = getStudioHistoryService()
+    if (!service) {
+        return null
+    }
+    const visitId = studioScreen.visitId
+    if (heldModule && (heldModule.visitId !== visitId || heldModule.moduleId !== moduleId)) {
+        endModuleAck()
+    }
+    if (!heldModule) {
+        const ack = moduleAckFactory?.() ?? loadedState?.createModuleAck?.()
+        if (!ack) {
+            return null
+        }
+        // The store calls back at once with its current value, which is not news.
+        let first = true
+        const stop = studioOpen.subscribe((open) => {
+            if (first) {
+                first = false
+                return
+            }
+            if (!open) {
+                endModuleAck()
+            }
+        })
+        heldModule = { visitId, moduleId, ack, stop }
+        heldModuleAck = ack
+        service.setModuleAck(moduleId, ack)
+    }
+    return heldModule.ack
+}
+
 // ---------------------------------------------------------------- banner
 
 // The note shown for an owner's history state, or null when there is nothing to say.
@@ -301,6 +372,11 @@ export function setStudioVisitAckForTests(ack: SaveAck | null): void {
     ackOverride = ack
 }
 
+// Replaces the module ack's builder; the accessor registers and disposes what it builds.
+export function setStudioModuleAckForTests(create: (() => SaveAck) | null): void {
+    moduleAckFactory = create
+}
+
 // Replaces the build, so a suite can make it fail or hang without mocking modules.
 export function setStudioHistoryLoaderForTests(loader: StudioHistoryLoader | null): void {
     loaderOverride = loader
@@ -309,6 +385,8 @@ export function setStudioHistoryLoaderForTests(loader: StudioHistoryLoader | nul
 // Ends the visit's ack, forgets the built service and every override.
 export function resetStudioHistoryAccessorForTests(): void {
     endVisitAck()
+    endModuleAck()
+    moduleAckFactory = null
     loadedState = null
     loading = null
     loadFailed = false

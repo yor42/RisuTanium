@@ -337,9 +337,9 @@ describe('a card that carries only some fields', () => {
         expectNothingSaved()
     })
 
-    test('JSON: a whitespace name is refused (reproducer)', async () => {
+    test('JSON: a whitespace name is refused as not a card file (reproducer)', async () => {
         const out = await asJson({ name: '  ', first_mes: 'hi', description: 'd' })
-        expect(out).toEqual(noData)
+        expect(out).toEqual({ kind: 'refused', reason: language.importNotCardFile })
         expectNothingSaved()
     })
 
@@ -410,9 +410,9 @@ describe('guards', () => {
         expect(imported()).toMatchObject({ name: 'V3', desc: 'd', firstMessage: 'hi' })
     })
 
-    test('JSON: a file that is not a card is refused with noData (guard)', async () => {
+    test('JSON: a file that is not a card is refused as not a card file', async () => {
         const out = await asJson({ foo: 1 })
-        expect(out).toEqual(noData)
+        expect(out).toEqual({ kind: 'refused', reason: language.importNotCardFile })
         expectNothingSaved()
     })
 

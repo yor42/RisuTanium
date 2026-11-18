@@ -1,6 +1,9 @@
 import { Store2BackendError, Store2BackendFailureError, Store2CommitConflictError, Store2UnknownOutcomeError } from './backend/errors'
-import type { Store2Backend, Store2Read } from './backend/types'
-import { checkBuiltUnits, createKeyMint, type AbandonResult, type BuildContext, type BuiltCommit } from './commit'
+import type { Store2Backend, Store2Read, UnitWrite } from './backend/types'
+import {
+    checkBuiltUnits, checkStreamedUnits, createKeyMint, guardStreamedPut,
+    type AbandonResult, type BuildContext, type BuiltCommit, type StreamContext,
+} from './commit'
 import { probeStore2Presence } from './boot'
 import { classifyCommitRead } from './commitKey'
 import {
@@ -242,6 +245,19 @@ async function putBuilt(backend: Store2Backend, key: string, bytes: Uint8Array):
 }
 
 /**
+ * The upload and final-write half of an install, shared by `installBuilt` and `installStreamed`: the units the build did
+ * not put already, then the manifest last, then the final write. A stopped upload throws `InstallStop`.
+ */
+async function landBuilt(basis: BuiltInstallBasis, built: BuiltCommit, convertedFrom: string): Promise<InstallResult> {
+    const { backend, env } = basis
+    for (const unit of built.units) {
+        await putBuilt(backend, unit.key, unit.bytes)
+    }
+    await putBuilt(backend, built.manifest.key, encodeUnit(UNIT_TYPE.manifest, built.manifest.body))
+    return finalWrite(basis, built.manifest.key, built.manifest.body, { from: convertedFrom, at: env.now() }, built.snapshot)
+}
+
+/**
  * Installs an encoder-built tree on a standing marker. Every unit is written under a key of the marker's staging
  * mint (an unminted key, or one outside the prefix, is refused before anything is written), the manifest last, and
  * then one compare-and-write at the marker's read-back token installs `current`, clears the marker, empties
@@ -252,7 +268,7 @@ async function putBuilt(backend: Store2Backend, key: string, bytes: Uint8Array):
  * `InstallResult`; an `InstallStop` never escapes.
  */
 export async function installBuilt(basis: BuiltInstallBasis, request: BuiltInstall): Promise<InstallResult> {
-    const { backend, env, marked } = basis
+    const { env, marked } = basis
     const { mint, issued } = createKeyMint(env, stagingIdOf(marked.stagedPrefix))
     const built = await request.build({ mint, seq: marked.marker.seq + 1, now: env.now() })
     const refusal = checkBuiltUnits(built, issued, request.newUnits, true)
@@ -260,11 +276,76 @@ export async function installBuilt(basis: BuiltInstallBasis, request: BuiltInsta
         throw new TypeError(`The built tree was refused before any write: ${refusal.detail}`)
     }
     try {
-        for (const unit of built.units) {
-            await putBuilt(backend, unit.key, unit.bytes)
+        return await landBuilt(basis, built, request.convertedFrom)
+    } catch (error) {
+        if (error instanceof InstallStop) {
+            return error.result
         }
-        await putBuilt(backend, built.manifest.key, encodeUnit(UNIT_TYPE.manifest, built.manifest.body))
-        return await finalWrite(basis, built.manifest.key, built.manifest.body, { from: request.convertedFrom, at: env.now() }, built.snapshot)
+        throw error
+    }
+}
+
+/**
+ * What a streamed install throws when its build fails for any reason but a failed upload: the marker stands, nothing is
+ * cleared, and the original travels so the caller can name the cause. A refusal of the built set is a `TypeError`
+ * thrown as `installBuilt`'s is, not this.
+ */
+export class Store2InstallAbortError extends Error {
+    constructor(readonly original: unknown) {
+        super(original instanceof Error ? original.message : String(original))
+        this.name = 'Store2InstallAbortError'
+    }
+}
+
+export interface StreamedInstall extends Omit<BuiltInstall, 'build'> {
+    /** As `BuiltInstall.build`, with `context.put` for units uploaded as the build goes; `units` holds only the rest. */
+    build(context: StreamContext): BuiltCommit | Promise<BuiltCommit>
+}
+
+/**
+ * `installBuilt` for a build that uploads units early through `context.put`. The marker, the staging mint, the manifest
+ * last and the final write are the same. A `put` of an unissued key, a repeated key or one past `newUnits - 1` throws a
+ * `TypeError` inside the build, which surfaces as `Store2InstallAbortError`; a failed or unflushed upload is the result
+ * `upload-failed`, never a throw. A refused built set throws `TypeError` with the marker standing. Nothing is cleared.
+ */
+export async function installStreamed(basis: BuiltInstallBasis, request: StreamedInstall): Promise<InstallResult> {
+    const { backend, env, marked } = basis
+    const { mint, issued } = createKeyMint(env, stagingIdOf(marked.stagedPrefix))
+    const putKeys = new Set<string>()
+    const upload: { stop: InstallStop | null } = { stop: null }
+    const put = async (unit: UnitWrite): Promise<void> => {
+        if (upload.stop !== null) {
+            throw upload.stop
+        }
+        guardStreamedPut(unit.key, issued, putKeys, request.newUnits)
+        putKeys.add(unit.key)
+        try {
+            await putBuilt(backend, unit.key, unit.bytes)
+        } catch (error) {
+            if (error instanceof InstallStop) {
+                upload.stop = error
+            }
+            throw error
+        }
+    }
+    try {
+        let built: BuiltCommit
+        try {
+            built = await request.build({ mint, seq: marked.marker.seq + 1, now: env.now(), put })
+        } catch (error) {
+            if (error instanceof InstallStop) {
+                throw error
+            }
+            throw new Store2InstallAbortError(error)
+        }
+        if (upload.stop !== null) {
+            throw upload.stop
+        }
+        const refusal = checkStreamedUnits(built, issued, putKeys, request.newUnits)
+        if (refusal !== null) {
+            throw new TypeError(`The built tree was refused before the final write: ${refusal.detail}`)
+        }
+        return await landBuilt(basis, built, request.convertedFrom)
     } catch (error) {
         if (error instanceof InstallStop) {
             return error.result
@@ -294,4 +375,16 @@ export async function firstLifeInstall(
         return { status: 'not-marked', marker }
     }
     return installBuilt({ backend, env, marked: marker }, request)
+}
+
+/** `firstLifeInstall` for a build that uploads units early: the unfenced marker, then `installStreamed` on it. */
+export async function firstLifeInstallStreamed(
+    backend: Store2Backend, grant: FirstLifeGrant, request: StreamedInstall, options: { owner: string, env?: KeyEnv },
+): Promise<FirstLifeResult> {
+    const env: KeyEnv = { ...defaultKeyEnv, ...options.env }
+    const marker = await writeFirstLifeMarker(backend, grant, { owner: options.owner, env })
+    if (marker.status !== 'marked') {
+        return { status: 'not-marked', marker }
+    }
+    return installStreamed({ backend, env, marked: marker }, request)
 }

@@ -53,7 +53,10 @@ export const NEW_HOSTILE = [
   ['all', 'transparent sheet', ':root{--color-surface-sheet:transparent}', /fully transparent|opaque/],
   ['all', 'translucent sheet', ':root{--color-surface-sheet:rgb(14 15 42 / 0.5)}', /opaque colour/],
   ['all', 'translucent toast', ':root{--color-surface-toast:#1c1e4580}', /opaque colour/],
-  ['all', 'sheet derived from a glass token', ':root{--color-surface-sheet:var(--nexus-surface)}', /opaque colour|would be/],
+  // not Home: Home's --nexus-surface is the scheme's opaque darkbg (home-tokens.css), so there is no glass token there to derive the sheet from
+  ['chat', 'sheet derived from a glass token', ':root{--color-surface-sheet:var(--nexus-surface)}', /opaque colour|would be/],
+  ['settings', 'sheet derived from a glass token', ':root{--color-surface-sheet:var(--nexus-surface)}', /opaque colour|would be/],
+  ['studio', 'sheet derived from a glass token', ':root{--color-surface-sheet:var(--nexus-surface)}', /opaque colour|would be/],
   ['all', 'sheet equal to the text colour', ':root{--color-surface-sheet:#ebebeb}', /would be [\d.]+:1 on the sheet/],
   ['all', 'muted text on the sheet', ':root{--nexus-text-muted:#0e0f2b}', /would be [\d.]+:1 on the sheet/],
   ['all', 'colour hidden in an @media branch (worst case)', ':root{--nexus-text-muted:#bbbbcc}@media (min-width:1px){:root{--nexus-text-muted:#0e0f2b}}', /would be [\d.]+:1/],
