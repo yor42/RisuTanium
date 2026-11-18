@@ -137,7 +137,6 @@ beforeEach(() => {
         collectColdStorageBackupPayloads: vi.fn(async () => ({ payloads: [], missingKeys: [], invalidKeys: [] })),
         confirmIncompleteColdStorageOperation: vi.fn(async () => true),
         isColdStorageBackupData: vi.fn(() => false),
-        listColdDataKeys: vi.fn(async () => []),
     }))
     // The shared world mock of the database module has no `presetFromWorkingSettings`, which the botPresetsId repair of an
     // import calls; the stand-in keeps the working prompt so the appended preset is recognisable.

@@ -90,7 +90,6 @@ const markAppInitiatedReloadMock = vi.hoisted(() => vi.fn())
 const setUsingSwMock = vi.hoisted(() => vi.fn())
 const setDatabaseMock = vi.hoisted(() => vi.fn((_data: Record<string, unknown>): void => { }))
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as Record<string, unknown>))
-const recordLoadTimeListingMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
 
 //#endregion
 
@@ -211,23 +210,9 @@ vi.mock(import('src/ts/process/modules'), () => ({
     moduleUpdate: moduleUpdateMock,
 }) as unknown as typeof import('src/ts/process/modules'))
 
-vi.mock(import('src/ts/storage/bootArchivePass'), () => ({
-    openBootArchiveSession: vi.fn(async () => ({
-        canArchive: false,
-        run: vi.fn(async (input: { tree: unknown }) => ({ kind: 'install', tree: input.tree, noteBytes: null, notices: [] })),
-        release: vi.fn(async () => { }),
-    })),
-    checkCommittedBlocks: vi.fn(async () => ({ ok: true })),
-}) as unknown as typeof import('src/ts/storage/bootArchivePass'))
-
 vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
     verifyAssetCacheEntry: verifyAssetCacheEntryMock,
 }) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
-vi.mock(import('src/ts/storage/loadTimeListing'), () => ({
-    recordLoadTimeListing: recordLoadTimeListingMock,
-    resetLoadTimeListingForTests: vi.fn(),
-}) as unknown as typeof import('src/ts/storage/loadTimeListing'))
 
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
@@ -479,7 +464,6 @@ beforeEach(() => {
     setDatabaseMock.mockImplementation((data: Record<string, unknown>) => { dbState.current = { ...dbState.baseline(), ...data } })
     getDatabaseMock.mockClear()
     getDatabaseMock.mockImplementation(() => dbState.current)
-    recordLoadTimeListingMock.mockReset().mockResolvedValue(undefined)
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })))
     vi.stubGlobal('open', vi.fn())
     vi.spyOn(window.location, 'reload').mockImplementation(() => { })
