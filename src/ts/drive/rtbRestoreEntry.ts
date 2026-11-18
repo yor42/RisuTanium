@@ -33,11 +33,16 @@ export function pickedRtbOfSource(opened: { source: ImportSource, name: string, 
     return { name: opened.name, size: opened.source.size, lastModified: opened.lastModified, source: opened.source }
 }
 
+/** How a restore was started; the Welcome restore sets `firstRun`. */
+export interface RtbRunOptions {
+    firstRun?: boolean
+}
+
 /** The calls the shell makes; tests replace them to observe order and to keep the page out of it. */
 export interface RtbRestoreDeps {
     beginBusy(): BusyHandle
     settled(): Promise<void>
-    prepare(picked: PickedRtb, busy: BusyHandle): Promise<RtbPrepareEnd>
+    prepare(picked: PickedRtb, busy: BusyHandle, run: RtbRunOptions): Promise<RtbPrepareEnd>
     install(plan: Extract<RtbPrepareEnd, { kind: 'ready' }>['plan'], hold: Extract<RtbPrepareEnd, { kind: 'ready' }>['hold']): Promise<RtbInstallEnd>
     finish(plan: Extract<RtbPrepareEnd, { kind: 'ready' }>['plan'], hold: Extract<RtbPrepareEnd, { kind: 'ready' }>['hold'], landed: Extract<RtbInstallEnd, { kind: 'landed' }>): Promise<void>
     wait(text: string): void
@@ -47,19 +52,19 @@ function realRestoreDeps(): RtbRestoreDeps {
     return {
         beginBusy: () => beginBusy('backupLoad'),
         settled: assetDeletionSettled,
-        prepare: (picked, busy) => prepareRtbRestore(picked, busy),
+        prepare: (picked, busy, run) => prepareRtbRestore(picked, busy, { firstRun: run.firstRun === true }),
         install: (plan, hold) => installRtbRestore(plan, hold),
         finish: (plan, hold, landed) => finishRtbRestore(plan, hold, landed),
         wait: alertWait,
     }
 }
 
-export async function runRtbRestore(picked: PickedRtb, options: Partial<RtbRestoreDeps> = {}): Promise<{ outcome: OperationOutcome, cause: RtbRestoreCause | null }> {
+export async function runRtbRestore(picked: PickedRtb, options: Partial<RtbRestoreDeps> = {}, run: RtbRunOptions = {}): Promise<{ outcome: OperationOutcome, cause: RtbRestoreCause | null }> {
     const deps: RtbRestoreDeps = { ...realRestoreDeps(), ...options }
     const busy = deps.beginBusy()
     try {
         await deps.settled()
-        const prep = await deps.prepare(picked, busy)
+        const prep = await deps.prepare(picked, busy, run)
         if (prep.kind === 'ended') {
             return { outcome: prep.outcome, cause: prep.cause }
         }

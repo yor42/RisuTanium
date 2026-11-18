@@ -66,6 +66,7 @@ vi.mock('src/lang', async () => {
 import { resetBackHandlersForTests } from 'src/ts/backHandlers'
 import { toAssetList } from 'src/ts/storage/assetList'
 import { installCharacterSaveMarks, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
+import { installDbWriteHook, uninstallDbWriteHook } from 'src/ts/storage/dbWriteHook'
 import type { toSaveType } from 'src/ts/storage/risuSave'
 import type { RisuModule } from 'src/ts/process/modules'
 import { openStudioModuleId, resetOpenModuleIdForTests } from 'src/ts/studio/assets/openModuleForm.svelte'
@@ -309,5 +310,83 @@ describe('deselecting a module', () => {
         await ctrl({ key: 'z' })
         expect(assetNames(0)).toEqual(['a1x', 'a2', 'a3'])
         expect(service.view(M1).undone).toHaveLength(0)
+    })
+})
+
+describe('the restore sheet of a selected module toggle definition', () => {
+    const live = (): RisuModule => db.db.modules[0] as RisuModule
+
+    beforeEach(() => {
+        db.db.modules[0] = { ...moduleWith('M1', rowsOf('a')), customModuleToggle: 'a=A' }
+        installDbWriteHook(db, { selectedChaId: () => 'A' })
+    })
+
+    afterEach(() => {
+        uninstallDbWriteHook()
+    })
+
+    // One step is recorded, its steps are closed, the outside change is made, and the sheet is opened.
+    async function openSheetAfter(outside: (() => void) | null): Promise<OwnerHistoryService> {
+        const service = makeRig()
+        await mountOnModule('M1', true)
+        await service.whenReady(M1)
+        expect(service.editText(M1, 'customModuleToggle', 'b=B', 'single')).toMatchObject({ ok: true })
+        service.closeOpenStep(M1)
+        outside?.()
+        flushSync()
+        part('studio-history-restore-open')!.click()
+        await settle()
+        expect(parts('studio-restore-field').map((row) => row.dataset.path)).toEqual(['customModuleToggle'])
+        return service
+    }
+
+    function resetMarks(): void {
+        tracker.modules = false
+        tracker.character.length = 0
+    }
+
+    const changeInPlace = (): void => { live().customModuleToggle = 'c=C' }
+    const changeBySlotReplacement = (): void => { db.db.modules[0] = { ...live(), customModuleToggle: 'c=C' } }
+
+    test.each([['an in-place edit of the live module', changeInPlace], ['a slot replacement', changeBySlotReplacement]])(
+        'R-O1a after %s the sheet offers to keep the outside text, and confirming it is refused with nothing written', async (_name, outside) => {
+            const service = await openSheetAfter(outside)
+            expect(parts('studio-restore-keep').map((box) => box.dataset.path)).toEqual(['customModuleToggle'])
+            expect((part('studio-restore-keep') as HTMLInputElement).checked).toBe(true)
+            const steps = service.view(M1).done.length
+            resetMarks()
+            part('studio-restore-confirm')!.click()
+            flushSync()
+            expect(part('studio-restore-refusal')?.textContent).toBe('studioRefusalPrecondition')
+            expect(part('studio-restore-sheet')).not.toBeNull()
+            expect(live().customModuleToggle).toBe('c=C')
+            expect(service.view(M1).done).toHaveLength(steps)
+            expect(tracker.modules).toBe(false)
+        })
+
+    test('R-O1b unchecking the keep box restores the earlier text through the module slot, marking the modules and no character', async () => {
+        const service = await openSheetAfter(changeInPlace)
+        const keep = part('studio-restore-keep') as HTMLInputElement
+        keep.checked = false
+        keep.dispatchEvent(new Event('change', { bubbles: true }))
+        flushSync()
+        const steps = service.view(M1).done.length
+        resetMarks()
+        part('studio-restore-confirm')!.click()
+        await settle()
+        expect(live().customModuleToggle).toBe('a=A')
+        expect(service.view(M1).done).toHaveLength(steps + 1)
+        expect(tracker.modules).toBe(true)
+        expect(tracker.character).toEqual([])
+        expect(part('studio-restore-sheet')).toBeNull()
+    })
+
+    test('R-O1c with no outside change there is no keep box, and the restore gives the earlier text (compatibility guard; passes before and after)', async () => {
+        await openSheetAfter(null)
+        expect(parts('studio-restore-keep')).toHaveLength(0)
+        part('studio-restore-confirm')!.click()
+        await settle()
+        expect(live().customModuleToggle).toBe('a=A')
+        expect(part('studio-restore-sheet')).toBeNull()
     })
 })

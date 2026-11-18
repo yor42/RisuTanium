@@ -6,9 +6,10 @@
  * the drop paths rely on.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
-import { beginBusy } from '../../process/memory/busyActions'
+import { get } from 'svelte/store'
+import { beginBusy, beginDialogWait, busyRefusalLine } from '../../process/memory/busyActions'
 import {
-    beginRestoreRun, onRestoreEndedLive, resetRestoreInProgressForTests, restoreInProgress, restorePhase,
+    beginRestoreRun, noteRefusalLineSet, onRestoreEndedLive, resetRestoreInProgressForTests, restoreInProgress, restorePhase,
 } from '../restoreInProgress'
 import type { OperationOutcome } from '../operationEnd'
 
@@ -98,5 +99,27 @@ describe('restore phase', () => {
         stop()
         beginRestoreRun().end('failed')
         expect(ended).not.toHaveBeenCalled()
+    })
+})
+
+describe('the refusal line a restore noted', () => {
+    test('a marked entry that stays does not keep the line; an unmarked one does', () => {
+        const marked = beginBusy('export')
+        beginDialogWait(marked)
+        const run = beginRestoreRun()
+        busyRefusalLine.set('line')
+        noteRefusalLineSet()
+        run.end('failed')
+        expect(get(busyRefusalLine)).toBeNull()
+        marked.end()
+
+        const plain = beginBusy('export')
+        const second = beginRestoreRun()
+        busyRefusalLine.set('line')
+        noteRefusalLineSet()
+        second.end('failed')
+        expect(get(busyRefusalLine)).toBe('line')
+        plain.end()
+        expect(get(busyRefusalLine)).toBeNull()
     })
 })

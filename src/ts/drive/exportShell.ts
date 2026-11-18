@@ -10,6 +10,7 @@ import { cancelledFileState, webWriterNeedsGesture, type ExportByteWriter } from
 import { ExportCancelledError, ExportCancelToken, createExportWaitGate, type ExportWaitGate } from "../exportCancel";
 import { LocalWriter, TauriWriter } from "../globalApi.svelte";
 import { isTauri } from "src/ts/platform"
+import type { BusyHandle } from "../process/memory/busyActions";
 import { ExportModuleUnreadableError } from "./exportModules";
 import { ExportReadError } from "./inlayBackupExport";
 import { language } from "src/lang";
@@ -47,7 +48,12 @@ export interface ExportSession {
     cancel: ExportCancelToken
     /** The run's progress dialog: cancellable on the web, silent once cancelled. */
     gate: ExportWaitGate
+    /** The run's busy entry, when the caller registered one; `openOutsideBusy` marks it while a save dialog is open. */
+    busy?: BusyHandle
 }
+
+/** The shared save-dialog helper lives in a leaf module so that callers outside the shell need not load its graph. */
+export { openOutsideBusy } from "./exportDialogBusy";
 
 /**
  * Asks `confirm` only if the export has not been cancelled. When `asks` says the confirm will really show a prompt, the
@@ -90,9 +96,9 @@ export async function ensureGestureForWriter(session: ExportSession, needsGestur
  * already hold an incomplete file. The notice is on screen before this resolves, so the caller's next prompt waits for it.
  * Returns how the export ended; a caller that does not care may ignore it.
  */
-export async function runExport(body: (session: ExportSession) => Promise<ExportOutcome>): Promise<ExportOutcome> {
+export async function runExport(body: (session: ExportSession) => Promise<ExportOutcome>, busy?: BusyHandle): Promise<ExportOutcome> {
     const cancel = new ExportCancelToken()
-    const session: ExportSession = { writer: null, describeAsset: (key) => `'${key}'`, cancel, gate: createExportWaitGate(cancel, !isTauri) }
+    const session: ExportSession = { writer: null, describeAsset: (key) => `'${key}'`, cancel, gate: createExportWaitGate(cancel, !isTauri), busy }
     try {
         return await body(session)
     } catch (error) {

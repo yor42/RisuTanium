@@ -10,6 +10,7 @@ import {
     isAssetSweepHeld,
     modeRunsLegacyDeleters,
     noteMainFileLeftOverLimit,
+    pageMayGoLive,
     pageRunsLegacyDeleters,
     pendingConvertedFrom,
     resetPageStorageModeForTests,
@@ -82,6 +83,28 @@ describe('which pages may run the legacy deleters', () => {
         setPageStorageMode(mode)
 
         expect(pageRunsLegacyDeleters()).toBe(expected)
+    })
+})
+
+/**
+ * Labels: guard. The `unset`, `legacy` and `block` rows kill a predicate written as "anything but the refused modes", and the
+ * `store2` rows kill one that accepts a store2 page without its active save or any mode with a save.
+ */
+describe('which pages may go live', () => {
+    const rows: Array<[string, PageStorageMode, boolean, boolean]> = [
+        ['a store2 page with its active save', { kind: 'store2' }, true, true],
+        ['a store2 page with no active save', { kind: 'store2' }, false, false],
+        ['a read-only page with no save', { kind: 'read-only', reason: 'opfs-transitional' }, false, true],
+        ['a read-only page that somehow holds a save', { kind: 'read-only', reason: 'backend-unavailable' }, true, true],
+        ['a too-new read-only page', { kind: 'read-only', reason: 'too-new', source: 'tree' }, false, true],
+        ['a page boot has not decided for, with a save', { kind: 'unset' }, true, false],
+        ['a page boot has not decided for, with no save', { kind: 'unset' }, false, false],
+        ['a legacy page with a save', { kind: 'legacy', convertedFrom: null }, true, false],
+        ['a block page with a save', { kind: 'block' }, true, false],
+    ]
+
+    test.each(rows)('%s', (_label, mode, hasActiveSave, expected) => {
+        expect(pageMayGoLive(mode, hasActiveSave)).toBe(expected)
     })
 })
 

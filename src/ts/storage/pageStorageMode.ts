@@ -82,6 +82,16 @@ export function pageRunsLegacyDeleters(): boolean {
     return modeRunsLegacyDeleters(mode)
 }
 
+/**
+ * Whether a page in this mode may become interactive: a `read-only` page, which refuses every write, or a `store2` page
+ * that holds its active save, which is what every later write goes through. Any other mode, and a `store2` page with no
+ * save, can neither save nor refuse, so it must not go live. Callers test this positive answer, never a list of the
+ * modes that may not: a mode added later stays refused until it is named here.
+ */
+export function pageMayGoLive(candidate: PageStorageMode, hasActiveStore2Save: boolean): boolean {
+    return candidate.kind === 'read-only' || (candidate.kind === 'store2' && hasActiveStore2Save)
+}
+
 // -- the startup asset sweep --------------------------------------------------
 
 /**

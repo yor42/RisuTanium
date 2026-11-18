@@ -1,6 +1,7 @@
 /**
  * The restore buttons as flows: the two Settings buttons (a `.bin` file, and the internal backup / store2 restore point)
- * and the Welcome restore of a `.bin` file. Each opens a restore run before its first question and holds it across the
+ * and the Welcome restore of a `.bin` or `.rtb` file.
+ * Each opens a restore run before its first question and holds it across the
  * loader, so the run spans the picker and the save-first waits that come before the loader registers its busy entry.
  * The run ends with the outcome the loader reports; a loader that rejects ends it `failed` (every loader converts a
  * throw after its write into an outcome, so a rejection means nothing was replaced).
@@ -11,7 +12,6 @@ import { language } from 'src/lang'
 import { alertConfirm } from '../alert'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
 import { loadBackupFromPicker } from './backupRouter'
-import { LoadLocalBackup } from './backuplocal'
 import { loadInternalBackup } from './internalBackup'
 import type { OperationOutcome } from './operationEnd'
 import { beginRestoreRun, restorePhase } from './restoreInProgress'
@@ -82,7 +82,8 @@ function watchPickerReturn(stop: () => void): () => void {
 }
 
 /**
- * Welcome: the same restore and confirmations as Settings, and the restored database persists `didFirstSetup = true`.
+ * Welcome: the same restore and confirmations as Settings. A `.bin` restore persists `didFirstSetup = true`; a `.rtb`
+ * restore keeps the file's own profile and does not ask the newer-data question. A picked file stops the return watch.
  * The returned promise resolves with the restore flow, or earlier when a dismissed picker fires no event and the window
  * comes back (`watchPickerReturn`). In that early case the restore run stays open until its loader settles. A flow that
  * rejects (a failing busy guard or run end) removes the listeners and rejects the returned promise with the same error,
@@ -108,8 +109,9 @@ export function restoreFromBinFileAtFirstRun(): Promise<void> {
         resolveReturned()
     }
     restoreFlow(() => {
-        // The picker opens synchronously inside this call, so the watcher is armed only after both confirmations.
-        const loaded = LoadLocalBackup(undefined, undefined, { completeFirstSetup: true })
+        // The picker opens synchronously inside this call, so the watcher is armed only after both confirmations. A picked
+        // file stops the watcher before the router reads it: from then on the restore, not a dismissed picker, holds Welcome.
+        const loaded = loadBackupFromPicker({}, { firstRun: true, onPicked: () => stopWatching() })
         stopWatching = watchPickerReturn(resolveReturned)
         return loaded
     }).then(settle, (error: unknown) => {

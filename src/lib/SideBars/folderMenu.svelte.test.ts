@@ -18,6 +18,8 @@ import type { Database, folder } from 'src/ts/storage/database.svelte'
 import { DBState } from 'src/ts/stores.svelte'
 import { language } from 'src/lang'
 import { alertError, alertInput } from 'src/ts/alert'
+import { resetToastHostForTests, toastHost } from 'src/ts/toast/toastHost.svelte'
+import type { TrashedBatch } from 'src/ts/characters'
 import { runFolderMenu, type FolderMenuHost, type FolderMenuTarget } from './folderMenu'
 
 type TestCharacter = { chaId: string, name: string, trashTime?: number, hidden?: boolean }
@@ -155,6 +157,7 @@ beforeEach(() => {
     cancelAt.input = false
     onOffer.current = null
     busyHandles.length = 0
+    resetToastHostForTests()
     for (const spy of [checkCharOrderSpy, saveAssetSpy, selectSingleFileSpy, trashSpy]) {
         spy.mockReset()
     }
@@ -302,6 +305,60 @@ describe('3. Ungroup', () => {
     })
 })
 
+describe('3b. the Undo toast of an order change', () => {
+    const undoToasts = () => toastHost.visible.filter((toast) => toast.kind === 'undo')
+    const snapshot = (order: OrderEntry[]) => JSON.parse(JSON.stringify(order)) as OrderEntry[]
+
+    test('Ungroup posts "Folder ungrouped", and Undo brings the folder back with its fields', async () => {
+        const db = setupDb(['x', fold('f', ['a', 'b'], { imgFile: 'pic' }), 'y'], characters())
+        const start = snapshot(db.order())
+        answers.push(TOP.ungroup)
+        await runFolderMenu(targetOf('f'), makeHost().host)
+        expect(undoToasts()).toHaveLength(1)
+        expect(undoToasts()[0].text).toBe(language.othersUi.libraryUndoUngrouped)
+        await toastHost.activate(undoToasts()[0].id)
+        expect(snapshot(db.order())).toEqual(start)
+        expect(checkCharOrderSpy).toHaveBeenCalledTimes(2)
+    })
+
+    test('Delete, keep members posts "Folder deleted; its characters stay in the list", and Undo restores', async () => {
+        const db = setupDb(['x', fold('f', ['a', 'b']), 'y'], characters())
+        const start = snapshot(db.order())
+        answers.push(TOP.del, '0')
+        await runFolderMenu(targetOf('f'), makeHost().host)
+        expect(db.order()).toEqual(['x', 'a', 'b', 'y'])
+        expect(undoToasts()).toHaveLength(1)
+        expect(undoToasts()[0].text).toBe(language.othersUi.libraryUndoFolderDeleted)
+        await toastHost.activate(undoToasts()[0].id)
+        expect(snapshot(db.order())).toEqual(start)
+    })
+
+    test('Undo refuses once the order has changed since', async () => {
+        const db = setupDb(['x', fold('f', ['a', 'b']), 'y'], characters())
+        answers.push(TOP.ungroup)
+        await runFolderMenu(targetOf('f'), makeHost().host)
+        db.order().reverse()
+        const changed = snapshot(db.order())
+        expect(undoToasts()).toHaveLength(1)
+        await toastHost.activate(undoToasts()[0].id)
+        expect(snapshot(db.order())).toEqual(changed)
+    })
+
+    test('a folder that is gone, a field edit and a cancel post nothing', async () => {
+        setupDb(['x', fold('f', ['a'])], characters())
+        answers.push(TOP.ungroup)
+        await runFolderMenu(targetOf('f', 3), makeHost().host)
+        answers.push(TOP.rename)
+        inputs.push('New name')
+        await runFolderMenu(targetOf('f'), makeHost().host)
+        answers.push(TOP.colour, '2')
+        await runFolderMenu(targetOf('f'), makeHost().host)
+        answers.push(TOP.del, '2')
+        await runFolderMenu(targetOf('f'), makeHost().host)
+        expect(toastHost.visible).toHaveLength(0)
+    })
+})
+
 describe('4. picture from a file', () => {
     test('the folder is written only after saveAsset resolves, and busy ends after it', async () => {
         const db = setupDb([fold('f', ['a'])], characters())
@@ -443,6 +500,23 @@ describe('6. Delete', () => {
         expect(db.writes).toHaveLength(0)
         expect(applyOrderChange).not.toHaveBeenCalled()
         expect(closeFolder).not.toHaveBeenCalled()
+    })
+
+    test('reproducer: Trash hands the trash a report whose onTrashed posts the Undo toast', async () => {
+        setupDb([fold('f', ['a', 'd'])], members())
+        resetToastHostForTests()
+        const { host } = makeHost()
+        answers.push(TOP.del, '1')
+        await runFolderMenu(targetOf('f', 0, 'Shown name'), host)
+        const report = trashSpy.mock.calls[0][2] as { onTrashed?(batch: TrashedBatch): void } | undefined
+        expect(report?.onTrashed).toBeTypeOf('function')
+        expect(toastHost.visible).toHaveLength(0)
+
+        report!.onTrashed!({ at: 5, chaIds: ['a', 'd'] })
+
+        expect(toastHost.visible).toHaveLength(1)
+        expect(toastHost.visible[0].kind).toBe('undo')
+        expect(toastHost.visible[0].text).toBe(language.othersUi.libraryUndoTrashed(2))
     })
 
     test('Cancel and a vanished folder do nothing', async () => {
