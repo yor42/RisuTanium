@@ -36,6 +36,7 @@ import { language } from "src/lang";
 import { collectColdStorageBackupPayloads, confirmIncompleteColdStorageOperation, getColdStorageBackupKey, type ColdStorageBackupCollection } from "../process/coldstorage.svelte";
 import { characterListNeedsRepair, kvBlockNamesOf, collectBackupColdStorage, inlinedCharacter, exportForkOnlyLabels, inlinedFromMinted, lateSettledKeys, mergePluginStorage, pluginStorageForExport, stubEntriesInTree, stubWithMintedKey, leaveOutOversizePayloads, takeStubReadStats, beginModuleSnapshotMark, endModuleSnapshotMark, clearModuleSnapshotMarks, unpackStubEntry, UPSTREAM_HARD_LIMIT_BYTES, type BackupColdStorage, type ExportCollectionOptions, type MintedStubEntry, type OversizeItem } from "./exportInline";
 import { listColdBackupRoots } from "../process/coldstorageData";
+import { v4 } from "uuid";
 import { BACKUP_ENCRYPTION_MARKER_NAME, BACKUP_NAME_PREFIX_BYTES, MAX_MARKER_NAME_BYTES, backupCopyWindowBytes, createBlobWindowReader, decodeEntryName, indexBackupEntries, parseBackupEntryHeader, type BackupEntryHeader, type BackupIndexEntry, type BinFile } from "./backupContainer";
 import { binFileOfSource, type SourceBinFile } from "./binFileSource";
 import { openDesktopImportSource, type ImportSource } from "../importSource";

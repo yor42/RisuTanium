@@ -3,8 +3,9 @@
  * back as one. `SaveLocalBackup` runs for real over a store2 page whose chats were written by the engine (`detachTail`);
  * the file is read the way an upstream reader reads it (the database entry through `decodeRisuSave`, each unit entry as
  * JSON, no entity-named payload, no unit left dangling), and the same bytes then go through the real `LoadLocalBackup`
- * into a fresh page. The reader is this repository's decoder plus structural checks, not upstream's code. A passing test
- * says nothing about a native writer or a real store.
+ * into a fresh store2 page, whose commit is the shell stub (`store2ShellStub.ts`): the import half asserts on the database
+ * the stub's `request.decode()` produced, not on what a real store2 commit lands. The reader is this repository's
+ * decoder plus structural checks, not upstream's code. A passing test says nothing about a native writer or a real store.
  *
  * Titles: `reproducer` fails when the branch chats are absent from the file; `guard` passes before and after.
  */
@@ -30,6 +31,7 @@ const alertConfirmMock = vi.hoisted(() => vi.fn(async (_message: string) => true
 const alertErrorMock = vi.hoisted(() => vi.fn())
 const alertMdMock = vi.hoisted(() => vi.fn())
 const alertNormalMock = vi.hoisted(() => vi.fn())
+const alertWaitMock = vi.hoisted(() => vi.fn())
 
 vi.mock('localforage', () => ({
     default: {
@@ -115,7 +117,7 @@ vi.mock(import('src/ts/alert'), () => ({
     alertClear: vi.fn(),
     alertConfirm: alertConfirmMock,
     alertError: alertErrorMock,
-    alertWait: vi.fn(),
+    alertWait: alertWaitMock,
     alertMd: alertMdMock,
     alertNormal: alertNormalMock,
     alertSelect: vi.fn(),
@@ -224,6 +226,15 @@ vi.mock(import('src/ts/process/modules'), () => ({
     moduleUpdate: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/process/modules'))
 
+// A clean page: the restore's save-first step returns at its clean check instead of waiting out its bound.
+vi.mock(import('src/ts/globalApi.svelte'), async (importOriginal) => ({
+    ...await importOriginal<typeof import('src/ts/globalApi.svelte')>(),
+    isSaveClean: () => true,
+}))
+
+const shell = vi.hoisted((): Store2ShellBox => ({ commits: [], events: [] }))
+vi.mock(import('src/ts/drive/storeImport'), (importOriginal) => store2ShellMock(shell)(importOriginal))
+
 //#endregion
 
 //#region units and the legacy OPFS stand-in
@@ -266,15 +277,15 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 
 //#endregion
 
+import { resetStore2ShellBox, store2ShellMock, useStore2RestorePage, type Store2ShellBox } from './store2ShellStub'
 import { SaveLocalBackup, LoadLocalBackup } from 'src/ts/drive/backuplocal'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
+import { language } from 'src/lang'
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
-import { setDatabase } from 'src/ts/storage/database.svelte'
 import { detachTail } from 'src/ts/process/chatTree'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { createForageBackedStore } from 'src/ts/storage/tests/forageBackedStore'
 import { forageOverMap } from 'src/ts/storage/tests/appStoreMock'
-import { injectRestoreStore } from './restoreSupport'
 import { createMemoryBackend } from 'src/ts/storage/store2/backend'
 import { assembleCharacter, assembleDatabase, stubFromEntry } from 'src/ts/storage/store2/codec'
 import { previousOfTree } from 'src/ts/storage/store2/previousOfTree'
@@ -461,7 +472,8 @@ beforeEach(() => {
     alertErrorMock.mockClear()
     alertMdMock.mockClear()
     alertNormalMock.mockClear()
-    vi.mocked(setDatabase).mockClear()
+    alertWaitMock.mockClear()
+    resetStore2ShellBox(shell)
     resetResidencyForTest()
     forageKeysMock.mockImplementation(async () => [])
     forageGetItemMock.mockImplementation(async () => null)
@@ -553,11 +565,12 @@ describe('fork export, upstream-shaped read, fork import of a chat continued fro
 
         // Another profile imports the file: the residency of the exporting page is not there.
         resetResidencyForTest()
-        injectRestoreStore(createForageBackedStore(forageOverMap(new Map())))
+        useStore2RestorePage(createForageBackedStore(forageOverMap(new Map())), 'indexeddb')
         await loadBackupBytes(concat(backupSink.writes))
 
-        expect(vi.mocked(setDatabase)).toHaveBeenCalledTimes(1)
-        const installed = vi.mocked(setDatabase).mock.calls[0][0] as unknown as { characters: Obj[] }
+        expect(shell.commits).toHaveLength(1)
+        expect(alertWaitMock.mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)
+        const installed = shell.commits[0].decoded as unknown as { characters: Obj[] }
         expect(installed.characters.map((character) => character.name)).toEqual(read.characters.map((character) => character.name))
         installed.characters.forEach((character, index) => {
             const chats = chatsOf(character)
@@ -578,9 +591,11 @@ describe('fork export, upstream-shaped read, fork import of a chat continued fro
         const read = await upstreamRead()
         expect(read.characters.map((character) => chatsOf(character).length)).toEqual([FIXTURE_CHATS, FIXTURE_CHATS, FIXTURE_CHATS])
         resetResidencyForTest()
-        injectRestoreStore(createForageBackedStore(forageOverMap(new Map())))
+        useStore2RestorePage(createForageBackedStore(forageOverMap(new Map())), 'indexeddb')
         await loadBackupBytes(concat(backupSink.writes))
-        const installed = vi.mocked(setDatabase).mock.calls[0][0] as unknown as { characters: Obj[] }
+        expect(shell.commits).toHaveLength(1)
+        expect(alertWaitMock.mock.calls.some((call) => call[0] === language.store2RestoreSaving)).toBe(false)
+        const installed = shell.commits[0].decoded as unknown as { characters: Obj[] }
         expect(installed.characters.map((character) => chatsOf(character))).toEqual(read.characters.map((character) => chatsOf(character)))
     }, 120_000)
 })
