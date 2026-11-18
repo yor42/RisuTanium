@@ -3602,6 +3602,16 @@ export const languageChinese = {
     "rtbRestoreUncreatableConfirm": (count: number, names: string[]) =>
         `此备份中有 ${count} 个资源文件的名称无法在此应用的存储中创建，因此无法在此恢复。使用其中任何一个的角色会将其显示为缺失。是否不恢复它们而继续？\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 个` : ''}`,
     "rtbRestoreChecking": (percent: number) => `正在检查备份... (${percent}%)`,
+    "rtbRestoreCopying": (percent: number) => `正在恢复备份... (${percent}%)`,
+    "rtbRestoreInstalling": "正在载入备份...",
+    "rtbRestoreCopiedKept": "备份中的部分图片或聊天媒体可能已被添加或替换。它们会保留在此设备上，再次恢复同一备份时会跳过已存在的内容。",
+    "rtbRestoreLeftOut": (lines: string[]) => `备份已恢复，但以下内容除外：\n\n${lines.join('\n')}`,
+    "rtbRestoreLineNewerParts": (names: string[]) => `- 由更新版本的 RisuTanium 创建的部分。这些部分未被恢复，仅保留在备份文件中：${names.join(', ')}`,
+    "rtbRestoreLineOmittedUnits": (count: number) => `- ${count} 个已损坏的项目（任务预设或聊天备选），创建备份时已将其排除`,
+    "rtbRestoreLineOmittedEntries": (names: string[]) => `- 创建备份时未包含的数据：${names.join(', ')}`,
+    "rtbRestoreLineSideNotRestored": (names: string[]) => `- 保留在此设备上、未被恢复的数据：${names.join(', ')}`,
+    "rtbRestoreLineSideFailed": (names: string[]) => `- 保留在此设备上、未能完整写入的数据：${names.join(', ')}`,
+    "rtbRestoreSideNames": { iris: "Iris 对话", googleSearch: "Google 搜索密钥", hypaVector: "记忆检索数据", pluginSafe: "插件数据", pluginSafeLs: "插件设置", pluginPermissions: "插件权限", mcpToolCalls: "MCP 工具调用", uiPrefs: "界面偏好设置" },
     "coldStorageCleanupDateUnknown": "日期未知",
     "coldStorageCleanupKeptConfirm": (dates: string) =>
         `在用备份替换已损坏的已保存数据时，数据的较旧已保存副本被保留下来，而没有被删除（创建于 ${dates}）。仅被它们使用的图片和归档数据仍受保护，因此只要这些副本存在，就无法运行清理。\n\n是否删除这些较旧的副本，然后进行清理？删除后无法恢复。选择“取消”则保留它们，此时不会运行清理。`,

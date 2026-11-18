@@ -3601,6 +3601,16 @@ export const languageVietnamese = {
     rtbRestoreUncreatableConfirm: (count: number, names: string[]) =>
         `${count} tệp tài nguyên (asset) trong bản sao lưu này có tên mà bộ lưu trữ của ứng dụng không thể tạo, nên không thể khôi phục tại đây. Nhân vật nào dùng một trong số đó sẽ hiển thị là bị thiếu. Tiếp tục mà không có chúng?\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} tệp nữa` : ''}`,
     rtbRestoreChecking: (percent: number) => `Đang kiểm tra bản sao lưu... (${percent}%)`,
+    rtbRestoreCopying: (percent: number) => `Đang khôi phục bản sao lưu... (${percent}%)`,
+    rtbRestoreInstalling: "Đang tải bản sao lưu...",
+    rtbRestoreCopiedKept: "Một số hình ảnh hoặc phương tiện trò chuyện trong bản sao lưu có thể đã được thêm hoặc thay thế. Chúng vẫn nằm trên thiết bị này, và khi khôi phục lại cùng bản sao lưu, những mục đã có sẽ được bỏ qua.",
+    rtbRestoreLeftOut: (lines: string[]) => `Bản sao lưu đã được khôi phục, trừ những mục sau:\n\n${lines.join('\n')}`,
+    rtbRestoreLineNewerParts: (names: string[]) => `- Các phần do phiên bản RisuTanium mới hơn tạo ra. Chúng chưa được khôi phục và chỉ còn trong tệp sao lưu: ${names.join(', ')}`,
+    rtbRestoreLineOmittedUnits: (count: number) => `- ${count} mục bị hỏng (cài đặt trước tác vụ hoặc lựa chọn thay thế trong cuộc trò chuyện) mà bản sao lưu đã được tạo mà không có`,
+    rtbRestoreLineOmittedEntries: (names: string[]) => `- Dữ liệu mà bản sao lưu đã được tạo mà không có: ${names.join(', ')}`,
+    rtbRestoreLineSideNotRestored: (names: string[]) => `- Dữ liệu được giữ trên thiết bị này nhưng chưa được khôi phục: ${names.join(', ')}`,
+    rtbRestoreLineSideFailed: (names: string[]) => `- Dữ liệu được giữ trên thiết bị này nhưng không thể ghi đầy đủ: ${names.join(', ')}`,
+    rtbRestoreSideNames: { iris: "cuộc trò chuyện Iris", googleSearch: "khóa tìm kiếm Google", hypaVector: "dữ liệu tìm kiếm bộ nhớ", pluginSafe: "dữ liệu plugin", pluginSafeLs: "cài đặt plugin", pluginPermissions: "quyền của plugin", mcpToolCalls: "lệnh gọi công cụ MCP", uiPrefs: "tùy chọn giao diện" },
     coldStorageCleanupDateUnknown: "không rõ ngày",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `Khi một bản lưu bị hỏng được thay thế từ bản sao lưu, các bản sao dữ liệu đã lưu cũ hơn được để riêng ra thay vì bị xóa (được tạo ${dates}). Hình ảnh và dữ liệu lưu trữ chỉ chúng sử dụng vẫn được bảo vệ, nên việc dọn dẹp không thể chạy khi chúng còn tồn tại.\n\nXóa các bản sao cũ này rồi dọn dẹp? Không thể khôi phục chúng. Chọn Hủy để giữ lại; khi đó việc dọn dẹp sẽ không chạy.`,

@@ -3619,6 +3619,16 @@ export const languageGerman = {
     "rtbRestoreUncreatableConfirm": (count: number, names: string[]) =>
         `${count} Asset-Datei(en) in diesem Backup haben Namen, die der Speicher dieser App nicht anlegen kann, daher können sie hier nicht wiederhergestellt werden. Ein Charakter, der eines davon verwendet, zeigt es als fehlend an. Ohne sie fortfahren?\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "rtbRestoreChecking": (percent: number) => `Backup wird geprüft... (${percent}%)`,
+    "rtbRestoreCopying": (percent: number) => `Backup wird wiederhergestellt... (${percent}%)`,
+    "rtbRestoreInstalling": "Backup wird geladen...",
+    "rtbRestoreCopiedKept": "Einige Bilder oder Chat-Medien aus dem Backup wurden möglicherweise bereits hinzugefügt oder ersetzt. Sie bleiben auf diesem Gerät, und beim erneuten Wiederherstellen desselben Backups werden bereits vorhandene übersprungen.",
+    "rtbRestoreLeftOut": (lines: string[]) => `Das Backup wurde wiederhergestellt, mit Ausnahme von Folgendem:\n\n${lines.join('\n')}`,
+    "rtbRestoreLineNewerParts": (names: string[]) => `- Teile, die von einer neueren Version von RisuTanium erstellt wurden. Sie wurden nicht wiederhergestellt und bleiben nur in der Backup-Datei: ${names.join(', ')}`,
+    "rtbRestoreLineOmittedUnits": (count: number) => `- ${count} beschädigte(s) Element(e) (Aufgaben-Voreinstellungen oder Chat-Alternativen), ohne die das Backup erstellt wurde`,
+    "rtbRestoreLineOmittedEntries": (names: string[]) => `- Daten, ohne die das Backup erstellt wurde: ${names.join(', ')}`,
+    "rtbRestoreLineSideNotRestored": (names: string[]) => `- Auf diesem Gerät gespeicherte Daten, die nicht wiederhergestellt wurden: ${names.join(', ')}`,
+    "rtbRestoreLineSideFailed": (names: string[]) => `- Auf diesem Gerät gespeicherte Daten, die nicht vollständig geschrieben werden konnten: ${names.join(', ')}`,
+    "rtbRestoreSideNames": { iris: "Iris-Unterhaltungen", googleSearch: "Google-Suchschlüssel", hypaVector: "Daten der Gedächtnissuche", pluginSafe: "Plugin-Daten", pluginSafeLs: "Plugin-Einstellungen", pluginPermissions: "Plugin-Berechtigungen", mcpToolCalls: "MCP-Tool-Aufrufe", uiPrefs: "Oberflächeneinstellungen" },
     "coldStorageCleanupDateUnknown": "Datum unbekannt",
     "coldStorageCleanupKeptConfirm": (dates: string) =>
         `Als ein beschädigter Speicherstand aus einem Backup ersetzt wurde, wurden die älteren gespeicherten Kopien Ihrer Daten beiseitegelegt, statt gelöscht zu werden (erstellt: ${dates}). Bilder und archivierte Daten, die nur von ihnen verwendet werden, sind weiterhin geschützt, daher kann die Bereinigung nicht ausgeführt werden, solange sie existieren.\n\nDiese älteren Kopien löschen und dann bereinigen? Sie können nicht wiederhergestellt werden. Wählen Sie Abbrechen, um sie zu behalten; die Bereinigung wird dann nicht ausgeführt.`,

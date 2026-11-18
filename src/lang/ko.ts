@@ -3602,6 +3602,16 @@ export const languageKorean = {
     rtbRestoreUncreatableConfirm: (count: number, names: string[]) =>
         `이 백업의 에셋 파일 ${count}개는 이 앱의 저장소에서 만들 수 없는 이름이라 여기에서 복원할 수 없습니다. 이 중 하나를 사용하는 캐릭터에서는 해당 항목이 누락된 것으로 표시됩니다. 이 파일들을 제외하고 계속하시겠습니까?\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     rtbRestoreChecking: (percent: number) => `백업을 확인하는 중... (${percent}%)`,
+    rtbRestoreCopying: (percent: number) => `백업을 복원하는 중... (${percent}%)`,
+    rtbRestoreInstalling: "백업을 불러오는 중...",
+    rtbRestoreCopiedKept: "백업의 이미지나 채팅 미디어 일부가 이미 추가되었거나 교체되었을 수 있습니다. 이 항목들은 이 기기에 그대로 남으며, 같은 백업을 다시 복원하면 이미 있는 항목은 건너뜁니다.",
+    rtbRestoreLeftOut: (lines: string[]) => `백업을 복원했지만 다음 항목은 제외되었습니다.\n\n${lines.join('\n')}`,
+    rtbRestoreLineNewerParts: (names: string[]) => `- 더 새로운 버전의 RisuTanium에서 만든 부분입니다. 복원되지 않았으며 백업 파일에만 남아 있습니다: ${names.join(', ')}`,
+    rtbRestoreLineOmittedUnits: (count: number) => `- 백업을 만들 때 제외된 손상 항목 ${count}개 (작업 프리셋 또는 채팅 대안)`,
+    rtbRestoreLineOmittedEntries: (names: string[]) => `- 백업을 만들 때 제외된 데이터: ${names.join(', ')}`,
+    rtbRestoreLineSideNotRestored: (names: string[]) => `- 이 기기에 보관 중이며 복원되지 않은 데이터: ${names.join(', ')}`,
+    rtbRestoreLineSideFailed: (names: string[]) => `- 이 기기에 보관 중이며 완전히 기록하지 못한 데이터: ${names.join(', ')}`,
+    rtbRestoreSideNames: { iris: "Iris 대화", googleSearch: "Google 검색 키", hypaVector: "기억 검색 데이터", pluginSafe: "플러그인 데이터", pluginSafeLs: "플러그인 설정", pluginPermissions: "플러그인 권한", mcpToolCalls: "MCP 도구 호출", uiPrefs: "인터페이스 설정" },
     coldStorageCleanupDateUnknown: "날짜 알 수 없음",
     coldStorageCleanupKeptConfirm: (dates: string) =>
         `손상된 저장 데이터를 백업으로 교체할 때, 이전에 저장된 데이터 사본이 삭제되지 않고 따로 보관되었습니다(생성: ${dates}). 이 사본만 사용하는 이미지와 보관된 데이터는 계속 보호되므로, 사본이 남아 있는 동안에는 정리를 실행할 수 없습니다.\n\n이 이전 사본을 삭제한 뒤 정리하시겠습니까? 삭제한 사본은 복구할 수 없습니다. 취소를 선택하면 사본을 유지하며, 이 경우 정리는 실행되지 않습니다.`,
