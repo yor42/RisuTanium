@@ -12,14 +12,16 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { zipSync } from 'fflate'
 import { writeBackupEntry } from 'src/ts/exportWriters'
-import { BACKUP_PROBE_BYTES, BIN_FIRST_NAME_MAX_BYTES, backupKindOf, readBackupKind, routePickedBackup } from 'src/ts/drive/backupRouter'
+import { BACKUP_PROBE_BYTES, BIN_FIRST_NAME_MAX_BYTES, backupKindOf, readBackupKind, readBackupKindOfSource, routeOpenedBackup, routePickedBackup } from 'src/ts/drive/backupRouter'
+import type { OpenedBin } from 'src/ts/drive/backuplocal'
+import type { ImportSource } from 'src/ts/importSource'
 import { alertError } from 'src/ts/alert'
 import { language } from 'src/lang'
 import { rtbWorld } from 'src/ts/storage/tests/store2/rtbFixtures'
 import { writeRtbFile } from './rtb/rtbRestoreFixtures'
 
 // The classifier needs none of the restores or dialogs the router's imports reach; they are replaced so the file loads alone.
-vi.mock('src/ts/drive/backuplocal', () => ({ LoadPickedLocalBackup: vi.fn() }))
+vi.mock('src/ts/drive/backuplocal', () => ({ LoadPickedLocalBackup: vi.fn(), LoadLocalBackup: vi.fn() }))
 vi.mock('src/ts/drive/backupWorkGuard', () => ({ refuseBackupLoadWhileBusy: vi.fn(() => false) }))
 vi.mock('src/ts/alert', () => ({ alertError: vi.fn() }))
 vi.mock(import('src/ts/platform'), () => ({ isTauri: false, isNodeServer: false, isIOS: () => false }) as unknown as typeof import('src/ts/platform'))
@@ -283,5 +285,122 @@ describe('routing by content through routePickedBackup (R1, R2, R3a, R3d)', () =
         expect(end).toEqual({ outcome: 'failed' })
         expect(vi.mocked(alertError).mock.calls).toEqual([['Failed, Is file corrupted?']])
         expect(loadBin).not.toHaveBeenCalled()
+    })
+})
+
+/** A source over `bytes` as an opened file is read: `reads` records every `(start, end)` asked of it. */
+function openedSource(bytes: Uint8Array, read?: ImportSource['read']): { source: ImportSource, reads: Array<[number, number]> } {
+    const reads: Array<[number, number]> = []
+    const source: ImportSource = {
+        name: 'opened',
+        size: bytes.length,
+        read: read ?? (async (start, end) => bytes.subarray(start, Math.min(end, bytes.length))),
+        stream: () => new ReadableStream<Uint8Array>(),
+        stat: async () => ({ size: bytes.length, modified: null }),
+        close: async () => undefined,
+    }
+    const counted: ImportSource = {
+        ...source,
+        read: (start, end) => {
+            reads.push([start, end])
+            return source.read(start, end)
+        },
+    }
+    return { source: counted, reads }
+}
+
+describe('the probe of an opened source: readBackupKindOfSource (T-R1 to T-R3)', () => {
+    test('T-R1: a producer .rtb, a golden .bin and a 4096-byte first name are classified, with one read of min(size, 4104) from offset 0 (guard; MS3)', async () => {
+        const long = header(new Uint8Array(4096).fill(0x61), 0, 10 * 1024)
+        for (const [bytes, kind] of [[rtb, 'rtb'], [golden('fork-full.bin'), 'bin'], [long, 'bin']] as const) {
+            const opened = openedSource(bytes)
+            expect(await readBackupKindOfSource(opened.source)).toBe(kind)
+            expect(opened.reads).toEqual([[0, Math.min(bytes.length, BACKUP_PROBE_BYTES)]])
+        }
+        const small = openedSource(new Uint8Array(100))
+        await readBackupKindOfSource(small.source)
+        expect(small.reads).toEqual([[0, 100]])
+    })
+
+    test('T-R2: a rejecting read, a synchronously throwing read and a short read are could-not-read and the probe resolves (guard; MS2, MS4)', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => { })
+        const bin = golden('fork-full.bin')
+        const rejecting = openedSource(bin, async () => { throw new Error('read failed') })
+        expect(await readBackupKindOfSource(rejecting.source)).toBe('could-not-read')
+        const throwing = openedSource(bin, () => { throw new Error('read threw') })
+        expect(await readBackupKindOfSource(throwing.source)).toBe('could-not-read')
+        const short = openedSource(bin, async () => bin.slice(0, 10))
+        expect(bin.length).toBeGreaterThan(10)
+        expect(await readBackupKindOfSource(short.source)).toBe('could-not-read')
+    })
+
+    test('T-R3: a header that fits the whole file exactly is bin and one that passes the end by a byte is not-a-backup, with a file larger than the probe (guard; MS5a, MS6a)', async () => {
+        const name = new Uint8Array(16).fill(0x61)
+        const data = 10_000
+        const total = 8 + name.length + data
+        expect(total).toBeGreaterThan(BACKUP_PROBE_BYTES)
+        expect(await readBackupKindOfSource(openedSource(header(name, data, total)).source)).toBe('bin')
+        expect(await readBackupKindOfSource(openedSource(header(name, data, total - 1)).source)).toBe('not-a-backup')
+    })
+})
+
+describe('routing an opened file by content through routeOpenedBackup (T-R4)', () => {
+    const loaded = (outcome: 'committed' | 'canceled' = 'committed') => vi.fn(async (_opened: OpenedBin) => ({ outcome }))
+    const openedOf = (bytes: Uint8Array, name: string, read?: ImportSource['read']): OpenedBin => ({ source: openedSource(bytes, read).source, name, lastModified: 7 })
+
+    test('a producer .rtb named backup.bin reaches the .rtb restore only, with the same opened object (guard; MS1, MS7)', async () => {
+        const loadBin = loaded()
+        const loadRtb = loaded()
+        const opened = openedOf(rtb, 'backup.bin')
+        expect(await routeOpenedBackup(opened, { loadBin, loadRtb })).toEqual({ outcome: 'committed' })
+        expect(loadRtb).toHaveBeenCalledTimes(1)
+        expect(loadRtb.mock.calls[0][0]).toBe(opened)
+        expect(loadBin).not.toHaveBeenCalled()
+    })
+
+    test('a framed .bin named x.rtb reaches the .bin restore only, with the same opened object (guard; MS1, MS7)', async () => {
+        const loadBin = loaded()
+        const loadRtb = loaded()
+        const bytes = await framed([['small.png', encoder.encode('png')], ['database.risudat', encoder.encode('db')]])
+        const opened = openedOf(bytes, 'x.rtb')
+        await routeOpenedBackup(opened, { loadBin, loadRtb })
+        expect(loadBin).toHaveBeenCalledTimes(1)
+        expect(loadBin.mock.calls[0][0]).toBe(opened)
+        expect(loadRtb).not.toHaveBeenCalled()
+    })
+
+    test('junk shows backupFileNotRecognized and a rejecting source shows backupFileUnreadable; neither reaches a restore (guard; MS1)', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => { })
+        const loadBin = loaded()
+        const loadRtb = loaded()
+        vi.mocked(alertError).mockClear()
+        expect(await routeOpenedBackup(openedOf(new Uint8Array(64).fill(7), 'x.bin'), { loadBin, loadRtb })).toEqual({ outcome: 'nothing-replaced' })
+        expect(vi.mocked(alertError).mock.calls).toEqual([[language.backupFileNotRecognized]])
+        vi.mocked(alertError).mockClear()
+        expect(await routeOpenedBackup(openedOf(golden('fork-full.bin'), 'x.bin', async () => { throw new Error('read failed') }), { loadBin, loadRtb })).toEqual({ outcome: 'nothing-replaced' })
+        expect(vi.mocked(alertError).mock.calls).toEqual([[language.backupFileUnreadable]])
+        expect(loadBin).not.toHaveBeenCalled()
+        expect(loadRtb).not.toHaveBeenCalled()
+    })
+
+    test('a rejection of the .rtb restore ends failed with the generic message and never reaches the .bin restore (guard; MS15b)', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => { })
+        vi.mocked(alertError).mockClear()
+        const loadRtb = vi.fn(async (_opened: OpenedBin): Promise<{ outcome: 'committed' }> => { throw new Error('import failed') })
+        const loadBin = loaded()
+        expect(await routeOpenedBackup(openedOf(rtb, 'a.rtb'), { loadBin, loadRtb })).toEqual({ outcome: 'failed' })
+        expect(vi.mocked(alertError).mock.calls).toEqual([['Failed, Is file corrupted?']])
+        expect(loadBin).not.toHaveBeenCalled()
+    })
+
+    test('the router never closes the opened source (guard; the router-closes mutant)', async () => {
+        const opened = openedOf(rtb, 'a.rtb')
+        const close = vi.spyOn(opened.source, 'close')
+        const junk = openedOf(new Uint8Array(64).fill(7), 'x.bin')
+        const junkClose = vi.spyOn(junk.source, 'close')
+        await routeOpenedBackup(opened, { loadBin: loaded(), loadRtb: loaded() })
+        await routeOpenedBackup(junk, { loadBin: loaded(), loadRtb: loaded() })
+        expect(close).not.toHaveBeenCalled()
+        expect(junkClose).not.toHaveBeenCalled()
     })
 })

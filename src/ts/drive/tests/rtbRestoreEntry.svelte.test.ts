@@ -12,7 +12,8 @@ import { holdAssetDeletion, resetAssetDeleteHoldForTests } from 'src/ts/storage/
 import { isBusy, type BusyHandle } from 'src/ts/process/memory/busyActions'
 import type { RtbInstallEnd } from 'src/ts/drive/rtbRestoreInstall'
 import type { RestoreHold } from 'src/ts/drive/rtbRestoreHold'
-import { pickedRtbOf, runRtbRestore, type RtbRestoreDeps } from 'src/ts/drive/rtbRestoreEntry'
+import { pickedRtbOf, pickedRtbOfSource, runRtbRestore, type RtbRestoreDeps } from 'src/ts/drive/rtbRestoreEntry'
+import { importSourceOfBytes } from 'src/ts/importSource'
 import type { PickedRtb, RestorePlan, RtbPrepareEnd } from 'src/ts/drive/rtbRestorePlan'
 
 vi.mock('src/ts/stores.svelte', async () => {
@@ -85,6 +86,15 @@ describe('the order of the calls (U1b)', () => {
         await removing
         expect(await result).toEqual({ outcome: 'committed', cause: null })
         expect(run.log).toEqual(['listing', 'prepare busy=true', 'install', 'finish'])
+    })
+
+    test('the run options reach the preparation: the Welcome restore passes firstRun and every other call passes none (guard of a new argument; M4 fails it)', async () => {
+        const seen: Array<{ firstRun?: boolean } | undefined> = []
+        const run = calls({ prepare: async (_picked, _busy, runOptions) => { seen.push(runOptions); return ready } })
+        await runRtbRestore(picked, run.deps, { firstRun: true })
+        await runRtbRestore(picked, run.deps)
+        expect(seen[0]).toEqual({ firstRun: true })
+        expect(seen[1]?.firstRun).not.toBe(true)
     })
 
     test('a settle that rejects propagates after the busy entry ended, and nothing was prepared (guard; MB6 fails it)', async () => {
@@ -170,5 +180,14 @@ describe('pickedRtbOf', () => {
         const described = pickedRtbOf(file)
         expect(described).toMatchObject({ name: 'backup.bin', size: 7, lastModified: 1234 })
         expect(described.source).toBeDefined()
+    })
+})
+
+describe('pickedRtbOfSource', () => {
+    test('T-P1: describes an opened file by its display name, its source size and its time, and hands the very same source over (guard; MS12)', () => {
+        const source = importSourceOfBytes('uri-tail.bin', new Uint8Array(11))
+        const described = pickedRtbOfSource({ source, name: 'My Backup.bin', lastModified: 1234 })
+        expect(described).toEqual({ name: 'My Backup.bin', size: 11, lastModified: 1234, source })
+        expect(described.source).toBe(source)
     })
 })

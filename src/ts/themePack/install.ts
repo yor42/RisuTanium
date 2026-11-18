@@ -44,7 +44,8 @@ function isRecordObject(value: unknown): value is Record<string, unknown> {
 
 /** Whether another action or a restore is running now. A restore may start during a dialog, so this is asked again before the write. */
 function refusalWhileOtherWork(): 'busy' | 'restoring' | null {
-    if (isBusy()) {
+    // An export waiting on an Android save dialog (marked) does not refuse an install; the second ask, before the write, counts it again.
+    if (isBusy({ ignoreDialogWaits: true })) {
         return 'busy'
     }
     if (restoreInProgress()) {

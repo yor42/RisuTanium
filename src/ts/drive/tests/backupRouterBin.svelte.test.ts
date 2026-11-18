@@ -251,6 +251,8 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 
 import { LoadLocalBackup, LoadPickedLocalBackup } from 'src/ts/drive/backuplocal'
 import { loadBackupFromPicker } from 'src/ts/drive/backupRouter'
+import { restoreFromBinFileAtFirstRun } from 'src/ts/drive/settingsRestore'
+import { resetRestoreInProgressForTests, restorePhase } from 'src/ts/drive/restoreInProgress'
 import { writeBackupEntry } from 'src/ts/exportWriters'
 import { language } from 'src/lang'
 import { beginBusy, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
@@ -270,6 +272,7 @@ beforeEach(() => {
     assetMem.clear()
     unitMem.clear()
     resetBusyActionsForTest()
+    resetRestoreInProgressForTests()
     setDatabaseMock.mockReset()
     getDatabaseMock.mockImplementation(() => ({}) as unknown as Database)
     alertConfirmMock.mockClear()
@@ -371,6 +374,67 @@ describe('R6c: a .bin through the router restores exactly as the picker restore 
             expect(alertErrorMock.mock.calls.map((c) => c[0])).toContain(language.backupLoadWorkInProgress)
             expect(setDatabaseMock).not.toHaveBeenCalled()
         }
+    })
+})
+
+/** Starts the Welcome entry and waits for its picker, which opens only after the two confirmations. */
+async function startWelcome(): Promise<{ entry: Promise<void> }> {
+    captured = null
+    const entry = restoreFromBinFileAtFirstRun()
+    for (let turn = 0; turn < 200 && captured === null; turn += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+    if (captured === null) {
+        throw new Error('the Welcome picker never opened')
+    }
+    return { entry }
+}
+
+describe('W3: the Welcome restore of a .bin goes through the router and restores as the direct first-run call does', () => {
+    test('the Welcome picker takes the Settings accept rule (reproducer: the old Welcome picker accepted .bin only; M14)', async () => {
+        const { entry } = await startWelcome()
+        expect((captured as HTMLInputElement).accept).toBe('.bin,.rtb,application/vnd.risutanium.rtb')
+        ;(captured as HTMLInputElement).dispatchEvent(new Event('cancel'))
+        await entry
+    })
+
+    test.each(['fork-full.bin', 'upstream-kv.bin'])('%s: the same installed database and alerts as the direct first-run call, with didFirstSetup true (guard; M6, M9)', async (name) => {
+        const bytes = golden(name)
+        const direct = LoadLocalBackup(undefined, undefined, { completeFirstSetup: true })
+        await pickAndChange(new File([bytes], name))
+        const directEnd = await direct
+        const directDb = installedDatabase()
+        const directJson = JSON.stringify(directDb)
+        const directAlerts = [alertErrorMock.mock.calls.map((c) => c[0]), alertConfirmMock.mock.calls.map((c) => c[0])]
+        expect(directDb.didFirstSetup).toBe(true)
+
+        setDatabaseMock.mockReset()
+        alertErrorMock.mockClear()
+        alertConfirmMock.mockClear()
+        assetMem.clear()
+        unitMem.clear()
+        resetBusyActionsForTest()
+        resetRestoreInProgressForTests()
+        const { entry } = await startWelcome()
+        await pickAndChange(new File([bytes], name))
+        await entry
+        expect(JSON.stringify(installedDatabase())).toBe(directJson)
+        expect(installedDatabase().didFirstSetup).toBe(true)
+        // The Welcome flow asks its own two confirmations first; the restore's own alerts are then the same.
+        const flowConfirms = [language.backupLoadConfirm, language.backupLoadConfirm2]
+        const confirms = alertConfirmMock.mock.calls.map((c) => c[0])
+        expect(confirms.slice(0, 2)).toEqual(flowConfirms)
+        expect([alertErrorMock.mock.calls.map((c) => c[0]), confirms.slice(2)]).toEqual(directAlerts)
+        expect(directEnd.outcome).not.toBe('failed')
+    })
+
+    test('a cancel on the Welcome picker ends canceled with no restore run left and nothing written (guard)', async () => {
+        const { entry } = await startWelcome()
+        ;(captured as HTMLInputElement).dispatchEvent(new Event('cancel'))
+        await entry
+        expect(restorePhase()).toBe('none')
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(assetMem.size + unitMem.size).toBe(0)
     })
 })
 

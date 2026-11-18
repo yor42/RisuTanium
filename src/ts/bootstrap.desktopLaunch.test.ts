@@ -11,6 +11,7 @@ import { describe, test, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { writable } from 'svelte/store'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
+import { registerRealDispatch } from 'src/ts/tests/realDispatchBoot.test-helpers'
 
 const desktopLaunchImportMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
 const androidOpenedFilesImportMock = vi.hoisted(() => vi.fn((): void => { }))
@@ -133,21 +134,10 @@ vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
     verifyAssetCacheEntry: vi.fn(async () => ({ status: 'ok' as const, expectedHash: '', actualHash: '' })),
 }) as unknown as typeof import('src/ts/storage/assetIntegrity'))
 
-vi.mock(import('src/ts/storage/remoteSaveCleanup'), () => ({
-    getRemoteSaveCleanupAction: vi.fn(() => 'create-meta'),
-    getRemoteSavePayloadName: vi.fn(() => null),
-}) as unknown as typeof import('src/ts/storage/remoteSaveCleanup'))
-
 vi.mock(import('src/ts/storage/loadTimeListing'), () => ({
     recordLoadTimeListing: vi.fn(async () => { }),
     resetLoadTimeListingForTests: vi.fn(),
 }) as unknown as typeof import('src/ts/storage/loadTimeListing'))
-
-vi.mock(import('src/ts/storage/assetSweep'), () => ({
-    sweepTauriAssets: vi.fn(async () => { }),
-    sweepForageAssetKey: vi.fn(async () => { }),
-    ASSET_SWEEP_BATCH_SIZE: 100,
-}) as unknown as typeof import('src/ts/storage/assetSweep'))
 
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
@@ -196,7 +186,13 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
         fsStore.set(bare(to), found)
         fsStore.delete(bare(from))
     }),
-    readDir: vi.fn(async () => []),
+    // A held file is not a directory: the store's `has` lists the path to tell the two apart, so a file must refuse the listing.
+    readDir: vi.fn(async (path: string) => {
+        if ((fsStore.get(bare(path))?.length ?? 0) > 0) {
+            throw new Error(`Not a directory (mock): ${path} (os error 20)`)
+        }
+        return []
+    }),
     remove: vi.fn(async (path: string) => { fsStore.delete(bare(path)) }),
 }))
 
@@ -247,6 +243,8 @@ function armTauriBoot(didFirstSetup: boolean) {
 }
 
 async function bootOnce() {
+    // The legacy main file the test armed is converted to a store2 profile by the real dispatch, as on a production page.
+    await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: true })
     const { loadData } = await import('src/ts/bootstrap')
     await loadData()
 }

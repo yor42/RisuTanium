@@ -3,9 +3,9 @@
  * system hands the activity (a view or share intent) as batches of content
  * URIs with their display names and MIME types. The page takes the queue with `take()` and
  * imports each batch one after another through `importOpenedSources`, which
- * accepts only the card (including PNG, JPEG and JSON), module and preset kinds. A `.bin` backup is restored only when it is the one backup of its
+ * accepts only the card (including PNG, JPEG and JSON), module and preset kinds. A backup (`.bin` or `.rtb`) is restored only when it is the one backup of its
  * batch and the drain imports nothing else (a name or type the import refuses as unsupported does not count, in its batch or
- * another); the first such backup goes to `restoreOpenedBackup`, every other `.bin`
+ * another); the first such backup goes to `restoreOpenedBackup`, every other backup
  * is refused with a notice. Everywhere the host bridge is
  * absent (web, desktop, iOS, an old host) it does nothing.
  */
@@ -170,8 +170,8 @@ async function drain(): Promise<void> {
     }
     const batches = parseBatches(taken.raw)
     // A restore replaces everything an import in the same drain just added, so a backup is restored only when this
-    // drain imports nothing; a name or type the import would refuse as unsupported does not count, and a backup never
-    // counts itself, whatever type its provider reported.
+    // drain imports nothing; a name or type the import would refuse as unsupported does not count, and a backup (`.bin` or
+    // `.rtb`) never counts itself, whatever type its provider reported. The restore decides which kind it is by content.
     const importsSomething = batches.some((batch) => batch.some((entry) => !isBackupEntry(entry) && isOpenedSourceImportable(entry.name, entry.type ?? '')))
     const importBatches: OpenedEntry[][] = []
     const notAlone: string[] = []
@@ -253,7 +253,8 @@ async function drain(): Promise<void> {
 }
 
 function isBackupEntry(entry: OpenedEntry): boolean {
-    return entry.name.toLowerCase().endsWith('.bin')
+    const name = entry.name.toLowerCase()
+    return name.endsWith('.bin') || name.endsWith('.rtb')
 }
 
 /**
@@ -335,7 +336,8 @@ async function refuseNow(): Promise<void> {
     if (parseBatches(taken.raw).length === 0) {
         return
     }
-    if (isBusy()) {
+    // The line is set only for an entry that will clear it: a marked export may never end.
+    if (isBusy({ ignoreDialogWaits: true })) {
         busyRefusalLine.set(language.backupLoadRefusedLine)
     }
     if (ownRefusal !== null && get(shownAlert) === ownRefusal) {

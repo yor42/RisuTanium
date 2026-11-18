@@ -211,6 +211,7 @@ export async function sendUtility(presetId: string, text: string): Promise<void>
             extractJson: '',
             noJsonSchema: true,
             blockPlugins: true,
+            usagePurpose: 'utility',
         }, 'model', run.signal)
         await settleTurn(result, turn, run.signal)
     }

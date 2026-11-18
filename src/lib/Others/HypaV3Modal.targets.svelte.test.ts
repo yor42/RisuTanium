@@ -410,6 +410,63 @@ describe('the bulk re-summarize apply', () => {
         expect(texts()).toEqual(['s0', 's1', 's2', 'merged', 's5'])
     })
 
+    describe('creation times', () => {
+        const NOW = 1_763_424_000_000
+        const DAY = 86_400_000
+
+        /** Gives summary i the creation time `times[i]`; an undefined entry leaves it untimed. */
+        function giveTimes(times: (number | undefined)[]): void {
+            times.forEach((time, i) => {
+                if (time !== undefined) data().summaries[i].createdAt = time
+            })
+        }
+        const createdAts = () => data().summaries.map((s) => s.createdAt)
+
+        let clock: { mockRestore: () => void }
+        beforeEach(() => {
+            clock = vi.spyOn(Date, 'now').mockReturnValue(NOW)
+        })
+        afterEach(() => {
+            clock.mockRestore()
+        })
+
+        // regression reproducer: the base literal never carries a time
+        test('all timed: the merged summary keeps the earliest source time, not the first source\'s, and the others keep theirs', async () => {
+            installDb(['s0', 's1', 's2', 's3', 's4', 's5'])
+            const T = [NOW - 10 * DAY, NOW - 11 * DAY, NOW - 12 * DAY, NOW - DAY, NOW - 5 * DAY, NOW - 15 * DAY]
+            giveTimes(T)
+            const target = mountModal()
+            await selectAndResummarize(target, ['s3', 's4'])
+            applyResult(target)!.click()
+            await settle()
+            expect(texts()).toEqual(['s0', 's1', 's2', 'merged', 's5'])
+            expect(createdAts()).toEqual([T[0], T[1], T[2], NOW - 5 * DAY, T[5]])
+        })
+
+        // compatibility guard: passes before and after (base never writes the key)
+        test('none timed: the merged summary has no createdAt property', async () => {
+            installDb(['s0', 's1', 's2', 's3', 's4', 's5'])
+            const target = mountModal()
+            await selectAndResummarize(target, ['s3', 's4'])
+            applyResult(target)!.click()
+            await settle()
+            expect(texts()).toEqual(['s0', 's1', 's2', 'merged', 's5'])
+            expect(data().summaries[3]).not.toHaveProperty('createdAt')
+        })
+
+        // compatibility guard: passes before and after (base never writes the key)
+        test('mixed: an untimed source makes the merged summary untimed', async () => {
+            installDb(['s0', 's1', 's2', 's3', 's4', 's5'])
+            giveTimes([undefined, undefined, undefined, NOW - DAY])
+            const target = mountModal()
+            await selectAndResummarize(target, ['s2', 's3'])
+            applyResult(target)!.click()
+            await settle()
+            expect(texts()).toEqual(['s0', 's1', 'merged', 's4', 's5'])
+            expect(data().summaries[2]).not.toHaveProperty('createdAt')
+        })
+    })
+
     test('after a summary above the selection is deleted, applying never overwrites or removes a summary that was not selected', async () => {
         installDb(['s0', 's1', 's2', 's3', 's4', 's5'])
         const target = mountModal()

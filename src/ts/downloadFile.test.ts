@@ -145,6 +145,46 @@ describe('downloadFile on Android', () => {
     })
 })
 
+describe('downloadFile with aroundPicker', () => {
+    test('(N) on Android the wrapper surrounds exactly the picker call, and not the write', async () => {
+        const seen: { saves: number, writes: number }[] = []
+        const aroundPicker = async <T>(open: () => Promise<T>): Promise<T> => {
+            seen.push({ saves: box.saveCalls.length, writes: box.invokeCalls.length })
+            const result = await open()
+            seen.push({ saves: box.saveCalls.length, writes: box.invokeCalls.length })
+            return result
+        }
+
+        expect(await downloadFile('lorebook_export.json', INPUT, { aroundPicker })).toBe(true)
+
+        // The picker ran inside the wrapper; the write ran after it had returned.
+        expect(seen).toEqual([{ saves: 0, writes: 0 }, { saves: 1, writes: 0 }])
+        expect(box.invokeCalls.length).toBeGreaterThan(0)
+    })
+
+    test('(G) desktop Tauri and the web never call it', async () => {
+        let wrapped = 0
+        const aroundPicker = async <T>(open: () => Promise<T>): Promise<T> => {
+            wrapped++
+            return open()
+        }
+        box.os = 'windows'
+        await downloadFile('lorebook_export.json', INPUT, { aroundPicker })
+        box.isTauri = false
+        box.os = 'android'
+        Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: vi.fn(() => 'blob:synthetic') })
+        Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: vi.fn() })
+        vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => { })
+        await downloadFile('lorebook_export.json', INPUT, { aroundPicker })
+        expect(wrapped).toBe(0)
+    })
+
+    test('(G) without the option the Android route is unchanged', async () => {
+        expect(await downloadFile('lorebook_export.json', INPUT)).toBe(true)
+        expect(box.saveCalls).toHaveLength(1)
+    })
+})
+
 describe('downloadFile off Android', () => {
     test('(G) T4: desktop writes into the Download folder with no picker, and resolves true', async () => {
         box.os = 'windows'

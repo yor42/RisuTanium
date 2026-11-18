@@ -6,12 +6,13 @@
  * test here says nothing about a real browser's IndexedDB. Everything else
  * `bootstrap.ts` imports is mocked, as in the sibling bootstrap test files.
  *
- * The first test is the stop itself. The others run with IndexedDB usable and
- * assert the boot's read path through the IndexedDB store: a first launch seeds
- * the block store once (the head goes through the head swap's own transaction
- * on `fake-indexeddb`, every other key through the LocalForage model), a
- * stored main file boots unwritten, and a zero-length or non-binary value under
- * the main key is never written over.
+ * The store2 boot dispatch is the real one, over a memory store2 backend. The
+ * first test is the stop itself: the page's store is unavailable, so the
+ * registered dispatch is never entered. The others run with IndexedDB usable and
+ * assert the boot's read path through the IndexedDB store: a stored main file
+ * is converted and boots with the file unwritten, and a zero-length or
+ * non-binary value under the main key is never written over (the profile is
+ * converted from the numbered backup).
  */
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
@@ -20,6 +21,7 @@ import { writable, get } from 'svelte/store'
 import { language } from 'src/lang'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
+import { registerRealDispatch } from 'src/ts/tests/realDispatchBoot.test-helpers'
 
 const MAIN_KEY = 'database/database.bin'
 
@@ -105,6 +107,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
     selectedCharID: writable(-1),
     loadedStore: writable(false),
     alertStore: writable({ type: 'none', msg: 'n' }),
+    SafeModeStore: writable(false),
 }) as unknown as typeof import('src/ts/stores.svelte'))
 
 vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
@@ -137,16 +140,6 @@ vi.mock(import('src/ts/process/modules'), () => ({ moduleUpdate: vi.fn(async () 
 vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
     verifyAssetCacheEntry: vi.fn(async () => ({ status: 'ok' as const })),
 }) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
-vi.mock(import('src/ts/storage/remoteSaveCleanup'), () => ({
-    getRemoteSaveCleanupAction: vi.fn(() => 'create-meta'),
-    getRemoteSavePayloadName: vi.fn(() => null),
-}) as unknown as typeof import('src/ts/storage/remoteSaveCleanup'))
-
-vi.mock(import('src/ts/storage/assetSweep'), () => ({
-    sweepTauriAssets: vi.fn(async () => { }),
-    sweepForageAssetKey: vi.fn(async () => { }),
-}) as unknown as typeof import('src/ts/storage/assetSweep'))
 
 vi.mock(import('src/ts/storage/mainFileRecord'), () => ({
     noteMainFileBytes: vi.fn(),
@@ -245,21 +238,55 @@ function baseDb(extra: Record<string, unknown> = {}): Record<string, unknown> {
 }
 dbState.baseline = () => baseDb({ characters: [] })
 
-// The boot starts its legacy clean-up without awaiting it. Each test waits for it in `afterEach`, so no clean-up
-// work or log outlives the test that started it (a log after teardown fails the run).
-let startupCleanupOf: () => Promise<void> | null = () => null
+/**
+ * Stores `value` under `key` in both models of this file's IndexedDB: the LocalForage model the reads go through, and
+ * the pinned `fake-indexeddb` instance that the store's existence lookups and the dispatch's `has` consult.
+ */
+async function putStored(key: string, value: unknown): Promise<void> {
+    world.indexedDb.set(key, value)
+    await new Promise<void>((resolve, reject) => {
+        const open = indexedDB.open('risuai')
+        open.onerror = () => reject(open.error)
+        open.onsuccess = () => {
+            const transaction = open.result.transaction('keyvaluepairs', 'readwrite')
+            transaction.objectStore('keyvaluepairs').put(value, key)
+            transaction.oncomplete = () => { open.result.close(); resolve() }
+            transaction.onerror = () => reject(transaction.error)
+        }
+    })
+}
 
-async function freshLoadData() {
+/** The value the pinned `fake-indexeddb` instance holds under `key` (`undefined` for none). */
+async function readStored(key: string): Promise<unknown> {
+    return await new Promise<unknown>((resolve, reject) => {
+        const open = indexedDB.open('risuai')
+        open.onerror = () => reject(open.error)
+        open.onsuccess = () => {
+            const request = open.result.transaction('keyvaluepairs', 'readonly').objectStore('keyvaluepairs').get(key)
+            request.onsuccess = () => { open.result.close(); resolve(request.result) }
+            request.onerror = () => reject(request.error)
+        }
+    })
+}
+
+/** How many times the registered dispatch was entered in this test. */
+const dispatchEntered = { count: 0 }
+
+async function freshLoadData(options: { unregistered?: boolean } = {}) {
+    // The real dispatch over a memory store2 backend: the page's own store stays the LocalForage/IndexedDB store.
+    const dispatch = await registerRealDispatch({ kind: 'indexeddb', acknowledgeAlerts: true, onEnter: () => { dispatchEntered.count += 1 } })
+    if (options.unregistered === true) {
+        const { registerStore2Boot } = await import('src/ts/storage/store2/bootActive')
+        registerStore2Boot(null)
+    }
     const { loadData } = await import('src/ts/bootstrap')
-    const { getStartupCleanup } = await import('src/ts/storage/startupCleanupState')
-    startupCleanupOf = getStartupCleanup
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
         loadedStore: ReturnType<typeof writable<boolean>>
     }
     loadedStore.set(false)
     alertStore.set({ type: 'none', msg: 'n' })
-    return { loadData, alertStore, loadedStore }
+    return { loadData, alertStore, loadedStore, dispatch }
 }
 
 beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
@@ -280,6 +307,7 @@ beforeEach(async () => {
     world.indexedDb.clear()
     world.indexedDbWrites.length = 0
     world.backups = []
+    dispatchEntered.count = 0
     dbState.current = baseDb({ characters: [] })
     setDatabaseMock.mockReset().mockImplementation((data: Record<string, unknown>) => {
         dbState.current = { ...dbState.baseline(), ...data }
@@ -289,14 +317,12 @@ beforeEach(async () => {
     vi.resetModules()
 })
 
-afterEach(async () => {
-    await startupCleanupOf()
-    startupCleanupOf = () => null
+afterEach(() => {
     vi.unstubAllGlobals()
 })
 
 describe('loadData() on LocalForage without a usable IndexedDB', () => {
-    test('the boot stops with the browser-storage message and writes nothing anywhere', async () => {
+    test('the boot stops with the browser-storage message and writes nothing anywhere, before the registered dispatch is entered', async () => {
         world.indexedDbUsable = false
         const { loadData, loadedStore, alertStore } = await freshLoadData()
 
@@ -304,50 +330,64 @@ describe('loadData() on LocalForage without a usable IndexedDB', () => {
 
         expect(world.fallbackWrites).toEqual([])
         expect(world.indexedDbWrites).toEqual([])
+        expect(dispatchEntered.count).toBe(0)
         expect(get(loadedStore)).toBe(false)
         expect(get(alertStore).type).toBe('error')
         expect(get(alertStore).msg).toBe(language.browserStorageUnavailable)
         expect(setDatabaseMock).not.toHaveBeenCalled()
     })
 
-    test('with IndexedDB usable, a first launch seeds the block store once in IndexedDB, creates no main file, and the boot proceeds', async () => {
-        const { loadData, loadedStore } = await freshLoadData()
+    test('T2-N2 reproducer: an unregistered page with unusable IndexedDB reports the registration error, not the browser-storage message, and touches no store', async () => {
+        world.indexedDbUsable = false
+        const { loadData, loadedStore, alertStore } = await freshLoadData({ unregistered: true })
+        const seen: { type: string, msg: string }[] = []
+        alertStore.subscribe((value) => { seen.push({ type: value.type, msg: value.msg }) })
 
         await loadData()
 
-        expect(world.indexedDbWrites.length, 'keys of the first profile').toBeGreaterThan(0)
-        expect(world.indexedDbWrites.every((key) => key.startsWith('blocks/') && key !== 'blocks/head')).toBe(true)
-        expect(world.indexedDb.has(MAIN_KEY)).toBe(false)
-        const { createIndexedDbHeadSwap } = await import('src/ts/storage/store/indexedDbStore')
-        expect((await createIndexedDbHeadSwap().read()).kind, 'the head is written by the head swap').toBe('bytes')
-        expect(get(loadedStore)).toBe(true)
+        const errors = seen.filter((alert) => alert.type === 'error')
+        expect(errors).toHaveLength(1)
+        expect(errors[0].msg).toContain('No store2 boot dispatch is registered')
+        expect(errors[0].msg).not.toBe(language.browserStorageUnavailable)
+        expect(world.fallbackWrites).toEqual([])
+        expect(world.indexedDbWrites).toEqual([])
+        expect(dispatchEntered.count).toBe(0)
+        expect(get(loadedStore)).toBe(false)
+        expect(setDatabaseMock).not.toHaveBeenCalled()
     })
 
-    test('with IndexedDB usable, a stored main file is read from IndexedDB and boots as the tree it holds, unwritten', async () => {
-        world.indexedDb.set(MAIN_KEY, encodeRisuSaveLegacy(baseDb({ characters: [{ chaId: 'stored', name: 'S', type: 'character', chats: [] }] })))
+    test('with IndexedDB usable, a stored main file is read from IndexedDB, converted, and boots as the tree it holds; the file is not written', async () => {
+        const stored = encodeRisuSaveLegacy(baseDb({ characters: [{ chaId: 'stored', name: 'S', type: 'character', chats: [] }] }))
+        await putStored(MAIN_KEY, stored)
         const { loadData, loadedStore } = await freshLoadData()
 
         await loadData()
 
         expect(get(loadedStore)).toBe(true)
+        expect(dispatchEntered.count).toBe(1)
         expect((setDatabaseMock.mock.calls[0][0].characters as { chaId: string }[]).map((c) => c.chaId)).toEqual(['stored'])
-        expect(world.indexedDbWrites).toEqual([])
+        expect(world.indexedDb.get(MAIN_KEY)).toBe(stored)
+        expect(await readStored(MAIN_KEY)).toEqual(stored)
+        expect(world.indexedDbWrites.filter((key) => key.includes('database/'))).toEqual([])
     })
 
     test.each([
         ['a zero-length value', new Uint8Array(0)],
         ['a stored value that is not bytes', 'not a save file'],
     ])('%s under the main key is never written over: the newest decodable backup is installed', async (_title, value) => {
-        world.indexedDb.set(MAIN_KEY, value)
-        world.indexedDb.set('database/dbbackup-1.bin', encodeRisuSaveLegacy(baseDb({ characters: [{ chaId: 'old', name: 'O', type: 'character', chats: [] }] })))
+        await putStored(MAIN_KEY, value)
+        await putStored('database/dbbackup-1.bin', encodeRisuSaveLegacy(baseDb({ characters: [{ chaId: 'old', name: 'O', type: 'character', chats: [] }] })))
         world.backups = [1]
-        const { loadData, loadedStore } = await freshLoadData()
+        const { loadData, loadedStore, dispatch } = await freshLoadData()
 
         await loadData()
 
-        expect(world.indexedDbWrites).toEqual([])
         expect(world.indexedDb.get(MAIN_KEY)).toBe(value)
+        expect(await readStored(MAIN_KEY)).toEqual(value)
+        expect(world.indexedDbWrites.filter((key) => key.includes('database/'))).toEqual([])
         expect(get(loadedStore)).toBe(true)
+        // The route the real dispatch takes: the page converts from the numbered backup after the person agrees.
+        expect(dispatch.ui.fromBackupAsked).toBe(1)
         expect((setDatabaseMock.mock.calls[0][0].characters as { chaId: string }[]).map((c) => c.chaId)).toEqual(['old'])
     })
 })

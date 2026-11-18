@@ -1,6 +1,6 @@
 import { alertWait } from '../alert'
 import { language } from 'src/lang'
-import { importSourceOfFile } from '../importSource'
+import { importSourceOfFile, type ImportSource } from '../importSource'
 import { beginBusy, type BusyHandle } from '../process/memory/busyActions'
 import { assetDeletionSettled } from '../storage/assetDeleteHold'
 import type { OperationOutcome } from './operationEnd'
@@ -10,7 +10,7 @@ import { prepareRtbRestore, type PickedRtb, type RtbPrepareCause, type RtbPrepar
 
 /**
  * The shell of a `.rtb` restore (CHORE-128 S12b): the busy entry, the wait for a pending asset deletion, the preparation,
- * the install and the finish. It is a library with no caller of its own; the backup router routes a picked file here.
+ * the install and the finish. It is a library with no caller of its own; the backup router routes a picked or an opened file here.
  *
  * Invariants:
  * - The `backupLoad` busy entry is taken before anything else and ended on every exit.
@@ -28,11 +28,21 @@ export function pickedRtbOf(file: File): PickedRtb {
     return { name: file.name, size: file.size, lastModified: file.lastModified, source: importSourceOfFile(file) }
 }
 
+/** A file another app opened, as the restore reads it: the caller's open source, its display name and modification time (0 when unknown). */
+export function pickedRtbOfSource(opened: { source: ImportSource, name: string, lastModified: number }): PickedRtb {
+    return { name: opened.name, size: opened.source.size, lastModified: opened.lastModified, source: opened.source }
+}
+
+/** How a restore was started; the Welcome restore sets `firstRun`. */
+export interface RtbRunOptions {
+    firstRun?: boolean
+}
+
 /** The calls the shell makes; tests replace them to observe order and to keep the page out of it. */
 export interface RtbRestoreDeps {
     beginBusy(): BusyHandle
     settled(): Promise<void>
-    prepare(picked: PickedRtb, busy: BusyHandle): Promise<RtbPrepareEnd>
+    prepare(picked: PickedRtb, busy: BusyHandle, run: RtbRunOptions): Promise<RtbPrepareEnd>
     install(plan: Extract<RtbPrepareEnd, { kind: 'ready' }>['plan'], hold: Extract<RtbPrepareEnd, { kind: 'ready' }>['hold']): Promise<RtbInstallEnd>
     finish(plan: Extract<RtbPrepareEnd, { kind: 'ready' }>['plan'], hold: Extract<RtbPrepareEnd, { kind: 'ready' }>['hold'], landed: Extract<RtbInstallEnd, { kind: 'landed' }>): Promise<void>
     wait(text: string): void
@@ -42,19 +52,19 @@ function realRestoreDeps(): RtbRestoreDeps {
     return {
         beginBusy: () => beginBusy('backupLoad'),
         settled: assetDeletionSettled,
-        prepare: (picked, busy) => prepareRtbRestore(picked, busy),
+        prepare: (picked, busy, run) => prepareRtbRestore(picked, busy, { firstRun: run.firstRun === true }),
         install: (plan, hold) => installRtbRestore(plan, hold),
         finish: (plan, hold, landed) => finishRtbRestore(plan, hold, landed),
         wait: alertWait,
     }
 }
 
-export async function runRtbRestore(picked: PickedRtb, options: Partial<RtbRestoreDeps> = {}): Promise<{ outcome: OperationOutcome, cause: RtbRestoreCause | null }> {
+export async function runRtbRestore(picked: PickedRtb, options: Partial<RtbRestoreDeps> = {}, run: RtbRunOptions = {}): Promise<{ outcome: OperationOutcome, cause: RtbRestoreCause | null }> {
     const deps: RtbRestoreDeps = { ...realRestoreDeps(), ...options }
     const busy = deps.beginBusy()
     try {
         await deps.settled()
-        const prep = await deps.prepare(picked, busy)
+        const prep = await deps.prepare(picked, busy, run)
         if (prep.kind === 'ended') {
             return { outcome: prep.outcome, cause: prep.cause }
         }

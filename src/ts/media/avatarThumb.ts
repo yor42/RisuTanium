@@ -1367,7 +1367,7 @@ let currentRenderThumb: RenderThumbFn = renderThumb
 let currentGenerator: FullGenerator = realGenerate
 
 // ---------------------------------------------------------------------------
-// Boot sweep: independent of `cleanChunks`, touches only this store.
+// Boot sweep: independent of the asset sweeps, touches only this store.
 // ---------------------------------------------------------------------------
 
 /** Full `loc` keys worth keeping: every character/group image, plus folder
@@ -1420,7 +1420,7 @@ export async function sweepAvatarThumbs(keep: Set<string>): Promise<void> {
     }
 }
 
-/** Called once at boot, detached from `cleanChunks`. Reads the DB, builds
+/** Called once at boot, detached from the boot's other work. Reads the DB, builds
  *  the keep-set and sweeps, all guarded so a bad snapshot can't affect boot
  *  or the existing asset sweeps. */
 export async function startAvatarThumbSweep(): Promise<void> {

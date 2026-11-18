@@ -12,8 +12,15 @@ import { isUsableCharacterId } from "./characterIds"
  * next save actually re-encodes it.
  */
 
+/**
+ * What a mark's change looks like to the prompt's judgement. `judged`: a value verdict (a character's content verdict or
+ * the front verdict) sees the change, so the page needs no content flag for it. `content`: no verdict sees it, so the page
+ * counts it as unsaved. An absent kind is `content`.
+ */
+export type SaveMarkKind = 'judged' | 'content'
+
 /** Requests a save; the concrete meaning depends on what saveDb() has installed. */
-export type CharacterSaveMarkScheduler = () => void
+export type CharacterSaveMarkScheduler = (kind?: SaveMarkKind) => void
 
 export interface CharacterSaveMarksTarget {
     tracker: toSaveType
@@ -118,7 +125,7 @@ export function markCharacterForSave(chaId: unknown): void {
         return
     }
     appendIfAbsent(installed.tracker, id)
-    installed.schedule()
+    installed.schedule('judged')
 }
 
 /**
@@ -138,14 +145,22 @@ export function markDbWrite(mark: DbWriteMark): void {
     }
     let id: string | number | undefined
     let flags: readonly SettingsFlag[] = []
+    // Only a change a value verdict sees is `judged`: a character the tracker now holds, a settings key other than
+    // `modules` (modules stay on the content flag) and the list's shape. `root` and `fallback` name nothing a verdict
+    // can pin, and an owner or placed mark whose id the tracker refused names no judged slot.
+    let kind: SaveMarkKind = 'content'
     switch (mark.kind) {
         case 'owner':
         case 'placed':
-            if (isMarkableId(mark.id)) id = mark.id
+            if (isMarkableId(mark.id)) {
+                id = mark.id
+                kind = 'judged'
+            }
             break
         case 'setting': {
             const flag = SETTINGS_FLAG_OF_KEY[mark.key]
             if (flag !== undefined) flags = [flag]
+            if (mark.key !== 'modules') kind = 'judged'
             break
         }
         case 'root':
@@ -156,6 +171,7 @@ export function markDbWrite(mark: DbWriteMark): void {
             break
         case 'listShape':
         case 'listWhole':
+            kind = 'judged'
             break
     }
     if (MEASURE && id !== undefined) {
@@ -174,7 +190,7 @@ export function markDbWrite(mark: DbWriteMark): void {
     for (const flag of flags) {
         installed.tracker[flag] = true
     }
-    installed.schedule()
+    installed.schedule(kind)
 }
 
 /**

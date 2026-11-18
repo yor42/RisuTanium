@@ -319,6 +319,155 @@ describe('lorebook SillyTavern-style word boundaries', () => {
     })
 })
 
+describe('lorebook word-start matching for Korean, Japanese and Chinese keys', () => {
+    const on = { cjkWordStart: true }
+    const hits = async (key: string, said: string, extra: Entry = {}, settings: Entry = on) =>
+        (await activated([entry(key, extra)], said, undefined, settings)).length
+
+    // A per-key hit only loses matches when the option is on. An entry can still gain an activation,
+    // because a removed exclude-key hit no longer suppresses it (R3, R3b).
+    test('regression reproducer: a key inside a word does not activate', async () => {
+        expect(await hits('리스', '앨리스는 웃었다')).toBe(0)
+        expect(await hits('리스', '크리스마스')).toBe(0)
+    })
+
+    test('regression reproducer: a key in a regex-mode entry follows the option', async () => {
+        expect(await hits('리스', '앨리스는 웃었다', { useRegex: true })).toBe(0)
+    })
+
+    test('regression reproducer: an exclude key inside another word no longer suppresses the entry', async () => {
+        const content = '@@exclude_keys 리스\nX'
+        expect(await hits('웃었다', '앨리스는 웃었다', { content })).toBe(1)
+        expect(await hits('웃었다', '앨리스는 웃었다', { content }, {})).toBe(0)
+    })
+
+    test('regression reproducer: an exclude-all key list inside another word no longer suppresses the entry', async () => {
+        const content = '@@exclude_keys_all 리스,웃었다\nX'
+        expect(await hits('웃었다', '앨리스는 웃었다', { content })).toBe(1)
+    })
+
+    test('regression reproducer: a recursively scanned prompt follows the option', async () => {
+        const first = entry('dragon', { comment: 'FIRST', content: '앨리스는 왔다' })
+        const second = entry('리스', { comment: 'SECOND' })
+        const settings = { recursiveScanning: true }
+        expect(await activated([first, second], 'dragon', undefined, { ...settings, ...on })).toHaveLength(1)
+        expect(await activated([first, second], 'dragon', undefined, settings)).toHaveLength(2)
+    })
+
+    test('regression reproducer: a module entry follows the character option', async () => {
+        vi.mocked(getModuleLorebooks).mockReturnValueOnce([entry('리스')] as never)
+        expect(await activated([], '앨리스는', undefined, on)).toHaveLength(0)
+    })
+
+    test('regression reproducer: an entry that opts into partial matching follows the option', async () => {
+        const partial = { content: '@@match_partial_word\nX' }
+        expect(await hits('리스', '앨리스는', partial, { fullWordMatching: true, ...on })).toBe(0)
+    })
+
+    test('regression reproducer: a katakana key inside a katakana run does not activate', async () => {
+        expect(await hits('リス', '私はアリスが好き')).toBe(0)
+    })
+
+    test('regression reproducer: a Han key inside a dictionary word does not activate', async () => {
+        expect(await hits('京', '我爱北京')).toBe(0)
+    })
+
+    test('regression reproducer: without Intl.Segmenter a Han key needs a space or punctuation before it', async () => {
+        const original = Object.getOwnPropertyDescriptor(Intl, 'Segmenter')
+        Object.defineProperty(Intl, 'Segmenter', { value: undefined, configurable: true, writable: true })
+        try {
+            expect(await hits('丽丝', '爱丽丝')).toBe(0)
+            expect(await hits('爱丽丝', '我喜欢爱丽丝')).toBe(0)
+            // guard part: passes before and after
+            expect(await hits('爱丽丝', '我喜欢，爱丽丝')).toBe(1)
+            expect(await hits('爱丽丝', '爱丽丝来了')).toBe(1)
+        }
+        finally {
+            if (original) {
+                Object.defineProperty(Intl, 'Segmenter', original)
+            }
+        }
+    })
+
+    test('guard: a Korean key at a word start activates', async () => {
+        expect(await hits('앨리스', '앨리스는 웃었다')).toBe(1)
+        expect(await hits('앨리스', '안녕 앨리스가')).toBe(1)
+        expect(await hits('앨리스', '(앨리스)')).toBe(1)
+        expect(await hits('앨리스', '「앨리스」의')).toBe(1)
+    })
+
+    test('regression reproducer: a Hangul key after a Latin letter or a digit does not activate', async () => {
+        expect(await hits('앨리스', 'Alice앨리스')).toBe(0)
+        expect(await hits('앨리스', '3앨리스')).toBe(0)
+    })
+
+    test('guard: Japanese and Chinese keys at a dictionary word start activate', async () => {
+        expect(await hits('アリス', '私はアリスが好き')).toBe(1)
+        expect(await hits('アリス', 'アリスリデル')).toBe(1)
+        expect(await hits('北京', '我爱北京')).toBe(1)
+    })
+
+    test('guard: with the option off or absent a key inside a word still activates', async () => {
+        expect(await hits('리스', '앨리스는', {}, {})).toBe(1)
+        expect(await hits('리스', '앨리스는', {}, { cjkWordStart: false })).toBe(1)
+    })
+
+    test('guard: keys that do not start with a Korean, Japanese or Chinese letter are unchanged', async () => {
+        expect(await hits('cat', 'concatenate')).toBe(1)
+        expect(await hits('v리스', 'av리스')).toBe(1)
+        expect(await hits('Dra gon', 'a Dragon here')).toBe(1)
+    })
+
+    test('guard: full-word matching is unchanged by the option', async () => {
+        expect(await hits('앨리스', '앨리스는', {}, { fullWordMatching: true, ...on })).toBe(0)
+        expect(await hits('리스', '앨리스', {}, { fullWordMatching: true, fullWordAsciiBoundary: true, ...on })).toBe(1)
+    })
+
+    test('guard: spaces in the text and in the key keep their space-insensitive meaning', async () => {
+        expect(await hits('리델', '앨리스 리델')).toBe(1)
+        expect(await hits('앨리스 리델', '앨리스리델은')).toBe(1)
+    })
+
+    test('guard: the dictionary word start is judged in the original text, spaces included', async () => {
+        expect(await hits('アリス', '안녕 私はアリスが好き')).toBe(1)
+    })
+
+    test('regression reproducer: a katakana key inside a dictionary word after a space-containing prefix does not activate', async () => {
+        expect(await hits('リス', '안녕 私はアリスが好き')).toBe(0)
+    })
+
+    test('guard: a plain key in a regex-mode entry matches at a later word start', async () => {
+        expect(await hits('리스', '앨리스와 리스', { useRegex: true })).toBe(1)
+    })
+
+    test('guard: a non-CJK plain key in a regex-mode entry keeps its case-insensitive match', async () => {
+        expect(await hits('Dragon', 'a Dragon here', { useRegex: true })).toBe(1)
+    })
+
+    test('guard: every occurrence is tried', async () => {
+        expect(await hits('리스', '앨리스와 리스')).toBe(1)
+    })
+
+    // Guard on the new mechanism: it fails before only because no segmenter is used, so it is not a reproducer.
+    test('guard: the segmenter runs once per distinct text and call, and never for Hangul keys', async () => {
+        const spy = vi.spyOn(Intl.Segmenter.prototype, 'segment')
+        try {
+            const lore = Array.from({ length: 30 }, (_, i) => entry('丽丝', { comment: `E${i}` }))
+            setScene(lore, ['我喜欢爱丽丝'], undefined, on)
+            await loadLoreBookV3Prompt()
+            expect(spy).toHaveBeenCalledTimes(1)
+            await loadLoreBookV3Prompt()
+            expect(spy).toHaveBeenCalledTimes(2)
+            setScene(Array.from({ length: 30 }, (_, i) => entry('리스', { comment: `H${i}` })), ['앨리스는'], undefined, on)
+            await loadLoreBookV3Prompt()
+            expect(spy).toHaveBeenCalledTimes(2)
+        }
+        finally {
+            spy.mockRestore()
+        }
+    })
+})
+
 describe('lorebook @@inject_lore budget', () => {
     const target = (size: number) => entry('dragon', { comment: 'TARGET', content: 'T'.repeat(size), insertorder: 50 })
     const injector = entry('dragon', { comment: 'INJ', content: '@@inject_lore TARGET\n' + 'I'.repeat(10), insertorder: 100 })
