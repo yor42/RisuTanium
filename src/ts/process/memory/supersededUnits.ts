@@ -20,13 +20,16 @@
  *   are compared as keys, never as times, so a clock moved back cannot make an
  *   old backup look new. Only a backup write prunes them, so this takes about
  *   twenty further backups. The filter is deliberate: the backups are written
- *   only under the digit names (`getDbBackups` ignores any other name), so a
+ *   only under the digit names (the numbered-backup listing ignores any other name), so a
  *   name without digits is not one this app wrote.
  * - No older copy of the profile exists: a pre-blocks copy, the legacy main
  *   file, a kept or leftover block generation (MC-308 2).
- * - No other tab: the presence lock has exactly one holder (on the desktop too,
- *   where a single window is configured, when the lock API exists), and no peer
- *   announced a save since the job started. A failed lock query withholds.
+ * - No other tab: this page's own presence claim holds, the presence lock has
+ *   exactly one holder and nothing exclusive is held or requested (on the
+ *   desktop too, where a single window is configured, when the lock API
+ *   exists), and no peer announced a save since the job started. A failed lock
+ *   query withholds. The answer is the last await before the delete, so the
+ *   claim is re-read right before the checks that follow it.
  * - Never on a Node server, where a second device cannot be observed (MC-308 1).
  * - The database is the one the job started on, nothing is busy, no write choke
  *   point is in flight, and no live stub, recoverable error or retained record
@@ -41,8 +44,9 @@
  * demand: this module is on the start-up import path through the put-back.
  */
 
-import { afterNextSaveCommit, getPeerSaveCount, getSaveMarkCount, isSaveClean } from '../../globalApi.svelte'
+import { afterNextSaveCommit, getPeerSaveCount, getSaveMarkCount, holdsOwnTabPresence, isSaveClean } from '../../globalApi.svelte'
 import { isNodeServer, isTauri } from '../../platform'
+import { liveLockQuery, tabsAllowSupersededDelete } from '../../storage/soleTab'
 import type { Database } from '../../storage/database.svelte'
 import { DBState } from '../../stores.svelte'
 import { retainedUnitKeys } from '../coldRetained'
@@ -194,20 +198,18 @@ interface Loaded {
     fingerprint: typeof import('../../storage/mainFileFingerprint')
     data: typeof import('../coldstorageData')
     cold: typeof import('../coldstorage.svelte')
-    tabs: typeof import('../../storage/storageTabLocks')
 }
 
 async function load(): Promise<Loaded> {
-    const [appStore, owner, keys, fingerprint, data, cold, tabs] = await Promise.all([
+    const [appStore, owner, keys, fingerprint, data, cold] = await Promise.all([
         import('../../storage/store/appStore'),
         import('../../storage/pageBlockOwner'),
         import('../../storage/blockKeys'),
         import('../../storage/mainFileFingerprint'),
         import('../coldstorageData'),
         import('../coldstorage.svelte'),
-        import('../../storage/storageTabLocks'),
     ])
-    return { appStore, owner, keys, fingerprint, data, cold, tabs }
+    return { appStore, owner, keys, fingerprint, data, cold }
 }
 
 function contains(bytes: Uint8Array | null, text: string): boolean {
@@ -268,38 +270,19 @@ async function tryProof(entry: Entry): Promise<'wait' | 'done'> {
     return 'done'
 }
 
-/**
- * The tab-lock rule: this page is the only holder, and no exclusive storage
- * operation is held or requested (a tab that has requested one has released its
- * own presence hold, so only the request shows it). A failed query withholds.
- * Without the lock API the web withholds. On the desktop and Android a second
- * page cannot exist: the desktop build registers the single-instance plugin,
- * which focuses the running window on a second launch, and the Android activity
- * is launched singleTask; a build without either must withhold here instead.
- */
-async function aloneInTabs(tabs: Loaded['tabs']): Promise<boolean> {
-    const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
-    if (!locks || typeof locks.query !== 'function') {
-        return isTauri
-    }
-    try {
-        const snapshot = await locks.query()
-        const own = (snapshot.held ?? []).filter((lock) => lock.name === tabs.STORAGE_TAB_LOCK_NAME).length
-        return own === 1 && !tabs.tabLockSnapshotShowsOthers(snapshot)
-    } catch (error) {
-        return false
-    }
-}
-
 async function tryDelete(entry: Entry): Promise<void> {
     const loaded = await load()
     const store = await loaded.appStore.getAppStore()
-    const alone = await aloneInTabs(loaded.tabs)
     const backups = (await store.list(DB_BACKUP_KEY_PREFIX)).filter((key) => BACKUP_NAME.test(key.slice(DB_BACKUP_KEY_PREFIX.length)))
     const preBlocks = (await store.list(loaded.keys.PRE_BLOCKS_PREFIX)).filter(loaded.fingerprint.isPreBlocksKey)
     const legacy = await store.has(loaded.keys.LEGACY_MAIN_FILE_KEY)
     const owner = await loaded.owner.getPageBlockOwner()
     const inventory = owner ? await owner.inventory() : null
+    // Last, so that nothing awaits between this answer and the checks and the delete below. The store facts above are one
+    // lock query older at the checks below, which cannot add a deletion: nothing that appears in that
+    // window can name the unit (a backup written later cannot, and pre-blocks or legacy copies come only from migration),
+    // and a same-page commit is still seen by the synchronous busy, database-identity and peer-save checks below.
+    const alone = await tabsAllowSupersededDelete({ query: liveLockQuery(), holdsOwnPresence: holdsOwnTabPresence, tauri: isTauri })
 
     // From here to the delete nothing awaits: the conditions below are the ones
     // the delete relies on.

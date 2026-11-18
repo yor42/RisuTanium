@@ -50,7 +50,9 @@ import {
     buildTree, committerOf, createClock, expectInvariant, hooked, parsedCommit, peerWrite, plantKey, seedStore, testEnv, treeRequest,
     treeUnitCount, type Hooks, type TestClock,
 } from './commitFixtures'
-import { ALL_GOLDENS, FULL_GOLDENS, loadGolden, readerOver, type Golden } from './legacyFixtures'
+import { ALL_GOLDENS, FULL_GOLDENS, loadGolden, readerOver, type Golden, type StoredUnit } from './legacyFixtures'
+import { coldStorageHeader } from 'src/ts/process/coldstorageData'
+import { characterIdProblem, isUsableCharacterId } from 'src/ts/storage/characterIds'
 
 const OPTIONS = { newId: () => 'placeholder-chat-id', now: () => 1_700_000_000_001 }
 const accept = { async confirmIncomplete() { return true } }
@@ -668,6 +670,187 @@ describe('task presets over an import: the page\'s list is kept by value, a tree
         const golden = await goldenWithOwn()
         const resolved = await resolveLegacyTree(golden.tree, readerOver(golden.units), OPTIONS)
         expect(Object.hasOwn(resolved.database, 'taskPresets')).toBe(false)
+    })
+})
+
+describe('a re-id the import repair makes is followed by every stored reference', () => {
+    type Obj = Record<string, unknown>
+    const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+    const LONG = 'L'.repeat(300)
+    const say = (saying: string, data: string, role = 'char'): Obj => ({ role, data, saying, time: 1, chatId: `m-${data}` })
+    const altOf = (m: Obj): Obj => ({ m, p: `parent-${String(m.data)}`, a: 2, mem: { kept: String(m.data) } })
+    const chatOf = (id: string, message: Obj[], alt?: Obj[]): Obj => ({
+        id, name: id, note: '', localLore: [], message, ...(alt !== undefined ? { alt } : {}),
+    })
+    const pointer = (unit: string): Obj => ({ role: 'char', data: coldStorageHeader + unit, time: 1 })
+
+    interface Ids { config: string, long: string, proto: string, root: string }
+    const REAL: Ids = { config: 'config', long: LONG, proto: '__proto__', root: 'root' }
+    /** The same tree with every unusable id already replaced by a usable one. */
+    const TWIN: Ids = { config: 'B1', long: 'F1', proto: 'P1', root: 'E1' }
+
+    /** Producer-shaped legacy tree: hot characters, an archived character and group, a pointer chat unit, hot and cold `alt`. */
+    function build(ids: Ids): Golden {
+        const units = new Map<string, StoredUnit>()
+        const sayings = (chatId: string, names: string[]) => names.map((name, index) => say(name, `${chatId}:${index}`))
+        units.set(U(1), { status: 'ok', value: { message: sayings('gu', [ids.config, ids.long, 'A1', ids.root, ids.proto]) } })
+        units.set(U(2), { status: 'ok', value: { character: {
+            chaId: 'E1', name: 'E', type: 'character', chats: [
+                chatOf('ec', sayings('ec', [ids.config])),
+                chatOf('ea', sayings('ea', ['A1']), [altOf(say(ids.config, 'ea:alt0'))]),
+                chatOf('em', sayings('em', [ids.config]), [altOf(say('A1', 'em:alt0'))]),
+            ],
+        } } })
+        units.set(U(3), { status: 'ok', value: { character: {
+            chaId: 'H1', name: 'H', type: 'group', characters: [ids.config, ids.root, ids.long, 'A1', ids.proto],
+            chats: [chatOf('hc', sayings('hc', [ids.config, ids.root, ids.long, ids.proto]), [altOf(say(ids.config, 'hc:alt0'))])],
+        } } })
+        const characters: Obj[] = [
+            { chaId: 'A1', name: 'A', type: 'character', chats: [chatOf('ac', sayings('ac', ['A1']))] },
+            { chaId: ids.config, name: 'B', type: 'character', chats: [chatOf('bc', sayings('bc', [ids.config]), [altOf(say(ids.config, 'bc:alt0'))])] },
+            {
+                chaId: 'G1', name: 'G', type: 'group', characters: [ids.config, 'A1', ids.long, ids.root, ids.proto], chats: [
+                    chatOf('gc', sayings('gc', [ids.config, 'A1', ids.long]), [altOf(say(ids.config, 'gc:alt0'))]),
+                    chatOf('gcold', [pointer(U(1)), say(ids.config, 'gcold:1')]),
+                ],
+            },
+            { chaId: ids.root, name: 'E-archived', type: 'character', coldstorage: U(2), chats: [] },
+            { chaId: 'H1', name: 'H-archived-group', type: 'group', coldstorage: U(3), chats: [] },
+            { chaId: ids.long, name: 'F-long', type: 'character', chats: [chatOf('fc', sayings('fc', [ids.long]))] },
+            { chaId: ids.proto, name: 'P-proto', type: 'character', chats: [chatOf('pc', sayings('pc', [ids.proto]))] },
+        ]
+        const tree = {
+            characters,
+            characterOrder: [ids.config, 'A1', { id: 'fold', data: [ids.root, ids.long, ids.proto] }, 'G1'],
+            loadouts: [{ id: 'l', characterIds: [ids.config, ids.root] }],
+        }
+        return { tree: tree as unknown as Database, units }
+    }
+
+    /** Every speaker reference (member, message speaker, alternative speaker) that names no character the tree holds. */
+    function dangling(db: Database): string[] {
+        const all = db.characters as unknown as Obj[]
+        const held = new Set(all.filter(c => isUsableCharacterId(c.chaId)).map(c => String(c.chaId)))
+        const out: string[] = []
+        const check = (id: unknown, where: string) => {
+            if (typeof id === 'string' && !held.has(id)) {
+                out.push(`${where}:${id.length > 20 ? 'LONG' : id}`)
+            }
+        }
+        for (const character of all) {
+            for (const member of (character.characters as unknown[] | undefined) ?? []) {
+                check(member, `members(${String(character.name)})`)
+            }
+            for (const chat of (character.chats as Obj[] | undefined) ?? []) {
+                for (const m of (chat.message as Obj[] | undefined) ?? []) {
+                    if (m.role === 'char') {
+                        check(m.saying, `say(${String(character.name)}/${String(chat.id)})`)
+                    }
+                }
+                for (const record of (chat.alt as { m: Obj }[] | undefined) ?? []) {
+                    if (record.m.role === 'char') {
+                        check(record.m.saying, `alt(${String(character.name)}/${String(chat.id)})`)
+                    }
+                }
+            }
+        }
+        return out
+    }
+
+    /** A message or alternative message with every key but `saying`, so a rebuilt record that loses any other key shows. */
+    function withoutSaying(message: Obj): Obj {
+        const { saying: _saying, ...rest } = message
+        return rest
+    }
+
+    /** What a lost, swapped or invented list shows in: ids, members and sayings are left out, content is kept. */
+    function contentShape(db: Database): unknown {
+        return (db.characters as unknown as Obj[]).map(character => ({
+            name: character.name,
+            type: character.type,
+            chats: Array.isArray(character.chats) ? (character.chats as Obj[]).map(chat => ({
+                id: chat.id,
+                keys: Object.keys(chat).sort(),
+                message: Object.hasOwn(chat, 'message') ? (chat.message as Obj[]).map(withoutSaying) : 'absent',
+                alt: !Object.hasOwn(chat, 'alt') ? 'absent'
+                    : Array.isArray(chat.alt) ? (chat.alt as { m: Obj }[]).map(record => ({ ...record, m: withoutSaying(record.m) })) : typeof chat.alt,
+            })) : null,
+        }))
+    }
+
+    async function importStored(golden: Golden): Promise<Database> {
+        const test = await rig()
+        committedOf(await importLegacyTree(test.request(golden), accept))
+        return await storedDatabase(test.memory)
+    }
+
+    test('reproducer: the stored tree names no id that no character holds', async () => {
+        const stored = await importStored(build(REAL))
+
+        expect(dangling(stored)).toEqual([])
+    })
+
+    test('guard: the stored chats keep their content, whatever the ids (a twin without id problems has the same shape)', async () => {
+        const real = await importStored(build(REAL))
+        const twin = await importStored(build(TWIN))
+
+        expect(contentShape(real)).toEqual(contentShape(twin))
+    })
+
+    test('guard: the repair summary of the fixture is what it was, and a following step adds none', async () => {
+        const golden = build(REAL)
+
+        const repaired = await repairImportTree(golden.tree, readerOver(golden.units))
+
+        expect(repaired.status).toBe('repaired')
+        expect('summary' in repaired ? repaired.summary : null).toEqual({ dropped: 0, changed: 3, recovered: 1 })
+    })
+
+    test('guard: a speaker and a member that name a usable id no character holds stay as they are', async () => {
+        const golden = build(REAL)
+        const characters = golden.tree.characters as unknown as Obj[]
+        ;(characters[0].chats as Obj[])[0].message = [say('ghost', 'ac:ghost')]
+        characters[2].characters = ['ghost', 'config']
+
+        const stored = await importStored(golden)
+
+        const all = stored.characters as unknown as Obj[]
+        expect(all[2].characters).toEqual(['ghost', all[1].chaId])
+        expect(((all[0].chats as Obj[])[0].message as Obj[])[0].saying).toBe('ghost')
+    })
+
+    test('reproducer: a saying in the cold unit of the golden\'s pointer chat follows the re-id of the character that owns it', async () => {
+        const golden = await loadGolden('upstream-full.bin')
+        const tree = golden.tree as unknown as { characters: Obj[], characterOrder?: unknown[], loadouts?: Obj[] }
+        const owner = tree.characters[0]
+        const oldId = owner.chaId as string
+        const chats = owner.chats as Obj[]
+        const unitKey = ((chats[1].message as Obj[])[0].data as string).slice(coldStorageHeader.length)
+        const unit = golden.units.get(unitKey)
+        if (unit === undefined || unit.status !== 'ok') {
+            throw new Error('The golden holds no readable unit under its pointer chat.')
+        }
+        const unitMessage = (unit.value as { message: Obj[] }).message[0]
+        unitMessage.role = 'char'
+        unitMessage.saying = 'config'
+        owner.chaId = 'config'
+        const rename = (list: unknown[] | undefined) => list?.forEach((entry, index) => { if (entry === oldId) { list[index] = 'config' } })
+        rename(tree.characterOrder)
+        tree.loadouts?.forEach(loadout => rename(loadout.characterIds as unknown[] | undefined))
+        tree.characters.forEach(character => rename(character.characters as unknown[] | undefined))
+
+        // (a) the chat is a pointer, (b) the edited message sits in its unit and in no hot chat, (c) it reads as edited.
+        expect(String((chats[1].message as Obj[])[0].data).startsWith(coldStorageHeader)).toBe(true)
+        const hot = tree.characters.flatMap(character => (character.chats as Obj[] | undefined) ?? [])
+        expect(hot.some(chat => (chat.message as Obj[]).some(m => m.saying === 'config'))).toBe(false)
+        expect(unitMessage.role).toBe('char')
+        expect(unitMessage.saying).toBe('config')
+
+        const stored = await importStored(golden)
+
+        const renamed = (stored.characters as unknown as Obj[])[0]
+        expect(characterIdProblem(renamed.chaId)).toBeNull()
+        expect(((renamed.chats as Obj[])[1].message as Obj[])[0].saying).toBe(renamed.chaId)
     })
 })
 

@@ -28,6 +28,8 @@ import { applyAdditionalParameters, applyParameters, getAdditionalParameters, ty
 import { leaseArgKey, limitedField, readKeyField, sendArgKey, sendKeyLine, type KeyFieldId } from './secretKey';
 import { afterLimit, clearLease, newKeyRotation, splitKeys, type KeyRotation } from './keyRing';
 import { SecretRefError } from '../../secretRef';
+import { beginUsageCapture, settleUsage, settleUsageFailure } from '../../usage/usageCapture';
+import type { UsageMeterState, UsagePurpose } from '../../usage/usageTypes';
 
 export type ToolCall = {
     name: string;
@@ -74,6 +76,15 @@ interface requestDataArgument{
     // One per attempt of one fallback model: which key lines were found limited. Rotates a multi-line key field.
     // Never cloned and never handed to a plugin: the plugin provider builds its own argument.
     keyRotation?: KeyRotation
+    // The usage statistics label of this call; a Utility run or a plugin call sets it, otherwise the mode decides.
+    // Never cloned and never handed to a plugin: the plugin provider builds its own argument.
+    usagePurpose?: UsagePurpose
+    // Set only by the main chat send: the input token count it already computed, so no second count is made.
+    // Never cloned and never handed to a plugin: the plugin provider builds its own argument.
+    usageInputEstimate?: number
+    // Set by `requestChatDataMain` on every attempt: the provider call sites report each response's usage to it.
+    // Never cloned and never handed to a plugin: the plugin provider builds its own argument.
+    usageMeter?: UsageMeterState
 }
 
 export interface RequestDataArgumentExtended extends requestDataArgument{
@@ -544,10 +555,14 @@ export function reformater(formated:OpenAIChat[],modelInfo:LLMModel|LLMFlags[]){
  * model, which may use another credential, is still tried.
  */
 export async function requestChatDataMain(arg:requestDataArgument, model:ModelModeExtended, abortSignal:AbortSignal=null):Promise<requestDataResponse> {
+    // Each call is one attempt with its own meter, whatever meter a reused argument object still carries.
+    beginUsageCapture(arg)
+    let result:requestDataResponse
     try{
-        return await requestChatDataByFormat(arg, model, abortSignal)
+        result = await requestChatDataByFormat(arg, model, abortSignal)
     }
     catch(error){
+        settleUsageFailure(arg, model)
         if(error instanceof SecretRefError){
             return {
                 type: 'fail',
@@ -557,6 +572,7 @@ export async function requestChatDataMain(arg:requestDataArgument, model:ModelMo
         }
         throw error
     }
+    return settleUsage(arg, model, result)
 }
 
 async function requestChatDataByFormat(arg:requestDataArgument, model:ModelModeExtended, abortSignal:AbortSignal=null):Promise<requestDataResponse> {

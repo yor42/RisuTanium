@@ -416,8 +416,7 @@ describe('RisuSaveEncoder.set() — marked-but-still-present characters are re-e
 // `takeEncodedCharacterProxies()` hands the caller the recorded set AND
 // resets the internal one to a fresh, empty `Set`, so each recorded proxy is
 // consumed exactly once. Used once for the identity-tracker seed at boot,
-// and once per reload by `prepareSaveIteration`'s post-reload filter (see
-// globalApi.saveSequence.svelte.test.ts).
+// and once per reload by a save pass's post-reload filter.
 describe('RisuSaveEncoder.takeEncodedCharacterProxies() — consume-once proxy release', () => {
     function buildTwoCharacterDbForProxyTest(): Database {
         return {
