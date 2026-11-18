@@ -17,7 +17,7 @@ vi.mock('../../ts/stores.svelte', () => {
 vi.mock('../../ts/storage/pageStorageMode', () => ({ pageStorageModeStore: writable({ kind: 'store2' }) }))
 vi.mock('../Utility/utilityGate', () => ({ utilityVisible: vi.fn(() => false), utilityOpen: writable(false) }))
 vi.mock('../../lang', () => ({ language: {
-    chatShellMoreActions: 'More actions', continueResponse: 'Continue', ttsStop: 'Stop speech',
+    chatShellMoreActions: 'More actions', tools: 'Tools', continueResponse: 'Continue', ttsStop: 'Stop speech',
     chatShellStickers: 'Stickers', chatList: 'Chat list', easyPanel: 'Easy panel',
     hypaMemoryV2Modal: 'Hypa V2', hypaMemoryV3Modal: 'Hypa V3', screenshot: 'Screenshot',
     modules: 'Modules', reroll: 'Reroll', chatShellUtility: 'Utility', chatShellTogglesTitle: 'Toggles',
@@ -77,6 +77,18 @@ describe('PlusSheet', () => {
         row(target, 'Continue')?.click()
         await tick()
         expect(sendContinue).toHaveBeenCalledOnce()
+        await unmount(app)
+        target.remove()
+    })
+
+    test('the sheet is named Tools, not the message action name', async () => {
+        const { default: PlusSheet } = await import('./PlusSheet.svelte')
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const props = $state({ open: true, opener: null, background: [], onclose: () => { props.open = false }, onstickers: vi.fn(), onchatlist: vi.fn(), onmodules: vi.fn() })
+        const app = mount(PlusSheet, { target, props })
+        flushSync()
+        expect(target.querySelector('[data-part="chat-sheet"]')?.getAttribute('aria-label')).toBe('Tools')
         await unmount(app)
         target.remove()
     })

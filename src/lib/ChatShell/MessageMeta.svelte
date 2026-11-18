@@ -1,12 +1,13 @@
 <script module lang="ts">
-    // One formatter serves every row. Its time zone and default locale are fixed when the module loads, so a change of either while the app runs shows from the next reload.
-    const timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' })
+    // Every row shares the formatter of the current app language, rebuilt only when that language changes. The time zone is fixed when a formatter is built, so a change of it while the app runs shows from the next reload.
+    const TIME_OPTIONS: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' }
 </script>
 
 <script lang="ts">
     import { partition, type ActionId } from '../../ts/chatShell/actionSlots'
     import { currentSlots, syncSlots } from '../../ts/chatShell/slotsStore.svelte'
     import { language } from '../../lang'
+    import { appDateFormat } from '../../ts/appIntl.svelte'
 
     interface Props {
         name: string
@@ -21,6 +22,7 @@
     let { name, time, model, available, disabled = [], generating = false, onaction, onmore }: Props = $props()
     syncSlots()
     let layout = $derived(currentSlots())
+    const timeFormat = $derived(appDateFormat(TIME_OPTIONS))
     let wide = $state(false)
     $effect(() => {
         if (typeof matchMedia !== 'function') return

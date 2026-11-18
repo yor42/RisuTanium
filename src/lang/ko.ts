@@ -3224,6 +3224,7 @@ export const languageKorean = {
     "branchedText": "이 채팅은 {}에서 분기되었습니다.",
     "disableMessage": "메시지 비활성화",
     "disableAbove": "AI에 전송할 메시지 자르기",
+    "chatPlaygroundSwitchRole": "유저와 어시스턴트 역할 전환",
     "bookmark": "북마크",
     "branch": "분기점",
     "partialBackupFirstConfirm": "⚠️ 경고: 부분 로컬 백업 ⚠️\n\n이 백업은 최소한의 필수 정보만 빠르게 저장하는 기능입니다.\n\n포함되는 것:\n- 데이터베이스 (채팅 기록, 캐릭터, 모듈, 플러그인, 프롬프트, 설정 등)\n- 캐릭터 프로필 아이콘 (메인 이미지)\n- 사용자 아이콘 및 커스텀 배경\n- 페르소나 아이콘\n- 폴더 이미지\n- 봇 프리셋 이미지\n\n⚠️ 포함되지 않는 것:\n- 감정 이미지\n- 추가 캐릭터 에셋\n- VITS 음성 파일\n- 기타 모든 추가 미디어 파일\n\n이 백업 파일에는 모든 캐릭터 에셋이 포함되지 않습니다!\n완전한 백업이 필요하다면 일반 로컬 백업을 사용하세요.\n\n그래도 계속하시겠습니까?",
@@ -3283,8 +3284,6 @@ export const languageKorean = {
         `${items.length}개 항목이 4 GiB 이상이라 백업 파일의 항목 하나에 담을 수 있는 크기를 넘으므로 해당 내용은 백업에 들어 있지 않습니다(캐릭터에는 자리 표시자만 남습니다):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `이 백업의 항목 ${count}개가 100 MiB보다 큽니다. 업스트림 RisuAI Node 서버는 이만큼 큰 항목을 복원할 수 없어, 이 백업을 그곳에서 복원하면 해당 항목을 건너뜁니다. 이 앱과 다른 플랫폼에서는 복원됩니다. 해당 항목을 포함하여 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
-    "backupAlternativesConfirm": (count: number, names: string[]) =>
-        `채팅 ${count}개에 다른 답변이 있으며, 백업 파일에는 이를 담을 공간이 없어 이 백업에서 제외됩니다 (채팅과 메시지는 저장됩니다). 다른 답변은 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `작업 프리셋 ${count}개는 이 기기에만 저장되어 있으며, 백업 파일에는 이를 담을 공간이 없어 이 백업에서 제외됩니다. 작업 프리셋은 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
@@ -3348,6 +3347,8 @@ export const languageKorean = {
     "themePackSize": (size: string) => `크기: ${size}`,
     "themePackLicense": (license: string) => `라이선스: ${license}`,
     "themePackAttribution": (attribution: string) => `출처 표기: ${attribution}`,
+    "themePackDetails": "상세 정보",
+    "themePackDetailsFor": (name: string) => `상세 정보: ${name}`,
     "themePackFonts": "폰트 라이선스",
     "themePackFontLicense": (file: string, license: string) => `${file}: ${license}`,
     "themePackUnreadableName": "읽을 수 없는 테마 팩",
@@ -3399,6 +3400,20 @@ export const languageKorean = {
     "themePackLintLine": (selector: string, prop: string, why: string) => `${selector} ${prop}: ${why}`,
     "backupAlternativesLeftOut": (count: number, names: string[]) =>
         `백업이 진행되는 동안 채팅 ${count}개에서 다른 답변이 발견되었으며, 백업 파일에는 이를 담을 공간이 없어 백업에 포함되지 않았습니다 (채팅과 메시지는 저장됩니다):\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
+    "backupBranchesConfirm": (count: number, lines: string[]) =>
+        `채팅 ${count}개에 다른 답변이 있으며, 백업 파일에는 이를 담을 공간이 없습니다. 대화가 이어진 다른 답변(이후의 사용자 메시지를 포함하는 답변)은 해당 캐릭터의 채팅 목록 끝에 "Chat (Branch)"와 같은 이름의 추가 채팅으로 기록되므로, 백업이 표시된 크기만큼 커집니다. 그 외의 다른 답변은 제외됩니다. 채팅과 메시지는 저장되며, 이 앱에서는 아무것도 바뀌지 않습니다. 이 방식으로 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${lines.join('\n')}${count > lines.length ? `\n...외 ${count - lines.length}개` : ''}`,
+    "backupBranchesLine": (chat: string, branchChats: number, bytes: number | null, leftOut: number) => {
+        const parts: string[] = []
+        if (branchChats > 0) {
+            const size = bytes === null ? '크기 알 수 없음' : bytes < 0.1 * 1024 * 1024 ? '0.1 MiB 미만' : `약 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+            parts.push(`분기 채팅 ${branchChats}개, ${size}`)
+        }
+        if (leftOut > 0) {
+            parts.push(`답변 ${leftOut}개 제외`)
+        }
+        return parts.length > 0 ? `${chat} (${parts.join('; ')})` : chat
+    },
+    "backupBranchesLeftOutLine": (chat: string) => `${chat} (다른 답변 제외됨)`,
     "backupForkChatDataConfirm": (count: number, names: string[]) =>
         `채팅 ${count}개에 이 앱에서만 사용하는 데이터(종류는 괄호 안에 표시)가 있으며, 백업 파일에는 이를 담을 공간이 없어 이 백업에서 제외됩니다 (채팅과 메시지는 저장됩니다). 이 데이터는 이 앱에 그대로 남으며, 백업에만 없습니다. 이를 제외하고 백업을 만드시겠습니까? 거부하면 백업 파일이 만들어지지 않습니다. 아직 아무것도 기록되지 않았습니다.\n\n${names.join('\n')}${count > names.length ? `\n...외 ${count - names.length}개` : ''}`,
     "backupForkChatDataLeftOut": (count: number, names: string[]) =>
@@ -4246,7 +4261,7 @@ export const languageKorean = {
         declinedBody: "데이터를 그대로 두었습니다. 변환하기 전에는 RisuTanium이 데이터를 열 수 없습니다.",
         declinedBodyWithImport: "데이터를 그대로 두었습니다. 변환하거나 백업 파일을 복원하기 전에는 RisuTanium이 데이터를 열 수 없습니다.",
         declinedConvert: "변환…",
-        declinedImport: "백업 파일(.bin)에서 복원",
+        declinedImport: "백업 파일(.bin 또는 .rtb)에서 복원",
         fromBackupTitle: "메인 저장 파일을 읽을 수 없습니다",
         fromBackupBody: (date: string) => `메인 저장 파일을 읽을 수 없지만, ${date}에 저장된 백업은 읽을 수 있습니다. RisuTanium이 대신 그 백업을 변환할 수 있습니다. 그 시점 이후에 저장한 내용은 백업에 들어 있지 않습니다. 기존 파일은 그대로 유지되며, 이 단계에서 삭제하지 않습니다.`,
         fromBackupNo: "나중에",
@@ -4333,11 +4348,11 @@ export const languageKorean = {
         noticeServerCapability: "이 서버는 새 저장소 형식으로 저장할 수 없어서 RisuTanium이 데이터를 읽기 전용으로 열었습니다. 아무것도 변경되지 않았으며 아무것도 저장되지 않습니다. 데이터는 사라지지 않았습니다.",
         noticeBackendUnavailable: "RisuTanium이 이 페이지에서 새 저장소에 접근하지 못해 데이터를 읽기 전용으로 열었습니다. 아무것도 변경되지 않았으며 아무것도 저장되지 않습니다. 데이터는 사라지지 않았습니다.",
         offerRestoreNewest: (date: string) => `가장 최근 백업 복원(${date})`,
-        offerImport: "백업 파일(.bin)에서 복원",
+        offerImport: "백업 파일(.bin 또는 .rtb)에서 복원",
         noticeRestoredFromBackup: (date: string) => `RisuTanium이 ${date}에 저장된 백업을 복원했습니다. 그 시점 이후에 저장한 내용은 포함되지 않습니다.`,
         noticeRestoredFromOlderBackup: (date: string, newestDate: string) => `가장 최근 백업(${newestDate}에 저장됨)을 읽을 수 없어 RisuTanium이 ${date}에 저장된 백업을 복원했습니다. 그 시점 이후에 저장한 내용은 포함되지 않습니다.`,
         recoveryRestoreOffer: "가장 최근 백업 복원",
-        recoveryImportOffer: "백업 파일(.bin)에서 복원",
+        recoveryImportOffer: "백업 파일(.bin 또는 .rtb)에서 복원",
         recoveryRestoreTitle: (date: string) => `${date}에 저장된 백업을 복원하시겠습니까?`,
         recoveryRestoreBody: "RisuTanium이 이전 저장본의 백업은 찾았지만 메인 저장 파일은 찾지 못했습니다. 복원하면 읽을 수 있는 가장 최근 백업을 사용합니다. 가장 최근 백업을 읽을 수 없으면, 더 오래된 백업을 사용하기 전에 RisuTanium이 먼저 묻습니다. 그 시점 이후에 저장한 내용은 포함되어 있지 않습니다. 기존 파일은 그대로 보관되며, 이 단계에서는 삭제되지 않습니다.",
         recoveryRestoreBodyUnknown: "RisuTanium이 이전 저장본의 백업은 찾았지만, 메인 저장 파일이 있는지는 확인하지 못했습니다. 복원하면 메인 저장 파일을 읽을 수 있을 때는 그것을, 그렇지 않으면 읽을 수 있는 가장 최근 백업을 사용합니다. 가장 최근 백업을 읽을 수 없으면, 더 오래된 백업을 사용하기 전에 RisuTanium이 먼저 묻습니다. 그 시점 이후에 저장한 내용은 포함되어 있지 않습니다. 기존 파일은 그대로 보관되며, 이 단계에서는 삭제되지 않습니다.",

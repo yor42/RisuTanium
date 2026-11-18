@@ -3343,6 +3343,7 @@ export const languageEnglish = {
     loadMore: "Load More",
     disableMessage: "Disable Message",
     disableAbove: "Cut Messages for AI",
+    chatPlaygroundSwitchRole: "Switch between user and assistant",
     autoScrollToNewMessage: "Auto scroll to new message",
     alwaysScrollToNewMessage: "Always scroll to new message (ignore scroll position)",
     newMessage: "New Message",
@@ -3425,8 +3426,6 @@ export const languageEnglish = {
         `${items.length} item(s) are 4 GiB or more, which is more than one entry of a backup file can hold, so their content is not in the backup (a character keeps only a placeholder):\n\n${items.join('\n')}`,
     backupUpstreamOversizeConfirm: (count: number, names: string[]) =>
         `${count} item(s) in this backup are larger than 100 MiB. An upstream RisuAI Node server cannot restore an item that large, so it would skip them when this backup is restored there; this app and the other platforms restore them. Create the backup with them included? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
-    backupAlternativesConfirm: (count: number, names: string[]) =>
-        `${count} chat(s) have alternative replies, and a backup file has no place for them, so they would be left out of this backup (the chats and their messages are saved). The alternatives stay in this app; only the backup lacks them. Create the backup without them? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     backupTaskPresetsConfirm: (count: number, names: string[]) =>
         `${count} task preset(s) are saved on this device only, and a backup file has no place for them, so they would be left out of this backup. They stay in this app; only the backup lacks them. Create the backup without them? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     backupThemePacksConfirm: (count: number, names: string[]) =>
@@ -3489,6 +3488,8 @@ export const languageEnglish = {
     themePackSize: (size: string) => `Size: ${size}`,
     themePackLicense: (license: string) => `License: ${license}`,
     themePackAttribution: (attribution: string) => `Attribution: ${attribution}`,
+    themePackDetails: 'Details',
+    themePackDetailsFor: (name: string) => `Details: ${name}`,
     themePackFonts: 'Font licenses',
     themePackFontLicense: (file: string, license: string) => `${file}: ${license}`,
     themePackUnreadableName: 'Unreadable theme pack',
@@ -3540,6 +3541,20 @@ export const languageEnglish = {
     themePackLintLine: (selector: string, prop: string, why: string) => `${selector} ${prop}: ${why}`,
     backupAlternativesLeftOut: (count: number, names: string[]) =>
         `${count} chat(s) had alternative replies that were found while the backup ran, and a backup file has no place for them, so they are not in the backup (the chats and their messages are saved):\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    backupBranchesConfirm: (count: number, lines: string[]) =>
+        `${count} chat(s) have alternative replies, and a backup file has no place for them. An alternative the conversation continued from (it holds a later message of yours) is written as an extra chat at the end of that character's chat list, named like "Chat (Branch)", so the backup grows by about the size shown; the other alternative replies are left out. The chats and their messages are saved, and nothing changes in this app. Create the backup this way? If you decline, no backup file is created. Nothing has been written yet.\n\n${lines.join('\n')}${count > lines.length ? `\n...and ${count - lines.length} more` : ''}`,
+    backupBranchesLine: (chat: string, branchChats: number, bytes: number | null, leftOut: number) => {
+        const parts: string[] = []
+        if (branchChats > 0) {
+            const size = bytes === null ? 'size unknown' : bytes < 0.1 * 1024 * 1024 ? 'under 0.1 MiB' : `about ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+            parts.push(`${branchChats} branch chat(s), ${size}`)
+        }
+        if (leftOut > 0) {
+            parts.push(`${leftOut} reply(s) left out`)
+        }
+        return parts.length > 0 ? `${chat} (${parts.join('; ')})` : chat
+    },
+    backupBranchesLeftOutLine: (chat: string) => `${chat} (alternative replies left out)`,
     backupForkChatDataConfirm: (count: number, names: string[]) =>
         `${count} chat(s) hold data that only this app uses (the kinds are in parentheses), and a backup file has no place for it, so it would be left out of this backup (the chats and their messages are saved). The data stays in this app; only the backup lacks it. Create the backup without it? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     backupForkChatDataLeftOut: (count: number, names: string[]) =>
@@ -4400,7 +4415,7 @@ export const languageEnglish = {
         declinedBody: "Your data was left as it is. RisuTanium cannot open it until it is converted.",
         declinedBodyWithImport: "Your data was left as it is. RisuTanium cannot open it until it is converted or you restore a backup file.",
         declinedConvert: "Convert…",
-        declinedImport: "Restore from a backup file (.bin)",
+        declinedImport: "Restore from a backup file (.bin or .rtb)",
         fromBackupTitle: "Your main save file could not be read",
         fromBackupBody: (date: string) => `Your main save file could not be read, but a backup saved ${date} can be. RisuTanium can convert that backup instead. Anything you saved after that time is not in it. Your old files are kept; this step does not delete them.`,
         fromBackupNo: "Not now",
@@ -4487,11 +4502,11 @@ export const languageEnglish = {
         noticeServerCapability: "This server cannot save in the new storage format, so RisuTanium opened your data read-only. Nothing was changed and nothing will be saved. Your data is not lost.",
         noticeBackendUnavailable: "RisuTanium could not reach the new storage on this page, so it opened your data read-only. Nothing was changed and nothing will be saved. Your data is not lost.",
         offerRestoreNewest: (date: string) => `Restore the newest backup (${date})`,
-        offerImport: "Restore from a backup file (.bin)",
+        offerImport: "Restore from a backup file (.bin or .rtb)",
         noticeRestoredFromBackup: (date: string) => `RisuTanium restored the backup saved ${date}. Anything you saved after that time is not included.`,
         noticeRestoredFromOlderBackup: (date: string, newestDate: string) => `The newest backup (saved ${newestDate}) could not be read, so RisuTanium restored the backup saved ${date}. Anything you saved after that time is not included.`,
         recoveryRestoreOffer: "Restore the newest backup",
-        recoveryImportOffer: "Restore from a backup file (.bin)",
+        recoveryImportOffer: "Restore from a backup file (.bin or .rtb)",
         recoveryRestoreTitle: (date: string) => `Restore the backup saved ${date}?`,
         recoveryRestoreBody: "RisuTanium found backups of your old save but no main save file. Restoring uses the newest backup that can be read. If the newest cannot be read, RisuTanium asks you before it uses an older one. Anything you saved after that time is not in it. Your old files are kept; this step does not delete them.",
         recoveryRestoreBodyUnknown: "RisuTanium found backups of your old save, and could not check whether a main save file is there. Restoring uses the main save file if it can be read, and otherwise the newest backup that can be read. If the newest backup cannot be read, RisuTanium asks you before it uses an older one. Anything you saved after that time is not in it. Your old files are kept; this step does not delete them.",

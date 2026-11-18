@@ -88,9 +88,12 @@ function carriesForkOnly(chat: unknown): boolean {
     return carriesKeyOf(CHAT_KEYS, chat) || (Array.isArray(chat.message) && chat.message.some((message) => carriesKeyOf(MESSAGE_KEYS, message)))
 }
 
-/** The kinds the chat holds that are worth naming, in table order and each once. */
-function forkOnlyKinds(chat: Fields): ForkOnlyKind[] {
+/** The kinds the chat holds that are worth naming, in table order and each once; none for a value that is not a chat object. */
+export function forkOnlyKindsOf(chat: unknown): ForkOnlyKind[] {
     const kinds: ForkOnlyKind[] = []
+    if (!isFields(chat)) {
+        return kinds
+    }
     for (const row of FORK_ONLY_CHAT_KEYS) {
         const owners = row.scope === 'chat' ? [chat] : (Array.isArray(chat.message) ? chat.message : [])
         if (row.kind !== null && !kinds.includes(row.kind) && owners.some((owner) => isFields(owner) && row.key in owner && row.holds(owner[row.key], owner))) {
@@ -133,10 +136,22 @@ export function withoutForkOnlyChatData<T>(character: T): T {
  * chats apart, so two chats with the same text are counted twice and the same chat read through two sources once;
  * `kinds` are the kinds worth naming, never empty.
  */
-export type ForkOnlyChatLabel = { key: string, text: string, kinds: ForkOnlyKind[] }
+export type ForkOnlyChatLabel = {
+    key: string
+    text: string
+    kinds: ForkOnlyKind[]
+    /** What the alternatives of this chat become in a `.bin`: the extra chats written, their estimated bytes (null: unknown) and the replies left out. */
+    branches?: { chats: number, omitted: number, bytes: number | null }
+}
 
 function characterKeyOf(character: Fields): string {
     return typeof character.chaId === 'string' ? `c:${character.chaId}` : `?:${typeof character.name === 'string' ? character.name : ''}`
+}
+
+/** The key that tells chat `index` of `character` apart: the chat's id, else its position. The one key of labels and of the confirmed set. */
+export function chatLabelKey(character: unknown, chat: unknown, index: number): string {
+    const chatId = isFields(chat) && typeof chat.id === 'string' && chat.id !== '' ? `id:${chat.id}` : `at:${index}`
+    return `${characterKeyOf(isFields(character) ? character : {})}/${chatId}`
 }
 
 /** The label of each chat of `character` that loses something worth naming. */
@@ -145,15 +160,13 @@ export function forkOnlyChatLabels(character: unknown): ForkOnlyChatLabel[] {
     if (chats === null || !isFields(character)) {
         return []
     }
-    const characterKey = characterKeyOf(character)
     const labels: ForkOnlyChatLabel[] = []
     chats.forEach((chat, index) => {
-        const kinds = isFields(chat) ? forkOnlyKinds(chat) : []
+        const kinds = forkOnlyKindsOf(chat)
         if (kinds.length === 0) {
             return
         }
-        const chatId = isFields(chat) && typeof chat.id === 'string' && chat.id !== '' ? `id:${chat.id}` : `at:${index}`
-        labels.push({ key: `${characterKey}/${chatId}`, text: labelOf(character.name, isFields(chat) ? chat.name : undefined), kinds })
+        labels.push({ key: chatLabelKey(character, chat, index), text: labelOf(character.name, isFields(chat) ? chat.name : undefined), kinds })
     })
     return labels
 }
@@ -172,7 +185,7 @@ export function withoutColdValueForkOnly(value: unknown, unitKey: string): { val
         return { value: { ...value, character: withoutForkOnlyChatData(character) }, labels: forkOnlyChatLabels(character) }
     }
     if (Array.isArray(value.message) && carriesForkOnly(value)) {
-        const kinds = forkOnlyKinds(value)
+        const kinds = forkOnlyKindsOf(value)
         return { value: withoutForkOnlyKeys(value), labels: kinds.length > 0 ? [{ key: `u:${unitKey}`, text: labelOf(undefined, value.name), kinds }] : [] }
     }
     return { value, labels: [] }

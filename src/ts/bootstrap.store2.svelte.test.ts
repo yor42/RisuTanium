@@ -8,7 +8,7 @@
  * Reproducers: a page that registered no dispatch reports the registration error and touches no store (T2-N1), and a
  * store2 boot on an IndexedDB page starts the OPFS leftover clean-up once (T2-OPFS).
  */
-import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach, onTestFinished } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/backend'
@@ -53,6 +53,7 @@ const setDatabaseMock = vi.hoisted(() => vi.fn((_data: Record<string, unknown>):
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as Record<string, unknown>))
 const sleepForeverMock = vi.hoisted(() => vi.fn(async () => { }))
 const putBackMock = vi.hoisted(() => vi.fn())
+const checkUpdateMock = vi.hoisted(() => vi.fn(async () => { }))
 const readColdStorageItemMock = vi.hoisted(() => vi.fn(async (_key: string): Promise<{ status: 'missing' }> => ({ status: 'missing' })))
 
 //#endregion
@@ -103,7 +104,7 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
 
 vi.mock(import('src/ts/update'), () => ({
-    checkRisuUpdate: vi.fn(async () => { }),
+    checkRisuUpdate: checkUpdateMock,
 }) as unknown as typeof import('src/ts/update'))
 
 vi.mock(import('src/ts/stores.svelte'), () => ({
@@ -411,15 +412,21 @@ async function boot(options: BootOptions): Promise<Boot> {
     return { loadData, loadedStore, alertStore, ui, store, backend }
 }
 
+/**
+ * The test acknowledgers that are listening. The mocked alert store outlives `vi.resetModules()`, so a listener left
+ * from one test would dismiss a later test's notices; `afterEach` stops them all.
+ */
+const acknowledgers: Array<() => void> = []
+
 /** Acknowledges every notice the boot posts and returns their texts, in order. */
 function acknowledgeNotices(alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>): string[] {
     const seen: string[] = []
-    alertStore.subscribe((value) => {
+    acknowledgers.push(alertStore.subscribe((value) => {
         if (value.type === 'normal') {
             seen.push(value.msg)
             queueMicrotask(() => alertStore.set({ type: 'none', msg: '' }))
         }
-    })
+    }))
     return seen
 }
 
@@ -472,6 +479,7 @@ beforeEach(() => {
     setUsingSwMock.mockReset()
     sleepForeverMock.mockReset().mockResolvedValue(undefined)
     putBackMock.mockReset()
+    checkUpdateMock.mockReset().mockResolvedValue(undefined)
     readColdStorageItemMock.mockClear()
     dbState.current = baseDb()
     setDatabaseMock.mockClear()
@@ -489,7 +497,14 @@ beforeEach(() => {
     vi.resetModules()
 })
 
-afterEach(() => {
+afterEach(async () => {
+    for (const stop of acknowledgers.splice(0)) {
+        stop()
+    }
+    // A boot that queued a notice nobody closed leaves it current in that graph's queue; on the shared alert store it
+    // would be re-shown on a later test's alert.
+    const { resetAlertPromptsForTests } = await import('src/ts/alertPrompts')
+    resetAlertPromptsForTests()
     vi.unstubAllGlobals()
 })
 
@@ -901,12 +916,12 @@ describe('loadData(): the boot step texts when the dispatch does not hand a prof
             throw new Error('the dispatch rejected')
         })
         const shown: string[] = []
-        alertStore.subscribe((value) => {
+        acknowledgers.push(alertStore.subscribe((value) => {
             if (value.type !== 'none') {
                 shown.push(value.msg)
                 queueMicrotask(() => alertStore.set({ type: 'none', msg: '' }))
             }
-        })
+        }))
 
         await loadData().catch(() => { })
         await settle()
@@ -936,12 +951,12 @@ describe('loadData(): a boot that throws after the person answered (reproducer)'
             throw new Error('the dispatch threw after the answer')
         })
         const shown: string[] = []
-        alertStore.subscribe((value) => {
+        acknowledgers.push(alertStore.subscribe((value) => {
             if (value.type !== 'none') {
                 shown.push(value.msg)
                 queueMicrotask(() => alertStore.set({ type: 'none', msg: '' }))
             }
-        })
+        }))
 
         await loadData().catch(() => { })
         await settle()
@@ -1094,6 +1109,72 @@ describe('loadData(): a legacy profile is converted through the real decoders', 
         expect(sleepForeverMock).toHaveBeenCalledTimes(1)
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect((await backend.readCommit()).bytes).toBeNull()
+    })
+})
+
+describe('loadData(): the informational boot notices queue and do not hold the boot (R1w, R4)', () => {
+    /** The notice queue of the boot's own module graph; it is reset when the test ends, so a notice left current is not re-shown on a later test's alert. */
+    async function noticeQueue() {
+        const queue = await import('src/ts/alertPrompts')
+        onTestFinished(() => queue.resetAlertPromptsForTests())
+        return queue
+    }
+
+    test('R1w reproducer (web): with the archive-enabled notice unacknowledged the page goes live and the save loop starts', async () => {
+        const { loadData, loadedStore, ui } = await boot({ kind: 'indexeddb', injectBackend: true })
+        const queue = await noticeQueue()
+
+        const loading = loadData()
+        await vi.waitFor(() => {
+            expect(get(loadedStore)).toBe(true)
+            expect(saveDbMock).toHaveBeenCalled()
+            expect(putBackMock).toHaveBeenCalledTimes(1)
+        })
+        await loading
+
+        expect(ui.notices.map((notice) => notice.name)).toContain('archive-enabled')
+        let settled = false
+        void queue.noticesSettled().then(() => { settled = true })
+        await settle()
+        expect(settled, 'nothing has pressed OK').toBe(false)
+    })
+
+    test('R4: an update question asked while a notice is unacknowledged shows over it, and the notice comes back after the answer', async () => {
+        const { loadData, loadedStore, alertStore } = await boot({ kind: 'tauri', tauri: true, injectBackend: true })
+        const queue = await noticeQueue()
+        checkUpdateMock.mockImplementation(async () => {
+            const { alertConfirm } = await import('src/ts/alert')
+            await alertConfirm('Update available?')
+        })
+
+        const loading = loadData()
+        await vi.waitFor(() => {
+            expect(get(alertStore).type).toBe('ask')
+        })
+        expect(queue.noticeShowing(), 'the prompt covers the notice').toBe(false)
+        expect(get(loadedStore), 'the boot is at the update question').toBe(false)
+
+        expect(queue.answerShownPrompt('no')).toBe(true)
+        await loading
+        expect(get(loadedStore)).toBe(true)
+        // The boot's repair toast may sit over the notice; its end is a `none` the notice survives, as in the app.
+        if (get(alertStore).type === 'toast') {
+            alertStore.set({ type: 'none', msg: '' })
+        }
+        expect(get(alertStore).type).toBe('normal')
+        expect(queue.noticeShowing(), 'the notice returns after the answer').toBe(true)
+
+        let settled = false
+        void queue.noticesSettled().then(() => { settled = true })
+        await settle()
+        expect(settled).toBe(false)
+        // The person closes each queued notice in turn; the Tauri conversion raises more than one.
+        while (get(alertStore).type === 'normal') {
+            alertStore.set({ type: 'none', msg: '' })
+        }
+        await vi.waitFor(() => {
+            expect(settled).toBe(true)
+        })
     })
 })
 

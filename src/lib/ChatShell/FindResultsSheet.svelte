@@ -1,5 +1,6 @@
 <script lang="ts">
     import { language } from '../../lang'
+    import { appIntlTag } from '../../ts/appIntl.svelte'
     import { windowRange } from '../../ts/chatShell/chatListModel'
     import { displayText, isHiddenAt, promptResetIndex, type SearchHit } from '../../ts/chatShell/inChatSearch'
     import type { Message } from '../../ts/storage/database.svelte'
@@ -81,7 +82,7 @@
     function dateOf(hit: SearchHit): string {
         const time = hit.message?.time
         if (typeof time !== 'number') return language.chatShellFindNoDate
-        return new Date(time).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+        return new Date(time).toLocaleDateString(appIntlTag(), { year: 'numeric', month: 'short', day: 'numeric' })
     }
 </script>
 

@@ -3209,6 +3209,7 @@ export const languageGerman = {
     "disableMessage": "Nachricht deaktivieren",
     "alwaysScrollToNewMessage": "Immer zu neuen Nachrichten scrollen (Scrollposition ignorieren)",
     "disableAbove": "Nachrichten für KI kürzen",
+    "chatPlaygroundSwitchRole": "Zwischen Benutzer und Assistent wechseln",
     "autoScrollToNewMessage": "Automatisch zu neuen Nachrichten scrollen",
     "longPressToPopupEditor": "Lang drücken, um den Popup-Editor zu öffnen",
     "newMessageButtonStyle": "Stil der Schaltfläche „Neue Nachricht“",
@@ -3286,8 +3287,6 @@ export const languageGerman = {
         `${items.length} Element(e) sind 4 GiB oder größer, was mehr ist, als ein einzelner Eintrag einer Backup-Datei fassen kann, daher ist ihr Inhalt nicht im Backup enthalten (ein Charakter behält nur einen Platzhalter):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `${count} Element(e) in diesem Backup sind größer als 100 MiB. Ein Upstream-RisuAI-Node-Server kann ein so großes Element nicht wiederherstellen und würde es daher überspringen, wenn dieses Backup dort wiederhergestellt wird; diese App und die anderen Plattformen stellen es wieder her. Das Backup mit diesen Elementen erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
-    "backupAlternativesConfirm": (count: number, names: string[]) =>
-        `${count} Chat(s) haben alternative Antworten, und eine Backup-Datei hat keinen Platz dafür, daher würden sie in diesem Backup fehlen (die Chats und ihre Nachrichten werden gespeichert). Die Alternativen bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `${count} Aufgaben-Voreinstellung(en) sind nur auf diesem Gerät gespeichert, und eine Backup-Datei hat keinen Platz dafür, daher würden sie in diesem Backup fehlen. Sie bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
@@ -3351,6 +3350,8 @@ export const languageGerman = {
     "themePackSize": (size: string) => `Größe: ${size}`,
     "themePackLicense": (license: string) => `Lizenz: ${license}`,
     "themePackAttribution": (attribution: string) => `Urheberhinweis: ${attribution}`,
+    "themePackDetails": "Details",
+    "themePackDetailsFor": (name: string) => `Details: ${name}`,
     "themePackFonts": "Schriftlizenzen",
     "themePackFontLicense": (file: string, license: string) => `${file}: ${license}`,
     "themePackUnreadableName": "Nicht lesbares Design-Paket",
@@ -3417,6 +3418,20 @@ export const languageGerman = {
     "themePackLintLine": (selector: string, prop: string, why: string) => `${selector} ${prop}: ${why}`,
     "backupAlternativesLeftOut": (count: number, names: string[]) =>
         `${count} Chat(s) hatten alternative Antworten, die während des Backups gefunden wurden, und eine Backup-Datei hat keinen Platz dafür, daher sind sie nicht im Backup enthalten (die Chats und ihre Nachrichten werden gespeichert):\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "backupBranchesConfirm": (count: number, lines: string[]) =>
+        `${count} Chat(s) haben alternative Antworten, und eine Backup-Datei hat keinen Platz dafür. Eine Alternative, von der aus die Unterhaltung fortgesetzt wurde (sie enthält eine spätere Nachricht von Ihnen), wird als zusätzlicher Chat am Ende der Chatliste dieses Charakters geschrieben, mit einem Namen wie "Chat (Branch)", sodass das Backup um etwa die angezeigte Größe wächst; die übrigen alternativen Antworten werden weggelassen. Die Chats und ihre Nachrichten werden gespeichert, und in dieser App ändert sich nichts. Backup auf diese Weise erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${lines.join('\n')}${count > lines.length ? `\n...und ${count - lines.length} weitere` : ''}`,
+    "backupBranchesLine": (chat: string, branchChats: number, bytes: number | null, leftOut: number) => {
+        const parts: string[] = []
+        if (branchChats > 0) {
+            const size = bytes === null ? 'Größe unbekannt' : bytes < 0.1 * 1024 * 1024 ? 'unter 0.1 MiB' : `etwa ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+            parts.push(`${branchChats} Verzweigungs-Chat(s), ${size}`)
+        }
+        if (leftOut > 0) {
+            parts.push(`${leftOut} Antwort(en) weggelassen`)
+        }
+        return parts.length > 0 ? `${chat} (${parts.join('; ')})` : chat
+    },
+    "backupBranchesLeftOutLine": (chat: string) => `${chat} (alternative Antworten weggelassen)`,
     "backupForkChatDataConfirm": (count: number, names: string[]) =>
         `${count} Chat(s) enthalten Daten, die nur diese App verwendet (die Arten stehen in Klammern), und eine Backup-Datei hat keinen Platz dafür, daher würden sie in diesem Backup fehlen (die Chats und ihre Nachrichten werden gespeichert). Die Daten bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupForkChatDataLeftOut": (count: number, names: string[]) =>
@@ -4267,7 +4282,7 @@ export const languageGerman = {
         "declinedBody": "Ihre Daten wurden unverändert gelassen. RisuTanium kann sie erst öffnen, wenn sie konvertiert sind.",
         "declinedBodyWithImport": "Ihre Daten wurden unverändert gelassen. RisuTanium kann sie erst öffnen, wenn sie konvertiert sind oder Sie eine Backup-Datei wiederherstellen.",
         "declinedConvert": "Konvertieren…",
-        "declinedImport": "Aus einer Backup-Datei (.bin) wiederherstellen",
+        "declinedImport": "Aus einer Backup-Datei (.bin oder .rtb) wiederherstellen",
         "fromBackupTitle": "Ihre Hauptspeicherdatei konnte nicht gelesen werden",
         "fromBackupBody": (date: string) => `Ihre Hauptspeicherdatei konnte nicht gelesen werden, aber ein am ${date} gespeichertes Backup ist lesbar. RisuTanium kann stattdessen dieses Backup konvertieren. Alles, was Sie danach gespeichert haben, ist darin nicht enthalten. Ihre alten Dateien bleiben erhalten; dieser Schritt löscht sie nicht.`,
         "fromBackupNo": "Nicht jetzt",
@@ -4354,11 +4369,11 @@ export const languageGerman = {
         "noticeServerCapability": "Dieser Server kann nicht im neuen Speicherformat speichern, daher hat RisuTanium Ihre Daten schreibgeschützt geöffnet. Es wurde nichts geändert, und es wird nichts gespeichert. Ihre Daten sind nicht verloren.",
         "noticeBackendUnavailable": "RisuTanium konnte auf dieser Seite den neuen Speicher nicht erreichen und hat Ihre Daten daher schreibgeschützt geöffnet. Es wurde nichts geändert, und es wird nichts gespeichert. Ihre Daten sind nicht verloren.",
         "offerRestoreNewest": (date: string) => `Neuestes Backup wiederherstellen (${date})`,
-        "offerImport": "Aus einer Backup-Datei (.bin) wiederherstellen",
+        "offerImport": "Aus einer Backup-Datei (.bin oder .rtb) wiederherstellen",
         "noticeRestoredFromBackup": (date: string) => `RisuTanium hat das am ${date} gespeicherte Backup wiederhergestellt. Alles, was Sie danach gespeichert haben, ist nicht enthalten.`,
         "noticeRestoredFromOlderBackup": (date: string, newestDate: string) => `Das neueste Backup (gespeichert am ${newestDate}) konnte nicht gelesen werden, daher hat RisuTanium das am ${date} gespeicherte Backup wiederhergestellt. Alles, was Sie danach gespeichert haben, ist nicht enthalten.`,
         "recoveryRestoreOffer": "Neuestes Backup wiederherstellen",
-        "recoveryImportOffer": "Aus einer Backup-Datei (.bin) wiederherstellen",
+        "recoveryImportOffer": "Aus einer Backup-Datei (.bin oder .rtb) wiederherstellen",
         "recoveryRestoreTitle": (date: string) => `Das am ${date} gespeicherte Backup wiederherstellen?`,
         "recoveryRestoreBody": "RisuTanium hat Backups Ihres alten Speicherstands gefunden, aber keine Hauptspeicherdatei. Beim Wiederherstellen wird das neueste lesbare Backup verwendet. Wenn das neueste nicht gelesen werden kann, fragt RisuTanium Sie, bevor es ein älteres verwendet. Alles, was Sie danach gespeichert haben, ist darin nicht enthalten. Ihre alten Dateien bleiben erhalten; dieser Schritt löscht sie nicht.",
         "recoveryRestoreBodyUnknown": "RisuTanium hat Backups Ihres alten Speicherstands gefunden und konnte nicht prüfen, ob eine Hauptspeicherdatei vorhanden ist. Beim Wiederherstellen wird die Hauptspeicherdatei verwendet, wenn sie gelesen werden kann, andernfalls das neueste lesbare Backup. Wenn das neueste Backup nicht gelesen werden kann, fragt RisuTanium Sie, bevor es ein älteres verwendet. Alles, was Sie danach gespeichert haben, ist darin nicht enthalten. Ihre alten Dateien bleiben erhalten; dieser Schritt löscht sie nicht.",

@@ -1,9 +1,9 @@
 import { alertError } from '../alert'
 import { language } from 'src/lang'
-import { transportKind } from '../storage/tauriByteTransport'
 import { refuseBackupLoadWhileBusy } from './backupWorkGuard'
-import { LoadLocalBackup, LoadPickedLocalBackup, type OpenedBin } from './backuplocal'
+import { backupPickerAccept, LoadLocalBackup, LoadPickedLocalBackup, loadPickedBackupAtBoot, type OpenedBin } from './backuplocal'
 import type { ImportSource } from '../importSource'
+import type { BootImportEnd, BootImportTarget } from '../storage/store2/legacy/bootImport'
 import type { OperationOutcome } from './operationEnd'
 import type { RtbRunOptions } from './rtbRestoreEntry'
 import { classifyPrefix } from './rtb/sniff'
@@ -16,6 +16,7 @@ import { classifyPrefix } from './rtb/sniff'
  * - anything else is turned away with a notice, and nothing is read further or written.
  * A file another app opened is routed the same way from its open source, after the caller's own confirmation.
  * The Welcome picker passes `firstRun` and `onPicked`; the routing rules are the same.
+ * The start-up picker routes through `routeBootPickedBackup` to the boot's installer; the rules are the same.
  *
  * Invariants:
  * - The `.bin` restore is reached only when `backupKindOf` says `bin`. A failed read, a short read, a rejection or an
@@ -26,6 +27,9 @@ import { classifyPrefix } from './rtb/sniff'
  * - The picker opens in the caller's own turn: nothing is awaited before `click()`.
  * - Every promise returned here resolves; a rejection of a routed restore is reported as `failed`. That is honest only
  *   because the `.bin` restore never rejects and the `.rtb` restore rejects only before it replaces anything.
+ * - At start-up the same holds with a stronger premise: `loadPickedBackupAtBoot` and `runRtbBootRestore` never reject, so
+ *   the `catch` of `routeBootPickedBackup`, which maps to `cancelled`, is reached only by a failed dynamic import, before
+ *   anything was read or written.
  */
 
 /** The longest first entry name a `.bin` may have to be routed to the `.bin` restore. */
@@ -144,6 +148,52 @@ export async function routePickedBackup(file: File, deps: Partial<RouterDeps> = 
     }
 }
 
+/** The restores a picked file is routed to at start-up; tests replace them to observe what is routed where. */
+export interface BootRouterDeps {
+    loadBin(file: File, target: BootImportTarget): Promise<BootImportEnd>
+    loadRtb(file: File, target: BootImportTarget): Promise<BootImportEnd>
+}
+
+function realBootRouterDeps(): BootRouterDeps {
+    return {
+        loadBin: (file, target) => loadPickedBackupAtBoot(file, target),
+        loadRtb: async (file, target) => {
+            const { runRtbBootRestore } = await import('./rtbBootRestore')
+            const { pickedRtbOf } = await import('./rtbRestoreEntry')
+            return runRtbBootRestore(pickedRtbOf(file), target)
+        },
+    }
+}
+
+/**
+ * The start-up counterpart of `routePickedBackup`: the same classification and the same rule that only `bin` reaches the
+ * `.bin` flow. A file that is not a backup, or cannot be read, ends `cancelled` after its notice: nothing was written and the
+ * boot asks again. Never rejects.
+ */
+export async function routeBootPickedBackup(file: File, target: BootImportTarget, deps: Partial<BootRouterDeps> = {}): Promise<BootImportEnd> {
+    const calls: BootRouterDeps = { ...realBootRouterDeps(), ...deps }
+    try {
+        const kind = await readBackupKind(file)
+        switch (kind) {
+            case 'bin':
+                return await calls.loadBin(file, target)
+            case 'rtb':
+                return await calls.loadRtb(file, target)
+            case 'not-a-backup':
+                alertError(language.backupFileNotRecognized)
+                return { kind: 'cancelled' }
+            case 'could-not-read':
+                alertError(language.backupFileUnreadable)
+                return { kind: 'cancelled' }
+        }
+    } catch (error) {
+        // Only a failed dynamic import can reach here: the routed restores never reject, and nothing was read or written.
+        console.error(error)
+        alertError('Failed, Is file corrupted?')
+        return { kind: 'cancelled' }
+    }
+}
+
 /** Reads the probe prefix of an opened source and classifies it; a failed, short or thrown read is `could-not-read`. Never rejects. */
 export async function readBackupKindOfSource(source: Pick<ImportSource, 'size' | 'read'>): Promise<BackupKind | 'could-not-read'> {
     try {
@@ -220,8 +270,9 @@ export function loadBackupFromPicker(deps: Partial<RouterDeps> = {}, route: Pick
     try {
         const input = document.createElement('input')
         input.type = 'file'
-        if (transportKind() !== 'android') {
-            input.accept = '.bin,.rtb,application/vnd.risutanium.rtb'
+        const accept = backupPickerAccept()
+        if (accept !== null) {
+            input.accept = accept
         }
         // The handler awaits the whole route, so a caller that awaits `onchange` sees the restore finish.
         input.onchange = async () => {

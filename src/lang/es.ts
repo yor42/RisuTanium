@@ -3228,6 +3228,7 @@ export const languageSpanish = {
     "pluginV2Warning": "Los plugins V2 y V2.1 se consideran inseguros y dejarán de funcionar en futuras versiones. **Por favor, no uses estas versiones de plugins.** Si eres el desarrollador de este plugin, por favor actualízalo a V3 lo antes posible.",
     "createFolderOnBranch": "Crear Carpeta al Ramificar",
     "disableAbove": "Mensajes cortados para la IA",
+    "chatPlaygroundSwitchRole": "Cambiar entre usuario y asistente",
     "hamburgerButtonBottom": "Mover el botón de menú a la parte inferior de la barra lateral",
     "partialBackupFirstConfirm": "⚠️ ADVERTENCIA: Copia de Seguridad Local Parcial ⚠️\n\nEsta copia de seguridad guarda rápidamente solo la información esencial.\n\nIncluye:\n- Base de datos (historial de chats, personajes, módulos, plugins, prompts, configuración, etc.)\n- Iconos de perfil de personajes (imágenes principales)\n- Iconos de usuario y fondos personalizados\n- Iconos de persona\n- Imágenes de carpetas\n- Imágenes de preset de bot\n\n⚠️ NO Incluye:\n- Imágenes de emociones\n- Activos adicionales de personajes\n- Archivos de voz VITS\n- Todos los demás archivos multimedia adicionales\n\n¡Este archivo de copia de seguridad NO incluye todos los activos de los personajes!\nSi necesitas una copia de seguridad completa, usa la copia de seguridad local normal.\n\n¿Quieres continuar?",
     "partialBackupSecondConfirm": "⚠️⚠️ ADVERTENCIA FINAL ⚠️⚠️\n\n¡Esta copia de seguridad solo guarda las imágenes de perfil de los personajes y NO guarda la mayoría de los demás activos!\n\nQué se guardará:\n- Base de datos (historial de chats, personajes, módulos, plugins, prompts, configuración, etc.)\n- Iconos de perfil de personajes (imágenes principales)\n- Iconos de usuario y fondos personalizados\n- Iconos de persona\n- Imágenes de carpetas\n- Imágenes de preset de bot\n\nQué NO se guardará:\n- Imágenes de emociones\n- Activos adicionales de personajes\n- Archivos de voz VITS\n- Todos los demás archivos multimedia\n\n⚠️ ¡Continúa SOLO si no necesitas los activos de los personajes en tu archivo de copia de seguridad! ⚠️\n\n¿Estás realmente seguro de que quieres continuar con la copia de seguridad parcial?",
@@ -3286,8 +3287,6 @@ export const languageSpanish = {
         `${items.length} elemento(s) ocupan 4 GiB o más, que es más de lo que cabe en una sola entrada de un archivo de copia de seguridad, por lo que su contenido no está en la copia de seguridad (un personaje conserva solo un marcador de posición):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `${count} elemento(s) de esta copia de seguridad superan los 100 MiB. Un servidor Node de RisuAI upstream no puede restaurar un elemento tan grande, por lo que los omitiría al restaurar esta copia allí; esta aplicación y las demás plataformas sí los restauran. ¿Crear la copia de seguridad con ellos incluidos? Si lo rechazas, no se crea ningún archivo de copia de seguridad. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
-    "backupAlternativesConfirm": (count: number, names: string[]) =>
-        `${count} chat(s) tienen respuestas alternativas, y un archivo de copia de seguridad no tiene lugar para ellas, así que se omitirían de esta copia (los chats y sus mensajes se guardan). Las alternativas permanecen en esta aplicación; solo la copia no las incluye. ¿Crear la copia de seguridad sin ellas? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `${count} preset(s) de tarea se guardan solo en este dispositivo, y un archivo de copia de seguridad no tiene lugar para ellos, así que se omitirían de esta copia. Permanecen en esta aplicación; solo la copia no los incluye. ¿Crear la copia de seguridad sin ellos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
@@ -3351,6 +3350,8 @@ export const languageSpanish = {
     "themePackSize": (size: string) => `Tamaño: ${size}`,
     "themePackLicense": (license: string) => `Licencia: ${license}`,
     "themePackAttribution": (attribution: string) => `Atribución: ${attribution}`,
+    "themePackDetails": "Detalles",
+    "themePackDetailsFor": (name: string) => `Detalles: ${name}`,
     "themePackFonts": "Licencias de fuentes",
     "themePackFontLicense": (file: string, license: string) => `${file}: ${license}`,
     "themePackUnreadableName": "Paquete de tema ilegible",
@@ -3402,6 +3403,20 @@ export const languageSpanish = {
     "themePackLintLine": (selector: string, prop: string, why: string) => `${selector} ${prop}: ${why}`,
     "backupAlternativesLeftOut": (count: number, names: string[]) =>
         `${count} chat(s) tenían respuestas alternativas que se encontraron mientras se ejecutaba la copia de seguridad, y un archivo de copia de seguridad no tiene lugar para ellas, así que no están en la copia (los chats y sus mensajes se guardan):\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
+    "backupBranchesConfirm": (count: number, lines: string[]) =>
+        `${count} chat(s) tienen respuestas alternativas, y un archivo de copia de seguridad no tiene lugar para ellas. Una alternativa desde la que continuó la conversación (contiene un mensaje posterior tuyo) se escribe como un chat adicional al final de la lista de chats de ese personaje, con un nombre como "Chat (Branch)", así que la copia crece aproximadamente el tamaño indicado; las demás respuestas alternativas se omiten. Los chats y sus mensajes se guardan, y no cambia nada en esta aplicación. ¿Crear la copia de seguridad de esta manera? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${lines.join('\n')}${count > lines.length ? `\n...y ${count - lines.length} más` : ''}`,
+    "backupBranchesLine": (chat: string, branchChats: number, bytes: number | null, leftOut: number) => {
+        const parts: string[] = []
+        if (branchChats > 0) {
+            const size = bytes === null ? 'tamaño desconocido' : bytes < 0.1 * 1024 * 1024 ? 'menos de 0.1 MiB' : `unos ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+            parts.push(`${branchChats} chat(s) de rama, ${size}`)
+        }
+        if (leftOut > 0) {
+            parts.push(`${leftOut} respuesta(s) omitida(s)`)
+        }
+        return parts.length > 0 ? `${chat} (${parts.join('; ')})` : chat
+    },
+    "backupBranchesLeftOutLine": (chat: string) => `${chat} (respuestas alternativas omitidas)`,
     "backupForkChatDataConfirm": (count: number, names: string[]) =>
         `${count} chat(s) contienen datos que solo usa esta aplicación (los tipos van entre paréntesis), y un archivo de copia de seguridad no tiene lugar para ellos, así que se omitirían de esta copia (los chats y sus mensajes se guardan). Los datos permanecen en esta aplicación; solo la copia no los incluye. ¿Crear la copia de seguridad sin ellos? Si rechazas, no se crea ningún archivo de copia. Todavía no se ha escrito nada.\n\n${names.join('\n')}${count > names.length ? `\n...y ${count - names.length} más` : ''}`,
     "backupForkChatDataLeftOut": (count: number, names: string[]) =>
@@ -4252,7 +4267,7 @@ export const languageSpanish = {
         declinedBody: "Tus datos se dejaron como estaban. RisuTanium no puede abrirlos hasta que se conviertan.",
         declinedBodyWithImport: "Tus datos se dejaron como estaban. RisuTanium no puede abrirlos hasta que se conviertan o restaures un archivo de respaldo.",
         declinedConvert: "Convertir…",
-        declinedImport: "Restaurar desde un archivo de respaldo (.bin)",
+        declinedImport: "Restaurar desde un archivo de respaldo (.bin o .rtb)",
         fromBackupTitle: "No se pudo leer tu archivo principal de guardado",
         fromBackupBody: (date: string) => `No se pudo leer tu archivo principal de guardado, pero sí un respaldo guardado el ${date}. RisuTanium puede convertir ese respaldo en su lugar. Lo que hayas guardado después de ese momento no está en él. Tus archivos antiguos se conservan; este paso no los elimina.`,
         fromBackupNo: "Ahora no",
@@ -4339,11 +4354,11 @@ export const languageSpanish = {
         noticeServerCapability: "Este servidor no puede guardar en el nuevo formato de almacenamiento, por lo que RisuTanium abrió tus datos en modo de solo lectura. No se cambió nada y no se guardará nada. Tus datos no se han perdido.",
         noticeBackendUnavailable: "RisuTanium no pudo acceder al nuevo almacenamiento en esta página, por lo que abrió tus datos en modo de solo lectura. No se cambió nada y no se guardará nada. Tus datos no se han perdido.",
         offerRestoreNewest: (date: string) => `Restaurar el respaldo más reciente (${date})`,
-        offerImport: "Restaurar desde un archivo de respaldo (.bin)",
+        offerImport: "Restaurar desde un archivo de respaldo (.bin o .rtb)",
         noticeRestoredFromBackup: (date: string) => `RisuTanium restauró el respaldo guardado el ${date}. Lo que hayas guardado después de ese momento no está incluido.`,
         noticeRestoredFromOlderBackup: (date: string, newestDate: string) => `No se pudo leer el respaldo más reciente (guardado el ${newestDate}), así que RisuTanium restauró el respaldo guardado el ${date}. Lo que hayas guardado después de ese momento no está incluido.`,
         recoveryRestoreOffer: "Restaurar el respaldo más reciente",
-        recoveryImportOffer: "Restaurar desde un archivo de respaldo (.bin)",
+        recoveryImportOffer: "Restaurar desde un archivo de respaldo (.bin o .rtb)",
         recoveryRestoreTitle: (date: string) => `¿Restaurar el respaldo guardado el ${date}?`,
         recoveryRestoreBody: "RisuTanium encontró respaldos de tu guardado anterior, pero no el archivo principal de guardado. Al restaurar se usa el respaldo más reciente que se pueda leer. Si el más reciente no se puede leer, RisuTanium te pregunta antes de usar uno más antiguo. Lo que hayas guardado después de ese momento no está en él. Tus archivos antiguos se conservan; este paso no los elimina.",
         recoveryRestoreBodyUnknown: "RisuTanium encontró respaldos de tu guardado anterior y no pudo comprobar si existe un archivo principal de guardado. Al restaurar se usa el archivo principal de guardado si se puede leer y, si no, el respaldo más reciente que se pueda leer. Si el respaldo más reciente no se puede leer, RisuTanium te pregunta antes de usar uno más antiguo. Lo que hayas guardado después de ese momento no está en él. Tus archivos antiguos se conservan; este paso no los elimina.",

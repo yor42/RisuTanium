@@ -43,7 +43,7 @@ import {
     alertClear,
 } from './alert'
 import { ALERT_BACK_ACTIONS, cancelHasOwnButton, offeredCancel } from './alertBack'
-import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from './alertPrompts'
+import { ANSWER_GUARD_MS, noticesSettled, queueNotice, resetAlertPromptsForTests } from './alertPrompts'
 import { dispatchBack, resetBackHandlersForTests } from './backHandlers'
 import { alertStore } from './stores.svelte'
 
@@ -290,6 +290,23 @@ describe('notices and waits', () => {
         expect(dispatchBack()).toBe(true)
         expect(error).toHaveBeenCalled()
         error.mockRestore()
+    })
+
+    test('new rule: Back on a boot notice from the queue acknowledges it, and the next notice is shown', async () => {
+        queueNotice('N1')
+        queueNotice('N2')
+        const settled = track(noticesSettled())
+        expect(shown()).toMatchObject({ type: 'normal', msg: 'N1' })
+
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(shown()).toMatchObject({ type: 'normal', msg: 'N2' })
+        expect(settled.settled).toBe(false)
+
+        expect(dispatchBack()).toBe(true)
+        await settle()
+        expect(shown().type).toBe('none')
+        expect(settled.settled).toBe(true)
     })
 })
 

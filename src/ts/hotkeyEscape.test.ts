@@ -81,7 +81,7 @@ vi.mock(import('./process/index.svelte'), () => ({
 import { initHotkey } from './hotkey'
 import { alertStore, settingsOpen } from './stores.svelte'
 import { alertConfirm, alertInput, alertSelect } from './alert'
-import { ANSWER_GUARD_MS, resetAlertPromptsForTests } from './alertPrompts'
+import { ANSWER_GUARD_MS, noticesSettled, queueNotice, resetAlertPromptsForTests } from './alertPrompts'
 
 //#region helpers
 
@@ -438,5 +438,51 @@ describe('Escape on a select or input whose caller offered a cancel', () => {
         expect.soft(out.settled, 'the select').toBe(false)
         expect.soft(shown(), 'the store').toBe(prompt)
         expect.soft(key.defaultPrevented, 'the key was consumed').toBe(true)
+    })
+})
+
+describe('Enter and Escape on a boot notice from the queue', () => {
+    function enterKey(): KeyboardEvent {
+        return new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    }
+
+    function shownNotice(): string | null {
+        const value = shown()
+        return value.type === 'normal' ? value.msg : null
+    }
+
+    test('new rule: Enter inside the answer pause of a re-shown notice leaves it, and Enter after the pause closes it', async () => {
+        vi.useFakeTimers()
+        queueNotice('N1')
+        queueNotice('N2')
+        await vi.advanceTimersByTimeAsync(ANSWER_GUARD_MS + 1)
+        alertStore.set({ type: 'toast', msg: 'Saved' })
+        alertStore.set(NONE)
+        const reshown = shown()
+        expect.soft(shownNotice(), 'the notice after the toast').toBe('N1')
+
+        press(enterKey())
+        expect.soft(shown(), 'the notice after an Enter inside the pause').toBe(reshown)
+
+        await vi.advanceTimersByTimeAsync(ANSWER_GUARD_MS + 1)
+        press(enterKey())
+        expect.soft(shownNotice(), 'the next notice after an Enter past the pause').toBe('N2')
+    })
+
+    test('new rule: Escape closes a shown notice, so the next one is shown, and Escape on the last one settles the queue', async () => {
+        queueNotice('N1')
+        queueNotice('N2')
+        const settled = { done: false }
+        void noticesSettled().then(() => { settled.done = true })
+
+        press(escapeKey())
+        await Promise.resolve()
+        expect.soft(shownNotice(), 'the notice after the first Escape').toBe('N2')
+        expect.soft(settled.done, 'settled after the first Escape').toBe(false)
+
+        press(escapeKey())
+        await Promise.resolve()
+        expect.soft(shown(), 'the store after the second Escape').toEqual(NONE)
+        expect.soft(settled.done, 'settled after the second Escape').toBe(true)
     })
 })

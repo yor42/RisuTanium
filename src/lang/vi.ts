@@ -3205,6 +3205,7 @@ export const languageVietnamese = {
     "longPressToPopupEditor": "Nhấn giữ để mở trình soạn thảo bật lên",
     "newMessageButtonStyle": "Kiểu nút tin nhắn mới",
     "disableAbove": "Cắt tin nhắn cho AI",
+    "chatPlaygroundSwitchRole": "Chuyển đổi giữa người dùng và trợ lý",
     "newMessageButtonBottomRight": "Dưới cùng bên phải",
     "disableMessage": "Vô hiệu hóa tin nhắn",
     "newMessageButtonFloatingCircle": "Vòng tròn nổi (Góc dưới bên phải)",
@@ -3284,8 +3285,6 @@ export const languageVietnamese = {
         `${items.length} mục có dung lượng từ 4 GiB trở lên, vượt quá mức mà một mục trong tệp sao lưu có thể chứa, nên nội dung của chúng không có trong bản sao lưu (nhân vật chỉ giữ lại một phần giữ chỗ):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `${count} mục trong bản sao lưu này lớn hơn 100 MiB. Máy chủ Node RisuAI upstream không thể khôi phục mục lớn như vậy, nên sẽ bỏ qua chúng khi bản sao lưu này được khôi phục ở đó; ứng dụng này và các nền tảng khác thì khôi phục được. Bạn có muốn tạo bản sao lưu có bao gồm chúng không? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
-    "backupAlternativesConfirm": (count: number, names: string[]) =>
-        `${count} cuộc trò chuyện có các phản hồi thay thế, và tệp sao lưu không có chỗ chứa chúng, nên chúng sẽ bị bỏ qua khỏi bản sao lưu này (các cuộc trò chuyện và tin nhắn của chúng vẫn được lưu). Các phản hồi thay thế vẫn ở trong ứng dụng này; chỉ bản sao lưu không có chúng. Bạn có muốn tạo bản sao lưu không có chúng không? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `${count} cài đặt trước tác vụ chỉ được lưu trên thiết bị này, và tệp sao lưu không có chỗ chứa chúng, nên chúng sẽ bị bỏ qua khỏi bản sao lưu này. Chúng vẫn ở trong ứng dụng này; chỉ bản sao lưu không có chúng. Bạn có muốn tạo bản sao lưu không có chúng không? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
@@ -3348,6 +3347,8 @@ export const languageVietnamese = {
     "themePackSize": (size: string) => `Kích thước: ${size}`,
     "themePackLicense": (license: string) => `Giấy phép: ${license}`,
     "themePackAttribution": (attribution: string) => `Ghi công: ${attribution}`,
+    "themePackDetails": "Chi tiết",
+    "themePackDetailsFor": (name: string) => `Chi tiết: ${name}`,
     "themePackFonts": "Giấy phép phông chữ",
     "themePackFontLicense": (file: string, license: string) => `${file}: ${license}`,
     "themePackUnreadableName": "Gói chủ đề không đọc được",
@@ -3399,6 +3400,20 @@ export const languageVietnamese = {
     "themePackLintLine": (selector: string, prop: string, why: string) => `${selector} ${prop}: ${why}`,
     "backupAlternativesLeftOut": (count: number, names: string[]) =>
         `${count} cuộc trò chuyện có các phản hồi thay thế được phát hiện trong lúc sao lưu đang chạy, và tệp sao lưu không có chỗ chứa chúng, nên chúng không có trong bản sao lưu (các cuộc trò chuyện và tin nhắn của chúng vẫn được lưu):\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
+    "backupBranchesConfirm": (count: number, lines: string[]) =>
+        `${count} cuộc trò chuyện có các phản hồi thay thế, và tệp sao lưu không có chỗ chứa chúng. Phản hồi thay thế mà cuộc trò chuyện đã tiếp tục từ đó (có chứa một tin nhắn sau đó của bạn) sẽ được ghi thành một cuộc trò chuyện bổ sung ở cuối danh sách cuộc trò chuyện của nhân vật đó, có tên dạng "Chat (Branch)", nên bản sao lưu sẽ lớn thêm khoảng dung lượng được hiển thị; các phản hồi thay thế khác sẽ bị bỏ qua. Các cuộc trò chuyện và tin nhắn của chúng vẫn được lưu, và không có gì thay đổi trong ứng dụng này. Bạn có muốn tạo bản sao lưu theo cách này không? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.\n\n${lines.join('\n')}${count > lines.length ? `\n...và ${count - lines.length} mục nữa` : ''}`,
+    "backupBranchesLine": (chat: string, branchChats: number, bytes: number | null, leftOut: number) => {
+        const parts: string[] = []
+        if (branchChats > 0) {
+            const size = bytes === null ? 'chưa rõ dung lượng' : bytes < 0.1 * 1024 * 1024 ? 'dưới 0.1 MiB' : `khoảng ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+            parts.push(`${branchChats} cuộc trò chuyện nhánh, ${size}`)
+        }
+        if (leftOut > 0) {
+            parts.push(`${leftOut} phản hồi bị bỏ qua`)
+        }
+        return parts.length > 0 ? `${chat} (${parts.join('; ')})` : chat
+    },
+    "backupBranchesLeftOutLine": (chat: string) => `${chat} (các phản hồi thay thế bị bỏ qua)`,
     "backupForkChatDataConfirm": (count: number, names: string[]) =>
         `${count} cuộc trò chuyện có dữ liệu chỉ ứng dụng này sử dụng (các loại nằm trong ngoặc đơn), và tệp sao lưu không có chỗ chứa chúng, nên chúng sẽ bị bỏ qua khỏi bản sao lưu này (các cuộc trò chuyện và tin nhắn của chúng vẫn được lưu). Dữ liệu vẫn ở trong ứng dụng này; chỉ bản sao lưu không có chúng. Bạn có muốn tạo bản sao lưu không có chúng không? Nếu bạn từ chối, sẽ không có tệp sao lưu nào được tạo. Chưa có gì được ghi.\n\n${names.join('\n')}${count > names.length ? `\n...và ${count - names.length} mục nữa` : ''}`,
     "backupForkChatDataLeftOut": (count: number, names: string[]) =>
@@ -4245,7 +4260,7 @@ export const languageVietnamese = {
         declinedBody: "Dữ liệu của bạn được giữ nguyên. RisuTanium không thể mở dữ liệu cho đến khi nó được chuyển đổi.",
         declinedBodyWithImport: "Dữ liệu của bạn được giữ nguyên. RisuTanium không thể mở dữ liệu cho đến khi nó được chuyển đổi hoặc bạn khôi phục một tệp sao lưu.",
         declinedConvert: "Chuyển đổi…",
-        declinedImport: "Khôi phục từ tệp sao lưu (.bin)",
+        declinedImport: "Khôi phục từ tệp sao lưu (.bin hoặc .rtb)",
         fromBackupTitle: "Không đọc được tệp lưu chính của bạn",
         fromBackupBody: (date: string) => `Không đọc được tệp lưu chính của bạn, nhưng đọc được một bản sao lưu đã lưu vào ${date}. RisuTanium có thể chuyển đổi bản sao lưu đó thay thế. Mọi thứ bạn đã lưu sau thời điểm đó đều không có trong bản sao lưu. Các tệp cũ của bạn được giữ lại; bước này không xóa chúng.`,
         fromBackupNo: "Để sau",
@@ -4332,11 +4347,11 @@ export const languageVietnamese = {
         noticeServerCapability: "Máy chủ này không thể lưu theo định dạng bộ nhớ lưu trữ mới, nên RisuTanium đã mở dữ liệu của bạn ở chế độ chỉ đọc. Không có gì bị thay đổi và sẽ không có gì được lưu. Dữ liệu của bạn không bị mất.",
         noticeBackendUnavailable: "RisuTanium không thể truy cập bộ nhớ lưu trữ mới trên trang này, nên đã mở dữ liệu của bạn ở chế độ chỉ đọc. Không có gì bị thay đổi và sẽ không có gì được lưu. Dữ liệu của bạn không bị mất.",
         offerRestoreNewest: (date: string) => `Khôi phục bản sao lưu mới nhất (${date})`,
-        offerImport: "Khôi phục từ tệp sao lưu (.bin)",
+        offerImport: "Khôi phục từ tệp sao lưu (.bin hoặc .rtb)",
         noticeRestoredFromBackup: (date: string) => `RisuTanium đã khôi phục bản sao lưu được lưu vào ${date}. Mọi thứ bạn đã lưu sau thời điểm đó đều không được đưa vào.`,
         noticeRestoredFromOlderBackup: (date: string, newestDate: string) => `Không đọc được bản sao lưu mới nhất (được lưu vào ${newestDate}), nên RisuTanium đã khôi phục bản sao lưu được lưu vào ${date}. Mọi thứ bạn đã lưu sau thời điểm đó đều không được đưa vào.`,
         recoveryRestoreOffer: "Khôi phục bản sao lưu mới nhất",
-        recoveryImportOffer: "Khôi phục từ tệp sao lưu (.bin)",
+        recoveryImportOffer: "Khôi phục từ tệp sao lưu (.bin hoặc .rtb)",
         recoveryRestoreTitle: (date: string) => `Khôi phục bản sao lưu được lưu vào ${date}?`,
         recoveryRestoreBody: "RisuTanium tìm thấy các bản sao lưu của bản lưu cũ của bạn nhưng không có tệp lưu chính. Việc khôi phục dùng bản sao lưu mới nhất mà đọc được. Nếu bản mới nhất không đọc được, RisuTanium sẽ hỏi bạn trước khi dùng một bản cũ hơn. Mọi thứ bạn đã lưu sau thời điểm đó đều không có trong đó. Các tệp cũ của bạn được giữ lại; bước này không xóa chúng.",
         recoveryRestoreBodyUnknown: "RisuTanium tìm thấy các bản sao lưu của bản lưu cũ của bạn, và không thể kiểm tra xem có tệp lưu chính hay không. Việc khôi phục dùng tệp lưu chính nếu đọc được, nếu không thì dùng bản sao lưu mới nhất mà đọc được. Nếu bản sao lưu mới nhất không đọc được, RisuTanium sẽ hỏi bạn trước khi dùng một bản cũ hơn. Mọi thứ bạn đã lưu sau thời điểm đó đều không có trong đó. Các tệp cũ của bạn được giữ lại; bước này không xóa chúng.",

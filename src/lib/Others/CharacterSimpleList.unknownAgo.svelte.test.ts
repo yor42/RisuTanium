@@ -184,3 +184,15 @@ describe('CharacterSimpleList last-interaction text of a never-used character', 
         expect(await agoTexts([0])).toEqual([languageKorean.settingsPage.unknown])
     })
 })
+
+describe('CharacterSimpleList last-interaction text of a used character', { timeout: 60_000 }, () => {
+    const agoFor = (languages: string | readonly string[] | undefined): string => new Intl.RelativeTimeFormat(languages as string | string[] | undefined, { style: 'short' }).format(-5, 'minute')
+
+    test('regression reproducer: the "ago" text follows the app language, not the browser languages', async () => {
+        // Pick an app language whose text differs from what the browser languages give, so a base that reads them cannot pass.
+        const tag = ['en', 'ko', 'de'].find((candidate) => agoFor(candidate) !== agoFor(navigator.languages))
+        expect(tag).toBeDefined()
+        changeLanguage(tag!)
+        expect(await agoTexts([Date.now() - 330_000])).toEqual([agoFor(tag)])
+    })
+})

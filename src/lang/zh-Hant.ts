@@ -3247,6 +3247,7 @@ export const languageChineseTraditional = {
     "loadMore": "載入更多",
     "disableMessage": "停用訊息",
     "disableAbove": "從此處截斷提供給 AI 的訊息",
+    "chatPlaygroundSwitchRole": "切換使用者與助理角色",
     "autoScrollToNewMessage": "自動捲動至新訊息",
     "alwaysScrollToNewMessage": "永遠捲動至新訊息（忽略目前捲動位置）",
     "newMessage": "新訊息",
@@ -3329,8 +3330,6 @@ export const languageChineseTraditional = {
         `有 ${items.length} 個項目達到或超過 4 GiB，超出了備份檔案單一項目所能容納的大小，因此它們的內容不在備份中（角色只保留一個預留位置）：\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `此備份中有 ${count} 個項目大於 100 MiB。上游 RisuAI Node 伺服器無法復原如此大的項目，因此在那裡復原此備份時會略過它們；本應用程式和其他平台則可以復原。是否建立包含這些項目的備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
-    "backupAlternativesConfirm": (count: number, names: string[]) =>
-        `有 ${count} 個聊天含有備選回覆，而備份檔案中沒有存放它們的位置，因此它們將不會包含在此備份中（聊天及其訊息會被儲存）。備選回覆仍保留在本應用程式中，只是備份裡沒有。是否建立不含它們的備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `有 ${count} 個任務預設集僅儲存在此裝置上，而備份檔案中沒有存放它們的位置，因此它們將不會包含在此備份中。它們仍保留在本應用程式中，只是備份裡沒有。是否建立不含它們的備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
@@ -3393,6 +3392,8 @@ export const languageChineseTraditional = {
     "themePackSize": (size: string) => `大小：${size}`,
     "themePackLicense": (license: string) => `授權：${license}`,
     "themePackAttribution": (attribution: string) => `署名：${attribution}`,
+    "themePackDetails": '詳細資訊',
+    "themePackDetailsFor": (name: string) => `詳細資訊：${name}`,
     "themePackFonts": '字型授權',
     "themePackFontLicense": (file: string, license: string) => `${file}：${license}`,
     "themePackUnreadableName": '無法讀取的主題包',
@@ -3444,6 +3445,20 @@ export const languageChineseTraditional = {
     "themePackLintLine": (selector: string, prop: string, why: string) => `${selector} ${prop}：${why}`,
     "backupAlternativesLeftOut": (count: number, names: string[]) =>
         `備份執行期間發現有 ${count} 個聊天含有備選回覆，而備份檔案中沒有存放它們的位置，因此它們不在備份中（聊天及其訊息已儲存）：\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
+    "backupBranchesConfirm": (count: number, lines: string[]) =>
+        `有 ${count} 個聊天含有備選回覆，而備份檔案中沒有存放它們的位置。對話曾從某個備選回覆繼續下去（其後包含您的後續訊息）的，會作為額外的聊天寫在該角色聊天列表的末尾，名稱形如「Chat (Branch)」，因此備份會增大約所示的大小；其餘備選回覆將不會包含在備份中。聊天及其訊息會被儲存，本應用程式中不會有任何改變。是否按此方式建立備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${lines.join('\n')}${count > lines.length ? `\n...另有 ${count - lines.length} 個` : ''}`,
+    "backupBranchesLine": (chat: string, branchChats: number, bytes: number | null, leftOut: number) => {
+        const parts: string[] = []
+        if (branchChats > 0) {
+            const size = bytes === null ? '大小未知' : bytes < 0.1 * 1024 * 1024 ? '小於 0.1 MiB' : `約 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+            parts.push(`${branchChats} 個分支聊天，${size}`)
+        }
+        if (leftOut > 0) {
+            parts.push(`${leftOut} 則回覆未包含`)
+        }
+        return parts.length > 0 ? `${chat} (${parts.join('; ')})` : chat
+    },
+    "backupBranchesLeftOutLine": (chat: string) => `${chat} (備選回覆未包含)`,
     "backupForkChatDataConfirm": (count: number, names: string[]) =>
         `有 ${count} 個聊天含有僅本應用程式使用的資料（類型見括號內），而備份檔案中沒有存放它們的位置，因此它們將不會包含在此備份中（聊天及其訊息會被儲存）。這些資料仍保留在本應用程式中，只是備份裡沒有。是否建立不含它們的備份？如果拒絕，將不會建立備份檔案。目前尚未寫入任何內容。\n\n${names.join('\n')}${count > names.length ? `\n...另有 ${count - names.length} 個` : ''}`,
     "backupForkChatDataLeftOut": (count: number, names: string[]) =>
@@ -4290,7 +4305,7 @@ export const languageChineseTraditional = {
         "declinedBody": "您的資料保持原樣。在轉換之前，RisuTanium 無法開啟它。",
         "declinedBodyWithImport": "您的資料保持原樣。在轉換或還原備份檔案之前，RisuTanium 無法開啟它。",
         "declinedConvert": "轉換…",
-        "declinedImport": "從備份檔案（.bin）還原",
+        "declinedImport": "從備份檔案（.bin 或 .rtb）還原",
         "fromBackupTitle": "無法讀取您的主儲存檔案",
         "fromBackupBody": (date: string) => `無法讀取您的主儲存檔案，但可以讀取 ${date} 儲存的一份備份。RisuTanium 可以改為轉換這份備份。在那之後儲存的任何內容都不在其中。您的舊檔案會被保留，此步驟不會刪除它們。`,
         "fromBackupNo": "暫不",
@@ -4377,11 +4392,11 @@ export const languageChineseTraditional = {
         "noticeServerCapability": "此伺服器無法以新的儲存格式儲存，因此 RisuTanium 以唯讀方式開啟了您的資料。沒有更改任何內容，也不會儲存任何內容。您的資料沒有遺失。",
         "noticeBackendUnavailable": "RisuTanium 在此頁面上無法存取新的儲存空間，因此以唯讀方式開啟了您的資料。沒有更改任何內容，也不會儲存任何內容。您的資料沒有遺失。",
         "offerRestoreNewest": (date: string) => `還原最新的備份（${date}）`,
-        "offerImport": "從備份檔案（.bin）還原",
+        "offerImport": "從備份檔案（.bin 或 .rtb）還原",
         "noticeRestoredFromBackup": (date: string) => `RisuTanium 已還原 ${date} 儲存的備份。在那之後儲存的任何內容都不包含在內。`,
         "noticeRestoredFromOlderBackup": (date: string, newestDate: string) => `無法讀取最新的備份（儲存於 ${newestDate}），因此 RisuTanium 還原了 ${date} 儲存的備份。在那之後儲存的任何內容都不包含在內。`,
         "recoveryRestoreOffer": "還原最新的備份",
-        "recoveryImportOffer": "從備份檔案（.bin）還原",
+        "recoveryImportOffer": "從備份檔案（.bin 或 .rtb）還原",
         "recoveryRestoreTitle": (date: string) => `要還原 ${date} 儲存的備份嗎？`,
         "recoveryRestoreBody": "RisuTanium 找到了您舊存檔的備份，但沒有找到主儲存檔案。還原時會使用可以讀取的最新備份。如果最新的備份無法讀取，RisuTanium 會在使用較早的備份之前詢問您。在那之後儲存的任何內容都不在其中。您的舊檔案會保留；此步驟不會刪除它們。",
         "recoveryRestoreBodyUnknown": "RisuTanium 找到了您舊存檔的備份，但無法確認是否存在主儲存檔案。還原時，如果主儲存檔案可以讀取就使用它，否則使用可以讀取的最新備份。如果最新的備份無法讀取，RisuTanium 會在使用較早的備份之前詢問您。在那之後儲存的任何內容都不在其中。您的舊檔案會保留；此步驟不會刪除它們。",

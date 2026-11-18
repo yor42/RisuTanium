@@ -479,6 +479,22 @@ describe('the newer-data warning (T8)', () => {
         await cleanup(run)
     })
 
+    test('verifyAndConfirm with no newer base (the start-up restore) never asks the newer-data question, though the file is older than the page (guard of a new rule; T-V1)', async () => {
+        const page = await openPage()
+        const at = (await page.k.commitKey()).current?.at as number
+        vi.mocked(page.alert.alertConfirm).mockImplementation(async (text) => !(typeof text === 'string' && text.includes('Test device')))
+        const scale = vi.fn(async () => true)
+        const end = await page.plan.verifyAndConfirm(await pick(await fileOf({ createdAt: at - 5000 })), {
+            ...page.plan.realVerifyDeps(), assetDeps: assetDeps(), confirmScale: scale,
+        }, { newerBase: null })
+        if (end.kind !== 'ok') {
+            throw new Error(`expected ok, got ${JSON.stringify(end)}`)
+        }
+        expect(end.verified.newer).toBeNull()
+        expect(textOf(page)).toBeUndefined()
+        expect(scale).toHaveBeenCalledTimes(1)
+    })
+
     test('a backup newer than the target is not warned about (guard)', async () => {
         const page = await openPage()
         const at = (await page.k.commitKey()).current?.at as number
