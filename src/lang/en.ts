@@ -4101,7 +4101,7 @@ export const languageEnglish = {
         libraryUndoGrouped: "Grouped into a new folder",
         libraryUndoMerged: "Made a new folder",
         libraryUndoMovedIntoFolder: (count: number) => count === 1 ? 'Moved 1 item into the folder' : `Moved ${count} items into the folder`,
-        libraryUndoFolderRemoved: "Moved; a folder was removed",
+        libraryUndoFolderRemoved: "Moved; a folder was removed, its characters were kept",
         libraryUndoUngrouped: "Folder ungrouped",
         libraryUndoFolderDeleted: "Folder deleted; its characters stay in the list",
         libraryUndoOrderRestored: "Order restored",

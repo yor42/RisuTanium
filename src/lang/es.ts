@@ -3953,7 +3953,7 @@ export const languageSpanish = {
         libraryUndoGrouped: "Agrupado en una carpeta nueva",
         libraryUndoMerged: "Se creó una carpeta nueva",
         libraryUndoMovedIntoFolder: (count: number) => count === 1 ? 'Se movió 1 elemento a la carpeta' : `Se movieron ${count} elementos a la carpeta`,
-        libraryUndoFolderRemoved: "Movido; se eliminó una carpeta",
+        libraryUndoFolderRemoved: "Movido; se quitó una carpeta y se conservaron sus personajes",
         libraryUndoUngrouped: "Carpeta desagrupada",
         libraryUndoFolderDeleted: "Carpeta eliminada; sus personajes siguen en la lista",
         libraryUndoOrderRestored: "Orden restaurado",

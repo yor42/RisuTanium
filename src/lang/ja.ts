@@ -4102,7 +4102,7 @@ export const languageJapanese = {
         libraryUndoGrouped: "新しいフォルダにまとめました",
         libraryUndoMerged: "新しいフォルダを作成しました",
         libraryUndoMovedIntoFolder: (count: number) => count === 1 ? '1件の項目をフォルダに移動しました' : `${count}件の項目をフォルダに移動しました`,
-        libraryUndoFolderRemoved: "移動しました。フォルダが1つ削除されました",
+        libraryUndoFolderRemoved: "移動しました。フォルダが1つなくなりましたが、キャラクターは残っています",
         libraryUndoUngrouped: "フォルダのグループ化を解除しました",
         libraryUndoFolderDeleted: "フォルダを削除しました。中のキャラクターはリストに残ります",
         libraryUndoOrderRestored: "順序を元に戻しました",

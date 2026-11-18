@@ -737,7 +737,8 @@ function currentRefusal(own?: BusyHandle): Refusal | null {
             partway: language.errors.coldStorageCleanupStoppedFrozen(groups),
         }
     }
-    if (isWorkInProgress() || isBusy({ except: own })) {
+    // An export waiting on an Android save dialog (marked) does not hold a cleanup back; the next batch check counts it again.
+    if (isWorkInProgress() || isBusy({ except: own, ignoreDialogWaits: true })) {
         return {
             atStart: language.errors.coldStorageCleanupBusy,
             partway: language.errors.coldStorageCleanupStoppedBusy,
