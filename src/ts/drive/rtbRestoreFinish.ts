@@ -59,6 +59,11 @@ function realFinishDeps(): RtbFinishDeps {
     }
 }
 
+/** The side-data calls of the real page, for a caller that restores the sides without the rest of the finish. */
+export function realSideDeps(): Pick<RtbFinishDeps, 'applySide' | 'sideBackends'> {
+    return { applySide: applySideAction, sideBackends: defaultSideBackends }
+}
+
 const SIDE_NAME_KEYS: Readonly<Record<SideSectionId, keyof typeof language.rtbRestoreSideNames>> = {
     'side.iris': 'iris',
     'side.google-search': 'googleSearch',
@@ -105,7 +110,7 @@ export function bodyReaderOf(plan: Pick<RestorePlan, 'source' | 'index'>, id: Si
 }
 
 /** S.1: every side section in order; a throw becomes that section's `write-failed` result and the next section runs. */
-async function restoreSides(plan: RtbFinishPlan, deps: RtbFinishDeps): Promise<SideRestoreResult[]> {
+export async function restoreSides(plan: RtbFinishPlan, deps: Pick<RtbFinishDeps, 'applySide' | 'sideBackends'>): Promise<SideRestoreResult[]> {
     const results: SideRestoreResult[] = []
     for (const item of plan.side) {
         try {
