@@ -312,14 +312,130 @@ describe('conflicts (A3)', () => {
         expect(target.querySelector('[data-part="settings-hotkey-conflict"]')).toBeNull()
     })
 
-    test('a fixed key shows its warning with no swap button', () => {
+    test('Ctrl+1 is the ordinary chord of preset slot 1: it conflicts as an action and swaps', () => {
         const target = show()
         const button = startRecording(target, 'home')
         press(button, '1', { ctrlKey: true })
         const block = target.querySelector('[data-part="settings-hotkey-conflict"]')!
-        expect(block.textContent).toContain(language.settingsShellHkFixed('Ctrl+1'))
-        expect(target.querySelector('[data-hotkey-swap]')).toBeNull()
-        expect(stored('home')).toMatchObject({ key: 'h', ctrl: true })
+        expect(block.textContent).toContain(language.settingsShellHkConflict(language.settingsShellHkPresetSlot(1)))
+        expect(block.textContent).not.toContain(language.settingsShellHkFixed('Ctrl+1'))
+        target.querySelector<HTMLElement>('[data-hotkey-swap]')!.click()
+        flushSync()
+        expect(stored('home')).toMatchObject({ key: '1', ctrl: true })
+        expect(stored('presetSlot1')).toMatchObject({ key: 'h', ctrl: true })
+    })
+})
+
+describe('preset slot rows (B9, B10, B11)', () => {
+    function threePresets(): void {
+        freshProfile({ botPresets: [{ name: 'Alpha' }, { name: 'Beta' }, { name: 'Gamma' }] })
+    }
+
+    function slotSelect(target: HTMLElement, n: number): HTMLSelectElement {
+        const found = target.querySelector<HTMLSelectElement>(`[data-hotkey-slot-select="presetSlot${n}"]`)
+        if (!found) throw new Error(`no slot select ${n}`)
+        return found
+    }
+
+    function choose(select: HTMLSelectElement, value: string): void {
+        select.value = value
+        select.dispatchEvent(new Event('change', { bubbles: true }))
+        flushSync()
+    }
+
+    const slots = () => DBState.db.botPresets.map((preset) => preset.slot)
+
+    test('B9 the nine slot rows are listed under their own group, labelled and holding the migrated presets', () => {
+        threePresets()
+        const target = show()
+        expect(Array.from(target.querySelectorAll('h3')).map((h) => h.textContent)).toContain(language.settingsShellHkGroupSlots)
+        for (let n = 1; n <= 9; n++) {
+            expect(rowOf(target, `presetSlot${n}`)!.textContent).toContain(language.settingsShellHkPresetSlot(n))
+        }
+        expect(slotSelect(target, 1).value).toBe('0')
+        expect(slotSelect(target, 3).value).toBe('2')
+        expect(slotSelect(target, 4).value).toBe('')
+        expect(Array.from(slotSelect(target, 4).options).map((option) => option.textContent)).toEqual([language.settingsShellHkSlotNone, 'Alpha', 'Beta', 'Gamma'])
+    })
+
+    test('B10 a free slot is assigned at once with an undo that restores the old slot', async () => {
+        threePresets()
+        const target = show()
+        choose(slotSelect(target, 4), '2')
+        expect(slots()).toEqual([1, 2, 4])
+        expect(toastHost.visible[0].text).toBe(language.settingsShellHkSlotSet)
+        expect(toastHost.visible[0].kind).toBe('undo')
+        await toastHost.activate(toastHost.visible[0].id)
+        expect(slots()).toEqual([1, 2, 3])
+    })
+
+    test('B10 a slot another preset holds asks first, writes nothing on Cancel, and swaps on confirm', () => {
+        threePresets()
+        const target = show()
+        choose(slotSelect(target, 1), '1')
+        const block = target.querySelector('[data-part="settings-hotkey-slot-conflict"]')!
+        expect(block.textContent).toContain(language.settingsShellHkConflict('Alpha'))
+        expect(block.textContent).toContain(language.settingsShellHkSwapOutcome('Alpha', language.settingsShellHkPresetSlot(2)))
+        expect(slots()).toEqual([1, 2, 3])
+        expect(slotSelect(target, 1).value).toBe('0')
+
+        target.querySelector<HTMLElement>('[data-hotkey-slot-cancel]')!.click()
+        flushSync()
+        expect(slots()).toEqual([1, 2, 3])
+        expect(target.querySelector('[data-part="settings-hotkey-slot-conflict"]')).toBeNull()
+
+        choose(slotSelect(target, 1), '1')
+        target.querySelector<HTMLElement>('[data-hotkey-slot-swap]')!.click()
+        flushSync()
+        expect(slots()).toEqual([2, 1, 3])
+        expect(slotSelect(target, 1).value).toBe('1')
+        expect(toastHost.visible[0].text).toBe(language.settingsShellHkSlotSet)
+    })
+
+    test('B10 a reorder while the swap confirm is open still gives the slot to the preset that was picked', () => {
+        threePresets()
+        const target = show()
+        choose(slotSelect(target, 1), '1')
+        const presets = DBState.db.botPresets
+        const [beta, gamma] = [presets[1], presets[2]]
+        presets[1] = gamma
+        presets[2] = beta
+        flushSync()
+        target.querySelector<HTMLElement>('[data-hotkey-slot-swap]')!.click()
+        flushSync()
+        const slotByName = Object.fromEntries(DBState.db.botPresets.map((preset) => [preset.name, preset.slot]))
+        expect(slotByName).toEqual({ Alpha: 2, Beta: 1, Gamma: 3 })
+    })
+
+    test('B10 a picked preset deleted while the swap confirm is open closes the confirm and writes nothing', () => {
+        threePresets()
+        const target = show()
+        choose(slotSelect(target, 1), '1')
+        DBState.db.botPresets.splice(1, 1)
+        flushSync()
+        target.querySelector<HTMLElement>('[data-hotkey-slot-swap]')!.click()
+        flushSync()
+        expect(slots()).toEqual([1, 3])
+        expect(target.querySelector('[data-part="settings-hotkey-slot-conflict"]')).toBeNull()
+    })
+
+    test('B10 None clears the slot for its holder, and Undo brings it back', async () => {
+        threePresets()
+        const target = show()
+        choose(slotSelect(target, 2), '')
+        expect(slots()).toEqual([1, undefined, 3])
+        await toastHost.activate(toastHost.visible[0].id)
+        expect(slots()).toEqual([1, 2, 3])
+    })
+
+    test('B11 read-only: the slot rows name the assigned preset and carry no select', () => {
+        threePresets()
+        setWidth(412)
+        const target = show()
+        expect(target.querySelector('[data-hotkey-slot-select]')).toBeNull()
+        expect(rowOf(target, 'presetSlot2')!.querySelector('[data-hotkey-slot-name]')!.textContent).toBe('Beta')
+        expect(rowOf(target, 'presetSlot5')!.querySelector('[data-hotkey-slot-name]')!.textContent).toBe(language.settingsShellHkSlotNone)
+        expect(rowOf(target, 'home')!.querySelector('[data-hotkey-slot-name]')).toBeNull()
     })
 })
 

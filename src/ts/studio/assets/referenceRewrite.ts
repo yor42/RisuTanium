@@ -59,10 +59,17 @@ function equalsUnder(syntax: PlaceHit['syntax'], written: string, name: string):
 /**
  * Whether the kept name would be read as something else where it is written: as syntax (`{{`, `}}`, or a trailing
  * `}` that the lazy macro pattern would take for the closing braces), as a replacement pattern, or, in `<img src>`,
- * as a value the image lookup never takes for a name or that ends the attribute.
+ * as a value the image lookup never takes for a name or that ends the attribute, or, in `@@emo`, as a name that the
+ * engine trims before comparing it (a blank at either end). An empty name is never read as a reference: every pattern
+ * needs at least one name character.
  */
 function keptIsUnsafeAt(hit: PlaceHit, text: string, kept: string): boolean {
-    if (kept.includes('{{') || kept.includes('}}') || kept.endsWith('}') || readsAsReplacementPattern(kept, hit.path)) {
+    if (kept === '' || kept.includes('{{') || kept.includes('}}') || kept.endsWith('}') || readsAsReplacementPattern(kept, hit.path)) {
+        return true
+    }
+    // The engine trims an `@@emo` name before comparing it, so a kept name with a blank at either end would no longer
+    // name the row once written.
+    if (hit.syntax === 'emoScript' && kept !== kept.trim()) {
         return true
     }
     if (hit.syntax === 'imgSrc') {

@@ -639,8 +639,16 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
         }
         const assetNames = charAssetNames.concat(moduleAssetNames)
 
-        const processer = new HypaProcesser()
-        await processer.addText(assetNames)
+        // Built on the first fuzzy lookup of the pass only: cache hits, exact names and passes without asset tags never need it.
+        let processerPromise: Promise<HypaProcesser> | null = null
+        const getProcesser = () => {
+            processerPromise ??= (async () => {
+                const built = new HypaProcesser()
+                await built.addText(assetNames)
+                return built
+            })()
+            return processerPromise
+        }
         const matches = data.matchAll(assetRegex)
 
         for(const match of matches){
@@ -652,7 +660,7 @@ async function runScriptPass(char:character|groupChat|simpleCharacterArgument, d
                     data = data.replaceAll(match[0], `{{${type}::${bestMatchCache.get(cacheKey)}}}`)
                 }
                 else if(!assetNames.includes(assetName)){
-                    const searched = await processer.similaritySearch(assetName)
+                    const searched = await (await getProcesser()).similaritySearch(assetName)
                     const bestMatch = searched[0]
                     if(bestMatch){
                         data = data.replaceAll(match[0], `{{${type}::${bestMatch}}}`)

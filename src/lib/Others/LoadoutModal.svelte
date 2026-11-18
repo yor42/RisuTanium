@@ -11,7 +11,7 @@
     import { DBState } from "src/ts/stores.svelte";
     import { language } from "src/lang";
     import { loadoutModalStore } from "src/ts/stores.svelte";
-    import { applyLoadout, saveCurrentLoadout, type Loadout } from "src/ts/loadout";
+    import { applyLoadout, loadoutPresetIndex, saveCurrentLoadout, type Loadout } from "src/ts/loadout";
     import { getCurrentCharacter } from "src/ts/storage/database.svelte";
     import { backCloseHandler, registerBackHandler } from "src/ts/backHandlers";
 
@@ -93,6 +93,12 @@
         });
     }
 
+    // The card shows the target's current name, so a renamed preset reads as it is now; the stored name is the fallback.
+    function presetNameOf(loadout: Loadout): string {
+        const index = loadoutPresetIndex(DBState.db.botPresets, loadout);
+        return (index === -1 ? undefined : DBState.db.botPresets[index].name) ?? loadout.presetName;
+    }
+
     function removeLoadout(loadout: Loadout) {
         const index = DBState.db.loadouts.findIndex(l => l.id === loadout.id);
         if (index !== -1) {
@@ -115,10 +121,10 @@
             <span
                 class="flex items-center gap-2 mt-0.5 text-xs text-textcolor/40 flex-wrap"
             >
-                {#if loadout.presetName}
+                {#if presetNameOf(loadout)}
                     <span
                         >{language.loadoutModal.presetLabel} <span class="text-textcolor/60"
-                            >{loadout.presetName}</span 
+                            >{presetNameOf(loadout)}</span
                         ></span
                     >
                 {/if}

@@ -2,6 +2,7 @@ import { v4 } from "uuid"
 import { openURL } from "../../globalApi.svelte"
 import { untrustedNativeFetch } from "../../network/untrustedFetch"
 import { alertConfirm, alertInput } from "../../alert";
+import { ALERT_INPUT_CANCEL } from "../../alertCancel";
 import { language } from "src/lang";
 import { fillLang } from "src/lang/fill";
 import type { RunSubject } from "../chatOrigin";
@@ -555,7 +556,8 @@ export class MCPClient{
         return this.handshaking
     }
     
-    async handshake(){
+    /** `refreshTried` is set on the retry after a sign-in so a refresh token is exchanged at most once per chain. */
+    async handshake(refreshTried:boolean = false){
 
         console.log("MCP Handshake", this.url, this.mcpClientObjectId)
         this.protocolVersion = '2025-03-26' //default to latest version
@@ -642,11 +644,11 @@ export class MCPClient{
         }
 
         if(http.status === 401){
-            await this.oauthLogin()
+            await this.oauthLogin({ allowRefresh: !refreshTried })
             if(this.oauthDeclined){
                 return this.serverInfo
             }
-            return this.handshake()
+            return this.handshake(true)
         }
 
         if(d?.result?.serverInfo){
@@ -674,9 +676,9 @@ export class MCPClient{
         }
     }
 
-    async oauthLogin(){
+    async oauthLogin(options:{ allowRefresh?:boolean } = {}){
 
-        if(this.getRefreshToken){
+        if(this.getRefreshToken && options.allowRefresh !== false){
             const refreshTokenData = await this.getRefreshToken()
             if(refreshTokenData && !isHelperHost(refreshTokenData.tokenUrl)){
                 //get access token using refresh token
@@ -692,10 +694,12 @@ export class MCPClient{
                         client_secret: refreshTokenData.clientSecret
                     })).toString()
                 })
-                if(tokenResponse.status !== 200){
-                    const tokenData = await tokenResponse.json()
-                    this.accessToken = tokenData.access_token
-                    return
+                if(tokenResponse.status === 200){
+                    const tokenData = await tokenResponse.json().catch(() => null)
+                    if(tokenData && typeof tokenData.access_token === 'string'){
+                        this.accessToken = tokenData.access_token
+                        return
+                    }
                 }
             }
         }
@@ -768,7 +772,10 @@ export class MCPClient{
         authUrl.searchParams.set("code_challenge_method", "S256")
 
         openURL(authUrl.toString())
-        const code = await alertInput(language.alerts.mcpInputAuthorizationCode)
+        const code = await alertInput(language.alerts.mcpInputAuthorizationCode, undefined, undefined, { cancel: ALERT_INPUT_CANCEL })
+        if(code === ALERT_INPUT_CANCEL){
+            throw new Error("Failed to get authorization code from helper")
+        }
 
         const authHelperResponse = await untrustedNativeFetch(`${OAUTH_HELPER_ORIGIN}/oauthhelper/api`, {
             method: "POST",

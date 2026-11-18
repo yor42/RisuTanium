@@ -1,6 +1,7 @@
 import { get, writable } from "svelte/store";
 import { saveImage, type character, type Chat, type folder, type groupChat, defaultSdDataFunc, type loreBook, getDatabase, getCurrentChat, getCharacterByIndex, setCharacterByIndex } from "./storage/database.svelte";
 import { alertAddCharacter, alertClear, alertConfirm, alertError, alertNormal, alertSelect, alertStore, alertWait } from "./alert";
+import { ALERT_SELECT_CANCEL } from "./alertCancel";
 import { language } from "../lang";
 import { downloadNotice } from "./exportNotice";
 import { checkNullish, findCharacterbyId, findCharacterIndexbyId, getUserName, readPickedFileBytes, selectMultipleFileObjects, selectSingleFile, selectSingleFileObject } from "./util";
@@ -358,9 +359,24 @@ export function rmCharEmotion(charId:number, emotionId:number) {
 export async function exportChat(page:number){
     try {
 
-        const mode = await alertSelect([language.alerts.exportAsJson, language.alerts.exportAsTxt, language.alerts.exportAsHtmlFile, language.alerts.exportAsHtmlEmbed])
-        const doTranslate = (mode === '2' || mode === '3') ? (await alertSelect([language.translateContent, language.doNotTranslate])) === '0' : false
-        const anonymous = (mode === '2' || mode === '3') ? ((await alertSelect([language.includePersonaName, language.hidePersonaName])) === '1') : false
+        const mode = await alertSelect([language.alerts.exportAsJson, language.alerts.exportAsTxt, language.alerts.exportAsHtmlFile, language.alerts.exportAsHtmlEmbed], undefined, { cancel: ALERT_SELECT_CANCEL })
+        if(mode === ALERT_SELECT_CANCEL){
+            return
+        }
+        let doTranslate = false
+        let anonymous = false
+        if(mode === '2' || mode === '3'){
+            const translateAnswer = await alertSelect([language.translateContent, language.doNotTranslate], undefined, { cancel: ALERT_SELECT_CANCEL })
+            if(translateAnswer === ALERT_SELECT_CANCEL){
+                return
+            }
+            doTranslate = translateAnswer === '0'
+            const personaAnswer = await alertSelect([language.includePersonaName, language.hidePersonaName], undefined, { cancel: ALERT_SELECT_CANCEL })
+            if(personaAnswer === ALERT_SELECT_CANCEL){
+                return
+            }
+            anonymous = personaAnswer === '1'
+        }
         const selectedID = get(selectedCharID)
         const db = DBState.db
         const chat = db.characters[selectedID].chats[page]

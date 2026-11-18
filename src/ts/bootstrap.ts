@@ -6,11 +6,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { get } from "svelte/store";
 import { setDatabase, defaultSdDataFunc, getDatabase, type Database } from "./storage/database.svelte";
 import { repairBotPresetsId } from "./storage/botPresetRepair";
+import { takePresetIdsMinted } from "./storage/presetMeta";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { checkRisuUpdate } from "./update";
 import { botMakerMode, selectedCharID, loadedStore, DBState, LoadingStatusState, alertStore } from "./stores.svelte";
 import { loadPlugins } from "./plugins/plugins.svelte";
-import { alertError, alertMd, alertStaleAccountNotice, alertNormal, alertNormalWait, alertSelect, waitAlert, alertConfirm, alertInput, alertToast } from "./alert";
+import { alertError, alertMd, alertStaleAccountNotice, alertNormal, waitAlert, alertInput, alertToast } from "./alert";
 import { handleWindowError } from "./windowErrorGuard";
 import { characterURLImport, handlePendingRealmLink } from "./characterCards";
 import { desktopLaunchImport } from "./desktopLaunch";
@@ -26,9 +27,9 @@ import {
     seedEmptyBlockProfile,
     type BootBackupSource,
     type BootLoadContext,
-    type BootLoadUi,
     type BootNotice,
 } from "./storage/bootBlockLoad";
+import { bootLoadUi } from "./storage/bootLoadUi";
 import { getPageStorageMode, isAssetSweepHeld, recordsLoadTimeListing, setPageStorageMode, startsLegacyStartupCleanup } from "./storage/pageStorageMode";
 import { fingerprintMainFile } from "./storage/mainFileFingerprint";
 import { dropRisuSaveCache } from "./storage/risuSaveCacheDrop";
@@ -726,13 +727,6 @@ type StoreBoot =
     /** A block profile loaded (or seeded, or restored from a backup) and decoded whole. */
     | { kind: 'installed', tree: Database, how: 'store' | 'backup' | 'seed', committed: boolean, archiveNotices: BootArchiveNotice[], notices: BootNotice[] }
 
-/** The prompts a boot may show before the app is up, over the alert slot. */
-const bootUi: BootLoadUi = {
-    notify: (text) => alertNormalWait(text),
-    choose: async (title, options) => parseInt(await alertSelect([...options], title)),
-    confirm: (text) => alertConfirm(text),
-}
-
 /** The backups listing the boot's fallback reads: pruning, except on a read-only page, which deletes nothing. */
 function listBackupsForBoot(): Promise<number[]> {
     return getPageStorageMode().kind === 'read-only' ? listBackupTimes() : getDbBackups()
@@ -771,7 +765,7 @@ async function blockBootContext(session: BootArchiveSession): Promise<BootLoadCo
     if (owner === null) {
         return null
     }
-    return { owner, store: await getAppStore(), session, ui: bootUi, backups: bootBackups, readUnitCharacter: readArchivedUnitCharacterForBoot, waitForReload: sleepForever }
+    return { owner, store: await getAppStore(), session, ui: bootLoadUi, backups: bootBackups, readUnitCharacter: readArchivedUnitCharacterForBoot, waitForReload: sleepForever }
 }
 
 /** Whether this page's profile is a block profile, so the legacy block cache can go once boot is past the stale-profile gate. */
@@ -1194,6 +1188,11 @@ async function checkNewFormat(): Promise<void> {
         }
     }
     setDatabase(db);
+    // Ids minted by any setDatabase of the boot, and the id of a preset the repair appended, exist only in memory
+    // until the boot's normal save writes them; the mark makes it write, so the ids are the same on the next load.
+    if (takePresetIdsMinted()) {
+        markBootWrite();
+    }
     checkCharOrder();
     queueInlayCleanupForCharacters(purged);
 }

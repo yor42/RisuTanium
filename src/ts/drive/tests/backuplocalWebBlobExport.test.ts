@@ -255,7 +255,9 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), async () => {
 import { SaveLocalBackup, SavePartialLocalBackup } from 'src/ts/drive/backuplocal'
 import { findOversizeAssets } from 'src/ts/drive/backupUpstreamSizes'
 import { ExportCancelToken } from 'src/ts/exportCancel'
-import { dbWriteLock } from 'src/ts/globalApi.svelte'
+import { createHash } from 'node:crypto'
+import { assetStoredSize, exportAssetPieceSource } from 'src/ts/drive/assetPieces'
+import { dbWriteLock, readImage, saveAsset, saveAssetFromBlob, saveAssetFromPieces } from 'src/ts/globalApi.svelte'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import type { ByteStore } from 'src/ts/storage/store/contract'
 import { createIndexedDbStore } from 'src/ts/storage/store/indexedDbStore'
@@ -512,5 +514,135 @@ describe('asset keys upstream wrote that the store can address but not create', 
             cancel: new ExportCancelToken(),
         })
         expect(found.map((item) => item.key)).toEqual(['assets/.big.mp4'])
+    })
+})
+
+describe('a whole asset of the piece-save threshold or more saved by saveAsset on the real IndexedDB store', () => {
+    const LARGE = 17 * MIB + 12345
+    const hashOf = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex')
+
+    test('reproducer: it is stored as a Blob of exactly its bytes under the content key and nothing else is listed', async () => {
+        const bytes = pattern(LARGE, 21)
+
+        const key = await saveAsset(bytes, '', 'clip.mp4')
+
+        expect(key).toBe(`assets/${hashOf(bytes)}.mp4`)
+        expect(await store.list('assets/')).toEqual([key])
+        expect(await store.readValue!(key)).toBeInstanceOf(Blob)
+        expect(sameBytes((await store.read(key)).bytes ?? undefined, bytes)).toBe(true)
+    })
+
+    test('reproducer: the same content saved over an old byte record leaves a Blob', async () => {
+        const bytes = pattern(LARGE, 22)
+        const key = `assets/${hashOf(bytes)}.mp4`
+        await upstream.setItem(key, bytes)
+        expect(await store.readValue!(key)).toBeInstanceOf(Uint8Array)
+
+        expect(await saveAsset(bytes, '', 'clip.mp4')).toBe(key)
+
+        expect(await store.readValue!(key)).toBeInstanceOf(Blob)
+        expect(sameBytes((await store.read(key)).bytes ?? undefined, bytes)).toBe(true)
+    })
+
+    test('reproducer: the same content saved over a Blob record leaves a Blob', async () => {
+        const bytes = pattern(LARGE, 23)
+        const key = await saveAssetFromBlob(new File([bytes], 'clip.mp4'), 'clip.mp4')
+        expect(await store.readValue!(key)).toBeInstanceOf(Blob)
+
+        expect(await saveAsset(bytes, '', 'clip.mp4')).toBe(key)
+
+        expect(await store.readValue!(key)).toBeInstanceOf(Blob)
+        expect(sameBytes((await store.read(key)).bytes ?? undefined, bytes)).toBe(true)
+    })
+
+    test('guard: below the threshold a Blob record kept by the piece writer is replaced by bytes, as before', async () => {
+        const bytes = pattern(1 * MIB, 24)
+        async function* pieces(): AsyncGenerator<Uint8Array, void, undefined> {
+            yield bytes
+        }
+        const key = await saveAssetFromPieces(pieces(), { fileName: 'clip.mp4', sizeBound: 16 * MIB })
+        expect(await store.readValue!(key)).toBeInstanceOf(Blob)
+
+        expect(await saveAsset(bytes, '', 'clip.mp4')).toBe(key)
+
+        expect(await store.readValue!(key)).toBeInstanceOf(Uint8Array)
+        expect(sameBytes((await store.read(key)).bytes ?? undefined, bytes)).toBe(true)
+    })
+
+    test('guard: both shapes read back the same bytes and size through read, readImage and the export size source', async () => {
+        const blobBytes = pattern(LARGE, 25)
+        const plainBytes = pattern(LARGE, 26)
+        const blobKey = await saveAsset(blobBytes, '', 'a.mp4')
+        const plainKey = `assets/${hashOf(plainBytes)}.mp4`
+        await upstream.setItem(plainKey, plainBytes)
+        const source = await exportAssetPieceSource(store)
+
+        for (const [key, bytes] of [[blobKey, blobBytes], [plainKey, plainBytes]] as const) {
+            expect(sameBytes((await store.read(key)).bytes ?? undefined, bytes)).toBe(true)
+            expect(sameBytes(await readImage(key), bytes)).toBe(true)
+            expect(await assetStoredSize(key, source)).toBe(bytes.length)
+        }
+    })
+
+    test('guard: the upstream-limit pre-pass names an oversize asset stored as a Blob and one stored as bytes alike', async () => {
+        const over = 100 * MIB + 1
+        await store.writeBlob!('assets/over-blob.mp4', new Blob([new Uint8Array(over)]), 'unconditional')
+        await upstream.setItem('assets/over-bytes.mp4', new Uint8Array(over))
+        const found = await findOversizeAssets({
+            kind: 'indexeddb',
+            store,
+            sized: null,
+            keys: null,
+            listedKeys: ['assets/over-blob.mp4', 'assets/over-bytes.mp4'],
+            cancel: new ExportCancelToken(),
+        })
+        expect(found).toEqual([
+            { key: 'assets/over-blob.mp4', size: over },
+            { key: 'assets/over-bytes.mp4', size: over },
+        ])
+    })
+
+    test('reproducer (fails before the fix at its Blob precondition): every asset entry of a full export is byte for byte the same whether the large asset is stored as a Blob (saveAsset) or as the bytes upstream wrote', async () => {
+        const bytes = pattern(LARGE, 27)
+        const small = pattern(5000, 28)
+        const name = `${hashOf(bytes)}.mp4`
+        await saveAsset(bytes, '', 'clip.mp4')
+        await upstream.setItem('assets/small.png', small)
+        expect(await store.readValue!(`assets/${name}`)).toBeInstanceOf(Blob)
+        expect((await SaveLocalBackup()).status).toBe('saved')
+        const fromBlob = assetEntries()
+        backupSink.writes.length = 0
+
+        await upstream.clear()
+        await upstream.setItem(`assets/${name}`, bytes)
+        await upstream.setItem('assets/small.png', small)
+        expect(await store.readValue!(`assets/${name}`)).toBeInstanceOf(Uint8Array)
+        expect((await SaveLocalBackup()).status).toBe('saved')
+        const fromBytes = assetEntries()
+
+        expect(fromBlob.map((entry) => entry.name).sort()).toEqual([name, 'small.png'].sort())
+        expect(fromBytes.map((entry) => entry.name)).toEqual(fromBlob.map((entry) => entry.name))
+        for (const entry of fromBytes) {
+            expect(sameBytes(fromBlob.find((other) => other.name === entry.name)?.data, entry.data)).toBe(true)
+        }
+    })
+
+    test('guard: the export of a Blob written by the store primitive the save calls is the same as that of the bytes', async () => {
+        const bytes = pattern(LARGE, 29)
+        const name = `${hashOf(bytes)}.mp4`
+        await store.writeBlob!(`assets/${name}`, new Blob([bytes]), 'unconditional')
+        expect((await SaveLocalBackup()).status).toBe('saved')
+        const fromBlob = assetEntries()
+        backupSink.writes.length = 0
+
+        await upstream.clear()
+        await upstream.setItem(`assets/${name}`, bytes)
+        expect((await SaveLocalBackup()).status).toBe('saved')
+        const fromBytes = assetEntries()
+
+        expect(fromBlob.map((entry) => entry.name)).toEqual([name])
+        expect(fromBytes.map((entry) => entry.name)).toEqual([name])
+        expect(sameBytes(fromBlob[0].data, fromBytes[0].data)).toBe(true)
+        expect(sameBytes(fromBlob[0].data, bytes)).toBe(true)
     })
 })

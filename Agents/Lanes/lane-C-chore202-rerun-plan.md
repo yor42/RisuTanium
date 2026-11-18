@@ -94,7 +94,7 @@ Why the guidance does not fit: this is not a rate check. The stall began about 6
 
 So the rule used is: **the copy must still be running 120 s after screen-off**. At the screen-on rate the fixture meets it. A smaller fixture is acceptable only if lane A shows it keeps the copy running 120 s after screen-off.
 
-**Fixture push.** `fixture-push.ps1` has a 600 MiB default ceiling. It also has `-AllowLarge` (needs a non-blank `-AllowLargeReason`) and `-MaxSeconds` up to 1800 (`Agents/Tools/device/README.md`). Lane A uses these. Budget (lane A, R0 estimate): about 9 min per reproducing run, about 43 min for R1 to R4 with setup, about 65 min in the worst case with the 15 min cap; inside the 75 min. If four runs do not fit, R4 is dropped first.
+**Fixture push.** Every device command names the phone: `-Serial` is required, and every adb call goes through adbg (`MC-2210` to `MC-2212`, CHORE-833). Until CHORE-833 merges, device briefs do not use `fixture-push.ps1` or any device script that calls adb directly; the push goes through adbg with the phone's serial, and the verifier checks device.serial on every run (records batch 4, 2026-11-17). `fixture-push.ps1` has a 600 MiB default ceiling. It also has `-AllowLarge` (needs a non-blank `-AllowLargeReason`) and `-MaxSeconds` up to 1800 (`Agents/Tools/device/README.md`). Once CHORE-833 merges, lane A uses these with `-Serial`. Budget (lane A, R0 estimate): about 9 min per reproducing run, about 43 min for R1 to R4 with setup, about 65 min in the worst case with the 15 min cap; inside the 75 min. If four runs do not fit, R4 is dropped first.
 
 **PC first (MC-330 3).** R0 on PC headless Chrome (lane C ports 6440 to 6459 if lane C hosts it; otherwise lane A's own):
 
@@ -174,7 +174,7 @@ Lane A uses its own ports and scratch (phone 2: 6310 to 6329, `%TEMP%\risu-b715\
 - tooling.md R3 and verify.md disagree on the size of `power.txt`; the plan does not cite it. The plan counts 23 empty blocks (2 to 24), two of them after the wake.
 - The brief calls the poller fault a "poller fault, not device behaviour". The plan states only what is shown: empty from the 2nd poll, before sleep, cause unexplained.
 - The brief proposed `Page.addScriptToEvaluateOnNewDocument`; the verifier's correction replaced it with a pre-pick `Runtime.evaluate`.
-- `fixture-push.ps1` has a 600 MiB default ceiling; the fixture is 1.24 GiB. Covered by `-AllowLarge`; lane A's R0 budget covers restore and push.
+- `fixture-push.ps1` has a 600 MiB default ceiling; the fixture is 1.24 GiB. Covered by `-AllowLarge` with a mandatory `-Serial`, through adbg, and only after CHORE-833 merges (see "Fixture push"); lane A's R0 budget covers restore and push.
 - The 180 s at 8 MiB/s fixture rule gives about 1.4 GiB, above the cap; the plan uses the "still running 120 s after screen-off" rule. The 1.25 GiB ceiling is above MC-330 1's guidance and needs the maintainer's approval.
 - The destination asset directory and the time budget were filled from lane A's R0 (`%TEMP%\risu-b715\chore202\notes.md`, doc-verified by lane A). R0 also showed a frozen desktop page answering CDP, so the earlier "not frozen as a whole" inference and "(e) weakened by b1" are withdrawn; the renderer wchan and the `pre` dump timing were adjusted.
 - Group (h) (vendor freezer) comes from the brief and has no source in the packets.
@@ -184,7 +184,7 @@ Lane A uses its own ports and scratch (phone 2: 6310 to 6329, `%TEMP%\risu-b715\
 ## Sources
 
 - `Agents/Lanes/lane-C-brief.md` and `Agents/Lanes/README.md` (lane rules; lane C ports 6440 to 6459). Phone 2's range 6310 to 6329: measure2 `tools\h.ps1`.
-- `Agents/Roadmap.md`, CHORE-202 and CHORE-203. `Agents/Maintainer-Context.md`, MC-326 item 4 and MC-330 items 1 to 4. `docs/workflow/gates.md`, "Device checks". `Agents/Tools/device/README.md` (`fixture-push.ps1` flags).
+- `Agents/Roadmap.md`, CHORE-202 and CHORE-203. `Agents/Maintainer-Context.md`, MC-326 item 4 and MC-330 items 1 to 4. `docs/workflow/gates.md`, "Device checks". `Agents/Tools/device/README.md` (`fixture-push.ps1` flags; `-Serial` mandatory and adbg routing per `MC-2211`, CHORE-833).
 - `src/ts/storage/saveYield.ts` (`yieldToEventLoop`, `createYieldBudget`).
 - `%TEMP%\risu-lane-c\evidence\tooling.md` and `mechanism.md` (AI-authored, not independently verified).
 - `%TEMP%\risu-b715\measure2\report.md` (only "Corrections from doc-verifier" and the statements it leaves standing) and `verify.md`.

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import {
     CHARACTER_SET_PATHS,
     CHAT_SET_PATHS,
+    parseOwnerRecord,
     RESTORE_PATH_ORDER,
     TEXT_FIELD_PATHS,
     type OwnerRecord,
@@ -47,10 +48,10 @@ function readBack(record: OwnerRecord): OwnerRecord | null {
 
 describe('the character set paths', () => {
     test('the set paths, the text paths and the restore order are the closed lists', () => {
-        expect(CHARACTER_SET_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon'])
+        expect(CHARACTER_SET_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete'])
         expect(TEXT_FIELD_PATHS).toEqual(['desc', 'firstMessage', 'exampleMessage'])
         expect(CHAT_SET_PATHS).toEqual(['note'])
-        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'note', 'alternateGreetings'])
+        expect(RESTORE_PATH_ORDER).toEqual(['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', 'alternateGreetings'])
     })
 
     test('a character record keeps a first message set op, an example message set op, their labels and their restore keys', () => {
@@ -60,6 +61,33 @@ describe('the character set paths', () => {
             restoreOf('desc', 'firstMessage', 'exampleMessage'),
         )
         expect(readBack(record)).toEqual(record)
+    })
+
+    test('a character record keeps a render-when-complete set op, its label and its restore key', () => {
+        const flag = 'risutanium_render_when_complete'
+        const step: Step = {
+            id: 'p:1',
+            at: 1,
+            label: { kind: 'field', field: flag },
+            ops: [{ op: 'set', path: flag, before: { had: false }, after: { had: true, value: true } }],
+        }
+        const restore: RestorePoint = { visitId: 'v1', at: 2, fields: { [flag]: { before: { had: false }, last: { had: true, value: true } } } }
+        const record = recordOf(CHARACTER, [step], restore)
+        expect(readBack(record)).toEqual(record)
+    })
+
+    test('the render-when-complete path is boolean only: a string value is refused whole', () => {
+        const flag = 'risutanium_render_when_complete'
+        const step = (value: unknown): unknown => ({
+            id: 'p:1',
+            at: 1,
+            label: { kind: 'field', field: flag },
+            ops: [{ op: 'set', path: flag, before: { had: false }, after: { had: true, value } }],
+        })
+        const read = (value: unknown): OwnerRecord | null =>
+            parseOwnerRecord({ ownerKey: CHARACTER, touchedAt: 4, done: [step(value)], undone: [], deleted: [], restore: null }, CHARACTER)
+        expect(read(true)).not.toBeNull()
+        expect(read('true')).toBeNull()
     })
 
     test('a chat record is refused whole for a first message set op, an example message set op or a restore key of either', () => {

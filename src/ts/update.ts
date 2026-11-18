@@ -81,7 +81,7 @@ export async function checkRisuUpdate(){
                     language.remindLater1Week,
                 ]
                 
-                const selected = await alertSelect(options, language.remindLaterQuestion)
+                const selected = await alertSelect(options, language.remindLaterQuestion, { cancel: '0' })
                 const selectedIndex = parseInt(selected)
 
                 switch (selectedIndex) {
@@ -123,7 +123,7 @@ if (typeof window !== 'undefined') {
                 language.remindLater1Week,
             ]
             
-            const selected = await alertSelect(options, language.remindLaterQuestion)
+            const selected = await alertSelect(options, language.remindLaterQuestion, { cancel: '0' })
             console.log('Selected index:', selected)
         }
     }

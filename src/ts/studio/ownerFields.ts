@@ -7,6 +7,7 @@ export interface OwnerFields {
     readonly greetings: readonly string[]
     readonly desc: unknown
     readonly hideChatIcon: unknown
+    readonly renderWhenComplete: unknown
     readonly note: unknown
 }
 
@@ -15,7 +16,7 @@ export function readOwnerFields(owner: OwnerKey): OwnerFields | null {
     const resolved = resolveLiveTarget(owner)
     if (resolved.ok === false) return null
     const live = createLiveReader(resolved.target)
-    const valueOf = (path: 'desc' | 'hideChatIcon' | 'note') => {
+    const valueOf = (path: 'desc' | 'hideChatIcon' | 'risutanium_render_when_complete' | 'note') => {
         const read = live.field(path)
         return read.had ? read.value : undefined
     }
@@ -23,6 +24,7 @@ export function readOwnerFields(owner: OwnerKey): OwnerFields | null {
         greetings: [...(live.greetings() ?? [])],
         desc: valueOf('desc'),
         hideChatIcon: valueOf('hideChatIcon'),
+        renderWhenComplete: valueOf('risutanium_render_when_complete'),
         note: resolved.target.chat ? valueOf('note') : undefined,
     }
 }

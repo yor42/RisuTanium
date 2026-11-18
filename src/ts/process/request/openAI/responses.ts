@@ -14,7 +14,7 @@ import { applyAdditionalParameters, applyParameters, getAdditionalParameters, is
 
 import type { OpenAIChatExtra, ResponseFunctionCallItem, ResponseInputItem, ResponseItem, ResponseOutputItem } from './types'
 import { getLocalNetworkRequestOptions, type LocalNetworkRequestOptions } from './shared'
-import { resolveRequestKey } from '../secretKey'
+import { limitedField, sendArgKey, sendKeyLine } from '../secretKey'
 import { beginToolRound, endStreamForGate, gateResult, toolBlockGate } from '../toolLoop'
 
 function responseTextContentToString(content:any):string{
@@ -234,10 +234,12 @@ async function buildResponsesHeaders(arg:RequestDataArgumentExtended, risuIdenti
     const aiModel = arg.aiModel
     // Only the chosen field is resolved, so an unset reference in a field this model does not use cannot fail it.
     const chosenKey = arg.modelInfo?.keyIdentifier
-        ? db.OaiCompAPIKeys[arg.modelInfo.keyIdentifier]
-        : (arg.key ?? (aiModel === 'nanogpt' ? db.nanogptKey : aiModel === 'reverse_proxy' ? db.proxyKey : db.openAIKey))
+        ? await sendKeyLine(arg, `OaiCompAPIKeys:${arg.modelInfo.keyIdentifier}`)
+        : (arg.key != null
+            ? await sendArgKey(arg)
+            : await sendKeyLine(arg, aiModel === 'nanogpt' ? 'nanogptKey' : aiModel === 'reverse_proxy' ? 'proxyKey' : 'openAIKey'))
     const headers = {
-        "Authorization": "Bearer " + await resolveRequestKey(arg, chosenKey),
+        "Authorization": "Bearer " + chosenKey,
         "Content-Type": "application/json"
     }
     if(risuIdentify){
@@ -540,7 +542,8 @@ async function requestHTTPResponsesAPI(requestURL:string, body:any, headers:Reco
     if(!response.ok){
         return {
             type: 'fail',
-            result: (language.errors.httpError + `${JSON.stringify(response.data)}`)
+            result: (language.errors.httpError + `${JSON.stringify(response.data)}`),
+            keyLimited: limitedField(arg, response.status)
         }
     }
 
@@ -880,7 +883,7 @@ export async function requestOpenAIResponseAPI(arg:RequestDataArgumentExtended):
         })
 
         if(response.status !== 200){
-            return { type: 'fail', result: await textifyReadableStream(response.body) }
+            return { type: 'fail', result: await textifyReadableStream(response.body), keyLimited: limitedField(arg, response.status) }
         }
         if(!response.headers.get('Content-Type')?.includes('text/event-stream')){
             return { type: 'fail', result: await textifyReadableStream(response.body) }

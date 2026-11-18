@@ -5,6 +5,7 @@
 
 import { applyFolderOps, folderOpAtTarget, invertFolderOp, type FolderFieldValue, type FolderOp } from '../assets/folderCodec'
 import type { AssetArrayName } from '../assets/mergePreview'
+import { scanReferences } from '../assets/referenceScan'
 import { parseTargetPath, TEXT_TARGET } from '../assets/referenceTargets'
 import { fingerprintElement, listFingerprintOf, mixElementHashes, type ElementHash, type ListElementHash } from './listFingerprint'
 import { parseOwnerKey, type OwnerKey, type ParsedOwnerKey } from './ownerPhase'
@@ -25,7 +26,7 @@ export interface HistoryClock {
 
 // ---------------------------------------------------------------- field paths and values
 
-export type CharacterField = 'desc' | 'firstMessage' | 'exampleMessage' | 'customModuleToggle' | 'hideChatIcon'
+export type CharacterField = 'desc' | 'firstMessage' | 'exampleMessage' | 'customModuleToggle' | 'hideChatIcon' | 'risutanium_render_when_complete'
 export type ChatField = 'note'
 export type SetPath = CharacterField | ChatField
 export type ListPath = 'alternateGreetings'
@@ -37,7 +38,7 @@ export type OwnerKind = ParsedOwnerKey['kind']
 // accepts. The module row holds `customModuleToggle` only: a module record holding a `set` op on any other path is
 // refused whole.
 export const SET_PATHS_BY_KIND: { readonly [K in OwnerKind]: readonly SetPath[] } = {
-    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon'],
+    character: ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete'],
     chat: ['note'],
     module: ['customModuleToggle'],
 }
@@ -50,7 +51,12 @@ export const RESTORE_PATHS_BY_KIND: { readonly [K in OwnerKind]: readonly Restor
 }
 export const CHARACTER_SET_PATHS: readonly SetPath[] = SET_PATHS_BY_KIND.character
 export const CHAT_SET_PATHS: readonly SetPath[] = SET_PATHS_BY_KIND.chat
-export const RESTORE_PATH_ORDER: readonly RestorePath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'note', 'alternateGreetings']
+export const RESTORE_PATH_ORDER: readonly RestorePath[] = ['desc', 'firstMessage', 'exampleMessage', 'customModuleToggle', 'hideChatIcon', 'risutanium_render_when_complete', 'note', 'alternateGreetings']
+// The set paths whose value is a boolean; every other set path carries text.
+export const BOOLEAN_SET_PATHS: readonly SetPath[] = ['hideChatIcon', 'risutanium_render_when_complete']
+export function isBooleanSetPath(path: SetPath): boolean {
+    return BOOLEAN_SET_PATHS.includes(path)
+}
 // The character text fields whose whole value a set op carries.
 export type TextFieldPath = 'desc' | 'firstMessage' | 'exampleMessage'
 export const TEXT_FIELD_PATHS: readonly TextFieldPath[] = ['desc', 'firstMessage', 'exampleMessage']
@@ -226,7 +232,7 @@ function parseFieldValue(path: SetPath, value: unknown): FieldValue | null {
     if (value.had !== true) {
         return null
     }
-    if (path === 'hideChatIcon') {
+    if (isBooleanSetPath(path)) {
         return typeof value.value === 'boolean' ? { had: true, value: value.value } : null
     }
     return typeof value.value === 'string' ? { had: true, value: value.value } : null
@@ -322,9 +328,9 @@ export function isOpAllowedFor(kind: OwnerKind, op: Op): boolean {
     }
 }
 
-// The set paths of an owner kind that carry text: its row of the table minus the boolean `hideChatIcon`.
+// The set paths of an owner kind that carry text: its row of the table minus the boolean paths.
 export function textPathsFor(kind: OwnerKind): readonly SetPath[] {
-    return SET_PATHS_BY_KIND[kind].filter((path) => path !== 'hideChatIcon')
+    return SET_PATHS_BY_KIND[kind].filter((path) => !isBooleanSetPath(path))
 }
 
 const ASSET_ARRAYS: readonly string[] = ['additionalAssets', 'emotionImages', 'assets']
@@ -381,6 +387,9 @@ function parseAssetOp(value: Record<string, unknown>): Op | null | undefined {
             const after = parseStringArray(value.after)
             return before && after ? { op: 'assetFolderOrder', before, after } : null
         }
+        // A merge step recorded as one `textEdit` per occurrence, first message and alternates included, stays readable and
+        // replays unbound. Nothing converts such a step; the bound-step rule only covers the whole-value shape builders
+        // write now.
         case 'textEdit':
             return typeof value.target === 'string' &&
                 TEXT_TARGET.test(value.target) &&
@@ -643,6 +652,11 @@ export interface RestoreWrite {
 // first messages would land only one of the two, so it stops whole (the bound-step rule).
 export type ModelRefusal = 'empty' | 'unknown' | 'precondition' | 'unchanged' | 'pairSplit'
 
+// Why a greeting-list skip happened, from the side of a fingerprinted step the live list was on: `neither` is a list
+// changed elsewhere, `other` a list that already holds the step's result (an earlier save may not have finished).
+// In memory only: never stored, never posted, never part of a committed step.
+export type ListSkipReason = 'neither' | 'other'
+
 export interface StepPlan {
     ok: true
     label: StepLabel
@@ -660,6 +674,10 @@ export interface StepPlan {
     // Revert only: list ops the revert did not apply because their step's list did not fit or the
     // per-op check failed. Absent when none.
     listSkipped?: number
+    // Why the list ops were skipped, when the hash decision of a fingerprinted step says so. A replay sets it on an
+    // `already` move over side `other`; a revert sets it only when every skipped list op was skipped at or after its
+    // hash stop. Absent otherwise.
+    listReason?: ListSkipReason
     // Revert only: steps left whole because they changed the first message together with the alternate first
     // messages and one of the two no longer fits. Absent when none.
     pairSkipped?: number
@@ -677,12 +695,17 @@ export interface StepPlan {
     goneRows?: string[]
     // Restore of a deleted item only: the page write for an open chat without a unique id. In memory only, never stored.
     pageFm?: number
+    // Replay only: the registry targets of the step's text ops that were skipped because the live text had moved on and
+    // does not already hold the result (`firstMessage`, `desc`, `exampleMessage`, `alternateGreetings/<i>` or a registry
+    // path), unique and in the step's own order. Absent when none. In memory only, never stored or posted; it changes no
+    // verdict and no branch of the replay.
+    notRestored?: string[]
 }
 
 export type PlanResult =
     | StepPlan
-    | { ok: false; reason: Exclude<ModelRefusal, 'unchanged'> }
-    | { ok: false; reason: 'unchanged'; listSkipped?: number; pairSkipped?: number; fmNotRestored?: boolean; goneRows?: string[] }
+    | { ok: false; reason: Exclude<ModelRefusal, 'unchanged'>; listReason?: ListSkipReason }
+    | { ok: false; reason: 'unchanged'; listSkipped?: number; listReason?: ListSkipReason; pairSkipped?: number; fmNotRestored?: boolean; goneRows?: string[] }
 
 interface Working {
     field(path: SetPath): FieldValue
@@ -867,6 +890,18 @@ function countOf(rows: readonly (readonly string[])[], tuple: readonly string[])
     return count
 }
 
+// The registry target of a value op that changes a text: a `textEdit`'s target, a text field's `set`, an alternate
+// first message's `listSet`. Null for every op that is not a text change (rows, folders, other fields, chat indexes).
+function textTargetOfOp(op: Op): string | null {
+    if (op.op === 'textEdit') {
+        return op.target
+    }
+    if (op.op === 'set') {
+        return TEXT_FIELD_PATHS.find((path) => path === op.path) ?? null
+    }
+    return op.op === 'listSet' ? `alternateGreetings/${op.index}` : null
+}
+
 // The text a `textEdit` reads and writes: the field for a text field, the list entry for a first message, the owner's
 // registry text otherwise. Null when it cannot be read, which includes a target outside the registry.
 function textOf(target: string, working: Working): string | null {
@@ -901,6 +936,26 @@ function storeText(target: string, text: string, working: Working): void {
     }
 }
 
+// Whether `text` holds `span` at `offset` as a whole reference name: the text there equals `span`, and the scanner, run
+// on the whole text with the target as its path, reads an unflagged reference of either kind whose name span is exactly
+// `[offset, offset + span.length)`. It is the same question the merge planner asked when it chose the place, so replay
+// cannot drift from the scanner. Every `textEdit` of every step goes through this one check, whichever label the step
+// carries: only a merge, or a revert that crossed one, stores a `textEdit`.
+// - C1: a `textEdit` applies at its offset only while this holds for its `from`.
+// - C2: the "already holds the result" test is the same check with `to`.
+// - C3: anything else is left as it is; an undo or redo lists it, a revert counts it as skipped.
+// - C4: replay changes no character outside a whole scanned reference name.
+// - L1, accepted limitation: a place is known by its offset and its whole name only, so a reference with the same name
+//   at the same offset counts as the same place, whichever occurrence, type word or kind it now is.
+function spanHoldsAt(text: string, offset: number, span: string, target: string): boolean {
+    if (text.slice(offset, offset + span.length) !== span) {
+        return false
+    }
+    return (['asset', 'emotion'] as const).some((kind) =>
+        scanReferences(text, kind, target).some((reference) => reference.flag === undefined && reference.offset === offset && reference.length === span.length),
+    )
+}
+
 // The one splice: it computes a whole value on the plan's working copy, and the writes carry that value.
 function spliceText(text: string, edit: { offset: number; from: string; to: string }): string {
     return text.slice(0, edit.offset) + edit.to + text.slice(edit.offset + edit.from.length)
@@ -932,15 +987,16 @@ export function textBeforeOf(field: (path: TextFieldPath) => FieldValue, paths: 
     return out
 }
 
-// The writes of an asset build's ops as the owner write applies them: every `textEdit` is checked against a working
-// copy of the live owner and lands as its whole value (the rest of the plan's edits of one target follow the running
-// value); an asset op is its own write; any other op writes nothing here. Null when a `textEdit` cannot apply, so the
-// caller refuses before anything is written.
+// The writes of an asset build's ops as the owner write applies them: every `textEdit`, `set` and `listSet` is checked
+// against a working copy of the live owner and lands as its whole value (the rest of the plan's edits of one target
+// follow the running value); an asset op is its own write; any other op writes nothing here. Null when a value op
+// cannot apply, so the caller refuses before anything is written. A merge step holds `set` and `listSet` for its first
+// message and alternates, so dropping them here would record a step whose writes never landed.
 export function assetStepWrites(ops: readonly Op[], live: LiveReader): WriteOp[] | null {
     const working = makeWorking(live)
     const writes: WriteOp[] = []
     for (const op of ops) {
-        if (op.op === 'textEdit') {
+        if (op.op === 'textEdit' || op.op === 'set' || op.op === 'listSet') {
             const outcome = applyForward(op, working)
             if (outcome.kind !== 'applied') {
                 return null
@@ -967,7 +1023,7 @@ function forwardPreconditionHolds(op: ValueOp, working: Working): boolean {
             return !!working.list && working.list[op.index] === op.before
         case 'textEdit': {
             const text = textOf(op.target, working)
-            return text !== null && text.slice(op.offset, op.offset + op.from.length) === op.from
+            return text !== null && spanHoldsAt(text, op.offset, op.from, op.target)
         }
     }
 }
@@ -1094,7 +1150,7 @@ function holdsResultOf(op: Op, working: Working): boolean {
         }
         case 'textEdit': {
             const text = textOf(op.target, working)
-            return text !== null && text.slice(op.offset, op.offset + op.to.length) === op.to
+            return text !== null && spanHoldsAt(text, op.offset, op.to, op.target)
         }
     }
 }
@@ -1377,6 +1433,7 @@ export function planReplay(
         return { ok: false, reason: 'empty' }
     }
     const working = makeWorking(live)
+    const rowsAndText = holdsRowsAndText(step)
     const greetingsBefore = working.list ? [...working.list] : null
     // One decision before any op runs, so the hash is of the list the plan starts from.
     const hash = step.listFingerprint && working.list !== null ? listFingerprintOf(working.list, hashFor?.(working.list)) : undefined
@@ -1387,7 +1444,7 @@ export function planReplay(
     // steps push the step out. Steps without a fingerprint keep the per-op checks. An expected-side
     // replay whose chat op fails stays partial: only the list witnesses a fingerprint.
     if (side === 'neither') {
-        return { ok: false, reason: 'precondition' }
+        return { ok: false, reason: 'precondition', listReason: 'neither' }
     }
     // A step that holds a greeting-list op is refused whole when the list cannot be read, with or
     // without a fingerprint, so no chat index or field lands against a list nobody could check.
@@ -1407,6 +1464,7 @@ export function planReplay(
     let failed = 0
     let fmNotRestored = false
     const goneSeen = new Set<string>()
+    const skippedText = new Set<Op>()
     // Read before the loop: the working copy's text fields move as the ops apply.
     const targeted = new Set<TextFieldPath>()
     for (const op of step.ops) {
@@ -1429,8 +1487,12 @@ export function planReplay(
             continue
         }
         const forward = direction === 'undo' ? invertOp(original) : original
-        // A row whose file is gone is never re-inserted, whichever step direction produced the insert.
+        // A row whose file is gone is never re-inserted, whichever step direction produced the insert. A step that holds rows
+        // and texts is refused whole instead: its texts would name a row that stays absent. Nothing has been written yet.
         if (forward.op === 'assetRowInsert' && goneRows?.has(forward.tuple[1])) {
+            if (rowsAndText) {
+                return { ok: false, reason: 'precondition' }
+            }
             goneSeen.add(forward.tuple[1])
             skipped += 1
             continue
@@ -1473,8 +1535,13 @@ export function planReplay(
             const atTarget = !(side === 'expected' && isListOp(original)) && !(side === 'none' && forward.op === 'listInsert') && holdsResultOf(forward, working)
             if (atTarget) {
                 kept.push(original)
+            } else if (rowsAndText && isAssetRowOp(forward)) {
+                // The rows and the texts of such a step name each other: texts restored over rows that cannot be, or
+                // the reverse, would leave names no row holds. Nothing has been written yet, so the whole replay stops here.
+                return { ok: false, reason: 'precondition' }
             } else {
                 failed += 1
+                skippedText.add(original)
             }
             continue
         }
@@ -1536,6 +1603,7 @@ export function planReplay(
             skipped: 0,
             fmNotRestored: false,
             ...(unreplayable > 0 ? { dropStep: true as const } : { already: direction }),
+            ...(unreplayable === 0 && side === 'other' ? { listReason: 'other' as const } : {}),
             ...(goneSeen.size > 0 ? { goneRows: [...goneSeen].sort() } : {}),
         }
     }
@@ -1544,6 +1612,15 @@ export function planReplay(
     }
     // Count list ops only: a chat op that failed must not cancel the shortcut.
     const whole = applied.filter(isListOp).length === step.ops.filter(isListOp).length
+    // The text places a partial replay left as they were: collected from the ops that failed and do not already hold the
+    // result, in the step's own order. It only reports; no branch above reads it.
+    const notRestored: string[] = []
+    for (const op of step.ops) {
+        const target = skippedText.has(op) ? textTargetOfOp(op) : null
+        if (target !== null && !notRestored.includes(target)) {
+            notRestored.push(target)
+        }
+    }
     return {
         ok: true,
         label: step.label,
@@ -1553,6 +1630,7 @@ export function planReplay(
         deletedRemove,
         skipped,
         fmNotRestored,
+        ...(notRestored.length > 0 && listsLeftTexts(step) ? { notRestored } : {}),
         ...(goneSeen.size > 0 ? { goneRows: [...goneSeen].sort() } : {}),
         ...(hash === undefined ? {} : { liveListHash: hash }),
         // On the expected side the live list is the side the step was recorded at; with every list op
@@ -1561,6 +1639,53 @@ export function planReplay(
             ? { afterListHash: direction === 'undo' ? step.listFingerprint.before : step.listFingerprint.after }
             : {}),
     }
+}
+
+function isAssetRowOp(op: Op): boolean {
+    return op.op === 'assetRowInsert' || op.op === 'assetRowRemove' || op.op === 'assetRowSet'
+}
+
+// A step whose ops hold an asset row op and a text op (`textEdit`, a text field's `set`, an alternate's `listSet`): its
+// rows and its texts are replayed together or not at all, in an undo, a redo and a revert alike. A merge holds both, and
+// so does the revert step that crossed one; the rule keys on the ops, never on the label.
+function holdsRowsAndText(step: Step): boolean {
+    return step.ops.some(isAssetRowOp) && step.ops.some((op) => textTargetOfOp(op) !== null)
+}
+
+// Whether a replay names the places it left: a step that holds a `textEdit` (only a merge, or a revert that crossed
+// one, stores it) or rows together with a text. Other steps keep the plain skipped count.
+function listsLeftTexts(step: Step): boolean {
+    return holdsRowsAndText(step) || step.ops.some((op) => op.op === 'textEdit')
+}
+
+// Whether reverting a step that holds rows and a text would meet a row op that fails and is not already at its target, or
+// a row insert whose file is gone (it would be left out while the texts returned to its name). The check runs the step's
+// row ops on a copy of the working rows, so the working copy is not touched.
+function rowOpsStop(step: Step, working: Working, goneRows?: ReadonlySet<string>): boolean {
+    const copies = new Map<AssetArrayName, string[][] | null>()
+    const trial: Working = {
+        ...working,
+        rows(array) {
+            if (!copies.has(array)) {
+                const rows = working.rows(array)
+                copies.set(array, rows === null ? null : rows.map((row) => [...row]))
+            }
+            return copies.get(array) ?? null
+        },
+    }
+    for (const original of [...step.ops].reverse()) {
+        const forward = invertOp(original)
+        if (!isAssetRowOp(forward)) {
+            continue
+        }
+        if (forward.op === 'assetRowInsert' && goneRows?.has(forward.tuple[1])) {
+            return true
+        }
+        if (applyForward(forward, trial).kind === 'failed' && !holdsResultOf(forward, trial)) {
+            return true
+        }
+    }
+    return false
 }
 
 // An unfingerprinted insert whose slot already holds its value is skipped: the list there is
@@ -1723,6 +1848,11 @@ export function planRevert(
     // fingerprint keeps its per-op checks after a suspension, so on that route a repeated text can still
     // be applied. A bound-step stop skipping only `listSet` ops shifts no index and leaves it unchanged.
     let stopped = false
+    // The side of the revert's hash stop, and the list ops counted before it. The reason is shown only when the hash
+    // stop is the first cause and every counted list skip came at or after it: from the stop on, each list op is
+    // skipped because the list is on that side. Bound-step stops, suspensions and per-op failures give no reason.
+    let hashStop: ListSkipReason | null = null
+    let skippedBeforeHashStop = 0
     let pairSkipped = 0
     for (const step of above) {
         let side: ListSide = 'none'
@@ -1739,12 +1869,29 @@ export function planRevert(
                     side = sideFromHash(step.listFingerprint, 'undo', tracker.hash(list))
                     if (side !== 'expected') {
                         stopped = true
+                        // `none` cannot occur here: the step has a fingerprint and the list is readable.
+                        hashStop = side === 'none' ? null : side
+                        skippedBeforeHashStop = listSkipped
                     }
                 }
             }
             if (suspended || afterStop) {
                 side = 'neither'
             }
+        }
+        // A step that holds rows and texts, and whose row ops cannot all be reverted, is left whole, like a bound step that
+        // cannot replay (the bound-step stop below): its texts are never reverted over rows that stay as they are, and
+        // older steps still revert. A revert with nothing else to apply refuses. Its skipped list ops count as skipped, and
+        // a skipped insert or remove leaves every older list op working against a list the step would have reshaped, so
+        // it stops them exactly as a stopped bound step does.
+        if (holdsRowsAndText(step) && rowOpsStop(step, working, goneRows)) {
+            skipped += step.ops.length
+            failedOther += 1
+            listSkipped += step.ops.filter(touchesGreetingList).length
+            if (hasInsertOrRemove(step.ops)) {
+                stopped = true
+            }
+            continue
         }
         // The bound-step rule, decided before any op of the step runs. A fingerprinted step takes its list half from
         // the side (a side that stayed `none` means the list could not be read: neither); a step without one from
@@ -1868,6 +2015,7 @@ export function planRevert(
         }
     }
     const gone = goneSeen.size > 0 ? { goneRows: [...goneSeen].sort() } : {}
+    const reason = hashStop !== null && skippedBeforeHashStop === 0 && listSkipped > 0 ? { listReason: hashStop } : {}
     if (ops.length === 0) {
         // Nothing applied: a pair stop with no other failure refuses with its own reason, which wins over the
         // gone-rows note (nothing was changed). A revert whose only failures are re-inserts of gone rows lands
@@ -1876,7 +2024,7 @@ export function planRevert(
             return { ok: false, reason: 'pairSplit' }
         }
         if (goneSeen.size > 0 && failedOther === 0) {
-            return { ok: false, reason: 'unchanged', ...gone, ...(listSkipped > 0 ? { listSkipped } : {}), ...(fmNotRestored ? { fmNotRestored } : {}) }
+            return { ok: false, reason: 'unchanged', ...gone, ...(listSkipped > 0 ? { listSkipped } : {}), ...reason, ...(fmNotRestored ? { fmNotRestored } : {}) }
         }
         return { ok: false, reason: 'precondition' }
     }
@@ -1922,6 +2070,7 @@ export function planRevert(
             reason: 'unchanged',
             ...gone,
             ...(listSkipped > 0 ? { listSkipped } : {}),
+            ...reason,
             ...(pairSkipped > 0 ? { pairSkipped } : {}),
             ...(fmNotRestored ? { fmNotRestored } : {}),
         }
@@ -1936,6 +2085,7 @@ export function planRevert(
         ...gone,
         skipped,
         ...(listSkipped > 0 ? { listSkipped } : {}),
+        ...reason,
         ...(pairSkipped > 0 ? { pairSkipped } : {}),
         fmNotRestored,
         // The final fill hashes only the slots the revert changed and is never budgeted.

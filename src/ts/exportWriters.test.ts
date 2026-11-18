@@ -818,7 +818,7 @@ describe('TauriWriter on an Android content:// document', () => {
         await expect(writer.close()).rejects.toThrow('reported')
     })
 
-    // Unit tests of the closing measurement note only. They say nothing about what the Android document provider reports.
+    // Unit tests of the closing measurement note and of the close result the reopened size decides. They say nothing about what the Android document provider reports.
     describe('the closing reopen size note', () => {
         const PREFIX = 'export reopen size check'
         let logSpy: ReturnType<typeof vi.spyOn>
@@ -863,13 +863,14 @@ describe('TauriWriter on an Android content:// document', () => {
 
         test('(U) a reply with reopenSize logs the bytes written, the reopened size and only the host', async () => {
             android.os = 'android'
-            android.replyFor = (written, last) => ({ written, ...(last ? { synced: true, reopenSize: 130 } : {}) })
+            const total = TAURI_WRITE_CHUNK_BYTES + 30
+            android.replyFor = (written, last) => ({ written, ...(last ? { synced: true, reopenSize: total } : {}) })
             const writer = new TauriWriter(URI)
             await writer.write(body(TAURI_WRITE_CHUNK_BYTES, 1))
             await writer.write(body(30, 2))
             await writer.close()
 
-            expect(checkLines()).toEqual([`${PREFIX}: written=${TAURI_WRITE_CHUNK_BYTES + 30} reopened=130 host=com.android.externalstorage.documents`])
+            expect(checkLines()).toEqual([`${PREFIX}: written=${total} reopened=${total} host=com.android.externalstorage.documents`])
             const all = JSON.stringify(ringHandle()?.snapshot())
             expect(all).not.toContain('primary')
             expect(all).not.toContain('risu-backup')
@@ -896,6 +897,67 @@ describe('TauriWriter on an Android content:// document', () => {
 
             expect(checkLines()).toEqual([`${PREFIX}: written=10 reopened=none host=com.android.externalstorage.documents`])
             expect(android.calls).toHaveLength(1)
+        })
+
+        test('(R) a closing reopen smaller than the bytes written fails close with both sizes, never the document, and the note is still logged', async () => {
+            android.os = 'android'
+            android.replyFor = (written, last) => ({ written, ...(last ? { synced: true, reopenSize: 7 } : {}) })
+            const writer = new TauriWriter(URI)
+            await writer.write(body(10, 1))
+            const failure = await writer.close().then(() => null, (error: unknown) => error)
+            expect(failure).toBeInstanceOf(Error)
+            const message = (failure as Error).message
+            expect(message).toContain('10')
+            expect(message).toContain('7')
+            expect(message).not.toContain('content://')
+            expect(message).not.toContain('risu-backup')
+            expect(checkLines()).toEqual([`${PREFIX}: written=10 reopened=7 host=com.android.externalstorage.documents`])
+            await expect(writer.close()).rejects.toThrow(message)
+        })
+
+        test('(R) a closing reopen larger than the bytes written fails close with both sizes', async () => {
+            android.os = 'android'
+            android.replyFor = (written, last) => ({ written, ...(last ? { synced: true, reopenSize: 4096 } : {}) })
+            const writer = new TauriWriter(URI)
+            await writer.write(body(10, 1))
+            const failure = await writer.close().then(() => null, (error: unknown) => error)
+            expect(failure).toBeInstanceOf(Error)
+            expect((failure as Error).message).toContain('10')
+            expect((failure as Error).message).toContain('4096')
+        })
+
+        test('(R) the zero-byte closing call is checked against every byte already written', async () => {
+            android.os = 'android'
+            android.replyFor = (written, last) => ({ written, ...(last ? { synced: true, reopenSize: TAURI_WRITE_CHUNK_BYTES - 5 } : {}) })
+            const writer = new TauriWriter(URI)
+            await writer.write(body(TAURI_WRITE_CHUNK_BYTES, 1))
+            await expect(writer.close()).rejects.toThrow(String(TAURI_WRITE_CHUNK_BYTES - 5))
+            expect(android.calls).toHaveLength(2)
+        })
+
+        test('(U) a zero-byte closing call whose reopen equals the bytes written resolves', async () => {
+            android.os = 'android'
+            android.replyFor = (written, last) => ({ written, ...(last ? { synced: true, reopenSize: TAURI_WRITE_CHUNK_BYTES } : {}) })
+            const writer = new TauriWriter(URI)
+            await writer.write(body(TAURI_WRITE_CHUNK_BYTES, 1))
+            await expect(writer.close()).resolves.toBeUndefined()
+            expect(android.calls).toHaveLength(2)
+        })
+
+        test('(U) a closing reopen equal to the bytes written resolves', async () => {
+            android.os = 'android'
+            android.replyFor = (written, last) => ({ written, ...(last ? { synced: true, reopenSize: 10 } : {}) })
+            const writer = new TauriWriter(URI)
+            await writer.write(body(10, 1))
+            await expect(writer.close()).resolves.toBeUndefined()
+        })
+
+        test('(U) a stat-failed reopen resolves', async () => {
+            android.os = 'android'
+            android.replyFor = (written, last) => ({ written, ...(last ? { synced: true, reopen: 'stat-failed' } : {}) })
+            const writer = new TauriWriter(URI)
+            await writer.write(body(10, 1))
+            await expect(writer.close()).resolves.toBeUndefined()
         })
 
         test('(U) a target that is not a parsable URI logs host unknown and does not throw', async () => {

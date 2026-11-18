@@ -5,6 +5,7 @@
 
 import { language } from '../../../lang'
 import { toastHost, type ToastHost, type ToastId, type UndoOutcome } from '../../toast/toastHost.svelte'
+import type { ListSkipReason } from '../history/historyModel'
 import type { OwnerHistoryService, StudioRefusal, StudioResult } from '../history/ownerHistory.svelte'
 import type { OwnerKey } from '../history/ownerPhase'
 
@@ -30,9 +31,24 @@ export function refusalText(reason: StudioRefusal): string {
     }
 }
 
-// The text of a refused result: the refusal's own, and for an unchecked file the line that names the row.
-export function refusalTextOf(result: { reason: StudioRefusal; name?: string }): string {
-    return result.reason === 'asset-file-unchecked' && result.name !== undefined ? language.studioAssetFileUnchecked(result.name) : refusalText(result.reason)
+// The sentence that says why the first messages were skipped; null when the model named no reason.
+export function listReasonText(reason: ListSkipReason | undefined): string | null {
+    return reason === 'neither' ? language.studioHistoryListChangedElsewhere : reason === 'other' ? language.studioHistoryListSaveUnfinished : null
+}
+
+// `text` followed by the reason sentence, joined as the History panel joins its notes.
+export function withListReason(text: string, reason?: ListSkipReason): string {
+    const added = listReasonText(reason)
+    return added === null ? text : text + ' ' + added
+}
+
+// The text of a refused result: the refusal's own, and for an unchecked file the line that names the row. Only a
+// precondition refusal carries the list reason; every other refusal keeps its single sentence.
+export function refusalTextOf(result: { reason: StudioRefusal; name?: string; listReason?: ListSkipReason }): string {
+    if (result.reason === 'asset-file-unchecked' && result.name !== undefined) {
+        return language.studioAssetFileUnchecked(result.name)
+    }
+    return result.reason === 'precondition' ? withListReason(refusalText(result.reason), result.listReason) : refusalText(result.reason)
 }
 
 /**
@@ -59,11 +75,21 @@ export function runDismissingConsumed(
     return result
 }
 
+// Where the places of a merge undo that were left as they were go besides the toast's own text. The toast's outcome
+// arrives after an await and can outlive the Studio visit or the owner it was posted for, so `visit` is read when the
+// toast is posted and handed back to `show`, which decides whether anything is still there to speak on.
+export interface NotRestoredPort {
+    visit(): string
+    show(visit: string, owner: OwnerKey, places: readonly string[]): void
+}
+
 export interface StudioToastDeps {
     // Read when an Undo runs, so the toast outlives whichever service instance posted it. Null while no
     // service is built; an Undo then reports that history is still loading.
     service: () => Pick<OwnerHistoryService, 'restoreDeleted' | 'view' | 'replay'> | null
     host?: ToastHost
+    // The list of places a merge's Undo left; absent: the toast's own text is all there is.
+    notRestored?: NotRestoredPort
 }
 
 export interface StudioToasts {
@@ -119,6 +145,7 @@ export function createStudioToasts(deps: StudioToastDeps): StudioToasts {
         postAssetAction(owner, stepId, text, sub) {
             const actionId = 'asset:' + owner + '\0' + stepId
             const record: AssetToastRecord = { owner, stepId, host, running: false }
+            const postedIn = deps.notRestored?.visit()
             assetRecords.set(actionId, record)
             return host.postUndo({
                 text,
@@ -149,6 +176,11 @@ export function createStudioToasts(deps: StudioToastDeps): StudioToasts {
                         }
                         if (result.goneRows !== undefined && result.goneRows.length > 0) {
                             return { ok: true, text: language.studioAssetFileGone(result.goneName ?? result.goneRows[0]) }
+                        }
+                        // The toast is always an Undo. The places go to the Studio notice too, where Show lists them.
+                        if (result.notRestored !== undefined && result.notRestored.length > 0) {
+                            if (postedIn !== undefined) deps.notRestored?.show(postedIn, owner, result.notRestored)
+                            return { ok: true, text: language.studioAssetNotRestored(result.notRestored.length) }
                         }
                         if (result.already !== undefined) {
                             return { ok: true, text: language.studioHistoryAlreadyUndone }

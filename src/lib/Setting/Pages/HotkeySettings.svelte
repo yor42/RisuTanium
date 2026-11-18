@@ -13,8 +13,9 @@
     import {
         FIXED_ROWS, HOTKEY_GROUPS, applyPlan, duplicateGroups, findConflict, hotkeyUndoAction, isChanged,
         keyboardSignal, listedRows, pageReadOnly, planReset, planResetAll, planSet, planSwap, planUnbind,
-        rowChord, type Conflict, type PlanStep,
+        rowChord, slotUndoAction, type Conflict, type PlanStep,
     } from "src/ts/setting/hotkeyPage";
+    import { applySlotPlan, planSlotAssign, presetIndexForSlot, presetSlotOf } from "src/ts/storage/presetMeta";
 
     let { apple = hotkeyIsApple() }: { apple?: boolean } = $props();
 
@@ -24,11 +25,20 @@
         conflict: Conflict
     }
 
+    // A slot taken by another preset waits here for the person's swap or cancel. The target is named by id so a
+    // reorder while the confirm is open cannot move the write to another preset.
+    interface PendingSlot {
+        action: string
+        n: number
+        targetId: string
+    }
+
     let root: HTMLElement | undefined = $state();
     let recording: string | null = $state(null);
     let held = $state({ ctrl: false, alt: false, shift: false });
     let refusal: Refusal | null = $state(null);
     let pending: Pending | null = $state(null);
+    let pendingSlot: PendingSlot | null = $state(null);
     let menuOpen: string | null = $state(null);
     let status = $state("");
     let keyboardSeen = $state(false);
@@ -38,6 +48,7 @@
     let swallowSpaceUp = false;
 
     const rows = $derived(DBState.db.hotkeys ?? []);
+    const presets = $derived(DBState.db.botPresets ?? []);
     const listed = $derived(listedRows(rows, { scrollToActiveChar: DBState.db.enableScrollToActiveChar !== false }));
     const duplicates = $derived(duplicateGroups(listed));
     const changedCount = $derived(listed.filter(isChanged).length);
@@ -49,10 +60,15 @@
     const groupTitles = {
         msg: () => language.settingsShellHkGroupMessages,
         nav: () => language.settingsShellHkGroupNavigation,
+        slots: () => language.settingsShellHkGroupSlots,
         tools: () => language.settingsShellHkGroupTools,
     };
 
     function labelOf(action: string): string {
+        const slot = presetSlotOf(action);
+        if (slot !== null) {
+            return language.settingsShellHkPresetSlot(slot);
+        }
         return (language.settingsShellHkActions as Record<string, string>)[action] ?? action;
     }
 
@@ -122,6 +138,7 @@
 
     function startRecording(action: string) {
         pending = null;
+        pendingSlot = null;
         menuOpen = null;
         stopRecording();
         recording = action;
@@ -150,6 +167,73 @@
         menuOpen = null;
         stopRecording();
         focusChord(focusAction);
+    }
+
+    // The select's value for a slot row: the index of the preset the Ctrl+n resolver picks, or "" for none.
+    function slotValue(action: string): string {
+        const n = presetSlotOf(action);
+        const at = n === null ? -1 : presetIndexForSlot(presets, n);
+        return at === -1 ? "" : String(at);
+    }
+
+    function slotNameOf(action: string): string {
+        const at = slotValue(action);
+        return at === "" ? language.settingsShellHkSlotNone : presets[Number(at)]?.name ?? language.settingsShellHkSlotNone;
+    }
+
+    // What the displaced preset ends up holding, named for the swap confirm.
+    function slotLabelOf(slot: number | undefined): string {
+        return slot !== undefined && slot >= 1 && slot <= 9 ? language.settingsShellHkPresetSlot(slot) : language.settingsShellHkSlotNone;
+    }
+
+    function commitSlot(action: string, n: number, target: number | null) {
+        const plan = planSlotAssign(presets, n, target);
+        if (plan.length === 0 || !applySlotPlan(presets, plan)) {
+            return;
+        }
+        postUndoToast({
+            text: language.settingsShellHkSlotSet,
+            actionLabel: language.uiCommon.undo,
+            action: slotUndoAction(() => DBState.db.botPresets ?? [], plan, undoTexts()),
+        });
+        status = language.settingsShellHkSlotSet;
+        pendingSlot = null;
+    }
+
+    // A slot another preset holds opens the swap confirm instead of writing.
+    function chooseSlot(action: string, value: string, select: HTMLSelectElement) {
+        const n = presetSlotOf(action);
+        if (n === null) {
+            return;
+        }
+        const target = value === "" ? null : Number(value);
+        const holder = presetIndexForSlot(presets, n);
+        const targetId = target === null ? undefined : presets[target]?.id;
+        if (target !== null && holder !== -1 && holder !== target && targetId !== undefined) {
+            pendingSlot = { action, n, targetId };
+            status = language.settingsShellHkConflict(presets[holder].name);
+        } else {
+            commitSlot(action, n, target);
+        }
+        select.value = slotValue(action);
+    }
+
+    // The target is resolved by id when Swap is pressed; a preset deleted meanwhile closes the confirm unwritten.
+    function swapPendingSlot() {
+        const draft = pendingSlot;
+        if (!draft) {
+            return;
+        }
+        const target = presets.findIndex((preset) => preset?.id === draft.targetId);
+        if (target === -1) {
+            pendingSlot = null;
+            return;
+        }
+        commitSlot(draft.action, draft.n, target);
+    }
+
+    function cancelPendingSlot() {
+        pendingSlot = null;
     }
 
     // A chord equal to the row's own one ends recording with no write. A used chord opens the conflict block.
@@ -279,6 +363,8 @@
     function cancelInnermost() {
         if (menuOpen !== null) {
             menuOpen = null;
+        } else if (pendingSlot !== null) {
+            cancelPendingSlot();
         } else if (pending !== null) {
             cancelPending();
         } else if (recording !== null) {
@@ -291,8 +377,8 @@
     // Back cancels the innermost open thing: the menu, then the conflict, then recording. The effect reads no
     // reactive state; the callbacks read it when Back is pressed.
     $effect(() => registerBackHandler(backCloseHandler({
-        isOpen: () => menuOpen !== null || pending !== null || recording !== null,
-        snapshot: () => `${menuOpen}|${pending?.action}|${recording}`,
+        isOpen: () => menuOpen !== null || pending !== null || pendingSlot !== null || recording !== null,
+        snapshot: () => `${menuOpen}|${pending?.action}|${pendingSlot?.action}|${recording}`,
         close: cancelInnermost,
     })));
 
@@ -304,6 +390,7 @@
             }
             recording = null;
             pending = null;
+            pendingSlot = null;
             menuOpen = null;
         }
     });
@@ -364,6 +451,24 @@
                                     <span class="size-2 rounded-full bg-selected border border-borderc" role="img" aria-label={language.settingsShellChangedFromDefault} title={language.settingsShellChangedFromDefault}></span>
                                 {/if}
                             </span>
+                            {#if presetSlotOf(row.action) !== null}
+                                {#if readOnly}
+                                    <span class="text-sm text-textcolor2" data-hotkey-slot-name>{slotNameOf(row.action)}</span>
+                                {:else}
+                                    <select
+                                        class="text-sm text-textcolor bg-darkbg border border-darkborderc rounded-md px-1 py-0.5 max-w-40"
+                                        data-hotkey-slot-select={row.action}
+                                        aria-label={language.settingsShellHkSlotFor(presetSlotOf(row.action) ?? 0)}
+                                        value={slotValue(row.action)}
+                                        onchange={(e) => chooseSlot(row.action, e.currentTarget.value, e.currentTarget)}
+                                    >
+                                        <option value="">{language.settingsShellHkSlotNone}</option>
+                                        {#each presets as preset, at}
+                                            <option value={String(at)}>{preset.name}</option>
+                                        {/each}
+                                    </select>
+                                {/if}
+                            {/if}
                             {#if readOnly}
                                 <span class="flex gap-1 text-textcolor2" data-hotkey-caps>
                                     {#each caps as cap}<kbd class="rounded border border-darkborderc bg-darkbg px-1.5 text-sm">{cap}</kbd>{:else}<span class="text-sm">{language.settingsShellHkUnbound}</span>{/each}
@@ -412,6 +517,20 @@
                                     {#if row.key}
                                         <button class="text-textcolor hover:text-selected" data-hotkey-menu-clear onclick={() => unbind(row.action)}>{language.settingsShellHkMenuClear}</button>
                                     {/if}
+                                </div>
+                            {/if}
+                            {#if pendingSlot && pendingSlot.action === row.action}
+                                {@const holderAt = presetIndexForSlot(presets, pendingSlot.n)}
+                                {@const holderPreset = holderAt === -1 ? undefined : presets[holderAt]}
+                                {@const draftId = pendingSlot.targetId}
+                                {@const targetPreset = presets.find((preset) => preset?.id === draftId)}
+                                <div class="flex flex-col gap-1 text-sm border border-draculared rounded-md p-2 mt-1" data-part="settings-hotkey-slot-conflict">
+                                    <span class="text-textcolor">{language.settingsShellHkConflict(holderPreset?.name ?? "")}</span>
+                                    <span class="text-textcolor2">{language.settingsShellHkSwapOutcome(holderPreset?.name ?? "", slotLabelOf(targetPreset?.slot))}</span>
+                                    <div class="flex gap-2">
+                                        <button class="text-textcolor hover:text-selected" data-part="settings-hotkey-conflict-action" data-hotkey-slot-swap onclick={swapPendingSlot}>{language.settingsShellHkSwap}</button>
+                                        <button class="text-textcolor hover:text-selected" data-part="settings-hotkey-conflict-action" data-hotkey-slot-cancel onclick={cancelPendingSlot}>{language.cancel}</button>
+                                    </div>
                                 </div>
                             {/if}
                             {#if pending && pending.action === row.action}

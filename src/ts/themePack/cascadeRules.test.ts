@@ -7,9 +7,10 @@ import path from 'node:path'
 import { pathToFileURL, fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { cascadePass } from './cascade'
-import { normalise } from './engine'
+import { normalise, type Rgba } from './engine'
 import { geometryPass } from './geometry'
 import { lintAreaPack, type ThemeArea } from './index'
+import { layerStacks, stackCount } from './paintOver'
 
 const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
 const DESIGN = path.resolve(ROOT, 'docs/design')
@@ -610,6 +611,367 @@ describe('Rule R-c, round 4', () => {
             expect(css).toContain('max-width: 92%')
             expect(css).toContain('width: fit-content')
             expect(lintAreaPack('chat', css, 'banana-cocoa').errors).toEqual([])
+        })
+    })
+})
+
+// Rule P (CHORE-738, MC-2072, MC-2090): paint over a control. Classes: REPRO = pipeline-accepted (ok:true) before this stage, refused now;
+// SEAM REPRO = cascadePass gives no Rule P reason before this stage and one now; GUARD = same verdict before and after.
+describe('Rule P: painting over a control', () => {
+    const RULE_P = /MC-2072/
+    const APPLY = '[data-part="studio-item-apply"]'
+    const SIDE_TAB = '[data-part="studio-side-tab"]'
+    const WHITE_ON_BLACK_TEXT = 'background:#ffffff;color:#000000'
+    // no text colour is set anywhere: the app's own text colour is what the overlay pairs with
+    const APP_TEXT = ''
+    const refusedByPaintOver = (area: ThemeArea, css: string): boolean => {
+        const result = lintAreaPack(area, css, 'probe')
+        return !result.ok && result.errors.some((e) => RULE_P.test(e.why))
+    }
+    const acceptedPack = (area: ThemeArea, css: string): boolean => lintAreaPack(area, css, 'probe').ok
+    const seam = (area: ThemeArea, css: string): string[] => cascadePass(area, css).map((e) => e.why).filter((why) => RULE_P.test(why))
+    const send = (declarations: string): string => `${SEND}{${YELLOW_ON_DARK};${declarations}}`
+    const inset = (declarations: string): string => `${SEND}{${WHITE_ON_BLACK_TEXT};${declarations}}`
+    const thick = (value: string): string => send(`text-decoration:line-through;text-decoration-color:#ffff00;text-decoration-thickness:${value}`)
+    const hex2 = (n: number): string => n.toString(16).padStart(2, '0')
+    // `fills` hover blocks, each with its own fill and one translucent inset: fills x fills translucent pairs
+    const hoverBlocks = (count: number): string => Array.from({ length: count }, (_v, i) => `${SEND}:hover{background:#ffff${hex2(i + 1)};color:#111111;box-shadow:inset 0 0 0 1px rgb(255 255 ${i + 1} / 0.5)}`).join('')
+
+    describe('P1 an inset box-shadow (REPRO)', () => {
+        it.each([
+            ['R1a plain', 'chat', inset('box-shadow:inset 0 0 0 64px #000000')],
+            ['R1b second block', 'chat', `${SEND}{${WHITE_ON_BLACK_TEXT}}html ${SEND}{box-shadow:inset 0 0 0 64px #000000}`],
+            ['R1c :hover', 'chat', `${SEND}{${WHITE_ON_BLACK_TEXT}}${SEND}:hover{box-shadow:inset 0 0 0 64px #111111}`],
+            ['R1d @media', 'chat', `${SEND}{${WHITE_ON_BLACK_TEXT}}@media (min-width:1px){html ${SEND}{box-shadow:inset 0 0 0 64px #000000}}`],
+            ['R1e --pack- variant', 'chat', `:root{--pack-s:0 1px 2px #000000}html[data-input="hover"]{--pack-s:inset 0 0 0 64px #000000}${inset('box-shadow:var(--pack-s)')}`],
+            ['R1f second layer', 'chat', inset('box-shadow:0 1px 2px #000000,inset 0 0 0 64px #000000')],
+            ['R1g inset written last', 'chat', inset('box-shadow:0 0 0 64px #000000 inset')],
+            ['R1h currentcolor', 'chat', inset('box-shadow:inset 0 0 0 64px currentcolor')],
+            ['R1h no colour', 'chat', inset('box-shadow:inset 0 0 0 64px')],
+            ['R1i translucent 1.66:1', 'chat', inset('box-shadow:inset 0 0 0 64px rgb(0 0 0 / 0.8)')],
+            ['R1j stacked layers', 'chat', inset(`box-shadow:${Array(3).fill('inset 0 0 0 64px rgb(0 0 0 / 0.4)').join(',')}`)],
+            ['R1k app-text pairing, none set', 'chat', `${APP_TEXT}${SEND}{background:#111111}${SEND}:hover{box-shadow:inset 0 0 0 64px #e0e0e0}`],
+            ['R1l Studio', 'studio', `${APPLY}{background:#fee500;color:#191919;box-shadow:inset 0 0 0 64px #191919}`],
+            ['R1m !important', 'chat', inset('box-shadow:inset 0 0 0 64px #000000 !important')],
+            ['R1n unreadable colour', 'chat', inset('box-shadow:inset 0 0 0 64px oklch(0.2 0 0)')],
+            ['R1o between the bars, 3.49:1', 'chat', send('box-shadow:inset 0 0 0 64px #6a6a6a')],
+            ['R1p cap, 70 x 70 = 4900', 'chat', hoverBlocks(70)],
+            ['R1q selector list, part listed second', 'chat', `${SAFE},${SEND}{${WHITE_ON_BLACK_TEXT};box-shadow:inset 0 0 0 64px #000000}`],
+            ['R1q selector list, part listed first', 'chat', `${SEND},${SAFE}{${WHITE_ON_BLACK_TEXT};box-shadow:inset 0 0 0 64px #000000}`],
+            // 60 translucent insets over 61 fills are 3660 pairs; the translucent halo's backdrop includes the insets, which takes the bound over 4096
+            ['R1r cap reached only through the halo\'s inset bound', 'chat', `${hoverBlocks(60)}${SEND}{background:#ffff00;color:#111111;text-shadow:0 0 6px rgb(255 255 0 / 0.5)}`],
+            // a translucent inset in a block that gives no fill lies over the app's surfaces, not over the fills of other blocks
+            ['K1 inset in a fill-less :hover block, over the app surface', 'chat', `${SEND}{background:#ffff00;color:#111111}${SEND}:hover{box-shadow:inset 0 0 0 64px rgb(255 255 255 / 0.3)}`],
+            // the same translucent inset in a block with a fill and in a fill-less block are two members: the block is part of the member key
+            ['K2 the same translucent inset in a block with a fill and in a fill-less block', 'chat', `${SEND}:focus-visible{background:#ffff00;color:#111111;box-shadow:inset 0 0 0 64px rgb(255 255 255 / 0.3)}${SEND}:hover{box-shadow:inset 0 0 0 64px rgb(255 255 255 / 0.3)}`],
+            // layers of different colours paint together: first listed on top, each order-preserving subset ending at its first layer of alpha 0.9 or more
+            ['R1s translucent black over opaque white paints #808080', 'chat', `${SEND}{background:#ffffff;color:#767676;box-shadow:inset 0 0 0 64px rgb(0 0 0 / 0.5),inset 0 0 0 64px #ffffff}`],
+            ['R1t both layers translucent', 'chat', `${SEND}{background:#ffffff;color:#767676;box-shadow:inset 0 0 0 64px rgb(0 0 0 / 0.6),inset 0 0 0 64px rgb(255 255 255 / 0.9)}`],
+            ['R1u Studio', 'studio', `${APPLY}{background:#ffffff;color:#767676;box-shadow:inset 0 0 0 64px rgb(0 0 0 / 0.5),inset 0 0 0 64px #ffffff}`],
+            ['R1v only the two-layer stack fails', 'chat', `${SEND}{background:#000000;color:#767676;box-shadow:inset 0 0 0 64px rgb(0 0 0 / 0.5),inset 0 0 0 64px #ffffff}`],
+            ['R1w an opaque ring on top, a translucent layer beneath', 'chat', `${SEND}{background:#ffffff;color:#767676;box-shadow:inset 0 0 0 2px #ffffff,inset 0 0 0 64px rgb(0 0 0 / 0.5)}`],
+            ['R1x only a middle-and-bottom stack fails', 'chat', `${SEND}{background:#000000;color:#767676;box-shadow:inset 0 0 0 2px #ffffff,inset 0 0 0 64px rgb(0 0 0 / 0.5),inset 0 0 0 64px #ffffff}`],
+            ['R1y transparent layers paint nothing around a translucent dark layer', 'chat', `${SEND}{background:#ffffff;color:#767676;box-shadow:inset 0 0 0 64px transparent,inset 0 0 0 64px rgb(0 0 0 / 0.5),inset 0 0 0 64px transparent}`],
+        ] as const)('%s', (_name, area, css) => {
+            expect(refusedByPaintOver(area, css), JSON.stringify(reasons(area, css))).toBe(true)
+        })
+
+        it('R1z a declaration that can paint more than 4096 stacks is refused by the cap without enumerating them', () => {
+            const layers = Array.from({ length: 40 }, (_v, i) => `inset 0 0 0 1px rgb(255 255 ${i + 1} / 0.05)`).join(',')
+            const css = send(`box-shadow:${layers}`)
+            const start = performance.now()
+            const found = reasons('chat', css)
+            expect(performance.now() - start).toBeLessThan(2000)
+            expect(found.some((why) => /^chat-send: too many colours to judge/.test(why)), JSON.stringify(found)).toBe(true)
+        })
+
+        it('names the part, both colours, the ratio and both blocks', () => {
+            const why = reasons('chat', inset('box-shadow:inset 0 0 0 64px #000000')).find((w) => RULE_P.test(w)) ?? ''
+            expect(why).toMatch(/^chat-send: an inset box-shadow #000000 can be drawn under text #000000 at 1\.00:1 when /)
+            expect(why).toContain('(needs 4.5:1)')
+        })
+        it('the cap message names the cap', () => {
+            expect(reasons('chat', hoverBlocks(70)).some((why) => /^chat-send: too many colours to judge/.test(why))).toBe(true)
+        })
+    })
+
+    describe('P2 a thick decoration line (REPRO)', () => {
+        it.each([
+            ['R2a longhand', 'chat', thick('20px')],
+            ['R2b shorthand, last', 'chat', send('text-decoration:line-through solid #ffff00 20px')],
+            ['R2b shorthand, first', 'chat', send('text-decoration:20px line-through')],
+            ['R2c :hover, 3.5px', 'chat', `${SEND}{${YELLOW_ON_DARK}}${SEND}:hover{text-decoration:underline 3.5px}`],
+            ['R2d rem', 'chat', thick('0.25rem')],
+            ['R2e app token', 'chat', thick('var(--stroke-xheavy)')],
+            ['R2f --pack- variant', 'chat', `:root{--pack-d:1px}html[data-input="hover"]{--pack-d:8px}${thick('var(--pack-d)')}`],
+            ['R2g calc negation', 'chat', thick('calc(-8px * -1)')],
+            ['R2h from-font', 'chat', thick('from-font')],
+            ['R2i Studio', 'studio', `${APPLY}{background:#fee500;color:#191919;text-decoration:underline 6px}`],
+            ['R2j calc in the shorthand', 'chat', send('text-decoration:line-through calc(-20px * -1)')],
+            ['R2k token in the shorthand', 'chat', send('text-decoration:line-through var(--stroke-xheavy)')],
+            ['R2l unitless 5', 'chat', send('text-decoration:underline;text-decoration-thickness:5')],
+        ] as const)('%s', (_name, area, css) => {
+            expect(refusedByPaintOver(area, css), JSON.stringify(reasons(area, css))).toBe(true)
+        })
+    })
+
+    describe('P3 a blurred halo (REPRO)', () => {
+        const halo = (value: string): string => send(`text-shadow:${value}`)
+        it.each([
+            ['R3a 1.19:1', 'chat', halo('0 0 6px #222222')],
+            ['R3b second layer', 'chat', halo('0 1px 0 #ffffff,0 0 8px #111111')],
+            ['R3c :hover, blur 3', 'chat', `${SEND}{${YELLOW_ON_DARK}}${SEND}:hover{text-shadow:0 0 3px #111111}`],
+            ['R3d no colour', 'chat', halo('0 0 4px')],
+            ['R3d currentcolor', 'chat', halo('0 0 4px currentcolor')],
+            ['R3e colour first', 'chat', halo('#111111 0 0 6px')],
+            ['R3f stacked', 'chat', halo(Array(3).fill('0 0 6px rgb(17 17 17 / 0.5)').join(','))],
+            ['R3g app-text pairing, none set', 'chat', `${APP_TEXT}${SEND}{background:#111111}${SEND}:hover{text-shadow:0 0 6px #e0e0e0}`],
+            ['R3h --pack- variant', 'chat', `:root{--pack-h:0 0 1px #111111}html[data-input="hover"]{--pack-h:0 0 6px #111111}${halo('var(--pack-h)')}`],
+            ['R3i calc negation blur', 'chat', halo('0 0 calc(-6px * -1) #111111')],
+            ['R3j Studio', 'studio', `${SIDE_TAB}{${WHITE_ON_BLACK_TEXT};text-shadow:0 0 4px #333333}`],
+            ['R3k unreadable colour', 'chat', halo('0 0 6px color-mix(in srgb, #111111 90%, #ffff00)')],
+            ['R3l 2.53:1', 'chat', halo('0 0 6px #555555')],
+            ['R3m translucent halo over a translucent inset', 'chat', `${SEND}{background:#ffff00;color:#111111;box-shadow:inset 0 0 0 64px rgb(17 17 17 / 0.5);text-shadow:0 0 6px rgb(17 17 17 / 0.6)}`],
+            ['R3n translucent halo over an opaque inset', 'chat', `${SEND}{background:#ffff00;color:#111111;box-shadow:inset 0 0 0 64px #8a8a8a;text-shadow:0 0 6px rgb(17 17 17 / 0.5)}`],
+            ['R3o inset in :hover, halo in the base block', 'chat', `${SEND}{background:#ffff00;color:#111111;text-shadow:0 0 6px rgb(17 17 17 / 0.5)}${SEND}:hover{background:#ffff00;color:#111111;box-shadow:inset 0 0 0 64px #8a8a8a}`],
+            ['R3p translucent black over opaque white halo paints #808080', 'chat', `${SEND}{background:#ffffff;color:#767676;text-shadow:0 0 6px rgb(0 0 0 / 0.5),0 0 6px #ffffff}`],
+            ['R3q only the two-layer halo stack fails', 'chat', `${SEND}{background:#000000;color:#767676;text-shadow:0 0 6px rgb(0 0 0 / 0.5),0 0 6px #ffffff}`],
+        ] as const)('%s', (_name, area, css) => {
+            expect(refusedByPaintOver(area, css), JSON.stringify(reasons(area, css))).toBe(true)
+        })
+    })
+
+    describe('values the engine refuses first, judged by cascadePass alone (SEAM REPRO)', () => {
+        it.each([
+            ['S1 em over 0.2', thick('0.25em')],
+            ['S2 % over 20', thick('25%')],
+            ['S3 min()', thick('min(1px, 9px)')],
+            ['S3 leftover var', thick('var(--nope)')],
+            ['S4 leftover var in a box-shadow', send('box-shadow:var(--nope)')],
+            ['S5 calc that is not a negation, thickness', thick('calc(1px * 2)')],
+            ['S5 calc that is not a negation, blur', send('text-shadow:0 0 calc(1px * 1) #111111')],
+            ['S6 leftover var in a text-shadow', send('text-shadow:var(--nope) 0 0 #111111')],
+        ] as const)('%s', (_name, css) => {
+            expect(seam('chat', css).length, css).toBeGreaterThan(0)
+        })
+    })
+
+    describe('what stays accepted (GUARD, same verdict before and after)', () => {
+        it.each([
+            ['G1 readable ring in the same block', 'chat', send('box-shadow:inset 0 0 0 2px #ffffff')],
+            ['G1 readable ring in a focus block that states both colours', 'chat', `${SEND}:focus-visible{${YELLOW_ON_DARK};box-shadow:inset 0 0 0 2px #ffffff}`],
+            ['G1c focus-only ring, text set elsewhere', 'chat', `${SEND}{${YELLOW_ON_DARK}}${SEND}:focus-visible{box-shadow:inset 0 0 0 2px #ffffff}`],
+            ['G2 outer shadow in the text colour', 'chat', send('box-shadow:0 0 0 64px #111111')],
+            ['G2 outer shadow in currentcolor', 'chat', send('box-shadow:0 2px 8px currentcolor')],
+            ['G3 box-shadow none', 'chat', send('box-shadow:none')],
+            ['G3 box-shadow inherit', 'chat', send('box-shadow:inherit')],
+            ['G3 text-shadow unset', 'chat', send('text-shadow:unset')],
+            ['G3 thickness inherit', 'chat', send('text-decoration-thickness:inherit')],
+            ['G4 underline', 'chat', send('text-decoration:underline')],
+            ['G4 underline 1px', 'chat', send('text-decoration:underline 1px')],
+            ['G4 underline solid colour 3px', 'chat', send('text-decoration:underline solid #111111 3px')],
+            ['G4 3px longhand', 'chat', send('text-decoration-thickness:3px')],
+            ['G4 0.1875rem', 'chat', send('text-decoration-thickness:0.1875rem')],
+            ['G4 app token', 'chat', send('text-decoration-thickness:var(--stroke-heavy)')],
+            ['G4 auto', 'chat', send('text-decoration-thickness:auto')],
+            ['G5 thick', 'chat', send('text-decoration-thickness:thick')],
+            ['G5 thin', 'chat', send('text-decoration-thickness:thin')],
+            ['G5 medium', 'chat', send('text-decoration-thickness:medium')],
+            ['G6 readable glow', 'chat', send('text-shadow:0 0 6px #ffff00')],
+            ['G6 three readable glows', 'chat', send(`text-shadow:${Array(3).fill('0 0 6px #ffff00').join(',')}`)],
+            ['G6 white glow', 'chat', send('text-shadow:0 0 8px #ffffff')],
+            ['G7 blur 2px', 'chat', send('text-shadow:0 0 2px #111111')],
+            ['G7 blur 0.125rem', 'chat', send('text-shadow:0 0 0.125rem #111111')],
+            ['G7 hard offset', 'chat', send('text-shadow:3px 3px 0 #111111')],
+            ['G8 one translucent halo over its own fill, 5.01:1', 'chat', send('text-shadow:0 0 6px rgb(17 17 17 / 0.5)')],
+            ['G10 safe part', 'chat', `${SAFE}{color:#111111;box-shadow:inset 0 0 0 4px #111111;text-shadow:0 0 6px #111111}`],
+            ['G13 cap boundary, 64 x 64 = 4096', 'chat', hoverBlocks(64)],
+            ['G15 halo at 3.49:1', 'chat', send('text-shadow:0 0 6px #6a6a6a')],
+            // R20: a text colour set only in a state, @media or context turns the app-text pairing off
+            ['G16 conditional-only text colour, inset', 'chat', `${APP_TEXT}${SEND}{background:#808080;box-shadow:inset 0 0 0 64px #e0e0e0}${SEND}:hover{background:#808080;color:#000000}`],
+            ['G16b conditional-only text colour, halo', 'chat', `${APP_TEXT}${SEND}{background:#808080;text-shadow:0 0 6px #e0e0e0}${SEND}:hover{background:#808080;color:#000000}`],
+            ['G16c dead-context form', 'chat', `@media (max-width:0px){${SEND}{background:#ffffff;color:#000000}}${SEND}{box-shadow:inset 0 0 0 64px #ffffff}`],
+            ['G17 outer layer with an unreadable colour', 'chat', send('box-shadow:0 2px 8px oklch(0.5 0.1 200)')],
+            ['G18 thin-blur halo with an unreadable colour', 'chat', send('text-shadow:0 1px 0 oklch(0.5 0.1 200)')],
+            ['G19 colour function in the shorthand', 'chat', send('text-decoration:underline rgb(17 17 17)')],
+            ['G19 unreadable colour function in the shorthand', 'chat', send('text-decoration:underline oklch(0.5 0.1 200)')],
+            ['G20 readable halo over a readable inset', 'chat', `${SEND}{background:#ffff00;color:#111111;box-shadow:inset 0 0 0 64px #ffffff;text-shadow:0 0 6px rgb(255 255 255 / 0.5)}`],
+            ['K3 control: the fill-less block of K2 removed', 'chat', `${SEND}:focus-visible{background:#ffff00;color:#111111;box-shadow:inset 0 0 0 64px rgb(255 255 255 / 0.3)}`],
+            // an opaque top layer hides the layer beneath it
+            ['G21 opaque top layer hides the translucent layer beneath', 'chat', `${SEND}{background:#000000;color:#767676;box-shadow:inset 0 0 0 64px #ffffff,inset 0 0 0 64px rgb(0 0 0 / 0.5)}`],
+            // transparent layers paint nothing, on top or beneath
+            ['G22a transparent layer', 'chat', send('box-shadow:inset 0 0 0 64px transparent')],
+            ['G22b transparent layer on top of a ring', 'chat', send('box-shadow:inset 0 0 0 64px transparent,inset 0 0 0 2px #ffffff')],
+            ['G23 readable two-colour stack', 'chat', send('box-shadow:inset 0 0 0 64px rgb(255 255 0 / 0.5),inset 0 0 0 64px #ffffff')],
+        ] as const)('%s', (_name, area, css) => {
+            expect(acceptedPack(area, css), JSON.stringify(reasons(area, css))).toBe(true)
+        })
+
+        it('G9 Rule S still judges a text with an inset beside it', () => {
+            const css = `${SEND}{color:#111111;box-shadow:inset 0 0 0 2px #ffffff}`
+            expect(cascadePass('chat', css).some((e) => RULE_S.test(e.why))).toBe(true)
+        })
+        it('G11 Settings and Home are not judged', () => {
+            const css = inset('box-shadow:inset 0 0 0 64px #000000')
+            expect(cascadePass('settings', css)).toEqual([])
+            expect(cascadePass('home', css)).toEqual([])
+        })
+        it('G14 em and % at the boundary are not refused by Rule P', () => {
+            expect(seam('chat', thick('0.2em'))).toEqual([])
+            expect(seam('chat', thick('20%'))).toEqual([])
+        })
+    })
+
+    // The halo (or inset) is judged at its own colour, so a fade through the text's lightness is accepted residue (R26 and R26b, 2026-11-17 halo-fade answer, MC-2117).
+    describe('residue: a fade that crosses the text colour is accepted (GUARD)', () => {
+        it.each([
+            ['H1 grey text on white with a black glow', 'chat', `${SEND}{background:#ffffff;color:#666666;text-shadow:0 0 6px #000000}`],
+            ['H2 light-on-dark mirror', 'chat', `${SEND}{background:#000000;color:#808080;text-shadow:0 0 6px #ffffff}`],
+            ['H1s Studio', 'studio', `${APPLY}{background:#ffffff;color:#666666;text-shadow:0 0 6px #000000}`],
+            ['H3 blurred inset under P1', 'chat', `${SEND}{background:#ffffff;color:#767676;box-shadow:inset 0 0 8px 12px #000000}`],
+        ] as const)('%s', (_name, area, css) => {
+            expect(acceptedPack(area, css), JSON.stringify(reasons(area, css))).toBe(true)
+        })
+    })
+
+    // The 4096 cap counts stacks per part across a variant's declarations, before any stack is built; errors and messages stay linear in the input.
+    // Time bounds sit about 10x or more above the measured cost of the correct code and below the cost of each broken variant.
+    describe('bounded cost (MC-2090)', () => {
+        const ruleP = (css: string): { whys: string[], ms: number } => {
+            const start = performance.now()
+            const whys = cascadePass('chat', css).map((e) => e.why).filter((why) => RULE_P.test(why))
+            return { whys, ms: performance.now() - start }
+        }
+        const CAP_WHY = /^chat-send: too many colours to judge/
+        // 11 translucent layers then an opaque one: 2047 + 2048 = 4095 stacks
+        const darkStack = (d: number): string => [...Array.from({ length: 11 }, (_v, k) => `inset 0 0 0 1px rgb(${(d * 11 + k) & 63} ${k * 3} ${d & 63} / 0.3)`), 'inset 0 0 0 64px #000000'].join(',')
+        const lightStack = (d: number): string => [...Array.from({ length: 11 }, (_v, k) => `inset 0 0 0 1px rgb(255 ${255 - k} ${(240 + d) & 255} / 0.3)`), 'inset 0 0 0 2px #ffffff'].join(',')
+        const sameEleven = [...Array.from({ length: 11 }, () => 'inset 0 0 0 1px rgb(255 255 255 / 0.3)'), 'inset 0 0 0 2px #ffffff'].join(',')
+        const stackPack = (depth: number, texts: number): string => `${SEND}{background:#000000;color:#111111}`
+            + Array.from({ length: texts }, (_v, i) => `${SEND}:hover{color:#${hex2(i >> 8)}${hex2(i & 255)}20}`).join('')
+            + Array.from({ length: depth }, (_v, d) => `@media (min-width:${d + 1}px){${SEND}:hover{background:#000000;box-shadow:${darkStack(d)}}}`).join('')
+        const darkTexts = (texts: number): string => `${SEND}:hover{background:#ffffff}` + Array.from({ length: texts }, (_v, i) => `${SEND}:hover{color:#${hex2(i & 63)}${hex2((i >> 6) & 63)}20}`).join('')
+        const focusRing = (layers: string): string => `${SEND}{background:#ffffff;color:#000000;box-shadow:${sameEleven}}${SEND}:focus-visible{box-shadow:${layers}}`
+        const bigSelectorBlocks = `${SEND}{background:#ffffff;color:#111111}` + Array.from({ length: 200 }, (_v, i) => `${SEND}:hover{color:#${hex2(i & 63)}${hex2((i >> 6) & 63)}20}`).join('')
+
+        it('F1a one dark declaration beside 50 text colours: one error per text colour (REPRO)', () => {
+            const { whys, ms } = ruleP(stackPack(1, 50))
+            expect(whys.length).toBeGreaterThan(0)
+            expect(whys.length).toBeLessThanOrEqual(51)
+            expect(ms).toBeLessThan(2000)
+        })
+        it('F1b one dark declaration beside 1000 text colours (REPRO)', () => {
+            const { whys, ms } = ruleP(stackPack(1, 1000))
+            expect(whys.length).toBeLessThanOrEqual(1001)
+            expect(ms).toBeLessThan(2000)
+        })
+        it('F1c two 4095-stack declarations on one part: the second is refused by the part budget (REPRO)', () => {
+            const { whys } = ruleP(stackPack(2, 50))
+            expect(whys.some((why) => CAP_WHY.test(why)), JSON.stringify(whys.slice(0, 3))).toBe(true)
+            expect(whys.length).toBeLessThanOrEqual(52)
+        })
+        it('F1d a 12-layer declaration beside 4000 text colours stays accepted and is judged quickly (REPRO for time, GUARD for the verdict)', () => {
+            const css = `${SEND}{background:#ffffff;color:#000000;box-shadow:${lightStack(0)}}${darkTexts(4000)}`
+            expect(acceptedPack('chat', css), JSON.stringify(reasons('chat', css).slice(0, 2))).toBe(true)
+            const start = performance.now()
+            cascadePass('chat', css)
+            expect(performance.now() - start).toBeLessThan(1500)
+        })
+        it('F1e 4095 + 1 = 4096 stacks on one part is accepted (GUARD)', () => {
+            const css = focusRing('inset 0 0 0 2px #ffffff')
+            expect(acceptedPack('chat', css), JSON.stringify(reasons('chat', css).slice(0, 2))).toBe(true)
+        })
+        it('F1f 4095 + 2 = 4097 stacks on one part is refused by the cap (REPRO)', () => {
+            const css = focusRing('inset 0 0 0 2px #ffffff,inset 0 0 0 4px #ffffff')
+            expect(refusedByPaintOver('chat', css)).toBe(true)
+            expect(ruleP(css).whys.some((why) => CAP_WHY.test(why))).toBe(true)
+        })
+        it('F1g 400 over-budget declarations on one part are refused fast (REPRO)', () => {
+            const css = `${SEND}{background:#ffffff;color:#000000}` + Array.from({ length: 400 }, (_v, d) => `@media (min-width:${d + 1}px){${SEND}{box-shadow:${lightStack(d)}}}`).join('')
+            const { whys, ms } = ruleP(css)
+            expect(whys.some((why) => CAP_WHY.test(why))).toBe(true)
+            expect(ms).toBeLessThan(1000)
+        })
+        it('F1k one declaration over 2000 selector entries with 2000 currentcolor layers neither throws nor stalls (REPRO)', () => {
+            const css = `${SEND}{background:#ffff00;color:#111111}` + Array.from({ length: 2000 }, () => `${SEND}:hover`).join(',')
+                + `{box-shadow:${Array.from({ length: 2000 }, () => 'inset 0 0 0 1px currentcolor').join(',')}}`
+            const { whys, ms } = ruleP(css)
+            expect(whys.length).toBeLessThanOrEqual(2)
+            expect(ms).toBeLessThan(1000)
+        })
+        it('F1m one declaration over 2000 selector entries with 1000 unreadable layers pushes its layer errors once per part (REPRO)', () => {
+            const css = `${SEND}{background:#ffff00;color:#111111}` + Array.from({ length: 2000 }, () => `${SEND}:hover`).join(',')
+                + `{box-shadow:${Array.from({ length: 1000 }, () => 'inset 0 0 0 1px oklch(0.5 0.1 200)').join(',')}}`
+            const { whys, ms } = ruleP(css)
+            expect(whys.length).toBeGreaterThan(0)
+            expect(whys.length).toBeLessThanOrEqual(2)
+            expect(ms).toBeLessThan(250)
+        })
+        it('L1 a 100 KB selector entry: messages stay short (REPRO)', () => {
+            const css = bigSelectorBlocks + `${SEND}[data-x="${'a'.repeat(100_000)}"]{box-shadow:inset 0 0 0 64px #000000}`
+            const { whys } = ruleP(css)
+            expect(whys.length).toBeGreaterThan(0)
+            expect(Math.max(...whys.map((why) => why.length))).toBeLessThanOrEqual(2000)
+        })
+        it('L2 a declaration with 4000 extra outer layers: messages stay short (REPRO)', () => {
+            const css = bigSelectorBlocks + `${SEND}{box-shadow:inset 0 0 0 64px #000000,${Array.from({ length: 4000 }, () => '0 1px 2px #000000').join(',')}}`
+            const { whys } = ruleP(css)
+            expect(whys.length).toBeGreaterThan(0)
+            expect(Math.max(...whys.map((why) => why.length))).toBeLessThanOrEqual(2000)
+        })
+        it('F2a 30 readable opaque inset rings are judged within 2 s (GUARD)', () => {
+            const css = send(`box-shadow:${Array.from({ length: 30 }, () => 'inset 0 0 0 1px #ffffff').join(',')}`)
+            const start = performance.now()
+            const ok = acceptedPack('chat', css)
+            expect(performance.now() - start).toBeLessThan(2000)
+            expect(ok).toBe(true)
+        })
+
+        it('U1 a lone translucent layer is judged at its own colour, not at its alpha-scaled colour (GUARD)', () => {
+            // white at 0.5 over black is #808080 (3.95:1 against white text); a colour scaled by its alpha would read #404040 and pass
+            const css = `${SEND}{background:#000000;color:#ffffff;box-shadow:inset 0 0 0 64px rgb(255 255 255 / 0.5)}`
+            expect(refusedByPaintOver('chat', css), JSON.stringify(reasons('chat', css).slice(0, 2))).toBe(true)
+        })
+
+        const ALPHAS = [0.3, 0.95, 1]
+        const patterns: Rgba[][] = []
+        for (let n = 1; n <= 6; n++) {
+            for (let code = 0; code < ALPHAS.length ** n; code++) {
+                const layer: Rgba[] = []
+                for (let i = 0, c = code; i < n; i++, c = Math.floor(c / ALPHAS.length)) layer.push([i * 30, 0, 0, ALPHAS[c % ALPHAS.length]])
+                patterns.push(layer)
+            }
+        }
+        // masks of non-empty subsets with no picked layer after the first picked covering layer
+        const bruteCount = (colours: readonly Rgba[]): number => {
+            let count = 0
+            for (let mask = 1; mask < 1 << colours.length; mask++) {
+                let ended = false
+                let valid = true
+                for (let i = 0; i < colours.length && valid; i++) {
+                    if (!(mask & (1 << i))) continue
+                    if (ended) valid = false
+                    else if (colours[i][3] >= 0.9) ended = true
+                }
+                if (valid) count++
+            }
+            return count
+        }
+        const asLayers = (colours: readonly Rgba[]): { colour: Rgba, index: number }[] => colours.map((colour, i) => ({ colour, index: i + 1 }))
+
+        it('F2b-1 layerStacks emits exactly the order-preserving stacks that end at their first covering layer (GUARD)', () => {
+            expect(patterns.length).toBe(1092)
+            for (const colours of patterns) expect(layerStacks(asLayers(colours), 1 << 20)!.length, JSON.stringify(colours)).toBe(bruteCount(colours))
+            const rings: Rgba[] = Array.from({ length: 16 }, () => [255, 255, 255, 1])
+            expect(layerStacks(asLayers(rings), 1 << 20)!.length).toBe(16)
+        })
+        it('F2b-2 stackCount equals that count and saturates at the limit plus one (GUARD on a new seam)', () => {
+            for (const colours of patterns) {
+                const count = bruteCount(colours)
+                expect(stackCount(asLayers(colours), 1 << 20), JSON.stringify(colours)).toBe(count)
+                expect(stackCount(asLayers(colours), count - 1)).toBe(count)
+                expect(layerStacks(asLayers(colours), count - 1)).toBeNull()
+            }
         })
     })
 })

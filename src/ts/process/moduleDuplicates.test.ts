@@ -9,11 +9,16 @@ import type { RisuModule } from 'src/ts/process/modules'
 const h = vi.hoisted(() => ({
     answers: [] as string[],
     asked: [] as { options: string[], display: string | undefined }[],
+    /** The prompt answers with the cancel its caller offered, and rejects when none was offered. */
+    answerCancel: false,
 }))
 
 vi.mock(import('src/ts/alert'), () => ({
-    alertSelect: vi.fn(async (options: string[], display?: string) => {
+    alertSelect: vi.fn(async (options: string[], display?: string, offered?: { cancel?: string }) => {
         h.asked.push({ options, display })
+        if (h.answerCancel) {
+            return offered?.cancel ?? Promise.reject(new Error('no cancel offered'))
+        }
         return h.answers.shift() ?? '1'
     }),
 }) as unknown as typeof import('src/ts/alert'))
@@ -27,6 +32,7 @@ const mod = (id: string, name: unknown, extra: Record<string, unknown> = {}) => 
 beforeEach(() => {
     h.answers = []
     h.asked = []
+    h.answerCancel = false
 })
 
 describe('findDuplicateIndex', () => {
@@ -110,6 +116,16 @@ describe('DuplicateSession', () => {
         expect(await session.decide(list, 'T', 'f', false)).toEqual({ choice: 'replace', targetId: 't' })
         expect(await session.decide(list, 'T', 'f', false)).toEqual({ choice: 'skip' })
         expect(await session.decide(list, 'T', 'f', false)).toEqual({ choice: 'add' })
+        expect(session.replaced).toBe(false)
+    })
+
+    test('the prompt offers Skip as its cancel: it leaves the file out, replaces nothing and is not sticky', async () => {
+        const list = [mod('t', 'T')]
+        const session = new DuplicateSession()
+        h.answerCancel = true
+        expect(await session.decide(list, 'T', 'f1', true)).toEqual({ choice: 'skip' })
+        expect(await session.decide(list, 'T', 'f2', true)).toEqual({ choice: 'skip' })
+        expect(h.asked).toHaveLength(2)
         expect(session.replaced).toBe(false)
     })
 
