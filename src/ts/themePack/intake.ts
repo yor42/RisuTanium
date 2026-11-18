@@ -36,6 +36,9 @@ export type IntakeRefusal =
     | { code: 'target' | 'wrongKind'; sheet: string; target: string }
     | { code: 'fontLicense' | 'licenseWithoutFont'; file: string }
     | { code: 'sheetRefused'; sheet: string; errors: readonly LintError[] }
+    | { code: 'iconMissing' | 'iconType' | 'iconAnimated' | 'iconUnreadable' }
+    | { code: 'iconTooLarge'; limitBytes: number }
+    | { code: 'iconDimensions'; limitPx: number }
 
 export interface VerifiedFile {
     readonly path: string

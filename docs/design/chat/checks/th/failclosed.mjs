@@ -2,8 +2,8 @@
 //   1. ROLE TOKENS ONLY.   A pack may set a custom property only if it is on the pack-settable list: the shared names below, the registry's own `settable` list, any token the registry
 //                          deliberately bounds (registry.minimums / registry.maximums, the value space of packlint.mjs). Every other name is rejected with "not a pack-settable token".
 //   2. COLOURS RESOLVE.    Every value of a colour token (a --color-*, --nexus-* colour, a -rgb channel, or a token whose default is a colour) must resolve, in EVERY declaration the pack makes of it
-//                          (:root, a root attribute, an @media block), to a concrete sRGB colour: hex, rgb(), hsl(), a named colour. color-mix(), oklch(), light-dark(), relative colours, currentcolor,
-//                          inherit, unknown functions, an unresolved var() all fail. A fully transparent value fails too (a token whose default is transparent may stay transparent).
+//                          (:root, a root attribute, an @media block), to a concrete sRGB colour: hex, rgb(), hsl(), a named colour, or color-mix() in srgb, srgb-linear or oklab (parseConcrete, the one reader of every colour check).
+//                          color-mix() in any other space, oklch(), light-dark(), relative colours, currentcolor, inherit, unknown functions, an unresolved var() all fail. A fully transparent value fails too (a token whose default is transparent may stay transparent).
 //   3. OPAQUE SURFACES.    registry.opaque (shared: the sheet and the toast) must resolve to alpha 1.
 //   4. CONTRAST.           registry.pairs ([foreground token, background token, ratio, label]) and registry.surfaces are judged over the WORST CASE of every alternative the pack can produce.
 //
@@ -32,9 +32,62 @@ const clamp255 = (x) => Math.max(0, Math.min(255, x));
 function hsl2rgb(h, s, l) { h = ((h % 360) + 360) % 360; s /= 100; l /= 100; const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l), f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))); return [f(0) * 255, f(8) * 255, f(4) * 255]; }
 const chan = (s) => { s = s.trim(); if (/^[\d.]+%$/.test(s)) return clamp255(parseFloat(s) * 2.55); if (/^[+-]?\d*\.?\d+(e[+-]?\d+)?$/.test(s)) return clamp255(parseFloat(s)); return NaN; };
 const alphaOf = (s) => { if (s === undefined) return 1; s = s.trim(); if (/^[\d.]+%$/.test(s)) return Math.max(0, Math.min(1, parseFloat(s) / 100)); if (/^[+-]?\d*\.?\d+(e[+-]?\d+)?$/.test(s)) return Math.max(0, Math.min(1, parseFloat(s))); return NaN; };
-// -> [r, g, b, a] or null (not a concrete sRGB colour)
-export function parseConcrete(s) {
-  s = String(s).trim().toLowerCase().replace(/\s*!important$/, ''); if (!s) return null;
+// How far an oklab mix may lie outside sRGB and still be read, measured on linear-light channels in 0..1 (the oklab-to-linear matrix output, before the transfer function). Further out is refused, never clipped. Same value and scale as OKLAB_GAMUT_EPS in colour.ts.
+export const OKLAB_GAMUT_EPS = 1e-4;
+// color-mix() inside color-mix() is read to this many levels; the outermost mix is level 1.
+const MIX_LEVELS = 3;
+const clamp01 = (x) => Math.max(0, Math.min(1, x));
+const toLinear = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+const fromLinear = (x) => (x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055) * 255;
+function linearToOklab([r, g, b]) {
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b), s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+}
+function oklabToLinear([L, a, b]) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3, m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3, s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+  return [4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s, -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s, -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s];
+}
+// Interpolation is premultiplied: w1 and w2 are the normalised weights, scale the alpha factor of a percentage sum below 100.
+function mixIn(space, c1, c2, w1, w2, scale) {
+  const alpha = c1[3] * w1 + c2[3] * w2; if (alpha <= 0) return [0, 0, 0, 0];
+  const enter = (c) => { if (space === 'srgb') return [c[0] / 255, c[1] / 255, c[2] / 255]; const lin = [toLinear(c[0]), toLinear(c[1]), toLinear(c[2])]; return space === 'srgb-linear' ? lin : linearToOklab(lin); };
+  const a = enter(c1), b = enter(c2); const mixed = [0, 1, 2].map((i) => (a[i] * c1[3] * w1 + b[i] * c2[3] * w2) / alpha);
+  let out;
+  if (space === 'srgb') out = [mixed[0] * 255, mixed[1] * 255, mixed[2] * 255];
+  else {
+    const lin = space === 'srgb-linear' ? mixed : oklabToLinear(mixed);
+    if (space === 'oklab' && lin.some((x) => !(x >= -OKLAB_GAMUT_EPS && x <= 1 + OKLAB_GAMUT_EPS))) return null;
+    out = [fromLinear(clamp01(lin[0])), fromLinear(clamp01(lin[1])), fromLinear(clamp01(lin[2]))];
+  }
+  return out.every(Number.isFinite) ? [out[0], out[1], out[2], alpha * scale] : null;
+}
+// the top-level comma-separated arguments of a function body; null when the parentheses do not balance
+function splitArgs(body) {
+  const out = []; let depth = 0, cur = '';
+  for (const ch of body) { if (ch === '(') depth++; else if (ch === ')') { depth--; if (depth < 0) return null; } if (ch === ',' && depth === 0) { out.push(cur); cur = ''; } else cur += ch; }
+  if (depth !== 0) return null; out.push(cur); return out;
+}
+// `colour [p%]` or `p% colour`; the percentage is 0 to 100
+function mixEntry(part) {
+  const t = part.trim(); const lead = /^(\d*\.?\d+)%\s+([\s\S]+)$/.exec(t); const trail = lead ? null : /^([\s\S]+?)\s+(\d*\.?\d+)%$/.exec(t);
+  const pct = lead ? parseFloat(lead[1]) : trail ? parseFloat(trail[2]) : undefined;
+  if (pct !== undefined && !(pct <= 100)) return null;
+  return { colour: (lead ? lead[2] : trail ? trail[1] : t).trim(), pct };
+}
+// color-mix(in <srgb | srgb-linear | oklab>, c1 [p1%]?, c2 [p2%]?): exactly two colours, no hue method
+function readMix(s, level) {
+  if (level >= MIX_LEVELS || !s.endsWith(')')) return null;
+  const args = splitArgs(s.slice('color-mix('.length, -1)); if (args === null || args.length !== 3) return null;
+  const space = /^in\s+(srgb|srgb-linear|oklab)$/.exec(args[0].trim()); const e1 = mixEntry(args[1]), e2 = mixEntry(args[2]);
+  if (!space || !e1 || !e2) return null;
+  const c1 = readColour(e1.colour, level + 1), c2 = readColour(e2.colour, level + 1); if (!c1 || !c2) return null;
+  let p1 = e1.pct, p2 = e2.pct;
+  if (p1 === undefined && p2 === undefined) { p1 = 50; p2 = 50; } else if (p1 === undefined) p1 = 100 - p2; else if (p2 === undefined) p2 = 100 - p1;
+  const sum = p1 + p2; if (!(sum > 0)) return null;
+  return mixIn(space[1], c1, c2, p1 / sum, p2 / sum, sum < 100 ? sum / 100 : 1);
+}
+function readColour(s, mixLevel) {
+  if (!s) return null;
   if (s === 'transparent') return [0, 0, 0, 0];
   let m = /^#([0-9a-f]+)$/.exec(s); if (m) { let h = m[1]; if (h.length === 3 || h.length === 4) h = [...h].map((c) => c + c).join(''); if (h.length !== 6 && h.length !== 8) return null; return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)).concat([h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1]); }
   m = /^(rgba?)\(\s*([^()]*)\)$/.exec(s);
@@ -56,8 +109,13 @@ export function parseConcrete(s) {
     const h = /^[+-]?\d*\.?\d+(deg)?$/.exec(parts[0]); const sat = /^([\d.]+)%$/.exec(parts[1]), lig = /^([\d.]+)%$/.exec(parts[2]); const al = alphaOf(a);
     if (!h || !sat || !lig || Number.isNaN(al)) return null; return [...hsl2rgb(parseFloat(h[0]), Math.min(100, +sat[1]), Math.min(100, +lig[1])), al];
   }
-  if (NAMED[s]) return parseConcrete('#' + NAMED[s]);
+  if (s.startsWith('color-mix(')) return readMix(s, mixLevel);
+  if (NAMED[s]) return readColour('#' + NAMED[s], mixLevel);
   return null;
+}
+// -> [r, g, b, a] or null (not a concrete sRGB colour): hex, rgb(), hsl(), a named colour, transparent, or color-mix() of two such colours in srgb, srgb-linear or oklab. Mirrors colour.ts parseConcrete.
+export function parseConcrete(s) {
+  return readColour(String(s).trim().toLowerCase().replace(/\s*!important$/, ''), 0);
 }
 // a channel triple "r g b" or "r, g, b" (the value of a -rgb token)
 export function parseTriple(s) {
@@ -160,7 +218,7 @@ export function failClosedPass(text, reg) {
   for (const n of checked) {
     const { cols, bad, channel } = colAlts(n);
     if (n === '--color-scheme') continue;
-    if (bad.length) { fail(selOf(n), n, `${n}: ${channel ? 'a colour channel that is not three numbers from 0 to 255' : 'a colour that cannot be resolved to a concrete sRGB colour (hex, rgb(), hsl() or a named colour)'}: ${bad[0].slice(0, 50)}`); continue; }
+    if (bad.length) { fail(selOf(n), n, `${n}: ${channel ? 'a colour channel that is not three numbers from 0 to 255' : 'a colour that cannot be resolved to a concrete sRGB colour (hex, rgb(), hsl(), a named colour or color-mix() in srgb, srgb-linear or oklab)'}: ${bad[0].slice(0, 50)}`); continue; }
     if (!channel && cols.some((c) => c[3] === 0) && !defaultTransparent(n) && !transparentOk(n)) { fail(selOf(n), n, `${n}: a fully transparent colour (the token would draw nothing)`); continue; }
     if (opaque.has(n) && cols.some((c) => c[3] < 1 - 1e-9)) fail(selOf(n), n, `${n}: a protected surface must resolve to an opaque colour (alpha 1), not ${cols.find((c) => c[3] < 1).map((x, i) => (i < 3 ? Math.round(x) : +x.toFixed(2))).join(' ')}`);
   }

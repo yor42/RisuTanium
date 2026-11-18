@@ -3,6 +3,10 @@
 // wholesale from the parsed JSON.
 export type PackMode = 'light' | 'dark'
 export interface PackFontLicense { readonly file: string; readonly license: string; readonly attribution?: string }
+/** One optional tile field of the manifest: not written, readable (`value` is lower-case `#rrggbb` for a colour, the path for an icon), or written wrongly (`field` names it for the refusal). */
+export type TileField = { readonly kind: 'absent' } | { readonly kind: 'ok'; readonly value: string } | { readonly kind: 'invalid'; readonly field: string }
+/** The optional "colors" and "icon" of the manifest. Parsing never refuses on them: the install flow judges them, and the apply path never reads them. */
+export interface PackTile { readonly main: TileField; readonly secondary: TileField; readonly icon: TileField }
 export interface PackManifest {
     readonly format: 1
     /**
@@ -17,6 +21,7 @@ export interface PackManifest {
     readonly attribution: string
     readonly modes: readonly PackMode[]
     readonly fonts: readonly PackFontLicense[]
+    readonly tile: PackTile
 }
 export type ManifestRefusal =
     | { code: 'manifestUnreadable' }
@@ -42,6 +47,44 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function own(record: Record<string, unknown>, key: string): unknown {
     return Object.hasOwn(record, key) ? record[key] : undefined
+}
+
+const COLOUR_FIELD = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i
+const ICON_PATH_LIMIT = 255
+const ABSENT: TileField = { kind: 'absent' }
+
+/** `#rgb` or `#rrggbb` in any case, stored as lower-case `#rrggbb`. */
+function colourField(record: Record<string, unknown>, key: string, field: string): TileField {
+    if (!Object.hasOwn(record, key)) {
+        return ABSENT
+    }
+    const value = record[key]
+    if (typeof value !== 'string' || !COLOUR_FIELD.test(value)) {
+        return { kind: 'invalid', field }
+    }
+    const digits = value.slice(1).toLowerCase()
+    return { kind: 'ok', value: '#' + (digits.length === 3 ? [...digits].map((c) => c + c).join('') : digits) }
+}
+
+function readTile(parsed: Record<string, unknown>): PackTile {
+    let main = ABSENT
+    let secondary = ABSENT
+    if (Object.hasOwn(parsed, 'colors')) {
+        const colors = parsed.colors
+        if (isRecord(colors)) {
+            main = colourField(colors, 'main', 'colors.main')
+            secondary = colourField(colors, 'secondary', 'colors.secondary')
+        } else {
+            main = { kind: 'invalid', field: 'colors' }
+            secondary = main
+        }
+    }
+    let icon = ABSENT
+    if (Object.hasOwn(parsed, 'icon')) {
+        const value = parsed.icon
+        icon = typeof value === 'string' && value.length >= 1 && value.length <= ICON_PATH_LIMIT ? { kind: 'ok', value } : { kind: 'invalid', field: 'icon' }
+    }
+    return { main, secondary, icon }
 }
 
 /** A non-blank string within `limit` UTF-16 units; `display` also refuses the display-field characters. */
@@ -135,5 +178,5 @@ export function parseManifest(text: string): ManifestResult {
             }
         }
     }
-    return { ok: true, manifest: { format: 1, packId, name, version, license, attribution, modes, fonts } }
+    return { ok: true, manifest: { format: 1, packId, name, version, license, attribution, modes, fonts, tile: readTile(parsed) } }
 }

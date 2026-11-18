@@ -2,9 +2,10 @@
 // under `Database.themePacks` names it). Data side only: every question to the person arrives as an injected callback and
 // every outcome is a typed value, so this module shows no notice of its own.
 //
-// Write order (INV-6): the archive is written, read back and hash-checked, then the record is added, then the active id is
-// set, all under one busy entry; a save is asked for after the entry ends. A failure at any step writes no record, and an
-// archive left behind is reclaimed by a later asset sweep. Neither Remove nor Replace deletes a file.
+// Write order (INV-6): the archive is written, read back and hash-checked, then the optional icon the same way, then the
+// record is added, then the active id is set, all under one busy entry; a save is asked for after the entry ends. A
+// failure at any step writes no record, and an archive or icon left behind is reclaimed by a later asset sweep. Neither
+// Remove nor Replace deletes a file.
 import { v4 } from 'uuid'
 import { sha256Hex } from '../assetHash'
 import { restoreInProgress } from '../drive/restoreInProgress'
@@ -13,10 +14,22 @@ import { isBusy, withBusy } from '../process/memory/busyActions'
 import { getPageStorageMode } from '../storage/pageStorageMode'
 import { getAppStore, pageStoreIsOpfsTransitional } from '../storage/store/appStore'
 import { DBState } from '../stores.svelte'
-import { PACK_ARCHIVE_KEY } from './packRefs'
+import { PACK_ARCHIVE_KEY, PACK_ICON_KEY } from './packRefs'
 import { listThemePacks, type PackManifestFields, type ThemePackRecordV1 } from './packRecord'
 
-export type PackVerifyOutcome<R> = { ok: true, manifest: PackManifestFields } | { ok: false, refusal: R }
+/** The tile colours of a verified pack (lower-case `#rrggbb`), each present only when known. */
+export interface PackTileColours {
+    main?: string
+    secondary?: string
+}
+
+/** The icon a verified pack names: exactly the bytes the check judged, and the extension their sniffed type gives. The install stores these bytes and never reads the archive again for them. */
+export interface PackVerifyIcon {
+    bytes: Uint8Array
+    ext: 'png' | 'webp'
+}
+
+export type PackVerifyOutcome<R> = { ok: true, manifest: PackManifestFields, tile?: PackTileColours, icon?: PackVerifyIcon } | { ok: false, refusal: R }
 
 export interface InstallRequest<R> {
     bytes: Uint8Array
@@ -91,8 +104,8 @@ function findReplaceTarget(manifest: PackManifestFields): ThemePackRecordV1 | nu
     return null
 }
 
-/** The write phase, run under the busy entry: archive, read-back check, record, active id. */
-async function writePack<R>(request: InstallRequest<R>, manifest: PackManifestFields, existing: ThemePackRecordV1 | null): Promise<InstallOutcome<R>> {
+/** The write phase, run under the busy entry: archive, read-back check, optional icon and its read-back check, record, active id. */
+async function writePack<R>(request: InstallRequest<R>, manifest: PackManifestFields, tile: PackTileColours | undefined, icon: PackVerifyIcon | undefined, existing: ThemePackRecordV1 | null): Promise<InstallOutcome<R>> {
     const bytes = request.bytes
     let hash: string
     let key: string
@@ -115,6 +128,29 @@ async function writePack<R>(request: InstallRequest<R>, manifest: PackManifestFi
     } catch (error) {
         return { ok: false, kind: 'writeFailed', error }
     }
+    // The icon is written after the archive and before the record, so a failure at any step leaves no record. It is always
+    // stored as bytes (its size cap is far below the size at which the store splits an asset), so a read-back returns the bytes.
+    let iconKey: string | undefined
+    if (icon !== undefined) {
+        let iconHash: string
+        try {
+            iconHash = await sha256Hex(icon.bytes)
+            iconKey = await saveAsset(icon.bytes, 'tp-' + iconHash, 'x.' + icon.ext)
+        } catch (error) {
+            return { ok: false, kind: 'writeFailed', error }
+        }
+        if (!PACK_ICON_KEY.test(iconKey)) {
+            return { ok: false, kind: 'writeFailed', error: new Error(`The store named the icon ${iconKey}.`) }
+        }
+        try {
+            const storedIcon = (await (await getAppStore()).read(iconKey)).bytes
+            if (storedIcon === null || await sha256Hex(storedIcon) !== iconHash) {
+                return { ok: false, kind: 'filesDamaged' }
+            }
+        } catch (error) {
+            return { ok: false, kind: 'writeFailed', error }
+        }
+    }
     const record: ThemePackRecordV1 = {
         v: 1,
         id: (request.newId ?? v4)(),
@@ -133,6 +169,15 @@ async function writePack<R>(request: InstallRequest<R>, manifest: PackManifestFi
     // Never an own `undefined` key: the optional id is set only when the manifest has one.
     if (typeof manifest.packId === 'string') {
         record.packId = manifest.packId
+    }
+    if (typeof tile?.main === 'string') {
+        record.mainColor = tile.main
+    }
+    if (typeof tile?.secondary === 'string') {
+        record.secondaryColor = tile.secondary
+    }
+    if (iconKey !== undefined) {
+        record.icon = iconKey
     }
     const live = DBState.db.themePacks
     let replaced = false
@@ -182,7 +227,7 @@ export async function installThemePack<R>(request: InstallRequest<R>): Promise<I
     if (again !== null) {
         return { ok: false, kind: again }
     }
-    const outcome = await withBusy('themePack', () => writePack(request, verdict.manifest, existing))
+    const outcome = await withBusy('themePack', () => writePack(request, verdict.manifest, verdict.tile, verdict.icon, existing))
     if (outcome.ok) {
         requestSaveNow()
     }
