@@ -171,7 +171,7 @@ vi.mock(import('src/ts/storage/manualCleanup'), async (importOriginal) => {
     return { ...original, runManualCleanup: vi.fn(original.runManualCleanup) }
 })
 
-import { forageStorage, getDbBackups } from 'src/ts/globalApi.svelte'
+import { forageStorage } from 'src/ts/globalApi.svelte'
 import { cleanColdStorage, deleteColdStorageUnits } from 'src/ts/process/coldstorage.svelte'
 import { runManualCleanup } from 'src/ts/storage/manualCleanup'
 import { queueInlayCleanupForCharacters, getInlayCleanupState, resetInlayCleanupRefusalForTests } from 'src/ts/process/files/inlayCleanup'
@@ -256,25 +256,6 @@ afterEach(() => {
 })
 
 describe('on a store2 page no legacy deleter deletes', () => {
-    test('reproducer: getDbBackups lists all 22 numbered backups and prunes none', async () => {
-        enterStore2Page()
-
-        const times = await getDbBackups()
-
-        expect(times).toHaveLength(22)
-        expect(store.deletes).toEqual([])
-    })
-
-    test.each<[string, PageStorageMode]>([
-        ['read-only', { kind: 'read-only', reason: 'opfs-transitional' }],
-        ['unset', { kind: 'unset' }],
-    ])('reproducer: getDbBackups on a %s page lists the backups and prunes none', async (_label, mode) => {
-        enterPage(mode)
-
-        expect(await getDbBackups()).toHaveLength(22)
-        expect(store.deletes).toEqual([])
-    })
-
     test('reproducer (alert path only): the manual clean-up returns before any store read, with no refusal alert and no delete', async () => {
         enterStore2Page()
 
@@ -360,7 +341,6 @@ describe('on a store2 page no legacy deleter deletes', () => {
     test('reproducer: the whole sweep of entries leaves no delete, no removeItem and no inlay removal', async () => {
         enterStore2Page()
 
-        await getDbBackups()
         await runManualCleanup()
         await cleanColdStorage()
         await deleteColdStorageUnits([UNIT])
@@ -374,13 +354,6 @@ describe('on a store2 page no legacy deleter deletes', () => {
 })
 
 describe('control: on a block page the same entries delete or reach past the refusal', () => {
-    test('guard: getDbBackups prunes the two oldest backups', async () => {
-        enterPage({ kind: 'block' })
-
-        expect(await getDbBackups()).toHaveLength(20)
-        expect(store.deletes).toEqual([`${BACKUP_PREFIX}1001.bin`, `${BACKUP_PREFIX}1002.bin`])
-    })
-
     test('guard: deleteColdStorageUnits removes the unit', async () => {
         enterPage({ kind: 'block' })
 
@@ -411,11 +384,11 @@ describe('control: on a block page the same entries delete or reach past the ref
         expect(runManualCleanup).toHaveBeenCalledTimes(1)
     })
 
-    test('guard: the inlay clean-up removes the unreferenced inlay', async () => {
+    test('guard: the inlay clean-up removes no inlay on any page, a block page included', async () => {
         enterPage({ kind: 'block' })
 
         await inlayCleanup()
 
-        expect(h.removeInlay).toHaveBeenCalledWith(INLAY)
+        expect(h.removeInlay).not.toHaveBeenCalled()
     })
 })

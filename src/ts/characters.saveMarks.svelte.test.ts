@@ -389,8 +389,7 @@ describe('removeChar (guard): still sets requiresFullEncoderReload', () => {
         await removeChar('char-B', 'Character B', 'permanentForce')
         expect(requiresFullEncoderReload.state).toBe(true)
 
-        // The reload path (globalApi.svelte.ts's saveDb(), extracted into
-        // prepareSaveIteration()) re-inits a FRESH encoder from the CURRENT db
+        // The reload path (a save pass's full reload) re-inits a FRESH encoder from the CURRENT db
         // whenever requiresFullEncoderReload.state is true, instead of reusing
         // the stale one above -- char-B is simply absent from data.characters
         // by the time this init() runs, so it's never (re-)encoded at all.

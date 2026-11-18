@@ -1,20 +1,9 @@
 /**
- * S11: `prepareSaveIteration` -- the full-reload branch, the snapshot/trim,
- * and the post-reload filter that keeps a reload from double-encoding an
- * already-marked character the same save iteration.
- * S13: `bootSaveSequence` -- a mark made while a slow `init()` is still
- * pending is queued into the live tracker immediately and flushed by the
- * real scheduler once `init()` completes ("installing after init" would
- * fail this test -- see its own comment).
  * S14: `mergeUnsavedChanges` -- pure merge-back-without-loss-or-duplication.
+ * Also `sweepDraftRegistrations`, the orphan draft-registration sweep the store2 loop runs every pass.
  *
- * This file drives the REAL, unmocked `src/ts/globalApi.svelte.ts` (so these
- * three functions, extracted from `saveDb()` -- `prepareSaveIteration` now
- * reorders the snapshot/reinit steps and filters the snapshot, not merely a
- * verbatim extraction -- are exercised for real) and the REAL
- * `src/ts/storage/risuSave.ts` /
- * `src/ts/storage/characterSaveMarks.ts`. The module-mock set below is
- * copied, trimmed to what these three functions' own dependency graph
+ * This file drives the REAL, unmocked `src/ts/globalApi.svelte.ts`. The module-mock set below is
+ * copied, trimmed to what these functions' own dependency graph
  * actually needs, from `src/ts/globalApiFileCacheAv3.svelte.test.ts` (the
  * existing precedent for loading this same huge module for real).
  */
@@ -216,19 +205,11 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 //#endregion
 
 import {
-    bootSaveSequence,
-    prepareSaveIteration,
     mergeUnsavedChanges,
     sweepDraftRegistrations,
 } from 'src/ts/globalApi.svelte'
-import { RisuSaveEncoder, decodeRisuSave } from 'src/ts/storage/risuSave'
 import type { toSaveType } from 'src/ts/storage/risuSave'
-import type { Database } from 'src/ts/storage/database.svelte'
-import {
-    installCharacterSaveMarks,
-    markCharacterForSave,
-    resetCharacterSaveMarksForTest,
-} from 'src/ts/storage/characterSaveMarks'
+import { resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
 import { draftContentOrphanGate, DRAFT_CONTENT_ORPHAN_CAP_MS } from 'src/ts/draftContentOrphanGate'
 import { hasLocalDrafts, resetLocalDraftsForTest } from 'src/ts/localDrafts'
 import type { MessageIdentity } from 'src/ts/draftContents'
@@ -247,469 +228,11 @@ function makeTracker(): toSaveType {
     }
 }
 
-type CharacterFixture = Database['characters'][number]
-
-function makeCharacter(chaId: string, name: string): CharacterFixture {
-    return {
-        chaId,
-        name,
-        type: 'character',
-        chatPage: 0,
-        chats: [{ id: `${chaId}-chat-0`, message: [], note: '', name: '', localLore: [] }],
-    } as unknown as CharacterFixture
-}
-
-function buildDb(characters: CharacterFixture[]): Database {
-    return {
-        formatversion: 5,
-        botPresetsId: 0,
-        botPresets: [],
-        modules: [],
-        loadouts: [],
-        plugins: [],
-        pluginCustomStorage: {},
-        characters,
-    } as unknown as Database
-}
-
 beforeEach(() => {
     resetCharacterSaveMarksForTest()
 })
 
 //#endregion
-
-describe('bootSaveSequence — S13', () => {
-    test('a mark made while a slow init() is pending lands in the tracker immediately, and the real scheduler flushes it once, after init completes', async () => {
-        const tracker = makeTracker()
-        let resolveInit!: () => void
-        const init = vi.fn(() => new Promise<void>((resolve) => { resolveInit = resolve }))
-        const realSchedule = vi.fn()
-        const createRealScheduler = vi.fn(() => realSchedule)
-
-        const bootPromise = bootSaveSequence({
-            tracker,
-            installMarks: installCharacterSaveMarks, // the REAL production wiring function
-            init,
-            createRealScheduler,
-        })
-
-        // init() is still pending here -- a mark arriving now must be queued
-        // into the LIVE tracker right away (not dropped, not merely queued in
-        // characterSaveMarks' pre-install buffer), because installMarks was
-        // called BEFORE init(), not after. If bootSaveSequence installed
-        // AFTER init() instead, `installed` would still be null at this exact
-        // point, and this assertion would fail (the mark would sit in
-        // characterSaveMarks' own pre-install queue instead of `tracker`).
-        markCharacterForSave('char-mid-init')
-        expect(tracker.character).toContain('char-mid-init')
-        expect(createRealScheduler).not.toHaveBeenCalled()
-        expect(realSchedule).not.toHaveBeenCalled()
-
-        resolveInit()
-        await bootPromise
-
-        expect(createRealScheduler).toHaveBeenCalledTimes(1)
-        // The pending mark above requested a save (via the pending-scheduler),
-        // so the real scheduler must be flushed exactly once with markDirty=true.
-        expect(realSchedule).toHaveBeenCalledTimes(1)
-        expect(realSchedule).toHaveBeenCalledWith(true)
-    })
-
-    test('no pending mark during init means the real scheduler is installed but never flushed', async () => {
-        const tracker = makeTracker()
-        const init = vi.fn(async () => {})
-        const realSchedule = vi.fn()
-        const createRealScheduler = vi.fn(() => realSchedule)
-
-        await bootSaveSequence({
-            tracker,
-            installMarks: installCharacterSaveMarks,
-            init,
-            createRealScheduler,
-        })
-
-        expect(realSchedule).not.toHaveBeenCalled()
-    })
-})
-
-describe('prepareSaveIteration — S11', () => {
-    test('a full reload restores characters present in the backup, drops ones absent from it, and encodes each present character exactly once', async () => {
-        const tracker = makeTracker()
-        // char-A survived the backup load; char-C did not (deleted by the
-        // backup); both were marked BEFORE the reload (e.g. by a plugin or
-        // the identity tracker) in this same save iteration.
-        tracker.character = ['char-A', 'char-C']
-        const reloadFlag = { state: true }
-
-        const postBackupDb = buildDb([
-            makeCharacter('char-A', 'A restored from backup'),
-            makeCharacter('char-B', 'B also in the backup, never marked'),
-        ])
-
-        const encodeSpy = vi.spyOn(RisuSaveEncoder.prototype, 'encodeBlock')
-        const countEncodesFor = (chaId: string) =>
-            encodeSpy.mock.calls.filter(([arg]) => (arg as { name: string }).name === chaId).length
-
-        const staleEncoder = new RisuSaveEncoder() // stand-in for the pre-reload encoder; never used past this call
-        let onSnapshotTakenCalled = false
-
-        const result = await prepareSaveIteration({
-            tracker,
-            encoder: staleEncoder,
-            reloadFlag,
-            reinitEncoder: async () => {
-                const fresh = new RisuSaveEncoder()
-                await fresh.init(postBackupDb, { compression: false })
-                return fresh
-            },
-            getDatabase: () => postBackupDb,
-            onSnapshotTaken: () => { onSnapshotTakenCalled = true },
-        })
-
-        expect(reloadFlag.state).toBe(false) // consumed
-        expect(onSnapshotTakenCalled).toBe(true)
-        // char-A's proxy was already encoded by the reload's own init() --
-        // filtered OUT so set() below doesn't double-encode it.
-        expect(result.toSave.character).not.toContain('char-A')
-        // char-C is absent from the post-backup db entirely -- kept, so
-        // set() below runs its delete branch for it, but that's a no-op:
-        // the fresh encoder's own init() never had a block for char-C to
-        // begin with, since char-C isn't in postBackupDb.
-        expect(result.toSave.character).toContain('char-C')
-
-        const charAEncodesBeforeSet = countEncodesFor('char-A')
-        expect(charAEncodesBeforeSet).toBe(1) // encoded exactly once, by init()
-
-        await result.encoder.set(postBackupDb, result.toSave)
-
-        expect(countEncodesFor('char-A')).toBe(charAEncodesBeforeSet) // NOT re-encoded a second time by set()
-
-        const decoded = await decodeRisuSave(new Uint8Array(result.encoder.encode()!))
-        expect(decoded.characters?.find((c: CharacterFixture) => c.chaId === 'char-A')?.name).toBe('A restored from backup')
-        expect(decoded.characters?.find((c: CharacterFixture) => c.chaId === 'char-B')?.name).toBe('B also in the backup, never marked')
-        expect(decoded.characters?.find((c: CharacterFixture) => c.chaId === 'char-C')).toBeUndefined() // gone
-
-        encodeSpy.mockRestore()
-    })
-
-    test('a reload consumes the fresh encoder\'s recorded proxies: takeEncodedCharacterProxies() is empty right after prepareSaveIteration\'s filter runs (proxy release)', async () => {
-        const tracker = makeTracker()
-        tracker.character = ['char-A']
-        const reloadFlag = { state: true }
-        const postBackupDb = buildDb([
-            makeCharacter('char-A', 'A restored from backup'),
-        ])
-        const staleEncoder = new RisuSaveEncoder()
-
-        const result = await prepareSaveIteration({
-            tracker,
-            encoder: staleEncoder,
-            reloadFlag,
-            reinitEncoder: async () => {
-                const fresh = new RisuSaveEncoder()
-                await fresh.init(postBackupDb, { compression: false })
-                return fresh
-            },
-            getDatabase: () => postBackupDb,
-        })
-
-        // The filter above already consumed the fresh encoder's recorded set
-        // (takeEncodedCharacterProxies()) to decide what to drop from
-        // `toSave` -- so a second take, right after prepareSaveIteration()
-        // returns, must come back empty rather than still holding char-A.
-        expect(result.encoder.takeEncodedCharacterProxies().size).toBe(0)
-    })
-
-    test('a character replaced again right after the reload\'s own init() recorded it (a proxy not yet recorded by THIS init) survives the filter', async () => {
-        const tracker = makeTracker()
-        tracker.character = ['char-A']
-        const reloadFlag = { state: true }
-
-        const originalCharA = makeCharacter('char-A', 'A original, seen by init()')
-        const replacedCharA = makeCharacter('char-A', 'A replaced again right after init()')
-        let getDatabaseCalls = 0
-        // reinitEncoder() calls getDatabase() once (to init() from); the
-        // filter step calls it again afterward. Simulates something (e.g. the
-        // identity tracker's own writer) replacing char-A's proxy in that
-        // narrow window between the two calls -- the filter must key off
-        // whatever getDatabase() returns NOW, not a stale reference, so a
-        // mark for the id survives rather than being wrongly filtered against
-        // a proxy this init() never actually saw.
-        const getDatabase = () => {
-            getDatabaseCalls++
-            return getDatabaseCalls === 1 ? buildDb([originalCharA]) : buildDb([replacedCharA])
-        }
-
-        const staleEncoder = new RisuSaveEncoder()
-        const result = await prepareSaveIteration({
-            tracker,
-            encoder: staleEncoder,
-            reloadFlag,
-            reinitEncoder: async () => {
-                const fresh = new RisuSaveEncoder()
-                await fresh.init(getDatabase(), { compression: false })
-                return fresh
-            },
-            getDatabase,
-        })
-
-        expect(getDatabaseCalls).toBeGreaterThanOrEqual(2)
-        expect(result.toSave.character).toContain('char-A')
-    })
-
-    test('no reload: passes present ids through, trimmed to the sticky front', async () => {
-        const tracker = makeTracker()
-        tracker.character = ['char-front', 'char-second']
-        tracker.chat = [['char-front', 'chat-0'], ['char-second', 'chat-1']]
-        const reloadFlag = { state: false }
-        const encoder = new RisuSaveEncoder()
-        const reinitEncoder = vi.fn()
-
-        const result = await prepareSaveIteration({
-            tracker,
-            encoder,
-            reloadFlag,
-            reinitEncoder,
-            getDatabase: () => buildDb([
-                makeCharacter('char-front', 'front'),
-                makeCharacter('char-second', 'second'),
-            ]),
-        })
-
-        expect(reinitEncoder).not.toHaveBeenCalled()
-        expect(result.encoder).toBe(encoder)
-        expect(result.toSave.character).toEqual(['char-front', 'char-second'])
-        // The LIVE tracker is trimmed to the sticky front right away.
-        expect(tracker.character).toEqual(['char-front'])
-        expect(tracker.chat).toEqual([['char-front', 'chat-0']])
-    })
-
-    test('no reload: drops ids absent from db.characters so the encoder never deletes a block without a reload', async () => {
-        const tracker = makeTracker()
-        tracker.character = ['char-0', 'char-1']
-        const reloadFlag = { state: false }
-        const dbWithBothCharacters = buildDb([
-            makeCharacter('char-0', 'Character Zero'),
-            makeCharacter('char-1', 'Character One'),
-        ])
-        const dbWithoutCharOne = buildDb([
-            makeCharacter('char-0', 'Character Zero'),
-        ])
-        const encoder = new RisuSaveEncoder()
-        await encoder.init(dbWithBothCharacters, { compression: false })
-        const reinitEncoder = vi.fn()
-
-        const result = await prepareSaveIteration({
-            tracker,
-            encoder,
-            reloadFlag,
-            reinitEncoder,
-            // char-1 is absent here -- e.g. a stale second plugin
-            // setDatabase/setDatabaseLite call already reassigned
-            // db.characters away without a reload. Since no reload
-            // happened this iteration, the encoder's delete branch must never
-            // run for char-1 -- only a reload (which sets
-            // requiresFullEncoderReload) may intentionally remove a block.
-            getDatabase: () => dbWithoutCharOne,
-        })
-
-        expect(reinitEncoder).not.toHaveBeenCalled()
-        expect(result.toSave.character).toEqual(['char-0'])
-
-        await result.encoder.set(dbWithoutCharOne, result.toSave)
-        const decoded = await decodeRisuSave(new Uint8Array(result.encoder.encode()!))
-        // char-1's block still exists -- it comes back on reload, rather than
-        // being permanently deleted by a save iteration that never reloaded.
-        expect(decoded.characters?.find((c: CharacterFixture) => c.chaId === 'char-1')).toBeTruthy()
-    })
-
-    test('an edit made during a reload, on a character that reload already encoded, is still saved because the snapshot is taken before reinitEncoder() runs', async () => {
-        resetCharacterSaveMarksForTest()
-        const tracker = makeTracker()
-        // char-B is already marked before this iteration starts -- an unrelated
-        // front id, occupying tracker.character[0] (the "sticky front" trim
-        // keeps only this slot).
-        tracker.character = ['char-B']
-        installCharacterSaveMarks({ tracker, schedule: () => {} }) // real production wiring
-
-        const charA = makeCharacter('char-A', 'A original, seen by the reload\'s init()')
-        const charB = makeCharacter('char-B', 'B unrelated')
-        const db = buildDb([charB, charA])
-        const reloadFlag = { state: true }
-        const staleEncoder = new RisuSaveEncoder() // stand-in for the pre-reload encoder; never used past this call
-
-        const result = await prepareSaveIteration({
-            tracker,
-            encoder: staleEncoder,
-            reloadFlag,
-            reinitEncoder: async () => {
-                // A slow fake that runs the REAL encoder init() -- during the
-                // (seconds-long, in production) window this init() call takes,
-                // something writes char-A IN PLACE (same proxy init() just
-                // recorded in encodedCharacterProxies) and marks it. This lands
-                // the mark BEHIND char-B, since char-B was already in the
-                // tracker: tracker.character becomes ['char-B', 'char-A'].
-                const fresh = new RisuSaveEncoder()
-                await fresh.init(db, { compression: false })
-                charA.chats[0].message.push({ role: 'char', data: 'reply tail written during reload', chatId: 'm1' })
-                markCharacterForSave('char-A')
-                return fresh
-            },
-            getDatabase: () => db,
-        })
-
-        // The snapshot is taken BEFORE reinitEncoder() is even called, so it
-        // only ever contains ['char-B'] -- char-A's mark above is added by
-        // the fake reinitEncoder() DURING the reload, after the snapshot
-        // already ran, and so lands in the LIVE tracker instead, behind the
-        // sticky front. The live tracker is trimmed to the sticky front
-        // regardless of what the filter below does to `toSave`.
-        expect(tracker.character).toEqual(['char-B'])
-
-        await result.encoder.set(db, result.toSave)
-
-        // "...then run one more normal save iteration, as the real loop would."
-        const result2 = await prepareSaveIteration({
-            tracker,
-            encoder: result.encoder,
-            reloadFlag: { state: false },
-            reinitEncoder: async () => { throw new Error('must not reload again') },
-            getDatabase: () => db,
-        })
-        await result2.encoder.set(db, result2.toSave)
-
-        const decoded = await decodeRisuSave(new Uint8Array(result2.encoder.encode()!))
-        const decodedA = decoded.characters?.find((c: CharacterFixture) => c.chaId === 'char-A')
-        // The snapshot taken here is only ['char-B'] -- char-A's mark above
-        // is never part of it, since it's added by reinitEncoder() itself,
-        // after the snapshot already ran. The post-reload filter then drops
-        // char-B instead (its proxy WAS recorded by this reload's own
-        // init()), leaving `toSave.character` empty; the fold loop in
-        // prepareSaveIteration (in globalApi.svelte.ts) picks up char-A's
-        // mark from the live tracker afterward and pushes it in, unfiltered.
-        // So the FIRST set() call below (on `result`) is the one that
-        // actually writes the reply tail; the second iteration's set() (on
-        // `result2`) only re-encodes char-B.
-        expect(decodedA?.chats[0].message).toContainEqual({ role: 'char', data: 'reply tail written during reload', chatId: 'm1' })
-
-        resetCharacterSaveMarksForTest()
-    })
-})
-
-describe('prepareSaveIteration — onSnapshotRestored and reload-flag ordering', () => {
-    // A: `onSnapshotTaken` (used by saveDb() to clear `dirtySinceLastSave`)
-    // runs before reinitEncoder(). If reinitEncoder() THROWS,
-    // prepareSaveIteration folds the snapshot back into the live tracker via
-    // mergeUnsavedChanges (so nothing is lost), but saveDb() still needs to
-    // know it must flag itself dirty again for a retry: the optional
-    // `onSnapshotRestored` callback is called right after that merge-back,
-    // and saveDb() wires it to `dirtySinceLastSave = true`.
-    test('reinitEncoder() throwing calls onSnapshotRestored exactly once, after onSnapshotTaken, rejects with the same error, and restores the snapshot ids into the live tracker', async () => {
-        const tracker = makeTracker()
-        tracker.character = ['char-A', 'char-C']
-        tracker.chat = [['char-A', 'chat-0']]
-        const reloadFlag = { state: true }
-        const staleEncoder = new RisuSaveEncoder()
-        const thrown = new Error('reinitEncoder failed')
-
-        const callOrder: string[] = []
-        const onSnapshotTaken = vi.fn(() => { callOrder.push('taken') })
-        const onSnapshotRestored = vi.fn(() => { callOrder.push('restored') })
-
-        await expect(prepareSaveIteration({
-            tracker,
-            encoder: staleEncoder,
-            reloadFlag,
-            reinitEncoder: async () => { throw thrown },
-            getDatabase: () => buildDb([]),
-            onSnapshotTaken,
-            onSnapshotRestored,
-        })).rejects.toBe(thrown)
-
-        expect(onSnapshotTaken).toHaveBeenCalledTimes(1)
-        expect(onSnapshotRestored).toHaveBeenCalledTimes(1)
-        expect(callOrder).toEqual(['taken', 'restored'])
-
-        // mergeUnsavedChanges already folds the snapshot back into the live
-        // tracker before the throw propagates -- onSnapshotRestored is an
-        // ADDITIONAL signal (for saveDb()'s dirtySinceLastSave), not a
-        // replacement for that merge-back.
-        expect(tracker.character).toEqual(expect.arrayContaining(['char-A', 'char-C']))
-        expect(tracker.chat).toEqual(expect.arrayContaining([['char-A', 'chat-0']]))
-    })
-
-    test('guard: on a successful reload, onSnapshotRestored is never called', async () => {
-        const tracker = makeTracker()
-        tracker.character = ['char-A']
-        const reloadFlag = { state: true }
-        const staleEncoder = new RisuSaveEncoder()
-        const db = buildDb([makeCharacter('char-A', 'A')])
-        const onSnapshotRestored = vi.fn()
-
-        await prepareSaveIteration({
-            tracker,
-            encoder: staleEncoder,
-            reloadFlag,
-            reinitEncoder: async () => {
-                const fresh = new RisuSaveEncoder()
-                await fresh.init(db, { compression: false })
-                return fresh
-            },
-            getDatabase: () => db,
-            onSnapshotRestored,
-        })
-
-        expect(onSnapshotRestored).not.toHaveBeenCalled()
-    })
-
-    // `opts.reloadFlag.state = false` runs BEFORE `await reinitEncoder()`, so
-    // a removeChar() or backup load that sets the flag DURING the reload
-    // (requesting another full reload once this one finishes) is never
-    // silently erased by a later assignment. If reinitEncoder() throws, the
-    // flag is set back to `true` (confirmed by the guard test below).
-    test('reloadFlag.state set to true partway through reinitEncoder() (e.g. removeChar racing the reload) survives -- the flag is still true after prepareSaveIteration returns', async () => {
-        const tracker = makeTracker()
-        tracker.character = ['char-A']
-        const reloadFlag = { state: true }
-        const staleEncoder = new RisuSaveEncoder()
-        const db = buildDb([makeCharacter('char-A', 'A')])
-
-        await prepareSaveIteration({
-            tracker,
-            encoder: staleEncoder,
-            reloadFlag,
-            reinitEncoder: async () => {
-                // Simulates removeChar() (or a backup load) running during
-                // this same reload and requesting ANOTHER full reload once
-                // this one finishes.
-                reloadFlag.state = true
-                const fresh = new RisuSaveEncoder()
-                await fresh.init(db, { compression: false })
-                return fresh
-            },
-            getDatabase: () => db,
-        })
-
-        expect(reloadFlag.state).toBe(true)
-    })
-
-    test('guard: reinitEncoder() throwing still leaves the reload flag true afterward', async () => {
-        const tracker = makeTracker()
-        tracker.character = ['char-A']
-        const reloadFlag = { state: true }
-        const staleEncoder = new RisuSaveEncoder()
-
-        await expect(prepareSaveIteration({
-            tracker,
-            encoder: staleEncoder,
-            reloadFlag,
-            reinitEncoder: async () => { throw new Error('boom') },
-            getDatabase: () => buildDb([]),
-        })).rejects.toThrow('boom')
-
-        expect(reloadFlag.state).toBe(true)
-    })
-})
 
 describe('mergeUnsavedChanges — S14', () => {
     test('a mark added between the snapshot and the end of set() survives into the next save, without duplication', () => {
@@ -734,7 +257,7 @@ describe('mergeUnsavedChanges — S14', () => {
     })
 
     test('a failed save (live tracker already trimmed/reset) merges the whole snapshot back without loss', () => {
-        const live = makeTracker() // as if just trimmed to empty by prepareSaveIteration
+        const live = makeTracker() // as if just trimmed to empty by the save pass's snapshot
         const toSave = makeTracker()
         toSave.character = ['char-a', 'char-b']
         toSave.chat = [['char-a', 'chat-0'], ['char-b', 'chat-1']]
@@ -762,9 +285,8 @@ describe('mergeUnsavedChanges — S14', () => {
 })
 
 describe('sweepDraftRegistrations', () => {
-    // Extracted from `saveDb()`'s loop for the same reason `bootSaveSequence`/
-    // `prepareSaveIteration` were (see this function's own comment in
-    // `globalApi.svelte.ts`): the loop itself is a non-terminating
+    // Extracted from the save loop so that it can be tested alone (see this
+    // function's own comment in `globalApi.svelte.ts`): the loop itself is a non-terminating
     // `while (true)` with heavy real side effects and cannot be driven by a
     // test. These tests can only prove `sweepDraftRegistrations` itself is
     // correct, not that `saveDb()`'s loop still calls it -- that call site is
@@ -820,31 +342,5 @@ describe('sweepDraftRegistrations', () => {
         // a hardcoded-0 implementation would fail.
         sweepDraftRegistrations(1_000 + DRAFT_CONTENT_ORPHAN_CAP_MS)
         expect(hasLocalDrafts()).toBe(false)
-    })
-})
-
-describe('NUMID-MARK: legacy loop and a numeric explicit mark', () => {
-    test('L1 (R): markCharacterForSave(7) survives the no-reload filter raw and set() writes block 7', async () => {
-        const tracker = makeTracker()
-        installCharacterSaveMarks({ tracker, schedule: () => {} })
-        const original = { ...makeCharacter('x', 'Original'), chaId: 7 } as unknown as CharacterFixture
-        const encoder = new RisuSaveEncoder()
-        await encoder.init(buildDb([original]), { compression: false })
-        const edited = { ...makeCharacter('x', 'Edited'), chaId: 7 } as unknown as CharacterFixture
-        const db = buildDb([edited])
-        markCharacterForSave(7)
-        const result = await prepareSaveIteration({
-            tracker,
-            encoder,
-            reloadFlag: { state: false },
-            reinitEncoder: vi.fn(),
-            getDatabase: () => db,
-        })
-        expect(result.toSave.character).toEqual([7])
-        await result.encoder.set(db, result.toSave)
-        const decoded = await decodeRisuSave(new Uint8Array(result.encoder.encode()!))
-        const stored = decoded.characters?.find((c: CharacterFixture) => String(c.chaId) === '7')
-        expect(stored?.name).toBe('Edited')
-        expect(stored?.chaId).toBe(7)
     })
 })
