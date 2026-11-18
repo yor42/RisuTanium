@@ -35,6 +35,8 @@ export type EmbeddingVector = number[] | Float32Array;
 
 type EmbeddingRole = "query" | "document";
 
+const CONTEXT_ROLE_TAG = "r1";
+
 export class HypaProcessorV2<TMetadata> {
   private static readonly LOG_PREFIX = "[HypaProcessorV2]";
   public readonly options: HypaProcessorV2Options;
@@ -387,6 +389,10 @@ export class HypaProcessorV2<TMetadata> {
     return dot / (Math.sqrt(magA) * Math.sqrt(magB));
   }
 
+  // A context model's provider sends a role-specific input type, and V2 caches both roles, so an ungrouped key
+  // carries the role. A context group is passed only for documents (`ctxGroups` is built only when `saveToMemory`),
+  // so a grouped key identifies the document role by construction. Changing the context-model key requires a new
+  // tag (`r2`); a tag is never reused.
   private getCacheKey(content: string, role: EmbeddingRole, contextTexts?: string[]): string {
     const db = getDatabase();
     const suffix =
@@ -395,9 +401,13 @@ export class HypaProcessorV2<TMetadata> {
         : "";
 
     const ctxProvider = isContextModel(this.options.model) ? getContextProvider(this.options.model) : null;
-    const ctxSuffix = ctxProvider
+    let ctxSuffix = ctxProvider
       ? ctxProvider.getCacheKeySuffix(contextTexts)
       : "";
+    // The provider owns the grouping rule: a key is grouped when its suffix differs from the ungrouped one.
+    if (ctxProvider && ctxSuffix === ctxProvider.getCacheKeySuffix()) {
+      ctxSuffix += `|${CONTEXT_ROLE_TAG}:${role === "query" ? "q" : "d"}`;
+    }
 
     return `${content}|${this.options.model}${suffix}${ctxSuffix}${recipeCacheTag(this.options.model, role)}`;
   }
