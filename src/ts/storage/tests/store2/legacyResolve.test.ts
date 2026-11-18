@@ -35,6 +35,8 @@ vi.mock('@tauri-apps/plugin-fs', () => ({
 import type { Database } from 'src/ts/storage/database.svelte'
 import { coldStorageHeader, formatColdStorageLoadError } from 'src/ts/process/coldstorageData'
 import { encodeDatabase, StubRefusedError } from 'src/ts/storage/store2/codec'
+import { characterIdProblem, isUsableCharacterId } from 'src/ts/storage/characterIds'
+import { repairImportTree } from 'src/ts/storage/store2/legacy/importTree'
 import { LegacyReadError, resolveLegacyTree, type LegacyEntryReader } from 'src/ts/storage/store2/legacy/resolve'
 import { mergeRetriedColdChatSideFields, type RetryLegacyColdChatSideFields } from 'src/ts/process/coldstorageData'
 import { fakeLists, seededEnv } from './codecFixtures'
@@ -1074,5 +1076,291 @@ describe('the faultyUnitsUnusable opt-in: a unit or slot the codec would refuse'
 
         expect((opted.database.characters as unknown[])[0]).toBe(slot)
         expect((plain.database.characters as unknown[])[0]).toEqual({})
+    })
+})
+
+describe('a re-id is followed by every reference of the resolved tree', () => {
+    const U = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`
+    const LONG = 'L'.repeat(300)
+    const say = (saying: string, data: string, role = 'char'): Obj => ({ role, data, saying, time: 1, chatId: `m-${data}` })
+    const altOf = (m: Obj): Obj => ({ m, p: `parent-${String(m.data)}`, a: 2, mem: { kept: String(m.data) } })
+    const chatOf = (id: string, message: Obj[], alt?: Obj[]): Obj => ({
+        id, name: id, note: '', localLore: [], message, ...(alt !== undefined ? { alt } : {}),
+    })
+    const pointer = (unit: string): Obj => ({ role: 'char', data: coldStorageHeader + unit, time: 1 })
+
+    interface Ids { config: string, long: string, proto: string, root: string }
+    const REAL: Ids = { config: 'config', long: LONG, proto: '__proto__', root: 'root' }
+    /** The same tree with every unusable id already replaced by a usable one: neither the repair nor the follow has anything to do. */
+    const TWIN: Ids = { config: 'B1', long: 'F1', proto: 'P1', root: 'E1' }
+
+    /** Producer-shaped legacy tree: hot characters, an archived character and group, a pointer chat unit, hot and cold `alt`. */
+    function build(ids: Ids): { tree: Obj, units: Map<string, StoredUnit> } {
+        const units = new Map<string, StoredUnit>()
+        const sayings = (chatId: string, names: string[]) => names.map((name, index) => say(name, `${chatId}:${index}`))
+        units.set(U(1), { status: 'ok', value: { message: sayings('gu', [ids.config, ids.long, 'A1', ids.root, ids.proto]) } })
+        units.set(U(2), { status: 'ok', value: { character: {
+            chaId: 'E1', name: 'E', type: 'character', chats: [
+                chatOf('ec', sayings('ec', [ids.config])),
+                chatOf('ea', sayings('ea', ['A1']), [altOf(say(ids.config, 'ea:alt0'))]),
+                chatOf('em', sayings('em', [ids.config]), [altOf(say('A1', 'em:alt0'))]),
+            ],
+        } } })
+        units.set(U(3), { status: 'ok', value: { character: {
+            chaId: 'H1', name: 'H', type: 'group', characters: [ids.config, ids.root, ids.long, 'A1', ids.proto],
+            chats: [chatOf('hc', sayings('hc', [ids.config, ids.root, ids.long, ids.proto]), [altOf(say(ids.config, 'hc:alt0'))])],
+        } } })
+        const characters: Obj[] = [
+            { chaId: 'A1', name: 'A', type: 'character', chats: [chatOf('ac', sayings('ac', ['A1']))] },
+            { chaId: ids.config, name: 'B', type: 'character', chats: [chatOf('bc', sayings('bc', [ids.config]), [altOf(say(ids.config, 'bc:alt0'))])] },
+            {
+                chaId: 'G1', name: 'G', type: 'group', characters: [ids.config, 'A1', ids.long, ids.root, ids.proto], chats: [
+                    chatOf('gc', sayings('gc', [ids.config, 'A1', ids.long]), [altOf(say(ids.config, 'gc:alt0'))]),
+                    chatOf('gcold', [pointer(U(1)), say(ids.config, 'gcold:1')]),
+                ],
+            },
+            { chaId: ids.root, name: 'E-archived', type: 'character', coldstorage: U(2), chats: [] },
+            { chaId: 'H1', name: 'H-archived-group', type: 'group', coldstorage: U(3), chats: [] },
+            { chaId: ids.long, name: 'F-long', type: 'character', chats: [chatOf('fc', sayings('fc', [ids.long]))] },
+            { chaId: ids.proto, name: 'P-proto', type: 'character', chats: [chatOf('pc', sayings('pc', [ids.proto]))] },
+        ]
+        const tree = {
+            characters,
+            characterOrder: [ids.config, 'A1', { id: 'fold', data: [ids.root, ids.long, ids.proto] }, 'G1'],
+            loadouts: [{ id: 'l', characterIds: [ids.config, ids.root] }],
+        }
+        return { tree, units }
+    }
+
+    /** Every speaker reference (member, message speaker, alternative speaker) that names no character the tree holds. */
+    function dangling(db: Database): string[] {
+        const all = chars(db)
+        const held = new Set(all.filter(c => isUsableCharacterId(c.chaId)).map(c => String(c.chaId)))
+        const out: string[] = []
+        const check = (id: unknown, where: string) => {
+            if (typeof id === 'string' && !held.has(id)) {
+                out.push(`${where}:${id.length > 20 ? 'LONG' : id}`)
+            }
+        }
+        for (const character of all) {
+            for (const member of (character.characters as unknown[] | undefined) ?? []) {
+                check(member, `members(${String(character.name)})`)
+            }
+            for (const chat of (character.chats as Obj[] | undefined) ?? []) {
+                for (const m of (chat.message as Obj[] | undefined) ?? []) {
+                    if (m.role === 'char') {
+                        check(m.saying, `say(${String(character.name)}/${String(chat.id)})`)
+                    }
+                }
+                for (const record of (chat.alt as { m: Obj }[] | undefined) ?? []) {
+                    if (record.m.role === 'char') {
+                        check(record.m.saying, `alt(${String(character.name)}/${String(chat.id)})`)
+                    }
+                }
+            }
+        }
+        return out
+    }
+
+    /** A message or alternative message with every key but `saying`, so a rebuilt record that loses any other key shows. */
+    function withoutSaying(message: Obj): Obj {
+        const { saying: _saying, ...rest } = message
+        return rest
+    }
+
+    /** What a lost, swapped or invented list shows in: ids, members and sayings are left out, content is kept. */
+    function contentShape(db: Database): unknown {
+        return chars(db).map(character => ({
+            name: character.name,
+            type: character.type,
+            chats: Array.isArray(character.chats) ? (character.chats as Obj[]).map(chat => ({
+                id: chat.id,
+                keys: Object.keys(chat).sort(),
+                message: Object.hasOwn(chat, 'message') ? (chat.message as Obj[]).map(withoutSaying) : 'absent',
+                alt: !Object.hasOwn(chat, 'alt') ? 'absent'
+                    : Array.isArray(chat.alt) ? (chat.alt as { m: Obj }[]).map(record => ({ ...record, m: withoutSaying(record.m) })) : typeof chat.alt,
+            })) : null,
+        }))
+    }
+
+    /** The import's order: repair the decoded tree, then resolve it with the map the repair carried. */
+    async function importOrder(ids: Ids) {
+        const { tree, units } = build(ids)
+        const reader = readerOver(units)
+        const repaired = await repairImportTree(tree as unknown as Database, reader)
+        if (repaired.status !== 'repaired') {
+            throw new Error('The repair refused the fixture.')
+        }
+        const resolved = await resolveLegacyTree(tree as unknown as Database, reader, { ...OPTIONS, replacedIds: repaired.replacedIds })
+        return { resolved, repaired }
+    }
+
+    function named(db: Database, name: string): Obj {
+        const found = chars(db).find(c => c.name === name)
+        if (found === undefined) {
+            throw new Error(`no character named ${name}`)
+        }
+        return found
+    }
+
+    test('reproducer: after the repair re-ids characters, no reference of the resolved tree names an id no character holds', async () => {
+        const { resolved } = await importOrder(REAL)
+
+        expect(dangling(resolved.database)).toEqual([])
+    })
+
+    test('guard: the chats of the resolved tree keep their content, whatever the ids (a twin without id problems has the same shape)', async () => {
+        const real = await importOrder(REAL)
+        const twin = await importOrder(TWIN)
+
+        expect(contentShape(real.resolved.database)).toEqual(contentShape(twin.resolved.database))
+    })
+
+    test('reproducer: a reference to a stub id the repair recovered names the id its unit records', async () => {
+        const { resolved } = await importOrder(REAL)
+
+        const recovered = chars(resolved.database)[3].chaId
+        expect(recovered).toBe('E1')
+        const cold = chatsOf(named(resolved.database, 'G'))[1].message as Obj[]
+        expect(cold[3].saying).toBe(recovered)
+        expect(named(resolved.database, 'H').characters).toEqual([
+            chars(resolved.database)[1].chaId, recovered, chars(resolved.database)[5].chaId, 'A1', chars(resolved.database)[6].chaId,
+        ])
+    })
+
+    test('reproducer: the conversion funnel re-ids an unusable id on its own and follows it into members and a cold chat', async () => {
+        const db = { characters: [
+            { chaId: 'config', name: 'B', type: 'character', chats: [chatOf('bc', [say('config', 'bc:0')])] },
+            { chaId: 'G1', name: 'G', type: 'group', characters: ['config'], chats: [chatOf('g', [pointer(U(1))])] },
+        ] } as unknown as Database
+        const units = new Map<string, StoredUnit>([[U(1), { status: 'ok', value: { message: [say('config', 'g:u0')] } }]])
+
+        const { database } = await resolveLegacyTree(db, readerOver(units), { ...OPTIONS, faultyUnitsUnusable: true })
+
+        const id = chars(database)[0].chaId
+        expect(characterIdProblem(id)).toBeNull()
+        expect(chars(database)[1].characters).toEqual([id])
+        expect(((chatsOf(chars(database)[1])[0].message as Obj[])[0]).saying).toBe(id)
+        expect(dangling(database)).toEqual([])
+    })
+
+    /** Three chats that name `name`: only `alt` does (a), only the messages do while `alt` names nothing (b), the messages do and there is no `alt` key (c). */
+    function triad(prefix: string, name: string): Obj[] {
+        return [
+            chatOf(`${prefix}a`, [say('A1', `${prefix}a:0`), say('hi', `${prefix}a:1`, 'user')], [altOf(say(name, `${prefix}a:alt0`))]),
+            chatOf(`${prefix}b`, [say(name, `${prefix}b:0`)], [altOf(say('x', `${prefix}b:alt0`, 'user'))]),
+            chatOf(`${prefix}c`, [say(name, `${prefix}c:0`)]),
+        ]
+    }
+
+    function altSaying(chat: Obj): unknown {
+        return ((chat.alt as { m: Obj }[])[0]).m.saying
+    }
+
+    function messageSaying(chat: Obj): unknown {
+        return ((chat.message as Obj[])[0]).saying
+    }
+
+    test('conversion re-id: a chat rebuilt for one list keeps the identical other list, and a missing key stays missing', async () => {
+        const db = { characters: [
+            { chaId: 'config', name: 'B', type: 'character', chats: [] },
+            { chaId: 'A1', name: 'K', type: 'character', chats: triad('k', 'config') },
+        ] } as unknown as Database
+        const source = chatsOf(chars(db)[1])
+
+        const { database } = await resolveLegacyTree(db, readerOver(new Map()), { ...OPTIONS, faultyUnitsUnusable: true })
+
+        const id = chars(database)[0].chaId
+        const [a, b, c] = chatsOf(chars(database)[1])
+        expect(a.message).toBe(source[0].message)
+        expect(b.alt).toBe(source[1].alt)
+        expect(Object.hasOwn(c, 'alt')).toBe(false)
+        expect(characterIdProblem(id)).toBeNull()
+        expect(altSaying(a)).toBe(id)
+        expect(messageSaying(b)).toBe(id)
+        expect(messageSaying(c)).toBe(id)
+    })
+
+    test('carried map: a hot chat and cold pointer chats keep the list that did not change', async () => {
+        const carried = U(9)
+        const coldUnits = new Map<string, StoredUnit>([
+            [U(21), { status: 'ok', value: { message: [say('A1', 'la:u0')] } }],
+            [U(22), { status: 'ok', value: { message: [say('config', 'lb:u0')] } }],
+            [U(23), { status: 'ok', value: { message: [say('config', 'lc:u0')] } }],
+        ])
+        const coldChats = [
+            { ...chatOf('la', [pointer(U(21))], [altOf(say('config', 'la:alt0'))]) },
+            { ...chatOf('lb', [pointer(U(22))], [altOf(say('x', 'lb:alt0', 'user'))]) },
+            { ...chatOf('lc', [pointer(U(23))]) },
+        ]
+        const db = { characters: [
+            { chaId: carried, name: 'B', type: 'character', chats: [] },
+            { chaId: 'A1', name: 'K', type: 'character', chats: triad('k', 'config') },
+            { chaId: 'L1', name: 'L', type: 'character', chats: coldChats },
+        ] } as unknown as Database
+        const source = chatsOf(chars(db)[1])
+
+        const baseline = await resolveLegacyTree(db, readerOver(coldUnits), OPTIONS)
+        const { database } = await resolveLegacyTree(db, readerOver(coldUnits), { ...OPTIONS, replacedIds: new Map([['config', carried]]) })
+
+        const [a, b, c] = chatsOf(chars(database)[1])
+        expect(a.message).toBe(source[0].message)
+        expect(b.alt).toBe(source[1].alt)
+        expect(Object.hasOwn(c, 'alt')).toBe(false)
+        const [ca, cb, cc] = chatsOf(chars(database)[2])
+        const [ba, bb, bc] = chatsOf(chars(baseline.database)[2])
+        expect(ca.message).toEqual(ba.message)
+        expect(cb.alt).toEqual(bb.alt)
+        expect(Object.keys(cc).sort()).toEqual(Object.keys(bc).sort())
+
+        expect(altSaying(a)).toBe(carried)
+        expect(messageSaying(b)).toBe(carried)
+        expect(messageSaying(c)).toBe(carried)
+        expect(altSaying(ca)).toBe(carried)
+        expect(messageSaying(cb)).toBe(carried)
+        expect(messageSaying(cc)).toBe(carried)
+    })
+
+    test('guard: the resolve changes nothing reachable from its input, a carried map and a hot chat that shares its chats array included', async () => {
+        const units = new Map<string, StoredUnit>([[U(1), { status: 'ok', value: { message: [say('config', 'g:u0')] } }]])
+        const db = { characters: [
+            { chaId: 'config', name: 'B', type: 'character', chats: [chatOf('bc', [say('config', 'bc:0')], [altOf(say('config', 'bc:alt0'))])] },
+            { chaId: U(9), name: 'C', type: 'character', chats: [] },
+            { chaId: 'A1', name: 'K', type: 'group', characters: ['config', 'gone'], chats: triad('k', 'gone') },
+            { chaId: 'G1', name: 'G', type: 'character', chats: [chatOf('g', [pointer(U(1))], [altOf(say('config', 'g:alt0'))])] },
+        ], characterOrder: ['config', 'gone'], loadouts: [{ id: 'l', characterIds: ['config'] }] } as unknown as Database
+        const before = structuredClone(db)
+
+        const { database } = await resolveLegacyTree(db, readerOver(units), { ...OPTIONS, faultyUnitsUnusable: true, replacedIds: new Map([['gone', U(9)]]) })
+
+        expect(db).toEqual(before)
+        expect(chars(database)).toHaveLength(4)
+    })
+
+    test('guard: pass-through slots stay the identical value and are never read, beside a character that is re-id\'d', async () => {
+        const dated = Object.assign(new Date(0), { chaId: 'config' })
+        const slots = [dated, null, 'config']
+        const only = { characters: [...slots] } as unknown as Database
+        const passed = await resolveLegacyTree(only, readerOver(new Map()), { ...OPTIONS, faultyUnitsUnusable: true })
+        slots.forEach((slot, index) => expect((passed.database.characters as unknown[])[index]).toBe(slot))
+
+        const db = { characters: [{ chaId: 'config', name: 'B', type: 'character', chats: [] }, ...slots] } as unknown as Database
+        const { database } = await resolveLegacyTree(db, readerOver(new Map()), { ...OPTIONS, faultyUnitsUnusable: true })
+
+        slots.forEach((slot, index) => expect((database.characters as unknown[])[index + 1]).toBe(slot))
+        expect(dated.chaId).toBe('config')
+    })
+
+    test('guard: a user message and a user alternative that say a re-id\'d id stay as they were', async () => {
+        const db = { characters: [
+            { chaId: 'config', name: 'B', type: 'character', chats: [] },
+            { chaId: 'A1', name: 'K', type: 'character', chats: [chatOf('k', [say('config', 'k:0', 'user')], [altOf(say('config', 'k:alt0', 'user'))])] },
+        ] } as unknown as Database
+
+        const { database } = await resolveLegacyTree(db, readerOver(new Map()), { ...OPTIONS, faultyUnitsUnusable: true })
+
+        const kept = chatsOf(chars(database)[1])[0]
+        expect(messageSaying(kept)).toBe('config')
+        expect(altSaying(kept)).toBe('config')
     })
 })

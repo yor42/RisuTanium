@@ -782,6 +782,9 @@ describe.each([
             const entry = entries.find((e) => e.name === `coldstorage_${key}.json`)
             return entry === undefined ? { status: 'missing' } : { status: 'ok', value: JSON.parse(decoder.decode(entry.data)) as unknown }
         })
+        // Compatibility guard: the raw exported file, which upstream reads, no longer holds the id. The resolve below
+        // re-ids on its own, so without this check an export that skipped its repair would still pass.
+        expect((await decodedDatabase(entries)).characters[1].chaId).not.toBe('root')
         const resolved = await resolveLegacyTree(await decodedDatabase(entries) as unknown as Database, reader, { newId: () => 'placeholder-chat', now: () => NOW })
         const characters = resolved.database.characters as unknown as Array<Record<string, unknown>>
         const repairedId = characters[1].chaId

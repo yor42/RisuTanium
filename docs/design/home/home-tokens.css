@@ -1,42 +1,57 @@
-/* Home design tokens: THE token block for the Home mockup (THEMING.md, DD-142/143/145/146/147/148). Every value equals the literal the page used before the theme pass (mockups/home.html)
-   unless a comment says it changed on purpose (DD-198..214). Components read only these names plus the shared --nexus-* / --font / --color-* / --radius-* names of ../theme/nexus-tokens.css.
-   Load order: nexus-tokens.css, this file, home.css, then a theme (themes/*.css, loaded by theme.js from ?theme=). Shared names are not redefined here (DD-145); Home-only values are --home-*.
+/* Home design tokens: THE token block for the Home mockup (THEMING.md, DD-142/143/145/146/147/148).
+   2026-11-18 visual overhaul (MAIN_MENU.md "Visual overhaul"): ONE VISUAL SYSTEM ON THEME TOKENS. Every colour on Home now derives from the nine colours of the user's colour scheme, the same names the app
+   sets on <html> (src/styles.css --risu-theme-*, src/ts/gui/colorscheme.ts). The literals below are upstream's defaultColorScheme; ?scheme=<name> (theme.js) swaps in the app's other presets, and a theme pack
+   may set them. The shared --nexus-* colour names that Home's parts read are redefined here FROM the scheme (this is the one deliberate exception to DD-145's "no shared name redefined here": no fixed navy,
+   no glass, no Deep Nexus cyan stays on Home). Character avatars and portraits keep their own hue (data-hue), mixed into the scheme's button and background colours, as stand-ins for character art.
+   Load order: nexus-tokens.css, this file, home.css, then a theme (themes/*.css, loaded by theme.js from ?theme=). Home-only values are --home-*.
    Packs set role tokens (sections marked ROLE); the ladders (--home-space-N, --home-radius-N) are internal and may be renumbered (DD-148). */
 :root {
   color-scheme: dark;
   --color-scheme: dark;
 
+  /* ---- ROLE: the colour scheme (the app's nine names; defaults = upstream defaultColorScheme) ---- */
+  --risu-theme-bgcolor: #282a36;
+  --risu-theme-darkbg: #21222c;
+  --risu-theme-borderc: #6272a4;
+  --risu-theme-selected: #44475a;
+  --risu-theme-draculared: #ff5555;
+  --risu-theme-textcolor: #f8f8f2;
+  --risu-theme-textcolor2: #64748b;
+  --risu-theme-darkborderc: #4b5563;
+  --risu-theme-darkbutton: #374151;
+
   /* ---- type ---- */
   --home-font: "NanumSquare Neo UI", "NanumSquare Neo", "NanumSquareNeo", var(--font);   /* DD-034/DD-202: Neo first, then the shared stack. No Gothic on Home (DD-036). */
   --home-mono: ui-monospace, "Cascadia Mono", Consolas, "D2Coding", monospace;
-  --home-text-xs: 12px; --home-text-sm: 13px; --home-text-md: 14px; --home-text-base: 15px; --home-text-lg: 16px; --home-text-xl: 22px; --home-text-2xl: 26px; --home-text-hero: 34px;
-  --home-text-glyph: 13px; --home-text-avatar-xs: 11px; --home-text-avatar-sm: 12px; --home-text-avatar-md: 16px; --home-text-avatar-lg: 22px; --home-text-avatar-xl: 26px;
+  --home-text-xs: 12px; --home-text-sm: 13px; --home-text-md: 14px; --home-text-base: 15px; --home-text-lg: 17px; --home-text-xl: 22px; --home-text-2xl: 30px; --home-text-hero: 44px;
+  --home-text-quote: 19px; --home-text-quote-sm: 16px;          /* the lead story's last line, the one large reading-voice element on the page */
+  --home-text-glyph: 13px; --home-text-avatar-xs: 11px; --home-text-avatar-sm: 12px; --home-text-avatar-md: 17px; --home-text-avatar-lg: 24px; --home-text-avatar-xl: 26px;
   --home-weight-regular: 400; --home-weight-strong: 700;       /* NanumSquare Neo has 300/400/700/800/900: the old 600 and 500 map to 700 / 400 */
-  --home-leading-body: 1.5; --home-leading-tight: 1.25; --home-leading-field: 1.5;
-  --home-tracking-eyebrow: 0.06em; --home-tracking-brand: 0.02em; --home-tracking-h1: -0.01em;
-  --home-eyebrow-transform: uppercase;
+  --home-leading-body: 1.5; --home-leading-tight: 1.25; --home-leading-field: 1.5; --home-leading-quote: 1.55;
+  --home-tracking-eyebrow: 0.02em; --home-tracking-brand: 0.01em; --home-tracking-h1: -0.015em;
+  --home-eyebrow-transform: none;                              /* no capitals anywhere (they were the only all-caps labels on Home) */
   --home-h1-size: var(--home-text-2xl); --home-h1-sm-size: var(--home-text-xl);
 
   /* ---- spacing ladder (internal) ---- */
   --home-space-1: 2px; --home-space-2: 4px; --home-space-3: 6px; --home-space-4: 8px; --home-space-5: 10px; --home-space-6: 12px; --home-space-7: 14px; --home-space-8: 16px;
   --home-space-9: 18px; --home-space-10: 20px; --home-space-11: 24px; --home-space-12: 28px; --home-space-13: 32px; --home-space-14: 40px; --home-space-15: 48px;
-  --home-radius-1: 6px; --home-radius-2: 9px; --home-radius-3: 10px; --home-radius-4: 12px; --home-radius-5: 14px; --home-radius-6: 16px; --home-radius-7: 18px; --home-radius-pill: 999px; --home-radius-round: 50%;
+  --home-radius-1: 4px; --home-radius-2: 6px; --home-radius-3: 8px; --home-radius-4: 10px; --home-radius-5: 12px; --home-radius-6: 14px; --home-radius-7: 18px; --home-radius-8: 24px; --home-radius-pill: 999px; --home-radius-round: 50%;
 
   /* ---- ROLE: controls (DD-213: 44 dp under touch, 40 under hover; Deep Nexus keeps both, DD-151 lets a pack go lower) ---- */
   --home-touch: var(--nexus-touch); --home-hover-control: 40px;
   --home-control-height: var(--home-touch);
-  --home-control-radius: var(--home-radius-3);
+  --home-control-radius: var(--home-radius-3);                 /* upstream's controls are 8 px: buttons and fields read as the app's */
   --home-control-pad-x: var(--home-space-6);
   --home-control-gap: var(--home-space-4);
-  --home-card-radius: var(--home-radius-6);
+  --home-card-radius: var(--home-radius-7);                    /* only the lead story and the sheets use the large radius; tiles and rows step down (hierarchy, not one radius) */
   --home-card-pad: var(--home-space-8);
-  --home-card-pad-lg: var(--home-space-9);
+  --home-card-pad-lg: var(--home-space-10);
   --home-card-gap: var(--home-space-5);
   --home-row-height: 56px;
   --home-pill-height: var(--home-control-height);
   --home-pill-label-max: 260px;
   --home-field-radius: var(--radius-field);
-  --home-field-border: var(--nexus-field-border);            /* DD-160: a field's boundary is 3:1; cards and dividers keep --nexus-edge-strong */
+  --home-field-border: var(--nexus-field-border);            /* DD-160: a field's boundary is 3:1 (the scheme's borderc, below) */
   --home-focus-w: var(--nexus-focus-ring-width); --home-focus-offset: var(--nexus-focus-ring-offset);
   --home-hairline: 1px;
   --home-bar-w: 3px;                                          /* the inset selection bar */
@@ -44,25 +59,25 @@
 
   /* ---- ROLE: shell geometry ---- */
   --home-rail-width-rp: 76px; --home-rail-width-hybrid: 220px; --home-rail-width-utility: 240px; --home-rail-width-collapsed: 64px; --home-drawer-width: 240px;      /* DD-208: the phone drawer is 240 in every mode */
-  --home-rail-inset: 16px; --home-rail-pad-y: var(--home-space-7); --home-rail-pad-x: var(--home-space-5); --home-rail-radius: var(--home-radius-7);
-  --home-rail-icon-size: 44px; --home-rail-avatar-pad: 3px; --home-rail-avatar-ring: 2px; --home-rail-sep-width: 32px;
-  --home-topbar-pad-top: 16px; --home-topbar-pad-bottom: 4px; --home-topbar-pad-x: 24px; --home-topbar-gap-y: 8px; --home-topbar-gap-x: 12px;
-  --home-main-pad-top: 16px; --home-main-pad-bottom: 32px; --home-main-pad-x: 24px;
-  --home-center-width: 900px; --home-center-width-narrow: 760px; --home-side-width: 320px;
-  --home-dialog-width: 420px; --home-dialog-width-wide: 460px; --home-dialog-margin: 32px; --home-dialog-radius: var(--home-radius-7); --home-dialog-pad: var(--home-space-9);
+  --home-rail-inset: 0px; --home-rail-pad-y: var(--home-space-8); --home-rail-pad-x: var(--home-space-5); --home-rail-radius: 0px;      /* the rail is the app's sidebar: a flush darkbg column, not a floating card */
+  --home-rail-icon-size: 44px; --home-rail-avatar-pad: 2px; --home-rail-avatar-ring: 2px; --home-rail-sep-width: 28px;
+  --home-topbar-pad-top: 16px; --home-topbar-pad-bottom: 4px; --home-topbar-pad-x: 32px; --home-topbar-gap-y: 8px; --home-topbar-gap-x: 12px;
+  --home-main-pad-top: 24px; --home-main-pad-bottom: 48px; --home-main-pad-x: 32px;
+  --home-center-width: 900px; --home-center-width-narrow: 760px; --home-side-width: 300px; --home-page-max: 1240px;
+  --home-dialog-width: 420px; --home-dialog-width-wide: 460px; --home-dialog-margin: 32px; --home-dialog-radius: var(--home-radius-6); --home-dialog-pad: var(--home-space-10);
   --home-picker-max-height: 50vh;
-  --home-mode-option-min: 84px; --home-mode-clamp-gap: 12px; --home-mode-pad: 3px; --home-mode-gap: 2px; --home-mode-radius: var(--home-radius-4); --home-mode-option-radius: var(--home-radius-2);
+  --home-mode-option-min: 84px; --home-mode-clamp-gap: 12px; --home-mode-pad: 3px; --home-mode-gap: 2px; --home-mode-radius: var(--home-radius-8); --home-mode-option-radius: var(--home-radius-7);
 
   /* ---- ROLE: cards and avatars ---- */
-  --home-portrait-height: 120px; --home-presence-portrait: 72px; --home-presence-radius: var(--home-radius-7);
-  --home-avatar-xs: 24px; --home-avatar-sm: 28px; --home-avatar-md: 44px; --home-avatar-lg: 64px; --home-avatar-rail: 44px;
-  --home-avatar-radius-sq: var(--home-radius-4); --home-avatar-radius-lg: var(--home-radius-7); --home-avatar-radius-md: var(--home-radius-5);
-  --home-char-card-min: 132px; --home-shelf-columns: 3; --home-shelf-card-min: 220px; --home-shelf-card-share: 78%;
+  --home-portrait-height: 120px; --home-lead-portrait: 168px; --home-lead-portrait-phone: 88px; --home-presence-portrait: 72px; --home-presence-radius: var(--home-radius-7);
+  --home-avatar-xs: 24px; --home-avatar-sm: 28px; --home-avatar-md: 44px; --home-avatar-lg: 72px; --home-avatar-rail: 44px;
+  --home-avatar-radius-sq: var(--home-radius-4); --home-avatar-radius-lg: var(--home-radius-6); --home-avatar-radius-md: var(--home-radius-5);
+  --home-char-card-min: 112px; --home-shelf-columns: 3; --home-shelf-card-min: 220px; --home-shelf-card-share: 78%;
   --home-realm-min-height: 296px; --home-realm-list-max: 150px; --home-realm-status-min: 120px; --home-realm-mark-size: 32px;
   --home-hero-mark: 56px; --home-hero-mark-icon: 26px; --home-hero-pad-y: 28px;
   --home-composer-note-pull: var(--home-space-5);
   --home-composer-min: 72px; --home-composer-hero-min: 112px;
-  --home-run-mark-size: 64px; --home-task-mark-size: 28px; --home-brand-mark-size: 32px; --home-brand-mark-size-phone: 28px;
+  --home-run-mark-size: 64px; --home-task-mark-size: 28px; --home-brand-mark-size: 28px; --home-brand-mark-size-phone: 26px;
   --home-bar-height: 4px; --home-dot-size: 8px; --home-run-dot: 7px; --home-badge-size: 20px; --home-icon-size: 18px; --home-icon-size-sm: 16px; --home-icon-size-hero: 26px; --home-icon-stroke: 1.8;
   --home-live-dot: 8px; --home-bg-dot: 12px;
   --home-sel-size: 44px; --home-sel-box: 20px;
@@ -70,46 +85,82 @@
   --home-toast-offset: 24px;
   --home-mock-size: 44px;
   --home-quick-min: 220px;
-  --home-search-basis: 220px; --home-count-basis: 200px; --home-note-basis: 240px; --home-measure: 44ch; --home-measure-narrow: 30ch; --home-mock-panel-min: 300px; --home-mock-panel-max: 70vh;
-  --home-angle-avatar: 135deg; --home-angle-bar: 90deg;
+  --home-search-basis: 220px; --home-count-basis: 200px; --home-note-basis: 240px; --home-measure: 44ch; --home-measure-narrow: 30ch; --home-measure-quote: 52ch; --home-mock-panel-min: 300px; --home-mock-panel-max: 70vh;
+  --home-angle-avatar: 160deg; --home-angle-bar: 90deg;
 
-  /* ---- colour: tints and roles not covered by --nexus-* ---- */
-  --home-ring-rgb: 127 233 255;                         /* = --nexus-ring; the memory tag tint */
-  --home-warm-rgb: var(--nexus-warm-rgb);                         /* = --nexus-warm; the upstream tag and the presence glow */
+  /* ---- ROLE colour: derived from the scheme (color-mix toward textcolor keeps each step legible on light and dark schemes alike) ---- */
+  --home-ink: var(--risu-theme-textcolor);
+  --home-ink-2: color-mix(in oklab, var(--risu-theme-textcolor2) 26%, var(--risu-theme-textcolor));   /* secondary text: >= 4.5:1 on bgcolor and darkbg in the presets (checks/contrast note in MAIN_MENU.md) */
+  --home-ink-3: color-mix(in oklab, var(--risu-theme-textcolor2) 42%, var(--risu-theme-textcolor));   /* tertiary text (times, counts) */
+  --home-accent-solid: #9ea9c6;   /* links, icons, the selection bar, the primary fill, the focus ring: borderc lifted toward the text so it clears 4.5:1. A literal, because the theme-pack checker must resolve the ring and the primary fill to judge them: the value is color-mix(in oklab, borderc 58%, textcolor) of the default scheme, and theme.js re-derives it from the scheme for ?scheme= */
+  --home-danger-solid: color-mix(in oklab, var(--risu-theme-draculared) 78%, var(--risu-theme-textcolor));
+
+  /* the shared names Home's parts read, now from the scheme (the exception to DD-145 above) */
+  --nexus-canvas: var(--risu-theme-bgcolor);
+  --nexus-canvas-bloom: transparent;
+  --nexus-canvas-warm: transparent;
+  --nexus-surface: var(--risu-theme-darkbg);                  /* panels sit BELOW the page (the app's darkbg), not above it as glass */
+  --nexus-surface-raised: var(--risu-theme-darkbutton);       /* buttons, chips, rows that are pressable */
+  --nexus-surface-flat: var(--risu-theme-darkbg);
+  --nexus-edge: var(--risu-theme-darkborderc);
+  --nexus-edge-strong: var(--risu-theme-borderc);
+  --nexus-field-border: color-mix(in oklab, var(--risu-theme-borderc) 78%, var(--risu-theme-textcolor));   /* lifted a step so a field edge clears 3:1 in more presets */
+  --nexus-text: var(--home-ink);
+  --nexus-text-secondary: var(--home-ink-2);
+  --nexus-text-muted: var(--home-ink-3);
+  --nexus-accent: var(--home-accent-solid);
+  --nexus-ring: var(--home-accent-solid);
+  --nexus-warm: var(--home-accent-solid);                     /* one accent: Roleplay is no longer warm (one visual system; MAIN_MENU.md open question 6 answered by the overhaul) */
+  --nexus-warm-from: var(--home-accent-solid); --nexus-warm-to: var(--home-accent-solid);
+  --nexus-core-from: var(--home-accent-solid);
+  --nexus-core-to: var(--risu-theme-borderc);
+  --nexus-danger: var(--home-danger-solid);
+  --color-surface-sheet: var(--risu-theme-bgcolor);
+  --color-surface-toast: var(--risu-theme-selected);
+  --color-placeholder: var(--home-ink-3);
+  --color-accent-tint-strong: color-mix(in oklab, var(--home-accent-solid) 18%, transparent);
+
+  /* ---- colour: Home roles (names kept from the retrofit; values now derive from the scheme) ---- */
+  --home-ring-rgb: 127 233 255;                         /* retired: nothing on Home reads the channel tokens any more (kept so an old pack that sets them still lints) */
+  --home-warm-rgb: var(--nexus-warm-rgb);
   --home-warm-bloom-rgb: 255 154 122;
-  --home-success-rgb: var(--nexus-success-rgb); --home-warning-rgb: var(--nexus-warning-rgb);        /* DD-235 aliases (theme/checks/ALIASES.md): packs state each value once, in the shared name */
+  --home-success-rgb: var(--nexus-success-rgb); --home-warning-rgb: var(--nexus-warning-rgb);        /* DD-235 aliases (theme/checks/ALIASES.md); retired from the parts like the line above */
   --home-scrim-rgb: 0 1 28;
-  --home-scrim: rgb(var(--home-scrim-rgb) / 0.6);
-  --home-on-avatar: rgb(var(--home-scrim-rgb) / 0.82);
-  --home-on-portrait: rgb(var(--nexus-overlay-rgb) / 0.8);   /* was dark at 55%: the initial was unreadable on the dark half of the gradient */
-  --home-on-presence: rgb(var(--home-scrim-rgb) / 0.6);
-  --home-on-accent: var(--nexus-canvas);
-  --home-dialog-bg: var(--color-surface-sheet);                    /* an opaque sheet (was surface-flat at 94%: a visible change of about 1% in lightness) */
-  --home-composer-bg: rgb(6 7 34 / 0.88);
-  --home-well-bg: rgb(var(--nexus-shade-rgb) / 0.25);
-  --home-track: rgb(var(--nexus-overlay-rgb) / 0.08);
-  --home-accent-fill: rgb(var(--nexus-accent-rgb) / 0.15);
-  --home-accent-edge: rgb(var(--nexus-accent-rgb) / 0.4);
-  --home-memory-edge: rgb(var(--nexus-accent-rgb) / 0.35);           /* was a ring-coloured tint at 35%: now the accent channel (DD-146) */
-  --home-upstream-edge: rgb(var(--home-warm-rgb) / 0.45);
-  --home-presence-glow: rgb(var(--home-warm-rgb) / 0.25);
-  --home-danger-edge: rgb(var(--nexus-danger-rgb) / 0.6);
-  --home-danger-edge-strong: rgb(var(--nexus-danger-rgb) / 0.7);
-  --home-danger-text: var(--nexus-danger);                          /* was #ff8fa0: the shared danger solid, which is lighter than its edge */
-  --home-success-edge: rgb(var(--home-success-rgb) / 0.55);
-  --home-warning-edge: rgb(var(--home-warning-rgb) / 0.5);
-  --home-bg-queued: var(--nexus-text-muted); --home-bg-running: var(--nexus-accent); --home-bg-done: rgb(var(--home-success-rgb)); --home-bg-failed: var(--nexus-danger);
-  --home-mode-bar: var(--nexus-accent); --home-mode-bar-rp: var(--nexus-warm);
-  --home-select-bar: var(--nexus-accent); --home-select-bar-warm: var(--nexus-warm); --home-select-edge: var(--nexus-edge-strong);
-  --home-selection-bg: rgb(var(--nexus-accent-rgb) / 0.3); --home-selection-text: var(--nexus-text);          /* DD-156 */
-  /* the hue gradients of avatars and portraits: only S and L are tokens; the hue is the character's own (data-hue) */
+  --home-scrim: color-mix(in oklab, var(--risu-theme-darkbg) 72%, transparent);
+  --home-on-avatar: var(--risu-theme-textcolor);
+  --home-on-portrait: var(--risu-theme-textcolor);
+  --home-on-presence: var(--risu-theme-textcolor);
+  --home-on-accent: var(--risu-theme-bgcolor);
+  --home-dialog-bg: var(--risu-theme-bgcolor);                    /* an opaque sheet */
+  --home-composer-bg: var(--risu-theme-darkbg);
+  --home-well-bg: color-mix(in oklab, var(--risu-theme-bgcolor) 55%, var(--risu-theme-darkbg));
+  --home-track: var(--risu-theme-darkborderc);
+  --home-accent-fill: color-mix(in oklab, var(--home-accent-solid) 14%, transparent);
+  --home-accent-edge: color-mix(in oklab, var(--home-accent-solid) 55%, transparent);
+  --home-memory-edge: color-mix(in oklab, var(--home-accent-solid) 45%, transparent);
+  --home-upstream-edge: var(--risu-theme-darkborderc);
+  --home-presence-glow: transparent;
+  --home-danger-edge: color-mix(in oklab, var(--home-danger-solid) 65%, transparent);
+  --home-danger-edge-strong: var(--home-danger-solid);
+  --home-danger-text: var(--home-danger-solid);
+  --home-success-edge: var(--home-accent-solid);
+  --home-warning-edge: var(--risu-theme-borderc);
+  --home-bg-queued: var(--home-ink-3); --home-bg-running: var(--home-accent-solid); --home-bg-done: var(--home-ink); --home-bg-failed: var(--home-danger-solid);
+  --home-mode-bar: var(--home-accent-solid); --home-mode-bar-rp: var(--home-accent-solid);
+  --home-select-bar: var(--home-accent-solid); --home-select-bar-warm: var(--home-accent-solid); --home-select-edge: var(--risu-theme-borderc);
+  --home-selection-bg: var(--risu-theme-selected); --home-selection-text: var(--risu-theme-textcolor);          /* DD-156 */
+  /* character art stand-ins: the character's hue, mixed into the scheme so a light scheme gets light art and dark text */
+  --home-art-hue-sat: 62%; --home-art-hue-light: 56%;
+  --home-art-mix: 56%; --home-art-mix-deep: 30%;
   --home-avatar-sat-a: 72%; --home-avatar-light-a: 70%; --home-avatar-sat-b: 58%; --home-avatar-light-b: 42%; --home-avatar-hue-shift: 40;
   --home-portrait-sat-a: 80%; --home-portrait-light-a: 74%; --home-portrait-sat-b: 60%; --home-portrait-light-b: 45%; --home-portrait-sat-c: 55%; --home-portrait-light-c: 18%; --home-portrait-hue-a: 30; --home-portrait-hue-c: -20;
   --home-portrait-start-hue: 20;
-  --home-bloom-alpha-rp: 0.18; --home-bloom-alpha-hybrid: 0.13; --home-bloom-alpha-utility: 0.04;
+  --home-bloom-alpha-rp: 0; --home-bloom-alpha-hybrid: 0; --home-bloom-alpha-utility: 0;
+  --home-network-alpha: 0.35;                           /* the lattice behind the page, in the scheme's borderc; quiet so the page reads as the app's surface */
 
   /* ---- motion (JS reads the numbers from here, DD-143) ---- */
   --home-dur-stage: 220ms; --home-dur-topbar: 180ms; --home-dur-mode-bar: 180ms; --home-dur-bloom: 360ms; --home-dur-rail: 220ms; --home-dur-rail-fade: 180ms; --home-dur-progress: 400ms; --home-dur-toast: 150ms;
+  --home-dur-press: 120ms; --home-dur-lift: 180ms;
   --home-stage-shift: 14px; --home-topbar-shift: 8px;
   --home-toast-ms: 2500ms;                              /* DD-008: how long the Back toast stays, and the window for the second Back */
   --home-mode-settle: 400ms;        /* DD-263: a second pointer click this soon after a mode change is ignored */
@@ -123,22 +174,25 @@
   --home-bp-mid: 768px; --home-bp-wide: 1280px;
 }
 
+/* A light colour scheme (colorscheme.ts type:'light'; theme.js sets data-scheme-type) */
+html[data-scheme-type="light"] { color-scheme: light; --color-scheme: light; }
+
 /* Hover input: 40 dp controls (DD-213). The rail's icon squares stay 44. */
 html[data-input="hover"] { --home-control-height: var(--home-hover-control); }
 
-/* Korean: no tracking, no capitals (DD-202) */
-html[data-lang="ko"] { --home-tracking-eyebrow: 0; --home-tracking-brand: 0; --home-tracking-h1: 0; --home-eyebrow-transform: none; --home-leading-body: 1.55; }
+/* Korean: no tracking, no capitals, a little more leading (DD-202) */
+html[data-lang="ko"] { --home-tracking-eyebrow: 0; --home-tracking-brand: 0; --home-tracking-h1: 0; --home-eyebrow-transform: none; --home-leading-body: 1.6; --home-leading-quote: 1.7; }
 
-/* Per-mode ambient bloom (the shared --nexus-canvas-warm is the Hybrid default; body[data-mode] sets the alpha) */
-body[data-mode="rp"] { --nexus-canvas-warm: rgb(var(--home-warm-bloom-rgb) / var(--home-bloom-alpha-rp)); }
-body[data-mode="hybrid"] { --nexus-canvas-warm: rgb(var(--home-warm-bloom-rgb) / var(--home-bloom-alpha-hybrid)); }
-body[data-mode="utility"] { --nexus-canvas-warm: rgb(var(--home-warm-bloom-rgb) / var(--home-bloom-alpha-utility)); }
+/* Per-mode ambient bloom: retired with the glass (the canvas is the scheme's flat bgcolor); the selectors stay so a pack can bring a bloom back */
+body[data-mode="rp"] { --nexus-canvas-warm: color-mix(in oklab, var(--home-accent-solid) calc(var(--home-bloom-alpha-rp) * 100%), transparent); }
+body[data-mode="hybrid"] { --nexus-canvas-warm: color-mix(in oklab, var(--home-accent-solid) calc(var(--home-bloom-alpha-hybrid) * 100%), transparent); }
+body[data-mode="utility"] { --nexus-canvas-warm: color-mix(in oklab, var(--home-accent-solid) calc(var(--home-bloom-alpha-utility) * 100%), transparent); }
 
 /* Layout bands (DD-147/DD-209): the same attribute set as chat and Settings. A pack may set tokens under these selectors (DD-159). */
-html[data-layout="mid"] { --home-topbar-pad-x: 24px; }
+html[data-layout="mid"] { --home-topbar-pad-x: 24px; --home-main-pad-x: 24px; }
 html[data-layout="phone"] {
-  --home-topbar-pad-top: 12px; --home-topbar-pad-x: 16px; --home-main-pad-top: 12px; --home-main-pad-x: 16px; --home-main-pad-bottom: 96px;
-  --home-h1-size: var(--home-text-xl);
+  --home-topbar-pad-top: 10px; --home-topbar-pad-x: 16px; --home-main-pad-top: 16px; --home-main-pad-x: 16px; --home-main-pad-bottom: 96px;
+  --home-h1-size: 24px; --home-text-quote: var(--home-text-quote-sm); --home-avatar-lg: 56px;
 }
 html[data-layout="wide"] { --home-realm-min-height: 380px; --home-realm-list-max: 200px; }          /* MC-053 pair: the card and its list cap move together */
 

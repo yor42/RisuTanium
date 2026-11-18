@@ -1,6 +1,6 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
-import { detachingItems, planCarry, valueKeysOf, type CarryItem } from './toggleCarry'
+import { addedFromRows, detachingItems, lateOldKeys, planCarry, valueKeysOf, windowDirty, type CarryItem } from './toggleCarry'
 import { parseDefinition, textOf, type Definition } from './toggleDef'
 import { closeGroup, draftOf, insertRow, moveRow, removeRow, replaceText, setRow } from './toggleDefEdit'
 import { corpus, crlf, textArb } from './toggleDefFixtures.test-helpers'
@@ -369,5 +369,127 @@ describe('planCarry over the corpus', () => {
         for (const entry of corpus) {
             expect(planCarry(parseDefinition(entry.text), parseDefinition(textOf(parseDefinition(entry.text)))), entry.name).toEqual([])
         }
+    })
+})
+
+describe('addedFromRows (G-F4)', () => {
+    it('holds a key only while every row with that key is new', () => {
+        expect([...addedFromRows([])]).toEqual([])
+        expect([...addedFromRows([{ key: 'b', origin: 'new' }])]).toEqual(['b'])
+        expect([...addedFromRows([{ key: 'b', origin: 'base' }])]).toEqual([])
+        expect([...addedFromRows([{ key: 'b', origin: 'base' }, { key: 'b', origin: 'new' }])]).toEqual([])
+        expect([...addedFromRows([{ key: 'b', origin: 'new' }, { key: 'b', origin: 'new' }, { key: 'a', origin: 'base' }])]).toEqual(['b'])
+    })
+})
+
+describe('planCarry with the keys the list created (R-F1, G-F2, G-F3)', () => {
+    const planWith = (before: string, after: string, added: readonly string[]): readonly CarryItem[] =>
+        planCarry(parseDefinition(before), parseDefinition(after), new Set(added))
+
+    it('R-F1: a list-created key is never a rename target or an unmatched addition', () => {
+        expect(plan('a=Mode\n', 'b=Style\n')).toEqual([ambiguous('a', 'unmatched')])
+        expect(planWith('a=Mode\n', 'b=Style\n', ['b'])).toEqual([])
+    })
+
+    it('G-F2: an excluded key leaves the pairing to the other added keys', () => {
+        expect(planWith('a=Mode\n', 'b=Mode\n', ['b'])).toEqual([])
+        expect(planWith('a=Mode\n', 'b=Mode\nc=Mode\n', ['c'])).toEqual([rename('a', 'b')])
+        expect(plan('a=Mode\n', 'b=Mode\nc=Mode\n')).toEqual([ambiguous('a', 'manyCandidates')])
+    })
+
+    it('G-F3: a kept key, a removed key or garbage in the set gives the plan without it', () => {
+        const base = 'a=Mode\nk=Keep\n'
+        const current = 'b=Mode\nk=Keep\n'
+        const without = plan(base, current)
+        expect(without).toEqual([rename('a', 'b')])
+        expect(planWith(base, current, ['k'])).toEqual(without)
+        expect(planWith(base, current, ['a'])).toEqual(without)
+        expect(planWith(base, current, ['zzz', ''])).toEqual(without)
+    })
+
+    it('P-12x: an empty set is the two-argument plan, and a renamed-to key is never in the set', () => {
+        fc.assert(fc.property(defTextArb, defTextArb, fc.array(word, { maxLength: 4 }), (before, after, keys) => {
+            const base = parseDefinition(before)
+            const current = parseDefinition(after)
+            expect(planCarry(base, current, new Set())).toEqual(planCarry(base, current))
+            const added: ReadonlySet<string> = new Set<string>(keys)
+            for (const item of planCarry(base, current, added)) {
+                if (item.kind === 'rename') {
+                    expect(added.has(item.to)).toBe(false)
+                }
+            }
+            const baseKeys = valueKeysOf(base)
+            const effective = new Set([...added].filter((key) => valueKeysOf(current).has(key) && !baseKeys.has(key)))
+            expect(planCarry(base, current, added)).toEqual(planCarry(base, current, effective))
+        }), FAST_CHECK)
+    })
+})
+
+describe('the renumbering window (G-W1)', () => {
+    const select = (key: string, options: string, label = 'S'): string => `${key}=${label}=select=${options}\n`
+    const lateOf = (baseline: string, t0: string, current: string): string[] =>
+        [...lateOldKeys(parseDefinition(baseline), parseDefinition(t0), parseDefinition(current))]
+
+    it('W1 to W4: a change older than this window makes the old key late', () => {
+        expect(lateOf(select('s', 'x,y'), select('s', 'y,x'), select('d', 'y,x'))).toEqual(['s'])
+        expect(lateOf(select('s', 'x,y'), select('d', 'y,x'), select('d', 'y,x'))).toEqual(['s'])
+        expect(lateOf(select('s', 'x,y'), select('s', 'y,x'), select('s', 'y,x'))).toEqual(['s'])
+        expect(lateOf(select('s', 'x,y'), select('d', 'x,y'), select('d', 'y,x'))).toEqual(['s'])
+    })
+
+    it('W5 to W7: a change made wholly in this window is not late', () => {
+        expect(lateOf(select('s', 'x,y'), select('s', 'x,y'), select('d', 'y,x'))).toEqual([])
+        expect(lateOf(select('s', 'x,y'), select('s', 'x,y'), select('s', 'y,x'))).toEqual([])
+        expect(lateOf(select('s', 'x,y'), select('s', 'x,y'), select('s', 'y,x'))).toEqual([])
+    })
+
+    it('W8: a failed clear leaves the carried text as T0, so the key is late, renamed or not', () => {
+        expect(lateOf(select('s', 'x,y'), select('s', 'y,x'), select('s', 'y,x'))).toEqual(['s'])
+        expect(lateOf(select('s', 'x,y'), select('d', 'y,x'), select('d', 'y,x'))).toEqual(['s'])
+    })
+
+    it('W9: one late key does not make a plain rename of another key late', () => {
+        const baseline = `${select('s', 'x,y')}t=T\n`
+        const t0 = `${select('s', 'y,x')}t=T\n`
+        const current = `${select('s', 'y,x')}u=T\n`
+        expect(lateOf(baseline, t0, current)).toEqual(['s'])
+    })
+
+    it('W10: an option appended in an earlier visit still makes the later reorder late', () => {
+        expect(lateOf(select('s', 'x,y'), select('s', 'x,y,z'), select('s', 'z,x,y'))).toEqual(['s'])
+    })
+
+    it('W11: a label changed in an earlier visit is not a reading', () => {
+        expect(lateOf(select('s', 'x,y'), select('s', 'x,y', 'Other'), select('s', 'y,x', 'Other'))).toEqual([])
+    })
+
+    it('W12: only the key whose earlier change is older than this window is late', () => {
+        const pair = (s: string, t: string): string => select('s', s) + select('t', t, 'T')
+        expect(lateOf(pair('x,y', 'p,q'), pair('x,y', 'q,p'), pair('y,x', 'q,p'))).toEqual(['t'])
+    })
+
+    it('a list-created key is not a rename target for the lateness plan either', () => {
+        const baseline = parseDefinition(select('s', 'x,y'))
+        const t0 = parseDefinition(select('s', 'y,x'))
+        const current = parseDefinition(select('d', 'y,x'))
+        expect([...lateOldKeys(baseline, t0, current)]).toEqual(['s'])
+        expect([...lateOldKeys(baseline, t0, current, new Set(['d']))]).toEqual([])
+    })
+
+    it('windowDirty compares readings as sets, treats a key absent from T0 as dirty and ignores kept check rows', () => {
+        const dirty = (baseline: string, t0: string): string[] => [...windowDirty(parseDefinition(baseline), parseDefinition(t0))]
+        expect(dirty('a=A\n', 'a=A\n')).toEqual([])
+        expect(dirty('a=A\n', 'b=A\n')).toEqual(['a'])
+        expect(dirty(select('s', 'x,y'), select('s', 'y,x'))).toEqual(['s'])
+        expect(dirty(select('s', 'x,y'), select('s', 'x,y'))).toEqual([])
+        expect(dirty('a=A\n', 'a=A=text\n')).toEqual(['a'])
+        expect(dirty('a=A\na=A\n', 'a=A\n')).toEqual([])
+        expect(dirty('a=A=select=x,y\n', 'a=A=select=x,y\na=A=select=y,x\n')).toEqual(['a'])
+        expect(dirty('a=A=select=x,y\na=A=select=y,x\n', 'a=A=select=x,y\n')).toEqual(['a'])
+    })
+
+    it('a drop or kind change is not an option renumbering and is never late', () => {
+        expect(lateOf('a=A\nb=B\n', 'b=B\n', 'b=B\n=A=divider\n')).toEqual([])
+        expect(lateOf('a=A\n', 'a=A=text\n', 'a=A=text\n')).toEqual([])
     })
 })

@@ -39,7 +39,11 @@ vi.mock('src/lang', async () => {
     const base = helpers.studioLanguageMock()
     const withArguments = (key: string) => (...args: (string | number)[]) => `${key}(${args.join(',')})`
     const own: Record<string, unknown> = {}
-    for (const key of ['studioTgDeleted', 'studioTgMoved', 'studioTgOptionN', 'studioTgSummarySelect', 'studioTgSummaryGroup', 'studioTgUnreadableCount', 'studioTgLineN']) own[key] = withArguments(key)
+    for (const key of [
+        'studioTgDeleted', 'studioTgMoved', 'studioTgOptionN', 'studioTgSummarySelect', 'studioTgSummaryGroup', 'studioTgUnreadableCount', 'studioTgLineN',
+        'studioTgCarryAskKey', 'studioTgCarryAskOptions', 'studioTgCarryAskKind', 'studioTgCarryAskDrop', 'studioTgCarryAskUnclear',
+        'studioTgCarryAskOptionsLate', 'studioTgCarryAskOptionsLateRenamed', 'studioTgCarryOverwrite', 'studioTgCarryShared', 'studioTgCarryOldStays',
+    ]) own[key] = withArguments(key)
     return { language: new Proxy(base, { get: (target, key) => typeof key === 'string' && key in own ? own[key] : Reflect.get(target, key) }) }
 })
 
@@ -58,6 +62,7 @@ import { createClaimDouble, createMemoryStudioStore } from '../../ts/studio/hist
 import type { StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
 import type { ToggleTextPort } from '../../ts/studio/edit/toggleTextPort'
 import { createToggleBuilder } from '../../ts/studio/toggleBuilder.svelte'
+import { resetToggleCarrySessionForTests } from '../../ts/studio/toggleCarryPending'
 import { textOf } from '../../ts/studio/toggleDef'
 import StudioToggleBuilder from './StudioToggleBuilder.svelte'
 import StudioToggleText from './StudioToggleText.svelte'
@@ -178,6 +183,8 @@ afterEach(async () => {
     vi.unstubAllGlobals()
     delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth
     await unmountAll()
+    localStorage.clear()
+    resetToggleCarrySessionForTests()
     resetStudioHistoryAccessorForTests()
     resetCharacterSaveMarksForTest()
     resetStudioScreenForTests()
@@ -270,43 +277,27 @@ describe('R-D3 the gutter marks', () => {
     })
 })
 
-describe('R-D4 the key guard', () => {
-    test('renaming a saved key is not written and shows the note; restoring the text clears it; a later edit writes', async () => {
+describe('R-F5 a key rename in the text view', () => {
+    test('a key-renaming text edit is written with no hold, and leaving the text view shows the banner', async () => {
         const rig = await openText('a=A\nb=B\n')
         typeInto(area(), 'z=A\nb=B\n')
         await settle()
-        expect(text()).toBe('a=A\nb=B\n')
-        expect(steps(rig)).toBe(0)
-        expect(part('studio-toggle-text-held')).not.toBeNull()
-        expect(area().value).toBe('z=A\nb=B\n')
-        typeInto(area(), 'a=A\nb=B\n')
-        await settle()
-        expect(part('studio-toggle-text-held')).toBeNull()
-        expect(steps(rig)).toBe(0)
-        typeInto(area(), 'a=A\nb=Bee\n')
-        await settle()
-        expect(text()).toBe('a=A\nb=Bee\n')
+        expect(text()).toBe('z=A\nb=B\n')
         expect(steps(rig)).toBe(1)
+        expect(part('studio-toggle-text-held')).toBeNull()
+        expect(part('studio-toggle-carry')).toBeNull()
+        area().dispatchEvent(new FocusEvent('blur'))
+        await settle()
+        expect(part('studio-toggle-carry')).not.toBeNull()
+        expect(part('studio-toggle-carry-line')?.dataset.kind).toBe('key')
     })
 
-    test('other edits save while a rename is held back', async () => {
+    test('the last typed text is the one written', async () => {
         await openText('a=A\nb=B\n')
         typeInto(area(), 'z=A\nb=B\n')
         typeInto(area(), 'a=A\nb=B\nc=C\n')
         await settle()
         expect(text()).toBe('a=A\nb=B\nc=C\n')
-    })
-
-    test('a held text stays in the field across an outside change, and leaving the field drops it', async () => {
-        await openText('a=A\nb=B\n')
-        typeInto(area(), 'z=A\nb=B\n')
-        db.db.characters[0].customModuleToggle = 'a=A\nb=B\nq=Q\n'
-        await settle()
-        expect(area().value).toBe('z=A\nb=B\n')
-        area().dispatchEvent(new FocusEvent('blur'))
-        await settle()
-        expect(part('studio-toggle-text-held')).toBeNull()
-        expect(area().value).toBe('a=A\nb=B\nq=Q\n')
     })
 })
 
@@ -476,6 +467,20 @@ describe('R-D4 a refused, unavailable or read-only write', () => {
         flushSync()
         return builder
     }
+
+    test('T-D4r typed text stays in the field across an outside change after a refused write, and leaving the field shows the saved text', async () => {
+        const probe = probePort('a=A\nb=B\n', { ok: false, reason: 'not-selected' })
+        const builder = mountText(probe, true)
+        typeInto(area(), 'z=A\nb=B\n')
+        await settle()
+        builder.resync('a=A\nb=B\nq=Q\n')
+        await settle()
+        expect(area().value).toBe('z=A\nb=B\n')
+        area().dispatchEvent(new FocusEvent('blur'))
+        await settle()
+        expect(area().value).toBe('a=A\nb=B\nq=Q\n')
+        expect(part('studio-toggle-text-error')).toBeNull()
+    })
 
     test('a refused write stores nothing, keeps the typed text, shows the refusal and leaves the saved definition alone', async () => {
         const probe = probePort('a=A\n', { ok: false, reason: 'not-selected' })
