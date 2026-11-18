@@ -86,6 +86,9 @@ vi.mock('src/lang', async () => {
         studioStepAssetAdd: (n: number) => `studioStepAssetAdd(${n})`,
         studioAssetNotRestored: (j: number) => `studioAssetNotRestored(${j})`,
         studioAssetPlaceNumbered: (label: string, n: number) => `studioAssetPlaceNumbered(${label},${n})`,
+        ltCardHandle: (n: number) => `ltCardHandle(${n})`,
+        ltCardMenu: (n: number) => `ltCardMenu(${n})`,
+        ltCardMoved: (n: number, total: number) => `ltCardMoved(${n},${total})`,
     }
     return { language: new Proxy(named, { get: (target, key) => (typeof key === 'symbol' ? undefined : key in target ? target[key] : base[key]) }) }
 })
@@ -117,6 +120,8 @@ interface LiveChat extends ChatSource {
 
 interface Live {
     desc: string
+    firstMessage?: string
+    exampleMessage?: string
     systemPrompt: string
     alternateGreetings: string[]
     chats: LiveChat[]
@@ -556,6 +561,79 @@ describe('focus after an Undo of a text-merge step', () => {
         expect(live().desc).toBe('{{image::d0}}')
         expect(document.activeElement).toBe(part('studio-form-desc'))
         expect(studioRoot).not.toHaveBeenCalled()
+    })
+})
+
+describe('F1-HF2 focus after an Undo of a first-message edit', () => {
+    test('Ctrl+Z puts the first message back and focuses its field, with no field holding a different value', async () => {
+        live().firstMessage = 'f0'
+        const rig = makeRig()
+        await mountScreen({ panel: false })
+        expect(rig.service.editText(A, 'firstMessage', 'f1', 'single').ok).toBe(true)
+        rig.service.closeOpenStep(A)
+        flushSync()
+        // The field is blurred first: the shortcut defers to the browser while a focused field differs from its focus value.
+        ;(document.activeElement as HTMLElement | null)?.blur()
+        part('studio')!.focus()
+        await ctrl({ key: 'z' })
+        expect(live().firstMessage).toBe('f0')
+        expect(document.activeElement).toBe(part('studio-form-first-message'))
+    })
+})
+
+describe('X-13 focus after an Undo of an example-text edit', () => {
+    const advancedTarget = { owner: { type: 'character', id: 'A' }, kind: 'advanced', item: 'A/advanced:0', from: 'chat' } as const
+    const SEED = '<START>\nA\n<START>\nB'
+
+    async function mountAdvanced(): Promise<Rig> {
+        live().exampleMessage = SEED
+        const rig = makeRig()
+        openStudio(advancedTarget, null)
+        mountInto(StudioScreen)
+        await settle()
+        return rig
+    }
+
+    // The field is blurred first: the shortcut defers to the browser while a focused field differs from its focus value.
+    async function undoFromRoot(): Promise<void> {
+        ;(document.activeElement as HTMLElement | null)?.blur()
+        part('studio')!.focus()
+        await ctrl({ key: 'z' })
+    }
+
+    const cards = () => parts('studio-example-input')
+
+    test('the undo of a card edit puts the text back and focuses that card', async () => {
+        const rig = await mountAdvanced()
+        expect(rig.service.editText(A, 'exampleMessage', '<START>\nA\n<START>\nb', 'single').ok).toBe(true)
+        rig.service.closeOpenStep(A)
+        flushSync()
+        await undoFromRoot()
+        expect(live().exampleMessage).toBe(SEED)
+        expect(document.activeElement).toBe(cards()[1])
+    })
+
+    test('the undo of an added card focuses the card before it', async () => {
+        const rig = await mountAdvanced()
+        expect(rig.service.editText(A, 'exampleMessage', `${SEED}\n<START>\n`, 'single').ok).toBe(true)
+        rig.service.closeOpenStep(A)
+        flushSync()
+        expect(cards()).toHaveLength(3)
+        await undoFromRoot()
+        expect(live().exampleMessage).toBe(SEED)
+        expect(document.activeElement).toBe(cards()[1])
+    })
+
+    test('with the text view shown, the undo focuses the text view', async () => {
+        const rig = await mountAdvanced()
+        ;(part('studio-example-view-text') as HTMLButtonElement).click()
+        await settle()
+        expect(rig.service.editText(A, 'exampleMessage', '<START>\nA\n<START>\nb', 'single').ok).toBe(true)
+        rig.service.closeOpenStep(A)
+        flushSync()
+        await undoFromRoot()
+        expect(live().exampleMessage).toBe(SEED)
+        expect(document.activeElement).toBe(part('studio-example-text'))
     })
 })
 

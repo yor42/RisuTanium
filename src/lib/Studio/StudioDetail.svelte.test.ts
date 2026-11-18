@@ -230,8 +230,8 @@ describe('4d text of each kind of the bound character', () => {
         show()
         const shown = part('studio-detail-text')?.textContent ?? ''
         for (const piece of expected) expect(shown).toContain(piece)
-        // The basic info has a live form, so the read-only note does not apply to it.
-        expect(part('studio-detail-readonly') !== null).toBe(kind !== 'basic')
+        // The basic info and the advanced kind of the character have a live form, so the read-only note does not apply to them.
+        expect(part('studio-detail-readonly') !== null).toBe(kind !== 'basic' && kind !== 'advanced')
         expect(part('studio-detail-classic')).not.toBeNull()
     })
 
@@ -512,6 +512,55 @@ describe('the live forms and the save chip in the detail', () => {
         expect(part('studio-character-form')).toBeNull()
         expect(part('studio-chat-note-form')).toBeNull()
         expect(part('studio-chip')).toBeNull()
+        expect(history.useOwner).toEqual([])
+    })
+
+    test('X-14 the advanced kind of the character mounts the example form and the chip, no chat-note form and no read-only note', () => {
+        setFull(makeInput({ character: makeTextCharacter({ chats: [makeChat({ id: 'chat-1', name: 'First chat' })], exampleMessage: '<START>\nA' }) }))
+        openStudio(ownerItem('character', 'cha-1', 'advanced', 'cha-1/advanced:0'), null)
+        show()
+        flushSync()
+        expect(part('studio-example-form')).not.toBeNull()
+        expect(part('studio-chat-note-form')).toBeNull()
+        expect(part('studio-character-form')).toBeNull()
+        expect(part('studio-chip-text')?.textContent).toBe('studioChipSaved')
+        expect(part('studio-detail-readonly')).toBeNull()
+        expect(part('studio-detail-classic')).not.toBeNull()
+        expect(history.useOwner).toEqual(['character:cha-1'])
+    })
+
+    test('X-14 a private character gets no example form', () => {
+        setDb({ license: 'private' })
+        openStudio(ownerItem('character', 'cha-1', 'advanced', 'cha-1/advanced:0'), null)
+        show()
+        flushSync()
+        expect(part('studio-example-form')).toBeNull()
+        expect(history.useOwner).toEqual([])
+    })
+
+    test('X-14 the advanced kind of a module and of a preset keeps the read-only note and mounts no example form', () => {
+        setFull(makeInput({
+            character: makeCharacter({ modules: ['res'], chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }),
+            modules: [residentModule('res')],
+            presets: [makePreset('P0')],
+            activePreset: 0,
+        }))
+        openStudio(ownerItem('module', 'res', 'advanced', 'res/advanced:0'), null)
+        show()
+        flushSync()
+        expect(part('studio-example-form')).toBeNull()
+        expect(part('studio-detail-readonly')).not.toBeNull()
+        expect(part('studio-chat-note-form')).toBeNull()
+        expect(history.useOwner).toEqual([])
+    })
+
+    test('X-14 the advanced kind of a preset keeps the read-only note and mounts no example form', () => {
+        setFull(makeInput({ presets: [makePreset('P0')], activePreset: 0 }))
+        openStudio(ownerItem('preset', '0', 'advanced', '0/advanced:0'), null)
+        show()
+        flushSync()
+        expect(part('studio-example-form')).toBeNull()
+        expect(part('studio-detail-readonly')).not.toBeNull()
         expect(history.useOwner).toEqual([])
     })
 
