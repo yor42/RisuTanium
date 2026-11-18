@@ -19,7 +19,7 @@ import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
 import { makeCharacter, makeDb } from 'src/ts/storage/tests/saveLoopSupport'
 import { createWorldKit, nextCommit, settled, sleepReal, until, type World } from 'src/ts/storage/tests/saveLoopWorld'
 import { buildColdStub } from 'src/ts/process/coldCharacter'
-import { BLOCKS_PREFIX, keptKey, rootKey } from 'src/ts/storage/blockKeys'
+import { BLOCKS_PREFIX, PRE_BLOCKS_PREFIX, keptKey, rootKey } from 'src/ts/storage/blockKeys'
 import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
 
 vi.setConfig({ testTimeout: 120_000 })
@@ -50,6 +50,9 @@ let locksHolders = 1
 let locksMode: 'ok' | 'throws' | 'absent' = 'ok'
 /** Another tab's exclusive storage request, queued or granted. */
 let locksExclusive: 'none' | 'pending' | 'held' = 'none'
+/** Whether this tab's own shared presence request is granted when made; `withheld` stashes it in `grantPresence`. */
+let presenceGrant: 'granted' | 'withheld' = 'granted'
+let grantPresence: (() => void) | null = null
 /** Runs inside every unit write, after the value is taken. */
 let onUnitWrite: (() => void) | null = null
 /** While set, the write of x's unit waits for it. */
@@ -70,6 +73,8 @@ beforeEach(() => {
     locksHolders = 1
     locksMode = 'ok'
     locksExclusive = 'none'
+    presenceGrant = 'granted'
+    grantPresence = null
     platformState.node = false
     vi.spyOn(console, 'log').mockImplementation(() => { })
     vi.spyOn(console, 'warn').mockImplementation(() => { })
@@ -88,7 +93,17 @@ beforeEach(() => {
                 }
                 return { held, pending: locksExclusive === 'pending' ? [{ name: STORAGE_TAB_LOCK_NAME, mode: 'exclusive' }] : [] }
             },
-            request: async () => undefined,
+            request: (name: string, options: { mode?: string }, callback?: () => Promise<void>) => {
+                // Only this tab's shared presence request is ever granted; an exclusive request never is.
+                if (name !== STORAGE_TAB_LOCK_NAME || options.mode !== 'shared' || typeof callback !== 'function') {
+                    return Promise.resolve(undefined)
+                }
+                if (presenceGrant === 'withheld') {
+                    grantPresence = () => { void callback() }
+                    return Promise.resolve(undefined)
+                }
+                return callback()
+            },
         },
     })
     vi.doMock('src/ts/process/coldstorage.svelte', async () => {
@@ -513,6 +528,54 @@ describe('other tabs and platforms', () => {
 
     test('guard: no lock API on the web withholds it; catches treating a missing API as alone off the desktop', async () => {
         await withheldAfter(() => { locksMode = 'absent' }, () => { locksMode = 'ok' })
+    })
+
+    test('new behaviour: a page whose own presence claim is not granted withholds it though the snapshot shows one holder; it is deleted once the claim holds', async () => {
+        presenceGrant = 'withheld'
+        const a = await reArchivedWorld()
+        expect(a.w.api.holdsOwnTabPresence()).toBe(false)
+        expect(locksHolders).toBe(1)
+        await quiet(a)
+        a.pruneBackups()
+
+        await quiet(a)
+
+        expect(deletedKeys()).toEqual([])
+        expect(a.superseded.pendingSupersededCount()).toBe(1)
+
+        grantPresence!()
+        expect(a.w.api.holdsOwnTabPresence()).toBe(true)
+        await a.bump()
+        await until(() => deletedKeys().length > 0, 'the superseded unit to be deleted')
+    })
+
+    test('new behaviour: a second holder that appears during the last store read withholds it; the tab answer is the last await before the delete', async () => {
+        const a = await reArchivedWorld()
+        await quiet(a)
+        a.pruneBackups()
+        let armed = false
+        let fired = false
+        const list = a.w.store.list.bind(a.w.store)
+        // The owner inventory's block-store listing is the last store read of a deletion check, after the pre-blocks listing.
+        a.w.store.list = async (prefix) => {
+            if (prefix === PRE_BLOCKS_PREFIX) {
+                armed = true
+            } else if (armed && !fired && prefix === BLOCKS_PREFIX) {
+                fired = true
+                locksHolders = 2
+            }
+            return list(prefix)
+        }
+
+        await quiet(a)
+
+        expect(fired).toBe(true)
+        expect(deletedKeys()).toEqual([])
+        expect(a.superseded.pendingSupersededCount()).toBe(1)
+
+        locksHolders = 1
+        await a.bump()
+        await until(() => deletedKeys().length > 0, 'the superseded unit to be deleted')
     })
 
     test('guard: a Node server never deletes it', async () => {
