@@ -33,6 +33,10 @@ tauri-plugin-process = "2.4.0"
 tauri-plugin-shell = "2.4.0"
 tauri-plugin-opener = "2.7.3"
 tauri-plugin-http = "2.8.0"
+# Native avatar preview (avatar_preview module). Direct crates are pinned; the
+# transitive inflate and rayon crates float until Cargo.lock is tracked.
+png = "=0.18.1"
+jpeg-decoder = { version = "=0.3.2", default-features = false, features = ["platform_independent", "rayon"] }
 [target."cfg(any(target_os = \"macos\", windows, target_os = \"linux\"))".dependencies]
 tauri-plugin-deep-link = "2.6.1"
 
@@ -59,3 +63,23 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-single-instance = { version = "2.5.2", features = ["deep-link"] }
 tauri-plugin-updater = "2.13.1"
+
+[dev-dependencies]
+# Test-only fixture producers and a one-thread pool for the peak measurement rows.
+jpeg-encoder = "=0.7.1"
+rayon = "=1.12.0"
+
+# Test speed only: the decode rows run in the unoptimised test profile. The
+# avatar preview relies on panic = "unwind" (catch_unwind around the decode body),
+# so no profile in this file may set panic = "abort".
+[profile.dev.package.jpeg-decoder]
+opt-level = 3
+
+[profile.dev.package.png]
+opt-level = 3
+
+[profile.dev.package.fdeflate]
+opt-level = 3
+
+[profile.dev.package.jpeg-encoder]
+opt-level = 3

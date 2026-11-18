@@ -10,9 +10,9 @@
  * Titles: `reproducer` fails when the omission is absent (the alternatives reach the file, or no prompt names them);
  * `guard` passes before and after.
  */
-import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, test, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import { writable } from 'svelte/store'
-import type { Database } from 'src/ts/storage/database.svelte'
+import type { Chat, Database, Message } from 'src/ts/storage/database.svelte'
 import type { BackupColdStorage } from 'src/ts/drive/exportInline'
 
 //#region module mocks
@@ -398,8 +398,9 @@ interface Page {
 /**
  * A store2 page of four characters: the first resident, the other three stubs of their entities. `grow` makes the
  * first chat of a character at least that many bytes of JSON by repeating its first message (short strings only).
+ * `shape` runs on every character before the tree is seeded, after the keys above, so it may replace the first chat.
  */
-async function pageOf(grow: Record<number, number> = {}, withAlt = false, fork: 'none' | 'valid' | 'inert' = 'none', unseenReply = false): Promise<Page> {
+async function pageOf(grow: Record<number, number> = {}, withAlt = false, fork: 'none' | 'valid' | 'inert' = 'none', unseenReply = false, shape?: (slot: Obj, index: number) => void): Promise<Page> {
     const memory = createMemoryBackend()
     const clock = createClock()
     const env = testEnv(clock, 4242)
@@ -428,6 +429,9 @@ async function pageOf(grow: Record<number, number> = {}, withAlt = false, fork: 
         for (let i = 0; i < extra; i++) {
             messages.push(JSON.parse(template) as Obj)
         }
+    }
+    if (shape !== undefined) {
+        fixture.characters.forEach((slot, index) => shape(slot as unknown as Obj, index))
     }
     const seeded = await seedTree(memory, JSON.parse(JSON.stringify(fixture)) as Database, env, fakeLists)
     const residentId = (fixture.characters[0] as unknown as Obj).chaId
@@ -487,7 +491,7 @@ function watchStubStarts(): StartSeen[] {
 
 import { decodeRisuSave } from 'src/ts/storage/risuSave'
 import { setColdStorageItem } from 'src/ts/process/coldstorage.svelte'
-import { forkOnlyChatLabels } from 'src/ts/drive/exportAlternatives'
+import { forkOnlyChatLabels, withoutForkOnlyChatData } from 'src/ts/drive/exportAlternatives'
 import { exportForkOnlyLabels } from 'src/ts/drive/exportInline'
 
 //#region alternatives fixtures
@@ -620,6 +624,16 @@ describe('exportForkOnlyLabels', () => {
         expect(labels).toHaveLength(1)
         expect([...labels[0].kinds].sort()).toEqual(['alternatives', 'interruptedNote', 'memoryCoverage'])
     })
+
+    test('guard: one chat read through two sources takes the branch count from a later source when the first had none', () => {
+        const grown = growTree({ chats: [{ id: 'one-chat', name: 'Chat 1', message: [] }] }, 'g')
+        const resident = { chaId: 'one', name: 'Alice', chats: [{ id: 'one-chat', name: 'Chat 1', message: [{ data: 'x', interrupted: true }] }] }
+        const read = { chaId: 'one', name: 'Alice', chats: [grown] }
+        const cold = { collected: {}, inlined: new Map([['k', read]]), stubEntries: new Map() } as unknown as BackupColdStorage
+        const labels = exportForkOnlyLabels({ characters: [resident] } as unknown as Pick<Database, 'characters'>, cold)
+        expect(labels).toHaveLength(1)
+        expect(labels[0].branches).toMatchObject({ chats: 1, omitted: 1 })
+    })
 })
 
 describe.each([
@@ -725,7 +739,7 @@ describe.each([
         const outcome = await run(STUB)
 
         expect(altPrompts()).toHaveLength(1)
-        expect(promptLabels()).toEqual(['ColdEarly / Kept'])
+        expect(promptLabels()).toEqual(['ColdEarly / Kept (alternative replies left out)'])
         expect(outcome).toMatchObject({ status: 'saved', notices: [] })
         expect(entriesOf(sink.closedFile as Uint8Array).map((entry) => entry.name)).toContain(`coldstorage_${KEY}.json`)
         expect(await fileText()).not.toContain(ALT_MARK)
@@ -913,5 +927,551 @@ describe.each([
         expect(forkPrompts()).toEqual([])
         expect(altPrompts()).toEqual([])
         expect(((page.db.characters[0] as unknown as Obj).chats as Obj[])[0].unseenReply).toBe('reply')
+    }, 120_000)
+})
+
+//#region continued alternatives: fixtures
+
+import { detachTail } from 'src/ts/process/chatTree'
+
+// The branch marker is a string of 64 or more characters. msgpackr 1.10.1 passes such a string a length past the
+// buffer's end to `utf8Write`, which the Node running the tests rejects (the browser's Buffer polyfill has no `utf8Write`,
+// so msgpackr encodes with `TextEncoder` there; the clamp changes no byte written). It is scoped to this file.
+const utf8Proto = Buffer.prototype as unknown as { utf8Write(this: Uint8Array, text: string, position: number, length: number): number }
+const nativeUtf8Write = utf8Proto.utf8Write
+beforeAll(() => {
+    utf8Proto.utf8Write = function (text, position, length) {
+        return nativeUtf8Write.call(this, text, position, Math.min(length, this.length - position))
+    }
+})
+afterAll(() => {
+    utf8Proto.utf8Write = nativeUtf8Write
+})
+
+interface TreeOptions {
+    /** Messages in front of the tree, so the shared prefix of the branch chat grows with them. */
+    fillers?: number
+    /** Runs on the chat before the tail is cut: `message` holds the whole path then. */
+    marks?: (chat: Chat) => void
+    /** Group chats name the speaker of each message. */
+    saying?: string
+}
+
+function treeMessage(chatId: string, role: 'user' | 'char', saying?: string): Message {
+    return { role, data: `text ${chatId}`, chatId, ...(saying !== undefined ? { saying } : {}) }
+}
+
+/**
+ * The first chat of `slot` as the engine writes a continued Branch: `u1 c2 u3 c4` is cut at `u3` and continued with
+ * `u5 c6`, and `c6` is then rerolled. The chat holds one continued alternative (`u3 c4`, hanging from `c2`) and one
+ * reroll (`c6`, a lone reply), with the memory parked as the engine parks it. Message ids are `<tag>u1` and so on.
+ */
+function growTree(slot: Obj, tag: string, options: TreeOptions = {}): Chat {
+    const chat = (slot.chats as Obj[])[0] as unknown as Chat
+    const fillers = Array.from({ length: options.fillers ?? 0 }, (_, index) => treeMessage(`${tag}f${index}`, index % 2 === 0 ? 'user' : 'char', options.saying))
+    chat.message = [
+        ...fillers,
+        treeMessage(`${tag}u1`, 'user', options.saying),
+        treeMessage(`${tag}c2`, 'char', options.saying),
+        treeMessage(`${tag}u3`, 'user', options.saying),
+        treeMessage(`${tag}c4`, 'char', options.saying),
+    ]
+    options.marks?.(chat)
+    const cut = fillers.length + 2
+    expect(detachTail(chat, cut)).toBe(true)
+    chat.message.push(treeMessage(`${tag}u5`, 'user', options.saying), treeMessage(`${tag}c6`, 'char', options.saying))
+    expect(detachTail(chat, cut + 1)).toBe(true)
+    chat.message.push(treeMessage(`${tag}c6b`, 'char', options.saying))
+    return chat
+}
+
+/** The tree on every character, with message ids `t0`, `t1` and so on. */
+const treeOnAll = (slot: Obj, index: number): void => { growTree(slot, `t${index}`) }
+
+/** The characters of the written file's database entry, decoded. */
+async function exportedCharacters(): Promise<Obj[]> {
+    const entry = entriesOf(sink.closedFile as Uint8Array).find((candidate) => candidate.name === 'database.risudat')
+    if (entry === undefined) {
+        throw new Error('the export wrote no database entry')
+    }
+    return ((await decodeRisuSave(entry.data)) as unknown as { characters: Obj[] }).characters
+}
+
+/** The characters the written unit entries carry, in file order. */
+function unitCharacters(): Obj[] {
+    return entriesOf(sink.closedFile as Uint8Array)
+        .filter((entry) => UNIT_ENTRY_NAME.test(entry.name))
+        .map((entry) => (JSON.parse(decoder.decode(entry.data)) as { character: Obj }).character)
+}
+
+function hasKeyDeep(value: unknown, key: string): boolean {
+    if (Array.isArray(value)) {
+        return value.some((inner) => hasKeyDeep(inner, key))
+    }
+    if (typeof value === 'object' && value !== null) {
+        return key in value || Object.values(value).some((inner) => hasKeyDeep(inner, key))
+    }
+    return false
+}
+
+const chatsOfCharacter = (character: Obj): Obj[] => character.chats as Obj[]
+const messagesOf = (chat: Obj): Obj[] => chat.message as Obj[]
+
+/** The marker of a branch chat split as upstream's renderer splits it. */
+function markerParts(chat: Obj): string[] {
+    const messages = messagesOf(chat)
+    return String(messages[messages.length - 1].data).split('::')
+}
+
+const idsOfMessages = (chat: Obj): unknown[] => messagesOf(chat).map((message) => message.chatId)
+const MARKER_HEAD = '{{specialcomment'
+
+/** The line of the alternatives prompt that belongs to the chat text `text`. */
+const promptLineOf = (text: string): string => promptLabels().find((line) => line.startsWith(text)) ?? ''
+
+/** A record that continues the main path from `pointId`: a user message, then (optionally) an interrupted reply. */
+function lateLeaf(pointId: string, withInterrupted: boolean): Obj[] {
+    const user = treeMessage('late-u', 'user')
+    const records: Obj[] = [{ m: user, p: pointId, a: 99 }]
+    if (withInterrupted) {
+        records.push({ m: { ...treeMessage('late-c', 'char'), interrupted: true }, p: 'late-u', a: 99 })
+    }
+    return records
+}
+
+//#endregion
+
+describe.each([
+    ['SaveLocalBackup', SaveLocalBackup as Runner],
+    ['SavePartialLocalBackup', SavePartialLocalBackup as Runner],
+])('%s of a store2 page whose chats continue from an alternative', (_name, run) => {
+    // W1: the file holds the continued alternative as an extra chat; the count is the fixture's chat count plus one
+    test('reproducer (W1): a resident chat that was continued from an alternative is written with one extra branch chat, and the live page is unchanged', async () => {
+        const page = await pageOf({}, false, 'none', false, treeOnAll)
+        const live = page.db.characters[0] as unknown as { chats: Chat[], chatPage?: number }
+        const chatsBefore = live.chats.length
+        const liveJson = JSON.stringify(page.db.characters[0])
+        // u3 c4 and c6: the page really holds the tree the engine wrote
+        expect(live.chats[0].alt).toHaveLength(3)
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        const exported = (await exportedCharacters())[0]
+        const chats = chatsOfCharacter(exported)
+        expect(chats).toHaveLength(chatsBefore + 1)
+        const branch = chats[chatsBefore]
+        expect(idsOfMessages(branch).slice(0, 4)).toEqual(['t0u1', 't0c2', 't0u3', 't0c4'])
+        expect(messagesOf(branch)).toHaveLength(5)
+        const parts = markerParts(branch)
+        expect(parts[0]).toBe(MARKER_HEAD)
+        expect(parts).toEqual([MARKER_HEAD, 'branchedfrom', live.chats[0].id, live.chats[0].name, 't0c2', '}}'])
+        expect(branch.name).toBe(`${String(live.chats[0].name)} (Branch)`)
+        expect(exported.chatPage).toBe(live.chatPage)
+        expect(chats[0]).not.toHaveProperty('alt')
+        expect(hasKeyDeep(exported, 'alt')).toBe(false)
+        expect(hasKeyDeep(exported, 'mem')).toBe(false)
+        // The page keeps its alternatives, its parked memory and its chat order.
+        expect(JSON.stringify(page.db.characters[0])).toBe(liveJson)
+    }, 120_000)
+
+    test('reproducer (W2): in stub mode the unit body of every archived character holds its branch chat, and no alt or mem', async () => {
+        const page = await pageOf({}, false, 'none', false, treeOnAll)
+        const chatsBefore = page.entries.slice(1).map((entry) => (wholeOf(page, entry) as unknown as { chats: Obj[] }).chats.length)
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        // The stubs' prompt lines come from the labels minted with their bodies, and name the branch chats like any other.
+        expect(promptLabels()).toHaveLength(4)
+        for (const line of promptLabels()) {
+            expect(line, line).toMatch(/ \(1 branch chat\(s\), (about [0-9.]+|under 0\.1) MiB; 1 reply\(s\) left out\)$/)
+        }
+        const units = unitCharacters()
+        expect(units).toHaveLength(3)
+        for (const unit of units) {
+            const index = page.entries.findIndex((entry) => entry.chaId === unit.chaId)
+            expect(index, String(unit.name)).toBeGreaterThan(0)
+            const chats = chatsOfCharacter(unit)
+            expect(chats, String(unit.name)).toHaveLength(chatsBefore[index - 1] + 1)
+            expect(idsOfMessages(chats[chats.length - 1]).slice(0, 4)).toEqual([`t${index}u1`, `t${index}c2`, `t${index}u3`, `t${index}c4`])
+            expect(hasKeyDeep(unit, 'alt'), String(unit.name)).toBe(false)
+            expect(hasKeyDeep(unit, 'mem'), String(unit.name)).toBe(false)
+        }
+    }, 120_000)
+
+    test('reproducer (W3): in inline mode the archived characters in the database entry hold their branch chat', async () => {
+        const page = await pageOf({}, false, 'none', false, treeOnAll)
+        const chatsBefore = page.entries.map((entry) => (wholeOf(page, entry) as unknown as { chats: Obj[] }).chats.length)
+
+        const outcome = await run({ mode: 'inline' })
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        // The archived characters were read whole before the prompt, and their lines name the branch chats too.
+        expect(promptLabels()).toHaveLength(4)
+        for (const line of promptLabels()) {
+            expect(line, line).toMatch(/ \(1 branch chat\(s\), (about [0-9.]+|under 0\.1) MiB; 1 reply\(s\) left out\)$/)
+        }
+        const exported = await exportedCharacters()
+        expect(exported).toHaveLength(4)
+        exported.forEach((character, index) => {
+            expect(chatsOfCharacter(character), String(character.name)).toHaveLength(chatsBefore[index] + 1)
+            expect(idsOfMessages(chatsOfCharacter(character)[chatsBefore[index]]).slice(0, 4)).toEqual([`t${index}u1`, `t${index}c2`, `t${index}u3`, `t${index}c4`])
+        })
+        expect(hasKeyDeep(exported, 'alt')).toBe(false)
+        expect(unitCharacters()).toEqual([])
+    }, 120_000)
+
+    test('reproducer (W4): the prompt line says how many branch chats the chat becomes, how big they are and how many replies are left out; a long name is cut before the suffix', async () => {
+        const longCharacter = 'C'.repeat(56)
+        const longChat = 'N'.repeat(54)
+        const page = await pageOf({}, false, 'none', false, (slot, index) => {
+            if (index === 0) {
+                slot.name = longCharacter
+                growTree(slot, 't0', { fillers: 6000 }).name = longChat
+            }
+        })
+        expect(page.db.characters[0].name).toBe(longCharacter)
+
+        const outcome = await run({ mode: 'inline' })
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        const text = `${longCharacter} / ${longChat}`
+        expect(text.length).toBeGreaterThan(100)
+        const line = promptLabels().find((entry) => entry.startsWith(text.slice(0, 100))) ?? ''
+        expect(line.startsWith(`${text.slice(0, 100)}... (1 branch chat(s), about `)).toBe(true)
+        expect(line.endsWith('MiB; 1 reply(s) left out)')).toBe(true)
+        const shown = Number(/about ([0-9.]+) MiB/.exec(line)?.[1])
+        const chats = chatsOfCharacter((await exportedCharacters())[0])
+        const measured = new TextEncoder().encode(JSON.stringify(chats[chats.length - 1])).length / MIB
+        expect(Math.abs(shown - measured)).toBeLessThanOrEqual(0.1)
+        expect(measured).toBeGreaterThan(0.2)
+    }, 120_000)
+
+    // W5: the existing decline contract holds for the new prompt
+    test('guard (W5): declining the prompt of a continued alternative ends the export as declined, with nothing written', async () => {
+        await pageOf({}, false, 'none', false, treeOnAll)
+        alertConfirmMock.mockImplementation(async (message: string) => !message.includes(ALT_PROMPT))
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toEqual({ status: 'declined', cause: 'incomplete-data-declined' })
+        expect(sink.chunks).toEqual([])
+        expect(sink.closedFile).toBeNull()
+        expect(altPrompts()).toHaveLength(1)
+    }, 120_000)
+
+    test('reproducer (W6): a stub whose expanded body reaches the limit is named in the leave-out prompt and is not written, while its stripped body would have fitted', async () => {
+        const page = await pageOf({}, false, 'none', false, (slot, index) => {
+            if (index === 1) {
+                growTree(slot, 't1', { fillers: 400 })
+            }
+        })
+        const stripped = new TextEncoder().encode(JSON.stringify({ character: withoutForkOnlyChatData(coldUnitCharacter(wholeOf(page, page.entries[1]))) })).length
+        // Between the stripped body and the body that holds the branch chat as well (about twice the shared prefix more).
+        const limitBytes = Math.round(stripped * 1.5)
+        const small = [2, 3].map((index) => new TextEncoder().encode(JSON.stringify({ character: coldUnitCharacter(wholeOf(page, page.entries[index])) })).length)
+        expect(Math.max(...small)).toBeLessThan(limitBytes)
+
+        const outcome = await run({ mode: 'stub', limitBytes })
+
+        expect(outcome).toMatchObject({ status: 'saved' })
+        const named = alertConfirmMock.mock.calls.map((call) => String(call[0])).filter((message) => message.includes('4 GiB or more'))
+        expect(named).toHaveLength(1)
+        expect(named[0]).toContain(page.entries[1].name)
+        expect(named[0]).not.toContain(page.entries[2].name)
+        expect((await exportedCharacters())[1].coldstorage).toBe(page.entries[1].u)
+        expect(entriesOf(sink.closedFile as Uint8Array).map((entry) => entry.name)).not.toContain(`coldstorage_${page.entries[1].u}.json`)
+    }, 120_000)
+
+    test('reproducer (W7): a confirmed chat that gains a continued alternative after the prompt is expanded with it, and nothing is reported', async () => {
+        const page = await pageOf({}, false, 'none', false, treeOnAll)
+        const live = page.db.characters[0] as unknown as { chats: Chat[] }
+        const chatsBefore = live.chats.length
+        captured.onOpen = () => {
+            // hand-built: a later continuation from c2, as a chat that kept being used would hold
+            ;(live.chats[0].alt as unknown as Obj[]).push(...lateLeaf('t0c2', false))
+        }
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        const chats = chatsOfCharacter((await exportedCharacters())[0])
+        expect(chats).toHaveLength(chatsBefore + 2)
+        expect(chats.slice(chatsBefore).map((chat) => idsOfMessages(chat).slice(0, 3))).toEqual([['t0u1', 't0c2', 't0u3'], ['t0u1', 't0c2', 'late-u']])
+        expect(chats.slice(chatsBefore).map((chat) => chat.name)).toEqual([`${String(live.chats[0].name)} (Branch)`, `${String(live.chats[0].name)} (Branch 2)`])
+    }, 120_000)
+
+    // W8: the existing latecomer rule holds: a chat that was not named is stripped, never expanded
+    test('guard (W8): a chat that gains a continued alternative with an interrupted reply after the prompt is stripped, named in the alternatives notice only, and gets no branch chat', async () => {
+        const page = await pageOf({}, false)
+        captured.onOpen = () => {
+            const late = JSON.parse(JSON.stringify(page.db.characters[0])) as Obj
+            late.chaId = 'late-character'
+            late.name = 'Latecomer'
+            const chat = chatsOfCharacter(late)[0]
+            chat.alt = lateLeaf('', true)
+            ;(page.db.characters as unknown[]).push(late)
+        }
+        const chatsBefore = (page.db.characters[0] as unknown as { chats: unknown[] }).chats.length
+
+        const outcome = await run(STUB)
+
+        expect(altPrompts()).toEqual([])
+        expect(outcome).toMatchObject({ status: 'saved' })
+        const notice = (outcome as { notices: string[] }).notices.join('\n')
+        expect(notice).toContain(ALT_NOTICE)
+        expect(notice).toContain('Latecomer / ')
+        expect(notice).not.toContain(FORK_NOTICE)
+        expect(notice).not.toContain(INTERRUPTED_KIND)
+        const written = (await exportedCharacters()).find((character) => character.chaId === 'late-character') as Obj
+        expect(chatsOfCharacter(written)).toHaveLength(chatsBefore)
+        expect(await fileText()).not.toContain('late-u')
+    }, 120_000)
+
+    test('guard (W8b): a chat named only for another kind that gains a continued alternative after the prompt is stripped, named in the alternatives notice, and gets no branch chat', async () => {
+        const page = await pageOf({}, false, 'none', false, (slot) => {
+            ;(slot.chats as Obj[])[0].hideNames = true
+        })
+        const live = page.db.characters[0] as unknown as { chats: Chat[] }
+        const chatsBefore = live.chats.length
+        expect(live.chats[0].alt).toBeUndefined()
+        const liveId = String(live.chats[0].id)
+        captured.onOpen = () => {
+            live.chats[0].alt = lateLeaf(String(live.chats[0].message[0].chatId), false) as unknown as Chat['alt']
+        }
+
+        const outcome = await run(STUB)
+
+        expect(altPrompts()).toEqual([])
+        expect(outcome).toMatchObject({ status: 'saved' })
+        const notice = (outcome as { notices: string[] }).notices.join('\n')
+        expect(notice).toContain(ALT_NOTICE)
+        expect(notice).toContain(`${String(page.db.characters[0].name)} / ${String(live.chats[0].name)}`)
+        const chats = chatsOfCharacter((await exportedCharacters())[0])
+        expect(chats).toHaveLength(chatsBefore)
+        expect(chats[0].id).toBe(liveId)
+        expect(await fileText()).not.toContain('late-u')
+    }, 120_000)
+
+    test.each([
+        ['without trees', undefined],
+        ['with trees', treeOnAll],
+    ])('reproducer (null entry): a null entry among the characters does not fail the export %s', async (_label, shape) => {
+        const page = await pageOf({}, false, 'none', false, shape)
+        ;(page.db.characters as unknown[]).push(null)
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved' })
+    }, 120_000)
+
+    test('reproducer (W9): a chat without an id gets one on its export copy only, and the marker names it', async () => {
+        const page = await pageOf({}, false, 'none', false, (slot, index) => {
+            const chat = growTree(slot, `t${index}`)
+            if (index === 0) {
+                delete chat.id
+            }
+        })
+        const live = page.db.characters[0] as unknown as { chats: Chat[] }
+        expect(live.chats[0].id).toBeUndefined()
+        const chatsBefore = live.chats.length
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        const chats = chatsOfCharacter((await exportedCharacters())[0])
+        expect(chats).toHaveLength(chatsBefore + 1)
+        expect(typeof chats[0].id).toBe('string')
+        expect(chats[0].id).not.toBe('')
+        expect(markerParts(chats[chatsBefore])[2]).toBe(chats[0].id)
+        expect(live.chats[0].id).toBeUndefined()
+    }, 120_000)
+
+    test('guard (W10): a chat with a chat-only switch and hidden names that continued from an alternative is named once with those kinds, and nothing is reported afterwards', async () => {
+        const page = await pageOf({}, false, 'none', false, (slot, index) => {
+            growTree(slot, `t${index}`, {
+                marks: (chat) => {
+                    chat.hideNames = true
+                    chat.useLocallySetGlobalVariables = true
+                    chat.scopedJailbreak = true
+                },
+            })
+        })
+        const name = String(page.db.characters[0].name)
+        const chatsBefore = (page.db.characters[0] as unknown as { chats: unknown[] }).chats.length
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        const lines = forkPromptLines().filter((line) => line.startsWith(`${name} / `))
+        expect(lines).toHaveLength(1)
+        expect(lines[0]).toContain('hidden names')
+        expect(lines[0]).toContain('chat-only jailbreak setting')
+        expect(chatsOfCharacter((await exportedCharacters())[0])).toHaveLength(chatsBefore + 1)
+    }, 120_000)
+
+    // W11 is the existing 'a page with no alternatives' test; W12 and W14 below
+    test('guard (W12): chats that only hold rerolls write no extra chat and no alternative, and the prompt says how many replies are left out', async () => {
+        const page = await pageOf({}, true)
+        const chatsBefore = (page.db.characters[0] as unknown as { chats: unknown[] }).chats.length
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        expect(promptLabels()).toHaveLength(4)
+        for (const line of promptLabels()) {
+            expect(line.endsWith(' / Chat 1 (1 reply(s) left out)'), line).toBe(true)
+        }
+        expect(chatsOfCharacter((await exportedCharacters())[0])).toHaveLength(chatsBefore)
+        expect(await fileText()).not.toContain(ALT_MARK)
+    }, 120_000)
+
+    test('guard (W13): a chat that already holds an old branch marker and no alternatives is written exactly as it is', async () => {
+        // the string the removed Branch handler wrote, in the shape upstream's handler still writes
+        const old: Message = { role: 'char', data: '{{specialcomment::branchedfrom::old-parent::Old chat::old-point::}}', isComment: true, disabled: true, chatId: 'old-marker' }
+        const source = [treeMessage('o1', 'user'), treeMessage('o2', 'char'), old]
+        const page = await pageOf({}, false, 'none', false, (slot, index) => {
+            if (index === 0) {
+                ;((slot.chats as Obj[])[0]).message = JSON.parse(JSON.stringify(source)) as Obj[]
+            }
+        })
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        expect(altPrompts()).toEqual([])
+        const chats = chatsOfCharacter((await exportedCharacters())[0])
+        expect(chats).toHaveLength((page.db.characters[0] as unknown as { chats: unknown[] }).chats.length)
+        expect(messagesOf(chats[0])).toEqual(JSON.parse(JSON.stringify(source)))
+    }, 120_000)
+
+    test('guard (W14): a chat whose alternatives cannot be read is named as left out, stripped, and gets no extra chat', async () => {
+        const page = await pageOf({}, false, 'none', false, treeOnAll)
+        const live = page.db.characters[0] as unknown as { chats: Obj[] }
+        live.chats[0].alt = 'ALTTEXT'
+        const chatsBefore = live.chats.length
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved' })
+        expect(promptLineOf(`${String(page.db.characters[0].name)} / `)).toBe(`${String(page.db.characters[0].name)} / ${String(live.chats[0].name)} (alternative replies left out)`)
+        const chats = chatsOfCharacter((await exportedCharacters())[0])
+        expect(chats).toHaveLength(chatsBefore)
+        expect(await fileText()).not.toContain('ALTTEXT')
+    }, 120_000)
+
+    test('reproducer (W15): a group character continued from an alternative keeps the speaker of every message in its branch chat', async () => {
+        const page = await pageOf({}, false, 'none', false, (slot, index) => {
+            if (index === 0) {
+                slot.type = 'group'
+                slot.characters = []
+                slot.characterTalks = []
+                slot.characterActive = []
+                growTree(slot, 't0', { saying: 'speaker-1' })
+            }
+        })
+        const chatsBefore = (page.db.characters[0] as unknown as { chats: unknown[] }).chats.length
+
+        const outcome = await run({ mode: 'inline' })
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        const chats = chatsOfCharacter((await exportedCharacters())[0])
+        expect(chats).toHaveLength(chatsBefore + 1)
+        const messages = messagesOf(chats[chatsBefore])
+        expect(messages).toHaveLength(5)
+        for (const message of messages.slice(0, 4)) {
+            expect(message.saying).toBe('speaker-1')
+        }
+        expect(messages[4].role).toBe('char')
+    }, 120_000)
+
+    test('reproducer (W16): a chat name and a user name that hold tokens the parser acts on give a marker that parses back to itself', async () => {
+        const page = await pageOf({}, false, 'none', false, (slot, index) => {
+            const chat = growTree(slot, `t${index}`)
+            if (index === 0) {
+                chat.name = 'Plan #} <user> ::'
+            }
+        })
+        page.db.username = 'Us::er'
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        const live = page.db.characters[0] as unknown as { chats: Chat[] }
+        const chats = chatsOfCharacter((await exportedCharacters())[0])
+        const branch = chats[live.chats.length]
+        expect(branch).toBeDefined()
+        // The expected text is written out, not computed: the name loses `<user>`, `#}` and the trailing `::`.
+        const marker = messagesOf(branch)[4].data
+        expect(marker).toBe(`{{specialcomment::branchedfrom::${String(live.chats[0].id)}::Plan } user ::t0c2::}}`)
+        const parts = String(marker).split('::')
+        expect(parts).toHaveLength(6)
+        expect(parts[3]).not.toMatch(/\{\{|\{#|\}\}|#\}|:|<(user|char|bot)>/i)
+    }, 120_000)
+
+    test('guard (W17): a legacy unit known before the prompt is named as left out, stripped, and gets no extra chat', async () => {
+        const KEY = '00000000-0000-4000-8000-0000000000dd'
+        const records = [{ m: treeMessage('cold-u', 'user'), p: null, a: 1 }, { m: treeMessage('cold-c', 'char'), p: 'cold-u', a: 1 }]
+        await setColdStorageItem(KEY, { character: { chaId: 'cold-branch', name: 'ColdEarly', type: 'character', chatPage: 0, chats: [{ id: 'k1', name: 'Kept', message: [{ time: 1, data: 'hello', role: 'char', chatId: 'cold-p' }], note: '', localLore: [], alt: records }] } })
+        const page = await pageOf({}, false)
+        ;(page.db.characters as unknown[]).push({ chaId: 'cold-branch', name: 'ColdEarly', type: 'character', chatPage: 0, coldstorage: KEY, chats: [] })
+
+        const outcome = await run(STUB)
+
+        expect(altPrompts()).toHaveLength(1)
+        expect(promptLabels()).toEqual(['ColdEarly / Kept (alternative replies left out)'])
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        const unit = entriesOf(sink.closedFile as Uint8Array).find((entry) => entry.name === `coldstorage_${KEY}.json`)
+        expect(unit).toBeDefined()
+        const body = JSON.parse(decoder.decode((unit as WrittenEntry).data)) as { character: Obj }
+        expect(chatsOfCharacter(body.character)).toHaveLength(1)
+        expect(JSON.stringify(body)).not.toContain('cold-u')
+    }, 120_000)
+
+    test('guard (W18): an interrupted reply that only a branch chat carries is named on its chat in the fork-data prompt, before the writer opens, and the written chat has no such mark', async () => {
+        const page = await pageOf({}, false, 'none', false, (slot, index) => {
+            growTree(slot, `t${index}`, { marks: (chat) => { chat.message[chat.message.length - 1].interrupted = true } })
+        })
+        const name = String(page.db.characters[0].name)
+        const chatsBefore = (page.db.characters[0] as unknown as { chats: unknown[] }).chats.length
+        let chunksAtPrompt = -1
+        alertConfirmMock.mockImplementation(async (message: string) => {
+            if (message.includes(FORK_PROMPT)) {
+                chunksAtPrompt = sink.chunks.length
+            }
+            return true
+        })
+
+        const outcome = await run(STUB)
+
+        expect(outcome).toMatchObject({ status: 'saved', notices: [] })
+        expect(chunksAtPrompt).toBe(0)
+        const lines = forkPromptLines().filter((line) => line.startsWith(`${name} / `))
+        expect(lines).toHaveLength(1)
+        expect(lines[0]).toContain(INTERRUPTED_KIND)
+        const exported = await exportedCharacters()
+        expect(hasKeyDeep(exported, 'interrupted')).toBe(false)
+        expect(chatsOfCharacter(exported[0])).toHaveLength(chatsBefore + 1)
+    }, 120_000)
+
+    test('guard (W19): an interrupted reply that only a late branch carries is named in the notice, and its branch chat is written', async () => {
+        const page = await pageOf({}, false, 'none', false, treeOnAll)
+        const live = page.db.characters[0] as unknown as { chats: Chat[] }
+        const chatsBefore = live.chats.length
+        captured.onOpen = () => {
+            ;(live.chats[0].alt as unknown as Obj[]).push(...lateLeaf('t0c2', true))
+        }
+
+        const outcome = await run(STUB)
+
+        expect(forkPrompts()).toEqual([])
+        expect(outcome).toMatchObject({ status: 'saved' })
+        const notice = (outcome as { notices: string[] }).notices.join('\n')
+        expect(notice).toContain(FORK_NOTICE)
+        expect(notice).toContain(`${String(page.db.characters[0].name)} / ${String(live.chats[0].name)} (${INTERRUPTED_KIND})`)
+        const exported = await exportedCharacters()
+        expect(chatsOfCharacter(exported[0])).toHaveLength(chatsBefore + 2)
+        expect(hasKeyDeep(exported, 'interrupted')).toBe(false)
     }, 120_000)
 })

@@ -3376,8 +3376,6 @@ export const languageEnglish = {
         `${items.length} item(s) are 4 GiB or more, which is more than one entry of a backup file can hold, so their content is not in the backup (a character keeps only a placeholder):\n\n${items.join('\n')}`,
     backupUpstreamOversizeConfirm: (count: number, names: string[]) =>
         `${count} item(s) in this backup are larger than 100 MiB. An upstream RisuAI Node server cannot restore an item that large, so it would skip them when this backup is restored there; this app and the other platforms restore them. Create the backup with them included? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
-    backupAlternativesConfirm: (count: number, names: string[]) =>
-        `${count} chat(s) have alternative replies, and a backup file has no place for them, so they would be left out of this backup (the chats and their messages are saved). The alternatives stay in this app; only the backup lacks them. Create the backup without them? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     backupTaskPresetsConfirm: (count: number, names: string[]) =>
         `${count} task preset(s) are saved on this device only, and a backup file has no place for them, so they would be left out of this backup. They stay in this app; only the backup lacks them. Create the backup without them? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     backupThemePacksConfirm: (count: number, names: string[]) =>
@@ -3493,6 +3491,20 @@ export const languageEnglish = {
     themePackLintLine: (selector: string, prop: string, why: string) => `${selector} ${prop}: ${why}`,
     backupAlternativesLeftOut: (count: number, names: string[]) =>
         `${count} chat(s) had alternative replies that were found while the backup ran, and a backup file has no place for them, so they are not in the backup (the chats and their messages are saved):\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
+    backupBranchesConfirm: (count: number, lines: string[]) =>
+        `${count} chat(s) have alternative replies, and a backup file has no place for them. An alternative the conversation continued from (it holds a later message of yours) is written as an extra chat at the end of that character's chat list, named like "Chat (Branch)", so the backup grows by about the size shown; the other alternative replies are left out. The chats and their messages are saved, and nothing changes in this app. Create the backup this way? If you decline, no backup file is created. Nothing has been written yet.\n\n${lines.join('\n')}${count > lines.length ? `\n...and ${count - lines.length} more` : ''}`,
+    backupBranchesLine: (chat: string, branchChats: number, bytes: number | null, leftOut: number) => {
+        const parts: string[] = []
+        if (branchChats > 0) {
+            const size = bytes === null ? 'size unknown' : bytes < 0.1 * 1024 * 1024 ? 'under 0.1 MiB' : `about ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+            parts.push(`${branchChats} branch chat(s), ${size}`)
+        }
+        if (leftOut > 0) {
+            parts.push(`${leftOut} reply(s) left out`)
+        }
+        return parts.length > 0 ? `${chat} (${parts.join('; ')})` : chat
+    },
+    backupBranchesLeftOutLine: (chat: string) => `${chat} (alternative replies left out)`,
     backupForkChatDataConfirm: (count: number, names: string[]) =>
         `${count} chat(s) hold data that only this app uses (the kinds are in parentheses), and a backup file has no place for it, so it would be left out of this backup (the chats and their messages are saved). The data stays in this app; only the backup lacks it. Create the backup without it? If you decline, no backup file is created. Nothing has been written yet.\n\n${names.join('\n')}${count > names.length ? `\n...and ${count - names.length} more` : ''}`,
     backupForkChatDataLeftOut: (count: number, names: string[]) =>

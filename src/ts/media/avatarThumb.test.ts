@@ -312,6 +312,17 @@ describe('T3: store lookup semantics', () => {
         expect(store.setItem).toHaveBeenCalledWith('assets/a.png', { v: THUMB_VERSION, src: 'freshly-generated' })
     })
 
+    test('a record written at version 2 (before the native preview) counts as absent and regenerates', async () => {
+        const generator = vi.fn(async () => ({ src: 'freshly-generated' }))
+        __avatarThumbTestHooks.setGenerator(generator)
+        const store = makeMemoryStore({ 'assets/a.png': { v: 2, skip: true } })
+        __avatarThumbTestHooks.setStore(store as never)
+
+        expect(await getAvatarThumbSrc('assets/a.png')).toBe('freshly-generated')
+        expect(THUMB_VERSION).toBe(3)
+        expect(store.setItem).toHaveBeenCalledWith('assets/a.png', { v: 3, src: 'freshly-generated' })
+    })
+
     test('a store getItem that throws resolves null, not a rejection, and does not attempt generation this call', async () => {
         const generator = vi.fn(async () => ({ src: 'should-not-be-used' }))
         __avatarThumbTestHooks.setGenerator(generator)

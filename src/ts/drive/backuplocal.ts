@@ -54,7 +54,7 @@ import { inlayAttachmentLimit } from "../process/files/inlayStore";
 import { parseInlayEntryName } from "./inlayBackupCodec";
 import { ExportReadError, openFirstPiece, writeInlaysToBackup, type ReadPiece } from "./inlayBackupExport";
 import { ANDROID_EXPORT_PIECE_BYTES, ANDROID_PIECE_SOURCE, DESKTOP_PIECE_SOURCE, desktopStreamingUsable, exportTauriPieceSource, nodeAssetPieceSource, nodePieceStore, webBlobPieceSource, type AssetPieceSource } from "./assetPieces";
-import { findOversizeAssets, formatMiB, shownPromptNames } from "./backupUpstreamSizes";
+import { findOversizeAssets, formatMiB, shownPromptNames, UPSTREAM_PROMPT_NAMES_SHOWN } from "./backupUpstreamSizes";
 import { InlayRestoreCollector, listOversizedInlays, restoreCollectedInlays, type InlaySkipped } from "./inlayBackupImport";
 import { RESTORE_EXCLUSIVE_LOCK_TIMEOUT_MS } from "./restoreLock";
 import { reloadOntoRestoredState } from "./internalBackup";
@@ -65,7 +65,8 @@ import type { BootImportEnd, BootImportTarget } from "../storage/store2/legacy/b
 import { emptyImportFacts, outcomeOfBootFinish, type ExportOmitted, type ExportOutcome, type ImportFacts, type OperationCause, type OperationEnd, type OperationName, type OperationOutcome } from "./operationEnd";
 import { announceStore2Import, binChangeText, checkStore2Import, commitBootImport, commitStore2Import, confirmImportScale, confirmLeftOut, createBinImportReader, hasDatabaseEntry, IMPORT_COPY_PHASE_EVERY, noteImportPhase, readBinDatabaseOmitted, readBinDatabaseTree, scanBinForImport, UnsavedGuard, type Store2ImportTarget } from "./storeImport";
 
-import { forkOnlyChatLabels, forkOnlyConfirmKeys, lateForkOnlyChats, withoutForkOnlyChatData, type ForkOnlyChatLabel, type ForkOnlyKind } from "./exportAlternatives";
+import { chatLabelKey, forkOnlyChatLabels, forkOnlyConfirmKey, forkOnlyConfirmKeys, lateForkOnlyChats, withoutForkOnlyChatData, type ForkOnlyChatLabel, type ForkOnlyKind } from "./exportAlternatives";
+import { expandBranchChats, lateBranchLabels } from "./exportBranches";
 import { isPackAssetName } from "../themePack/packRefs";
 import { isForkOnlyHypaModel } from "../process/memory/embeddingModels";
 import { hasUsageData, hasUsageKeys, withoutUsageKeys } from "../usage/usageLedger";
@@ -91,7 +92,7 @@ function getBasename(data:string){
  * exists exactly when a stub with its uuid is written, so a character loaded while the export ran leaves no orphan.
  */
 async function encodeDatabaseWithLateColdStorage(db: Database, cold: BackupColdStorage, modules: RisuModule[] | null, confirmedForkOnly: ReadonlySet<string>){
-    const { tree: exportCopy, notice: repairNotice, omittedChatData } = await exportCopyOf(db, cold.inlined, cold.stubEntries, modules)
+    const { tree: exportCopy, notice: repairNotice, omittedChatData } = await exportCopyOf(db, cold.inlined, cold.stubEntries, modules, confirmedForkOnly)
     // Plugin values of a store2 page become units here; the exported copy carries no plain key for them.
     const plugin = pluginStorageForExport(exportCopy, cold.collected.settledKeys)
     const dbWithoutAccount = plugin.tree
@@ -247,7 +248,7 @@ function describeWriteMeasure(): string {
  * repair, is inlined instead. This function never refuses;
  * `notice` says what was done.
  */
-async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>, modules: RisuModule[] | null): Promise<{ tree: Database, notice: string | null, omittedChatData: ForkOnlyChatLabel[] }> {
+async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database['characters'][number]>, stubEntries: ReadonlyMap<string, MintedStubEntry>, modules: RisuModule[] | null, confirmedForkOnly: ReadonlySet<string>): Promise<{ tree: Database, notice: string | null, omittedChatData: ForkOnlyChatLabel[] }> {
     const plain = { ...db, account: undefined }
     // A `.bin` carries no task presets (the export confirm names them first); the key is removed, not set to undefined.
     delete plain.taskPresets
@@ -289,13 +290,17 @@ async function exportCopyOf(db: Database, inlined: ReadonlyMap<string, Database[
             plain.characters = db.characters.map((slot) => inlinedFromMinted(slot, stubEntries) ?? inlinedCharacter(slot, inlined))
         }
     }
-    // A `.bin` carries no fork-only chat data (alternatives, interrupted-reply notes, memory coverage pointers). Only a
-    // character with some is copied; the page's characters are never changed.
+    // A `.bin` carries no fork-only chat data (alternatives, interrupted-reply notes, memory coverage pointers). An
+    // alternative the conversation continued from first becomes an extra chat, but only in a chat whose alternatives the
+    // prompt named (`confirmedForkOnly`); every other chat is stripped. Only a character with some is copied; the page's
+    // characters are never changed. The labels keep the keys of the unexpanded chats, which are the keys of the prompt.
     const omittedChatData: ForkOnlyChatLabel[] = []
     if (Array.isArray(plain.characters)) {
-        const bare = plain.characters.map((slot) => withoutForkOnlyChatData(slot))
-        if (bare.some((slot, index) => slot !== plain.characters[index])) {
-            omittedChatData.push(...plain.characters.flatMap((slot) => forkOnlyChatLabels(slot)))
+        const original = plain.characters
+        const expanded = original.map((slot) => expandBranchChats(slot, (chat, index) => confirmedForkOnly.has(forkOnlyConfirmKey('alternatives', chatLabelKey(slot, chat, index))), v4))
+        const bare = expanded.map((entry) => withoutForkOnlyChatData(entry.character))
+        if (bare.some((slot, index) => slot !== original[index])) {
+            omittedChatData.push(...original.flatMap((slot, index) => expanded[index].parents.length > 0 ? lateBranchLabels(slot, expanded[index]) : forkOnlyChatLabels(slot)))
             plain.characters = bare
         }
     }
@@ -704,11 +709,20 @@ async function confirmUpstreamOversize(session: ExportSession, items: readonly s
 }
 
 /**
- * Asks, before the writer opens, whether to create the backup without the alternative replies of the named chats (a
- * `.bin` has no place for them). `true` when there are none or the person confirms; declining writes nothing.
+ * Asks, before the writer opens, whether to create the backup with the alternative replies of the named chats written
+ * as extra chats where a conversation continued from them, and left out otherwise (a `.bin` has no place for them). Each
+ * line says what that chat's alternatives become and the size the extra chats add. `true` when there are none or the
+ * person confirms; declining writes nothing.
  */
-async function confirmOmitAlternatives(session: ExportSession, labels: readonly string[]): Promise<boolean> {
-    return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupAlternativesConfirm(labels.length, shownPromptNames(labels))))
+async function confirmOmitAlternatives(session: ExportSession, labels: readonly ForkOnlyChatLabel[]): Promise<boolean> {
+    return await confirmDuringExport(session, labels.length > 0, async () => labels.length === 0 || await alertConfirm(language.backupBranchesConfirm(labels.length, labels.slice(0, UPSTREAM_PROMPT_NAMES_SHOWN).map(branchesPromptLine))))
+}
+
+/** One line of the alternatives prompt: the chat's text, cut like every prompt name, then what its alternatives become. */
+function branchesPromptLine(label: ForkOnlyChatLabel): string {
+    const [text] = shownPromptNames([label.text])
+    const branches = label.branches
+    return branches === undefined ? language.backupBranchesLeftOutLine(text) : language.backupBranchesLine(text, branches.chats, branches.bytes, branches.omitted)
 }
 
 /** A chat and the kinds of fork-only data it loses, as one line of the prompt and of the notice: `Character / Chat (kind, kind)`. */
@@ -716,9 +730,9 @@ function forkChatDataLine(text: string, kinds: readonly ForkOnlyKind[]): string 
     return `${text} (${kinds.map((kind) => language.backupForkChatDataKind(kind)).join(', ')})`
 }
 
-/** The chats whose alternatives the export leaves out; their prompt is the alternatives prompt. */
-function alternativeChatTexts(labels: readonly ForkOnlyChatLabel[]): string[] {
-    return labels.filter((label) => label.kinds.includes('alternatives')).map((label) => label.text)
+/** The chats whose alternatives the export does not carry as they are; their prompt is the alternatives prompt. */
+function alternativeChatLabels(labels: readonly ForkOnlyChatLabel[]): ForkOnlyChatLabel[] {
+    return labels.filter((label) => label.kinds.includes('alternatives'))
 }
 
 /** One line per chat that loses a kind other than alternatives, naming those kinds. */
@@ -914,9 +928,10 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
         return { status: 'declined', cause: 'oversize-declined' }
     }
 
-    // A `.bin` has no place for chat alternatives; name the chats that lose theirs before the writer opens.
+    // A `.bin` has no place for chat alternatives; name the chats whose alternatives become extra chats or are left out
+    // before the writer opens.
     const forkOnlyLabels = exportForkOnlyLabels(db, cold)
-    if (!await confirmOmitAlternatives(session, alternativeChatTexts(forkOnlyLabels))) {
+    if (!await confirmOmitAlternatives(session, alternativeChatLabels(forkOnlyLabels))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
     // The other fork-only chat data (interrupted-reply notes, memory coverage pointers) is named in a prompt of its own.
@@ -1265,9 +1280,10 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
         return { status: 'declined', cause: 'oversize-declined' }
     }
 
-    // A `.bin` has no place for chat alternatives; name the chats that lose theirs before the writer opens.
+    // A `.bin` has no place for chat alternatives; name the chats whose alternatives become extra chats or are left out
+    // before the writer opens.
     const forkOnlyLabels = exportForkOnlyLabels(db, cold)
-    if (!await confirmOmitAlternatives(session, alternativeChatTexts(forkOnlyLabels))) {
+    if (!await confirmOmitAlternatives(session, alternativeChatLabels(forkOnlyLabels))) {
         return { status: 'declined', cause: 'incomplete-data-declined' }
     }
     if (!await confirmOmitForkChatData(session, forkChatDataLines(forkOnlyLabels))) {
