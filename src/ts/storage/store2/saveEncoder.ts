@@ -126,6 +126,11 @@ export interface SaveEncoder {
      */
     fastForward(next: PreviousEncoding): void
     /**
+     * True once `fastForward(next)` moved the acknowledged encoding to a peer's tree; never reset for this encoder. Read
+     * only by the automatic clean-up's own-base fact, which refuses for the rest of the page load after a fast-forward.
+     */
+    readonly fastForwarded: boolean
+    /**
      * The manifest key of the attempt kept as pending, null when none: set by `keepAsPending`, cleared by an adoption
      * or by the acknowledgement of a later plan. The caller resolves it against the base read (`adoptIfCurrent`, or
      * the clearing acknowledgement) before it plans: a plan made before an adoption is stale and cannot be
@@ -439,6 +444,7 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
     const now = options.now ?? (() => Date.now())
     let previous = options.previous
     let pending: EncodedTree | null = null
+    let fastForwarded = false
     manifestKeyOf(previous)
 
     // The value shadows (see `SaveEncoder.verdictOf`), by `chaId`. They belong to one acknowledged encoding: `shadowOf`
@@ -570,7 +576,11 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
             }
             manifestKeyOf(next)
             previous = next
+            fastForwarded = true
             resetShadows()
+        },
+        get fastForwarded() {
+            return fastForwarded
         },
         get pendingKey() {
             return pending === null ? null : pending.manifestKey

@@ -617,6 +617,19 @@ export function isSaveLoopStopped(): boolean {
     return readStopped !== null && readStopped()
 }
 
+/** Reads the running loop's own acknowledged base; `null` until a loop starts on this page. */
+let readOwnBase: (() => string | null) | null = null
+
+/**
+ * The manifest key this page's save encoder has acknowledged, for the automatic clean-up's own-base rule. A read only.
+ * It answers `null` (never a match) when no loop runs, when an attempt is pending (its write may have landed, so the
+ * acknowledged base is unsettled), and for the rest of the page load once the encoder has fast-forwarded to a peer's
+ * tree: from then on the page's base was not set by its own boot read, commits or adoptions.
+ */
+export function acknowledgedManifestKey(): string | null {
+    return readOwnBase === null ? null : readOwnBase()
+}
+
 export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPort): Promise<never> {
     const sessionCommitter = context.session.committer
     if (sessionCommitter === null) {
@@ -660,6 +673,7 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
     let moduleHold: ModuleHold = NO_MODULE_HOLD
     let park: Park | null = null
     readParked = () => park !== null
+    readOwnBase = () => encoder.pendingKey === null && !encoder.fastForwarded ? encoder.manifestKey : null
     /** Set once by a too-large refusal and never cleared: no pass, idle net or park handling runs again on this page load. */
     let stopped = false
     /** The stop followed a bulk commit whose own marker may still stand: the stopped loop keeps clearing it until it is gone. */
