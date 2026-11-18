@@ -207,7 +207,7 @@
         <textarea bind:this={translateInput} data-part="chat-composer-translate" data-kind="field" aria-label={language.enterMessageForTranslateToEnglish} placeholder={language.enterMessageForTranslateToEnglish} value={shownDraft.messageInputTranslate} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInputTranslate = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, true) }} onkeydown={keydown}></textarea>
     {/if}
     <div data-part="chat-composer-row">
-        <button data-part="chat-composer-plus" data-kind="icon-button" aria-label={language.chatShellMoreActions} onclick={(event) => onplus(event.currentTarget)}>+</button>
+        <button data-part="chat-composer-plus" data-kind="icon-button" aria-label={language.tools} onclick={(event) => onplus(event.currentTarget)}>+</button>
         <textarea bind:this={input} data-part="chat-composer-input" data-kind="field" aria-label={language.chatShellMessage} placeholder={language.chatShellMessage} value={shownDraft.messageInput} readonly={isComposerLocked()} oninput={(event) => { surface.writeDraft((record) => { record.messageInput = event.currentTarget.value }); const key = surface.resolveDraftKeyForWrite(); if (key) void updateInputTransateMessage(key, false) }} onpaste={paste} onkeydown={keydown} oncontextmenu={openPopup}></textarea>
         {#if shownBusy && shownOrigin}
             <button data-part="chat-composer-stop" data-kind="icon-button" aria-label={language.chatShellStop} onclick={() => stopComposerWorkIn(shownOrigin)}><span data-part="chat-composer-progress" data-stage={$chatProcessStage} use:streamTextHold={{ origin: shownOrigin }}></span>■</button>

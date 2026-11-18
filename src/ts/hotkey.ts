@@ -1,5 +1,5 @@
 import { get } from "svelte/store"
-import { alertSelect, alertToast, alertClear, doingAlert, alertRequestLogs, type alertData } from "./alert"
+import { alertSelect, alertToast, doingAlert, alertRequestLogs, type alertData } from "./alert"
 import { escapeActionFor } from "./alertEscape"
 import { offeredCancel } from "./alertBack"
 import { ANSWER_GUARD_MS, answerShownPrompt, pageCovered } from "./alertPrompts"
@@ -365,7 +365,9 @@ export function initHotkey(){
                 return
             }
             if(escapeAction === 'close'){
-                alertClear()
+                // A raw write: Escape is the person's own close, so it must also reach a boot
+                // notice, which the code-close rule of `alertClear` leaves on screen.
+                alertStore.set({ type: 'none', msg: '' })
             }
             if(get(settingsOpen)){
                 // A mounted Settings shell closes through its own step; without one Escape closes outright.

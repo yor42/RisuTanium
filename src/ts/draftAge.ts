@@ -8,32 +8,7 @@
 // MC-068's "the age needs no new locale strings" is met by delegating to it
 // rather than adding a seventh set of hand-written phrases.
 
-// `src/lang/index.ts`'s app language codes are mostly valid BCP-47 tags
-// already ('ko', 'de', 'vi', 'zh-Hant', 'es', 'ja'). 'cn' is the one exception --
-// it means Simplified Chinese in this codebase (see `changeLanguage`'s
-// `languageChinese` branch) but is not itself a valid `Intl` locale tag, so
-// it maps to 'zh-Hans' here.
-const LANGUAGE_TO_INTL_TAG: Record<string, string> = {
-    cn: 'zh-Hans',
-}
-
-// Verifies the mapped/passed-through tag is one `Intl.RelativeTimeFormat`
-// actually supports before using it, falling back to 'en' otherwise -- both
-// for a code this module has never heard of and for a structurally invalid
-// tag, which `supportedLocalesOf` throws a `RangeError` on rather than
-// returning an empty list for (verified against the runtime this project
-// ships on).
-function resolveIntlTag(uiLanguage: string): string {
-    const mapped = LANGUAGE_TO_INTL_TAG[uiLanguage] ?? uiLanguage
-    if (!mapped) {
-        return 'en'
-    }
-    try {
-        return Intl.RelativeTimeFormat.supportedLocalesOf([mapped]).length > 0 ? mapped : 'en'
-    } catch {
-        return 'en'
-    }
-}
+import { resolveIntlTag } from './intlTag'
 
 const MINUTE_MS = 60_000
 const HOUR_MS = 60 * MINUTE_MS

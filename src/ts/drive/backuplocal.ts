@@ -1582,13 +1582,64 @@ interface BootBinRun {
     done: (end: BootImportEnd) => void;
 }
 
+/** The accept rule of every backup picker: none on Android, whose picker may grey out `.rtb`; the content check makes any file safe. */
+export function backupPickerAccept(): string | null {
+    return transportKind() === 'android' ? null : '.bin,.rtb,application/vnd.risutanium.rtb';
+}
+
 /**
- * The start-up import of a `.bin`: the same file flow as the Settings restore, with the boot's installer as its target.
- * Resolves once the flow ends however it ends; `cancelled` means nothing was written and the boot may ask again.
+ * The start-up restore of a backup file (`.bin` or `.rtb`, chosen by content) over the boot's installer. Resolves once the
+ * flow ends, unless a first-life `.rtb` restore reloads the page. `cancelled` means the profile was not installed and the
+ * boot may ask again.
  */
 export function loadBackupAtBoot(target: BootImportTarget): Promise<BootImportEnd> {
     return new Promise<BootImportEnd>((resolve) => {
-        void LoadLocalBackup({ target, done: resolve });
+        const cancelled = (): void => resolve({ kind: 'cancelled' });
+        if (refuseBackupLoadWhileBusy()) {
+            cancelled();
+            return;
+        }
+        try {
+            const input = document.createElement('input');
+            input.type = 'file';
+            const accept = backupPickerAccept();
+            if (accept !== null) {
+                input.accept = accept;
+            }
+            input.onchange = async () => {
+                const file = input.files?.[0];
+                input.remove();
+                if (file === undefined) {
+                    cancelled();
+                    return;
+                }
+                try {
+                    const { routeBootPickedBackup } = await import('./backupRouter');
+                    resolve(await routeBootPickedBackup(file, target));
+                } catch (error) {
+                    // Only the router's own load can throw here; nothing was read or written.
+                    console.error(error);
+                    alertError('Failed, Is file corrupted?');
+                    cancelled();
+                }
+            };
+            input.addEventListener('cancel', () => {
+                input.remove();
+                cancelled();
+            });
+            input.click();
+        } catch (error) {
+            console.error(error);
+            alertError('Failed, Is file corrupted?');
+            cancelled();
+        }
+    });
+}
+
+/** Today's boot `.bin` flow over a file the router already picked and recognised. Never rejects. */
+export function loadPickedBackupAtBoot(file: File, target: BootImportTarget): Promise<BootImportEnd> {
+    return new Promise<BootImportEnd>((resolve) => {
+        void loadLocalBackupWith({ target, done: resolve }, undefined, undefined, file);
     });
 }
 
@@ -1717,6 +1768,7 @@ function withFirstSetupDone(tree: Database, on: boolean): Database {
  *
  * With `opened` (never together with `boot`) there is no picker: the same restore runs over the file the caller opened,
  * under a busy entry of its own, and the promise settles when the restore ends. The caller owns and closes the source.
+ * `boot` takes a picked file or the picker's own, never an opened one.
  */
 export function LoadLocalBackup(boot: undefined, opened: undefined, restore: FirstRunRestore): Promise<LocalBackupEnd>;
 // Last, so `Parameters<typeof LoadLocalBackup>` stays the boot and opened pair every other caller uses.
@@ -2707,6 +2759,7 @@ function loadLocalBackupWith(boot: BootBinRun | undefined, opened: OpenedBin | u
                     alertError('Failed, Is file corrupted?');
                 } finally {
                     busy.end();
+                    boot?.done(bootEnd);
                     settle(end);
                 }
             })();

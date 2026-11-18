@@ -1,5 +1,5 @@
 import { get, writable } from "svelte/store";
-import { getDatabase, setDatabase } from "../storage/database.svelte";
+import { getDatabase, setDatabase, type Database } from "../storage/database.svelte";
 import { downloadFile } from "../globalApi.svelte";
 import { BufferToText, selectSingleFile } from "../util";
 import { alertError } from "../alert";
@@ -30,7 +30,7 @@ export const defaultColorScheme: ColorScheme = {
     selected: "#44475a",
     draculared: "#ff5555",
     textcolor: "#f8f8f2",
-    textcolor2: "#64748b",
+    textcolor2: "#94a3b8",
     darkBorderc: "#4b5563",
     darkbutton: "#374151",
     type:'dark'
@@ -57,7 +57,7 @@ const colorShemes = {
         selected: "#e0e0e0",
         draculared: "#ff5555",
         textcolor: "#0f172a",
-        textcolor2: "#64748b",
+        textcolor2: "#525f73",
         darkBorderc: "#d1d5db",
         darkbutton: "#e5e7eb",
         type:'light'
@@ -141,7 +141,7 @@ const colorShemes = {
         selected: "#44475a",
         draculared: "#ff5555",
         textcolor: "#f8f8f2",
-        textcolor2: "#64748b",
+        textcolor2: "#94a3b8",
         darkBorderc: "#4b5563",
         darkbutton: "#374151",
         type:'dark'
@@ -225,7 +225,7 @@ const colorShemes = {
         selected: "#475569",
         draculared: "#ff5555",
         textcolor: "#f8f8f2",
-        textcolor2: "#64748b",
+        textcolor2: "#94a3b8",
         darkBorderc: "#030712",
         darkbutton: "#374151",
         type:'dark'
@@ -261,19 +261,28 @@ export function updateCustomColorScheme(){
     } catch (error) {}
 }
 
+/**
+ * The scheme that is painted. A built-in `colorSchemeName` reads the current preset table, so a
+ * saved copy made by an older build never pins old colours; the saved copy stays as stored and is
+ * never written here. Custom, unknown and prototype names fall back to the saved copy, and lite
+ * mode always reports the lite scheme. The result may be a shared table object: callers must not
+ * mutate it and must clone it before handing it out.
+ */
+export function effectiveColorScheme(db: Pick<Database, 'colorSchemeName' | 'colorScheme'>): ColorScheme{
+    if(get(isLite)){
+        return colorShemes.lite
+    }
+    if(typeof db.colorSchemeName === 'string' && Object.hasOwn(colorShemes, db.colorSchemeName)){
+        return colorShemes[db.colorSchemeName as keyof typeof colorShemes]
+    }
+    return db.colorScheme ?? defaultColorScheme
+}
+
 export function updateColorScheme(){
     try {
         let db = getDatabase()
 
-        let colorScheme = db.colorScheme
-
-        if(colorScheme == null){
-            colorScheme = safeStructuredClone(defaultColorScheme)
-        }
-
-        if(get(isLite)){
-            colorScheme = safeStructuredClone(colorShemes.lite)
-        }
+        const colorScheme = effectiveColorScheme(db)
 
         //set css variables
         document.documentElement.style.setProperty("--risu-theme-bgcolor", colorScheme.bgcolor);
@@ -345,21 +354,21 @@ export function updateTextThemeAndCSS(){
         return
     }
     let textTheme = get(isLite) ? 'standard' : db.textTheme
-    let colorScheme = get(isLite) ? 'dark' : db.colorScheme.type
+    let colorScheme = get(isLite) ? 'dark' : effectiveColorScheme(db).type
     switch(textTheme){
         case "standard":{
             if(colorScheme === 'dark'){
                 root.style.setProperty('--FontColorStandard', '#fafafa');
-                root.style.setProperty('--FontColorItalic', '#8C8D93');
+                root.style.setProperty('--FontColorItalic', '#9a9ba1');
                 root.style.setProperty('--FontColorBold', '#fafafa');
-                root.style.setProperty('--FontColorItalicBold', '#8C8D93');
+                root.style.setProperty('--FontColorItalicBold', '#9a9ba1');
                 root.style.setProperty('--FontColorQuote1', '#8BE9FD');
                 root.style.setProperty('--FontColorQuote2', '#FFB86C');
             }else{
                 root.style.setProperty('--FontColorStandard', '#0f172a');
-                root.style.setProperty('--FontColorItalic', '#8C8D93');
+                root.style.setProperty('--FontColorItalic', '#6b6c72');
                 root.style.setProperty('--FontColorBold', '#0f172a');
-                root.style.setProperty('--FontColorItalicBold', '#8C8D93');
+                root.style.setProperty('--FontColorItalicBold', '#6b6c72');
                 root.style.setProperty('--FontColorQuote1', '#8BE9FD');
                 root.style.setProperty('--FontColorQuote2', '#FFB86C');
             }

@@ -20,9 +20,13 @@ import * as path from 'node:path'
 import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
 import { makeDb } from 'src/ts/storage/tests/saveLoopSupport'
 import { createWorldKit, sleepReal, settled, type World } from 'src/ts/storage/tests/saveLoopWorld'
-import { startStore2, store2Boot } from 'src/ts/storage/tests/store2SaveKit'
+import { bootThroughDispatch, commitActivePass, createPeerDouble, fakeLists, startStore2, store2Boot } from 'src/ts/storage/tests/store2SaveKit'
 import { FakeLockManagerCore, FakeTabLockManagerView } from 'src/ts/storage/tests/fakeWebLocks'
 import type { BootImportResult, BootImportTarget } from 'src/ts/storage/store2/legacy/bootImport'
+import type { Store2BootNotice, Store2BootResult } from 'src/ts/storage/store2/bootActive'
+import type { Store2BootUi } from 'src/ts/storage/store2/bootDispatch'
+import { createMemoryBackend } from 'src/ts/storage/store2/backend/memory'
+import { createMemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
 import { firstCommitKey } from 'src/ts/storage/store2/commitKey'
 import type { LegacyEntryReader } from 'src/ts/storage/store2/legacy/resolve'
 import { ID } from 'src/ts/storage/tests/store2/legacyFixtures'
@@ -178,6 +182,17 @@ async function pickAtBoot(target: BootImportTarget, bytes: Uint8Array) {
     }
 }
 
+/** One `.bin` entry: the name's length, the name, the data's length and the data. */
+function binEntry(name: string, data: Uint8Array): Uint8Array {
+    const nameBytes = new TextEncoder().encode(name)
+    const out = new Uint8Array(4 + nameBytes.length + 4 + data.length)
+    const view = new DataView(out.buffer)
+    view.setUint32(0, nameBytes.length, true)
+    out.set(nameBytes, 4)
+    view.setUint32(4 + nameBytes.length, data.length, true)
+    out.set(data, 8 + nameBytes.length)
+    return out
+}
 interface Seen {
     reads: Map<string, unknown>
     sourceHadTree: boolean
@@ -447,5 +462,87 @@ describe('the start-up .bin import never writes a cold-storage unit (Gate 1 C1)'
         expect(installed).not.toHaveBeenCalled()
         expect(vi.mocked(boot.alert.alertError)).toHaveBeenCalledWith(language.backupFileEndsEarly)
         expect(boot.w.store.mutating()).toEqual([])
+    })
+})
+
+describe('a .bin whose database has no archive key, imported by the start-up flow, is told in the same boot and once', () => {
+    // Compatibility guard (passes with or without the boot notice queue): the boot import writes no `archiveCharacters`,
+    // so the boot that installed it finds the key absent, raises `archive-enabled` once and sets the key in memory; the
+    // first pass saves it, and the next boot raises none.
+    test('guard: the boot that installed the file raises archive-enabled once, and after its first pass the next boot raises none', async () => {
+        const boot = await openBoot()
+        const source = makeDb('backup', ['alpha'])
+        expect(Object.hasOwn(source, 'archiveCharacters'), 'the file\'s database carries no archive key').toBe(false)
+        // The entry is the real producer's legacy msgpack, as upstream writes it.
+        const bytes = binEntry('database.risudat', await boot.w.risuSave.encodeRisuSaveLegacy(source, 'compression'))
+
+        const backend = createMemoryBackend()
+        const notices: Store2BootNotice[] = []
+        const ui: Store2BootUi = {
+            notice: (notice) => { notices.push(notice) },
+            blocked: async () => { },
+            offerRestoreOrImport: async () => 'import',
+            confirmConvert: async () => false,
+            declined: async () => 'import',
+            confirmConvertWithout: async () => 'decline',
+            confirmFromBackup: async () => 'decline',
+            confirmIncomplete: async () => true,
+            confirmFlaggedOpen: async () => 'decline',
+            foreignMarker: async () => 'wait',
+            recovery: async () => { },
+            peer: createPeerDouble(),
+        }
+        const { dispatchStore2Boot } = await import('src/ts/storage/store2/bootDispatch')
+        const result: Store2BootResult = await dispatchStore2Boot({
+            store: createMemoryByteStore(),
+            upstreamMainFile: async () => false,
+            readColdStorageItem: async () => ({ status: 'missing' }),
+            // Numbered backups and no main file: the person is offered the file import, and the ui answers import.
+            listBackupTimes: async () => [100],
+        }, { ui, kind: 'tauri', backend: async () => backend, lists: fakeLists, importBackup: (target) => pickAtBoot(target, bytes) })
+
+        expect(result.kind).toBe('store2')
+        if (result.kind !== 'store2') {
+            throw new Error(`The boot answered ${result.kind}.`)
+        }
+        expect(notices.filter((notice) => notice.name === 'archive-enabled')).toHaveLength(1)
+        expect(result.database.archiveCharacters).toBe(true)
+        await commitActivePass(result.database, [])
+
+        // The next boot is a fresh module graph over the same store.
+        worlds.parkAll()
+        vi.resetModules()
+        const next = await bootThroughDispatch(backend, { kind: 'tauri' })
+        expect(next.result.kind).toBe('store2')
+        expect(next.notices.filter((notice) => notice.name === 'archive-enabled')).toEqual([])
+    })
+})
+
+describe('the router\'s picked file at boot ends the flow (T-DONE)', () => {
+    const within = async <T>(promise: Promise<T>): Promise<T | 'timeout'> => await Promise.race([promise, sleepReal(5000).then(() => 'timeout' as const)])
+
+    test('guard of a new rule: loadPickedBackupAtBoot over a recognised .bin resolves with the installer\'s result (the picked branch calls done; M4)', async () => {
+        await openBoot()
+        const { loadPickedBackupAtBoot } = await import('src/ts/drive/backuplocal')
+        const seen: Seen = { reads: new Map(), sourceHadTree: false }
+        const file = new File([golden('upstream-full.bin') as unknown as Uint8Array<ArrayBuffer>], 'backup.bin')
+
+        const end = await within(loadPickedBackupAtBoot(file, recordingTarget(seen, { status: 'blocked', reason: 'install-failed', detail: 'recorded' })))
+
+        expect(end).toEqual({ kind: 'finished', result: { status: 'blocked', reason: 'install-failed', detail: 'recorded' } })
+    })
+
+    test('a target whose install throws still resolves, cancelled, and the generic error is shown (M4)', async () => {
+        const boot = await openBoot()
+        const { loadPickedBackupAtBoot } = await import('src/ts/drive/backuplocal')
+        const target: BootImportTarget = {
+            readColdStorageItem: async () => ({ status: 'missing' }),
+            install: async () => { throw new Error('the installer failed') },
+        }
+
+        const end = await within(loadPickedBackupAtBoot(new File([golden('upstream-full.bin') as unknown as Uint8Array<ArrayBuffer>], 'backup.bin'), target))
+
+        expect(end).toEqual({ kind: 'cancelled' })
+        expect(vi.mocked(boot.alert.alertError)).toHaveBeenCalled()
     })
 })
