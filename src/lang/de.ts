@@ -3113,6 +3113,7 @@ export const languageGerman = {
     "disableMessage": "Nachricht deaktivieren",
     "alwaysScrollToNewMessage": "Immer zu neuen Nachrichten scrollen (Scrollposition ignorieren)",
     "disableAbove": "Nachrichten für KI kürzen",
+    "chatPlaygroundSwitchRole": "Zwischen Benutzer und Assistent wechseln",
     "autoScrollToNewMessage": "Automatisch zu neuen Nachrichten scrollen",
     "longPressToPopupEditor": "Lang drücken, um den Popup-Editor zu öffnen",
     "newMessageButtonStyle": "Stil der Schaltfläche „Neue Nachricht“",

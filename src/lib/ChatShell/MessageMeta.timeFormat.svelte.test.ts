@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { flushSync, mount, unmount } from 'svelte'
 
 vi.mock('../../lang', () => ({ language: { edit: 'Edit', remove: 'Delete', chatShellMoreActions: 'More actions', chatShellStopAndDelete: 'Stop and delete' } }))
-// The module-level formatter is built by this import, before the counting wrapper below is installed.
+// The language module is mocked, so the app language stays at its default 'en'.
 import MessageMeta from './MessageMeta.svelte'
 
 const NativeDateTimeFormat = Intl.DateTimeFormat
@@ -20,7 +20,7 @@ afterEach(async () => {
 
 describe('the time of a message row', () => {
     test('rows mounted over time build at most one formatter between them, and show the same text a fresh formatter gives', () => {
-        const expected = (time: number): string => new NativeDateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(time)
+        const expected = (time: number): string => new NativeDateTimeFormat('en', { hour: '2-digit', minute: '2-digit' }).format(time)
         let constructions = 0
         Intl.DateTimeFormat = new Proxy(NativeDateTimeFormat, {
             construct(target, args, newTarget) {

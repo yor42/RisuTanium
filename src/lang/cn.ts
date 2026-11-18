@@ -3114,6 +3114,7 @@ export const languageChinese = {
     "alwaysScrollToNewMessage": "始终滚动到新消息（忽略滚动位置）",
     "autoScrollToNewMessage": "自动滚动至新消息",
     "disableAbove": "为 AI 剪裁的消息",
+    "chatPlaygroundSwitchRole": "切换用户与助手角色",
     "pluginDevelopMode": "插件开发模式",
     "newMessageButtonTopBar": "顶栏",
     "newMessageButtonRightCenter": "右中",

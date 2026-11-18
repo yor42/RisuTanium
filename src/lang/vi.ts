@@ -3109,6 +3109,7 @@ export const languageVietnamese = {
     "longPressToPopupEditor": "Nhấn giữ để mở trình soạn thảo bật lên",
     "newMessageButtonStyle": "Kiểu nút tin nhắn mới",
     "disableAbove": "Cắt tin nhắn cho AI",
+    "chatPlaygroundSwitchRole": "Chuyển đổi giữa người dùng và trợ lý",
     "newMessageButtonBottomRight": "Dưới cùng bên phải",
     "disableMessage": "Vô hiệu hóa tin nhắn",
     "newMessageButtonFloatingCircle": "Vòng tròn nổi (Góc dưới bên phải)",

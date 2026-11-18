@@ -3247,6 +3247,7 @@ export const languageEnglish = {
     loadMore: "Load More",
     disableMessage: "Disable Message",
     disableAbove: "Cut Messages for AI",
+    chatPlaygroundSwitchRole: "Switch between user and assistant",
     autoScrollToNewMessage: "Auto scroll to new message",
     alwaysScrollToNewMessage: "Always scroll to new message (ignore scroll position)",
     newMessage: "New Message",

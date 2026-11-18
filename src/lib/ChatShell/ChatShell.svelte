@@ -5,6 +5,7 @@
     import { get } from 'svelte/store'
     import { DBState, alertStore, selIdState, sideBarStore } from '../../ts/stores.svelte'
     import { language } from '../../lang'
+    import { appDateFormat } from '../../ts/appIntl.svelte'
     import { postToast } from '../../ts/toast/toastHost.svelte'
     import type SendFailureCardComponent from './SendFailureCard.svelte'
     import type NotificationsOffNoticeComponent from '../ChatScreens/NotificationsOffNotice.svelte'
@@ -435,7 +436,8 @@
     let scrubFraction = $state(0)
     // Whether the chat is too short to scroll; read once per reveal, never while the thumb is already shown.
     let scrubShort = $state(false)
-    const scrubFormatter = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    const SCRUB_DATE_OPTIONS: Intl.DateTimeFormatOptions = { year: 'numeric', month: 'short', day: 'numeric' }
+    const scrubFormatter = $derived(appDateFormat(SCRUB_DATE_OPTIONS))
     const scrubVisibility = createScrubVisibility({
         setTimer: (callback, ms) => window.setTimeout(callback, ms),
         clearTimer: (id) => window.clearTimeout(id),
