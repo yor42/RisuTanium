@@ -17,6 +17,7 @@ import type { OriginContext, RunSubject } from "./chatOrigin";
 import { markCharacterForSave } from "../storage/characterSaveMarks";
 import type { PromptView } from "../cbs";
 import { beginBusy } from "./memory/busyActions";
+import { openOutsideBusy } from "../drive/exportDialogBusy";
 import { splitLoreKeys } from "./loreKeys";
 import { externalEntryDecorators, placeDisabledMarker } from "./lorebookImportDecorators";
 import { firstMessageIndexOf } from "./firstMessage";
@@ -1080,7 +1081,7 @@ export async function exportLoreBook(mode:'global'|'local'){
             data: lore
         }), 'utf-8')
 
-        const saved = await downloadFile(`lorebook_export.json`, stringl)
+        const saved = await downloadFile(`lorebook_export.json`, stringl, { aroundPicker: (open) => openOutsideBusy(busy, open) })
         if(!saved){
             return
         }

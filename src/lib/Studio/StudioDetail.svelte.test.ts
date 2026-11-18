@@ -50,6 +50,7 @@ vi.mock('../../ts/stores.svelte', () => ({
 vi.mock('../../ts/chatShell/shellSwitch.svelte', () => ({ shellEligible: () => false }))
 vi.mock('../../ts/process/moduleRefList', () => ({
     moduleListOf: (ids: string[]) => listerOver(db.db.modules)(ids),
+    moduleRefIdsOf: () => db.db.modules.map((row) => row.id),
 }))
 vi.mock('../../ts/process/moduleLoader', () => ({ loadModuleStubsOf: async () => ({ kind: 'refused' }), loadModule: async () => null }))
 vi.mock('../../lang', async () => {
@@ -274,7 +275,6 @@ describe('4d text of the chat, a resident module and a preset', () => {
         ['lore', 'res/lore:0', 'MODULE-LORE'],
         ['regex', 'res/regex:0', 'MODULE-IN'],
         ['scripts', 'res/scripts:0', 'module-lua'],
-        ['toggles', 'res/toggles:0', 'MODULE-TOGGLE'],
         ['html', 'res/html:0', 'MODULE-HTML'],
     ]
 
@@ -617,7 +617,7 @@ describe('S3d1 the toggle builder in the detail', () => {
         expect(JSON.stringify(db.db)).toBe(before)
     })
 
-    test('the toggles of a resident module, of the active preset and of a private character keep their read-only text, with no builder', () => {
+    test('the toggles of a resident module open the builder', () => {
         setFull(makeInput({
             character: makeCharacter({ modules: ['res'], chats: [makeChat({ id: 'chat-1', name: 'First chat' })] }),
             modules: [residentModule('res', { customModuleToggle: 'MODULE-TOGGLE' })],
@@ -626,8 +626,7 @@ describe('S3d1 the toggle builder in the detail', () => {
         }))
         openStudio(ownerItem('module', 'res', 'toggles', 'res/toggles:0'), null)
         show()
-        expect(part('studio-detail-text')?.textContent).toContain('MODULE-TOGGLE')
-        expect(part('studio-toggle-builder')).toBeNull()
+        expect(part('studio-toggle-builder')).not.toBeNull()
     })
 
     test('a private character shows no builder and none of its toggle text', () => {

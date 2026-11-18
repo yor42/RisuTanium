@@ -442,6 +442,7 @@ import { resetLocalDraftsForTest } from 'src/ts/localDrafts'
 import { removeChar } from 'src/ts/characters'
 import CharConfig from 'src/lib/SideBars/CharConfig.svelte'
 import { language } from 'src/lang'
+import { resetToastHostForTests, toastHost } from 'src/ts/toast/toastHost.svelte'
 import { isWriting } from 'src/ts/process/chatOrigin'
 import { flushSync, mount, unmount } from 'svelte'
 import SideChatList from 'src/lib/SideBars/SideChatList.svelte'
@@ -803,6 +804,7 @@ beforeEach(() => {
         }
     })
     vi.mocked(sayTTS).mockReset()
+    resetToastHostForTests()
 })
 
 afterEach(async () => {
@@ -963,5 +965,44 @@ describe('CharConfig\'s remove-character button acts on the character that was c
         expect.soft(trashed('char-y'), 'the confirmed character is trashed').toBe(true)
         expect.soft(trashed('char-x'), 'its neighbour is trashed').toBe(false)
         expect.soft(trashed('char-z'), 'the inserted character is trashed').toBe(false)
+    })
+
+    test('the removal posts an Undo toast, and Undo brings the character back out of the trash', async () => {
+        installWorldWith([
+            makeCharacter('char-x', [chatOf('x-chat', 'X chat')], { chatFolders: [] }),
+            makeCharacter('char-y', [chatOf('y-chat', 'Y chat')], { chatFolders: [] }),
+        ])
+        selectedCharID.set(1)
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        const instance = mount(CharConfig, { target, props: {} }) as unknown as Record<string, unknown>
+        mountedComponents.push({ instance, target })
+        flushSync()
+        let closed = false
+        const stopWatching = selectedCharID.subscribe((id) => {
+            if (id < 0 && !closed) {
+                closed = true
+                void unmount(instance as never)
+            }
+        })
+        const button = Array.from(target.querySelectorAll('button')).find((b) => b.textContent?.trim() === language.removeCharacter.trim())
+        if (!button) {
+            throw new Error('the remove-character button did not render')
+        }
+
+        button.click()
+        await settleMany()
+        stopWatching()
+
+        expect(toastHost.visible).toHaveLength(1)
+        expect(toastHost.visible[0].kind).toBe('undo')
+        expect(toastHost.visible[0].text).toBe(language.othersUi.libraryUndoTrashed(1))
+        const slot = () => DBState.db.characters.find((c) => c.chaId === 'char-y')
+        expect(slot()?.trashTime).toBeTypeOf('number')
+
+        await toastHost.activate(toastHost.visible[0].id)
+
+        expect(slot()?.trashTime).toBeUndefined()
+        expect(toastHost.visible[0].text).toBe(language.othersUi.libraryUndoRestored(1))
     })
 })

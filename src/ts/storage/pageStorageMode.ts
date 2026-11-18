@@ -82,18 +82,14 @@ export function pageRunsLegacyDeleters(): boolean {
     return modeRunsLegacyDeleters(mode)
 }
 
-/** Whether boot starts the legacy startup clean-up (remote blocks and the asset sweep) on this page. */
-export function startsLegacyStartupCleanup(): boolean {
-    return pageRunsLegacyDeleters()
-}
-
 /**
- * Whether boot records the load-time listing of units and assets. Its only
- * consumer is the manual clean-up, so a page that refuses that clean-up does
- * not pay for the listing.
+ * Whether a page in this mode may become interactive: a `read-only` page, which refuses every write, or a `store2` page
+ * that holds its active save, which is what every later write goes through. Any other mode, and a `store2` page with no
+ * save, can neither save nor refuse, so it must not go live. Callers test this positive answer, never a list of the
+ * modes that may not: a mode added later stays refused until it is named here.
  */
-export function recordsLoadTimeListing(): boolean {
-    return pageRunsLegacyDeleters()
+export function pageMayGoLive(candidate: PageStorageMode, hasActiveStore2Save: boolean): boolean {
+    return candidate.kind === 'read-only' || (candidate.kind === 'store2' && hasActiveStore2Save)
 }
 
 // -- the startup asset sweep --------------------------------------------------

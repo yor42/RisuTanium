@@ -98,7 +98,7 @@
     const gate = createCompositionGate(write)
 
     function failureText(value: EditFailure): string {
-        return value.kind === 'refused' ? refusalTextOf({ reason: value.reason }) : refusalTextOf({ reason: 'loading' })
+        return value.kind === 'refused' ? refusalTextOf({ reason: value.reason }, port.owner) : refusalTextOf({ reason: 'loading' }, port.owner)
     }
 
     function markText(line: number, mark: LineMark): string {

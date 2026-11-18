@@ -2,12 +2,11 @@
  * `loadData()` (`src/ts/bootstrap.ts`) with the store2 boot dispatch registered, driven the way the sibling bootstrap
  * test files drive it: the real `loadData()`, the real dispatch, the real block-owner and read-only seams, and a
  * recording page store that holds the legacy files (the main file and a numbered backup set of 21, so a listing that
- * prunes has something to delete). The pass of the boot archive session is replaced by a session that writes a key if
- * it is ever opened and run, so a boot that opens it fails the "no store write" assertions.
+ * prunes has something to delete). The "no store write" assertions (`storeEffects`) carry the rule that a read-only
+ * boot writes and deletes nothing.
  *
- * Reproducers: the capability and unavailable rows on a Node and a Tauri page fail against a seam that hands the legacy
- * profile back without the no-write switch (the disabled archive session, the disabled block owner, the non-pruning
- * backup listing); each is named with its mutant in the hand-back. Guards: the unregistered page runs the legacy boot.
+ * Reproducers: a page that registered no dispatch reports the registration error and touches no store (T2-N1), and a
+ * store2 boot on an IndexedDB page starts the OPFS leftover clean-up once (T2-OPFS).
  */
 import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
@@ -40,17 +39,9 @@ const dbState = vi.hoisted(() => ({
     baseline: () => ({}) as Record<string, unknown>,
 }))
 
-const archive = vi.hoisted(() => ({
-    opened: 0,
-    disabled: 0,
-    ran: 0,
-    store: null as null | { write(key: string, bytes: Uint8Array, condition: 'unconditional'): Promise<unknown> },
-}))
-
 /** The boot texts in the order written, with `dispatch` (the registered dispatch was entered) and `install` (setDatabase ran) between them. */
 const bootText = vi.hoisted(() => ({ current: '', log: [] as string[] }))
 
-const getDbBackupsMock = vi.hoisted(() => vi.fn(async (): Promise<number[]> => []))
 const buildAssetKeepSetMock = vi.hoisted(() => vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })))
 const getUncleanablesSyncMock = vi.hoisted(() => vi.fn((): string[] => []))
 const verifyAssetCacheEntryMock = vi.hoisted(() => vi.fn(async () => ({ status: 'ok' as const })))
@@ -62,7 +53,6 @@ const setDatabaseMock = vi.hoisted(() => vi.fn((_data: Record<string, unknown>):
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as Record<string, unknown>))
 const sleepForeverMock = vi.hoisted(() => vi.fn(async () => { }))
 const putBackMock = vi.hoisted(() => vi.fn())
-const recordCleanupMock = vi.hoisted(() => vi.fn())
 const readColdStorageItemMock = vi.hoisted(() => vi.fn(async (_key: string): Promise<{ status: 'missing' }> => ({ status: 'missing' })))
 
 //#endregion
@@ -181,48 +171,9 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     readColdStorageItem: readColdStorageItemMock,
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
-vi.mock(import('src/ts/storage/startupCleanupState'), async (importOriginal) => ({
-    ...await importOriginal(),
-    recordStartupCleanup: recordCleanupMock,
-}))
-
-vi.mock(import('src/ts/storage/bootArchivePass'), () => {
-    const install = async (input: { tree: unknown }) => {
-        archive.ran += 1
-        // What the pass does on a capable page: it writes. A boot that opens it on a page that must write nothing is caught here.
-        await archive.store?.write('blocks/archive-pass-wrote', new Uint8Array([1]), 'unconditional')
-        return { kind: 'install', tree: input.tree, noteBytes: null, notices: [] }
-    }
-    return {
-        openBootArchiveSession: vi.fn(async () => {
-            archive.opened += 1
-            return { canArchive: true, run: install, release: vi.fn(async () => { }) }
-        }),
-        disabledBootArchiveSession: vi.fn(() => {
-            archive.disabled += 1
-            return {
-                canArchive: false,
-                run: async (input: { tree: unknown }) => ({ kind: 'install', tree: input.tree, noteBytes: null, notices: [] }),
-                release: vi.fn(async () => { }),
-            }
-        }),
-        checkCommittedBlocks: vi.fn(async () => ({ ok: true })),
-    } as unknown as typeof import('src/ts/storage/bootArchivePass')
-})
-
 vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
     verifyAssetCacheEntry: verifyAssetCacheEntryMock,
 }) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
-vi.mock(import('src/ts/storage/remoteSaveCleanup'), () => ({
-    getRemoteSaveCleanupAction: vi.fn(() => 'create-meta'),
-    getRemoteSavePayloadName: vi.fn(() => null),
-}) as unknown as typeof import('src/ts/storage/remoteSaveCleanup'))
-
-vi.mock(import('src/ts/storage/assetSweep'), () => ({
-    sweepTauriAssets: vi.fn(async () => { }),
-    sweepForageAssetKey: vi.fn(async () => { }),
-}) as unknown as typeof import('src/ts/storage/assetSweep'))
 
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
@@ -273,7 +224,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
         removeItem: vi.fn(async () => { }),
     },
     saveDb: saveDbMock,
-    getDbBackups: getDbBackupsMock,
+    getDbBackups: vi.fn(async (): Promise<number[]> => []),
     buildAssetKeepSet: buildAssetKeepSetMock,
     getBasename: (p: string) => p.split('/').pop(),
     setUsingSw: setUsingSwMock,
@@ -395,17 +346,6 @@ function backupTimesOf(store: MemoryByteStore): number[] {
         .sort((a, b) => b - a)
 }
 
-/** A `getDbBackups` that really prunes: it keeps the newest 20 and deletes the rest through the page store. */
-function pruningBackups(store: MemoryByteStore): void {
-    getDbBackupsMock.mockImplementation(async () => {
-        const times = backupTimesOf(store)
-        for (const old of times.slice(20)) {
-            await store.delete(`database/dbbackup-${old}.bin`, 'unconditional')
-        }
-        return times.slice(0, 20)
-    })
-}
-
 function guardedOps(capable: boolean): GuardedOperations {
     const unused = async () => { throw new Error('not used') }
     return {
@@ -441,7 +381,6 @@ interface BootOptions {
 async function boot(options: BootOptions): Promise<Boot> {
     platformState.isTauri = options.tauri === true
     const store = options.store ?? legacyStore()
-    archive.store = store
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     injectAppStore(store, options.kind)
     const backend = createMemoryBackend()
@@ -524,11 +463,6 @@ beforeEach(() => {
     localStorage.clear()
     platformState.isTauri = false
     platformState.isNodeServer = false
-    archive.opened = 0
-    archive.disabled = 0
-    archive.ran = 0
-    archive.store = null
-    getDbBackupsMock.mockReset().mockResolvedValue([])
     buildAssetKeepSetMock.mockReset().mockResolvedValue({ uncleanable: new Set(), complete: true })
     getUncleanablesSyncMock.mockReset().mockReturnValue([])
     verifyAssetCacheEntryMock.mockReset().mockResolvedValue({ status: 'ok' })
@@ -538,7 +472,6 @@ beforeEach(() => {
     setUsingSwMock.mockReset()
     sleepForeverMock.mockReset().mockResolvedValue(undefined)
     putBackMock.mockReset()
-    recordCleanupMock.mockReset()
     readColdStorageItemMock.mockClear()
     dbState.current = baseDb()
     setDatabaseMock.mockClear()
@@ -617,9 +550,6 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         expect(get(loadedStore)).toBe(true)
         expect(setDatabaseMock).toHaveBeenCalled()
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
-        expect(store.files.has('blocks/archive-pass-wrote')).toBe(false)
-        expect(archive.opened).toBe(0)
-        expect(archive.disabled).toBe(1)
         expect(ui.notices).toEqual([expect.objectContaining({ name: 'server-capability' })])
         // The page, not the port, tells the person: exactly one notice, posted after the database (and its language) is installed.
         expect(shown).toEqual([language.store2Boot.noticeServerCapability])
@@ -634,7 +564,6 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
         expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'server-capability' })
         expect(saveDbMock).not.toHaveBeenCalled()
-        expect(getDbBackupsMock).not.toHaveBeenCalled()
     })
 
     test('a Node page with no guarded operations at all: the same, with the other named notice', async () => {
@@ -649,7 +578,6 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         expectMainFileReadAsReadOnlyPage(reads)
         expect(get(loadedStore)).toBe(true)
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
-        expect(archive.opened).toBe(0)
         expect(ui.notices).toEqual([expect.objectContaining({ name: 'backend-unavailable' })])
         expect(shown).toEqual([language.store2Boot.noticeBackendUnavailable])
         const { getPageBlockOwner } = await import('src/ts/storage/pageBlockOwner')
@@ -672,7 +600,6 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
 
     test('a Tauri page whose store2 backend is unavailable: the legacy profile loads, the 21 numbered backups all stand, and nothing is written but the owner id', async () => {
         const store = legacyStore()
-        pruningBackups(store)
         const { loadData, loadedStore, ui } = await boot({ kind: 'tauri', store, tauri: true })
         const reads = await recordMainFileReads(store)
 
@@ -684,9 +611,6 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(store.writes).toContain('store2-owner')
         expect(backupTimesOf(store)).toEqual([...BACKUP_TIMES].reverse())
-        expect(getDbBackupsMock, 'the pruning listing is not used').not.toHaveBeenCalled()
-        expect(archive.opened).toBe(0)
-        expect(archive.disabled).toBe(1)
         expect(ui.notices).toEqual([expect.objectContaining({ name: 'backend-unavailable' })])
         const { getPageBlockOwner } = await import('src/ts/storage/pageBlockOwner')
         expect(await getPageBlockOwner()).toBeNull()
@@ -707,7 +631,6 @@ describe('loadData(): a legacy profile on a page whose store2 backend is not ava
         expect(sleepForeverMock).toHaveBeenCalled()
         expect(ui.blockedWith).toEqual([expect.objectContaining({ reason: 'store2-profile-unwritable' })])
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
-        expect(archive.opened).toBe(0)
     })
 })
 
@@ -726,7 +649,6 @@ describe('loadData(): the transitional OPFS page is read-only legacy (guard on t
         expect(shown).toEqual([language.opfsReadOnlyNotice])
         expect(ui.notices).toEqual([])
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
-        expect(archive.opened).toBe(0)
         const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
         expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'opfs-transitional' })
     })
@@ -742,7 +664,6 @@ describe('loadData(): a normal store2 profile', () => {
 
     test.each([[false], [true]])('opens: the database is installed, the save context is active, and no legacy writer runs (Tauri: %s)', async (tauri) => {
         const { loadData, alertStore, loadedStore, store } = await storeTwoRig(tauri)
-        pruningBackups(store)
         acknowledgeNotices(alertStore)
 
         await loadData()
@@ -760,19 +681,29 @@ describe('loadData(): a normal store2 profile', () => {
         expect(getActiveStore2Save()).not.toBeNull()
         const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
         expect(getPageStorageMode()).toEqual({ kind: 'store2' })
-        expect(archive.opened).toBe(0)
-        expect(archive.disabled).toBe(0)
         const { canBootArchive } = await import('src/ts/process/memory/bootArchiveState')
         expect(canBootArchive()).toBe(false)
         // The profile has stubs, so the put-back that unloads a loaded character runs on this page.
         expect(putBackMock, 'the store2 put-back starts').toHaveBeenCalledTimes(1)
-        expect(recordCleanupMock, 'no legacy clean-up').not.toHaveBeenCalled()
-        expect(getDbBackupsMock, 'no backup pruning').not.toHaveBeenCalled()
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(backupTimesOf(store)).toHaveLength(21)
         const { getPageBlockOwner } = await import('src/ts/storage/pageBlockOwner')
         expect(await getPageBlockOwner()).toBeNull()
         expect(saveDbMock, 'the save loop starts through saveDb after the install').toHaveBeenCalled()
+    })
+
+    test.each([[false, 1], [true, 0]] as const)('T2-OPFS reproducer: a store2 boot starts the OPFS leftover clean-up once on the web page (IndexedDB kind) and never on a Tauri page (Tauri: %s, calls: %s)', async (tauri, calls) => {
+        const { loadData, alertStore, loadedStore } = await storeTwoRig(tauri)
+        const { cleanUpCopiedBackOpfs } = await import('src/ts/storage/store/appStore')
+        const cleanUp = vi.mocked(cleanUpCopiedBackOpfs)
+        cleanUp.mockClear()
+        acknowledgeNotices(alertStore)
+
+        await loadData()
+        await settle()
+
+        expect(get(loadedStore)).toBe(true)
+        expect(cleanUp).toHaveBeenCalledTimes(calls)
     })
 
     test.each([[false], [true]])('B1 reproducer: the save text marks the dispatch entry, the library text marks the install, and the steps never go back (Tauri: %s)', async (tauri) => {
@@ -924,7 +855,6 @@ describe('loadData(): a boot the dispatch stops', () => {
     test.each([[false], [true]])('the profile is not installed, loadedStore stays unset, the page waits, and nothing is written (Tauri: %s)', async (tauri) => {
         // A legacy main file with no store2 profile whose conversion the user declines: the dispatch stops.
         const store = legacyStore()
-        pruningBackups(store)
         const { loadData, loadedStore, ui } = await boot({ kind: tauri ? 'tauri' : 'indexeddb', store, injectBackend: true, tauri })
         ui.convertAnswer = false
 
@@ -938,8 +868,6 @@ describe('loadData(): a boot the dispatch stops', () => {
         expect(ui.declinedAsked).toBe(1)
         expect(ui.notices).toEqual([])
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
-        expect(archive.opened).toBe(0)
-        expect(getDbBackupsMock).not.toHaveBeenCalled()
         expect(backupTimesOf(store)).toHaveLength(21)
         expect(saveDbMock).not.toHaveBeenCalled()
     })
@@ -1066,7 +994,6 @@ describe('loadData(): the main file predicate the dispatch is given', () => {
 
     test('numbered backups and no main file are offered, never seeded over, and listing them prunes nothing (21 stand)', async () => {
         const store = legacyStore({ mainFile: false })
-        pruningBackups(store)
         const { loadData, ui, backend, loadedStore } = await boot({ kind: 'indexeddb', store, injectBackend: true })
 
         await loadData()
@@ -1077,7 +1004,6 @@ describe('loadData(): the main file predicate the dispatch is given', () => {
         expect((await backend.readCommit()).bytes).toBeNull()
         expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
         expect(backupTimesOf(store)).toHaveLength(21)
-        expect(getDbBackupsMock, 'the pruning listing is not used').not.toHaveBeenCalled()
     })
 
     test('a main file check that fails stops the boot with a named block, never read as absent', async () => {
@@ -1094,7 +1020,6 @@ describe('loadData(): the main file predicate the dispatch is given', () => {
 describe('loadData(): a legacy profile is converted through the real decoders', () => {
     test.each([[false], [true]])('the strict decode of the main file converts it: the profile opens as store2, the old files and 21 backups stand untouched (Tauri: %s)', async (tauri) => {
         const store = legacyStore()
-        pruningBackups(store)
         const before = new Map(store.files)
         const { loadData, alertStore, loadedStore, ui, backend } = await boot({ kind: tauri ? 'tauri' : 'indexeddb', store, injectBackend: true, tauri })
         acknowledgeNotices(alertStore)
@@ -1118,8 +1043,6 @@ describe('loadData(): a legacy profile is converted through the real decoders', 
         for (const [key, bytes] of before) {
             expect(store.files.get(key)).toEqual(bytes)
         }
-        expect(getDbBackupsMock, 'no backup pruning').not.toHaveBeenCalled()
-        expect(archive.opened).toBe(0)
         expect(putBackMock, 'the store2 put-back starts on a converted profile too').toHaveBeenCalledTimes(1)
     })
 
@@ -1174,48 +1097,31 @@ describe('loadData(): a legacy profile is converted through the real decoders', 
     })
 })
 
-describe('loadData(): a page that registered no dispatch boots the legacy profile as it always has (guard, passes before and after)', () => {
-    test('the archive session is opened and run, and the profile loads', async () => {
+describe('loadData(): a page that registered no dispatch fails closed before it touches a store (T2-N1, reproducers)', () => {
+    test.each([[false], [true]])('the registration error is alerted, nothing is read, listed, written or created, and the page stays unloaded (Tauri: %s)', async (tauri) => {
         const store = legacyStore()
-        const { loadData, loadedStore } = await boot({ kind: 'tauri', store, unregistered: true })
-
-        await loadData()
-
-        expect(get(loadedStore)).toBe(true)
-        expect(archive.opened).toBe(1)
-        expect(archive.disabled).toBe(0)
-        expect(setDatabaseMock).toHaveBeenCalled()
-        expect(sleepForeverMock).not.toHaveBeenCalled()
-        expect(putBackMock).toHaveBeenCalled()
-        expect(recordCleanupMock).toHaveBeenCalled()
-    })
-
-    test('no residency is registered, no save context is active and the installed profile holds no store2 stub', async () => {
-        const store = legacyStore()
-        const { loadData } = await boot({ kind: 'tauri', store, unregistered: true })
-
-        await loadData()
-
-        const { getResidency } = await import('src/ts/storage/store2/residencyActive')
-        const { getActiveStore2Save } = await import('src/ts/storage/store2/saveActive')
-        expect(getResidency()).toBeNull()
-        expect(getActiveStore2Save()).toBeNull()
-        const installed = setDatabaseMock.mock.calls[0][0] as { characters: { coldstorage?: unknown }[] }
-        expect(installed.characters.some(character => character.coldstorage !== undefined)).toBe(false)
-    })
-
-    test.each([[false], [true]])('B3 guard: the text order is the legacy order, with the save text written once (Tauri: %s)', async (tauri) => {
-        const store = legacyStore()
-        const { loadData } = await boot({ kind: tauri ? 'tauri' : 'indexeddb', store, tauri, unregistered: true })
+        const { loadData, loadedStore, alertStore } = await boot({ kind: tauri ? 'tauri' : 'indexeddb', store, tauri, unregistered: true })
+        const { mkdir, readDir } = await import('@tauri-apps/plugin-fs')
+        vi.mocked(mkdir).mockClear()
+        vi.mocked(readDir).mockClear()
+        const seen: { type: string, msg: string }[] = []
+        alertStore.subscribe((value) => { seen.push({ type: value.type, msg: value.msg }) })
 
         await loadData()
         await settle()
 
-        const texts = writtenTexts()
-        expect(texts).toEqual(tauri
-            ? ['Checking Files...', 'Reading Save File...', 'Decoding Save File...', 'Checking Update...', 'Listing Stored Files...', 'Loading Plugins...', 'Checking For Format Update...', 'Updating States...']
-            : ['Checking Service Worker...', 'Loading Local Save File...'])
-        expect(texts.filter(text => text === 'Reading Save File...').length).toBeLessThanOrEqual(1)
+        expect(seen.filter(alert => alert.type === 'error')).toEqual([expect.objectContaining({ msg: expect.stringContaining('No store2 boot dispatch is registered') })])
+        expect(get(loadedStore)).toBe(false)
+        const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
+        expect(getPageStorageMode()).toEqual({ kind: 'unset' })
+        expect(store.reads).toEqual([])
+        expect(store.lists).toEqual([])
+        expect(store.writes).toEqual([])
+        expect(store.deletes).toEqual([])
+        expect(mkdir, 'no Tauri directory is created').not.toHaveBeenCalled()
+        expect(readDir, 'no Tauri temp sweep runs').not.toHaveBeenCalled()
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(saveDbMock).not.toHaveBeenCalled()
         expect(bootText.log).not.toContain('dispatch')
     })
 })

@@ -19,13 +19,15 @@ import { noteRefusalLineSet, restoreInProgress } from "./restoreInProgress";
  * When another registered action runs, its next wait or progress alert replaces
  * the message, so the refusal also sets a line those alerts show until the last
  * entry ends. Chat work and choke-point writes set no line: no entry would end it.
+ * An export that waits on an Android save dialog is marked, and a mark does not refuse a load: the dialog may never
+ * answer, and the person's own load must not stay blocked by it. The line is set only for an entry that is not marked.
  */
 export function refuseBackupLoadWhileBusy(own?: BusyHandle): boolean {
-    if(!isWorkInProgress() && !isBusy({ except: own }) && !anyChokePointInFlight()){
+    if(!isWorkInProgress() && !isBusy({ except: own, ignoreDialogWaits: true }) && !anyChokePointInFlight()){
         return false
     }
     alertError(language.backupLoadWorkInProgress)
-    if(isBusy({ except: own })){
+    if(isBusy({ except: own, ignoreDialogWaits: true })){
         busyRefusalLine.set(language.backupLoadRefusedLine)
     }
     return true

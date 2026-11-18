@@ -149,6 +149,7 @@ vi.mock(import('src/ts/alert'), async (importOriginal) => ({
 import { DBState, selectedCharID } from '../../ts/stores.svelte'
 import { language } from '../../lang'
 import { alertConfirm } from 'src/ts/alert'
+import { resetToastHostForTests, toastHost } from '../../ts/toast/toastHost.svelte'
 import Sidebar from './Sidebar.svelte'
 import { OPEN_FOLDERS_KEY } from './railMemory'
 import { defaultSettle, folderAvatars, installGeometry, resetRailMemory } from './sidebarDnd.testKit'
@@ -208,6 +209,7 @@ beforeEach(() => {
     resetRailMemory()
     checkCharOrderSpy.mockClear()
     changeCharSpy.mockClear()
+    resetToastHostForTests()
     selectAnswers.length = 0
     selectOffers.length = 0
     vi.mocked(alertConfirm).mockReset()
@@ -336,6 +338,47 @@ describe('Delete folder', () => {
 
         expect(trashedNames()).toEqual([])
         expect(alertConfirm).not.toHaveBeenCalled()
+    })
+})
+
+describe('the Undo toast of the folder menu', () => {
+    const undoToasts = () => toastHost.visible.filter((toast) => toast.kind === 'undo')
+    const rawOrder = (): unknown => JSON.parse(JSON.stringify(DBState.db.characterOrder))
+
+    test('(R) Ungroup posts "Folder ungrouped" and Undo brings the folder back', async () => {
+        await mountRail(['a', folderOf('F', ['m0', 'm1']), 'b'])
+        const start = rawOrder()
+        await chooseFromMenu('3')
+        expect(orderNow()).toEqual(['a', 'm0', 'm1', 'b'])
+        expect(undoToasts()).toHaveLength(1)
+        expect(undoToasts()[0].text).toBe(language.othersUi.libraryUndoUngrouped)
+        await toastHost.activate(undoToasts()[0].id)
+        expect(rawOrder()).toEqual(start)
+    })
+
+    test('(R) Delete, keep members posts "Folder deleted; its characters stay in the list"', async () => {
+        await mountRail(['a', folderOf('F', ['m0', 'm1', 'm2']), 'b'])
+        const start = rawOrder()
+        await chooseFromMenu('4', '0')
+        expect(undoToasts()).toHaveLength(1)
+        expect(undoToasts()[0].text).toBe(language.othersUi.libraryUndoFolderDeleted)
+        await toastHost.activate(undoToasts()[0].id)
+        expect(rawOrder()).toEqual(start)
+    })
+
+    test('(R) Delete, move to the trash posts the trash toast with the end note', async () => {
+        await mountRail(['a', folderOf('F', ['m0', 'm1', 'm2']), 'b'])
+        await chooseFromMenu('4', '1')
+        expect(undoToasts()).toHaveLength(1)
+        expect(undoToasts()[0].text).toBe(language.othersUi.libraryUndoTrashed(3))
+        expect(undoToasts()[0].sub).toBe(language.othersUi.libraryUndoTrashedEndNote)
+    })
+
+    test('(G) a cancel posts nothing', async () => {
+        await mountRail(['a', folderOf('F', ['m0', 'm1']), 'b'])
+        await chooseFromMenu('5')
+        await chooseFromMenu('4', '2')
+        expect(toastHost.visible).toHaveLength(0)
     })
 })
 

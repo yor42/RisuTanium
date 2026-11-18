@@ -88,6 +88,15 @@ describe('the order of the calls (U1b)', () => {
         expect(run.log).toEqual(['listing', 'prepare busy=true', 'install', 'finish'])
     })
 
+    test('the run options reach the preparation: the Welcome restore passes firstRun and every other call passes none (guard of a new argument; M4 fails it)', async () => {
+        const seen: Array<{ firstRun?: boolean } | undefined> = []
+        const run = calls({ prepare: async (_picked, _busy, runOptions) => { seen.push(runOptions); return ready } })
+        await runRtbRestore(picked, run.deps, { firstRun: true })
+        await runRtbRestore(picked, run.deps)
+        expect(seen[0]).toEqual({ firstRun: true })
+        expect(seen[1]?.firstRun).not.toBe(true)
+    })
+
     test('a settle that rejects propagates after the busy entry ended, and nothing was prepared (guard; MB6 fails it)', async () => {
         const run = calls({ settled: async () => { throw new Error('settle failed') } })
         await expect(runRtbRestore(picked, run.deps)).rejects.toThrow('settle failed')

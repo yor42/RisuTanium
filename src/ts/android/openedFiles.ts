@@ -336,7 +336,8 @@ async function refuseNow(): Promise<void> {
     if (parseBatches(taken.raw).length === 0) {
         return
     }
-    if (isBusy()) {
+    // The line is set only for an entry that will clear it: a marked export may never end.
+    if (isBusy({ ignoreDialogWaits: true })) {
         busyRefusalLine.set(language.backupLoadRefusedLine)
     }
     if (ownRefusal !== null && get(shownAlert) === ownRefusal) {

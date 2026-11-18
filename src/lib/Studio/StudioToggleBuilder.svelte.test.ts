@@ -117,7 +117,7 @@ let mounted: { app: ReturnType<typeof mount>, host: HTMLElement }[] = []
 function mountBuilder(props: { host?: ToastHost } = {}): void {
     const host = document.createElement('div')
     document.body.appendChild(host)
-    mounted.push({ app: mount(StudioToggleBuilder, { target: host, props: { chaId: 'A', ...props } }), host })
+    mounted.push({ app: mount(StudioToggleBuilder, { target: host, props: { target: { kind: 'character', chaId: 'A' }, ...props } }), host })
     flushSync()
 }
 
