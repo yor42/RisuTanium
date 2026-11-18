@@ -7,11 +7,12 @@ import { decodeRisuSave, isBlockFormatSave, salvageRisuSave, type SalvageOmitted
 import { Store2StalePageError } from '../storage/store2/backend/errors'
 import type { Store2Backend, Store2Read } from '../storage/store2/backend/types'
 import { getStore2BootSession } from '../storage/store2/bootActive'
-import { Store2BulkAbortError, type Committer, type StreamContext, type StreamedCommitRequest } from '../storage/store2/commit'
+import { Store2BulkAbortError, type AbandonResult, type Committer, type StreamContext, type StreamedCommitRequest } from '../storage/store2/commit'
 import { clearAbandonedMarker } from '../storage/store2/abandonedMarker'
 import { classifyCommitRead } from '../storage/store2/commitKey'
 import { createListDerivation } from '../storage/store2/lists'
-import { importLegacyTree, type ImportHooks, type ImportOutcome, type ImportSource, type PrepareStop, type RepairSummary } from '../storage/store2/legacy/importTree'
+import type { BaseContentIndex } from '../storage/store2/baseContent'
+import { importLegacyTree, indexOfCommitKey, type ImportHooks, type ImportOutcome, type ImportSource, type PrepareStop, type RepairSummary } from '../storage/store2/legacy/importTree'
 import type { StreamPrepared, StreamSource } from '../storage/store2/legacy/importStream'
 import { LegacyReadError, type IncompleteItem, type LegacyEntryReader } from '../storage/store2/legacy/resolve'
 import { BinFileChangedError, ColdEntryIndex, createBinEntryReader } from '../storage/store2/legacy/binReader'
@@ -577,8 +578,16 @@ function refused(cause: Store2ImportRefusal, message: string | null): Store2Impo
     return { kind: 'refused', cause }
 }
 
-/** The attempts of one import: the first, and one rebuild after a conflict or after clearing this page's own stale marker. */
+/**
+ * The attempts of one import: the first, and one rebuild after a conflict, after clearing this page's own stale marker, or
+ * after the commit key stopped naming the manifest the base content index was read from (`base-unnamed`).
+ */
 const IMPORT_ATTEMPTS = 2
+
+/** A refusal's own-marker clear left no marker of this page standing: no clear was needed (absent), it cleared, or none stood. */
+function markerGone(cleared: AbandonResult | null | undefined): boolean {
+    return cleared === undefined || (cleared !== null && (cleared.status === 'cleared' || cleared.status === 'nothing'))
+}
 
 /**
  * The page's installed theme packs and active pack id as the import keeps them: plain values read through the reactive
@@ -606,8 +615,11 @@ function pageUsage(db: Database): { usageStatics?: JsonObject, usagePriceOverrid
  * the tree `request.decode()` yields is resolved, planned and committed once, forced, over a fresh read of the commit
  * key (`importLegacyTree`). A file over the threshold takes the streamed prepare and commit (`prepareImportStream`,
  * `commitImportStreamed`), which reads the units from the file instead of holding a decoded tree. Run under
- * `dbWriteLock`. A conflict, or a bulk marker this page load left, is answered once by a rebuild from a fresh decode
- * and a fresh read; a second one is unconfirmed. A build that aborted under the bulk marker ends through
+ * `dbWriteLock`. Every whole-path attempt first reads a content index of the manifest the commit key names, so units the profile
+ * already stores are named again under their keys and the commit carries that manifest (`base-unnamed` when it no
+ * longer names it). A conflict, a bulk marker this page load left, or a `base-unnamed` refusal (after which no marker of
+ * this page stands) is answered once, from one shared budget, by a rebuild from a fresh decode and a fresh read; a
+ * second conflict is unconfirmed and a second `base-unnamed` shows the library refusal. A build that aborted under the bulk marker ends through
  * `endOfAbortedBuild`: when the marker was cleared (or never left) and the cause is a changed file or an unreadable
  * unit, nothing changed and the import is refused 'read-failed'. Any other throw after the library started is
  * unconfirmed too, as is an abort whose marker could not be cleared; the busy refusal at the flip wrote nothing and is
@@ -645,9 +657,16 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
                 return true
             },
         }
+        // One index per attempt, read when first asked: the streamed prepare asks before P1b, and a file it hands back to the
+        // whole path reuses that same index.
+        let index: Promise<BaseContentIndex> | null = null
+        const baseContent = (): Promise<BaseContentIndex> => {
+            index ??= indexOfCommitKey({ committer, backend: request.target.backend }, { yieldFn: request.yieldToMain ?? yieldToEventLoop })
+            return index
+        }
         const streamRequest = stream === undefined
             ? null
-            : { stream, reader: request.reader, lists, taskPresets, themePacks, activeThemePack, usageStatics, usagePriceOverrides, yieldToMain: request.yieldToMain ?? yieldToEventLoop }
+            : { stream, reader: request.reader, lists, taskPresets, themePacks, activeThemePack, usageStatics, usagePriceOverrides, yieldToMain: request.yieldToMain ?? yieldToEventLoop, baseContent }
         // The library releases the tree it is handed once the tree is resolved; nothing here may keep another reference.
         let source: ImportSource | null = null
         // What the streamed prepare decided when it did not hand the file back to the whole path.
@@ -686,7 +705,10 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
                     throw new TypeError('The decoded tree is missing.')
                 }
                 outcome = await importLegacyTree(
-                    { source, reader: request.reader, committer, backend: request.target.backend, lists, taskPresets, themePacks, activeThemePack, usageStatics, usagePriceOverrides },
+                    {
+                        source, reader: request.reader, committer, backend: request.target.backend, lists, taskPresets, themePacks, activeThemePack, usageStatics, usagePriceOverrides,
+                        baseContent,
+                    },
                     hooks,
                 )
             }
@@ -743,6 +765,11 @@ export async function commitStore2Import(request: Store2ImportRequest): Promise<
                         continue
                     }
                     return refused('marker-standing', language.store2RestoreBulkMarker)
+                }
+                // Another writer dropped the manifest the content index was read from: one quiet rebuild over a fresh read, from
+                // the same attempt budget as a conflict, and only when no marker of this page can still stand.
+                if (outcome.reason === 'base-unnamed' && attempt < IMPORT_ATTEMPTS && markerGone(outcome.cleared)) {
+                    continue
                 }
                 return outcome.reason === 'too-new'
                     ? refused('too-new', language.store2ImportTooNew)

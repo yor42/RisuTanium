@@ -17,7 +17,7 @@ import {
 import { noteShardDigest } from './shard'
 import { isColdStub } from './stub'
 import {
-    CodecError, CodecInputError, isWrittenUnit, SharedChaIdStubError, StubRefusedError, type EncodedTree,
+    CodecError, CodecInputError, isWrittenUnit, SharedChaIdStubError, StubRefusedError, type ContentIndex, type EncodedTree,
     type EncodedUnit, type EncodeOptions, type ListDerivation, type PreviousEncoding, type PreviousObjects, type ReusableUnit,
     type SkippedItem, type SplitRecorder, type WrittenUnit,
 } from './types'
@@ -738,13 +738,17 @@ export async function planScopedEncode(db: Database, options: EncodeOptions, sco
 export interface StreamedFinish {
     /** The units `character` did not already hand out, and the manifest. */
     built: BuiltCommit
-    /** Every unit the whole stream wrote, the manifest included: the `newUnits` a `ScopedPlan` of the same tree reports. */
+    /** Every unit the whole stream wrote, the manifest included: the `newUnits` a `ScopedPlan` of the same tree reports
+     * without a content index; with one it can be larger by parents whose equal-content children took stored keys in
+     * another claim order. */
     count: number
+    /** The units of the whole stream that took a stored key by content (none without a content index); they are in no `count`. */
+    reused: number
 }
 
 /**
- * An encode of a resolved tree that arrives characters first and root last, with no earlier encoding (nothing is
- * reused, as in an import). It holds each character's shard entry and the identity, key, type, Ref and digest of each
+ * An encode of a resolved tree that arrives characters first and root last, with no earlier encoding (no entity id is
+ * taken over, as in an import; a unit equal to one of the content index takes its key). It holds each character's shard entry and the identity, key, type, Ref and digest of each
  * unit it produced, never a unit's frame after the caller has it.
  */
 export interface StreamedEncode {
@@ -768,13 +772,15 @@ export interface StreamedEncode {
  * follow from the keys. `context` supplies the attempt's mint, `seq` and clock, and the manifest's `legacyKeep`
  * override, exactly as `rekey` applies them; absent, the encode runs under placeholder keys, which name nothing real
  * (a dry pass that learns the count and the first error). `yieldFn` is awaited after each character and each module.
+ * `content` is the one frozen index every pass of an import consults, so equal unit sequences make equal decisions.
  * The one `CodecError` precedence of the stream lives here, so no caller restates it.
  */
 export function createStreamedEncode(
-    env: KeyEnv, lists: ListDerivation, yieldFn?: () => Promise<void>, context?: BuildContext,
+    env: KeyEnv, lists: ListDerivation, yieldFn?: () => Promise<void>, context?: BuildContext, content?: ContentIndex,
 ): StreamedEncode {
     const encoder = new Encoder({
         env, lists, seq: context?.seq ?? 0, createdAt: context?.now ?? env.now(), previous: null, keys: context?.mint ?? placeholderMint(),
+        ...(content !== undefined ? { content } : {}),
     }, null)
     const entries: ShardEntry[] = []
     let held: CodecError | null = null
@@ -819,7 +825,7 @@ export function createStreamedEncode(
                 // The keep of the base this attempt replaces, not the one the build planned with.
                 built.manifest.body = { ...built.manifest.body, fixed: { ...built.manifest.body.fixed, legacyKeep: context.legacyKeep } }
             }
-            return { built, count: written + built.units.length + 1 }
+            return { built, count: written + built.units.length + 1, reused: encoder.sink.reused }
         },
     }
 }

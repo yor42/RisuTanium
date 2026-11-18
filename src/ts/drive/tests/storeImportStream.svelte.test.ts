@@ -95,13 +95,16 @@ import { binFileOfSource } from 'src/ts/drive/binFileSource'
 import type { ImportSource as FileSource } from 'src/ts/importSource'
 import { language } from 'src/lang'
 import { createMemoryBackend, Store2BackendFailureError, type Store2Backend } from 'src/ts/storage/store2/backend'
-import { assembleDatabase } from 'src/ts/storage/store2/codec'
+import type { MemoryBackend } from 'src/ts/storage/store2/backend/memory'
+import { readBaseContentIndex } from 'src/ts/storage/store2/baseContent'
+import { assembleDatabase, unitDigest } from 'src/ts/storage/store2/codec'
 import { toPlainJson } from 'src/ts/storage/store2/codec/normalize'
-import { IMPORT_REPLACES_BASE, Store2BulkAbortError } from 'src/ts/storage/store2/commit'
+import { IMPORT_REPLACES_BASE, Store2BulkAbortError, type CommitRequest } from 'src/ts/storage/store2/commit'
 import { firstCommitKey } from 'src/ts/storage/store2/commitKey'
 import { clearAbandonedMarker } from 'src/ts/storage/store2/abandonedMarker'
+import { gcPass } from 'src/ts/storage/store2/gc/pass'
 import {
-    encodeUnit, readUnit, refOfFrame, REQ_MODULE_BUCKETS, UNIT_TYPE, type Manifest,
+    decodeFrame, encodeUnit, readUnit, refOfFrame, REQ_MODULE_BUCKETS, UNIT_TYPE, type Manifest,
 } from 'src/ts/storage/store2/format'
 import { LegacyListBuilder } from 'src/ts/storage/store2/lists/legacyList'
 import { BinFileChangedError } from 'src/ts/storage/store2/legacy/binReader'
@@ -115,7 +118,7 @@ import {
     commitStore2Import, createBinImportReader, readBinDatabaseOmitted, readBinDatabaseTree, scanBinForImport, type Store2ImportEnd,
 } from '../storeImport'
 import {
-    buildTree, committerOf, createClock, hooked, parsedCommit, seedStore, testEnv, treeUnitCount, type Hooks, type TestClock,
+    buildTree, committerOf, createClock, expectInvariant, hooked, parsedCommit, plantKey, seedStore, testEnv, treeUnitCount, type Hooks, type TestClock,
 } from 'src/ts/storage/tests/store2/commitFixtures'
 import { buildLibrary } from '../../../../Agents/Tools/save-gen/c806-library.mjs'
 
@@ -346,7 +349,7 @@ const putIndexes = (events: readonly Event[]) => events.flatMap((event, index) =
 // ---- the base store, the run and what it came to ----
 
 interface BaseStore {
-    raw: Store2Backend
+    raw: MemoryBackend
     clock: TestClock
     baseKey: string
 }
@@ -410,6 +413,12 @@ interface RunOptions {
     /** Wraps the backend the committer writes through. */
     wrap?: (backend: Store2Backend) => Store2Backend
     omitted?: ReadonlyMap<string, risuSave.SalvageOmittedBlock>
+    /** An existing store the import runs over (a store an earlier `run` left), instead of a fresh seeded one. */
+    store?: BaseStore
+    /** The committer's key seed; an import over an existing store takes another one than that store's earlier imports, so no minted key repeats. */
+    seed?: number
+    /** Receives the `carry` of every commit the page makes, in order. */
+    carries?: CommitRequest['carry'][]
 }
 
 interface Outcome {
@@ -419,7 +428,7 @@ interface Outcome {
     errors: unknown[]
     logged: unknown[]
     events: Event[]
-    raw: Store2Backend
+    raw: MemoryBackend
     baseKey: string
     clock: TestClock
     /** `decodeRisuSave` and `salvageRisuSave` calls: in all, and when the marker was written. */
@@ -430,7 +439,7 @@ interface Outcome {
 async function run(container: Uint8Array, options: RunOptions = {}): Promise<Outcome> {
     const events: Event[] = []
     const opened = await open(container, events, options.file)
-    const base = await baseStore(options.rich === true)
+    const base = options.store ?? await baseStore(options.rich === true)
     const { raw } = base
     const context: Context = { raw, opened, events }
     const decodeSpy = vi.spyOn(risuSave, 'decodeRisuSave')
@@ -453,7 +462,15 @@ async function run(container: Uint8Array, options: RunOptions = {}): Promise<Out
         },
     })
     const backend = options.wrap?.(wrapped.backend) ?? wrapped.backend
-    const committer = committerOf(backend, base.clock, 100)
+    const own = committerOf(backend, base.clock, options.seed ?? 100)
+    const carries = options.carries
+    const committer = carries === undefined ? own : {
+        ...own,
+        commit: async (...args: Parameters<typeof own.commit>) => { carries.push(args[1].carry); return own.commit(...args) },
+        ...(own.commitStreamed === undefined ? {} : {
+            commitStreamed: async (...args: Parameters<NonNullable<typeof own.commitStreamed>>) => { carries.push(args[1].carry); return (own.commitStreamed as NonNullable<typeof own.commitStreamed>)(...args) },
+        }),
+    }
     const logged: unknown[] = []
     vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => { logged.push(args[0]) })
     vi.mocked(alertConfirm).mockClear()
@@ -620,6 +637,184 @@ describe('the streamed page import lands what the whole path lands', () => {
         const key = await parsedCommit(base.raw)
         expect(key.retained).toHaveLength(1)
         expect(base.clock.now - key.retained[0].at).toBe(60_000)
+    })
+})
+
+// ---- ST1 to ST5: a streamed re-import reuses what the profile already stores ----
+
+/** The unit types an import writes again whatever the base holds: the manifest, and the units that carry an entity id. */
+const ALWAYS_NEW: ReadonlySet<number> = new Set([UNIT_TYPE.manifest, UNIT_TYPE.shard, UNIT_TYPE.order])
+
+const currentKeyOf = async (outcome: Outcome): Promise<string> => (await parsedCommit(outcome.raw)).current?.key as string
+
+/** The store `outcome` left, as the base of one more import (a minute later, which is inside the retention admission interval). */
+async function storeAfter(outcome: Outcome): Promise<BaseStore> {
+    outcome.clock.advance(60_000)
+    return { raw: outcome.raw, clock: outcome.clock, baseKey: await currentKeyOf(outcome) }
+}
+
+/** The same file imported once more over the store `first` left. The committer takes another key seed than the first import's. */
+async function importAgain(first: Outcome, container: Uint8Array, options: RunOptions = {}): Promise<Outcome> {
+    return run(container, { ...options, store: await storeAfter(first), seed: 101 })
+}
+
+/** The keys `after` holds and `before` did not whose type is not an always-new one and whose content a unit the current tree of `raw` names already holds. */
+async function duplicatesAfter(raw: MemoryBackend, before: ReadonlyMap<string, Uint8Array>, after: ReadonlyMap<string, Uint8Array>): Promise<string[]> {
+    const known = (await readBaseContentIndex(raw, await raw.readCommit())).units
+    return [...after.entries()]
+        .filter(([key]) => !before.has(key))
+        .filter(([, bytes]) => {
+            const frame = decodeFrame(bytes)
+            return frame.status === 'ok' && !ALWAYS_NEW.has(frame.type) && known.has(unitDigest(bytes))
+        })
+        .map(([key]) => key)
+}
+
+describe('a streamed re-import of the same file reuses the units the profile already stores', () => {
+    // Regression reproducer: without a content index every unit of the second import is put again under a new key.
+    test('ST1: the second import of one .bin puts no unit whose content the current tree already names, and carries the first import\'s manifest', async () => {
+        const bytes = await dbContainer(library(80))
+        const first = await run(bytes)
+        expect(first.end.kind).toBe('landed')
+        expect(first.verdicts).toEqual(['stream'])
+        const fromKey = await currentKeyOf(first)
+        const before = first.raw.snapshot()
+        const carries: CommitRequest['carry'][] = []
+
+        const second = await importAgain(first, bytes, { carries })
+
+        expect(second.end.kind).toBe('landed')
+        expect(second.verdicts).toEqual(['stream'])
+        expect(second.decodes.total).toBe(0)
+        expect(await duplicatesAfter(first.raw, before, second.raw.snapshot())).toEqual([])
+        expect(carries).toHaveLength(1)
+        expect(carries[0]).not.toBe(IMPORT_REPLACES_BASE)
+        expect(carries[0]).toMatchObject({ from: fromKey })
+        // The carry counts exactly the units of the first import's tree that the new tree names under their old keys.
+        const named = [...(await readBaseContentIndex(second.raw, await second.raw.readCommit())).units.values()].flat().filter((unit) => before.has(unit.key))
+        expect(named.length).toBeGreaterThan(0)
+        expect((carries[0] as { units: number }).units).toBe(named.length)
+        expect(await readBack(second)).toBe(await readBack(first))
+        await expectInvariant(second.raw)
+    })
+
+    // Regression reproducer for the put count (red before content reuse: every unit is put again); its routing
+    // assertions pass before and kill the post-reuse routing mutant after. A file whose pre-reuse total is over the
+    // threshold streams even when reuse leaves it under it.
+    test('ST2: the re-import is still streamed when reuse takes its written units under the threshold; nothing is decoded whole', async () => {
+        const bytes = await dbContainer(library(80))
+        const first = await run(bytes)
+        const firstPuts = putIndexes(first.events).length
+        expect(firstPuts).toBeGreaterThan(59)
+
+        const second = await importAgain(first, bytes)
+
+        expect(second.end.kind).toBe('landed')
+        expect(second.verdicts).toEqual(['stream'])
+        expect(second.decodes.total).toBe(0)
+        const puts = putIndexes(second.events).length
+        expect(puts).toBeLessThan(60)
+        expect(puts).toBeLessThan(firstPuts)
+    })
+
+    // New rule: P2 uses P1b's index object. A peer that replaces the profile between the passes and keeps the manifest the
+    // index was read from retained does not change what P2 reuses, so the passes still agree.
+    test('ST3: a peer commit that keeps the indexed manifest retained lands the import with the first pass\'s decisions', async () => {
+        const bytes = await dbContainer(library(80))
+        const first = await run(bytes)
+        const fromKey = await currentKeyOf(first)
+        const carries: CommitRequest['carry'][] = []
+        let reads = 0
+        let retainedAtPlant: string[] = []
+
+        const second = await importAgain(first, bytes, {
+            carries,
+            before: async (name) => {
+                // The first read of the commit key is the index's; the second is the one the commit is made over.
+                if (name === 'readCommit' && ++reads === 2) {
+                    const key = await parsedCommit(first.raw)
+                    await plantKey(first.raw, {
+                        ...key, seq: key.seq + 1, epoch: 'p'.repeat(key.epoch.length), current: { key: first.baseKey, at: first.clock.now },
+                        retained: [{ key: fromKey, at: first.clock.now }], pins: [],
+                    })
+                    retainedAtPlant = (await parsedCommit(first.raw)).retained.map((entry) => entry.key)
+                }
+            },
+        })
+
+        expect(retainedAtPlant).toEqual([fromKey])
+        expect(second.end.kind).toBe('landed')
+        expect(second.verdicts).toEqual(['stream'])
+        expect(carries).toHaveLength(1)
+        expect(carries[0]).toMatchObject({ from: fromKey })
+        expect((carries[0] as { units: number }).units).toBeGreaterThan(0)
+        await expectInvariant(second.raw)
+    })
+
+    /**
+     * Replaces the commit key at the final write of the k-th attempt, with this import's own marker still standing, by a
+     * key that names `targets[k]` as its current and nothing else: the peer that does not name the manifest the index was read from.
+     */
+    function dropsBaseUnderMarker(raw: MemoryBackend, clock: TestClock, targets: string[]): { before: NonNullable<RunOptions['before']>, markers: () => number } {
+        let markers = 0
+        let plantedFor = 0
+        return {
+            markers: () => markers,
+            before: async (name) => {
+                if (name !== 'casCommit') {
+                    return
+                }
+                const key = await parsedCommit(raw)
+                if (key.staging === null) {
+                    markers++
+                } else if (plantedFor !== markers && markers <= targets.length) {
+                    plantedFor = markers
+                    await plantKey(raw, {
+                        ...key, seq: key.seq + 1, epoch: String.fromCharCode(96 + markers).repeat(key.epoch.length),
+                        current: { key: targets[markers - 1], at: clock.now }, retained: [], pins: [],
+                    })
+                }
+            },
+        }
+    }
+
+    // New rule, behavioural kill of the streamed carry: with a sentinel the re-judge lands over the peer's current.
+    test('ST5: a peer that drops the indexed manifest under the marker twice ends the import library-refused with the marker cleared, and no named manifest names a missing unit', async () => {
+        const bytes = await dbContainer(library(80))
+        const first = await run(bytes)
+        const fromKey = await currentKeyOf(first)
+        // The first plant leaves the seed manifest current; the second attempt's base is then that manifest, so it is dropped for the first import's.
+        const peer = dropsBaseUnderMarker(first.raw, first.clock, [first.baseKey, fromKey])
+
+        const second = await importAgain(first, bytes, { before: peer.before })
+
+        expect(peer.markers()).toBe(2)
+        expect(second.verdicts).toEqual(['stream', 'stream'])
+        expect(second.end).toEqual({ kind: 'refused', cause: 'library-refused' })
+        expect(second.errors).toEqual([language.store2ImportRefused])
+        const key = await parsedCommit(second.raw)
+        expect(key.staging).toBeNull()
+        expect(key.current?.key).toBe(fromKey)
+        const swept = await gcPass({ backend: second.raw, kind: 'tauri', idleReason: () => null })
+        expect(swept.status).toBe('done')
+        await expectInvariant(second.raw)
+    })
+
+    test('ST5 (once): a peer that drops the indexed manifest under the marker once is answered by one quiet rebuild, which lands', async () => {
+        const bytes = await dbContainer(library(80))
+        const first = await run(bytes)
+        const peer = dropsBaseUnderMarker(first.raw, first.clock, [first.baseKey])
+
+        const second = await importAgain(first, bytes, { before: peer.before })
+
+        expect(peer.markers()).toBe(2)
+        expect(second.errors).toEqual([])
+        expect(second.end.kind).toBe('landed')
+        expect(second.verdicts).toEqual(['stream', 'stream'])
+        const key = await parsedCommit(second.raw)
+        expect(key.staging).toBeNull()
+        await gcPass({ backend: second.raw, kind: 'tauri', idleReason: () => null })
+        await expectInvariant(second.raw)
     })
 })
 

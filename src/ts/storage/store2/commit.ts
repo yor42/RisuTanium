@@ -141,17 +141,24 @@ export interface BuiltCommit {
 export type Carry = { from: string, units: number }
 
 /**
- * The claim of a request that replaces its base. Accepted limitation (bulk import window): an import carries the base's
+ * The claim of a request that replaces its base: an import that names no unit of the base. An import that reuses base
+ * units by content carries `{ from, units }` instead, `from` being the manifest its content index was read from. When
+ * `from` is also the current of the commit read the import is made over, the carry judge protects the carried keep as
+ * well; otherwise the keep stays under the limitation below.
+ *
+ * Accepted limitation (bulk import window): an import carries the base's
  * legacy keep by value and the bulk path does not judge this claim, so the final write can land a manifest that names a
  * keep unit the garbage collector deleted while the marker stood. That needs a garbage collection pass, a peer commit
  * landing over the base during the marker, and a writer that releases the keep: a null-setting commit, `Committer.restore`
  * (it installs a manifest whole) or a recovery exit, each when the installed manifest does not name the keep. No current
  * host combines them: Tauri runs one page; the web collector runs only on a sole tab, whose own-base rule makes it refuse
  * while the commit key's current is not the manifest this page acknowledged (and after this page fast-forwarded), and
- * Node runs no garbage collection outside measurement builds, whose `gcPass` can be run by hand. If it happens, live data
- * still loads and tree reads and export are unaffected, but restore of a manifest that names the keep is refused
- * `tree-incomplete`, so are recovery picks of such manifests, and asset sweeps stop on an incomplete keep-set, until
- * something releases the keep. Re-check when garbage collection reaches Node.
+ * the Node collector refuses under any standing marker, directly after its commit read and before its mark. That refusal
+ * is sound while three things hold: every commit-key write under a marker keeps the marker unless it is the owner's final
+ * write or clear; a Node commit revision never returns to an earlier value; and each import derives its carried keep from
+ * the same commit read that its marker write compares. If it happens, live data still loads and tree reads and export are
+ * unaffected, but restore of a manifest that names the keep is refused `tree-incomplete`, so are recovery picks of such
+ * manifests, and asset sweeps stop on an incomplete keep-set, until something releases the keep.
  */
 export const IMPORT_REPLACES_BASE: unique symbol = Symbol.for('risu.store2.IMPORT_REPLACES_BASE')
 
@@ -171,7 +178,10 @@ function plannedCarry(request: Pick<CommitRequest, 'carry'>): Carry | null {
 }
 
 export interface CommitRequest {
-    /** How many new units the commit writes, the manifest included; it decides ordinary or bulk before any key exists. */
+    /**
+     * How many new units the commit writes, the manifest included; it decides ordinary or bulk before any key exists.
+     * An existing unit the build names by key (reused or carried) is not a new unit.
+     */
     newUnits: number
     /**
      * Builds the commit's units. An ordinary commit trusts this build: every pre-existing unit the new manifest
@@ -190,7 +200,7 @@ export interface CommitRequest {
     keepPrevious?: boolean
     /**
      * Required; any other value throws a TypeError. Either a `Carry`, when the build was planned over an acknowledged
-     * manifest: `from` is that manifest's key and `units` counts the pre-existing units the new manifest names without
+     * manifest, or, for an import, the manifest whose units the build names by content: `from` is that manifest's key and `units` counts the pre-existing units the new manifest names without
      * writing them, the legacy keep excluded because it travels by value. A commit that carries from `from` is refused
      * unless the commit key it compares against still names `from`, because garbage collection may have deleted what it
      * would carry; the ordinary path skips the check at `units` 0, the bulk path judges any carry. Or

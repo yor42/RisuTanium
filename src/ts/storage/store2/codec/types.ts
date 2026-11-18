@@ -185,6 +185,15 @@ export interface PreviousObjects {
     presets?: readonly JsonObject[]
 }
 
+/**
+ * The units of a stored tree an import may take by content: the candidates per framed-unit digest, in the order the
+ * tree was walked. A unit is taken only when its type, framed length, CRC and digest equal the imported unit's, so a
+ * candidate never hands over an identity, only a key. The map is never mutated while an encode consults it.
+ */
+export interface ContentIndex {
+    units: ReadonlyMap<string, readonly ReusableUnit[]>
+}
+
 /** The earlier encoding a new encode reuses keys from. */
 export interface PreviousEncoding {
     units: ReadonlyMap<string, ReusableUnit>
@@ -293,6 +302,11 @@ export interface EncodeOptions {
      * previous unit has the remembered digest is taken without being framed. Absent, every chunk is framed.
      */
     chunkMemo?: ChunkMemo
+    /**
+     * The stored units an import takes by content (see `ContentIndex`). An import-only rule: it never accompanies
+     * `previous`, so every entity id of the encode is new.
+     */
+    content?: ContentIndex
 }
 
 /** Where `assembleDatabase` reads unit bytes from. */
