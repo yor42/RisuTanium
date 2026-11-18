@@ -13,6 +13,7 @@
     import TriggerList from "src/lib/SideBars/Scripts/TriggerList.svelte";
     import Check from "src/lib/UI/GUI/CheckInput.svelte";
     import Help from "src/lib/Others/Help.svelte";
+    import StudioToggleLink from "src/lib/Studio/StudioToggleLink.svelte";
     import TextAreaInput from "src/lib/UI/GUI/TextAreaInput.svelte";
     import { getFileSrc, saveAssetFromBlob, downloadFile, pickedAssetLimitBytes } from "src/ts/globalApi.svelte";
     import { reportRefusedAssets, splitByAssetLimit, warnRefusedAssets } from "src/ts/storage/pickedAssetLimit";
@@ -278,6 +279,7 @@
         <Check bind:check={() => currentModule.hideIcon ?? false, (v) => currentModule.hideIcon = v} name={language.hideChatIcon}/>
     </div>
     <span class="mt-4">{language.customPromptTemplateToggle} <Help key='customPromptTemplateToggle' /></span>
+    <StudioToggleLink owner={{ type: 'module', moduleId: currentModule.id }} />
     <TextAreaInput bind:value={currentModule.customModuleToggle}/>
 {/if}
 {#if submenu === 1 && (Array.isArray(currentModule.lorebook))}
