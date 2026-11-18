@@ -148,15 +148,6 @@ export type PluginIndexConversion = {
 }
 
 /**
- * One unavailable-unit key per failed slot, for the legacy-page restore question that counts distinct keys. An
- * index-level failure keeps its unit id; an entry-level failure is keyed by slot as well, so two failed entries that
- * share an id (the index pointer) are still counted twice.
- */
-export function unavailableKeysOfMissing(missing: readonly PluginMissingUnit[]): string[] {
-    return missing.map(item => item.slotKey === PLUGIN_STORAGE_INDEX_KEY ? item.id : `${item.slotKey}:${item.id}`)
-}
-
-/**
  * Replaces `storage._coldpluginIndex` by `_coldplugin` slots, in place.
  *
  * Large entries map their key to the unit the index names (the unit is not
