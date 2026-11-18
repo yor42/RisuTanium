@@ -246,6 +246,14 @@ describe('getUncleanablesSync over theme packs', () => {
         expect(kept).toContain(OTHER_BASENAME)
     })
 
+    test.each([['png'], ['webp']])('T3-8: a record keeps the basename of its %s icon beside its archive', (ext) => {
+        const iconBasename = `tp-${HEX_OTHER}.${ext}`
+        const kept = getUncleanablesSync(dbOf([{ ...packRecord(), icon: `assets/${iconBasename}` }]))
+
+        expect(kept).toContain(PACK_BASENAME)
+        expect(kept).toContain(iconBasename)
+    })
+
     test('guard: themePacks that is {}, a string, a list holding null, or absent adds nothing and does not throw', () => {
         expect(getUncleanablesSync(dbOf({}))).toEqual([])
         expect(getUncleanablesSync(dbOf('x'))).toEqual([])

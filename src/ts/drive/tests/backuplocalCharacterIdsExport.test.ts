@@ -298,7 +298,7 @@ Object.defineProperty(globalThis.navigator, 'storage', {
 
 //#endregion
 
-import { SaveLocalBackup, SavePartialLocalBackup, LoadLocalBackup } from 'src/ts/drive/backuplocal'
+import { SaveLocalBackup, SavePartialLocalBackup } from 'src/ts/drive/backuplocal'
 import { dbWriteLock } from 'src/ts/globalApi.svelte'
 import { decodeRisuSave, encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { setColdStorageItem, readColdStorageItem, coldStorageHeader } from 'src/ts/process/coldstorage.svelte'
@@ -461,18 +461,6 @@ function completionReports(): string {
 let capturedInput: HTMLInputElement | null = null
 let createElementSpy: ReturnType<typeof vi.spyOn>
 let dbWriteLockSpy: ReturnType<typeof vi.spyOn>
-
-/** Drives LoadLocalBackup() with `bytes` as the selected file's content, and awaits its onchange handler. */
-async function loadBackupBytes(bytes: Uint8Array): Promise<void> {
-    LoadLocalBackup()
-    const input = capturedInput
-    if (!input) {
-        throw new Error('LoadLocalBackup did not create a file input')
-    }
-    const file = new File([asBlobPart(bytes)], 'backup.bin')
-    Object.defineProperty(input, 'files', { value: [file], configurable: true })
-    await (input.onchange as unknown as (ev: Event) => Promise<void>).call(input, new Event('change'))
-}
 
 /** A hand-built backup: `entries` first, then a database entry holding `db`. */
 function buildBackup(entries: [string, Uint8Array][], db: Database): Uint8Array {

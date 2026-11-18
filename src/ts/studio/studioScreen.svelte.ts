@@ -1,5 +1,6 @@
 import { untrack } from 'svelte'
 import { get } from 'svelte/store'
+import { afterFlush } from '../afterFlush'
 import { returnFocusAfterClose } from './layerFocus'
 import { DBState, selIdState, settingsOpen } from '../stores.svelte'
 import { studioEligible } from './studioSwitch.svelte'
@@ -43,6 +44,12 @@ export interface StudioNoticePlaces {
  * - `detailShown` is false while the list is the phone screen.
  * - `historyOpen` shows the History panel of the selected owner; `restoreSheetOpen` shows the restore sheet over
  *   it. The sheet closes with the panel, with the visit and when the selected owner changes.
+ * - `togglePreviewOpen` shows the toggle preview sheet of the builder or of the combined view. It is visit state only
+ *   and closes with the visit, an owner or kind change, a cleared selection, the phone list and a layout change.
+ * - `toggleEditorPageOpen` is set by the toggle builder while its editor is a page of its own over the list. Detail to
+ *   list yields to it, so Back closes the editor page before the phone returns to the list.
+ * - `settingsReturn` is the Settings page index a link from Settings left, or null. Leaving the visit reopens Settings
+ *   there; every other end of a visit leaves it null, so only the visit the link opened returns.
  * - `targetPending` is true from the open until a pane that has the model places the target.
  * - The selection, the expanded rows, the extra pages and "hide empty kinds" live here, not in the tree, so a
  *   phone layout that unmounts the tree keeps them for the visit.
@@ -61,6 +68,9 @@ export const studioScreen = $state({
     searchOpen: false,
     historyOpen: false,
     restoreSheetOpen: false,
+    togglePreviewOpen: false,
+    toggleEditorPageOpen: false,
+    settingsReturn: null as number | null,
     notice: null as string | null,
     // The places a merge undo left as they were, behind the notice's Show. Set only with the notice text it belongs
     // to; every other write of the notice clears it.
@@ -96,6 +106,9 @@ function resetVisitState(): void {
     studioScreen.searchOpen = false
     studioScreen.historyOpen = false
     studioScreen.restoreSheetOpen = false
+    studioScreen.togglePreviewOpen = false
+    studioScreen.toggleEditorPageOpen = false
+    studioScreen.settingsReturn = null
     studioScreen.notice = null
     studioScreen.noticePlaces = null
     studioScreen.targetPending = false
@@ -137,9 +150,10 @@ function installWatchers(): void {
 
 /**
  * Opens Studio on the selected character. Refused, with no state change, when Studio is not eligible or
- * Settings is open. A second call while open starts a new visit.
+ * Settings is open. A second call while open starts a new visit. `settingsReturn` is the Settings page the caller
+ * closed to open this visit; Back from the visit reopens Settings there.
  */
-export function openStudio(target: StudioTarget, opener: StudioOpener | null): boolean {
+export function openStudio(target: StudioTarget, opener: StudioOpener | null, settingsReturn: number | null = null): boolean {
     flushStudioFields('leave')
     if (!studioEligible()) return false
     if (get(settingsOpen)) return false
@@ -155,6 +169,7 @@ export function openStudio(target: StudioTarget, opener: StudioOpener | null): b
     studioScreen.target = target
     studioScreen.from = target.from
     studioScreen.opener = opener
+    studioScreen.settingsReturn = settingsReturn
     // An entry that names an owner lands on its screen; the list is one tap away on phones.
     studioScreen.detailShown = target.owner !== undefined
     studioOpen.set(true)
@@ -171,7 +186,11 @@ export function closeStudio(): void {
  * that layout closes it and its Back handler goes with it.
  */
 export function setStudioLayout(next: StudioLayout): void {
-    if (next !== studioScreen.layout) flushStudioFields('leave')
+    if (next !== studioScreen.layout) {
+        flushStudioFields('leave')
+        // The sheet's host may not exist in the next layout, and its Back layer must not outlive it.
+        studioScreen.togglePreviewOpen = false
+    }
     if (studioScreen.layout === 'drawer' && next !== 'drawer' && studioScreen.drawerOpen) {
         studioScreen.drawerOpen = false
         void returnFocusAfterClose('drawer', () => studioScreen.drawerOpen)
@@ -193,9 +212,19 @@ export function pickStudioItem(): void {
     studioScreen.noticePlaces = null
 }
 
+/**
+ * Closes the toggle preview sheet from its X, Esc or Back and returns focus to the control that opened it. Only this
+ * path moves focus: a clear by a selection or layout change leaves it where the author put it.
+ */
+export function closeStudioTogglePreview(): void {
+    studioScreen.togglePreviewOpen = false
+    void afterFlush().then(() => document.querySelector<HTMLElement>('[data-part="studio-toggle-preview-eye"], [data-part="studio-tg-combined-all"]')?.focus())
+}
+
 /** The phone header title: shows the owner list. */
 export function showStudioList(): void {
     flushStudioFields('leave')
+    studioScreen.togglePreviewOpen = false
     studioScreen.detailShown = false
     studioScreen.notice = null
     studioScreen.noticePlaces = null
@@ -277,6 +306,8 @@ export function setStudioRestoreSheetOpen(open: boolean): void {
 export function setStudioSelection(ownerKey: string, kind: StudioKind | null, itemId: string | null): void {
     flushStudioFields('leave')
     if (studioScreen.selectedOwnerKey !== ownerKey) studioScreen.restoreSheetOpen = false
+    // A line selection inside a builder changes neither the owner nor the kind, so the sheet stays open across it.
+    if (studioScreen.selectedOwnerKey !== ownerKey || studioScreen.selectedKind !== kind) studioScreen.togglePreviewOpen = false
     studioScreen.selectedOwnerKey = ownerKey
     studioScreen.selectedKind = kind
     studioScreen.selectedItemId = itemId
@@ -285,6 +316,7 @@ export function setStudioSelection(ownerKey: string, kind: StudioKind | null, it
 /** Drops the selection, for an owner that no longer exists in the model; `notice` says why the detail emptied. */
 export function clearStudioSelection(notice: string): void {
     studioScreen.restoreSheetOpen = false
+    studioScreen.togglePreviewOpen = false
     studioScreen.selectedOwnerKey = null
     studioScreen.selectedKind = null
     studioScreen.selectedItemId = null

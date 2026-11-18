@@ -75,12 +75,12 @@ const HOME_RIGHT = (id) => {
   if (/^[ARS]\d+$/.test(id)) return /protected part|data-part-critical|not allowed|allowlist|url|@|transform|position|animation|transition|content|z-index|background|opaque/;
   return /./;
 };
-const HOME_DECIDED_ACCEPT = new Set(['H52']);   // font-family "Wingdings" on Send: a font family is a pack's freedom (fonts are out of scope for lint); reported as residual
+const HOME_DECIDED_ACCEPT = new Set(['H52', 'K19']);   // H52: font-family "Wingdings" on Send: a font family is a pack's freedom (fonts are out of scope for lint); reported as residual. K19: --nexus-field-border as color-mix(in srgb, #000 5%, #fff) is #f2f2f2, a colour the validator accepts written as hex in every area (OQ4: color-mix in srgb resolves)
 const hh = fx('home-hostile.json'); let hRej = 0, hRight = 0; const hWrong = [], hViaHelper = [];
 for (const f of hh) {
   const key = f.id;
   const r = LINT.home(f.css, key);
-  if (HOME_DECIDED_ACCEPT.has(key)) { A('home:' + key, 'accepted by decision (a font family is free)', r.ok, f.name); continue; }
+  if (HOME_DECIDED_ACCEPT.has(key)) { A('home:' + key, 'accepted by decision (H52 a font family is free; K19 a colour the validator accepts as hex)', r.ok, f.name); continue; }
   const re = HOME_RIGHT(key); let ok = !r.ok && r.errors.some((e) => re.test(e.why));
   let via = '';
   if (!r.ok && !ok && r.errors.some((e) => /not a pack-settable/.test(e.why))) {   // rejected because it chains through a helper variable: show that the original mechanism still rejects it once the helpers are listed
@@ -116,7 +116,8 @@ sec('4b private, ceilings, chains, height');
 const PRIV = [   // [name, css, accepted?, reason]
   ['a private colour used by a control', ':root{--pack-y:#fee500}[data-part="chat-send"]{background:var(--pack-y);color:#191919}', true],
   ['text colour through a private variable', ':root{--pack-t:#0e0f2b;--nexus-text:var(--pack-t)}', false, /would be [\d.]+:1/],
-  ['colour-mix through a private variable', ':root{--pack-t:color-mix(in srgb,red,blue);--nexus-text:var(--pack-t)}', false, /cannot be resolved to a concrete sRGB/],
+  ['colour-mix through a private variable', ':root{--pack-t:color-mix(in oklch,red,blue);--nexus-text:var(--pack-t)}', false, /cannot be resolved to a concrete sRGB/],
+  ['colour-mix in srgb through a private variable is judged as the colour it makes', ':root{--pack-t:color-mix(in srgb,red,blue);--nexus-text:var(--pack-t)}', false, /would be [\d.]+:1/],
   ['oklch through a chain of two', ':root{--pack-a:var(--pack-b);--pack-b:oklch(0.1 0 0);--nexus-danger:var(--pack-a)}', false, /cannot be resolved to a concrete sRGB/],
   ['transparent sheet through a private variable', ':root{--pack-s:transparent;--color-surface-sheet:var(--pack-s)}', false, /fully transparent|opaque/],
   ['translucent sheet through a private variable', ':root{--pack-s:rgb(14 15 42 / 0.4);--color-surface-sheet:var(--pack-s)}', false, /opaque colour/],
@@ -236,8 +237,8 @@ sec('6 legacy');
 // ================= 7. single-token fuzz (the Studio review's method: ONE token at :root, extreme value, lint)
 sec('7 fuzz');
 const kind = (v, isCol) => (isCol ? 'col' : /^[\d. ]+$/.test(v) && v.trim().split(/\s+/).length === 3 ? 'chan' : /^-?[\d.]+(px|rem|em|vh|vw|%)?$/.test(v) ? (/^-?[\d.]+$/.test(v) ? 'num' : 'len') : /\d(ms|s)$/.test(v) ? 'dur' : 'other');
-const VALS = { col: ['transparent', 'rgb(0 0 0 / 0)', 'color-mix(in srgb, red, blue)', 'oklch(0.5 0.1 200)', 'light-dark(#000, #fff)', 'currentcolor', 'var(--nope)'], chan: ['0 0 0', '255 255 255', '1 2'], num: ['0', '100'], len: ['0px', '1px', '3000px'], dur: ['0ms', '5000ms'], other: [] };
-const UNRES = new Set(['color-mix(in srgb, red, blue)', 'oklch(0.5 0.1 200)', 'light-dark(#000, #fff)', 'currentcolor', 'var(--nope)', '1 2']);
+const VALS = { col: ['transparent', 'rgb(0 0 0 / 0)', 'color-mix(in oklch, red, blue)', 'color-mix(in hsl, red, blue)', 'oklch(0.5 0.1 200)', 'light-dark(#000, #fff)', 'currentcolor', 'var(--nope)'], chan: ['0 0 0', '255 255 255', '1 2'], num: ['0', '100'], len: ['0px', '1px', '3000px'], dur: ['0ms', '5000ms'], other: [] };
+const UNRES = new Set(['color-mix(in oklch, red, blue)', 'color-mix(in hsl, red, blue)', 'oklch(0.5 0.1 200)', 'light-dark(#000, #fff)', 'currentcolor', 'var(--nope)', '1 2']);
 const FUZZ = {
   chat: { tokens: REG.chat.lintPack ? await (async () => { const m = await imp('chat/checks/th/packlint.mjs'); return m.CHAT_REGISTRY.app; })() : new Map(), reg: undefined },
   settings: { tokens: (await imp('settings/checks/th/packlint-settings.mjs')).SETTINGS_TOKENS, reg: { ...REG.s5b.REG5B, settable: [...REG.sbase.SETTINGS_SETTABLE], reach: REG.sbase.SETTINGS_REACH, opaque: REG.sbase.SETTINGS_REGISTRY.opaque, colours: REG.sbase.SETTINGS_REGISTRY.colours, pairs: REG.sbase.SETTINGS_PAIRS } },
@@ -278,7 +279,7 @@ const pass = rows.filter((r) => r.ok).length, fail = rows.length - pass;
 const bySec = {}; for (const r of rows) { (bySec[r.section] ||= { pass: 0, fail: 0 })[r.ok ? 'pass' : 'fail']++; }
 const lines = [`Theme lint regression suite, ${new Date().toISOString()}`, `TOTAL ${pass}/${rows.length} pass, ${fail} fail`, ...Object.entries(bySec).map(([s, c]) => `  ${s}: ${c.pass} pass, ${c.fail} fail`),
   `studio review packs: ${sh.length} (x2 for bare / on Navy): ${sRej} rejections, ${sRight} for the right reason, ${sAcc.length} accepted by decision (${[...new Set(sAcc)].join(' ')})`,
-  `home review packs: ${hh.length}: ${hRej} rejected, ${hRight} for the right reason (${hViaHelper.length} only after listing their helper variables: ${hViaHelper.join(' ')}), ${HOME_DECIDED_ACCEPT.size} accepted by decision (H52)`,
+  `home review packs: ${hh.length}: ${hRej} rejected, ${hRight} for the right reason (${hViaHelper.length} only after listing their helper variables: ${hViaHelper.join(' ')}), ${HOME_DECIDED_ACCEPT.size} accepted by decision (${[...HOME_DECIDED_ACCEPT].join(' ')})`,
   `new packs: ${nRej} rejections, ${nRight} for the right reason`, `fuzz: ${JSON.stringify(fuzzSummary)}`,
   `shipped: ${Object.entries(shipped).map(([k, r]) => k + '=' + (r.ok ? 'ACCEPT' : 'NEEDS FIX')).join(', ')}`];
 console.log(lines.join('\n'));

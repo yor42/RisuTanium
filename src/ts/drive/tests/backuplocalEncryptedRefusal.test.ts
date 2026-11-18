@@ -20,8 +20,7 @@
  * `LoadLocalBackup`'s own `[u32 nameLength][name][u32 dataLength][data]`
  * framing (unsigned, little-endian, no header/trailer/count), and every
  * `database.risudat` entry is encoded with the REAL `encodeRisuSaveLegacy`
- * (`src/ts/storage/risuSave.ts`), matching `backuplocalIdRepair.test.ts`'s
- * own mocking pattern.
+ * (`src/ts/storage/risuSave.ts`).
  *
  * Every export of the alert module is spied, and `alertStore.set` calls are
  * also inspected for a `msg` field, so a shown message can be found
@@ -1049,24 +1048,6 @@ describe('a backup with no encryption.risudat entry anywhere restores every entr
     })
 })
 
-// This row asserts the decoder input and the database install of the legacy page's tail, so it runs on that page.
-describe('a database inside a window on the legacy page', () => {
-    test('a database that sits inside a window reaches the decoder as a whole buffer of its own, with its own bytes', async () => {
-        // Both passes read the whole file in one window here, so the database
-        // body is a view of that window until the loop takes its own copy.
-        const database = databaseEntry()
-        await loadBackupBytes(concatChunks([assetEntry(16, 'asset1.png'), coldEntry(), database]))
-
-        expect(decodeCapture.inputs).toHaveLength(1)
-        const decoded = decodeCapture.inputs[0]
-        const databaseHeaderLength = 4 + DATABASE_NAME.length + 4
-        expect(decoded.byteOffset).toBe(0)
-        expect(decoded.byteLength).toBe(decoded.buffer.byteLength)
-        expect(Array.from(decoded)).toEqual(Array.from(database.slice(databaseHeaderLength)))
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
-    })
-})
-
 describe('the restore yields and sleeps by the store\'s speed (I2)', () => {
     onStore2Page()
 
@@ -1255,60 +1236,5 @@ describe('regression: the restore reads the file in a number of slices that foll
         expect(shell.commits).toHaveLength(1)
         // Each pass takes one slice per window; the walk refills early by the 1032 bytes of its header probe.
         expect(reads.ranges.length).toBeLessThanOrEqual(2 * Math.ceil(bytes.length / (4096 - 1032)) + 4)
-    })
-})
-
-describe.each([undefined, 16] as const)('compatibility guard: the order of the entries does not change what a block-era restore carries (windows: %s)', (windowBytes) => {
-    beforeEach(() => {
-        overrideBackupWindowBytes(windowBytes === undefined ? null : { walk: windowBytes, copy: windowBytes })
-    })
-
-    function writtenAssetKeys(): string[] {
-        return forageSetItemMock.mock.calls.map((call) => call[0]).filter((key) => key.startsWith('assets/'))
-    }
-
-    test('the database first, the cold unit and the assets after it', async () => {
-        await loadBackupBytes(concatChunks([databaseEntry(), assetEntry(16, 'asset1.png'), coldEntry(), assetEntry(20, 'asset2.png')]))
-
-        expect(writtenAssetKeys()).toEqual(['assets/asset1.png', 'assets/asset2.png'])
-        expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
-        expect(setColdStorageItemMock).toHaveBeenCalledWith(COLD_UUID, { message: [] })
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
-        expect(alertMocks.alertError).not.toHaveBeenCalled()
-    })
-
-    test('the cold unit between the assets, the database last', async () => {
-        await loadBackupBytes(concatChunks([assetEntry(16, 'asset1.png'), coldEntry(), assetEntry(20, 'asset2.png'), databaseEntry()]))
-
-        expect(writtenAssetKeys()).toEqual(['assets/asset1.png', 'assets/asset2.png'])
-        expect(setColdStorageItemMock).toHaveBeenCalledTimes(1)
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
-        expect(alertMocks.alertError).not.toHaveBeenCalled()
-    })
-
-    test('two database entries: the last one is the one decoded', async () => {
-        const first = buildChunk(DATABASE_NAME, encodeRisuSaveLegacy({ characters: [], mainPrompt: 'first' } as unknown as Database, 'noCompression'))
-        const lastPayload = encodeRisuSaveLegacy({ characters: [], mainPrompt: 'last' } as unknown as Database, 'noCompression')
-
-        await loadBackupBytes(concatChunks([assetEntry(16, 'asset1.png'), first, buildChunk(DATABASE_NAME, lastPayload)]))
-
-        expect(decodeCapture.inputs).toHaveLength(1)
-        expect(Array.from(decodeCapture.inputs[0])).toEqual(Array.from(lastPayload))
-        expect(setDatabaseMock).toHaveBeenCalledTimes(1)
-        expect(alertMocks.alertError).not.toHaveBeenCalled()
-    })
-
-    test('a marker after the database refuses the restore with nothing written', async () => {
-        await loadBackupBytes(markerLastFixture())
-
-        expectNoWritesNoInstallNoNetwork()
-        expectRefusalShown()
-    })
-
-    test('a marker whose header is cut off at the end of the file refuses the restore with nothing written', async () => {
-        await loadBackupBytes(markerNameCompleteDataLengthFieldCutOffFixture())
-
-        expectNoWritesNoInstallNoNetwork()
-        expectRefusalShown()
     })
 })

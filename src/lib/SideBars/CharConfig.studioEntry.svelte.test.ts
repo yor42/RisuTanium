@@ -25,6 +25,7 @@ vi.mock(import('src/ts/stores.svelte'), () => {
         disableHighlight: writable(true),
         popUpEditorStore: writable(null),
         settingsOpen: writable(false),
+        SettingsMenuIndex: writable(-1),
     } as unknown as typeof import('src/ts/stores.svelte')
 })
 
@@ -124,7 +125,8 @@ vi.mock('../UI/GUI/MultiLangInput.svelte', () => ({ default: (_target: unknown) 
 
 //#endregion
 
-import { DBState, MobileGUI } from 'src/ts/stores.svelte'
+import { CharConfigSubMenu, DBState, MobileGUI } from 'src/ts/stores.svelte'
+import { language } from 'src/lang'
 import CharConfig from './CharConfig.svelte'
 import { resetStudioScreenForTests, studioScreen } from '../../ts/studio/studioScreen.svelte'
 import { setStudioEnabled } from '../../ts/studio/studioSwitch.svelte'
@@ -146,6 +148,13 @@ function install(): void {
         alternateGreetings: [],
         desc: '',
         firstMessage: '',
+        customModuleToggle: 'a=A',
+        bias: [],
+        personality: '',
+        scenario: '',
+        additionalData: { creator: '', character_version: '' },
+        nickname: '',
+        depth_prompt: { depth: 0, prompt: '' },
     }
     DBState.db = { characters: [character], personas: [], modules: [] } as never
 }
@@ -209,6 +218,65 @@ describe('2n the Studio row of the classic character settings', () => {
         setStudioEnabled(false)
         const target = await show()
         expect(entry(target)).toBeNull()
+    })
+})
+
+const toggleLink = (target: HTMLElement) => target.querySelector<HTMLButtonElement>('[data-part="studio-toggle-link"]')
+
+// The toggle definition field is on the advanced page of the settings.
+const ADVANCED_PAGE = 2
+
+function onAdvancedPage(): void {
+    beforeEach(() => {
+        ;(CharConfigSubMenu as ReturnType<typeof writable<number>>).set(ADVANCED_PAGE)
+    })
+    afterEach(() => {
+        ;(CharConfigSubMenu as ReturnType<typeof writable<number>>).set(0)
+    })
+}
+
+describe('GL-2 the Edit in Studio link beside the toggle definition', () => {
+    onAdvancedPage()
+    test('sits between the field label and its textarea and opens the character toggles', async () => {
+        const target = await show()
+        const link = toggleLink(target)
+        expect(link).not.toBeNull()
+        expect(link!.previousElementSibling?.textContent).toContain(language.customPromptTemplateToggle)
+        const field = Array.from(target.querySelectorAll('textarea')).find((area) => area.value === 'a=A')
+        expect(field).toBeDefined()
+        expect(link!.compareDocumentPosition(field!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+        link!.click()
+        flushSync()
+        expect(get(studioOpen)).toBe(true)
+        expect(studioScreen.target).toEqual({ owner: { type: 'character', id: 'char-a' }, kind: 'toggles', from: 'chat' })
+        expect(studioScreen.opener?.element).toBe(link)
+    })
+
+    test('is there with studioEntry={false}, which hides only the top row', async () => {
+        const target = await show({ studioEntry: false })
+        expect(entry(target)).toBeNull()
+        expect(toggleLink(target)).not.toBeNull()
+    })
+
+    test('is absent while Studio is off or under the Beta Mobile GUI', async () => {
+        setStudioEnabled(false)
+        expect(toggleLink(await show())).toBeNull()
+        setStudioEnabled(true)
+        ;(MobileGUI as ReturnType<typeof writable<boolean>>).set(true)
+        expect(toggleLink(await show())).toBeNull()
+    })
+})
+
+describe('GL-5 the classic toggle textarea keeps its binding', () => {
+    onAdvancedPage()
+    test('typing writes the character field', async () => {
+        const target = await show()
+        const field = Array.from(target.querySelectorAll('textarea')).find((area) => area.value === 'a=A')
+        expect(field).toBeDefined()
+        field!.value = 'b=B'
+        field!.dispatchEvent(new Event('input', { bubbles: true }))
+        flushSync()
+        expect((DBState.db as { characters: { customModuleToggle: string }[] }).characters[0].customModuleToggle).toBe('b=B')
     })
 })
 

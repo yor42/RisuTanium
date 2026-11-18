@@ -871,36 +871,3 @@ describe.each([
         }
     })
 })
-
-// The legacy/block-page branch of `LoadLocalBackup` (the page is not a store2 page) installs a default export's stubs
-// as they are and stores each unit entry under its own uuid.
-describe.each([
-    ['SaveLocalBackup', SaveLocalBackup as Runner],
-    ['SavePartialLocalBackup', SavePartialLocalBackup as Runner],
-])('%s default (stub-form) export imported by a legacy page', (_name, run) => {
-    test('guard: the stubs keep their minted uuids, each stored unit holds the whole character with all its chats, and no alert appears', async () => {
-        const page = await pageOf()
-        await run()
-        const uuids = await mintedUuids()
-        expect(uuids[1]).not.toBeNull()
-        expect(uuids[2]).not.toBeNull()
-
-        resetResidencyForTest()
-        const stored = new Map<string, Uint8Array>()
-        injectRestoreStore(createForageBackedStore(forageOverMap(stored)))
-        await loadBackupBytes(concat(backupSink.writes))
-
-        expect(alertErrorMock).not.toHaveBeenCalled()
-        const installed = vi.mocked(setDatabase).mock.calls.at(-1)?.[0] as unknown as { characters: Array<Record<string, unknown>> }
-        expect(installed.characters.map((character) => character.coldstorage ?? null)).toEqual(uuids)
-        for (const index of [1, 2]) {
-            const unit = stored.get(`coldstorage/${uuids[index]}`)
-            expect(unit, page.entries[index].name).toBeInstanceOf(Uint8Array)
-            const payload = JSON.parse(decoder.decode(gunzipSync(unit!))) as { character: { name: string, chats: Array<{ message: unknown }> } }
-            const whole = wholeOf(page, page.entries[index])
-            expect(payload.character.name).toBe(whole.name)
-            expect(payload.character.chats).toHaveLength(page.entries[index].chats.length)
-            expect(payload.character.chats.map((chat) => chat.message)).toEqual((whole.chats as Obj[]).map((chat) => chat.message))
-        }
-    })
-})

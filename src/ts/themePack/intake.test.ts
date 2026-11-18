@@ -18,6 +18,7 @@ import {
     readsOutsideTailAndDirectory, spySource, tailReads, unreadableSource, utf8, validPackFiles, zip64SizesBlock, zipPack,
     type RawEntry, type RawZipOptions, type ReadRecord, type ZipLayout,
 } from './fixtures/packBuilder'
+import { apngBytes, padPngTo, pngBytes, riffWebp, vp8Chunk, vp8xChunk, WEBP_ANIMATED } from './fixtures/imageBuilder'
 
 const MIB = 1024 * 1024
 const realJudge: PackJudge = async (sheets) => judgePackSheets(sheets)
@@ -84,6 +85,34 @@ describe('accepted packs', () => {
     it('intakePackBytes gives the same verdict as intakePack over the same bytes', async () => {
         const bytes = zipPack(validPackFiles())
         expect(await intakePackBytes(bytes, realJudge)).toEqual((await run(bytes)).result)
+    })
+})
+
+describe('T2b-2 malformed tile fields are not an intake refusal', () => {
+    // Intake keeps accepting a manifest whose `colors` or
+    // `icon` is malformed, because apply re-runs intake over stored archives; only the install flow refuses them.
+    it.each([
+        ['an invalid colors.main', { colors: { main: 'not-a-colour' } }, 'main', 'colors.main'],
+        ['a non-object colors', { colors: 'red' }, 'main', 'colors'],
+        ['an empty icon', { icon: '' }, 'icon', 'icon'],
+    ] as const)('%s is accepted and its manifest.tile keeps the invalid field', async (_label, over, key, name) => {
+        const bytes = zipPack(validPackFiles({ 'manifest.json': manifestText(over) }))
+        for (const result of [(await run(bytes)).result, await intakePackBytes(bytes, realJudge)]) {
+            expect(packOf(result).manifest.tile[key]).toEqual({ kind: 'invalid', field: name })
+        }
+    })
+
+    // The icon's size, type and animation are judged by the install flow only, never by intake (which apply re-runs).
+    it.each([
+        ['an icon that is not in the pack', 'images/missing.png', {}],
+        ['an icon path that is a font', 'fonts/x.woff2', {}],
+        ['an animated PNG', 'images/a.png', { 'images/a.png': apngBytes(8, 8) }],
+        ['an animated WebP', 'images/a.webp', { 'images/a.webp': WEBP_ANIMATED }],
+        ['a 600 x 600 WebP', 'images/a.webp', { 'images/a.webp': riffWebp([vp8xChunk(600, 600), vp8Chunk(600, 600)]) }],
+        ['a PNG over 256 KiB', 'images/a.png', { 'images/a.png': padPngTo(pngBytes(8, 8), 262145) }],
+    ])('T3-7: %s is accepted by intake', async (_label, icon, files) => {
+        const bytes = zipPack(validPackFiles({ ...files, 'manifest.json': manifestText({ icon }) }))
+        expect(packOf(await intakePackBytes(bytes, realJudge)).manifest.tile.icon).toEqual({ kind: 'ok', value: icon })
     })
 })
 

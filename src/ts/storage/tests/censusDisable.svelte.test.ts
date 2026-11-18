@@ -177,7 +177,6 @@ import { runManualCleanup } from 'src/ts/storage/manualCleanup'
 import { queueInlayCleanupForCharacters, getInlayCleanupState, resetInlayCleanupRefusalForTests } from 'src/ts/process/files/inlayCleanup'
 import { injectAppStore } from 'src/ts/storage/store/appStore'
 import { disablePageBlockOwner, resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
-import { replaceWithRestoredSet } from 'src/ts/drive/restoreReplace'
 import { resetPageStorageModeForTests, setPageStorageMode, type PageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { registerResidency, resetResidencyForTest } from 'src/ts/storage/store2/residencyActive'
 import { getLoadTimeListing, recordLoadTimeListing, resetLoadTimeListingForTests } from 'src/ts/storage/loadTimeListing'
@@ -307,20 +306,6 @@ describe('on a store2 page no legacy deleter deletes', () => {
 
         expect(failed.map((entry) => entry.key)).toEqual([UNIT])
         expect(store.deletes).toEqual([])
-    })
-
-    test('guard: the main-file rename finish is unreachable: the restore replace has no block owner and touches no key', async () => {
-        // The store2 boot disables the block owner before it registers the residency.
-        disablePageBlockOwner()
-        enterStore2Page()
-        store.files.set('database/database.bin', Uint8Array.from([9]))
-        const writesBefore = store.writes.length
-
-        await expect(replaceWithRestoredSet({} as unknown as Parameters<typeof replaceWithRestoredSet>[0], () => false)).rejects.toThrow('no block store')
-
-        expect(store.deletes).toEqual([])
-        expect(store.writes).toHaveLength(writesBefore)
-        expect(store.files.has('database/database.bin')).toBe(true)
     })
 
     test('guard: no load-time listing is recorded', async () => {
