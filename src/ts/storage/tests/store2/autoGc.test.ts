@@ -19,7 +19,9 @@ import { MEASURE } from 'src/ts/process/memory/measureFlag'
 import { resetPageStorageModeForTests, setPageStorageMode } from 'src/ts/storage/pageStorageMode'
 import { createMemoryBackend, type MemoryBackend } from 'src/ts/storage/store2/backend'
 import { encodeUnit, newUnitKey, UNIT_TYPE } from 'src/ts/storage/store2/format'
-import { buildAutoGcDeps, formatGcResult, runAutoGc, type AutoGcFacts } from 'src/ts/storage/store2/gc/autoGc'
+import { classifyCommitRead } from 'src/ts/storage/store2/commitKey'
+import { STORAGE_TAB_LOCK_NAME } from 'src/ts/storage/storageTabLocks'
+import { buildAutoGcDeps, formatGcResult, runAutoGc, soleTabAnswer, type AutoGcFacts } from 'src/ts/storage/store2/gc/autoGc'
 import { formatGcMarkMs, meterGcBackend } from 'src/ts/storage/store2/gc/gcMeter'
 import { gcPass } from 'src/ts/storage/store2/gc/pass'
 import { Store2Session } from 'src/ts/storage/store2/session'
@@ -35,7 +37,14 @@ vi.mock(import('src/ts/drive/storeImport'), () => ({
 
 const clock = createClock()
 const env = testEnv(clock, 11)
-const CLEAN: AutoGcFacts = { isBusy: () => false, saveLoopParked: () => false, isSaveClean: () => true }
+const CLEAN: AutoGcFacts = {
+    isBusy: () => false,
+    saveLoopParked: () => false,
+    isSaveClean: () => true,
+    restoreInProgress: () => false,
+    peers: async () => 'alone',
+    ownBase: () => null,
+}
 
 beforeEach(() => {
     resetPageStorageModeForTests()
@@ -272,5 +281,267 @@ describe('shouldStop in the pass', () => {
 
         expect(result).toEqual({ status: 'done', deleted: 60, batches: 3 })
         expect(page.over.count('listStore2'), 'the second round listed again').toBe(2)
+    })
+
+    test('reproducer: a restore run stops the pass on the app, before any read', async () => {
+        const page = await openTauri(30)
+        const facts = { ...CLEAN, restoreInProgress: () => true }
+        const deps = buildAutoGcDeps(page.session, facts)
+
+        expect(deps?.shouldStop?.()).toBe(true)
+        expect(await gcPass(deps as NonNullable<typeof deps>)).toEqual({ status: 'done', deleted: 0, batches: 0, stopped: 'yielded' })
+        expect(await orphansLeft(page)).toBe(30)
+    })
+})
+
+describe('the web pass: sole-tab proof and own base', () => {
+    interface WebPage extends Page {
+        /** The manifest key the seeded commit key names as current. */
+        base: string
+    }
+
+    async function currentKeyOf(memory: MemoryBackend): Promise<string> {
+        const parsed = classifyCommitRead(await memory.readCommit())
+        if (parsed.status !== 'parsed' || parsed.value.current === null) {
+            throw new Error('the seeded store has no current manifest')
+        }
+        return parsed.value.current.key
+    }
+
+    async function openWeb(orphanCount: number): Promise<WebPage> {
+        const memory = createMemoryBackend()
+        await seedStore(memory, env)
+        const orphans: string[] = []
+        for (let i = 0; i < orphanCount; i++) {
+            const key = newUnitKey(env)
+            await memory.putUnit(key, encodeUnit(UNIT_TYPE.preset, { v: 1, orphan: key }))
+            orphans.push(key)
+        }
+        const over = flushConfirming(memory)
+        const session = await Store2Session.open(createMemoryByteStore(), { kind: 'indexeddb', backend: over.backend, upstreamMainFile: async () => false })
+        over.calls.length = 0
+        return { session, memory, over, orphans, base: await currentKeyOf(memory) }
+    }
+
+    function webFacts(page: WebPage, overrides: Partial<AutoGcFacts> = {}): AutoGcFacts {
+        return { ...CLEAN, ownBase: () => page.base, ...overrides }
+    }
+
+    const READS = ['readCommit', 'readUnits', 'listStore2']
+
+    test('reproducer: an alone, own-based web page deletes its orphans', async () => {
+        const page = await openWeb(30)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        expect(await runAutoGc(page.session, webFacts(page))).toEqual({ status: 'done', deleted: 30, batches: 2 })
+        expect(await orphansLeft(page)).toBe(0)
+    })
+
+    test('reproducer: another tab refuses in the first round with no store2 read', async () => {
+        const page = await openWeb(30)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        const result = await runAutoGc(page.session, webFacts(page, { peers: async () => 'others' }))
+
+        expect(result).toMatchObject({ status: 'refused', reason: 'other-tab' })
+        expect(page.over.calls.filter(call => READS.includes(call))).toEqual([])
+        expect(await orphansLeft(page)).toBe(30)
+    })
+
+    test('reproducer: a host without Web Locks refuses no-web-locks with no read', async () => {
+        const page = await openWeb(30)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        const result = await runAutoGc(page.session, webFacts(page, { peers: async () => 'unsupported' }))
+
+        expect(result).toMatchObject({ status: 'refused', reason: 'no-web-locks' })
+        expect(page.over.calls.filter(call => READS.includes(call))).toEqual([])
+        expect(await orphansLeft(page)).toBe(30)
+    })
+
+    test('reproducer: another tab after the first batch ends the pass with the applied batch kept', async () => {
+        const page = await openWeb(60)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        const result = await runAutoGc(page.session, webFacts(page, { peers: async () => page.over.count('removeBatch') >= 1 ? 'others' : 'alone' }))
+
+        expect(result).toEqual({ status: 'done', deleted: 25, batches: 1, stopped: 'other-tab' })
+        expect(await orphansLeft(page)).toBe(35)
+    })
+
+    test('reproducer: another tab after the listing ends the pass before the first batch', async () => {
+        const page = await openWeb(30)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        const result = await runAutoGc(page.session, webFacts(page, { peers: async () => page.over.count('listStore2') >= 1 ? 'others' : 'alone' }))
+
+        expect(result).toEqual({ status: 'done', deleted: 0, batches: 0, stopped: 'other-tab' })
+        expect(await orphansLeft(page)).toBe(30)
+    })
+
+    test('reproducer: a host that loses Web Locks after the listing ends the pass before the first batch', async () => {
+        const page = await openWeb(30)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        const result = await runAutoGc(page.session, webFacts(page, { peers: async () => page.over.count('listStore2') >= 1 ? 'unsupported' : 'alone' }))
+
+        expect(result).toEqual({ status: 'done', deleted: 0, batches: 0, stopped: 'other-tab' })
+        expect(await orphansLeft(page)).toBe(30)
+    })
+
+    test('guard: the proof is asked fresh at the round start and before each of three batches, never cached', async () => {
+        const page = await openWeb(60)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+        const peers = vi.fn(async () => 'alone' as const)
+
+        await runAutoGc(page.session, webFacts(page, { peers }))
+
+        expect(peers).toHaveBeenCalledTimes(4)
+    })
+
+    test('guard: the proof is answered before the stop rule at each batch, so a page that turns busy in the proof stops yielded', async () => {
+        const page = await openWeb(30)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+        let busy = false
+        let asked = 0
+        const peers = async () => {
+            asked++
+            if (asked === 2) {
+                busy = true
+            }
+            return 'alone' as const
+        }
+
+        const result = await runAutoGc(page.session, webFacts(page, { peers, isBusy: () => busy }))
+
+        expect(result).toEqual({ status: 'done', deleted: 0, batches: 0, stopped: 'yielded' })
+    })
+
+    test('guard: the app passes neither fact to the pass and never calls them', async () => {
+        const page = await openTauri(30)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+        const peers = vi.fn(async () => 'others' as const)
+        const ownBase = vi.fn(() => 'not-the-base')
+        const deps = buildAutoGcDeps(page.session, { ...CLEAN, peers, ownBase })
+
+        expect(deps?.peers).toBeUndefined()
+        expect(deps?.ownBase).toBeUndefined()
+        expect(await runAutoGc(page.session, { ...CLEAN, peers, ownBase })).toEqual({ status: 'done', deleted: 30, batches: 2 })
+        expect(peers).not.toHaveBeenCalled()
+        expect(ownBase).not.toHaveBeenCalled()
+    })
+
+    test.each(['node', 'opfs-transitional'] as const)('guard: a %s session runs nothing, not even a read', async (kind) => {
+        const page = await openWeb(30)
+        const session = Object.create(page.session, { kind: { value: kind } }) as Store2Session
+
+        expect(await runAutoGc(session, webFacts(page))).toBeNull()
+        expect(page.over.calls).toEqual([])
+    })
+
+    test('guard: an own base that is not the commit key\'s current refuses stale-base with exactly one read of the commit key', async () => {
+        const page = await openWeb(30)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+        const peer = committerOf(page.memory, createClock(), 78)
+        expect((await peer.commit(await page.memory.readCommit(), treeRequest(0, { tag: 'peer' }))).status).toBe('committed')
+        const parsed = classifyCommitRead(await page.memory.readCommit())
+        if (parsed.status !== 'parsed') {
+            throw new Error('the commit key does not parse')
+        }
+        expect(parsed.value.retained.map(entry => entry.key), 'precondition: the own base is retained, not current').toContain(page.base)
+        expect(parsed.value.current?.key, 'precondition: the own base is not the current').not.toBe(page.base)
+        page.over.calls.length = 0
+
+        const result = await runAutoGc(page.session, webFacts(page))
+
+        expect(result).toMatchObject({ status: 'refused', reason: 'stale-base' })
+        expect(page.over.count('readCommit')).toBe(1)
+        expect(page.over.count('readUnits')).toBe(0)
+        expect(page.over.count('listStore2')).toBe(0)
+        expect(await orphansLeft(page)).toBe(30)
+    })
+
+    test('guard: no settled own base (null) refuses stale-base before any unit read', async () => {
+        const page = await openWeb(30)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+
+        const result = await runAutoGc(page.session, webFacts(page, { ownBase: () => null }))
+
+        expect(result).toMatchObject({ status: 'refused', reason: 'stale-base' })
+        expect(page.over.count('readUnits')).toBe(0)
+        expect(await orphansLeft(page)).toBe(30)
+    })
+
+    test('reproducer: a rebuild round that finds another tab ends other-tab with one read of the commit key', async () => {
+        const page = await openWeb(60)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+        let peerWrote = false
+        page.over.before = async (name, count) => {
+            if (name === 'removeBatch' && count === 2) {
+                page.over.before = null
+                const peer = committerOf(page.memory, createClock(), 78)
+                expect((await peer.commit(await page.memory.readCommit(), treeRequest(0, { tag: 'peer' }))).status).toBe('committed')
+                peerWrote = true
+            }
+        }
+        const readsBefore = (): number => page.over.count('readCommit')
+
+        const result = await runAutoGc(page.session, webFacts(page, { peers: async () => peerWrote ? 'others' : 'alone' }))
+
+        expect(result).toEqual({ status: 'done', deleted: 25, batches: 1, stopped: 'other-tab' })
+        expect(readsBefore()).toBe(1)
+    })
+
+    test('reproducer: a rebuild round with a stale own base ends refused, after one more read of the commit key and no listing', async () => {
+        const page = await openWeb(60)
+        vi.spyOn(console, 'info').mockImplementation(() => {})
+        page.over.before = async (name, count) => {
+            if (name === 'removeBatch' && count === 2) {
+                page.over.before = null
+                const peer = committerOf(page.memory, createClock(), 78)
+                expect((await peer.commit(await page.memory.readCommit(), treeRequest(0, { tag: 'peer' }))).status).toBe('committed')
+            }
+        }
+
+        const result = await runAutoGc(page.session, webFacts(page))
+
+        expect(result).toMatchObject({ status: 'done', deleted: 25, batches: 1, stopped: 'refused', refusal: { reason: 'stale-base' } })
+        expect(page.over.count('readCommit')).toBe(2)
+        expect(page.over.count('listStore2')).toBe(1)
+    })
+})
+
+describe('soleTabAnswer', () => {
+    const shared: LockInfo = { name: STORAGE_TAB_LOCK_NAME, mode: 'shared' }
+    const own = (): boolean => true
+    const aloneSnapshot = async (): Promise<LockManagerSnapshot> => ({ held: [shared], pending: [] })
+
+    test.each<[string, Parameters<typeof soleTabAnswer>[0], string]>([
+        ['no query', { query: undefined, holdsOwnPresence: own }, 'unsupported'],
+        ['no query and no own claim: the missing API is named first', { query: undefined, holdsOwnPresence: () => false }, 'unsupported'],
+        ['own claim false before the query', { query: aloneSnapshot, holdsOwnPresence: () => false }, 'others'],
+        ['a rejecting query', { query: async () => { throw new Error('denied') }, holdsOwnPresence: own }, 'others'],
+        ['two holders', { query: async () => ({ held: [shared, shared], pending: [] }), holdsOwnPresence: own }, 'others'],
+        ['an exclusive pending request', { query: async () => ({ held: [shared], pending: [{ name: STORAGE_TAB_LOCK_NAME, mode: 'exclusive' }] }), holdsOwnPresence: own }, 'others'],
+        ['an exclusive holder', { query: async () => ({ held: [{ name: STORAGE_TAB_LOCK_NAME, mode: 'exclusive' }], pending: [] }), holdsOwnPresence: own }, 'others'],
+        ['no holder at all with the own claim true', { query: async () => ({ held: [], pending: [] }), holdsOwnPresence: own }, 'others'],
+        ['an unrelated lock only', { query: async () => ({ held: [{ name: 'other', mode: 'shared' }], pending: [] }), holdsOwnPresence: own }, 'others'],
+        ['exactly one holder and the own claim true', { query: aloneSnapshot, holdsOwnPresence: own }, 'alone'],
+    ])('%s', async (_name, input, expected) => {
+        expect(await soleTabAnswer(input)).toBe(expected)
+    })
+
+    test('a false own claim answers before the lock query is asked', async () => {
+        const query = vi.fn(aloneSnapshot)
+
+        expect(await soleTabAnswer({ query, holdsOwnPresence: () => false })).toBe('others')
+        expect(query).not.toHaveBeenCalled()
+    })
+
+    test('the own claim is read again after the query: a claim that went false during it is not alone', async () => {
+        let claim = true
+        const answer = await soleTabAnswer({ query: async () => { claim = false; return { held: [shared], pending: [] } }, holdsOwnPresence: () => claim })
+
+        expect(answer).toBe('others')
     })
 })

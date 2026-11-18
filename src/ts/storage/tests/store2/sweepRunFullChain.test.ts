@@ -41,6 +41,7 @@ vi.mock('../../../parser/parser.svelte', () => ({ risuChatParser: vi.fn() }))
 vi.mock('../../../process/modules', () => ({ moduleUpdate: vi.fn() }))
 vi.mock(import('src/ts/storage/store2/saveLoop'), () => ({
     isSaveLoopParked: () => page.saveLoopParked,
+    acknowledgedManifestKey: () => null,
 }) as unknown as typeof import('src/ts/storage/store2/saveLoop'))
 vi.mock(import('src/ts/process/files/inlayCleanup'), () => ({
     queryOtherTabs: async () => page.peers,

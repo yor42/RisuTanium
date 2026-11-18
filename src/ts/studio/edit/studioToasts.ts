@@ -7,7 +7,7 @@ import { language } from '../../../lang'
 import { toastHost, type ToastHost, type ToastId, type UndoOutcome } from '../../toast/toastHost.svelte'
 import type { ListSkipReason } from '../history/historyModel'
 import type { OwnerHistoryService, StudioRefusal, StudioResult } from '../history/ownerHistory.svelte'
-import type { OwnerKey } from '../history/ownerPhase'
+import { parseOwnerKey, type OwnerKey } from '../history/ownerPhase'
 
 export function refusalText(reason: StudioRefusal): string {
     switch (reason) {
@@ -42,9 +42,17 @@ export function withListReason(text: string, reason?: ListSkipReason): string {
     return added === null ? text : text + ' ' + added
 }
 
-// The text of a refused result: the refusal's own, and for an unchecked file the line that names the row. Only a
+// The text of a refused result: the refusal's own, and for an unchecked file the line that names the row. With a module
+// owner, the three refusals that name the owner use module wording; without an owner every text is the one below. Only a
 // precondition refusal carries the list reason; every other refusal keeps its single sentence.
-export function refusalTextOf(result: { reason: StudioRefusal; name?: string; listReason?: ListSkipReason }): string {
+export function refusalTextOf(result: { reason: StudioRefusal; name?: string; listReason?: ListSkipReason }, owner?: OwnerKey): string {
+    if (owner !== undefined && parseOwnerKey(owner)?.kind === 'module') {
+        switch (result.reason) {
+            case 'not-selected': return language.studioRefusalModuleNotSelected
+            case 'gone': return language.studioRefusalModuleGone
+            case 'duplicate-module-id': return language.studioRefusalModuleSharedId
+        }
+    }
     if (result.reason === 'asset-file-unchecked' && result.name !== undefined) {
         return language.studioAssetFileUnchecked(result.name)
     }

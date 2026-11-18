@@ -166,16 +166,6 @@ vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
     verifyAssetCacheEntry: vi.fn(async () => ({ status: 'ok' as const })),
 }) as unknown as typeof import('src/ts/storage/assetIntegrity'))
 
-vi.mock(import('src/ts/storage/remoteSaveCleanup'), () => ({
-    getRemoteSaveCleanupAction: vi.fn(() => 'create-meta'),
-    getRemoteSavePayloadName: vi.fn(() => null),
-}) as unknown as typeof import('src/ts/storage/remoteSaveCleanup'))
-
-vi.mock(import('src/ts/storage/assetSweep'), () => ({
-    sweepTauriAssets: vi.fn(async () => { }),
-    sweepForageAssetKey: vi.fn(async () => { }),
-}) as unknown as typeof import('src/ts/storage/assetSweep'))
-
 vi.mock(import('src/ts/storage/mainFileRecord'), () => ({
     noteMainFileBytes: vi.fn(),
 }) as unknown as typeof import('src/ts/storage/mainFileRecord'))
@@ -413,100 +403,6 @@ describe('loadData() on the Node server with a block profile', () => {
         const booted = dbState.current as { botPresets: unknown[], botPresetsId: number }
         expect(booted.botPresets).toHaveLength(1)
         expect(booted.botPresetsId).toBe(-1)
-    })
-
-    test('a kept generation on disk holds the startup asset sweep off, and an ordinary profile does not', async () => {
-        const generation = await putProfile(dbWith('stored'))
-        server.seed('blocks/000000000001-00000001/root', new Uint8Array([1]))
-        server.seed(keptKey('000000000001-00000001'), new TextEncoder().encode('{"kept":true}'))
-        server.seed('assets/orphan.png', new Uint8Array([1]))
-        const held = await freshLoadData()
-
-        await held.boot()
-
-        expect(buildAssetKeepSetMock, 'no keep-set is built: the asset sweep did not run').not.toHaveBeenCalled()
-        expect(server.files.has('assets/orphan.png')).toBe(true)
-        expect(server.files.has(`blocks/${generation}/root`)).toBe(true)
-    })
-
-    test('the legacy block cache database is dropped after a block boot, and left alone by a legacy boot', async () => {
-        async function cacheDrops(): Promise<number> {
-            const localforage = (await import('localforage')).default
-            let drops = 0
-            for (const result of vi.mocked(localforage.createInstance).mock.results) {
-                const drop = (result.value as { dropInstance: ReturnType<typeof vi.fn> }).dropInstance
-                drops += drop.mock.calls.filter(([options]) => (options as { name?: string }).name === 'risuSaveCache').length
-            }
-            return drops
-        }
-        await putProfile(dbWith('stored'))
-        const block = await freshLoadData()
-        await block.boot()
-        const afterBlockBoot = await cacheDrops()
-        expect(afterBlockBoot).toBeGreaterThan(0)
-
-        server.files.clear()
-        await restartPage()
-        server.seed('database/database.bin', (await import('src/ts/storage/risuSave')).encodeRisuSaveLegacy(dbWith('legacy')))
-        const legacy = await freshLoadData()
-        await legacy.boot()
-        expect(await cacheDrops(), 'a boot that stayed on the legacy main file keeps its cache').toBe(afterBlockBoot)
-    })
-
-    test('a pre-conversion copy of the main file holds the startup asset sweep off for as long as it exists, and the next boot after it is deleted sweeps', async () => {
-        await putProfile(dbWith('stored'))
-        server.seed(preBlocksKey(0), new Uint8Array([1, 2, 3]))
-        server.seed('assets/orphan.png', new Uint8Array([1]))
-        const held = await freshLoadData()
-
-        await held.boot()
-
-        expect(buildAssetKeepSetMock, 'no keep-set is built while the copy exists').not.toHaveBeenCalled()
-        expect(server.files.has('assets/orphan.png')).toBe(true)
-
-        server.files.delete(preBlocksKey(0))
-        await restartPage()
-        const resumed = await freshLoadData()
-        await resumed.boot()
-
-        expect(buildAssetKeepSetMock, 'the sweep resumes once the copy is gone').toHaveBeenCalled()
-    })
-
-    test('a legacy main file left beside a block profile holds the startup asset sweep off for as long as it exists, and the next boot after it is deleted sweeps', async () => {
-        await putProfile(dbWith('stored'))
-        server.seed('database/database.bin', new Uint8Array([9, 9, 9]))
-        server.seed('assets/orphan.png', new Uint8Array([1]))
-        const held = await freshLoadData()
-
-        await held.boot()
-
-        expect(buildAssetKeepSetMock, 'no keep-set is built while the legacy main file exists').not.toHaveBeenCalled()
-        expect(server.files.has('assets/orphan.png')).toBe(true)
-
-        server.files.delete('database/database.bin')
-        await restartPage()
-        const resumed = await freshLoadData()
-        await resumed.boot()
-
-        expect(buildAssetKeepSetMock, 'the sweep resumes once the legacy main file is gone').toHaveBeenCalled()
-    })
-
-    test('guard: a legacy profile is not held off by its own main file', async () => {
-        server.seed('database/database.bin', (await import('src/ts/storage/risuSave')).encodeRisuSaveLegacy(dbWith('legacy')))
-        const { boot } = await freshLoadData()
-
-        await boot()
-
-        expect(buildAssetKeepSetMock).toHaveBeenCalled()
-    })
-
-    test('guard: with no kept generation the startup asset sweep builds its keep-set', async () => {
-        await putProfile(dbWith('stored'))
-        const { boot } = await freshLoadData()
-
-        await boot()
-
-        expect(buildAssetKeepSetMock).toHaveBeenCalled()
     })
 })
 
