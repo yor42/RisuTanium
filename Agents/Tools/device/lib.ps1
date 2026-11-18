@@ -10,8 +10,9 @@
 
 $script:AdbPath = 'adb'
 $script:AdbTmp = $null
+# Set by Initialize-AdbGuard: every Invoke-Adb call then goes through device-guard/adbg.mjs and never starts adb itself.
+$script:AdbGuard = $null
 $script:AdbSeq = 0
-$script:DefaultSerial = '29f3cde9193f7ece'
 $script:DefaultPackage = 'io.github.yor42.risutanium'
 $script:AllowedPackages = @('io.github.yor42.risutanium')
 $script:ScratchRoot = Join-Path $env:TEMP 'risu-b715'
@@ -188,17 +189,31 @@ function Invoke-TrackedProcess {
 
 # ---------- adb ----------
 
+# There is no default device: a script that cannot name its device refuses before any result file or adb call. The accepted
+# shape equals the device guard's serial shape, so a serial that passes here is never rejected there for its characters.
+function Assert-DeviceSerial([string]$Serial) {
+    if ([string]::IsNullOrWhiteSpace($Serial)) { throw '-Serial is required: name the device explicitly; there is no default device' }
+    if ($Serial -cnotmatch '^[A-Za-z0-9._:-]+\z') { throw ('bad -Serial: ' + $Serial) }
+}
+
 function Invoke-Adb {
     param([Parameter(Mandatory)][string[]]$AdbArgs, [int]$TimeoutSec = 20, [string]$Serial)
     if (-not $script:AdbTmp) { throw 'Initialize-Adb must run first' }
+    Assert-DeviceSerial $Serial
     $script:AdbSeq++
     $base = Join-Path $script:AdbTmp ('adb-' + $PID + '-' + $script:AdbSeq)
-    $all = @()
-    if ($Serial) { $all += @('-s', $Serial) }
+    if ($script:AdbGuard) {
+        # The guard sends the adb call itself with its own `-s <serial>` and logs an intent and an exit line for it.
+        $exe = Get-NodePath
+        $all = @($script:AdbGuard.Path, '--serial', $Serial, '--log', $script:AdbGuard.Log, '--')
+    } else {
+        $exe = $script:AdbPath
+        $all = @('-s', $Serial)
+    }
     $all += $AdbArgs
     $stdin = $base + '.in'
     [IO.File]::WriteAllText($stdin, '')
-    $p = Start-Process -FilePath $script:AdbPath -ArgumentList (Join-ProcessArgs $all) `
+    $p = Start-Process -FilePath $exe -ArgumentList (Join-ProcessArgs $all) `
         -RedirectStandardOutput ($base + '.out') -RedirectStandardError ($base + '.err') -RedirectStandardInput $stdin `
         -NoNewWindow -PassThru
     $null = $p.Handle
@@ -221,6 +236,7 @@ function Invoke-Adb {
 
 # The first adb call may spawn the server, which inherits the redirect handles; run it once with output files that stay.
 function Initialize-Adb([string]$Dir, [string]$AdbExe) {
+    if ($script:AdbGuard) { throw 'Initialize-Adb refused: adb calls are guarded and never start adb directly' }
     if ($AdbExe) { $script:AdbPath = $AdbExe }
     New-Item -ItemType Directory -Force -Path $Dir | Out-Null
     $script:AdbTmp = $Dir
@@ -229,6 +245,32 @@ function Initialize-Adb([string]$Dir, [string]$AdbExe) {
     $in = Join-Path $Dir 'adb-start-server.in'
     [IO.File]::WriteAllText($in, '')
     $p = Start-Process -FilePath $script:AdbPath -ArgumentList 'start-server' -RedirectStandardOutput $out `
+        -RedirectStandardError $err -RedirectStandardInput $in -NoNewWindow -PassThru
+    $null = $p.Handle
+    if (-not $p.WaitForExit(30000)) {
+        try { $p.Kill($true) } catch { }
+        return $false
+    }
+    return ($p.ExitCode -eq 0)
+}
+
+# Guarded counterpart of Initialize-Adb: from here on every Invoke-Adb call runs through device-guard/adbg.mjs, which allows or
+# refuses it and logs it to $Log. The guard sits beside this folder and its path is fixed; there is no override. The
+# start-server call keeps its own output files for the same reason as in Initialize-Adb.
+function Initialize-AdbGuard([string]$Dir, [string]$Serial, [string]$Log) {
+    Assert-DeviceSerial $Serial
+    $guard = Join-Path $script:DeviceToolsDir '..\device-guard\adbg.mjs'
+    if (-not (Test-Path -LiteralPath $guard -PathType Leaf)) { throw ('device guard not found: ' + $guard) }
+    $guard = (Resolve-Path -LiteralPath $guard).ProviderPath
+    New-Item -ItemType Directory -Force -Path $Dir | Out-Null
+    $script:AdbTmp = $Dir
+    $script:AdbGuard = @{ Path = $guard; Log = $Log }
+    $out = Join-Path $Dir 'adb-start-server.out'
+    $err = Join-Path $Dir 'adb-start-server.err'
+    $in = Join-Path $Dir 'adb-start-server.in'
+    [IO.File]::WriteAllText($in, '')
+    $argLine = Join-ProcessArgs @($guard, '--serial', $Serial, '--log', $Log, '--', 'start-server')
+    $p = Start-Process -FilePath (Get-NodePath) -ArgumentList $argLine -RedirectStandardOutput $out `
         -RedirectStandardError $err -RedirectStandardInput $in -NoNewWindow -PassThru
     $null = $p.Handle
     if (-not $p.WaitForExit(30000)) {
@@ -264,10 +306,13 @@ function Get-DeviceInfo([string]$Serial) {
         battery = [ordered]@{ level = $null; tempC = $null; charging = $null }; dataFreeKB = $null
     }
     if (-not $Serial) { return $info }
-    $m = Invoke-Adb -AdbArgs @('shell', 'getprop', 'ro.product.model') -Serial $Serial
+    # One command string per call: the device guard accepts `shell` only with a single command argument.
+    $m = Invoke-AdbShell $Serial 'getprop ro.product.model'
     if ($m.ExitCode -eq 0) { $info.model = $m.Out }
-    $a = Invoke-Adb -AdbArgs @('shell', 'getprop', 'ro.build.version.release') -Serial $Serial
+    $a = Invoke-AdbShell $Serial 'getprop ro.build.version.release'
     if ($a.ExitCode -eq 0) { $info.android = $a.Out }
+    # The guard refuses the split dumpsys battery form this function sends and df, so guarded mode leaves both blank.
+    if ($script:AdbGuard) { return $info }
     $b = Invoke-Adb -AdbArgs @('shell', 'dumpsys', 'battery') -Serial $Serial
     if ($b.ExitCode -eq 0) {
         if ($b.Out -match 'level:\s*(\d+)') { $info.battery.level = [int]$Matches[1] }
