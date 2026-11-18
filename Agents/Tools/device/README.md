@@ -26,7 +26,7 @@ scratch (`%TEMP%\risu-b715\devscripts\`, not in the repository). Where a stateme
 | `snapshot.ps1` | Whole-app-data snapshot of the test profile (debug builds only). |
 | `restore-snapshot.ps1` | Restores a snapshot into the app data and verifies it against the manifest (debug builds only). |
 | `import-bin.ps1` | Drives the app's own "load local backup" UI for one `.bin` fixture and collects the import phase marks. |
-| `fixture-push.ps1` | Pushes (or removes) one fixture file in the phone's shared storage, with a SHA-256 skip. |
+| `fixture-push.ps1` | Pushes (or removes) one fixture file in `/sdcard/Download` on the phone, with a SHA-256 skip. Every adb call goes through `device-guard/adbg.mjs`. |
 | `mock-openai.mjs` | `node` mock of an OpenAI-style chat endpoint on 127.0.0.1 (default port 6250), for synthetic-device checks. |
 | `mock-reverse.ps1` | Adds, verifies or removes the one `adb reverse` rule that lets the phone reach the mock; `-Probe` tests the path from the phone shell. |
 | `tests/Test-Runner.ps1` | Self-tests with a fake adb; needs no device. |
@@ -66,7 +66,11 @@ the schema is rewritten as `fail` with a `schema: ...` reason. Scripts add their
 ## Usage
 
 Run from the repository root with `pwsh -NoProfile -File Agents\Tools\device\<script>.ps1 ...`. Defaults below are the script
-defaults; `-Serial` defaults to phone 1 and `-AllowedSerials` defaults to that one serial (see Shared defaults).
+defaults; there is no default device: every script that talks to a device requires `-Serial` and refuses a missing, blank
+or malformed value before any result file or adb call. An omitted `-AllowedSerials` equals `-Serial` (see Shared defaults).
+Consequence: with that default the allowed-list gate checks nothing unless `-AllowedSerials` is given, and the explicitly
+named serial is the confirmation. Scripts other than `fixture-push.ps1` still call adb directly until CHORE-834, so a
+personal serial named there reaches that device directly.
 
 ### Run-Check.ps1
 
@@ -215,7 +219,7 @@ checks `pm path` and `run-as ... id`; a debug install that is not debuggable fai
 `ANDROID_HOME` (build-tools) and the pinned JDK 21.
 
 ```
-pwsh -NoProfile -File Agents\Tools\device\sign-install.ps1 -OutDir $env:TEMP\risu-b715\install -Kind debug
+pwsh -NoProfile -File Agents\Tools\device\sign-install.ps1 -OutDir $env:TEMP\risu-b715\install -Kind debug -Serial <serial>
 ```
 
 ### device-prep.ps1
@@ -228,8 +232,8 @@ so `-Revert` restores the true originals (`fail` if nothing is recorded or it is
 stay-awake and the wake key alone, for checks about screen-off behaviour.
 
 ```
-pwsh -NoProfile -File Agents\Tools\device\device-prep.ps1 -OutDir $env:TEMP\risu-b715\prep
-pwsh -NoProfile -File Agents\Tools\device\device-prep.ps1 -OutDir $env:TEMP\risu-b715\prep-revert -Revert
+pwsh -NoProfile -File Agents\Tools\device\device-prep.ps1 -OutDir $env:TEMP\risu-b715\prep -Serial <serial>
+pwsh -NoProfile -File Agents\Tools\device\device-prep.ps1 -OutDir $env:TEMP\risu-b715\prep-revert -Revert -Serial <serial>
 ```
 
 ### cold-start.ps1
@@ -246,7 +250,7 @@ force-stop is declared as a relaunch window, so only an unexpected loss, pid cha
 `inclusive-webview` (every process of the package and of the WebView package); the summary holds medians.
 
 ```
-pwsh -NoProfile -File Agents\Tools\device\cold-start.ps1 -OutDir $env:TEMP\risu-b715\cold -Runs 3 -PortMin 6270 -PortMax 6289
+pwsh -NoProfile -File Agents\Tools\device\cold-start.ps1 -OutDir $env:TEMP\risu-b715\cold -Serial <serial> -Runs 3 -PortMin 6270 -PortMax 6289
 ```
 
 ### cdp.mjs
@@ -398,8 +402,8 @@ to equal the manifest (`du` block counts are recorded but not compared). `result
 was changed. A failure after the removal leaves the data in an undefined state; the reason says "restore again".
 
 ```
-pwsh -NoProfile -File Agents\Tools\device\snapshot.ps1 -OutDir $env:TEMP\risu-b715\snap -Id baseline -Pin
-pwsh -NoProfile -File Agents\Tools\device\restore-snapshot.ps1 -OutDir $env:TEMP\risu-b715\restore -Id baseline
+pwsh -NoProfile -File Agents\Tools\device\snapshot.ps1 -OutDir $env:TEMP\risu-b715\snap -Id baseline -Pin -Serial <serial>
+pwsh -NoProfile -File Agents\Tools\device\restore-snapshot.ps1 -OutDir $env:TEMP\risu-b715\restore -Id baseline -Serial <serial>
 ```
 
 ### fixture-push.ps1 and fixtures
@@ -407,19 +411,24 @@ pwsh -NoProfile -File Agents\Tools\device\restore-snapshot.ps1 -OutDir $env:TEMP
 Fixtures are synthetic `.bin` files on the PC (MC-324 tiered data; the scripts do not generate them). `fixture-push.ps1`:
 `-OutDir`, `-FixturePath` (required), `-CheckId fixture-push`, `-RemoteName` (default: the file name), `-RemoteDir /sdcard/Download`,
 `-CeilingBytes 629145600` (600 MiB), `-AllowLarge`, `-AllowLargeReason`, `-Remove`, `-MaxSeconds 1200`, `-Serial`,
-`-AllowedSerials`, `-Package`, `-RepoRoot`, `-AdbExe`.
+`-AllowedSerials`, `-Package`, `-RepoRoot`. There is no `-AdbExe`: the script never starts adb itself.
 
+- Every adb call (`start-server`, `get-state`, `getprop`, `sha256sum`, `push`, `rm -f`) runs through `device-guard/adbg.mjs`, which
+  allows or refuses it and writes an intent line and an exit line per call to `<OutDir>\adb\adb-commands.log` (also named in
+  `evidence.log` of the result). A serial the guard does not know as a spare test device ends at `adb start-server failed` with an
+  exit-95 refusal in that log. The result leaves `device.battery` and `device.dataFreeKB` blank, because the guard refuses
+  the split `dumpsys battery` form this function sends and `df`, so guarded mode leaves both blank.
 - The transfer is skipped when the device already holds a file of that name with the same SHA-256 (`push.skipped`). A pushed
   copy is hashed on the device again and removed if it differs.
 - The remote name must start with a letter or digit and use only `A-Za-z0-9._-` (128 characters at most); the remote directory
-  must be `/sdcard` or below it, with no segment starting with a dot. Fixtures live below `/sdcard` only.
+  must be exactly `/sdcard/Download` (the guard's only push target), and any other `-RemoteDir` is refused before any adb call.
 - `-Remove` deletes the named fixture instead of pushing.
 - Ceiling gate: a fixture above `-CeilingBytes` is refused before any adb call unless `-AllowLarge` and a non-blank
   `-AllowLargeReason` are both given; then the run proceeds and records a warning with the reason. The ceiling is a caller
   parameter, so a huge `-CeilingBytes` bypasses the reason requirement.
 
 ```
-pwsh -NoProfile -File Agents\Tools\device\fixture-push.ps1 -OutDir $env:TEMP\risu-b715\fx -FixturePath $env:TEMP\risu-b715\fixtures\c-300m.bin
+pwsh -NoProfile -File Agents\Tools\device\fixture-push.ps1 -OutDir $env:TEMP\risu-b715\fx -Serial <serial> -FixturePath $env:TEMP\risu-b715\fixtures\c-300m.bin
 ```
 
 ### import-bin.ps1
@@ -442,7 +451,7 @@ be on the device. `result.json` adds `steps`, `fixture`, `start`, `atDone`, `end
 `phases[]` row and the raw longest snapshot is `<OutDir>\phases.json`. The picker dump is `<OutDir>\picker-ui.xml`.
 
 ```
-pwsh -NoProfile -File Agents\Tools\device\import-bin.ps1 -OutDir $env:TEMP\risu-b715\imp -FixturePath $env:TEMP\risu-b715\fixtures\c-300m.bin `
+pwsh -NoProfile -File Agents\Tools\device\import-bin.ps1 -OutDir $env:TEMP\risu-b715\imp -Serial <serial> -FixturePath $env:TEMP\risu-b715\fixtures\c-300m.bin `
   -SnapshotId baseline -BootWaitSec 60 -PortMin 6270 -PortMax 6289
 ```
 
@@ -481,7 +490,7 @@ pwsh -NoProfile -File Agents\Tools\device\mock-reverse.ps1 -OutDir $env:TEMP\ris
     only whether an `Authorization` header was present; `messages` is the length of the body's `messages` array, or null);
   - `{"t","event":"client-error","code","bytes"}` for bytes that never became a request (a TLS handshake, the probe's `x`, a client
     that hung up mid-line). The mock answers such a socket with 400, closes it and keeps serving.
-- **mock-reverse.ps1.** `-Serial` is required and gated by `-AllowedSerials` (default: phone 1 only); `-Port` defaults to 6250.
+- **mock-reverse.ps1.** `-Serial` is required and gated by `-AllowedSerials` (default: the named serial); `-Port` defaults to 6250.
   Adding a rule first requires a listener on 127.0.0.1:Port on the PC and refuses without one, before any adb call. It then runs
   `adb -s <serial> reverse --no-rebind tcp:P tcp:P` and reads the rule back from `reverse --list`. An identical rule is kept;
   a rule for the same device port that points elsewhere is refused and left alone. `-Remove` removes only `tcp:P` (never
@@ -509,10 +518,12 @@ pwsh -NoProfile -File Agents\Tools\device\mock-reverse.ps1 -OutDir $env:TEMP\ris
   range when more than one device agent works at once. (Before CHORE-204 the default was 9500-9599, outside every
   reservation.)
 - **Devices (orchestrator-restated memory rules, not in the scripts).** Phone 1 is serial `29f3cde9193f7ece`, ports 6270-6309;
-  phone 2 is `2ac80128013f7ece`, ports 6310-6329. Scripts default to phone 1 (`DefaultSerial` in `lib.ps1`). For phone 2 pass
-  both `-Serial` and `-AllowedSerials`; a serial outside the allowed list is refused before any adb call. Only package
-  `io.github.yor42.risutanium` is allowed.
-- **`-s` on every adb call.** `Invoke-Adb` in `lib.ps1` adds `-s <serial>` when given a serial; call adb by hand the same way.
+  phone 2 is `2ac80128013f7ece`, ports 6310-6329. No script defaults to a device: pass `-Serial <serial>` every time
+  (`-AllowedSerials` defaults to that serial; give it explicitly to gate against a list); a serial outside an explicit allowed
+  list is refused before any adb call. Only package `io.github.yor42.risutanium` is allowed.
+- **`-s` on every adb call.** `Invoke-Adb` in `lib.ps1` adds `-s <serial>` to every call and throws on an empty or malformed
+  serial (`^[A-Za-z0-9._:-]+$`) before adb starts; call adb by hand the same way. `fixture-push.ps1` is the exception that
+  proves the route: its calls go through `device-guard/adbg.mjs` (`--serial <serial>`), which sends the `-s` itself.
 - **One agent per device.** Only lane A drives the phones (`Agents/Lanes/README.md`); other lanes ask the maintainer to pass the
   request, with a data ceiling, a time limit and a pass/fail exit (MC-330). A per-device lock
   (`<SnapshotRoot>\device-<serial>.lock`) is held by snapshot, restore and import-bin; a stale lock of a dead process is replaced.
@@ -665,6 +676,16 @@ pwsh -NoProfile -File Agents\Tools\device\tests\Test-Runner.ps1 -Fast -ScratchBa
 - `-ScratchBase`: where per-run scratch is created (default
   `%TEMP%\risu-b715\devscripts\s2r\runner-tests`; each run uses a new GUID subfolder and removes it at the end).
 - `-Fast`: skips the sections the stage 4 and lock tests do not depend on; for scratch mutant runs only, not as a pass.
+- Isolation: no Test-Runner run can start a real adb. At startup it removes every PATH entry that holds an adb (any
+  `adb.exe`, `adb.com`, `adb.cmd`, `adb.bat` or extensionless `adb`) and puts a recording sentinel `adb.cmd` first, so a bare
+  `adb` start reaches the sentinel, which logs the call and fails. It refuses to run (exit 2, `REFUSED real adb is
+  resolvable`) while an `adb.exe`/`adb.com` can still be found in the working directory, the pwsh or node directory or the
+  Windows directories; the cwd is searched unless `NoDefaultCurrentDirectoryInExePath` is set, and the check holds either way.
+  The rule covers bare-name `adb` resolution only. `-CheckIsolationOnly` applies the filter and the check, prints
+  `isolation: adb=<sentinel path>` and exits 0 without running tests. Run it from a directory that holds no adb.
+- The fixture-push tests run the real `device-guard/adbg.mjs` with `ADBG_FAKE_ADB_SCRIPT` set to the runner's fake adb; each of
+  them refuses to start unless that variable is the fake. A `-RunnerDir` copy must therefore keep `device-guard` beside
+  `device`.
 - Host ports: the forward and port-scan tests probe host ports 9770 to 9799 (outside every lane reservation). A listener on
   one of them makes those tests fail spuriously; a live device run on lane A's ports no longer does.
 - Current count: 387 PASS, 0 FAIL, 1 SKIP (sign-install keystore tests, build inputs missing on that machine), ALL PASSED (one full run on 2026-10-24, including 22 `mock-reverse` assertions;

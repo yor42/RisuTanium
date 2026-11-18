@@ -16,7 +16,8 @@
 //       sha256sum|ls|rm -f /sdcard/Download/<name> or /data/local/tmp/<name> (one file, name not starting with a dot)
 //     exec-out screencap -p (with --out <png>, written as binary; with --state it is noted for locate-shot) | logcat --pid <n> [-v <fmt>] [-d] [-T <n>|-t <n>] [-s <Tag>]
 //     forward|reverse tcp:<own port> <target> | forward|reverse --remove tcp:<own port>
-//     install [-r] [-d] <local apk> | push <local file> /sdcard/Download/<exact name>
+//     get-state | start-server (no further arguments; the server-state probes of the device kit)
+//     install [-r] [-d] <local apk> | push <local file> /sdcard/Download/<exact name> (name not starting with a dot; a push times out after 2 h, every other call after 10 min)
 //     pull <exact file path as for ls> <local path>
 //   Only printable ASCII; control characters (newline, tab), shell metacharacters ; & ` $ ( ) < > \ and quotes
 //
@@ -46,8 +47,15 @@
 //   and everything r11 allows still applies. On a playground serial only, in addition:
 //     input tap X Y | input swipe X1 Y1 X2 Y2 [ms] | input keyevent [--longpress] <KEYCODE_* or number>... | input text ...
 //       with no locate, no typing grant and no failed-locate input lock (exit 92 never applies; no lock is recorded);
-//     dumpsys [<service> [args]] (read-only: set, reset, unplug, enable, disable, force-*, unforce, whitelist, step,
-//       write, suppress and similar state-changing words are refused), except the exact form
+//     dumpsys in thirteen allowed forms: dumpsys <service> [args], where <service> is exactly one of activity, meminfo,
+//       gfxinfo, battery, power, package, webviewupdate, window, SurfaceFlinger (case-sensitive; MC-2281) and activity is
+//       allowed only as "dumpsys activity activities" or "dumpsys activity processes"; and exactly "dumpsys thermalservice",
+//       "dumpsys diskstats", "dumpsys input_method" or "dumpsys notification --noredact" with no other argument (MC-2287).
+//       Bare dumpsys, a first argument starting with '-', every other service and every other shape of those four are
+//       refused (97; use net-status for Wi-Fi state). After a listed service the arguments are read-only: set, reset,
+//       unplug, enable, disable, force-*, unforce, whitelist, step, write, suppress, the SurfaceFlinger stats toggles
+//       (--latency-clear, --enable-layer-stats, --disable-layer-stats, --clear-layer-stats, -enable, -disable, -clear)
+//       and similar state-changing words are refused, except the exact form
 //       `dumpsys gfxinfo io.github.yor42.risutanium reset` when --own-package is that same id (frame counters, CHORE-743);
 //     logcat with any filter/format/buffer arguments (no --pid needed) but it must carry -d, -t or -T (also for the
 //       r11 `--pid` form); clearing or resizing the buffer (-c, -G, -P) and writing it to a device file (-f, -r, -n)
@@ -56,13 +64,18 @@
 //     ls [-alhRdF1] <path under /sdcard> and cat <one file under /sdcard>  (plain path segments, no `..`);
 //     pm clear io.github.yor42.risutanium only, and only when --own-package is that same id (else refused, exit 97);
 //       screencap as in r11 (full frame, no crop is ever required).
-//   Known limits (kept as is): the dumpsys refuse list is best-effort; uiautomator dump may write a file on /sdcard or
+//     r14 (MC-2256), Chrome-saved .bin exports: shell sha256sum <path> | shell rm -f <path> | pull <path> <local> (r11 local rule),
+//       where <path> is its own argument, exactly /sdcard/Download/local-<rest>.bin with <rest> 1-200 chars of [A-Za-z0-9._ -] and no '..'
+//       (Chrome names a repeat save "local-YYYYMMDD - <time>.bin"). The guard sends the shell forms as one command string with the
+//       path in single quotes; pull passes it to adb as one argument. Globs, quotes, other folders or extensions and several paths are refused.
+//     r15 (MC-2271, MC-2275), open-with/share intents: shell "am start -a android.intent.action.VIEW -d <uri> -t <type> --grant-read-uri-permission -n io.github.yor42.risutanium/.MainActivity" | shell "am start -a android.intent.action.SEND -t <type> --eu android.intent.extra.STREAM <uri> --grant-read-uri-permission -n io.github.yor42.risutanium/.MainActivity", exactly these tokens in this order; <uri> names one item: content://media/external/(images/media|video/media|audio/media|file)/<digits> or content://com.android.externalstorage.documents/document/primary%3A<path> with path characters [A-Za-z0-9._-] and %2F and no '..' (never a collection, tree or root URI string; a document id may name a directory, which grants that one row only); <type> is one of image/png, image/jpeg, application/json, application/octet-stream, application/zip, application/x-zip-compressed. Sent as given (no blank or shell-special character can occur). r15 (MC-2273): swipe and hold also accept com.android.documentsui or com.google.android.documentsui as the foreground package (the system file picker); a PLAYGROUND ... front=<pkg> line records it.
+//   Known limits (kept as is): the state-changing word list for arguments after an allowed dumpsys service is best-effort; uiautomator dump may write a file on /sdcard or
 //   /data/local/tmp; install follows r11 (any local .apk); verbs not listed here stay refused. r11 still allows
 //   `svc wifi|data enable|disable` and `settings get|put|delete` on these serials (parity; the briefs enforce the Wi-Fi rule).
 //   Still refused on playground serials exactly as in r11 (the tests keep them refused): `pm clear` of any other package,
 //   uninstall, install of anything but a local .apk (r11 rule), reboot, root, remount, disable-verity, su, rm of anything
-//   but one file in /sdcard/Download or /data/local/tmp (r11 rule), cmd wifi, forward/reverse to ports outside
-//   --own-ports, and push outside /sdcard/Download/<name>.
+//   but one file in /sdcard/Download or /data/local/tmp (r11 rule) or one r14 export, cmd wifi, forward/reverse to ports outside
+//   --own-ports, and push outside /sdcard/Download/<name> or to a name starting with a dot.
 //
 //   node adbg.mjs pick <common> --state <run>/guard-state.json --name <exact-name>
 //     MC-1438 picker helper. One device-side command dumps the UI to a device file, greps for the exact
@@ -87,6 +100,8 @@
 //     Per-thread tid, comm, utime and stime of one process; the device command first checks that its cmdline is
 //     the own package or a WebView sandboxed renderer (exit 96, nothing read, otherwise).
 //
+//   node adbg.mjs net-status <common>  (MC-2274, playground serials only) Reads settings global wifi_on and dumpsys connectivity and prints only "wifi_enabled=on|off|unknown associated=yes|no|unknown validated=yes|no|unknown" (exit 4 when any is unknown, including a network entry the guard cannot parse); the raw output is never printed or logged. Restricted serials 95, other serials 97, any -- arguments 2.
+//
 //   node adbg.mjs tap <common> --state <state> [--max-age <s, 1-10, default 5>] [--x <px> --y <px>]
 //     Taps the newest locate record (or a point strictly inside it). Refused (exit 99) without a record, when
 //     it is older than --max-age, or when it was already used. Each record allows exactly one tap.
@@ -104,7 +119,9 @@
 //     size the locate recorded, else 3000) or an explicit --to-x/--to-y inside the screen (0 up to the recorded
 //     size, else 3000). Sends exactly `input swipe x1 y1 x2 y2 ms`. Before it sends, a read-only foreground check
 //     (`pidof <own package>`, then `cat /proc/<pid>/oom_score_adj` must read 0, the top app) must find our own
-//     package in front; otherwise exit 93 and nothing is sent. It writes no typing grant.
+//     package in front; otherwise exit 93 and nothing is sent. On playground serials only, com.android.documentsui
+//     or com.google.android.documentsui in front (same oom_score_adj 0 test, own package checked first) also passes
+//     (MC-2273, the system file picker) and logs `PLAYGROUND ... front=<pkg>`. It writes no typing grant.
 //   node adbg.mjs hold <common> --own-package <app id> --state <state> --duration-ms <100-5000> [--max-age <s>]
 //     A long press: `input swipe x y x y ms` (zero distance) at the centre of the locate, same rules as `swipe`.
 //   Restricted serials always refuse swipe and hold (exit 95), even with a tap scope.
@@ -124,7 +141,7 @@ import { appendFileSync, existsSync, readFileSync, renameSync, writeFileSync } f
 import { basename, dirname, isAbsolute, resolve } from 'node:path'
 
 const argv = process.argv.slice(2)
-const sub = ['pick', 'locate-css', 'locate-shot', 'offset', 'tap', 'tap-home', 'swipe', 'hold', 'proc-tasks'].includes(argv[0]) ? argv.shift() : 'adb'
+const sub = ['pick', 'locate-css', 'locate-shot', 'offset', 'tap', 'tap-home', 'swipe', 'hold', 'proc-tasks', 'net-status'].includes(argv[0]) ? argv.shift() : 'adb'
 const sep = argv.indexOf('--')
 const opts = sep < 0 ? argv : argv.slice(0, sep)
 const rest = sep < 0 ? [] : argv.slice(sep + 1)
@@ -145,9 +162,11 @@ const spawnAdb = (args, options) => process.env.ADBG_FAKE_ADB_SCRIPT
 const emptyState = () => ({ picks: [], pickErrors: 0, locates: [], offset: null, pickLocked: false })
 const loadState = () => (statePath && existsSync(statePath)) ? JSON.parse(readFileSync(statePath, 'utf8')) : emptyState()
 const saveState = (s) => { writeFileSync(statePath + '.tmp', JSON.stringify(s, null, 2)); renameSync(statePath + '.tmp', statePath) }
+// A push of a large fixture can outlast the default bound; every other plain call keeps 10 minutes.
+const PUSH_TIMEOUT_MS = 7200000
 const runAdb = (args, capture) => {
   logLine(`intent: adb -s ${serial} ${JSON.stringify(args)}`)
-  const r = spawnAdb(['-s', serial, ...args], { encoding: 'utf8', windowsHide: true, timeout: 600000, stdio: capture ? ['ignore', 'pipe', 'pipe'] : ['ignore', 'inherit', 'inherit'] })
+  const r = spawnAdb(['-s', serial, ...args], { encoding: 'utf8', windowsHide: true, timeout: args[0] === 'push' ? PUSH_TIMEOUT_MS : 600000, stdio: capture ? ['ignore', 'pipe', 'pipe'] : ['ignore', 'inherit', 'inherit'] })
   const code = r.status ?? 1
   logLine(`exit=${r.status ?? (r.error?.code === 'ETIMEDOUT' ? 'timeout' : `signal ${r.signal}`)}: adb -s ${serial} ${JSON.stringify(args)}`)
   return { code, out: capture ? (r.stdout ?? '') : '' }
@@ -285,6 +304,8 @@ function allowedShell(cmd) {
 }
 function allowedPlain(a) {
   const [v] = a
+  // The two server-state probes take no arguments, so no other `*-server` verb or extra word can ride along.
+  if (v === 'get-state' || v === 'start-server') return a.length === 1
   if (v === 'shell') return a.length === 2 && allowedShell(a[1])
   if (v === 'exec-out') return a.length === 3 && a[1] === 'screencap' && a[2] === '-p'
   if (v === 'logcat') {
@@ -306,7 +327,8 @@ function allowedPlain(a) {
   // pull: one named file (an extension is required, so a directory is not copied recursively) into the run
   // folder that holds --log.
   if (v === 'pull') return a.length === 3 && exactPath.test(a[1]) && /\.[A-Za-z0-9]+$/.test(a[1]) && insideRunDir(a[2])
-  if (v === 'push') return a.length === 3 && /^\/sdcard\/Download\/[A-Za-z0-9._-]+$/.test(a[2])
+  // push: the name never starts with a dot, so `.`, `..` and hidden names cannot be named.
+  if (v === 'push') return a.length === 3 && /^\/sdcard\/Download\/[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(a[2])
   return false
 }
 
@@ -317,8 +339,18 @@ const PG_KEY = /^(KEYCODE_[A-Z0-9_]+|\d{1,3})$/
 const PG_SDCARD_DIR = /^\/sdcard(\/[A-Za-z0-9_-][A-Za-z0-9._-]*)*\/?$/
 const PG_SDCARD_FILE = /^\/sdcard(\/[A-Za-z0-9_-][A-Za-z0-9._-]*)+$/
 const PG_DUMP_TARGET = /^(\/dev\/tty|\/sdcard(\/Download)?\/[A-Za-z0-9_-][A-Za-z0-9._-]*|\/data\/local\/tmp\/[A-Za-z0-9_-][A-Za-z0-9._-]*)$/
-// dumpsys is read-only except for a few services that take a state-changing word (battery set, deviceidle force-idle ...).
-const PG_DUMPSYS_REFUSED = new Set(['set', 'reset', 'unplug', 'enable', 'disable', 'unforce', 'whitelist', 'step', 'write', 'suppress', 'clear', 'remove', 'kill', 'restart', 'stop', 'send', 'delete', 'add', 'override', 'trim', 'crash', 'sleep', 'wake', '--reset', '--clear', '--enable', '--disable', 'suspend_input'])
+// dumpsys arguments after an allowed service are read-only: the listed words change device state (battery set, the
+// SurfaceFlinger stats toggles and clears ...). --latency and --timestats alone stay readable.
+const PG_DUMPSYS_REFUSED = new Set(['set', 'reset', 'unplug', 'enable', 'disable', 'unforce', 'whitelist', 'step', 'write', 'suppress', 'clear', 'remove', 'kill', 'restart', 'stop', 'send', 'delete', 'add', 'override', 'trim', 'crash', 'sleep', 'wake', '--reset', '--clear', '--enable', '--disable', 'suspend_input', '--latency-clear', '--enable-layer-stats', '--disable-layer-stats', '--clear-layer-stats', '-enable', '-disable', '-clear'])
+// The only services playground dumpsys may name with arguments: exact case-sensitive tokens (ServiceManager matches
+// names exactly). Besides the four forms of PG_DUMPSYS_EXACT, any other service, bare dumpsys and a first argument
+// starting with '-' are refused; net-status reports Wi-Fi state instead (MC-2281).
+const PG_DUMPSYS_SERVICES = new Set(['activity', 'meminfo', 'gfxinfo', 'battery', 'power', 'package', 'webviewupdate', 'window', 'SurfaceFlinger'])
+// `activity` routes to other components (broadcasts, service, provider ...); only these two exact sub-arguments.
+const PG_DUMPSYS_ACTIVITY = new Set(['activities', 'processes'])
+// Four dumps allowed only exactly as written, compared on the normalised arguments: no other argument, flag or case
+// of these names is forwarded (MC-2287). They must stay out of PG_DUMPSYS_SERVICES, which would admit arguments.
+const PG_DUMPSYS_EXACT = new Set(['thermalservice', 'diskstats', 'input_method', 'notification --noredact'])
 const pgDumpsysArg = (x) => /^[A-Za-z0-9._:-]+$/.test(x) && !PG_DUMPSYS_REFUSED.has(x.toLowerCase()) && !/^(set-|force-|unforce)/i.test(x)
 // logcat: reading only. -c/--clear, -G/--buffer-size, -P/--prune (change the buffer) and -f/--file, -r, -n (write a device file) are refused,
 // as is any long option not listed, and a short cluster containing one of those letters.
@@ -332,6 +364,28 @@ function playgroundLogcat(args) {
   }
   return true
 }
+// Open-with/share intents (MC-2271, MC-2275): exactly two fixed `am start` templates. Only the URI and the MIME type
+// come from the agent, each from a closed class; every other token position is compared against a constant.
+const PG_INTENT_TARGET = 'io.github.yor42.risutanium/.MainActivity'
+const PG_INTENT_TYPES = new Set(['image/png', 'image/jpeg', 'application/json', 'application/octet-stream', 'application/zip', 'application/x-zip-compressed'])
+// U names one item (a MediaStore row or one primary-storage document), never a collection, tree or root URI string; a
+// document id may name a directory, which grants that one row only. A read grant on a collection URI can widen what
+// the grantee may query.
+const PG_CONTENT_URI = /^(content:\/\/media\/external\/(images\/media|video\/media|audio\/media|file)\/[0-9]+|content:\/\/com\.android\.externalstorage\.documents\/document\/primary%3A(?:[A-Za-z0-9._-]|%2F)+)$/
+const pgContentUri = (u) => PG_CONTENT_URI.test(u) && !u.includes('..')
+function playgroundIntent(t) {
+  const same = (xs) => xs.length === t.length && xs.every((x, i) => x === null || x === t[i])
+  // The slots admit no blank and no character the device shell treats specially; widening them reopens command injection.
+  if (t.length === 11) {
+    return same(['am', 'start', '-a', 'android.intent.action.VIEW', '-d', null, '-t', null, '--grant-read-uri-permission', '-n', PG_INTENT_TARGET])
+      && pgContentUri(t[5]) && PG_INTENT_TYPES.has(t[7])
+  }
+  if (t.length === 12) {
+    return same(['am', 'start', '-a', 'android.intent.action.SEND', '-t', null, '--eu', 'android.intent.extra.STREAM', null, '--grant-read-uri-permission', '-n', PG_INTENT_TARGET])
+      && PG_INTENT_TYPES.has(t[5]) && pgContentUri(t[8])
+  }
+  return false
+}
 function playgroundShell(cmd) {
   if (typeof cmd !== 'string' || /[^\x20-\x7e]/.test(cmd)) return false
   const c = cmd.trim().replace(/ +/g, ' ')
@@ -343,7 +397,14 @@ function playgroundShell(cmd) {
       if (t[1] === 'swipe') return (t.length === 6 || t.length === 7) && t.slice(2).every((x) => PG_INT.test(x))
       if (t[1] === 'keyevent') { const keys = t[2] === '--longpress' ? t.slice(3) : t.slice(2); return keys.length >= 1 && keys.every((k) => PG_KEY.test(k)) }
       return false
+    case 'am': return t[1] === 'start' && playgroundIntent(t)
     case 'dumpsys':
+      // An exact MC-2287 form; t is already trimmed and space-collapsed, so the joined string is the normalised
+      // argument list. It must come before the service refusal, because these names are not in that set.
+      if (PG_DUMPSYS_EXACT.has(t.slice(1).join(' '))) return true
+      // Otherwise the first argument must be a listed service; bare dumpsys has none and no listed name starts with '-'.
+      if (!PG_DUMPSYS_SERVICES.has(t[1])) return false
+      if (t[1] === 'activity') return t.length === 3 && PG_DUMPSYS_ACTIVITY.has(t[2])
       // The one state-changing dumpsys form allowed: resetting the own app's frame counters, so frame stats can be
       // read per measurement window. Exact shape only, and only for the --own-package app.
       if (t.length === 4 && t[1] === 'gfxinfo' && t[3] === 'reset') return t[2] === 'io.github.yor42.risutanium' && isOwnPackage(t[2])
@@ -363,14 +424,29 @@ function playgroundShell(cmd) {
     default: return false
   }
 }
+// Chrome on Android saves a repeat .bin export as `local-YYYYMMDD - <time>.bin`. `adb shell` joins its arguments with
+// spaces and the device shell splits them again, so the path travels inside single quotes in one command string.
+// DL_BIN admits no quote, backslash, `$`, backtick, glob character, `/` or control character, so nothing inside the
+// quotes is special to the device shell. Widening it to admit any of those reopens command injection.
+const DL_BIN = /^\/sdcard\/Download\/local-[A-Za-z0-9._ -]{1,200}\.bin$/
+const dlBin = (p) => typeof p === 'string' && DL_BIN.test(p) && !p.includes('..')
+// The composed shell args for one validated export path, or null. The verb text is a constant, never agent input.
+function dlBinShell(a) {
+  if (a.length === 3 && a[0] === 'shell' && a[1] === 'sha256sum' && dlBin(a[2])) return ['shell', `sha256sum '${a[2]}'`]
+  if (a.length === 4 && a[0] === 'shell' && a[1] === 'rm' && a[2] === '-f' && dlBin(a[3])) return ['shell', `rm -f '${a[3]}'`]
+  return null
+}
 function allowedPlayground(a) {
-  if (a[0] === 'shell') return a.length === 2 && playgroundShell(a[1])
+  if (a[0] === 'shell') return (a.length === 2 && playgroundShell(a[1])) || dlBinShell(a) !== null
+  if (a[0] === 'pull') return a.length === 3 && dlBin(a[1]) && insideRunDir(a[2])
   if (a[0] === 'logcat') return playgroundLogcat(a.slice(1))
   return false
 }
 // Playground pins: pm clear only of the hard-coded app id (and only when --own-package names it too), and logcat is
 // bounded by -d, -t or -T. These apply on top of the r11 rules, to r11-allowed forms as well.
 const PG_PACKAGE = 'io.github.yor42.risutanium'
+// The system file picker may hold the foreground while a gesture runs (MC-2273): only these two exact packages count.
+const PG_FRONT_PICKERS = ['com.android.documentsui', 'com.google.android.documentsui']
 function playgroundPinned(a) {
   if (a[0] === 'logcat') return a.some((x) => ['-d', '-t', '-T'].includes(x))
   if (a[0] === 'shell' && typeof a[1] === 'string') {
@@ -440,7 +516,7 @@ function restrictedAllows(a) {
   return false
 }
 if (restricted) {
-  if (sub === 'pick' || sub === 'proc-tasks') { needSerial(); refuseRestricted(sub) }
+  if (sub === 'pick' || sub === 'proc-tasks' || sub === 'net-status') { needSerial(); refuseRestricted(sub) }
   if (sub === 'tap') { needSerial(); if (!scopeAllows('tap')) refuseRestricted('tap') }
   // The chained tap-home verb is full-access only: no scope class opens it.
   if (sub === 'tap-home') { needSerial(); refuseRestricted('tap-home') }
@@ -456,6 +532,8 @@ if (sub === 'adb') {
   if (!plainOk && !(playground && allowedPlayground(rest))) die(97, `not on the allowlist: adb ${JSON.stringify(rest)}`)
   if (playground && !playgroundPinned(rest)) die(97, `playground: refused (pm clear only of ${PG_PACKAGE} with --own-package ${PG_PACKAGE}; logcat needs -d, -t or -T): adb ${JSON.stringify(rest)}`)
   if (playground) logPlayground(plainOk ? 'r11' : 'extended', rest)
+  // An r14 export form is sent as the composed string; every other call goes out as given.
+  const sendArgs = (playground && !plainOk && dlBinShell(rest)) || rest
   // Every input-sending call (keyevent of any key, text) stops while a failed locate is unanswered.
   if (rest[0] === 'shell' && /^input /.test(rest[1].trim())) refuseIfLocked(statePath ? loadState() : null)
   // Playground serials need no typing grant: input goes out without a prior locate.
@@ -504,7 +582,7 @@ if (sub === 'adb') {
     if (code !== 0) console.error(`adbg: screencap ${note}`)
     process.exit(code)
   }
-  process.exit(runAdb(rest, false).code)
+  process.exit(runAdb(sendArgs, false).code)
 }
 
 if (sub === 'pick') {
@@ -578,6 +656,40 @@ if (sub === 'proc-tasks') {
   const threadLines = lines.filter((l) => !l.startsWith('ADBG-CMDLINE='))
   if (threadLines.length === 0) { console.error('adbg: proc-tasks read no thread line; treat as an error, not as zero CPU'); process.exit(4) }
   process.exit(r.status === 0 && done ? 0 : 4)
+}
+
+if (sub === 'net-status') {
+  // Network state of a playground phone (MC-2274). The raw device output stays in this process; only the three fixed
+  // fields are printed or logged, and an entry that does not parse makes the result `unknown`, never `no`.
+  needSerial()
+  if (!playground) die(97, 'net-status is allowed only on the playground serials')
+  if (sep >= 0) die(2, 'net-status takes no adb arguments')
+  const read = (cmd) => {
+    const args = ['shell', cmd]
+    logLine(`intent: adb -s ${serial} ${JSON.stringify(args)} (net-status; output reduced on the host)`)
+    const r = spawnAdb(['-s', serial, ...args], { encoding: 'utf8', windowsHide: true, timeout: 60000, stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 16 * 1024 * 1024 })
+    logLine(`exit=${r.status ?? (r.error?.code === 'ETIMEDOUT' ? 'timeout' : `signal ${r.signal}`)}: adb -s ${serial} ${JSON.stringify(args)}`)
+    return r.status === 0 ? (r.stdout ?? '') : null
+  }
+  const wifiOnRaw = read('settings get global wifi_on')
+  const dump = read('dumpsys connectivity')
+  // An own-key lookup: a device value naming an Object.prototype member must give `unknown`, never a non-enumerated text.
+  const wifiEnabled = new Map([['0', 'off'], ['1', 'on'], ['2', 'on'], ['3', 'off']]).get((wifiOnRaw ?? '').trim()) ?? 'unknown'
+  let associated = 'unknown', validated = 'unknown'
+  if (dump !== null && dump.includes('Current Networks:')) {
+    const entries = dump.split(/\r?\n/).filter((l) => l.trim().startsWith('NetworkAgentInfo'))
+    const malformed = entries.some((l) => !/ Transports: \S+/.test(l) || !/ state: [A-Z_]+\/[A-Z_]+/.test(l))
+    if (!malformed) {
+      const wifi = entries.filter((l) => l.match(/ Transports: (\S+)/)[1].split('|').includes('WIFI'))
+      const joined = wifi.filter((l) => l.includes(' state: CONNECTED/'))
+      associated = joined.length > 0 ? 'yes' : 'no'
+      validated = joined.some((l) => (l.match(/ Capabilities: (\S+)/)?.[1] ?? '').split('&').includes('VALIDATED')) ? 'yes' : 'no'
+    }
+  }
+  const line = `wifi_enabled=${wifiEnabled} associated=${associated} validated=${validated}`
+  logLine(`net-status ${line}`)
+  console.log(line)
+  process.exit([wifiEnabled, associated, validated].includes('unknown') ? 4 : 0)
 }
 
 if (sub === 'offset') {
@@ -715,12 +827,15 @@ if (sub === 'tap' || sub === 'tap-home' || sub === 'swipe' || sub === 'hold') {
     }
     // Read-only foreground check through allowlisted commands: our package must hold the top oom_score_adj (0).
     // It runs before the locate is consumed, so a refusal leaves the locate usable until it ages out.
-    const front = () => {
-      const ps = runAdb(['shell', `pidof ${ownPackage}`], true)
+    const frontOf = (pkg) => {
+      const ps = runAdb(['shell', `pidof ${pkg}`], true)
       const pids = ps.code === 0 ? ps.out.trim().split(/\s+/).filter((p) => /^\d{1,7}$/.test(p)) : []
       return pids.some((p) => { const adj = runAdb(['shell', `cat /proc/${p}/oom_score_adj`], true); return adj.code === 0 && adj.out.trim() === '0' })
     }
-    if (!front()) die(93, `${sub} refused: ${ownPackage} is not the foreground package`)
+    // The own package is checked first with today's calls; a system file picker counts only on playground serials.
+    const frontPkg = frontOf(ownPackage) ? ownPackage : ((playground && PG_FRONT_PICKERS.find(frontOf)) || null)
+    if (!frontPkg) die(93, `${sub} refused: ${ownPackage} is not the foreground package`)
+    if (frontPkg !== ownPackage) logLine(`PLAYGROUND serial=${serial} front=${frontPkg} (system file picker, MC-2273)`)
     loc.used = true; s.lastShot = null; s.textGrant = null; saveState(s)
     logLine(sub === 'swipe'
       ? `swipe uses locate ${loc.id} (${JSON.stringify(loc.label)}, ${age.toFixed(1)} s old, max-age ${maxAge}) from ${x},${y} to ${x2},${y2} over ${durationMs} ms`
