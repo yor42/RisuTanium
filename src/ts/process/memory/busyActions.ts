@@ -7,16 +7,38 @@
  * An action registers when its write phase starts (after a file picker has
  * delivered its files, never when the picker opens: a cancelled picker never
  * resolves) and ends in a `finally`. A stale entry only ever answers "busy".
+ *
+ * The entries, their ages and the recent history can be read through
+ * `window.__risuTaniumBusy` (kinds, times and counts only, never content).
  */
 
 import { writable } from 'svelte/store'
-import { beginInFlight } from '../inFlightWork'
+import { beginInFlight, inFlightKinds, type InFlightKind } from '../inFlightWork'
 
 /** Names the kind of work in an entry, so entries can be told apart. */
 export type BusyKind =
     | 'charImage' | 'charEmotion' | 'groupImage' | 'assetAdd' | 'imageAdd'
     | 'import' | 'export' | 'backupSave' | 'backupLoad' | 'cleanup' | 'integrityCheck'
     | 'hypaBulk' | 'mcpWrite' | 'themePack'
+
+export interface BusyEndedRecord {
+    kind: BusyKind
+    startedAt: number
+    endedAt: number
+    durationMs: number
+}
+
+export interface BusySnapshot {
+    now: number
+    /** How many entries were ever begun in this page life. */
+    begun: number
+    /** Live entries in begin order. */
+    entries: { kind: BusyKind, startedAt: number, ageMs: number }[]
+    /** The newest ended entries, oldest first, at most `BUSY_HISTORY_LIMIT`. */
+    recent: BusyEndedRecord[]
+    inFlight: InFlightKind[]
+    chokePoints: Record<ChokePoint, number>
+}
 
 export interface BusyHandle {
     readonly kind: BusyKind
@@ -39,10 +61,27 @@ export const busyRefusalLine = writable<string | null>(null)
 const BUSY_TOKEN_MAX_AGE_MS = 2 * 60 * 60 * 1000
 const inFlightTokens = new Map<BusyHandle, () => void>()
 
+// Diagnostic bookkeeping only: it never feeds a busy answer. Start times live
+// beside the handle so `BusyHandle` stays `{ kind, end }`.
+export const BUSY_HISTORY_LIMIT = 20
+const startedAtByHandle = new Map<BusyHandle, number>()
+const recentEnded: BusyEndedRecord[] = []
+let begunCount = 0
+
 export function beginBusy(kind: BusyKind): BusyHandle {
     const handle: BusyHandle = {
         kind,
         end: () => {
+            const startedAt = startedAtByHandle.get(handle)
+            if (startedAt !== undefined) {
+                // Only the first effective end is recorded; a second call finds no start time.
+                startedAtByHandle.delete(handle)
+                const endedAt = Date.now()
+                recentEnded.push({ kind, startedAt, endedAt, durationMs: endedAt - startedAt })
+                if (recentEnded.length > BUSY_HISTORY_LIMIT) {
+                    recentEnded.splice(0, recentEnded.length - BUSY_HISTORY_LIMIT)
+                }
+            }
             entries.delete(handle)
             if (entries.size === 0) {
                 busyRefusalLine.set(null)
@@ -55,6 +94,8 @@ export function beginBusy(kind: BusyKind): BusyHandle {
         },
     }
     entries.add(handle)
+    startedAtByHandle.set(handle, Date.now())
+    begunCount += 1
     inFlightTokens.set(handle, beginInFlight('busy', { maxAgeMs: BUSY_TOKEN_MAX_AGE_MS }))
     return handle
 }
@@ -141,11 +182,46 @@ export function isPluginPanelOpen(): boolean {
     return shownPluginPanels.size > 0
 }
 
+/** A fresh JSON-serialisable copy: kinds, times and counts only, never content. */
+export function busySnapshot(): BusySnapshot {
+    const now = Date.now()
+    return {
+        now,
+        begun: begunCount,
+        entries: [...entries].map((entry) => {
+            const startedAt = startedAtByHandle.get(entry) ?? now
+            return { kind: entry.kind, startedAt, ageMs: now - startedAt }
+        }),
+        recent: recentEnded.map((record) => ({ ...record })),
+        inFlight: inFlightKinds(),
+        chokePoints: { ...inFlightByPoint },
+    }
+}
+
+declare global {
+    interface Window {
+        readonly __risuTaniumBusy?: BusySnapshot
+    }
+}
+
+// Always on: a build-time measurement gate would hide it from a release build.
+// A getter without a setter, so a page script cannot replace it.
+if (typeof window !== 'undefined') {
+    Object.defineProperty(window, '__risuTaniumBusy', {
+        configurable: true,
+        enumerable: false,
+        get: () => busySnapshot(),
+    })
+}
+
 export function resetBusyActionsForTest(): void {
     for (const endToken of inFlightTokens.values()) {
         endToken()
     }
     inFlightTokens.clear()
+    startedAtByHandle.clear()
+    recentEnded.length = 0
+    begunCount = 0
     entries.clear()
     busyRefusalLine.set(null)
     inFlightByPoint.asset = 0
