@@ -3288,8 +3288,6 @@ export const languageJapanese = {
         `${items.length}件の項目が4 GiB以上あり、バックアップファイルの1エントリに収まる容量を超えているため、それらの内容はバックアップに含まれていません（キャラクターにはプレースホルダーのみが残ります）：\n\n${items.join('\n')}`,
     backupUpstreamOversizeConfirm: (count: number, names: string[]) =>
         `このバックアップ内の${count}件の項目が100 MiBを超えています。アップストリームのRisuAI Nodeサーバーはこれほど大きな項目を復元できないため、そちらでこのバックアップを復元するとそれらはスキップされます。このアプリや他のプラットフォームでは復元可能です。これらを含めてバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
-    backupAlternativesConfirm: (count: number, names: string[]) =>
-        `${count}件のチャットに代替の返信がありますが、バックアップファイルにはそれらを格納する場所がないため、このバックアップには含まれません（チャットとメッセージは保存されます）。代替の返信はこのアプリに残り、バックアップにのみ含まれません。これらを除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
     backupTaskPresetsConfirm: (count: number, names: string[]) =>
         `${count}件のタスクプリセットはこのデバイスにのみ保存されており、バックアップファイルには保存できる場所がないため、このバックアップから除外されます。タスクプリセットはこのアプリに残り、バックアップにだけ含まれません。除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n...ほか${count - names.length}件` : ''}`,
     backupThemePacksConfirm: (count: number, names: string[]) =>
@@ -3361,6 +3359,20 @@ export const languageJapanese = {
     themePackLintLine: (selector: string, prop: string, why: string) => `${selector} ${prop}: ${why}`,
     backupAlternativesLeftOut: (count: number, names: string[]) =>
         `バックアップの実行中に、${count}件のチャットで代替の返信が見つかりました。バックアップファイルにはそれらを格納する場所がないため、バックアップには含まれていません（チャットとメッセージは保存されます）：\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
+    backupBranchesConfirm: (count: number, lines: string[]) =>
+        `${count}件のチャットに代替の返信がありますが、バックアップファイルにはそれらを格納する場所がありません。会話がそこから続いた代替の返信（あなたの後のメッセージを含むもの）は、そのキャラクターのチャット一覧の末尾に「Chat (Branch)」のような名前の追加チャットとして書き込まれるため、バックアップは表示されたサイズ程度大きくなります。それ以外の代替の返信は除外されます。チャットとメッセージは保存され、このアプリでは何も変わりません。この方法でバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${lines.join('\n')}${count > lines.length ? `\n…他 ${count - lines.length} 件` : ''}`,
+    backupBranchesLine: (chat: string, branchChats: number, bytes: number | null, leftOut: number) => {
+        const parts: string[] = []
+        if (branchChats > 0) {
+            const size = bytes === null ? 'サイズ不明' : bytes < 0.1 * 1024 * 1024 ? '0.1 MiB 未満' : `約 ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+            parts.push(`ブランチチャット ${branchChats}件、${size}`)
+        }
+        if (leftOut > 0) {
+            parts.push(`返信 ${leftOut}件を除外`)
+        }
+        return parts.length > 0 ? `${chat} (${parts.join('; ')})` : chat
+    },
+    backupBranchesLeftOutLine: (chat: string) => `${chat} (代替の返信を除外)`,
     backupForkChatDataConfirm: (count: number, names: string[]) =>
         `${count}件のチャットに、このアプリでのみ使われるデータ（種類は括弧内）がありますが、バックアップファイルにはそれらを格納する場所がないため、このバックアップには含まれません（チャットとメッセージは保存されます）。このデータはこのアプリに残り、バックアップにのみ含まれません。これらを除外してバックアップを作成しますか？拒否した場合、バックアップファイルは作成されません。まだ何も書き込まれていません。\n\n${names.join('\n')}${count > names.length ? `\n…他 ${count - names.length} 件` : ''}`,
     backupForkChatDataLeftOut: (count: number, names: string[]) =>

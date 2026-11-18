@@ -3149,8 +3149,6 @@ export const languageGerman = {
         `${items.length} Element(e) sind 4 GiB oder größer, was mehr ist, als ein einzelner Eintrag einer Backup-Datei fassen kann, daher ist ihr Inhalt nicht im Backup enthalten (ein Charakter behält nur einen Platzhalter):\n\n${items.join('\n')}`,
     "backupUpstreamOversizeConfirm": (count: number, names: string[]) =>
         `${count} Element(e) in diesem Backup sind größer als 100 MiB. Ein Upstream-RisuAI-Node-Server kann ein so großes Element nicht wiederherstellen und würde es daher überspringen, wenn dieses Backup dort wiederhergestellt wird; diese App und die anderen Plattformen stellen es wieder her. Das Backup mit diesen Elementen erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
-    "backupAlternativesConfirm": (count: number, names: string[]) =>
-        `${count} Chat(s) haben alternative Antworten, und eine Backup-Datei hat keinen Platz dafür, daher würden sie in diesem Backup fehlen (die Chats und ihre Nachrichten werden gespeichert). Die Alternativen bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupTaskPresetsConfirm": (count: number, names: string[]) =>
         `${count} Aufgaben-Voreinstellung(en) sind nur auf diesem Gerät gespeichert, und eine Backup-Datei hat keinen Platz dafür, daher würden sie in diesem Backup fehlen. Sie bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupThemePacksConfirm": (count: number, names: string[]) =>
@@ -3237,6 +3235,20 @@ export const languageGerman = {
     "themePackLintLine": (selector: string, prop: string, why: string) => `${selector} ${prop}: ${why}`,
     "backupAlternativesLeftOut": (count: number, names: string[]) =>
         `${count} Chat(s) hatten alternative Antworten, die während des Backups gefunden wurden, und eine Backup-Datei hat keinen Platz dafür, daher sind sie nicht im Backup enthalten (die Chats und ihre Nachrichten werden gespeichert):\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
+    "backupBranchesConfirm": (count: number, lines: string[]) =>
+        `${count} Chat(s) haben alternative Antworten, und eine Backup-Datei hat keinen Platz dafür. Eine Alternative, von der aus die Unterhaltung fortgesetzt wurde (sie enthält eine spätere Nachricht von Ihnen), wird als zusätzlicher Chat am Ende der Chatliste dieses Charakters geschrieben, mit einem Namen wie "Chat (Branch)", sodass das Backup um etwa die angezeigte Größe wächst; die übrigen alternativen Antworten werden weggelassen. Die Chats und ihre Nachrichten werden gespeichert, und in dieser App ändert sich nichts. Backup auf diese Weise erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${lines.join('\n')}${count > lines.length ? `\n...und ${count - lines.length} weitere` : ''}`,
+    "backupBranchesLine": (chat: string, branchChats: number, bytes: number | null, leftOut: number) => {
+        const parts: string[] = []
+        if (branchChats > 0) {
+            const size = bytes === null ? 'Größe unbekannt' : bytes < 0.1 * 1024 * 1024 ? 'unter 0.1 MiB' : `etwa ${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+            parts.push(`${branchChats} Verzweigungs-Chat(s), ${size}`)
+        }
+        if (leftOut > 0) {
+            parts.push(`${leftOut} Antwort(en) weggelassen`)
+        }
+        return parts.length > 0 ? `${chat} (${parts.join('; ')})` : chat
+    },
+    "backupBranchesLeftOutLine": (chat: string) => `${chat} (alternative Antworten weggelassen)`,
     "backupForkChatDataConfirm": (count: number, names: string[]) =>
         `${count} Chat(s) enthalten Daten, die nur diese App verwendet (die Arten stehen in Klammern), und eine Backup-Datei hat keinen Platz dafür, daher würden sie in diesem Backup fehlen (die Chats und ihre Nachrichten werden gespeichert). Die Daten bleiben in dieser App; nur dem Backup fehlen sie. Backup ohne sie erstellen? Wenn Sie ablehnen, wird keine Backup-Datei erstellt. Es wurde noch nichts geschrieben.\n\n${names.join('\n')}${count > names.length ? `\n...und ${count - names.length} weitere` : ''}`,
     "backupForkChatDataLeftOut": (count: number, names: string[]) =>
