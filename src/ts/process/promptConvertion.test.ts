@@ -105,6 +105,7 @@ import { language } from 'src/lang'
 import { fillLang } from 'src/lang/fill'
 import { DBState } from 'src/ts/stores.svelte'
 import { importPreset, presetTemplate, type botPreset } from 'src/ts/storage/database.svelte'
+import { withoutPresetMeta } from 'src/ts/storage/presetMeta'
 import { OobaParams, detectPromptJSONType, promptConvertion } from 'src/ts/process/prompt'
 
 type Message = { role: 'user' | 'assistant' | 'system', content: string }
@@ -124,7 +125,7 @@ function run(files: NamedJson[]): string | null {
 }
 
 function pushed(): botPreset[] {
-    return DBState.db.botPresets
+    return DBState.db.botPresets.map(withoutPresetMeta)
 }
 
 function only(): botPreset {

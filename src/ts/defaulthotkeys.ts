@@ -142,5 +142,12 @@ export const defaultHotkeys: Hotkey[] = [
         key: 'o',
         ctrl: true,
         action: 'loadout'
-    }
+    },
+    // Ctrl+1..9 select the preset holding that slot. The rows come last so a row an older profile already
+    // binds to the same chord keeps winning.
+    ...Array.from({ length: 9 }, (_, i): Hotkey => ({
+        key: String(i + 1),
+        ctrl: true,
+        action: `presetSlot${i + 1}`
+    }))
 ]

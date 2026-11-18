@@ -4,6 +4,7 @@ import { alertError, alertNormal } from "../alert";
 import { language } from "../../lang";
 import { fillLang } from "../../lang/fill";
 import { DBState } from "../stores.svelte";
+import { freshPresetMeta } from "../storage/presetMeta";
 import { OobaParams, convertStFiles, detectStKind } from "./stPresetFormats";
 
 export type PromptItem = PromptItemPlain|PromptItemTyped|PromptItemChat|PromptItemAuthorNote|PromptItemChatML|PromptItemCache
@@ -117,7 +118,7 @@ export function promptConvertion(files:{ name: string, content: string, type:str
         return
     }
 
-    DBState.db.botPresets.push(result.preset)
+    DBState.db.botPresets.push(freshPresetMeta(result.preset, { keepFolder: false }))
 
     alertNormal(result.skipped.length > 0
         ? language.alerts.presetConverted + ' ' + fillLang(language.alerts.stPartsSkipped, { sections: result.skipped.join(', ') })
