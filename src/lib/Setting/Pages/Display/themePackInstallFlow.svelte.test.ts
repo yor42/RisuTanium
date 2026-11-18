@@ -11,7 +11,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { language } from 'src/lang'
 import type { Database } from 'src/ts/storage/database.svelte'
-import { beginBusy, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
+import { beginBusy, beginDialogWait, resetBusyActionsForTest } from 'src/ts/process/memory/busyActions'
 import { beginRestoreRun, resetRestoreInProgressForTests } from 'src/ts/drive/restoreInProgress'
 import { judgePackSheets } from 'src/ts/themePack'
 import { installThemePack } from 'src/ts/themePack/install'
@@ -469,6 +469,38 @@ describe('T4-6 another task running', () => {
         await runThemePackInstall(runOf(validPack()).deps)
         expect(outcomeLines()).toEqual([language.themePackBusy])
         expect(world.log).toEqual([])
+    })
+
+    test('an export waiting on an Android save dialog does not make the page busy', async () => {
+        attach()
+        beginDialogWait(beginBusy('export'))
+        await runThemePackInstall(runOf(validPack()).deps)
+        expect(outcomeLines()).not.toContain(language.themePackBusy)
+        expect(storedPacks()).toHaveLength(1)
+    })
+
+    test('remove and select with the default busy check are allowed while an export waits on its save dialog', async () => {
+        attach()
+        const [first] = await (async () => {
+            await runThemePackInstall(runOf(validPack({ name: 'First Pack' })).deps)
+            return storedPacks()
+        })()
+        beginDialogWait(beginBusy('export'))
+        expect(selectThemePack('builtin:origin-navy')).toBe('selected')
+        expect(await removeThemePack(first, 'First Pack', { confirm: async () => true })).toBe('removed')
+        expect(storedPacks()).toEqual([])
+    })
+
+    test('remove and select with the default busy check are refused while an export is not waiting on a dialog', async () => {
+        attach()
+        await runThemePackInstall(runOf(validPack({ name: 'First Pack' })).deps)
+        const [first] = storedPacks()
+        beginBusy('export')
+        const confirm = vi.fn(async () => true)
+        expect(selectThemePack('builtin:origin-navy')).toBe('busy')
+        expect(await removeThemePack(first, 'First Pack', { confirm })).toBe('busy')
+        expect(confirm).not.toHaveBeenCalled()
+        expect(storedPacks()).toHaveLength(1)
     })
 
     test('a restore running shows the busy text and writes nothing', async () => {
