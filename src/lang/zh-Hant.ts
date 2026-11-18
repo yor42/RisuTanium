@@ -3177,6 +3177,7 @@ export const languageChineseTraditional = {
     "loadMore": "載入更多",
     "disableMessage": "停用訊息",
     "disableAbove": "從此處截斷提供給 AI 的訊息",
+    "chatPlaygroundSwitchRole": "切換使用者與助理角色",
     "autoScrollToNewMessage": "自動捲動至新訊息",
     "alwaysScrollToNewMessage": "永遠捲動至新訊息（忽略目前捲動位置）",
     "newMessage": "新訊息",
