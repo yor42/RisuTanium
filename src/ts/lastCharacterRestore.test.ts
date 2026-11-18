@@ -45,6 +45,7 @@ interface World {
         restoring: boolean
         busy: string[]
         alertType: string
+        bootNotice: boolean
         realmUrl: boolean
     }
     selected: Writable<number>
@@ -69,6 +70,7 @@ function makeWorld(options: { characters?: unknown[], stored?: string | null } =
         restoring: false,
         busy: [],
         alertType: 'none',
+        bootNotice: false,
         realmUrl: false,
     }
     const picks: PickCall[] = []
@@ -102,6 +104,7 @@ function makeWorld(options: { characters?: unknown[], stored?: string | null } =
         restoreInProgress: () => state.restoring,
         busyKinds: () => state.busy,
         alertType: () => state.alertType,
+        bootNoticeShowing: () => state.bootNotice,
         realmLinkInUrl: () => state.realmUrl,
         pick: (index, pickOptions) => {
             const generation = ++state.generation
@@ -169,6 +172,20 @@ describe('the start of a restore', () => {
 
             expect(world.picks, alertType).toHaveLength(1)
         }
+    })
+
+    test('R5: a boot notice from the notice queue is quiet, while any other normal alert still blocks the restore', () => {
+        const queued = makeWorld()
+        queued.state.alertType = 'normal'
+        queued.state.bootNotice = true
+        startLastCharacterRestore(queued.deps)
+        expect(queued.picks).toHaveLength(1)
+
+        const other = makeWorld()
+        other.state.alertType = 'normal'
+        other.state.bootNotice = false
+        startLastCharacterRestore(other.deps)
+        expect(other.picks).toHaveLength(0)
     })
 
     const refusals: Array<[string, (world: World) => void]> = [
