@@ -94,7 +94,12 @@
 //         `tap` on it work in My Files on both playground phones, with no foreground check against My Files;
 //       - `hold` and `swipe` accept an agent-chosen --own-package, including com.sec.android.app.myfiles, on both phones;
 //       - an implicit `am start` without -n (for example -a android.intent.action.MAIN -c android.intent.category.APP_FILES, or
-//         GET_CONTENT) passes on both playground phones and, for am, on the emulator, so a file app can be opened on phone 2.
+//         GET_CONTENT) passes on both playground phones and, for am, on the emulator, so a file app can be opened on phone 2;
+//         so does `am start` of a bare package or component, or -n of whatever package --own-package names;
+//       - raw `input swipe X1 Y1 X2 Y2 [ms]` (a long press or a drag) stays allowed on both playground phones.
+//       `swipe` with --own-package com.sec.android.app.myfiles and raw `input swipe` are handled by the run's STOP rules until r18.
+//     r17 also refuses (exit 97), on every serial, any `am` shell line holding a character outside letters, digits, space and
+//     . _ : / % + = @ - (so no brace expansion, glob, quote, backslash, $ or backtick can rebuild a refused My Files name after the check).
 //     Also not enforced: the folder a c128-* name sits in, and which row Share acts on. Tightening these is a separate decision.
 //
 //   node adbg.mjs pick <common> --state <run>/guard-state.json --name <exact-name>
@@ -480,6 +485,9 @@ const PG_FRONT_PICKERS = ['com.android.documentsui', 'com.google.android.documen
 // component is pinned to one string; the texts below are the only ones pick --myfiles can locate.
 const MYFILES_SERIAL = '29f3cde9193f7ece'
 const MYFILES_PACKAGE = 'com.sec.android.app.myfiles'
+// The only characters an `am` shell line may hold (letters, digits, space and . _ : / % + = @ -): no brace, glob, bracket, quote,
+// backslash, dollar or backtick, so the device shell cannot build a different word than the one the guard read.
+const AM_LINE_SAFE = /^[A-Za-z0-9 ._:\/%+=@-]*$/
 const MYFILES_START = `am start -n ${MYFILES_PACKAGE}/.external.ui.MainActivity`
 const MYFILES_FILE = /^c128-[A-Za-z0-9._-]{1,72}$/
 const MYFILES_SHARE_TARGET = 'RisuTanium'
@@ -610,6 +618,9 @@ if (sub === 'adb') {
   if (restricted && !restrictedAllows(rest)) refuseRestricted(`adb ${JSON.stringify(rest)}`)
   // r17: an `am` command that names My Files passes only as the one start string, on phone 1 (checked on every plain or playground path).
   const amLine = rest[0] === 'shell' ? rest.slice(1).join(' ') : ''
+  // The device shell expands braces, globs, quotes and escapes after this check, so an `am` line may hold only AM_LINE_SAFE characters:
+  // no text that could rebuild a refused package or component name later can get past the textual tests below.
+  if (/^\s*am(\s|$)/.test(amLine) && !AM_LINE_SAFE.test(amLine)) die(97, `am line holds characters outside the safe set (shell expansion could rebuild a refused name): adb ${JSON.stringify(rest)}`)
   if (/^\s*am(\s|$)/.test(amLine) && /myfiles/i.test(amLine) && !(rest.length === 2 && serial === MYFILES_SERIAL && amLine.trim().replace(/ +/g, ' ') === MYFILES_START)) {
     die(97, `am naming My Files is allowed only as exactly "${MYFILES_START}" on ${MYFILES_SERIAL}: adb ${JSON.stringify(rest)}`)
   }

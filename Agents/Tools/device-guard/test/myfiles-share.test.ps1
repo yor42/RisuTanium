@@ -141,6 +141,47 @@ $badStarts = @(
 foreach ($c in $badStarts) { Test-AdbRefused ('MF-2 phone 1 refuses ' + $c) $phone1 @('shell', $c) '97' }
 Test-AdbRefused 'MF-2 phone 1 refuses the start split into arguments' $phone1 (@('shell') + $startString.Split(' ')) '97'
 Test-AdbRefused 'MF-2 phone 1 refuses the start with own-package My Files and a flag' $phone1 @('shell', ($startString + ' --es k v')) '97' @('--own-package', $mf)
+# The device shell expands braces, globs and quotes after the guard's text check: any `am` line with a character outside the safe set
+# refuses (97) on every serial, so no form can rebuild the refused My Files name. Each form also carries an own-package that names it.
+$mfBrace = 'com.sec.android.app.my{f,f}iles'
+$mfGlob = 'com.sec.android.app.myf?les'
+$mfGlobStar = 'com.sec.android.app.my*'
+$mfBracket = 'com.sec.android.app.my[f]iles'
+$mfQuoted = 'com.sec.android.app.my''f''iles'
+$mfDoubleQuoted = 'com.sec.android.app.my"f"iles'
+$mfBackslash = 'com.sec.android.app.my\files'
+$mfDollar = 'com.sec.android.app.my$(echo f)iles'
+$mfBacktick = 'com.sec.android.app.my`echo f`iles'
+$spoofForms = @(
+    @('brace -n', ('am start -n ' + $mfBrace + '/.external.ui.MainActivity'), $mfBrace),
+    @('brace positional', ('am start ' + $mfBrace + '/.external.ui.MainActivity'), $null),
+    @('brace -p', ('am start -a android.intent.action.MAIN -p ' + $mfBrace), $null),
+    @('glob ?', ('am start -n ' + $mfGlob + '/.external.ui.MainActivity'), $mfGlob),
+    @('glob *', ('am start -n ' + $mfGlobStar + '/.external.ui.MainActivity'), $mfGlobStar),
+    @('bracket', ('am start ' + $mfBracket + '/.external.ui.MainActivity'), $null),
+    @('quoted concatenation', ('am start -n ' + $mfQuoted + '/.external.ui.MainActivity'), $null),
+    @('double-quoted concatenation', ('am start ' + $mfDoubleQuoted + '/.external.ui.MainActivity'), $null),
+    @('backslash', ('am start ' + $mfBackslash + '/.external.ui.MainActivity'), $null),
+    @('dollar', ('am start ' + $mfDollar + '/.external.ui.MainActivity'), $null),
+    @('backtick', ('am start ' + $mfBacktick + '/.external.ui.MainActivity'), $null))
+foreach ($f in $spoofForms) {
+    foreach ($s in @($phone1, $phone2, $emu)) {
+        $extra = @(); if ($null -ne $f[2]) { $extra = @('--own-package', $f[2]) }
+        Test-AdbRefused ('MF-2 ' + $s + ' refuses ' + $f[0] + ' am line') $s @('shell', $f[1]) '97' $extra
+    }
+}
+# The same characters refuse on an `am` line that does not name My Files (no refused name is needed to trip the rule).
+Test-AdbRefused 'MF-2 phone 2 refuses a brace in an am line that names no My Files' $phone2 @('shell', 'am start -n io.github.yor42.risutanium/.Main{,}') '97' @('--own-package', 'io.github.yor42.risutanium')
+# The allowed forms are unchanged: the app's own start and force-stop, and the pinned My Files start on phone 1 only.
+foreach ($s in @($phone1, $phone2)) {
+    $r = Invoke-Node @('--serial', $s, '--log', $log, '--own-package', $pkg, '--', 'shell', ('am start -n ' + $pkg + '/.MainActivity')) @{} @{}
+    Test-Result ('MF-2 ' + $s + ' own-package am start still passes') ($r.rc -eq '0' -and (Get-Calls).Count -eq 1) ('-> ' + $r.rc)
+    $r = Invoke-Node @('--serial', $s, '--log', $log, '--own-package', $pkg, '--', 'shell', ('am force-stop ' + $pkg)) @{} @{}
+    Test-Result ('MF-2 ' + $s + ' own-package am force-stop still passes') ($r.rc -eq '0' -and (Get-Calls).Count -eq 1) ('-> ' + $r.rc)
+}
+$r = Invoke-Node @('--serial', $phone1, '--log', $log, '--', 'shell', $startString) @{} @{}
+Test-Result 'MF-2 pinned My Files start still passes on phone 1 after the safe-set rule' ($r.rc -eq '0' -and (Get-Calls).Count -eq 1) ('-> ' + $r.rc)
+Test-AdbRefused 'MF-2 pinned My Files start still refuses on phone 2 after the safe-set rule' $phone2 @('shell', $startString) '97'
 # monkey, pm list and content queries stay refused on both phones, also when they name My Files.
 foreach ($s in @($phone1, $phone2)) {
     foreach ($c in @(('monkey -p ' + $mf + ' -c android.intent.category.LAUNCHER 1'), 'monkey 100', 'pm list packages', ('pm list packages ' + $mf), 'content query --uri content://media/external/file', 'content query --uri content://sms/inbox')) {
