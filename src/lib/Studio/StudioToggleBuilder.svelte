@@ -5,7 +5,7 @@
     import { moduleSlotsWithId } from '../../ts/studio/edit/assetSetters'
 import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/toggleTextPort'
     import { createStudioToasts, refusalTextOf } from '../../ts/studio/edit/studioToasts'
-    import { ensureStudioHistory, getStudioHistoryService, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
+    import { beginModuleAck, endModuleAck, ensureStudioHistory, getStudioHistoryService, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
     import { registerStudioBackLayer } from '../../ts/studio/studioBack.svelte'
     import { studioScreen } from '../../ts/studio/studioScreen.svelte'
     import { appToggleKeys, createToggleBuilder, restoreLines, TOGGLE_KEY_EDITS_LIVE, type EditOutcome, type ToggleTarget } from '../../ts/studio/toggleBuilder.svelte'
@@ -54,7 +54,12 @@ import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/togg
     const service = $derived(getStudioHistoryService())
     $effect(() => {
         if (service) {
-            untrack(() => port.begin())
+            untrack(() => {
+                port.begin()
+                if (fixed.kind === 'module') {
+                    beginModuleAck(fixed.moduleId)
+                }
+            })
         } else {
             ensureStudioHistory()
         }
@@ -199,7 +204,13 @@ import { characterTogglePort, moduleTogglePort } from '../../ts/studio/edit/togg
         ensureStudioHistory()
     }
 
-    onDestroy(() => port.closeOpenStep())
+    onDestroy(() => {
+        port.closeOpenStep()
+        // The module's ack ends with its builder: a switch of owner, a change of kind or a cleared selection destroys it.
+        if (fixed.kind === 'module') {
+            endModuleAck(fixed.moduleId)
+        }
+    })
 </script>
 
 {#if !view.restricted}
