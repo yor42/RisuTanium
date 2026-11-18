@@ -7,6 +7,7 @@ import { getAppStore } from "../../storage/store/appStore";
 import { language } from "src/lang";
 import type { ByteStore } from "../../storage/store/contract";
 import { isAndroidTransport } from "../../storage/tauriByteTransport";
+import { rememberWholeReadUrlOfSize } from "../../storage/assetUrlGate";
 import { displayMimeOfInlay } from "../../storage/assetDisplayMime";
 import {
     cacheInlayRender,
@@ -325,7 +326,12 @@ async function deliverStoredInlay(store: ByteStore, record: InlayRecord): Promis
     const type = typeof record.fields.type === 'string' ? record.fields.type : ''
     if(store.urlFor !== undefined){
         try {
-            return { render: { type, url: await store.urlFor(record.body), source: 'store-url' }, objectUrl: null }
+            const url = await store.urlFor(record.body)
+            // An image URL is a whole read on Android; the body key is write-once, so its stored length stays true while the key exists. A media URL is a Range read and is never registered.
+            if(type === 'image' && isAndroidTransport()){
+                rememberWholeReadUrlOfSize(url, record.body, inlayRecordSize(record))
+            }
+            return { render: { type, url, source: 'store-url' }, objectUrl: null }
         } catch {
             // No URL for this key on this page: the Blob or the bytes are used.
         }

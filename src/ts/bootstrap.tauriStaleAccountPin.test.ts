@@ -30,6 +30,7 @@ import { describe, test, expect, vi, beforeAll, beforeEach } from 'vitest'
 import { writable, get } from 'svelte/store'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
+import { registerRealDispatch } from 'src/ts/tests/realDispatchBoot.test-helpers'
 
 const recordLoadTimeListingMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
 const loadPluginsMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
@@ -280,8 +281,15 @@ function baseDbBytes(mainPrompt: string) {
     })
 }
 
-/** Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. */
-async function freshLoadData() {
+/**
+ * Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. The real dispatch is
+ * registered, so the legacy main file is converted to a store2 profile as on a production page. The rows whose subject
+ * is the legacy startup clean-up pass `realDispatch: false`: a dispatch page never starts that clean-up.
+ */
+async function freshLoadData(options: { realDispatch: boolean } = { realDispatch: true }) {
+    if (options.realDispatch) {
+        await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: true })
+    }
     const { loadData } = await import('src/ts/bootstrap')
     const { loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         loadedStore: ReturnType<typeof writable<boolean>>
@@ -303,7 +311,13 @@ beforeEach(() => {
     buildAssetKeepSetMock.mockReset().mockResolvedValue({ uncleanable: new Set<string>(), complete: true })
     sweepTauriAssetsMock.mockReset().mockResolvedValue(undefined)
     getRemoteSavePayloadNameMock.mockReset().mockReturnValue(null)
-    readDirMock.mockReset().mockResolvedValue([])
+    // A held file is not a directory: the store's `has` lists the path to tell the two apart, so a file must refuse the listing.
+    readDirMock.mockReset().mockImplementation(async (path: string) => {
+        if ((fsStore.get(bare(path))?.length ?? 0) > 0) {
+            throw new Error(`Not a directory (mock): ${path} (os error 20)`)
+        }
+        return []
+    })
     vi.stubGlobal('open', vi.fn())
     vi.resetModules()
 })
@@ -439,7 +453,7 @@ describe('loadData(): the load-time listing is recorded before plugins start (Ta
             order.push('loadPlugins')
         })
 
-        const { loadData } = await freshLoadData()
+        const { loadData } = await freshLoadData({ realDispatch: false })
 
         await loadData()
 
@@ -474,7 +488,7 @@ describe('cleanChunks(): the startup asset sweep does not run once a cold-storag
         })
         getRemoteSavePayloadNameMock.mockReturnValue('orphan-char')
 
-        const { loadData } = await freshLoadData()
+        const { loadData } = await freshLoadData({ realDispatch: false })
         await loadData()
 
         if (profile.coldstorage) {
@@ -523,7 +537,7 @@ describe('loadData(): a load-time listing that rejects does not stop boot (Tauri
         armTauriBoot(tauriBaseDb())
         recordLoadTimeListingMock.mockRejectedValue(new Error('listing failed'))
 
-        const { loadData, loadedStore } = await freshLoadData()
+        const { loadData, loadedStore } = await freshLoadData({ realDispatch: false })
 
         await loadData()
 

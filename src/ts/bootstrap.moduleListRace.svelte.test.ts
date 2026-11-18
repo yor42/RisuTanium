@@ -22,6 +22,7 @@ import { writable } from 'svelte/store'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
+import { registerRealDispatch } from 'src/ts/tests/realDispatchBoot.test-helpers'
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -339,6 +340,8 @@ async function freshBoot() {
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     const { forageStorage } = await import('src/ts/globalApi.svelte')
     injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
+    // The legacy main file is converted to a store2 profile by the real dispatch, as on a production page.
+    await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: true })
     const { loadData } = await import('src/ts/bootstrap')
     const { loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         loadedStore: ReturnType<typeof writable<boolean>>
