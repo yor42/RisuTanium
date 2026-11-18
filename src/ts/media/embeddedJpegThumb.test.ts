@@ -13,6 +13,7 @@ import {
     letterboxCrop,
     orientationTransform,
     orientedSize,
+    readJpegOrientation,
     scanEmbeddedJpegThumb,
     type EmbeddedThumb,
     type ExifOrientation,
@@ -459,6 +460,57 @@ describe('embedded JPEG thumbnail extractor: the core never throws on mangled in
         const bytes = buildJpeg().bytes
         expect(extractEmbeddedJpegThumb(bytes)).toEqual(scanEmbeddedJpegThumb(bytes))
         expect(extractEmbeddedJpegThumb(new Uint8Array(0))).toBeNull()
+    })
+})
+
+describe('readJpegOrientation: the IFD0 Orientation of a JPEG prefix', () => {
+    test('little and big endian, values 1 to 8, with and without an IFD1 thumbnail', () => {
+        for (const le of [true, false]) {
+            for (let v = 1; v <= 8; v++) {
+                expect(readJpegOrientation(buildJpeg({ tiff: { le, orientation: v } }).bytes)).toBe(v)
+            }
+        }
+    })
+
+    test('agrees with the thumbnail scan on every fixture that has a thumbnail', () => {
+        for (let v = 1; v <= 8; v++) {
+            const bytes = buildJpeg({ tiff: { orientation: v } }).bytes
+            expect(readJpegOrientation(bytes)).toBe(scanEmbeddedJpegThumb(bytes)!.orientation)
+        }
+    })
+
+    test('a tag that is absent, out of range or of the wrong type gives 1', () => {
+        expect(readJpegOrientation(buildJpeg({ tiff: { orientation: null } }).bytes)).toBe(1)
+        expect(readJpegOrientation(buildJpeg({ tiff: { orientation: 0 } }).bytes)).toBe(1)
+        expect(readJpegOrientation(buildJpeg({ tiff: { orientation: 9 } }).bytes)).toBe(1)
+        expect(readJpegOrientation(buildJpeg({ tiff: { orientation: 6, orientationType: 4 } }).bytes)).toBe(1)
+    })
+
+    test('a malformed or missing Exif block gives 1', () => {
+        expect(readJpegOrientation(buildJpeg({ rawTiff: null }).bytes)).toBe(1)
+        expect(readJpegOrientation(buildJpeg({ tiff: { magic: 43 } }).bytes)).toBe(1)
+        expect(readJpegOrientation(buildJpeg({ tiff: { ifd0Count: 60000 } }).bytes)).toBe(1)
+        expect(readJpegOrientation(new Uint8Array(0))).toBe(1)
+        expect(readJpegOrientation(Uint8Array.from([0x89, 0x50, 0x4E, 0x47]))).toBe(1)
+    })
+
+    test('every prefix length gives a value from 1 to 8 and never throws', () => {
+        const full = buildJpeg({ tiff: { orientation: 8 } }).bytes
+        for (let n = 0; n <= full.length; n++) {
+            const o = readJpegOrientation(full.subarray(0, n))
+            expect(o).toBeGreaterThanOrEqual(1)
+            expect(o).toBeLessThanOrEqual(8)
+        }
+        expect(readJpegOrientation(full)).toBe(8)
+    })
+
+    test('an internal failure gives 1', () => {
+        const hostile = new Proxy(new Uint8Array(16), {
+            get() {
+                throw new RangeError('injected')
+            },
+        })
+        expect(readJpegOrientation(hostile)).toBe(1)
     })
 })
 
