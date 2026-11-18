@@ -252,7 +252,7 @@ export const DEFERRED_IMAGE_PLACEHOLDER_SRC = "data:image/svg+xml,%3Csvg%20xmlns
 
 const MAX_WHOLE_READ_URLS = 20000
 
-/** The asset key behind each whole-read URL `getFileSrc` made on Android, so markup that holds only the URL can learn the stored size. */
+/** The asset key behind each whole-read URL `getFileSrc` made on Android, and behind each inlay body URL `deliverStoredInlay` registers through `rememberWholeReadUrlOfSize`, so markup that holds only the URL can learn the stored size. */
 const wholeReadUrlKeys = new Map<string, string>()
 
 /**
@@ -261,6 +261,21 @@ const wholeReadUrlKeys = new Map<string, string>()
  * (`forgetStoredAssetSizes`) stops being known at once.
  */
 export function rememberWholeReadUrl(url: string, key: string): void {
+    putEntry(wholeReadUrlKeys, url, key, MAX_WHOLE_READ_URLS)
+}
+
+/**
+ * Records that `url` reads whole the file `key` of the known size `bytes`, for a
+ * producer that holds the size already (an inlay body's stored length) and so
+ * makes no probe. A size that is not a whole number of bytes registers nothing,
+ * so the URL stays unknown. `key` must name a file whose size never changes while
+ * the key exists; a changed or deleted file needs `forgetStoredAssetSizes`.
+ */
+export function rememberWholeReadUrlOfSize(url: string, key: string, bytes: number): void {
+    if (!Number.isInteger(bytes) || bytes < 0) {
+        return
+    }
+    putEntry(storedSizes, key, bytes, MAX_CACHED_SIZES)
     putEntry(wholeReadUrlKeys, url, key, MAX_WHOLE_READ_URLS)
 }
 
