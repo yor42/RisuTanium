@@ -13,6 +13,7 @@ mod export_append;
 mod free_space;
 mod launch_inputs;
 mod net_policy;
+mod store2_batch;
 mod store2_gate;
 mod streamed_fetch;
 use launch_inputs::LaunchInputs;
@@ -291,6 +292,18 @@ async fn get_assets_batch(app: AppHandle, keys: Vec<String>) -> Result<tauri::ip
     Ok(tauri::ipc::Response::new(out))
 }
 
+/// Reads the store2 unit files of one `readUnits` call; the response is one frame per key in key order,
+/// in the frame format and budgets of `get_assets_batch`. Fork-local. The page takes bytes only from
+/// `ok` frames and reads every other key through `read_range`.
+#[tauri::command]
+async fn read_store2_units(app: AppHandle, keys: Vec<String>) -> Result<tauri::ipc::Response, String> {
+    let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let out = tauri::async_runtime::spawn_blocking(move || store2_batch::get_store2_units(&base, &keys))
+        .await
+        .map_err(|e| format!("the read task failed: {}", e))??;
+    Ok(tauri::ipc::Response::new(out))
+}
+
 /// Lists `assets/` as `[key, size in bytes]` pairs with the keys and order the
 /// per-directory listing of the file store gives.
 #[tauri::command]
@@ -522,6 +535,7 @@ pub fn run() {
             store2_write_top_chunk_raw,
             store2_remove,
             get_assets_batch,
+            read_store2_units,
             list_assets_sized,
             app_fs_exists,
             app_fs_mkdir_all,
