@@ -3362,6 +3362,14 @@ export const languageGerman = {
         `Die Schrift ${file} benötigt genau einen Lizenzeintrag in manifest.json.`,
     "themePackRefuseLicenseWithoutFont": (file: string) =>
         `manifest.json führt eine Lizenz für ${file} auf, das keine Schrift in diesem Paket ist.`,
+    "themePackRefuseIconMissing": "manifest.json nennt ein Symbol, das nicht in diesem Paket enthalten ist.",
+    "themePackRefuseIconType": "Das Symbol muss eine PNG- oder WebP-Datei im Ordner images/ des Pakets sein.",
+    "themePackRefuseIconTooLarge": (limit: string) =>
+        `Das Symbol ist größer als ${limit}, der Höchstgröße für ein Paketsymbol.`,
+    "themePackRefuseIconDimensions": (limit: number) =>
+        `Das Symbol ist breiter oder höher als ${limit} Pixel, dem Höchstmaß für ein Paketsymbol.`,
+    "themePackRefuseIconAnimated": "Das Symbol ist animiert. Ein Paketsymbol muss ein Standbild sein.",
+    "themePackRefuseIconUnreadable": "Das Symbolbild konnte nicht als PNG oder WebP gelesen werden.",
     "themePackRefuseNoArea": "Dieses Paket hat keine chat.css, daher gibt es nichts, was diese Version anwenden kann.",
     "themePackCouldNotCheck": "Das Paket konnte nicht geprüft werden (die Prüfung wurde abgebrochen oder dauerte zu lange).",
     "themePackSheetRefused": (sheet: string) => `${sheet} wurde von der Stilprüfung abgelehnt:`,

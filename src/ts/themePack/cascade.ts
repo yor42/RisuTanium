@@ -91,7 +91,7 @@ function tokenColour(tokens: TokenMap, name: string, onto: Rgba): Rgba | null {
 /** A value with var() resolved through `tokens`, literals and url() targets blanked, and unresolved private references dropped. */
 const settled = (value: string, tokens: TokenMap): string => bare(resolve(value.replace(/\s*!important\s*$/, '').trim(), tokens)).replace(PRIVATE_LEFTOVER, ' ')
 
-/** Every concrete colour a value names, gradient stops included, with var() resolved through `tokens`; words that are not colours and url() targets are skipped. */
+/** Every concrete colour a value names, gradient stops included, with var() resolved through `tokens`; words that are not colours and url() targets are skipped. It reads word by word, so the words of a color-mix() are never one colour: only a scan that judges the resolved mix whole may accept it. */
 function coloursIn(value: string, tokens: TokenMap): Rgba[] {
     const resolved = settled(value, tokens)
     const found: Rgba[] = []
@@ -148,7 +148,7 @@ const overError = (part: string, prop: string, why: string): LintError => ({ sel
 const currentColourWhy = (part: string, halo: boolean): string => halo
     ? `${part}: a text-shadow blurred more than 2 px in the text colour (currentcolor, or no colour written) paints the control's own text colour around its text; write a colour that reads against the text (MC-2072)`
     : `${part}: an inset box-shadow in the text colour (currentcolor, or no colour written) paints the control's own text colour under its text; write a colour that reads against the text (MC-2072)`
-const unreadableLayerWhy = (part: string, prop: string, layer: string): string => `${part}: ${prop} layer "${clip(layer)}" cannot be read, so it cannot be judged against the text; write a hex, rgb() or hsl() colour and px or rem lengths (MC-2072, MC-2090)`
+const unreadableLayerWhy = (part: string, prop: string, layer: string): string => `${part}: ${prop} layer "${clip(layer)}" cannot be read, so it cannot be judged against the text; write a hex, rgb(), hsl() or named colour, or color-mix() in srgb, srgb-linear or oklab, and px or rem lengths (MC-2072, MC-2090)`
 const tooManyWhy = (part: string): string => `${part}: too many colours to judge: more than ${MAX_TRANSLUCENT_PAIRS} pairs of translucent shadow colours and fills; use fewer distinct translucent shadow and fill colours on this control (MC-2072, MC-2090)`
 const tooManyStacksWhy = (part: string): string => `${part}: too many colours to judge: the inset box-shadow and text-shadow layers on this control can paint more than ${MAX_TRANSLUCENT_PAIRS} different colours together; use fewer layers or fewer translucent layers (MC-2072, MC-2090, MC-2177)`
 const thicknessWhy = (part: string, prop: string, value: string, token: string, why: 'over' | 'from-font' | 'unreadable'): string => {

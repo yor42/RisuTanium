@@ -1,7 +1,7 @@
 // The stored record of an installed theme pack (layout A: one stored archive per pack), its reader, and the input the
 // install needs from a verified pack. The record lives under `Database.themePacks` as plain data; a build that cannot
 // read an entry keeps it untouched (an unreadable or newer-version entry is shown as broken and can only be removed).
-import { PACK_ARCHIVE_KEY } from './packRefs'
+import { PACK_ARCHIVE_KEY, PACK_ICON_KEY } from './packRefs'
 
 export type PackMode = 'light' | 'dark'
 
@@ -40,6 +40,11 @@ export interface ThemePackRecordV1 {
     archive: string
     bytes: number
     installedAt: number
+    /** Tile colours derived or declared at install, lower-case `#rrggbb`; absent for a pack installed without them. */
+    mainColor?: string
+    secondaryColor?: string
+    /** The stored icon's asset key (`PACK_ICON_KEY`); absent for a pack without one. */
+    icon?: string
 }
 
 export type PackReadFailure = 'notAnObject' | 'unknownVersion' | 'badField'
@@ -82,6 +87,13 @@ function readFonts(value: unknown): PackFontEntry[] | null {
         fonts.push(font)
     }
     return fonts
+}
+
+const STORED_COLOUR = /^#[0-9a-f]{6}$/
+
+/** A stored tile colour; anything but lower-case `#rrggbb` reads as absent, so a bad value never makes the record unreadable. */
+function readColour(value: unknown): string | undefined {
+    return typeof value === 'string' && STORED_COLOUR.test(value) ? value : undefined
 }
 
 function readModes(value: unknown): PackMode[] | null {
@@ -152,6 +164,18 @@ export function readPackRecord(value: unknown): PackReadResult {
     const record: ThemePackRecordV1 = { v: 1, id, name, version, license, attribution, modes, fonts, archive, bytes, installedAt }
     if (readPackId !== undefined) {
         record.packId = readPackId
+    }
+    const mainColor = readColour(value.mainColor)
+    if (mainColor !== undefined) {
+        record.mainColor = mainColor
+    }
+    const secondaryColor = readColour(value.secondaryColor)
+    if (secondaryColor !== undefined) {
+        record.secondaryColor = secondaryColor
+    }
+    // A key that is not the icon form reads as absent, so a crafted record cannot point the renderer at a user's asset.
+    if (typeof value.icon === 'string' && PACK_ICON_KEY.test(value.icon)) {
+        record.icon = value.icon
     }
     return { ok: true, record }
 }

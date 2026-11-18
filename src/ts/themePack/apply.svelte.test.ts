@@ -572,6 +572,21 @@ describe('T3-4 a pack that cannot apply', () => {
     })
 })
 
+describe('T2b-2 a stored pack with malformed tile fields still applies', () => {
+    // GUARD (passes before and after the tile fields exist): apply re-runs intake over the stored archive and never
+    // judges `colors` or `icon`, so a pack installed before those keys were checked must not turn broken.
+    it.each([
+        ['an invalid colors.main', { colors: { main: 'not-a-colour' } }],
+        ['a non-object colors', { colors: 'red' }],
+        ['an empty icon', { icon: '' }],
+    ])('%s applies the judged sheet', async (_label, over) => {
+        const bytes = zipPack(validPackFiles({ 'manifest.json': manifestText(over) }))
+        const prepared = accepted(await prepareArchive(bytes))
+        expect(prepared.text).toBe(judgeAreaSheet('chat', PLAIN_CHAT_SHEET, undefined, 'chat').canonical)
+        expect(prepared.skippedAreas).toEqual([])
+    })
+})
+
 describe('T3-5 blobs are revoked exactly once each', () => {
     const packA = (): Uint8Array => packOf(TWO_FONTS_SHEET, [FONT_A, FONT_B], {}, 'Pack A')
     const packB = (): Uint8Array => packOf(TWO_FONTS_SHEET, [FONT_A, FONT_B], {}, 'Pack B')
