@@ -152,6 +152,16 @@ function factsOf(plan: RtbCopyPlan, state: CopyCounts): RtbInstallFacts {
     }
 }
 
+/** The facts of a restore that landed, copied so the caller owns the lists. The install stage builds them after its commit returns. */
+export function landedFactsOf(facts: RtbInstallFacts): RtbInstallFacts {
+    return {
+        assetsWritten: facts.assetsWritten,
+        assetsPresent: facts.assetsPresent,
+        skippedAssets: facts.skippedAssets.map((item) => ({ ...item })),
+        inlays: { ...facts.inlays, skipped: facts.inlays.skipped.map((item) => ({ ...item })) },
+    }
+}
+
 function showStop(deps: RtbCopyDeps, text: string): boolean {
     try {
         deps.error(text)

@@ -9,7 +9,9 @@
 import { planAssets, type AssetPlanDeps, type CreatableRule, type SizedListing } from 'src/ts/drive/rtb/rtbAssetPlan'
 import { verifyRtb } from 'src/ts/drive/rtb/rtbVerify'
 import type { RangeSource } from 'src/ts/drive/rtb/rangeSource'
+import type { SideBackends } from 'src/ts/drive/rtb/sideStores'
 import type { RtbCopyPlan } from 'src/ts/drive/rtbRestoreCopy'
+import type { Committer } from 'src/ts/storage/store2/commit'
 import type { ByteStore, PieceWriter, ReadResult, StoreCondition, WriteResult } from 'src/ts/storage/store/contract'
 import { rangeSourceOfBytes } from './sparseSource'
 
@@ -118,6 +120,20 @@ export class MemoryByteStore implements ByteStore {
                 }
             },
         }
+    }
+}
+
+/** A committer that answers `commit` itself and leaves every other call to `committer`. */
+export function committerAnswering(committer: Committer, commit: Committer['commit']): Committer {
+    return { ...committer, commit }
+}
+
+/** Side backends whose stores only log `clear` as `clear:<store name>`; the one method a plugin-grant clear calls. */
+export function loggingSideBackends(log: string[]): SideBackends {
+    const store = (name: string) => ({ clear: async () => { log.push(`clear:${name}`) } })
+    return {
+        forage: (config) => store(config.name) as unknown as ReturnType<SideBackends['forage']>,
+        local: () => localStorage,
     }
 }
 
