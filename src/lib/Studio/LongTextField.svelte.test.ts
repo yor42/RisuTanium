@@ -7,8 +7,10 @@ import { flushStudioFields } from '../../ts/studio/fieldFlush'
 import type { StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
 import type { LongTextKind, LongTextMode, LongTextWritePort } from '../../ts/studio/longText/fieldWrite'
 import { checkCbs } from '../../ts/studio/longText/cbsCheck'
-import { setUpdateClockForTests, tokenSpans, WINDOW_LIMIT } from '../../ts/studio/longText/highlightSpans'
+import { setUpdateClockForTests, tokenSpans, WINDOW_LIMIT, type Note } from '../../ts/studio/longText/highlightSpans'
+import type { character } from '../../ts/storage/database.svelte'
 import { createMacroIndex, type MacroEntry, type MacroIndex } from '../../ts/studio/longText/macroIndex'
+import { setPreviewEngineForTests, type PreviewEngine } from '../../ts/studio/longText/previewEngineService'
 import { loadMacroIndex, setMacroIndexForTests } from '../../ts/studio/longText/macroIndexService'
 import { LT_TEXT_LAYOUT } from '../../ts/studio/longText/overlayMetrics'
 import type { TokenResult } from '../../ts/studio/longText/tokenCount'
@@ -16,6 +18,7 @@ import { tokenChipView } from '../../ts/studio/longText/tokenChip'
 import { setTokenCounterForTests } from '../../ts/studio/longText/tokenService'
 import { studioScreen } from '../../ts/studio/studioScreen.svelte'
 import LongTextField from './LongTextField.svelte'
+import type { PreviewSourceInput } from './LongTextPreview.svelte'
 
 // A language table that answers every key with the key, so the real locale and what it imports stay out of the test.
 // The token chip's keys take arguments, so they answer with the key and its arguments.
@@ -24,7 +27,7 @@ vi.mock('../../lang', async () => {
     const base = helpers.studioLanguageMock()
     const withArguments = (key: string) => (...args: (string | number)[]) => `${key}(${args.join(',')})`
     const own: Record<string, unknown> = {}
-    for (const key of ['ltTokens', 'ltTokensEst', 'ltTokEstOnline', 'ltTokEstUnavailable', 'ltTokEstError', 'ltProblemCount', 'ltProblemsShowAll', 'ltProblemLine', 'ltProblemFix', 'cbsUnclosed', 'cbsStrayBlockClose', 'cbsNotABlock', 'ltMacroMatches']) own[key] = withArguments(key)
+    for (const key of ['ltTokens', 'ltTokensEst', 'ltTokEstOnline', 'ltTokEstUnavailable', 'ltTokEstError', 'ltProblemCount', 'ltProblemsShowAll', 'ltProblemLine', 'ltProblemFix', 'cbsUnclosed', 'cbsStrayBlockClose', 'cbsNotABlock', 'ltMacroMatches', 'ltTokensVaries', 'sbWrites', 'sbMediaHidden']) own[key] = withArguments(key)
     // The macro table's labels: one per row id, answering `row:<id>`.
     own.ltMacroRows = new Proxy({}, { get: (_target, id) => typeof id === 'string' ? `row:${id}` : undefined })
     return { language: new Proxy(base, { get: (target, key) => typeof key === 'string' && key in own ? own[key] : Reflect.get(target, key) }) }
@@ -34,8 +37,11 @@ vi.mock('../../lang', async () => {
 vi.mock('../../ts/studio/studioScreen.svelte', () => ({ studioScreen: { layout: 'wide' } }))
 
 // The picker and the sheet register a Back layer; the real one reaches the whole back-handler chain. The Back rule has
-// its own row in the Studio forms rig, which installs the real layers.
-vi.mock('../../ts/studio/studioBack.svelte', () => ({ registerStudioBackLayer: () => {} }))
+// its own row in the Studio forms rig, which installs the real layers. The registered layers are kept so a row can press Back.
+const back = vi.hoisted(() => ({ layers: [] as { isOpen: () => boolean, close: () => void }[] }))
+vi.mock('../../ts/studio/studioBack.svelte', () => ({
+    registerStudioBackLayer: (layer: { isOpen: () => boolean, close: () => void }) => { back.layers.push(layer) },
+}))
 
 // The real colouring, wrapped so a test can count its runs.
 vi.mock('../../ts/studio/longText/highlightSpans', async (importOriginal) => {
@@ -95,7 +101,16 @@ function fixture(stored: string): Fixture {
 let mounted: ReturnType<typeof mount>[] = []
 let hosts: HTMLElement[] = []
 
-function mountField(fix: Fixture, overrides: { editable?: boolean, busy?: boolean, label?: string, kind?: LongTextKind, mode?: LongTextMode } = {}): { area: HTMLTextAreaElement, host: HTMLElement, exported: { insertText(start: number, end: number, text: string, caret: number): void } } {
+interface FieldExports {
+    insertText(start: number, end: number, text: string, caret: number): void
+    value(): string
+    selection(): { start: number, end: number }
+    composing(): boolean
+    reveal(start: number, end: number, refocus?: HTMLElement | null): void
+    keepScroll(fn: () => void): void
+}
+
+function mountField(fix: Fixture, overrides: { editable?: boolean, busy?: boolean, label?: string, kind?: LongTextKind, mode?: LongTextMode, variant?: 'inline' | 'focus', onvalue?: (value: string) => void, previewSource?: () => PreviewSourceInput, extraMarks?: (text: string) => Note[] } = {}): { area: HTMLTextAreaElement, host: HTMLElement, exported: FieldExports } {
     const host = document.createElement('div')
     document.body.appendChild(host)
     const app = mount(LongTextField, {
@@ -109,6 +124,10 @@ function mountField(fix: Fixture, overrides: { editable?: boolean, busy?: boolea
             editable: overrides.editable ?? true,
             busy: overrides.busy ?? false,
             fieldClass: 'w-full',
+            variant: overrides.variant,
+            onvalue: overrides.onvalue,
+            previewSource: overrides.previewSource,
+            extraMarks: overrides.extraMarks,
             onresult: (result: StudioResult | null) => fix.results.push(result),
         },
     })
@@ -323,6 +342,63 @@ describe('B2 the overlay', () => {
         advance(250)
         expect(updates()).toBe(before + 1)
         expect(namesIn(host)).toBe(3)
+    })
+
+    // Notes are display state: the handler marks the first `AB` as a speaker note and a trailing `~tail` as unused.
+    const notesOf = (text: string): Note[] => {
+        const notes: Note[] = []
+        const speaker = text.indexOf('AB')
+        if (speaker >= 0) notes.push({ start: speaker, end: speaker + 2, note: 'speaker' })
+        const tail = text.indexOf('~tail')
+        if (tail >= 0) notes.push({ start: tail, end: text.length, note: 'notUsed' })
+        return notes
+    }
+    const noteTexts = (host: HTMLElement, note: string): string[] => Array.from(overlayOf(host).querySelectorAll(`[data-note="${note}"]`)).map((el) => el.textContent ?? '')
+
+    test('S5 extraMarks notes are drawn after the pause, shifted by an edit before it, and recomputed after it', () => {
+        const fix = fixture('AB hi ~tail')
+        const { area, host } = mountField(fix, { extraMarks: notesOf })
+        expect(noteTexts(host, 'speaker')).toEqual([])
+        advance(250)
+        expect(noteTexts(host, 'speaker')).toEqual(['AB'])
+        expect(noteTexts(host, 'notUsed')).toEqual(['~tail'])
+        const speaker = overlayOf(host).querySelector('[data-note="speaker"]')
+        expect(speaker?.classList.contains('underline')).toBe(true)
+        for (const widening of ['font-bold', 'font-semibold', 'italic', 'tracking-wide', 'text-lg']) expect(speaker?.classList.contains(widening)).toBe(false)
+        expect(overlayOf(host).querySelector('[data-note="notUsed"]')?.classList.contains('line-through')).toBe(true)
+        typeInto(area, 'zz AB hi ~tail')
+        flushSync()
+        expect(overlayText(host)).toBe('zz AB hi ~tail')
+        expect(noteTexts(host, 'speaker')).toEqual(['AB'])
+        expect(noteTexts(host, 'notUsed')).toEqual(['~tail'])
+        typeInto(area, 'zz ABxy hi ~tail')
+        flushSync()
+        expect(noteTexts(host, 'notUsed')).toEqual(['~tail'])
+        advance(250)
+        expect(noteTexts(host, 'speaker')).toEqual(['AB'])
+        expect(noteTexts(host, 'notUsed')).toEqual(['~tail'])
+    })
+
+    test('S5 a field without extraMarks draws no notes and the overlay text is unchanged', () => {
+        const { host } = mountField(fixture('AB hi ~tail'))
+        advance(250)
+        expect(overlayOf(host).querySelectorAll('[data-note]')).toHaveLength(0)
+        expect(overlayText(host)).toBe('AB hi ~tail')
+    })
+
+    test('S5 a field the overlay does not colour (low power, not focused) never calls extraMarks', () => {
+        setLowPower(true)
+        const calls: string[] = []
+        mountField(fixture('AB'), { extraMarks: (text) => { calls.push(text); return [] } })
+        advance(1000)
+        expect(calls).toEqual([])
+    })
+
+    test('S5 a plain-mode field never calls extraMarks', () => {
+        const calls: string[] = []
+        mountField(fixture('AB'), { mode: 'plain', extraMarks: (text) => { calls.push(text); return [] } })
+        advance(1000)
+        expect(calls).toEqual([])
     })
 
     test('B2-C1 above the window limit the overlay hides while typing and returns after the pause', () => {
@@ -1857,5 +1933,295 @@ describe('CHORE-815 the shared text layout', () => {
         advance(250)
         expect(overlayOf(off.host).getAttribute('data-overlay')).toBe('off')
         expect(off.host.querySelector('[data-part="studio-lt-hl-off"]')).toBeNull()
+    })
+})
+
+describe('S3e-D the focus-layer API of the field', () => {
+    test('D-U4 onvalue receives the initial LF text once at mount, then each changed text once', () => {
+        const seenValues: string[] = []
+        const { area } = mountField(fixture('a\r\nb'), { onvalue: (value) => seenValues.push(value) })
+        expect(seenValues).toEqual(['a\nb'])
+        typeInto(area, 'a\nbX')
+        expect(seenValues).toEqual(['a\nb', 'a\nbX'])
+        typeInto(area, 'a\nbX')
+        expect(seenValues, 'an input that leaves the text as it was says nothing').toEqual(['a\nb', 'a\nbX'])
+    })
+
+    test('D-U4 onvalue follows a text change that has no DOM event (an owner write)', () => {
+        const seenValues: string[] = []
+        const fix = fixture('one')
+        mountField(fix, { onvalue: (value) => seenValues.push(value) })
+        fix.owner.value = 'two'
+        flushSync()
+        expect(seenValues).toEqual(['one', 'two'])
+    })
+
+    test('value() and selection() read the textarea, composing() follows the controller', () => {
+        const { area, exported } = mountField(fixture('abcdef'))
+        expect(exported.value()).toBe('abcdef')
+        area.setSelectionRange(1, 4)
+        expect(exported.selection()).toEqual({ start: 1, end: 4 })
+        expect(exported.composing()).toBe(false)
+        area.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+        expect(exported.composing()).toBe(true)
+        area.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
+        expect(exported.composing()).toBe(false)
+    })
+
+    test('D-C17 braces, Find and Maximize are consecutive siblings in that order (no previewSource), and Find and Maximize stay enabled when the field is read-only while the braces are disabled', () => {
+        const { host } = mountField(fixture('x'), { editable: false })
+        const braces = host.querySelector('[data-part="studio-lt-braces"]') as HTMLButtonElement
+        const find = host.querySelector('[data-part="studio-lt-find"]') as HTMLButtonElement
+        const maximize = host.querySelector('[data-part="studio-lt-focus"]') as HTMLButtonElement
+        expect(find).not.toBeNull()
+        expect(maximize).not.toBeNull()
+        expect(braces.nextElementSibling).toBe(find)
+        expect(find.nextElementSibling).toBe(maximize)
+        expect(braces.disabled).toBe(true)
+        expect(find.disabled).toBe(false)
+        expect(find.getAttribute('aria-haspopup')).toBe('dialog')
+        expect(find.getAttribute('aria-label')).toBe('ltFind')
+        expect(maximize.disabled).toBe(false)
+        expect(maximize.getAttribute('aria-haspopup')).toBe('dialog')
+        expect(maximize.getAttribute('aria-expanded')).toBe('false')
+        expect(maximize.getAttribute('aria-label')).toBe('ltFocus')
+    })
+
+    test('D-C17 the focus variant has no Maximize button, no label element and no height handle, and keeps the braces button', () => {
+        finePointer()
+        const { host } = mountField(fixture('x'), { variant: 'focus', label: 'Description' })
+        expect(host.querySelector('[data-part="studio-lt-focus"]')).toBeNull()
+        expect(host.querySelector('[data-part="studio-lt-find"]')).toBeNull()
+        expect(host.querySelector('label')).toBeNull()
+        expect(host.querySelector('[data-part="studio-lt-height-handle"]')).toBeNull()
+        expect(host.querySelector('[data-part="studio-lt-braces"]')).not.toBeNull()
+    })
+
+    test('D-C17 an inline field has a height handle on a fine pointer (the focus variant omits it by variant, not by pointer)', () => {
+        finePointer()
+        const { host } = mountField(fixture('x'))
+        expect(host.querySelector('[data-part="studio-lt-height-handle"]')).not.toBeNull()
+    })
+
+    test('reveal selects the range and focuses the field, then hands focus to the caller; keepScroll restores the scroll position', () => {
+        const { area, host, exported } = mountField(fixture('abcdef'))
+        const other = document.createElement('button')
+        host.appendChild(other)
+        exported.reveal(1, 4)
+        expect(document.activeElement).toBe(area)
+        expect([area.selectionStart, area.selectionEnd]).toEqual([1, 4])
+        exported.reveal(2, 3, other)
+        expect(document.activeElement).toBe(other)
+        expect([area.selectionStart, area.selectionEnd]).toEqual([2, 3])
+
+        area.scrollTop = 40
+        let seenDuring = -1
+        exported.keepScroll(() => { area.scrollTop = 0; seenDuring = area.scrollTop })
+        expect(seenDuring).toBe(0)
+        expect(area.scrollTop).toBe(40)
+    })
+
+    test('Ctrl+E is ignored while composing, with Alt or Shift, and in the focus variant', () => {
+        const inline = mountField(fixture('x'))
+        const maximize = inline.host.querySelector('[data-part="studio-lt-focus"]') as HTMLButtonElement
+        inline.area.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }))
+        const composingKey = keyOn(inline.area, 'e', { ctrlKey: true, isComposing: true })
+        flushSync()
+        expect(composingKey.defaultPrevented).toBe(false)
+        expect(maximize.getAttribute('aria-expanded')).toBe('false')
+        inline.area.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }))
+        expect(keyOn(inline.area, 'e', { ctrlKey: true, altKey: true }).defaultPrevented).toBe(false)
+        expect(keyOn(inline.area, 'e', { ctrlKey: true, shiftKey: true }).defaultPrevented).toBe(false)
+        const focus = mountField(fixture('x'), { variant: 'focus' })
+        expect(keyOn(focus.area, 'e', { ctrlKey: true }).defaultPrevented).toBe(false)
+    })
+})
+
+// A stand-in engine: `{{char}}` and `{{getvar::hp}}` are filled from the values, `random` marks the text as varying,
+// and the sanitiser is the identity (the real one has its own rows in LongTextPreview.svelte.test.ts).
+function fakeEngine(over: Partial<PreviewEngine> = {}): PreviewEngine {
+    const base: PreviewEngine = {
+        copiedChatValues: () => null,
+        runPreview: (text, _kind, _source, values) => ({
+            ok: true,
+            text: text.replaceAll('{{char}}', values.char).replaceAll('{{getvar::hp}}', values.chat.hp ?? ''),
+            writes: [],
+            varies: text.includes('random'),
+        }),
+        sandboxKeysOf: (text) => ({ chat: text.includes('{{getvar::hp}}') ? ['hp'] : [], toggles: [] }),
+        sandboxSourceOf: (live) => ({ name: live.name, defaultVariables: '', alternateGreetings: [], texts: {}, bindedPersona: null, modules: [], chatModules: [] }),
+        sandboxUserName: () => 'Uma',
+        variesIn: (text) => text.includes('random'),
+        VARIES_NAMES: [],
+        previewHtml: (text) => ({ html: text, mediaRemoved: 0 }),
+    }
+    return { ...base, ...over }
+}
+
+const previewFrom = (name = 'Alice'): (() => PreviewSourceInput) => () => ({ owner: { name } as character, chat: null, globals: {} })
+
+describe('S3e-E2b the chip counts filled text and the Preview button', () => {
+    beforeEach(() => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        setPreviewEngineForTests(fakeEngine())
+    })
+
+    afterEach(() => { setPreviewEngineForTests(null) })
+
+    async function counted(): Promise<void> {
+        await advanceTokens(500)
+        await settleTokens()
+        await settleTokens()
+    }
+
+    test('E2-C7 with a source the chip counts the filled text with the filled note', async () => {
+        const { host } = mountField(fixture('{{char}} hi'), { previewSource: previewFrom('Alice') })
+        await counted()
+        expect(tokenRequests.map((request) => request.text)).toEqual(['Alice hi'])
+        expect(chipOf(host).textContent).toBe('ltTokens(8,M)')
+        expect(panelOf(host).textContent).toContain('ltTokNote')
+        expect(panelOf(host).textContent).not.toContain('ltTokNoteRaw')
+    })
+
+    test('E2-C7 an exact count of text that varies uses the varies key; an estimate stays an estimate', async () => {
+        const first = mountField(fixture('random {{char}}'), { previewSource: previewFrom('Alice') })
+        await counted()
+        expect(chipOf(first.host).textContent).toBe('ltTokensVaries(12,M)')
+        tokenAnswer = async () => ({ kind: 'estimate', count: 5, model: 'M', reason: 'online-only' })
+        const second = mountField(fixture('random {{char}}'), { previewSource: previewFrom('Alice') })
+        await counted()
+        expect(chipOf(second.host).textContent).toBe('ltTokensEst(5)')
+        expect(chipOf(second.host).textContent).not.toContain('Varies')
+        expect(panelOf(second.host).textContent).toContain('ltTokNote')
+    })
+
+    test('E1-C2 amended: the raw note shows only on raw counts (no source, plain mode, a failed run, a failed engine load)', async () => {
+        const noSource = mountField(fixture('{{char}} hi'))
+        await counted()
+        expect(tokenRequests.at(-1)?.text).toBe('{{char}} hi')
+        expect(panelOf(noSource.host).textContent).toContain('ltTokNoteRaw')
+
+        tokenRequests.length = 0
+        const plain = mountField(fixture('{{char}} hi'), { mode: 'plain', previewSource: previewFrom() })
+        await counted()
+        expect(tokenRequests.at(-1)?.text).toBe('{{char}} hi')
+        expect(panelOf(plain.host).textContent).toContain('ltTokNoteRaw')
+
+        tokenRequests.length = 0
+        setPreviewEngineForTests(fakeEngine({ runPreview: () => ({ ok: false }) }))
+        const failedRun = mountField(fixture('{{char}} hi'), { previewSource: previewFrom() })
+        await counted()
+        expect(tokenRequests.at(-1)?.text).toBe('{{char}} hi')
+        expect(panelOf(failedRun.host).textContent).toContain('ltTokNoteRaw')
+
+        tokenRequests.length = 0
+        setPreviewEngineForTests(() => Promise.reject(new Error('load failed')))
+        const failedLoad = mountField(fixture('{{char}} hi'), { previewSource: previewFrom() })
+        await counted()
+        expect(tokenRequests.at(-1)?.text).toBe('{{char}} hi')
+        expect(chipOf(failedLoad.host).textContent).toBe('ltTokens(11,M)')
+        expect(panelOf(failedLoad.host).textContent).toContain('ltTokNoteRaw')
+    })
+
+    test('E2-C7 one value edit in the preview is one recount of the chip', async () => {
+        const { host } = mountField(fixture('x{{getvar::hp}}'), { previewSource: previewFrom() })
+        await counted()
+        expect(tokenRequests.map((request) => request.text)).toEqual(['x'])
+        ;(host.querySelector('[data-part="studio-lt-preview"]') as HTMLButtonElement).click()
+        flushSync()
+        await settleTokens()
+        const input = host.querySelector('[data-part="lt-preview-row"][data-key="hp"] input') as HTMLInputElement
+        input.value = '9'
+        input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+        flushSync()
+        await counted()
+        expect(tokenRequests.map((request) => request.text)).toEqual(['x', 'x9'])
+    })
+
+    test('the Preview button shows for a non-plain mode with a source only, never in the focus variant, and is not disabled when read-only', () => {
+        expect(mountField(fixture('x'), { previewSource: previewFrom() }).host.querySelector('[data-part="studio-lt-preview"]')).not.toBeNull()
+        expect(mountField(fixture('x'), { mode: 'plain', previewSource: previewFrom() }).host.querySelector('[data-part="studio-lt-preview"]')).toBeNull()
+        expect(mountField(fixture('x')).host.querySelector('[data-part="studio-lt-preview"]')).toBeNull()
+        expect(mountField(fixture('x'), { variant: 'focus', previewSource: previewFrom() }).host.querySelector('[data-part="studio-lt-preview"]')).toBeNull()
+        const readOnly = mountField(fixture('x'), { editable: false, previewSource: previewFrom() })
+        expect((readOnly.host.querySelector('[data-part="studio-lt-preview"]') as HTMLButtonElement).disabled).toBe(false)
+    })
+
+    test('D-C17 with a source the header order is braces, Find, Preview, Maximize', () => {
+        const { host } = mountField(fixture('x'), { previewSource: previewFrom() })
+        const braces = host.querySelector('[data-part="studio-lt-braces"]') as HTMLElement
+        const find = host.querySelector('[data-part="studio-lt-find"]') as HTMLElement
+        const preview = host.querySelector('[data-part="studio-lt-preview"]') as HTMLElement
+        const maximize = host.querySelector('[data-part="studio-lt-focus"]') as HTMLElement
+        expect(braces.nextElementSibling).toBe(find)
+        expect(find.nextElementSibling).toBe(preview)
+        expect(preview.nextElementSibling).toBe(maximize)
+        expect(preview.getAttribute('aria-label')).toBe('ltPreview')
+        expect(preview.getAttribute('aria-haspopup')).toBe('dialog')
+    })
+
+    test('E2-C1 the eye opens a modal sheet titled Preview; Esc closes only the sheet and the field stays', async () => {
+        const { host, area } = mountField(fixture('hi'), { previewSource: previewFrom() })
+        const eye = host.querySelector('[data-part="studio-lt-preview"]') as HTMLButtonElement
+        eye.click()
+        flushSync()
+        const dialog = host.querySelector('[data-part="lt-preview-sheet"]') as HTMLElement
+        expect(dialog.getAttribute('role')).toBe('dialog')
+        expect(dialog.getAttribute('aria-modal')).toBe('true')
+        expect(document.getElementById(dialog.getAttribute('aria-labelledby') as string)?.textContent).toBe('ltPreview')
+        expect(eye.getAttribute('aria-expanded')).toBe('true')
+        const esc = keyOn(dialog, 'Escape')
+        expect(esc.defaultPrevented).toBe(true)
+        expect(host.querySelector('[data-part="lt-preview-sheet"]')).toBeNull()
+        expect(area.isConnected).toBe(true)
+        expect(eye.getAttribute('aria-expanded')).toBe('false')
+    })
+
+    test('E2-C1 Back closes the sheet without bringing the field back into focus', async () => {
+        back.layers.length = 0
+        const { area, host } = mountField(fixture('hi'), { previewSource: previewFrom() })
+        area.focus()
+        ;(host.querySelector('[data-part="studio-lt-preview"]') as HTMLButtonElement).click()
+        flushSync()
+        expect(host.querySelector('[data-part="lt-preview-sheet"]')).not.toBeNull()
+        area.blur()
+        const layer = back.layers.at(-1)
+        expect(layer?.isOpen()).toBe(true)
+        layer?.close()
+        flushSync()
+        expect(host.querySelector('[data-part="lt-preview-sheet"]')).toBeNull()
+        expect(document.activeElement).not.toBe(area)
+    })
+
+    test('E2-C1 opening the preview closes an open macro picker, also when the field has no focus to lose', async () => {
+        const { area, host } = mountField(fixture(''), { previewSource: previewFrom() })
+        await typeOpen(area, '{{')
+        expect(pickerOf(host)).not.toBeNull()
+        ;(host.querySelector('[data-part="studio-lt-preview"]') as HTMLButtonElement).click()
+        flushSync()
+        expect(pickerOf(host)).toBeNull()
+        expect(host.querySelector('[data-part="lt-preview-sheet"]')).not.toBeNull()
+    })
+
+    test('E2-C5 while the field is composing the sheet shows its old output; it updates 400 ms after the composition ends', async () => {
+        const { area, host } = mountField(fixture('hi'), { previewSource: previewFrom() })
+        ;(host.querySelector('[data-part="studio-lt-preview"]') as HTMLButtonElement).click()
+        flushSync()
+        await settleTokens()
+        await settleTokens()
+        await advanceTokens(450)
+        const output = (): string => (host.querySelector('[data-part="lt-preview-output"]')?.textContent ?? '').trim()
+        expect(output()).toBe('hi')
+        compositionStartOn(area)
+        typeInto(area, 'hix', true)
+        flushSync()
+        await advanceTokens(3000)
+        expect(output()).toBe('hi')
+        compositionEndOn(area)
+        flushSync()
+        await advanceTokens(399)
+        expect(output()).toBe('hi')
+        await advanceTokens(1)
+        expect(output()).toBe('hix')
     })
 })

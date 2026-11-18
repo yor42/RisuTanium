@@ -4,13 +4,14 @@
     import { language } from '../../lang'
     import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
     import type { StudioRefusal, StudioResult } from '../../ts/studio/history/ownerHistory.svelte'
-    import { createGreetingRowKeys } from '../../ts/studio/greetingRowKeys'
     import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
     import { beginOwnerVisit, ensureStudioHistory, getStudioHistoryService, historyBannerText, studioHistoryLoadFailed } from '../../ts/studio/history/studioHistoryService.svelte'
     import type { LongTextWritePort } from '../../ts/studio/longText/fieldWrite'
     import { DBState } from '../../ts/stores.svelte'
     import type { ToastHost } from '../../ts/toast/toastHost.svelte'
+    import GreetingCards from './GreetingCards.svelte'
     import LongTextField from './LongTextField.svelte'
+    import type { PreviewSourceInput } from './LongTextPreview.svelte'
 
     // The live edit fields of the selected character: description, hide-icon and the alternative first
     // messages. Every edit goes through the history service, which writes the live character, marks it for
@@ -41,15 +42,13 @@
         const found = DBState.db.characters?.find((candidate) => candidate?.chaId === chaId)
         return found && found.type !== 'group' ? found : undefined
     })
+    // What the CBS preview reads: the character, the chat it is showing, and the shared variables. Read at each run.
+    const previewSource = (): PreviewSourceInput => ({ owner: live ?? null, chat: live?.chats?.[live.chatPage] ?? null, globals: DBState.db.globalChatVariables ?? {} })
     // Read at every render, so a character that became private or a group shows nothing.
     const view = $derived(service ? service.view(owner) : null)
     const hidden = $derived(live === undefined || live.license === 'private' || view?.restricted === true)
     const editable = $derived(view?.editable === true)
     const greetings = $derived(live?.alternateGreetings ?? [])
-    // Rows keep their DOM node while their text survives a list change, so a delete, undo, redo or restore
-    // mounts or removes one row instead of rewriting every row after it.
-    const rowKeys = createGreetingRowKeys()
-    const greetingRows = $derived(rowKeys.rows(greetings))
     const banner = $derived(view ? historyBannerText(view.banner) : null)
     // The history service could not be loaded at all: the fields stay read-only (there is no write path) until a retry builds it.
     const loadFailed = $derived(!service && studioHistoryLoadFailed())
@@ -96,21 +95,10 @@
         closeStep: () => service?.closeOpenStep(owner),
     }
 
-    // Bound to the row's id, not its position: a row that was removed reads null, and a row that took another
-    // text fails the controller's base check, so held text never lands in a neighbouring row.
-    function greetingPort(id: number): LongTextWritePort {
-        const at = (): number => greetingRows.findIndex((row) => row.id === id)
-        return {
-            read: () => {
-                const index = at()
-                return index < 0 ? null : greetingRows[index].text
-            },
-            write: (value) => {
-                const index = at()
-                return index < 0 || !service || !editable ? null : service.greetingEdit(owner, index, value)
-            },
-            closeStep: () => service?.closeOpenStep(owner),
-        }
+    const firstMessagePort: LongTextWritePort = {
+        read: () => live?.firstMessage ?? '',
+        write: (value) => (service && editable ? service.editText(owner, 'firstMessage', value, 'typing') : null),
+        closeStep: () => service?.closeOpenStep(owner),
     }
 
     function onHideIconChange(event: Event & { currentTarget: HTMLInputElement }): void {
@@ -131,27 +119,6 @@
         }
         // A toggle is one discrete action: it never joins the next one's step.
         service.closeOpenStep(owner)
-    }
-
-    function greetingInputs(): HTMLElement[] {
-        return root ? Array.from(root.querySelectorAll<HTMLElement>('[data-part="studio-greeting-input"]')) : []
-    }
-
-    async function addGreeting(): Promise<void> {
-        if (!service || !editable || !noted(service.greetingAdd(owner))) return
-        await afterFlush()
-        greetingInputs().at(-1)?.focus()
-    }
-
-    async function deleteGreeting(index: number): Promise<void> {
-        if (!service || !editable || !noted(service.greetingDelete(owner, index))) return
-        const op = service.view(owner).done.at(-1)?.ops.find((candidate) => candidate.op === 'listRemove')
-        if (op?.op === 'listRemove') toasts.postDeleted(owner, op.deletedId)
-        await afterFlush()
-        // Focus goes to the row that took the place, else the one before it, else the add button.
-        const rows = greetingInputs()
-        const next = rows[index] ?? rows[index - 1] ?? root?.querySelector<HTMLElement>('[data-part="studio-greeting-add"]')
-        next?.focus()
     }
 
     onDestroy(() => service?.closeOpenStep(owner))
@@ -175,6 +142,8 @@
             label={language.description}
             kind="desc"
             mode="cbs"
+            ownerLabel={live.name}
+            {previewSource}
             {editable}
             busy={!editable}
             fieldClass="min-h-32 w-full rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor"
@@ -204,46 +173,30 @@
             <span>{language.studioFormRenderWhenComplete}</span>
         </label>
         <p id="studio-form-render-when-complete-hint" data-part="studio-form-render-when-complete-hint" class="text-sm text-textcolor2">{language.studioFormRenderWhenCompleteHint}</p>
-        <div class="flex flex-col gap-2" data-part="studio-form-greetings">
-            <div class="flex items-center justify-between gap-2">
-                <span class="font-bold">{language.altGreet}</span>
-                <button
-                    type="button"
-                    data-part="studio-greeting-add"
-                    class="min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer"
-                    disabled={!editable}
-                    aria-busy={editable ? undefined : 'true'}
-                    onclick={addGreeting}
-                >{language.add}</button>
-            </div>
-            {#if greetings.length === 0}
-                <p class="text-sm text-textcolor2">{language.studioGreetingsEmpty}</p>
-            {/if}
-            {#each greetingRows as row, index (row.id)}
-                <div class="flex items-start gap-2" data-part="studio-greeting-row">
-                    <LongTextField
-                        port={greetingPort(row.id)}
-                        part="studio-greeting-input"
-                        {index}
-                        ariaLabel={`${language.altGreet} ${index + 1}`}
-                        kind="greeting"
-                        mode="html+cbs"
-                        {editable}
-                        busy={!editable}
-                        fieldClass="min-h-20 w-full min-w-0 rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor"
-                        onresult={onFieldResult}
-                    />
-                    <button
-                        type="button"
-                        data-part="studio-greeting-delete"
-                        class="min-h-11 rounded-md border border-darkborderc px-3 hover:bg-selected cursor-pointer"
-                        aria-label={`${language.studioGreetingDelete} ${index + 1}`}
-                        disabled={!editable}
-                        onclick={() => deleteGreeting(index)}
-                    >{language.remove}</button>
-                </div>
-            {/each}
-        </div>
+        <LongTextField
+            port={firstMessagePort}
+            part="studio-form-first-message"
+            label={language.firstMessage}
+            kind="firstMessage"
+            mode="html+cbs"
+            ownerLabel={live.name}
+            {previewSource}
+            {editable}
+            busy={!editable}
+            fieldClass="min-h-32 w-full rounded-md border border-darkborderc bg-darkbg p-2 text-textcolor"
+            onresult={onFieldResult}
+        />
+        <GreetingCards
+            {owner}
+            {service}
+            {editable}
+            {greetings}
+            ownerLabel={live.name}
+            {previewSource}
+            {toasts}
+            {noted}
+            onresult={onFieldResult}
+        />
         {#if refusal}
             <p role="alert" data-part="studio-form-refusal" class="text-sm text-draculared">{refusalText(refusal)}</p>
         {/if}

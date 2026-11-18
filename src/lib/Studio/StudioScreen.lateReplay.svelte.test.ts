@@ -314,3 +314,112 @@ describe('a keyboard replay that settles late', () => {
         expect(focus.placed).not.toHaveBeenCalled()
     })
 })
+
+describe('D-H1 the keyboard path through historyStep (compatibility guard: passes before and after the extraction)', () => {
+    test('Ctrl+Z is handled synchronously and replays once through service.replay, never through undo or redo', async () => {
+        await openWithOneStep()
+        const replay = vi.spyOn(held().service, 'replay')
+        const undo = vi.spyOn(held().service, 'undo')
+        const redo = vi.spyOn(held().service, 'redo')
+        const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ctrlKey: true, key: 'z' })
+        part('studio')!.dispatchEvent(event)
+        expect(event.defaultPrevented).toBe(true)
+        flushSync()
+        await settle()
+        expect(replay).toHaveBeenCalledTimes(1)
+        expect(undo).not.toHaveBeenCalled()
+        expect(redo).not.toHaveBeenCalled()
+    })
+})
+
+describe('a focus-layer Undo or Redo button replays like the key', () => {
+    // Studio open on the basic form with one step, and the focus layer of the description open.
+    async function openWithLayer(): Promise<void> {
+        await openWithOneStep()
+        const open = part('studio-lt-focus')
+        expect(open, 'the rig renders the description field').not.toBeNull()
+        open!.click()
+        flushSync()
+        await settle()
+        expect(part('lt-focus')).not.toBeNull()
+    }
+
+    const click = (name: string): void => {
+        part(name)!.click()
+        flushSync()
+    }
+    const layerNotice = (): string | null => document.querySelector('[data-part="lt-focus-notice"] [data-part="studio-notice-text"]')?.textContent ?? null
+
+    test('(a) one replay, no undo or redo, and a refusal shows inside the layer with focus placed once', async () => {
+        await openWithLayer()
+        const undo = vi.spyOn(held().service, 'undo')
+        const redo = vi.spyOn(held().service, 'redo')
+        const replay = vi.spyOn(held().service, 'replay')
+        click('lt-focus-undo')
+        await settle()
+        expect(replay).toHaveBeenCalledTimes(1)
+        expect(undo).not.toHaveBeenCalled()
+        expect(redo).not.toHaveBeenCalled()
+
+        held().resolve({ ok: false, reason: 'precondition' })
+        await settle()
+
+        expect(layerNotice()).toBe('studioRefusalPrecondition')
+        expect(focus.placed).toHaveBeenCalledTimes(1)
+    })
+
+    test('(b) a replay that rejects after another owner was selected shows the error once and no notice', async () => {
+        await openWithLayer()
+        click('lt-focus-undo')
+        await settle()
+        studioScreen.selectedOwnerKey = null
+        const failure = new Error('replay failed')
+
+        held().reject(failure)
+        await settle()
+
+        expect(alerts.errors).toEqual([failure])
+        expect(studioScreen.notice).toBeNull()
+    })
+
+    test('(c) a replay that settles after everything is unmounted sets no notice and places no focus', async () => {
+        await openWithLayer()
+        click('lt-focus-undo')
+        await settle()
+        await unmountAll()
+
+        held().resolve({ ok: false, reason: 'precondition' })
+        await settle()
+
+        expect(studioScreen.notice).toBeNull()
+        expect(focus.placed).not.toHaveBeenCalled()
+    })
+
+    test('(d) a replay that settles in a later visit sets no notice', async () => {
+        await openWithLayer()
+        click('lt-focus-undo')
+        await settle()
+        openStudio(basicTarget, null)
+        flushSync()
+        await settle()
+
+        held().resolve({ ok: true, dropped: true })
+        await settle()
+
+        expect(studioScreen.notice).toBeNull()
+        expect(focus.placed).not.toHaveBeenCalled()
+    })
+
+    test('(e) the button does not apply the browser-undo gate: it replays although the nested field differs from its focus value', async () => {
+        await openWithLayer()
+        const replay = vi.spyOn(held().service, 'replay')
+        const input = document.querySelector<HTMLTextAreaElement>('[data-part="lt-focus-input"]')!
+        input.focus()
+        input.value = `${input.value}x`
+        input.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+        expect(input.value).not.toBe(input.dataset.studioFocusValue)
+        click('lt-focus-undo')
+        await settle()
+        expect(replay).toHaveBeenCalledTimes(1)
+    })
+})

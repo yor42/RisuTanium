@@ -16,6 +16,7 @@
     import StudioModuleAssetForm from './assets/StudioModuleAssetForm.svelte'
     import StudioChatNoteForm from './StudioChatNoteForm.svelte'
     import StudioCharacterForm from './StudioCharacterForm.svelte'
+    import StudioExampleForm from './StudioExampleForm.svelte'
     import StudioCombined, { combinedKindOf } from './StudioCombined.svelte'
     import StudioStatusChip from './StudioStatusChip.svelte'
     import StudioToggleBuilder from './StudioToggleBuilder.svelte'
@@ -104,7 +105,9 @@
     const characterFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'basic')
     const assetFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'display')
     const chatFormLive = $derived(owner?.type === 'chat' && !owner.restricted && !owner.stub && studioScreen.selectedKind === null)
-    const formLive = $derived(characterFormLive || assetFormLive || chatFormLive)
+    // The advanced kind of a loaded character: its example dialogue is the one live part of it.
+    const exampleFormLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'advanced')
+    const formLive = $derived(characterFormLive || assetFormLive || exampleFormLive || chatFormLive)
     // The toggle list builder of a character, or of a module while its id is published (loaded, private-free and not
     // shared). A preset's toggles keep the read-only text until their write exists.
     const characterToggleBuilderLive = $derived(owner?.type === 'character' && !owner.restricted && !owner.stub && kindNode?.kind === 'toggles')
@@ -237,6 +240,8 @@
                     {#key ownerKey}
                         <StudioAssetList chaId={characterId} enabledModules={enabledModuleAssets} />
                     {/key}
+                {:else if exampleFormLive}
+                    <StudioExampleForm chaId={studioScreen.chaId} />
                 {:else if owner}
                     <StudioChatNoteForm chaId={studioScreen.chaId} chatId={owner.id} />
                 {/if}

@@ -74,6 +74,7 @@ import { checkCbs } from 'src/ts/studio/longText/cbsCheck'
 import { tokenSpans } from 'src/ts/studio/longText/highlightSpans'
 import { createMacroIndex } from 'src/ts/studio/longText/macroIndex'
 import { setMacroIndexForTests } from 'src/ts/studio/longText/macroIndexService'
+import { setPreviewEngineForTests, type PreviewEngine } from 'src/ts/studio/longText/previewEngineService'
 import { setTokenCounterForTests } from 'src/ts/studio/longText/tokenService'
 import { makeCharacter, makeInput, studioDbOf } from 'src/ts/studio/studioFixtures.test-helpers'
 import { openStudio, resetStudioScreenForTests, setStudioHistoryOpen, studioScreen } from 'src/ts/studio/studioScreen.svelte'
@@ -156,7 +157,21 @@ class ResizeObserverStub {
 // The texts the token chip asked to count.
 const tokenTexts: string[] = []
 
+// The forms give their fields a preview source, so the chip counts what the preview engine makes of the text. The real
+// engine is a lazy import of the whole parser, which this rig does not load; a stand-in hands the text back as it is.
+const passThroughEngine: PreviewEngine = {
+    copiedChatValues: () => null,
+    runPreview: (text) => ({ ok: true, text, writes: [], varies: false }),
+    sandboxKeysOf: () => ({ chat: [], toggles: [] }),
+    sandboxSourceOf: (live) => ({ name: live.name, defaultVariables: '', alternateGreetings: [], texts: {}, bindedPersona: null, modules: [], chatModules: [] }),
+    sandboxUserName: () => 'User',
+    variesIn: () => false,
+    VARIES_NAMES: [],
+    previewHtml: (text) => ({ html: text, mediaRemoved: 0 }),
+}
+
 beforeEach(() => {
+    setPreviewEngineForTests(passThroughEngine)
     h.marks = 0
     tracker.character.length = 0
     resetCharacterSaveMarksForTest()
@@ -181,6 +196,7 @@ beforeEach(() => {
 })
 
 afterEach(async () => {
+    setPreviewEngineForTests(null)
     setTokenCounterForTests(null)
     setMacroIndexForTests(null)
     for (const entry of mounted.splice(0)) {
@@ -262,7 +278,9 @@ describe('R6 the field follows its text with no DOM event', () => {
         service.closeOpenStep(A)
         flushSync()
         advance(250)
-        // The greeting field beside the desc was counted at its own pause.
+        // The greeting field beside the desc was counted at its own pause; its request reaches the counter a few
+        // microtasks after the timer (the chip awaits the preview engine first), so let that settle before the reset.
+        await settle()
         tokenTexts.length = 0
         await historyKey({ key: 'z' })
         expect(area.value).toBe('d0')
