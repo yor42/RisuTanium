@@ -229,7 +229,7 @@ interface Run {
  * write to the page's backend or to localStorage is a violation. The only write the grant itself
  * may make is the storage epoch token.
  */
-async function prepare(page: Page, bytes: Uint8Array, options: { deps?: Partial<RtbPrepareDeps>, saveBoundMs?: number } = {}): Promise<Run> {
+async function prepare(page: Page, bytes: Uint8Array, options: { deps?: Partial<RtbPrepareDeps>, saveBoundMs?: number, firstRun?: boolean } = {}): Promise<Run> {
     const file = await pick(bytes)
     const busy = page.busy.beginBusy('backupLoad')
     let writesAtGrant = -1
@@ -238,6 +238,7 @@ async function prepare(page: Page, bytes: Uint8Array, options: { deps?: Partial<
     try {
         const end = await page.plan.prepareRtbRestore(file, busy, {
             saveBoundMs: options.saveBoundMs ?? 3000,
+            firstRun: options.firstRun,
             onHoldGranted: () => {
                 writesAtGrant = page.k.counted.writeCalls()
                 storageAtGrant = snapshotLocalStorage()
@@ -291,6 +292,41 @@ describe('R0: order and refusals (T1, T21)', () => {
         expect(log).toEqual(['read-only', 'busy', 'mode', 'checkImport', 'saveFirst', 'lock', 'guard', 'readCommit'])
         expect(run.end.kind).toBe('ready')
         await cleanup(run)
+    })
+
+    test('firstRun leaves the A7 order unchanged: every check still runs, in the same order (guard of a new option; M3a fails it)', async () => {
+        const page = await openPage()
+        const log: string[] = []
+        const committer = { ...page.k.committer, readCommit: async () => { log.push('readCommit'); return await page.k.committer.readCommit() } }
+        const run = await prepare(page, await fileOf(), {
+            firstRun: true,
+            deps: {
+                refuseOnReadOnlyPage: async () => { log.push('read-only'); return false },
+                refuseWhileBusy: () => { log.push('busy'); return false },
+                pageKind: () => { log.push('mode'); return 'store2' },
+                checkImport: async () => { log.push('checkImport'); return { kind: 'ready', target: { committer, backend: page.k.counted.backend } } },
+                saveFirst: async () => { log.push('saveFirst') },
+                acquireHold: async (busy, options) => {
+                    const acquired = await page.hold.acquireRestoreHold(busy, options)
+                    log.push('lock')
+                    if (acquired.kind === 'held') {
+                        const check = acquired.hold.guard.check.bind(acquired.hold.guard)
+                        acquired.hold.guard.check = async () => { log.push('guard'); return await check() }
+                    }
+                    return acquired
+                },
+            },
+        })
+        expect(log).toEqual(['read-only', 'busy', 'mode', 'checkImport', 'saveFirst', 'lock', 'guard', 'readCommit'])
+        expect(run.end.kind).toBe('ready')
+        await cleanup(run)
+    })
+
+    test('firstRun still asks the scale question: declining it cancels and frees the lock (guard of a new option; M3b fails it)', async () => {
+        const page = await openPage()
+        const run = await prepare(page, await fileOf(), { firstRun: true, deps: { confirmScale: async () => false } })
+        expect(ended(run)).toEqual({ kind: 'ended', outcome: 'canceled', cause: 'declined' })
+        expect(await writeLockIsFree(page)).toBe(true)
     })
 
     test('a read-only page, work in progress and a page that is not in store2 mode refuse with their message, write nothing and hold no lock (guard)', async () => {
@@ -425,6 +461,21 @@ describe('the newer-data warning (T8)', () => {
         expect(confirmTexts(page)).toContain(language.rtbRestoreTargetNewerConfirm(
             new Date(at).toLocaleString(), new Date(committedAt).toLocaleString(), new Date(createdAt).toLocaleString(), 'Test device',
         ))
+        await cleanup(run)
+    })
+
+    test('the Welcome restore (firstRun) is not asked the newer-data question: a backup older than the target is ready with no plan.newer and no prompt (guard of a new option; M1 fails it)', async () => {
+        const page = await openPage()
+        const key = await page.k.commitKey()
+        const at = (key.current as { at: number }).at
+        vi.mocked(page.alert.alertConfirm).mockImplementation(async (text) => !(typeof text === 'string' && text.includes('Test device')))
+        const run = await prepare(page, await fileOf({ createdAt: at - 5000 }), { firstRun: true })
+        if (run.end.kind !== 'ready') {
+            throw new Error(`expected ready, got ${JSON.stringify(run.end)}`)
+        }
+        expect(run.end.plan.newer).toBeNull()
+        expect(textOf(page)).toBeUndefined()
+        expect(run.end.plan.base).toEqual({ seq: key.seq, at, currentKey: (key.current as { key: string }).key })
         await cleanup(run)
     })
 

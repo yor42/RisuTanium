@@ -53,7 +53,7 @@ function resolveDeps(deps: Partial<InstallFlowDeps> | undefined): InstallFlowDep
         install: deps?.install ?? ((request) => installThemePack(request)),
         confirm: deps?.confirm ?? ((message) => alertConfirm(message)),
         notify: deps?.notify ?? ((message) => alertNormal(message)),
-        isBusy: deps?.isBusy ?? (() => isBusy()),
+        isBusy: deps?.isBusy ?? (() => isBusy({ ignoreDialogWaits: true })),
         restoreInProgress: deps?.restoreInProgress ?? (() => restoreInProgress()),
     }
 }

@@ -7,6 +7,7 @@
     import { downloadFile, getRequestLog } from "src/ts/globalApi.svelte";
     import { getDatabase } from "src/ts/storage/database.svelte";
     import { isNodeServer, isTauri } from "src/ts/platform";
+    import { isUsageKey, withoutUsageKeys } from "src/ts/usage/usageLedger";
 
 </script>
 
@@ -25,6 +26,9 @@
         let mdTable = `| ${language.type} | ${language.value} |\n| --- | --- |\n`
         const s = DBState.db.statics
         for (const key in s) {
+            if (isUsageKey(key)) {
+                continue
+            }
             mdTable += `| ${key} | ${s[key]} |\n`
         }
         mdTable += `\n\n<small>${language.staticsDisclaimer}</small>`
@@ -47,7 +51,7 @@
             'hordeConfig', 'novelai', 'koboldURL', 'ooba', 'ainconfig', 'personaPrompt', 'promptTemplate',
             'deeplOptions', 'google', 'customPromptTemplateToggle', 'globalChatVariables', 'comfyConfig',
             'comfyUiUrl', 'translatorPrompt', 'translatorPresets', 'translatorPresetId', 'customModels', 'mcpURLs', 'authRefreshes',
-            'upstreamKvBlocks'
+            'upstreamKvBlocks', 'usagePriceOverrides'
         ]
         for(const key in db) {
             if(
@@ -57,6 +61,10 @@
             ) {
                 delete db[key]
             }
+        }
+
+        if (db.statics) {
+            db.statics = withoutUsageKeys(db.statics)
         }
 
         //@ts-expect-error meta is not defined in Database type, added for settings export report

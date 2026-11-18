@@ -1,0 +1,666 @@
+/**
+ * `loadData()` (`src/ts/bootstrap.ts`) on a page whose store2 dispatch answers `legacy-readonly`: the real `loadData()`
+ * and the real dispatch over a recording page store that holds the legacy main file and numbered backups. The legacy
+ * profile is only read: the page writes nothing, deletes no backup, runs no archive pass, and keeps the Tauri and web
+ * read routes' own asymmetries (which errors take the backup route, the empty-profile arm, the error texts).
+ *
+ * Every row here is a compatibility guard of the read-only fold: it passes on the code that preceded the fold and on
+ * the fold. `T2-P4` also pins that a main file that is absent is installed as an empty profile and never written.
+ * The main files and backups are producer-built (the real encoder, `composeSave` block files), so the decodes are the
+ * real ones.
+ */
+import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
+import { writable, get } from 'svelte/store'
+import { createMemoryByteStore, type MemoryByteStore } from 'src/ts/process/files/tests/memoryByteStore'
+import type { AppStoreKind } from 'src/ts/storage/store/appStore'
+import { BLOCK, composeSave, corruptBlockPayload, type ComposedSave } from 'src/ts/storage/tests/manualCleanupHarness'
+import { registerRealDispatch, stopAcknowledgingAlerts } from 'src/ts/tests/realDispatchBoot.test-helpers'
+import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
+
+//#region hoisted mutable config, shared by every dynamically-imported module instance
+
+const platformState = vi.hoisted(() => ({ isTauri: false, isNodeServer: false }))
+
+const dbState = vi.hoisted(() => ({
+    current: {} as Record<string, unknown>,
+    baseline: () => ({}) as Record<string, unknown>,
+}))
+
+/** What the decoder's block cache holds, by `risuSaveBlock_<name>`. */
+const blockCache = vi.hoisted(() => new Map<string, unknown>())
+
+const setDatabaseMock = vi.hoisted(() => vi.fn((_data: Record<string, unknown>): void => { }))
+const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as Record<string, unknown>))
+const getDbBackupsMock = vi.hoisted(() => vi.fn(async (): Promise<number[]> => []))
+const saveDbMock = vi.hoisted(() => vi.fn(async () => { }))
+const sleepForeverMock = vi.hoisted(() => vi.fn(async () => { }))
+
+//#endregion
+
+//#region module mocks
+
+vi.mock('localforage', () => ({
+    default: {
+        createInstance: vi.fn(() => ({
+            getItem: vi.fn(async (key: string) => blockCache.get(key) ?? null),
+            setItem: vi.fn(async () => { }),
+            removeItem: vi.fn(async () => { }),
+            keys: vi.fn(async () => []),
+            clear: vi.fn(async () => { }),
+            dropInstance: vi.fn(async () => { }),
+        })),
+        dropInstance: vi.fn(async () => { }),
+    },
+}))
+
+vi.mock(import('src/ts/platform'), () => ({
+    get isTauri() { return platformState.isTauri },
+    get isNodeServer() { return platformState.isNodeServer },
+    isIOS: () => false,
+}) as unknown as typeof import('src/ts/platform'))
+
+vi.mock(import('src/ts/util'), () => ({
+    changeFullscreen: vi.fn(async () => { }),
+    checkNullish: (v: unknown) => v === null || v === undefined,
+    sleep: vi.fn(async () => { }),
+    sleepForever: sleepForeverMock,
+    getKeypairStore: vi.fn(async () => null),
+    saveKeypairStore: vi.fn(async () => { }),
+    base64url: (b: Uint8Array) => Buffer.from(b).toString('base64url'),
+    asBuffer: (v: Uint8Array) => Buffer.from(v),
+}) as unknown as typeof import('src/ts/util'))
+
+vi.mock(import('src/ts/reloadGuard'), () => ({
+    markAppInitiatedReload: vi.fn(),
+    isAppInitiatedReload: vi.fn(() => false),
+}) as unknown as typeof import('src/ts/reloadGuard'))
+
+vi.mock(import('src/ts/storage/database.svelte'), () => ({
+    getDatabase: getDatabaseMock,
+    setDatabase: setDatabaseMock,
+    defaultSdDataFunc: vi.fn(() => ({})),
+    presetTemplate: { name: 'test-preset' },
+}) as unknown as typeof import('src/ts/storage/database.svelte'))
+
+vi.mock(import('src/ts/update'), () => ({
+    checkRisuUpdate: vi.fn(async () => { }),
+}) as unknown as typeof import('src/ts/update'))
+
+vi.mock(import('src/ts/stores.svelte'), () => ({
+    DBState: { get db() { return dbState.current } },
+    LoadingStatusState: { text: '' },
+    MobileGUI: writable(false),
+    botMakerMode: writable(false),
+    selectedCharID: writable(-1),
+    loadedStore: writable(false),
+    alertStore: writable({ type: 'none', msg: 'n' }),
+}) as unknown as typeof import('src/ts/stores.svelte'))
+
+vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
+    loadPlugins: vi.fn(async () => { }),
+}) as unknown as typeof import('src/ts/plugins/plugins.svelte'))
+
+vi.mock(import('src/ts/characterCards'), () => ({
+    characterURLImport: vi.fn(),
+    handlePendingRealmLink: vi.fn(async () => { }),
+    hubURL: 'https://realm.risuai.net',
+}) as unknown as typeof import('src/ts/characterCards'))
+
+vi.mock(import('src/ts/gui/animation'), () => ({
+    updateAnimationSpeed: vi.fn(),
+}) as unknown as typeof import('src/ts/gui/animation'))
+
+vi.mock(import('src/ts/gui/colorscheme'), () => ({
+    updateColorScheme: vi.fn(),
+    updateTextThemeAndCSS: vi.fn(),
+}) as unknown as typeof import('src/ts/gui/colorscheme'))
+
+vi.mock(import('src/ts/observer.svelte'), () => ({
+    startObserveDom: vi.fn(),
+}) as unknown as typeof import('src/ts/observer.svelte'))
+
+vi.mock(import('src/ts/gui/guisize'), () => ({
+    updateGuisize: vi.fn(),
+}) as unknown as typeof import('src/ts/gui/guisize'))
+
+vi.mock(import('src/ts/characters'), () => ({
+    updateLorebooks: vi.fn((v: unknown) => v),
+}) as unknown as typeof import('src/ts/characters'))
+
+vi.mock(import('src/ts/hotkey'), () => ({
+    initMobileGesture: vi.fn(),
+}) as unknown as typeof import('src/ts/hotkey'))
+
+vi.mock(import('src/ts/process/modules'), () => ({
+    moduleUpdate: vi.fn(async () => { }),
+}) as unknown as typeof import('src/ts/process/modules'))
+
+vi.mock(import('src/ts/process/memory/characterPutBack'), () => ({
+    startCharacterPutBack: vi.fn(),
+}) as unknown as typeof import('src/ts/process/memory/characterPutBack'))
+
+vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
+    verifyAssetCacheEntry: vi.fn(async () => ({ status: 'ok' as const })),
+}) as unknown as typeof import('src/ts/storage/assetIntegrity'))
+
+vi.mock(import('src/ts/media/avatarThumb'), () => ({
+    startAvatarThumbSweep: vi.fn(async () => { }),
+}) as unknown as typeof import('src/ts/media/avatarThumb'))
+
+vi.mock(import('src/ts/model/modellist'), () => ({
+    registerModelDynamic: vi.fn(),
+}) as unknown as typeof import('src/ts/model/modellist'))
+
+vi.mock('@tauri-apps/api/core', () => ({
+    convertFileSrc: vi.fn((p: string) => p),
+}))
+
+vi.mock('@tauri-apps/api/path', () => ({
+    appDataDir: vi.fn(async () => '/appdata'),
+    join: vi.fn(async (...p: string[]) => p.join('/')),
+}))
+
+vi.mock('@tauri-apps/api/webviewWindow', () => ({
+    getCurrentWebviewWindow: vi.fn(() => ({
+        maximize: vi.fn(async () => { }),
+    })),
+}))
+
+vi.mock('@tauri-apps/plugin-fs', () => ({
+    BaseDirectory: { AppData: 0 },
+    exists: vi.fn(async () => false),
+    mkdir: vi.fn(async () => { }),
+    readFile: vi.fn(async (path: string) => { throw new Error(`ENOENT (mock): ${path}`) }),
+    writeFile: vi.fn(async () => { }),
+    readDir: vi.fn(async () => []),
+    remove: vi.fn(async () => { }),
+}))
+
+vi.mock(import('src/ts/storage/store/appStore'), async (importOriginal) => ({
+    ...await importOriginal(),
+    cleanUpCopiedBackOpfs: vi.fn(async () => { }),
+    takeStorageFallbackNotice: () => null,
+}))
+
+vi.mock(import('src/ts/globalApi.svelte'), () => ({
+    forageStorage: {
+        staleAccountProfile: false,
+        Init: vi.fn(async () => { }),
+        getItem: vi.fn(async () => null),
+        setItem: vi.fn(async () => { }),
+        keys: vi.fn(async (): Promise<string[]> => []),
+        removeItem: vi.fn(async () => { }),
+    },
+    saveDb: saveDbMock,
+    getDbBackups: getDbBackupsMock,
+    buildAssetKeepSet: vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })),
+    getBasename: (p: string) => p.split('/').pop(),
+    setUsingSw: vi.fn(),
+    checkCharOrder: vi.fn(),
+    getUncleanablesSync: vi.fn((): string[] => []),
+    AppendableBuffer: class {
+        chunks: Uint8Array[] = []
+        append(chunk: Uint8Array) { this.chunks.push(chunk) }
+        get buffer() { return new Uint8Array() }
+    },
+    requiresFullEncoderReload: { state: false },
+    fetchNative: vi.fn(async () => new Response(null, { status: 404 })),
+}) as unknown as typeof import('src/ts/globalApi.svelte'))
+
+//#endregion
+
+const { encodeRisuSaveLegacy, RisuSaveEncoder, decodeRisuSave } = await import('src/ts/storage/risuSave')
+
+const MAIN_KEY = 'database/database.bin'
+const STRIKES_KEY = 'archivePassStrikes'
+const TOLD_KEY = 'archivePassPausedTold'
+const ENRICH_KEY = 'stubEnrichStrikes'
+const NEWEST = 1_700_000_002_000
+const MIDDLE = 1_700_000_001_000
+const OLDEST = 1_700_000_000_000
+
+function backupKey(time: number): string {
+    return `database/dbbackup-${time}.bin`
+}
+
+function baseDb(extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+        formatversion: 999,
+        characters: [],
+        modules: [],
+        personas: [],
+        characterOrder: [],
+        mainPrompt: 'fixture-main-prompt',
+        loreBookToken: 8000,
+        hotkeys: [],
+        botPresets: [],
+        coldstorage: false,
+        checkCorruption: false,
+        botSettingAtStart: false,
+        betaMobileGUI: false,
+        didFirstSetup: false,
+        heightMode: 'auto',
+        ...extra,
+    }
+}
+dbState.baseline = () => baseDb()
+
+/** A block-format file with characters `a` (inline) and `b` (a remote pointer or inline), built block by block so a test can damage exactly one. */
+async function composeBlockFile(options: { b?: 'remote' | 'inline', plugins?: Record<string, unknown>[], rootExtra?: Record<string, unknown> } = {}): Promise<ComposedSave> {
+    const encoder = new RisuSaveEncoder()
+    const character = (chaId: string) => JSON.stringify({ chaId, name: chaId.toUpperCase(), type: 'character', chats: [] })
+    const remotePointer = JSON.stringify({ v: 2, type: BLOCK.CHARACTER_WITH_CHAT, name: 'b', hash: '0123456789abcdef' })
+    const root = { ...baseDb(options.rootExtra), characters: undefined, __directory: ['preset', 'plugins', 'a', 'b', 'config'] }
+    return composeSave(encoder, [
+        { name: 'root', type: BLOCK.ROOT, data: JSON.stringify(root) },
+        { name: 'preset', type: BLOCK.BOTPRESET, data: JSON.stringify([{ name: 'p' }]) },
+        { name: 'plugins', type: BLOCK.PLUGINS, data: JSON.stringify(options.plugins ?? []) },
+        { name: 'a', type: BLOCK.CHARACTER_WITH_CHAT, data: character('a') },
+        options.b === 'inline'
+            ? { name: 'b', type: BLOCK.CHARACTER_WITH_CHAT, data: character('b') }
+            : { name: 'b', type: BLOCK.REMOTE, data: remotePointer },
+        { name: 'config', type: BLOCK.CONFIG, data: '{"version":1}' },
+    ])
+}
+
+/** The page store of a legacy profile: the main file (unless `main` is null) and the numbered backups given. */
+function legacyStore(options: { main?: Uint8Array | null, backups?: [number, Uint8Array][] } = {}): MemoryByteStore {
+    const store = createMemoryByteStore()
+    const main = options.main === undefined ? encodeRisuSaveLegacy(baseDb({ mainPrompt: 'from-main' })) : options.main
+    if (main !== null) {
+        store.files.set(MAIN_KEY, main)
+    }
+    for (const [time, bytes] of options.backups ?? []) {
+        store.files.set(backupKey(time), bytes)
+    }
+    return store
+}
+
+/** Two backups: the newest is damaged, the one under it decodes, and the oldest decodes too. */
+function backupsOneDamaged(): [number, Uint8Array][] {
+    return [
+        [NEWEST, new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])],
+        [MIDDLE, encodeRisuSaveLegacy(baseDb({ mainPrompt: 'from-middle-backup' }))],
+        [OLDEST, encodeRisuSaveLegacy(baseDb({ mainPrompt: 'from-oldest-backup' }))],
+    ]
+}
+
+function damagedBackups(): [number, Uint8Array][] {
+    return [
+        [NEWEST, new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])],
+        [OLDEST, new Uint8Array([9, 9, 9])],
+    ]
+}
+
+type AlertValue = { type: string, msg: string }
+
+interface Run {
+    loadData: () => Promise<void>
+    loadedStore: ReturnType<typeof writable<boolean>>
+    /** Every non-`none` alert the boot wrote, in order. */
+    alerts: AlertValue[]
+    /** The `normal` notices the boot posted (the dispatch acknowledged each). */
+    notices: string[]
+    store: MemoryByteStore
+}
+
+type ReadOnlyKind = 'node' | 'tauri' | 'opfs-transitional'
+
+/** Injects `store` as the page store of `kind`, registers the real dispatch and imports a fresh `loadData`. */
+async function boot(kind: ReadOnlyKind, store: MemoryByteStore): Promise<Run> {
+    platformState.isTauri = kind === 'tauri'
+    const { injectAppStore, cleanUpCopiedBackOpfs } = await import('src/ts/storage/store/appStore')
+    vi.mocked(cleanUpCopiedBackOpfs).mockClear()
+    injectAppStore(store, kind satisfies AppStoreKind)
+    const dispatch = await registerRealDispatch({ kind, acknowledgeAlerts: true, injectBackend: false })
+    const { loadData } = await import('src/ts/bootstrap')
+    const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
+        alertStore: ReturnType<typeof writable<AlertValue>>
+        loadedStore: ReturnType<typeof writable<boolean>>
+    }
+    loadedStore.set(false)
+    alertStore.set({ type: 'none', msg: 'n' })
+    const alerts: AlertValue[] = []
+    alertStore.subscribe((value) => {
+        if (value.type !== 'none') {
+            alerts.push({ type: value.type, msg: value.msg })
+        }
+    })
+    return { loadData, loadedStore, alerts, notices: dispatch.shownAlerts, store }
+}
+
+async function settle(): Promise<void> {
+    await new Promise<void>(resolve => setTimeout(resolve, 0))
+}
+
+/** Everything the boot wrote or deleted in the page store, the Tauri owner id excepted. */
+function storeEffects(store: MemoryByteStore): { writes: string[], deletes: string[] } {
+    return { writes: store.writes.filter(key => key !== 'store2-owner'), deletes: [...store.deletes] }
+}
+
+function installedPrompt(): unknown {
+    return setDatabaseMock.mock.calls[0]?.[0].mainPrompt
+}
+
+function errors(run: Run): string[] {
+    return run.alerts.filter(alert => alert.type === 'error').map(alert => alert.msg)
+}
+
+async function cleanUpCalls(): Promise<number> {
+    const { cleanUpCopiedBackOpfs } = await import('src/ts/storage/store/appStore')
+    return vi.mocked(cleanUpCopiedBackOpfs).mock.calls.length
+}
+
+beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
+beforeEach(expectBootstrapTransformed)
+beforeEach(() => {
+    localStorage.clear()
+    blockCache.clear()
+    platformState.isTauri = false
+    platformState.isNodeServer = false
+    getDbBackupsMock.mockReset().mockResolvedValue([])
+    saveDbMock.mockReset().mockResolvedValue(undefined)
+    sleepForeverMock.mockReset().mockResolvedValue(undefined)
+    dbState.current = baseDb()
+    setDatabaseMock.mockReset().mockImplementation((data: Record<string, unknown>) => {
+        dbState.current = { ...dbState.baseline(), ...data }
+    })
+    getDatabaseMock.mockReset().mockImplementation(() => dbState.current)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })))
+    vi.stubGlobal('open', vi.fn())
+    vi.spyOn(window.location, 'reload').mockImplementation(() => { })
+    vi.resetModules()
+})
+
+afterEach(() => {
+    stopAcknowledgingAlerts()
+    vi.unstubAllGlobals()
+})
+
+describe('loadData(): the Tauri read-only boot reads the legacy profile and writes nothing (T2-P1, T2-P2)', () => {
+    const unreadable = (store: MemoryByteStore) => {
+        store.failRead = (key) => (key === MAIN_KEY ? new Error('read refused') : null)
+    }
+    const variants: [string, (store: MemoryByteStore) => void][] = [
+        ['an unreadable main file', unreadable],
+        ['a zero-length main file', (store) => { store.files.set(MAIN_KEY, new Uint8Array(0)) }],
+        ['a main file that does not decode', (store) => { store.files.set(MAIN_KEY, new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])) }],
+    ]
+
+    test.each(variants)('T2-P1 guard: %s leads to the first decodable backup, nothing is written or deleted, and the main bytes stand', async (_label, damage) => {
+        const store = legacyStore({ backups: backupsOneDamaged() })
+        damage(store)
+        const heldMain = store.files.get(MAIN_KEY)?.slice()
+        const run = await boot('tauri', store)
+        const { language } = await import('src/lang')
+
+        await run.loadData()
+        await settle()
+
+        expect(get(run.loadedStore)).toBe(true)
+        expect(installedPrompt()).toBe('from-middle-backup')
+        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+        expect(heldMain).toBeDefined()
+        expect(store.files.get(MAIN_KEY)).toEqual(heldMain)
+        expect(errors(run)).toEqual([])
+        expect(run.notices).toEqual([language.store2Boot.noticeBackendUnavailable])
+        expect(getDbBackupsMock).not.toHaveBeenCalled()
+        const { getPageStorageMode } = await import('src/ts/storage/pageStorageMode')
+        expect(getPageStorageMode()).toEqual({ kind: 'read-only', reason: 'backend-unavailable' })
+    })
+
+    test('T2-P2 guard: with no decodable backup the boot ends with "Your save file is corrupted" and writes nothing', async () => {
+        const store = legacyStore({ backups: damagedBackups() })
+        unreadable(store)
+        const run = await boot('tauri', store)
+
+        await run.loadData()
+        await settle()
+
+        expect(errors(run)).toEqual(['Your save file is corrupted'])
+        expect(get(run.loadedStore)).toBe(false)
+        expect(setDatabaseMock).not.toHaveBeenCalled()
+        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+    })
+})
+
+describe('loadData(): the web read-only boot reads the legacy profile and writes nothing (T2-P3, T2-P4)', () => {
+    const kinds: ReadOnlyKind[] = ['node', 'opfs-transitional']
+    const variants: [string, (store: MemoryByteStore) => Promise<void>][] = [
+        ['a stored value that is not bytes', async (store) => {
+            // The class of the boot's own module graph, so the boot's `instanceof` test sees it.
+            const { StoreNotBinaryError } = await import('src/ts/storage/store/errors')
+            store.failRead = (key) => (key === MAIN_KEY ? new StoreNotBinaryError(key) : null)
+        }],
+        ['a zero-length main file', async (store) => { store.files.set(MAIN_KEY, new Uint8Array(0)) }],
+        ['a main file that does not decode', async (store) => { store.files.set(MAIN_KEY, new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])) }],
+    ]
+
+    describe.each(kinds)('on a %s page', (kind) => {
+        test.each(variants)('T2-P3 guard: %s leads to the first decodable backup; nothing is written or deleted', async (_label, damage) => {
+            const store = legacyStore({ backups: backupsOneDamaged() })
+            await damage(store)
+            const run = await boot(kind, store)
+
+            await run.loadData()
+            await settle()
+
+            expect(get(run.loadedStore)).toBe(true)
+            expect(installedPrompt()).toBe('from-middle-backup')
+            expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+            expect(errors(run)).toEqual([])
+            expect(getDbBackupsMock).not.toHaveBeenCalled()
+        })
+
+        test('T2-P3 guard: another read error is rethrown and alerted, the backups are not consulted and nothing is installed', async () => {
+            const store = legacyStore({ backups: backupsOneDamaged() })
+            store.failRead = (key) => (key === MAIN_KEY ? new Error('disk gone') : null)
+            const run = await boot(kind, store)
+
+            await run.loadData()
+            await settle()
+
+            expect(errors(run)).toEqual(['disk gone'])
+            expect(get(run.loadedStore)).toBe(false)
+            expect(setDatabaseMock).not.toHaveBeenCalled()
+            expect(store.reads.filter(key => key.startsWith('database/dbbackup-'))).toEqual([])
+            expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+        })
+
+        test('T2-P3 guard: with no decodable backup the boot ends with "Forage: Your save file is corrupted" and writes nothing', async () => {
+            const store = legacyStore({ main: new Uint8Array(0), backups: damagedBackups() })
+            const run = await boot(kind, store)
+
+            await run.loadData()
+            await settle()
+
+            expect(errors(run)).toEqual(['Forage: Your save file is corrupted'])
+            expect(get(run.loadedStore)).toBe(false)
+            expect(setDatabaseMock).not.toHaveBeenCalled()
+            expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+        })
+    })
+
+    test('T2-P4 guard: an absent main file on an OPFS page installs an empty profile, never writes it, and keeps the OPFS leftovers', async () => {
+        const store = legacyStore({ main: null })
+        const run = await boot('opfs-transitional', store)
+
+        await run.loadData()
+        await settle()
+
+        expect(get(run.loadedStore)).toBe(true)
+        expect(setDatabaseMock).toHaveBeenCalled()
+        expect(errors(run)).toEqual([])
+        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+        expect(store.files.has(MAIN_KEY)).toBe(false)
+        expect(await cleanUpCalls()).toBe(0)
+    })
+})
+
+describe('loadData(): the read-only boot applies the boot repairs (T2-P5)', () => {
+    test.each([[false], [true]])('T2-P5 guard: a character with no id gets one and the person is told (Tauri: %s)', async (tauri) => {
+        const noId = { chaId: '', name: 'No id', type: 'character', chats: [] }
+        const store = legacyStore({ main: encodeRisuSaveLegacy(baseDb({ characters: [noId] })) })
+        const run = await boot(tauri ? 'tauri' : 'node', store)
+        const { language } = await import('src/lang')
+
+        await run.loadData()
+        await settle()
+
+        const installed = setDatabaseMock.mock.calls[0][0].characters as { chaId: string }[]
+        expect(installed).toHaveLength(1)
+        expect(installed[0].chaId).toMatch(/^[0-9a-f-]{36}$/)
+        expect(run.alerts).toContainEqual({ type: 'toast', msg: language.saveRepairedEntriesNotice(0, 1) })
+        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+    })
+})
+
+describe('loadData(): the read-only boot and the archive memo (T2-P6)', () => {
+    /** The notice memo (skipped characters, too-large), the strike count and the told record, plus a key that is none of them. */
+    async function seedMemo(): Promise<typeof import('src/ts/storage/bootArchiveMemo')> {
+        const memo = await import('src/ts/storage/bootArchiveMemo')
+        memo.rememberSkipped(['b', 'c'])
+        memo.rememberTooLarge()
+        localStorage.setItem(STRIKES_KEY, '2')
+        localStorage.setItem(TOLD_KEY, '1')
+        localStorage.setItem('unrelated-key', 'kept')
+        return memo
+    }
+
+    const decodes: [string, (extra: Record<string, unknown>) => Promise<Uint8Array>][] = [
+        ['a strict decode', async (extra) => encodeRisuSaveLegacy(baseDb(extra))],
+        ['a decode that is only non-strict', async (extra) => corruptBlockPayload(await composeBlockFile({ b: 'inline', plugins: [{ name: 'p', version: '2.1', enabled: true }], rootExtra: extra }), 'plugins')],
+    ]
+
+    describe.each(decodes)('%s', (_label, build) => {
+        test.each([[false], [true]])('T2-P6 guard: the setting off clears both memos, the strike count and the told record and leaves other keys (Tauri: %s)', async (tauri) => {
+            const store = legacyStore({ main: await build({ archiveCharacters: false }) })
+            const memo = await seedMemo()
+            const run = await boot(tauri ? 'tauri' : 'node', store)
+
+            await run.loadData()
+            await settle()
+
+            expect(get(run.loadedStore)).toBe(true)
+            expect(memo.readArchiveMemo().skipped.size).toBe(0)
+            expect(memo.readArchiveMemo().tooLarge).toBe(false)
+            expect(localStorage.getItem(STRIKES_KEY)).toBeNull()
+            expect(localStorage.getItem(TOLD_KEY)).toBeNull()
+            expect(localStorage.getItem('unrelated-key')).toBe('kept')
+        })
+
+        test.each([
+            ['absent', {}],
+            ['on', { archiveCharacters: true }],
+        ] as const)('T2-P6 guard: a boot that reads the setting %s leaves both memos, the strike count and the told record alone', async (_state, extra) => {
+            const store = legacyStore({ main: await build(extra) })
+            const memo = await seedMemo()
+            const run = await boot('node', store)
+
+            await run.loadData()
+            await settle()
+
+            expect(get(run.loadedStore)).toBe(true)
+            expect([...memo.readArchiveMemo().skipped].sort()).toEqual(['b', 'c'])
+            expect(memo.readArchiveMemo().tooLarge).toBe(true)
+            expect(localStorage.getItem(STRIKES_KEY)).toBe('2')
+            expect(localStorage.getItem(TOLD_KEY)).toBe('1')
+        })
+    })
+
+    test('T2-P6 guard: two boots that read the setting off in a row keep the stub-enrichment count', async () => {
+        localStorage.setItem(ENRICH_KEY, '1')
+        for (let round = 0; round < 2; round++) {
+            vi.resetModules()
+            setDatabaseMock.mockClear()
+            const store = legacyStore({ main: encodeRisuSaveLegacy(baseDb({ archiveCharacters: false })) })
+            const run = await boot('node', store)
+
+            await run.loadData()
+            await settle()
+
+            expect(get(run.loadedStore)).toBe(true)
+            expect(localStorage.getItem(ENRICH_KEY)).toBe('1')
+        }
+    })
+})
+
+describe('loadData(): a main file that decodes only non-strictly is installed as its partial tree (T2-P7)', () => {
+    const incomplete: [string, () => Promise<Uint8Array>, (ids: string[], tree: Record<string, unknown>) => void][] = [
+        ['a missing remote file', async () => (await composeBlockFile()).bytes, (ids) => expect(ids).toEqual(['a'])],
+        ['a block with a bad checksum that the block cache answers', async () => {
+            const save = await composeBlockFile({ b: 'inline' })
+            blockCache.set('risuSaveBlock_b', { type: BLOCK.CHARACTER_WITH_CHAT, name: 'b', data: JSON.stringify({ chaId: 'b', name: 'Cached B', type: 'character', chats: [] }) })
+            return corruptBlockPayload(save, 'b')
+        }, (ids) => expect(ids).toEqual(['a', 'b'])],
+        ['a damaged PLUGINS block', async () => corruptBlockPayload(await composeBlockFile({ b: 'inline', plugins: [{ name: 'p', version: '2.1', enabled: true }] }), 'plugins'), (ids, tree) => {
+            expect(ids).toEqual(['a', 'b'])
+            expect(tree.plugins).toBeUndefined()
+        }],
+    ]
+
+    test.each(incomplete.flatMap(([label, arm, check]) => [[label, false, arm, check] as const, [label, true, arm, check] as const]))('T2-P7 guard: %s installs the partial tree, writes nothing and shows no error (Tauri: %s)', async (_label, tauri, arm, check) => {
+        const bytes = await arm()
+        const store = legacyStore({ main: bytes })
+        const run = await boot(tauri ? 'tauri' : 'node', store)
+        const { language } = await import('src/lang')
+
+        await run.loadData()
+        await settle()
+
+        expect(get(run.loadedStore)).toBe(true)
+        const tree = setDatabaseMock.mock.calls[0][0]
+        check((tree.characters as { chaId: string }[]).map(character => character.chaId), tree)
+        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+        expect(errors(run)).toEqual([])
+        expect(run.notices).toEqual([language.store2Boot.noticeBackendUnavailable])
+    })
+
+    test('T2-P7 is not vacuous: the damaged PLUGINS block fails a strict decode, the lenient decode reads it', async () => {
+        const bytes = corruptBlockPayload(await composeBlockFile({ b: 'inline', plugins: [{ name: 'p', version: '2.1', enabled: true }] }), 'plugins')
+
+        await expect(decodeRisuSave(bytes, { strict: true })).rejects.toBeDefined()
+        await expect(decodeRisuSave(bytes)).resolves.toBeDefined()
+    })
+})
+
+describe('loadData(): the OPFS leftovers go only after a boot that decoded and installed the main file (T2-G2)', () => {
+    test.each([
+        ['a main file that decodes strictly', 1, async () => encodeRisuSaveLegacy(baseDb())],
+        ['a main file that decodes only non-strictly', 1, async () => corruptBlockPayload(await composeBlockFile({ b: 'inline', plugins: [{ name: 'p', version: '2.1', enabled: true }] }), 'plugins')],
+        ['a main file that does not decode (the backup route)', 0, async () => new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])],
+    ] as const)('T2-G2 guard: %s: the clean-up runs %s time(s)', async (_label, calls, build) => {
+        const store = legacyStore({ main: await build(), backups: [[OLDEST, encodeRisuSaveLegacy(baseDb({ mainPrompt: 'from-oldest-backup' }))]] })
+        const run = await boot('opfs-transitional', store)
+
+        await run.loadData()
+        await settle()
+
+        expect(get(run.loadedStore)).toBe(true)
+        expect(await cleanUpCalls()).toBe(calls)
+        expect(storeEffects(store)).toEqual({ writes: [], deletes: [] })
+    })
+
+    test('T2-G2 guard: a seeded empty profile leaves the OPFS leftovers', async () => {
+        const store = legacyStore({ main: null })
+        const run = await boot('opfs-transitional', store)
+
+        await run.loadData()
+        await settle()
+
+        expect(get(run.loadedStore)).toBe(true)
+        expect(await cleanUpCalls()).toBe(0)
+    })
+
+    test('T2-G2 guard: the OPFS read-only notice is posted once, after the install', async () => {
+        const store = legacyStore()
+        const run = await boot('opfs-transitional', store)
+        const { language } = await import('src/lang')
+
+        await run.loadData()
+        await settle()
+
+        expect(run.notices).toEqual([language.opfsReadOnlyNotice])
+    })
+})

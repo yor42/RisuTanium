@@ -15,6 +15,7 @@ import { CodecError, type EncodedTree, type ListDerivation } from '../codec/type
 import {
     defaultKeyEnv, readUnit, UNIT_TYPE, type KeyEnv, type LegacyList, type Manifest,
 } from '../format'
+import { withPageUsage } from '../../../usage/usageLedger'
 import { withLegacyKeep } from './convert'
 import {
     LegacyReadError, readLegacyUnit, resolveLegacyTree, type IncompleteItem, type LegacyEntryReader, type ResolvedLegacyTree,
@@ -84,6 +85,17 @@ export interface ImportRequest {
      * whether or not the page holds any record. Absent: the imported profile has none; the tree's own key is removed either way.
      */
     activeThemePack?: string
+    /**
+     * The page's own usage ledger keys (`u1|...`, values as they are), kept by value: a `.bin` carries none, so they are set
+     * beside the imported file's own non-usage `statics` keys. Absent: the imported profile has none. The file's own usage
+     * keys, of any version, are removed either way.
+     */
+    usageStatics?: JsonObject
+    /**
+     * The page's own per-model price overrides, kept by value: a `.bin` carries none. Absent: the imported profile has none.
+     * The tree's own `usagePriceOverrides` key is removed either way.
+     */
+    usagePriceOverrides?: JsonObject
 }
 
 export interface ImportHooks {
@@ -215,13 +227,13 @@ export function repairImportRoot(tree: Database): void {
 }
 
 /**
- * Sets the page's own task presets, installed theme packs and active theme pack on a resolved database, which holds a
- * copy of the file's root: a `.bin` carries none of them (its export leaves them out), so a key of that name in the
- * file is dropped, and only what `request` passes is set. `resolveLegacyTree` has already removed `taskPresets`.
- * Shared by the whole and the streamed prepare.
+ * Sets the page's own task presets, installed theme packs, active theme pack, usage keys and price overrides on a
+ * resolved database, which holds a copy of the file's root: a `.bin` carries none of them (its export leaves them out), so
+ * a key of that name in the file is dropped (for `statics`, its usage keys only), and only what `request` passes is set.
+ * `resolveLegacyTree` has already removed `taskPresets`. Shared by the whole and the streamed prepare.
  */
 export function applyImportOverlay(
-    database: Database, request: Pick<ImportRequest, 'taskPresets' | 'themePacks' | 'activeThemePack'>,
+    database: Database, request: Pick<ImportRequest, 'taskPresets' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides'>,
 ): void {
     if (request.taskPresets !== undefined && request.taskPresets.length > 0) {
         // The objects stay open: the type names the fields this build reads, the stored object keeps every key.
@@ -234,6 +246,17 @@ export function applyImportOverlay(
     }
     if (request.themePacks !== undefined && request.themePacks.length > 0) {
         database.themePacks = request.themePacks.map(pack => structuredClone(pack))
+    }
+    const statics = withPageUsage(database.statics as JsonValue | undefined, request.usageStatics)
+    if (statics !== (database.statics as JsonValue | undefined)) {
+        // The file's statics is JSON read from a file, so it is not checked against the field's type; a value that is not an
+        // object is replaced by the defaults whenever the page has usage, and is otherwise returned as it was.
+        database.statics = statics as Database['statics']
+    }
+    delete database.usagePriceOverrides
+    if (request.usagePriceOverrides !== undefined) {
+        // Stored overrides are plain JSON whose shape this build reads leniently, as the task presets above.
+        database.usagePriceOverrides = structuredClone(request.usagePriceOverrides) as unknown as Database['usagePriceOverrides']
     }
 }
 
@@ -324,7 +347,7 @@ export type PrepareStop = Extract<ImportOutcome, { status: 'declined' | 'read-fa
  * repair would replace.
  */
 export async function prepareImport(
-    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'themePacks' | 'activeThemePack'>, hooks: ImportHooks,
+    request: Pick<ImportRequest, 'source' | 'reader' | 'lists' | 'env' | 'resolve' | 'taskPresets' | 'themePacks' | 'activeThemePack' | 'usageStatics' | 'usagePriceOverrides'>, hooks: ImportHooks,
 ): Promise<PreparedImport | PrepareStop> {
     let tree = request.source.tree
     if (tree === null) {
