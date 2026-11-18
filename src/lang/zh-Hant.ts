@@ -3991,11 +3991,11 @@ export const languageChineseTraditional = {
         "libraryUndoGrouped": "已歸入新資料夾",
         "libraryUndoMerged": "已建立新資料夾",
         "libraryUndoMovedIntoFolder": (count: number) => count === 1 ? '已將 1 個項目移入資料夾' : `已將 ${count} 個項目移入資料夾`,
-        "libraryUndoFolderRemoved": "已移動；一個資料夾已被移除",
+        "libraryUndoFolderRemoved": "已移動；一個資料夾已被移除，其中的角色已保留",
         "libraryUndoUngrouped": "已取消資料夾群組",
         "libraryUndoFolderDeleted": "資料夾已刪除；其中的角色仍保留在清單中",
         "libraryUndoOrderRestored": "已恢復順序",
-        "libraryUndoOrderRefused": "無法復原：此後資料庫的順序已有變動。",
+        "libraryUndoOrderRefused": "無法復原：此後角色列表的順序已有變動。",
         "libraryUndoOrderFailed": "無法復原該變更。"
     },
     "uiCommon": {

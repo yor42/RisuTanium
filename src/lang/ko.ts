@@ -3947,7 +3947,7 @@ export const languageKorean = {
         libraryUndoGrouped: "새 폴더로 묶었습니다",
         libraryUndoMerged: "새 폴더를 만들었습니다",
         libraryUndoMovedIntoFolder: (count: number) => count === 1 ? '항목 1개를 폴더로 이동했습니다' : `항목 ${count}개를 폴더로 이동했습니다`,
-        libraryUndoFolderRemoved: "이동했습니다. 폴더가 삭제되었습니다",
+        libraryUndoFolderRemoved: "이동했습니다. 폴더가 제거되었고 캐릭터는 그대로 남아 있습니다",
         libraryUndoUngrouped: "폴더 묶음을 해제했습니다",
         libraryUndoFolderDeleted: "폴더를 삭제했습니다. 폴더 안의 캐릭터는 목록에 남아 있습니다",
         libraryUndoOrderRestored: "순서를 되돌렸습니다",

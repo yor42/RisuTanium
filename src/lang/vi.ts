@@ -3946,7 +3946,7 @@ export const languageVietnamese = {
         libraryUndoGrouped: "Đã gom vào một thư mục mới",
         libraryUndoMerged: "Đã tạo một thư mục mới",
         libraryUndoMovedIntoFolder: (count: number) => count === 1 ? 'Đã chuyển 1 mục vào thư mục' : `Đã chuyển ${count} mục vào thư mục`,
-        libraryUndoFolderRemoved: "Đã di chuyển; một thư mục đã bị xóa",
+        libraryUndoFolderRemoved: "Đã di chuyển; một thư mục đã bị gỡ bỏ, các nhân vật vẫn được giữ lại",
         libraryUndoUngrouped: "Đã bỏ nhóm thư mục",
         libraryUndoFolderDeleted: "Đã xóa thư mục; các nhân vật trong đó vẫn ở trong danh sách",
         libraryUndoOrderRestored: "Đã khôi phục thứ tự",
