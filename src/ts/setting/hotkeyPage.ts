@@ -1,5 +1,6 @@
 import { defaultHotkeys, type Hotkey } from '../defaulthotkeys'
 import { chordsEqual, type Chord } from '../hotkeyChord'
+import { PRESET_SLOT_COUNT, presetSlotAction, writeSlot, type PresetMetaOwner, type SlotStep } from '../storage/presetMeta'
 import type { UndoAction } from '../toast/toastHost.svelte'
 
 /**
@@ -8,13 +9,14 @@ import type { UndoAction } from '../toast/toastHost.svelte'
  */
 
 export interface HotkeyGroup {
-    id: 'msg' | 'nav' | 'tools'
+    id: 'msg' | 'nav' | 'slots' | 'tools'
     actions: readonly string[]
 }
 
 export const HOTKEY_GROUPS: readonly HotkeyGroup[] = [
     { id: 'msg', actions: ['reroll', 'unreroll', 'translate', 'remove', 'edit', 'copy', 'send'] },
     { id: 'nav', actions: ['settings', 'home', 'presets', 'persona', 'prevChar', 'nextChar', 'quickMenu', 'quickSettings', 'loadout', 'focusInput', 'scrollToActiveChar'] },
+    { id: 'slots', actions: Array.from({ length: PRESET_SLOT_COUNT }, (_, i) => presetSlotAction(i + 1)) },
     { id: 'tools', actions: ['toggleCSS', 'toggleLog', 'previewRequest', 'popupEditor'] },
 ]
 
@@ -55,15 +57,12 @@ export function listedRows(rows: readonly Hotkey[], options: { scrollToActiveCha
     return listed
 }
 
-/** Keys that no row may take: Esc, Enter and, until the preset slots are rows, Ctrl+1..9. */
+/** Keys that no row may take: Esc and Enter. Ctrl+1..9 are the ordinary, rebindable preset slot rows. */
 export function fixedChordFor(chord: Chord): Chord | null {
     for (const fixed of FIXED_ROWS) {
         if (chordsEqual(fixed.chord, chord)) {
             return fixed.chord
         }
-    }
-    if (chord.ctrl && !chord.alt && !chord.shift && /^[1-9]$/.test(chord.key)) {
-        return chord
     }
     return null
 }
@@ -217,6 +216,31 @@ export function hotkeyUndoAction(getRows: () => readonly Hotkey[], plan: readonl
                 return { ok: false, text: texts.refused, after: 'close' }
             }
             kept.forEach((step, at) => writeChord(targets[at]!, step.before))
+            return { ok: true, text: texts.undone }
+        },
+    }
+}
+
+/**
+ * The Undo for a preset slot change. It re-reads the live presets when it runs and refuses when any affected preset no
+ * longer holds the slot this change wrote, so a later edit is never overwritten.
+ */
+export function slotUndoAction(getPresets: () => readonly PresetMetaOwner[], plan: readonly SlotStep[], texts: HotkeyUndoTexts): UndoAction {
+    const kept = plan.map((step) => ({ ...step }))
+    return {
+        id: 'hotkey:' + (++undoCounter),
+        failedText: texts.failed,
+        run() {
+            const presets = getPresets()
+            const targets = kept.map((step) => presets.find((p) => p && p.id === step.id))
+            const stale = kept.some((step, at) => {
+                const p = targets[at]
+                return !p || p.slot !== step.after
+            })
+            if (stale) {
+                return { ok: false, text: texts.refused, after: 'close' }
+            }
+            kept.forEach((step, at) => writeSlot(targets[at]!, step.before))
             return { ok: true, text: texts.undone }
         },
     }

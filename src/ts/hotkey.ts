@@ -17,6 +17,7 @@ import { changeCharOrAlert } from "./characterPick"
 import { isHiddenSystemCharacter } from "./hiddenCharacters"
 import { settingsShellEscape } from "./settingsShell/settingsNavigation"
 import { hotkeyIsApple } from "./hotkeyChord"
+import { presetIndexForSlot, presetSlotOf } from "./storage/presetMeta"
 
 // Shortcuts that act on the chat screen. Settings keeps the chat mounted but hidden, so
 // these must not reach its buttons while Settings is open.
@@ -330,7 +331,13 @@ export function initHotkey(){
                     break
                 }
                 default:{
-                    hotKeyRanThisTime = false
+                    const slot = presetSlotOf(hotkey.action)
+                    // A key that commits an IME composition is not a shortcut.
+                    if(slot === null || ev.isComposing || ev.keyCode === 229){
+                        hotKeyRanThisTime = false
+                        break
+                    }
+                    act(() => selectPresetSlot(slot))
                 }
             }
 
@@ -347,64 +354,6 @@ export function initHotkey(){
         }
 
 
-        if(ev.ctrlKey){
-            switch (ev.key){
-                case "1":{
-                    changeToPreset(0)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "2":{
-                    changeToPreset(1)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "3":{
-                    changeToPreset(2)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "4":{
-                    changeToPreset(3)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "5":{
-                    changeToPreset(4)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "6":{
-                    changeToPreset(5)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "7":{
-                    changeToPreset(6)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "8":{
-                    changeToPreset(7)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-                case "9":{
-                    changeToPreset(8)
-                    ev.preventDefault()
-                    ev.stopPropagation()
-                    break
-                }
-            }
-        }
         if(ev.key === 'Escape'){
             // A prompt waiting for an answer is answered by Escape only when its caller
             // offered a cancel, which the first Escape block above handles; otherwise
@@ -554,13 +503,15 @@ function focusQuery(query:string){
     }
 }
 
-function changeToPreset(num:number){
-    if(!keysBlocked()){
-        let db = getDatabase()
-        let pres = db.botPresets
-        if(pres.length > num){
-            alertToast(fillLang(language.alerts.changedToPreset, { name: pres[num].name }))
-            changeToPreset2(num)
-        }
+// Ctrl+n resolves through the slot a preset holds, never through list position. An empty slot says so and the key
+// is still consumed by the caller.
+function selectPresetSlot(slot:number){
+    const pres = getDatabase().botPresets
+    const index = presetIndexForSlot(pres, slot)
+    if(index === -1){
+        alertToast(fillLang(language.alerts.emptyPresetSlot, { slot: String(slot) }))
+        return
     }
+    alertToast(fillLang(language.alerts.changedToPreset, { name: pres[index].name }))
+    changeToPreset2(index)
 }

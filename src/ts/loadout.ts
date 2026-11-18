@@ -1,5 +1,5 @@
 import { changeUserPersona } from "./persona"
-import { changeToPreset, getCurrentCharacter } from "./storage/database.svelte"
+import { changeToPreset, getCurrentCharacter, type botPreset } from "./storage/database.svelte"
 import { currentPresetOf } from "./storage/currentPreset"
 import { DBState } from "./stores.svelte"
 
@@ -12,8 +12,27 @@ export type Loadout = {
     modules: string[]
     globalVariables: {[key:string]:string}
     presetName: string
+    /** The preset's stable id; absent on a loadout made without one (upstream's), which resolves by name. */
+    presetId?: string
     personaId: string
     icons?:string[]
+}
+
+/**
+ * The preset a loadout targets: the entry whose id equals `presetId` when that id resolves, otherwise the first entry
+ * named `presetName` (the rule upstream applies), otherwise -1. A dangling id is not re-linked.
+ */
+export function loadoutPresetIndex(presets: readonly Pick<botPreset, 'id' | 'name'>[] | undefined, loadout: Pick<Loadout, 'presetId' | 'presetName'>): number {
+    if(!presets){
+        return -1
+    }
+    if(loadout.presetId){
+        const byId = presets.findIndex(p => p.id === loadout.presetId)
+        if(byId !== -1){
+            return byId
+        }
+    }
+    return presets.findIndex(p => p.name === loadout.presetName)
 }
 
 export function makeLoadout(options:{
@@ -37,6 +56,7 @@ export function makeLoadout(options:{
         modules: DBState.db.enabledModules,
         globalVariables: DBState.db.globalChatVariables,
         presetName: preset?.name ?? '',
+        presetId: preset?.id,
         personaId: DBState.db.personas[DBState.db.selectedPersona]?.id,
         icons: icons
     });
@@ -62,7 +82,7 @@ export function applyLoadout(loadout: Loadout, apply:LoadoutApplyOption[] = [
         }
     }
     if(apply.includes('preset')) {
-        let presetIndex = DBState.db.botPresets?.findIndex(p => p.name === loadout.presetName)
+        let presetIndex = loadoutPresetIndex(DBState.db.botPresets, loadout)
         if(presetIndex !== -1){
             changeToPreset(presetIndex)
         }

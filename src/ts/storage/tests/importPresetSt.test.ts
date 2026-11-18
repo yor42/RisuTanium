@@ -107,6 +107,7 @@ import {
     type Database,
     type botPreset,
 } from 'src/ts/storage/database.svelte'
+import { withoutPresetMeta } from 'src/ts/storage/presetMeta'
 
 type Message = { role: 'user' | 'assistant' | 'system', content: string }
 
@@ -115,7 +116,8 @@ function fileOf(name: string, content: unknown) {
 }
 
 function lastPreset(): botPreset | undefined {
-    return DBState.db.botPresets[DBState.db.botPresets.length - 1]
+    const last = DBState.db.botPresets[DBState.db.botPresets.length - 1]
+    return last ? withoutPresetMeta(last) : undefined
 }
 
 /**

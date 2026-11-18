@@ -3,7 +3,9 @@
  * are left out, a missing id is filled, an id that cannot key a block is
  * replaced with the lists that named it following, and an archived character
  * with an id that cannot be saved is installed as it is (the save loop waits
- * on it). The persona list is repaired before the boot's own pass runs over it.
+ * on it). The persona list is repaired before the boot's own pass runs over it. A boot that minted a preset id (an id-less
+ * list, a repeated id, or the preset the repair appended) marks the boot write after its final `setDatabase`, so the
+ * minted ids are saved by the boot's own save; a boot that minted none marks nothing.
  *
  * The real `bootstrap.ts` and `characterTreeRepair.ts` with the pass module
  * mocked at its boundary, as in `bootstrap.archivePass.test.ts` (whose module
@@ -101,6 +103,7 @@ vi.mock(import('src/ts/storage/database.svelte'), () => ({
     setDatabase: setDatabaseMock,
     defaultSdDataFunc: vi.fn(() => ({})),
     presetTemplate: { name: 'test-preset' },
+    presetFromWorkingSettings: vi.fn((_db: unknown, name: string, image: string) => ({ name, image })),
 }) as unknown as typeof import('src/ts/storage/database.svelte'))
 
 vi.mock(import('src/ts/update'), () => ({
@@ -375,7 +378,7 @@ beforeEach(() => {
     noteMainFileBytesMock.mockClear()
     saveDbMock.mockClear()
     requestSaveNowMock.mockClear()
-    markBootWriteMock.mockClear()
+    markBootWriteMock.mockReset()
     characterURLImportMock.mockReset().mockImplementation(() => { world.events.push('characterURLImport') })
     setDatabaseMock.mockReset().mockImplementation((data: Record<string, unknown>) => {
         world.events.push('setDatabase')
@@ -632,5 +635,66 @@ describe('loadData() repairs the persona list before the boot pass reads it (S13
 
         expect(toast).not.toHaveBeenCalled()
         expect(markBootWriteMock).not.toHaveBeenCalled()
+    })
+})
+
+describe('loadData() and preset ids', () => {
+    /** The boot's `setDatabase` mints with the real `assignPresetIds`, as the production one does, so the flag is the real one. */
+    async function bootWithRealMint(db: Record<string, unknown>) {
+        armLegacy(db)
+        const booted = await freshLoadData()
+        const { assignPresetIds } = await import('src/ts/storage/presetMeta')
+        setDatabaseMock.mockImplementation((data: Record<string, unknown>) => {
+            assignPresetIds(data as unknown as Parameters<typeof assignPresetIds>[0])
+            world.events.push('setDatabase')
+            dbState.current = { ...dbState.baseline(), ...data }
+        })
+        await booted.loadData()
+        return lastInstalled().botPresets as Array<{ name: string, id?: string, slot?: number }>
+    }
+
+    test('A8c (i) an id-less list is installed with distinct string ids and marks the boot write once', async () => {
+        const presets = await bootWithRealMint(baseDb({ botPresets: [{ name: 'a' }, { name: 'b' }], botPresetsId: 0 }))
+
+        expect(presets.map((p) => typeof p.id)).toEqual(['string', 'string'])
+        expect(new Set(presets.map((p) => p.id)).size).toBe(2)
+        expect(markBootWriteMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('A8c (ii) a repeated id is re-minted on every holder, a sole holder keeps its id, and the boot write is marked once', async () => {
+        const presets = await bootWithRealMint(baseDb({
+            botPresets: [{ name: 'a', id: 'x', slot: 1 }, { name: 'b', id: 'x', slot: 2 }, { name: 'c', id: 'y' }],
+            botPresetsId: 0,
+        }))
+
+        expect(new Set(presets.map((p) => p.id)).size).toBe(3)
+        expect(presets[2].id).toBe('y')
+        expect(presets[0].id).not.toBe('x')
+        expect(presets[1].id).not.toBe('x')
+        expect(presets[0].slot).toBeUndefined()
+        expect(presets[1].slot).toBeUndefined()
+        expect(markBootWriteMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('A8c (iii) (G) a list whose ids are all distinct is installed unchanged and marks nothing', async () => {
+        const presets = await bootWithRealMint(baseDb({ botPresets: [{ name: 'a', id: 'x' }, { name: 'b', id: 'y' }], botPresetsId: 0 }))
+
+        expect(presets.map((p) => p.id)).toEqual(['x', 'y'])
+        expect(markBootWriteMock).not.toHaveBeenCalled()
+    })
+
+    test('A16 the preset the repair appends gets an id from the final setDatabase, and the boot write is marked after it', async () => {
+        markBootWriteMock.mockImplementationOnce(() => { world.events.push('markBootWrite') })
+        const presets = await bootWithRealMint(baseDb({
+            botPresets: [{ name: 'P0', id: 'pa' }, { name: 'P1', id: 'pb' }, { name: 'P2', id: 'pc' }],
+            botPresetsId: 7,
+        }))
+
+        expect(presets).toHaveLength(4)
+        expect(presets.slice(0, 3).map((p) => p.id)).toEqual(['pa', 'pb', 'pc'])
+        expect(typeof presets[3].id).toBe('string')
+        expect(['pa', 'pb', 'pc']).not.toContain(presets[3].id)
+        expect(markBootWriteMock).toHaveBeenCalledTimes(1)
+        expect(world.events.lastIndexOf('markBootWrite')).toBeGreaterThan(world.events.lastIndexOf('setDatabase'))
     })
 })

@@ -145,8 +145,13 @@ function loadRealHost(): Promise<FastForwardHost> {
                     if (!isWorkingDatabase(copy)) {
                         throw new Error('The working settings are not an object.')
                     }
-                    const image = typeof slot.image === 'string' ? slot.image : ''
-                    return plainObject(database.presetFromWorkingSettings(copy, String(slot.name ?? ''), image), 'preset')
+                    const held = structuredClone(slot)
+                    if (!isBotPreset(held)) {
+                        throw new Error('The preset record is not an object.')
+                    }
+                    held.name = String(held.name ?? '')
+                    held.image = typeof held.image === 'string' ? held.image : ''
+                    return plainObject(database.savedPresetFor(copy, held), 'preset')
                 },
                 apply(working, slot) {
                     const copy = structuredClone(working)

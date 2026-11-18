@@ -98,6 +98,7 @@ vi.mock(import('./process/index.svelte'), () => ({
 import { initHotkey } from './hotkey'
 import { alertStore, DBState, settingsOpen } from './stores.svelte'
 import { changeToPreset } from './storage/database.svelte'
+import { migratePresetSlots } from './storage/presetMeta'
 import { changeChar } from './characters'
 import { alertConfirm, alertNormal, alertToast, alertWait } from './alert'
 import { resetAlertPromptsForTests } from './alertPrompts'
@@ -199,7 +200,9 @@ beforeAll(() => {
 })
 
 beforeEach(() => {
-    DBState.db = { botPresets: [{ name: 'One' }, { name: 'Two' }] } as unknown as Database
+    const db = { botPresets: [{ name: 'One' }, { name: 'Two' }] } as unknown as Database
+    migratePresetSlots(db)
+    DBState.db = db
 })
 
 afterEach(() => {
