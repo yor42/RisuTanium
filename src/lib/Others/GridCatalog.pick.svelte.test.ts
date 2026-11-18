@@ -149,6 +149,8 @@ Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true
 
 import { DBState } from '../../ts/stores.svelte'
 import { language } from '../../lang'
+import { resetToastHostForTests, toastHost } from '../../ts/toast/toastHost.svelte'
+import type { TrashedBatch } from '../../ts/characters'
 import GridCatalog from './GridCatalog.svelte'
 
 //#region fixtures and helpers
@@ -240,6 +242,7 @@ const characters = (): CharacterFixture[] => [makeCharacter('a', 'Ann'), makeCha
 beforeEach(() => {
     changeCharSpy.mockClear()
     removeCharSpy.mockClear()
+    resetToastHostForTests()
 })
 
 //#endregion
@@ -365,9 +368,27 @@ describe('GridCatalog: picking a character opens it and closes the screen', { ti
             const row = listRow(target, 'Bob')
             const buttons = Array.from(row.querySelectorAll<HTMLButtonElement>('button'))
             buttons[buttons.length - 1].click()
-            expect(removeCharSpy).toHaveBeenCalledWith(DBState.db.characters[1], 'Bob')
+            expect(removeCharSpy).toHaveBeenCalledWith(DBState.db.characters[1], 'Bob', 'normal', expect.objectContaining({ onTrashed: expect.any(Function) }))
             expect(changeCharSpy).not.toHaveBeenCalled()
             expect(endGrid).not.toHaveBeenCalled()
+        })
+    })
+
+    test('reproducer: the List delete button posts the Undo toast when the removal reports its batch', async () => {
+        DBState.db = buildDb(characters())
+        const endGrid = vi.fn()
+        removeCharSpy.mockImplementationOnce(async (_identifier: unknown, _name: string, _type: unknown, report?: { onTrashed?(batch: TrashedBatch): void }) => {
+            report?.onTrashed?.({ at: 99, chaIds: ['b'] })
+        })
+
+        await withMounted(endGrid, (target) => {
+            clickLayoutButton(target, 1)
+            const row = listRow(target, 'Bob')
+            const buttons = Array.from(row.querySelectorAll<HTMLButtonElement>('button'))
+            buttons[buttons.length - 1].click()
+            expect(toastHost.visible).toHaveLength(1)
+            expect(toastHost.visible[0].kind).toBe('undo')
+            expect(toastHost.visible[0].text).toBe(language.othersUi.libraryUndoTrashed(1))
         })
     })
 

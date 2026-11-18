@@ -4,7 +4,7 @@
  * Unusable ids still name nothing.
  */
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import { installCharacterSaveMarks, markCharacterForSave, resetCharacterSaveMarksForTest } from '../characterSaveMarks'
+import { installCharacterSaveMarks, markCharacterForSave, markDbWrite, resetCharacterSaveMarksForTest } from '../characterSaveMarks'
 import { ensureInstalled, resetNetSignalsForTest, type NetSignalHandle } from '../netSignalMeter'
 import type { toSaveType } from '../risuSave'
 
@@ -62,6 +62,19 @@ describe('markCharacterForSave and numeric ids', () => {
 
         expect(tracker.character).toEqual(['existing'])
         expect(schedule).not.toHaveBeenCalled()
+    })
+
+    test('K2n: a usable numeric id schedules as judged; the refused id 0 on an owner mark schedules as content and names nothing', () => {
+        const tracker = makeTracker([])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker, schedule })
+
+        markCharacterForSave(7)
+        markDbWrite({ kind: 'owner', id: 7 })
+        markDbWrite({ kind: 'owner', id: 0 })
+
+        expect(tracker.character).toEqual([7])
+        expect(schedule.mock.calls).toEqual([['judged'], ['judged'], ['content']])
     })
 
     test('U4: a numeric mark counts one api signal under its text id', () => {

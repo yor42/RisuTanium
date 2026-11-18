@@ -1301,6 +1301,10 @@ export const languageJapanese = {
             "メモリトークンのうち類似メモリに割り当てる割合です。割り当てられたトークンが上限に達するまで、直近のチャットとの類似度スコアが最も高い要約で自動的に埋められます。",
         hypaV3RandomMemoryRatio:
             "他のカテゴリでまだ選択されていない要約からランダムに埋められます。",
+        hypaV3RecencyWeighting:
+            "有効にすると、古い要約は類似メモリとランダムメモリで選ばれにくくなります。各要約は作成された時刻を記録し、再要約された要約は、置き換えた要約のうち最も古い時刻を引き継ぎます。時刻が記録されていない要約（このオプションが存在する前に作成されたもの、HypaV2から変換されたもの、ロアブックからインポートされたもの、またはそれらと一緒に再要約されたもの）は、日付のあるどの要約よりも古いものとして扱われ、最も古いものから順に並びます。重要メモリと直近のメモリは影響を受けません。",
+        hypaV3RecencyHalfLifeDays:
+            "この日数が経過すると、要約の重みは半分になります。類似メモリでは順位が下がり、ランダムメモリでは選ばれる頻度が半分になります。以降、この期間が経過するたびにさらに半分になります。",
         hypaV3PreserveOrphanedMemory:
             "有効にすると、削除されたチャットメッセージを参照する要約が保持されます。無効にすると、元となるメッセージが存在しなくなった要約は自動的に削除されます。",
         hypaV3ProcessRegexScript:
@@ -2383,6 +2387,9 @@ export const languageJapanese = {
     studioRefusalPrecondition: "その後に値が変更されたため、何も変更していません。",
     studioRefusalPairSplit: "このステップはデフォルトの最初のメッセージと代替の最初のメッセージをまとめて変更しましたが、その後どちらかが変更されたため、両方を保つために Studio はここで停止しました。何も変更していません。",
     studioRefusalUnknown: "その操作はもう実行できません。",
+    studioRefusalModuleNotSelected: "そのモジュールはもう選択されていません。",
+    studioRefusalModuleGone: "そのモジュールはもう利用できません。",
+    studioRefusalModuleSharedId: "別のモジュールが同じIDを持つため、Studioはこのモジュールを編集しません。",
     studioAssetRefusalNoUndo: "現在は元に戻す操作を保持できません",
     studioAssetRefusalOtherTabCharacter: "アセットを削除するには、このキャラクターを1つのタブだけで開いてください",
     studioAssetRefusalOtherTabModule: "アセットを削除するには、このモジュールを1つのタブだけで開いてください",
@@ -2898,6 +2905,8 @@ export const languageJapanese = {
         recentMemoryRatioLabel: "最近のメモリ比率",
         similarMemoryRatioLabel: "類似メモリ比率",
         randomMemoryRatioLabel: "ランダムメモリ比率",
+        recencyWeightingLabel: "新しい要約を優先",
+        recencyHalfLifeDaysLabel: "鮮度の半減期（日）",
         enableSimilarityCorrectionLabel: "類似度補正を有効化",
         preserveOrphanedMemoryLabel: "孤立メモリを保持",
         applyRegexScriptWhenRerollingLabel: "再生成時に正規表現スクリプトを適用",
@@ -4129,6 +4138,20 @@ export const languageJapanese = {
         sidebarItemRestored: "「{name}」を元に戻しました",
         sidebarItemUndoRefused: "元に戻せません。「{name}」はすでにリストにあります。",
         sidebarItemUndoFailed: "削除を元に戻せませんでした。",
+        libraryUndoTrashed: (count: number) => count === 1 ? '1体のキャラクターをゴミ箱に移動しました' : `${count}体のキャラクターをゴミ箱に移動しました`,
+        libraryUndoTrashedEndNote: "元に戻すと、フォルダが存在しないキャラクターはリストの末尾に置かれます。",
+        libraryUndoRestored: (count: number) => count === 1 ? '1体のキャラクターがゴミ箱から戻りました' : `${count}体のキャラクターがゴミ箱から戻りました`,
+        libraryUndoTrashRefused: "元に戻せません。これらのキャラクターは、この操作によってゴミ箱に入った状態ではなくなっています。",
+        libraryUndoTrashFailed: "ゴミ箱への移動を元に戻せませんでした。",
+        libraryUndoGrouped: "新しいフォルダにまとめました",
+        libraryUndoMerged: "新しいフォルダを作成しました",
+        libraryUndoMovedIntoFolder: (count: number) => count === 1 ? '1件の項目をフォルダに移動しました' : `${count}件の項目をフォルダに移動しました`,
+        libraryUndoFolderRemoved: "移動しました。フォルダが1つなくなりましたが、キャラクターは残っています",
+        libraryUndoUngrouped: "フォルダのグループ化を解除しました",
+        libraryUndoFolderDeleted: "フォルダを削除しました。中のキャラクターはリストに残ります",
+        libraryUndoOrderRestored: "順序を元に戻しました",
+        libraryUndoOrderRefused: "元に戻せません。その後ライブラリの順序が変更されています。",
+        libraryUndoOrderFailed: "変更を元に戻せませんでした。",
     },
     uiCommon: {
         delete: "削除",

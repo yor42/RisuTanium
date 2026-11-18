@@ -216,6 +216,84 @@ describe('reproducer (mechanism, synthetic unmarked edit): an edit no mark saw i
     })
 })
 
+describe('reproducer (MC-2298): a reorder of the character list that no mark saw is not lost to Reload', () => {
+    test('F4 two residents swapped through the proxy after the clean prompt: the loop answers dirty and asks', async () => {
+        const peer = createPeerDouble('reload')
+        unanswered(peer)
+        const page = await startPage(small(), { idleNet: { intervalMs: 1_000_000_000 }, peer })
+        await settled(page.w)
+        await peerSaves(page)
+        await until(() => peer.clean.length >= 1, 'the clean prompt', 8000)
+        const list = characters(page.db)
+        const first = list[1]
+        list[1] = list[2]
+        list[2] = first
+        expect(page.w.api.hasUnsavedSaveMarks()).toBe(false)
+        expect(await peer.requests[0]()).toBe('dirty')
+        await sleepReal(400)
+        expect(peer.reloads).toBe(0)
+        expect(peer.asked[0]).toMatchObject({ unsaved: true })
+    })
+})
+
+describe('MC-2294: the prompt judges the marked residents only, and the Reload check judges them all', () => {
+    test('U1 an unmarked edit on a page that holds a mark for another character gets the clean prompt, and Reload still finds the edit', async () => {
+        const peer = createPeerDouble('reload')
+        unanswered(peer)
+        const page = await startPage(small(), { idleNet: { intervalMs: 1_000_000_000 }, peer })
+        await settled(page.w)
+        unmarkedEdit(page)
+        // A mark that names a character with no change: a judged mark, so the page is dirty but holds no content flag.
+        page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+        await peerSaves(page)
+        await until(() => peer.clean.length >= 1, 'the clean prompt', 8000)
+        await sleepReal(400)
+        expect(peer.asked).toEqual([])
+        expect(await peer.requests[0]()).toBe('dirty')
+        await sleepReal(400)
+        expect(peer.reloads).toBe(0)
+        expect(peer.asked[0]).toMatchObject({ unsaved: true })
+    })
+})
+
+describe('MC-2294: a mark that lands after a clean Reload answer shows the clean prompt again (the probe runs no verdict)', () => {
+    test('SP1 the press is answered clean, a mark lands before the press reads the page again: nothing reloads and the clean prompt is shown again', async () => {
+        const peer = createPeerDouble('reload')
+        unanswered(peer)
+        const page = await startPage(small(), { idleNet: { intervalMs: 1_000_000_000 }, peer })
+        await settled(page.w)
+        await peerSaves(page)
+        await until(() => peer.clean.length >= 1, 'the clean prompt', 8000)
+        const real = peer.requests[0]
+        peer.requests[0] = async () => {
+            const verdict = await real()
+            page.w.marks.markCharacterForSave(String(characters(page.db)[2].chaId))
+            return verdict
+        }
+        await peer.pressReload()
+        // The second clean prompt is the disclosed residual (l): the person may see the clean prompt twice, with no loss and no stuck page.
+        await until(() => peer.clean.length >= 2, 'the clean prompt again', 8000)
+        await sleepReal(400)
+        expect(peer.reloads).toBe(0)
+        expect(peer.clean).toHaveLength(2)
+        expect(peer.asked).toEqual([])
+    })
+
+    test('SP2 guard: a plain clean press reloads, and the next settle shows no second prompt', async () => {
+        const peer = createPeerDouble('reload')
+        unanswered(peer)
+        const page = await startPage(small(), { idleNet: { intervalMs: 1_000_000_000 }, peer })
+        await settled(page.w)
+        await peerSaves(page)
+        await until(() => peer.clean.length >= 1, 'the clean prompt', 8000)
+        await peer.pressReload()
+        await sleepReal(400)
+        expect(peer.reloads).toBe(1)
+        expect(peer.clean).toHaveLength(1)
+        expect(peer.asked).toEqual([])
+    })
+})
+
 describe('guard: a parked tab with nothing unsaved still gets the clean prompt and Reload reloads', () => {
     for (const kind of ['tauri', 'node'] as const) {
         test(`${kind}: no question, no automatic export, the page is not dirtied by the check`, async () => {

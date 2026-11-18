@@ -85,6 +85,18 @@ describe('withoutForkOnlyChatData', () => {
         expect(kept.message).toEqual([{ data: 'a', name: 'speaker', chatId: 'id-1' }])
     })
 
+    test('guard (X1): a summary time inside hypaV3Data is kept as the summarizers wrote it', () => {
+        const summaries = JSON.parse(JSON.stringify([
+            { text: 'legacy', chatMemos: ['m0'], isImportant: false, categoryId: undefined, tags: [] },
+            { text: 'dated', chatMemos: ['m1'], isImportant: false, categoryId: undefined, tags: [], createdAt: 1_763_424_000_000 },
+        ]))
+        const input = character([{ name: 'A', hypaV3Data: { summaries }, alt: ALT, message: [{ data: 'a', interrupted: true }] }])
+
+        const kept = (withoutForkOnlyChatData(input).chats as Record<string, unknown>[])[0]
+
+        expect(kept.hypaV3Data).toEqual({ summaries })
+    })
+
     test('guard (I3): the table names exactly the fork-only keys', () => {
         expect(FORK_ONLY_CHAT_KEYS.map((row) => `${row.scope}:${row.key}:${row.kind}`)).toEqual([
             'chat:alt:alternatives',

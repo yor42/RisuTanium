@@ -1300,6 +1300,10 @@ export const languageEnglish = {
             "The fraction of memory tokens allocated to similar memory. Automatically filled with summaries that have the highest similarity scores to recent chats until the allocated tokens are full.",
         hypaV3RandomMemoryRatio:
             "Randomly filled from summaries not already selected by other categories.",
+        hypaV3RecencyWeighting:
+            "If enabled, older summaries are less likely to be chosen for similar memory and random memory. Each summary records when it was created; a re-summarized summary keeps the oldest time of the summaries it replaced. Summaries without a recorded time (made before this option existed, converted from HypaMemory V2, imported from a lorebook, or re-summarized together with one of those) count as older than every dated summary, earliest first. Important and recent memory are not affected.",
+        hypaV3RecencyHalfLifeDays:
+            "After this many days a summary counts half as much: it ranks lower in similar memory and is picked half as often in random memory. Each further period halves it again.",
         hypaV3PreserveOrphanedMemory:
             "If enabled, summaries that reference deleted chat messages will be preserved. If disabled, summaries whose source messages no longer exist are automatically removed.",
         hypaV3ProcessRegexScript:
@@ -2382,6 +2386,9 @@ export const languageEnglish = {
     studioRefusalPrecondition: "The value has changed since, so nothing was changed.",
     studioRefusalPairSplit: "This step changed the default first message together with the alternative first messages, and one of them has changed since, so Studio stopped here to keep both. Nothing was changed.",
     studioRefusalUnknown: "That can't be done any more.",
+    studioRefusalModuleNotSelected: "That module is no longer the selected one.",
+    studioRefusalModuleGone: "That module is no longer available.",
+    studioRefusalModuleSharedId: "Another module has the same ID, so Studio won't edit this one.",
     studioAssetRefusalNoUndo: "Cannot keep undo right now",
     studioAssetRefusalOtherTabCharacter: "Open this character in one tab to remove assets",
     studioAssetRefusalOtherTabModule: "Open this module in one tab to remove assets",
@@ -2898,6 +2905,8 @@ export const languageEnglish = {
         recentMemoryRatioLabel: "Recent Memory Ratio",
         similarMemoryRatioLabel: "Similar Memory Ratio",
         randomMemoryRatioLabel: "Random Memory Ratio",
+        recencyWeightingLabel: "Favor Recent Summaries",
+        recencyHalfLifeDaysLabel: "Recency Half-Life (Days)",
         enableSimilarityCorrectionLabel: "Enable Similarity Correction",
         preserveOrphanedMemoryLabel: "Preserve Orphaned Memory",
         applyRegexScriptWhenRerollingLabel: "Apply Regex Script When Rerolling",
@@ -4128,6 +4137,20 @@ export const languageEnglish = {
         sidebarItemRestored: "\"{name}\" is back",
         sidebarItemUndoRefused: "Can't undo: \"{name}\" is already in the list.",
         sidebarItemUndoFailed: "Couldn't undo the removal.",
+        libraryUndoTrashed: (count: number) => count === 1 ? 'Moved 1 character to the trash' : `Moved ${count} characters to the trash`,
+        libraryUndoTrashedEndNote: "Undo puts characters whose folder is gone at the end of the list.",
+        libraryUndoRestored: (count: number) => count === 1 ? '1 character is back from the trash' : `${count} characters are back from the trash`,
+        libraryUndoTrashRefused: "Can't undo: these characters are no longer in the trash from this action.",
+        libraryUndoTrashFailed: "Couldn't undo the move to the trash.",
+        libraryUndoGrouped: "Grouped into a new folder",
+        libraryUndoMerged: "Made a new folder",
+        libraryUndoMovedIntoFolder: (count: number) => count === 1 ? 'Moved 1 item into the folder' : `Moved ${count} items into the folder`,
+        libraryUndoFolderRemoved: "Moved; a folder was removed, its characters were kept",
+        libraryUndoUngrouped: "Folder ungrouped",
+        libraryUndoFolderDeleted: "Folder deleted; its characters stay in the list",
+        libraryUndoOrderRestored: "Order restored",
+        libraryUndoOrderRefused: "Can't undo: the library order has changed since.",
+        libraryUndoOrderFailed: "Couldn't undo the change.",
     },
     uiCommon: {
         delete: "Delete",

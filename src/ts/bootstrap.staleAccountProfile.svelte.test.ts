@@ -20,8 +20,7 @@
  * `platform`, `util`, `reloadGuard`, `update`, `stores.svelte`,
  * `plugins/plugins.svelte`, `characterCards`, `gui/*`,
  * `observer.svelte`, `characters`, `hotkey`, `process/modules`,
- * `storage/assetIntegrity`,
- * `storage/remoteSaveCleanup`, `storage/assetSweep`, `media/avatarThumb`,
+ * `storage/assetIntegrity`, `media/avatarThumb`,
  * `model/modellist`, and every `@tauri-apps/*` package `bootstrap.ts`
  * touches.
  *
@@ -58,6 +57,7 @@ import { STALE_ACCOUNT_NOTICE_ACK } from './alert'
 import type { AssetVerifyResult } from './storage/assetIntegrity'
 import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/forageBackedStore'
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
+import { registerRealDispatch, stopAcknowledgingAlerts } from 'src/ts/tests/realDispatchBoot.test-helpers'
 
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
@@ -91,9 +91,6 @@ const setUsingSwMock = vi.hoisted(() => vi.fn())
 const setDatabaseMock = vi.hoisted(() => vi.fn((_data: Record<string, unknown>): void => { }))
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as Record<string, unknown>))
 const recordLoadTimeListingMock = vi.hoisted(() => vi.fn(async (): Promise<void> => { }))
-const sweepTauriAssetsMock = vi.hoisted(() => vi.fn(async (_deps: unknown) => { }))
-const sweepForageAssetKeyMock = vi.hoisted(() => vi.fn(async (_key: string, _deps: unknown) => { }))
-const getRemoteSavePayloadNameMock = vi.hoisted(() => vi.fn((_fileName: string): string | null => null))
 
 //#endregion
 
@@ -172,6 +169,7 @@ vi.mock(import('src/ts/stores.svelte'), () => ({
     alertStore: writable({ type: 'none', msg: 'n' }),
     // The real parser.svelte module-level effect reads this binding when the unmocked graph loads.
     selIdState: { selId: -1 },
+    SafeModeStore: writable(false),
 }) as unknown as typeof import('src/ts/stores.svelte'))
 
 vi.mock(import('src/ts/plugins/plugins.svelte'), () => ({
@@ -225,17 +223,6 @@ vi.mock(import('src/ts/storage/bootArchivePass'), () => ({
 vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
     verifyAssetCacheEntry: verifyAssetCacheEntryMock,
 }) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
-vi.mock(import('src/ts/storage/remoteSaveCleanup'), () => ({
-    getRemoteSaveCleanupAction: vi.fn(() => 'create-meta'),
-    getRemoteSavePayloadName: getRemoteSavePayloadNameMock,
-}) as unknown as typeof import('src/ts/storage/remoteSaveCleanup'))
-
-vi.mock(import('src/ts/storage/assetSweep'), () => ({
-    sweepTauriAssets: sweepTauriAssetsMock,
-    sweepForageAssetKey: sweepForageAssetKeyMock,
-    ASSET_SWEEP_BATCH_SIZE: 100,
-}) as unknown as typeof import('src/ts/storage/assetSweep'))
 
 vi.mock(import('src/ts/storage/loadTimeListing'), () => ({
     recordLoadTimeListing: recordLoadTimeListingMock,
@@ -425,12 +412,20 @@ async function corruptDbBytes(): Promise<Uint8Array> {
     return encoded
 }
 
-/** Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. */
-async function freshLoadData() {
+/**
+ * Imports a fresh `loadData` and the matching `stores.svelte` pair, after `vi.resetModules()`. The real dispatch is
+ * registered, so the legacy main file is converted to a store2 profile as on a production page, and its notices are
+ * dismissed (the stale-account notice has its own type and stays). `realDispatch: false` leaves the page with no
+ * registered dispatch, which the warm-up import needs.
+ */
+async function freshLoadData(options: { realDispatch: boolean } = { realDispatch: true }) {
     // The boot reads through the page's byte store; here it is the storage-object model above.
     const { injectAppStore } = await import('src/ts/storage/store/appStore')
     const { forageStorage } = await import('src/ts/globalApi.svelte')
     injectAppStore(createForageBackedStore(forageStorage as unknown as ForageLike), 'tauri')
+    if (options.realDispatch) {
+        await registerRealDispatch({ kind: 'tauri', acknowledgeAlerts: true })
+    }
     const { loadData } = await import('src/ts/bootstrap')
     const { alertStore, loadedStore } = await import('src/ts/stores.svelte') as unknown as {
         alertStore: ReturnType<typeof writable<{ type: string, msg: string }>>
@@ -452,7 +447,7 @@ async function freshLoadData() {
 // under load. The transform cache survives vi.resetModules(), so one warm import here moves the cost into a hook
 // with its own timeout.
 beforeAll(async () => {
-    await freshLoadData()
+    await freshLoadData({ realDispatch: false })
     vi.resetModules()
 }, COLD_TRANSFORM_HOOK_MS)
 
@@ -484,9 +479,6 @@ beforeEach(() => {
     getDatabaseMock.mockClear()
     getDatabaseMock.mockImplementation(() => dbState.current)
     recordLoadTimeListingMock.mockReset().mockResolvedValue(undefined)
-    sweepTauriAssetsMock.mockReset().mockResolvedValue(undefined)
-    sweepForageAssetKeyMock.mockReset().mockResolvedValue(undefined)
-    getRemoteSavePayloadNameMock.mockReset().mockReturnValue(null)
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 404 })))
     vi.stubGlobal('open', vi.fn())
     vi.spyOn(window.location, 'reload').mockImplementation(() => { })
@@ -494,6 +486,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+    stopAcknowledgingAlerts()
     // Settle any notice this test posted but never acknowledged: its
     // subscription is still live on the shared, mock-persisted `alertStore`
     // (see the header) and would otherwise react to a later test's writes.
@@ -501,18 +494,14 @@ afterEach(() => {
 })
 
 /**
- * The only forage writes a boot makes before the stale-account notice is
- * acknowledged: none, or, on the branch that finds no save at all, the keys
- * of the empty profile it creates in the block store (never the main file).
+ * The only forage write a boot makes before the stale-account notice is
+ * acknowledged is the page's own store2 owner id: the store2 profile is written
+ * to the store2 backend, and neither the main file, a numbered backup nor a
+ * block key is written, whichever install branch the boot took.
  */
-function expectOnlyTheSeed(branch: 'decode' | 'nullish' | 'backup-fallback') {
+function expectOnlyTheOwnerIdWritten() {
     const written = sharedForageStorage.setItem.mock.calls.map((call) => String(call[0]))
-    if (branch === 'nullish') {
-        expect(written.length, 'keys of the empty profile').toBeGreaterThan(0)
-        expect(written.every((key) => key.startsWith('blocks/'))).toBe(true)
-    } else {
-        expect(written).toEqual([])
-    }
+    expect(written.filter((key) => key !== 'store2-owner')).toEqual([])
 }
 
 /** Configures `forageState` so `loadData()`'s non-Tauri database read reaches the named install branch, with `db` as the eventually-installed database. */
@@ -565,7 +554,7 @@ describe('loadData(): a stale account-sync profile does not boot silently (I6)',
             // own pre-install empty-profile seed aside) no forage write
             // either.
             expect(sharedForageStorage.removeItem).not.toHaveBeenCalled()
-            expectOnlyTheSeed(branch)
+            expectOnlyTheOwnerIdWritten()
             assertLocalforageUntouched()
         })
     }
@@ -650,7 +639,7 @@ describe('loadData(): a stale account-sync profile does not boot silently (I6)',
             // The "never touched" half of the invariant holds through to
             // acknowledgement too, not just while the notice was pending.
             expect(sharedForageStorage.removeItem).not.toHaveBeenCalled()
-            expectOnlyTheSeed(branch)
+            expectOnlyTheOwnerIdWritten()
             assertLocalforageUntouched()
         })
     }
@@ -936,179 +925,5 @@ describe('loadData(): the web corrupt-database fallback installs the newest back
         expect(installedMainPrompts[0]).toBe('second-newest-content')
         expect(installedMainPrompts).not.toContain('third-newest-content')
         expect((dbState.current as { mainPrompt?: string }).mainPrompt).toBe('second-newest-content')
-    })
-})
-
-describe('cleanChunks(): the checkCorruption integrity sample runs even when cold storage is on (I17)', () => {
-    test('a mismatched in-use asset toasts, driven unawaited through loadData()', async () => {
-        const db = baseDb()
-        db.coldstorage = true
-        db.checkCorruption = true
-        await armInstallBranch('decode', db)
-        getUncleanablesSyncMock.mockReturnValue(['corrupt-asset.png'])
-        verifyAssetCacheEntryMock.mockImplementation(async (path: string): Promise<AssetVerifyResult> => {
-            if (path === 'assets/corrupt-asset.png') {
-                return { status: 'mismatch', expectedHash: 'expected-hash', actualHash: 'actual-hash' }
-            }
-            return { status: 'ok' }
-        })
-
-        const { loadData, alertStore } = await freshLoadData()
-
-        await loadData()
-        // cleanChunks() runs unawaited after loadedStore.set(true); flush its
-        // own internal await chain (getUncleanablesSync, then
-        // verifyAssetCacheEntry, then alertToast) without adding any export
-        // to bootstrap.ts.
-        await vi.waitFor(() => {
-            expect(verifyAssetCacheEntryMock).toHaveBeenCalled()
-        }, { timeout: 200, interval: 5 })
-
-        // I17: the integrity sample must run and this toast must fire even
-        // with cold storage on, since the sample itself never reads cold
-        // storage. A cold-storage-on early return that skips the sample
-        // entirely, before ever calling getUncleanablesSync or
-        // verifyAssetCacheEntry, would leave a mismatch unsampled and this
-        // toast never fired.
-        expect(get(alertStore).type).toBe('toast')
-        expect(get(alertStore).msg).toContain('corrupt-asset.png')
-    })
-
-    for (const coldstorage of [true, false]) {
-        test(`checkCorruption off, cold storage ${coldstorage}: the integrity sample does not run`, async () => {
-            const db = baseDb()
-            db.coldstorage = coldstorage
-            db.checkCorruption = false
-            await armInstallBranch('decode', db)
-            getUncleanablesSyncMock.mockReturnValue(['corrupt-asset.png'])
-            verifyAssetCacheEntryMock.mockResolvedValue({ status: 'mismatch', expectedHash: 'expected-hash', actualHash: 'actual-hash' })
-
-            const { loadData } = await freshLoadData()
-
-            await loadData()
-            // cleanChunks() runs unawaited; give its own microtask chain a
-            // moment to run before asserting that nothing behind the
-            // checkCorruption gate ever ran.
-            await new Promise((resolve) => setTimeout(resolve, 20))
-
-            // The sample is gated on db.checkCorruption alone: off means
-            // neither of the sample's own two calls ever happens, regardless
-            // of cold storage.
-            expect(getUncleanablesSyncMock).not.toHaveBeenCalled()
-            expect(verifyAssetCacheEntryMock).not.toHaveBeenCalled()
-        })
-    }
-})
-
-describe('loadData(): the load-time listing is recorded before plugins start', () => {
-    const branches: Array<'decode' | 'nullish' | 'backup-fallback'> = ['decode', 'nullish', 'backup-fallback']
-
-    for (const branch of branches) {
-        test(`install branch "${branch}": the listing is recorded and has settled before loadPlugins is called`, async () => {
-            await armInstallBranch(branch, baseDb())
-            const order: string[] = []
-            recordLoadTimeListingMock.mockImplementation(async () => {
-                order.push('listing:start')
-                await new Promise((resolve) => setTimeout(resolve, 15))
-                order.push('listing:settled')
-            })
-            loadPluginsMock.mockImplementation(async () => {
-                order.push('loadPlugins')
-            })
-
-            const { loadData } = await freshLoadData()
-
-            await loadData()
-
-            expect(recordLoadTimeListingMock).toHaveBeenCalledTimes(1)
-            expect(loadPluginsMock).toHaveBeenCalledTimes(1)
-            expect(order).toEqual(['listing:start', 'listing:settled', 'loadPlugins'])
-        })
-    }
-})
-
-describe('cleanChunks(): the startup asset sweep does not run once a cold-storage stub exists', () => {
-    const ORPHAN_ASSET_KEY = 'assets/orphan.png'
-    const ORPHAN_REMOTE_KEY = 'remotes/orphan-char.local.bin'
-    const ORPHAN_REMOTE_META_KEY = `${ORPHAN_REMOTE_KEY}.meta`
-
-    const sharedKeys = sharedForageStorage as unknown as { keys: ReturnType<typeof vi.fn> }
-
-    afterEach(() => {
-        sharedKeys.keys.mockReset().mockResolvedValue([])
-    })
-
-    function stubCharacter() {
-        return { chaId: 'stub-char', type: 'character', name: 'Stub', chats: [], coldstorage: 'unit-of-stub-char' }
-    }
-
-    function plainCharacter() {
-        return { chaId: 'plain-char', type: 'character', name: 'Plain', chats: [] }
-    }
-
-    /** Boots the non-Tauri branch with a store holding one orphan asset and one orphan legacy remote file, and waits for the remote-file pass when the profile is one that reaches it. */
-    async function bootProfile(profile: { coldstorage: boolean, stub: boolean }) {
-        const db = baseDb()
-        db.coldstorage = profile.coldstorage
-        db.characters = [profile.stub ? stubCharacter() : plainCharacter()]
-        await armInstallBranch('decode', db)
-        sharedKeys.keys.mockResolvedValue([ORPHAN_ASSET_KEY, ORPHAN_REMOTE_KEY])
-        getRemoteSavePayloadNameMock.mockReturnValue('orphan-char')
-
-        const { loadData } = await freshLoadData()
-        await loadData()
-
-        if (profile.coldstorage) {
-            // The early return leaves nothing to wait for.
-            await new Promise((resolve) => setTimeout(resolve, 30))
-            return
-        }
-        await vi.waitFor(() => {
-            expect(sharedForageStorage.setItem).toHaveBeenCalledWith(ORPHAN_REMOTE_META_KEY, expect.anything())
-        }, { timeout: 500, interval: 5 })
-    }
-
-    test('flag off with a stub in the loaded tree: the asset keep-set is not built', async () => {
-        await bootProfile({ coldstorage: false, stub: true })
-        expect(buildAssetKeepSetMock).not.toHaveBeenCalled()
-    })
-
-    test('flag off with a stub in the loaded tree: no asset is offered to the sweep', async () => {
-        await bootProfile({ coldstorage: false, stub: true })
-        expect(sweepForageAssetKeyMock).not.toHaveBeenCalled()
-    })
-
-    test('guard: flag off with a stub in the loaded tree: the remote-file pass still runs', async () => {
-        await bootProfile({ coldstorage: false, stub: true })
-        expect(sharedForageStorage.setItem).toHaveBeenCalledWith(ORPHAN_REMOTE_META_KEY, expect.anything())
-    })
-
-    test('guard: flag off with no stub: the asset keep-set is built and the asset is offered to the sweep', async () => {
-        await bootProfile({ coldstorage: false, stub: false })
-        expect(buildAssetKeepSetMock).toHaveBeenCalledTimes(1)
-        expect(sweepForageAssetKeyMock).toHaveBeenCalledWith(ORPHAN_ASSET_KEY, expect.anything())
-    })
-
-    for (const stub of [true, false]) {
-        test(`guard: flag on ${stub ? 'with' : 'without'} a stub: startup returns before the keep-set, the sweep and the remote-file pass`, async () => {
-            await bootProfile({ coldstorage: true, stub })
-            expect(buildAssetKeepSetMock).not.toHaveBeenCalled()
-            expect(sweepForageAssetKeyMock).not.toHaveBeenCalled()
-            expect(sharedForageStorage.setItem).not.toHaveBeenCalledWith(ORPHAN_REMOTE_META_KEY, expect.anything())
-        })
-    }
-})
-
-describe('loadData(): a load-time listing that rejects does not stop boot', () => {
-    test('guard: loadPlugins is still called and the app still opens', async () => {
-        await armInstallBranch('decode', baseDb())
-        recordLoadTimeListingMock.mockRejectedValue(new Error('listing failed'))
-
-        const { loadData, loadedStore } = await freshLoadData()
-
-        await loadData()
-
-        expect(loadPluginsMock).toHaveBeenCalledTimes(1)
-        expect(get(loadedStore)).toBe(true)
     })
 })

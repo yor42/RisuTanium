@@ -19,7 +19,9 @@ import {
     createInFlightByteGate,
     createWholeReadBudget,
     forgetStoredAssetSizes,
+    knownStoredAssetSize,
     rememberWholeReadUrl,
+    rememberWholeReadUrlOfSize,
     resetAssetUrlGateForTest,
     rowAssetUrl,
     storeRowAssetUrl,
@@ -192,6 +194,36 @@ describe('the whole-read URL registry', () => {
         expect(wholeReadBytesOfUrl(urlOf('k'))).toBe(SIXTY)
         await androidAssetSizeVerdict('k')
         expect(transport.stat.mock.calls.filter((call) => call[0] === 'k')).toHaveLength(1)
+    })
+})
+
+describe('a URL registered with its known size', () => {
+    const urlOf = (key: string) => `http://asset.localhost/${key}`
+
+    test('gives that size with no probe, and nothing once the key is forgotten', () => {
+        rememberWholeReadUrlOfSize(urlOf('k'), 'k', 5)
+
+        expect(wholeReadBytesOfUrl(urlOf('k'))).toBe(5)
+        expect(knownStoredAssetSize('k')).toBe(5)
+        expect(transport.stat).not.toHaveBeenCalled()
+
+        forgetStoredAssetSizes(['k'])
+        expect(wholeReadBytesOfUrl(urlOf('k'))).toBeUndefined()
+    })
+
+    test('a size that is not a whole number of bytes registers nothing', () => {
+        for (const [index, bytes] of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY].entries()) {
+            rememberWholeReadUrlOfSize(urlOf(`bad${index}`), `bad${index}`, bytes)
+
+            expect(wholeReadBytesOfUrl(urlOf(`bad${index}`))).toBeUndefined()
+        }
+    })
+
+    test('a later registration of the same key replaces its size', () => {
+        rememberWholeReadUrlOfSize(urlOf('k'), 'k', 5)
+        rememberWholeReadUrlOfSize(urlOf('k'), 'k', 9)
+
+        expect(wholeReadBytesOfUrl(urlOf('k'))).toBe(9)
     })
 })
 

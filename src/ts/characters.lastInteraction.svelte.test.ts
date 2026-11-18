@@ -142,9 +142,11 @@ vi.mock(import('src/ts/media/avatarThumb'), () => ({
     isThumbEligible: vi.fn(() => false),
 }) as unknown as typeof import('src/ts/media/avatarThumb'))
 
-vi.mock(import('src/ts/storage/characterSaveMarks'), () => ({
+// Only `markCharacterForSave` is replaced: the real mark paths stay, so a row can read the kind a real hook mark schedules with.
+vi.mock(import('src/ts/storage/characterSaveMarks'), async (importOriginal) => ({
+    ...(await importOriginal()),
     markCharacterForSave: vi.fn(),
-}) as unknown as typeof import('src/ts/storage/characterSaveMarks'))
+}))
 
 //#endregion
 
@@ -155,6 +157,8 @@ import { beginWork } from 'src/ts/process/chatOrigin'
 import { changeChar, characterFormatUpdate, supersedeChangeChar } from './characters'
 import { restoreColdCharacterByChaId } from 'src/ts/process/coldMemberRestore'
 import { recentCharacters } from 'src/ts/chatShell/recentCharacters'
+import { installCharacterSaveMarks, markDbWrite, resetCharacterSaveMarksForTest } from 'src/ts/storage/characterSaveMarks'
+import { installDbWriteHook, uninstallDbWriteHook } from 'src/ts/storage/dbWriteHook'
 
 //#region fixtures
 
@@ -253,6 +257,22 @@ describe('characterFormatUpdate and lastInteraction', () => {
         characterFormatUpdate(0, { updateInteraction: true })
 
         expect(lastInteractionOf(0)).toBeGreaterThanOrEqual(before)
+    })
+
+    test('R4b diagnostic: every mark the real hook reports for a format update that sets lastInteraction is scheduled as judged', () => {
+        installDb([fullCharacter('hero') as unknown as CharacterFixture])
+        const schedule = vi.fn()
+        installCharacterSaveMarks({ tracker: { character: [], chat: [], botPreset: false, modules: false, loadouts: false, plugins: false, pluginCustomStorage: false }, schedule })
+        installDbWriteHook(DBState, { selectedChaId: () => undefined, sink: markDbWrite })
+        try {
+            characterFormatUpdate(0, { updateInteraction: true })
+        } finally {
+            uninstallDbWriteHook()
+            resetCharacterSaveMarksForTest()
+        }
+
+        expect(schedule).toHaveBeenCalled()
+        expect(schedule.mock.calls.every(call => call[0] === 'judged')).toBe(true)
     })
 
     test('guard: formatting still fills the fields a character lacks', () => {

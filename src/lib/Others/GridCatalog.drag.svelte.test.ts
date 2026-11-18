@@ -169,6 +169,7 @@ vi.mock(import('../../ts/media/avatarThumb'), async (importOriginal) => {
 
 import { DBState } from '../../ts/stores.svelte'
 import { language } from '../../lang'
+import { resetToastHostForTests, toastHost } from '../../ts/toast/toastHost.svelte'
 import { registerDbChangeEffects } from '../../ts/storage/dbChangeEffects.svelte'
 import { GRID_TOUCH_MERGE_DWELL_MS, MERGE_DWELL_MS } from '../SideBars/railConstants'
 import { OPEN_FOLDERS_KEY } from '../SideBars/railMemory'
@@ -495,6 +496,7 @@ beforeEach(() => {
     removeCharSpy.mockClear()
     checkCharOrderSpy.mockClear()
     endGridSpy.mockClear()
+    resetToastHostForTests()
     trashCharactersSpy.mockReset()
     trashCharactersSpy.mockImplementation(async () => 0)
     confirmOpen = []
@@ -1749,6 +1751,102 @@ describe('Grid drag: the selection after a merge', () => {
             await gesture(rig, { from: centre(0, 2, 3), to: edge(0, 0, 'before', 3) })
             expect(shape()).toEqual(['D', 'F1[B]', `${NEW_FOLDER}[A,C]`])
             expect(pressedOf(rig.target, 'F1')).toBe('true')
+        })
+    })
+})
+
+describe('Grid drag: the Undo toast of a drop that changes the folders', () => {
+    /** The order as the saved data holds it, every field of every folder included. */
+    const orderData = (): unknown => JSON.parse(JSON.stringify(DBState.db.characterOrder))
+
+    /** Reads `toastHost.visible` first, so a base without the toast fails here and not on a missing language key. */
+    const undoToasts = () => toastHost.visible.filter((toast) => toast.kind === 'undo')
+
+    test('(R) O6a a merge drop posts "made a new folder", and Undo puts the exact previous order back', async () => {
+        flat()
+        const start = orderData()
+        await withGrid({}, async (rig) => {
+            await gesture(rig, { from: centre(0, 0), to: centre(1, 0), type: 'mouse', dwell: 400 })
+            expect(shape()).toEqual(['B', 'C', 'D', `${NEW_FOLDER}[A,E]`, 'F', 'G', 'H'])
+            expect(undoToasts()).toHaveLength(1)
+            expect(undoToasts()[0].text).toBe(language.othersUi.libraryUndoMerged)
+            await toastHost.activate(undoToasts()[0].id)
+            expect(orderData()).toEqual(start)
+        })
+    })
+
+    test('(R) O6b a dissolving drop posts after its confirmation, and Undo brings the folder back with its name, colour, picture and members', async () => {
+        const rich = { ...makeFolder('f1', 'F1', ['B', 'C']), color: 'red', imgFile: 'asset:pic' }
+        world(['A', 'B', 'C', 'D', 'E', 'F'], ['A', rich, makeFolder('f2', 'F2', ['D', 'E']), 'F'])
+        const start = orderData()
+        await withGrid({}, async (rig) => {
+            await openAllFolders(rig.target)
+            await gesture(rig, { from: centre(1, 0, 3), to: edge(2, 2, 'before', 3) })
+            // Nothing is posted while the question is open.
+            expect(undoToasts()).toHaveLength(0)
+            await answerConfirm(true)
+            expect(shape()).toEqual(['A', 'F2[D,B,C,E]', 'F'])
+            expect(undoToasts()).toHaveLength(1)
+            expect(undoToasts()[0].text).toBe(language.othersUi.libraryUndoFolderRemoved)
+            await toastHost.activate(undoToasts()[0].id)
+            expect(orderData()).toEqual(start)
+        })
+    })
+
+    test('(G) O6b a declined confirmation posts nothing', async () => {
+        world(['A', 'B', 'C', 'D', 'E'], ['A', makeFolder('f1', 'F1', ['B', 'C']), makeFolder('f2', 'F2', ['D', 'E'])])
+        await withGrid({}, async (rig) => {
+            await tap(rig.target, 'Char A')
+            await tap(rig.target, 'F2')
+            await gesture(rig, { from: centre(0, 0, 3), to: centre(0, 1, 3) })
+            await answerConfirm(false)
+            expect(undoToasts()).toHaveLength(0)
+        })
+    })
+
+    test('(R) O6c dragging the only member of a folder to a top-level gap removes the emptied folder, posts, and Undo brings it back whole', async () => {
+        const rich = { ...makeFolder('f1', 'F1', ['B']), color: 'blue', imgFile: 'asset:pic' }
+        world(['A', 'B', 'C', 'D'], ['A', rich, 'C', 'D'])
+        const start = orderData()
+        await withGrid({}, async (rig) => {
+            await openAllFolders(rig.target)
+            // Rows: [A], [F1 B], [C D]. B is dropped before D, a top-level gap.
+            await gesture(rig, { from: centre(1, 1, 2), to: edge(2, 1, 'before', 2) })
+            expect(shape()).toEqual(['A', 'C', 'B', 'D'])
+            expect(undoToasts()).toHaveLength(1)
+            expect(undoToasts()[0].text).toBe(language.othersUi.libraryUndoFolderRemoved)
+            await toastHost.activate(undoToasts()[0].id)
+            expect(orderData()).toEqual(start)
+        })
+    })
+
+    test('(R) O6d a drop onto a folder tile posts "moved N into the folder", and Undo restores', async () => {
+        world(['A', 'B', 'C', 'D', 'E'], ['A', makeFolder('f1', 'F1', ['B', 'C', 'Z']), 'D', 'E'])
+        const start = orderData()
+        await withGrid({}, async (rig) => {
+            await gesture(rig, { from: centre(0, 2), to: centre(0, 1) })
+            expect(shape()).toEqual(['A', 'F1[B,C,Z,D]', 'E'])
+            expect(undoToasts()).toHaveLength(1)
+            expect(undoToasts()[0].text).toBe(language.othersUi.libraryUndoMovedIntoFolder(1))
+            await toastHost.activate(undoToasts()[0].id)
+            expect(orderData()).toEqual(start)
+        })
+    })
+
+    test('(G) O7 a gap move that empties no folder posts nothing, at the top level or inside an open folder', async () => {
+        flat()
+        await withGrid({}, async (rig) => {
+            await gesture(rig, { from: centre(0, 1), to: edge(1, 2, 'before') })
+            expect(shape()).toEqual(['A', 'C', 'D', 'E', 'F', 'B', 'G', 'H'])
+            expect(undoToasts()).toHaveLength(0)
+        })
+        world(['A', 'B', 'C', 'D', 'E'], ['A', makeFolder('f1', 'F1', ['B', 'C']), 'D', 'E'])
+        await withGrid({}, async (rig) => {
+            await openAllFolders(rig.target)
+            // Rows: [A], [F1 B C], [D E]. B is dropped after C, a gap inside the open folder.
+            await gesture(rig, { from: centre(1, 1, 3), to: edge(1, 2, 'after', 3) })
+            expect(shape()).toEqual(['A', 'F1[C,B]', 'D', 'E'])
+            expect(undoToasts()).toHaveLength(0)
         })
     })
 })
