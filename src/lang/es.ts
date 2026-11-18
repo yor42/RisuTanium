@@ -2833,7 +2833,17 @@ export const languageSpanish = {
         "convertErrorNoMainChunks": "No se encontraron chunks principales.",
         "convertErrorChunkNotArray": "chatMemos del chunk {index} no es un array.",
         "convertErrorChunkEmpty": "chatMemos del chunk {index} está vacío.",
-        "convertErrorUnexpected": "Se produjo un error: {message}"
+        "convertErrorUnexpected": "Se produjo un error: {message}",
+        "exportToLorebookLabel": "Exportar los resúmenes al Libro de Lore de este chat",
+        "importFromLorebookLabel": "Importar las entradas del Libro de Lore de este chat como resúmenes",
+        "exportToLorebookConfirm": "¿Añadir {count} resúmenes al Libro de Lore de este chat como entradas nuevas? Las entradas existentes no se modifican. Las etiquetas y la categoría de un resumen pasan a ser las palabras clave de la entrada, así que una entrada coincidente puede repetir lo que HypaV3 ya envía.",
+        "importFromLorebookConfirm": "¿Añadir {count} entradas del Libro de Lore de este chat como resúmenes nuevos, antes de los existentes? Los resúmenes existentes no se modifican.",
+        "lorebookTransferSkippedNote": "Se omitirán {skipped} que ya existen.",
+        "exportToLorebookDone": "Se añadieron {count} entradas al Libro de Lore de este chat.",
+        "importFromLorebookDone": "Se añadieron {count} resúmenes.",
+        "exportToLorebookNothing": "No hay nada nuevo que exportar: no hay resúmenes, o todos los resúmenes ya están en el Libro de Lore de este chat.",
+        "importFromLorebookNothing": "No hay nada nuevo que importar: el Libro de Lore de este chat no tiene entradas con texto que aún no sean resúmenes.",
+        "lorebookEntryComment": "Resumen de HypaV3 #{index}"
     },
     "bulkEnabling": "Habilitación Masiva de Libro de Lore",
     "showTranslationLoading": "Mostrar Cargando Traducción",

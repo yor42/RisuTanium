@@ -2877,7 +2877,17 @@ export const languageChineseTraditional = {
         "convertErrorNoMainChunks": "找不到主要區塊。",
         "convertErrorChunkNotArray": "區塊 {index} 的 chatMemos 不是陣列。",
         "convertErrorChunkEmpty": "區塊 {index} 的 chatMemos 是空的。",
-        "convertErrorUnexpected": "發生錯誤：{message}"
+        "convertErrorUnexpected": "發生錯誤：{message}",
+        "exportToLorebookLabel": "將摘要匯出到此聊天的 Lorebook",
+        "importFromLorebookLabel": "將此聊天的 Lorebook 條目匯入為摘要",
+        "exportToLorebookConfirm": "要將 {count} 份摘要作為新條目加入此聊天的 Lorebook 嗎？現有條目不會被更改。摘要的標籤和類別會成為條目的關鍵字，因此相符的條目可能會重複 HypaV3 已經送出的內容。",
+        "importFromLorebookConfirm": "要將此聊天 Lorebook 中的 {count} 個條目作為新摘要加入現有摘要之前嗎？現有摘要不會被更改。",
+        "lorebookTransferSkippedNote": "已存在的 {skipped} 項將被略過。",
+        "exportToLorebookDone": "已在此聊天的 Lorebook 加入 {count} 個條目。",
+        "importFromLorebookDone": "已加入 {count} 份摘要。",
+        "exportToLorebookNothing": "沒有可匯出的新內容：沒有摘要，或每份摘要都已在此聊天的 Lorebook 中。",
+        "importFromLorebookNothing": "沒有可匯入的新內容：此聊天的 Lorebook 中沒有含有文字且尚未成為摘要的條目。",
+        "lorebookEntryComment": "HypaV3 摘要 #{index}"
     },
     "bulkEnabling": "Lorebook 批次啟用",
     "showTranslationLoading": "顯示「翻譯中」提示",
