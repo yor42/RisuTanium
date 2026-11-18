@@ -14,10 +14,11 @@ import { runAssetSweep, type AssetSweepEnv, type AssetSweepResult } from './swee
 
 /**
  * The deleters a store2 page runs on its own, one at a time, after the page has been quiet. Today that is the cutover
- * deletion of old-format files (`oldData/delete.ts`), followed on the app by one collector pass over the store2 leftovers
- * (`gc/autoGc.ts`), followed on the app and on the web (`tauri` and `indexeddb` sessions; a Node server and the transitional
- * OPFS page never list `assets/`) by one asset sweep (`sweep/run.ts`) that deletes stored assets nothing refers to once
- * a record at least a day old has named them. All three run inside the one registered step and each logs and swallows its
+ * deletion of old-format files (`oldData/delete.ts`), followed on the app and on the web (`tauri` and `indexeddb` sessions) by
+ * one collector pass over the store2 leftovers (`gc/autoGc.ts`; on the web it runs only when the sole-tab proof and the
+ * own-base rule hold, and otherwise logs one refusal line and deletes nothing), followed on the app and on the web
+ * (`tauri` and `indexeddb` sessions; a Node server and the transitional OPFS page never list `assets/`) by one asset
+ * sweep (`sweep/run.ts`) that deletes stored assets nothing refers to once a record at least a day old has named them. All three run inside the one registered step and each logs and swallows its
  * own failure, so a failed deleter never keeps the next one from running.
  *
  * - It runs only on a page whose own boot found a normal store2 profile (the "commit key parses with a readable tree" row),
