@@ -341,9 +341,8 @@ async function readLocalColdStorageValue(key: string): Promise<ColdStorageReadRe
  * why there is no shape check here.
  *
  * `getColdStorageItem` above keeps the `null`-on-any-failure shape its
- * callers rely on; both are in `resolveUncleanableChars` in
- * `globalApi.svelte.ts`, which reads a stub's blob for the asset keep-set
- * scan and treats `null` as "no usable blob". `preLoadChat`, the
+ * callers rely on; a caller that scans a stub's blob for asset references
+ * treats `null` as "no usable blob". `preLoadChat`, the
  * plugin-storage bridge (`v3.svelte.ts`), the manual clean-up
  * (`storage/manualCleanup.ts`), the backup collector
  * (`collectColdStorageBackupPayloads`) and the restore's final check in

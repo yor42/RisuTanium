@@ -408,7 +408,7 @@ describe('loadData() installs a character list the save can hold (S10)', () => {
         expect(characterIds(installedTrees()[0])).toEqual(['a', 'b'])
     })
 
-    test('(R) a character whose id is a block name is installed with a new id and every list that named it follows', async () => {
+    test('(R) the conversion re-ids a character whose id is a block name and every list that named it follows, so the boot installs the new id', async () => {
         armLegacy(baseDb({
             characters: [
                 { chaId: 'a', name: 'A', type: 'character', chats: [] },
@@ -422,12 +422,12 @@ describe('loadData() installs a character list the save can hold (S10)', () => {
         await loadData()
 
         const tree = installedTrees()[0]
-        const [, replaced] = tree.characters as Array<{ chaId: string, chats: Array<{ message: Array<{ saying: string }> }> }>
+        // The saying that follows the re-id is stored by the conversion (the stored-chat assertions of legacyConvert.test.ts); the boot installs the character as a cold stub, so only the id and the lists are read here.
+        const [, replaced] = tree.characters as Array<{ chaId: string }>
         expect(replaced.chaId).not.toBe('preset')
+        expect(replaced.chaId).toMatch(/^[0-9a-f-]{36}$/)
         expect(tree.characterOrder).toEqual(['a', { id: 'F', name: 'F', data: [replaced.chaId] }])
         expect((tree.loadouts as Array<{ characterIds: string[] }>)[0].characterIds).toEqual([replaced.chaId])
-        expect(replaced.chats[0].message[0].saying).toBe(replaced.chaId)
-        expect(replaced.chats[0].message[1].saying).toBe('preset')
     })
 
     test('(R) a conversion gives an archived character whose id cannot be saved a new id, as it does for a loaded one', async () => {

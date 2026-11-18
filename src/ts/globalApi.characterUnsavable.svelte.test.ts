@@ -6,7 +6,6 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { h } from 'src/ts/storage/tests/saveLoopMocks.svelte'
-import { makeDb } from 'src/ts/storage/tests/saveLoopSupport'
 import { createWorldKit, nextCommit, settled, until, type World } from 'src/ts/storage/tests/saveLoopWorld'
 import { startStore2, store2Boot, type Store2Kit } from 'src/ts/storage/tests/store2SaveKit'
 import { buildSmall } from 'src/ts/storage/tests/store2/codecFixtures'
@@ -193,16 +192,5 @@ describe('T-A8: isCharacterUnsavable follows the latest pass', () => {
         expect(shown(botNotice)).toBe(0)
         expect(shown(notice)).toBe(1)
         expect(page.w.api.isSaveClean()).toBe(false)
-    })
-
-    test('the legacy loop never reports a character', async () => {
-        h.db = makeDb('base', ['alpha', 'beta'])
-        const w = await worlds.startWorld()
-        await nextCommit(w, () => {
-            ;(h.db!.characters as Entry[])[0].name = 'edited'
-            w.marks.markCharacterForSave('alpha')
-        })
-        expect(w.api.isCharacterUnsavable('alpha')).toBe(false)
-        expect(w.api.isCharacterUnsavable('beta')).toBe(false)
     })
 })

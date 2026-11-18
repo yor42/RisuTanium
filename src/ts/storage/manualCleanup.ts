@@ -301,7 +301,7 @@ async function readStoredFile(path: string): Promise<Uint8Array | null> {
     return (await (await getAppStore()).read(path)).bytes
 }
 
-/** File names of the retained snapshots, listed without touching them (listing them through `getDbBackups` would prune). */
+/** File names of the retained snapshots, listed without touching them (a listing must never prune). */
 async function listSnapshotNames(): Promise<string[]> {
     const keyPrefix = SNAPSHOT_DIR + '/' + SNAPSHOT_PREFIX
     return (await (await getAppStore()).list(keyPrefix))

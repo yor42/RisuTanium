@@ -1758,7 +1758,7 @@ describe('registerDbChangeEffects — selected-character partition equivalence s
     // (which snapshots it) re-run and front the new id.
     //
     // Once the save loop trims `tracker.character` down to just that fronted
-    // id (`prepareSaveIteration` in src/ts/globalApi.svelte.ts, which runs
+    // id (a save pass's snapshot, which runs
     // this trim immediately, BEFORE encoding -- not `risuSave.ts`'s `set()`,
     // which does no such trim), the next field/message child to front the
     // selected character reads `chaId` fresh via `frontUnshiftSelected`'s
@@ -1778,7 +1778,7 @@ describe('registerDbChangeEffects — selected-character partition equivalence s
         flushSync()
 
         // Simulate the save loop's trim of tracker.character down to the
-        // fronted id (prepareSaveIteration's trim, which runs before
+        // fronted id (a save pass's trim, which runs before
         // encoding).
         tracker.character = [tracker.character[0]]
 

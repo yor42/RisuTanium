@@ -311,8 +311,8 @@ describe('V2 plugin setDatabase / setDatabaseLite', () => {
  * plugin genuinely removing it in memory, and that removal must be honoured:
  * `DBState.db.characters` must NOT contain the dropped id afterward.
  *
- * The actual fix lives at the SAVE level, not here: `prepareSaveIteration()`
- * (globalApi.svelte.ts) filters `toSave.character` down to ids present in
+ * The actual fix lives at the SAVE level, not here: the save pass
+ * filters `toSave.character` down to ids present in
  * `opts.getDatabase().characters` whenever no reload happened this
  * iteration, so `RisuSaveEncoder.set()`'s delete branch can only ever run
  * through a reload -- see globalApi.saveSequence.svelte.test.ts's "no

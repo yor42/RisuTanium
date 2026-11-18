@@ -1,7 +1,8 @@
 /**
  * Test-only: boots the REAL, unmocked save loop (`saveDb()` in
- * `globalApi.svelte.ts`) over a block profile held by an in-memory store, in a
- * fresh module graph per "world". The suite that uses it registers the module
+ * `globalApi.svelte.ts`) over a profile that the suite's own `boot` seeds in an
+ * in-memory store, in a fresh module graph per "world". A world with no `boot`
+ * (and not `opfs-transitional`) is refused. The suite that uses it registers the module
  * mocks of everything else `globalApi.svelte.ts` imports (`vi.mock` is per test
  * file) and gives this kit what only the suite owns: the database the loop
  * reads and the set of parked worlds.
@@ -31,11 +32,6 @@ export interface StartOptions {
     files?: Map<string, Uint8Array>
     crypto?: Crypto
     kind?: AppStoreKind
-    /**
-     * The profile is still the legacy main file: it holds the encoding of the
-     * database, there is no head, and the page is in the `legacy` storage mode.
-     */
-    legacy?: boolean
     passCommitted?: boolean
     /** Replaces the boot: the store is seeded and the page mode is set by the caller. */
     boot?: (world: World) => Promise<void>
@@ -128,38 +124,6 @@ export function createWorldKit(env: WorldEnv) {
         return new Uint8Array(encoder.encode()!)
     }
 
-    /** What boot does for a profile with a head: load it, strictly decoded, and install the decoded tree. */
-    async function bootBlockProfile(world: World): Promise<void> {
-        const { validateLoadedBlocks } = await import('src/ts/storage/blockProfileValidate')
-        const loaded = await world.owner.load({ validate: validateLoadedBlocks })
-        if (loaded.kind !== 'loaded') {
-            throw new Error(`the block profile did not load: ${loaded.kind}`)
-        }
-        env.setDb(loaded.tree as unknown as Record<string, unknown>)
-        world.pageMode.setPageStorageMode({ kind: 'block' })
-    }
-
-    /** Seeds a block profile of the database through a throwaway owner, as an earlier session left it. */
-    async function seedBlockProfile(world: World): Promise<void> {
-        const { makeOwner } = await import('./blockStoreHarness')
-        const { treeToBlockSet } = await import('src/ts/storage/treeToBlockSet')
-        const input = await treeToBlockSet(env.getDb() as unknown as Database)
-        // Ids of their own: the harness module is loaded afresh with the world, and a profile seeded here must
-        // not share a generation id with a peer a test builds from the harness the suite imported.
-        const generationIds = {
-            now: () => 1_600_000_000_000,
-            randomBytes: (length: number) => {
-                const out = new Uint8Array(length)
-                new DataView(out.buffer).setUint32(0, 0xa0000001, false)
-                return out
-            },
-        }
-        const seeded = await makeOwner(world.store, { generationIds }).owner.replaceWholeState(input, { requireAbsentHead: true })
-        if (seeded.kind !== 'won') {
-            throw new Error(`the profile could not be seeded: ${seeded.kind}`)
-        }
-    }
-
     async function startWorld(options: StartOptions = {}): Promise<World> {
         stubCrypto(options.crypto ?? 'secure')
         // A page without Web Locks has no `navigator.locks` at all; the test environment answers null.
@@ -225,16 +189,8 @@ export function createWorldKit(env: WorldEnv) {
             pageMode.setPageStorageMode({ kind: 'read-only', reason: 'opfs-transitional' })
         } else if (options.boot) {
             await options.boot(world)
-        } else if (options.legacy) {
-            const { fingerprintMainFile } = await import('src/ts/storage/mainFileFingerprint')
-            const main = await encodeMainFile(world, env.getDb()!)
-            store.plant('database/database.bin', main)
-            pageMode.setPageStorageMode({ kind: 'legacy', convertedFrom: fingerprintMainFile(main) })
         } else {
-            if (store.peek('blocks/head') === null) {
-                await seedBlockProfile(world)
-            }
-            await bootBlockProfile(world)
+            throw new Error('a world needs a boot')
         }
         bootState.noteBootPassCommitted(options.passCommitted === true)
         store.ops.length = 0
@@ -260,5 +216,5 @@ export function createWorldKit(env: WorldEnv) {
         world.store.dead = true
     }
 
-    return { startWorld, parkAll, closeWorld, encodeMainFile, bootBlockProfile, seedBlockProfile, realCrypto }
+    return { startWorld, parkAll, closeWorld, encodeMainFile, realCrypto }
 }

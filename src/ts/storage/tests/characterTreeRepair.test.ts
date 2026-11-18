@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { repairCharacterTree, repairPersonas } from '../characterTreeRepair'
+import { followReplacedIds, repairCharacterTree, repairPersonas } from '../characterTreeRepair'
 
 type Entry = Record<string, unknown>
 
@@ -363,5 +363,143 @@ describe('repairCharacterTree: reservedBlockNames', () => {
         const fresh = ids(both)[0] as string
         expect(fresh).toMatch(/^[0-9a-f-]{36}$/)
         expect(bothResult.notices.map((n) => n.kind)).toEqual(['stub-unrestorable'])
+    })
+})
+
+function altRecord(role: string, data: string, saying?: string): Entry {
+    return { m: saying === undefined ? { role, data } : { role, data, saying }, p: `parent-${data}`, a: 2, mem: { kept: data } }
+}
+
+function altSaying(chat: unknown, index = 0): unknown {
+    return (((chat as Entry).alt as Entry[])[index].m as Entry).saying
+}
+
+describe('repairCharacterTree: alternatives follow a re-id', () => {
+    test('(T1) boot and restore point an alt saying at the new id, in place', async () => {
+        for (const mode of ['boot', 'restore'] as const) {
+            const tree = {
+                characters: [character('config', { chats: [{ message: [], alt: [altRecord('char', 'x', 'config')] }] })],
+            }
+            await repairCharacterTree(tree, mode)
+            const fresh = tree.characters[0].chaId as string
+            expect(fresh).toMatch(/^[0-9a-f-]{36}$/)
+            expect(altSaying((tree.characters[0].chats as Entry[])[0])).toBe(fresh)
+        }
+    })
+
+    test('(T2) export follows into an alt on a copy and leaves the source tree alone', async () => {
+        const live = {
+            characters: [character('config', { chats: [{ message: [], alt: [altRecord('char', 'x', 'config')] }] })],
+        }
+        const before = structuredClone(live)
+        const copy = { characters: live.characters }
+        await repairCharacterTree(copy, 'export')
+        const fresh = copy.characters[0].chaId as string
+        expect(fresh).toMatch(/^[0-9a-f-]{36}$/)
+        expect(altSaying((copy.characters[0].chats as Entry[])[0])).toBe(fresh)
+        expect(live).toEqual(before)
+    })
+
+    test('(T3) guard: a user role, a non-list alt and malformed records are left alone without throwing', async () => {
+        const chats = [
+            { message: [], alt: [altRecord('user', 'u', 'config')] },
+            { message: [], alt: 'not a list' },
+            { message: [], alt: [{ p: null, a: 1 }, { m: 'text', p: null, a: 1 }, null, 7] },
+        ]
+        const tree = { characters: [character('config'), character('k', { chats })] }
+        const before = structuredClone(tree.characters[1])
+        await repairCharacterTree(tree, 'boot')
+        expect(tree.characters[1]).toEqual(before)
+    })
+
+    test('(T4) the replaced ids come out through the option', async () => {
+        const tree = {
+            characters: [
+                character('config'),
+                stub('root', 'unit-1'),
+                character(''),
+            ],
+        }
+        const replacedIds = new Map<string, string>()
+        await repairCharacterTree(tree, 'restore', { readUnitCharacter: async () => character('E1'), replacedIds })
+        expect(replacedIds).toEqual(new Map([['config', tree.characters[0].chaId as string], ['root', 'E1']]))
+    })
+})
+
+describe('followReplacedIds', () => {
+    test('re-ids an unusable id on a copy, follows it into messages and alternatives, and never reads a null or passed-through slot', () => {
+        const passed = Object.assign(new Date(0), { chaId: 'config' })
+        const chat = { message: [{ role: 'char', data: 'm', saying: 'config' }], alt: [altRecord('char', 'x', 'config')] }
+        const held = character('config', { chats: [chat] })
+        const characters = [null, passed, held, character('ok')] as unknown[]
+        const tree = { characters }
+        const chatBefore = structuredClone(chat)
+        followReplacedIds(tree, new Map(), (slot) => slot instanceof Date)
+
+        const out = tree.characters as unknown[]
+        expect(out).not.toBe(characters)
+        expect(out[0]).toBeNull()
+        expect(out[1]).toBe(passed)
+        expect(passed.chaId).toBe('config')
+        const fresh = (out[2] as Entry).chaId as string
+        expect(fresh).toMatch(/^[0-9a-f-]{36}$/)
+        const outChat = ((out[2] as Entry).chats as Entry[])[0]
+        expect(((outChat.message as Entry[])[0]).saying).toBe(fresh)
+        expect(altSaying(outChat)).toBe(fresh)
+        expect(held.chaId).toBe('config')
+        expect(chat).toEqual(chatBefore)
+    })
+})
+
+describe('repairCharacterTree: a rebuilt record keeps every key but saying (P4)', () => {
+    test('(P4) a rebuilt message and a rebuilt alternative equal their source with only saying changed', async () => {
+        const message = { role: 'char', data: 'm:0', saying: 'config', time: 7, chatId: 'mid', genInfo: { model: 'x' } }
+        const alt = { ...altRecord('char', 'a:alt', 'config'), m: { role: 'char', data: 'a:alt', saying: 'config', time: 8, chatId: 'aid' } }
+        const live = { characters: [character('config'), character('A1', { chats: [{ id: 'a', message: [message], alt: [alt] }] })] }
+        const copy = { characters: live.characters }
+        await repairCharacterTree(copy, 'export')
+        const fresh = copy.characters[0].chaId as string
+        const chat = (copy.characters[1].chats as Entry[])[0]
+
+        expect((chat.message as Entry[])[0]).toEqual({ ...message, saying: fresh })
+        expect((chat.alt as Entry[])[0]).toEqual({ ...alt, m: { ...alt.m, saying: fresh } })
+    })
+})
+
+describe('repairCharacterTree: a copy keeps every list that did not change (P3)', () => {
+    test('(P3) only the list that names a replaced id is rebuilt, and no key is added', async () => {
+        const live = {
+            characters: [
+                character('config'),
+                character('A1', {
+                    chats: [
+                        { id: 'a', message: [{ role: 'char', data: 'a:0', saying: 'A1' }, { role: 'user', data: 'a:1' }], alt: [altRecord('char', 'a:alt', 'config')] },
+                        { id: 'b', message: [{ role: 'char', data: 'b:0', saying: 'config' }], alt: [altRecord('user', 'b:alt')] },
+                        { id: 'c', message: [{ role: 'char', data: 'c:0', saying: 'config' }] },
+                        { id: 'd', alt: [altRecord('char', 'd:alt', 'config')] },
+                    ],
+                }),
+            ],
+        }
+        const before = structuredClone(live)
+        const source = live.characters[1].chats as Entry[]
+        const copy = { characters: live.characters }
+        await repairCharacterTree(copy, 'export')
+        const fresh = copy.characters[0].chaId as string
+        const out = copy.characters[1].chats as Entry[]
+
+        expect(altSaying(out[0])).toBe(fresh)
+        expect(out[0].message).toBe(source[0].message)
+
+        expect(((out[1].message as Entry[])[0]).saying).toBe(fresh)
+        expect(out[1].alt).toBe(source[1].alt)
+
+        expect(((out[2].message as Entry[])[0]).saying).toBe(fresh)
+        expect(Object.hasOwn(out[2], 'alt')).toBe(false)
+
+        expect(altSaying(out[3])).toBe(fresh)
+        expect(Object.hasOwn(out[3], 'message')).toBe(false)
+
+        expect(live).toEqual(before)
     })
 })

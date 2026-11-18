@@ -223,3 +223,55 @@ All checks ran in the browser pane (Chromium), served from `docs/design` over a 
 | N-7 | The library count is a polite live region |
 
 The other notes stand as recorded in the review. N-4 and N-5 are now open question 8 and the departures list; N-6 is partly addressed by the "loaded" text. N-8 (target sizes), N-9 (a click in the picker padding closes it), N-10 (Utility Recent's `aria-current`, the non-interactive pill's style), N-13 and N-14 are unchanged.
+
+## Visual overhaul (2026-11-18)
+
+**Status: proposal awaiting the maintainer's look approval.** Function is unchanged (modes, switcher, Tasks, rails, pickers, drawer, IME-safe Enter, Stop/Retry/Offline, query parameters). Only the look changed, plus one phone affordance (the jump row). Entry: [home/home.html](home/home.html). Decisions applied (maintainer, 2026-11-18): one visual system on theme tokens, so new shells stop using fixed navy and glass. Theme packs own the chat transcript; Banana Cocoa moves to the reference-image theme rework. UI-S7 audit rows answered: S7-08, S7-09, S7-28, S7-29 (layout only; Home already led with stories and the library) and S7-30.
+
+**Direction: "Cast & Story".** Home is the table of contents of the user's stories. One element carries the personality: the latest story leads the page as a wide card, with its last line set large (19 px, 1.55 leading, behind an accent rule), the one reading-voice element on the page. Everything around it is quiet: flat surfaces, hairline dividers, no glass, no bloom, no gradients except the character-art stand-ins.
+
+**Colour: the user's scheme, nothing else.** Every colour derives from the nine colour-scheme names the app sets on `<html>` (`--risu-theme-bgcolor`, `darkbg`, `borderc`, `selected`, `draculared`, `textcolor`, `textcolor2`, `darkborderc`, `darkbutton`; defaults = upstream `defaultColorScheme`). `home-tokens.css` now defines the shared `--nexus-*` colour names Home reads *from* the scheme. This is a deliberate exception to DD-145, so no Deep Nexus navy or cyan remains.
+- Page = `bgcolor`.
+- Panels sit *below* the page in `darkbg` (the app's sidebar and input colour), not above it as glass.
+- Pressables = `darkbutton`; selection = `selected`; dividers = `darkborderc`.
+- One accent: `borderc` mixed 58 % with `textcolor`. Roleplay is no longer warm, which answers open question 6.
+- Secondary text = `textcolor2` mixed 26 % into `textcolor`; tertiary 42 %. `color-mix()` toward the text colour keeps each step legible on light and dark schemes alike.
+- Character avatars and portraits keep their own hue, mixed into `darkbutton`/`darkbg`, so a light scheme gets light art with dark initials.
+- The brand and status marks and the network lattice are recoloured to the scheme. The seasonal wordmark keeps its own colours (the seasonal workflow owns them).
+- `?scheme=<name>` (theme.js) applies any of the app's 17 presets from `colorscheme.ts` to see this.
+
+**Layout and hierarchy.**
+- **Rail:** the app's flush `darkbg` sidebar with a hairline edge, not a floating rounded card (`--home-rail-inset` 0).
+- **Top bar:** the switcher is a recessed track with a `selected` thumb. On a phone the persona or model pill moves to the brand row (named, icon-only), so the switcher is a single compact row at 360 and 320 px in en and ko. Below 350 px the wordmark is visually hidden (the mark and accessible name stay).
+- **Roleplay:** larger greeting (30 px; 24 px on phones). The lead story spans two rows beside the other stories as compact rows. Below 1000 px the lead goes full width; on phones the stories stack (no horizontal shelf).
+- **Library:** no longer a boxed card. It is an unboxed "cast sheet" under a ruled heading: tiles are a square tinted portrait with the name and chat count left-aligned beneath, and phone rows are ruled lines. The view tabs are underlined text tabs.
+- **Side column:** RisuRealm is a recessed `darkbg` panel with a `borderc` top rule; its content is top-aligned and the card grows (S7-09). Community and source is a plain list, not a card.
+- **Hybrid and Utility:** the same tokens; panels recessed, the composer bordered at field contrast with a ruled action bar and 17 px input text.
+- **Hierarchy of radii:** sheets and the lead story 18 px, tiles and rows 12 px, controls 8 px (upstream's), switcher 24/18 px. Not one radius everywhere.
+
+**Typography.** NanumSquare Neo stays (DD-034/202). Scale 12/13/14/15/17/22/30/44 px. No capitals anywhere: the eyebrow and rail section titles were the only all-caps labels and are now sentence case at 13 px. Korean uses `word-break: keep-all` with `overflow-wrap: anywhere` on the whole page (S7-30), so it breaks between words but a 52-character name still wraps instead of overflowing.
+
+**Phone access (S7-08).** A jump row under the greeting holds **Characters (count)** and **RisuRealm**. These are one-tap buttons that scroll to and focus the section heading (smooth unless reduced motion). It is shown only in the phone band; wider bands show both sections in the first screen. New parts `home-jump` and `home-jump-link` are reach tier in `registry-home.mjs` (navigation: restyle, never hide). Strings `jump.label`, `jump.chars` and `jump.realm` were added in ko and en.
+
+**Motion.** Unchanged: the specified mode-switch transition. Hover only changes a border or fill, with no added entrance animations.
+
+**Checks run (2026-11-18, headless Chrome, served from `docs/design` layered over the full design package in the UI-Rework checkout).**
+- *Accessibility:* 24 states (en/ko × 1280/768/360/320 × three modes, sample runs). No unnamed button, link, field or summary; `<html lang>` matches `?lang`; no horizontal overflow.
+- *Contrast across the 17 presets* (`textcolor2` alone was 2.99:1 on default `bgcolor`):
+  - Secondary text is ≥ 4.5:1 on `bgcolor` and `darkbg` in all 17 (default 9.5 and 10.6).
+  - The accent as text is ≥ 4.5:1 on `bgcolor` in all 17.
+  - Scheme-inherent shortfalls: tertiary text on `darkbg` in *nature* (3.75); secondary and tertiary on `darkbutton` in *cherry* (4.1 and 3.75); danger text on `darkbg` in *nature*, *cherry*, *light* and *monokai-light*.
+- *Registry:* `node registry-home.mjs themes/origin-navy.css` and `themes/banana-cocoa.css` both OK. The switcher radii are capped at 32 px by the registry, so the switcher uses 24/18 px, not a full pill.
+- *Check suite* (`checks/run-home.mjs` from the full package, 742 assertions; baseline before the overhaul 740/742): 729/742. The 2 baseline failures (theme-lint `--home-touch` resolution in the browser lint) remain. These 11 differ **by design**:
+  - `diff-*` ×6: pixel distance from the 2026-10-28 page, now about 99 %.
+  - `bands-360-three-rows`: the pill now shares the brand row.
+  - `motion-normal-blur`: no glass.
+  - `wave-mouse-bg`, `wave-mouse-bg2`, `wave-lowpower-one`: they press the fixed point (8, 300), which is now inside the flush rail. A press on a bare background point still raises a wave.
+
+  The suite lives in the full package, so these expectations need updating there when it is imported.
+- *Screenshots:* before/after at 1280/768/360/320 in en and ko under `%TEMP%\risu-home-redesign\before|after\`, plus Hybrid, Utility, `scheme=light` and `scheme=twilight`.
+
+**Open items.**
+1. *Scheme-only packs and the shared validator.* The shared pack validator (`chat/checks/th/packlint.mjs`) cannot resolve `color-mix()`. A pack that sets only the nine scheme colours is therefore refused ("focus ring colour that cannot be checked"), and the scheme names are not in its pack-settable list. `themes/origin-navy.css` keeps its literal `--nexus-*` values for that reason. To let packs be colour schemes, the validator needs `color-mix()` resolution (or packs keep stating resolved roles).
+2. *Repo package is incomplete.* This repo's `docs/design` lacks `seasonal/`, `fonts/` and `home/checks/`, which live in the UI-Rework checkout. `app.js` now runs without the seasonal package (plain wordmark).
+3. *Not done:* Banana Cocoa was not touched (reference-image rework). There is no implementation in `src/` (a later ticket), and no real-device, screen-reader or forced-colours run.
