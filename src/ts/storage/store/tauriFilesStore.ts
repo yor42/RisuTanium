@@ -7,6 +7,7 @@ import { CHUNK_MAX, createChunkedWriter, MISSING_FILE_ERROR, readRanged, transpo
 import { COMMIT_KEY, FENCE_KEY } from '../store2/format/keys'
 import { isDurableKey, writeFileDurable } from '../tauriDurableWrite'
 import { registerPageGeneration, removeTopKeys, writeTopKey } from '../tauriGateTransport'
+import { readStore2UnitBatch } from '../tauriStore2Batch'
 import type { ByteStore, DeleteEntry, PieceWriter, ReadResult, StoreCondition, WriteResult } from './contract'
 import { StoreDeleteManyError, StoreInvalidKeyError, type DeleteReportEntry } from './errors'
 import { checkBytes, checkCondition, checkNoDuplicateKeys, ownBytes } from './guards'
@@ -265,6 +266,15 @@ export function createTauriFilesStore(options: TauriFilesStoreOptions): ByteStor
                 throw error
             }
             return writer.flushed === undefined ? { version: null } : { version: null, flushed: writer.flushed }
+        },
+
+        async readUnitBatch(keys: readonly string[]): Promise<Map<string, Uint8Array> | null> {
+            try {
+                return await readStore2UnitBatch(keys, checkAddressable)
+            } catch {
+                // Whatever went wrong, no key is answered: every key is read per key.
+                return new Map<string, Uint8Array>()
+            }
         },
 
         pageGate: {

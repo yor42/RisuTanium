@@ -19,6 +19,7 @@ import { StoreBlobUnsupportedError, StoreInvalidKeyError, UploadCapacityError, U
 import { ASSET_PIECE_SAVE_MIN_BYTES } from "../assetHash";
 import { assetBatchWriteMode, isAssetBatchAvailable, isAssetBatchReadAvailable, listAssetsSized, readAssetBatch, writeAssetBatch, writeAssetBatchB64, type AssetBatchWriteMode, type AssetPutEntry, type AssetPutResult, type SizedAssetKey } from "../storage/tauriAssetBatch";
 import { CHUNK_MAX, createChunkedWriter, takeRangeReadStats, transportKind, WRITE_CHUNK_BYTES, type ChunkedWriter } from "../storage/tauriByteTransport";
+import { takeStore2BatchStats } from "../storage/tauriStore2Batch";
 import { nodeAddressableViolation, nodeAssetRouteViolation, tauriAddressableViolation, tauriCreatableViolation } from "../storage/store/keyRules";
 import { nodeServerAuthHeader, serverExportAvailable } from "../storage/nodeStorage";
 import { ServerExportWriter, submitDownloadForm } from "./serverExportWriter";
@@ -178,12 +179,16 @@ function describeReadMeasure(): string {
     try {
         const stubs = takeStubReadStats()
         const ranges = takeRangeReadStats()
+        const batches = takeStore2BatchStats()
         const parts: string[] = []
         if (stubs) {
             parts.push(`stubChars=${stubs.characters} stubReadMs=${Math.round(stubs.readMs)} stubEncodeMs=${Math.round(stubs.encodeMs)} stubEncodeMsMax=${Math.round(stubs.encodeMsMax)} stubRawBytes=${stubs.rawBytes} stubPackedBytes=${stubs.packedBytes} stubAhead=${stubs.ahead} stubHeldMax=${stubs.heldMax} stubRetries=${stubs.retries} stubFailed=${stubs.failed} stubColdRootsMs=${Math.round(stubs.coldRootsMs)} stubLoopMs=${Math.round(stubs.loopMs)} legacyCollectMs=${Math.round(stubs.legacyCollectMs)} moduleSnapshotMs=${Math.round(stubs.moduleSnapshotMs)} moduleSnapshotCount=${stubs.moduleSnapshotCount} stubPackWaitMs=${Math.round(stubs.packWaitMs)} stubPackDrainMs=${Math.round(stubs.packDrainMs)} stubPackFallbacks=${stubs.packFallbacks} stubPackHeldMax=${stubs.packHeldMax}`)
         }
         if (ranges) {
             parts.push(`rangeReads=${ranges.reads} rangeMs=${Math.round(ranges.ms)} rangeWallMs=${Math.round(ranges.wallMs)} store2Reads=${ranges.store2Reads} store2Ms=${Math.round(ranges.store2Ms)} rangeMaxInFlight=${ranges.maxInFlight}`)
+        }
+        if (batches) {
+            parts.push(`store2BatchCalls=${batches.calls} store2BatchFallbackKeys=${batches.fallbackKeys} store2BatchMs=${Math.round(batches.ms)} store2BatchOffCalls=${batches.offCalls}`)
         }
         return parts.join(' ')
     } catch {
@@ -791,6 +796,7 @@ async function writeLocalBackup(session: ExportSession, options: BackupExportOpt
     if (MEASURE) {
         // The counts of the notes below cover this export only.
         takeRangeReadStats()
+        takeStore2BatchStats()
         takeExportWriteStats()
         resetNetTickStats()
     }
