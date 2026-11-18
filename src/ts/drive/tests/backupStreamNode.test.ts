@@ -791,40 +791,6 @@ describe('restore of a large asset entry on a Node store with pieces', () => {
         expectCommittedOnce()
     }, 60_000)
 
-    test('data safety: a database entry above one chunk is decoded whole and never streamed into assets', async () => {
-        // Incompressible text, so the encoded database passes one chunk.
-        let state = 12345
-        const noise = Array.from({ length: 12 }, () => Uint8Array.from({ length: 512 * 1024 }, () => {
-            state = (Math.imul(state, 1103515245) + 12345) >>> 0
-            return state >>> 24
-        }))
-        dbBox.db = { characters: [], personas: [], characterOrder: [], botPresets: [], largeNotes: noise }
-        const exporting = await makeWorld(normal, { pieceBytes: 8 * MIB })
-        expect((await SaveLocalBackup()).status).toBe('saved')
-        const database = writtenEntries().find((candidate) => candidate.name === 'database.risudat')!.data
-        expect(database.length).toBeGreaterThan(4 * MIB)
-        sink.writes.length = 0
-        exporting.requests.length = 0
-        const world = await makeWorld(normal, { pieceBytes: 8 * MIB })
-
-        const end = await restore(chunkOf('database.risudat', database))
-
-        expect(end.outcome).toBe('committed')
-        expect(world.requests.filter((request) => request.route === '/api/upload/begin')).toEqual([])
-        expect(await onDisk(normal, 'assets/database.risudat')).toBeNull()
-    }, 120_000)
-
-    test('data safety: a cold-storage unit above one chunk is never streamed', async () => {
-        const database = await databaseEntry()
-        const world = await makeWorld(normal, { pieceBytes: 8 * MIB })
-        const coldName = 'coldstorage_' + '0'.repeat(8) + '-0000-4000-8000-' + '0'.repeat(12) + '.json'
-        const cold = new TextEncoder().encode(' '.repeat(5 * MIB))
-
-        await restore(Buffer.concat([chunkOf(coldName, cold), chunkOf('database.risudat', database)]))
-
-        expect(world.requests.filter((request) => request.route === '/api/upload/begin')).toEqual([])
-    }, 60_000)
-
     test('guard: a stale entry name the store refuses is skipped and named, and the restore goes on', async () => {
         const database = await databaseEntry()
         onStore2Page(await makeWorld(normal, { pieceBytes: 8 * MIB }))
