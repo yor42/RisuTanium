@@ -14,7 +14,9 @@ import type { CbsProblem } from './cbsCheck'
 export type SpanKind = 'brace' | 'name' | 'sep' | 'arg' | 'block' | 'comment' | 'deprecated'
 export type Span = { start: number; end: number; kind: SpanKind }
 export type Mark = { start: number; end: number; severity: CbsProblem['severity'] }
-export type Segment = { text: string; kind: SpanKind | null; severity: Mark['severity'] | null }
+// A display-only note: the speaker prefix of an example turn, or the part of it the engine ignores.
+export type Note = { start: number; end: number; note: 'speaker' | 'notUsed' }
+export type Segment = { text: string; kind: SpanKind | null; severity: Mark['severity'] | null; note?: Note['note'] | null }
 export type Edit = { start: number; removed: number; inserted: number }
 
 // Above this many characters the field is coloured only inside a window, and not while typing.
@@ -112,13 +114,14 @@ export function tokenSpans(text: string, from: number, to: number): Span[] {
 const SEVERITY_RANK: Record<Mark['severity'], number> = { info: 1, warning: 2, error: 3 }
 
 /** Cuts `text` at every span and mark boundary. The pieces concatenate to `text`; out-of-range items are clamped. */
-export function segmentsOf(text: string, spans: readonly Span[], marks: readonly Mark[]): Segment[] {
+export function segmentsOf(text: string, spans: readonly Span[], marks: readonly Mark[], notes: readonly Note[] = []): Segment[] {
     const len = text.length
     if (len === 0) return []
     const cuts = new Set<number>([0, len])
     const clamp = (n: number): number => Math.max(0, Math.min(len, n))
     for (const s of spans) { cuts.add(clamp(s.start)); cuts.add(clamp(s.end)) }
     for (const m of marks) { cuts.add(clamp(m.start)); cuts.add(clamp(m.end)) }
+    for (const n of notes) { cuts.add(clamp(n.start)); cuts.add(clamp(n.end)) }
     const points = [...cuts].sort((a, b) => a - b)
     const segments: Segment[] = []
     let spanAt = 0
@@ -132,7 +135,11 @@ export function segmentsOf(text: string, spans: readonly Span[], marks: readonly
         for (const m of marks) {
             if (clamp(m.start) <= start && clamp(m.end) >= end && (severity === null || SEVERITY_RANK[m.severity] > SEVERITY_RANK[severity])) severity = m.severity
         }
-        segments.push({ text: text.slice(start, end), kind, severity })
+        let note: Note['note'] | null = null
+        for (const n of notes) {
+            if (clamp(n.start) <= start && clamp(n.end) >= end) { note = n.note; break }
+        }
+        segments.push({ text: text.slice(start, end), kind, severity, note })
     }
     return segments
 }

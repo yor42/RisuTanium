@@ -12,6 +12,7 @@ import {
     tokenSpans,
     WINDOW_LIMIT,
     type Mark,
+    type Note,
     type Span,
 } from './highlightSpans'
 
@@ -67,6 +68,41 @@ describe('tokenSpans and segmentsOf', () => {
         const marks: Mark[] = [{ start: 0, end: 4, severity: 'info' }, { start: 2, end: 6, severity: 'error' }]
         const segments = segmentsOf('abcdefgh', [], marks)
         expect(segments.map((s) => `${s.text}:${s.severity}`)).toEqual(['ab:info', 'cd:error', 'ef:error', 'gh:null'])
+    })
+
+    test('S5 notes cut the text and tag each piece with its note; spans, marks and notes combine', () => {
+        const notes: Note[] = [{ start: 0, end: 3, note: 'speaker' }, { start: 5, end: 8, note: 'notUsed' }]
+        const segments = segmentsOf('abcdefgh', [{ start: 1, end: 6, kind: 'name' }], [{ start: 2, end: 7, severity: 'warning' }], notes)
+        expect(segments.map((s) => `${s.text}:${s.note}:${s.kind}:${s.severity}`)).toEqual([
+            'a:speaker:null:null',
+            'b:speaker:name:null',
+            'c:speaker:name:warning',
+            'de:null:name:warning',
+            'f:notUsed:name:warning',
+            'g:notUsed:null:warning',
+            'h:notUsed:null:null',
+        ])
+    })
+
+    test('S5 without notes every segment carries a null note, and stale or out-of-range notes still cut the same text', () => {
+        expect(segmentsOf('abc', [], []).every((s) => s.note === null)).toBe(true)
+        const stale = segmentsOf('abc', [], [], [{ start: -4, end: 2, note: 'speaker' }, { start: 2, end: 99, note: 'notUsed' }])
+        expect(stale.map((s) => `${s.text}:${s.note}`)).toEqual(['ab:speaker', 'c:notUsed'])
+        expect(segmentsOf('', [], [], [{ start: 0, end: 3, note: 'speaker' }])).toEqual([])
+    })
+
+    test('S5 Invariant S holds with notes: the pieces concatenate to the text', () => {
+        fc.assert(fc.property(soup, fc.array(fc.tuple(fc.integer({ min: -3, max: 50 }), fc.integer({ min: -3, max: 50 })), { maxLength: 6 }), (text, ranges) => {
+            const notes: Note[] = ranges.map(([a, b], k) => ({ start: Math.min(a, b), end: Math.max(a, b), note: k % 2 === 0 ? 'speaker' : 'notUsed' }))
+            expect(segmentsOf(text, tokenSpans(text, 0, text.length), [], notes).map((s) => s.text).join('')).toBe(text)
+        }), { numRuns: 200 })
+    })
+
+    test('S5 shiftSpans moves notes after an edit, keeps those before it and drops those it touches', () => {
+        const notes: Note[] = [{ start: 0, end: 4, note: 'speaker' }, { start: 6, end: 10, note: 'notUsed' }]
+        expect(shiftSpans(notes, { start: 0, removed: 0, inserted: 2 })).toEqual([{ start: 2, end: 6, note: 'speaker' }, { start: 8, end: 12, note: 'notUsed' }])
+        expect(shiftSpans(notes, { start: 4, removed: 0, inserted: 2 })).toEqual([{ start: 0, end: 4, note: 'speaker' }, { start: 8, end: 12, note: 'notUsed' }])
+        expect(shiftSpans(notes, { start: 7, removed: 1, inserted: 1 })).toEqual([{ start: 0, end: 4, note: 'speaker' }])
     })
 
     test('B2-U4 at or below the limit the whole text is the window; above it only the visible part and a viewport each side', () => {

@@ -6,6 +6,7 @@
     import { createStudioToasts, refusalText } from '../../ts/studio/edit/studioToasts'
     import { listChangedElsewhere, RESTORE_PATH_ORDER, type RestorePath } from '../../ts/studio/history/historyModel'
     import type { StudioRefusal } from '../../ts/studio/history/ownerHistory.svelte'
+    import { parseOwnerKey } from '../../ts/studio/history/ownerPhase'
     import { getStudioHistoryService } from '../../ts/studio/history/studioHistoryService.svelte'
     import { registerStudioSheetBack } from '../../ts/studio/studioBack.svelte'
     import { placeFocusAfterHistory } from '../../ts/studio/historyFocus'
@@ -90,6 +91,9 @@
     <div role="dialog" aria-labelledby="studio-restore-title" data-part="studio-restore-sheet" class="flex max-h-full w-full max-w-md flex-col gap-3 overflow-y-auto rounded-md border border-darkborderc bg-darkbg p-4 text-textcolor">
         <h2 id="studio-restore-title" class="text-lg font-bold">{language.studioRestoreTitle}</h2>
         <p class="text-sm text-textcolor2">{language.studioRestoreBody}</p>
+        {#if parseOwnerKey(owner ?? '')?.kind === 'character'}
+            <p data-part="studio-restore-chat-note" class="text-sm text-textcolor2">{language.studioRestoreChatNote}</p>
+        {/if}
         {#if paths.length > 0}
             <ul class="flex flex-col gap-1" data-part="studio-restore-fields">
                 {#each paths as path (path)}

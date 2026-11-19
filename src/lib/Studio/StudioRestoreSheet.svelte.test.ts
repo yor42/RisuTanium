@@ -44,7 +44,10 @@ vi.mock('src/ts/alertBack', () => ({ closeDialogForBack: vi.fn() }))
 vi.mock('src/ts/caughtErrors', () => ({ recordCaughtError: vi.fn() }))
 vi.mock('src/lang', async () => {
     const helpers = await import('src/ts/studio/studioFixtures.test-helpers')
-    return { language: helpers.studioLanguageMock() }
+    const base = helpers.studioLanguageMock()
+    const own: Record<string, unknown> = {}
+    for (const key of ['ltCardHandle', 'ltCardMenu', 'ltCardMoved']) own[key] = (...args: (string | number)[]) => `${key}(${args.join(',')})`
+    return { language: new Proxy(base, { get: (target, key) => typeof key === 'string' && key in own ? own[key] : Reflect.get(target, key) }) }
 })
 
 import { dispatchBack, resetBackHandlersForTests } from 'src/ts/backHandlers'
@@ -62,6 +65,8 @@ import { characterOwnerKey } from '../../ts/studio/history/ownerPhase'
 import { resetStudioHistoryAccessorForTests, setStudioHistoryServiceForTests, setStudioVisitAckForTests } from '../../ts/studio/history/studioHistoryService.svelte'
 import { createFakeClock, drainMicrotasks, type FakeClock } from '../../ts/studio/history/tests/historyTestKit.test-helpers'
 import { createClaimDouble, createMemoryStudioStore } from '../../ts/studio/history/tests/studioStoreDoubles'
+import { publishOpenModuleId, resetOpenModuleIdForTests } from 'src/ts/studio/assets/openModuleForm.svelte'
+import StudioRestoreSheet from './StudioRestoreSheet.svelte'
 import StudioScreen from './StudioScreen.svelte'
 
 interface LiveChat extends ChatSource {
@@ -262,6 +267,7 @@ beforeEach(() => {
 afterEach(async () => {
     await unmountAll()
     resetStudioHistoryAccessorForTests()
+    resetOpenModuleIdForTests()
     resetCharacterSaveMarksForTest()
     resetStudioScreenForTests()
     resetBackHandlersForTests()
@@ -498,5 +504,41 @@ describe('the sheet lists what it restores and lands one step', () => {
         studioScreen.restoreSheetOpen = true
         flushSync()
         expect((part('studio-restore-confirm') as HTMLButtonElement).disabled).toBe(true)
+    })
+})
+
+// ---------------------------------------------------------------- R-RN1
+
+describe('R-RN1 the sheet says the open chat keeps its first message (MC-1815)', () => {
+    // The sheet alone, over the given selected owner; it needs only the owner's key and the history service.
+    function mountSheetOver(ownerKey: string): void {
+        makeService()
+        studioScreen.open = true
+        studioScreen.chaId = 'A'
+        studioScreen.selectedOwnerKey = ownerKey
+        studioScreen.historyOpen = true
+        studioScreen.restoreSheetOpen = true
+        const target = document.createElement('div')
+        document.body.appendChild(target)
+        mounted.push({ app: mount(StudioRestoreSheet, { target, props: {} }), host: target })
+        flushSync()
+    }
+
+    test('character leg: the note is shown (regression reproducer; designed, not demonstrated)', async () => {
+        await openSheet()
+        expect(part('studio-restore-chat-note')?.textContent).toBe('studioRestoreChatNote')
+    })
+
+    test('module leg: the note is not shown (compatibility guard; passes before and after)', async () => {
+        publishOpenModuleId('M1')
+        mountSheetOver('module:M1')
+        expect(part('studio-restore-sheet')).not.toBeNull()
+        expect(part('studio-restore-chat-note')).toBeNull()
+    })
+
+    test('chat leg: the note is not shown (compatibility guard; passes before and after)', async () => {
+        mountSheetOver('chat:A/c1')
+        expect(part('studio-restore-sheet')).not.toBeNull()
+        expect(part('studio-restore-chat-note')).toBeNull()
     })
 })
