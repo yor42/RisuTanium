@@ -371,6 +371,9 @@ export interface GuardedOperations {
     /** Asks the server for its capabilities. Not cached (the Node store records `pieces` from each answer); rejects with `ServerLacksCapabilityError` unless the answer has the marker and the three booleans. */
     probe(): Promise<GuardedCapabilities>
 
+    /** The server's clock in milliseconds, from a guarded no-store `caps` request. Optional and Node only. Rejects with `ServerLacksCapabilityError` unless the answer has the marker and a non-negative safe integer `now`; the page's own clock is never a substitute. */
+    serverNow?(): Promise<number>
+
     /** `write`, with `checkOnly` compared in the same step. */
     writeChecked(key: string, bytes: Uint8Array, condition: StoreCondition, checkOnly: readonly CheckOnlyEntry[]): Promise<WriteResult>
 

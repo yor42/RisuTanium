@@ -1,18 +1,26 @@
 import { MEASURE } from '../../../process/memory/measureFlag'
 import { getPageStorageMode } from '../../pageStorageMode'
 import { liveLockQuery, soleTabAnswer } from '../../soleTab'
+import type { ByteStore } from '../../store/contract'
 import { batchPaceOf } from '../oldData/delete'
 import type { Store2Session } from '../session'
 import type { GcPageFacts } from './gcMeasure'
 import { meterGcBackend, noteMeasuredGcResult, type GcMeter } from './gcMeter'
 import { gcPass, type GcDeps, type GcPeers, type GcResult } from './pass'
+import { buildNodeGcAge } from './unitAge'
 
 /**
  * The automatic clean-up of store2 leftovers: one collector pass per page load, from the maintenance step after the
  * old-data deletion settled (`maintenance.ts` calls it, inside the step's own try/catch).
  *
- * - It runs on the app (`tauri` sessions) and on the web (`indexeddb` sessions). A `node` or transitional OPFS session runs
- *   nothing, not even a read: a server cannot prove that no peer still needs the units.
+ * - It runs on the app (`tauri` sessions), on the web (`indexeddb` sessions) and on a Node server (`node` sessions). A
+ *   transitional OPFS session runs nothing, not even a read.
+ * - A Node page runs the aged pass (`pass.ts`, `unitAge.ts`): a server cannot prove that no reader still holds an older
+ *   base, so a unit is retired only on its third sighting, each at least a day after the previous record in the earlier of
+ *   the server's and the page's clock. The pass needs the guarded routes and the server's clock and otherwise refuses
+ *   `capability-missing` before any store2 read. The sole-tab proof still applies where Web Locks exist: another tab refuses
+ *   the pass; plain HTTP has no proof and proceeds under the minimum age. The measurement-only single-phase Node pass of
+ *   `gcMeasure.ts` is separate and stays manual.
  * - The app has one page and needs no peer check. A web page proves, before any store2 read in each round and before every
  *   batch, that it is the sole tab: exactly one presence holder in `navigator.locks.query()`, this tab's own presence claim
  *   true before and after the query, and no exclusive holder or pending request. The answer is never cached. A host
@@ -43,7 +51,7 @@ import { gcPass, type GcDeps, type GcPeers, type GcResult } from './pass'
 
 /**
  * What the page contributes to the stop rule and to the web proofs; the rest of the page's state is the session's.
- * `peers` and `ownBase` are read only for an `indexeddb` session.
+ * `peers` and `ownBase` are read only for an `indexeddb` or `node` session.
  */
 export type AutoGcFacts = Pick<GcPageFacts, 'isBusy' | 'saveLoopParked'> & {
     isSaveClean(): boolean
@@ -76,9 +84,11 @@ async function loadLiveFacts(): Promise<AutoGcFacts> {
 }
 
 /**
- * The pass's dependencies for this session, or `null` when it has no backend. `session` is read live, never copied.
+ * The pass's dependencies for this session, or `null` when it has no backend. `session` is read live, never copied. A
+ * `node` session gets the probe and the aged dependencies from the page's byte store; without a store that has the guarded
+ * routes and a server clock it gets no `age`, and `runAutoGc` then refuses.
  */
-export function buildAutoGcDeps(session: Pick<Store2Session, 'kind' | 'backend' | 'idleReason'>, facts: AutoGcFacts): GcDeps | null {
+export function buildAutoGcDeps(session: Pick<Store2Session, 'kind' | 'backend' | 'idleReason'>, facts: AutoGcFacts, store?: ByteStore): GcDeps | null {
     const { backend } = session
     if (backend === null) {
         return null
@@ -90,9 +100,17 @@ export function buildAutoGcDeps(session: Pick<Store2Session, 'kind' | 'backend' 
         pace: batchPaceOf(session.kind),
         shouldStop: () => facts.isBusy() || facts.saveLoopParked() || !facts.isSaveClean() || facts.restoreInProgress(),
     }
-    if (session.kind === 'indexeddb') {
+    if (session.kind === 'indexeddb' || session.kind === 'node') {
         deps.peers = () => facts.peers()
         deps.ownBase = () => facts.ownBase()
+    }
+    if (session.kind === 'node' && store !== undefined) {
+        const { guarded } = store
+        deps.probe = guarded === undefined ? undefined : () => guarded.probe()
+        const age = buildNodeGcAge(store)
+        if (age !== null) {
+            deps.age = age
+        }
     }
     return deps
 }
@@ -103,20 +121,32 @@ export function formatGcResult(result: GcResult): string {
         return `store2 clean-up: status=refused reason=${result.reason}`
     }
     const stopped = result.stopped === undefined ? '' : ` stopped=${result.stopped}`
-    return `store2 clean-up: status=done deleted=${result.deleted} batches=${result.batches}${stopped}`
+    const { age } = result
+    const aged = age === undefined
+        ? ''
+        : ` phase=${age.phase} candidates=${age.candidates} recorded-items=${age.recordedItems} record=${age.record}${age.conflictOn === undefined ? '' : ` conflict=${age.conflictOn}`} clock-gap=${age.clockGapMs}`
+    return `store2 clean-up: status=done deleted=${result.deleted} batches=${result.batches}${stopped}${aged}`
 }
 
 /**
  * Runs the pass, or does nothing; returns the result, or `null` when nothing ran. Throws what `gcPass` throws; the caller
- * logs and swallows it.
+ * logs and swallows it. A `node` session without the aged dependencies is refused `capability-missing` before any store2 read.
  */
-export async function runAutoGc(session: Store2Session, facts?: AutoGcFacts): Promise<GcResult | null> {
-    if ((session.kind !== 'tauri' && session.kind !== 'indexeddb') || session.backend === null || getPageStorageMode().kind !== 'store2') {
+export async function runAutoGc(session: Store2Session, facts?: AutoGcFacts, store?: ByteStore): Promise<GcResult | null> {
+    if ((session.kind !== 'tauri' && session.kind !== 'indexeddb' && session.kind !== 'node') || session.backend === null || getPageStorageMode().kind !== 'store2') {
         return null
     }
-    const deps = buildAutoGcDeps(session, facts ?? await loadLiveFacts())
+    const deps = buildAutoGcDeps(session, facts ?? await loadLiveFacts(), store)
     if (deps === null) {
         return null
+    }
+    if (session.kind === 'node' && deps.age === undefined) {
+        const refused: GcResult = {
+            status: 'refused', reason: 'capability-missing',
+            detail: 'The Node server\'s guarded routes or clock are not available.',
+        }
+        console.info(formatGcResult(refused))
+        return refused
     }
     let meter: GcMeter | null = null
     if (MEASURE) {

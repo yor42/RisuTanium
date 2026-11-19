@@ -1,4 +1,4 @@
-import { heldReply, noteBodySource, notePageEnded, noteTerminal, type TerminalKnowledge } from './pageState'
+import { heldReply, noteAnnounced, noteBodySource, notePageEnded, noteTerminal, type TerminalKnowledge } from './pageState'
 import type { NativeReplyStore, ReplyListing, ReplyOutcome } from './store'
 
 /**
@@ -13,8 +13,10 @@ export interface ReplyStamp {
     key: string
     outcome: ReplyOutcome
     stored: boolean
-    /** Set by a later stage when the native side told the person already; absent means the turn may be retried. */
+    /** Set when the native side told the person already; absent means the turn may be retried. */
     announced?: boolean
+    /** The HTTP status of an announced stamp; the head may be lost, so the stamp carries it. */
+    status?: number
 }
 
 const OUTCOMES: readonly string[] = ['done', 'failed', 'stopped']
@@ -31,12 +33,32 @@ export function parseReplyStamp(value: unknown): ReplyStamp | null {
     if (raw.announced === true) {
         stamp.announced = true
     }
+    if (typeof raw.status === 'number' && Number.isInteger(raw.status)) {
+        stamp.status = raw.status
+    }
     return stamp
 }
 
-/** True only for the additive `announced: true` of a stamp or a listing; every other failure stays retryable. */
-export function isAnnouncedFailure(source: { announced?: unknown } | null | undefined): boolean {
+/** True only for the additive `announced: true` of a stamp or a listing: the person was told, whatever the outcome. */
+export function wasAnnounced(source: { announced?: unknown } | null | undefined): boolean {
     return source?.announced === true
+}
+
+/**
+ * True when the person was told of a failure the turn must not retry: an announced failed outcome or an announced done
+ * whose HTTP status is not 2xx. It never reads `ok`: an announced 200 whose body is not JSON was told as a reply, so it
+ * stays retryable. Every other failure stays retryable too.
+ */
+export function isAnnouncedFailure(source: { announced?: unknown } | null | undefined, knowledge: TerminalKnowledge | null): boolean {
+    if (!wasAnnounced(source) || knowledge === null) {
+        return false
+    }
+    if (knowledge.outcome === 'failed') {
+        return true
+    }
+    return knowledge.outcome === 'done'
+        && knowledge.status !== undefined
+        && (knowledge.status < 200 || knowledge.status >= 300)
 }
 
 /** An owned request's event that has no pump left to receive it: its record may be ready for the reconcile. */
@@ -96,8 +118,8 @@ function knowledgeOfListing(entry: ReplyListing | undefined): TerminalKnowledge 
     return { outcome: entry.outcome, stored, status: entry.status }
 }
 
-function knowledgeOfStamp(stamp: ReplyStamp, status: number | undefined): TerminalKnowledge {
-    return { outcome: stamp.outcome, stored: stamp.stored, status }
+function knowledgeOfStamp(stamp: ReplyStamp, headStatus: number | undefined): TerminalKnowledge {
+    return { outcome: stamp.outcome, stored: stamp.stored, status: stamp.status ?? headStatus }
 }
 
 /**
@@ -153,6 +175,13 @@ export function resolveOwnedFetch(key: string, live: Promise<OwnedFetchResult>, 
             return true
         }
 
+        // The page learned that the native side told the person; the send's finally reads it to skip its own notice.
+        const noteTold = (source: { announced?: unknown } | null | undefined): void => {
+            if (wasAnnounced(source)) {
+                noteAnnounced(key)
+            }
+        }
+
         // While the live branch is pending a visible return can find the stored body. It observes and never waits.
         const observe = async (): Promise<void> => {
             if (decided || observing || deps.signal?.aborted || deps.probe.owned === false || !heldReply(key)?.invoked) {
@@ -169,9 +198,10 @@ export function resolveOwnedFetch(key: string, live: Promise<OwnedFetchResult>, 
                 if (record === null) {
                     return
                 }
-                const won = decide(record, () => {
+                const won = decide(isAnnouncedFailure(entry, knowledge) ? { ...record, nativeFinal: true } : record, () => {
                     noteTerminal(key, knowledge)
                     noteBodySource(key, 'record')
+                    noteTold(entry)
                 })
                 if (won) {
                     deps.probe.abandon?.()
@@ -199,15 +229,15 @@ export function resolveOwnedFetch(key: string, live: Promise<OwnedFetchResult>, 
                 return
             }
             let knowledge: TerminalKnowledge | null = null
-            let announced = false
+            let source: { announced?: unknown } | null = null
             if (probe.stamp !== null) {
                 knowledge = knowledgeOfStamp(probe.stamp, probe.head?.status)
-                announced = isAnnouncedFailure(probe.stamp)
+                source = probe.stamp
             } else if (deps.isVisible()) {
                 try {
                     const listing = (await deps.store.list()).find((candidate) => candidate.key === key)
                     knowledge = knowledgeOfListing(listing)
-                    announced = isAnnouncedFailure(listing)
+                    source = listing ?? null
                 } catch (error) {
                     console.error(error)
                 }
@@ -215,6 +245,8 @@ export function resolveOwnedFetch(key: string, live: Promise<OwnedFetchResult>, 
                     return
                 }
             }
+            // Final by outcome and status, never by `ok`: the record branch and the live branch decide it the same way.
+            const final = isAnnouncedFailure(source, knowledge)
             if (knowledge !== null && knowledge.outcome === 'done' && knowledge.stored) {
                 const record = await readRecord(key, deps, knowledge.status)
                 if (decided) {
@@ -222,18 +254,20 @@ export function resolveOwnedFetch(key: string, live: Promise<OwnedFetchResult>, 
                 }
                 if (record !== null) {
                     const terminal = knowledge
-                    decide(record, () => {
+                    decide(final ? { ...record, nativeFinal: true } : record, () => {
                         noteTerminal(key, terminal)
                         noteBodySource(key, 'record')
+                        noteTold(source)
                     })
                     return
                 }
             }
             const terminal = knowledge
-            decide(announced && !liveResult.ok ? { ...liveResult, nativeFinal: true } : liveResult, () => {
+            decide(final && !liveResult.ok ? { ...liveResult, nativeFinal: true } : liveResult, () => {
                 if (terminal !== null) {
                     noteTerminal(key, terminal)
                 }
+                noteTold(source)
             })
         })
     })

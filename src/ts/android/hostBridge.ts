@@ -246,6 +246,7 @@ export function replyNotificationsHost(): Partial<ReplyNotificationsHost> | unde
             openNotificationSettings: () => call('openNotificationSettings', []),
             notify: (key: string, title: string, body: string, silent: boolean) => call('notify', [key, title, body, silent]),
             notifyState: (json: string) => call('notifyState', [json]),
+            armNative: (token: number, json: string) => call('armNative', [token, json]),
             cancel: (key: string) => call('cancel', [key]),
         }
     }

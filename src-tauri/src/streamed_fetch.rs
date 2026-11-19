@@ -13,6 +13,7 @@ use base64::{engine::general_purpose, Engine as _};
 use crate::net_policy::{
     blocked_message, literal_refusal, system_lookup, CheckedResolver, Lookup, NetPolicy,
 };
+use crate::reply_notice::{process_notices, NoticeLink, Visibility, CODE_QUIET};
 use futures::future::{AbortHandle, AbortRegistration, Abortable};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
@@ -277,6 +278,10 @@ pub struct ReplyEnd {
     pub body_bytes: Option<u64>,
     pub detail: Option<ReplyDetail>,
     pub error: Option<String>,
+    /// The app's visibility as the host last said, read when the end was decided.
+    pub visibility: Visibility,
+    /// A native notice announces this end; the record then says so.
+    pub announced: bool,
 }
 
 /// The open record of an owned request. Dropping it ends the record's live
@@ -299,6 +304,18 @@ pub struct OwnedReply {
     pub page_version: u32,
     pub blob: String,
     pub journal: Option<Arc<dyn ReplyJournal>>,
+    /// The request's hold on its notice token; dropping it ends the token.
+    pub notice: Option<NoticeLink>,
+}
+
+impl OwnedReply {
+    /// The visibility to record for an end no token decided.
+    fn visibility(&self) -> Visibility {
+        match self.notice.as_ref() {
+            Some(link) => link.visibility(),
+            None => process_notices().visibility(),
+        }
+    }
 }
 
 /// The record of one owned request. `run_registered` creates the slot before the
@@ -354,6 +371,18 @@ fn reply_stamp(key: &str, outcome: ReplyOutcome, stored: bool) -> Value {
     json!({ "key": key, "outcome": outcome, "stored": stored })
 }
 
+/// The stamp of an end a native notice announced: the same fields plus
+/// `announced` and the HTTP status the page needs to judge finality. It exists
+/// only for an announced end, so every other stamp keeps its bytes.
+fn announced_stamp(key: &str, outcome: ReplyOutcome, stored: bool, status: Option<u16>) -> Value {
+    let mut stamp = reply_stamp(key, outcome, stored);
+    stamp["announced"] = json!(true);
+    if let Some(status) = status {
+        stamp["status"] = json!(status);
+    }
+    stamp
+}
+
 fn log_unwritten(what: &str, result: &Option<Result<(), String>>) {
     if let Some(Err(message)) = result {
         eprintln!("native reply {} was not stored: {}", what, message);
@@ -364,23 +393,48 @@ fn log_unwritten(what: &str, result: &Option<Result<(), String>>) {
 struct ReplyTee<'a> {
     slot: &'a SharedSlot,
     key: &'a str,
+    notice: Option<&'a NoticeLink>,
     body: Vec<u8>,
     overflow: bool,
     status: Option<u16>,
 }
 
 impl ReplyTee<'_> {
-    fn end_failed(&self, detail: ReplyDetail, error: Option<String>) -> Value {
+    /// The terminal step: decide the notice, write the end (the decision's
+    /// `announced` and the visibility read with it), then publish the code. The
+    /// hub lock is not held while the end is written, and a code is published
+    /// only after the end is durable; an end that was not written publishes
+    /// quiet and its stamp does not say `announced`.
+    fn finish(&self, outcome: ReplyOutcome, detail: Option<ReplyDetail>, body_bytes: Option<u64>, error: Option<String>) -> Value {
+        let decision = match self.notice {
+            Some(link) => link.decide(outcome, detail, self.status, outcome == ReplyOutcome::Done),
+            None => crate::reply_notice::Decision { code: CODE_QUIET, visibility: process_notices().visibility() },
+        };
         let end = ReplyEnd {
-            outcome: ReplyOutcome::Failed,
+            outcome,
             status: self.status,
-            body_bytes: None,
-            detail: Some(detail),
+            body_bytes,
+            detail,
             error,
+            visibility: decision.visibility,
+            announced: decision.announced(),
         };
         let written = lock_slot(self.slot).write_end(&end);
         log_unwritten("end", &written);
-        reply_stamp(self.key, ReplyOutcome::Failed, false)
+        let durable = matches!(written, Some(Ok(())));
+        if let Some(link) = self.notice {
+            link.publish(if durable { decision.code } else { CODE_QUIET });
+        }
+        let stored = outcome == ReplyOutcome::Done && durable;
+        if durable && decision.announced() {
+            announced_stamp(self.key, outcome, stored, self.status)
+        } else {
+            reply_stamp(self.key, outcome, stored)
+        }
+    }
+
+    fn end_failed(&self, detail: ReplyDetail, error: Option<String>) -> Value {
+        self.finish(ReplyOutcome::Failed, Some(detail), None, error)
     }
 
     /// The body, then the end. A body that overflowed or did not reach the disk
@@ -394,16 +448,7 @@ impl ReplyTee<'_> {
         if matches!(body, Some(Err(_))) {
             return self.end_failed(ReplyDetail::BodyNotStored, None);
         }
-        let end = ReplyEnd {
-            outcome: ReplyOutcome::Done,
-            status: self.status,
-            body_bytes: Some(self.body.len() as u64),
-            detail: None,
-            error: None,
-        };
-        let written = lock_slot(self.slot).write_end(&end);
-        log_unwritten("end", &written);
-        reply_stamp(self.key, ReplyOutcome::Done, matches!(written, Some(Ok(()))))
+        self.finish(ReplyOutcome::Done, None, Some(self.body.len() as u64), None)
     }
 }
 
@@ -442,18 +487,32 @@ where
     // The answer is advisory; a dead sink fails the next emit as it would today.
     let _ = emit(event.to_string());
     if refusal.is_some() {
+        // An unowned run has no end to announce; its token ends now rather than
+        // polling as pending for the whole request.
+        if let Some(link) = owner.notice.as_ref() {
+            link.publish(CODE_QUIET);
+        }
         return None;
     }
-    Some(ReplyTee { slot, key: &owner.key, body: Vec::new(), overflow: false, status: None })
+    Some(ReplyTee { slot, key: &owner.key, notice: owner.notice.as_ref(), body: Vec::new(), overflow: false, status: None })
 }
 
 /// The abort arm's end for an owned request: `stopped`, only when the slot holds
-/// a record that has no end yet, followed by the keyed `stopped` event.
+/// a record that has no end yet, followed by the keyed `stopped` event. A stop is
+/// never announced; its token ends quiet when the request's link drops.
 fn stop_owned<F>(slot: &SharedSlot, owner: &OwnedReply, id: &str, emit: &F)
 where
     F: Fn(String) -> Result<(), String>,
 {
-    let end = ReplyEnd { outcome: ReplyOutcome::Stopped, status: None, body_bytes: None, detail: None, error: None };
+    let end = ReplyEnd {
+        outcome: ReplyOutcome::Stopped,
+        status: None,
+        body_bytes: None,
+        detail: None,
+        error: None,
+        visibility: owner.visibility(),
+        announced: false,
+    };
     let written = lock_slot(slot).write_end(&end);
     if written.is_none() {
         return;
@@ -465,6 +524,12 @@ where
 
 fn failure(message: &str) -> String {
     json!({ "success": false, "body": message }).to_string()
+}
+
+/// An owned request's failure result: it carries the same stamp as the `error`
+/// event, so the page learns the end (and `announced`) from either one.
+fn failure_with(message: &str, stamp: &Value) -> String {
+    json!({ "success": false, "body": message, "reply": stamp }).to_string()
 }
 
 fn cancelled() -> String {
@@ -627,7 +692,8 @@ where
             let message = idle_message(e.is_timeout(), last_activity.elapsed(), idle)
                 .unwrap_or_else(|| error_text(e));
             if let Some(tee) = tee.as_ref() {
-                tee.end_failed(ReplyDetail::Transport, Some(message.clone()));
+                let stamp = tee.end_failed(ReplyDetail::Transport, Some(message.clone()));
+                return failure_with(&message, &stamp);
             }
             return failure(&message);
         }
@@ -673,12 +739,18 @@ where
                 let message = idle_message(e.is_timeout(), last_activity.elapsed(), idle)
                     .unwrap_or_else(|| error_text(e));
                 let mut event = json!({ "type": "error", "body": message, "id": request.id });
+                let mut stamp = None;
                 if let Some(tee) = tee.as_ref() {
-                    event["reply"] = tee.end_failed(ReplyDetail::Transport, Some(message.clone()));
+                    let made = tee.end_failed(ReplyDetail::Transport, Some(message.clone()));
+                    event["reply"] = made.clone();
+                    stamp = Some(made);
                 }
-                // The failure result below carries the same text if this emit fails.
+                // The failure result below carries the same text and stamp if this emit fails.
                 let _ = emit(event.to_string());
-                return failure(&message);
+                return match stamp {
+                    Some(stamp) => failure_with(&message, &stamp),
+                    None => failure(&message),
+                };
             }
         }
     }
@@ -1867,7 +1939,7 @@ mod tests {
     }
 
     fn owner_for(store: &ReplyStore<FaultOps>, base: &Path, key: &str) -> OwnedReply {
-        let arg = ReplyOwnerArg { key: key.to_string(), page_version: 1, blob: "{}".to_string() };
+        let arg = ReplyOwnerArg { key: key.to_string(), page_version: 1, blob: "{}".to_string(), notice_token: None };
         owned_reply_for(store, Some(arg), || Ok(base.to_path_buf())).unwrap()
     }
 
@@ -2019,6 +2091,7 @@ mod tests {
             page_version: 1,
             blob: "{}".to_string(),
             journal: Some(Arc::new(PanicJournal)),
+            notice: None,
         });
         let (result, events) = run(&FetchRegistry::new(), req);
         join.join().unwrap();
@@ -2027,7 +2100,7 @@ mod tests {
         // An unresolved store is refused as `store`.
         let (port, join) = serve_hello();
         let mut req = request("o1", format!("http://127.0.0.1:{}/", port));
-        req.owner = Some(OwnedReply { key: KEY.to_string(), page_version: 1, blob: "{}".to_string(), journal: None });
+        req.owner = Some(OwnedReply { key: KEY.to_string(), page_version: 1, blob: "{}".to_string(), journal: None, notice: None });
         let (result, events) = run(&FetchRegistry::new(), req);
         join.join().unwrap();
         assert_unowned_run(&result, &events, "store");
@@ -2300,8 +2373,403 @@ mod tests {
     #[test]
     fn stop_without_a_record_emits_nothing() {
         let slot: SharedSlot = Arc::new(Mutex::new(RecordSlot { record: None, ended: false }));
-        let owner = OwnedReply { key: KEY.to_string(), page_version: 1, blob: "{}".to_string(), journal: None };
+        let owner = OwnedReply { key: KEY.to_string(), page_version: 1, blob: "{}".to_string(), journal: None, notice: None };
         stop_owned(&slot, &owner, "x", &|_| panic!("a stopped event for a request without a record"));
+    }
+
+    // Native reply notices (stage 3): the hub decision, the end record and the token's life.
+    use crate::reply_notice::{NoticeHub, CODE_DONE, CODE_FAILED, FLAG_OPTED_IN};
+    use crate::reply_store::owned_reply_with_hub;
+
+    const TOKEN: i32 = 4711;
+
+    fn hidden_armed_hub() -> Arc<NoticeHub> {
+        let hub = Arc::new(NoticeHub::new());
+        hub.set_visibility(Visibility::Hidden);
+        hub.arm(TOKEN, FLAG_OPTED_IN);
+        hub
+    }
+
+    fn noticed_owner(store: &ReplyStore<FaultOps>, base: &Path, hub: &Arc<NoticeHub>) -> OwnedReply {
+        let arg = ReplyOwnerArg {
+            key: KEY.to_string(),
+            page_version: 1,
+            blob: "{}".to_string(),
+            notice_token: Some(TOKEN),
+        };
+        owned_reply_with_hub(store, Some(arg), || Ok(base.to_path_buf()), hub.clone()).unwrap()
+    }
+
+    fn write_status_head(stream: &mut TcpStream, status: &str) {
+        let _ = stream.write_all(
+            format!("HTTP/1.1 {}\r\nContent-Type: text/plain\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n", status)
+                .as_bytes(),
+        );
+    }
+
+    fn run_noticed<H>(store: &ReplyStore<FaultOps>, base: &Path, hub: &Arc<NoticeHub>, handler: H) -> (String, Events)
+    where
+        H: FnOnce(TcpStream) + Send + 'static,
+    {
+        let (port, join) = serve_bounded(handler);
+        let mut req = request("n1", format!("http://127.0.0.1:{}/", port));
+        req.owner = Some(noticed_owner(store, base, hub));
+        let (result, events) = run(&FetchRegistry::new(), req);
+        join.join().unwrap();
+        (result, events)
+    }
+
+    fn serve_body(mut stream: TcpStream) {
+        write_head(&mut stream);
+        write_chunk(&mut stream, b"hello");
+        let _ = stream.write_all(b"0\r\n\r\n");
+    }
+
+    fn serve_reset(mut stream: TcpStream) {
+        write_head(&mut stream);
+        write_chunk(&mut stream, b"part");
+        drop(stream);
+    }
+
+    // S1, guard: hidden, armed and opted in, a stored 2xx is announced everywhere.
+    #[test]
+    fn a_hidden_armed_done_is_announced_in_the_end_listing_and_stamp() {
+        let base = scratch("n-done");
+        let store = plain_store();
+        let hub = hidden_armed_hub();
+
+        let (result, events) = run_noticed(&store, &base, &hub, serve_body);
+
+        assert_eq!(parse(&result), json!({ "success": true }));
+        assert_eq!(
+            event_of(&events, "end")["reply"],
+            json!({ "key": KEY, "outcome": "done", "stored": true, "announced": true, "status": 200 })
+        );
+        let listing = only_listing(&store, &base);
+        assert_eq!((listing.announced, listing.visibility.as_deref()), (Some(true), Some("hidden")));
+        let end = fs::read_to_string(record_dir(&base, KEY).join("end.json")).unwrap();
+        assert!(end.ends_with(",\"announced\":true}"), "{}", end);
+        assert_eq!(hub.poll(TOKEN), CODE_DONE);
+        assert_eq!(hub.poll(TOKEN), -1);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // S3, guard (R12): a stored non-2xx is announced as failed and the stamp carries the status.
+    #[test]
+    fn a_hidden_armed_non_2xx_done_is_announced_failed_with_its_status() {
+        let base = scratch("n-500");
+        let store = plain_store();
+        let hub = hidden_armed_hub();
+
+        let (_, events) = run_noticed(&store, &base, &hub, |mut stream| {
+            write_status_head(&mut stream, "500 Internal Server Error");
+            write_chunk(&mut stream, b"{\"error\":1}");
+            let _ = stream.write_all(b"0\r\n\r\n");
+        });
+
+        assert_eq!(
+            event_of(&events, "end")["reply"],
+            json!({ "key": KEY, "outcome": "done", "stored": true, "announced": true, "status": 500 })
+        );
+        assert_eq!(only_listing(&store, &base).announced, Some(true));
+        assert_eq!(hub.poll(TOKEN), CODE_FAILED);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // S4/S5, guard: visible, unarmed and not-opted-in ends record the real visibility and stay unannounced.
+    #[test]
+    fn unannounced_ends_keep_the_old_stamp_and_record_the_visibility() {
+        for (visibility, flags, shown) in [
+            (Visibility::Visible, Some(FLAG_OPTED_IN), "visible"),
+            (Visibility::Hidden, None, "hidden"),
+            (Visibility::Hidden, Some(0), "hidden"),
+            (Visibility::Unknown, Some(FLAG_OPTED_IN), "unknown"),
+        ] {
+            let base = scratch("n-quiet");
+            let store = plain_store();
+            let hub = Arc::new(NoticeHub::new());
+            hub.set_visibility(visibility);
+            if let Some(bits) = flags {
+                hub.arm(TOKEN, bits);
+            }
+
+            let (_, events) = run_noticed(&store, &base, &hub, serve_body);
+
+            assert_eq!(
+                event_of(&events, "end")["reply"],
+                json!({ "key": KEY, "outcome": "done", "stored": true }),
+                "{:?} {:?}",
+                visibility,
+                flags
+            );
+            let listing = only_listing(&store, &base);
+            assert_eq!((listing.announced, listing.visibility.as_deref()), (None, Some(shown)));
+            let expected = if flags.is_some() { 3 } else { -1 };
+            assert_eq!(hub.poll(TOKEN), expected, "{:?} {:?}", visibility, flags);
+            fs::remove_dir_all(&base).unwrap();
+        }
+    }
+
+    // R2, guard: the end is durable before the code is pollable, and a poll
+    // during the end write answers pending without waiting on the hub lock.
+    #[test]
+    fn end_before_publish() {
+        let base = scratch("n-order");
+        let hub = hidden_armed_hub();
+        let seen: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let workers: Arc<Mutex<Vec<thread::JoinHandle<()>>>> = Arc::new(Mutex::new(Vec::new()));
+        let (hook_hub, hook_seen, hook_workers) = (hub.clone(), seen.clone(), workers.clone());
+        let hook = Box::new(move || {
+            let (tx, rx) = mpsc::channel();
+            let poll_hub = hook_hub.clone();
+            hook_workers.lock().unwrap().push(thread::spawn(move || {
+                let _ = tx.send(poll_hub.poll(TOKEN));
+            }));
+            let answer = match rx.recv_timeout(Duration::from_secs(2)) {
+                Ok(code) => format!("Ok({})", code),
+                Err(_) => "Timeout".to_string(),
+            };
+            hook_seen.lock().unwrap().push(answer);
+        });
+        let ops = FaultOps::new().hooking("rename", 3, hook);
+        let log = ops.log.clone();
+        let store = store_with(ops);
+
+        run_noticed(&store, &base, &hub, serve_body);
+
+        let renames: Vec<String> = log.lock().unwrap().iter().filter(|entry| entry.starts_with("rename:")).cloned().collect();
+        assert_eq!(renames.get(2).map(String::as_str), Some("rename:end.json"));
+        assert_eq!(*seen.lock().unwrap(), vec!["Ok(0)".to_string()]);
+        assert_eq!(hub.poll(TOKEN), CODE_DONE);
+        for worker in workers.lock().unwrap().drain(..) {
+            worker.join().unwrap();
+        }
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R3, guard: an end that did not reach the disk is never announced.
+    #[test]
+    fn end_fault_quiet() {
+        let base = scratch("n-endfault");
+        let store = store_with(FaultOps::new().failing("create_synced", 3));
+        let hub = hidden_armed_hub();
+
+        let (_, events) = run_noticed(&store, &base, &hub, serve_body);
+
+        assert_eq!(
+            event_of(&events, "end")["reply"],
+            json!({ "key": KEY, "outcome": "done", "stored": false })
+        );
+        assert_eq!(only_listing(&store, &base).announced, None);
+        assert_eq!(hub.poll(TOKEN), 3);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // S6, guard: a body that did not reach the disk is never announced.
+    #[test]
+    fn a_body_fault_is_quiet() {
+        let base = scratch("n-bodyfault");
+        let store = store_with(FaultOps::new().failing("create_synced", 2));
+        let hub = hidden_armed_hub();
+
+        let (_, events) = run_noticed(&store, &base, &hub, serve_body);
+
+        assert_eq!(
+            event_of(&events, "end")["reply"],
+            json!({ "key": KEY, "outcome": "failed", "stored": false })
+        );
+        assert_eq!(hub.poll(TOKEN), 3);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R7, guard: both failure results carry the stamp the event carries.
+    #[test]
+    fn failure_results_carry_stamp() {
+        // (a) The send fails (the peer closes before any response): no event
+        // exists after `owner`, the result is the only carrier.
+        let base = scratch("n-send-error");
+        let store = plain_store();
+        let hub = hidden_armed_hub();
+        let (result, _) = run_noticed(&store, &base, &hub, |stream| drop(stream));
+        let parsed = parse(&result);
+        assert_eq!(parsed["success"], json!(false));
+        assert_eq!(
+            parsed["reply"],
+            json!({ "key": KEY, "outcome": "failed", "stored": false, "announced": true })
+        );
+        assert_eq!(hub.poll(TOKEN), CODE_FAILED);
+        let listing = only_listing(&store, &base);
+        assert_eq!((listing.outcome, listing.detail, listing.announced), (Some(ReplyOutcome::Failed), Some(ReplyDetail::Transport), Some(true)));
+        fs::remove_dir_all(&base).unwrap();
+
+        // (b) The body drops mid-stream: the result carries the event's stamp.
+        let base = scratch("n-chunk-error");
+        let store = plain_store();
+        let hub = hidden_armed_hub();
+        let (result, events) = run_noticed(&store, &base, &hub, serve_reset);
+        let parsed = parse(&result);
+        assert_eq!(parsed["success"], json!(false));
+        let event_stamp = event_of(&events, "error")["reply"].clone();
+        assert_eq!(
+            event_stamp,
+            json!({ "key": KEY, "outcome": "failed", "stored": false, "announced": true, "status": 200 })
+        );
+        assert_eq!(parsed["reply"], event_stamp);
+        assert_eq!(hub.poll(TOKEN), CODE_FAILED);
+        fs::remove_dir_all(&base).unwrap();
+
+        // Unannounced, the result still carries the (plain) stamp; unowned stays bare.
+        let base = scratch("n-chunk-plain");
+        let store = plain_store();
+        let (result, events) = run_noticed(&store, &base, &Arc::new(NoticeHub::new()), serve_reset);
+        assert_eq!(parse(&result)["reply"], event_of(&events, "error")["reply"]);
+        assert_eq!(parse(&result)["reply"], json!({ "key": KEY, "outcome": "failed", "stored": false }));
+        fs::remove_dir_all(&base).unwrap();
+        let (port, join) = serve_once(serve_reset);
+        let (result, _) = run(&FetchRegistry::new(), request("u1", format!("http://127.0.0.1:{}/", port)));
+        join.join().unwrap();
+        assert!(parse(&result).get("reply").is_none());
+    }
+
+    fn assert_token_ended_quiet(hub: &NoticeHub, what: &str) {
+        assert_eq!(hub.poll(TOKEN), 3, "{}", what);
+        assert_eq!(hub.poll(TOKEN), -1, "{}", what);
+    }
+
+    // R8, guard: every exit of an armed request ends its token quietly.
+    #[test]
+    fn every_exit_terminates() {
+        let base = scratch("n-exits");
+        let store = plain_store();
+
+        // A header the client cannot build, and a blocked IP literal, return before the record opens.
+        let hub = hidden_armed_hub();
+        let mut req = request("e1", "http://127.0.0.1:9/".to_string());
+        req.headers = "{\"bad name\":\"x\"}".to_string();
+        req.owner = Some(noticed_owner(&store, &base, &hub));
+        let (result, _) = run(&FetchRegistry::new(), req);
+        assert_eq!(parse(&result)["success"], json!(false));
+        assert_token_ended_quiet(&hub, "bad header");
+
+        let hub = hidden_armed_hub();
+        let mut req = with_policy(false, request("e2", "http://10.0.0.1/".to_string()));
+        req.owner = Some(noticed_owner(&store, &base, &hub));
+        let (result, _) = run(&FetchRegistry::new(), req);
+        assert_eq!(parse(&result)["success"], json!(false));
+        assert_token_ended_quiet(&hub, "ip literal");
+
+        // A cancel that raced ahead and a duplicate live id return before any slot exists.
+        let hub = hidden_armed_hub();
+        let registry = FetchRegistry::new();
+        registry.cancel("e3");
+        let mut req = request("e3", "http://127.0.0.1:9/".to_string());
+        req.owner = Some(noticed_owner(&store, &base, &hub));
+        let (result, _) = run(&registry, req);
+        assert_eq!(parse(&result), cancelled_json());
+        assert_token_ended_quiet(&hub, "already cancelled");
+
+        let hub = hidden_armed_hub();
+        let registry = FetchRegistry::new();
+        let _live = registry.register("e4");
+        let mut req = request("e4", "http://127.0.0.1:9/".to_string());
+        req.owner = Some(noticed_owner(&store, &base, &hub));
+        let (result, _) = run(&registry, req);
+        assert_eq!(parse(&result), cancelled_json());
+        assert_token_ended_quiet(&hub, "duplicate");
+        assert!(names_in(&base).is_empty());
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // R8, guard: a refusal publishes at once, while the unowned request is still running.
+    #[test]
+    fn a_refusal_publishes_before_the_request_ends() {
+        let base = scratch("n-refusal");
+        let hub = hidden_armed_hub();
+        let (port, join) = serve_hello();
+        let mut req = request("r1", format!("http://127.0.0.1:{}/", port));
+        req.owner = Some(OwnedReply {
+            key: KEY.to_string(),
+            page_version: 1,
+            blob: "{}".to_string(),
+            journal: None,
+            notice: Some(NoticeLink::bind(hub.clone(), TOKEN)),
+        });
+        let seen: Arc<Mutex<Vec<i32>>> = Arc::new(Mutex::new(Vec::new()));
+        let (probe_hub, probe) = (hub.clone(), seen.clone());
+        let (_, collect) = collector();
+        let emit = move |payload: String| {
+            let parsed: Value = serde_json::from_str(&payload).unwrap();
+            if parsed["type"] == json!("headers") {
+                probe.lock().unwrap().push(probe_hub.poll(TOKEN));
+            }
+            collect(payload)
+        };
+
+        let result = tauri::async_runtime::block_on(run_registered(&FetchRegistry::new(), req, emit));
+
+        join.join().unwrap();
+        assert_eq!(parse(&result), json!({ "success": true }));
+        assert_eq!(*seen.lock().unwrap(), vec![3]);
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // S7/R8, guard: a stop is quiet, the record says stopped, and the token ends.
+    #[test]
+    fn a_stop_ends_the_token_quietly() {
+        let base = scratch("n-stop");
+        let store = plain_store();
+        let hub = hidden_armed_hub();
+        let registry = FetchRegistry::new();
+        let (closed_tx, closed_rx) = mpsc::channel();
+        let (port, server) = serve_until_closed(closed_tx);
+        let mut req = request("ab", format!("http://127.0.0.1:{}/", port));
+        req.tags = chat_stop_tags(None);
+        req.owner = Some(noticed_owner(&store, &base, &hub));
+        let (events, collect) = collector();
+        let (chunk_tx, chunk_rx) = mpsc::channel::<()>();
+        let (result_tx, result_rx) = mpsc::channel::<String>();
+        let task_registry = registry.clone();
+        tauri::async_runtime::spawn(async move {
+            let emit = move |payload: String| {
+                let sent = collect(payload.clone());
+                if payload.contains("\"chunk\"") {
+                    let _ = chunk_tx.send(());
+                }
+                sent
+            };
+            let _ = result_tx.send(run_registered(&task_registry, req, emit).await);
+        });
+        chunk_rx.recv_timeout(Duration::from_secs(5)).expect("stream did not start");
+
+        assert_eq!(registry.cancel_chat(), 1);
+
+        assert_eq!(parse(&result_rx.recv_timeout(Duration::from_secs(5)).expect("fetch was not aborted")), cancelled_json());
+        assert!(closed_rx.recv_timeout(Duration::from_secs(5)).expect("socket stayed open"));
+        assert_eq!(
+            event_of(&events, "stopped")["reply"],
+            json!({ "key": KEY, "outcome": "stopped", "stored": false })
+        );
+        let listing = only_listing(&store, &base);
+        assert_eq!((listing.outcome, listing.announced, listing.visibility.as_deref()), (Some(ReplyOutcome::Stopped), None, Some("hidden")));
+        assert_token_ended_quiet(&hub, "stopped");
+        server.join().unwrap();
+        fs::remove_dir_all(&base).unwrap();
+    }
+
+    // S9, compatibility guard: without a token the run is today's, with the real visibility recorded.
+    #[test]
+    fn no_token_records_the_process_visibility() {
+        let base = scratch("n-no-token");
+        let store = plain_store();
+
+        let (result, events) = run_owned(&store, &base, KEY);
+
+        assert_eq!(parse(&result), json!({ "success": true }));
+        assert_eq!(event_of(&events, "end")["reply"], json!({ "key": KEY, "outcome": "done", "stored": true }));
+        let listing = only_listing(&store, &base);
+        assert_eq!(listing.visibility.as_deref(), Some(process_notices().visibility().as_str()));
+        assert_eq!(listing.announced, None);
+        fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]

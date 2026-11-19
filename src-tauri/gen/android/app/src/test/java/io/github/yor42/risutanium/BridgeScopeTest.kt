@@ -162,6 +162,35 @@ class BridgeScopeTest {
     assertNull(toCommand("replyNotifications", "notifyState", listOf(true), null))
   }
 
+  // The native arm: a positive int token and the arm as one JSON string.
+  @Test
+  fun theNativeArmCallCarriesItsTokenAndJson() {
+    assertEquals(
+      BridgeCommand.ReplyNotificationsArmNative(7, "{\"v\":1}"),
+      toCommand("replyNotifications", "armNative", listOf(7, "{\"v\":1}"), null)
+    )
+    assertEquals(
+      BridgeCommand.ReplyNotificationsArmNative(7, "{}"),
+      toCommand("replyNotifications", "armNative", listOf(7.0, "{}"), null)
+    )
+    assertNotNull(toCommand("replyNotifications", "armNative", listOf(Int.MAX_VALUE, "{}"), null))
+  }
+
+  @Test
+  fun aNativeArmCallWithTheWrongArgumentsIsDropped() {
+    assertNull(toCommand("replyNotifications", "armNative", emptyList(), null))
+    assertNull(toCommand("replyNotifications", "armNative", listOf(7), null))
+    assertNull(toCommand("replyNotifications", "armNative", listOf(7, "{}", "{}"), null))
+    assertNull(toCommand("replyNotifications", "armNative", listOf("7", "{}"), null))
+    assertNull(toCommand("replyNotifications", "armNative", listOf(7.5, "{}"), null))
+    assertNull(toCommand("replyNotifications", "armNative", listOf(null, "{}"), null))
+    assertNull(toCommand("replyNotifications", "armNative", listOf(0, "{}"), null))
+    assertNull(toCommand("replyNotifications", "armNative", listOf(-3, "{}"), null))
+    assertNull(toCommand("replyNotifications", "armNative", listOf(Int.MAX_VALUE.toLong() + 1, "{}"), null))
+    assertNull(toCommand("replyNotifications", "armNative", listOf(7, 5), null))
+    assertNull(toCommand("replyNotifications", "armNative", listOf(7, null), null))
+  }
+
   @Test
   fun aReplyNotificationsKeyIsOneToTwoHundredCharacters() {
     val longest = "k".repeat(200)

@@ -189,6 +189,116 @@ describe('the reply owner at the invoke', () => {
     })
 })
 
+describe('the native notice arm (guard, new rule)', () => {
+    afterEach(() => {
+        delete window.__risuTaniumReplyNotificationsHost
+    })
+
+    test('a grant with a payload arms the host with the token the invoke carries, before the invoke, once', async () => {
+        const order: string[] = []
+        const armNative = vi.fn((_token: number, _json: string) => { order.push('arm') })
+        window.__risuTaniumReplyNotificationsHost = { armNative }
+        invokeMock.mockImplementation((command: string) => {
+            if (command === 'streamed_fetch') {
+                order.push('invoke')
+                return new Promise<string>(() => {})
+            }
+            return Promise.resolve(undefined)
+        })
+        const owner = bindGrant(issueNativeReplyGrant(KEY, base, '{"v":1,"marker":true}'), parse)
+        const { args } = await begin({ nativeReply: owner, pumpProbe: createPumpProbe() })
+        const token = (args?.replyOwner as { noticeToken?: number }).noticeToken
+        expect(token).toBeGreaterThan(0)
+        expect(armNative).toHaveBeenCalledTimes(1)
+        expect(armNative).toHaveBeenCalledWith(token, '{"v":1,"marker":true}')
+        expect(order).toEqual(['arm', 'invoke'])
+        // The owner is taken once, so a second use arms nothing.
+        await begin({ nativeReply: owner })
+        expect(armNative).toHaveBeenCalledTimes(1)
+    })
+
+    test('a grant without a payload, a lookalike and an untrusted request arm nothing and add no token', async () => {
+        const armNative = vi.fn()
+        window.__risuTaniumReplyNotificationsHost = { armNative }
+        const plain = bindGrant(issueNativeReplyGrant(KEY, base), parse)
+        const { args } = await begin({ nativeReply: plain, pumpProbe: createPumpProbe() })
+        expect('noticeToken' in (args?.replyOwner as object)).toBe(false)
+
+        const armed = bindGrant(issueNativeReplyGrant('11111111-0000-4000-8000-000000000002', base, '{}'), parse)
+        const untrusted = await begin({ nativeReply: armed }, { nativePolicy: { allowPrivate: false } })
+        expect('replyOwner' in (untrusted.args as object)).toBe(false)
+        const forged = await begin({ nativeReply: { key: KEY } })
+        expect('replyOwner' in (forged.args as object)).toBe(false)
+        expect(armNative).not.toHaveBeenCalled()
+    })
+
+    test('a host that throws on the arm does not stop the request', async () => {
+        window.__risuTaniumReplyNotificationsHost = { armNative: () => { throw new Error('bridge gone') } }
+        const owner = bindGrant(issueNativeReplyGrant(KEY, base, '{}'), parse)
+        const { args } = await begin({ nativeReply: owner, pumpProbe: createPumpProbe() })
+        expect(args?.replyOwner).toMatchObject({ key: KEY })
+    })
+})
+
+describe('the failure result carries the stamp (T3: guard, new rule)', () => {
+    const failedStamp = { key: KEY, outcome: 'failed', stored: false, announced: true }
+
+    /** The streamed_fetch command settles when the test calls `settle`, as the native command does. */
+    function controlledCommand(): { settle: (result: Record<string, unknown>) => void } {
+        let settle: (result: Record<string, unknown>) => void = () => {}
+        invokeMock.mockImplementation((command: string) => command === 'streamed_fetch'
+            ? new Promise<string>((resolve) => { settle = (result) => resolve(JSON.stringify(result)) })
+            : Promise.resolve(undefined))
+        return { settle: (result) => settle(result) }
+    }
+
+    test('a: the error event first and a result without a reply keep the stamp', async () => {
+        const command = controlledCommand()
+        const probe = createPumpProbe()
+        const owner = bindGrant(issueNativeReplyGrant(KEY, base), parse)
+        const { args } = await begin({ nativeReply: owner, pumpProbe: probe })
+        emit(args!.id, { type: 'error', body: 'connection refused', reply: failedStamp })
+        for (let i = 0; i < 5; i++) { await tick() }
+        expect(probe.stamp).toEqual(failedStamp)
+        command.settle({ success: false, body: 'connection refused' })
+        for (let i = 0; i < 5; i++) { await tick() }
+        expect(probe.stamp).toEqual(failedStamp)
+    })
+
+    test('b: a result that carries the stamp sets it when no event did', async () => {
+        const command = controlledCommand()
+        const probe = createPumpProbe()
+        const owner = bindGrant(issueNativeReplyGrant(KEY, base), parse)
+        await begin({ nativeReply: owner, pumpProbe: probe })
+        command.settle({ success: false, body: 'connection refused', reply: failedStamp })
+        for (let i = 0; i < 5; i++) { await tick() }
+        expect(probe.stamp).toEqual(failedStamp)
+    })
+
+    test('c: no stamp in the event or the result leaves it null, as before', async () => {
+        const command = controlledCommand()
+        const probe = createPumpProbe()
+        const owner = bindGrant(issueNativeReplyGrant(KEY, base), parse)
+        const { args } = await begin({ nativeReply: owner, pumpProbe: probe })
+        emit(args!.id, { type: 'error', body: 'refused' })
+        command.settle({ success: false, body: 'refused' })
+        for (let i = 0; i < 5; i++) { await tick() }
+        expect(probe.stamp).toBeNull()
+    })
+
+    test('d: a later event without a reply never clears a stamp the result set', async () => {
+        const command = controlledCommand()
+        const probe = createPumpProbe()
+        const owner = bindGrant(issueNativeReplyGrant(KEY, base), parse)
+        const { args } = await begin({ nativeReply: owner, pumpProbe: probe })
+        command.settle({ success: false, body: 'x', reply: failedStamp })
+        for (let i = 0; i < 5; i++) { await tick() }
+        emit(args!.id, { type: 'error', body: 'x' })
+        for (let i = 0; i < 5; i++) { await tick() }
+        expect(probe.stamp).toEqual(failedStamp)
+    })
+})
+
 describe('the local-network route', () => {
     test('an OpenAI-compatible request to a LAN address on Android carries the reply owner', async () => {
         transport.android = true

@@ -55,7 +55,7 @@ import { ensureModulesOrAlert } from "./moduleEnsure";
 import { hasModuleStubs } from "./moduleRefList";
 import { getSaveMarkCount, readImage } from "../globalApi.svelte";
 import { issueNativeReplyGrant, nativeReplyEligible } from "../nativeReply/grant";
-import { holdRecoveredReply, noteReplyPushed, ownsPushedReply, requestReconcile, settleNativeReplyInflight } from "../nativeReply/pageState";
+import { holdRecoveredReply, noteReplyPushed, ownsPushedReply, requestReconcile, settleNativeReplyInflight, takeAnnounced } from "../nativeReply/pageState";
 import type { ApplyOutcome, RecoveredReplyInput } from "../nativeReply/reconcile";
 import { pluginV2 } from "../plugins/plugins.svelte";
 import { isColdChat } from "./coldstorageData";
@@ -68,7 +68,7 @@ import { noteTurnReached, publishUnit, releaseUnit } from "./generationOwnership
 import { addActiveStream, addReplySpeaker, noteStreamReceived, noteStreamText } from "./activeStreams";
 import { isChatOnScreen } from "./chatOnScreen.svelte";
 import { classifyReplyOutcome, noteUnitFailure, recordReplyOutcome, setReplyMark, type ReplyAnnouncement, type ReplyOutcome } from "./replyMarks";
-import { announceReply, noteReplySound } from "./replyNotice";
+import { announceReply, nativeNoticeArmOf, noteReplySound } from "./replyNotice";
 
 export interface OpenAIChat{
     role: 'system'|'user'|'assistant'|'function'
@@ -372,6 +372,8 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
     let threw = false
     let modulesFailed = false
     let announcement: ReplyAnnouncement | null = null
+    // The native side already told the person of this send's reply: the page posts no notice and no chime of its own.
+    let nativeAnnounced = false
     // The same classification, for the keep-alive notification's Stopped and Failed lingers. A preview send has none.
     let replyOutcome: ReplyOutcome | undefined
     try {
@@ -407,6 +409,12 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
                 }
             }
             flushPageReplyEndWhenHidden(entry.context.origin)
+            // Read before the keys are settled and from outside `held`, so a save that consumed the reply cannot lose it.
+            try {
+                nativeAnnounced = takeAnnounced(replyKeysOfUnit.get(unit.signal) ?? [])
+            } catch (error) {
+                console.error('The native notice fact could not be read', error)
+            }
             // Never throws: a key the send never pushed is consumed, dropped or left to the reconcile.
             settleReplyKeys(unit.signal)
             endInFlight(replyOutcome)
@@ -421,7 +429,7 @@ export async function sendChat(chatProcessIndex = -1, arg: SendChatArg = {}): Pr
                 // After the registration has ended, so the chat no longer reads as writing when the chip appears. Its own
                 // try: a failing notice must not turn a finished send into a failed one.
                 try {
-                    announceReply(announcement, callerSignal)
+                    announceReply(announcement, callerSignal, nativeAnnounced)
                 } catch (error) {
                     console.error('The reply notice could not be posted', error)
                 }
@@ -2446,7 +2454,7 @@ async function sendChatBody(chatProcessIndex = -1,arg:SendChatArg = {}, callCtx:
             promptInfo,
             escape: nowChatroom.type === 'character' && nowChatroom.escapeOutput === true,
             requestedMs: Date.now(),
-        })
+        }, nativeNoticeArmOf(origin))
         const unitKeys = replyKeysOfUnit.get(abortSignal)
         if(unitKeys){
             unitKeys.push(generationId)

@@ -14,6 +14,7 @@ mod export_append;
 mod free_space;
 mod launch_inputs;
 mod net_policy;
+mod reply_notice;
 mod reply_store;
 mod store2_batch;
 mod store2_gate;
@@ -524,6 +525,44 @@ pub extern "system" fn Java_io_github_yor42_risutanium_NativeStreams_cancelChatS
         Ok(count) => i32::try_from(count).unwrap_or(i32::MAX),
         Err(_) => -1,
     }
+}
+
+// The reply-notice JNI (CHORE-722 stage 3). Each call takes one atomic or one
+// short hub lock, does no I/O and does not touch the JNI environment; a panic
+// gives -1. `setHostVisibility`: 0 unknown, 1 visible, 2 hidden, answers the
+// state or -1. `armReplyNotice`: flags >= 0 arms (bit 0 = notifications on),
+// -1 disarms; answers the poll answer or -1. `pollReplyOutcome`: 1 done
+// announced, 2 failed announced, 3 quiet (each once), 4 armed unbound,
+// 0 pending, -1 absent.
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_io_github_yor42_risutanium_NativeStreams_setHostVisibility(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    state: i32,
+) -> i32 {
+    reply_notice::guarded(|| reply_notice::set_host_visibility(&reply_notice::process_notices(), state))
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_io_github_yor42_risutanium_NativeStreams_armReplyNotice(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    token: i32,
+    flags: i32,
+) -> i32 {
+    reply_notice::guarded(|| reply_notice::process_notices().arm(token, flags))
+}
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+pub extern "system" fn Java_io_github_yor42_risutanium_NativeStreams_pollReplyOutcome(
+    _env: *mut std::ffi::c_void,
+    _class: *mut std::ffi::c_void,
+    token: i32,
+) -> i32 {
+    reply_notice::guarded(|| reply_notice::process_notices().poll(token))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
