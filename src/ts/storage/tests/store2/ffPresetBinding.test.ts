@@ -45,8 +45,7 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
 
 import { presetFromWorkingSettings, setPreset, type botPreset, type Database } from 'src/ts/storage/database.svelte'
 import { setFastForwardHostForTest } from 'src/ts/storage/store2/fastForward'
-import { bootB, ffSetup, ffTeardown, ffWorld, runLoopWorld, runSpyOf, signal, takenBy } from './ffFixtures'
-import { until } from './lineFixtures'
+import { bootB, ffSetup, ffTeardown, ffWorld, runLoopWorld, runSpyOf, signal, takenBy, type LoopWorld } from './ffFixtures'
 
 /**
  * The preset record's selection change decided over the page's real `setPreset` and `presetFromWorkingSettings`: the
@@ -74,6 +73,30 @@ function switchPreset(db: Database, to: number): void {
     db.botPresetsId = to
 }
 
+/**
+ * Resolves when the loop reports its first save. The wait is driven by the loop's own `saved` report rather than a
+ * polling deadline, so a loaded machine only makes it later; a save that never comes fails at the test timeout.
+ */
+function firstSave(loop: LoopWorld): Promise<void> {
+    return new Promise<void>((resolve) => {
+        let saved = loop.state.saved
+        Object.defineProperty(loop.state, 'saved', {
+            configurable: true,
+            enumerable: true,
+            get: () => saved,
+            set: (value: number) => {
+                saved = value
+                if (saved >= 1) {
+                    resolve()
+                }
+            },
+        })
+        if (saved >= 1) {
+            resolve()
+        }
+    })
+}
+
 describe('the preset record over the real database functions', () => {
     test('P1 two pages that each switched presets from one base agree, and the page keeps its own selection with no park', async () => {
         const { memory, page } = await ffWorld()
@@ -81,14 +104,17 @@ describe('the preset record over the real database functions', () => {
         const b = await bootB(memory)
         const world = runLoopWorld(b.context, b.db)
         const run = runSpyOf(b)
+        const saved = firstSave(world)
         switchPreset(b.db, 2)
         world.tracker.botPreset = true
         world.state.dirty = true
         world.state.due = true
         await page.commitEdit((db) => { switchPreset(db, 1) })
         signal(world)
-        await takenBy(b, memory)
-        await until(() => world.state.saved >= 1, 'the page to save over the peer\'s switch', 8000)
+        await saved
+        // The page's save over the peer's switch leaves its encoding on the store's current manifest, so the check must
+        // hold on its first look: a zero budget makes it a plain assertion with no polling deadline.
+        await takenBy(b, memory, 0)
         expect(run).toHaveBeenCalled()
         expect(await run.mock.results[0].value).toEqual({ kind: 'applied' })
         expect(b.peer.asked).toEqual([])
