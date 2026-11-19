@@ -289,6 +289,8 @@ test('T7 a throwing run in another mode does not revoke a suspended run id', asy
     }
   )
   await vi.waitFor(() => expect(vi.mocked(alertInput)).toHaveBeenCalled())
+  // A two-argument script call leaves the prompt's default value unset.
+  expect(vi.mocked(alertInput)).toHaveBeenCalledWith('q', undefined, undefined)
 
   pyReply = 'reject'
   await expect(runPy('def onInput(id): pass # t7', { mode: 'input' })).rejects.toThrow('py boom')
@@ -296,6 +298,28 @@ test('T7 a throwing run in another mode does not revoke a suspended run id', asy
   release('answer')
   await held
   expect(keys).toEqual(['b'])
+})
+
+test('T7b a Lua alertInput third argument reaches the prompt as its default value', async () => {
+  vi.mocked(alertInput).mockResolvedValue('typed')
+
+  let answer = ''
+  await runScripted(
+    `promptDefault = async(function(id)
+       local typed = alertInput(id, 'q', 'def'):await()
+       setChatVar(id, 'answer', typed)
+     end)`,
+    {
+      char: {} as never,
+      chat: { message: [] } as never,
+      setVar: (_key: string, value: string) => { answer = value },
+      getVar: () => 'null',
+      mode: 'promptDefault',
+    }
+  )
+
+  expect(vi.mocked(alertInput)).toHaveBeenCalledWith('q', undefined, 'def')
+  expect(answer).toBe('typed')
 })
 
 test('T8 a Lua run that throws is swallowed and its id is revoked', async () => {

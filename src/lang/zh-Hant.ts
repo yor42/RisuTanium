@@ -4514,5 +4514,7 @@ export const languageChineseTraditional = {
         "moduleEditedTitle": "模組「{name}」在此分頁中被變更，且無法儲存。角色和聊天仍會繼續儲存，但在重新載入之前，對模組的變更不會被儲存，並且如果關閉應用程式，這些變更將遺失。重新載入將捨棄這些變更以及此分頁中其他尚未儲存的內容；也可以繼續工作。",
         "moduleEditedKeep": "繼續工作（重新載入之前不會儲存模組變更）",
         "moduleNotSaved": "無法儲存模組「{name}」。角色和聊天仍會繼續儲存，但在刪除或取代「{name}」之前，對模組的變更不會被儲存，並且如果關閉或重新載入應用程式，這些變更將遺失。"
-    }
+    },
+    "comfyWorkflow": "工作流程 (API)",
+    "comfyWorkflowInvalidJson": "工作流程檔案無效。必須是有效的 JSON。"
 } satisfies DeepPartial<typeof import('./en').languageEnglish>

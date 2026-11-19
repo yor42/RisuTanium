@@ -1161,7 +1161,7 @@ export const languageKorean = {
         "autoTranslateCachedOnly": "자동 번역 옵션이 켜진 상태에서 활성화하면, 사용자가 이전에 번역한 메시지만 자동으로 번역됩니다.",
         "presetChain": "비어있지 않으면 사용자가 메시지를 보낼 때마다 이 입력의 프리셋 목록에서 무작위로 프리셋이 변경 및 적용됩니다. 프리셋 목록은 쉼표로 구분해야 합니다. 예: `preset1,preset2`.",
         "legacyMediaFindings": "활성화하면 추가 검색 알고리즘을 사용하지 않고 기존 방식으로 미디어 에셋을 찾습니다.",
-        "comfyWorkflow": "Comfy UI의 API 워크플로우를 입력하세요. Comfy UI에서 'Workflow > Export (API)' 버튼을 눌러 API 워크플로우를 가져올 수 있습니다. 워크플로우 텍스트에 {{risu_prompt}}를 넣어야 하며, {{risu_prompt}}는 Risu에서 제공하는 프롬프트로 대체됩니다.",
+        "comfyWorkflow": "ComfyUI의 API 워크플로를 입력하세요. ComfyUI에서 'Workflow > Export (API)' 버튼을 눌러 API 워크플로를 가져올 수 있습니다. 워크플로 텍스트에 {{risu_prompt}}를 넣어야 하며, {{risu_prompt}}는 Risu에서 제공하는 프롬프트로 대체됩니다.",
         "automaticCachePoint": "채팅이 끝난 후 캐싱 포인트가 존재하지 않으면 자동으로 생성합니다.",
         "promptInfoInsideChatDesc": "활성화되면 채팅 메타데이터에 프롬프트 프리셋 정보를 저장합니다. 저장되는 정보는 프롬프트 프리셋 이름과 활성화된 토글, 그리고 프롬프트 텍스트입니다. 약간의 처리 시간과 용량을 차지할 수 있습니다.",
         "autoAdjustSchema": "활성화하면 Dynamic Output을 위한 JSON 스키마가 자동으로 조정됩니다.",
@@ -4471,4 +4471,6 @@ export const languageKorean = {
         moduleEditedKeep: "계속 작업 (새로고침하기 전까지 모듈 변경 사항은 저장되지 않습니다)",
         moduleNotSaved: "모듈 \"{name}\"을(를) 저장할 수 없습니다. 캐릭터와 채팅은 계속 저장되지만, \"{name}\"을(를) 삭제하거나 교체하기 전까지 모듈 변경 사항은 저장되지 않으며, 앱을 닫거나 새로고침하면 사라집니다.",
     },
+    "comfyWorkflow": "워크플로 (API)",
+    "comfyWorkflowInvalidJson": "올바르지 않은 워크플로 파일입니다. 유효한 JSON이어야 합니다.",
 } satisfies DeepPartial<typeof import('./en').languageEnglish>
