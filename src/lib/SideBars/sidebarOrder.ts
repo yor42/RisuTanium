@@ -829,3 +829,42 @@ export function editFolder<E extends OrderEntry>(order: readonly E[], id: string
     edit(draft.editable(found))
     return draft.top as (E | folder)[]
 }
+
+/**
+ * Puts `newId` where the first entry naming `oldId` stands, at the top level or inside a folder, so a character
+ * that replaced another in place keeps the replaced one's position and folder. Returns the same reference when
+ * `oldId` is not listed, when `newId` is already listed anywhere (it would otherwise appear twice), or when the
+ * ids are equal. Entries that are neither an id nor a folder with a `data` list are passed over and kept.
+ */
+export function replaceOrderedId<E extends OrderEntry>(order: readonly E[], oldId: string, newId: string): (E | folder | string)[] {
+    if (oldId === newId) {
+        return order as E[]
+    }
+    let at: { top: number, inner: number } | null = null
+    for (let i = 0; i < order.length; i++) {
+        const entry = order[i]
+        if (entry === newId || (isFolderEntry(entry) && entry.data.includes(newId))) {
+            return order as E[]
+        }
+        if (at === null) {
+            if (entry === oldId) {
+                at = { top: i, inner: -1 }
+            } else if (isFolderEntry(entry)) {
+                const inner = entry.data.indexOf(oldId)
+                if (inner !== -1) {
+                    at = { top: i, inner }
+                }
+            }
+        }
+    }
+    if (at === null) {
+        return order as E[]
+    }
+    const draft = new Draft(order)
+    if (at.inner === -1) {
+        draft.top[at.top] = newId
+    } else {
+        draft.editable(at.top).data[at.inner] = newId
+    }
+    return draft.top as (E | folder | string)[]
+}

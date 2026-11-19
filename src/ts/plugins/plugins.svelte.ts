@@ -17,6 +17,7 @@ import { markCharacterForSave } from "../storage/characterSaveMarks";
 import { incomingCharacterRefusal, withoutStubDowngrades } from "./stubDowngrade";
 import { withoutModuleStubDowngrades } from "./moduleStubGuard";
 import { databaseWriteProblem, selectedCharacterMismatch, singleCharacterProblem } from "./characterWriteCheck";
+import { keepOrderPlaceOnSwap } from "./characterSwapOrder";
 import { hasLightEntry, LIGHT_ENTRY_WRAPPER_MESSAGE, swapLightEntries, type LightWriteCounts } from "./lightCharacters";
 import { keepLiveAlt, overwritesPlaceholder, placeholderAgainMessage, placeholderTargets, restoreArchivedTargets } from "./chatAltBridge";
 import { keepLiveRetained, withLiveRetained } from "./retainedCarry";
@@ -897,6 +898,7 @@ export const getV2PluginAPIs = () => {
             keepLiveAlt([replaced], [char])
             keepLiveRetained([replaced], [char], 'chaId')
             db.characters[charid] = char
+            keepOrderPlaceOnSwap(db, replaced, char)
             noteIdlessCopyWrite(pluginName ?? '', replaced, char, wasIdless)
             clearSupaMemoryIfEmptyIn([db.characters[charid]])
             setDatabaseLite(db)

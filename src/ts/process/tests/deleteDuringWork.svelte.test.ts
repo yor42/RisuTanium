@@ -997,10 +997,19 @@ describe('the delete confirmation warns when work is running in the chat', () =>
         expect.soft(folderText).toBe(BASE_CONFIRM() + 'Chat A')
     })
 
-    test('guard: nothing running: removeChar asks exactly the usual text, then the usual second text', async () => {
+    test('guard: nothing running: moving to the Trash asks exactly the usual text, once', async () => {
         twoChatWorld()
 
         await removeChar(liveChar(), 'char-0')
+
+        expect.soft(confirmText(0)).toBe(BASE_CONFIRM() + 'char-0')
+        expect.soft(alertConfirmMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('guard: nothing running: a permanent delete asks the usual text, then the usual second text', async () => {
+        twoChatWorld()
+
+        await removeChar(liveChar(), 'char-0', 'permanent')
 
         expect.soft(confirmText(0)).toBe(BASE_CONFIRM() + 'char-0')
         expect.soft(confirmText(1)).toBe(BASE_CONFIRM2() + 'char-0')
@@ -1021,12 +1030,25 @@ describe('the delete confirmation warns when work is running in the chat', () =>
         expect(text).toBe(BASE_CONFIRM() + 'Chat A')
     })
 
-    test('a reply streaming into the character\'s chat: trashing it warns on the first confirm and not on the second', async () => {
+    test('a reply streaming into the character\'s chat: trashing it warns on its one confirm', async () => {
         twoChatWorld()
         changeChatToMock(1)
         const { running } = await startHeldSend()
 
         await removeChar(liveChar(), 'char-0')
+        const first = confirmText(0)
+        await drain(running)
+
+        expect.soft(first, 'the only confirm').toBe(BASE_CONFIRM() + 'char-0' + '\n' + CHARACTER_WARNING())
+        expect.soft(alertConfirmMock).toHaveBeenCalledTimes(1)
+    })
+
+    test('a reply streaming into the character\'s chat: a permanent delete warns on the first confirm and not on the second', async () => {
+        twoChatWorld()
+        changeChatToMock(1)
+        const { running } = await startHeldSend()
+
+        await removeChar(liveChar(), 'char-0', 'permanent')
         const first = confirmText(0)
         const second = confirmText(1)
         await drain(running)
@@ -1035,17 +1057,16 @@ describe('the delete confirmation warns when work is running in the chat', () =>
         expect.soft(second).toBe(BASE_CONFIRM2() + 'char-0')
     })
 
-    test('guard: a group turn streaming as member M: trashing M asks exactly the usual texts', async () => {
+    test('guard: a group turn streaming as member M: trashing M asks exactly the usual text, once', async () => {
         installGroup()
         const { running } = await startHeldGroupSend()
 
         await removeChar(DBState.db.characters[1], 'member-1')
         const first = confirmText(0)
-        const second = confirmText(1)
         await drain(running)
 
         expect.soft(first).toBe(BASE_CONFIRM() + 'member-1')
-        expect.soft(second).toBe(BASE_CONFIRM2() + 'member-1')
+        expect.soft(alertConfirmMock).toHaveBeenCalledTimes(1)
     })
 })
 
