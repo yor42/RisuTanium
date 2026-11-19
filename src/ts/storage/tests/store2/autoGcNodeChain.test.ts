@@ -8,8 +8,8 @@
  * What is real: the server process, `createNodeHttpStore`, the boot dispatch with the production wiring of
  * `src/main.ts` (`loadBackupAtBoot` as the import), `commitStore2Import` for the page import, the encoder and committer
  * core of the save loop, `startStore2Maintenance` (old-data deletion, then the clean-up pass, then the asset-sweep
- * no-op, in the production order), the residency, `SaveLocalBackup`. A fork-format block save is written by the real
- * `BlockStoreOwner`, so the boot import plants a deletion snapshot that the first step really deletes.
+ * no-op, in the production order), the residency, `SaveLocalBackup`. Fork-format `blocks/` files sit on the store before
+ * the first boot, so the boot import plants a deletion snapshot that the first step really deletes.
  *
  * What is a stand-in: the quiet trigger is a double the test fires; the clean-up facts name the test's own base because
  * the save loop is not run (each save is the loop's per-pass core: `encoder.plan`, `committer.commit`, `acknowledge`);
@@ -208,8 +208,7 @@ import {
 } from 'src/ts/drive/storeImport'
 import { decodeRisuSave, encodeRisuSaveLegacy } from 'src/ts/storage/risuSave'
 import { getColdStorageBackupKey } from 'src/ts/process/coldstorageData'
-import { LEGACY_MAIN_FILE_KEY } from 'src/ts/storage/blockKeys'
-import { resetPageBlockOwnerForTests } from 'src/ts/storage/pageBlockOwner'
+import { HEAD_KEY, LEGACY_MAIN_FILE_KEY } from 'src/ts/storage/blockKeys'
 import { resetPageStorageModeForTests } from 'src/ts/storage/pageStorageMode'
 import { resetStartupCleanupForTests, getStartupCleanup } from 'src/ts/storage/startupCleanupState'
 import { getAppStore, injectAppStore } from 'src/ts/storage/store/appStore'
@@ -242,7 +241,6 @@ import { createPeerDouble } from 'src/ts/storage/tests/store2SaveKit'
 import { loadGolden, readerOver } from 'src/ts/storage/tests/store2/legacyFixtures'
 import { injectRestoreStore } from 'src/ts/drive/tests/restoreSupport'
 import { hexOfKey, startNodeServer, type NodeServerFixture } from '../nodeServerFixture'
-import { makeSet, seedStore as seedBlockStore } from '../blockStoreHarness'
 
 vi.setConfig({ testTimeout: 240_000, hookTimeout: 60_000 })
 
@@ -316,7 +314,6 @@ function resetPageGlobals(): void {
     resetResidencyForTest()
     resetStore2SaveForTest()
     resetPageStorageModeForTests()
-    resetPageBlockOwnerForTests()
     resetStore2BootForTest()
     resetMaintenanceForTests()
     resetStartupCleanupForTests()
@@ -330,8 +327,8 @@ afterEach(async () => {
     await world?.fixture.stop()
 })
 
-function goldenBytes(name: string): Promise<Buffer> {
-    return readFile(join(process.cwd(), 'src/ts/drive/tests/binGoldens', name))
+async function goldenBytes(name: string): Promise<Uint8Array<ArrayBuffer>> {
+    return new Uint8Array(await readFile(join(process.cwd(), 'src/ts/drive/tests/binGoldens', name)))
 }
 
 /** The page's cold-unit reader, loaded when a conversion first reads a unit, as `bootstrap.ts` does. */
@@ -927,16 +924,24 @@ interface Planted {
     blockKeys: string[]
 }
 
-/** The server at shift 0 with the preload, the page's store, the fork-format block save and a numbered backup. */
+/**
+ * Fork-format block files the boot import finds on the store. Only their keys matter: the old-data plan lists `blocks/`
+ * and snapshots every key it finds, and no current reader opens their bytes.
+ */
+const FORK_BLOCK_KEYS: readonly string[] = [HEAD_KEY, 'blocks/000000000001-aaaaaaaa/root', 'blocks/000000000001-aaaaaaaa/preset']
+
+/** The server at shift 0 with the preload, the page's store, the fork-format block files and a numbered backup. */
 async function plantWorld(pageFile: string): Promise<Planted> {
     const fixture = await startNodeServer({ nodeArgs: ['--require', CLOCK_SHIFT_PRELOAD], env: { [SHIFT_ENV]: '0' } })
     const store = createNodeHttpStore({ baseUrl: fixture.baseUrl, authHeader: () => fixture.authHeader() })
     world = { fixture, store, backend: createNodeBackend(store), ownBase: null }
     injectRestoreStore(store, 'node')
-    // The fork-format block save, written by the real block writer: the boot import plans a deletion snapshot from it.
-    await seedBlockStore(store, makeSet({ characters: [{ chaId: 'fork-old-1' }] }))
+    // The boot import plans a deletion snapshot from these keys; the first pass deletes them.
+    for (const key of FORK_BLOCK_KEYS) {
+        await store.write(key, new Uint8Array([1]), 'unconditional')
+    }
     const blockKeys = await store.list('blocks/')
-    expect(blockKeys.length).toBeGreaterThan(0)
+    expect([...blockKeys].sort()).toEqual([...FORK_BLOCK_KEYS].sort())
     const golden = await loadGolden(pageFile)
     await store.write(BACKUP_KEY, encodeRisuSaveLegacy(golden.tree, 'compression'), 'unconditional')
     return { blockKeys }
