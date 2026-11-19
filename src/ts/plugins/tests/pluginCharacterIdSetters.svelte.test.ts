@@ -74,6 +74,7 @@ vi.mock(import('../../util'), () => ({
 }) as unknown as typeof import('../../util'))
 
 vi.mock(import('../../globalApi.svelte'), () => ({
+    checkCharOrder: vi.fn(),
     fetchNative: vi.fn(),
     globalFetch: vi.fn(),
     readImage: vi.fn(),
@@ -123,6 +124,7 @@ vi.mock(import('../apiV3/transpiler'), () => ({
 import { getV2PluginAPIs } from '../plugins.svelte'
 import { DBState, selectedCharID } from '../../stores.svelte'
 import { resetIdlessCopyNoticeForTest } from '../idlessCopyNotice'
+import { checkCharOrder } from '../../globalApi.svelte'
 
 // An id-less write over an existing character arms the notice's real flush timer; it must not outlive its test.
 afterEach(() => {
@@ -318,6 +320,25 @@ describe('setChar writes only the selected character, and only when one is selec
         expect(typeof live()[1].chaId).toBe('string')
         expect(live()[1].chaId).not.toBe('')
         expect(liveIds()[0]).toBe('a')
+    })
+
+    test('(R) NEW-charorder: a character with no id takes the place of the replaced one in the order under its new id', () => {
+        DBState.db.characterOrder = ['a', { id: 'f', name: 'F', color: '', data: ['b'] }]
+        selectedCharID.set(1)
+        api().setChar({ name: 'B no id', type: 'character', chats: [] })
+        const given = live()[1].chaId
+        expect($state.snapshot(DBState.db.characterOrder)).toEqual(['a', { id: 'f', name: 'F', color: '', data: [given] }])
+        expect(checkCharOrder).toHaveBeenCalled()
+    })
+
+    test('(G) NEW-charorder: the same id given back as a number leaves the order as it was and asks no repair', () => {
+        live()[0].chaId = '7'
+        DBState.db.characterOrder = ['7', 'b']
+        vi.mocked(checkCharOrder).mockClear()
+        selectedCharID.set(0)
+        api().setChar({ chaId: 7, name: 'Seven edited', type: 'character', chats: [] })
+        expect($state.snapshot(DBState.db.characterOrder)).toEqual(['7', 'b'])
+        expect(checkCharOrder).not.toHaveBeenCalled()
     })
 
     test('(R) the same id as number and as text is the same character; another number is refused', () => {

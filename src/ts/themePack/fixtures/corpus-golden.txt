@@ -468,8 +468,8 @@
 "studio-hostile on Navy: P15" 15dc4314504cc481 chat:90be42bb1a689e05 settings:90be42bb1a689e05 studio:53fa0f3f98ef4d95 home:90be42bb1a689e05
 "studio-hostile: P16" 36ab36c9e45bb338 chat:aed2edf052af1221 settings:aed2edf052af1221 studio:aed2edf052af1221 home:aed2edf052af1221
 "studio-hostile on Navy: P16" 2151238d4e3b2036 chat:3216b5cca38784ce settings:3216b5cca38784ce studio:553d32dfa6547e9b home:3216b5cca38784ce
-"studio-hostile: P17" 38304ede73179d02 chat:bda0a4cb49004742 settings:2eac487d5ff70ece studio:2eac487d5ff70ece home:2eac487d5ff70ece
-"studio-hostile on Navy: P17" 18423d581b32d2f2 chat:7b654d85871f0815 settings:7b654d85871f0815 studio:680758445871e298 home:7b654d85871f0815
+"studio-hostile: P17" 38304ede73179d02 chat:bda0a4cb49004742 settings:2eac487d5ff70ece studio:b4b6f5256727e4df home:2eac487d5ff70ece
+"studio-hostile on Navy: P17" 18423d581b32d2f2 chat:7b654d85871f0815 settings:7b654d85871f0815 studio:c5cf6112d0a87fdc home:7b654d85871f0815
 "studio-hostile: T01" e26ee23828577113 chat:800b7eaa2613a11d settings:800b7eaa2613a11d studio:5c290dd8bf3de6f9 home:800b7eaa2613a11d
 "studio-hostile on Navy: T01" 89fa1acd52ec6b36 chat:3ed5b348e0cd2bf7 settings:3ed5b348e0cd2bf7 studio:cfe728d6b805c282 home:3ed5b348e0cd2bf7
 "studio-hostile: T02" 2a7533863b53bdcf chat:e79c8c4cef47e3d5 settings:e79c8c4cef47e3d5 studio:8294a1191f1d36a5 home:e79c8c4cef47e3d5
@@ -823,7 +823,7 @@
 "studio reach: R2 form-host padding+font" fd48fb1cefbf895f chat:d00e5c85b679bd64 settings:f204f831e1553970 studio:08133f11b886594a home:f204f831e1553970
 "studio reach: R3 main padding" d0cda4eb345a4031 chat:28e6f95d38f09a0d settings:bf8e386012797e5c studio:67d5547f31d2bb0c home:bf8e386012797e5c
 "studio reach: R4 toast-box padding/gap/width" 9a976ed223f893fa chat:31bb7110148cfb8d settings:a99ed4f059fe93a7 studio:370f505bbe6d22f3 home:a99ed4f059fe93a7
-"studio reach: R5 toast-box border 16px" ee33740dd541c44f chat:4ebad73001f74f4f settings:87f979902f3d26ce studio:87f979902f3d26ce home:87f979902f3d26ce
+"studio reach: R5 toast-box border 16px" ee33740dd541c44f chat:4ebad73001f74f4f settings:87f979902f3d26ce studio:ed92a1aeae42fd92 home:87f979902f3d26ce
 "studio reach: R6 sheet-root border 16 + shadow 64" 30fe44546bdf5550 chat:2a528f589e97c774 settings:936234823aa506ec studio:936234823aa506ec home:936234823aa506ec
 "studio reach: R7 shell font-size 40" d28476a59ea6a343 chat:dd7efa073eba8509 settings:ed2fa4f302dbce75 studio:ed2fa4f302dbce75 home:ed2fa4f302dbce75
 "studio reach: R8 sheet-root letter-spacing/text-decoration/transform" 315a89546659caee chat:fa4ba651328f4b03 settings:b9085ed846e6ce82 studio:b9085ed846e6ce82 home:b9085ed846e6ce82

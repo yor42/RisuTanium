@@ -963,7 +963,9 @@ async function writeLocalBackupWithModules(session: ExportSession, options: Back
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
-        alertError('Failed')
+        // A dismissed save dialog is the person's decline, not a failure: the export's own wait comes off the screen and
+        // nothing is reported, as for a `.rtb`.
+        session.gate.clear()
         return { status: 'declined', cause: 'save-dialog-cancelled' }
     }
     noteImportPhase('export writer opened')
@@ -1313,7 +1315,9 @@ async function writePartialLocalBackupWithModules(session: ExportSession, option
     // A cancel that came while the writer opened has already aborted it; nothing else of the export may run.
     session.cancel.throwIfCancelled()
     if(!r){
-        alertError('Failed')
+        // A dismissed save dialog is the person's decline, not a failure: the export's own wait comes off the screen and
+        // nothing is reported, as for a `.rtb`.
+        session.gate.clear()
         return { status: 'declined', cause: 'save-dialog-cancelled' }
     }
 

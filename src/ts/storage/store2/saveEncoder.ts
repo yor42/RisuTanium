@@ -106,8 +106,16 @@ export interface SavePlan {
      * ran, and when the acknowledged encoding moved since this plan was made (a stale plan names keys it must not).
      */
     acknowledge(): void
-    /** After `unknown`: the attempt is remembered so a later base read that shows its manifest current can adopt it. */
+    /**
+     * After `unknown`: the attempt is remembered so a later base read that shows its manifest current can adopt it.
+     * Throws when no build ran.
+     */
     keepAsPending(): void
+    /**
+     * True once this plan's build ran. A commit that ended before its build wrote no manifest of this plan, so it has
+     * no attempt to keep as pending.
+     */
+    readonly built: boolean
 }
 
 export interface SaveEncoder {
@@ -576,6 +584,9 @@ export function createSaveEncoder(options: SaveEncoderOptions): SaveEncoder {
                     }
                     pending = built
                     resetShadows()
+                },
+                get built() {
+                    return built !== null
                 },
             }
         },

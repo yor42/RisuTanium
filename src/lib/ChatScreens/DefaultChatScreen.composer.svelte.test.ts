@@ -510,7 +510,7 @@ function sendButton(target: HTMLElement): HTMLButtonElement {
     return target.querySelector<HTMLButtonElement>('.button-icon-send')!
 }
 function busyButton(target: HTMLElement): HTMLButtonElement | null {
-    return target.querySelector<HTMLButtonElement>('button[aria-labelledby="cancel"]')
+    return Array.from(target.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.getAttribute('aria-label') === language.chatShellStop) ?? null
 }
 function stagedFilePreviews(target: HTMLElement): HTMLImageElement[] {
     return Array.from(target.querySelectorAll<HTMLImageElement>('img[alt="Inlay"]'))
@@ -530,7 +530,7 @@ function pressEnter(textarea: HTMLTextAreaElement, opts: { shiftKey?: boolean } 
 
 function openComposerMenu(target: HTMLElement) {
     const buttons = Array.from(target.querySelectorAll<HTMLButtonElement>('button'))
-    const menuButton = buttons.find((b) => !b.classList.contains('button-icon-send') && b.getAttribute('aria-labelledby') !== 'cancel')
+    const menuButton = buttons.find((b) => b.getAttribute('aria-label') === language.menu)
     if (!menuButton) throw new Error('composer menu (hamburger) button not found')
     menuButton.click()
     flushSync()

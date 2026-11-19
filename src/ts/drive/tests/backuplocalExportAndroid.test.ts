@@ -1087,6 +1087,35 @@ describe('a .bin export waiting on the save dialog', () => {
         expect(backupSink.writes).toHaveLength(0)
     })
 
+    // Regression reproducer: a dismissed save dialog (a Cancel, or an app relaunch that cancels the picker) is the
+    // person's decline, as it is for a `.rtb`: the export's own wait comes off the screen and no error is reported.
+    test.each(entries)('$name: a dismissed save dialog clears the export\'s wait and reports no error', async ({ run }) => {
+        vi.mocked(alertWait).mockImplementation((msg: string, onCancel?: () => void) => {
+            const posted = { type: 'wait' as const, msg, ...(onCancel ? { onCancel } : {}) }
+            alertStore.set(posted as never)
+            return posted as never
+        })
+        vi.mocked(alertClear).mockImplementation(() => { alertStore.set({ type: 'none', msg: '' } as never) })
+        alertErrorMock.mockClear()
+        try {
+            const dialog = holdSaveDialog()
+            const exporting = run()
+            await vi.waitFor(() => { expect(save).toHaveBeenCalledTimes(1) })
+            expect(get(alertStore)).toMatchObject({ type: 'wait' })
+
+            dialog.deliver(null)
+            const outcome = await exporting
+
+            expect(outcome).toMatchObject({ status: 'declined', cause: 'save-dialog-cancelled' })
+            expect(alertErrorMock).not.toHaveBeenCalled()
+            expect(get(alertStore)).toMatchObject({ type: 'none' })
+        } finally {
+            vi.mocked(alertWait).mockReset()
+            vi.mocked(alertClear).mockReset()
+            alertStore.set({ type: 'none', msg: '' } as never)
+        }
+    })
+
     // Compatibility guard (G2): work registered during the dialog never stops the export.
     test('registered work begun during the dialog does not stop the export', async () => {
         const dialog = holdSaveDialog()

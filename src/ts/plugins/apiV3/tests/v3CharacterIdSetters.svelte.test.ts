@@ -194,6 +194,7 @@ vi.mock(import('../../../process/ttsHooks'), () => ({
 import { makeRisuaiAPIV3 } from '../v3.svelte'
 import { DBState } from '../../../stores.svelte'
 import { resetIdlessCopyNoticeForTest } from '../../idlessCopyNotice'
+import { checkCharOrder } from '../../../globalApi.svelte'
 
 // The id-less write over slot 0 arms the notice's real flush timer; it must not outlive its test.
 afterEach(() => {
@@ -263,5 +264,44 @@ describe('V3 setCharacterToIndex (S11, S20)', () => {
         await expect(api().setCharacterToIndex(1, { chaId: 'preset', name: 'B renamed', type: 'character', chats: [] })).rejects.toThrow()
         expect(live()[0].chaId).toBe('a')
         expect(live()[1].chaId).toBe('config')
+    })
+})
+
+// NEW-charorder: a character written into a slot under another id takes the replaced one's place in the order.
+// `checkCharOrder` is mocked here, so the order these tests see is the swap's alone.
+describe('V3 setCharacterToIndex keeps the place of the replaced character in the order', () => {
+    const order = () => $state.snapshot(DBState.db.characterOrder) as unknown[]
+
+    beforeEach(() => {
+        vi.mocked(checkCharOrder).mockClear()
+    })
+
+    test('(R) a different id at the top level takes the position of the old id', async () => {
+        DBState.db.characterOrder = ['a', 'b']
+        await api().setCharacterToIndex(1, { chaId: 'c', name: 'C', type: 'character', chats: [] })
+        expect(order()).toEqual(['a', 'c'])
+        expect(checkCharOrder).toHaveBeenCalledTimes(1)
+    })
+
+    test('(R) a different id inside a folder stays in that folder, at the same place', async () => {
+        DBState.db.characterOrder = [{ id: 'f', name: 'F', color: '', data: ['x', 'b'] }, 'a']
+        await api().setCharacterToIndex(1, { chaId: 'c', name: 'C', type: 'character', chats: [] })
+        expect(order()).toEqual([{ id: 'f', name: 'F', color: '', data: ['x', 'c'] }, 'a'])
+    })
+
+    test('(R) an id-less character takes the place under the id it was given', async () => {
+        DBState.db.characterOrder = ['a', 'b']
+        await api().setCharacterToIndex(0, { name: 'No id', type: 'character', chats: [] })
+        const given = live()[0].chaId
+        expect(typeof given).toBe('string')
+        expect(order()).toEqual([given, 'b'])
+    })
+
+    test('(G) a write carrying the same id back leaves the order as it was and asks no repair', async () => {
+        DBState.db.characterOrder = ['a', { id: 'f', name: 'F', color: '', data: ['b'] }]
+        const before = order()
+        await api().setCharacterToIndex(1, { chaId: 'b', name: 'B edited', type: 'character', chats: [] })
+        expect(order()).toEqual(before)
+        expect(checkCharOrder).not.toHaveBeenCalled()
     })
 })

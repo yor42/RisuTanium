@@ -303,29 +303,29 @@
 
 {#if licensed !== 'private'}
     <div class="flex mb-2" class:gap-2={iconButtonSize === 24} class:gap-1={iconButtonSize < 24}>
-        <button class={$CharConfigSubMenu === 0 ? 'text-textcolor ' : 'text-textcolor2'} onclick={() => {$CharConfigSubMenu = 0}}>
-            <UserIcon size={iconButtonSize} />
+        <button class={$CharConfigSubMenu === 0 ? 'text-textcolor ' : 'text-textcolor2'} aria-label={language.basicInfo} title={language.basicInfo} aria-current={$CharConfigSubMenu === 0 ? 'true' : undefined} onclick={() => {$CharConfigSubMenu = 0}}>
+            <UserIcon size={iconButtonSize} aria-hidden="true" />
         </button>
-        <button class={$CharConfigSubMenu === 1 ? 'text-textcolor' : 'text-textcolor2'} onclick={() => {$CharConfigSubMenu = 1}}>
-            <SmileIcon size={iconButtonSize} />
+        <button class={$CharConfigSubMenu === 1 ? 'text-textcolor' : 'text-textcolor2'} aria-label={language.characterDisplay} title={language.characterDisplay} aria-current={$CharConfigSubMenu === 1 ? 'true' : undefined} onclick={() => {$CharConfigSubMenu = 1}}>
+            <SmileIcon size={iconButtonSize} aria-hidden="true" />
         </button>
-        <button class={$CharConfigSubMenu === 3 ? 'text-textcolor' : 'text-textcolor2'} onclick={() => {$CharConfigSubMenu = 3}}>
-            <BookIcon size={iconButtonSize} />
+        <button class={$CharConfigSubMenu === 3 ? 'text-textcolor' : 'text-textcolor2'} aria-label={language.loreBook} title={language.loreBook} aria-current={$CharConfigSubMenu === 3 ? 'true' : undefined} onclick={() => {$CharConfigSubMenu = 3}}>
+            <BookIcon size={iconButtonSize} aria-hidden="true" />
         </button>
         {#if DBState.db.characters[$selectedCharID].type === 'character'}
-            <button class={$CharConfigSubMenu === 5 ? 'text-textcolor' : 'text-textcolor2'} onclick={() => {$CharConfigSubMenu = 5}}>
-                <Volume2Icon size={iconButtonSize} />
+            <button class={$CharConfigSubMenu === 5 ? 'text-textcolor' : 'text-textcolor2'} aria-label={language.Speech} title={language.Speech} aria-current={$CharConfigSubMenu === 5 ? 'true' : undefined} onclick={() => {$CharConfigSubMenu = 5}}>
+                <Volume2Icon size={iconButtonSize} aria-hidden="true" />
             </button>
-            <button class={$CharConfigSubMenu === 4 ? 'text-textcolor' : 'text-textcolor2'} onclick={() => {$CharConfigSubMenu = 4}}>
-                <Braces size={iconButtonSize} />
+            <button class={$CharConfigSubMenu === 4 ? 'text-textcolor' : 'text-textcolor2'} aria-label={language.scripts} title={language.scripts} aria-current={$CharConfigSubMenu === 4 ? 'true' : undefined} onclick={() => {$CharConfigSubMenu = 4}}>
+                <Braces size={iconButtonSize} aria-hidden="true" />
             </button>
         {/if}
-        <button class={$CharConfigSubMenu === 2 ? 'text-textcolor' : 'text-textcolor2'} onclick={() => {$CharConfigSubMenu = 2}}>
-            <ActivityIcon size={iconButtonSize} />
+        <button class={$CharConfigSubMenu === 2 ? 'text-textcolor' : 'text-textcolor2'} aria-label={language.advancedSettings} title={language.advancedSettings} aria-current={$CharConfigSubMenu === 2 ? 'true' : undefined} onclick={() => {$CharConfigSubMenu = 2}}>
+            <ActivityIcon size={iconButtonSize} aria-hidden="true" />
         </button>
         {#if DBState.db.characters[$selectedCharID].type === 'character'}
-            <button class={$CharConfigSubMenu === 6 ? 'text-textcolor' : 'text-textcolor2'} onclick={() => {$CharConfigSubMenu = 6}}>
-                <Share2Icon size={iconButtonSize} />
+            <button class={$CharConfigSubMenu === 6 ? 'text-textcolor' : 'text-textcolor2'} aria-label={language.shareExport} title={language.shareExport} aria-current={$CharConfigSubMenu === 6 ? 'true' : undefined} onclick={() => {$CharConfigSubMenu = 6}}>
+                <Share2Icon size={iconButtonSize} aria-hidden="true" />
             </button>
         {/if}
     </div>
@@ -393,8 +393,8 @@
             {/if}
         </div>
         <div class="text-textcolor2 mt-1 flex mb-6">
-            <button onclick={addGroupChar} class="hover:text-textcolor cursor-pointer">
-                <PlusIcon />
+            <button onclick={addGroupChar} aria-label={language.addCharacter} title={language.addCharacter} class="hover:text-textcolor cursor-pointer">
+                <PlusIcon aria-hidden="true" />
             </button>
         </div>
 
