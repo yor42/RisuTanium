@@ -27,7 +27,8 @@ import { moduleListOf, moduleRefIdsOf } from "./moduleRefList"
 import { bumpModuleGui } from "./moduleGuiBump"
 import { ModuleRefusal } from "./moduleRefusal"
 import { ModuleImportStopped, confirmRisumLowLevel } from "./moduleImportStop"
-import { outcomeOfError, runImportBatch, showOutcome, type ImportOutcome } from "../importBatch"
+import { outcomeOfError, runImportBatch, type ImportOutcome } from "../importBatch"
+import { IMPORT_STEPS, ImportCancelled, NO_IMPORT_PROGRESS, sourceWithProgress, type ImportProgress } from "../importProgress"
 import { markBootWrite } from "../bootWindow"
 import { useModuleById } from "./moduleUse"
 import { hasModuleStubKey, isModuleStub } from "../storage/moduleStub"
@@ -418,7 +419,7 @@ async function readRisumRecord(source: ImportSource, record: RisumRecord): Promi
  * the source and the pieces before it do not share, so the one that consumes it may keep it until it asks for the next.
  * The source is read one piece at a time, only when the consumer asks, so no read overlaps another reader.
  */
-async function* readRisumRecordPieces(source: ImportSource, record: RisumRecord): AsyncGenerator<Uint8Array, void, undefined> {
+async function* readRisumRecordPieces(source: ImportSource, record: RisumRecord, onPiece?: (bytes: number) => void): AsyncGenerator<Uint8Array, void, undefined> {
     const bodyStart = record.start + RISUM_RECORD_HEADER_BYTES
     const end = bodyStart + record.length
     const header = await source.read(record.start, bodyStart)
@@ -431,13 +432,14 @@ async function* readRisumRecordPieces(source: ImportSource, record: RisumRecord)
         if(bytes.length !== to - at){
             throw new Error('the module file does not match its first read')
         }
+        onPiece?.(bytes.length)
         //decodeRPack returns a new array and leaves `bytes` alone, which may be a view of memory the source does not give away.
         yield await decodeRPack(bytes)
     }
 }
 
 /** A hook for the caller to stop the read once the scanned module is known (the low-level-access and duplicate questions). */
-export type ReadModuleOptions = {beforeAssets?: (module:RisuModule) => Promise<void>}
+export type ReadModuleOptions = {beforeAssets?: (module:RisuModule) => Promise<void>, progress?: ImportProgress}
 
 /**
  * Reads a `.risum` module and saves its assets. The source is read in two passes and never as a whole: the first
@@ -456,26 +458,45 @@ export type ReadModuleOptions = {beforeAssets?: (module:RisuModule) => Promise<v
  * It shows progress and clears it before it returns or throws, and never shows an error itself: the caller shows it.
  * It never returns without a module. It does not close the source: the caller that opened it does.
  * `opts.beforeAssets` runs once with the scanned module, after the file is known to be complete and before the first asset is saved. If it throws, the throw leaves as it is, no asset is saved and the progress is cleared.
+ * With a tasked `opts.progress` the card shows the scan and the asset saves by bytes at every size and no legacy wait is
+ * posted. The write gate (`beforeWrite`) is called once the module has records, after `beforeAssets` and before the first
+ * asset is stored, whether or not a card is shown; a Cancel pressed before it ends the read with nothing saved.
  */
 export async function readModule(input:Uint8Array|ImportSource, opts?:ReadModuleOptions):Promise<RisuModule> {
     const source = isImportSource(input) ? input : importSourceOfBytes('module.risum', input)
+    const progress = opts?.progress ?? NO_IMPORT_PROGRESS
+    const tasked = progress.tasked
     let progressShown = false
     let scan: RisumScan
     try {
-        if(source.size > SHOW_READING_ABOVE_BYTES){
+        if(tasked){
+            progress.step('read')
+        }
+        else if(source.size > SHOW_READING_ABOVE_BYTES){
             progressShown = true
             alertWait(language.alerts.readingCard)
         }
-        scan = await scanRisum(source)
+        scan = await scanRisum(tasked ? sourceWithProgress(source, progress.bytes, progress.signal) : source)
     } catch (error) {
         if(progressShown){
             alertClear()
         }
         throw error
     }
+    progress.throwIfCancelled()
+    progress.step('check')
     const module = scan.module
     const totalAssets = scan.records.length
+    const totalBytes = scan.records.reduce((sum, record) => sum + record.length, 0)
     let completed = 0
+    //Bytes of records saved so far, and the encoded bytes of the piece-saved record being read now.
+    let savedBytes = 0
+    let pieceBytes = 0
+    const reportBytes = () => {
+        if(tasked){
+            progress.bytes(savedBytes + pieceBytes, totalBytes)
+        }
+    }
 
     const changed = (cause: unknown) => {
         console.error(cause)
@@ -513,11 +534,15 @@ export async function readModule(input:Uint8Array|ImportSource, opts?:ReadModule
                     if (!module.assets?.[index]) {
                         throw new Error(`Missing asset metadata for index ${index}`)
                     }
-                    module.assets[index][1] = await saveAssetFromPieces(readRisumRecordPieces(source, record), {
+                    module.assets[index][1] = await saveAssetFromPieces(readRisumRecordPieces(source, record, (bytes) => {
+                        pieceBytes += bytes
+                        reportBytes()
+                    }), {
                         sizeBound: record.length,
                         beforeFinish: assertSourceUnchanged,
                     })
                     completed += 1
+                    savedBytes += record.length
                 } catch (error) {
                     if(error instanceof AssetSourceChangedError){
                         readFailure = { cause: error }
@@ -531,7 +556,13 @@ export async function readModule(input:Uint8Array|ImportSource, opts?:ReadModule
                     }
                     failed.push(index)
                 } finally {
-                    alertWait(fillLang(language.alerts.addingAssets, { completed, total: totalAssets }))
+                    pieceBytes = 0
+                    if(tasked){
+                        reportBytes()
+                    }
+                    else{
+                        alertWait(fillLang(language.alerts.addingAssets, { completed, total: totalAssets }))
+                    }
                 }
                 continue
             }
@@ -554,11 +585,17 @@ export async function readModule(input:Uint8Array|ImportSource, opts?:ReadModule
                     }
                     module.assets[index][1] = await saveAsset(decoded)
                     completed += 1
+                    savedBytes += record.length
                 } catch (error) {
                     failed.push(index)
                 } finally {
                     inFlightBytes -= record.length
-                    alertWait(fillLang(language.alerts.addingAssets, { completed, total: totalAssets }))
+                    if(tasked){
+                        reportBytes()
+                    }
+                    else{
+                        alertWait(fillLang(language.alerts.addingAssets, { completed, total: totalAssets }))
+                    }
                 }
             })()
             inFlight.add(promise)
@@ -576,7 +613,13 @@ export async function readModule(input:Uint8Array|ImportSource, opts?:ReadModule
     }
 
     try {
+        progress.throwIfCancelled()
         await opts?.beforeAssets?.(module)
+        if(totalAssets > 0){
+            progress.step('assets')
+            //The first stored byte of the round; one call dominates both save sites below.
+            progress.beforeWrite()
+        }
         let failed = await runRecords(scan.records.map((_, index) => index))
         let retryCount = 0
         while (failed.length > 0 && retryCount < MAX_ASSET_SAVE_RETRIES) {
@@ -588,7 +631,9 @@ export async function readModule(input:Uint8Array|ImportSource, opts?:ReadModule
             throw new Error(fillLang(language.errors.moduleAssetsSaveFailed, { count: `${failed.length}` }))
         }
     } finally {
-        alertClear()
+        if(!tasked){
+            alertClear()
+        }
     }
 
     module.id = v4()
@@ -615,9 +660,11 @@ function moduleFileRoute(name:string):{suffix: string, kind: ModuleFileKind}|nul
  * the write and, for a replace, the cache reset stay in one synchronous block, so the change effects see the module at
  * once and `getModules` never hands out the replaced one.
  */
-function commitModule(module:RisuModule, decision:DuplicateDecision, session:DuplicateSession):string[] {
+function commitModule(module:RisuModule, decision:DuplicateDecision, session:DuplicateSession, progress:ImportProgress):string[] {
     markBootWrite()
     const placement = applyModulePlacement(DBState.db.modules, module, decision)
+    //Marked before anything that can throw, so a later failure never hides this write from Retry.
+    progress.committed()
     if(placement.kind === 'added'){
         return []
     }
@@ -649,13 +696,17 @@ async function loadReplaceTarget(decision:DuplicateDecision):Promise<void> {
 }
 
 /** Decides the duplicate question of a module that was read in full, then writes it. A skip writes nothing. */
-async function placeModule(module:RisuModule, file:File, session:DuplicateSession, laterFiles:boolean):Promise<ImportOutcome> {
+async function placeModule(module:RisuModule, file:File, session:DuplicateSession, laterFiles:boolean, progress:ImportProgress):Promise<ImportOutcome> {
+    progress.throwIfCancelled()
     const decision = await session.decide(DBState.db.modules, module.name, file.name, laterFiles)
     if(decision.choice === 'skip'){
         return {kind: 'skipped'}
     }
+    progress.step('add')
+    //The first write of a module that has no assets: the stub load below and the placement.
+    progress.beforeWrite()
     await loadReplaceTarget(decision)
-    return importedOutcome(commitModule(module, decision, session))
+    return importedOutcome(commitModule(module, decision, session, progress))
 }
 
 function importedOutcome(notes:string[]):ImportOutcome {
@@ -670,7 +721,7 @@ export { bumpModuleGui }
  * true when the pick had several files: the prompts then name the file, and an unsupported file gets the short reason
  * that the batch summary lists next to its name.
  */
-async function importModuleFile(file:File, batch:boolean, session:DuplicateSession, laterFiles:boolean):Promise<ImportOutcome> {
+async function importModuleFile(file:File, batch:boolean, session:DuplicateSession, laterFiles:boolean, progress:ImportProgress):Promise<ImportOutcome> {
     const route = moduleFileRoute(file.name)
     if(!route){
         return {kind: 'refused', reason: batch ? language.importUnsupportedFile : language.moduleUnsupportedFile(file.name), normal: true}
@@ -678,6 +729,8 @@ async function importModuleFile(file:File, batch:boolean, session:DuplicateSessi
     const batchFile = batch ? file.name : undefined
     try {
         if(route.kind === 'charx'){
+            //The card importer is not on the progress yet, so its saves are not individually gated: the round's lock is taken before it reads a byte.
+            progress.beforeWrite()
             //The archive is handed over as the picked File, which is read in pieces, never as one buffer. The importer tests the suffix in lower case.
             const outcome = await importCharacterFile({
                 name: file.name.slice(0, -route.suffix.length) + route.suffix,
@@ -691,27 +744,30 @@ async function importModuleFile(file:File, batch:boolean, session:DuplicateSessi
             if(!outcome.character){
                 return {kind: 'refused', reason: language.errors.noData}
             }
-            return await placeModule(convertCharacterToModule(outcome.character), file, session, laterFiles)
+            return await placeModule(convertCharacterToModule(outcome.character), file, session, laterFiles, progress)
         }
         if(route.kind === 'risum'){
             const source = importSourceOfFile(file)
             try {
                 //The duplicate answer is taken before any asset is saved; a skip saves nothing. Only the write happens after the read.
                 let decision:DuplicateDecision = {choice: 'add'}
-                const module = await readModule(source, {beforeAssets: async (scanned) => {
+                const module = await readModule(source, {progress, beforeAssets: async (scanned) => {
                     await confirmRisumLowLevel(scanned, batchFile)
                     decision = await session.decide(DBState.db.modules, scanned.name, file.name, laterFiles)
                     if(decision.choice === 'skip'){
                         throw new ModuleImportStopped('skipped')
                     }
                 }})
+                progress.step('add')
+                //Dominates the stub load and the placement; for a module with assets the gate in readModule has already fired.
+                progress.beforeWrite()
                 await loadReplaceTarget(decision)
-                return importedOutcome(commitModule(module, decision, session))
+                return importedOutcome(commitModule(module, decision, session, progress))
             } finally {
                 await source.close()
             }
         }
-        return await importModuleJson(file, batchFile, session, laterFiles)
+        return await importModuleJson(file, batchFile, session, laterFiles, progress)
     } catch (error) {
         if(!(error instanceof ModuleImportStopped)){
             console.error(error)
@@ -721,8 +777,17 @@ async function importModuleFile(file:File, batch:boolean, session:DuplicateSessi
 }
 
 //A `.json` or `.lorebook` file: a module, a risu lorebook, an external lorebook or a regex list. What none of these fits is refused at the normal alert level, like a file that does not parse.
-async function importModuleJson(file:File, batchFile:string|undefined, session:DuplicateSession, laterFiles:boolean):Promise<ImportOutcome> {
+async function importModuleJson(file:File, batchFile:string|undefined, session:DuplicateSession, laterFiles:boolean, progress:ImportProgress):Promise<ImportOutcome> {
+    progress.step('read')
     const fileData = new Uint8Array(await file.arrayBuffer())
+    progress.throwIfCancelled()
+    progress.step('check')
+    //Once placement starts, a throw is a failure whose data state the runner reads from the commit marker, never "no data".
+    let placing = false
+    const place = (module:RisuModule) => {
+        placing = true
+        return placeModule(module, file, session, laterFiles, progress)
+    }
     try {
         const importData = JSON.parse(Buffer.from(fileData).toString())
         if(importData.type === 'risuModule'){
@@ -745,40 +810,40 @@ async function importModuleJson(file:File, batchFile:string|undefined, session:D
                     return {kind: 'declined'}
                 }
             }
-            return await placeModule(importData, file, session, laterFiles)
+            return await place(importData)
         }
         // importData.type === 'risu' in conflict with HypaV3 preset exports
         // difference: record vs. array
         if(importData.type === 'risu' && importData.data && Array.isArray(importData.data)){
             const lores:loreBook[] = importData.data
-            return await placeModule({
+            return await place({
                 name: importData.name || 'Imported Lorebook',
                 description: importData.description || 'Converted from risu lorebook',
                 lorebook: lores,
                 id: v4()
-            }, file, session, laterFiles)
+            })
         }
         if(importData.entries){
             const lores:loreBook[] = convertExternalLorebook(importData.entries)
-            return await placeModule({
+            return await place({
                 name: importData.name || 'Imported Lorebook',
                 description: importData.description || 'Converted from external lorebook',
                 lorebook: lores,
                 id: v4()
-            }, file, session, laterFiles)
+            })
         }
         if(importData.type === 'regex'  && importData.data){
             const regexs:customscript[] = importData.data
-            return await placeModule({
+            return await place({
                 name: importData.name || 'Imported Regex',
                 description: importData.description || 'Converted from risu regex',
                 regex: regexs,
                 id: v4()
-            }, file, session, laterFiles)
+            })
         }
     } catch (error) {
-        //A refusal that names its own reason (a replace target that could not be loaded) is not "no data".
-        if(error instanceof ModuleRefusal){
+        //A refusal that names its own reason (a replace target that could not be loaded) is not "no data"; a Cancel is not either.
+        if(placing || error instanceof ModuleRefusal || error instanceof ImportCancelled){
             throw error
         }
         console.error(error)
@@ -787,59 +852,38 @@ async function importModuleJson(file:File, batchFile:string|undefined, session:D
 }
 
 /**
- * What one picked file leaves on screen, by the outcome of its import: a `.charx` that imported reports success, a
- * `.risum` or json module that imported shows nothing; a decline or a skip shows nothing; a refusal is an error, or a
- * normal alert when the outcome says so; a failure shows its details.
- */
-export function singleFileFeedback(outcome:ImportOutcome, fileName:string){
-    if(outcome.kind === 'imported'){
-        //A replace that changed the namespace adds its note to the one message of the import, never a second alert.
-        const notes = outcome.notes ?? []
-        if(moduleFileRoute(fileName)?.kind === 'charx'){
-            alertNormal([language.successImport, ...notes].join('\n'))
-        }
-        else if(notes.length > 0){
-            alertNormal(notes.join('\n'))
-        }
-        return
-    }
-    if(outcome.kind === 'refused' && outcome.normal){
-        alertNormal(outcome.reason)
-        return
-    }
-    showOutcome(outcome)
-}
-
-/**
- * Imports the files picked in Settings > Modules, in order, one at a time. One file reports as `singleFileFeedback`
- * says. Several files are all attempted inside one busy scope and end with one message: the files that were not
- * imported with their reasons, or a count when nothing went wrong. A module that is imported stays imported when a
- * later file fails.
+ * Imports the files picked in Settings > Modules, in order, one at a time, on one task card for one file or several: the
+ * card carries the steps, a Cancel until the round's first write, the result (the files that were not imported with their
+ * reasons, or a count) and a Retry for the files that failed. A module that is imported stays imported when a later file
+ * fails. Each round (the first, then each Retry) asks its duplicate questions afresh, so an "all remaining" answer of one
+ * round never decides a file of the next.
  */
 export async function importModule(){
     const files = await selectFileByDom(['*'], 'multiple')
     if(!files || files.length === 0){
         return
     }
-    const session = new DuplicateSession()
-    if(files.length === 1){
-        const file = files[0]
-        const outcome = await withBusy('import', () => importModuleFile(file, false, session, false))
-        if(session.replaced){
-            bumpModuleGui()
+    const sessions = new Map<number, DuplicateSession>()
+    const sessionOf = (round:number) => {
+        let session = sessions.get(round)
+        if(!session){
+            session = new DuplicateSession()
+            sessions.set(round, session)
         }
-        singleFileFeedback(outcome, file.name)
-        return
+        return session
     }
-    const summary = await runImportBatch(
-        files.map((file, index) => ({name: file.name, run: () => importModuleFile(file, true, session, index < files.length - 1)})),
-        {declinedReason: language.importDeclinedLowLevel}
+    await runImportBatch(
+        files.map((file) => ({name: file.name, run: (progress:ImportProgress) => importModuleFile(
+            file,
+            progress.round.count > 1,
+            sessionOf(progress.round.number),
+            progress.round.index < progress.round.count - 1,
+            progress,
+        )})),
+        {declinedReason: language.importDeclinedLowLevel, task: {title: language.importTaskModulesTitle, steps: IMPORT_STEPS}}
     )
-    if(session.replaced){
+    if([...sessions.values()].some((session) => session.replaced)){
         bumpModuleGui()
-    }
-    if(!summary.message && !summary.own){
-        alertNormal([language.importModulesDone(summary.imported, summary.skipped), ...summary.notes].join('\n'))
     }
 }
 

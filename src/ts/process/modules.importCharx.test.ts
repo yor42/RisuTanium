@@ -85,20 +85,32 @@ vi.mock(import('src/ts/characterCards'), () => ({
     importCharacterFile: vi.fn(async (arg: { name: string, data: File, returnCharacter?: boolean }) => h.importer?.(arg)),
 }) as unknown as typeof import('src/ts/characterCards'))
 
-import { importModule } from 'src/ts/process/modules'
+import { importModule as importModuleOnCard } from 'src/ts/process/modules'
 import { language } from 'src/lang'
+import { resetTaskHostForTests } from 'src/ts/alertTask.svelte'
+import { answerImportCard, type ImportCard } from 'src/ts/process/tests/answerImportCard'
 import type { ImportOutcome } from 'src/ts/importBatch'
 import type { character } from 'src/ts/storage/database.svelte'
+
+/** The card the last `importModule` ended on, or null when the import closed without one. */
+let lastCard: ImportCard = null
+
+/** Runs the import, answers its result card with OK and keeps the card in `lastCard`. */
+async function importModule() {
+    lastCard = await answerImportCard(importModuleOnCard)
+}
 
 beforeEach(() => {
     h.log = []
     h.last = 'none'
+    lastCard = null
     h.modules = []
     h.importer = null
     vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 afterEach(() => {
+    resetTaskHostForTests()
     vi.restoreAllMocks()
 })
 
@@ -106,14 +118,16 @@ describe('importModule with a .charx file', () => {
     test('a refusal is shown once and is not followed by another message', async () => {
         h.importer = async () => ({ kind: 'refused', reason: language.cardFileIncomplete })
         await importModule()
-        expect(h.log).toEqual(['error:' + language.cardFileIncomplete])
+        expect(h.log).toEqual([])
+        expect(lastCard?.failure?.detail).toBe(language.cardFileIncomplete)
         expect(h.modules).toEqual([])
     })
 
     test('a size refusal is shown once and is not followed by noData or a success message (compatibility guard)', async () => {
         h.importer = async () => ({ kind: 'refused', reason: language.cardFileEntryTooLarge('assets/big.bin', 200) })
         await importModule()
-        expect(h.log).toEqual(['error:' + language.cardFileEntryTooLarge('assets/big.bin', 200)])
+        expect(h.log).toEqual([])
+        expect(lastCard?.failure?.detail).toBe(language.cardFileEntryTooLarge('assets/big.bin', 200))
         expect(h.modules).toEqual([])
     })
 
@@ -121,22 +135,25 @@ describe('importModule with a .charx file', () => {
         h.importer = async () => ({ kind: 'declined' })
         await importModule()
         expect(h.log).toEqual([])
+        expect(lastCard).toBeNull()
         expect(h.modules).toEqual([])
     })
 
     test('a failure the importer reports shows its own reason as the last message, no success, and adds no module', async () => {
         h.importer = async () => ({ kind: 'failed', error: new Error('Failed to save 3 assets') })
         await importModule()
-        expect(h.last).toBe('error:Failed to save 3 assets')
-        expect(h.log).toEqual(['error:Failed to save 3 assets'])
+        expect(lastCard?.failure?.detail).toBe('Failed to save 3 assets')
+        expect(lastCard?.result).toBeUndefined()
+        expect(h.log).toEqual([])
         expect(h.modules).toEqual([])
     })
 
     test('an importer that rejects shows its reason as the last message, no success, and adds no module (feature test: importModuleFile catches it)', async () => {
         h.importer = async () => { throw new Error('Failed to save 3 assets') }
         await importModule()
-        expect(h.last).toBe('error:Failed to save 3 assets')
-        expect(h.log).toEqual(['error:Failed to save 3 assets'])
+        expect(lastCard?.failure?.detail).toBe('Failed to save 3 assets')
+        expect(lastCard?.result).toBeUndefined()
+        expect(h.log).toEqual([])
         expect(h.modules).toEqual([])
     })
 
@@ -147,6 +164,7 @@ describe('importModule with a .charx file', () => {
         }
         await importModule()
         expect(h.modules).toEqual([{ id: 'converted-module' }])
-        expect(h.log).toEqual(['normal:' + language.successImport])
+        expect(h.log).toEqual([])
+        expect(lastCard?.result?.headline).toBe(language.importTaskImported(1))
     })
 })
