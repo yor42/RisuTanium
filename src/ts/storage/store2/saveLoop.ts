@@ -1620,9 +1620,13 @@ export function runStore2SaveLoop(context: Store2SaveContext, port: Store2LoopPo
                 }
                 throw result.cause
             case 'unknown':
-                plan.keepAsPending()
-                if (MEASURE) {
-                    noteSignalKept(plan.encoded)
+                // An outcome lost before the build ran left no manifest of this plan to adopt; the cause is still what
+                // the person is told about.
+                if (plan.built) {
+                    plan.keepAsPending()
+                    if (MEASURE) {
+                        noteSignalKept(plan.encoded)
+                    }
                 }
                 throw result.cause
             case 'refused':
