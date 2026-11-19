@@ -1,5 +1,5 @@
 import { LLMFlags } from "../../model/types";
-import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES } from "../../storage/assetUrlGate";
+import { ANDROID_WHOLE_READ_URL_LIMIT_BYTES, DESKTOP_WHOLE_READ_URL_LIMIT_BYTES } from "../../storage/assetUrlGate";
 import type { InlaySummary } from "./inlayStore";
 
 /** The largest video or audio attachment, in bytes, that a send reads and puts in a request. */
@@ -33,10 +33,21 @@ export function inlaySendVerdict(summary: InlaySummary, flags: readonly LLMFlags
 /**
  * Whether an image is one this platform does not load: on Android an image above the whole-read limit is
  * neither shown nor sent, and its body is never read. Decided from the type and size alone, so the render
- * and the send agree. An unknown size is not withheld; no other type is withheld at this limit.
+ * and the send agree on Android; the desktop render alone also withholds above the desktop limit
+ * (`inlayImageRenderWithheld`). An unknown size is not withheld; no other type is withheld at this limit.
  */
 export function inlayImageWithheld(type: unknown, size: number | null, android: boolean): boolean {
     return android && type === 'image' && size !== null && size > ANDROID_WHOLE_READ_URL_LIMIT_BYTES
+}
+
+/**
+ * Whether the inlay render withholds an image: the Android rule of `inlayImageWithheld`, or on desktop an
+ * image above the desktop whole-read limit, whose asset URL is then never requested. This is the render
+ * rule only; a send reads the body through the store rather than the asset URL and keeps
+ * `inlayImageWithheld`.
+ */
+export function inlayImageRenderWithheld(type: unknown, size: number | null, android: boolean, desktop: boolean): boolean {
+    return inlayImageWithheld(type, size, android) || (desktop && type === 'image' && size !== null && size > DESKTOP_WHOLE_READ_URL_LIMIT_BYTES)
 }
 
 /** The decoded size above which Android does not decode a string-stored video or audio for display. */

@@ -5,6 +5,7 @@ import { getDatabase, type MessageGenerationInfo } from "./storage/database.svel
 import { alertStore as alertStoreImported } from "./stores.svelte"
 import { askPrompt, noticeShowing, promptShowing, promptWaiting } from "./alertPrompts"
 import type { PromptCancel } from "./alertCancel"
+import { taskResultRead, taskResultShowing, taskShown } from "./alertTask.svelte"
 
 /** What the per-record conflict dialog shows for one record: text already in the person's language, and the choices offered. */
 export interface PeerConflictRowView {
@@ -137,12 +138,18 @@ export async function waitAlert(): Promise<void> {
 /** Alerts that are not a notice to read: nothing, a toast that closes itself, and a job's own wait or progress. */
 const NOT_A_NOTICE: ReadonlySet<alertData['type']> = new Set(['none', 'toast', 'wait', 'progress'])
 
-/** When the alert on screen is a notice to read, waits until the store next takes `none`; otherwise returns at once. */
+/**
+ * When the alert on screen is a notice to read, waits until the store next takes `none`. A task result that waits for its
+ * answer is a notice too, whether it is on screen or yielded under a legacy notice, so the wait ends only once it is read.
+ * A running task is not a notice. Otherwise returns at once.
+ */
 export async function waitUnreadNotice(): Promise<void> {
-    if(NOT_A_NOTICE.has(get(alertStoreImported).type)){
-        return
+    if(!NOT_A_NOTICE.has(get(alertStoreImported).type)){
+        await alertEndMessage()
     }
-    await alertEndMessage()
+    if(taskResultShowing()){
+        await taskResultRead()
+    }
 }
 
 export function alertNormal(msg:string){
@@ -253,7 +260,7 @@ export function alertMd(msg:string){
 }
 
 export function doingAlert(){
-    return promptWaiting() || (get(alertStoreImported).type !== 'none' && get(alertStoreImported).type !== 'toast' && get(alertStoreImported).type !== 'wait')
+    return taskShown() || promptWaiting() || (get(alertStoreImported).type !== 'none' && get(alertStoreImported).type !== 'toast' && get(alertStoreImported).type !== 'wait')
 }
 
 export function alertToast(msg:string){

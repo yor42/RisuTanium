@@ -79,11 +79,12 @@ export function inlayWriteLimit(): number {
 const MIB = 1024 * 1024
 
 /**
- * The largest video inlay Android takes. A video there is served by the store's URL, but a render the
- * store cannot serve that way can read the whole file, which the piecewise limits above this do not
- * cover, so a video stays at this bound there (CHORE-373).
+ * The largest video inlay Android takes. A large video there is played from the file through the store's
+ * URL (Range reads), and a video the store cannot deliver that way is withheld above the whole-read
+ * limit instead of being read whole. The constant stays apart from `inlayLimits.attachmentBytes` so that a
+ * later rise of the attachment bound does not raise Android video without a device proof.
  */
-export const ANDROID_VIDEO_INLAY_LIMIT_BYTES = 200 * MIB
+export const ANDROID_VIDEO_INLAY_LIMIT_BYTES = 1024 * MIB
 
 /** Mutable only so that tests can use small fixtures. */
 export const inlayLimits = {
@@ -94,8 +95,9 @@ export const inlayLimits = {
 /**
  * The largest inlay a user can attach or a copy or restore can store, in bytes: 1 GiB, and never
  * more than the page's store accepts for one body. An Android video is further bounded by
- * `ANDROID_VIDEO_INLAY_LIMIT_BYTES`. An old inlay above the limit is not copied on any platform,
- * so the copy never makes a copy of a body that large. Pass the inlay's type when it is known.
+ * `ANDROID_VIDEO_INLAY_LIMIT_BYTES`, which equals the attachment bound today. An old inlay
+ * above the limit is not copied on any platform, so the copy never makes a copy of a body
+ * that large. Pass the inlay's type when it is known.
  */
 export function inlayAttachmentLimit(type?: InlayAsset['type']): number {
     const limit = Math.min(inlayLimits.attachmentBytes, inlayWriteLimit())
@@ -283,13 +285,15 @@ export async function isListedAppInlay(store: ByteStore, id: string, listed: Rea
  * (`string`: UTF-8, `string16`: UTF-16LE): the record then keeps that `repr` and
  * an empty `mime`, so the inlay reads back as the string it was, while the
  * bytes still travel as a Blob and are not decoded and encoded again.
+ * `options.onProgress` receives the progress of a Blob body handed to a store's
+ * `writeBlob`; a store that takes bytes reports none.
  *
  * The caller holds `withInlayLock(id)`. The render cached for `id` is dropped
  * once the metadata commits and before the replaced body is deleted, and again
  * on every way out, so no cached URL points at a body that is gone. With
  * `revokeRendered` false the dropped render's object URL stays valid.
  */
-export async function writeAppInlay(store: ByteStore, id: string, value: object & { data?: unknown }, options: { revokeRendered?: boolean, textRepr?: 'string' | 'string16' } = {}): Promise<void> {
+export async function writeAppInlay(store: ByteStore, id: string, value: object & { data?: unknown }, options: { revokeRendered?: boolean, textRepr?: 'string' | 'string16', onProgress?: (doneBytes: number, totalBytes: number) => void } = {}): Promise<void> {
     const metaKey = inlayMetaKey(id)
     const bodyKey = inlayBodyKey(id, newBodyToken())
     if (metaKey === null || bodyKey === null) {
@@ -299,7 +303,7 @@ export async function writeAppInlay(store: ByteStore, id: string, value: object 
     let prepared: PreparedBody | null
     try {
         const named = (value as { name?: unknown }).name
-        prepared = await prepareBody(store, value.data, options.textRepr, typeof named === 'string' ? named : '')
+        prepared = await prepareBody(store, value.data, options.textRepr, typeof named === 'string' ? named : '', options.onProgress)
     } catch (error) {
         throw new InlayUnreadableError(error)
     }
@@ -346,7 +350,7 @@ interface PreparedBody {
  * for a store that takes Blobs is probed with a one-byte read, so a Blob the browser cannot read is
  * refused here as unreadable and not by the store as a failed write; its bytes are not read otherwise.
  */
-async function prepareBody(store: ByteStore, data: unknown, textRepr?: 'string' | 'string16', fileName: string = ''): Promise<PreparedBody | null> {
+async function prepareBody(store: ByteStore, data: unknown, textRepr?: 'string' | 'string16', fileName: string = '', onProgress?: (doneBytes: number, totalBytes: number) => void): Promise<PreparedBody | null> {
     const writeBlob = store.writeBlob?.bind(store)
     if (data instanceof Blob && writeBlob !== undefined) {
         if (data.size > 0) {
@@ -358,7 +362,7 @@ async function prepareBody(store: ByteStore, data: unknown, textRepr?: 'string' 
         // file and that bound, not the store's own text.
         const put = async (key: string): Promise<unknown> => {
             try {
-                return await writeBlob(key, blob, 'unconditional')
+                return await writeBlob(key, blob, 'unconditional', onProgress)
             } catch (error) {
                 if (!(error instanceof StoreBlobUnsupportedError)) {
                     throw error

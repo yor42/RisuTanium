@@ -3,7 +3,7 @@ import { flushSync } from 'svelte'
 import { writable } from 'svelte/store'
 import type { character, Chat } from '../storage/database.svelte'
 import * as composerDrafts from './composerDrafts.svelte'
-import { beginChatFileUpload, createComposerSurface, fallbackDraftForChat, pendingChatFileUploads, trackChatFileUpload } from './composerSurface.svelte'
+import { attachmentsForDraft, beginChatFileUpload, createComposerSurface, fallbackDraftForChat, pendingChatFileUploads, trackChatFileAttachment, trackChatFileUpload } from './composerSurface.svelte'
 
 const flipFixture = {
     db: { db: { characters: [] as character[] } },
@@ -123,5 +123,74 @@ describe('T7 composer surface', () => {
         expect(pendingChatFileUploads()).toBe(1)
         settleAbort()
         expect(pendingChatFileUploads()).toBe(0)
+    })
+})
+
+describe('attach progress state', () => {
+    const keyA = { chaId: 'owner', chatId: 'a' }
+    const keyB = { chaId: 'owner', chatId: 'b' }
+
+    test('a report adds one entry, a second report updates it in place, and null removes it', async () => {
+        let finish!: () => void
+        let report!: (progress: { name: string, written: number, total: number } | null) => void
+        const call = trackChatFileAttachment(keyA, (r) => new Promise<void>((resolve) => { report = r; finish = resolve }))
+        try {
+            expect(attachmentsForDraft(keyA)).toEqual([])
+            report({ name: 'clip.mp4', written: 0, total: 10 })
+            const first = attachmentsForDraft(keyA)
+            expect(first.map((entry) => [entry.name, entry.written, entry.total])).toEqual([['clip.mp4', 0, 10]])
+            report({ name: 'clip.mp4', written: 4, total: 10 })
+            const second = attachmentsForDraft(keyA)
+            expect(second.length).toBe(1)
+            expect(second[0].token).toBe(first[0].token)
+            expect(second[0].written).toBe(4)
+            report(null)
+            expect(attachmentsForDraft(keyA)).toEqual([])
+        }
+        finally {
+            finish()
+            await call
+        }
+    })
+
+    test('a report made after the call settled does not bring a chip back', async () => {
+        let report!: (progress: { name: string, written: number, total: number } | null) => void
+        await trackChatFileAttachment(keyA, async (r) => { report = r })
+        report({ name: 'late.mp4', written: 1, total: 2 })
+        expect(attachmentsForDraft(keyA)).toEqual([])
+    })
+
+    test('a rejected work removes the entry and rethrows the same error', async () => {
+        const failure = new Error('write failed')
+        const call = trackChatFileAttachment(keyA, async (report) => {
+            report({ name: 'clip.mp4', written: 1, total: 2 })
+            expect(attachmentsForDraft(keyA).length).toBe(1)
+            throw failure
+        })
+        await expect(call).rejects.toBe(failure)
+        expect(attachmentsForDraft(keyA)).toEqual([])
+    })
+
+    test('an entry is returned only for its own draft key, and a null-key entry only for null', async () => {
+        let finish!: () => void
+        const call = trackChatFileAttachment(keyA, async (report) => {
+            report({ name: 'a.mp4', written: 1, total: 2 })
+            await new Promise<void>((resolve) => { finish = resolve })
+        })
+        let finishNull!: () => void
+        const nullCall = trackChatFileAttachment(null, async (report) => {
+            report({ name: 'n.mp4', written: 1, total: 2 })
+            await new Promise<void>((resolve) => { finishNull = resolve })
+        })
+        try {
+            expect(attachmentsForDraft({ ...keyA }).map((entry) => entry.name)).toEqual(['a.mp4'])
+            expect(attachmentsForDraft(keyB)).toEqual([])
+            expect(attachmentsForDraft(null).map((entry) => entry.name)).toEqual(['n.mp4'])
+        }
+        finally {
+            finish()
+            finishNull()
+            await Promise.all([call, nullCall])
+        }
     })
 })

@@ -14,21 +14,9 @@ Fork difference: Upstream calls this tab "Account & Files". It has a Risu Accoun
 | **Load Internal Backup** | The page always shows it, with a static label. There is no "server backup" variant. That is an upstream account-sync distinction that this fork does not have. The app asks the same two confirms as above. Then it lists the periodic auto-backups (named `dbbackup-<timestamp>`). It finds them in the `database/` folder of Tauri, or in the active storage backend on other builds. Pick one to load it. The app repairs ids, installs the restored database, and shows "Loaded backup". **This does not reload the app.** |
 | **Clean Unused Cold Storage** | The page always shows it. The app asks you to accept, with a warning that the deletion is permanent. Then it clears the cold-storage entries that no character references any more. It refuses with an error if any character is frozen now (a save is in progress). |
 | **Export Save as Dataset** | The page always shows it. It asks no confirm. It downloads a `dataset.json`. The file has one `{name, description, chats, lorebook}` entry for each saved chat of each character that is not a group. A character with three chats gives three entries. |
-| **Asset Cache Integrity** panel | See [Asset Cache Integrity](#asset-cache-integrity) below. The Tauri desktop build hides it. |
 | **Local Storage Backend** panel | See [Local Storage Backend (OPFS)](#local-storage-backend-opfs) below. The page shows it only on the web build, when your browser supports the APIs that it needs. |
 
 <!-- src/lib/Setting/Pages/UserSettings.svelte:12-61; src/ts/drive/backuplocal.ts:22-189; src/ts/process/coldstorage.svelte.ts:437-446; src/ts/storage/exportAsDataset.ts:1-29; src/ts/globalApi.svelte.ts:3141-3191; src/lang/en.ts:1771 -->
-
-## Asset Cache Integrity
-
-The page shows this panel when you are not on the Tauri desktop build. Both the web build and the self-hosted Node-server builds get it.
-
-- **"Warn on startup if a quick sample check finds corruption"**: A checkbox bound to `db.checkCorruption`. It is **off by default**. While it is on, every ordinary boot (non-Tauri) samples 3 random assets that are referenced now and are in memory. The check verifies each of them. It does not read cold storage. If any sample does not match, you get a toast that does not block you: "Possible asset corruption detected (${target}). Check Backup & Files → Asset Cache Integrity." This runs on every boot while the box is ticked, not only one time.
-- **"Verify Asset Cache Now"** button: A separate, full manual scan with a progress indicator. It hashes every cached asset against its expected content hash. If it finds mismatches, it offers to remove them, and you must accept. It ends with a Markdown report. The report counts the assets that the scan checked, the assets that are not cached, the assets that are not content-addressed, and the assets that mismatched. If you removed any assets, the report also shows the outcome of the eviction.
-
-The checkbox (the sample at boot) and the button (the full manual scan) are separate code paths. They only share the heading of this panel.
-
-<!-- src/lib/Setting/Pages/StorageMaintenanceSettings.svelte:19-28; src/ts/storage/storageMaintenance.ts:14-85; src/ts/bootstrap.ts:573-607 -->
 
 ## Local Storage Backend (OPFS)
 
@@ -65,7 +53,7 @@ The app refuses outright with this message: "This tab isn't currently using OPFS
 
 If the copy fails, the app releases the lock and shows the error instead.
 
-<!-- src/lib/Setting/Pages/StorageMaintenanceSettings.svelte:3-46; src/ts/storage/storageMaintenance.ts:106-191; src/ts/storage/autoStorage.ts:140-236; src/ts/bootstrap.ts:185-193 -->
+<!-- src/ts/storage/autoStorage.ts:140-236; src/ts/bootstrap.ts:185-193 -->
 
 ## Restoring is refused while work is running
 

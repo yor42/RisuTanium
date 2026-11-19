@@ -295,8 +295,8 @@ describe('residue and settled starts', () => {
         expect(h.keysCalls - keysAfterFirst).toBe(2)
     })
 
-    // Reproducer: the copy passed no inlay type to the limit, so an Android video above 200 MiB was copied once the store took 1 GiB.
-    test('on Android a video above 200 MiB stays in the old store as residue while audio of the same size is copied', async () => {
+    // Reproducer: an Android video above 200 MiB stayed in the old store as residue while the Android video bound was 200 MiB.
+    test('on Android a video above 200 MiB is copied like audio of the same size', async () => {
         h.os = 'android'
         injectAppStore(appStore, 'tauri')
         class BigBlob extends Blob {
@@ -307,8 +307,8 @@ describe('residue and settled starts', () => {
 
         await expect(runInlayCopy(env)).resolves.toBe('done')
 
-        expect(JSON.parse(flags.get('inlayCopyDone')!).residual).toEqual(['video'])
-        expect(await readAppInlay('video')).toBeNull()
+        expect(JSON.parse(flags.get('inlayCopyDone')!).residual).toEqual([])
+        expect(await readAppInlay('video')).not.toBeNull()
         expect(await readAppInlay('audio')).not.toBeNull()
     })
 

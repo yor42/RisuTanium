@@ -140,10 +140,6 @@ vi.mock(import('src/ts/process/memory/characterPutBack'), () => ({
     startCharacterPutBack: vi.fn(),
 }) as unknown as typeof import('src/ts/process/memory/characterPutBack'))
 
-vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
-    verifyAssetCacheEntry: vi.fn(async () => ({ status: 'ok' as const })),
-}) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/media/avatarThumb'))

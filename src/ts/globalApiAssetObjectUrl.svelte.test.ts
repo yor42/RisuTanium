@@ -223,7 +223,6 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
 import {
     getFileSrc,
     releaseAssetObjectUrl,
-    setUsingSw,
     __fileCacheTestHooks,
 } from 'src/ts/globalApi.svelte'
 import { getAppStore } from 'src/ts/storage/store/appStore'
@@ -276,17 +275,15 @@ beforeEach(async () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     __fileCacheTestHooks.reset()
-    setUsingSw(false)
 })
 
 afterEach(() => {
     __fileCacheTestHooks.reset()
-    setUsingSw(false)
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
 })
 
-describe('getFileSrc for a Blob-valued asset without the service worker', () => {
+describe('getFileSrc for a Blob-valued asset', () => {
     test('reproducer: the page gets a blob: URL, the Blob is handed over unread, and the cache holds no bytes', async () => {
         await seedBlob('assets/a.png')
 
@@ -444,68 +441,5 @@ describe('getFileSrc for a Blob-valued asset without the service worker', () => 
         expect(revokeSpy).toHaveBeenCalledWith(url)
         await getFileSrc('assets/a.png')
         expect(createSpy).toHaveBeenCalledTimes(2)
-    })
-})
-
-describe('getFileSrc for a Blob-valued asset with the service worker', () => {
-    beforeEach(() => {
-        setUsingSw(true)
-    })
-
-    test('reproducer: the page gets a blob: URL and nothing is registered with the service worker', async () => {
-        await seedBlob('assets/a.png')
-
-        const src = await getFileSrc('assets/a.png')
-
-        expect(src).toBe(createdUrls[0])
-        expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
-            `/sw/check/${Buffer.from('assets/a.png').toString('hex')}`,
-        ])
-        expect(__fileCacheTestHooks.stats().bytes).toBe(0)
-    })
-
-    test('reproducer: two concurrent first calls both get the one blob: URL', async () => {
-        await seedBlob('assets/a.png')
-
-        const [one, two] = await Promise.all([getFileSrc('assets/a.png'), getFileSrc('assets/a.png')])
-
-        expect(one).toBe(two)
-        expect(one.startsWith('blob:')).toBe(true)
-        expect(createSpy).toHaveBeenCalledTimes(1)
-        expect(rawGetCount('assets/a.png')).toBe(1)
-    })
-
-    test.each(['assets/x//y.png', 'assets/.hidden.png'])('guard: bytes upstream stored under the key %s that the store can address but not create are registered with the service worker, from one raw get', async (key) => {
-        await upstream.setItem(key, pattern(10, 5))
-
-        const src = await getFileSrc(key)
-
-        const encoded = Buffer.from(key).toString('hex')
-        expect(src).toBe(`/sw/img/${encoded}`)
-        expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual([`/sw/check/${encoded}`, `/sw/register/${encoded}`])
-        expect(rawGetCount(key)).toBe(1)
-    })
-
-    test('guard: an asset the service worker already holds is answered without any read', async () => {
-        fetchMock.mockImplementation(async () => new Response(JSON.stringify({ able: true })))
-        await seedBlob('assets/a.png')
-
-        const src = await getFileSrc('assets/a.png')
-
-        expect(src).toBe(`/sw/img/${Buffer.from('assets/a.png').toString('hex')}`)
-        expect(rawGetCount('assets/a.png')).toBe(0)
-        expect(createSpy).not.toHaveBeenCalled()
-    })
-
-    test('guard: a bytes-valued asset is registered with the service worker from exactly one raw get', async () => {
-        await seedBytes('assets/b.png', 10)
-
-        const src = await getFileSrc('assets/b.png')
-
-        const encoded = Buffer.from('assets/b.png').toString('hex')
-        expect(src).toBe(`/sw/img/${encoded}`)
-        expect(fetchMock.mock.calls.map((call) => String(call[0]))).toEqual([`/sw/check/${encoded}`, `/sw/register/${encoded}`])
-        expect(rawGetCount('assets/b.png')).toBe(1)
-        expect(createSpy).not.toHaveBeenCalled()
     })
 })

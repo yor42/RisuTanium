@@ -73,7 +73,10 @@ const STUDIO_EXPECT: Record<string, RegExp> = {
     T01: /fully transparent/, T02: /would be [\d.]+:1/, T03: /fully transparent/, T04: /critical minimum/, T05: /not a pack-settable/, T06: /not a pack-settable/, T07: /not a pack-settable/, T08: /not a pack-settable/, T09: /not a pack-settable/, T10: /not a pack-settable/, T11: /not a pack-settable/, T12: /not a pack-settable/,
     T13: /critical minimum/, T14: /fully transparent/, T15: /not a pack-settable/, T16: /would be [\d.]+:1/, T17: /would be [\d.]+:1/, T18: /critical maximum/, T19: /would be [\d.]+:1/, T20: /would be [\d.]+:1/, T21: /not a pack-settable/, T22: /not a pack-settable/, T23: /not a pack-settable/, T24: /would be [\d.]+:1/, T25: /would be [\d.]+:1/, T26: /would be [\d.]+:1/,
 }
-const STUDIO_DECIDED_ACCEPT = new Set(['H06', 'H07', 'H08', 'P06', 'P07', 'P08', 'P09', 'P10', 'P11', 'P17'])
+// MC-2309 supersedes that freedom for an outer shadow over 2 px: such a pack is refused by decision (rule E-2).
+const STUDIO_DECIDED_ACCEPT = new Set(['H06', 'H07', 'H08', 'P06', 'P07', 'P08', 'P09', 'P10', 'P11'])
+const STUDIO_E2_REFUSED = new Set(['P17'])
+const E2_WHY = /may reach at most 2 px past its element/
 const studioExtra: [string, string | null, RegExp | null][] = [
     ['B1-token sheet transparent', ':root{--color-surface-sheet:transparent}', /fully transparent|opaque/], ['B1-token sheet alpha .05', ':root{--color-surface-sheet:rgb(0 1 28 / 0.05)}', /opaque colour/], ['toast transparent', ':root{--color-surface-toast:transparent}', /fully transparent|opaque/],
     ['sheet = canvas colour translucent', ':root{--color-surface-sheet:rgb(0 1 28 / 0.1)}', /opaque colour/], ['edge transparent', ':root{--nexus-edge:transparent;--nexus-edge-strong:transparent}', /fully transparent/], ['studio-tint-sheet-92 holder', ':root{--studio-tint-sheet-92:transparent}', /not a pack-settable/],
@@ -178,6 +181,11 @@ const MUST: Record<string, RegExp> = { R1: /ancestor padding|larger than 64/, R2
 describe('2 studio review packs', () => {
     for (const f of readReviewPacks('studio-hostile.json')) {
         for (const [label, css] of [['bare', f.css], ['on Navy', NAVY_STUDIO + '\n' + f.css]] as Named[]) {
+            if (STUDIO_E2_REFUSED.has(f.id)) {
+                // REPRO: the base accepts this pack; the flat 2 px limit on outer shadows refuses it.
+                it(`${f.id} ${label} is refused by decision (an outer shadow over 2 px, MC-2309): ${f.name}`, () => { expectRejected(lint('studio', css, f.id), E2_WHY) })
+                continue
+            }
             if (STUDIO_DECIDED_ACCEPT.has(f.id)) {
                 // Accepted by decision: only the key controls are protected, other safe parts keep their freedom.
                 it(`${f.id} ${label} is accepted by decision (${f.name})`, () => { expectAccepted(lint('studio', css, f.id)) })
@@ -189,7 +197,7 @@ describe('2 studio review packs', () => {
     }
     it('every decided-accept id and every expected id is a pack of the studio review list', () => {
         const ids = new Set(readReviewPacks('studio-hostile.json').map((f) => f.id))
-        for (const id of [...STUDIO_DECIDED_ACCEPT, ...Object.keys(STUDIO_EXPECT)]) expect(ids.has(id), id).toBe(true)
+        for (const id of [...STUDIO_DECIDED_ACCEPT, ...STUDIO_E2_REFUSED, ...Object.keys(STUDIO_EXPECT)]) expect(ids.has(id), id).toBe(true)
     })
     for (const [n, css, re] of studioExtra) {
         if (css === null || re === null) {
