@@ -13,6 +13,7 @@
     import { moduleSlotsWithId } from '../../ts/studio/edit/assetSetters'
     import { DBState } from '../../ts/stores.svelte'
     import StudioAssetList, { type EnabledModuleAssets } from './assets/StudioAssetList.svelte'
+    import StudioEmotionList from './assets/StudioEmotionList.svelte'
     import StudioModuleAssetForm from './assets/StudioModuleAssetForm.svelte'
     import StudioChatNoteForm from './StudioChatNoteForm.svelte'
     import StudioCharacterForm from './StudioCharacterForm.svelte'
@@ -239,6 +240,7 @@
                     <!-- Keyed by the owner: a new owner builds the list again, with a new filter, selection and panels. -->
                     {#key ownerKey}
                         <StudioAssetList chaId={characterId} enabledModules={enabledModuleAssets} />
+                        <StudioEmotionList chaId={characterId} />
                     {/key}
                 {:else if exampleFormLive}
                     <StudioExampleForm chaId={studioScreen.chaId} />

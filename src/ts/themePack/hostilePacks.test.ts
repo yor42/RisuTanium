@@ -100,7 +100,7 @@ const HOME_FONT_REFUSED = new Set(['H52']);   // a font family outside the pack'
 
 // Private variables (--pack-*) cannot launder a value: [name, css, accepted?, reason].
 const PRIV: [string, string, boolean, RegExp?][] = [
-    ['a private colour used by a control', ':root{--pack-y:#fee500}[data-part="chat-send"]{background:var(--pack-y);color:#191919}', true],
+    ['a private colour used by a control', ':root{--pack-y:#fee500}[data-part="chat-send"]{background:var(--pack-y) !important;color:#191919 !important}', true],
     ['text colour through a private variable', ':root{--pack-t:#0e0f2b;--nexus-text:var(--pack-t)}', false, /would be [\d.]+:1/],
     ['colour-mix through a private variable', ':root{--pack-t:color-mix(in oklch,red,blue);--nexus-text:var(--pack-t)}', false, /cannot be resolved to a concrete sRGB/],
     ['colour-mix in srgb through a private variable is judged as the colour it makes', ':root{--pack-t:color-mix(in srgb,red,blue);--nexus-text:var(--pack-t)}', false, /would be [\d.]+:1/],
