@@ -139,8 +139,32 @@ export function planRewrite(targets: readonly ClassifiedTarget[], kind: AssetKin
     return plan
 }
 
-/** Applies edits to a text, in the order given (highest offset first), as the setter does. */
+/**
+ * Applies edits to a text, in the order given (highest offset first), as the setter does. The output is the same as
+ * applying the edits one by one. A list that is descending, non-overlapping and in range is assembled in one pass;
+ * any other list is applied one by one, so its result never depends on the fast path.
+ */
 export function spliceTextEdits(text: string, edits: readonly TextEdit[]): string {
+    let limit = text.length
+    let ordered = true
+    for (const edit of edits) {
+        if (!Number.isInteger(edit.offset) || edit.offset < 0 || edit.offset + edit.from.length > limit) {
+            ordered = false
+            break
+        }
+        limit = edit.offset
+    }
+    if (ordered) {
+        // Pieces are collected from the end of the text to its start, so copying stays linear in the text length.
+        const pieces: string[] = []
+        limit = text.length
+        for (const edit of edits) {
+            pieces.push(text.slice(edit.offset + edit.from.length, limit), edit.to)
+            limit = edit.offset
+        }
+        pieces.push(text.slice(0, limit))
+        return pieces.reverse().join('')
+    }
     let result = text
     for (const edit of edits) {
         result = result.slice(0, edit.offset) + edit.to + result.slice(edit.offset + edit.from.length)

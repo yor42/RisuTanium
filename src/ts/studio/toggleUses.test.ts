@@ -224,6 +224,25 @@ describe('block structure (U5)', () => {
         const text = '{{#if 1}}x{{/if}}{{getglobalvar::toggle_a}}'
         expect(plain(text)).toHaveLength(1)
     })
+
+    // Compatibility guard: these hold before and after the walk reads the stack top only at a closer. A closer that is
+    // not above an open macro is text, so the scan goes on and no closer pops an empty stack.
+    test.each(['x}}', 'x#}'])('%s: a closer with no macro open is text', (text) => {
+        expect(scan(text)).toEqual([])
+    })
+
+    test.each([
+        ['}}{{getglobalvar::toggle_a}}', 25],
+        ['#}{{getglobalvar::toggle_a}}', 25],
+        ['{{getglobalvar::toggle_a}}}}x', 23],
+        ['{{getglobalvar::toggle_a}}#}x', 23],
+    ])('%s: the scan goes on after a closer with no macro open', (text, offset) => {
+        const hits = scan(text)
+        expect(hits).toHaveLength(1)
+        expect(hits[0]).toMatchObject({ key: 'a', offset, length: 1, syntax: 'getglobalvar' })
+        expect(hits[0].flag).toBeUndefined()
+        expect(sliceOf(text, hits[0])).toBe('a')
+    })
 })
 
 describe('flag-only texts (U6) and patterns (U9)', () => {
