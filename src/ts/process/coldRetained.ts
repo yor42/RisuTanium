@@ -4,9 +4,9 @@ import { MEASURE, putBackEnabled } from "./memory/measureFlag"
 import { noteFingerprint } from "./memory/putBackMeasure"
 
 /**
- * What a restore keeps of the placeholder it replaced, so that a character the
- * user only looked at can be put back as that placeholder (`characterPutBack.ts`)
- * instead of staying in memory for the rest of the page's life.
+ * What a restore keeps of the placeholder it replaced. No put-back reads these
+ * records: the put-back (`characterPutBack.ts`) runs only on a page with a
+ * residency and judges the loaded character itself.
  *
  * A record holds the stub, the unit key it points at and a fingerprint of the
  * unit's character as it was read. It is taken at the install, over the plain
@@ -54,7 +54,7 @@ const byChaId = new Map<string, RetainedRecord>()
 /** The hidden utility character rewrites itself on every selection and is selected only while in use. */
 const PLAYGROUND_CHA_ID = '§playground'
 
-/** Fields that change without the character's content changing: the stub carries them across a put-back. */
+/** Fields that change without the character's content changing: the fingerprint leaves them out. */
 const VOLATILE_FIELDS = ['lastInteraction', 'trashTime'] as const
 
 function hashText(text: string): [number, number] {
@@ -232,22 +232,6 @@ export function retainedCount(): number {
 /** True while any restored character is retained. */
 export function hasRetained(): boolean {
     return byChaId.size > 0
-}
-
-/**
- * Records a put-back found changed since its restore and left waiting for
- * `characterRearchive.ts`: the record stays retained, so its unit stays
- * referenced until the re-archive's stub replaces the character, but the
- * put-back never fingerprints it again.
- */
-const dirtyRecords = new WeakSet<RetainedRecord>()
-
-export function noteDirtyRecord(record: RetainedRecord): void {
-    dirtyRecords.add(record)
-}
-
-export function isDirtyRecord(record: RetainedRecord): boolean {
-    return dirtyRecords.has(record)
 }
 
 /** Forgets `record`; its installed character stays where it is. */

@@ -43,15 +43,3 @@ export function liveLockQuery(): (() => Promise<LockManagerSnapshot>) | undefine
     const locks = typeof navigator === 'undefined' ? undefined : navigator.locks
     return typeof locks?.query === 'function' ? () => locks.query() : undefined
 }
-
-/**
- * Whether the tab rule lets a superseded cold unit be deleted. Without a lock query the web withholds and the app
- * (`tauri`: one window by the single-instance plugin, one singleTask activity) allows; with one, only the sole-tab
- * proof allows. The no-query branch comes first because the proof answers `'unsupported'` there.
- */
-export async function tabsAllowSupersededDelete(input: SoleTabInput & { tauri: boolean }): Promise<boolean> {
-    if (typeof input.query !== 'function') {
-        return input.tauri
-    }
-    return (await soleTabAnswer(input)) === 'alone'
-}

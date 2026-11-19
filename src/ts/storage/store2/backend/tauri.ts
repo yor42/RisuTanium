@@ -12,8 +12,14 @@ import { bytesTokenOf, checkRemoveBatch, checkUnitKey, checkUnitKeys, tokenMatch
  * every compare-and-write is a read, a compare and a write under one in-process
  * mutex per store object. That is atomic against every other step of this
  * backend on the same store, which is all a Tauri app with exactly one live page
- * on its data directory needs (the premise of the head swap and the commit lock
- * as well); it is not atomic against a write that does not come through here.
+ * on its data directory needs; it is not atomic against a write that does not
+ * come through here. Desktop holds that premise with the single-instance plugin.
+ * Android holds it with one `singleTask` activity, with `MainActivity` retiring
+ * the WebView that a recreation supersedes, and with the manifest declaring the
+ * common configuration changes so they do not recreate the activity. A
+ * recreation the manifest cannot declare still leaves the superseded page
+ * running until its replacement is installed and it is retired; replies to its
+ * IPC requests never reach it, so no chain of its continues to a later step.
  *
  * Compare tokens are byte tokens, compared in full under the mutex.
  *
