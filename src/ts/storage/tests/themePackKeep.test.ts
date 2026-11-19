@@ -339,16 +339,6 @@ describe('the keep-set over theme packs after a Remove', () => {
     })
 })
 
-describe('the integrity scan over a pack archive', () => {
-    afterEach(() => { vi.unstubAllGlobals() })
-
-    test('T2-17 guard: a pack archive name is reported as not content-addressed, never as a mismatch', async () => {
-        vi.stubGlobal('caches', { open: vi.fn(async () => ({ match: vi.fn(async () => undefined) })) })
-        const { verifyAssetCacheEntry } = await import('src/ts/storage/assetIntegrity')
-        expect(await verifyAssetCacheEntry(PACK_ARCHIVE)).toEqual({ status: 'not-content-addressed' })
-    })
-})
-
 describe('the pack archive key against the store key rules', () => {
     test('T2-12 guard: the key is creatable and addressable on every backend and short enough for the Node server', () => {
         expect(utf8ByteLength(PACK_ARCHIVE)).toBeLessThan(NODE_MAX_WRITE_KEY_BYTES)

@@ -647,46 +647,7 @@ describe('getFileSrc', () => {
         },
     )
 
-    test('new behaviour: with a service worker the bytes come from the store and are registered under the hex of the key', async () => {
-        const { api, appStore } = await loadWorld()
-        const handle = await mapStore()
-        handle.files.set(PNG_KEY, PNG)
-        appStore.injectAppStore(handle.store)
-        const registered: { path: string, body: Uint8Array }[] = []
-        vi.stubGlobal('fetch', vi.fn(async (path: string, init?: RequestInit) => {
-            if (path.startsWith('/sw/check/')) {
-                return new Response(JSON.stringify({ able: false }))
-            }
-            registered.push({ path, body: init?.body as Uint8Array })
-            return new Response('ok')
-        }))
-        api.setUsingSw(true)
-        const hex = Buffer.from(PNG_KEY, 'utf-8').toString('hex')
-
-        expect(await api.getFileSrc(PNG_KEY)).toBe(`/sw/img/${hex}`)
-
-        expect(handle.read).toHaveBeenCalledWith(PNG_KEY)
-        expect(registered.map((entry) => entry.path)).toEqual([`/sw/register/${hex}`])
-        expect(Array.from(registered[0].body)).toEqual(Array.from(PNG))
-    })
-
-    test('guard: with a service worker a missing asset still gets the same URL and nothing is registered', async () => {
-        const { api, appStore } = await loadWorld()
-        appStore.injectAppStore((await mapStore()).store)
-        const paths: string[] = []
-        vi.stubGlobal('fetch', vi.fn(async (path: string) => {
-            paths.push(path)
-            return new Response(JSON.stringify({ able: false }))
-        }))
-        api.setUsingSw(true)
-        const hex = Buffer.from('assets/none.png', 'utf-8').toString('hex')
-
-        expect(await api.getFileSrc('assets/none.png')).toBe(`/sw/img/${hex}`)
-
-        expect(paths).toEqual([`/sw/check/${hex}`])
-    })
-
-    test('new behaviour: without a service worker the data URL is made from the bytes the store read', async () => {
+    test('new behaviour: the data URL is made from the bytes the store read', async () => {
         const { api, appStore } = await loadWorld()
         const handle = await mapStore()
         handle.files.set(PNG_KEY, PNG)

@@ -1,12 +1,11 @@
 /**
- * A page the service worker does not control yet reloads once to be controlled (`registerSw()` in `src/ts/bootstrap.ts`
- * answers a non-2xx `/sw/init` with `markAppInitiatedReload()` and `location.reload()`). The page life that reloads must
- * post no boot notice and consume no one-shot state, so each notice shows once, in the life that stays. Drives the REAL
- * `loadData()` the way `bootstrap.opfsFallbackNotice.svelte.test.ts` does; the storage fallback notice stands for every
- * boot notice because it is posted at the same place and is consumed by `takeStorageFallbackNotice()`.
+ * No non-Tauri page life registers a service worker, asks `/sw/init`, or reloads to be controlled, whether or not the
+ * browser exposes `navigator.serviceWorker`. Drives the REAL `loadData()` the way
+ * `bootstrap.opfsFallbackNotice.svelte.test.ts` does; the storage fallback notice stands for every boot notice.
  *
- * Labels: reproducer (the 5xx first visit posts a notice before the reload on the base), compatibility guard (a 2xx boot
- * posts its notice and does not reload). A mocked service worker and `location.reload` are not evidence about a browser.
+ * Labels: regression reproducers (a page with `navigator.serviceWorker` and a failing `/sw/init` registers and reloads
+ * on a boot that still carries the service worker, and that reload life never shows a pending notice), compatibility
+ * guard (a stale account profile shows its notice and never registers; passes before and after). A stubbed `navigator.serviceWorker` and `location.reload` are not evidence about a browser.
  */
 import { describe, test, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest'
 import { writable, get } from 'svelte/store'
@@ -15,7 +14,6 @@ import { createForageBackedStore, type ForageLike } from 'src/ts/storage/tests/f
 import { COLD_TRANSFORM_HOOK_MS } from 'src/ts/tests/coldTransform.test-helpers'
 import { warmBootstrap, expectBootstrapTransformed } from 'src/ts/tests/bootstrapWarmup.test-helpers'
 import { registerRealDispatch } from 'src/ts/tests/realDispatchBoot.test-helpers'
-
 //#region hoisted mutable config, shared by every dynamically-imported module instance
 
 const platformState = vi.hoisted(() => ({ isTauri: false, isNodeServer: false }))
@@ -34,12 +32,10 @@ const forageState = vi.hoisted(() => ({
 const getDbBackupsMock = vi.hoisted(() => vi.fn(async (): Promise<number[]> => []))
 const buildAssetKeepSetMock = vi.hoisted(() => vi.fn(async () => ({ uncleanable: new Set<string>(), complete: true })))
 const getUncleanablesSyncMock = vi.hoisted(() => vi.fn((): string[] => []))
-const verifyAssetCacheEntryMock = vi.hoisted(() => vi.fn(async () => ({ status: 'ok' as const })))
 const loadPluginsMock = vi.hoisted(() => vi.fn(async () => { }))
 const saveDbMock = vi.hoisted(() => vi.fn(async () => { }))
 const moduleUpdateMock = vi.hoisted(() => vi.fn(async () => { }))
 const markAppInitiatedReloadMock = vi.hoisted(() => vi.fn())
-const setUsingSwMock = vi.hoisted(() => vi.fn())
 const setDatabaseMock = vi.hoisted(() => vi.fn((_data: Record<string, unknown>): void => { }))
 const getDatabaseMock = vi.hoisted(() => vi.fn(() => ({}) as Record<string, unknown>))
 
@@ -143,10 +139,6 @@ vi.mock(import('src/ts/process/modules'), () => ({
     moduleUpdate: moduleUpdateMock,
 }) as unknown as typeof import('src/ts/process/modules'))
 
-vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
-    verifyAssetCacheEntry: verifyAssetCacheEntryMock,
-}) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/media/avatarThumb'))
@@ -210,7 +202,6 @@ vi.mock(import('src/ts/globalApi.svelte'), () => ({
     getDbBackups: getDbBackupsMock,
     buildAssetKeepSet: buildAssetKeepSetMock,
     getBasename: (p: string) => p.split('/').pop(),
-    setUsingSw: setUsingSwMock,
     checkCharOrder: vi.fn(),
     getUncleanablesSync: getUncleanablesSyncMock,
     AppendableBuffer: class {
@@ -269,7 +260,7 @@ async function freshLoadData() {
 }
 
 const registerMock = vi.fn(async () => { })
-let swInitStatus = 200
+const fetchedUrls: string[] = []
 let reloadSpy: ReturnType<typeof vi.spyOn>
 
 beforeAll(warmBootstrap, COLD_TRANSFORM_HOOK_MS)
@@ -286,21 +277,22 @@ beforeEach(() => {
     getDbBackupsMock.mockReset().mockResolvedValue([])
     buildAssetKeepSetMock.mockReset().mockResolvedValue({ uncleanable: new Set(), complete: true })
     getUncleanablesSyncMock.mockReset().mockReturnValue([])
-    verifyAssetCacheEntryMock.mockReset().mockResolvedValue({ status: 'ok' })
     loadPluginsMock.mockReset().mockResolvedValue(undefined)
     saveDbMock.mockReset().mockResolvedValue(undefined)
     moduleUpdateMock.mockReset().mockResolvedValue(undefined)
     markAppInitiatedReloadMock.mockReset()
-    setUsingSwMock.mockReset()
     registerMock.mockClear()
     setDatabaseMock.mockClear()
     setDatabaseMock.mockImplementation((data: Record<string, unknown>) => { dbState.current = { ...dbState.baseline(), ...data } })
     getDatabaseMock.mockClear()
     getDatabaseMock.mockImplementation(() => dbState.current)
-    swInitStatus = 200
+    fetchedUrls.length = 0
     dispatchEntered.count = 0
     Object.defineProperty(navigator, 'serviceWorker', { value: { register: registerMock }, configurable: true })
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(null, { status: url === '/sw/init' ? swInitStatus : 404 })))
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+        fetchedUrls.push(String(url))
+        return new Response(null, { status: String(url).startsWith('/sw/') ? 503 : 404 })
+    }))
     vi.stubGlobal('open', vi.fn())
     reloadSpy = vi.spyOn(window.location, 'reload').mockImplementation(() => { })
     reloadSpy.mockClear()
@@ -312,39 +304,31 @@ afterEach(() => {
     vi.unstubAllGlobals()
 })
 
-describe('loadData(): the page life that reloads for the service worker', () => {
-    test('reproducer: a first visit whose /sw/init answers non-2xx posts no notice, consumes none and reads nothing before the reload', async () => {
-        swInitStatus = 503
+describe('loadData(): no page life touches a service worker', () => {
+    test.each([
+        { name: 'static page', node: false },
+        { name: 'Node-hosted page', node: true },
+    ])('reproducer: a $name with a failing /sw/init registers nothing, fetches no /sw/ URL, does not reload and finishes', async ({ node }) => {
+        platformState.isNodeServer = node
+        const { loadData, loadedStore } = await freshLoadData()
+
+        await loadData()
+
+        expect(registerMock).not.toHaveBeenCalled()
+        expect(fetchedUrls.filter((u) => u.startsWith('/sw/'))).toEqual([])
+        expect(markAppInitiatedReloadMock).not.toHaveBeenCalled()
+        expect(reloadSpy).not.toHaveBeenCalled()
+        expect(dispatchEntered.count).toBe(1)
+        expect(get(loadedStore)).toBe(true)
+    })
+
+    test('reproducer: a pending fallback notice shows once and the boot finishes without a reload', async () => {
         forageState.fallbackNotice = { reason: 'space' }
         const { loadData, alertStore, loadedStore } = await freshLoadData()
         const seenTypes: string[] = []
-        // Every notice is acknowledged as it shows, so a life that wrongly posts one fails the assertion below
-        // instead of waiting on a user forever.
         const unsubscribe = alertStore.subscribe((v) => {
             seenTypes.push(v.type)
-            if (v.type !== 'none') {
-                setTimeout(() => alertStore.set({ type: 'none', msg: '' }), 0)
-            }
         })
-
-        await loadData()
-        unsubscribe()
-
-        expect(registerMock).toHaveBeenCalled()
-        expect(markAppInitiatedReloadMock).toHaveBeenCalledTimes(1)
-        expect(reloadSpy).toHaveBeenCalledTimes(1)
-        expect(seenTypes.filter((t) => t !== 'none')).toEqual([])
-        // The one-shot notice is still there for the page life that stays.
-        expect(forageState.fallbackNotice).toEqual({ reason: 'space' })
-        // No profile was read or installed by the life that leaves, and the store2 boot was never entered.
-        expect(dispatchEntered.count).toBe(0)
-        expect(setDatabaseMock).not.toHaveBeenCalled()
-        expect(get(loadedStore)).toBe(false)
-    })
-
-    test('guard: a boot whose /sw/init answers 2xx posts its notice, does not reload and finishes', async () => {
-        forageState.fallbackNotice = { reason: 'space' }
-        const { loadData, alertStore, loadedStore } = await freshLoadData()
 
         const loading = loadData()
         await vi.waitFor(() => {
@@ -354,16 +338,17 @@ describe('loadData(): the page life that reloads for the service worker', () => 
         }, { timeout: 500, interval: 5 })
         alertStore.set({ type: 'none', msg: '' })
         await loading
+        unsubscribe()
 
+        expect(seenTypes.filter((t) => t !== 'none' && t !== 'toast')).toEqual(['normal'])
+        expect(forageState.fallbackNotice).toBeNull()
+        expect(registerMock).not.toHaveBeenCalled()
         expect(reloadSpy).not.toHaveBeenCalled()
-        expect(markAppInitiatedReloadMock).not.toHaveBeenCalled()
-        expect(setUsingSwMock).toHaveBeenCalledWith(true)
         expect(dispatchEntered.count).toBe(1)
         expect(get(loadedStore)).toBe(true)
     })
 
-    test('guard: a stale account profile still never reaches the service worker', async () => {
-        swInitStatus = 503
+    test('guard: a stale account profile still shows its notice and never registers', async () => {
         forageState.staleAccountProfile = true
         const { loadData, alertStore } = await freshLoadData()
 
@@ -375,7 +360,7 @@ describe('loadData(): the page life that reloads for the service worker', () => 
         }, { timeout: 500, interval: 5 })
 
         expect(registerMock).not.toHaveBeenCalled()
-        expect(setUsingSwMock).not.toHaveBeenCalled()
+        expect(fetchedUrls.filter((u) => u.startsWith('/sw/'))).toEqual([])
         alertStore.set({ type: 'none', msg: '' })
         await loading.catch(() => { })
     })

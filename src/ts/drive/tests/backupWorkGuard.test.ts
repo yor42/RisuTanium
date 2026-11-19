@@ -53,7 +53,7 @@ afterEach(() => {
     resetBusyActionsForTest()
 })
 
-const busyKindsThatRefuse: BusyKind[] = ['import', 'export', 'cleanup', 'assetAdd', 'imageAdd', 'backupSave', 'integrityCheck', 'hypaBulk', 'mcpWrite']
+const busyKindsThatRefuse: BusyKind[] = ['import', 'export', 'cleanup', 'assetAdd', 'imageAdd', 'backupSave', 'hypaBulk', 'mcpWrite']
 const chokePointsThatRefuse: ChokePoint[] = ['asset', 'inlay', 'coldStorage', 'pluginBridge']
 
 describe('refuseBackupLoadWhileBusy', () => {

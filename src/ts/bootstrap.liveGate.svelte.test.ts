@@ -135,10 +135,6 @@ vi.mock(import('src/ts/process/coldstorage.svelte'), () => ({
     readColdStorageItem: vi.fn(async () => ({ status: 'missing' as const })),
 }) as unknown as typeof import('src/ts/process/coldstorage.svelte'))
 
-vi.mock(import('src/ts/storage/assetIntegrity'), () => ({
-    verifyAssetCacheEntry: vi.fn(async () => ({ status: 'ok' as const })),
-}) as unknown as typeof import('src/ts/storage/assetIntegrity'))
-
 vi.mock(import('src/ts/media/avatarThumb'), () => ({
     startAvatarThumbSweep: vi.fn(async () => { }),
 }) as unknown as typeof import('src/ts/media/avatarThumb'))

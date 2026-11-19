@@ -7,8 +7,7 @@
  * which runs the real functions.
  *
  * MOCKED: every module the component calls into (backup, restore, dataset, alerts), the platform and the
- * `stores.svelte` state the nested maintenance panel binds. `src/lang`, `Button.svelte`, the nested panel and the page
- * storage mode store are real.
+ * `stores.svelte` state. `src/lang`, `Button.svelte` and the page storage mode store are real.
  */
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { flushSync, mount, unmount } from 'svelte'
@@ -27,10 +26,6 @@ vi.mock(import('src/ts/stores.svelte'), () => {
         DBState: state,
     } as unknown as typeof import('src/ts/stores.svelte')
 })
-
-vi.mock(import('src/ts/storage/storageMaintenance'), () => ({
-    verifyAssetIntegrity: vi.fn(async () => {}),
-}) as unknown as typeof import('src/ts/storage/storageMaintenance'))
 
 vi.mock(import('src/ts/alert'), () => ({
     alertConfirm: vi.fn(async () => false),
@@ -118,6 +113,19 @@ describe('UserSettings "Backup & Files" by page storage mode', () => {
         const { target, app } = mountPage()
 
         expect(buttonLabels(target)).not.toContain(language.cleanColdStorage)
+        return teardown(target, app)
+    })
+})
+
+describe('UserSettings "Backup & Files" has no service-worker cache panel', () => {
+    test('R4 on a non-Tauri page there is no asset cache integrity heading or verify button', () => {
+        setPageStorageMode({ kind: 'store2' })
+
+        const { target, app } = mountPage()
+
+        expect(target.textContent).not.toContain('Asset Cache Integrity')
+        expect(target.textContent).not.toContain('Verify Asset Cache Now')
+        expect(buttonLabels(target)).toContain(language.saveBackupLocal)
         return teardown(target, app)
     })
 })
